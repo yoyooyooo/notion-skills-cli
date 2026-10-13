@@ -1,0 +1,18 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "vcs": { "enabled": false },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!packages/cli/skills",
+      "!packages/cli/README.md",
+      "!bun.lock"
+    ]
+  },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": { "formatter": { "semicolons": "asNeeded", "quoteStyle": "double" } },
+  "linter": { "enabled": false },
+  "assist": { "enabled": false }
+}

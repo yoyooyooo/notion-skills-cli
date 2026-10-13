@@ -1,0 +1,38 @@
+# Discovery and integration
+
+Use [the README](../../../README.md#quick-start) for prerequisites, installation and a first read. The CLI is experimental 0.1.0, prepared for its first release; registry publication is not implied. [The protocol](../../../docs/protocol.md), [host adapter contract](../../../docs/host-integration.md) and [changelog](../../../CHANGELOG.md) are the shared public references.
+
+Discover metadata before loading bodies so the Agent can select a relevant workflow without consuming the whole library. Read an actual ref returned by `list`, require `ok: true`, then retain `content`, `ref`, `snapshot_id`, `version_id` and `source`. Use `files <snapshot_id>` to list every file in that version, then follow an attachment ref returned by that command. Passing a file ref to `files` filters only that path. All those reads use one exported version; edits in Notion during the task cannot silently change its supporting instructions. Online activation uses `source: "notion"`; pinned reads use `source: "local_snapshot"`.
+
+ntn-skills list follows all Search/row-query pages and returns databases/skills/count/coverage without bodies. Join Skill database_id to database title/alias/data_source_ids; Skill alias remains its invocation name. --query filters Skill Name/alias/Description and retains the full queried database map, including empty/no-match databases. --refresh bypasses the list cache. Discovery is limited to credential visibility and cannot prove workspace-wide completeness; preserve failed_sources database_id/alias/title/data_source_id. database list discovers database maps without querying Skill rows.
+
+To query a known database directly:
+
+```bash
+ntn-skills source add frontend --database <database-id-or-url>
+ntn-skills list --database frontend
+```
+
+All --database flags and config set-default accept one ID, URL or exact case-sensitive registered alias. IDs/URLs take priority; titles are display labels only. Repeated flags fail with INVALID_ARGUMENT/exit 2. Unknown aliases fail with DATABASE_NOT_FOUND; conflicting mappings fail with DATABASE_AMBIGUOUS; inaccessible selections never redirect. Pinned targets resolve aliases from local configuration and check snapshot ownership offline. Different databases may have the same Skill invocation name; retain both page identities and use the ambiguity error's databases map to select the domain or use a page-ID ref.
+
+Source registrations are local, supplement discovery, and do not modify Notion. No custom Status filter is applied by default. Notion Name must use ASCII English letters separated by single spaces and be at most 64 characters. Lowercase it and replace spaces with hyphens to obtain the invocation name shown as the listed `alias`; the export's frontmatter `name` must match. Exact display titles and invocation names resolve only when one distinct page ID matches; case-only title differences can collide. Invalid titles return `INVALID_SKILL_NAME`, and mismatched export names return `INVALID_SKILL`. Descriptions and contents may use any language.
+
+Source registrations live in `~/.config/ntn-skills/config.json`, independently of cached snapshots. Override the application config directory with `NTN_SKILLS_CONFIG_HOME`, or use `$XDG_CONFIG_HOME/ntn-skills`. `NTN_SKILLS_HOME` selects only cached state. If new configuration is absent, reading sources migrates a valid old state-directory config once and retains a `.migrated` backup; existing new configuration wins.
+
+The config may contain default_database. config set-default accepts the same ID/URL/alias selector, validates online and stores its canonical ID. Manage it through config show/clear-default. It applies to create/import only: --database wins, then the default, then the sole freshly discovered database. Name conflict/reuse/update is scoped to that database. Failed defaults and failed/ambiguous discovery never silently redirect writes.
+
+Authentication selects non-empty config.token > NOTION_API_TOKEN > existing ntn login. Save a token via config set-token --stdin with piped input; clear-token restores environment/login fallback. Config commands preserve sources/default_database; config output reports only token_configured, not validity or environment/login availability. Token storage is plaintext with mode 0600 and is never included in snapshots/output/arguments. A shared config token overrides host-specific environment credentials; isolate both config and state for separate host identities. Different selected tokens separate online caches; the same token from configuration or the environment shares a scope. Offline pinned reads do not need a credential. Older scope formats remain readable offline; get a fresh online ref before a pinned write from an older format.
+
+`NTN_SKILLS_NTN_BIN` selects the trusted official CLI executable, default `ntn`. `NOTION_WORKSPACE_ID` and `NOTION_API_BASE_URL` enter the authentication scope and are inherited by `ntn`; workspace selection follows its authentication rules, while `ntn api` honors the API base URL override. Select a trusted endpoint because authenticated requests may reach it. Signed archive downloads follow the returned URLs independently. See [the environment contract](../../../docs/protocol.md#environment-and-local-storage).
+
+The CLI sends no analytics requests of its own. Online operations invoke `ntn` for Notion calls/uploads and fetch signed Notion export archives. This does not attest to `ntn`'s own behavior. Local access includes configuration/state, explicit input files/directories and requested outputs; authorized mutations may upload the inputs. Snapshot `objects`, manifests, cached metadata and `uploads` staging have no automatic garbage collection. The 60-second list metadata TTL controls freshness, not retention. Uninstallation leaves config and state in place. Use `config clear-token` for a saved token and [the uninstall guidance](../../../README.md#upgrade-and-uninstall) for optional data reclamation; see [SECURITY](../../../SECURITY.md) for private reporting and trust boundaries.
+
+For startup awareness, the host must inject list metadata or carry an instruction to use this bootstrap Skill for relevant tasks. A Skill description alone does not guarantee that the host already knows every remote workflow.
+
+For direct Read tool support, the host must register a skill:// protocol adapter that invokes ntn-skills read with an argument array, parses JSON, preserves the snapshot, and propagates errors. If the host already owns skill:// for local skills, route explicitly instead of replacing its handler. Without an adapter, invoke the CLI through the shell tool.
+
+Local snapshot reads are explicitly offline and may remain available after remote access is revoked, just like an already downloaded local file. Online reads verify access before cache reuse. Notion remains the editable source; do not modify cache objects or introduce a second source of truth.
+
+For host Write integration, call `["write", uri, "--input", localFile]` as an argument array under current task authorization. Reuse the pinned read ref as the remote version baseline, propagate conflicts and partial/unknown outcomes, and adopt the new returned snapshot only after success. Never mutate cache objects or automatically retry an uncertain remote write. CLI support for skill:// writes does not register a host Write adapter.
+
+Adapters must tolerate additional JSON fields and propagate unfamiliar error codes as failures. Patch releases preserve current semantics; 0.x minor releases may break compatibility with documented migration steps. See [CONTRIBUTING](../../../CONTRIBUTING.md#compatibility-and-deprecation) and [the release procedure](../../../docs/releasing.md).

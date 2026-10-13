@@ -1,0 +1,19 @@
+{
+  "defaultBranch": "main",
+  "remote": "origin",
+  "tagPrefix": "v",
+  "versionFiles": ["packages/cli/package.json", "packages/core/package.json"],
+  "lockfiles": ["bun.lock"],
+  "lockfileCommand": ["bun", "install", "--lockfile-only"],
+  "checkCommand": ["bun", "run", "check"],
+  "localCheckCommand": ["bun", "run", "check"],
+  "commitMessage": "chore: release {tag}",
+  "publishMode": "npm",
+  "publishPackage": "notion-skills-cli",
+  "publishRegistry": "https://registry.npmjs.org",
+  "allowPrerelease": true,
+  "stableDistTag": "latest",
+  "prereleaseDistTag": "next",
+  "failedTagPolicy": "immutable",
+  "releaseBranchPrefix": "release/"
+}

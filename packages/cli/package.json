@@ -1,0 +1,55 @@
+{
+  "name": "notion-skills-cli",
+  "version": "0.1.0",
+  "description": "Discover, read and maintain Notion skills with immutable task snapshots",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yoyooyooo/notion-skills-cli.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/yoyooyooo/notion-skills-cli#readme",
+  "bugs": {
+    "url": "https://github.com/yoyooyooo/notion-skills-cli/issues"
+  },
+  "author": {
+    "name": "yoyooyooo",
+    "url": "https://github.com/yoyooyooo"
+  },
+  "keywords": [
+    "notion",
+    "agent-skills",
+    "cli",
+    "bun",
+    "snapshots"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "bin": {
+    "ntn-skills": "dist/ntn-skills.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "dependencies": {
+    "effect": "4.0.4",
+    "@effect/platform-bun": "4.0.4"
+  },
+  "devDependencies": {
+    "@notion-skills-cli/core": "workspace:*"
+  },
+  "license": "MIT"
+}

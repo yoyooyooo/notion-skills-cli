@@ -1,0 +1,27 @@
+{
+  "name": "notion-skills-cli-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "packageManager": "bun@1.4.3",
+  "scripts": {
+    "dev": "bun packages/cli/src/main.ts",
+    "build": "bun run packages/cli/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "bun run typecheck && bun run format:check && bun test && bun run build",
+    "package:check": "bun scripts/package-check.ts",
+    "release": "bun scripts/release.ts",
+    "release:precheck": "bun scripts/release.ts --precheck"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.3",
+    "@biomejs/biome": "2.5.15",
+    "typescript": "5.9.3"
+  },
+  "license": "MIT"
+}
