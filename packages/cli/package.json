@@ -33,7 +33,11 @@
   "files": [
     "dist",
     "skills",
-    "docs",
+    "docs/README.md",
+    "docs/usage.md",
+    "docs/protocol.md",
+    "docs/host-integration.md",
+    "docs/releasing.md",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",

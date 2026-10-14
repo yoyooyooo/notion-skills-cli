@@ -21,6 +21,14 @@ import {
 import { Notion } from "./notion.ts"
 import { Store, configuration, configuredSources, sha256 } from "./store.ts"
 import { pageId } from "./ref.ts"
+import {
+  effectiveCachePolicy,
+  freshness,
+  locallySelectedScope,
+  recordScope,
+  validateReadPolicy,
+  type ReadPolicyOptions,
+} from "./cache.ts"
 
 export const authScope = Effect.gen(function* () {
   const api = yield* Notion
@@ -31,7 +39,7 @@ export const authScope = Effect.gen(function* () {
   })
   const credential = yield* api.credentialIdentity
   // Only the selected credential digest enters cached authentication scopes.
-  return yield* sha256(
+  const scope = yield* sha256(
     JSON.stringify([
       user.id,
       process.env.NOTION_WORKSPACE_ID ?? "",
@@ -39,6 +47,7 @@ export const authScope = Effect.gen(function* () {
       credential,
     ]),
   )
+  return scope
 })
 
 function paginate<S extends Schema.ConstraintDecoder<unknown>>(
@@ -121,11 +130,24 @@ export function explicitSource(input: string, sources?: readonly Source[]) {
         }),
       ),
     )
-    if (db.database_type !== "skills" || db.in_trash)
+    let referencesDatabase = false
+    if (db.database_type !== "skills" && !db.in_trash) {
+      referencesDatabase = db.data_sources.length > 0
+      for (const source of db.data_sources) {
+        const raw = yield* api.request(`v1/data_sources/${source.id}`)
+        const props = property(property(raw).properties)
+        if (
+          property(props.References).type !== "rich_text" ||
+          property(props.Description).type !== "rich_text"
+        )
+          referencesDatabase = false
+      }
+    }
+    if (db.in_trash || (db.database_type !== "skills" && !referencesDatabase))
       return yield* Effect.fail(
         fail(
           "NOT_SKILLS_DATABASE",
-          "Only a non-trashed database_type=skills database can be consumed.",
+          "A skill database needs rich-text Description and References properties, or the native Skills type.",
           { database_id: id, alias: registered?.alias ?? id, title: text(db.title) },
         ),
       )
@@ -146,7 +168,14 @@ export function discoverDatabases() {
       filter: { property: "object", value: "data_source" },
     })
     for (const source of sources) {
-      if (source.database_type !== "skills" || source.in_trash) continue
+      const props = property(source.properties)
+      if (
+        source.in_trash ||
+        (source.database_type !== "skills" &&
+          (property(props.References).type !== "rich_text" ||
+            property(props.Description).type !== "rich_text"))
+      )
+        continue
       const id = source.parent.database_id
       const previous = databases.get(id)
       databases.set(id, {
@@ -211,20 +240,35 @@ export function setDefaultDatabase(database?: string) {
   })
 }
 
-export interface CatalogOptions {
+export interface CatalogOptions extends ReadPolicyOptions {
   readonly database?: string
-  readonly refresh?: boolean
 }
 export function catalog(options: CatalogOptions = {}) {
   return Effect.gen(function* () {
-    const scope = yield* authScope
+    yield* Effect.try({
+      try: () => validateReadPolicy(options),
+      catch: (error) => error as SkillsError,
+    })
+    const selectedScope = !options.refresh
+      ? yield* locallySelectedScope(Boolean(options.offline))
+      : undefined
+    const scope = selectedScope ?? (yield* authScope)
     const store = yield* Store
     const configured = yield* configuredSources
-    const key = `catalogs/${scope}/${yield* sha256(JSON.stringify(["database-selection-v1", options.database ?? "auto", configured]))}.json`
+    const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(["database-selection-v2", options.database ?? "auto", configured]))}.json`
     const now = yield* Clock.currentTimeMillis
+    const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
     if (!options.refresh) {
-      const cached = yield* store.readJson(key, CatalogSchema)
-      if (cached && now - cached.fetched_at < 60_000 && !cached.coverage.failed_sources.length) {
+      const result = yield* store.readJson(key, CatalogSchema).pipe(Effect.result)
+      if (result._tag === "Failure" && options.offline) return yield* Effect.fail(result.failure)
+      const cached = result._tag === "Success" ? result.success : undefined
+      const age = cached ? now - cached.fetched_at : NaN
+      if (
+        cached &&
+        cached.scope === scope &&
+        !cached.coverage.failed_sources.length &&
+        (options.offline || (Number.isFinite(age) && age >= 0 && age < maxAge))
+      ) {
         for (const skill of cached.skills) {
           yield* Effect.try({
             try: () => {
@@ -238,12 +282,34 @@ export function catalog(options: CatalogOptions = {}) {
             catch: (error) =>
               error instanceof SkillsError
                 ? fail(error.code, error.message, { page_id: skill.id, name: skill.name })
-                : (error as SkillsError),
+                : fail("STATE_CORRUPT", "Cached Skill title failed validation.", {
+                    page_id: skill.id,
+                  }),
           })
         }
-        return cached
+        return {
+          ...cached,
+          source: "local_cache" as const,
+          freshness: freshness(options, cached.fetched_at, now, maxAge),
+        }
       }
+      if (options.offline)
+        return yield* Effect.fail(
+          fail(
+            "CACHE_MISSING",
+            "No complete catalog observation is available for the selected scope.",
+          ),
+        )
     }
+    // A local token mapping authorizes cache selection only. Online discovery always validates identity.
+    const validatedScope = selectedScope ? yield* authScope : scope
+    const catalogIdentity = yield* sha256(
+      JSON.stringify(["database-selection-v2", options.database ?? "auto", configured]),
+    )
+    const catalogGeneration = yield* store.reserveCacheGeneration(
+      validatedScope,
+      `catalog-${catalogIdentity}`,
+    )
     const databases = new Map<string, Source>()
     const failures: SourceFailure[] = []
     if (options.database !== undefined) {
@@ -284,8 +350,8 @@ export function catalog(options: CatalogOptions = {}) {
       }
     }
     const output: Catalog = {
-      scope,
-      fetched_at: now,
+      scope: validatedScope,
+      fetched_at: yield* Clock.currentTimeMillis,
       databases: [...databases.values()],
       skills: [...skills.values()].sort(
         (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
@@ -298,8 +364,14 @@ export function catalog(options: CatalogOptions = {}) {
         search_index_limited: options.database === undefined,
       },
     }
-    yield* store.writeJson(key, output)
-    return output
+    const validatedKey = `cache/catalogs/${validatedScope}/${catalogIdentity}.json`
+    yield* store.writeJson(validatedKey, { ...output, generation: catalogGeneration })
+    yield* recordScope(validatedScope)
+    return {
+      ...output,
+      source: "notion" as const,
+      freshness: freshness(options, output.fetched_at, output.fetched_at, maxAge),
+    }
   })
 }
 

@@ -1,10 +1,21 @@
 import { Context, Crypto, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { ConfigSchema, decode, fail, SkillsError } from "./model.ts"
+import { withLocalLocks, trashPath } from "./local-locks.ts"
 
 export class Store extends Context.Service<
   Store,
   {
     readonly root: string
+    readonly configRoot: string
+    readonly cacheRoot: string
+    readonly reserveCacheGeneration: (
+      scope: string,
+      pageId: string,
+    ) => Effect.Effect<number, SkillsError>
+    readonly listKeys: (prefix: string) => Effect.Effect<readonly string[], SkillsError>
+    readonly retireKeys: (
+      keys: readonly string[],
+    ) => Effect.Effect<readonly { key: string; retention_path: string }[], SkillsError>
     readonly readJson: <S extends Schema.ConstraintDecoder<unknown>>(
       key: string,
       schema: S,
@@ -47,7 +58,20 @@ export const StoreLive = Layer.effect(
       process.env.NTN_SKILLS_CONFIG_HOME ??
         path.join(process.env.XDG_CONFIG_HOME ?? path.join(home!, ".config"), "ntn-skills"),
     )
-    const location = (key: string) => path.join(key === "config.json" ? configRoot : root, key)
+    if (!process.env.NTN_SKILLS_CACHE_HOME && !process.env.XDG_CACHE_HOME && !home)
+      return yield* Effect.fail(
+        fail("CONFIG_ERROR", "Set NTN_SKILLS_CACHE_HOME or HOME to select the cache directory."),
+      )
+    const cacheRoot = path.resolve(
+      process.env.NTN_SKILLS_CACHE_HOME ??
+        path.join(process.env.XDG_CACHE_HOME ?? path.join(home!, ".cache"), "ntn-skills"),
+    )
+    const location = (key: string) =>
+      key === "cache"
+        ? cacheRoot
+        : key.startsWith("cache/")
+          ? path.join(cacheRoot, key.slice(6))
+          : path.join(key === "config.json" ? configRoot : root, key)
     const writeBytes = (key: string, bytes: Uint8Array) =>
       Effect.gen(function* () {
         const destination = location(key)
@@ -61,8 +85,144 @@ export const StoreLive = Layer.effect(
           fail("STORAGE_ERROR", "Could not atomically write local state.", { key }),
         ),
       )
+    const GenerationSchema = Schema.Struct({
+      generation: Schema.Number,
+      retired_through: Schema.optional(Schema.Number),
+    })
+    const generationState = (scope: string, pageId: string) =>
+      Effect.gen(function* () {
+        const key = `cache-generations/${scope}/${pageId}.json`
+        if (!(yield* fs.exists(location(key)))) return { generation: 0, retired_through: 0 }
+        const raw = yield* fs.readFileString(location(key))
+        return yield* Effect.try({
+          try: () => {
+            const value = decode(GenerationSchema, JSON.parse(raw))
+            if (
+              !Number.isSafeInteger(value.generation) ||
+              value.generation < 0 ||
+              (value.retired_through !== undefined &&
+                (!Number.isSafeInteger(value.retired_through) || value.retired_through < 0))
+            )
+              throw fail("STATE_CORRUPT", "Cache generation state is invalid.")
+            return { generation: value.generation, retired_through: value.retired_through ?? 0 }
+          },
+          catch: () => fail("STATE_CORRUPT", "Cache generation state is invalid."),
+        })
+      }).pipe(
+        Effect.mapError((error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("STORAGE_ERROR", "Could not read cache generation state."),
+        ),
+      )
     return {
       root,
+      configRoot,
+      cacheRoot,
+      reserveCacheGeneration: (scope, pageId) =>
+        withLocalLocks(
+          root,
+          [`cache-generation:${scope}/${pageId}`],
+          Effect.gen(function* () {
+            if (!/^[a-f0-9]{64}$/.test(scope) || !/^[a-zA-Z0-9-]+$/.test(pageId))
+              return yield* Effect.fail(
+                fail("INVALID_ARGUMENT", "Cache generation identity is invalid."),
+              )
+            const key = `cache-generations/${scope}/${pageId}.json`
+            const previous = yield* generationState(scope, pageId)
+            const generation = previous.generation + 1
+            if (!Number.isSafeInteger(generation))
+              return yield* Effect.fail(fail("STATE_CORRUPT", "Cache generation exhausted."))
+            yield* writeBytes(
+              key,
+              new TextEncoder().encode(JSON.stringify({ ...previous, generation })),
+            )
+            return generation
+          }),
+        ),
+      listKeys: (prefix) =>
+        Effect.gen(function* () {
+          const directory = location(prefix)
+          if (!(yield* fs.exists(directory))) return []
+          const names = yield* fs.readDirectory(directory, { recursive: true })
+          const keys: string[] = []
+          for (const name of names)
+            if ((yield* fs.stat(path.join(directory, name))).type === "File")
+              keys.push(`${prefix.replace(/\/$/, "")}/${name.split(path.sep).join("/")}`)
+          return keys.sort()
+        }).pipe(
+          Effect.mapError(() => fail("STORAGE_ERROR", "Could not enumerate local observations.")),
+        ),
+      retireKeys: (keys) =>
+        Effect.gen(function* () {
+          if (
+            keys.some(
+              (key) => !key.startsWith("cache/") || !location(key).startsWith(cacheRoot + path.sep),
+            )
+          )
+            return yield* Effect.fail(
+              fail("INVALID_ARGUMENT", "Only disposable cache observations may be retired."),
+            )
+          const retired: Array<{ key: string; retention_path: string }> = []
+          const pages = [
+            ...new Set(
+              keys
+                .filter(
+                  (key) => key.startsWith("cache/latest/") || key.startsWith("cache/catalogs/"),
+                )
+                .map((key) => {
+                  const parts = key.split("/")
+                  return `${parts[2]}/${parts[1] === "catalogs" ? `catalog-${parts[3]!.replace(/\.json$/, "")}` : parts[3]}`
+                }),
+            ),
+          ]
+          return yield* withLocalLocks(
+            root,
+            pages.map((page) => `cache-generation:${page}`),
+            Effect.gen(function* () {
+              // Fence the entire batch before a retention failure can stop retirement.
+              for (const page of pages) {
+                const [scope, id] = page.split("/")
+                const current = yield* generationState(scope!, id!)
+                let generation = current.generation
+                for (const key of keys) {
+                  const parts = key.split("/")
+                  const identity =
+                    parts[1] === "catalogs"
+                      ? `catalog-${parts[3]!.replace(/\.json$/, "")}`
+                      : parts[3]
+                  if (parts[2] !== scope || identity !== id || !(yield* fs.exists(location(key))))
+                    continue
+                  const raw = yield* fs.readFileString(location(key))
+                  const observed = yield* Effect.try({
+                    try: () => decode(GenerationSchema, JSON.parse(raw)),
+                    catch: () => fail("STATE_CORRUPT", "Observation generation is invalid."),
+                  }).pipe(Effect.result)
+                  if (observed._tag === "Success")
+                    generation = Math.max(generation, observed.success.generation)
+                }
+                yield* writeBytes(
+                  `cache-generations/${page}.json`,
+                  new TextEncoder().encode(
+                    JSON.stringify({ generation, retired_through: generation }),
+                  ),
+                )
+              }
+              for (const key of keys) {
+                if (!(yield* fs.exists(location(key)))) continue
+                yield* trashPath(location(key))
+                retired.push({ key, retention_path: "system_trash" })
+              }
+              return retired
+            }),
+          )
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("STORAGE_ERROR", "Could not retire cache observations."),
+          ),
+        ),
       writeBytes,
       readBytes: (key) =>
         fs.readFile(location(key)).pipe(
@@ -72,7 +232,50 @@ export const StoreLive = Layer.effect(
             }),
           ),
         ),
-      writeJson: (key, value) => writeBytes(key, new TextEncoder().encode(JSON.stringify(value))),
+      writeJson: (key, value) => {
+        if (!key.startsWith("cache/latest/") && !key.startsWith("cache/catalogs/"))
+          return writeBytes(key, new TextEncoder().encode(JSON.stringify(value)))
+        const parts = key.split("/")
+        const scope = parts[2]!
+        const id =
+          parts[1] === "catalogs" ? `catalog-${parts[3]!.replace(/\.json$/, "")}` : parts[3]!
+        return withLocalLocks(
+          root,
+          [`cache-generation:${scope}/${id}`],
+          Effect.gen(function* () {
+            const state = yield* generationState(scope!, id!)
+            if (
+              !value ||
+              typeof value !== "object" ||
+              !("generation" in value) ||
+              typeof value.generation !== "number" ||
+              value.generation <= state.retired_through
+            )
+              return yield* Effect.fail(
+                fail(
+                  "CACHE_INVALIDATED",
+                  "An in-flight observation was retired before publication.",
+                ),
+              )
+            if (parts[1] === "catalogs" && (yield* fs.exists(location(key)))) {
+              const raw = yield* fs.readFileString(location(key))
+              const previous = yield* Effect.try({
+                try: () => decode(GenerationSchema, JSON.parse(raw)),
+                catch: () => fail("STATE_CORRUPT", "Catalog observation generation is invalid."),
+              }).pipe(Effect.result)
+              if (previous._tag === "Success" && previous.success.generation > value.generation)
+                return
+            }
+            yield* writeBytes(key, new TextEncoder().encode(JSON.stringify(value)))
+          }),
+        ).pipe(
+          Effect.mapError((error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("STORAGE_ERROR", "Could not publish cache observation."),
+          ),
+        )
+      },
       readJson: (key, schema) =>
         Effect.gen(function* () {
           if (key === "config.json" && !(yield* fs.exists(location(key)))) {
@@ -93,6 +296,18 @@ export const StoreLive = Layer.effect(
           }
           if (!(yield* fs.exists(location(key)))) return undefined
           const raw = yield* fs.readFileString(location(key))
+          if (key.startsWith("cache/latest/") || key.startsWith("cache/catalogs/")) {
+            const parts = key.split("/")
+            const scope = parts[2]!
+            const id =
+              parts[1] === "catalogs" ? `catalog-${parts[3]!.replace(/\.json$/, "")}` : parts[3]!
+            const state = yield* generationState(scope!, id!)
+            const generation = yield* Effect.try({
+              try: () => decode(GenerationSchema, JSON.parse(raw)).generation,
+              catch: () => fail("STATE_CORRUPT", "Cache observation is invalid."),
+            })
+            if (generation <= state.retired_through) return undefined
+          }
           return yield* Effect.try({
             try: () => decode(schema, JSON.parse(raw)),
             catch: () => fail("STATE_CORRUPT", "Local state failed schema validation.", { key }),

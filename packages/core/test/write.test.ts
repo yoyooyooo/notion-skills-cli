@@ -59,6 +59,19 @@ function fixture(failMetadata = false) {
   })
   const store = Layer.succeed(Store, {
     root: "/memory",
+    configRoot: "/memory",
+    cacheRoot: "/memory",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: (prefix) =>
+      Effect.sync(() => [...json.keys()].filter((key) => key.startsWith(`${prefix}/`))),
+    retireKeys: (keys) =>
+      Effect.sync(() => {
+        for (const key of keys) json.delete(key)
+        return keys.map((key) => ({ key, retention_path: "fixture_trash" }))
+      }),
     readJson: (key, schema) =>
       Effect.succeed(json.has(key) ? decode(schema, json.get(key)) : undefined),
     writeJson: (key, value) =>

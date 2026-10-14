@@ -103,7 +103,16 @@ async function fixture(source?: PortableSkill) {
   }
   const store = Layer.succeed(Store, {
     root: "/memory",
-    readJson: (_key, schema) => Effect.succeed(decode(schema, snapshot)),
+    configRoot: "/memory",
+    cacheRoot: "/memory",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: () => Effect.succeed([]),
+    retireKeys: () => Effect.succeed([]),
+    readJson: (key, schema) =>
+      Effect.succeed(key.startsWith("snapshots/") ? decode(schema, snapshot) : undefined),
     writeJson: () => Effect.void,
     readBytes: (key) =>
       objects.has(key)

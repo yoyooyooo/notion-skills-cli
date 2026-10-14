@@ -15,6 +15,7 @@ import {
 import { normalizePath, parseTarget } from "./ref.ts"
 import { targetSnapshot, snapshotInfo } from "./snapshot.ts"
 import { sha256, Store } from "./store.ts"
+import { type ReadPolicyOptions } from "./cache.ts"
 
 export function snapshotPortable(snapshot: Snapshot) {
   return Effect.gen(function* () {
@@ -58,6 +59,11 @@ export function snapshotPortable(snapshot: Snapshot) {
           projection.body === bodyIdentity(doc.body)
         const original = source.files.find((file) => file.path === source.main)!
         const merged = new Map(source.files.map((file) => [file.path, file]))
+        if (snapshot.references && projection?.references) {
+          const live = new Set(snapshot.references.map((page) => page.path))
+          for (const path of Object.keys(projection.references))
+            if (!live.has(path)) merged.delete(path)
+        }
         // Source main remains byte-exact until the live body or metadata changes.
         if (!unchanged)
           merged.set(
@@ -71,7 +77,11 @@ export function snapshotPortable(snapshot: Snapshot) {
             file.path !== MANIFEST &&
             file.path !== source.main
           )
-            merged.set(file.path, file)
+            if (snapshot.references && projection?.references?.[file.path] !== undefined) {
+              const currentBody = new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)
+              if (bodyIdentity(currentBody) === projection.references[file.path]) continue
+              merged.set(file.path, file)
+            } else merged.set(file.path, file)
         return {
           name: snapshot.skill.name,
           description: doc.description,
@@ -96,7 +106,7 @@ export function portableIdentity(skill: PortableSkill) {
   })
 }
 
-export interface ExportOptions {
+export interface ExportOptions extends ReadPolicyOptions {
   readonly database?: string
   readonly output: string
   readonly format?: "zip" | "directory"

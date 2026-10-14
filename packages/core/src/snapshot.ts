@@ -26,6 +26,18 @@ import {
 import { Notion } from "./notion.ts"
 import { fileRef, pageId, parseTarget, resolveRef, type SkillTarget } from "./ref.ts"
 import { Store, sha256 } from "./store.ts"
+import { readReferences, referencesProperty } from "./references.ts"
+import {
+  cachedRemoteObservation,
+  effectiveCachePolicy,
+  freshness,
+  locallySelectedScope,
+  publishSnapshotObservation,
+  validateReadPolicy,
+  validateSnapshot,
+  type ObservedSnapshot,
+  type ReadPolicyOptions,
+} from "./cache.ts"
 
 export function loadSnapshot(id: string) {
   return Effect.gen(function* () {
@@ -41,12 +53,13 @@ export function loadSnapshot(id: string) {
       )
     if (snapshot.snapshot_id !== id || snapshot.files.some((f) => !/^[a-f0-9]{64}$/.test(f.sha256)))
       return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot manifest is invalid."))
-    return snapshot
+    return yield* validateSnapshot(snapshot)
   })
 }
 
 export function openSkill(selector: string, options: CatalogOptions = {}) {
   return Effect.gen(function* () {
+    const startedAt = yield* Clock.currentTimeMillis
     const api = yield* Notion
     const store = yield* Store
     const id = pageId(selector)
@@ -66,7 +79,7 @@ export function openSkill(selector: string, options: CatalogOptions = {}) {
       const dataSourceId = parent.data_source_id
       if (typeof databaseId !== "string" || typeof dataSourceId !== "string" || row.in_trash)
         return yield* Effect.fail(
-          fail("NOT_SKILL", "The page must belong to an accessible Skills Database."),
+          fail("NOT_SKILL", "The page must belong to an accessible skill database."),
         )
       if (selectedDatabase !== undefined && selectedDatabase !== databaseId)
         return yield* Effect.fail(
@@ -78,12 +91,51 @@ export function openSkill(selector: string, options: CatalogOptions = {}) {
         catch: (e) => e as SkillsError,
       })
     } else {
-      const directory = yield* catalog(options)
+      const directory = yield* catalog({ database: options.database, refresh: true })
       scope = directory.scope
       skill = yield* Effect.try({
         try: () => resolveSkill(selector, directory),
         catch: (e) => e as SkillsError,
       })
+    }
+    const generation = yield* store.reserveCacheGeneration(scope, skill.id)
+    const rawPage = yield* api.request(`v1/pages/${skill.id}`)
+    const hasReferences = yield* Effect.try({
+      try: () => referencesProperty(rawPage),
+      catch: (error) => error as SkillsError,
+    })
+    if (hasReferences) {
+      const graph = yield* readReferences(skill, rawPage)
+      const snapshotId = `s_${yield* sha256(JSON.stringify([scope, skill.id, graph.version_id]))}`
+      const cachedResult = yield* loadSnapshot(snapshotId).pipe(Effect.result)
+      if (cachedResult._tag === "Success")
+        return yield* publishSnapshotObservation(cachedResult.success, startedAt, generation)
+      const files: Array<Snapshot["files"][number]> = []
+      const paths = new Set<string>()
+      for (const file of graph.files.sort((a, b) => a.path.localeCompare(b.path))) {
+        if (paths.has(file.path))
+          return yield* Effect.fail(
+            fail("REFERENCE_PATH_CONFLICT", "A reference and attachment share a path.", {
+              path: file.path,
+            }),
+          )
+        paths.add(file.path)
+        const hash = yield* sha256(file.bytes)
+        yield* store.writeBytes(`objects/${hash}`, file.bytes)
+        files.push({ path: file.path, bytes: file.bytes.length, sha256: hash })
+      }
+      const snapshot: Snapshot = {
+        snapshot_id: snapshotId,
+        scope,
+        skill,
+        skill_name: skill.alias,
+        version_id: graph.version_id,
+        created_at: yield* Clock.currentTimeMillis,
+        files,
+        references: graph.pages,
+      }
+      yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
+      return yield* publishSnapshotObservation(snapshot, startedAt, generation)
     }
     const raw = yield* api.request(`v1/ai/skills/${skill.id}`)
     const exported = yield* Effect.try({
@@ -95,7 +147,8 @@ export function openSkill(selector: string, options: CatalogOptions = {}) {
         fail("INVALID_RESPONSE", "The exported skill ID differs from the requested page."),
       )
     const snapshotId = `s_${yield* sha256(JSON.stringify([scope, skill.id, exported.version_id]))}`
-    const cached = yield* store.readJson(`snapshots/${snapshotId}.json`, SnapshotSchema)
+    const cachedResult = yield* loadSnapshot(snapshotId).pipe(Effect.result)
+    const cached = cachedResult._tag === "Success" ? cachedResult.success : undefined
     const validateName = (name: string) => {
       if (name !== skill.alias)
         throw fail(
@@ -113,7 +166,7 @@ export function openSkill(selector: string, options: CatalogOptions = {}) {
         try: () => validateName(cached.skill_name),
         catch: (e) => e as SkillsError,
       })
-      return cached
+      return yield* publishSnapshotObservation(cached, startedAt, generation)
     }
     const downloaded = yield* Effect.gen(function* () {
       const client = yield* HttpClient.HttpClient
@@ -192,11 +245,11 @@ export function openSkill(selector: string, options: CatalogOptions = {}) {
     }
     // Publish only after all content objects exist. Readers never observe a half-written version.
     yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
-    return snapshot
+    return yield* publishSnapshotObservation(snapshot, startedAt, generation)
   })
 }
 
-export function snapshotInfo(snapshot: Snapshot) {
+export function snapshotInfo(snapshot: ObservedSnapshot) {
   return {
     skill: snapshot.skill,
     skill_name: snapshot.skill_name,
@@ -209,14 +262,83 @@ export function snapshotInfo(snapshot: Snapshot) {
       bytes: f.bytes,
       ref: fileRef(snapshot.skill.id, f.path, snapshot.snapshot_id),
     })),
+    ...(snapshot.source ? { source: snapshot.source } : {}),
+    ...(snapshot.freshness ? { freshness: snapshot.freshness } : {}),
   }
 }
 
 export function targetSnapshot(target: SkillTarget, options: CatalogOptions = {}) {
   return Effect.gen(function* () {
-    const snapshot = target.snapshot
-      ? yield* loadSnapshot(target.snapshot)
-      : yield* openSkill(target.selector, options)
+    yield* Effect.try({
+      try: () => validateReadPolicy(options, Boolean(target.snapshot)),
+      catch: (error) => error as SkillsError,
+    })
+    let snapshot: ObservedSnapshot
+    if (target.snapshot)
+      snapshot = {
+        ...(yield* loadSnapshot(target.snapshot)),
+        source: "local_snapshot",
+        freshness: { policy: "pinned" },
+      }
+    else {
+      const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).read_max_age_ms
+      const scopeResult = yield* locallySelectedScope(Boolean(options.offline)).pipe(Effect.result)
+      if (scopeResult._tag === "Failure" && options.offline)
+        return yield* Effect.fail(scopeResult.failure)
+      const scope = scopeResult._tag === "Success" ? scopeResult.success : undefined
+      let selected = pageId(target.selector)
+      if (!selected && !options.refresh) {
+        const directoryResult = yield* catalog(options).pipe(Effect.result)
+        if (directoryResult._tag === "Failure") return yield* Effect.fail(directoryResult.failure)
+        selected = yield* Effect.try({
+          try: () => resolveSkill(target.selector, directoryResult.success).id,
+          catch: (error) => error as SkillsError,
+        })
+      }
+      const observedResult =
+        scope && selected && !options.refresh
+          ? yield* cachedRemoteObservation(selected, scope).pipe(Effect.result)
+          : undefined
+      if (observedResult?._tag === "Failure" && options.offline)
+        return yield* Effect.fail(observedResult.failure)
+      const observed = observedResult?._tag === "Success" ? observedResult.success : undefined
+      const now = yield* Clock.currentTimeMillis
+      const age = observed ? now - observed.validated_at : NaN
+      if (observed && (options.offline || (Number.isFinite(age) && age >= 0 && age < maxAge))) {
+        if (
+          options.database !== undefined &&
+          observed.snapshot.skill.database_id !== (yield* resolveDatabaseId(options.database))
+        )
+          return yield* Effect.fail(
+            fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
+          )
+        snapshot = {
+          ...observed.snapshot,
+          source: "local_cache",
+          freshness: freshness(options, observed.validated_at, now, maxAge),
+        }
+      } else {
+        if (options.offline)
+          return yield* Effect.fail(
+            fail(
+              "CACHE_MISSING",
+              "No complete Skill observation is available in the selected scope.",
+            ),
+          )
+        const online = yield* openSkill(
+          options.refresh ? target.selector : (selected ?? target.selector),
+          { database: options.database },
+        )
+        const validatedAt = online.freshness?.validated_at
+          ? Date.parse(online.freshness.validated_at)
+          : yield* Clock.currentTimeMillis
+        snapshot = {
+          ...online,
+          source: "notion",
+          freshness: freshness(options, validatedAt, yield* Clock.currentTimeMillis, maxAge),
+        }
+      }
+    }
     if (
       target.snapshot &&
       target.selector &&
@@ -237,7 +359,7 @@ export function targetSnapshot(target: SkillTarget, options: CatalogOptions = {}
   })
 }
 
-export interface ReadOptions {
+export interface ReadOptions extends ReadPolicyOptions {
   readonly database?: string
   readonly path?: string
   readonly from?: string
@@ -283,7 +405,8 @@ export function readSkill(input: string, options: ReadOptions = {}) {
       version_id: snapshot.version_id,
       path,
       ref: fileRef(snapshot.skill.id, path, snapshot.snapshot_id),
-      source: target.snapshot ? "local_snapshot" : "notion",
+      source: snapshot.source,
+      freshness: snapshot.freshness,
     }
     if (options.output) {
       return {
@@ -337,7 +460,7 @@ export function readSkill(input: string, options: ReadOptions = {}) {
 
 export function listSkill(
   input: string,
-  options: { readonly database?: string; readonly path?: string } = {},
+  options: ReadPolicyOptions & { readonly database?: string; readonly path?: string } = {},
 ) {
   return Effect.gen(function* () {
     const target = yield* Effect.try({

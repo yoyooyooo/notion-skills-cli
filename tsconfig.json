@@ -11,5 +11,10 @@
     "types": ["bun"],
     "noUncheckedIndexedAccess": true
   },
-  "include": ["packages/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
+  "include": [
+    "packages/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/**/*.ts",
+    ".cursor/skills/verify-ntn-skills/scripts/**/*.ts"
+  ]
 }

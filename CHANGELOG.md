@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0 — 2026-10-14
+
+Current-target reads now reuse complete observations for up to five minutes, and catalogs for up to 60 seconds. Callers that require immediate remote validation must use `--refresh`; pinned snapshot reads remain immutable and offline. Preserve existing configuration/state when upgrading; disposable observations now use the separate cache root.
+
+- Read skills from databases with rich-text Description and References, without requiring native Skills exports.
+- Materialize reference pages as relative Markdown files, preserve links through create/import/write/export, and include referenced-page edits in version conflicts.
+- Create editable reference child pages during imports and retain omitted pages in Notion while excluding them from new snapshots and exports.
+- Support page-only libraries without Files, with normalized Markdown and repeat imports that reuse existing pages; optional Files retains exact source bytes and other assets.
+- Report the selected storage mode in doctor and update CLI help, both READMEs, protocol and Agent integration references.
+- Resume interrupted reference imports using existing child-page IDs, reject duplicate paths, and normalize equivalent relative links when comparing page-only content.
+- Report safe transport failure reasons without exposing raw stderr, credentials or signed URLs; preserve unknown write outcomes.
+- Retry transient read/query transport and service failures up to three times with bounded backoff; mutation requests are never retried automatically.
+- Recover transient References attachment downloads with scoped timeouts and bounded retry; reject denied access without retry or signed URL disclosure.
+- Add repository-local verification recipes and command-to-case coverage with isolated config/state/cache and XDG bases, preserved evidence and system-Trash cleanup.
+- Limit npm documentation files to the explicit public guide set; keep implementation designs and verification maps repository-only without broken package-relative links.
+- Add `sync bind/status/plan/apply/reconcile/unbind`, immutable checked plans, per-binding common baselines, grouped multi-target distribution and durable partial/unknown-operation recovery without replaying mutations.
+- Resolve local directory, parent and per-file symlink chains; preserve links on writes, reject saved-target drift at commit guards, retain removed/replaced bytes and fence cooperating processes. Native Node filesystem calls retain a documented check-to-syscall race.
+- Change current reads to complete bounded observations: 5m Skill and 60s catalog defaults, mutually exclusive `--refresh`/`--offline`/`--max-age`, explicit source/freshness metadata and unchanged immutable pinned reads. Writes, sync and doctor still validate online.
+- Add XDG/application cache roots, cache-only status/retirement and configurable cache policy; preserve configuration, bindings, baselines, plans, receipts, immutable snapshots and content objects through cache cleanup/upgrade.
+- Add `import --target` for verified whole-Skill replacement on one existing page, preserving page identity across rename and rejecting stale, missing or non-main targets without creation fallback.
+- Run CI on Ubuntu/macOS 15 and Node.js 22/24 through the package verification controller, retain consumer evidence/tarballs as artifacts, and exercise explicit Linux retention failure without losing cached bytes.
+- Fence the entire content/catalog retirement batch before system Trash operations, so unavailable retention preserves bytes without exposing later observations or accepting delayed publishers.
+
 ## 0.1.3 — 2026-10-14
 
 - Wait for the npm attestation document to become available after registry metadata appears.

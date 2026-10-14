@@ -2,11 +2,13 @@ import { afterAll, expect, test } from "bun:test"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ByteSize, Effect, FileSystem, Layer, Option, PlatformError } from "effect"
-import { createSkill, importSkill } from "../src/mutation.ts"
-import { decode, fail, property } from "../src/model.ts"
+import { createSkill, importPortable, importSkill } from "../src/mutation.ts"
+import { aliasFor, decode, fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
-import { readSkill } from "../src/snapshot.ts"
+import { openSkill, readSkill } from "../src/snapshot.ts"
+import { snapshotPortable } from "../src/export.ts"
+import { cachedRemoteObservation } from "../src/cache.ts"
 import { tarGzip } from "./fixtures.ts"
 
 const database = "12345678-1234-1234-1234-123456789abc"
@@ -68,6 +70,24 @@ function fixture() {
   })
   const store = Layer.succeed(Store, {
     root: "/memory",
+    configRoot: "/memory",
+    cacheRoot: "/memory",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: (prefix) =>
+      Effect.sync(() => [...json.keys()].filter((key) => key.startsWith(`${prefix}/`))),
+    retireKeys: (keys) =>
+      Effect.sync(() => {
+        const retired: Array<{ key: string; retention_path: string }> = []
+        for (const key of keys) {
+          if (!key.startsWith("cache/")) continue
+          json.delete(key)
+          retired.push({ key, retention_path: "fixture_trash" })
+        }
+        return retired
+      }),
     readJson: (key, schema) =>
       Effect.succeed(json.has(key) ? decode(schema, json.get(key)) : undefined),
     writeJson: (key, value) =>
@@ -112,6 +132,7 @@ function fixture() {
           return row()
         }
         if (path === `v1/pages/${page}`) {
+          if (!exists) return yield* Effect.fail(fail("SKILL_NOT_FOUND", "Missing target"))
           if (options?.method === "PATCH") {
             const props = property(property(payload).properties)
             if (props.title)
@@ -165,12 +186,13 @@ function fixture() {
           return { status: "uploaded" }
         }
         if (path === `v1/ai/skills/${page}`) {
+          const alias = aliasFor(title)
           archive = tarGzip([
             {
-              name: "sample-workflow/SKILL.md",
-              content: `---\nname: sample-workflow\ndescription: ${description}\n---\n\n${body}`,
+              name: `${alias}/SKILL.md`,
+              content: `---\nname: ${alias}\ndescription: ${description}\n---\n\n${body}`,
             },
-            ...files.map((file) => ({ name: `sample-workflow/${file.name}`, content: file.bytes })),
+            ...files.map((file) => ({ name: `${alias}/${file.name}`, content: file.bytes })),
           ])
           return { id: page, version_id: `v-${version}`, url: server.url.href }
         }
@@ -265,6 +287,8 @@ test("create rejects existing names; import reuses or replaces the same page and
 test("import refuses a concurrent change before committing an uploaded source bundle", async () => {
   const f = fixture()
   await f.run(importSkill("/input", { database }))
+  const baseline = await f.run(openSkill(page, { refresh: true }))
+  expect(await f.run(cachedRemoteObservation(page, baseline.scope))).toBeDefined()
   f.input.set("references/guide.md", encoder.encode("Updated guide.\n"))
   f.race()
   const result = await f.run(importSkill("/input", { database }).pipe(Effect.result))
@@ -273,4 +297,61 @@ test("import refuses a concurrent change before committing an uploaded source bu
     details: { cause_code: "WRITE_CONFLICT", page_id: page },
   })
   expect(f.body()).toBe("Concurrent body.\n")
+  expect(await f.run(cachedRemoteObservation(page, baseline.scope))).toBeUndefined()
+})
+
+test("explicit pinned import renames only its selected page and rejects stale baselines", async () => {
+  const f = fixture()
+  const first = await f.run(importSkill("/input", { database }))
+  const baseline = await f.run(openSkill(page, { refresh: true }))
+  const unchanged = await f.run(importPortable(await f.run(snapshotPortable(baseline)), baseline))
+  expect(unchanged.action).toBe("reuse")
+  f.input.set(
+    "SKILL.md",
+    encoder.encode(
+      "---\nname: renamed-workflow\ndescription: Use for renamed samples.\n---\n\n# Renamed\n",
+    ),
+  )
+  const updated = await f.run(importSkill("/input", { database, target: first.snapshot_id! }))
+  expect(updated.action).toBe("update")
+  expect("skill" in updated && updated.skill.id).toBe(page)
+  expect("skill" in updated && updated.skill.name).toBe("Renamed Workflow")
+  expect(updated.previous_version_id).toBe(baseline.version_id)
+  const observed = await f.run(cachedRemoteObservation(page, baseline.scope))
+  expect(observed?.snapshot.snapshot_id).toBe(updated.snapshot_id)
+  const before = f.mutations()
+  const stale = await f.run(
+    importSkill("/input", { target: first.snapshot_id! }).pipe(Effect.result),
+  )
+  expect(stale._tag === "Failure" && stale.failure.code).toBe("WRITE_CONFLICT")
+  expect(f.mutations()).toBe(before)
+})
+
+test("explicit import rejects missing, reference-file, foreign-scope and wrong-database targets without creation", async () => {
+  const f = fixture()
+  const missing = await f.run(importSkill("/input", { target: page, database }).pipe(Effect.result))
+  expect(missing._tag === "Failure" && missing.failure.code).toBe("SKILL_NOT_FOUND")
+  expect(f.mutations()).toBe(0)
+  const first = await f.run(importSkill("/input", { database }))
+  const before = f.mutations()
+  const reference = await f.run(
+    importSkill("/input", {
+      target: `skill://${page}/references/guide.md?snapshot=${first.snapshot_id}`,
+    }).pipe(Effect.result),
+  )
+  expect(reference._tag === "Failure" && reference.failure.code).toBe("INVALID_ARGUMENT")
+  const baseline = await f.run(openSkill(page, { refresh: true }))
+  const portable = await f.run(snapshotPortable(baseline))
+  const foreign = await f.run(
+    importPortable(portable, { ...baseline, scope: "foreign" }).pipe(Effect.result),
+  )
+  expect(foreign._tag === "Failure" && foreign.failure.code).toBe("SNAPSHOT_CONFLICT")
+  const wrongDatabase = await f.run(
+    importSkill("/input", {
+      target: first.snapshot_id!,
+      database: "99999999-9999-4999-8999-999999999999",
+    }).pipe(Effect.result),
+  )
+  expect(wrongDatabase._tag === "Failure" && wrongDatabase.failure.code).toBe("SKILL_NOT_FOUND")
+  expect(f.mutations()).toBe(before)
 })

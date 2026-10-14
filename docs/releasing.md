@@ -16,6 +16,8 @@ bun run package:check
 
 Replace `0.1.1` with the intended version. Precheck fetches remote state, reads published versions, checks the clean branch and exact `HEAD == origin/main`, and runs `bun run check`. It creates no release commit or tag. `--dry-run` prints the decision without running the quality check. Both modes fetch Git refs. `package:check` creates a Bun tarball, inspects its contents, and installs it with npm into a fresh consumer for Node.js CLI and offline snapshot checks. Registry readback uses the same Node.js consumer path.
 
+Before integration, require all four CI jobs for the PR's current head: Ubuntu and macOS 15, each with Node.js 22.19.0 and 24. Jobs run the full deterministic suite and controller-driven installed-consumer verification, then upload seven-day evidence artifacts. macOS exercises system Trash; Linux proves explicit unavailable-retention failure with preserved bytes. Real Notion acceptance remains separate and must not use PR secrets. The tag publication job repeats `check` and package verification on Linux/Node 24; it does not replace the PR's macOS/runtime matrix.
+
 Use explicit versions for prereleases, for example `0.2.0-rc.1`. They publish to `next`; stable versions publish to `latest`. Versions use SemVer without build metadata. A version must exceed every previously tagged or published release. `patch`, `minor`, and `major` choose a bump from the highest known version; bumping from a prerelease requires an explicit version.
 
 ## First npm publication

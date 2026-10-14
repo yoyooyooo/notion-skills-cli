@@ -101,12 +101,38 @@ export const SnapshotSchema = Schema.Struct({
   version_id: Schema.String,
   created_at: Schema.Number,
   files: Schema.Array(FileEntrySchema),
+  references: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ id: Schema.String, path: Schema.String, markdown: Schema.String }),
+    ),
+  ),
 })
 export type Snapshot = typeof SnapshotSchema.Type
 export const ConfigSchema = Schema.Struct({
   sources: Schema.optional(Schema.Array(SourceSchema)),
   default_database: Schema.optional(Schema.String),
   token: Schema.optional(Schema.String),
+  cache_policy: Schema.optional(
+    Schema.Struct({
+      read_max_age_ms: Schema.Number,
+      catalog_max_age_ms: Schema.Number,
+    }),
+  ),
+  sync_bindings: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        label: Schema.String,
+        page_id: Schema.String,
+        database_id: Schema.String,
+        data_source_id: Schema.String,
+        scope: Schema.String,
+        logical_path: Schema.String,
+        active: Schema.Boolean,
+        revision: Schema.Number,
+      }),
+    ),
+  ),
 })
 
 export function decode<S extends Schema.ConstraintDecoder<unknown>>(

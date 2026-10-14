@@ -26,6 +26,19 @@ const json = new Map<string, unknown>()
 const objects = new Map<string, Uint8Array>()
 const memory = Layer.succeed(Store, {
   root: "/memory",
+  configRoot: "/memory",
+  cacheRoot: "/memory",
+  reserveCacheGeneration: (() => {
+    let generation = 0
+    return () => Effect.sync(() => ++generation)
+  })(),
+  listKeys: (prefix) =>
+    Effect.sync(() => [...json.keys()].filter((key) => key.startsWith(`${prefix}/`))),
+  retireKeys: (keys) =>
+    Effect.sync(() => {
+      for (const key of keys) json.delete(key)
+      return keys.map((key) => ({ key, retention_path: "fixture_trash" }))
+    }),
   readJson: <S extends Schema.ConstraintDecoder<unknown>>(key: string, schema: S) =>
     Effect.try({
       try: () => (json.has(key) ? decode(schema, json.get(key)) : undefined),

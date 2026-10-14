@@ -24,6 +24,14 @@ function setup(initial: unknown, ids: string[], broken?: string) {
   })
   const store = Layer.succeed(Store, {
     root: "/memory",
+    configRoot: "/memory",
+    cacheRoot: "/memory",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: () => Effect.succeed([]),
+    retireKeys: () => Effect.succeed([]),
     readJson: (_key, schema) =>
       Effect.succeed(config === undefined ? undefined : decode(schema, config)),
     writeJson: (_key, value) =>

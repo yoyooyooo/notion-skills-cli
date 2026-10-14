@@ -12,6 +12,10 @@ bun run dev --help
 bun run check && bun run package:check
 ```
 
+Use `bun run dev <command>` to exercise the TypeScript CLI entrypoint directly during development; it uses the default official `ntn` transport without requiring a distribution build.
+
+For repeatable live verification, read `.cursor/skills/verify-ntn-skills/SKILL.md` and its feature map in the source checkout. Its executable `control.ts` isolates config/state/cache and XDG bases, records real CLI actions and readback, and preserves evidence while moving owned scratch to system Trash. The map routes the [implemented sync/cache design](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/sync-cache-cli-design.md) to acceptance cases; case definitions are not passing results. Live mutations require current task authorization; the npm package excludes these repository-local maintenance files, so unpublished changes must be read from the checkout.
+
 Build and pack a consumer artifact from the checkout root:
 
 ```bash
@@ -24,6 +28,8 @@ bun pm pack --cwd packages/cli --destination ../../release
 The archive filename follows the package version. Consumers install that tarball with npm as described in [the README](README.md#installation). Update source with `git pull --ff-only`, reinstall dependencies and rebuild before producing a new tarball.
 
 `check` runs type checking, formatting checks, tests and the Node.js distribution build. `package:check` validates documentation links, packs the CLI and installs it with npm in a fresh consuming project, then executes the installed binary with Node.js. CI covers Node.js 22 and 24 on Linux and macOS. Run both checks before proposing a pull request or release. Tests must not depend on personal credentials or mutate a live Notion workspace. Keep live verification separate and disclose the environment and authorization used.
+
+CI uses Ubuntu and macOS 15 with Node.js 22.19.0 and 24. Every job runs the complete deterministic suite, then drives package verification through `control.ts init/package`; successful runs retain the installed-consumer outputs and exact tarball. Per-matrix evidence is uploaded for seven days, including available failure records. macOS jobs require `/usr/bin/trash`, exercise real cache retirement and recycle owned scratch. Linux consumers verify `RETENTION_UNAVAILABLE` and unchanged cached bytes; Linux scratch remains on the disposable runner because no recycle capability is implemented. These checks require no live Notion credentials. Before integration, inspect all four checks for the PR's current head, not an earlier main run.
 
 Keep Effect and platform versions aligned at 4.0.4. New commands use `effect/cli`; external execution uses scoped Effect platform capabilities. Pure path and identity transformations remain ordinary TypeScript. Preserve the [JSON and ref contract](docs/protocol.md), explicit discovery coverage and immutable snapshot semantics.
 

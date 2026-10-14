@@ -2,6 +2,10 @@ import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, FileSystem, Layer, PlatformError } from "effect"
 import { ConfigSchema, type SkillsError } from "../src/model.ts"
+import { mkdtemp } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { trashPath } from "../src/local-locks.ts"
 import {
   Store,
   StoreLive,
@@ -18,6 +22,8 @@ const config = {
 const keys = [
   "NTN_SKILLS_HOME",
   "NTN_SKILLS_CONFIG_HOME",
+  "NTN_SKILLS_CACHE_HOME",
+  "XDG_CACHE_HOME",
   "XDG_CONFIG_HOME",
   "XDG_STATE_HOME",
   "NOTION_API_TOKEN",
@@ -226,4 +232,169 @@ test("blank configured credentials use the environment and invalid credential ty
       expect(JSON.stringify(result)).not.toContain("private-fixture-token")
     },
   )
+})
+
+test("XDG cache precedence separates disposable observations from state and config", async () => {
+  for (const [overrides, expected] of [
+    [{ XDG_CACHE_HOME: "/test/xdg-cache" }, "/test/xdg-cache/ntn-skills"],
+    [{ XDG_CACHE_HOME: "/test/xdg-cache", NTN_SKILLS_CACHE_HOME: "/test/cache" }, "/test/cache"],
+  ] as const) {
+    await isolated(
+      { NTN_SKILLS_HOME: "/test/state", NTN_SKILLS_CONFIG_HOME: "/test/config", ...overrides },
+      async (files, run) => {
+        const roots = await run(
+          Effect.gen(function* () {
+            const store = yield* Store
+            yield* store.writeJson("cache/identities/scope.json", { scope: "scope" })
+            yield* store.writeJson("sync/baselines/b.json", { generation: 4 })
+            yield* store.writeJson("config.json", {
+              ...config,
+              cache_policy: { read_max_age_ms: 0, catalog_max_age_ms: 1_000 },
+            })
+            return { state: store.root, config: store.configRoot, cache: store.cacheRoot }
+          }),
+        )
+        expect(roots).toEqual({ state: "/test/state", config: "/test/config", cache: expected })
+        expect(files.has(`${expected}/identities/scope.json`)).toBe(true)
+        expect(files.has("/test/state/sync/baselines/b.json")).toBe(true)
+        expect(files.has("/test/config/config.json")).toBe(true)
+        expect(files.has("/test/state/cache/identities/scope.json")).toBe(false)
+      },
+    )
+  }
+})
+
+test("cache retirement refuses persistent state and traversal before filesystem mutation", async () => {
+  await isolated(
+    { NTN_SKILLS_HOME: "/test/state", NTN_SKILLS_CACHE_HOME: "/test/cache" },
+    async (files, run) => {
+      for (const key of [
+        "objects/content",
+        "snapshots/s_snapshot.json",
+        "sync/plans/p_plan.json",
+        "config.json",
+        "cache/../../state/objects/content",
+      ]) {
+        const result = await run(
+          Effect.gen(function* () {
+            const store = yield* Store
+            return yield* store.retireKeys([key]).pipe(Effect.result)
+          }),
+        )
+        expect(result._tag === "Failure" && result.failure.code).toBe("INVALID_ARGUMENT")
+      }
+      expect(files.size).toBe(0)
+    },
+  )
+})
+
+test("process-safe observation retirement fences in-flight publication and retains generation across restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ntn-cache-fence-"))
+  const original = new Map(keys.map((key) => [key, process.env[key]]))
+  Object.assign(process.env, {
+    NTN_SKILLS_HOME: join(directory, "state"),
+    NTN_SKILLS_CONFIG_HOME: join(directory, "config"),
+    NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
+  })
+  const host = StoreLive.pipe(Layer.provide(NodeServices.layer))
+  const run = <A>(effect: Effect.Effect<A, SkillsError, Store>) =>
+    Effect.runPromise(effect.pipe(Effect.provide(host)))
+  const scope = "a".repeat(64)
+  const page = "11111111-1111-4111-8111-111111111111"
+  const key = `cache/latest/${scope}/${page}/pending.json`
+  try {
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        yield* store.writeJson("cache/identities/fixture.json", { scope })
+        yield* store.writeJson("sync/baselines/fixture.json", { generation: 9 })
+        expect(yield* store.listKeys("cache")).toEqual(["cache/identities/fixture.json"])
+        expect(yield* store.listKeys("cache/identities")).toEqual(["cache/identities/fixture.json"])
+        expect(yield* store.readJson("sync/baselines/fixture.json", ConfigSchema)).toBeDefined()
+      }),
+    )
+    const generation = await run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).reserveCacheGeneration(scope, page)
+      }),
+    )
+    // No observation exists yet: clearing still fences the saved reservation.
+    await run(
+      Effect.gen(function* () {
+        yield* (yield* Store).retireKeys([`cache/latest/${scope}/${page}/.fence`])
+      }),
+    )
+    const rejected = await run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).writeJson(key, { generation }).pipe(Effect.result)
+      }),
+    )
+    expect(rejected._tag === "Failure" && rejected.failure.code).toBe("CACHE_INVALIDATED")
+    const next = await run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).reserveCacheGeneration(scope, page)
+      }),
+    )
+    expect(next).toBeGreaterThan(generation)
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        yield* store.writeJson(key, { generation: next })
+        expect(yield* store.readJson(key, ConfigSchema)).toBeDefined()
+      }),
+    )
+    const catalogId = `catalog-${"b".repeat(64)}`
+    const older = await run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).reserveCacheGeneration(scope, catalogId)
+      }),
+    )
+    const newer = await run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).reserveCacheGeneration(scope, catalogId)
+      }),
+    )
+    const catalogKey = `cache/catalogs/${scope}/${"b".repeat(64)}.json`
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        yield* store.writeJson(catalogKey, { generation: newer, sources: [] })
+        yield* store.writeJson(catalogKey, {
+          generation: older,
+          sources: [{ alias: "stale", database_id: "db", title: "stale", data_source_ids: [] }],
+        })
+        expect((yield* store.readJson(catalogKey, ConfigSchema))?.sources).toEqual([])
+      }),
+    )
+    await run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        const contentBytes = yield* store.readBytes(key)
+        const catalogBytes = yield* store.readBytes(catalogKey)
+        const retirement = yield* store.retireKeys([key, catalogKey]).pipe(Effect.result)
+        if (process.platform === "darwin") expect(retirement._tag).toBe("Success")
+        else {
+          expect(retirement._tag === "Failure" && retirement.failure.code).toBe(
+            "RETENTION_UNAVAILABLE",
+          )
+          expect(yield* store.readBytes(key)).toEqual(contentBytes)
+          expect(yield* store.readBytes(catalogKey)).toEqual(catalogBytes)
+        }
+        expect(yield* store.readJson(key, ConfigSchema)).toBeUndefined()
+        expect(yield* store.readJson(catalogKey, ConfigSchema)).toBeUndefined()
+        const late = yield* store
+          .writeJson(catalogKey, { generation: newer, sources: [] })
+          .pipe(Effect.result)
+        expect(late._tag === "Failure" && late.failure.code).toBe("CACHE_INVALIDATED")
+        const lateContent = yield* store.writeJson(key, { generation: next }).pipe(Effect.result)
+        expect(lateContent._tag === "Failure" && lateContent.failure.code).toBe("CACHE_INVALIDATED")
+      }),
+    )
+  } finally {
+    for (const [key, value] of original) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+  }
 })

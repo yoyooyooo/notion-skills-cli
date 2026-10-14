@@ -1,6 +1,6 @@
 import { Context, Crypto, Effect, Layer, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
-import { ApiErrorSchema, decode, fail, SkillsError } from "./model.ts"
+import { ApiErrorSchema, decode, fail, property, SkillsError } from "./model.ts"
 import { configuredToken, sha256, Store } from "./store.ts"
 
 export class Notion extends Context.Service<
@@ -15,6 +15,13 @@ export class Notion extends Context.Service<
     readonly credentialIdentity: Effect.Effect<string, SkillsError>
   }
 >()("ntn-skills/Notion") {}
+function transportReason(stderr: string) {
+  if (/timed? ?out|timeout/i.test(stderr)) return "timeout"
+  if (/dns|resolve|name.*resolution|ENOTFOUND/i.test(stderr)) return "dns"
+  if (/certificate|TLS|SSL/i.test(stderr)) return "tls"
+  if (/connect|network|request|transport|502|503|504/i.test(stderr)) return "network"
+  return "invalid_response"
+}
 
 export const NotionLive = Layer.effect(
   Notion,
@@ -63,10 +70,11 @@ export const NotionLive = Layer.effect(
         }),
       ).pipe(
         Effect.timeout("60 seconds"),
-        Effect.mapError(() =>
+        Effect.mapError((error) =>
           fail(
             "NTN_UNAVAILABLE",
-            "ntn could not complete the request. Check installation and authentication with ntn doctor.",
+            "ntn could not complete the request. Check installation, network and authentication with ntn doctor.",
+            { reason: property(error)._tag === "TimeoutError" ? "timeout" : "process" },
           ),
         ),
       )
@@ -102,12 +110,12 @@ export const NotionLive = Layer.effect(
                   ? fail(
                       "WRITE_OUTCOME_UNKNOWN",
                       "The write may have completed; read the target before retrying.",
-                      { path, cause_code: error.code },
+                      { path, cause_code: error.code, cause_details: error.details },
                     )
                   : error,
               ),
             )
-            const value = yield* Effect.try({
+            const decoded = yield* Effect.try({
               try: () => JSON.parse(r.stdout) as unknown,
               catch: () =>
                 fail(
@@ -116,10 +124,24 @@ export const NotionLive = Layer.effect(
                     : r.exit
                       ? "NOTION_REQUEST_FAILED"
                       : "INVALID_RESPONSE",
-                  "ntn returned no valid API JSON. Check ntn doctor; interactive login is never started automatically.",
-                  { path, exit_code: r.exit },
+                  "ntn returned no valid API JSON. Inspect reason and exit_code; check network and authentication with ntn doctor.",
+                  { path, exit_code: r.exit, reason: transportReason(r.stderr) },
                 ),
-            })
+            }).pipe(Effect.result)
+            if (decoded._tag === "Failure") {
+              const reason = property(decoded.failure.details).reason
+              if (
+                !mutating &&
+                r.exit !== 0 &&
+                ["dns", "network", "timeout"].includes(String(reason)) &&
+                attempt < 3
+              ) {
+                yield* Effect.sleep(`${2 ** attempt} seconds`)
+                continue
+              }
+              return yield* Effect.fail(decoded.failure)
+            }
+            const value = decoded.success
             if (
               value &&
               typeof value === "object" &&
@@ -130,8 +152,18 @@ export const NotionLive = Layer.effect(
                 try: () => decode(ApiErrorSchema, value),
                 catch: () => fail("INVALID_RESPONSE", "Invalid Notion error response."),
               })
-              // ntn does not expose response headers. Use bounded exponential backoff for 429s.
-              if (!mutating && error.code === "rate_limited" && attempt < 3) {
+              // ntn does not expose response headers. Retry transient reads, never mutations.
+              if (
+                !mutating &&
+                [
+                  "rate_limited",
+                  "internal_server_error",
+                  "service_unavailable",
+                  "database_connection_unavailable",
+                  "gateway_timeout",
+                ].includes(error.code) &&
+                attempt < 3
+              ) {
                 yield* Effect.sleep(`${2 ** attempt} seconds`)
                 continue
               }
@@ -167,6 +199,7 @@ export const NotionLive = Layer.effect(
                   {
                     path,
                     exit_code: r.exit,
+                    reason: transportReason(r.stderr),
                   },
                 ),
               )

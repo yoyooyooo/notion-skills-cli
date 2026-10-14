@@ -17,6 +17,7 @@ export interface PortableSkill {
     readonly name: string
     readonly description: string
     readonly body: string
+    readonly references?: Readonly<Record<string, string>>
   }
 }
 export function bodyIdentity(body: string) {
@@ -137,7 +138,12 @@ export function readPortable(input: readonly ImportFile[]): PortableSkill | unde
       rawProjection !== undefined &&
       (typeof projection.name !== "string" ||
         typeof projection.description !== "string" ||
-        typeof projection.body !== "string")
+        typeof projection.body !== "string" ||
+        (projection.references !== undefined &&
+          (typeof projection.references !== "object" ||
+            projection.references === null ||
+            Array.isArray(projection.references) ||
+            Object.values(projection.references).some((value) => typeof value !== "string"))))
     )
       throw fail("INVALID_ARCHIVE", "Invalid portable projection.")
     return {

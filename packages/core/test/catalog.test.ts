@@ -26,6 +26,14 @@ const row = {
 
 const memoryStore = Layer.succeed(Store, {
   root: "/unused",
+  configRoot: "/unused",
+  cacheRoot: "/unused",
+  reserveCacheGeneration: (() => {
+    let generation = 0
+    return () => Effect.sync(() => ++generation)
+  })(),
+  listKeys: () => Effect.succeed([] as readonly string[]),
+  retireKeys: () => Effect.succeed([] as readonly { key: string; retention_path: string }[]),
   readJson: () => Effect.succeed(undefined),
   writeJson: () => Effect.void,
   readBytes: () => Effect.fail(fail("UNUSED", "unused")),
@@ -184,11 +192,19 @@ test("metadata cached before the naming contract cannot bypass title validation"
   })
   const cachedStore = Layer.succeed(Store, {
     root: "/unused",
+    configRoot: "/unused",
+    cacheRoot: "/unused",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: () => Effect.succeed([] as readonly string[]),
+    retireKeys: () => Effect.succeed([] as readonly { key: string; retention_path: string }[]),
     readJson: (key, schema) =>
       Effect.gen(function* () {
-        if (key === "config.json") return undefined
+        if (!key.startsWith("cache/catalogs/")) return undefined
         return decode(schema, {
-          scope: "scope",
+          scope: key.split("/")[2],
           fetched_at: yield* Clock.currentTimeMillis,
           databases: [],
           skills: [
@@ -234,6 +250,24 @@ test("switching credentials for one user isolates cached discovery and switching
   let queryCount = 0
   const cachedStore = Layer.succeed(Store, {
     root: "/unused",
+    configRoot: "/unused",
+    cacheRoot: "/unused",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: (prefix) =>
+      Effect.sync(() => [...files.keys()].filter((key) => key.startsWith(`${prefix}/`))),
+    retireKeys: (keys) =>
+      Effect.sync(() => {
+        const retired: Array<{ key: string; retention_path: string }> = []
+        for (const key of keys) {
+          if (!key.startsWith("cache/")) continue
+          files.delete(key)
+          retired.push({ key, retention_path: "fixture_trash" })
+        }
+        return retired
+      }),
     readJson: (key, schema) =>
       Effect.sync(() => (files.has(key) ? decode(schema, files.get(key)) : undefined)),
     writeJson: (key, value) =>
@@ -274,7 +308,9 @@ test("switching credentials for one user isolates cached discovery and switching
   expect(second.scope).not.toBe(first.scope)
   credential = "first-credential"
   const restored = await run()
-  expect(restored).toEqual(first)
+  expect(restored.scope).toEqual(first.scope)
+  expect(restored.skills).toEqual(first.skills)
+  expect(restored.fetched_at).toEqual(first.fetched_at)
   expect(queryCount).toBe(2)
 })
 
@@ -292,6 +328,14 @@ test("same-name skills stay distinct by database, alias selection scopes lookup 
   let broken = false
   const store = Layer.succeed(Store, {
     root: "/unused",
+    configRoot: "/unused",
+    cacheRoot: "/unused",
+    reserveCacheGeneration: (() => {
+      let generation = 0
+      return () => Effect.sync(() => ++generation)
+    })(),
+    listKeys: () => Effect.succeed([] as readonly string[]),
+    retireKeys: () => Effect.succeed([] as readonly { key: string; retention_path: string }[]),
     readJson: (key, schema) =>
       Effect.sync(() =>
         key === "config.json" ? decode(schema, { sources: registered }) : undefined,

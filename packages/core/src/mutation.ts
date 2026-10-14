@@ -32,6 +32,9 @@ import {
   readPortable,
   type PortableSkill,
 } from "./portable.ts"
+import { referencesProperty } from "./references.ts"
+import { saveReferences, referenceContentIdentity, referenceInput } from "./reference-mutation.ts"
+import { invalidateSnapshotCache } from "./cache.ts"
 
 const DESCRIPTION = "notion%3A%2F%2Fskills%2Fdescription_property"
 const FILES = "notion%3A%2F%2Fskills%2Ffiles_property"
@@ -105,19 +108,21 @@ function pageProperties(raw: unknown) {
   const title = values.find((p) => p.type === "title")
   const description = values.find((p) => p.id === DESCRIPTION) ?? property(properties.Description)
   const files = values.find((p) => p.id === FILES) ?? property(properties.Files)
+  const references = referencesProperty(raw)
   if (
     typeof title?.id !== "string" ||
     typeof description.id !== "string" ||
-    typeof files.id !== "string"
+    (!references && typeof files.id !== "string")
   )
     throw fail(
       "INVALID_RESPONSE",
-      "Skills Database must expose title, Description and Files properties.",
+      "Skill database must expose title, Description and References or Files properties.",
     )
   return {
     title: title.id,
     description: description.id,
-    files: files.id,
+    files: typeof files.id === "string" ? files.id : undefined,
+    references: references ? String(references.id) : undefined,
     attachments: Array.isArray(files.files) ? files.files : [],
   }
 }
@@ -174,9 +179,26 @@ function upload(input: { bytes: Uint8Array }, filename: string) {
 function assertVersion(snapshot: {
   readonly skill: { readonly id: string }
   readonly version_id: string
+  readonly references?: Snapshot["references"]
 }) {
   return Effect.gen(function* () {
     const api = yield* Notion
+    if ("references" in snapshot && snapshot.references) {
+      const latest = yield* openSkill(snapshot.skill.id, { refresh: true })
+      if (latest.version_id !== snapshot.version_id)
+        return yield* Effect.fail(
+          fail(
+            "WRITE_CONFLICT",
+            "The skill or a reference page changed; read it again before writing.",
+            {
+              page_id: snapshot.skill.id,
+              expected_version: snapshot.version_id,
+              actual_version: latest.version_id,
+            },
+          ),
+        )
+      return
+    }
     const latest = decode(ExportSchema, yield* api.request(`v1/ai/skills/${snapshot.skill.id}`))
     if (latest.id !== snapshot.skill.id || latest.version_id !== snapshot.version_id)
       return yield* Effect.fail(
@@ -323,7 +345,9 @@ export interface CreateOptions extends ImportMetadataOptions {
   readonly database?: string
   readonly dryRun?: boolean
 }
-export interface ImportOptions extends CreateOptions {}
+export interface ImportOptions extends CreateOptions {
+  readonly target?: string
+}
 
 export function createSkill(input: string, options: CreateOptions = {}) {
   return saveInput(input, options, "create")
@@ -333,8 +357,32 @@ export function importSkill(input: string, options: ImportOptions = {}) {
   return saveInput(input, options, "import")
 }
 
-function saveInput(input: string, options: CreateOptions, operation: "create" | "import") {
+export function importPortable(
+  portable: PortableSkill,
+  baseline: Snapshot,
+  options: CreateOptions = {},
+) {
+  return saveDocument(portable, options, "import", baseline)
+}
+
+function saveInput(input: string, options: ImportOptions, operation: "create" | "import") {
   return Effect.gen(function* () {
+    const target =
+      options.target !== undefined
+        ? yield* Effect.try({
+            try: () => parseTarget(options.target!),
+            catch: (error) => error as SkillsError,
+          })
+        : undefined
+    if (target?.path && target.path !== "SKILL.md")
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "Whole-Skill import requires a main-file or pathless target."),
+      )
+    const baseline = target
+      ? target.snapshot
+        ? yield* targetSnapshot(target, { database: options.database })
+        : yield* openSkill(target.selector, { database: options.database, refresh: true })
+      : undefined
     const loaded = yield* loadImport(input)
     const source = yield* Effect.try({
       try: () => {
@@ -364,7 +412,7 @@ function saveInput(input: string, options: CreateOptions, operation: "create" | 
       catch: (e) => e as SkillsError,
     })
     return {
-      ...(yield* saveDocument(source, options, operation)),
+      ...(yield* saveDocument(source, options, operation, baseline)),
       input_type: loaded.kind,
       main_path: source.main,
     }
@@ -390,6 +438,25 @@ function saveDocument(
       catch: (e) => e as SkillsError,
     })
     let current = baseline
+    if (baseline) {
+      if (baseline.scope !== (yield* authScope))
+        return yield* Effect.fail(
+          fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another authentication scope."),
+        )
+      current = yield* openSkill(baseline.skill.id, { database: options.database, refresh: true })
+      if (
+        current.version_id !== baseline.version_id ||
+        current.skill.database_id !== baseline.skill.database_id ||
+        current.skill.data_source_id !== baseline.skill.data_source_id
+      )
+        return yield* Effect.fail(
+          fail("WRITE_CONFLICT", "The remote Skill changed since the expected baseline.", {
+            page_id: baseline.skill.id,
+            expected_version: baseline.version_id,
+            actual_version: current.version_id,
+          }),
+        )
+    }
     let databaseId = current?.skill.database_id
     let dataSourceId = current?.skill.data_source_id
     if (!current) {
@@ -430,18 +497,6 @@ function saveDocument(
             ),
           )
         current = yield* openSkill(matches[0].id, { refresh: true })
-        if ((yield* portableIdentity(yield* snapshotPortable(current))) === contentId) {
-          yield* assertVersion(current)
-          return {
-            ...snapshotInfo(current),
-            operation,
-            action: "reuse",
-            reused: true,
-            content_id: contentId,
-            verified: true,
-            ...(options.dryRun ? { dry_run: true } : {}),
-          }
-        }
       }
     }
     const api = yield* Notion
@@ -452,6 +507,27 @@ function saveDocument(
       try: () => pageProperties(raw),
       catch: (e) => e as SkillsError,
     })
+    if (current && operation === "import") {
+      const saved = yield* snapshotPortable(current)
+      const same =
+        props.references && !props.files
+          ? (yield* referenceContentIdentity(saved)) === (yield* referenceContentIdentity(portable))
+          : (yield* portableIdentity(saved)) === contentId
+      if (same) {
+        yield* assertVersion(current)
+        return {
+          ...snapshotInfo(current),
+          operation,
+          action: "reuse",
+          reused: true,
+          content_id: yield* portableIdentity(saved),
+          previous_version_id: current.version_id,
+          expected_version_id: baseline?.version_id ?? current.version_id,
+          verified: true,
+          ...(options.dryRun ? { dry_run: true } : {}),
+        }
+      }
+    }
     let oldBody = ""
     if (current) {
       const rawBody = yield* api.request(`v1/pages/${current.skill.id}/markdown`)
@@ -471,13 +547,33 @@ function saveDocument(
         ? {
             page_id: current.skill.id,
             base_version_id: current.version_id,
+            previous_version_id: current.version_id,
+            expected_version_id: baseline?.version_id ?? current.version_id,
             snapshot_id: current.snapshot_id,
             ref: snapshotInfo(current).ref,
           }
         : {}),
       files: portable.files.map((file) => ({ path: file.path, bytes: file.bytes.length })),
     }
-    if (options.dryRun) return { ...plan, dry_run: true }
+    if (options.dryRun) {
+      if (props.references) yield* referenceInput(portable, Boolean(props.files))
+      return { ...plan, dry_run: true }
+    }
+    if (props.references)
+      return yield* saveReferences(
+        portable,
+        doc,
+        {
+          title: props.title,
+          description: props.description,
+          references: props.references,
+          files: props.files,
+        },
+        { database_id: databaseId!, data_source_id: dataSourceId! },
+        operation,
+        current,
+        upload,
+      )
     const completed: string[] = []
     let id = current?.skill.id
     let stage = "prepare"
@@ -548,7 +644,7 @@ function saveDocument(
           properties: {
             [props.title]: { title: [{ text: { content: doc.name } }] },
             [props.description]: { rich_text: [{ text: { content: doc.description } }] },
-            [props.files]: { files: [bundle] },
+            [props.files!]: { files: [bundle] },
           },
         },
         { method: "PATCH" },
@@ -582,7 +678,12 @@ function saveDocument(
         verified: true,
         content_id: contentId,
         reused: false,
-        ...(current ? { previous_version_id: current.version_id } : {}),
+        ...(current
+          ? {
+              previous_version_id: current.version_id,
+              expected_version_id: baseline?.version_id ?? current.version_id,
+            }
+          : {}),
       }
     }).pipe(
       Effect.mapError((error) =>
@@ -602,6 +703,11 @@ function saveDocument(
             cause_details: error.details,
           },
         ),
+      ),
+      Effect.tapError((error) =>
+        id && (error.code === "WRITE_PARTIAL" || error.code === "WRITE_OUTCOME_UNKNOWN")
+          ? invalidateSnapshotCache(id, current?.scope).pipe(Effect.catch(() => Effect.void))
+          : Effect.void,
       ),
     )
   })

@@ -29,6 +29,21 @@ import {
   readSkill,
   resolveRef,
   snapshotInfo,
+  openSkill,
+  parseDuration,
+  cacheStatus,
+  clearCache,
+  configureCachePolicy,
+  effectiveCachePolicy,
+  clearCachePolicy,
+  SyncLocalLive,
+  bindSync,
+  syncStatus,
+  planSync,
+  applySync,
+  reconcileSync,
+  unbindSync,
+  type ReadPolicyOptions,
 } from "@notion-skills-cli/core"
 import { version } from "../package.json"
 
@@ -46,10 +61,48 @@ const databaseFlag = Flag.String("database").pipe(
     "Restrict to one Skills Database ID, URL or exact registered alias; repeated --database is rejected",
   ),
 )
-const refreshFlag = Flag.Boolean("refresh").pipe(
-  Flag.withDefault(false),
-  Flag.withDescription("Bypass the 60-second metadata cache"),
-)
+const singleton = (name: string, description: string) =>
+  Flag.String(name).pipe(
+    Flag.atMost(1),
+    Flag.map((values) => Option.fromUndefinedOr(values[0])),
+    Flag.withDescription(description),
+  )
+const requiredSingleton = (name: string, description: string) =>
+  Flag.String(name).pipe(
+    Flag.between(1, 1),
+    Flag.map((values) => values[0]!),
+    Flag.withDescription(description),
+  )
+const switchFlag = (name: string, description: string) =>
+  Flag.Boolean(name).pipe(
+    Flag.atMost(1),
+    Flag.map((values) => values[0] ?? false),
+    Flag.withDescription(description),
+  )
+const refreshFlag = switchFlag("refresh", "Validate online regardless of cache age")
+const readPolicyFlags = {
+  refresh: refreshFlag,
+  offline: switchFlag("offline", "Read local observations only, including expired content"),
+  maxAge: singleton(
+    "max-age",
+    "Maximum observation age: 0, Ns, Nm, Nh or Nd; default 5m (list 60s)",
+  ),
+}
+function readPolicy(config: { refresh: boolean; offline: boolean; maxAge: Option.Option<string> }) {
+  return Effect.try({
+    try: (): ReadPolicyOptions => {
+      const maxAge = Option.getOrUndefined(config.maxAge)
+      if (Number(config.refresh) + Number(config.offline) + Number(maxAge !== undefined) > 1)
+        throw fail("INVALID_ARGUMENT", "--refresh, --offline and --max-age are mutually exclusive.")
+      return {
+        refresh: config.refresh,
+        offline: config.offline,
+        ...(maxAge === undefined ? {} : { maxAge: parseDuration(maxAge) }),
+      }
+    },
+    catch: (error) => error as SkillsError,
+  })
+}
 
 function emit(value: object) {
   return Effect.gen(function* () {
@@ -64,17 +117,14 @@ const listCommand = Command.make(
   "list",
   {
     database: databaseFlag,
-    refresh: refreshFlag,
-    query: Flag.String("query").pipe(
-      Flag.optional,
-      Flag.withDescription("Case-insensitive filter on Name, invocation alias and Description"),
-    ),
+    ...readPolicyFlags,
+    query: singleton("query", "Case-insensitive filter on Name, invocation alias and Description"),
   },
   (config) =>
     Effect.gen(function* () {
       const result = yield* catalog({
         database: Option.getOrUndefined(config.database),
-        refresh: config.refresh,
+        ...(yield* readPolicy(config)),
       })
       const query = Option.getOrUndefined(config.query)?.toLocaleLowerCase()
       const skills = query
@@ -89,12 +139,14 @@ const listCommand = Command.make(
         skills,
         count: skills.length,
         coverage: result.coverage,
+        source: result.source,
+        freshness: result.freshness,
       })
     }),
 ).pipe(
   Command.withShortDescription("List available skills with names, descriptions and refs"),
   Command.withDescription(
-    "List lightweight Skill metadata; follows all Search and data-source pages automatically. Returns databases (ID, title, registered alias and data sources), skills, count and coverage without bodies or file manifests. --query filters Skill Name/alias/Description only and retains the queried database map. --database selects one ID, URL or exact registered alias; repeated values fail. --refresh bypasses the 60-second metadata cache. Failed queries include owning database ID/alias/title and data_source_id in coverage.failed_sources. Search cannot prove workspace-wide completeness.",
+    "List paginated lightweight Skill metadata with database maps and coverage. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
   ),
   Command.withExamples([
     {
@@ -155,6 +207,7 @@ const openCommand = Command.make(
       ),
     ),
     database: databaseFlag,
+    ...readPolicyFlags,
   },
   (config) =>
     Effect.gen(function* () {
@@ -164,14 +217,17 @@ const openCommand = Command.make(
       })
       yield* emit(
         snapshotInfo(
-          yield* targetSnapshot(target, { database: Option.getOrUndefined(config.database) }),
+          yield* targetSnapshot(target, {
+            database: Option.getOrUndefined(config.database),
+            ...(yield* readPolicy(config)),
+          }),
         ),
       )
     }),
 ).pipe(
   Command.withShortDescription("Download a skill into an immutable snapshot"),
   Command.withDescription(
-    "Return complete snapshot metadata and pinned file refs without contents. Uses the shared target syntax: names, aliases, page IDs/URLs and unpinned refs obtain the current export online; pinned refs and snapshot IDs use cached content offline. Normal reads obtain their own snapshot; open is optional. Scripts are never executed.",
+    "Return complete snapshot metadata and pinned file refs without contents. Current targets reuse complete eligible observations for 5m by default. --refresh validates online, --offline reads local observations, --max-age overrides age. Pinned refs and snapshot IDs remain immutable and offline; they reject refresh/max-age. Expired online reads wait for validation and never silently fall back to stale content. Normal reads obtain their own snapshot; open is optional. Scripts are never executed.",
   ),
   Command.withExamples([
     {
@@ -189,34 +245,24 @@ const readCommand = Command.make(
         "Name, invocation alias, page ID/URL, skill:// ref, cached snapshot ID, or relative path with --from",
       ),
     ),
-    path: Flag.String("path").pipe(
-      Flag.optional,
-      Flag.withDescription("Skill-relative file path; target must not already contain a path"),
-    ),
+    path: singleton("path", "Skill-relative file path; target must not already contain a path"),
     database: databaseFlag,
-    from: Flag.String("from").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "Resolve the first argument relative to this containing-file skill:// ref; preserve its snapshot when pinned",
-      ),
+    ...readPolicyFlags,
+    from: singleton(
+      "from",
+      "Resolve the first argument relative to this containing-file skill:// ref; preserve its snapshot when pinned",
     ),
-    lines: Flag.String("lines").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "Inclusive 1-based range START-END or one line START; returns range and has_more; incompatible with --output",
-      ),
+    lines: singleton(
+      "lines",
+      "Inclusive 1-based range START-END or one line START; incompatible with --output",
     ),
-    output: Flag.String("output").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "Write exact bytes to a local path; reuse identical content, reject differing output; incompatible with --lines/--raw",
-      ),
+    output: singleton(
+      "output",
+      "Write exact bytes to a local path; reuse identical content, reject differing output; incompatible with --lines/--raw",
     ),
-    raw: Flag.Boolean("raw").pipe(
-      Flag.withDefault(false),
-      Flag.withDescription(
-        "Emit successful UTF-8 text only; failures remain JSON; retain snapshot/ref separately; incompatible with --output",
-      ),
+    raw: switchFlag(
+      "raw",
+      "Emit successful UTF-8 text only; failures remain JSON; incompatible with --output",
     ),
   },
   (config) =>
@@ -231,6 +277,7 @@ const readCommand = Command.make(
         from: Option.getOrUndefined(config.from),
         lines: Option.getOrUndefined(config.lines),
         output: Option.getOrUndefined(config.output),
+        ...(yield* readPolicy(config)),
       })
       if (config.raw) {
         const stdio = yield* Stdio.Stdio
@@ -240,9 +287,9 @@ const readCommand = Command.make(
       } else yield* emit(result)
     }),
 ).pipe(
-  Command.withShortDescription("Read one file online or from a pinned snapshot"),
+  Command.withShortDescription("Read one file with bounded cache freshness or a pinned snapshot"),
   Command.withDescription(
-    "Read one file, default SKILL.md. Accepts names, invocation aliases, page IDs/URLs, skill:// refs and snapshot IDs. Pinned refs and snapshot IDs read cached content offline; other targets check the current export online. --path supplies a file only when the target has no path. Relative reads use read relative-path --from containing-file-ref; --from cannot combine with --path. JSON includes content, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges; --output returns exact bytes, output and reused, rejecting differing local files. --raw emits text only. FILE_NOT_FOUND: inspect files; SNAPSHOT_MISSING: read the current target online; arbitrary historical versions cannot be fetched.",
+    "Read one file, default SKILL.md. Names/aliases/page IDs/URLs/unpinned refs reuse complete eligible observations for 5m; --refresh validates online, --offline reads local observations, --max-age overrides age. Policies are mutually exclusive. Pinned targets (including relative --from pinned refs) stay immutable/offline and reject refresh/max-age. --path supplies a file only when the target has no path. Relative --from rejects --path. JSON includes source/freshness, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges. --output writes exact bytes with identical reuse and differing-output rejection; --raw emits successful text only. Missing cached versions require a new current read; arbitrary historical versions cannot be fetched.",
   ),
   Command.withExamples([
     {
@@ -276,13 +323,12 @@ const filesCommand = Command.make(
         "Name, invocation alias, page ID/URL, skill:// ref, or cached snapshot ID",
       ),
     ),
-    path: Flag.String("path").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "File/directory filter; omit for every file; cannot replace a ref's path",
-      ),
+    path: singleton(
+      "path",
+      "File/directory filter; omit for every file; cannot replace a ref's path",
     ),
     database: databaseFlag,
+    ...readPolicyFlags,
   },
   (config) =>
     Effect.gen(function* () {
@@ -290,13 +336,14 @@ const filesCommand = Command.make(
         yield* listSkill(config.selector, {
           path: Option.getOrUndefined(config.path),
           database: Option.getOrUndefined(config.database),
+          ...(yield* readPolicy(config)),
         }),
       )
     }),
 ).pipe(
   Command.withShortDescription("List snapshot files and their pinned refs"),
   Command.withDescription(
-    "List pinned file refs without contents using the shared target syntax. Names, aliases, page IDs/URLs and unpinned refs obtain the current export online; pinned refs and snapshot IDs work offline. --path filters one file/directory when the target has no path. A file ref filters its own path; a pathless ref lists every file.",
+    "List pinned file refs from one complete snapshot. Current targets follow the 5m content policy; use mutually exclusive --refresh, --offline or --max-age. Pinned refs/snapshot IDs work offline and reject refresh/max-age. --path filters one file/directory when the target has no path; a file ref filters itself, a pathless ref lists every file. Source/freshness describe the selected observation, not current access when cached.",
   ),
   Command.withExamples([
     {
@@ -306,9 +353,9 @@ const filesCommand = Command.make(
   ]),
 )
 
-const dryRunFlag = Flag.Boolean("dry-run").pipe(
-  Flag.withDefault(false),
-  Flag.withDescription("Validate inputs and show the target without uploading or changing Notion"),
+const dryRunFlag = switchFlag(
+  "dry-run",
+  "Validate inputs and show the decision without content or configuration writes",
 )
 const createCommand = Command.make(
   "create",
@@ -317,14 +364,8 @@ const createCommand = Command.make(
       Argument.withDescription("Local ZIP, Skill folder or Markdown file"),
     ),
     database: databaseFlag,
-    name: Flag.String("name").pipe(
-      Flag.optional,
-      Flag.withDescription("English display title overriding source metadata"),
-    ),
-    description: Flag.String("description").pipe(
-      Flag.optional,
-      Flag.withDescription("Override Description; required if source has none"),
-    ),
+    name: singleton("name", "English display title overriding source metadata"),
+    description: singleton("description", "Override Description; required if source has none"),
     dryRun: dryRunFlag,
   },
   (config) =>
@@ -341,7 +382,7 @@ const createCommand = Command.make(
 ).pipe(
   Command.withShortDescription("Create a new Skill from ZIP, folder or Markdown"),
   Command.withDescription(
-    "Create one new Skill; an existing invocation name returns CREATE_CONFLICT before mutation. Shares the same input and preservation rules as import: ZIP, folder or any Markdown filename; portable manifest or SKILL.md/unique Markdown entrypoint; --name/--description override metadata. Extra frontmatter, original bytes and nested paths are retained in a source ZIP. Database priority: --database > configured default > sole discovered Skills Database. --dry-run validates and reports action=create without upload. Success returns a verified snapshot, pinned refs and content_id. Insert, Update and Read content are required. Inspect partial/unknown outcomes before retrying.",
+    "Create one new Skill; an existing invocation name returns CREATE_CONFLICT before mutation. Accepts ZIP, folder or Markdown with a portable manifest or SKILL.md/unique Markdown entrypoint; --name/--description override metadata. References Markdown becomes editable child pages and relative links become Notion URLs. Optional Files preserves original bytes, extra frontmatter and other assets; without Files only main/reference Markdown is accepted and export is normalized. Database priority: --database > configured default > sole discovered skill database. --dry-run validates and reports action=create without mutation. Success returns a verified snapshot, pinned refs and content_id. Insert, Update and Read content are required. Inspect partial/unknown outcomes before retrying.",
   ),
   Command.withExamples([
     {
@@ -366,15 +407,11 @@ const importCommand = Command.make(
       Argument.withDescription("Local ZIP path, Skill folder, or Markdown file with any filename"),
     ),
     database: databaseFlag,
-    name: Flag.String("name").pipe(
-      Flag.optional,
-      Flag.withDescription("English display title overriding the imported name or filename"),
-    ),
-    description: Flag.String("description").pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "Description overriding frontmatter; required when frontmatter has none",
-      ),
+    name: singleton("name", "English display title overriding source metadata"),
+    description: singleton("description", "Override Description; required if source has none"),
+    target: singleton(
+      "target",
+      "Existing page selector or pinned main-file baseline; preserve its identity without create fallback",
     ),
     dryRun: dryRunFlag,
   },
@@ -386,13 +423,14 @@ const importCommand = Command.make(
           name: Option.getOrUndefined(config.name),
           description: Option.getOrUndefined(config.description),
           dryRun: config.dryRun,
+          target: Option.getOrUndefined(config.target),
         }),
       )
     }),
 ).pipe(
   Command.withShortDescription("Import a Skill, replacing same-name content"),
   Command.withDescription(
-    "Import one ZIP, folder or Markdown file. No matching invocation name creates a page; identical content returns action=reuse and reused=true; different content returns action=update and replaces the existing page body, metadata and entire file set while retaining its page ID. Multiple matches fail with SKILL_AMBIGUOUS. Overwrite checks a fresh remote version before changing content and again before committing uploaded files. Inputs use a portable manifest or SKILL.md/unique top-level Markdown after wrapper removal. --name/--description override metadata; missing descriptions require --description. All source bytes, extra frontmatter, filenames and nested paths are retained in a source ZIP (20 MiB including manifest); input ZIP max 32 MiB, expanded max 128 MiB/10,000 entries. Imported page IDs never choose a target. Database priority: --database > configured default > sole discovered Skills Database. --dry-run reports create/reuse/update without mutation. Success returns a verified snapshot and content_id. Read back partial/unknown outcomes before retrying.",
+    "Import one ZIP, folder or Markdown file. Without --target, match the invocation name in the selected creation database: create if absent, reuse identical content, update differing content. --target resolves one existing page and preserves its identity even when imported metadata renames it; missing/inaccessible targets never create. Pinned main targets enforce expected scope/version; reference-file targets fail. --database constrains an explicit target; otherwise priority is --database > configured default > sole discovered database. --name/--description override source metadata. Whole-Skill updates replace the complete file set; omitted reference pages remain available in Notion. Optional Files preserves bytes/assets; page-only mode accepts main/reference Markdown and compares normalized content. Strong validation includes reference edits; read back partial/unknown outcomes before retry. --dry-run validates without content mutation.",
   ),
   Command.withExamples([
     {
@@ -417,31 +455,32 @@ const exportCommand = Command.make(
     selector: Argument.String("skill-or-ref-or-snapshot").pipe(
       Argument.withDescription("Skill name, page ID/URL, skill:// ref, or cached snapshot ID"),
     ),
-    output: Flag.String("output").pipe(
-      Flag.withDescription(
-        "Destination ZIP path or directory; identical output is reused, differing output is never overwritten",
-      ),
+    output: requiredSingleton(
+      "output",
+      "Destination ZIP or directory; identical content is reused, differing output is never overwritten",
     ),
-    format: Flag.Literals("format", ["zip", "directory"]).pipe(
-      Flag.optional,
-      Flag.withDescription("Default: zip for .zip output paths, directory otherwise"),
-    ),
+    format: singleton("format", "zip or directory; default: zip for .zip outputs"),
     database: databaseFlag,
+    ...readPolicyFlags,
   },
   (config) =>
     Effect.gen(function* () {
+      const format = Option.getOrUndefined(config.format)
+      if (format !== undefined && format !== "zip" && format !== "directory")
+        return yield* Effect.fail(fail("INVALID_ARGUMENT", "--format requires zip or directory."))
       yield* emit(
         yield* exportSkill(config.selector, {
           output: config.output,
-          format: Option.getOrUndefined(config.format),
+          format,
           database: Option.getOrUndefined(config.database),
+          ...(yield* readPolicy(config)),
         }),
       )
     }),
 ).pipe(
   Command.withShortDescription("Export a complete reversible Skill as ZIP or folder"),
   Command.withDescription(
-    "Export every Skill file and a versioned .ntn-skills.json manifest. Uses shared targets; pinned refs and snapshot IDs work offline. Original bytes and paths remain exact until current body or metadata edits replace the preserved main file. ZIP entries sort deterministically with fixed timestamps; payload excludes generated remote identities. --output is required; .zip selects ZIP, otherwise directory; --format overrides it. Identical output returns reused=true; differing output returns OUTPUT_CONFLICT. Importing the export reuses identical content or replaces a different same-name Skill. Export never mutates Notion.",
+    "Export every Skill file and a versioned portable manifest. Current inputs follow the 5m content policy; use mutually exclusive --refresh, --offline or --max-age. Pinned refs and snapshot IDs are immutable/offline and reject refresh/max-age. References links become relative paths; optional Files preserves source bytes, while page-only output is normalized. ZIP entries sort deterministically with fixed timestamps. --output is required; .zip selects ZIP, otherwise directory; --format overrides it. Identical output returns reused=true; differing output returns OUTPUT_CONFLICT. Cache policy changes input selection only, never output overwrite permission. Export never mutates Notion.",
   ),
   Command.withExamples([
     {
@@ -462,13 +501,8 @@ const writeCommand = Command.make(
         "Name, invocation alias, page ID/URL, skill:// file ref or snapshot ID; pinned targets are version baselines",
       ),
     ),
-    path: Flag.String("path").pipe(
-      Flag.optional,
-      Flag.withDescription("Skill-relative file path, default SKILL.md; omit for a file ref"),
-    ),
-    input: Flag.String("input").pipe(
-      Flag.withDescription("Required local file containing the full replacement content"),
-    ),
+    path: singleton("path", "Skill-relative file path, default SKILL.md; omit for a file ref"),
+    input: requiredSingleton("input", "Local file containing the full replacement content"),
     database: databaseFlag,
     dryRun: dryRunFlag,
   },
@@ -486,7 +520,7 @@ const writeCommand = Command.make(
 ).pipe(
   Command.withShortDescription("Write one Skill file to Notion"),
   Command.withDescription(
-    "Replace one Skill file using the shared target syntax, default SKILL.md. --path supplies a path only when the target has none. Pinned refs and snapshot IDs are online version baselines; stale versions return WRITE_CONFLICT. Unpinned targets capture the current version. Entry point name/description update properties; notion_page_id must match. Extra frontmatter and nested/binary attachments are retained in the source ZIP; other logical files stay intact. Identical input returns action=unchanged and unchanged=true without upload or mutation. --dry-run reports the target. Success returns a verified snapshot, pinned file ref and previous_version_id. Body, properties and files are separate requests; read back WRITE_PARTIAL/WRITE_OUTCOME_UNKNOWN before retrying.",
+    "Replace one Skill file using shared targets, default SKILL.md. --path supplies a path only when the target has none. Pinned refs and snapshot IDs are online version baselines; stale main or reference-page content returns WRITE_CONFLICT. Unpinned targets capture the current version. Entry point name/description update properties; notion_page_id must match. Reference paths update or add editable Notion pages and restore page links. Optional Files retains extra frontmatter and nested/binary assets; page-only mode accepts main/reference Markdown. Other logical files stay intact. Identical input returns action=unchanged and unchanged=true without mutation. --dry-run validates and reports the target. Success returns a verified snapshot, pinned file ref and previous_version_id. Read back WRITE_PARTIAL/WRITE_OUTCOME_UNKNOWN before retrying.",
   ),
   Command.withExamples([
     {
@@ -510,12 +544,17 @@ const writeCommand = Command.make(
 )
 const configShow = Command.make("show", {}, () =>
   Effect.gen(function* () {
-    yield* emit({ config: publicConfiguration(yield* configuration) })
+    yield* emit({
+      config: {
+        ...publicConfiguration(yield* configuration),
+        effective_cache_policy: yield* effectiveCachePolicy,
+      },
+    })
   }),
 ).pipe(
   Command.withShortDescription("Show local configuration with token presence only"),
   Command.withDescription(
-    "Read local configuration offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN > existing ntn login. The default database affects create/import only.",
+    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN > existing ntn login. The default database affects create/import only; cache policy controls current reads and catalog observations.",
   ),
 )
 const configSetDefault = Command.make(
@@ -556,11 +595,9 @@ const configClearDefault = Command.make("clear-default", {}, () =>
 const configSetToken = Command.make(
   "set-token",
   {
-    stdin: Flag.Boolean("stdin").pipe(
-      Flag.withDefault(false),
-      Flag.withDescription(
-        "Required: read the token from piped standard input, never command arguments",
-      ),
+    stdin: switchFlag(
+      "stdin",
+      "Required: read the token from piped standard input, never command arguments",
     ),
   },
   (config) =>
@@ -611,6 +648,40 @@ const configClearToken = Command.make("clear-token", {}, () =>
     },
   ]),
 )
+const configSetCachePolicy = Command.make(
+  "set-cache-policy",
+  {
+    readMaxAge: singleton("read-max-age", "Content age limit: 0, Ns, Nm, Nh or Nd (default 5m)"),
+    catalogMaxAge: singleton(
+      "catalog-max-age",
+      "Catalog age limit: 0, Ns, Nm, Nh or Nd (default 60s)",
+    ),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const read = Option.getOrUndefined(config.readMaxAge)
+      const catalog = Option.getOrUndefined(config.catalogMaxAge)
+      if (read === undefined && catalog === undefined)
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "Provide --read-max-age or --catalog-max-age."),
+        )
+      const policy = yield* Effect.try({
+        try: () => ({
+          ...(read === undefined ? {} : { readMaxAge: parseDuration(read) }),
+          ...(catalog === undefined ? {} : { catalogMaxAge: parseDuration(catalog) }),
+        }),
+        catch: (error) => error as SkillsError,
+      })
+      yield* emit({ config: yield* configureCachePolicy(policy) })
+    }),
+).pipe(Command.withShortDescription("Save specified cache age defaults offline"))
+const configClearCachePolicy = Command.make("clear-cache-policy", {}, () =>
+  Effect.gen(function* () {
+    yield* emit({ config: yield* clearCachePolicy })
+  }),
+).pipe(
+  Command.withShortDescription("Restore built-in cache policy without removing content or state"),
+)
 const configCommand = Command.make("config").pipe(
   Command.withShortDescription("Manage local authentication and database preferences"),
   Command.withDescription(
@@ -622,6 +693,8 @@ const configCommand = Command.make("config").pipe(
     configClearToken,
     configSetDefault,
     configClearDefault,
+    configSetCachePolicy,
+    configClearCachePolicy,
   ]),
 )
 
@@ -682,10 +755,9 @@ const resolveCommand = Command.make(
         "File path relative to the containing file named by --from; cannot escape the skill root",
       ),
     ),
-    from: Flag.String("from").pipe(
-      Flag.withDescription(
-        "Required containing-file skill:// ref; a pinned snapshot is preserved in the returned ref",
-      ),
+    from: requiredSingleton(
+      "from",
+      "Containing-file skill:// ref; a pinned snapshot is preserved in the returned ref",
     ),
   },
   (config) =>
@@ -714,15 +786,16 @@ const doctorCommand = Command.make("doctor", {}, () =>
     const api = yield* Notion
     const version = yield* api.version
     const result = yield* catalog({ refresh: true })
-    let exportStatus: unknown = {
+    let readStatus: unknown = {
       checked: false,
       reason: "No skill is present in the discovered list.",
     }
     if (result.skills[0]) {
-      const exported = yield* api.request(`v1/ai/skills/${result.skills[0].id}`)
-      exportStatus = {
+      const snapshot = yield* openSkill(result.skills[0].id, { refresh: true })
+      readStatus = {
         checked: true,
-        available: Boolean(exported && typeof exported === "object" && "version_id" in exported),
+        available: true,
+        storage: snapshot.references ? "references" : "native_skills",
       }
     }
     yield* emit({
@@ -730,14 +803,14 @@ const doctorCommand = Command.make("doctor", {}, () =>
       authentication: "available",
       skills_databases: result.databases.length,
       skill_count: result.skills.length,
-      skills_api: exportStatus,
+      skill_read: readStatus,
       coverage: result.coverage,
     })
   }),
 ).pipe(
-  Command.withShortDescription("Check ntn, authentication, discovery and export API"),
+  Command.withShortDescription("Check ntn, authentication, discovery and Skill reading"),
   Command.withDescription(
-    "Check ntn version, existing authentication, discovery coverage and export API availability. Does not download bodies or start login. Authentication priority: config.token > NOTION_API_TOKEN > existing ntn login. Use config set-token --stdin to configure a token. Inspect coverage.failed_sources and skills_api; checked=false means no Skill was available to probe.",
+    "Check ntn version, existing authentication, discovery coverage and reading one current Skill. The read caches its files. Does not start login. Authentication priority: config.token > NOTION_API_TOKEN > existing ntn login. Use config set-token --stdin to configure a token. Inspect coverage.failed_sources and skill_read; checked=false means no Skill was available to probe.",
   ),
   Command.withExamples([
     {
@@ -747,9 +820,207 @@ const doctorCommand = Command.make("doctor", {}, () =>
   ]),
 )
 
+const bindingArgument = Argument.String("binding").pipe(
+  Argument.withDescription("Registered binding ID or exact local label"),
+)
+const syncBindCommand = Command.make(
+  "bind",
+  {
+    target: Argument.String("target"),
+    path: requiredSingleton(
+      "path",
+      "Logical local Skill directory; an absent ordinary leaf can be initialized",
+    ),
+    as: singleton("as", "Unique local binding label; default is the remote invocation alias"),
+    database: databaseFlag,
+    dryRun: dryRunFlag,
+  },
+  (config) =>
+    Effect.gen(function* () {
+      yield* emit(
+        yield* bindSync(config.target, {
+          path: config.path,
+          as: Option.getOrUndefined(config.as),
+          database: Option.getOrUndefined(config.database),
+          dryRun: config.dryRun,
+        }),
+      )
+    }),
+).pipe(
+  Command.withShortDescription("Bind an existing page to one logical local directory"),
+  Command.withDescription(
+    "Registration validates both sides online. Equal contents initialize a confirmed common baseline; differences require sync plan --from local|notion. Bind never copies content or creates a page. Historical targets and dangling links fail; --dry-run saves no binding or baseline.",
+  ),
+)
+const syncStatusCommand = Command.make(
+  "status",
+  {
+    binding: bindingArgument.pipe(Argument.optional),
+    refresh: refreshFlag,
+  },
+  (config) =>
+    Effect.gen(function* () {
+      yield* emit(
+        yield* syncStatus(Option.getOrUndefined(config.binding), { refresh: config.refresh }),
+      )
+    }),
+).pipe(
+  Command.withShortDescription(
+    "Inspect one or all bindings; remote observations are provisional by default",
+  ),
+  Command.withDescription(
+    "Default inspects local content, common baseline and the last cached remote observation without network. --refresh validates remote state online. Neither observation advances a common baseline.",
+  ),
+)
+const syncPlanCommand = Command.make(
+  "plan",
+  {
+    binding: bindingArgument.pipe(Argument.optional),
+    all: switchFlag("all", "Plan all active bindings with shared-page and real-target checks"),
+    from: singleton(
+      "from",
+      "Explicit source local or notion for initialization or conflict resolution",
+    ),
+    output: singleton(
+      "output",
+      "Reviewable JSON copy; identical copies reused, differing output rejected",
+    ),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const binding = Option.getOrUndefined(config.binding)
+      const from = Option.getOrUndefined(config.from)
+      if ((binding === undefined) === !config.all || (config.all && from !== undefined))
+        return yield* Effect.fail(
+          fail(
+            "INVALID_ARGUMENT",
+            "Provide exactly one binding or --all; --from is single-binding only.",
+          ),
+        )
+      if (from !== undefined && from !== "local" && from !== "notion")
+        return yield* Effect.fail(fail("INVALID_ARGUMENT", "--from requires local or notion."))
+      yield* emit(
+        yield* planSync(binding, {
+          all: config.all,
+          from,
+          output: Option.getOrUndefined(config.output),
+        }),
+      )
+    }),
+).pipe(
+  Command.withShortDescription("Save a strongly checked content-addressed sync plan"),
+  Command.withDescription(
+    "Preview without content or baseline changes. One-sided changes select direction; differing two-sided changes fail with a retained conflict plan. --from explicitly resolves initialization/conflict and still enforces all version/path/link checks. Batch plans accept only one candidate per page and can fan out to unchanged copies.",
+  ),
+)
+const syncApplyCommand = Command.make(
+  "apply",
+  {
+    plan: requiredSingleton("plan", "Exact saved p_<sha256> plan ID or local JSON file"),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      yield* emit(yield* applySync(config.plan))
+    }),
+).pipe(
+  Command.withShortDescription("Revalidate and execute the saved plan with verified readback"),
+  Command.withDescription(
+    "All initial preconditions are checked before the first write. Content, baseline, binding, scope or link changes reject the plan. Confirmed convergence advances each baseline; partial/unknown results retain receipts and require reconcile before another apply. There is no force, direction override or global transaction.",
+  ),
+)
+const syncReconcileCommand = Command.make("reconcile", { binding: bindingArgument }, (config) =>
+  Effect.gen(function* () {
+    yield* emit(yield* reconcileSync(config.binding))
+  }),
+).pipe(
+  Command.withShortDescription("Read back an unfinished operation without repeating writes"),
+  Command.withDescription(
+    "Strongly reads both sides and classifies the recorded intent. Verified convergence may advance the common baseline; divergence retains the old base. Unresolved outcomes stay explicit and fence affected resources.",
+  ),
+)
+const syncUnbindCommand = Command.make(
+  "unbind",
+  {
+    binding: bindingArgument,
+    dryRun: dryRunFlag,
+  },
+  (config) =>
+    Effect.gen(function* () {
+      yield* emit(yield* unbindSync(config.binding, { dryRun: config.dryRun }))
+    }),
+).pipe(
+  Command.withShortDescription(
+    "Deactivate a binding while retaining content, plans, receipts and baseline",
+  ),
+)
+const syncCommand = Command.make("sync").pipe(
+  Command.withShortDescription(
+    "Synchronize existing Notion pages and logical local Skill directories",
+  ),
+  Command.withSubcommands([
+    syncBindCommand,
+    syncStatusCommand,
+    syncPlanCommand,
+    syncApplyCommand,
+    syncReconcileCommand,
+    syncUnbindCommand,
+  ]),
+)
+const cacheStatusCommand = Command.make(
+  "status",
+  {
+    target: Argument.String("target").pipe(Argument.optional),
+    database: databaseFlag,
+  },
+  (config) =>
+    Effect.gen(function* () {
+      yield* emit(
+        yield* cacheStatus(Option.getOrUndefined(config.target), {
+          database: Option.getOrUndefined(config.database),
+        }),
+      )
+    }),
+).pipe(Command.withShortDescription("Inspect effective roots and cached observations offline"))
+const cacheClearCommand = Command.make(
+  "clear",
+  {
+    target: Argument.String("target").pipe(Argument.optional),
+    all: switchFlag("all", "Retire disposable observations in every recorded scope"),
+    database: databaseFlag,
+    dryRun: dryRunFlag,
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const target = Option.getOrUndefined(config.target)
+      if ((target === undefined) === !config.all || (config.all && Option.isSome(config.database)))
+        return yield* Effect.fail(
+          fail(
+            "INVALID_ARGUMENT",
+            "Provide exactly one target or --all; --database is target-only.",
+          ),
+        )
+      yield* emit(
+        yield* clearCache(target, {
+          all: config.all,
+          database: Option.getOrUndefined(config.database),
+          dryRun: config.dryRun,
+        }),
+      )
+    }),
+).pipe(
+  Command.withShortDescription("Move selected cache observations to system Trash"),
+  Command.withDescription(
+    "Retires disposable latest/catalog observations only. Pinned snapshots, content objects, bindings, plans, receipts and common baselines survive. --dry-run previews entries; unavailable system Trash is an explicit prerequisite failure.",
+  ),
+)
+const cacheCommand = Command.make("cache").pipe(
+  Command.withShortDescription("Inspect and retire disposable read observations"),
+  Command.withSubcommands([cacheStatusCommand, cacheClearCommand]),
+)
+
 const root = Command.make("ntn-skills").pipe(
   Command.withDescription(
-    "Discover and read: list [--query text] returns paginated Skill metadata, database ID/title/alias/data-source maps and coverage. read TARGET [--path file] obtains its own complete snapshot; files TARGET lists supporting paths. Follow the returned pinned ref with read relative-path --from REF. open/resolve are optional advanced helpers. Targets accept Name, invocation alias, page ID/URL, skill:// ref or snapshot ID. Pinned reads/files/exports work offline. --refresh belongs to list metadata only.\n\nDatabase selection: --database accepts one ID, URL or exact registered alias; repeated values fail. Register with source add frontend --database DATABASE_ID, then use list --database frontend or read NAME --database frontend. Titles are display labels only. Different databases may contain the same Skill name; name ambiguity reports candidates and their database maps. No --database means broad read discovery. Config set-default accepts the same selector and stores its canonical ID for create/import only.\n\nModify and move: create INPUT creates a new Skill and rejects an existing name in the selected database; import INPUT creates, reuses identical content or replaces same-name content in that database. Both accept ZIP, folder or Markdown and preserve source files/extra frontmatter/nested paths. write TARGET --input FILE replaces one file; unchanged input performs no mutation. export TARGET --output PATH writes a complete ZIP or folder, reuses identical output and rejects different output. Use --dry-run for create/import/write. Database priority for create/import: --database > config.default_database > sole discovered database.\n\nSettings and diagnosis: database list discovers databases without querying Skill rows; source list/add manages registrations; config show/set-default/clear-default owns the creation default. config set-token --stdin/clear-token manages a global plaintext token with private file permissions. Pipe a token from a trusted secret source; never put it in command arguments. Config output exposes token_configured only. doctor checks runtime/auth/API.\n\nOutput: one JSON value on stdout; check ok/error.code. Exit 0 success, 1 operation failure, 2 invalid arguments. Help/version are text; read --raw changes successful content only. No implicit script execution or login. Online access needs Bun and official ntn. Authentication priority: non-empty config.token > NOTION_API_TOKEN > existing ntn login. Clear a stale config token to restore environment/login fallback.\n\nNotion Name uses English letters and single spaces, max 64 characters; lowercase/hyphens yield the invocation alias. Configuration: NTN_SKILLS_CONFIG_HOME > XDG_CONFIG_HOME/ntn-skills > ~/.config/ntn-skills. State: NTN_SKILLS_HOME > XDG_STATE_HOME/ntn-skills > ~/.local/state/ntn-skills.\n\nRecovery: ambiguity requires an explicit page/database; CREATE_CONFLICT means use import to replace or select a new name; OUTPUT_CONFLICT needs a different destination; CATALOG_INCOMPLETE requires fixing failed sources; WRITE_CONFLICT requires a fresh read; WRITE_PARTIAL/WRITE_OUTCOME_UNKNOWN requires readback before retry. Help runs offline without writable configuration. Use ntn-skills COMMAND --help for flags and examples.",
+    "Discover and read: list returns paginated metadata and coverage; read/open/files/export accept Name, alias, page ID/URL, skill:// ref or cached snapshot. Current content uses complete eligible observations for 5m; list defaults to 60s. Mutually exclusive --refresh, --offline and --max-age control freshness. Expired online reads wait for validation, with no stale-on-error fallback. Pinned targets remain immutable/offline and reject refresh/max-age; follow their supporting files with read relative-path --from REF. Cached identity is credential/workspace/endpoint/database scoped.\n\nModify and move: create INPUT creates a page; import INPUT creates/reuses/replaces by invocation name. import INPUT --target TARGET replaces one existing page without identity redirection or create fallback. write TARGET --input FILE replaces one file using online version checks. References become editable child pages; optional Files preserves source bytes/assets. Export writes a reversible ZIP/folder without overwriting differing output. --dry-run previews create/import/write.\n\nSynchronize: sync bind TARGET --path DIR registers a logical directory. Differing first binds require sync plan BINDING --from local|notion. Later one-sided changes select direction from the confirmed common baseline; two-sided differences conflict. sync plan --all validates shared-page candidates and fan-out. sync apply --plan PLAN_ID_OR_FILE rechecks versions, baseline/config identity and complete link chains before execution. Baselines advance only after verified convergence. sync status is provisional/offline by default; --refresh observes current remote state. sync reconcile reads unfinished operations without replay; sync unbind retains content and state.\n\nSettings: database list discovers databases; source list/add manages exact registrations. config set-default affects create/import only. config set-token --stdin/clear-token manages a private plaintext token; never put credentials in arguments. config set-cache-policy/clear-cache-policy manages age defaults. cache status inspects roots/observations offline; cache clear TARGET|--all moves disposable observations to system Trash while retaining snapshots, objects, bindings, plans and receipts. Doctor always checks online.\n\nStorage: configuration NTN_SKILLS_CONFIG_HOME > XDG_CONFIG_HOME/ntn-skills > ~/.config/ntn-skills; state NTN_SKILLS_HOME > XDG_STATE_HOME/ntn-skills > ~/.local/state/ntn-skills; cache NTN_SKILLS_CACHE_HOME > XDG_CACHE_HOME/ntn-skills > ~/.cache/ntn-skills. Authentication config.token > NOTION_API_TOKEN > existing ntn login. Online operations need official ntn; consumers require Node.js >=22.19.0.\n\nOutput: one JSON value; exit 0 success, 1 operational failure, 2 invalid arguments. Help/version are offline text; read --raw changes successful text only. No automatic scripts/login, interactive conflict decisions or force bypass. WRITE_CONFLICT or stale plans need fresh observation/replanning; WRITE_PARTIAL/WRITE_OUTCOME_UNKNOWN and interrupted sync require readback/reconcile before new writes. Provider commits are not server-atomic. Use ntn-skills COMMAND --help for parameters.",
   ),
   Command.withExamples([
     {
@@ -777,6 +1048,8 @@ const root = Command.make("ntn-skills").pipe(
     writeCommand,
     configCommand,
     sourceCommand,
+    syncCommand,
+    cacheCommand,
     resolveCommand,
     doctorCommand,
   ]),
@@ -785,6 +1058,7 @@ const platform = Layer.mergeAll(
   NodeServices.layer,
   NodeHttpClient.layerFetch,
   StoreLive.pipe(Layer.provide(NodeServices.layer)),
+  SyncLocalLive.pipe(Layer.provide(NodeServices.layer)),
 )
 const live = NotionLive.pipe(Layer.provideMerge(platform))
 const args = process.argv.length > 2 ? process.argv.slice(2) : ["--help"]
