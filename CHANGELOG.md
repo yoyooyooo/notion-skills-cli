@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.1 — 2026-10-14
+## 0.1.2 — 2026-10-14
 
-- Support npm OIDC publishing from the private repository without provenance; retain provenance verification for public repositories.
+- Publish from GitHub Actions with npm OIDC; verify provenance for public repositories and registry evidence for private repositories.
 - Simplify installation and release documentation.
 
 ## 0.1.0 — 2026-10-14

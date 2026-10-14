@@ -2,7 +2,7 @@
 
 ## Development setup
 
-Use Bun 1.4.3 for development and the committed lockfile. The published CLI runs on Node.js 22.19.0 or newer; install Node.js and npm as well for the fresh-consumer checks. Clone the repository with an account that has access, then work from the checkout root:
+Use Bun 1.4.3 for development and the committed lockfile. The published CLI runs on Node.js 22.19.0 or newer; install Node.js and npm as well for the fresh-consumer checks. Clone the repository, then work from the checkout root:
 
 ```bash
 git clone https://github.com/yoyooyooo/notion-skills-cli.git

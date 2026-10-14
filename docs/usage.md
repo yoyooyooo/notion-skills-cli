@@ -4,7 +4,7 @@ Start with [English](../README.md#quick-start) or [简体中文](../README.zh-CN
 
 ## Installation options
 
-Install [Node.js 22.19.0 or newer](https://nodejs.org), including npm. Online use also needs the [official Notion CLI](https://developers.notion.com/cli). [Source builds](../CONTRIBUTING.md#development-setup) require private repository access and use Bun 1.4.3.
+Install [Node.js 22.19.0 or newer](https://nodejs.org), including npm. Online use also needs the [official Notion CLI](https://developers.notion.com/cli). [Source builds](../CONTRIBUTING.md#development-setup) use Bun 1.4.3.
 
 ### Install from npm globally
 

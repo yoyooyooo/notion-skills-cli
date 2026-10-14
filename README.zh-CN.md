@@ -23,7 +23,7 @@ ntn-skills read 'Release Review'
 
 `Release Review` 是示例名称，请选择你自己的 `list` 返回的 Skill。npm 安装包、命令和引导 Skill 都叫 **`ntn-skills`**。
 
-已发布到 [npm](https://www.npmjs.com/package/ntn-skills)。GitHub 仓库当前为私有，[从源码构建](CONTRIBUTING.md#development-setup) 需要仓库访问权限。
+已发布到 [npm](https://www.npmjs.com/package/ntn-skills)。从源码构建见[贡献指南](CONTRIBUTING.md#development-setup)。
 
 ## 它解决什么问题？
 
@@ -156,6 +156,6 @@ tarball 安装可获取新版已构建安装包，再执行 npm 安装命令。�
 | 开发环境与兼容政策 | [贡献指南](CONTRIBUTING.md) |
 | 发版与发布结果验证 | [发布流程](docs/releasing.md) |
 
-问题报告和使用咨询请在 [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) 提交脱敏信息；漏洞通过[私下报告渠道](SECURITY.md#reporting-a-vulnerability) 提交。当前仓库渠道需要私有仓库访问权限。开发或构建 CLI 请从[贡献指南](CONTRIBUTING.md) 开始。
+问题报告和使用咨询请在 [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) 提交脱敏信息；漏洞通过[私下报告渠道](SECURITY.md#reporting-a-vulnerability) 提交。开发或构建 CLI 请从[贡献指南](CONTRIBUTING.md) 开始。
 
 [文档目录](docs/README.md) · [变更记录](CHANGELOG.md) · [MIT 许可证](LICENSE)

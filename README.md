@@ -23,7 +23,7 @@ ntn-skills read 'Release Review'
 
 `Release Review` is an example title; choose a Skill returned by your own `list`. The npm package, executable and bootstrap Skill are all **`ntn-skills`**.
 
-Available on [npm](https://www.npmjs.com/package/ntn-skills). The GitHub repository is currently private; [building from source](CONTRIBUTING.md#development-setup) requires repository access.
+Available on [npm](https://www.npmjs.com/package/ntn-skills). For source builds, see [Contributing](CONTRIBUTING.md#development-setup).
 
 ## Why use it?
 
@@ -156,6 +156,6 @@ Remove a global installation with `npm uninstall --global ntn-skills`. Configura
 | Development setup and compatibility policy | [Contributing](CONTRIBUTING.md) |
 | Publishing and release verification | [Releasing](docs/releasing.md) |
 
-Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for sanitized bug reports and usage questions; vulnerabilities use [private reporting](SECURITY.md#reporting-a-vulnerability). Repository channels currently require access to the private repository. To develop or build the CLI, start with [Contributing](CONTRIBUTING.md).
+Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for sanitized bug reports and usage questions; vulnerabilities use [private reporting](SECURITY.md#reporting-a-vulnerability). To develop or build the CLI, start with [Contributing](CONTRIBUTING.md).
 
 [Documentation index](docs/README.md) · [Changelog](CHANGELOG.md) · [MIT license](LICENSE)
