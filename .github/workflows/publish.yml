@@ -247,8 +247,13 @@ jobs:
           export NPM_ATTESTATION_URL="$attestation_url"
           node <<'NODE_PROVENANCE'
           (async () => {
-            const response = await fetch(process.env.NPM_ATTESTATION_URL);
-            if (!response.ok) throw new Error(`Unable to fetch npm attestation: ${response.status}`);
+            let response;
+            for (let attempt = 1; attempt <= 20; attempt++) {
+              response = await fetch(process.env.NPM_ATTESTATION_URL);
+              if (response.ok) break;
+              if (response.status !== 404 || attempt === 20) throw new Error(`Unable to fetch npm attestation: ${response.status}`);
+              await new Promise((resolve) => setTimeout(resolve, 15000));
+            }
             const document = await response.json();
             const attestation = document.attestations?.find((item) => item.predicateType === "https://slsa.dev/provenance/v1");
             if (!attestation?.bundle?.dsseEnvelope?.payload) throw new Error("SLSA provenance statement is missing");

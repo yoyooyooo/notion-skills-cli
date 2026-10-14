@@ -72,54 +72,56 @@ test("relative resolution preserves snapshot without consulting Notion", async (
   })
 })
 
-test("all help routes work with unavailable ntn and inaccessible state/configuration directories", async () => {
-  for (const command of [
-    [],
-    ["list"],
-    ["database"],
-    ["database", "list"],
-    ["open"],
-    ["read"],
-    ["files"],
-    ["create"],
-    ["import"],
-    ["export"],
-    ["write"],
-    ["config"],
-    ["config", "show"],
-    ["config", "set-default"],
-    ["config", "clear-default"],
-    ["config", "set-token"],
-    ["config", "clear-token"],
-    ["source"],
-    ["source", "add"],
-    ["source", "list"],
-    ["resolve"],
-    ["doctor"],
-  ]) {
+for (const command of [
+  [],
+  ["list"],
+  ["database"],
+  ["database", "list"],
+  ["open"],
+  ["read"],
+  ["files"],
+  ["create"],
+  ["import"],
+  ["export"],
+  ["write"],
+  ["config"],
+  ["config", "show"],
+  ["config", "set-default"],
+  ["config", "clear-default"],
+  ["config", "set-token"],
+  ["config", "clear-token"],
+  ["source"],
+  ["source", "add"],
+  ["source", "list"],
+  ["resolve"],
+  ["doctor"],
+]) {
+  test(`${command.join(" ") || "root"} help works with unavailable ntn and inaccessible state/configuration directories`, async () => {
     const result = await invoke([...command, "--help"])
     expect(result.exit).toBe(0)
     expect(result.stderr).toBe("")
-  }
-  const implicitHelp = await invoke([])
-  expect(implicitHelp.exit).toBe(0)
-  expect(implicitHelp.stderr).toBe("")
+  })
+}
+
+test("implicit root help works with unavailable ntn and inaccessible state/configuration directories", async () => {
+  const result = await invoke([])
+  expect(result.exit).toBe(0)
+  expect(result.stderr).toBe("")
 })
 
-test("database selection rejects repeated values before any read or mutation handler", async () => {
-  const commands = [
-    ["list"],
-    ["database", "list"],
-    ["read", "sample-skill"],
-    ["open", "sample-skill"],
-    ["files", "sample-skill"],
-    ["create", "missing.md"],
-    ["import", "missing.md"],
-    ["export", "sample-skill", "--output", "output.zip"],
-    ["write", "sample-skill", "--input", "missing.md"],
-    ["source", "add", "personal"],
-  ]
-  for (const command of commands) {
+for (const command of [
+  ["list"],
+  ["database", "list"],
+  ["read", "sample-skill"],
+  ["open", "sample-skill"],
+  ["files", "sample-skill"],
+  ["create", "missing.md"],
+  ["import", "missing.md"],
+  ["export", "sample-skill", "--output", "output.zip"],
+  ["write", "sample-skill", "--input", "missing.md"],
+  ["source", "add", "personal"],
+]) {
+  test(`${command.join(" ")} rejects repeated database values before its handler`, async () => {
     for (const flags of [
       ["--database", "frontend", "--database", "ops"],
       ["--database=frontend", "--database=ops"],
@@ -130,7 +132,10 @@ test("database selection rejects repeated values before any read or mutation han
       expect(JSON.parse(result.stdout).error.code).toBe("INVALID_ARGUMENT")
       expect(result.stderr).toBe("")
     }
-  }
-  const help = await invoke(["list", "--database", "frontend", "--database", "ops", "--help"])
-  expect(help.exit).toBe(0)
+  })
+}
+
+test("explicit help takes precedence over repeated database values", async () => {
+  const result = await invoke(["list", "--database", "frontend", "--database", "ops", "--help"])
+  expect(result.exit).toBe(0)
 })

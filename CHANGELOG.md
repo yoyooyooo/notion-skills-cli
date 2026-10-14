@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Wait for the npm attestation document to become available after registry metadata appears.
+- Give each CLI boundary scenario its own test timeout.
+
 ## 0.1.2 — 2026-10-14
 
 - Publish from GitHub Actions with npm OIDC; verify provenance for public repositories and registry evidence for private repositories.
