@@ -6,7 +6,7 @@ Security fixes target the latest patch of the current 0.x minor series. Upgrade 
 
 ## Reporting a vulnerability
 
-The intended private channel is [GitHub vulnerability reporting](https://github.com/yoyooyooo/notion-skills-cli/security/advisories/new). The repository is currently private, and activation of private reporting has not been verified; the link is not evidence that the channel is currently available. When enabled, include affected versions, a minimal sanitized reproduction, impact and any proposed mitigation. Do not post credentials, signed URLs, private Skill contents or personal database identifiers in a public issue.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/yoyooyooo/notion-skills-cli/security/advisories/new). Include affected versions, a minimal sanitized reproduction, impact and any proposed mitigation. Do not post credentials, signed URLs, private Skill contents or personal database identifiers in a public issue.
 
 The maintainer aims to acknowledge reports within seven days. This is a response target, not a guaranteed response or fix deadline. Investigation and remediation depend on impact, reproducibility and available maintainer time. Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for ordinary bugs and usage questions.
 
