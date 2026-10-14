@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test"
-import { BunHttpClient, BunServices } from "@effect/platform-bun"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ByteSize, Effect, FileSystem, Layer, Option } from "effect"
 import type { HttpClient } from "effect/http"
 import { decode, fail, property } from "../src/model.ts"
@@ -177,15 +178,19 @@ function fixture(failMetadata = false) {
     readFile: () => Effect.succeed(input),
   })
   const live = Layer.mergeAll(
-    BunServices.layer,
-    BunHttpClient.layer,
+    NodeServices.layer,
+    NodeHttpClient.layerFetch,
     api,
     store,
     Layer.succeed(FileSystem.FileSystem, fs),
   )
   return {
     run: <A, E>(
-      effect: Effect.Effect<A, E, BunServices.BunServices | HttpClient.HttpClient | Notion | Store>,
+      effect: Effect.Effect<
+        A,
+        E,
+        NodeServices.NodeServices | HttpClient.HttpClient | Notion | Store
+      >,
     ) => Effect.runPromise(effect.pipe(Effect.provide(live))),
     changeRemote: () => {
       revision++

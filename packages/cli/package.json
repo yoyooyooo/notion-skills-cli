@@ -1,5 +1,5 @@
 {
-  "name": "notion-skills-cli",
+  "name": "ntn-skills",
   "version": "0.1.0",
   "description": "Discover, read and maintain Notion skills with immutable task snapshots",
   "type": "module",
@@ -20,7 +20,7 @@
     "notion",
     "agent-skills",
     "cli",
-    "bun",
+    "nodejs",
     "snapshots"
   ],
   "publishConfig": {
@@ -35,6 +35,7 @@
     "skills",
     "docs",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "CONTRIBUTING.md",
     "SECURITY.md",
@@ -42,11 +43,11 @@
     "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
-    "bun": ">=1.3.0"
+    "node": ">=22.19.0"
   },
   "dependencies": {
     "effect": "4.0.4",
-    "@effect/platform-bun": "4.0.4"
+    "@effect/platform-node": "4.0.4"
   },
   "devDependencies": {
     "@notion-skills-cli/core": "workspace:*"

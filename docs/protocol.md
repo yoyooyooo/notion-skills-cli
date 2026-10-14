@@ -1,8 +1,10 @@
 # CLI and ref contract
 
-The executable is `ntn-skills`; package/project name is `notion-skills-cli`. Normal operation outputs one JSON value on stdout. Help and version use Effect CLI's text rendering. `--raw` opts into successful plain text. Failures always return JSON, including parse errors, and nonzero status.
+The npm package and executable are `ntn-skills`; the source repository is `notion-skills-cli`. Normal operation outputs one JSON value on stdout. Help and version use Effect CLI's text rendering. `--raw` opts into successful plain text. Failures always return JSON, including parse errors, and nonzero status.
 
-For installation and a first successful read, use [the README Quick start](../README.md#quick-start). [Host integration](host-integration.md) describes adapter behavior, [the bootstrap integration reference](../skills/ntn-skills/references/integration.md) covers Agent use, and [the release procedure](releasing.md) describes distribution. Version 0.1.0 is experimental and prepared for its first release.
+The distributed CLI requires Node.js 22.19.0 or newer, matching the Node platform dependency's minimum. npm installs the built tarball and its runtime dependencies; Bun is used only for repository development, building, packing and tests. Online operations additionally require the official `ntn` CLI. See [installation](../README.md#installation) and [contributor setup](../CONTRIBUTING.md#development-setup).
+
+For installation and a first successful read, use [the README Quick start](../README.md#quick-start). [Host integration](host-integration.md) describes adapter behavior, [the bootstrap integration reference](../skills/ntn-skills/references/integration.md) covers Agent use, and [the release procedure](releasing.md) describes distribution.
 
 Consumers should accept additional JSON fields and treat unfamiliar error codes as structured failures. Existing fields and successful operations keep their documented meaning within patch releases. A 0.x minor release may make breaking changes, with migration guidance in this reference and [CHANGELOG](../CHANGELOG.md). See [the compatibility policy](../CONTRIBUTING.md#compatibility-and-deprecation).
 
@@ -66,7 +68,7 @@ Both variables isolate cache scopes and reach the `ntn` child process through it
 
 State defaults to `~/.local/state/ntn-skills`, with `NTN_SKILLS_HOME` taking precedence over `$XDG_STATE_HOME/ntn-skills`. It holds `catalogs`, immutable `snapshots`, content-addressed `objects` and private `uploads` staging. List metadata has a 60-second freshness TTL and `list --refresh` bypasses it. No automatic garbage collection deletes metadata cache files, snapshots, objects or staging when that TTL elapses or an upload completes. Configuration remains separate from state.
 
-The CLI sends no analytics or telemetry requests of its own. Online operations call the selected `ntn` process for Notion authentication/API calls and uploads, and download archives from Notion's signed URLs. This does not attest to `ntn`'s own policies. Local access covers configuration/state, explicitly supplied input paths and requested output destinations. Explicit mutations may upload local inputs; imported scripts are never executed. See [SECURITY](../SECURITY.md) for trust and retention boundaries, and [uninstall guidance](../README.md#upgrade-and-uninstall) for optional cleanup.
+The CLI sends no analytics or telemetry requests of its own. Online operations call the selected `ntn` process for Notion authentication/API calls and uploads, and download archives from Notion's signed URLs. This does not attest to `ntn`'s own policies. Local access covers configuration/state, explicitly supplied input paths and requested output destinations. Explicit mutations may upload local inputs; imported scripts are never executed. See [SECURITY](../SECURITY.md) for trust and retention boundaries, and [uninstall guidance](usage.md#upgrade-and-uninstall) for optional cleanup.
 
 ## Mutation contract
 

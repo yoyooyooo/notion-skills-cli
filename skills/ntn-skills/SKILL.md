@@ -1,7 +1,7 @@
 ---
 name: ntn-skills
 description: Discover, read, create, import, export and maintain reusable workflows in Notion Skills Databases through ntn-skills. Use when a task may benefit from the Notion skill library, when the user names a remote skill, follows skill:// references, or asks to create/import/export/update a Skill. Read metadata first, then only needed files; use pinned refs as the baseline for authorized writes.
-compatibility: Requires Bun, official ntn CLI, ntn-skills, and an existing Notion Read content connection with Skills API access. Creating/importing/updating requires Insert/Update content capabilities. Shell tool access is sufficient; host protocol adapters are optional.
+compatibility: Requires Node.js >= 22.19.0, official ntn CLI, ntn-skills, and an existing Notion Read content connection with Skills API access. Creating/importing/updating requires Insert/Update content capabilities. Shell tool access is sufficient; host protocol adapters are optional.
 ---
 
 # Remote Notion skills

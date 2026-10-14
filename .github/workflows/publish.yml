@@ -26,6 +26,8 @@ jobs:
       contents: read
       id-token: write
     runs-on: ubuntu-latest
+    env:
+      NPM_CONFIG_PROVENANCE: ${{ github.event.repository.private && 'false' || 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -56,8 +58,8 @@ jobs:
           package_name="$(node -p "require('./packages/cli/package.json').name")"
           package_version="$(node -p "require('./packages/cli/package.json').version")"
           expected_tag="v${package_version}"
-          if [ "$package_name" != "notion-skills-cli" ]; then
-            echo "Expected package name notion-skills-cli, got: $package_name" >&2
+          if [ "$package_name" != "ntn-skills" ]; then
+            echo "Expected package name ntn-skills, got: $package_name" >&2
             exit 1
           fi
           if [ "$release_tag" != "$expected_tag" ]; then
@@ -218,7 +220,7 @@ jobs:
             echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already on npm; skipping npm publish."
             exit 0
           fi
-          npm publish "$TARBALL" --registry https://registry.npmjs.org --access public --tag "${NPM_DIST_TAG}" --provenance
+          npm publish "$TARBALL" --registry https://registry.npmjs.org --access public --tag "${NPM_DIST_TAG}"
       - name: Verify npm package, dist-tag, and provenance
         run: |
           attestation_url=""
@@ -228,7 +230,7 @@ jobs:
             integrity="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.integrity --registry https://registry.npmjs.org 2>/tmp/npm-integrity.err || true)"
             dist_tag_version="$(npm view "$PACKAGE_NAME" "dist-tags.${NPM_DIST_TAG}" --registry https://registry.npmjs.org 2>/tmp/npm-dist-tag.err || true)"
             attestation_url="$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" dist.attestations.url --registry https://registry.npmjs.org 2>/tmp/npm-attestation.err || true)"
-            if [ "$published_name" = "$PACKAGE_NAME" ] && [ "$published_version" = "$PACKAGE_VERSION" ] && [ "$integrity" = "$LOCAL_INTEGRITY" ] && bun scripts/release-evidence.ts channel "$PACKAGE_VERSION" "$dist_tag_version" "$NPM_ALREADY_PUBLISHED" && [ -n "$attestation_url" ]; then
+            if [ "$published_name" = "$PACKAGE_NAME" ] && [ "$published_version" = "$PACKAGE_VERSION" ] && [ "$integrity" = "$LOCAL_INTEGRITY" ] && bun scripts/release-evidence.ts channel "$PACKAGE_VERSION" "$dist_tag_version" "$NPM_ALREADY_PUBLISHED" && { [ "$NPM_CONFIG_PROVENANCE" = "false" ] || [ -n "$attestation_url" ]; }; then
               break
             fi
             echo "npm release evidence not visible yet. version=$published_version integrity=$integrity tag=$NPM_DIST_TAG:$dist_tag_version provenance=$attestation_url" >&2
@@ -238,6 +240,10 @@ jobs:
             fi
             sleep 15
           done
+          if [ "$NPM_CONFIG_PROVENANCE" = "false" ]; then
+            echo "Private repository: registry evidence verified; provenance is unavailable."
+            exit 0
+          fi
           export NPM_ATTESTATION_URL="$attestation_url"
           node <<'NODE_PROVENANCE'
           (async () => {

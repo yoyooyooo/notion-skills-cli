@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { BunServices } from "@effect/platform-bun"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, FileSystem, Layer, PlatformError } from "effect"
 import { ConfigSchema, type SkillsError } from "../src/model.ts"
 import {
@@ -67,7 +67,7 @@ async function isolated<A>(
         files.delete(from)
       }),
   })
-  const host = Layer.mergeAll(BunServices.layer, Layer.succeed(FileSystem.FileSystem, fs))
+  const host = Layer.mergeAll(NodeServices.layer, Layer.succeed(FileSystem.FileSystem, fs))
   const live = StoreLive.pipe(Layer.provide(host))
   const run = <T>(effect: Effect.Effect<T, SkillsError, Store>) =>
     Effect.runPromise(effect.pipe(Effect.provide(live)))

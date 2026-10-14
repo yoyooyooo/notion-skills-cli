@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Clock, Effect, Layer } from "effect"
-import { BunServices } from "@effect/platform-bun"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { catalog } from "../src/catalog.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
@@ -77,7 +77,7 @@ test("discovery follows both search and row cursors, excludes ordinary databases
   })
   const result = await Effect.runPromise(
     catalog({ refresh: true }).pipe(
-      Effect.provide(Layer.mergeAll(BunServices.layer, api, memoryStore)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, api, memoryStore)),
     ),
   )
   expect(result.skills).toEqual([
@@ -122,7 +122,7 @@ test("failed data sources remain visible rather than becoming empty successful c
   })
   const result = await Effect.runPromise(
     catalog({ refresh: true }).pipe(
-      Effect.provide(Layer.mergeAll(BunServices.layer, api, memoryStore)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, api, memoryStore)),
     ),
   )
   expect(result.coverage.failed_sources).toEqual([
@@ -163,7 +163,7 @@ test("invalid Notion titles cannot produce a successful catalog", async () => {
   })
   const result = await Effect.runPromise(
     catalog({ refresh: true }).pipe(
-      Effect.provide(Layer.mergeAll(BunServices.layer, api, memoryStore)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, api, memoryStore)),
       Effect.result,
     ),
   )
@@ -218,7 +218,7 @@ test("metadata cached before the naming contract cannot bypass title validation"
   })
   const result = await Effect.runPromise(
     catalog().pipe(
-      Effect.provide(Layer.mergeAll(BunServices.layer, api, cachedStore)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, api, cachedStore)),
       Effect.result,
     ),
   )
@@ -264,7 +264,7 @@ test("switching credentials for one user isolates cached discovery and switching
   })
   const run = () =>
     Effect.runPromise(
-      catalog().pipe(Effect.provide(Layer.mergeAll(BunServices.layer, api, cachedStore))),
+      catalog().pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, api, cachedStore))),
     )
   const first = await run()
   credential = "second-credential"
@@ -330,7 +330,7 @@ test("same-name skills stay distinct by database, alias selection scopes lookup 
   const run = (database?: string) =>
     Effect.runPromise(
       catalog({ database, refresh: true }).pipe(
-        Effect.provide(Layer.mergeAll(BunServices.layer, api, store)),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, api, store)),
       ),
     )
   const merged = await run()

@@ -6,15 +6,16 @@ const result = await Bun.build({
   entrypoints: [new URL("src/main.ts", import.meta.url).pathname],
   outdir: new URL("dist", import.meta.url).pathname,
   naming: "ntn-skills.js",
-  target: "bun",
+  target: "node",
   format: "esm",
-  external: ["effect", "effect/*", "@effect/platform-bun", "@effect/platform-bun/*"],
+  external: ["effect", "effect/*", "@effect/platform-node", "@effect/platform-node/*"],
 })
 if (!result.success) throw new AggregateError(result.logs, "Build failed")
 await chmod(target + "dist/ntn-skills.js", 0o755)
 await mkdir(target + "skills", { recursive: true })
 await cp(root + "skills/ntn-skills", target + "skills/ntn-skills", { recursive: true })
 await cp(root + "README.md", target + "README.md")
+await cp(root + "README.zh-CN.md", target + "README.zh-CN.md")
 await cp(root + "LICENSE", target + "LICENSE")
 await cp(root + "docs", target + "docs", { recursive: true })
 await cp(root + "CONTRIBUTING.md", target + "CONTRIBUTING.md")

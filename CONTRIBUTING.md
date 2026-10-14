@@ -1,14 +1,29 @@
 # Contributing
 
-Use Bun 1.4.3 for development and the committed lockfile. The CLI's minimum runtime is Bun 1.3.0. From the checkout root:
+## Development setup
+
+Use Bun 1.4.3 for development and the committed lockfile. The published CLI runs on Node.js 22.19.0 or newer; install Node.js and npm as well for the fresh-consumer checks. Clone the repository with an account that has access, then work from the checkout root:
 
 ```bash
+git clone https://github.com/yoyooyooo/notion-skills-cli.git
+cd notion-skills-cli
 bun install --frozen-lockfile
-bun run check && bun run package:check
 bun run dev --help
+bun run check && bun run package:check
 ```
 
-`check` runs type checking, formatting checks, tests and the distribution build. `package:check` validates documentation links, packs the CLI and installs it in a fresh consuming project for a smoke check. Run both before proposing a pull request or release. Tests must not depend on personal credentials or mutate a live Notion workspace. Keep live verification separate and disclose the environment and authorization used.
+Build and pack a consumer artifact from the checkout root:
+
+```bash
+bun run build
+node packages/cli/dist/ntn-skills.js --help
+mkdir -p release
+bun pm pack --cwd packages/cli --destination ../../release
+```
+
+The archive filename follows the package version. Consumers install that tarball with npm as described in [the README](README.md#installation). Update source with `git pull --ff-only`, reinstall dependencies and rebuild before producing a new tarball.
+
+`check` runs type checking, formatting checks, tests and the Node.js distribution build. `package:check` validates documentation links, packs the CLI and installs it with npm in a fresh consuming project, then executes the installed binary with Node.js. CI covers Node.js 22 and 24 on Linux and macOS. Run both checks before proposing a pull request or release. Tests must not depend on personal credentials or mutate a live Notion workspace. Keep live verification separate and disclose the environment and authorization used.
 
 Keep Effect and platform versions aligned at 4.0.4. New commands use `effect/cli`; external execution uses scoped Effect platform capabilities. Pure path and identity transformations remain ordinary TypeScript. Preserve the [JSON and ref contract](docs/protocol.md), explicit discovery coverage and immutable snapshot semantics.
 
@@ -20,7 +35,7 @@ Add behavior tests for plausible consumer-visible failures: ambiguity, paginatio
 
 The 0.x series is experimental. A minor release may change public commands or protocol behavior incompatibly; a patch release preserves existing semantics and provides compatible fixes. Consumers should tolerate additional JSON fields and handle unfamiliar error codes as structured failures. Additional fields or codes must not silently change the meaning of existing fields or successful operations.
 
-Document a deprecation and its replacement in the relevant reference and [CHANGELOG](CHANGELOG.md), including migration steps and the version that removes it. Breaking changes must be called out before consumers upgrade. Update [README](README.md), [protocol documentation](docs/protocol.md), [host integration](docs/host-integration.md) and affected Skill references when public behavior changes.
+Document a deprecation and its replacement in the relevant reference and [CHANGELOG](CHANGELOG.md), including migration steps and the version that removes it. Breaking changes must be called out before consumers upgrade. Update both READMEs ([English](README.md) and [简体中文](README.zh-CN.md)), the [usage guide](docs/usage.md), [protocol documentation](docs/protocol.md), [host integration](docs/host-integration.md) and affected Skill references when public behavior changes. Keep language navigation, commands, release status, capabilities and limits equivalent; detailed guides are maintained in English. Verify README rendering, anchors and packaged language files when the entry structure changes.
 
 ## Git and release workflow
 

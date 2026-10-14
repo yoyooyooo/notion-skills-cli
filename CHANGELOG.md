@@ -1,21 +1,31 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-10-14
 
-Version **0.1.0** is prepared as the initial experimental release. It has not been published to npm; local builds and tarballs do not establish publication. See [the release procedure](docs/releasing.md) for immutable annotated tags, registry readback and GitHub Release ordering.
+- Support npm OIDC publishing from the private repository without provenance; retain provenance verification for public repositories.
+- Simplify installation and release documentation.
+
+## 0.1.0 — 2026-10-14
+
+Initial npm release, published with maintainer web authentication.
 
 ### Public repository baseline
 
-- Add an English installation and first-read walkthrough, local linking and tarball consumption, upgrade and uninstall instructions, and explicit runtime/platform evidence boundaries in [README](README.md).
+- Set the public npm package name to `ntn-skills`, matching the executable and bootstrap Skill; retain the `notion-skills-cli` source repository.
+- Add equivalent English and Simplified Chinese READMEs with a centered header, language switch and section navigation; package both language files.
+- Move detailed operations into the [usage guide](docs/usage.md), and document source-access and release status.
+- Separate consumer installation and use from contributor source/build steps in both READMEs; consumers install a built tarball with npm and run on Node.js 22.19.0 or newer.
+- Replace the Bun runtime platform, executable shebang and distribution target with Node.js; keep Bun 1.4.3 for development/build/tests, and exercise npm consumers on Node.js 22 and 24 in CI.
+- Add an English installation and first-read walkthrough, tarball consumption, upgrade and uninstall instructions, and explicit runtime/platform evidence boundaries in [README](README.md).
 - Document metadata freshness separately from retained snapshots and upload staging, inherited workspace/API endpoint settings, network behavior and optional local data cleanup across the [protocol](docs/protocol.md), [host integration](docs/host-integration.md) and [Skill reference](skills/ntn-skills/references/integration.md).
 - Use the returned snapshot ID to list every attachment; a pinned file ref filters only its own path.
 - Set the public issue and private vulnerability-reporting channels, security support for the latest patch of the current 0.x series, and a seven-day acknowledgement target without a promised fix deadline in [SECURITY](SECURITY.md).
-- Define 0.x compatibility, deprecation migration guidance and fast-forward integration in [CONTRIBUTING](CONTRIBUTING.md), and prepare the package/release metadata and CI release lane without claiming a published package.
+- Define 0.x compatibility, deprecation migration guidance and fast-forward integration in [CONTRIBUTING](CONTRIBUTING.md), and prepare the package/release metadata and CI release lane.
 - Update production archive dependency `fflate` to 0.8.3.
 
 ### Initial 0.1.0 functionality
 
-- Add Bun monorepo with Effect 4.0.4 CLI, platform services, schemas, and scoped ntn transport.
+- Add Bun development monorepo with a Node.js CLI using Effect 4.0.4, platform services, schemas, and scoped ntn transport.
 - Discover accessible typed Skills Databases with explicit search coverage and registered-source supplementation.
 - Resolve exact skill names, metadata-derived aliases, page IDs, and page URLs; return structured missing/ambiguous/incomplete errors.
 - Read immutable export snapshots one file at a time, including line ranges, UTF-8 BOM text, and explicit binary output.

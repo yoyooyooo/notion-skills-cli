@@ -9,7 +9,7 @@
   "localCheckCommand": ["bun", "run", "check"],
   "commitMessage": "chore: release {tag}",
   "publishMode": "npm",
-  "publishPackage": "notion-skills-cli",
+  "publishPackage": "ntn-skills",
   "publishRegistry": "https://registry.npmjs.org",
   "allowPrerelease": true,
   "stableDistTag": "latest",

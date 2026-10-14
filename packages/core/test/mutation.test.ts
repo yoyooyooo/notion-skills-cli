@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { BunServices } from "@effect/platform-bun"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
 import {
   addSource,
@@ -61,7 +61,7 @@ function setup(initial: unknown, ids: string[], broken?: string) {
       return Effect.fail(fail("UNEXPECTED", "unexpected"))
     },
   })
-  const live = Layer.mergeAll(BunServices.layer, store, api)
+  const live = Layer.mergeAll(NodeServices.layer, store, api)
   const run = <A, E>(operation: Effect.Effect<A, E, Store | Notion>) =>
     Effect.runPromise(operation.pipe(Effect.provide(live)))
   return { run, source, config: () => decode(ConfigSchema, config) }

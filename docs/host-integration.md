@@ -4,6 +4,8 @@ Start with [installation and Quick start](../README.md#installation) before conf
 
 ## Portable shell integration
 
+The host needs Node.js 22.19.0 or newer on PATH to launch the installed `ntn-skills` executable. Install the built package with npm using [the consumer installation instructions](../README.md#installation); online operations also need the official `ntn` CLI. Bun belongs to the repository's development/build path.
+
 Install `skills/ntn-skills` in the host's supported local skill directory. Add this instruction when the host needs a broad remote-library trigger:
 
 > When a task may benefit from a workflow in the Notion skill library, use the ntn-skills bootstrap Skill to discover applicable workflows before choosing one. Read metadata first, then only the selected workflow's files.
@@ -14,7 +16,7 @@ Global configuration defaults to `~/.config/ntn-skills/config.json`; set `NTN_SK
 
 `NTN_SKILLS_NTN_BIN` selects the official CLI executable (default `ntn`). `NOTION_WORKSPACE_ID` and `NOTION_API_BASE_URL` enter the authentication scope and are inherited by `ntn`; its authentication rules govern workspace selection, and `ntn api` honors the API base URL override. Use a trusted executable and endpoint, since authenticated API requests may reach that endpoint. Signed archive downloads follow the service's returned URLs independently. See [the environment contract](protocol.md#environment-and-local-storage).
 
-The CLI sends no analytics requests of its own. Online calls use `ntn` and signed Notion export downloads; this does not attest to `ntn`'s own privacy behavior. Local access covers application configuration/state, explicit inputs and requested outputs. Hosts should disclose that snapshots and `uploads` staging contain private Skill or input bytes and have no automatic garbage collection. The 60-second metadata TTL controls freshness only. Uninstalling the package leaves local data in place; use [the cleanup guidance](../README.md#upgrade-and-uninstall) and [security policy](../SECURITY.md) to decide what to retain.
+The CLI sends no analytics requests of its own. Online calls use `ntn` and signed Notion export downloads; this does not attest to `ntn`'s own privacy behavior. Local access covers application configuration/state, explicit inputs and requested outputs. Hosts should disclose that snapshots and `uploads` staging contain private Skill or input bytes and have no automatic garbage collection. The 60-second metadata TTL controls freshness only. Uninstalling the package leaves local data in place; use [the cleanup guidance](usage.md#upgrade-and-uninstall) and [security policy](../SECURITY.md) to decide what to retain.
 
 ## Startup metadata integration
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { BunServices } from "@effect/platform-bun"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
 import { exportSkill, portableIdentity, snapshotPortable } from "../src/export.ts"
 import { readImportZip } from "../src/import.ts"
@@ -31,8 +31,8 @@ const original: PortableSkill = {
     { path: "assets/data.bin", bytes: new Uint8Array([0, 255, 7]) },
   ],
 }
-const runPure = <A, E>(operation: Effect.Effect<A, E, BunServices.BunServices>) =>
-  Effect.runPromise(operation.pipe(Effect.provide(BunServices.layer)))
+const runPure = <A, E>(operation: Effect.Effect<A, E, NodeServices.NodeServices>) =>
+  Effect.runPromise(operation.pipe(Effect.provide(NodeServices.layer)))
 
 test("portable ZIP preserves source bytes, metadata, main filename and nested paths across multiple cycles", async () => {
   let skill = original
@@ -116,7 +116,7 @@ async function fixture(source?: PortableSkill) {
         return { output: path, reused: false }
       }),
   })
-  const live = Layer.mergeAll(BunServices.layer, store)
+  const live = Layer.mergeAll(NodeServices.layer, store)
   const run = <A, E>(operation: Effect.Effect<A, E, any>) =>
     Effect.runPromise(operation.pipe(Effect.provide(live)) as Effect.Effect<A, E>)
   return { snapshot, objects, output, run }

@@ -1,7 +1,8 @@
 # Documentation
 
-Start with the [repository README](../README.md) for requirements, installation and the first successful read. Version 0.1.0 is experimental and prepared for its first release; local artifacts do not establish registry publication.
+Start with the repository README in [English](../README.md) or [简体中文](../README.zh-CN.md) for requirements, installation and the first successful read. Source development/build instructions belong to [Contributing](../CONTRIBUTING.md#development-setup). Detailed guides below are maintained in English.
 
+- [Usage guide](usage.md): installation variants, authentication, discovery, fixed-version reads, import/export/write, upgrade and uninstall.
 - [CLI and ref contract](protocol.md): identities, selectors, fixed snapshots, JSON responses, storage, mutation boundaries and errors.
 - [Host integration](host-integration.md): metadata injection, activation state and optional Read/Write adapters.
 - [Releasing](releasing.md): immutable tags, first publication, Trusted Publishing, registry verification and repair.

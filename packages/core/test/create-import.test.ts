@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test"
-import { BunHttpClient, BunServices } from "@effect/platform-bun"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ByteSize, Effect, FileSystem, Layer, Option, PlatformError } from "effect"
 import { createSkill, importSkill } from "../src/mutation.ts"
 import { decode, fail, property } from "../src/model.ts"
@@ -208,8 +209,8 @@ function fixture() {
           ),
   })
   const live = Layer.mergeAll(
-    BunServices.layer,
-    BunHttpClient.layer,
+    NodeServices.layer,
+    NodeHttpClient.layerFetch,
     api,
     store,
     Layer.succeed(FileSystem.FileSystem, fs),

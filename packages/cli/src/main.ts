@@ -1,5 +1,7 @@
-#!/usr/bin/env bun
-import { BunHttpClient, BunRuntime, BunServices } from "@effect/platform-bun"
+#!/usr/bin/env node
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Cause, Effect, Layer, Option, Stdio, Stream } from "effect"
 import { Argument, CliConfig, CliError, CliOutput, Command, Flag, GlobalFlag } from "effect/cli"
 import {
@@ -780,9 +782,9 @@ const root = Command.make("ntn-skills").pipe(
   ]),
 )
 const platform = Layer.mergeAll(
-  BunServices.layer,
-  BunHttpClient.layer,
-  StoreLive.pipe(Layer.provide(BunServices.layer)),
+  NodeServices.layer,
+  NodeHttpClient.layerFetch,
+  StoreLive.pipe(Layer.provide(NodeServices.layer)),
 )
 const live = NotionLive.pipe(Layer.provideMerge(platform))
 const args = process.argv.length > 2 ? process.argv.slice(2) : ["--help"]
@@ -829,4 +831,4 @@ const program = Command.runWith(root, { version, renderErrors: false })(args).pi
   ),
   Effect.provide(Layer.mergeAll(live, cliConfiguration)),
 )
-BunRuntime.runMain(program, { disableErrorReporting: true })
+NodeRuntime.runMain(program, { disableErrorReporting: true })

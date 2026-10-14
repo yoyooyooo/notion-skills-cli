@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, join, relative as relativePath } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
@@ -28,17 +28,15 @@ const entries = (await run(["tar", "-tzf", archive]))
   .filter((entry) => !entry.endsWith("/"))
 const source = JSON.parse(await readFile(join(root, "packages/cli/package.json"), "utf8"))
 const manifest = JSON.parse(await run(["tar", "-xOf", archive, "package/package.json"]))
-if (
-  manifest.name !== "notion-skills-cli" ||
-  manifest.version !== source.version ||
-  manifest.private
-)
+if (manifest.name !== "ntn-skills" || manifest.version !== source.version || manifest.private)
   throw new Error("Packed package identity differs from the public CLI manifest.")
 if (
   manifest.bin?.["ntn-skills"] !== "dist/ntn-skills.js" ||
   !entries.includes("package/dist/ntn-skills.js")
 )
   throw new Error("Packed CLI entrypoint is missing.")
+if (manifest.engines?.node !== ">=22.19.0" || manifest.engines?.bun)
+  throw new Error("Packed consumer runtime must be Node.js 22.19.0 or newer.")
 for (const section of ["dependencies", "optionalDependencies", "peerDependencies"])
   for (const [dependency, value] of Object.entries(manifest[section] ?? {}))
     if (typeof value !== "string" || /^(?:catalog|workspace|file|link):/.test(value))
@@ -47,12 +45,14 @@ if (manifest.repository?.url !== "git+https://github.com/yoyooyooo/notion-skills
   throw new Error("Packed repository identity differs.")
 const publicFiles = [
   "README.md",
+  "README.zh-CN.md",
   "LICENSE",
   "CONTRIBUTING.md",
   "SECURITY.md",
   "CHANGELOG.md",
   "THIRD_PARTY_NOTICES.md",
   "docs/README.md",
+  "docs/usage.md",
   "docs/protocol.md",
   "docs/host-integration.md",
   "docs/releasing.md",
@@ -73,16 +73,24 @@ for (const file of publicFiles) {
   const bytes = await readFile(join(root, file))
   const bundled = await run(["tar", "-xOf", archive, `package/${file}`])
   if (bundled !== bytes.toString("utf8")) throw new Error(`Bundled document is stale: ${file}`)
-  for (const match of bundled.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
-    const href = match[1]!
+  const links = [
+    ...Array.from(bundled.matchAll(/\[[^\]]*\]\(([^)]+)\)/g), (match) => match[1]!),
+    ...Array.from(bundled.matchAll(/href=["']([^"']+)["']/g), (match) => match[1]!),
+  ]
+  for (const href of links) {
     if (/^(?:[a-z]+:|#)/i.test(href)) continue
     const [relative] = href.split("#")
     const linked = join(dirname(join(root, file)), relative!)
     if (!(await Bun.file(linked).exists()))
       throw new Error(`Broken public document link: ${file} -> ${href}`)
+    const packagedLink = `package/${relativePath(root, linked)}`
+    if (!expected.has(packagedLink))
+      throw new Error(`Public document link is not packaged: ${file} -> ${href}`)
   }
 }
 const compiled = await run(["tar", "-xOf", archive, "package/dist/ntn-skills.js"])
+if (!compiled.startsWith("#!/usr/bin/env node\n"))
+  throw new Error("Packed CLI must launch with Node.js.")
 if (/\/Users\/|\/home\/[^/\s]+\/|\/private\/var\/|[A-Z]:\\Users\\/.test(compiled))
   throw new Error("Compiled package contains a machine-specific home path.")
 const smoke = JSON.parse(

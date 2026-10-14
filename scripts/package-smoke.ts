@@ -15,19 +15,21 @@ const { values } = parseArgs({
 })
 if (Boolean(values.archive) === Boolean(values.registry))
   throw new Error("Select exactly one --archive or --registry input.")
-if (values.registry && !/^notion-skills-cli@\d+\.\d+\.\d+(?:-[\da-z.-]+)?$/i.test(values.registry))
-  throw new Error("--registry must select an exact notion-skills-cli version.")
+if (values.registry && !/^ntn-skills@\d+\.\d+\.\d+(?:-[\da-z.-]+)?$/i.test(values.registry))
+  throw new Error("--registry must select an exact ntn-skills version.")
 const scratch = await mkdtemp(join(tmpdir(), "ntn-skills-consumer-"))
-const runtime = values.runtime ? resolve(values.runtime) : "bun"
+const runtime = values.runtime ? resolve(values.runtime) : Bun.which("node")
+if (!runtime) throw new Error("Node.js 22.19.0 or newer must be installed for consumer checks.")
 const dependency = values.archive
   ? `file:${resolve(values.archive)}`
   : values.registry!.split("@")[1]!
 await writeFile(
   join(scratch, "package.json"),
-  JSON.stringify({ private: true, dependencies: { "notion-skills-cli": dependency } }),
+  JSON.stringify({ private: true, dependencies: { "ntn-skills": dependency } }),
 )
 const env = {
   ...process.env,
+  PATH: `${dirname(runtime)}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
   NOTION_API_TOKEN: "",
   NOTION_WORKSPACE_ID: "",
   NOTION_API_BASE_URL: "",
@@ -53,17 +55,22 @@ async function run(command: string[], expectedExit = 0) {
   return stdout
 }
 await run([
-  "bun",
+  "npm",
   "install",
-  "--production",
+  "--omit=dev",
   "--ignore-scripts",
+  "--no-audit",
+  "--no-fund",
   "--registry=https://registry.npmjs.org",
 ])
-const installed = join(scratch, "node_modules/notion-skills-cli")
+const installed = join(scratch, "node_modules/ntn-skills")
 const manifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8"))
 if (values.registry && values.registry !== `${manifest.name}@${manifest.version}`)
   throw new Error("Registry installation selected a different version.")
 const executable = join(installed, manifest.bin["ntn-skills"])
+const consumerBin = join(scratch, "node_modules/.bin/ntn-skills")
+if ((await run([consumerBin, "--version"])).trim() !== `ntn-skills v${manifest.version}`)
+  throw new Error("Installed consumer bin cannot launch through its Node.js shebang.")
 const cli = async (args: string[], expectedExit = 0) =>
   JSON.parse(await run([runtime, executable, ...args], expectedExit))
 const check = (condition: unknown, message: string) => {
@@ -180,6 +187,7 @@ console.log(
     version: manifest.version,
     runtime: (await run([runtime, "--version"])).trim(),
     checks: [
+      "installed_bin",
       "version",
       "help",
       "resolve",

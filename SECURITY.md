@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-Security fixes target the latest patch of the current 0.x minor series. Upgrade to that patch before relying on a fix; earlier patches and previous minor series are not maintained security branches. Version 0.1.0 is experimental and prepared for its first release, not a claim of registry publication. See [the changelog](CHANGELOG.md) and [release procedure](docs/releasing.md).
+Security fixes target the latest patch of the current 0.x minor series. Upgrade to that patch before relying on a fix; earlier patches and previous minor series are not maintained security branches.
 
 ## Reporting a vulnerability
 
-The intended private channel is [GitHub vulnerability reporting](https://github.com/yoyooyooo/notion-skills-cli/security/advisories/new). Repository creation and activation of private reporting have not yet been verified for this prepared release; the link is not evidence that the channel is currently available. When enabled, include affected versions, a minimal sanitized reproduction, impact and any proposed mitigation. Do not post credentials, signed URLs, private Skill contents or personal database identifiers in a public issue.
+The intended private channel is [GitHub vulnerability reporting](https://github.com/yoyooyooo/notion-skills-cli/security/advisories/new). The repository is currently private, and activation of private reporting has not been verified; the link is not evidence that the channel is currently available. When enabled, include affected versions, a minimal sanitized reproduction, impact and any proposed mitigation. Do not post credentials, signed URLs, private Skill contents or personal database identifiers in a public issue.
 
 The maintainer aims to acknowledge reports within seven days. This is a response target, not a guaranteed response or fix deadline. Investigation and remediation depend on impact, reproducibility and available maintainer time. Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for ordinary bugs and usage questions.
 
@@ -16,7 +16,7 @@ Authentication priority is config.token, non-empty NOTION_API_TOKEN, then offici
 
 Cached content is private local data and can remain available after remote permission changes. Explicit snapshot reads are offline. Online activation verifies remote access. Use dedicated `NTN_SKILLS_HOME` and `NTN_SKILLS_CONFIG_HOME` directories for separate host identities; a shared config token overrides each host's environment credential. Protect configuration and state according to your organization's retention policy, including any config.json backups. Configuration defaults to `~/.config/ntn-skills`, while cached state defaults to `~/.local/state/ntn-skills`. Configuration files use mode 0600; new application directories use mode 0700. Legacy configuration migration preserves a `.migrated` backup in the old state directory.
 
-The 60-second list metadata TTL controls freshness only. Snapshot manifests, content-addressed `objects`, cached metadata and `uploads` staging are retained without automatic garbage collection. Upload staging can contain the original local input bytes. Uninstalling the executable leaves both state and configuration intact. Remove a saved token with `ntn-skills config clear-token`; if you choose to reclaim local data, stop hosts using it and move the identified application directories and legacy configuration backups to Trash or your approved retention process. State cleanup makes historical pinned refs unavailable. See [storage and uninstall guidance](README.md#upgrade-and-uninstall).
+The 60-second list metadata TTL controls freshness only. Snapshot manifests, content-addressed `objects`, cached metadata and `uploads` staging are retained without automatic garbage collection. Upload staging can contain the original local input bytes. Uninstalling the executable leaves both state and configuration intact. Remove a saved token with `ntn-skills config clear-token`; if you choose to reclaim local data, stop hosts using it and move the identified application directories and legacy configuration backups to Trash or your approved retention process. State cleanup makes historical pinned refs unavailable. See [storage and uninstall guidance](docs/usage.md#upgrade-and-uninstall).
 
 ## Network and local access
 

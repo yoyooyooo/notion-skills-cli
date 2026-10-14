@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, expect, test } from "bun:test"
-import { BunHttpClient, BunServices } from "@effect/platform-bun"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Schema } from "effect"
 import { HttpClient } from "effect/http"
 import { Notion } from "../src/notion.ts"
@@ -68,9 +69,9 @@ const api = Layer.succeed(Notion, {
     return Effect.fail(fail("UNEXPECTED", "unexpected"))
   },
 })
-const live = Layer.mergeAll(BunServices.layer, BunHttpClient.layer, memory, api)
+const live = Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, memory, api)
 const run = <A, E>(
-  effect: Effect.Effect<A, E, BunServices.BunServices | HttpClient.HttpClient | Notion | Store>,
+  effect: Effect.Effect<A, E, NodeServices.NodeServices | HttpClient.HttpClient | Notion | Store>,
 ) => Effect.runPromise(effect.pipe(Effect.provide(live)))
 beforeEach(() => {
   json.clear()
