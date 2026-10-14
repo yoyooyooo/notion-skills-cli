@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3 — 2026-10-14
 
 - Wait for the npm attestation document to become available after registry metadata appears.
 - Give each CLI boundary scenario its own test timeout.
