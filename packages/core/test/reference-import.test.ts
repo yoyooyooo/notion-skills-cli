@@ -1629,7 +1629,7 @@ async function emptyReferencesFencedCreate(resources: boolean) {
     f.input.set("assets/sync_test.sh", encoder.encode("#!/bin/sh\nprintf 'test\\n'\n"))
   }
   let verificationStarted = false
-  // The final attachment PATCH invalidates property-items read guards. A
+  // The final attachment PATCH preserves unrelated References read guards. A
   // stable changed revision during the subsequent normal validation must
   // retain its original checkpoint and form a fence through the real catch.
   const stopped = await f.run(
@@ -1676,9 +1676,11 @@ async function emptyReferencesFencedCreate(resources: boolean) {
     has_more: false,
     next_cursor: null,
   })
-  expect(
-    Object.keys(retained.guards).some((path) => path.startsWith(rootPath + "/properties/")),
-  ).toBe(false)
+  expect(retained.guards[rootPath + "/properties/references?page_size=100"]).toMatchObject({
+    results: [],
+    has_more: false,
+    next_cursor: null,
+  })
   expect(publicationMarker(retained.guards[rootPath])?.state).toBe("writing")
   expect(f.children).toHaveLength(0)
   return { f, id, retained }
@@ -1699,11 +1701,8 @@ for (const resources of [false, true]) {
     expect(receiptDigest(checkpoint.intents)).toBe(receiptDigest(retained.intents))
     expect(receiptDigest(checkpoint.failure)).toBe(receiptDigest(retained.failure))
     expect(checkpoint.stages).toEqual(retained.stages)
-    expect(
-      Object.keys(checkpoint.guards).some((path) =>
-        path.startsWith(`v1/pages/${root}/properties/`),
-      ),
-    ).toBe(false)
+    const referencePath = `v1/pages/${root}/properties/references?page_size=100`
+    expect(checkpoint.guards[referencePath]).toEqual(retained.guards[referencePath])
     expect(checkpoint.conflict_history).toHaveLength(1)
     expect(checkpoint.conflict_history?.[0]).toMatchObject({
       conflict: true,
