@@ -9,6 +9,7 @@ export default defineConfig({
       "packages/portable-converter/test/*.node.test.ts",
     ],
     fileParallelism: false,
-    testTimeout: 30_000,
+    // These integration tests exercise native fsync and macOS Trash round trips.
+    testTimeout: process.platform === "darwin" ? 60_000 : 30_000,
   },
 })
