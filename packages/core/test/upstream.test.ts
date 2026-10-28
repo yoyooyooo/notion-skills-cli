@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { readFile } from "node:fs/promises"
 import { importAkCensus } from "../src/upstream-census.ts"
 import { mergeSharedDelta, contentDeltas } from "../src/upstream-content.ts"
 import { strictDecode, UpstreamPlanSchema } from "../src/upstream-model.ts"
@@ -69,45 +68,122 @@ test("published active map rejects candidates, duplicate identity and excess con
   expect(() => decodePublishedMembers(JSON.stringify({ ...doc, config: {} }))).toThrow()
   expect(() => strictDecode(UpstreamPlanSchema, { version: 1, candidate: true })).toThrow()
 })
-test("actual frozen AK census preserves all registration classes, shared baselines and registry provenance", async () => {
-  const root = "/Users/yoyo/.omp/state/orchestrate/ntn-skills-20261017/evidence/ak-census"
-  const registrations = JSON.parse(await readFile(`${root}/artifact-137.json`, "utf8"))
-  const bodies = JSON.parse(await readFile(`${root}/artifact-140.json`, "utf8"))
-  const patch = JSON.parse(
-    await readFile(
-      "/Users/yoyo/Documents/code/ags/agent-kit/.ak/patches/cloudflare-links.json",
-      "utf8",
-    ),
-  )
+test("frozen AK census preserves registration classes, shared baselines and registry provenance", async () => {
+  // Census input is portable; frames can end in the middle of a JSON line.
+  const artifact = (rows: readonly Record<string, unknown>[]) => {
+    const text = rows.map((row) => JSON.stringify(row)).join("\r\n")
+    return {
+      normalized_result: { frames: [{ data: text.slice(0, 19) }, { data: text.slice(19) }] },
+    }
+  }
+  const individuals = [
+    { name: "tracked-skill", mode: "tracked" },
+    { name: "forked-skill", mode: "fork" },
+    { name: "local-skill", mode: "local" },
+    { name: "default-skill", mode: "local-default" },
+  ] as const
+  const shared = {
+    file: ".ak/upstreams.json",
+    section: "sources",
+    mode: "tracked",
+    cloneUrl: "https://example.invalid/shared.git",
+    paths: ["skills/shared"],
+    sharedTargetSet: "fixture-shared",
+  }
+  const provenance = {
+    file: ".ak/install-sources.json",
+    name: "registry-only",
+    type: "registry",
+    version: "1.2.3",
+  }
+  const registrations = artifact([
+    ...individuals.map(({ name, mode }) => ({
+      file: ".ak/upstreams.json",
+      section: "skills",
+      name,
+      mode,
+      cloneUrl: `https://example.invalid/${name}.git`,
+      sourcePath: `skills/${name}`,
+      ...(mode === "tracked" ? { patchPath: ".ak/patches/links.json" } : {}),
+    })),
+    { ...shared, name: "shared-left", acceptedRef: "1".repeat(40) },
+    { ...shared, name: "shared-right", acceptedRef: "2".repeat(40) },
+    provenance,
+  ])
+  const bodies = artifact([
+    ...individuals.map(({ name, mode }) => ({
+      path: `skills/${name}/SKILL.md`,
+      line: 1,
+      root: `skills/${name}`,
+      name,
+      mode,
+      groups: [],
+      provenance: false,
+    })),
+    ...["alpha", "beta"].map((name) => ({
+      path: `skills/shared/${name}/SKILL.md`,
+      line: 1,
+      root: `skills/shared/${name}`,
+      name,
+      mode: "tracked",
+      groups: ["shared-left", "shared-right"],
+      provenance: false,
+    })),
+    {
+      path: "skills/registry-only/SKILL.md",
+      line: 1,
+      root: "skills/registry-only",
+      name: "registry-only",
+      mode: "local",
+      groups: [],
+      provenance: true,
+    },
+  ])
+  const patch = {
+    version: 1 as const,
+    files: [{ path: "SKILL.md", replacements: [{ from: "./old-guide.md", to: "./guide.md" }] }],
+  }
   const manifest = await Effect.runPromise(
     importAkCensus({
       registrations,
       bodies,
       target_database_id: "11111111-1111-4111-8111-111111111111",
-      shared_publishers: { "ai-coding-os-core": "22222222-2222-4222-8222-222222222222" },
-      patches: { ".ak/patches/cloudflare-links.json": patch },
+      shared_publishers: { "fixture-shared": "22222222-2222-4222-8222-222222222222" },
+      patches: { ".ak/patches/links.json": patch },
     }).pipe(Effect.provide(NodeServices.layer)),
   )
-  expect(manifest.counts).toEqual({ tracked_bodies: 379, individual: 45, source_groups: 13 })
+  expect(manifest.counts).toEqual({ tracked_bodies: 3, individual: 4, source_groups: 2 })
   expect(manifest.uncovered).toEqual([])
+  expect(manifest.migration_ready).toBe(true)
+  expect(manifest.sources.map((s) => [s.registration, s.lifecycle])).toEqual([
+    ["skill:tracked-skill", "tracked"],
+    ["skill:forked-skill", "fork"],
+    ["skill:local-skill", "local"],
+    ["skill:default-skill", "local-default"],
+    ["source:shared-left", "tracked"],
+    ["source:shared-right", "tracked"],
+  ])
+  const left = manifest.sources.find((s) => s.registration === "source:shared-left")!,
+    right = manifest.sources.find((s) => s.registration === "source:shared-right")!
+  for (const [source, acceptedRef] of [
+    [left, "1".repeat(40)],
+    [right, "2".repeat(40)],
+  ] as const) {
+    expect(source.config?.source).toMatchObject({
+      shared_target_set: "fixture-shared",
+      publisher_subscription_id: "22222222-2222-4222-8222-222222222222",
+      accepted_ref: acceptedRef,
+    })
+    expect(source.members.map((m) => m.path)).toEqual([
+      "skills/shared/alpha/SKILL.md",
+      "skills/shared/beta/SKILL.md",
+    ])
+  }
+  expect(manifest.provenance).toEqual([provenance])
+  expect(manifest.sources.some((s) => s.registration === "skill:registry-only")).toBe(false)
   expect(
-    manifest.sources.filter(
-      (s) => s.lifecycle === "tracked" && s.registration.startsWith("skill:"),
-    ),
-  ).toHaveLength(37)
-  const smip = manifest.sources.find((s) => s.registration === "source:smip")!,
-    synpraxis = manifest.sources.find((s) => s.registration === "source:synpraxis")!
-  expect(smip.config!.source.accepted_ref).not.toBe(synpraxis.config!.source.accepted_ref)
-  expect(smip.members.map((m) => m.path)).toEqual(synpraxis.members.map((m) => m.path))
-  expect(manifest.provenance.find((p) => p.name === "getnote")).toMatchObject({
-    type: "registry",
-    version: "1.8.8",
-  })
-  expect(manifest.sources.some((s) => s.registration === "skill:getnote")).toBe(false)
-  expect(
-    manifest.sources.find((s) => s.registration === "skill:cloudflare")!.config!.source.patch?.files
-      .length,
-  ).toBeGreaterThan(0)
+    manifest.sources.find((s) => s.registration === "skill:tracked-skill")?.config?.source.patch,
+  ).toEqual(patch)
   expect(
     manifest.sources.filter((s) => s.lifecycle !== "tracked").every((s) => s.config === null),
   ).toBe(true)

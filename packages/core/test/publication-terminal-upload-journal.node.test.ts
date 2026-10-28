@@ -138,6 +138,7 @@ test("artifact byte drift refuses recovery without acknowledging the original al
     const drifted = await run(proveRetainedTerminalUploadOrphan(original).pipe(Effect.result))
     assert.equal(drifted._tag, "Failure")
   } finally {
-    await Effect.runPromise(trashPath(directory).pipe(Effect.provide(NodeServices.layer)))
+    if (process.platform === "darwin")
+      await Effect.runPromise(trashPath(directory).pipe(Effect.provide(NodeServices.layer)))
   }
 })

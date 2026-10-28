@@ -98,7 +98,10 @@ async function invoke(
 }
 function jsonFailure(result: InvocationResult, code: string, exit = 2) {
   expect(result.exit).toBe(exit)
-  expect(result.stderr).toBe("")
+  // Node 22 may emit its SQLite runtime warning; CLI errors remain one JSON value on stdout.
+  expect(result.stderr).toMatch(
+    /^(?:\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\r?\n)?$/,
+  )
   expect(result.stdout.trim().split("\n")).toHaveLength(1)
   const output = JSON.parse(result.stdout)
   expect(output.ok).toBe(false)

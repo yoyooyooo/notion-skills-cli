@@ -698,7 +698,7 @@ test.each(["rebuild", "restore-deleted", "daily-restore"] as const)(
       )
     } finally {
       vi.unstubAllEnvs()
-      execFileSync("/usr/bin/trash", [root])
+      if (process.platform === "darwin") execFileSync("/usr/bin/trash", [root])
     }
 
     function binding(member: string, page: string, revision: string) {

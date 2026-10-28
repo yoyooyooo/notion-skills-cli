@@ -255,7 +255,7 @@ test("invalid orphan identity and corrupt referenced bytes never become register
       expect(await readFile(join(root, "snapshots", id + ".json"), "utf8")).toBe(manifest)
     }
   }))
-test("garbage collection keeps referenced history and trashes only unreachable objects", () =>
+test("garbage collection keeps referenced history and retires unreachable objects only through Trash", () =>
   temporary(async (directory) => {
     const root = join(directory, "gc")
     const published = await launch(root, publish).done
@@ -273,8 +273,25 @@ test("garbage collection keeps referenced history and trashes only unreachable o
       "import {garbageCollectCache} from " + JSON.stringify(core + "cache.ts") + ";",
     ).done
     expect(applied.exit, applied.stderr).toBe(0)
-    expect(applied.stdout).toContain(orphanHash)
+    const result = JSON.parse(applied.stdout.trim())
+    expect(result).toMatchObject({
+      operation: "cache_gc",
+      dry_run: false,
+      online: false,
+      unreachable_snapshots: [],
+      unreachable_objects: [orphanHash],
+    })
     const id = (await launch(root, "console.log(id)").done).stdout.trim()
     expect(await readFile(join(root, "snapshots", id + ".json"), "utf8")).toContain(id)
-    await expect(readFile(join(root, "objects", orphanHash))).rejects.toThrow()
+    const orphanPath = join(root, "objects", orphanHash)
+    if (process.platform === "darwin") {
+      expect(result.retained).toEqual([])
+      await expect(readFile(orphanPath)).rejects.toThrow()
+    } else {
+      expect(result.retained).toEqual([orphanPath])
+      expect(await readFile(orphanPath, "utf8")).toBe("orphan")
+    }
+    const referenced = await launch(root, consume).done
+    expect(referenced.exit, referenced.stderr).toBe(0)
+    expect(referenced.stdout).toContain("durable content")
   }))

@@ -3,7 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import { ConfigProvider, Effect, Layer } from "effect"
 import { execFileSync } from "node:child_process"
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, rename, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { isDeepStrictEqual } from "node:util"
 import { tmpdir } from "node:os"
@@ -1042,8 +1042,15 @@ for (const { scenario, name, timeout = 60_000 } of upstreamUseCases)
                         .bytes,
                     ),
                   ).toContain("second")
-                  if (scenario === "metadata-loss")
-                    yield* Effect.sync(() => execFileSync("/usr/bin/trash", [repo]))
+                  if (scenario === "metadata-loss") {
+                    if (process.platform === "darwin") {
+                      yield* Effect.sync(() => execFileSync("/usr/bin/trash", [repo]))
+                    } else {
+                      // The original source path must be unavailable to recovery;
+                      // preserve its bytes inside this fixture on hosts without Trash.
+                      yield* Effect.promise(() => rename(repo, join(root, "retained-source")))
+                    }
+                  }
                   const currentRevision =
                     scenario === "run-metadata-loss"
                       ? yield* Effect.promise(() => put("third"))
@@ -1321,7 +1328,7 @@ for (const { scenario, name, timeout = 60_000 } of upstreamUseCases)
         )
       } finally {
         vi.unstubAllEnvs()
-        execFileSync("/usr/bin/trash", [root])
+        if (process.platform === "darwin") execFileSync("/usr/bin/trash", [root])
       }
     },
     timeout,

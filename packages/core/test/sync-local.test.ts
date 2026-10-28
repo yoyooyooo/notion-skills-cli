@@ -39,7 +39,9 @@ const skill = (
 
 const roots = new Set<string>()
 afterEach(async () => {
-  await Promise.all([...roots].map((root) => Effect.runPromise(trashPath(root))))
+  // Unsupported hosts keep these owned temporary trees instead of deleting them.
+  if (process.platform === "darwin")
+    await Promise.all([...roots].map((root) => Effect.runPromise(trashPath(root))))
   roots.clear()
 })
 async function fixture(hook?: (boundary: LocalBoundary) => Effect.Effect<void, SkillsError>) {
@@ -79,6 +81,34 @@ async function errorOf(effect: Effect.Effect<unknown, SkillsError>) {
     effect.pipe(Effect.match({ onFailure: (error) => error, onSuccess: () => undefined })),
   )
 }
+
+if (process.platform !== "darwin")
+  test("native retention refuses unsupported hosts before deleting or replacing local bytes", async () => {
+    const root = await fs.mkdtemp(path.join(tmpdir(), "ntn-sync-native-retention-"))
+    roots.add(root)
+    const directory = path.join(root, "skill")
+    const original = skill("keep these original bytes")
+    await materialize(directory, original)
+    const names = await fs.readdir(root)
+    const refusedTrash = await errorOf(trashPath(directory))
+    expect(refusedTrash?.code).toBe("RETENTION_UNAVAILABLE")
+    const local = await Effect.runPromise(
+      makeSyncLocal({ stateRoot: path.join(root, "state") }).pipe(
+        Effect.provide(NodeServices.layer),
+      ),
+    )
+    const before = await Effect.runPromise(local.inspect(directory))
+    const refusedCommit = await errorOf(
+      local.commit(before, skill("unaccepted replacement"), ["SKILL.md"], "o_native-retention"),
+    )
+    expect(refusedCommit?.code).toBe("RETENTION_UNAVAILABLE")
+    expect(await fs.readdir(root)).toEqual(names)
+    for (const file of portableFiles(original))
+      expect(new Uint8Array(await fs.readFile(path.join(directory, file.path)))).toEqual(
+        new Uint8Array(file.bytes),
+      )
+    expect((await Effect.runPromise(local.inspect(directory))).content_id).toBe(before.content_id)
+  })
 
 test.each(["explicit", "ntn", "xdg", "home", "userprofile", "missing"])(
   "state-root %s configuration builds the adapter and places its real fence correctly",
@@ -172,7 +202,7 @@ test.each(["ntn", "xdg", "home", "userprofile"])(
         ),
       )
     } finally {
-      await Effect.runPromise(trashPath(root))
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
     }
   },
 )

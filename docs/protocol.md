@@ -359,8 +359,6 @@ Future native requests escape inline placeholder tags only in their wire Markdow
 
 Within a paragraph, verification treats Markdown soft/hard line breaks and plain HTML `<br>`, `<br/>` or `<br />` as equivalent whitespace, including v1 readback of v2 input. The comparison works on parsed inline tokens: inline, fenced and indented code retain literal `<br>` text, and other HTML or `<br>` attributes are not normalized. Materialized Markdown keeps Notion's valid HTML break representation, so this comparison change does not rewrite existing source projections or historical snapshot bytes. Included-page URL aliases still resolve through their exact page IDs and retain anchors; child-page blocks remain outside the main instructions.
 
-The owner-authorized 2026-10-27 correction accepts file completeness: every source Markdown file has a corresponding rendered page, no authored content is missing, and non-Markdown resources remain in the official source ZIP. Nested source paths remain explicit in `References`. `Published Hash` records the accepted portable source identity; `Upstream Revision` records the frozen Git revision. Content changes require a new acceptance even when the page count is unchanged. This operational policy does not weaken ordinary publication verification or turn an original failed receipt into success. The [correction record](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/upstream-file-sync-20261027.md) owns rendering compromises, repaired defects and evidence references.
-
 
 
 
