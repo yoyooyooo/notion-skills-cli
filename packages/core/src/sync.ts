@@ -1,8 +1,16 @@
 import { Clock, Crypto, Effect, FileSystem, Schema } from "effect"
 import { cachedRemoteObservation, effectiveCachePolicy } from "./cache.ts"
 import { portableIdentity, snapshotPortable } from "./export.ts"
-import { fail, property, SnapshotSchema, SkillsError, type Snapshot } from "./model.ts"
-import { importPortable } from "./mutation.ts"
+import {
+  decode,
+  fail,
+  property,
+  notionPage,
+  SnapshotSchema,
+  SkillsError,
+  type Snapshot,
+} from "./model.ts"
+import { replaceSkill } from "./mutation.ts"
 import { Notion } from "./notion.ts"
 import { portableFiles, type PortableSkill } from "./portable.ts"
 import { pageId, parseTarget } from "./ref.ts"
@@ -22,6 +30,7 @@ export interface SyncStatusOptions {
 }
 export interface PlanSyncOptions {
   readonly all?: boolean
+  readonly bindingIds?: readonly string[]
   readonly from?: "local" | "notion"
   readonly output?: string
 }
@@ -55,7 +64,7 @@ const ContentSchema = Schema.Struct({
   content_id: Schema.String,
 })
 type Content = typeof ContentSchema.Type
-const BindingSchema = Schema.Struct({
+export const BindingSchema = Schema.Struct({
   id: Schema.String,
   label: Schema.String,
   page_id: Schema.String,
@@ -66,7 +75,7 @@ const BindingSchema = Schema.Struct({
   active: Schema.Boolean,
   revision: Schema.Number,
 })
-const BaseSchema = Schema.Struct({
+export const BaseSchema = Schema.Struct({
   format: Schema.Literal("ntn-skills-sync-base"),
   version: Schema.Literal(1),
   binding_id: Schema.String,
@@ -77,7 +86,7 @@ const BaseSchema = Schema.Struct({
   snapshot_id: Schema.optional(Schema.String),
   remote_version: Schema.optional(Schema.String),
 })
-type Base = typeof BaseSchema.Type
+export type Base = typeof BaseSchema.Type
 const LocalSchema = Schema.Struct({
   logical_path: Schema.String,
   resolved_path: Schema.String,
@@ -115,12 +124,33 @@ const PlanBodySchema = Schema.Struct({
   bindings: Schema.Array(EdgeSchema),
   conflicts: Schema.Array(ConflictSchema),
 })
-const PlanSchema = Schema.Struct({
+export const PlanSchema = Schema.Struct({
   ...PlanBodySchema.fields,
   plan_id: Schema.String,
 })
 export type SyncPlan = typeof PlanSchema.Type
-const ReceiptSchema = Schema.Struct({
+const ReceiptBindingSchema = Schema.Struct({
+  binding_id: Schema.String,
+  page_id: Schema.String,
+  resolved_path: Schema.String,
+  stage: Schema.Literals(["prepared", "writing", "verified", "complete", "diverged"]),
+  generation_before: Schema.Number,
+  generation_after: Schema.optional(Schema.Number),
+  retained: Schema.Array(
+    Schema.Struct({ path: Schema.String, retention_path: Schema.optional(Schema.String) }),
+  ),
+})
+export const AppliedSyncBindingSchema = Schema.Struct({
+  ...ReceiptBindingSchema.fields,
+  action: Schema.Literals(["push", "pull", "unchanged", "advance_baseline"]),
+  verified: Schema.Boolean,
+  content_id: Schema.String,
+  snapshot_id: Schema.optional(Schema.String),
+  scope: Schema.String,
+  database_id: Schema.String,
+  data_source_id: Schema.String,
+})
+export const ReceiptSchema = Schema.Struct({
   format: Schema.Literal("ntn-skills-sync-receipt"),
   version: Schema.Literal(1),
   operation_id: Schema.String,
@@ -134,19 +164,7 @@ const ReceiptSchema = Schema.Struct({
       snapshot_id: Schema.optional(Schema.String),
     }),
   ),
-  bindings: Schema.Array(
-    Schema.Struct({
-      binding_id: Schema.String,
-      page_id: Schema.String,
-      resolved_path: Schema.String,
-      stage: Schema.Literals(["prepared", "writing", "verified", "complete", "diverged"]),
-      generation_before: Schema.Number,
-      generation_after: Schema.optional(Schema.Number),
-      retained: Schema.Array(
-        Schema.Struct({ path: Schema.String, retention_path: Schema.optional(Schema.String) }),
-      ),
-    }),
-  ),
+  bindings: Schema.Array(ReceiptBindingSchema),
   failure: Schema.optional(Schema.Struct({ code: Schema.String })),
 })
 type Mutable<T> = T extends readonly (infer V)[]
@@ -188,7 +206,7 @@ const identity = (skill: PortableSkill, mode: SyncStorageMode) =>
 function storageMode(snapshot: Snapshot) {
   return Effect.gen(function* () {
     const api = yield* Notion
-    const raw = yield* api.request(`v1/pages/${snapshot.skill.id}`)
+    const raw = yield* api.request(`v1/pages/${notionPage(snapshot.record).locator.page_id}`)
     const props = property(property(raw).properties)
     const values = Object.values(props).map(property)
     const files =
@@ -232,6 +250,7 @@ function loadContent(content: Content, mode: SyncStorageMode) {
       files.push({ path: file.path, bytes })
     }
     const skill = {
+      kind: "skill" as const,
       name: content.name,
       description: content.description,
       main: content.main,
@@ -366,7 +385,7 @@ function assertUnfenced(
         return yield* Effect.fail(
           fail("SYNC_PENDING", "Reconcile the unfinished operation before applying another plan.", {
             operation_id: receipt.operation_id,
-            receipt_path: receiptKey(receipt.operation_id),
+            receipt_path: `sqlite:sync_receipts/${receipt.operation_id}`,
           }),
         )
     }
@@ -375,9 +394,9 @@ function assertUnfenced(
 function verifyRemote(binding: SyncBinding, snapshot: Snapshot) {
   if (
     snapshot.scope !== binding.scope ||
-    pageId(snapshot.skill.id) !== binding.page_id ||
-    snapshot.skill.database_id !== binding.database_id ||
-    snapshot.skill.data_source_id !== binding.data_source_id
+    pageId(snapshot.record.id) !== binding.page_id ||
+    notionPage(snapshot.record).locator.database_id !== binding.database_id ||
+    notionPage(snapshot.record).locator.data_source_id !== binding.data_source_id
   )
     return Effect.fail(
       fail("SYNC_PLAN_STALE", "Bound remote identity or credential scope changed.", {
@@ -422,9 +441,10 @@ function publishConvergence(
   remote: Snapshot,
   mode: SyncStorageMode,
   intendedId: string,
+  commit?: { readonly receipt?: SyncReceipt; readonly registration?: boolean },
 ) {
   return Effect.gen(function* () {
-    const current = yield* readBase(binding)
+    const current = commit?.registration ? expected : yield* readBase(binding)
     if (!same(current, expected))
       return yield* Effect.fail(
         fail("SYNC_PLAN_STALE", "The common baseline changed.", { binding_id: binding.id }),
@@ -477,12 +497,12 @@ function publishConvergence(
           { binding_id: binding.id },
         ),
       )
-    if (expected.initialized && expected.content!.content_id === intendedId) return expected
+    const unchanged = expected.initialized && expected.content!.content_id === intendedId
     const next: Base = {
       format: "ntn-skills-sync-base",
       version: 1,
       binding_id: binding.id,
-      generation: expected.generation + 1,
+      generation: expected.generation + (unchanged ? 0 : 1),
       initialized: true,
       content: remoteContent,
       mode,
@@ -490,7 +510,24 @@ function publishConvergence(
       remote_version: remote.version_id,
     }
     const store = yield* Store
-    yield* store.writeJson(baseKey(binding.id), next)
+    if (commit?.registration) yield* store.registerBindingWithBase(binding, next)
+    else if (commit?.receipt) {
+      const entry = commit.receipt.bindings.find((item) => item.binding_id === binding.id)!
+      const previousStage = entry.stage
+      const previousGeneration = entry.generation_after
+      entry.stage = "complete"
+      entry.generation_after = next.generation
+      yield* store
+        .advanceBaseAndReceipt(binding.id, expected.generation, next, commit.receipt)
+        .pipe(
+          Effect.tapError(() =>
+            Effect.sync(() => {
+              entry.stage = previousStage
+              entry.generation_after = previousGeneration
+            }),
+          ),
+        )
+    } else yield* store.writeJson(baseKey(binding.id), next)
     return next
   })
 }
@@ -514,7 +551,7 @@ export function bindSync(target: string, options: BindSyncOptions) {
       ["sync:configuration"],
       Effect.gen(function* () {
         const remote = yield* openSkill(parsed.selector, { database: options.database })
-        const canonical = pageId(remote.skill.id)
+        const canonical = pageId(remote.record.id)
         if (!canonical)
           return yield* Effect.fail(fail("INVALID_RESPONSE", "The remote page ID is invalid."))
         const inspection = yield* local.inspect(options.path, { allowMissing: true })
@@ -551,7 +588,7 @@ export function bindSync(target: string, options: BindSyncOptions) {
             dry_run: Boolean(options.dryRun),
           }
         }
-        const label = options.as?.trim() ?? remote.skill.alias
+        const label = options.as?.trim() ?? remote.record.alias
         if (existing.some((binding) => binding.active && binding.label === label))
           return yield* Effect.fail(
             fail("SYNC_BINDING_CONFLICT", "The binding label is already in use; provide --as.", {
@@ -583,8 +620,8 @@ export function bindSync(target: string, options: BindSyncOptions) {
           id,
           label,
           page_id: canonical,
-          database_id: remote.skill.database_id,
-          data_source_id: remote.skill.data_source_id,
+          database_id: notionPage(remote.record).locator.database_id,
+          data_source_id: notionPage(remote.record).locator.data_source_id,
           scope: remote.scope,
           logical_path: inspection.logical_path,
           active: true,
@@ -606,7 +643,7 @@ export function bindSync(target: string, options: BindSyncOptions) {
               fail(
                 "STATE_CORRUPT",
                 "A retained orphan baseline exists for this registration; it cannot be overwritten.",
-                { binding_id: id, baseline_path: `${store.root}/${baseKey(id)}` },
+                { binding_id: id, baseline_path: `sqlite:bases/${id}` },
               ),
             )
           const base: Base = prior
@@ -619,7 +656,6 @@ export function bindSync(target: string, options: BindSyncOptions) {
                 initialized: false,
                 mode,
               }
-          if (!prior) yield* store.writeJson(baseKey(id), base)
           if (equal) {
             const checkedRemote = yield* openSkill(canonical)
             if (checkedRemote.version_id !== remote.version_id)
@@ -643,12 +679,9 @@ export function bindSync(target: string, options: BindSyncOptions) {
               checkedRemote,
               mode,
               remoteContent.content_id,
+              { registration: true },
             )
-          }
-          yield* store.writeJson("config.json", {
-            ...config,
-            sync_bindings: [...existing.filter((item) => item.id !== id), binding],
-          })
+          } else yield* store.registerBindingWithBase(binding, base)
         }
         return {
           binding,
@@ -707,21 +740,42 @@ function fileActions(local: Content | undefined, intended: Content) {
 export function planSync(binding?: string, options: PlanSyncOptions = {}) {
   return Effect.gen(function* () {
     if (
-      Boolean(binding) === Boolean(options.all) ||
-      (options.all && options.from) ||
+      [Boolean(binding), Boolean(options.all), options.bindingIds !== undefined].filter(Boolean)
+        .length !== 1 ||
+      (options.bindingIds !== undefined &&
+        (!options.bindingIds.length ||
+          options.bindingIds.some((id) => !id.trim()) ||
+          new Set(options.bindingIds).size !== options.bindingIds.length)) ||
+      ((options.all || (options.bindingIds?.length ?? 0) > 1) && options.from !== undefined) ||
       (options.from !== undefined && options.from !== "local" && options.from !== "notion")
     )
       return yield* Effect.fail(
         fail(
           "INVALID_ARGUMENT",
-          "Choose exactly one binding or --all; --from is single-binding only.",
+          "Choose exactly one binding, --all or explicit binding IDs; --from is single-binding only.",
         ),
       )
     const local = yield* SyncLocal
     return yield* local.withLocks(
       ["sync:configuration"],
       Effect.gen(function* () {
-        const selected = yield* bindings(binding, Boolean(options.all))
+        const selected =
+          options.bindingIds === undefined
+            ? yield* bindings(binding, Boolean(options.all))
+            : yield* Effect.forEach(options.bindingIds, (id) =>
+                Effect.gen(function* () {
+                  const matches = yield* bindings(id)
+                  if (matches[0]!.id !== id)
+                    return yield* Effect.fail(
+                      fail(
+                        "SYNC_BINDING_MISSING",
+                        "Grouped planning requires exact active binding IDs.",
+                        { binding: id },
+                      ),
+                    )
+                  return matches[0]!
+                }),
+              )
         if (!selected.length)
           return yield* Effect.fail(
             fail("SYNC_BINDING_MISSING", "No active bindings are registered."),
@@ -842,7 +896,7 @@ export function planSync(binding?: string, options: PlanSyncOptions = {}) {
         const copy = options.output ? yield* store.output(options.output, bytes) : undefined
         const result = {
           ...plan,
-          plan_path: `${store.root}/${planKey(id)}`,
+          plan_path: `sqlite:plans/${id}`,
           ...(copy ? { output: copy.output, reused: copy.reused } : {}),
         }
         if (conflicts.length)
@@ -923,9 +977,9 @@ function readPlan(input: string) {
         edge.base.binding_id !== edge.binding.id ||
         edge.local.logical_path !== edge.binding.logical_path ||
         edge.remote.scope !== edge.binding.scope ||
-        pageId(edge.remote.skill.id) !== edge.binding.page_id ||
-        edge.remote.skill.database_id !== edge.binding.database_id ||
-        edge.remote.skill.data_source_id !== edge.binding.data_source_id
+        notionPage(edge.remote.record).locator.page_id !== edge.binding.page_id ||
+        notionPage(edge.remote.record).locator.database_id !== edge.binding.database_id ||
+        notionPage(edge.remote.record).locator.data_source_id !== edge.binding.data_source_id
       )
         return yield* Effect.fail(
           fail("STATE_CORRUPT", "Saved plan participant identities are inconsistent."),
@@ -937,6 +991,7 @@ function readPlan(input: string) {
 function preflight(plan: SyncPlan) {
   return Effect.gen(function* () {
     const selected = yield* bindings(undefined, true)
+    yield* assertUnfenced(plan.bindings)
     const observed = new Map<string, SyncObservation>()
     for (const edge of plan.bindings) {
       const binding = selected.find((item) => item.id === edge.binding.id)
@@ -994,7 +1049,6 @@ function preflight(plan: SyncPlan) {
       }
       observed.set(binding.id, current)
     }
-    yield* assertUnfenced(plan.bindings)
     return observed
   })
 }
@@ -1060,7 +1114,9 @@ export function applySync(planIdOrFile: string) {
             if (push) {
               group.stage = "writing"
               yield* save()
-              yield* importPortable(yield* loadContent(push.intended, push.mode), push.remote)
+              yield* replaceSkill(yield* loadContent(push.intended, push.mode), {
+                target: decode(SnapshotSchema, push.remote),
+              })
             }
             remote = yield* openSkill(group.page_id)
             yield* verifyRemote(representative.binding, remote)
@@ -1156,6 +1212,7 @@ export function applySync(planIdOrFile: string) {
                 checkedRemote,
                 edge.mode,
                 edge.intended.content_id,
+                { receipt },
               )
               entry.stage = "complete"
               entry.generation_after = next.generation
@@ -1168,7 +1225,7 @@ export function applySync(planIdOrFile: string) {
             plan_id: plan.plan_id,
             operation_id: operationId,
             verified: true,
-            receipt_path: `${store.root}/${receiptKey(operationId)}`,
+            receipt_path: `sqlite:sync_receipts/${operationId}`,
             receipt,
             bindings: receipt.bindings.map((entry) => {
               const edge = plan.bindings.find((item) => item.binding.id === entry.binding_id)!
@@ -1182,6 +1239,9 @@ export function applySync(planIdOrFile: string) {
                 content_id: edge.intended.content_id,
                 snapshot_id: snapshotId,
                 page_id: edge.binding.page_id,
+                scope: edge.binding.scope,
+                database_id: edge.binding.database_id,
+                data_source_id: edge.binding.data_source_id,
               }
             }),
           }
@@ -1195,7 +1255,7 @@ export function applySync(planIdOrFile: string) {
               return yield* Effect.fail(
                 fail(error.code, error.message, {
                   operation_id: operationId,
-                  receipt_path: `${store.root}/${receiptKey(operationId)}`,
+                  receipt_path: `sqlite:sync_receipts/${operationId}`,
                   cause_details: error.details,
                   receipt,
                 }),
@@ -1222,7 +1282,7 @@ export function syncStatus(binding?: string, options: SyncStatusOptions = {}) {
         ...(base.content ? { trackedPaths: base.content.files.map((file) => file.path) } : {}),
       })
       const observation = options.refresh
-        ? { snapshot: yield* openSkill(item.page_id), validated_at: now }
+        ? { snapshot: yield* openSkill(item.page_id, { refresh: true }), validated_at: now }
         : yield* cachedRemoteObservation(item.page_id, item.scope)
       if (observation) yield* verifyRemote(item, observation.snapshot)
       const mode =
@@ -1273,7 +1333,7 @@ export function syncStatus(binding?: string, options: SyncStatusOptions = {}) {
             : classify(base, localId, remoteId),
         pending_receipts: related.map((receipt) => ({
           operation_id: receipt.operation_id,
-          receipt_path: receiptKey(receipt.operation_id),
+          receipt_path: `sqlite:sync_receipts/${receipt.operation_id}`,
         })),
       })
     }
@@ -1290,14 +1350,8 @@ export function unbindSync(binding: string, options: UnbindSyncOptions = {}) {
         yield* readBase(selected)
         const next = { ...selected, active: false, revision: selected.revision + 1 }
         if (!options.dryRun) {
-          const config = yield* configuration
           const store = yield* Store
-          yield* store.writeJson("config.json", {
-            ...config,
-            sync_bindings: (config.sync_bindings ?? []).map((item) =>
-              item.id === selected.id ? next : item,
-            ),
-          })
+          yield* store.registerBindingWithBase(next, yield* readBase(selected))
         }
         return {
           binding: options.dryRun ? selected : next,
@@ -1524,6 +1578,7 @@ export function reconcileSync(binding: string) {
                 remote,
                 mode,
                 edge.intended.content_id,
+                { receipt },
               )
               advanced ||= next.generation > edge.base.generation
               entry.stage = "complete"
@@ -1555,7 +1610,7 @@ export function reconcileSync(binding: string) {
             operation_id: receipt.operation_id,
             outcome: receipt.status,
             baseline_advanced: advanced,
-            receipt_path: `${store.root}/${receiptKey(receipt.operation_id)}`,
+            receipt_path: `sqlite:sync_receipts/${receipt.operation_id}`,
             receipt,
           })
         }

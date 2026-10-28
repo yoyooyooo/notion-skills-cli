@@ -14,5 +14,11 @@
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "javascript": { "formatter": { "semicolons": "asNeeded", "quoteStyle": "double" } },
   "linter": { "enabled": false },
-  "assist": { "enabled": false }
+  "assist": { "enabled": false },
+  "overrides": [
+    {
+      "includes": ["packages/core/test/fixtures/router-original/.ntn-skills.json"],
+      "formatter": { "enabled": false }
+    }
+  ]
 }

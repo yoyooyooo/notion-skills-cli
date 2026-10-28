@@ -1,6 +1,6 @@
 # Bidirectional sync and read-cache verification plan
 
-Status: acceptance matrix for the implemented CLI, 2026-10-14. Sync bindings, plan/apply/reconcile, complete observation caches, read-policy flags and explicit-target import are implemented. [Protocol](../../../../docs/protocol.md) owns the executable contract; the [CLI design](../../../../docs/sync-cache-cli-design.md) records accepted rationale. This document defines cases, not passing results. Record source revision/runtime and observed outcomes in the external run ledger.
+Status: acceptance matrix for the implemented CLI, updated 2026-10-28. Daily pinned `apply` and sync `connect/run` use the existing mutation, binding, plan and recovery contracts below. Advanced plan/apply/reconcile and read-policy flags remain available. [Protocol](../../../../docs/protocol.md) owns executable semantics; the [CLI design](../../../../docs/sync-cache-cli-design.md) records rationale. This document defines cases, not passing results; select the cases affected by the change and record actual outcomes in the external run ledger.
 
 This plan applies Lauren Poteto Rules: exercise the user interface, inspect resulting state, preserve evidence, and distinguish deterministic regression proof from live-provider proof. The existing [verification Skill](../SKILL.md) owns launch, evidence and cleanup procedures. No live mutation is authorized merely by this plan.
 
@@ -12,6 +12,25 @@ This plan applies Lauren Poteto Rules: exercise the user interface, inspect resu
 4. Logical symlink paths resolve through the complete chain to their real targets. Existing links survive content updates; a changed chain or destination invalidates a saved plan.
 5. Removing disposable cache leaves bindings, baselines, pinned snapshots, referenced objects and unfinished-operation receipts intact. Personal files and configuration remain outside the run.
 6. Each successful snapshot contains the complete main/reference/asset set. Reference-only edits and page-only normalization cannot produce missing files or endless synchronization.
+
+For the aligned native source-bundle path, establish the first checkpoint through complete publication/body/resource validation. Expire the ordinary observation without changing metadata: the installed CLI must reuse complete main/reference/script/binary files and report `freshness.validation="metadata"` without Markdown/block reads or repeated ZIP download. Change only a reference revision, root body, inclusion or immutable file identity and require full current reading, never stale fallback. Stable edits to committed content must become readable without an inspect/accept step; malformed ownership, incomplete resources and unfinished publication still fail. Original-operation verification and tracked/local write guards remain separate. Signed URL query renewal alone must remain eligible. Exercise a same-timestamp edit: ordinary metadata reuse may miss it under the accepted policy, while `--refresh` and explicit `--max-age 0` must detect it. New scopes/machines, cleared checkpoints, missing versions and mutable external URLs must require full validation. Verify writes/sync still read strongly; keep controlled-provider and live Notion outcomes separate.
+
+
+## SQLite upgrade and crash boundaries (AH-256)
+
+Mutable state belongs to `state.sqlite`; historical JSON paths are importer inputs. Only an existing pre-SQLite environment needs the independent installed `ntn-skills-migrate STATE --config-directory CONFIG --cache-directory CACHE --backup-directory EXTERNAL_BACKUP --old-writers-stopped` before normal commands. New/current SQLite environments do not run this migration. Stop old binaries/jobs first; the marker cannot revoke an arbitrary old executable. Record the private backup outside evidence containing credentials.
+
+| Case | Actual action and required proof |
+| --- | --- |
+| Q1 | Migrate an old environment containing multiple bindings, initialized/uninitialized bases, fixed snapshots/assets, exact reviewed plans and pending sync/publication operations. New processes must read pinned bytes, inspect bindings/operations and preserve original IDs/digests. |
+| Q2 | Interrupt validation/import/config retirement, then rerun unchanged input. Normal startup remains blocked until switched; changed source, missing/hash-invalid objects, unsupported schema and corrupt SQLite fail explicitly. |
+| Q3 | Kill a real process holding an official transaction. A fresh process sees the old committed baseline/edge together, never half advancement. Competing registration/generation processes produce one accepted generation transition. |
+| Q4 | Reserve a generation in one process, clear in another, then attempt delayed publication. Publication fails `CACHE_INVALIDATED`; pinned snapshots, objects, plans, bases and pending operations remain readable. |
+| Q5 | Interrupt file publication before/after durable rename and before pointer commit. Registered snapshots always verify all referenced bytes; unreferenced durable files are permitted and preserved. |
+| Q6 | Back up through `ctl backup --output DIR`, restore the DB and referenced files into independent roots, and consume with a new installed process. Record SQLite version, journal mode, synchronous mode and bounded busy failure from actual Node runtimes. |
+
+`sqlite-state.node.test.ts` uses real competing/killed Node processes and filesystem bytes; `config.node.test.ts` covers persistent retirement/corruption. Both run through official Effect Vitest integration with `bun run test:node`; the root `bun run test` also runs the pure Bun suites. Installed package migration is driven by `package-smoke.ts`. Neither controlled boundary proof nor a local test pass establishes live Notion or host acceptance. Record each case as implemented/tested/unverified with machine evidence. SQL cache retirement no longer depends on Trash; Trash remains required when retiring actual user/installation files.
+
 
 ## Three evidence layers
 
@@ -27,7 +46,7 @@ A planned recipe is not a passing result. Do not infer the Node.js surface from 
 
 Extend the existing helper only where the new surface requires it:
 
-- The helper now creates private `scratch/config`, `scratch/state` and `scratch/cache` and overrides the application roots plus XDG config/state/cache bases. Installed-consumer smoke also overrides all three roots/bases. Verify the selected paths in each run; root overrides alone do not prove the future cache implementation honors them. Keep live runs on official `ntn`, with no alternate REST implementation.
+- The helper creates private `scratch/config`, `scratch/state`, `scratch/cache` and `scratch/data` and overrides the application roots plus XDG config/state/cache/data bases. Installed-consumer smoke also overrides all four roots/bases. Builtin management requires an owned HOME for default shared links. Verify selected paths in each run; root overrides alone do not prove a path honors them. Keep live runs on official `ntn`, with no alternate REST implementation.
 - Parent Bun startup may write a transpiler cache before helper isolation is active. Strict filesystem-sentinel proof must give that launcher an owned separate XDG cache outside the initially empty run root and include it in evidence/cleanup; distinguish it from child product writes.
 - Preserve local manifests, content hashes, baseline versions, link text/resolved destinations and operation receipts in `evidence` before cleanup. Keep content and IDs private; record argument arrays, safe error details, exit status and timestamps, never tokens, signed URLs or raw provider stderr.
 - Drive deterministic time at the application's clock boundary, not with five-minute sleeps or a production test-time environment variable. Use recorded requests at the injected provider boundary to assert reads versus mutations. Filesystem failure injection must target the actual commit operation, not return a fabricated success.
@@ -42,8 +61,8 @@ Extend the existing helper only where the new surface requires it:
 
 | ID | Setup and action | Required observable result |
 | --- | --- | --- |
-| S1 | First bind with identical content; repeat sync | Correct page/path binding, initialized common baseline, no mutation on repetition; timestamp changes alone do not imply content change |
-| S2 | First bind with differing content and no base | Difference is reported; neither side is selected implicitly. An explicit local/Notion initialization selects only the bound page/path and is confirmed by readback |
+| S1 | First connect/bind with identical content; repeat connect and run | Correct page/path binding, reused same edge, initialized common baseline and no content mutation on repetition; timestamp changes alone do not imply content change |
+| S2 | First connect/bind with existing differing content and no base | Neither side is selected implicitly; explicit `--from local|notion` initializes only the bound page/path and is confirmed by readback |
 | S3 | Local-only main/reference/asset addition, modification and removal | Plan selects push; apply preserves page ID and unrelated files, exports the exact expected file set, and advances baseline only after verification |
 | S4 | Notion-only reference edit with unchanged main body; apply | Plan selects pull; the changed reference reaches local storage and the complete Skill remains present |
 | S5 | Both sides independently reach the same new content | Convergence is recognized without a content write; baseline records the observed new content |
@@ -52,10 +71,10 @@ Extend the existing helper only where the new surface requires it:
 | S8 | Rename bound Notion page, create a same-alias decoy in another database | Binding follows original page ID, never redirects by alias; unsupported metadata changes stop explicitly rather than creating/rebinding a page |
 | S9 | Sync A to a new version, then sync independent local B with its older baseline | B still detects the remote change. Divergent candidates from A/B conflict before a batch overwrites either candidate |
 | S10 | Two logical paths resolve to one real directory; then bind that directory to distinct pages | Same-edge target is handled once; incompatible bindings fail before writes |
-| S11 | Missing local root, inaccessible remote page, broken link or incomplete reference read | Explicit error, no whole-Skill deletion propagation, no successful shortened snapshot, unchanged baseline |
+| S11 | An initialized binding loses its local root, remote access, link target or complete reference read | Explicit error, no whole-Skill deletion propagation, no successful shortened snapshot, unchanged baseline |
 | S12 | Repeat pull/push in page-only mode with equivalent paragraph/link formatting | No endless update loop; equality follows the accepted normalization rules while code-fence content remains significant |
 | S13 | Plan removes a tracked local file or an included reference | Local content is retained through system Trash with a receipt; Notion reference leaves the inclusion list while its page remains available; unrelated target-root content is preserved |
-| S14 | First bind to an absent ordinary leaf under an existing resolvable parent, then initialize from Notion | Binding is uninitialized until a checked pull creates only the intended directory; a dangling symlink is rejected rather than treated as the absent leaf |
+| S14 | First connect to an absent ordinary leaf under a resolvable parent | Connect initializes from Notion and creates only the intended directory; advanced bind alone stays uninitialized, and a dangling symlink is rejected |
 | S15 | Batch plan has one local candidate and two unchanged independent copies for the same page | One remote update produces one verified accepted content set, then both copies converge with separate baseline generations; differing local candidates stop before writes |
 
 A rejected plan may populate read caches. Compare baseline bytes and actual content, not arbitrary directory mtimes. Local metadata and source formatting that the storage mode cannot preserve must be classified explicitly rather than silently discarded.
@@ -101,8 +120,9 @@ The designed default is TTL = 300,000 ms. Test exact boundaries with a controlle
 | C17 | Refresh one bound page in another process, then run local-only `sync status` and offline `cache status` | Output reports observed remote version/time and provisional comparison; no network or baseline change. Explicit sync-status refresh can change the observation but cannot claim synchronization |
 | C18 | Clear one target cache in a scope containing other targets and incomplete/ambiguous catalogs | Only appropriate observations are retired; retained catalogs cannot gain a false exhaustive status. Other scopes, baselines, plans and content objects survive |
 | C19 | Clear a batch containing content and catalog observations where system retention is unavailable or fails on the first move | Every selected content/catalog observation is invalidated before retention begins; delayed publishers are rejected. Unmoved bytes, pinned content, baselines/plans/receipts remain intact despite the explicit nonzero retention error |
+| C20 | `ctl cache identity [--database SELECTOR]` across equivalent database selectors, local preference/TTL changes and changed credentials/remote selection | Equivalent database aliases/IDs/URLs retain identity; cwd, executable spelling, local roots/preferences, TTL and sync bindings do not partition it. Changed credentials, selected databases or upstream catalog scope change identity. The effective TTL is returned separately; no token/network output. Run `bun test packages/cli/test/cli.test.ts --test-name-pattern 'consumer catalog identity'`; actual Pi/OMP shared-index/export/session proof belongs to the Broker's [shared-cache route](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/session-cache-recovery.md#共享-notion-缓存). |
 
-Test XDG base precedence and application-specific overrides in fresh child processes. Leave host HOME unchanged; set only task-specific environment overrides and assert outputs stay inside the owned run. Keep configuration secrets out of output and observe the actual selected directories. Cache cleanup never acts as state cleanup or object garbage collection.
+Test XDG base precedence and application-specific overrides in fresh child processes, including `NTN_SKILLS_DATA_HOME` over `XDG_DATA_HOME` for builtin storage. Online commands may retain HOME for official authentication; local builtin commands require an owned HOME and data root. Assert outputs stay inside the owned run, keep configuration secrets out of output and observe actual selected directories. Cache cleanup never acts as state cleanup or object garbage collection.
 
 ## Command acceptance
 
@@ -180,8 +200,8 @@ Core tests reuse injected `Notion`/`Store` layers, controlled Effect clocks and 
 | Area | Implementation and evidence boundary |
 | --- | --- |
 | Clock/cache freshness | Core `cache.test.ts` uses injected provider and Effect Clock for exact age boundaries, scopes, complete content and retirement; `catalog.test.ts` owns discovery/title invariants |
-| Bind/plan/apply/recovery | Core `sync.test.ts` uses provider/store capabilities and the real filesystem adapter for common baselines, grouped operations, saved plans and partial/unknown receipts |
-| XDG routing and publication | Core `config.test.ts` exercises root precedence, causal generations and retirement with real Store/file boundaries |
+| Bind/plan/apply/recovery | Core `sync.node.test.ts` runs through official Effect Vitest on Node, using provider/store capabilities, a Node HTTP fixture and the real filesystem adapter for common baselines, grouped operations, saved plans and partial/unknown receipts |
+| XDG routing and publication | Core `config.node.test.ts` exercises root precedence, causal generations and retirement with real Store/file boundaries on Node |
 | Real links and local commit | Core `sync-local.test.ts` exercises multi-hop/parent/per-file links, actual commit-boundary faults, retained bytes and another process's locks |
 | Immutable snapshots/References/import | Existing snapshot/References/write/import suites protect fixed refs, complete versions, explicit-target page identity and semantic reuse |
 | CLI/Node.js packaging | CLI tests launch the source command with isolated roots; package smoke installs a packed npm consumer and launches it through Node.js |
@@ -190,10 +210,10 @@ Permanent tests cover consumer-visible conflict, freshness, identity, recovery a
 
 For each case retain setup, expected behavior, exact entry point/arguments, exit/error, before/after portable identities, baseline bytes, file hashes, safe request observations and link proof where relevant. Record `passed`, `failed` or `not_run` with a reason; a fake-provider run cannot turn a missing live branch into passed. Cleanup receipts must show retained evidence and system-trash handling.
 
-Completion requires:
+Completion for the affected behavior requires:
 
 - Required regressions pass, including stale plans, reference-only change, TTL boundary, baseline/cache separation, per-file links and partial/unknown recovery.
 - The supported real CLI push/pull/conflict sequence passes with readback; unsupported/unavailable provider storage modes remain explicitly unproven.
-- The installed Node.js consumer exercises affected entry points and XDG separation. Run `bun run check` and `bun run package:check` after integration.
+- The installed Node.js consumer exercises affected entry points and XDG separation, including central data storage and shared links when explicit installation changes. Historical migration/operator cases need separate evidence only when their behavior changes; they are not daily setup steps. Run `bun run check` and `bun run package:check` after integration.
 - Public behavior documentation and recipes are updated together: protocol, usage, both READMEs, host/Bootstrap Skill guidance and affected verification entries. Document edits do not count as runtime evidence.
 - Review verifies baseline has one convergence writer, cache freshness cannot authorize mutations, and local commits preserve/fence real destinations. Report the provider's non-atomic commit limitation and any unresolved filesystem race accurately.

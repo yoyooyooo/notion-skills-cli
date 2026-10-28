@@ -31,13 +31,16 @@
     "ntn-skills": "dist/ntn-skills.js"
   },
   "files": [
-    "dist",
+    "dist/ntn-skills.js",
     "skills",
     "docs/README.md",
     "docs/usage.md",
     "docs/protocol.md",
+    "docs/historical-operations.md",
     "docs/host-integration.md",
     "docs/releasing.md",
+    "docs/portable-converter.md",
+    "docs/remote-proof-converter.md",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
@@ -47,11 +50,12 @@
     "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
-    "node": ">=22.19.0"
+    "node": "^22.22.3 || >=24.20.0"
   },
   "dependencies": {
-    "effect": "4.0.4",
-    "@effect/platform-node": "4.0.4"
+    "effect": "4.0.5",
+    "@effect/platform-node": "4.0.5",
+    "@effect/sql-sqlite-node": "4.0.5"
   },
   "devDependencies": {
     "@notion-skills-cli/core": "workspace:*"

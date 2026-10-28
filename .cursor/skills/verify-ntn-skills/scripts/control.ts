@@ -14,25 +14,115 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { fileURLToPath } from "node:url"
+import { Schema } from "effect"
+import {
+  aliasFor,
+  CoverageSchema,
+  ContentRecordSchema,
+  ContentKindSchema,
+  notionPage,
+  CatalogSourceSchema,
+} from "../../../../packages/core/src/model.ts"
+import {
+  importDocument,
+  importEntrypoint,
+  importFiles,
+} from "../../../../packages/core/src/import.ts"
+import { BUNDLE, MANIFEST, readPortable } from "../../../../packages/core/src/portable.ts"
+
+const consumptionFreshness = Schema.Struct({
+  policy: Schema.String,
+  validated_at: Schema.optional(Schema.String),
+  age_ms: Schema.optional(Schema.Number),
+  max_age_ms: Schema.optional(Schema.Number),
+  stale: Schema.optional(Schema.Boolean),
+})
+const consumptionIdentity = {
+  ok: Schema.Literal(true),
+  scope: Schema.String,
+  record: ContentRecordSchema,
+  entrypoint: Schema.String,
+  snapshot_id: Schema.String,
+  version_id: Schema.String,
+  ref: Schema.String,
+  source: Schema.String,
+  freshness: consumptionFreshness,
+}
+const consumptionCatalog = Schema.Struct({
+  ok: Schema.Literal(true),
+  scope: Schema.String,
+  fetched_at: Schema.Number,
+  databases: Schema.Array(CatalogSourceSchema),
+  records: Schema.Array(ContentRecordSchema),
+  count: Schema.Number,
+  source: Schema.String,
+  freshness: consumptionFreshness,
+  coverage: CoverageSchema,
+})
+const consumptionRead = Schema.Struct({ ...consumptionIdentity, content: Schema.String })
+const consumptionFiles = Schema.Struct({
+  ...consumptionIdentity,
+  files: Schema.Array(
+    Schema.Struct({ path: Schema.String, bytes: Schema.Number, ref: Schema.String }),
+  ),
+})
+const consumptionExport = Schema.Struct({
+  ...consumptionIdentity,
+  operation: Schema.Literal("export"),
+  format: Schema.Literal("directory"),
+  output: Schema.String,
+  reused: Schema.Boolean,
+  content_id: Schema.String,
+  main_path: Schema.String,
+  projection: Schema.Literal("snapshot"),
+  files: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      bytes: Schema.Number,
+      hash: Schema.String,
+      role: Schema.Literals(["manifest", "source_bundle", "entrypoint", "resource"]),
+    }),
+  ),
+})
+const consumptionManifest = Schema.Struct({
+  format: Schema.Literal("ntn-skills"),
+  version: Schema.Literal(2),
+  kind: ContentKindSchema,
+  name: Schema.String,
+  description: Schema.String,
+  main: Schema.String,
+})
+const consumptionFailure = Schema.Struct({
+  ok: Schema.Literal(false),
+  error: Schema.Struct({ code: Schema.String, message: Schema.String }),
+})
 
 const repo = resolve(fileURLToPath(new URL("../../../../", import.meta.url)))
+const sourceLaunch = ["bun", join(repo, "scripts/dev.ts")]
 const split = process.argv.indexOf("--", 2)
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2, split < 0 ? undefined : split),
   options: {
+    help: { type: "boolean", short: "h" },
+    live: { type: "boolean" },
     run: { type: "string" },
     plan: { type: "string" },
     database: { type: "string" },
+    target: { type: "string" },
+    "installed-bin": { type: "string" },
     input: { type: "string", multiple: true },
   },
   allowPositionals: true,
   strict: true,
 })
+const usage =
+  "Usage: bun .cursor/skills/verify-ntn-skills/scripts/control.ts MODE --run ABSOLUTE_DIRECTORY [--live] [--plan ABSOLUTE_JSON] [-- CLI_ARGS]\nModes: init, doctor, cli, package, consumption, prepare, import, verify, reuse, cleanup\nDoctor is offline by default; --live explicitly runs the official Notion doctor. Help never initializes a run or starts a child."
+if (values.help || positionals[0] === "help") {
+  console.log(usage)
+  process.exit(0)
+}
 const mode = positionals[0]
-if (positionals.length !== 1 || !values.run || !isAbsolute(values.run))
-  throw new Error(
-    "Use control.ts MODE --run ABSOLUTE_DIRECTORY [--plan ABSOLUTE_JSON] [-- CLI_ARGS]",
-  )
+if (positionals.length !== 1 || !values.run || !isAbsolute(values.run)) throw new Error(usage)
 const root = resolve(values.run)
 const scratch = join(root, "scratch")
 const evidence = join(root, "evidence")
@@ -66,28 +156,39 @@ const env: Record<string, string | undefined> & {
   NTN_SKILLS_CONFIG_HOME: string
   NTN_SKILLS_HOME: string
   NTN_SKILLS_CACHE_HOME: string
+  NTN_SKILLS_DATA_HOME: string
 } = {
   ...process.env,
   NTN_SKILLS_CONFIG_HOME: join(scratch, "config"),
   NTN_SKILLS_HOME: join(scratch, "state"),
   NTN_SKILLS_CACHE_HOME: join(scratch, "cache"),
+  NTN_SKILLS_DATA_HOME: join(scratch, "data"),
   XDG_CONFIG_HOME: join(scratch, "xdg", "config"),
   XDG_STATE_HOME: join(scratch, "xdg", "state"),
   XDG_CACHE_HOME: join(scratch, "xdg", "cache"),
+  XDG_DATA_HOME: join(scratch, "xdg", "data"),
 }
 // Use the official transport; personal configuration and temporary transports are excluded.
 delete env.NTN_SKILLS_NTN_BIN
-async function command(args: string[], cwd = repo) {
+async function command(args: string[], cwd = repo, childEnv = env) {
   if (args.includes("set-token") || args.some((arg) => /^(?:Bearer |secret_|ntn_)/.test(arg)))
     throw new Error("Do not pass credentials to the verification harness.")
   const record = join(evidence, "commands", `${Date.now()}-${randomUUID()}.json`)
   const started = new Date().toISOString()
-  const child = Bun.spawn(args, { cwd, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" })
+  const child = Bun.spawn(args, {
+    cwd,
+    env: childEnv,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
   let timeout = false
+  let escalation: NodeJS.Timeout | undefined
   const timer = setTimeout(
     () => {
       timeout = true
       child.kill()
+      escalation = setTimeout(() => child.kill("SIGKILL"), 2_000)
     },
     15 * 60 * 1000,
   )
@@ -109,6 +210,9 @@ async function command(args: string[], cwd = repo) {
       started,
       finished: new Date().toISOString(),
       exit,
+      pid: child.pid,
+      signal: child.signalCode,
+      observed_exit: true,
       timeout,
       output:
         args[0] === "ntn" && output && typeof output === "object"
@@ -134,10 +238,11 @@ async function command(args: string[], cwd = repo) {
     return { output: output as any, exit, record }
   } finally {
     clearTimeout(timer)
+    clearTimeout(escalation)
   }
 }
 async function cli(args: string[]) {
-  const result = await command(["bun", "run", "dev", ...args])
+  const result = await command([...sourceLaunch, ...args])
   if (result.exit || result.output?.ok !== true)
     throw new Error(`CLI failed; inspect ${result.record}`)
   return result.output
@@ -232,7 +337,7 @@ async function receipts() {
     : []
 }
 async function online(id: string) {
-  return cli(["open", id, "--refresh"])
+  return cli(["files", id, "--refresh"])
 }
 async function children(id: string) {
   const output: any[] = []
@@ -278,6 +383,8 @@ async function main() {
     await mkdir(env.NTN_SKILLS_CONFIG_HOME, { recursive: true, mode: 0o700 })
     await mkdir(env.NTN_SKILLS_HOME, { recursive: true, mode: 0o700 })
     await mkdir(env.NTN_SKILLS_CACHE_HOME, { recursive: true, mode: 0o700 })
+    await mkdir(env.NTN_SKILLS_DATA_HOME, { recursive: true, mode: 0o700 })
+    await mkdir(join(scratch, "builtin-home"), { recursive: true, mode: 0o700 })
     await mkdir(evidence, { recursive: true, mode: 0o700 })
     await save(marker, { repo, root, scratch, evidence, created: new Date().toISOString() })
     return { ready: true, run: root, evidence }
@@ -328,13 +435,46 @@ async function main() {
     "Scratch directory must belong to this run and not be a symlink",
   )
   if (mode === "doctor") {
-    const result = await cli(["doctor"])
+    const entry = join(repo, "packages/cli/dist/ntn-skills.js")
+    const version = await command([...sourceLaunch, "--version"])
+    const help = await command([...sourceLaunch, "--help"])
+    check(
+      version.exit === 0 && help.exit === 0,
+      "Offline CLI readiness failed; inspect command evidence",
+    )
+    const result = {
+      ready: true,
+      mode: values.live ? "live" : "offline",
+      authentication: values.live ? "probed by official Notion doctor" : "not probed",
+      entry: { path: entry, sha256: digest(await readFile(entry)) },
+      source: {
+        path: join(repo, "packages/cli/src/main.ts"),
+        sha256: digest(await readFile(join(repo, "packages/cli/src/main.ts"))),
+      },
+      version: version.output,
+      scope: {
+        config: env.NTN_SKILLS_CONFIG_HOME,
+        state: env.NTN_SKILLS_HOME,
+        cache: env.NTN_SKILLS_CACHE_HOME,
+        data: env.NTN_SKILLS_DATA_HOME,
+      },
+      ...(values.live ? { live: await cli(["ctl", "doctor"]) } : {}),
+    }
     await save(join(evidence, "doctor.json"), result)
     return result
   }
   if (mode === "cli") {
     check(split >= 0 && process.argv.length > split + 1, "cli requires -- CLI_ARGS")
-    const result = await command(["bun", "run", "dev", ...process.argv.slice(split + 1)])
+    const cliArgs = process.argv.slice(split + 1)
+    // Offline builtin commands isolate native Skill roots; publish retains HOME for official ntn login.
+    // Both paths always use the scratch application and XDG data roots above.
+    const childEnv =
+      cliArgs[0] === "ctl" &&
+      cliArgs[1] === "builtin" &&
+      ["list", "read", "export", "status", "install", "update"].includes(cliArgs[2] ?? "")
+        ? { ...env, HOME: join(scratch, "builtin-home") }
+        : env
+    const result = await command([...sourceLaunch, ...cliArgs], repo, childEnv)
     return { exit: result.exit, evidence: result.record, output: result.output }
   }
   if (mode === "package") {
@@ -342,23 +482,286 @@ async function main() {
     check(
       result.exit === 0 &&
         result.output.smoke?.checks?.includes("complete_pinned_snapshot_unchanged") &&
-        result.output.smoke?.checks?.includes("seeded_offline_current_read_open_files_export_list"),
+        result.output.smoke?.checks?.includes("builtin_offline_catalog_and_provenance") &&
+        result.output.smoke?.checks?.includes("builtin_main_reference_export_bytes") &&
+        result.output.smoke?.checks?.includes(
+          "builtin_three_skill_installation_and_reference_bytes",
+        ) &&
+        result.output.smoke?.checks?.includes(
+          "builtin_independent_receipts_and_modified_sibling_isolation",
+        ) &&
+        result.output.smoke?.checks?.includes("builtin_copied_entrypoint_not_adopted") &&
+        result.output.smoke?.checks?.includes("builtin_export_reuse_and_customization_conflict") &&
+        result.output.smoke?.checks?.includes("builtin_exact_id_and_remote_name_isolation") &&
+        result.output.smoke?.checks?.includes(
+          "seeded_offline_current_read_open_files_export_list",
+        ) &&
+        result.output.smoke?.checks?.includes("broker_metadata_only_discovery") &&
+        result.output.smoke?.checks?.includes("broker_list_selected_pinned_activation") &&
+        result.output.smoke?.checks?.includes("broker_pinned_directory_manifest_bytes_identity") &&
+        result.output.smoke?.checks?.includes(
+          "broker_directory_reuse_and_conflict_preserves_bytes",
+        ) &&
+        result.output.smoke?.checks?.includes("broker_portable_workflow_entrypoint") &&
+        result.output.smoke?.checks?.includes("synthetic_same_user_credential_scope_isolation") &&
+        result.output.smoke?.checks?.includes(
+          "public_token_stdin_saved_config_environment_precedence",
+        ),
       `Package smoke failed: ${result.record}`,
     )
-    const archive = await readFile(result.output.archive)
-    check(
-      `sha512-${createHash("sha512").update(archive).digest("base64")}` === result.output.integrity,
-      "Package archive integrity differs",
+    const retainArchive = async (path: string, integrity: string) => {
+      const archive = await readFile(path)
+      check(
+        `sha512-${createHash("sha512").update(archive).digest("base64")}` === integrity,
+        "Package archive integrity differs",
+      )
+      const retained = join(evidence, "package", path.split(/[\\/]/).at(-1)!)
+      await mkdir(dirname(retained), { recursive: true, mode: 0o700 })
+      await writeFile(retained, archive, { mode: 0o600 })
+      return retained
+    }
+    const retained = await retainArchive(result.output.archive, result.output.integrity)
+    const retainedMigration = await retainArchive(
+      result.output.migration_archive,
+      result.output.migration_integrity,
     )
-    const retained = join(evidence, "package", `${result.output.name}-${result.output.version}.tgz`)
-    await mkdir(dirname(retained), { recursive: true, mode: 0o700 })
-    await writeFile(retained, archive, { mode: 0o600 })
     const consumerEvidence = join(evidence, "installed-consumer.json")
     await writeFile(consumerEvidence, await readFile(result.output.smoke.evidence), { mode: 0o600 })
     result.output.consumer_evidence = consumerEvidence
     result.output.retained_archive = retained
+    result.output.retained_migration_archive = retainedMigration
     await save(join(evidence, "package.json"), result.output)
     return { checked: true, evidence: result.record, checks: result.output.smoke.checks }
+  }
+  if (mode === "consumption") {
+    check(values.database, "consumption requires an explicit --database selector")
+    const installed = values["installed-bin"]
+    if (installed) {
+      check(isAbsolute(installed), "--installed-bin must be an absolute installed JavaScript bin")
+      const manifest = Schema.decodeUnknownSync(
+        Schema.Struct({
+          name: Schema.String,
+          bin: Schema.Record(Schema.String, Schema.String),
+        }),
+      )(await load(join(dirname(dirname(installed)), "package.json")))
+      check(
+        manifest.name === "ntn-skills" &&
+          resolve(dirname(dirname(installed)), manifest.bin?.["ntn-skills"] ?? "") ===
+            resolve(installed),
+        "--installed-bin must be the npm ntn-skills package's declared bin",
+      )
+    }
+    const label = installed ? "installed" : "source"
+    const launch = installed ? ["node", installed] : sourceLaunch
+    const drive = async (args: string[], expectedExit = 0) => {
+      const result = await command([...launch, ...args])
+      check(result.exit === expectedExit, `Unexpected CLI exit; inspect ${result.record}`)
+      check(
+        result.output?.ok === (expectedExit === 0),
+        `Unexpected CLI JSON; inspect ${result.record}`,
+      )
+      return result.output as unknown
+    }
+    const catalog = Schema.decodeUnknownSync(consumptionCatalog)(
+      await drive(["list", "--database", values.database, "--refresh"]),
+    )
+    check(
+      typeof catalog.scope === "string" &&
+        catalog.scope.length > 0 &&
+        catalog.freshness &&
+        catalog.coverage?.exhaustive === true &&
+        catalog.coverage.search_index_limited === false &&
+        catalog.coverage.failed_sources.length === 0 &&
+        catalog.count === catalog.records.length,
+      "Discovery must retain scope, freshness and complete explicit-database coverage",
+    )
+    for (const row of catalog.records)
+      check(
+        row.id &&
+          ((row.locator.type === "notion_page" &&
+            row.locator.page_id &&
+            row.id === `notion_page:${row.locator.page_id}`) ||
+            (row.locator.type === "notion_subscription" &&
+              row.kind === "router" &&
+              row.entrypoint === "ROUTER.md" &&
+              row.locator.subscription_id &&
+              row.locator.target_database_id &&
+              row.id === `notion_subscription:${row.locator.subscription_id}`)) &&
+          row.locator.database_id &&
+          row.locator.data_source_id &&
+          row.ref &&
+          !("content" in row) &&
+          !("body" in row) &&
+          !("files" in row) &&
+          !("snapshot_id" in row) &&
+          !("manifest" in row),
+        "Catalog must expose Notion page or subscription Router identities without activation content",
+      )
+    const skills = catalog.records.map((row) => Schema.decodeUnknownSync(ContentRecordSchema)(row))
+    const selected = values.target
+      ? skills.find(
+          (row) =>
+            row.id === values.target ||
+            row.ref === values.target ||
+            (row.locator.type === "notion_page" && row.locator.page_id === values.target),
+        )
+      : skills[0]
+    check(selected, "No selected page ID in scoped catalog; supply an accessible database/--target")
+    const activation = Schema.decodeUnknownSync(consumptionRead)(
+      await drive(["read", selected.ref, "--database", values.database, "--refresh"]),
+    )
+    check(
+      activation.scope === catalog.scope &&
+        activation.record.id === selected.id &&
+        activation.content.length > 0 &&
+        activation.source === "notion" &&
+        activation.freshness &&
+        activation.snapshot_id.startsWith("s_") &&
+        activation.version_id &&
+        new URL(activation.ref).searchParams.get("snapshot") === activation.snapshot_id,
+      "Activation must return selected page identity, complete instructions and pinned snapshot",
+    )
+    const files = Schema.decodeUnknownSync(consumptionFiles)(
+      await drive(["files", activation.snapshot_id, "--offline"]),
+    )
+    const output = join(evidence, `consumption-${label}-directory`)
+    const args = [
+      "export",
+      activation.snapshot_id,
+      "--offline",
+      "--projection",
+      "snapshot",
+      "--format",
+      "directory",
+      "--output",
+      output,
+    ]
+    const exported = Schema.decodeUnknownSync(consumptionExport)(await drive(args))
+    const rawManifest: unknown = await load(join(output, ".ntn-skills.json"))
+    check(
+      typeof rawManifest === "object" &&
+        rawManifest !== null &&
+        !("snapshot_id" in rawManifest) &&
+        !("version_id" in rawManifest) &&
+        !("page_id" in rawManifest) &&
+        !("scope" in rawManifest),
+      "Portable manifest must exclude local identities and credential scope",
+    )
+    const manifest = Schema.decodeUnknownSync(consumptionManifest)(rawManifest)
+    check(
+      exported.operation === "export" &&
+        exported.format === "directory" &&
+        exported.source === "local_snapshot" &&
+        exported.freshness.policy === "pinned" &&
+        exported.scope === activation.scope &&
+        exported.record.id === selected.id &&
+        exported.snapshot_id === activation.snapshot_id &&
+        exported.version_id === activation.version_id &&
+        manifest.format === "ntn-skills" &&
+        manifest.version === 2 &&
+        manifest.kind === exported.record.kind &&
+        manifest.main === exported.main_path &&
+        exported.entrypoint === activation.entrypoint &&
+        exported.main_path === activation.entrypoint &&
+        exported.projection === "snapshot",
+      "Directory export must retain fixed identities and portable manifest entrypoint",
+    )
+    const hashes = async (directory: string) => {
+      const inventory = []
+      for (const path of (await readdir(directory, { recursive: true })).sort()) {
+        if (!(await lstat(join(directory, path))).isFile()) continue
+        const bytes = await readFile(join(directory, path))
+        inventory.push({ path, bytes: bytes.length, sha256: digest(bytes) })
+      }
+      return inventory
+    }
+    const inventory = await hashes(output)
+    const entry = join(output, exported.main_path)
+    check(
+      !isAbsolute(exported.main_path) &&
+        relative(output, resolve(entry)).split(/[\\/]/)[0] !== ".." &&
+        (await readFile(entry, "utf8")) === activation.content &&
+        exported.files.length === inventory.length &&
+        exported.files.every(
+          (file) =>
+            inventory.some(
+              (actual) =>
+                actual.path === file.path &&
+                actual.bytes === file.bytes &&
+                actual.sha256 === file.hash,
+            ) &&
+            file.role ===
+              (file.path === MANIFEST
+                ? "manifest"
+                : file.path === BUNDLE
+                  ? "source_bundle"
+                  : file.path === exported.entrypoint
+                    ? "entrypoint"
+                    : "resource"),
+        ),
+      "Export main_path and reported files must be actual materialized files",
+    )
+    check(
+      files.files
+        .filter((file) => file.path !== ".ntn-skills.json")
+        .every((file) =>
+          exported.files.some((actual) => actual.path === file.path && actual.bytes === file.bytes),
+        ),
+      "Snapshot export omitted or changed a pinned file",
+    )
+    for (const file of files.files)
+      check(
+        new URL(file.ref).searchParams.get("snapshot") === activation.snapshot_id,
+        "Supporting file reference lost activation snapshot",
+      )
+    const reused = Schema.decodeUnknownSync(consumptionExport)(await drive(args))
+    check(
+      reused.reused === true &&
+        reused.content_id === exported.content_id &&
+        JSON.stringify(await hashes(output)) === JSON.stringify(inventory),
+      "Repeated export must reuse identical directory without changing bytes",
+    )
+    const conflictOutput = join(scratch, `consumption-${label}-conflict`)
+    const conflictArgs = [...args.slice(0, -1), conflictOutput]
+    await drive(conflictArgs)
+    await writeFile(join(conflictOutput, exported.main_path), "owned output conflict fixture\n")
+    const beforeConflict = await hashes(conflictOutput)
+    const conflict = Schema.decodeUnknownSync(consumptionFailure)(await drive(conflictArgs, 1))
+    check(
+      conflict.error.code === "OUTPUT_CONFLICT" &&
+        JSON.stringify(await hashes(conflictOutput)) === JSON.stringify(beforeConflict),
+      "Output conflict must preserve every occupied file",
+    )
+    const pinned = Schema.decodeUnknownSync(consumptionRead)(
+      await drive(["read", activation.ref, "--offline"]),
+    )
+    check(
+      pinned.content === activation.content &&
+        pinned.source === "local_snapshot" &&
+        pinned.snapshot_id === activation.snapshot_id &&
+        pinned.freshness.policy === "pinned",
+      "Offline pinned read must retain selected activation instructions and identities",
+    )
+    const summary = {
+      proof: "live-read-only-cli-consumption",
+      runtime: label,
+      executable: launch,
+      catalog,
+      activation,
+      files,
+      exported,
+      manifest,
+      inventory,
+      main_path: entry,
+      reused,
+      conflict,
+      pinned,
+      remote_writes: false,
+      credential_scope_isolation: "See seeded installed-consumer smoke; not exercised by live mode",
+    }
+    const path = join(evidence, `consumption-${label}.json`)
+    await save(path, summary)
+    return { consumed: true, evidence: path, snapshot_id: activation.snapshot_id, main_path: entry }
   }
   if (mode === "prepare") {
     check(
@@ -368,16 +771,16 @@ async function main() {
     const entries: Entry[] = []
     for (const input of values.input) {
       const directory = await realpath(resolve(input))
-      const dry = await cli(["import", directory, "--database", values.database, "--dry-run"])
-      check(
-        dry.input_type === "directory",
-        "prepare accepts Skill directories; drive single Markdown/ZIP paths with cli mode",
-      )
+      const inputFiles = []
       const files: string[] = []
       for (const name of await readdir(directory, { recursive: true })) {
         const metadata = await lstat(join(directory, name))
         check(!metadata.isSymbolicLink(), "Skill source must not contain symbolic links")
-        if (metadata.isFile() && name !== ".ntn-skills.json") files.push(name.split("\\").join("/"))
+        if (metadata.isFile()) {
+          const path = name.split("\\").join("/")
+          inputFiles.push({ path, bytes: await readFile(join(directory, name)) })
+          if (path !== ".ntn-skills.json") files.push(path)
+        }
       }
       files.sort()
       const file_hashes = []
@@ -385,7 +788,35 @@ async function main() {
         const bytes = await readFile(join(directory, path))
         file_hashes.push({ path, bytes: bytes.length, sha256: digest(bytes) })
       }
-      const name = (dry.name ?? dry.skill.name).toLowerCase().replaceAll(" ", "-")
+      const portable = readPortable(importFiles(inputFiles))
+      const main = portable
+        ? portable.files.find((file) => file.path === portable.main)!
+        : importEntrypoint(inputFiles).main
+      const metadata = importDocument(
+        main,
+        portable ? { name: portable.name, description: portable.description } : {},
+      )
+      const name = aliasFor(metadata.name)
+      const catalog = Schema.decodeUnknownSync(consumptionCatalog)(
+        await cli(["list", "--database", values.database, "--refresh"]),
+      )
+      const existing = catalog.records
+        .map((row) => Schema.decodeUnknownSync(ContentRecordSchema)(row))
+        .filter((row) => row.alias === name)
+      check(existing.length <= 1, `Ambiguous import target: ${name}`)
+      const target = existing[0]
+      const dry = await cli([
+        ...(target
+          ? ["replace", directory, "--target", notionPage(target).locator.page_id]
+          : ["create", directory]),
+        "--database",
+        values.database,
+        "--dry-run",
+      ])
+      check(
+        dry.input_type === "directory",
+        "prepare accepts Skill directories; drive single Markdown/ZIP paths with cli mode",
+      )
       check(!entries.some((entry) => entry.name === name), `Duplicate invocation: ${name}`)
       entries.push({ name, input: directory, files, file_hashes })
     }
@@ -399,18 +830,25 @@ async function main() {
     for (const entry of selected.entries) {
       if (imported.some((row: any) => row.name === entry.name && row.result?.verified)) continue
       const before = await cli(["list", "--database", selected.database, "--refresh"])
-      const existing = before.skills.filter((row: any) => row.alias === entry.name)
+      const existing = before.records.filter((row: any) => row.alias === entry.name)
       check(existing.length <= 1, `Ambiguous import target: ${entry.name}`)
-      const baseline = existing.length ? await online(existing[0].id) : undefined
-      const dry = await cli(["import", entry.input, "--database", selected.database, "--dry-run"])
+      const baseline = existing.length ? await online(existing[0].ref) : undefined
+      const publication = [
+        ...(baseline
+          ? ["replace", entry.input, "--target", notionPage(baseline.record).locator.page_id]
+          : ["create", entry.input]),
+        "--database",
+        selected.database,
+      ]
+      const dry = await cli([...publication, "--dry-run"])
       const after = await cli(["list", "--database", selected.database, "--refresh"])
       check(
-        JSON.stringify(before.skills) === JSON.stringify(after.skills),
+        JSON.stringify(before.records) === JSON.stringify(after.records),
         `Dry-run changed remote catalog: ${entry.name}`,
       )
       if (baseline)
         check(
-          (await online(baseline.skill.id)).version_id === baseline.version_id,
+          (await online(baseline.record.ref)).version_id === baseline.version_id,
           `Dry-run changed remote content: ${entry.name}`,
         )
       await save(join(evidence, `${entry.name}-dry-run.json`), {
@@ -419,9 +857,9 @@ async function main() {
         remote_version_unchanged: Boolean(baseline),
         network_reads_expected: true,
       })
-      const result = await cli(["import", entry.input, "--database", selected.database])
+      const result = await cli(publication)
       check(
-        result.verified && result.skill.alias === entry.name,
+        result.verified && result.record.alias === entry.name,
         `Import identity failed: ${entry.name}`,
       )
       imported.push({ name: entry.name, result })
@@ -431,7 +869,7 @@ async function main() {
           imported: entry.name,
           action: result.action,
           files: result.files.length,
-          page_id: result.skill.id,
+          page_id: notionPage(result.record).locator.page_id,
         }),
       )
     }
@@ -451,13 +889,14 @@ async function main() {
     for (const entry of selected.entries) {
       if (verified.some((row: any) => row.name === entry.name)) continue
       const first = imported.find((row: any) => row.name === entry.name).result
-      const snapshot = await online(first.skill.id)
+      const snapshot = await online(first.record.ref)
       check(
         snapshot.version_id === first.version_id &&
-          snapshot.skill.alias === entry.name &&
-          snapshot.skill.database_id === selected.database,
+          snapshot.record.alias === entry.name &&
+          notionPage(snapshot.record).locator.database_id === selected.database,
         `Remote import changed: ${entry.name}`,
       )
+      // Snapshot manifests remain immutable files; mutable state is owned by the CLI's SQL store.
       const cached = await load(
         join(env.NTN_SKILLS_HOME, "snapshots", `${snapshot.snapshot_id}.json`),
       )
@@ -473,7 +912,7 @@ async function main() {
         ) === JSON.stringify(refs.toSorted()),
         `Reference paths differ: ${entry.name}`,
       )
-      const actualChildren = await children(snapshot.skill.id)
+      const actualChildren = await children(notionPage(snapshot.record).locator.page_id)
       check(
         JSON.stringify(actualChildren.map((page: any) => page.id).sort()) ===
           JSON.stringify(
@@ -536,8 +975,8 @@ async function main() {
       }
       verified.push({
         name: entry.name,
-        page_id: snapshot.skill.id,
-        url: `https://www.notion.so/${snapshot.skill.id.replaceAll("-", "")}`,
+        page_id: notionPage(snapshot.record).locator.page_id,
+        url: `https://www.notion.so/${notionPage(snapshot.record).locator.page_id.replaceAll("-", "")}`,
         snapshot_id: snapshot.snapshot_id,
         version_id: snapshot.version_id,
         ref: snapshot.ref,
@@ -568,24 +1007,33 @@ async function main() {
     for (const entry of selected.entries) {
       if (repeated.some((row: any) => row.name === entry.name)) continue
       const first = verified.find((row: any) => row.name === entry.name)
-      const result = await cli(["import", entry.input, "--database", selected.database])
+      const result = await cli([
+        "replace",
+        entry.input,
+        "--target",
+        first.page_id,
+        "--database",
+        selected.database,
+      ])
       check(
         result.action === "reuse" &&
           result.reused &&
           result.verified &&
-          result.skill.id === first.page_id &&
+          notionPage(result.record).locator.page_id === first.page_id &&
           result.snapshot_id === first.snapshot_id,
         `Reimport changed identity/content: ${entry.name}`,
       )
       repeated.push({
         name: entry.name,
-        page_id: result.skill.id,
+        page_id: notionPage(result.record).locator.page_id,
         snapshot_id: result.snapshot_id,
         action: result.action,
         reused: true,
       })
       await save(join(evidence, "reimports.json"), repeated)
-      console.log(JSON.stringify({ reused: entry.name, page_id: result.skill.id }))
+      console.log(
+        JSON.stringify({ reused: entry.name, page_id: notionPage(result.record).locator.page_id }),
+      )
     }
     const catalog = await cli(["list", "--database", selected.database, "--refresh"])
     check(
@@ -594,7 +1042,7 @@ async function main() {
     )
     for (const entry of selected.entries)
       check(
-        catalog.skills.filter((row: any) => row.alias === entry.name).length === 1,
+        catalog.records.filter((row: any) => row.alias === entry.name).length === 1,
         `Duplicate/missing skill: ${entry.name}`,
       )
     await save(join(evidence, "final-catalog.json"), catalog)
@@ -606,7 +1054,8 @@ async function main() {
       reference_count: verified.reduce((n: number, row: any) => n + row.references, 0),
       verified,
       repeated_imports: repeated,
-      transport: "bun run dev with default official ntn; isolated config and state",
+      transport:
+        "canonical scripts/dev.ts fresh build followed by Node.js CLI with default official ntn; isolated config and state",
     }
     await save(join(evidence, "summary.json"), summary)
     return summary

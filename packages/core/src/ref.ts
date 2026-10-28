@@ -32,13 +32,13 @@ export function parseRef(input: string): SkillRef {
   if (!match) throw fail("INVALID_REF", "Expected skill://<name-or-page-id>/<path>?snapshot=<id>.")
   try {
     const selector = decodeURIComponent(match[1]!)
-    const path = normalizePath(decodeURIComponent((match[2] ?? "/SKILL.md").slice(1))) || "SKILL.md"
+    const path = normalizePath(decodeURIComponent((match[2] ?? "/").slice(1)))
     const params = new URLSearchParams(match[3] ?? "")
     for (const key of params.keys())
       if (key !== "snapshot") throw fail("INVALID_REF", `Unknown ref query parameter: ${key}.`)
     if (params.getAll("snapshot").length > 1)
       throw fail("INVALID_REF", "A ref may contain one snapshot parameter.")
-    if (!selector.trim() || selector.includes("/") || selector.includes("\0"))
+    if (!selector.trim() || selector.includes("/") || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(selector))
       throw fail("INVALID_REF", "Invalid skill selector.")
     const snapshot = params.get("snapshot") ?? undefined
     if (snapshot !== undefined && !/^s_[a-f0-9]{64}$/.test(snapshot))
@@ -51,6 +51,9 @@ export function parseRef(input: string): SkillRef {
 }
 
 export function fileRef(selector: string, path: string, snapshot?: string): string {
+  if (selector.startsWith("notion_page:")) selector = selector.slice("notion_page:".length)
+  else if (selector.startsWith("notion_subscription:"))
+    selector = `upstream:${selector.slice("notion_subscription:".length)}`
   return `skill://${encodeURIComponent(selector)}/${path.split("/").map(encodeURIComponent).join("/")}${snapshot ? `?snapshot=${snapshot}` : ""}`
 }
 
@@ -67,6 +70,7 @@ export function resolveRef(base: string, relative: string): string {
 }
 
 export function pageId(input: string): string | undefined {
+  if (input.startsWith("notion_page:")) input = input.slice("notion_page:".length)
   const raw = /^[a-f\d-]{32,36}$/i.test(input)
     ? input.replaceAll("-", "")
     : (() => {
@@ -89,7 +93,8 @@ export interface SkillTarget {
 }
 
 export function parseTarget(input: string, path?: string): SkillTarget {
-  if (!input.trim()) throw fail("INVALID_ARGUMENT", "Provide a Skill target.")
+  if (!input.trim() || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(input))
+    throw fail("INVALID_ARGUMENT", "Provide a nonempty Skill target without control characters.")
   let target: SkillTarget
   if (input.startsWith("skill://")) {
     const ref = parseRef(input)

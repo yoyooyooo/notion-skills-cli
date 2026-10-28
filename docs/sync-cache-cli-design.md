@@ -1,6 +1,6 @@
 # Sync and cache CLI design
 
-Status: implemented command/parameter design, 2026-10-14. [protocol.md](protocol.md) owns the current executable contract; this document records the accepted design and rationale. The [verification plan](../.cursor/skills/verify-ntn-skills/features/sync-cache-verification-plan.md) owns acceptance cases and evidence requirements. Runtime verification outcomes belong in the external case ledger, not this design.
+Status: historical accepted command/parameter design, 2026-10-14. Command spellings below describe that design and are not current invocation instructions. AH257 uses `files`, `replace INPUT --target EXACT`, `ctl database/config/cache/builtin/status/doctor/backup`, `sync local` and operation-ID recovery under `operation`. [protocol.md](protocol.md) owns the current executable contract. The [verification plan](../.cursor/skills/verify-ntn-skills/features/sync-cache-verification-plan.md) owns acceptance cases and evidence requirements; runtime outcomes belong in the external case ledger.
 
 The public additions are two command groups (`sync`, `cache`), common read-policy flags, explicit-target whole-Skill import, and cache-policy configuration. Keep JSON output, existing selector/naming rules, immutable snapshots and exit conventions. Avoid separate push/pull command families or a flag that bypasses conflict/version checks.
 
@@ -58,9 +58,9 @@ A binding identifies one existing Notion page and one local Skill directory. A b
 
 | Command | Parameters | Effect |
 | --- | --- | --- |
-| `sync bind TARGET` | required `--path DIR`; optional `--as LABEL`, `--database SELECTOR`, `--dry-run` | Resolve an existing current remote page and the logical local path; save configuration. Initialize a baseline only when current contents are confirmed equal |
-| `sync status [BINDING]` | optional `--refresh` | Default: inspect local content, stored baseline and the last observed remote state without network. Omitted binding lists all active bindings. Refresh validates the remote state online |
-| `sync unbind BINDING` | optional `--dry-run` | Deactivate the binding in configuration; retain local/remote content, common baseline, plans and recovery receipts |
+| `sync local bind TARGET` | required `--path DIR`; optional `--as LABEL`, `--database SELECTOR`, `--dry-run` | Resolve an existing current remote page and the logical local path; save configuration. Initialize a baseline only when current contents are confirmed equal |
+| `sync local status [BINDING]` | optional `--refresh` | Default: inspect local content, stored baseline and the last observed remote state without network. Omitted binding lists all active bindings. Refresh validates the remote state online |
+| `sync local unbind BINDING` | optional `--dry-run` | Deactivate the binding in configuration; retain local/remote content, common baseline, plans and recovery receipts |
 
 Bind TARGET accepts a current Name/alias, page ID/URL or unpinned pathless Skill ref; it rejects historical snapshot targets. Name resolution occurs only at registration. Store canonical page/database/data-source IDs, and use page ID for every later operation. An optional database selector constrains the page; no database default redirects an existing page. Bind never creates a remote page or copies content implicitly.
 
@@ -76,10 +76,10 @@ If both sides differ, bind saves an explicitly uninitialized binding and reports
 
 | Command | Parameters | Effect |
 | --- | --- | --- |
-| `sync plan BINDING` | optional `--from local\|notion`, `--output JSON_FILE` | Strongly read remote and local state, classify changes, persist a content-addressed plan, optionally write an identical reviewable copy |
-| `sync plan --all` | optional `--output JSON_FILE` | Plan active bindings together, including shared-page and shared-real-target checks |
-| `sync apply --plan PLAN_ID_OR_FILE` | required one plan ID or JSON file path | Revalidate and execute only the saved plan; read back effects before advancing each successful common baseline |
-| `sync reconcile BINDING` | no content-write flags | Inspect an unfinished operation using fresh local/remote reads; classify its actual outcome without replaying writes |
+| `sync local plan BINDING` | optional `--from local\|notion`, `--output JSON_FILE` | Strongly read remote and local state, classify changes, persist a content-addressed plan, optionally write an identical reviewable copy |
+| `sync local plan --all` | optional `--output JSON_FILE` | Plan active bindings together, including shared-page and shared-real-target checks |
+| `sync local apply --plan PLAN_ID_OR_FILE` | required one plan ID or JSON file path | Revalidate and execute only the saved plan; read back effects before advancing each successful common baseline |
+| `operation reconcile OPERATION_ID` | no content-write flags | Inspect an unfinished operation using fresh local/remote reads without replay, receipt closure or baseline promotion; further changes require a new reviewed plan |
 
 Exactly one BINDING or `--all` is required for plan. `--from` is single-binding only, and selects a content source for initialization or an explicit conflict resolution. It does not bypass expected versions, baseline generation, scope or symlink checks. Without `--from`, one-sided changes select direction automatically; differing two-sided changes fail with `SYNC_CONFLICT`. There is no interactive decision based on TTY and no `--force`, apply-time direction override or automatic conflict preference.
 
@@ -97,40 +97,41 @@ Recovery checks the original binding revision and permits only one intervening u
 
 ```bash
 # Register an existing page against the logical distribution path.
-ntn-skills sync bind PAGE_ID --path ~/.agents/skills/release-review --as release-review-global
+ntn-skills sync local bind PAGE_ID --path ~/.agents/skills/release-review --as release-review-global
 
 # For a differing first bind, deliberately select the initialization source.
-ntn-skills sync plan release-review-global --from notion
-ntn-skills sync apply --plan PLAN_ID
+ntn-skills sync local plan release-review-global --from notion
+ntn-skills sync local apply --plan PLAN_ID
 
 # Subsequently choose direction from the stored common baseline.
-ntn-skills sync status release-review-global
-ntn-skills sync plan release-review-global --output ./release-review-plan.json
-ntn-skills sync apply --plan ./release-review-plan.json
+ntn-skills sync local status release-review-global
+ntn-skills sync local plan release-review-global --output ./release-review-plan.json
+ntn-skills sync local apply --plan ./release-review-plan.json
 
 # Explicitly resolve a reported two-sided conflict through another checked plan.
-ntn-skills sync plan release-review-global --from local
-ntn-skills sync apply --plan RESOLUTION_PLAN_ID
+ntn-skills sync local plan release-review-global --from local
+ntn-skills sync local apply --plan RESOLUTION_PLAN_ID
 
 # Inspect actual effects after an interrupted or unknown write.
-ntn-skills sync reconcile release-review-global
+ntn-skills operation reconcile OPERATION_ID
 ```
 
 Status does not require a separate binding-list command. Plan is already a dry run, so it has no redundant `--dry-run`. Apply is the explicit mutation entry; it has no `--all` or source override because its saved plan fixes both. Missing remote pages are not automatically recreated; use existing create/import deliberately, then establish a new binding.
 
-## Explicit-target whole-Skill import
+## Exact whole-content replacement
 
-Extend the existing command with one optional parameter:
+Use the public creation and replacement commands:
 
 ```bash
-ntn-skills import INPUT --target TARGET [--database SELECTOR] [--dry-run]
+ntn-skills create INPUT --database SELECTOR
+ntn-skills replace INPUT --target EXACT [--database SELECTOR] [--dry-run]
 ```
 
-Without `--target`, retain same-name create/reuse/update behavior. With `--target`, replace the complete portable Skill on the selected existing page while preserving page identity. Name/alias selection is resolved once; a changed imported name never redirects the write. The target can be a current existing selector or an immutable snapshot/pinned main-file ref used as its expected-version baseline. Reject non-main file refs; whole-Skill replacement must not look like writing a single reference file. Missing/inaccessible target fails with no create fallback.
+Create rejects existing invocation names. Replace requires an exact page ID/URL, page-ID entrypoint ref or immutable snapshot; it preserves that page identity even when the submitted name changes. Display names and reference-file refs cannot select replacement. Missing or inaccessible targets fail without creation.
 
 A pinned target enforces its remote version, scope and database ownership before content mutation. An unpinned target captures a current baseline like existing single-file write; it is not sufficient as a saved sync plan's precondition. Sync passes the remote snapshot observed when the plan was generated, not an unrelated older common baseline. Reuse the existing whole-Skill save/References/source-bundle/verification logic; do not implement synchronization through a separate REST writer.
 
-`--name`/`--description` keep their metadata-override roles, and naming constraints still apply; they never select a different page when `--target` exists. `--database` is a constraint on that target, not a creation default. Repeated singleton flags are invalid. Return the existing import `action=update|reuse`, verified snapshot/content identity and previous/expected version where relevant. Keep stale targets as `WRITE_CONFLICT` and partial/unknown outcomes under their existing recovery contract.
+`--name`/`--description` override submitted metadata without selecting a different target. `--database` constrains replacement. Repeated singleton flags fail. Return `action=update|reuse`, verified snapshot/content identity and previous/expected versions. Keep stale targets as `WRITE_CONFLICT` and partial/unknown outcomes under the retained operation contract.
 
 ## Cache inspection, cleanup and configuration
 

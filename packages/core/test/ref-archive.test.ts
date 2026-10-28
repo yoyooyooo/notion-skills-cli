@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readArchive } from "../src/archive.ts"
 import { normalizePath, pageId, parseRef, resolveRef } from "../src/ref.ts"
-import { aliasFor, resolveSkill, type Catalog } from "../src/model.ts"
+import { aliasFor, resolveRecord, type Catalog } from "../src/model.ts"
 import { mainContent, skillBundle, tarGzip } from "./fixtures.ts"
 
 const id = "12345678-1234-1234-1234-123456789abc"
@@ -49,27 +49,26 @@ describe("protocol references", () => {
 })
 
 describe("skill identity", () => {
-  test("derives invocation names from English words and rejects other title forms", () => {
+  test("derives invocation aliases without constraining display name spelling", () => {
     expect(aliasFor("Resource Tag Governance")).toBe("resource-tag-governance")
     expect(aliasFor("MCP Server")).toBe("mcp-server")
     expect(aliasFor("a".repeat(64))).toBe("a".repeat(64))
+    expect(aliasFor("Tty7")).toBe("tty7")
+    expect(aliasFor("n8n-workflow")).toBe("n8n-workflow")
+    expect(aliasFor("React19")).toBe("react19")
+    expect(aliasFor("中文")).toBe("中文")
+    expect(aliasFor(" Agent  Workflow ")).toBe("agent-workflow")
+    expect(aliasFor("Agent_Skill")).toBe("agent_skill")
+    expect(aliasFor("Agent\u00a0Skill")).toBe("agent-skill")
+    expect(aliasFor("a".repeat(65))).toBe("a".repeat(65))
     for (const name of [
       "",
-      "资源治理",
-      "Agent V2",
-      "Agent-Skill",
-      "Agent_Skill",
-      " Agent Skill",
-      "Agent Skill ",
-      "Agent  Skill",
+      "  ",
       "Agent\tSkill",
       "Agent\nSkill",
-      "Agent Skill\n",
-      "Agent Skill\r",
-      "Agent Skill\r\n",
-      "Agent\u00a0Skill",
-      "Ａgent Skill",
-      "a".repeat(65),
+      "Agent\rSkill",
+      "Agent\u200bSkill",
+      "Agent\ud800Skill",
     ]) {
       expect(failureOf(() => aliasFor(name))).toMatchObject({
         code: "INVALID_SKILL_NAME",
@@ -78,19 +77,21 @@ describe("skill identity", () => {
     }
   })
   const skill = {
-    id,
+    id: `notion_page:${id}`,
+    kind: "skill" as const,
+    entrypoint: "SKILL.md",
+    locator: { type: "notion_page" as const, page_id: id, database_id: "db", data_source_id: "ds" },
     name: "Sample Skill",
     alias: "sample-skill",
     description: "Use samples",
-    database_id: "db",
-    data_source_id: "ds",
+    default_context: false,
     ref: `skill://${id}/SKILL.md`,
   }
   const directory: Catalog = {
     scope: "scope",
     fetched_at: 0,
     databases: [],
-    skills: [skill],
+    records: [skill],
     coverage: {
       method: "search",
       exhaustive: false,
@@ -100,15 +101,15 @@ describe("skill identity", () => {
     },
   }
   test("resolves exact name and alias but does not silently choose on collisions", () => {
-    expect(resolveSkill("Sample Skill", directory).id).toBe(id)
-    expect(resolveSkill("sample-skill", directory).id).toBe(id)
-    expect(failureOf(() => resolveSkill("missing", directory))).toMatchObject({
+    expect(resolveRecord("Sample Skill", directory).id).toBe(`notion_page:${id}`)
+    expect(resolveRecord("sample-skill", directory).id).toBe(`notion_page:${id}`)
+    expect(failureOf(() => resolveRecord("missing", directory))).toMatchObject({
       code: "SKILL_NOT_FOUND",
       details: { selector: "missing", candidates: [], coverage: directory.coverage },
     })
     const other = { ...skill, id: "other", name: "sample skill" }
     expect(
-      failureOf(() => resolveSkill("sample-skill", { ...directory, skills: [skill, other] })),
+      failureOf(() => resolveRecord("sample-skill", { ...directory, records: [skill, other] })),
     ).toMatchObject({
       code: "SKILL_AMBIGUOUS",
       details: { selector: "sample-skill", candidates: [skill, other] },
@@ -128,9 +129,9 @@ describe("skill identity", () => {
         },
       ],
     }
-    expect(failureOf(() => resolveSkill("Sample Skill", { ...directory, coverage }))).toMatchObject(
-      { code: "CATALOG_INCOMPLETE", details: coverage },
-    )
+    expect(
+      failureOf(() => resolveRecord("Sample Skill", { ...directory, coverage })),
+    ).toMatchObject({ code: "CATALOG_INCOMPLETE", details: coverage })
   })
 })
 
@@ -146,6 +147,33 @@ describe("archive import", () => {
     expect(
       new TextDecoder().decode(archive.files.find((f) => f.path === "references/guide.md")!.data),
     ).toBe("第一行\n第二行\n第三行")
+  })
+  test("preserves authored names with exact native directories or their invocation aliases", () => {
+    for (const name of ["Tty7", "n8n-workflow", "React19", "中文", "Agent Workflow"]) {
+      const content = `---\nname: ${JSON.stringify(name)}\ndescription: Use this workflow\n---\n\nContent\n`
+      for (const root of [name, aliasFor(name)]) {
+        const archive = readArchive(tarGzip([{ name: `${root}/SKILL.md`, content }]))
+        expect(archive.name).toBe(name)
+        expect(new TextDecoder().decode(archive.files[0]!.data)).toBe(content)
+      }
+      expect(() => readArchive(tarGzip([{ name: "different-name/SKILL.md", content }]))).toThrow(
+        expect.objectContaining({ code: "INVALID_SKILL" }),
+      )
+    }
+  })
+  test("rejects empty and control characters in native frontmatter names", () => {
+    for (const name of ["", "  ", "Agent\tSkill", "Agent\u200bSkill"]) {
+      expect(() =>
+        readArchive(
+          tarGzip([
+            {
+              name: "sample-skill/SKILL.md",
+              content: `---\nname: ${JSON.stringify(name)}\ndescription: Use this workflow\n---\nBody`,
+            },
+          ]),
+        ),
+      ).toThrow(expect.objectContaining({ code: "INVALID_SKILL_NAME" }))
+    }
   })
   test("rejects links, traversal, duplicate files and invalid entrypoint names", () => {
     for (const extra of [

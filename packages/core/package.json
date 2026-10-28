@@ -7,9 +7,13 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "effect": "4.0.4",
-    "@effect/platform-node": "4.0.4",
-    "fflate": "0.8.3"
+    "@notion-skills-cli/markdown": "workspace:*",
+    "@effect/platform-node": "4.0.5",
+    "@effect/sql-sqlite-node": "4.0.5",
+    "effect": "4.0.5",
+    "fflate": "0.8.3",
+    "marked": "18.1.1",
+    "yaml": "2.9.0"
   },
   "license": "MIT"
 }

@@ -1,0 +1,81 @@
+{
+  "provenance": {
+    "transport_record": "/Users/yoyo/.omp/state/orchestrate/ntn-skills-20261017/control/release-e2e/router/evidence/markdown-link-transport/transport-record.json",
+    "raw_blocks": "/Users/yoyo/.omp/state/orchestrate/ntn-skills-20261017/control/release-e2e/router/tmp/probe-blocks-read.json",
+    "api_version": "2026-03-11",
+    "request_id": "9652f3c8-32bd-4c6c-a9a1-60ffcb4b1b93",
+    "note": "Verbatim Markdown request/readback from the first transport step and verbatim rich-text block from the raw inventory. The block control was appended later; these are separate observations, not a fabricated round trip."
+  },
+  "page_id": "3fd5636c-236e-8120-8320-d44a2eab9453",
+  "markdown_request": "Probe A: [frag](https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=SKILL.md)\n\nProbe B: [frag path](https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=assets%2Fdata.txt)\n\nProbe C: [app host](https://app.notion.com/p/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=SKILL.md)\n\nProbe D: [plain](https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d)\n",
+  "markdown_readback": "Probe A: [frag](https://app.notion.com/p/3fc5636c236e81d7bbfefb6082c1ce7d)\nProbe B: [frag path](https://app.notion.com/p/3fc5636c236e81d7bbfefb6082c1ce7d)\nProbe C: [app host](https://app.notion.com/p/3fc5636c236e81d7bbfefb6082c1ce7d)\nProbe D: [plain](https://app.notion.com/p/3fc5636c236e81d7bbfefb6082c1ce7d)",
+  "block": {
+    "bulleted_list_item": {
+      "color": "default",
+      "rich_text": [
+        {
+          "annotations": {
+            "bold": false,
+            "code": false,
+            "color": "default",
+            "italic": false,
+            "strikethrough": false,
+            "underline": false
+          },
+          "href": "https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=SKILL.md",
+          "plain_text": "Block frag A",
+          "text": {
+            "content": "Block frag A",
+            "link": {
+              "url": "https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=SKILL.md"
+            }
+          },
+          "type": "text"
+        },
+        {
+          "annotations": {
+            "bold": false,
+            "code": false,
+            "color": "default",
+            "italic": false,
+            "strikethrough": false,
+            "underline": false
+          },
+          "href": null,
+          "plain_text": " | ",
+          "text": { "content": " | ", "link": null },
+          "type": "text"
+        },
+        {
+          "annotations": {
+            "bold": false,
+            "code": false,
+            "color": "default",
+            "italic": false,
+            "strikethrough": false,
+            "underline": false
+          },
+          "href": "https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=assets%2Fdata.txt",
+          "plain_text": "Block frag B",
+          "text": {
+            "content": "Block frag B",
+            "link": {
+              "url": "https://www.notion.so/3fc5636c236e81d7bbfefb6082c1ce7d#ntn-skills-path=assets%2Fdata.txt"
+            }
+          },
+          "type": "text"
+        }
+      ]
+    },
+    "created_by": { "id": "30c5636c-236e-81ac-88f4-0027c4e1510e", "object": "user" },
+    "created_time": "2026-10-18T00:27:00.000Z",
+    "has_children": false,
+    "id": "3fd5636c-236e-81d4-a3be-e2b0d3ed95cc",
+    "in_trash": false,
+    "last_edited_by": { "id": "30c5636c-236e-81ac-88f4-0027c4e1510e", "object": "user" },
+    "last_edited_time": "2026-10-18T00:27:00.000Z",
+    "object": "block",
+    "parent": { "page_id": "3fd5636c-236e-8120-8320-d44a2eab9453", "type": "page_id" },
+    "type": "bulleted_list_item"
+  }
+}

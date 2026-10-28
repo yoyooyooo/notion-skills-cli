@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test"
-import { Effect } from "effect"
+import { afterEach, expect, test } from "bun:test"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { ConfigProvider, Deferred, Effect, Exit, Fiber, FileSystem, Layer } from "effect"
 import { createHash, randomUUID } from "node:crypto"
 import { spawn } from "node:child_process"
 import * as fs from "node:fs/promises"
@@ -8,13 +9,20 @@ import * as path from "node:path"
 import { fileURLToPath } from "node:url"
 import { fail, SkillsError } from "../src/model.ts"
 import { portableFiles, type PortableSkill } from "../src/portable.ts"
-import { makeSyncLocal, type LocalBoundary } from "../src/sync-local.ts"
+import {
+  makeSyncLocal,
+  SyncLocal,
+  SyncLocalLive,
+  trashPath,
+  type LocalBoundary,
+} from "../src/sync-local.ts"
 
 const encoder = new TextEncoder()
 const skill = (
   body: string,
   attachments: readonly { path: string; bytes: Uint8Array }[] = [],
 ): PortableSkill => ({
+  kind: "skill",
   name: "Local Fixture",
   description: "Filesystem sync fixture",
   main: "SKILL.md",
@@ -29,21 +37,33 @@ const skill = (
   ],
 })
 
-async function fixture(hook?: (boundary: LocalBoundary) => Promise<void>) {
+const roots = new Set<string>()
+afterEach(async () => {
+  await Promise.all([...roots].map((root) => Effect.runPromise(trashPath(root))))
+  roots.clear()
+})
+async function fixture(hook?: (boundary: LocalBoundary) => Effect.Effect<void, SkillsError>) {
   const root = await fs.mkdtemp(path.join(tmpdir(), "ntn-sync-local-"))
+  roots.add(root)
   const trashRoot = path.join(root, "retained")
   await fs.mkdir(trashRoot)
   const trashed: Array<{ source: string; destination: string }> = []
-  const local = makeSyncLocal({
-    stateRoot: path.join(root, "state"),
-    beforeBoundary: hook,
-    trash: async (source) => {
-      const destination = path.join(trashRoot, randomUUID())
-      await fs.rename(source, destination)
-      trashed.push({ source, destination })
-    },
-  })
-  // Tests retain their scratch and evidence, exactly as production retains failures.
+  const local = await Effect.runPromise(
+    makeSyncLocal({
+      stateRoot: path.join(root, "state"),
+      beforeBoundary: hook,
+      trash: (source) =>
+        Effect.gen(function* () {
+          const filesystem = yield* FileSystem.FileSystem
+          const destination = path.join(trashRoot, randomUUID())
+          yield* filesystem.rename(source, destination)
+          trashed.push({ source, destination })
+        }).pipe(
+          Effect.mapError(() => fail("LOCAL_IO_ERROR", "Test retention failed.")),
+          Effect.provide(NodeServices.layer),
+        ),
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
   return { root, local, trashed }
 }
 async function materialize(directory: string, content: PortableSkill) {
@@ -59,6 +79,103 @@ async function errorOf(effect: Effect.Effect<unknown, SkillsError>) {
     effect.pipe(Effect.match({ onFailure: (error) => error, onSuccess: () => undefined })),
   )
 }
+
+test.each(["explicit", "ntn", "xdg", "home", "userprofile", "missing"])(
+  "state-root %s configuration builds the adapter and places its real fence correctly",
+  async (source) => {
+    const root = await fs.mkdtemp(path.join(tmpdir(), "ntn-sync-config-"))
+    roots.add(root)
+    const config: Record<string, string> = {}
+    if (source === "ntn") config.NTN_SKILLS_HOME = path.join(root, "ntn-state")
+    if (["ntn", "xdg"].includes(source)) config.XDG_STATE_HOME = path.join(root, "xdg-state")
+    if (["ntn", "xdg", "home"].includes(source)) config.HOME = path.join(root, "home")
+    if (source !== "missing") config.USERPROFILE = path.join(root, "profile")
+    const expected =
+      source === "explicit"
+        ? path.join(root, "explicit-state")
+        : source === "ntn"
+          ? config.NTN_SKILLS_HOME!
+          : source === "xdg"
+            ? path.join(config.XDG_STATE_HOME!, "ntn-skills")
+            : path.resolve(
+                source === "missing" ? "." : source === "home" ? config.HOME! : config.USERPROFILE!,
+                ".local",
+                "state",
+                "ntn-skills",
+              )
+    const local = await Effect.runPromise(
+      makeSyncLocal(source === "explicit" ? { stateRoot: expected } : {}).pipe(
+        Effect.provide(NodeServices.layer),
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(config))),
+      ),
+    )
+    if (source === "missing") {
+      // The relative default is observed through inspection only, without writing
+      // an application state directory into the repository.
+      expect(
+        (await Effect.runPromise(local.inspect(path.join(root, "absent"), { allowMissing: true })))
+          .exists,
+      ).toBe(false)
+    } else {
+      await Effect.runPromise(
+        local.withLocks(
+          ["configured-root"],
+          Effect.tryPromise({
+            try: async () => {
+              expect(
+                (await fs.readdir(path.join(expected, "sync", "locks"))).length,
+              ).toBeGreaterThan(0)
+            },
+            catch: () => fail("LOCAL_IO_ERROR", "Configured lock root was not created."),
+          }),
+        ),
+      )
+    }
+  },
+)
+
+test.each(["ntn", "xdg", "home", "userprofile"])(
+  "SyncLocalLive reads %s configuration with real NodeServices and creates its owner file",
+  async (source) => {
+    const root = await fs.mkdtemp(path.join(tmpdir(), "ntn-sync-live-config-"))
+    try {
+      const config: Record<string, string> = { USERPROFILE: path.join(root, "profile") }
+      if (source !== "userprofile") config.HOME = path.join(root, "home")
+      if (["ntn", "xdg"].includes(source)) config.XDG_STATE_HOME = path.join(root, "xdg")
+      if (source === "ntn") config.NTN_SKILLS_HOME = path.join(root, "ntn")
+      const expected =
+        source === "ntn"
+          ? config.NTN_SKILLS_HOME!
+          : source === "xdg"
+            ? path.join(config.XDG_STATE_HOME!, "ntn-skills")
+            : path.join(config.HOME ?? config.USERPROFILE!, ".local", "state", "ntn-skills")
+      const key = "live-config-root"
+      const lock = createHash("sha256").update(key).digest("hex")
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const local = yield* SyncLocal
+          const filesystem = yield* FileSystem.FileSystem
+          const target = path.join(root, "missing-skill")
+          expect((yield* local.inspect(target, { allowMissing: true })).exists).toBe(false)
+          yield* local.withLocks(
+            [key],
+            Effect.gen(function* () {
+              const ownerPath = path.join(expected, "sync", "locks", lock, "owner.json")
+              const owner = JSON.parse(yield* filesystem.readFileString(ownerPath))
+              expect(owner.pid).toBe(process.pid)
+              expect(owner.host).toBe(hostname())
+            }),
+          )
+        }).pipe(
+          Effect.provide(Layer.provideMerge(SyncLocalLive, NodeServices.layer)),
+          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(config))),
+        ),
+      )
+    } finally {
+      await Effect.runPromise(trashPath(root))
+    }
+  },
+)
 
 test("L1/L2/S10: relative multi-hop root and parent links survive writes and real edits", async () => {
   const { root, local } = await fixture()
@@ -209,13 +326,19 @@ test("L5/S11/S14: missing ordinary leaf is distinct from dangling links, cycles 
 test("L6: retarget at actual rename guard leaves both complete targets unchanged", async () => {
   let changed = false
   let logical = ""
-  const { root, local } = await fixture(async (boundary) => {
-    if (!changed && boundary.kind === "replace") {
-      changed = true
-      await fs.rename(logical, `${logical}.retained`)
-      await fs.symlink("two", logical)
-    }
-  })
+  const { root, local } = await fixture((boundary) =>
+    Effect.gen(function* () {
+      if (!changed && boundary.kind === "replace") {
+        changed = true
+        const filesystem = yield* FileSystem.FileSystem
+        yield* filesystem.rename(logical, `${logical}.retained`)
+        yield* filesystem.symlink("two", logical)
+      }
+    }).pipe(
+      Effect.mapError(() => fail("LOCAL_IO_ERROR", "Test retarget failed.")),
+      Effect.provide(NodeServices.layer),
+    ),
+  )
   await materialize(path.join(root, "one"), skill("original"))
   await materialize(path.join(root, "two"), skill("original"))
   logical = path.join(root, "logical")
@@ -297,9 +420,10 @@ test("tracked discovery includes new owned references/assets and ignores hidden 
 test("R5: failure after old-file retention keeps old and staged bytes with actual partial receipt", async () => {
   let destination = ""
   let boundaries = 0
-  const { root, local } = await fixture(async (boundary) => {
+  const { root, local } = await fixture((boundary) => {
     if (boundary.path === destination && boundary.kind === "replace" && ++boundaries === 3)
-      throw fail("LOCAL_IO_ERROR", "Injected destination rename failure")
+      return Effect.fail(fail("LOCAL_IO_ERROR", "Injected destination rename failure"))
+    return Effect.void
   })
   const directory = path.join(root, "skill")
   await materialize(directory, skill("old bytes"))
@@ -330,7 +454,8 @@ test("L7: a second real process is fenced while the first owns a target lock", a
   // The workspace root has no hoisted effect package; use the same installed
   // module URL as this test instead of resolving a bare import from --eval.
   const effectModule = import.meta.resolve("effect")
-  const source = `import {Effect} from ${JSON.stringify(effectModule)};import {makeSyncLocal} from ${JSON.stringify(module)}; const local=makeSyncLocal({stateRoot:${JSON.stringify(path.join(root, "state"))}}); await Effect.runPromise(local.withLocks([${JSON.stringify(key)}],Effect.succeed('forbidden')).pipe(Effect.match({onFailure:e=>console.log(e.code),onSuccess:()=>console.log('UNFENCED')})));`
+  const nodeServicesModule = import.meta.resolve("@effect/platform-node/NodeServices")
+  const source = `import {Effect} from ${JSON.stringify(effectModule)};import * as NodeServices from ${JSON.stringify(nodeServicesModule)};import {makeSyncLocal} from ${JSON.stringify(module)}; const local=await Effect.runPromise(makeSyncLocal({stateRoot:${JSON.stringify(path.join(root, "state"))}}).pipe(Effect.provide(NodeServices.layer))); await Effect.runPromise(local.withLocks([${JSON.stringify(key)}],Effect.succeed('forbidden')).pipe(Effect.match({onFailure:e=>console.log(e.code),onSuccess:()=>console.log('UNFENCED')})));`
   const result = await Effect.runPromise(
     local.withLocks(
       [key],
@@ -419,4 +544,117 @@ test("incoming files cannot overwrite untracked root content", async () => {
       details.cause_code,
   ).toBe("OUTPUT_CONFLICT")
   expect(await fs.readFile(path.join(directory, "personal.txt"), "utf8")).toBe("keep personal")
+})
+
+test.each([1, 3])(
+  "interruption at replace boundary %i retains bytes and releases the process fence",
+  async (stopAt) => {
+    const entered = Deferred.makeUnsafe<void>()
+    let boundaryCount = 0
+    let suspend = true
+    const { root, local, trashed } = await fixture((boundary) => {
+      if (suspend && boundary.kind === "replace" && ++boundaryCount === stopAt)
+        return Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never))
+      return Effect.void
+    })
+    const directory = path.join(root, "skill")
+    await materialize(directory, skill("old before interrupt"))
+    const expected = await Effect.runPromise(local.inspect(directory))
+    const key = `real-target:${expected.resolved_path}`
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const worker = yield* local
+          .withLocks(
+            [key],
+            local.commit(expected, skill("after recovery"), ["SKILL.md"], "interrupted-operation"),
+          )
+          .pipe(Effect.forkChild)
+        yield* Deferred.await(entered)
+        yield* Fiber.interrupt(worker)
+        return yield* Fiber.await(worker)
+      }),
+    )
+    expect(Exit.hasInterrupts(exit)).toBe(true)
+    expect(trashed).toHaveLength(0)
+    const staging = path.join(root, "state", "sync", "staging")
+    const operationScratch = (await fs.readdir(staging))[0]!
+    expect((await fs.readdir(path.join(staging, operationScratch))).length).toBeGreaterThan(0)
+    const main = path.join(expected.resolved_path, "SKILL.md")
+    if (stopAt === 1) {
+      expect(await fs.readFile(main, "utf8")).toContain("old before interrupt")
+    } else {
+      const candidates = await fs.readdir(expected.resolved_path)
+      const backup = candidates.find((name) => name.endsWith(".retained"))!
+      const pending = candidates.find((name) => name.endsWith(".pending"))!
+      expect(await fs.readFile(path.join(expected.resolved_path, backup), "utf8")).toContain(
+        "old before interrupt",
+      )
+      expect(await fs.readFile(path.join(expected.resolved_path, pending), "utf8")).toContain(
+        "after recovery",
+      )
+      // Explicit recovery restores the retained original; ordinary commit never
+      // guesses that an interrupted operation owns a later changed destination.
+      await fs.rename(path.join(expected.resolved_path, backup), main)
+    }
+    suspend = false
+    const recovered = await Effect.runPromise(
+      local.withLocks(
+        [key],
+        Effect.gen(function* () {
+          const restored = yield* local.inspect(directory, { trackedPaths: ["SKILL.md"] })
+          return yield* local.commit(
+            restored,
+            skill("after recovery"),
+            ["SKILL.md"],
+            "explicit-recovery",
+          )
+        }),
+      ),
+    )
+    expect(recovered.inspection.content_id).not.toBe(expected.content_id)
+    expect(await fs.readFile(main, "utf8")).toContain("after recovery")
+    expect(recovered.retained.every((entry) => entry.retention_path === "system_trash")).toBe(true)
+    // Original interrupted evidence remains recoverable after another operation.
+    expect((await fs.readdir(path.join(staging, operationScratch))).length).toBeGreaterThan(0)
+  },
+)
+
+test("a retargeted descendant directory is rejected at its actual write boundary", async () => {
+  let references = ""
+  let changed = false
+  const { root, local } = await fixture((boundary) =>
+    Effect.gen(function* () {
+      if (!changed && boundary.kind === "replace" && boundary.path.endsWith("guide.md")) {
+        changed = true
+        const filesystem = yield* FileSystem.FileSystem
+        yield* filesystem.rename(references, `${references}.original`)
+        yield* filesystem.symlink(path.join(root, "foreign"), references)
+      }
+    }).pipe(
+      Effect.mapError(() => fail("LOCAL_IO_ERROR", "Test descendant retarget failed.")),
+      Effect.provide(NodeServices.layer),
+    ),
+  )
+  const directory = path.join(root, "skill")
+  const before = skill("same body", [
+    { path: "references/guide.md", bytes: encoder.encode("old guide") },
+  ])
+  await materialize(directory, before)
+  await fs.mkdir(path.join(root, "foreign"))
+  await fs.writeFile(path.join(root, "foreign", "guide.md"), "foreign guide")
+  const expected = await Effect.runPromise(local.inspect(directory))
+  references = path.join(expected.resolved_path, "references")
+  const failure = await errorOf(
+    local.commit(
+      expected,
+      skill("same body", [{ path: "references/guide.md", bytes: encoder.encode("new guide") }]),
+      ["SKILL.md", "references/guide.md"],
+      "descendant-retarget",
+    ),
+  )
+  expect(failure?.code).toBe("SYNC_TARGET_DRIFT")
+  expect(await fs.readFile(path.join(`${references}.original`, "guide.md"), "utf8")).toBe(
+    "old guide",
+  )
+  expect(await fs.readFile(path.join(root, "foreign", "guide.md"), "utf8")).toBe("foreign guide")
 })

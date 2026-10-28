@@ -1,0 +1,13 @@
+{
+  "name": "@notion-skills-cli/markdown",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "marked": "18.1.1"
+  },
+  "license": "MIT"
+}

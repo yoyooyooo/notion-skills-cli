@@ -1,6 +1,6 @@
 import { Gunzip } from "fflate"
-import { parse } from "effect/encoding/Yaml"
-import { fail } from "./model.ts"
+import { parseYaml as parse } from "./yaml.ts"
+import { aliasFor, fail, validateDescription, validateDisplayName } from "./model.ts"
 import { normalizePath } from "./ref.ts"
 
 const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
@@ -114,23 +114,16 @@ export function readArchive(compressed: Uint8Array): SkillArchive {
     const metadata: unknown = frontmatter ? parse(frontmatter[1]!) : undefined
     const name =
       metadata && typeof metadata === "object" && "name" in metadata ? metadata.name : undefined
-    if (
-      typeof name !== "string" ||
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) ||
-      name.length > 64 ||
-      name !== root
-    ) {
+    if (typeof name !== "string")
       throw fail("INVALID_SKILL", "SKILL.md must contain a valid name matching its directory.")
-    }
+    validateDisplayName(name)
+    if (name !== root && aliasFor(name) !== root)
+      throw fail("INVALID_SKILL", "SKILL.md name must match its directory or invocation alias.")
     const description =
       metadata && typeof metadata === "object" && "description" in metadata
         ? metadata.description
         : undefined
-    if (typeof description !== "string" || !description.trim() || description.length > 1024)
-      throw fail(
-        "INVALID_SKILL",
-        "SKILL.md requires a non-empty description of at most 1024 characters.",
-      )
+    validateDescription(description)
     return { name, files: files.sort((a, b) => a.path.localeCompare(b.path)) }
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) throw error

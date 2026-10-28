@@ -1,0 +1,16 @@
+{
+  "name": "@notion-skills-cli/portable-converter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@effect/platform-node": "4.0.5",
+    "@effect/sql-sqlite-node": "4.0.5",
+    "effect": "4.0.5",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@notion-skills-cli/core": "workspace:*"
+  },
+  "license": "MIT"
+}

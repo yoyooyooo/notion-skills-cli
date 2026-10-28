@@ -1,7 +1,8 @@
+import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Clock, Effect, Layer } from "effect"
-import { decode, fail, type SkillsError } from "../src/model.ts"
+import { decode, fail, type SkillsError, type Snapshot } from "../src/model.ts"
 import { Store, sha256, configuration, setToken } from "../src/store.ts"
 import { catalog } from "../src/catalog.ts"
 import { Notion } from "../src/notion.ts"
@@ -30,6 +31,7 @@ function fixture() {
   let name = "Sample Skill"
   let decoy = false
   let failReference = false
+  let defaultContext = false
   const requests: string[] = []
   const json = new Map<string, unknown>()
   const objects = new Map<string, Uint8Array>()
@@ -39,8 +41,14 @@ function fixture() {
     Name: { id: "title", type: "title", title: [{ plain_text: name }] },
     Description: { type: "rich_text", rich_text: [{ plain_text: "Use when testing cache." }] },
     References: { id: "references", type: "rich_text", rich_text: [] },
+    "Default Context": { type: "checkbox", checkbox: defaultContext },
   })
   const store = Layer.succeed(Store, {
+    integrity: integrityRepositoryFixture(),
+    upstream: upstreamRepositoryFixture(),
+    registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
+    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
+    backup: () => Effect.die(new Error("Unexpected backup")),
     root: "/state",
     configRoot: "/config",
     cacheRoot: "/cache",
@@ -123,7 +131,9 @@ function fixture() {
           return {
             results: [
               { id: page, properties: properties() },
-              ...(decoy ? [{ id: "other", properties: properties() }] : []),
+              ...(decoy
+                ? [{ id: "33333333-3333-4333-8333-333333333333", properties: properties() }]
+                : []),
             ],
             has_more: false,
             next_cursor: null,
@@ -155,6 +165,11 @@ function fixture() {
             has_more: false,
             next_cursor: null,
           }
+        if (
+          path === `v1/blocks/${page}/children?page_size=100` ||
+          path === `v1/blocks/${guide}/children?page_size=100`
+        )
+          return { object: "list", results: [], has_more: false, next_cursor: null }
         if (path === `v1/pages/${page}/markdown`)
           return {
             object: "page_markdown",
@@ -190,6 +205,9 @@ function fixture() {
     objects,
     retired,
     generations,
+    defaultContext: (value: boolean) => {
+      defaultContext = value
+    },
     time: (value: number) => {
       now = value
     },
@@ -275,6 +293,83 @@ test("C4/C5 strong refresh sees reference-only changes; same version reuses immu
   expect(f.objects.size).toBe(objects)
 })
 
+for (const marker of [undefined, "references-v3"]) {
+  test(`prior materialization ${marker ?? "missing marker"} refreshes identity while preserving pinned bytes`, async () => {
+    const f = fixture()
+    const current = await f.run(openSkill(page))
+    const oldVersion = await f.run(
+      sha256(
+        JSON.stringify([
+          "references-v3",
+          "skill",
+          "SKILL.md",
+          [],
+          "Sample Skill",
+          "Use when testing cache.",
+          [
+            {
+              type: "mention",
+              plain_text: "Guide",
+              mention: { type: "page", page: { id: guide } },
+            },
+          ],
+          [
+            { id: page, path: "SKILL.md", markdown: "Main body." },
+            { id: guide, path: "references/guide.md", markdown: "Original reference." },
+          ],
+          [],
+        ]),
+      ),
+    )
+    const oldId = `s_${await f.run(sha256(JSON.stringify([current.scope, current.record.id, oldVersion])))}`
+    const oldBytes = new TextEncoder().encode("---\nname: sample-skill\n---\nMain body.")
+    const oldHash = await f.run(sha256(oldBytes))
+    f.objects.set(`objects/${oldHash}`, oldBytes)
+    const old: Snapshot = {
+      ...current,
+      snapshot_id: oldId,
+      version_id: oldVersion,
+      files: current.files.map((file) =>
+        file.path === current.entrypoint
+          ? { path: file.path, bytes: oldBytes.length, sha256: oldHash }
+          : file,
+      ),
+    }
+    // Leave only the structurally valid prior-generation snapshot and current pointer.
+    f.json.delete(`snapshots/${current.snapshot_id}.json`)
+    f.json.set(`snapshots/${oldId}.json`, old)
+    for (const [key, value] of f.json) {
+      if (!key.startsWith("cache/latest/")) continue
+      f.json.set(key, { ...(value as object), snapshot_id: oldId, materialization_version: marker })
+    }
+    const before = f.requests.length
+    const offline = await f.run(readSkill(page, { offline: true }).pipe(Effect.result))
+    expect(offline._tag === "Failure" && offline.failure.code).toBe("CACHE_REFRESH_REQUIRED")
+    expect(f.requests.length).toBe(before)
+    const refreshed = await f.run(readSkill(page, { refresh: true }))
+    expect(refreshed.snapshot_id).not.toBe(oldId)
+    expect(refreshed.snapshot_id).toBe(current.snapshot_id)
+    expect("content" in refreshed && refreshed.content).toContain('"name": "Sample Skill"')
+    const pinned = await f.run(readSkill(oldId))
+    expect("content" in pinned && pinned.content).toBe(new TextDecoder().decode(oldBytes))
+    expect(f.json.get(`snapshots/${oldId}.json`)).toEqual(old)
+    const count = f.requests.length
+    expect((await f.run(readSkill(page))).snapshot_id).toBe(refreshed.snapshot_id)
+    expect(f.requests.length).toBe(count)
+    expect((await f.run(readSkill(page, { refresh: true }))).snapshot_id).toBe(
+      refreshed.snapshot_id,
+    )
+    // Online selection must also bypass a prior-generation pointer while it is within its TTL.
+    for (const [key, value] of f.json) {
+      if (!key.startsWith("cache/latest/")) continue
+      f.json.set(key, { ...(value as object), snapshot_id: oldId, materialization_version: marker })
+    }
+    const onlineBefore = f.requests.length
+    expect((await f.run(readSkill(page))).snapshot_id).toBe(refreshed.snapshot_id)
+    expect(f.requests.length).toBeGreaterThan(onlineBefore)
+  })
+}
+
 test("C6/C7 failed expiry has no stale fallback or timestamp reset; explicit offline remains an observation", async () => {
   const f = fixture()
   const first = await f.run(readSkill(page))
@@ -324,7 +419,7 @@ test("C9 current name selection uses complete scoped catalogs and refresh expose
     readSkill("sample-skill", { database, refresh: true }).pipe(Effect.result),
   )
   expect(result._tag === "Failure" && result.failure.code).toBe("SKILL_AMBIGUOUS")
-  expect((await f.run(readSkill(page, { refresh: true }))).skill.id).toBe(page)
+  expect((await f.run(readSkill(page, { refresh: true }))).record.id).toBe(`notion_page:${page}`)
 })
 
 test("C10 complete checksum checks protect files/open and repair corrupted objects online", async () => {
@@ -376,7 +471,7 @@ test("C12/C13 strong writes cannot inherit TTL and same-clock invalidation is re
 test("C14 causal generations prevent delayed older publication from regressing complete latest observation", async () => {
   const f = fixture()
   const old = await f.run(openSkill(page))
-  const reserved = f.generations.get(`${old.scope}/${page}`)!
+  const reserved = f.generations.get(`${old.scope}/${old.record.id}`)!
   f.change("New version.")
   const newer = await f.run(openSkill(page))
   await f.run(publishSnapshotObservation(old, 1_000_000, reserved))
@@ -419,8 +514,8 @@ test("C17/C18/P6 cache status and targeted retirement are offline and retain all
   const f = fixture()
   await f.run(readSkill("sample-skill", { database }))
   const current = await f.run(openSkill(page))
-  f.json.set("cache/latest/other-scope/other-page/entry.json", {
-    page_id: "other-page",
+  f.json.set("cache/latest/other-scope/notion_page:other-page/entry.json", {
+    record_identity: "notion_page:other-page",
     scope: "other-scope",
     generation: 1,
     started_at: 0,
@@ -443,7 +538,7 @@ test("C17/C18/P6 cache status and targeted retirement are offline and retain all
   expect(f.retired).toHaveLength(0)
   await f.run(clearCache(page))
   expect(await f.run(cachedRemoteObservation(page, current.scope))).toBeUndefined()
-  expect(f.json.has("cache/latest/other-scope/other-page/entry.json")).toBe(true)
+  expect(f.json.has("cache/latest/other-scope/notion_page:other-page/entry.json")).toBe(true)
   expect(persistent.every((key) => f.json.has(key))).toBe(true)
   expect(f.objects.size).toBeGreaterThan(0)
   expect(f.requests.length).toBe(before)
@@ -527,4 +622,36 @@ test("catalog independent expiry/offline metadata preserves coverage without upg
   const offline = await f.run(catalog({ offline: true }))
   expect(offline.coverage).toEqual(first.coverage)
   expect(offline.freshness.stale).toBe(true)
+})
+
+test("checkbox-only refresh updates current metadata while preserving pinned snapshot bytes and identity", async () => {
+  const f = fixture()
+  const first = await f.run(openSkill(page))
+  expect(first.record.default_context).toBe(false)
+  f.defaultContext(true)
+  const checked = await f.run(openSkill(page, { refresh: true }))
+  expect(checked.record.default_context).toBe(true)
+  expect((await f.run(openSkill(page))).record.default_context).toBe(true)
+  expect(checked.snapshot_id).toBe(first.snapshot_id)
+  expect(checked.version_id).toBe(first.version_id)
+  expect(checked.files).toEqual(first.files)
+  const pinned = await f.run(targetSnapshot(parseTarget(first.snapshot_id)))
+  expect(pinned.record.default_context).toBe(false)
+  f.defaultContext(false)
+  expect((await f.run(openSkill(page, { refresh: true }))).record.default_context).toBe(false)
+})
+
+test("current snapshots require explicit Default Context metadata", async () => {
+  const f = fixture()
+  const original = await f.run(openSkill(page))
+  for (const [key, value] of f.json) {
+    const legacy = JSON.parse(JSON.stringify(value))
+    if (key.startsWith("snapshots/")) delete legacy.record.default_context
+    if (key.startsWith("cache/latest/")) delete legacy.default_context
+    f.json.set(key, legacy)
+  }
+  const restored = await f.run(
+    readSkill(original.snapshot_id, { offline: true }).pipe(Effect.result),
+  )
+  expect(restored._tag).toBe("Failure")
 })

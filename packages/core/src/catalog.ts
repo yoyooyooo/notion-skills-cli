@@ -10,17 +10,26 @@ import {
   fail,
   aliasFor,
   SkillsError,
-  skillFromPage,
+  recordFromPage,
   property,
   text,
+  validateDescription,
   type Catalog,
   type Source,
-  type Skill,
+  type CatalogSource,
+  type NotionPageRecord,
   type SourceFailure,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { Store, configuration, configuredSources, sha256 } from "./store.ts"
 import { pageId } from "./ref.ts"
+import { fileRef } from "./ref.ts"
+import {
+  publishedSubscriptionFromPage,
+  validatePublishedMember,
+  SUBSCRIPTION_ROUTER_MIN_MEMBERS,
+} from "./upstream-router.ts"
+import type { ContentRecord } from "./model.ts"
 import {
   effectiveCachePolicy,
   freshness,
@@ -112,6 +121,14 @@ export function explicitSource(input: string, sources?: readonly Source[]) {
   return Effect.gen(function* () {
     const configured = sources ?? (yield* configuredSources)
     const id = yield* databaseId(input, configured)
+    if ((yield* configuration).upstream_database === id)
+      return yield* Effect.fail(
+        fail(
+          "NOT_CONTENT_DATABASE",
+          "The upstream subscription database is not a content source.",
+          { database_id: id },
+        ),
+      )
     const registered = configured.find((source) => source.database_id === id)
     const api = yield* Notion
     const db = yield* Effect.gen(function* () {
@@ -156,6 +173,7 @@ export function explicitSource(input: string, sources?: readonly Source[]) {
       database_id: id,
       title: text(db.title),
       data_source_ids: db.data_sources.map((s) => s.id),
+      role: "content",
     } satisfies Source
   })
 }
@@ -164,6 +182,7 @@ export function discoverDatabases() {
   return Effect.gen(function* () {
     const databases = new Map<string, Source>()
     const failures: SourceFailure[] = []
+    const upstreamDatabase = (yield* configuration).upstream_database
     const sources = yield* paginate("v1/search", DataSourceSchema, {
       filter: { property: "object", value: "data_source" },
     })
@@ -171,6 +190,7 @@ export function discoverDatabases() {
       const props = property(source.properties)
       if (
         source.in_trash ||
+        source.parent.database_id === upstreamDatabase ||
         (source.database_type !== "skills" &&
           (property(props.References).type !== "rich_text" ||
             property(props.Description).type !== "rich_text"))
@@ -183,6 +203,7 @@ export function discoverDatabases() {
         database_id: id,
         title: previous?.title ?? text(source.title),
         data_source_ids: [...new Set([...(previous?.data_source_ids ?? []), source.id])],
+        role: "content",
       })
     }
     const configured = yield* configuredSources
@@ -243,7 +264,7 @@ export function setDefaultDatabase(database?: string) {
 export interface CatalogOptions extends ReadPolicyOptions {
   readonly database?: string
 }
-export function catalog(options: CatalogOptions = {}) {
+export function catalog(options: CatalogOptions = {}, selection: "all" | "content" = "all") {
   return Effect.gen(function* () {
     yield* Effect.try({
       try: () => validateReadPolicy(options),
@@ -255,7 +276,9 @@ export function catalog(options: CatalogOptions = {}) {
     const scope = selectedScope ?? (yield* authScope)
     const store = yield* Store
     const configured = yield* configuredSources
-    const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(["database-selection-v2", options.database ?? "auto", configured]))}.json`
+    const catalogSelection = ["database-selection-v5", options.database ?? "auto", configured]
+    if (selection === "content") catalogSelection.push("content-only")
+    const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(catalogSelection))}.json`
     const now = yield* Clock.currentTimeMillis
     const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
     if (!options.refresh) {
@@ -269,26 +292,61 @@ export function catalog(options: CatalogOptions = {}) {
         !cached.coverage.failed_sources.length &&
         (options.offline || (Number.isFinite(age) && age >= 0 && age < maxAge))
       ) {
-        for (const skill of cached.skills) {
-          yield* Effect.try({
+        const records: ContentRecord[] = []
+        const failed: SourceFailure[] = []
+        for (const skill of cached.records) {
+          const checked = yield* Effect.try({
             try: () => {
               if (aliasFor(skill.name) !== skill.alias)
                 throw fail(
                   "INVALID_SKILL_NAME",
                   "Cached skill name differs from its Notion Name.",
-                  { page_id: skill.id, name: skill.name },
+                  {
+                    page_id:
+                      skill.locator.type === "notion_page" ? skill.locator.page_id : skill.id,
+                    name: skill.name,
+                  },
                 )
+              if (skill.locator.type === "notion_page") validateDescription(skill.description)
             },
             catch: (error) =>
               error instanceof SkillsError
-                ? fail(error.code, error.message, { page_id: skill.id, name: skill.name })
+                ? fail(error.code, error.message, {
+                    page_id:
+                      skill.locator.type === "notion_page" ? skill.locator.page_id : skill.id,
+                    name: skill.name,
+                  })
                 : fail("STATE_CORRUPT", "Cached Skill title failed validation.", {
-                    page_id: skill.id,
+                    page_id:
+                      skill.locator.type === "notion_page" ? skill.locator.page_id : skill.id,
                   }),
-          })
+          }).pipe(Effect.result)
+          if (checked._tag === "Success") records.push(skill)
+          else if (
+            skill.locator.type === "notion_subscription" ||
+            (skill.locator.type === "notion_page" && checked.failure.code === "INVALID_SKILL")
+          )
+            failed.push({
+              id:
+                skill.locator.type === "notion_subscription"
+                  ? skill.locator.subscription_id
+                  : skill.id,
+              code: checked.failure.code,
+              database_id: skill.locator.database_id,
+              data_source_id: skill.locator.data_source_id,
+              alias: skill.locator.database_id,
+              title: skill.name,
+            })
+          else return yield* Effect.fail(checked.failure)
         }
         return {
           ...cached,
+          records,
+          coverage: {
+            ...cached.coverage,
+            exhaustive: cached.coverage.exhaustive && !failed.length,
+            failed_sources: failed,
+          },
           source: "local_cache" as const,
           freshness: freshness(options, cached.fetched_at, now, maxAge),
         }
@@ -303,9 +361,7 @@ export function catalog(options: CatalogOptions = {}) {
     }
     // A local token mapping authorizes cache selection only. Online discovery always validates identity.
     const validatedScope = selectedScope ? yield* authScope : scope
-    const catalogIdentity = yield* sha256(
-      JSON.stringify(["database-selection-v2", options.database ?? "auto", configured]),
-    )
+    const catalogIdentity = yield* sha256(JSON.stringify(catalogSelection))
     const catalogGeneration = yield* store.reserveCacheGeneration(
       validatedScope,
       `catalog-${catalogIdentity}`,
@@ -320,11 +376,20 @@ export function catalog(options: CatalogOptions = {}) {
       for (const source of discovered.databases) databases.set(source.database_id, source)
       failures.push(...discovered.failures)
     }
-    const skills = new Map<string, Skill>()
+    const skills = new Map<string, ContentRecord>()
+    // Retain parent identity alongside the decoded metadata for shared Router validation.
+    const inventory = new Map<
+      string,
+      { page: unknown; database_id: string; data_source_id: string }
+    >()
+    const InventoryPageSchema = Schema.Struct({
+      ...PageSchema.fields,
+      parent: Schema.optional(Schema.Unknown),
+    })
     const queried: string[] = []
     for (const db of databases.values()) {
       for (const id of new Set(db.data_source_ids)) {
-        const result = yield* paginate(`v1/data_sources/${id}/query`, PageSchema, {}).pipe(
+        const result = yield* paginate(`v1/data_sources/${id}/query`, InventoryPageSchema, {}).pipe(
           Effect.result,
         )
         if (result._tag === "Failure") {
@@ -340,20 +405,187 @@ export function catalog(options: CatalogOptions = {}) {
         }
         queried.push(id)
         for (const row of result.success) {
+          inventory.set(row.id, { page: row, database_id: db.database_id, data_source_id: id })
           if (row.in_trash) continue
-          const skill = yield* Effect.try({
-            try: () => skillFromPage(row, db, id),
+          const checked = yield* Effect.try({
+            try: () => recordFromPage(row, db, id),
             catch: (e) => e as SkillsError,
-          })
-          skills.set(row.id, skill)
+          }).pipe(Effect.result)
+          if (checked._tag === "Failure") {
+            if (checked.failure.code !== "INVALID_SKILL") return yield* Effect.fail(checked.failure)
+            failures.push({
+              id: row.id,
+              code: checked.failure.code,
+              database_id: db.database_id,
+              data_source_id: id,
+              alias: db.alias,
+              title: db.title,
+            })
+            continue
+          }
+          skills.set(row.id, checked.success)
+        }
+      }
+    }
+    const upstream = (yield* configuration).upstream_database
+    const catalogDatabases: CatalogSource[] = [...databases.values()]
+    if (upstream && selection === "all") {
+      const database = yield* Effect.gen(function* () {
+        const raw = yield* (yield* Notion).request(`v1/databases/${upstream}`)
+        return yield* Effect.try({
+          try: () => {
+            const db = decode(DatabaseSchema, raw)
+            if (db.id !== upstream || db.in_trash)
+              throw fail("INVALID_RESPONSE", "Subscription database identity is unavailable.")
+            return db
+          },
+          catch: () => fail("INVALID_RESPONSE", "Invalid subscription database response."),
+        })
+      }).pipe(Effect.result)
+      if (database._tag === "Failure")
+        failures.push({
+          id: upstream,
+          code: database.failure.code,
+          database_id: upstream,
+          alias: upstream,
+          title: "Upstream subscriptions",
+        })
+      else {
+        catalogDatabases.push({
+          alias: upstream,
+          database_id: upstream,
+          title: text(database.success.title),
+          data_source_ids: database.success.data_sources.map((source) => source.id),
+          role: "upstream",
+        })
+        for (const source of database.success.data_sources) {
+          const rows = yield* Effect.gen(function* () {
+            const raw = yield* (yield* Notion).request(`v1/data_sources/${source.id}`)
+            const ds = yield* Effect.try({
+              try: () => decode(DataSourceSchema, raw),
+              catch: () => fail("INVALID_RESPONSE", "Invalid subscription data source."),
+            })
+            if (ds.id !== source.id || ds.parent.database_id !== upstream || ds.in_trash)
+              return yield* Effect.fail(
+                fail("INVALID_RESPONSE", "Subscription data source identity does not match."),
+              )
+            return yield* paginate(`v1/data_sources/${source.id}/query`, InventoryPageSchema, {})
+          }).pipe(Effect.result)
+          if (rows._tag === "Failure") {
+            failures.push({
+              id: source.id,
+              code: rows.failure.code,
+              database_id: upstream,
+              data_source_id: source.id,
+              alias: upstream,
+              title: "Upstream subscriptions",
+            })
+            continue
+          }
+          queried.push(source.id)
+          for (const row of rows.success) {
+            if (row.in_trash) continue
+            const status = property(property(row.properties.Status).select).name
+            if (status !== "verified" && status !== "partial" && status !== "disabled") continue
+            const result = yield* Effect.try({
+              try: () => {
+                const subscription = publishedSubscriptionFromPage(
+                  upstream,
+                  database.success,
+                  row,
+                  row.id,
+                )
+                if (subscription.data_source_id !== source.id)
+                  throw fail(
+                    "INVALID_RESPONSE",
+                    "Subscription locator differs from its queried source.",
+                  )
+                // An explicit content scope must not fail on another target's members.
+                if (
+                  options.database !== undefined &&
+                  !databases.has(subscription.target_database_id)
+                )
+                  return undefined
+                for (const member of subscription.published.members) {
+                  const observed = inventory.get(member.page_id)
+                  const target = databases.get(subscription.target_database_id)
+                  if (
+                    !observed ||
+                    !target ||
+                    observed.database_id !== target.database_id ||
+                    !target.data_source_ids.includes(observed.data_source_id)
+                  )
+                    throw fail(
+                      "UPSTREAM_ROUTER_UNAVAILABLE",
+                      "An active member is absent from its target inventory.",
+                      { page_id: member.page_id },
+                    )
+                  const parent = property(property(observed.page).parent)
+                  if (
+                    parent.data_source_id !== observed.data_source_id ||
+                    (parent.database_id !== undefined && parent.database_id !== target.database_id)
+                  )
+                    throw fail(
+                      "UPSTREAM_ROUTER_UNAVAILABLE",
+                      "An active member belongs to another target.",
+                      { page_id: member.page_id },
+                    )
+                  validatePublishedMember(subscription, member, observed.page)
+                }
+                return subscription
+              },
+              catch: (e) =>
+                e instanceof SkillsError
+                  ? e
+                  : fail("INVALID_RESPONSE", "Invalid subscription Router metadata."),
+            }).pipe(Effect.result)
+            if (result._tag === "Failure") {
+              failures.push({
+                id: row.id,
+                code: result.failure.code,
+                database_id: upstream,
+                data_source_id: source.id,
+                alias: upstream,
+                title: text(property(row.properties.Name).title),
+              })
+              continue
+            }
+            const subscription = result.success
+            if (!subscription) continue
+            const repo = aliasFor(subscription.name)
+            for (const member of subscription.published.members) {
+              const record = skills.get(member.page_id)
+              if (record?.kind === "skill")
+                skills.set(member.page_id, { ...record, upstream: { repo } })
+            }
+            if (subscription.published.members.length < SUBSCRIPTION_ROUTER_MIN_MEMBERS) continue
+            const id = `notion_subscription:${subscription.subscription_id}`
+            skills.set(id, {
+              id,
+              kind: "router",
+              locator: {
+                type: "notion_subscription",
+                subscription_id: subscription.subscription_id,
+                database_id: subscription.database_id,
+                data_source_id: subscription.data_source_id,
+                target_database_id: subscription.target_database_id,
+              },
+              name: subscription.name,
+              alias: aliasFor(subscription.name),
+              description: subscription.description,
+              default_context: subscription.default_context,
+              entrypoint: "ROUTER.md",
+              ref: fileRef(`upstream:${subscription.subscription_id}`, "ROUTER.md"),
+            })
+          }
         }
       }
     }
     const output: Catalog = {
       scope: validatedScope,
       fetched_at: yield* Clock.currentTimeMillis,
-      databases: [...databases.values()],
-      skills: [...skills.values()].sort(
+      databases: catalogDatabases,
+      records: [...skills.values()].sort(
         (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
       ),
       coverage: {

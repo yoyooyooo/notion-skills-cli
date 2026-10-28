@@ -16,5 +16,6 @@
     "tests/**/*.ts",
     "scripts/**/*.ts",
     ".cursor/skills/verify-ntn-skills/scripts/**/*.ts"
-  ]
+  ],
+  "exclude": ["**/debug/**"]
 }

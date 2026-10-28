@@ -1,14 +1,34 @@
+import { Schema } from "effect"
 import { zipSync, type Zippable } from "fflate"
-import { parse } from "effect/encoding/Yaml"
+import { parseYaml as parse } from "./yaml.ts"
 import { importDocument, type ImportFile } from "./import.ts"
-import { aliasFor, fail, property, SkillsError } from "./model.ts"
+import {
+  validateDisplayName,
+  validateDescription,
+  ContentKindSchema,
+  decode,
+  fail,
+  property,
+  SkillsError,
+  type ContentKind,
+} from "./model.ts"
 import { normalizePath } from "./ref.ts"
 
 export const MANIFEST = ".ntn-skills.json"
 export const BUNDLE = "ntn-skills-source.zip"
 const encoder = new TextEncoder()
 const decoder = new TextDecoder("utf-8", { fatal: true })
+const PortableManifestSchema = Schema.Struct({
+  format: Schema.Literal("ntn-skills"),
+  version: Schema.Literal(2),
+  kind: ContentKindSchema,
+  name: Schema.String,
+  description: Schema.String,
+  main: Schema.String,
+  projection: Schema.optional(Schema.Unknown),
+})
 export interface PortableSkill {
+  readonly kind: ContentKind
   readonly name: string
   readonly description: string
   readonly main: string
@@ -18,6 +38,35 @@ export interface PortableSkill {
     readonly description: string
     readonly body: string
     readonly references?: Readonly<Record<string, string>>
+    readonly materialization?: {
+      readonly authored: string
+      readonly generated: string
+    }
+  }
+}
+
+export function authoredPortable(skill: PortableSkill): PortableSkill {
+  const materialization = skill.projection?.materialization
+  if (skill.kind !== "router" || !materialization) return skill
+  const main = skill.files.find((file) => file.path === skill.main)
+  if (!main) throw fail("INVALID_SKILL", "Portable Skill entrypoint is missing.")
+  const unchanged =
+    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(main.bytes) ===
+    materialization.generated
+  const { materialization: _, ...projection } = skill.projection!
+  return {
+    ...skill,
+    files: unchanged
+      ? skill.files.map((file) =>
+          file === main ? { ...file, bytes: encoder.encode(materialization.authored) } : file,
+        )
+      : skill.files,
+    projection: {
+      ...projection,
+      body: unchanged
+        ? projection.body
+        : importDocument(main, { name: skill.name, description: skill.description }).body,
+    },
   }
 }
 export function bodyIdentity(body: string) {
@@ -48,21 +97,24 @@ export function bodyIdentity(body: string) {
 export const fileOrder = (a: ImportFile, b: ImportFile) =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0
 
-export function portableFiles(skill: PortableSkill, projection = false): ImportFile[] {
-  aliasFor(skill.name)
-  if (
-    !skill.description.trim() ||
-    skill.description.length > 1024 ||
-    !skill.files.some((file) => file.path === skill.main)
-  )
-    throw fail("INVALID_SKILL", "Portable Skill requires a valid description and entrypoint.")
+export function portableFiles(
+  skill: PortableSkill,
+  projection = false,
+  snapshot = false,
+): ImportFile[] {
+  validateDisplayName(skill.name)
+  if (skill.projection) validateDisplayName(skill.projection.name)
+  decode(ContentKindSchema, skill.kind)
+  validateDescription(skill.description)
+  if (!skill.files.some((file) => file.path === skill.main))
+    throw fail("INVALID_SKILL", "Portable Skill requires an entrypoint.")
   const seen = new Set<string>()
   for (const file of skill.files) {
     if (
       !file.path ||
       normalizePath(file.path) !== file.path ||
       file.path === MANIFEST ||
-      file.path === BUNDLE ||
+      (file.path === BUNDLE && !snapshot) ||
       seen.has(file.path)
     )
       throw fail("INVALID_ARCHIVE", "Invalid, duplicate or reserved portable file path.", {
@@ -72,11 +124,14 @@ export function portableFiles(skill: PortableSkill, projection = false): ImportF
   }
   const metadata = {
     format: "ntn-skills",
-    version: 1,
+    version: 2,
+    kind: skill.kind,
     name: skill.name,
     description: skill.description,
     main: skill.main,
-    ...(projection && skill.projection ? { projection: skill.projection } : {}),
+    ...((projection || skill.projection?.materialization) && skill.projection
+      ? { projection: skill.projection }
+      : {}),
   }
   const files = [
     { path: MANIFEST, bytes: encoder.encode(JSON.stringify(metadata) + "\n") },
@@ -90,8 +145,8 @@ export function portableFiles(skill: PortableSkill, projection = false): ImportF
   return files
 }
 
-export function portableZip(skill: PortableSkill, projection = false) {
-  const files = portableFiles(skill, projection)
+export function portableZip(skill: PortableSkill, projection = false, snapshot = false) {
+  const files = portableFiles(skill, projection, snapshot)
   const entries: Zippable = Object.create(null)
   for (const file of files)
     entries[file.path] = [file.bytes, { mtime: new Date(1980, 0, 1), level: 6 }]
@@ -104,19 +159,23 @@ export function portableZip(skill: PortableSkill, projection = false) {
 export function readPortable(input: readonly ImportFile[]): PortableSkill | undefined {
   const file = input.find((file) => file.path === MANIFEST)
   if (!file) return undefined
+  if (input.filter((file) => file.path === MANIFEST).length !== 1)
+    throw fail("INVALID_ARCHIVE", "Portable input requires exactly one manifest.")
   try {
-    const manifest = property(JSON.parse(decoder.decode(file.bytes)))
-    if (
-      manifest.format !== "ntn-skills" ||
-      manifest.version !== 1 ||
-      typeof manifest.name !== "string" ||
-      typeof manifest.description !== "string" ||
-      typeof manifest.main !== "string"
-    )
-      throw fail("INVALID_ARCHIVE", "Unsupported portable Skill manifest.")
-    aliasFor(manifest.name)
-    if (!manifest.description.trim() || manifest.description.length > 1024)
-      throw fail("INVALID_SKILL", "Portable Skill requires a description of 1–1024 characters.")
+    const raw = property(JSON.parse(decoder.decode(file.bytes)))
+    if (raw.format === "ntn-skills" && raw.version === 1)
+      throw fail(
+        "PORTABLE_UPGRADE_REQUIRED",
+        "Convert this portable archive with the independent portable converter before using the normal CLI.",
+        {
+          version: raw.version,
+          required_version: 2,
+        },
+      )
+    const manifest = Schema.decodeUnknownSync(PortableManifestSchema)(raw)
+    validateDisplayName(manifest.name)
+    const kind = manifest.kind
+    validateDescription(manifest.description)
     const files = input.filter((file) => file.path !== MANIFEST).sort(fileOrder)
     const seen = new Set<string>()
     for (const file of files) {
@@ -143,10 +202,16 @@ export function readPortable(input: readonly ImportFile[]): PortableSkill | unde
           (typeof projection.references !== "object" ||
             projection.references === null ||
             Array.isArray(projection.references) ||
-            Object.values(projection.references).some((value) => typeof value !== "string"))))
+            Object.values(projection.references).some((value) => typeof value !== "string"))) ||
+        (projection.materialization !== undefined &&
+          (kind !== "router" ||
+            typeof property(projection.materialization).authored !== "string" ||
+            typeof property(projection.materialization).generated !== "string")))
     )
       throw fail("INVALID_ARCHIVE", "Invalid portable projection.")
+    if (rawProjection !== undefined) validateDisplayName(projection.name as string)
     return {
+      kind,
       name: manifest.name,
       description: manifest.description,
       main: manifest.main,
@@ -165,7 +230,7 @@ export function canonicalMain(
   name: string,
   description: string,
   body: string,
-  previous?: ImportFile,
+  previous: ImportFile,
 ): ImportFile {
   let extra: Record<string, unknown> = {}
   if (previous) {
@@ -176,7 +241,7 @@ export function canonicalMain(
       if ("name" in metadata || "description" in metadata) extra = metadata
     }
   }
-  const metadata = { ...extra, name: aliasFor(name), description }
+  const metadata = { ...extra, name: validateDisplayName(name), description }
   delete (metadata as Record<string, unknown>).notion_page_id
   const frontmatter = Object.keys(metadata)
     .sort()
@@ -185,7 +250,7 @@ export function canonicalMain(
     )
     .join("\n")
   return {
-    path: previous?.path ?? "SKILL.md",
+    path: previous.path,
     bytes: encoder.encode(`---\n${frontmatter}\n---\n\n${body.trim()}${body.trim() ? "\n" : ""}`),
   }
 }

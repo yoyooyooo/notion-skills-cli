@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Path } from "effect"
-import { parse } from "effect/encoding/Yaml"
+import { parseYaml as parse } from "./yaml.ts"
 import { unzipSync } from "fflate"
-import { aliasFor, fail, property, SkillsError } from "./model.ts"
+import { fail, property, SkillsError, validateDescription, validateDisplayName } from "./model.ts"
 import { normalizePath } from "./ref.ts"
 
 export interface ImportFile {
@@ -134,25 +134,8 @@ export function importDocument(main: ImportFile, options: ImportMetadataOptions 
       )
     const original = typeof metadata.name === "string" ? metadata.name : undefined
     const stem = main.path.replace(/\.(md|markdown)$/i, "")
-    const name =
-      options.name ??
-      (original ?? stem)
-        .replace(/[-_]/g, " ")
-        .split(" ")
-        .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
-        .join(" ")
-    aliasFor(name)
-    if (original && !options.name && !/^[a-z]+(?:-[a-z]+)*$/.test(original))
-      throw fail(
-        "INVALID_SKILL_NAME",
-        "Imported frontmatter name must use lowercase English words; provide --name to map another name explicitly.",
-      )
-    const description = options.description ?? metadata.description
-    if (typeof description !== "string" || !description.trim() || description.length > 1024)
-      throw fail(
-        "INVALID_SKILL",
-        "Provide --description or a frontmatter description of 1–1024 characters.",
-      )
+    const name = validateDisplayName(options.name ?? original ?? stem)
+    const description = validateDescription(options.description ?? metadata.description)
     const body =
       match && hasMetadata ? content.slice(match[0].length).replace(/^\r?\n/, "") : content
     return { name, description, body }

@@ -41,7 +41,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 24.20.0
           package-manager-cache: false
       - name: Install supported npm
         run: npm install --global npm@11.15.0 --registry https://registry.npmjs.org
@@ -413,7 +413,10 @@ jobs:
           NODE
       - name: Verify registry consumer and registry signatures
         run: |
-          bun scripts/package-smoke.ts --registry "${PACKAGE_NAME}@${PACKAGE_VERSION}"
+          migration_package="$RUNNER_TEMP/ntn-skills-state-migration"
+          bun scripts/build-migration.ts "$migration_package"
+          npm pack "$migration_package" --ignore-scripts --json --pack-destination "$RUNNER_TEMP"
+          bun scripts/package-smoke.ts --registry "${PACKAGE_NAME}@${PACKAGE_VERSION}" --migration-archive "$RUNNER_TEMP/ntn-skills-state-migration-1.0.0.tgz"
           consumer="$RUNNER_TEMP/signature-consumer"
           mkdir -p "$consumer"
           cd "$consumer"

@@ -1,3 +1,4 @@
+import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
@@ -17,12 +18,18 @@ const second = "87654321-1234-1234-1234-123456789abc"
 function setup(initial: unknown, ids: string[], broken?: string) {
   let config = initial
   const source = (id: string) => ({
+    role: "content" as const,
     alias: id,
     database_id: id,
     title: "Skills",
     data_source_ids: [`ds-${id}`],
   })
   const store = Layer.succeed(Store, {
+    integrity: integrityRepositoryFixture(),
+    upstream: upstreamRepositoryFixture(),
+    registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
+    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
+    backup: () => Effect.die(new Error("Unexpected backup")),
     root: "/memory",
     configRoot: "/memory",
     cacheRoot: "/memory",
