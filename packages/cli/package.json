@@ -1,6 +1,6 @@
 {
   "name": "ntn-skills",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Discover, read and maintain Notion skills with immutable task snapshots",
   "type": "module",
   "repository": {
