@@ -291,14 +291,12 @@ async function withFixture(
             plan_hash: planHash,
             publisher_subscription_id: sub,
             source_manifest: originalPlan.source_manifest,
-            members: names
-              .slice(0, count)
-              .map((name, index) => ({
-                member_key: `skills/${name}`,
-                page_id: pageIds[index]!,
-                content_hash: hashes[index]!,
-                revision,
-              })),
+            members: names.slice(0, count).map((name, index) => ({
+              member_key: `skills/${name}`,
+              page_id: pageIds[index]!,
+              content_hash: hashes[index]!,
+              revision,
+            })),
           })
           const baseline = mapFor(2),
             laterMap = mapFor(3)

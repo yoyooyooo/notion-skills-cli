@@ -393,13 +393,11 @@ export function deriveBodyCompletion(
           method: "PATCH",
           path: `v1/blocks/${tableId}/children`,
           body: {
-            children: table.rows
-              .slice(current.children.length)
-              .map((row) => ({
-                object: "block",
-                type: "table_row",
-                table_row: { cells: requestCells(row) },
-              })),
+            children: table.rows.slice(current.children.length).map((row) => ({
+              object: "block",
+              type: "table_row",
+              table_row: { cells: requestCells(row) },
+            })),
           },
         },
         { method: "PATCH", path: `v1/blocks/${pageId}/children`, body: { children: suffix } },
