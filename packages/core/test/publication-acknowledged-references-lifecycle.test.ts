@@ -789,8 +789,8 @@ async function naturallyFencedReferences(count: number) {
   f.input.set("assets/notes.txt", encoder.encode("Keep this small plain text asset intact.\n"))
   let verificationStarted = false
   // Real final verification sees a stable changed revision. The publication
-  // catch forms its own WRITE_CONFLICT fence after the attachment ACK has
-  // invalidated property-item guards. The fixture never edits a receipt.
+  // catch forms its own WRITE_CONFLICT fence. The attachment ACK preserves the
+  // untouched References observation; the fixture never edits a receipt.
   const stopped = await f.run(
     createSkill("/input", {
       database,
@@ -824,13 +824,25 @@ async function naturallyFencedReferences(count: number) {
     files: [{ name: "ntn-skills-source.zip", type: "file_upload" }],
   })
   const rootPath = "v1/pages/" + root
-  expect(
-    Object.keys(retained.guards).some((path) => path.startsWith(rootPath + "/properties/")),
-  ).toBe(false)
+  const referencePath = rootPath + "/properties/references?page_size=100"
   const refs = property(property(retained.guards[rootPath]).properties).References
-  expect(
-    decodeReferenceLinks({ rich_text: property(refs).rich_text }, { readback: true })?.bindings,
-  ).toHaveLength(count)
+  const bindings = decodeReferenceLinks(
+    { rich_text: property(refs).rich_text },
+    { readback: true },
+  )?.bindings
+  expect(bindings).toHaveLength(count)
+  const observed = property(retained.guards[referencePath])
+  expect(observed).toMatchObject({
+    object: "list",
+    type: "property_item",
+    has_more: false,
+    next_cursor: null,
+  })
+  expect(Array.isArray(observed.results)).toBe(true)
+  const items = Array.isArray(observed.results)
+    ? observed.results.map((item) => property(item).rich_text)
+    : undefined
+  expect(decodeReferenceLinks({ rich_text: items }, { readback: true })?.bindings).toEqual(bindings)
   expect(
     property(retained.guards["v1/blocks/" + root + "/children?page_size=100"]).results,
   ).toHaveLength(count)
@@ -852,14 +864,14 @@ async function naturallyFencedReferences(count: number) {
     Array.from({ length: count }, (_, index) => index + 1),
   )
   expect(originalPrefixes.at(-1)).toBe(count)
-  return { f, id, retained }
+  return { f, id, retained, referencePath }
 }
 
 for (const count of [1, 9, 60]) {
   test("the original fenced " +
     count +
     "-reference publication resumes with all source bytes and page identities", async () => {
-    const { f, id, retained } = await naturallyFencedReferences(count)
+    const { f, id, retained, referencePath } = await naturallyFencedReferences(count)
     const mutations = f.mutations(),
       uploads = f.uploadCounts(),
       readStart = f.readPaths.length
@@ -874,11 +886,7 @@ for (const count of [1, 9, 60]) {
     expect(digestReceiptPart(checkpoint.intents)).toBe(digestReceiptPart(retained.intents))
     expect(digestReceiptPart(checkpoint.failure)).toBe(digestReceiptPart(retained.failure))
     expect(checkpoint.stages).toEqual(retained.stages)
-    expect(
-      Object.keys(checkpoint.guards).some((path) =>
-        path.startsWith("v1/pages/" + root + "/properties/"),
-      ),
-    ).toBe(false)
+    expect(checkpoint.guards[referencePath]).toEqual(retained.guards[referencePath])
     expect(checkpoint.conflict_history).toHaveLength(1)
     expect(checkpoint.conflict_history?.[0]).toMatchObject({
       conflict: true,
@@ -891,12 +899,9 @@ for (const count of [1, 9, 60]) {
     expect(digestReceiptPart(checkpoint.conflict_history?.[0]?.failure)).toBe(
       digestReceiptPart(retained.failure),
     )
-    const reads = f.readPaths.slice(readStart),
-      rootPath = "v1/pages/" + root
-    const propertyIndex = reads.indexOf(rootPath + "/properties/references?page_size=100")
-    expect(propertyIndex).toBeGreaterThan(0)
-    expect(reads[propertyIndex - 1]).toBe(rootPath)
-    expect(reads[propertyIndex + 1]).toBe(rootPath)
+    const reads = f.readPaths.slice(readStart)
+    expect(reads).toContain("v1/pages/" + root)
+    expect(reads).toContain(referencePath)
     const resumed = await f.run(resumePublication(id))
     expect(resumed).toMatchObject({ operation_id: id, resumed: true, verified: true })
     const completed = structuredClone(f.receipt(id))
