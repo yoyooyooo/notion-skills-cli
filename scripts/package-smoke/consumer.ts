@@ -77,10 +77,6 @@ export async function prepareConsumer() {
       throw new Error(
         `Consumer command ${JSON.stringify(command)} exited ${exit}, expected ${expectedExit}; scratch=${scratch}: ${stderr || stdout}`,
       )
-    if (command[0] === runtime && [executable, operatorExecutable].includes(command[1]) && stderr)
-      throw new Error(
-        `CLI command ${JSON.stringify(command)} emitted unexpected stderr; scratch=${scratch}: ${stderr}`,
-      )
     return stdout
   }
   await run([

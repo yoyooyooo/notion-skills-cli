@@ -32,19 +32,13 @@ jobs:
           mkdir -p "$HOME/.Trash"
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - name: Initialize isolated consumer verification
-        id: verification-init
-        run: bun .cursor/skills/verify-ntn-skills/scripts/control.ts init --run "$RUNNER_TEMP/ntn-ci-verification"
-      - name: Pack and test a fresh consumer through the verification controller
-        run: bun .cursor/skills/verify-ntn-skills/scripts/control.ts package --run "$RUNNER_TEMP/ntn-ci-verification"
-      - name: Retain scratch through system Trash
-        if: ${{ always() && runner.os == 'macOS' && steps.verification-init.outcome == 'success' }}
-        run: bun .cursor/skills/verify-ntn-skills/scripts/control.ts cleanup --run "$RUNNER_TEMP/ntn-ci-verification"
+      - name: Pack and test a fresh consumer
+        run: bun scripts/package-check.ts > "$RUNNER_TEMP/ntn-package-check.json"
       - name: Upload consumer verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: consumer-${{ matrix.os }}-node-${{ matrix.node }}
-          path: ${{ runner.temp }}/ntn-ci-verification/evidence
+          path: ${{ runner.temp }}/ntn-package-check.json
           if-no-files-found: ignore
           retention-days: 7
