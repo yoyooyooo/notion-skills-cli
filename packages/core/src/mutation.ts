@@ -62,6 +62,7 @@ import {
   publishMarkdownFiles,
   resumeMarkdownFilesPublication,
 } from "./markdown-files-publication.ts"
+import { writeSharedSkillFile, verifySharedAuthoredSnapshot } from "./shared-authoring.ts"
 
 const DESCRIPTION = "notion%3A%2F%2Fskills%2Fdescription_property"
 const FILES = "notion%3A%2F%2Fskills%2Ffiles_property"
@@ -294,22 +295,102 @@ export function writeSkill(inputTarget: string, options: WriteOptions) {
     const current = yield* openSkill(baseline?.record.id ?? target.selector, {
       database: options.database,
       refresh: true,
+      sharedReadOnly: Boolean(options.dryRun),
     })
     if (baseline && baseline.version_id !== current.version_id)
       return yield* Effect.fail(
         fail("WRITE_CONFLICT", "The remote Skill changed since the pinned read.", {
-          page_id: notionPage(current.record).locator.page_id,
+          page_id:
+            current.record.locator.type === "shared_skill"
+              ? current.record.locator.page_id
+              : notionPage(current.record).locator.page_id,
           expected_version: baseline.version_id,
           actual_version: current.version_id,
         }),
       )
-    notionPage(current.record)
     const path = target.path || current.entrypoint
     if (path === BUNDLE || path === MANIFEST)
       return yield* Effect.fail(
         fail("INVALID_PATH", "The target is a reserved portability file.", { path }),
       )
     const input = yield* inputFile(options.input)
+    if (current.record.locator.type === "shared_skill") {
+      const result = yield* writeSharedSkillFile({
+        snapshot: current,
+        path,
+        bytes: input.bytes,
+        dryRun: options.dryRun,
+      })
+      if (result.status === "not_applied")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_WRITE_NOT_APPLIED",
+            "The original operation was verified as having no body effect. Read the current page before preparing another write.",
+            {
+              body_write_operation_id: result.operation_id,
+              read_again: true,
+            },
+          ),
+        )
+      if (result.status === "planned" || result.status === "unchanged")
+        return {
+          ...snapshotInfo(current),
+          operation: "write",
+          action: result.unchanged ? "unchanged" : "planned",
+          unchanged: result.unchanged,
+          path,
+          ref: fileRef(current.record.id, path, current.snapshot_id),
+          previous_version_id: current.version_id,
+          verified: true,
+          body_write_operation_id: result.operation_id,
+          input_sha256: result.input_sha256,
+          candidate_sha256: result.candidate_sha256,
+          protection: result.protection,
+          ...(result.status === "planned" ? { dry_run: true } : {}),
+        }
+      const observed = yield* openSkill(current.record.locator.page_id, {
+        database: options.database,
+        refresh: true,
+      }).pipe(
+        Effect.mapError((error) =>
+          fail(
+            "SHARED_WRITE_REFRESH_FAILED",
+            "The original body operation was verified, but its fresh current snapshot could not be published. Preserve the original operation and retry only the read.",
+            {
+              body_write_operation_id: result.operation_id,
+              cause_code: error instanceof SkillsError ? error.code : "REFRESH_FAILED",
+              read_again: true,
+            },
+          ),
+        ),
+      )
+      yield* Effect.try({
+        try: () => verifySharedAuthoredSnapshot(observed, result),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail(
+                "WRITE_VERIFICATION_FAILED",
+                "The current shared body could not be compared with the original write.",
+                { body_write_operation_id: result.operation_id },
+              ),
+      })
+      return {
+        ...snapshotInfo(observed),
+        operation: "write",
+        action: "updated",
+        unchanged: false,
+        path,
+        ref: fileRef(observed.record.id, path, observed.snapshot_id),
+        previous_version_id: current.version_id,
+        verified: true,
+        body_write_operation_id: result.operation_id,
+        input_sha256: result.input_sha256,
+        candidate_sha256: result.candidate_sha256,
+        protection: result.protection,
+      }
+    }
+    notionPage(current.record)
     const portable = yield* snapshotAuthoredPortable(current)
     const sourcePath = path === current.entrypoint ? portable.main : path
     const doc =

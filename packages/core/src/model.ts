@@ -1,5 +1,6 @@
 import { Data, Effect, Schema } from "effect"
 import { SourceProjectionSchema } from "./upstream-member-model.ts"
+import { SharedLibrarySchema } from "./shared-library-model.ts"
 
 export class SkillsError extends Data.TaggedError("SkillsError")<{
   readonly code: string
@@ -40,7 +41,19 @@ export const listSchema = <S extends Schema.ConstraintDecoder<unknown>>(item: S)
     results: Schema.Array(item),
     has_more: Schema.Boolean,
     next_cursor: Schema.NullOr(Schema.String),
-  })
+    request_status: Schema.optional(
+      Schema.Struct({
+        type: Schema.Literals(["complete", "incomplete"]),
+        incomplete_reason: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  }).check(
+    Schema.makeFilter((page) =>
+      page.request_status?.type !== "incomplete" && page.request_status?.incomplete_reason == null
+        ? true
+        : "Notion returned an incomplete query result; has_more does not establish completeness.",
+    ),
+  )
 export const ExportSchema = Schema.Struct({
   id: Schema.String,
   version_id: Schema.String,
@@ -54,6 +67,7 @@ export const SourceSchema = Schema.Struct({
   title: Schema.String,
   data_source_ids: Schema.Array(Schema.String),
   role: Schema.optional(Schema.Literal("content")),
+  shared_library: Schema.optional(SharedLibrarySchema),
 })
 export type Source = typeof SourceSchema.Type
 export const CatalogSourceSchema = Schema.Struct({
@@ -62,11 +76,20 @@ export const CatalogSourceSchema = Schema.Struct({
   title: Schema.String,
   data_source_ids: Schema.Array(Schema.String),
   role: Schema.optional(Schema.Literals(["content", "upstream"])),
+  shared_library: Schema.optional(SharedLibrarySchema),
 })
 export type CatalogSource = typeof CatalogSourceSchema.Type
 export const ContentKindSchema = Schema.Literals(["skill", "router", "prompt"])
 export type ContentKind = typeof ContentKindSchema.Type
 export const ContentLocatorSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("shared_skill"),
+    page_id: Schema.String,
+    database_id: Schema.String,
+    data_source_id: Schema.String,
+    library_id: Schema.String,
+    skill_id: Schema.String,
+  }),
   Schema.Struct({
     type: Schema.Literal("notion_page"),
     page_id: Schema.String,
@@ -90,11 +113,16 @@ export const ContentRecordSchema = Schema.Struct({
   alias: Schema.String,
   description: Schema.String,
   default_context: Schema.Boolean,
+  enabled: Schema.optional(Schema.Boolean),
   entrypoint: Schema.String,
   ref: Schema.String,
   upstream: Schema.optional(Schema.Struct({ repo: Schema.String })),
 })
 export type ContentRecord = typeof ContentRecordSchema.Type
+export type SharedSkillRecord = ContentRecord & {
+  readonly locator: Extract<ContentRecord["locator"], { type: "shared_skill" }>
+  readonly enabled: boolean
+}
 export type NotionPageRecord = ContentRecord & {
   readonly locator: Extract<ContentRecord["locator"], { type: "notion_page" }>
 }
@@ -231,8 +259,17 @@ export const SnapshotSchema = Schema.Struct({
   ),
 })
 export type Snapshot = typeof SnapshotSchema.Type
+/** Machine preference contains identities only; the shared Profile owns its rules. */
+export const SharedProfileBindingSchema = Schema.Struct({
+  library_entry: Schema.String.check(
+    Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u),
+  ),
+  profile_id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u)),
+})
+export type SharedProfileBinding = typeof SharedProfileBindingSchema.Type
 export const ConfigSchema = Schema.Struct({
   sources: Schema.optional(Schema.Array(SourceSchema)),
+  shared_profile: Schema.optional(SharedProfileBindingSchema),
   default_database: Schema.optional(Schema.String),
   upstream_database: Schema.optional(Schema.String),
   builtin_database: Schema.optional(Schema.String),
@@ -417,7 +454,8 @@ export function resolveRecord(
   const exact = items.find(
     (record) =>
       record.id === selector ||
-      (record.locator.type === "notion_page" && record.locator.page_id === selector),
+      ((record.locator.type === "notion_page" || record.locator.type === "shared_skill") &&
+        record.locator.page_id === selector),
   )
   if (exact) return exact
   const matches = [
@@ -428,7 +466,8 @@ export function resolveRecord(
             s.name === selector ||
             s.alias === selector ||
             s.id === selector ||
-            (s.locator.type === "notion_page" && s.locator.page_id === selector),
+            ((s.locator.type === "notion_page" || s.locator.type === "shared_skill") &&
+              s.locator.page_id === selector),
         )
         .map((s) => [s.id, s]),
     ).values(),

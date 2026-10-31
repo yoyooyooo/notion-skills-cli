@@ -13,16 +13,19 @@ import {
   PageSchema,
   SourceSchema,
   SkillsError,
+  aliasFor,
   decode,
   fail,
   property,
   recordFromPage,
+  validateDescription,
   type ContentRecord,
   type Source,
   type SourceFailure,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { sharedRecordFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { Store, configuredSources, sha256 } from "./store.ts"
 
 const UUID = Schema.String.check(
@@ -113,21 +116,25 @@ function parse<S extends Schema.ConstraintDecoder<unknown>>(schema: S, value: un
   })
 }
 function complete(value: { readonly request_status?: unknown }) {
+  const status = property(value.request_status)
   if (
-    property(value.request_status).type === "incomplete" ||
-    property(value.request_status).incomplete_reason !== undefined
+    value.request_status !== undefined &&
+    (status.type !== "complete" || status.incomplete_reason != null)
   )
     throw fail(
       "VIEW_INCOMPLETE",
       "Notion returned an incomplete View result; narrow the View and retry.",
-      value.request_status,
     )
 }
 function nextCursor(
   page: { readonly has_more: boolean; readonly next_cursor: string | null },
   seen: Set<string>,
 ): string | undefined {
-  if (!page.has_more) return undefined
+  if (!page.has_more) {
+    if (page.next_cursor !== null)
+      throw fail("INVALID_RESPONSE", "A completed View page returned an unexpected cursor.")
+    return undefined
+  }
   if (!page.next_cursor || seen.has(page.next_cursor))
     throw fail("INVALID_RESPONSE", "Notion returned a missing or repeating View cursor.")
   seen.add(page.next_cursor)
@@ -152,7 +159,7 @@ function selectedDatabase(selector?: string) {
           databases: configured,
         }),
       )
-    const found = yield* discoverDatabases()
+    const found = yield* discoverDatabases({ allowShared: true })
     if (found.failures.length)
       return yield* Effect.fail(
         fail("CATALOG_INCOMPLETE", "Cannot select a database from incomplete discovery."),
@@ -173,6 +180,7 @@ function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
   schema: S,
   options: ReadPolicyOptions,
   read: (scope: string) => Effect.Effect<S["Type"], SkillsError, R>,
+  validate?: (value: S["Type"]) => void,
 ) {
   return Effect.gen(function* () {
     yield* check(() => validateReadPolicy(options))
@@ -182,7 +190,7 @@ function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
     const scope = local ?? (yield* authScope)
     const store = yield* Store
     const keyFor = (identity: string) => `cache/views/${identity}/${digest}.json`
-    const digest = yield* sha256(JSON.stringify(["notion-views-v1", selection]))
+    const digest = yield* sha256(JSON.stringify(["notion-views-v2-shared-metadata", selection]))
     const now = yield* Clock.currentTimeMillis
     const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
     if (!options.refresh) {
@@ -200,6 +208,7 @@ function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
           at <= now &&
           (options.offline || now - at < maxAge)
         ) {
+          if (validate !== undefined) yield* check(() => validate(cached))
           return {
             value: cached,
             source: "local_cache" as const,
@@ -218,6 +227,7 @@ function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
     const validated = local ? yield* authScope : scope
     const generation = yield* store.reserveCacheGeneration(validated, `views-${digest}`)
     const value = yield* read(validated)
+    if (validate !== undefined) yield* check(() => validate(value))
     const at = property(value).fetched_at
     if (typeof at !== "number")
       return yield* Effect.fail(fail("INVALID_RESPONSE", "View observation has no timestamp."))
@@ -231,7 +241,7 @@ function observe<S extends Schema.ConstraintDecoder<unknown>, R>(
   })
 }
 
-function retrieveView(id: string, database?: string) {
+export function retrieveView(id: string, database?: string) {
   return Effect.gen(function* () {
     const raw = yield* parse(RawViewSchema, yield* (yield* Notion).request(`v1/views/${id}`))
     if (raw.id !== id || (database !== undefined && raw.parent.database_id !== database))
@@ -257,7 +267,7 @@ export function listViews(options: ViewOptions = {}) {
     const database = yield* selectedDatabase(options.database)
     const observed = yield* observe(["list", database], ViewListSchema, options, (scope) =>
       Effect.gen(function* () {
-        const source = yield* explicitSource(database)
+        const source = yield* explicitSource(database, undefined, { allowShared: true })
         const api = yield* Notion
         const ids: string[] = []
         const cursors = new Set<string>()
@@ -353,6 +363,63 @@ function queryView(view: View) {
   })
 }
 
+function metadataInventoryPath(source: Source, dataSourceId: string): string {
+  if (source.shared_library === undefined) return `v1/data_sources/${dataSourceId}/query`
+  const parameters = new URLSearchParams()
+  for (const name of ["Name", "Description", "Kind", "Skill ID", "Enabled", "Default Context"]) {
+    const id = source.shared_library.skills.property_ids[name]
+    if (id === undefined || id === "")
+      throw fail("LIBRARY_INVALID", "A shared View metadata property binding is unavailable.", {
+        property: name,
+      })
+    parameters.append("filter_properties", id)
+  }
+  return `v1/data_sources/${dataSourceId}/query?${parameters}`
+}
+
+function validateSharedViewCatalog(value: typeof ViewCatalogSchema.Type): void {
+  const identities = new Set<string>()
+  const pages = new Set<string>()
+  for (const record of value.records) {
+    const locator = record.locator
+    const source =
+      locator.type === "shared_skill" || locator.type === "notion_page"
+        ? value.databases.find((source) => source.database_id === locator.database_id)
+        : undefined
+    if (source?.shared_library !== undefined && locator.type !== "shared_skill") {
+      throw fail("STATE_CORRUPT", "A cached shared View member uses a legacy page identity.")
+    }
+    if (locator.type !== "shared_skill") continue
+    validateSharedRecordIdentity(record)
+    validateDescription(record.description)
+    const library = source?.shared_library
+    if (
+      library === undefined ||
+      library.library_id !== locator.library_id ||
+      library.skills.database_id !== locator.database_id ||
+      library.skills.data_source_id !== locator.data_source_id ||
+      record.enabled !== true ||
+      aliasFor(record.name) !== record.alias ||
+      value.view === null ||
+      value.view.database_id !== locator.database_id ||
+      value.view.data_source_id !== locator.data_source_id
+    ) {
+      throw fail(
+        "STATE_CORRUPT",
+        "A shared View member differs from its enabled stable library identity.",
+      )
+    }
+    if (identities.has(record.id) || pages.has(locator.page_id)) {
+      throw fail(
+        "SHARED_SKILL_ID_CONFLICT",
+        "The shared View repeats a stable Skill or page identity.",
+      )
+    }
+    identities.add(record.id)
+    pages.add(locator.page_id)
+  }
+}
+
 export function viewCatalog(options: ViewCatalogOptions = {}) {
   return Effect.gen(function* () {
     const explicit =
@@ -377,7 +444,9 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
             )
           const view =
             explicit !== undefined ? yield* retrieveView(explicit, database) : listing?.views[0]
-          const source = listing?.database ?? (yield* explicitSource(view!.database_id))
+          const source =
+            listing?.database ??
+            (yield* explicitSource(view!.database_id, undefined, { allowShared: true }))
           if (view && !source.data_source_ids.includes(view.data_source_id))
             return yield* Effect.fail(
               fail("VIEW_SCOPE_MISMATCH", "View references another data source."),
@@ -402,24 +471,34 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
           const selection = yield* queryView(view)
           const wanted = new Set(selection.ids)
           const records = new Map<string, ContentRecord>()
+          const sharedIdentities = new Map<string, string>()
+          const sharedClaims = new Map<string, Set<string>>()
+          const rememberSharedClaim = (record: ContentRecord) => {
+            if (record.locator.type !== "shared_skill") return
+            const pages = sharedClaims.get(record.id) ?? new Set<string>()
+            pages.add(record.locator.page_id)
+            sharedClaims.set(record.id, pages)
+          }
           const failures: SourceFailure[] = []
           const seen = new Set<string>()
           const cursors = new Set<string>()
           const api = yield* Notion
           // A paginated metadata inventory is cheaper than one request per selected Skill.
-          // Decode only selected rows: an unrelated malformed record must not poison a View.
+          // Unrelated malformed rows cannot poison a View. Valid non-members still
+          // participate in stable identity checks for the members we return.
           const InventorySchema = Schema.Struct({
             results: Schema.Array(Schema.Unknown),
             has_more: Schema.Boolean,
             next_cursor: Schema.NullOr(Schema.String),
             request_status: Schema.optional(Schema.Unknown),
           })
+          const queryPath = yield* check(() => metadataInventoryPath(source, view.data_source_id))
           let cursor: string | undefined
           if (wanted.size)
             do {
               const page = yield* parse(
                 InventorySchema,
-                yield* api.request(`v1/data_sources/${view.data_source_id}/query`, {
+                yield* api.request(queryPath, {
                   page_size: 100,
                   ...(cursor ? { start_cursor: cursor } : {}),
                 }),
@@ -427,11 +506,31 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
               yield* check(() => complete(page))
               for (const raw of page.results) {
                 const id = property(raw).id
-                if (typeof id !== "string" || !wanted.has(id)) continue
+                if (typeof id !== "string") continue
+                if (!wanted.has(id)) {
+                  if (source.shared_library !== undefined) {
+                    const other = yield* check(() =>
+                      sharedRecordFromPage(raw, source, view.data_source_id),
+                    ).pipe(Effect.result)
+                    if (other._tag === "Success") rememberSharedClaim(other.success)
+                  }
+                  continue
+                }
+                if (source.shared_library !== undefined && seen.has(id)) {
+                  return yield* Effect.fail(
+                    fail(
+                      "SHARED_SKILL_ID_CONFLICT",
+                      "Shared View metadata repeated a selected page identity.",
+                      { page_id: id },
+                    ),
+                  )
+                }
                 const checked = yield* check(() => {
                   if (seen.has(id))
                     throw fail("INVALID_RESPONSE", "Repeated selected page metadata.")
                   seen.add(id)
+                  if (source.shared_library !== undefined)
+                    return sharedRecordFromPage(raw, source, view.data_source_id)
                   const row = decode(PageSchema, raw)
                   const parent = property(property(raw).parent)
                   if (
@@ -445,8 +544,25 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
                     )
                   return recordFromPage(row, source, view.data_source_id)
                 }).pipe(Effect.result)
-                if (checked._tag === "Success") records.set(id, checked.success)
-                else
+                if (checked._tag === "Success") {
+                  const record = checked.success
+                  if (record.locator.type === "shared_skill") {
+                    rememberSharedClaim(record)
+                    const previous = sharedIdentities.get(record.id)
+                    if (previous !== undefined) {
+                      return yield* Effect.fail(
+                        fail(
+                          "SHARED_SKILL_ID_CONFLICT",
+                          "Several selected View pages claim the same stable Skill identity.",
+                          { id: record.id, page_ids: [previous, record.locator.page_id] },
+                        ),
+                      )
+                    }
+                    sharedIdentities.set(record.id, record.locator.page_id)
+                    if (record.enabled === false) continue
+                  }
+                  records.set(id, record)
+                } else
                   failures.push({
                     id,
                     code: checked.failure.code,
@@ -458,6 +574,18 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
               }
               cursor = yield* check(() => nextCursor(page, cursors))
             } while (cursor)
+          for (const record of records.values()) {
+            const claimants = sharedClaims.get(record.id)
+            if (claimants !== undefined && claimants.size > 1) {
+              return yield* Effect.fail(
+                fail(
+                  "SHARED_SKILL_ID_CONFLICT",
+                  "Another shared Skill page claims a selected View member's stable identity.",
+                  { id: record.id, page_ids: [...claimants] },
+                ),
+              )
+            }
+          }
           for (const id of wanted)
             if (!seen.has(id))
               failures.push({
@@ -488,6 +616,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
             view_query: selection.query,
           }
         }),
+      validateSharedViewCatalog,
     )
     return { ...observed.value, source: observed.source, freshness: observed.freshness }
   })

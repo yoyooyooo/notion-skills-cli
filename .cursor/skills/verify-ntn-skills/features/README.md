@@ -2,10 +2,13 @@
 
 These recipes describe current executable entry points and are not records of completed acceptance. Sync/cache commands, read policies and exact-target replacement are implemented. Read the matching recipe before driving a feature; preserve command/result evidence and distinguish deterministic, live and installed-consumer proof.
 
+AH-498 shared-library work has its own partial checkpoint. Shared layout, ownership, fixed manifests, exact history restoration, View metadata and Router member indexes have implemented paths, while migration review is read-only. They do not establish production migration, Profile supply, installed host/model behavior or release acceptance. Use the shared recipe and [architecture evidence table](../../../../docs/shared-ssot-architecture.md) instead of carrying forward a legacy pass.
+
 ## Sub-features
 
 - [Discovery, configuration, authentication and doctor](./discovery-config-auth-doctor.md): help, database/catalog discovery, local preferences and connection diagnostics.
 - [Snapshots, reading, files and relative resolution](./snapshot-read-open-files-resolve.md): current online content, immutable local versions and exact file output.
+- [Shared Notion SSOT](./shared-ssot.md): `ctl library`, flat Files metadata, whole-file adoption, fixed Git/manifest registration, shared archive/restore, read-only migration review, Router member indexes, original unknown operations and request budgets. Source-built CLI, installed package, independent machines and UI/model evidence remain separate.
 - [Create, replace, dry-run and recovery](./import-create-recovery-dry-run.md): selected local inputs, explicit create/replace decisions and uncertain outcomes; [pinned changes](./reference-write-version-conflict.md) cover daily `apply`.
 - [Pinned changes, reference pages and version conflicts](./reference-write-version-conflict.md): one `apply` for sparse file/property changes, lower-level file writes and stale-baseline rejection.
 - [Portable export and package consumption](./portable-export-package-consumption.md): reversible exports and the built npm package boundary.
@@ -21,6 +24,14 @@ Command/parameter semantics belong to the [protocol](../../../../docs/protocol.m
 
 | Entry or boundary | Cases | Required proof |
 | --- | --- | --- |
+| `ctl library init/inspect/files/state` and shared catalog/View identity | SS01–SS03, SS10 | [Shared recipe](shared-ssot.md): exact descriptor/property IDs, default new-library Members self-relation, read-only original-init recovery, complete flat metadata and native View membership; no body/provider work for metadata commands |
+| Shared current `read`, `files`, whole-file adoption and `--metrics` | SS03–SS06 | Complete snapshot, persistent custom ownership, unchanged-body zero writes, bounded full verification, original-plan reconciliation and explicit open first-write boundary |
+| Notion in-flight reads, attempt concurrency and admission | SS05–SS06 | Service-local coalescing and cancellation, unset/empty default 4, integer cap 1–64, permit plus SQL wait under the original five-minute deadline, independent network timeout and no mutation coalescing/retry |
+| `ctl library source inspect/register`, including `--manifest` | SS07 | Fixed commit/tree/root and scoped manifest; full inspect JSON or bare manifest registers with zero provider work and rejects URL/commit/root mixing; candidate registration does not imply source selection or projection |
+| `ctl library snapshot save/restore` | SS08–SS09 | Frozen exact bytes, chunks before manifest, original archive identity, independent empty-state restore, missing/corrupt-history refusal and current access checks |
+| Shared independent install, physical machines and host/model acceptance | SS11 | Separate candidate-package and two-machine evidence, native UI and actual model consumption; mini SSH/auth is available with older 0.3.0 installed, while candidate installation/verification remains unrun |
+| `ctl library migration plan --input` | SS12 | Frozen approved scope, complete preservation evidence and deterministic reviewable/blocked plan; `apply_allowed:false`, no cleanup, no unresolved-operation replay or implied production authorization |
+| Shared Router current and fixed snapshot reads | SS13 | Registered Members identity, full relation/batched metadata, same-library enabled Skills, stable-ID conflict rejection, frozen index with lazy member bodies and offline rejection of incomplete historical Router snapshots |
 | `sync local connect`, advanced `bind`, initial source choice and duplicate labels | S1–S2, S14, P2, P10 | Repeated same-edge reuse; automatic pull for a missing directory; explicit source for existing differing contents; dry-run/config and page identity checks |
 | `sync local status`, `status --refresh` | C17, S9 | Local-only observation stays provisional; online refresh does not advance any common base |
 | `sync local plan`, explicit `--from`, `--output` | S3–S8, P3–P4, P9 | Checked identities/directions, immutable plan copy, rejected conflicts and stale-plan state preservation |
@@ -53,13 +64,13 @@ Controlled-clock fixtures live in core cache tests; real link and commit-interru
 
 The user surface is `ntn-skills`, invoked from this checkout through the control helper's `cli` mode. The recipes use the real command names and flags from [main.ts](../../../../packages/cli/src/main.ts), [usage](../../../../docs/usage.md) and [protocol](../../../../docs/protocol.md). Each recipe lists its specific user entry points and observable results.
 
-Select the authorized database and absolute input directories, then use helper `prepare` to dry-run those inputs and freeze their file hashes into `$RUN/evidence/plan.json`, or select an existing authorized plan. Its `database` selects the shared Notion database; its entries contain `name`, absolute `input`, `files` and `file_hashes` with `path`, `sha256` and `bytes`. The current six-entry scenario uses the public invocation aliases `open-source-repo-readiness`, `semantic-decompression`, `write`, `hai-audit-docs-against-code`, `github-cicd-bootstrap` and `npm-publish`. Use the selected plan's actual inputs and CLI-returned identities rather than guessing page IDs or refs.
+For the References import workflow, select the authorized database and absolute input directories, then use helper `prepare` to dry-run those inputs and freeze their file hashes into `$RUN/evidence/plan.json`, or select an existing authorized plan. Its `database` selects that Notion database; its entries contain `name`, absolute `input`, `files` and `file_hashes` with `path`, `sha256` and `bytes`. The current six-entry scenario uses the public invocation aliases `open-source-repo-readiness`, `semantic-decompression`, `write`, `hai-audit-docs-against-code`, `github-cicd-bootstrap` and `npm-publish`. Use the selected plan's actual inputs and CLI-returned identities rather than guessing page IDs or refs. Shared libraries use the separate SS01–SS13 recipe through helper `cli`; `prepare/import/verify/reuse` does not establish shared-library acceptance.
 
 ## Driving it with control-ntn-skills
 
 Preconditions:
 
-- Run commands from the repository root. `RUN` is the absolute owned run directory; `IMPORT_PLAN` is the helper's frozen migration JSON. Product `SYNC_PLAN_ID`/`SYNC_PLAN_FILE` is a different state artifact accepted by CLI `sync local apply`; pass product arguments after helper `cli --` rather than using the outer helper's `--plan`.
+- Run commands from the repository root. `RUN` is the absolute owned run directory; `IMPORT_PLAN` is the helper's frozen References import JSON. Product `SYNC_PLAN_ID`/`SYNC_PLAN_FILE` belongs to `sync local apply`, and shared `MIGRATION_INPUT` to `ctl library migration plan --input`; pass those product arguments after helper `cli --` rather than using the outer helper's `--plan`.
 - Bind `DATABASE` to `plan.database`, `INPUT` to a selected entry's absolute input, and `FILE_PATH` to one of that entry's relative files. A local source file is the absolute input directory joined to its relative path. Bind `INPUT_FILE` to that actual file; `TITLE` and `DESCRIPTION` are approved source metadata, not guessed replacements.
 - Bind `TARGET`, `REF`, `SNAPSHOT`, `FILE_REF`, `PAGE_ID`, `PAGE_URL` and `SKILL_ALIAS` only from selected CLI results. `REF` and `FILE_REF` are pinned; `TARGET` is the chosen current unpinned selector. Bind `RELATIVE_PATH` to an actual link relative to the containing file. Recipe-specific variables similarly name actual selected files or captured replies.
 - Inherited `NOTION_API_TOKEN` or an existing official `ntn` login supplies authentication without copying personal configuration. The helper isolates config/state/cache under `$RUN/scratch` and overrides all XDG bases there; HOME remains unchanged except for offline `ctl builtin` commands. Online work uses the canonical `scripts/dev.ts` fresh build and Node.js execution with official `ntn`, without transport or proxy overrides. Ordinary live acceptance uses one writer per shared page; controlled concurrency cases use designated fixtures.
@@ -80,7 +91,7 @@ Finish with:
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts cleanup --run "$RUN"
 ```
 
-Cleanup moves run scratch state and recorded successful package scratch to system Trash, never `$RUN/evidence` or retained user Notion skills. Confirm evidence remains available after cleanup before reporting a proof.
+Cleanup moves run scratch state and recorded successful package scratch to system Trash, never `$RUN/evidence` or retained user Notion skills. Defer cleanup while unresolved original writes still depend on that scratch state. Confirm evidence remains available after cleanup before reporting a proof.
 
 ## Gotchas
 

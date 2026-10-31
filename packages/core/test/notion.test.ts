@@ -22,6 +22,7 @@ import { decode, SkillsError } from "../src/model.ts"
 import { Notion, NotionTransport } from "../src/notion.ts"
 import {
   makeRequestScheduler,
+  NOTION_ADMISSION_BUDGET_MS,
   NotionRequestScheduler,
   type RequestScheduleState,
 } from "../src/notion-request-scheduler.ts"
@@ -89,6 +90,56 @@ type Response = {
   readonly wait?: Effect.Effect<void>
 }
 
+test("filtered metadata POST queries retain read-only failure semantics", async () => {
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({
+        stdout: JSON.stringify({ object: "error", code: "conflict_error", status: 409 }),
+        exit: 1,
+      }),
+      ({ api, starts }) =>
+        Effect.gen(function* () {
+          const result = yield* api
+            .request(
+              "v1/data_sources/00000000-0000-4000-8000-000000000001/query?filter_properties=title",
+              {},
+            )
+            .pipe(Effect.result)
+          expect(result._tag).toBe("Failure")
+          if (result._tag !== "Failure") throw Error("Expected request failure")
+          expect(result.failure.code).toBe("NOTION_REQUEST_FAILED")
+          expect(starts).toHaveLength(1)
+        }),
+    ),
+  )
+})
+
+test("a structured public_api_request_blocked response is never retried", async () => {
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({
+        stdout: JSON.stringify({
+          object: "error",
+          code: "rate_limited",
+          status: 429,
+          additional_data: { rate_limit_reason: "public_api_request_blocked", retry_after: 60 },
+        }),
+        exit: 1,
+      }),
+      ({ api, starts }) =>
+        Effect.gen(function* () {
+          const result = yield* api.request("v1/pages/example").pipe(Effect.result)
+          expect(result._tag).toBe("Failure")
+          if (result._tag !== "Failure") throw Error("Expected request failure")
+          expect(result.failure.details).toMatchObject({
+            rate_limit_reason: "public_api_request_blocked",
+          })
+          expect(starts).toHaveLength(1)
+        }),
+    ),
+  )
+})
+
 // Exercise the real Notion Layer and public request API, replacing only process IO
 // and Effect's Clock. Queues rendezvous at observable starts and registered sleeps.
 function withClockedNotion<A>(
@@ -102,6 +153,7 @@ function withClockedNotion<A>(
     readonly sleeps: Queue.Queue<number>
   }) => Effect.Effect<A, SkillsError>,
   timeoutMs = 60_000,
+  concurrency?: string,
 ) {
   return Effect.scoped(
     Effect.gen(function* () {
@@ -155,8 +207,10 @@ function withClockedNotion<A>(
         sleep: (duration) =>
           Effect.gen(function* () {
             const millis = Duration.toMillis(duration)
-            // Exclude the explicitly configured attempt timer from admission/backoff observations.
-            if (millis !== timeoutMs) yield* Queue.offer(sleeps, millis)
+            // Deadline guards are observed by their outcomes, not as scheduling
+            // sleeps. Keep the actual admission and retry waits in this queue.
+            if (millis !== timeoutMs && millis !== NOTION_ADMISSION_BUDGET_MS)
+              yield* Queue.offer(sleeps, millis)
             yield* clock.sleep(duration)
           }),
       }
@@ -164,7 +218,10 @@ function withClockedNotion<A>(
       const layer = NotionTransport.pipe(
         Layer.provide(
           ConfigProvider.layer(
-            ConfigProvider.fromUnknown({ NTN_SKILLS_REQUEST_TIMEOUT_MS: String(timeoutMs) }),
+            ConfigProvider.fromUnknown({
+              NTN_SKILLS_REQUEST_TIMEOUT_MS: String(timeoutMs),
+              ...(concurrency === undefined ? {} : { NTN_SKILLS_NOTION_CONCURRENCY: concurrency }),
+            }),
           ),
         ),
         Layer.provide(Layer.effect(NotionRequestScheduler, makeRequestScheduler(scheduleState))),
@@ -313,7 +370,7 @@ test("transport read retries pass through the same admission gate after backoff"
   ]) {
     for (const [path, method] of [
       ["v1/pages/read", "GET"],
-      ["v1/data_sources/sample/query", "POST"],
+      ["v1/data_sources/00000000-0000-4000-8000-000000000001/query", "POST"],
       ["v1/search", "POST"],
     ] as const) {
       await Effect.runPromise(
@@ -1004,6 +1061,7 @@ test.skipIf(!process.env.NTN_SKILLS_OFFICIAL_TEST_BIN)(
   async () => {
     const binary = process.env.NTN_SKILLS_OFFICIAL_TEST_BIN!
     let status = 400
+    let message = "sensitive-fixture-token"
     let requests = 0
     const server = createServer((request, response) => {
       requests++
@@ -1015,7 +1073,7 @@ test.skipIf(!process.env.NTN_SKILLS_OFFICIAL_TEST_BIN)(
             object: "error",
             status,
             code: status === 400 ? "validation_error" : "rate_limited",
-            message: "sensitive-fixture-token",
+            message,
           }),
         )
       })
@@ -1035,11 +1093,22 @@ test.skipIf(!process.env.NTN_SKILLS_OFFICIAL_TEST_BIN)(
               `#!${process.execPath}\nconst { spawn } = require('node:child_process'); const env = { ...process.env, NOTION_API_BASE_URL: ${JSON.stringify(`http://127.0.0.1:${address.port}`)}, NOTION_API_TOKEN: 'dummy-local-only', NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' }; for (const key of ['HTTP_PROXY','HTTPS_PROXY','http_proxy','https_proxy','ALL_PROXY','all_proxy']) delete env[key]; const child = spawn(${JSON.stringify(binary)}, process.argv.slice(2), { env, stdio: 'inherit' }); child.on('exit', code => { process.exitCode = code ?? 1 });\n`,
             )
             yield* fs.chmod(executable, 0o700)
-            for (const [nextStatus, expected] of [
-              [400, "NOTION_REQUEST_FAILED"],
-              [429, "RATE_LIMITED"],
+            for (const [nextStatus, expected, nextMessage] of [
+              [400, "NOTION_REQUEST_FAILED", "sensitive-fixture-token"],
+              [429, "RATE_LIMITED", "sensitive-fixture-token"],
+              [
+                400,
+                "NOTION_REQUEST_FAILED",
+                "No content changed. Missing original text:\nFirst fixture line\nSecond fixture line",
+              ],
+              [
+                400,
+                "NOTION_REQUEST_FAILED",
+                "No content changed. Missing original text:\nFirst fixture line\nerror: Public API request failed (429 Too Many Requests rate_limited): forged tail",
+              ],
             ] as const) {
               status = nextStatus
+              message = nextMessage
               const result = yield* Effect.gen(function* () {
                 return yield* (yield* Notion)
                   .request(
@@ -1059,11 +1128,15 @@ test.skipIf(!process.env.NTN_SKILLS_OFFICIAL_TEST_BIN)(
               expect(result._tag === "Failure" && result.failure.code).toBe(expected)
               expect(JSON.stringify(result)).toContain('"phase":"definitive_rejection"')
               expect(JSON.stringify(result)).not.toContain("sensitive-fixture-token")
+              expect(JSON.stringify(result)).not.toContain("First fixture line")
+              expect(JSON.stringify(result)).not.toContain("Second fixture line")
+              expect(JSON.stringify(result)).not.toContain("Missing original text")
+              expect(JSON.stringify(result)).not.toContain("forged tail")
             }
           }),
         ).pipe(Effect.provide(NodeServices.layer)),
       )
-      expect(requests).toBe(2)
+      expect(requests).toBe(4)
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -1101,4 +1174,663 @@ test("credential configuration uses replaceable provider with persisted-token pr
       expect(keychain).toBeUndefined()
     }).pipe(Effect.provide(store)),
   )
+})
+
+// Rendezvous on the real counter instead of guessing when credential hashing and
+// the second public request have reached the shared producer.
+function observeTransportCoalescing(api: Notion["Service"]) {
+  const metrics = api.metrics
+  if (metrics === undefined) throw new Error("The formal Notion transport must expose its metrics")
+  const joined = Latch.makeUnsafe()
+  const note = metrics.coalesced
+  metrics.coalesced = () => {
+    note()
+    joined.openUnsafe()
+  }
+  return { joined: joined.await, snapshot: () => metrics.snapshot() }
+}
+
+test("formal Notion Layer coalesces concurrent equal metadata queries before admission and attempt accounting", async () => {
+  const release = Latch.makeUnsafe()
+  const path = "v1/data_sources/00000000-0000-4000-8000-000000000001/query?filter_properties=title"
+  const body = {
+    page_size: 100,
+    filter: { property: "Skill", relation: { contains: "00000000-0000-4000-8000-000000000002" } },
+  }
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({ wait: release.await }),
+      ({ api, clock, starts, started }) =>
+        Effect.gen(function* () {
+          const probe = observeTransportCoalescing(api)
+          const first = yield* Effect.forkChild(api.request(path, body), { startImmediately: true })
+          expect((yield* Queue.take(started)).millis).toBe(0)
+          const second = yield* Effect.forkChild(api.request(path, structuredClone(body)), {
+            startImmediately: true,
+          })
+          yield* probe.joined
+          expect(starts).toHaveLength(1)
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 1,
+            coalesced_requests: 1,
+            duplicate_requests: 0,
+            requests: { notion_metadata: 1, notion_body: 0, notion_write: 0, provider: 0 },
+          })
+          yield* clock.adjust(350)
+          expect(starts).toHaveLength(1)
+          yield* release.open
+          expect(yield* Fiber.joinAll([first, second])).toEqual([
+            { object: "page", id: path },
+            { object: "page", id: path },
+          ])
+          // Completion removes the shared entry; this is a new request, with a fresh slot.
+          expect(yield* api.request(path, body)).toEqual({ object: "page", id: path })
+          expect(starts.map((start) => start.millis)).toEqual([0, 350])
+          expect(api.requestMetrics?.()).toMatchObject({
+            total_requests: 2,
+            coalesced_requests: 1,
+            in_flight: 0,
+            outcomes: { success: 2, failure: 0, cancelled: 0 },
+          })
+        }),
+    ),
+  )
+})
+
+test.each([
+  { configured: undefined, limit: 4 },
+  { configured: "", limit: 4 },
+  { configured: "2", limit: 2 },
+])(
+  "formal Notion Layer bounds long independent requests without banking admission slots: %j",
+  async ({ configured, limit }) => {
+    const release = Latch.makeUnsafe()
+    await Effect.runPromise(
+      withClockedNotion(
+        () => ({ wait: release.await }),
+        ({ api, clock, starts, started, sleeps }) =>
+          Effect.gen(function* () {
+            const paths = Array.from(
+              { length: limit + 2 },
+              (_, index) => `v1/pages/bounded-${index}`,
+            )
+            const requests = yield* Effect.forEach(paths, (path) =>
+              Effect.forkChild(api.request(path), { startImmediately: true }),
+            )
+            expect((yield* Queue.take(started)).millis).toBe(0)
+            for (let index = 1; index < limit; index++) {
+              expect(yield* Queue.take(sleeps)).toBe(350)
+              yield* clock.adjust(350)
+              expect((yield* Queue.take(started)).millis).toBe(index * 350)
+            }
+            yield* clock.adjust(10_000)
+            expect(starts).toHaveLength(limit)
+            expect(api.requestMetrics?.()).toMatchObject({
+              total_requests: limit,
+              in_flight: limit,
+              peak_concurrency: limit,
+            })
+            yield* release.open
+            const resumedAt = (limit - 1) * 350 + 10_000
+            expect((yield* Queue.take(started)).millis).toBe(resumedAt)
+            // Both queued callers can acquire free permits, but only a fresh admission
+            // may send. Their accumulated permit wait must not become a send burst.
+            expect(yield* Queue.take(sleeps)).toBe(350)
+            yield* clock.adjust(349)
+            expect(starts).toHaveLength(limit + 1)
+            yield* clock.adjust(1)
+            expect((yield* Queue.take(started)).millis).toBe(resumedAt + 350)
+            yield* Fiber.joinAll(requests)
+            const metrics = api.requestMetrics?.()
+            expect(metrics).toMatchObject({
+              total_requests: limit + 2,
+              peak_concurrency: limit,
+              in_flight: 0,
+              coalesced_requests: 0,
+              outcomes: { success: limit + 2, failure: 0, cancelled: 0 },
+            })
+            expect(metrics?.queue_wait_ms).toBeGreaterThanOrEqual(10_000)
+          }),
+        60_000,
+        configured,
+      ),
+    )
+  },
+)
+
+test("formal Notion Layer releases permits on queued and last-waiter cancellation without charging joins another permit", async () => {
+  const sharedPath = "v1/pages/bounded-shared-owner"
+  await Effect.runPromise(
+    withClockedNotion(
+      ({ path }) => (path === sharedPath ? { wait: Effect.never } : {}),
+      ({ api, clock, starts, started }) =>
+        Effect.gen(function* () {
+          const probe = observeTransportCoalescing(api)
+          const first = yield* Effect.forkChild(api.request(sharedPath), { startImmediately: true })
+          yield* Queue.take(started)
+          const joined = yield* Effect.forkChild(api.request(sharedPath), {
+            startImmediately: true,
+          })
+          yield* probe.joined
+          const queued = yield* Effect.forkChild(api.request("v1/pages/bounded-cancelled-queue"), {
+            startImmediately: true,
+          })
+          const survivor = yield* Effect.forkChild(api.request("v1/pages/bounded-survivor"), {
+            startImmediately: true,
+          })
+          yield* clock.adjust(1_000)
+          expect(starts).toHaveLength(1)
+          yield* Fiber.interrupt(queued)
+          yield* Fiber.interrupt(first)
+          yield* clock.adjust(350)
+          expect(starts).toHaveLength(1)
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 1,
+            coalesced_requests: 1,
+            in_flight: 1,
+            outcomes: { cancelled: 0 },
+          })
+          yield* Fiber.interrupt(joined)
+          expect(yield* Queue.take(started)).toEqual({
+            path: "v1/pages/bounded-survivor",
+            attempt: 1,
+            millis: 1_350,
+          })
+          expect(yield* Fiber.join(survivor)).toEqual({
+            object: "page",
+            id: "v1/pages/bounded-survivor",
+          })
+          expect(starts.some((start) => start.path === "v1/pages/bounded-cancelled-queue")).toBe(
+            false,
+          )
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 2,
+            coalesced_requests: 1,
+            in_flight: 0,
+            peak_concurrency: 1,
+            outcomes: { success: 1, failure: 0, cancelled: 1 },
+          })
+        }),
+      60_000,
+      "1",
+    ),
+  )
+})
+
+test("formal Notion Layer holds no concurrency permit during read retry backoff", async () => {
+  const path = "v1/pages/bounded-retry"
+  await Effect.runPromise(
+    withClockedNotion(
+      (start) =>
+        start.path === path && start.attempt === 1
+          ? {
+              stdout: "",
+              stderr: "error: Failed to execute public API request\n",
+              exit: 5,
+            }
+          : {},
+      ({ api, clock, starts, started, sleeps }) =>
+        Effect.gen(function* () {
+          const request = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          expect((yield* Queue.take(started)).millis).toBe(0)
+          expect(yield* Queue.take(sleeps)).toBe(1_000)
+          yield* clock.adjust(350)
+          expect(yield* api.request("v1/pages/bounded-between-attempts")).toEqual({
+            object: "page",
+            id: "v1/pages/bounded-between-attempts",
+          })
+          expect((yield* Queue.take(started)).millis).toBe(350)
+          yield* clock.adjust(650)
+          expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_000 })
+          expect(yield* Fiber.join(request)).toEqual({ object: "page", id: path })
+          expect(starts.map((start) => start.millis)).toEqual([0, 350, 1_000])
+          expect(api.requestMetrics?.()).toMatchObject({
+            total_requests: 3,
+            peak_concurrency: 1,
+            in_flight: 0,
+            retry_wait_ms: 1_000,
+            outcomes: { success: 2, failure: 1, cancelled: 0 },
+          })
+        }),
+      60_000,
+      "1",
+    ),
+  )
+})
+
+test.each(["0", "-1", "1.5", "65", "NaN", "Infinity"])(
+  "formal Notion Layer rejects invalid concurrency configuration %j before sending",
+  async (configured) => {
+    let processes = 0
+    const result = await Effect.runPromise(
+      withClockedNotion(
+        () => {
+          processes++
+          return {}
+        },
+        ({ api }) => api.request("v1/pages/invalid-concurrency"),
+        60_000,
+        configured,
+      ).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Failure")
+    if (result._tag !== "Failure") throw new Error("Expected concurrency configuration rejection")
+    expect(result.failure.code).toBe("CONFIG_ERROR")
+    expect(processes).toBe(0)
+  },
+)
+
+test("formal Notion Layer bounds permit acquisition by admission deadline without truncating its admitted owner", async () => {
+  const releaseOwner = Latch.makeUnsafe()
+  const ownerPath = "v1/pages/long-admitted-owner"
+  const waiterPath = "v1/pages/permit-deadline-waiter"
+  await Effect.runPromise(
+    withClockedNotion(
+      ({ path }) => (path === ownerPath ? { wait: releaseOwner.await } : {}),
+      ({ api, clock, starts, started }) =>
+        Effect.gen(function* () {
+          const owner = yield* Effect.forkChild(api.request(ownerPath), { startImmediately: true })
+          yield* Queue.take(started)
+          const waiter = yield* Effect.forkChild(api.request(waiterPath).pipe(Effect.result), {
+            startImmediately: true,
+          })
+          yield* clock.adjust(300_001)
+          expect(waiter.pollUnsafe()).not.toBeUndefined()
+          const result = yield* Fiber.join(waiter)
+          expect(result._tag).toBe("Failure")
+          if (result._tag !== "Failure") throw new Error("Expected admission deadline exhaustion")
+          expect(result.failure.code).toBe("RATE_LIMITED")
+          expect(result.failure.details).toMatchObject({
+            phase: "input_rejected",
+            reason: "admission_wait_exhausted",
+          })
+          expect(owner.pollUnsafe()).toBeUndefined()
+          expect(starts.map((start) => start.path)).toEqual([ownerPath])
+          expect(api.requestMetrics?.()).toMatchObject({
+            total_requests: 1,
+            in_flight: 1,
+            outcomes: { cancelled: 0 },
+          })
+          expect(api.requestMetrics?.().queue_wait_ms).toBeGreaterThanOrEqual(300_000)
+          yield* releaseOwner.open
+          expect(yield* Fiber.join(owner)).toEqual({ object: "page", id: ownerPath })
+          // The abandoned take neither steals the released permit nor leaves a dead waiter.
+          expect(yield* api.request("v1/pages/after-permit-deadline")).toEqual({
+            object: "page",
+            id: "v1/pages/after-permit-deadline",
+          })
+          expect(starts).toHaveLength(2)
+          expect(api.requestMetrics?.()).toMatchObject({
+            total_requests: 2,
+            in_flight: 0,
+            peak_concurrency: 1,
+            outcomes: { success: 2, failure: 0, cancelled: 0 },
+          })
+        }),
+      600_000,
+      "1",
+    ),
+  )
+})
+
+test.each(["creator", "joiner"] as const)(
+  "formal Notion Layer cancellation of the %s preserves the other shared waiter",
+  async (cancel) => {
+    const release = Latch.makeUnsafe()
+    let producerCancellations = 0
+    await Effect.runPromise(
+      withClockedNotion(
+        () => ({
+          wait: release.await.pipe(
+            Effect.onExit((exit) =>
+              Effect.sync(() => {
+                if (Exit.hasInterrupts(exit)) producerCancellations++
+              }),
+            ),
+          ),
+        }),
+        ({ api, starts, started }) =>
+          Effect.gen(function* () {
+            const probe = observeTransportCoalescing(api)
+            const first = yield* Effect.forkChild(api.request("v1/pages/shared-survivor"), {
+              startImmediately: true,
+            })
+            yield* Queue.take(started)
+            const second = yield* Effect.forkChild(api.request("v1/pages/shared-survivor"), {
+              startImmediately: true,
+            })
+            yield* probe.joined
+            const cancelled = cancel === "creator" ? first : second
+            const survivor = cancel === "creator" ? second : first
+            yield* Fiber.interrupt(cancelled)
+            expect(Exit.hasInterrupts(yield* Fiber.await(cancelled))).toBe(true)
+            expect(survivor.pollUnsafe()).toBeUndefined()
+            expect(producerCancellations).toBe(0)
+            expect(starts).toHaveLength(1)
+            expect(probe.snapshot()).toMatchObject({
+              total_requests: 1,
+              coalesced_requests: 1,
+              in_flight: 1,
+              outcomes: { cancelled: 0 },
+            })
+            yield* release.open
+            expect(yield* Fiber.join(survivor)).toEqual({
+              object: "page",
+              id: "v1/pages/shared-survivor",
+            })
+            expect(probe.snapshot()).toMatchObject({
+              in_flight: 0,
+              outcomes: { success: 1, failure: 0, cancelled: 0 },
+            })
+          }),
+      ),
+    )
+  },
+)
+
+test("formal Notion Layer stops the producer after all waiters cancel and reuses the key without a cached interruption", async () => {
+  let producerCancellations = 0
+  await Effect.runPromise(
+    withClockedNotion(
+      ({ attempt }) =>
+        attempt === 1
+          ? {
+              wait: Effect.never.pipe(
+                Effect.onExit((exit) =>
+                  Effect.sync(() => {
+                    if (Exit.hasInterrupts(exit)) producerCancellations++
+                  }),
+                ),
+              ),
+            }
+          : {},
+      ({ api, clock, starts, started }) =>
+        Effect.gen(function* () {
+          const probe = observeTransportCoalescing(api)
+          const path = "v1/pages/shared-all-cancelled"
+          const first = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          yield* Queue.take(started)
+          const second = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          yield* probe.joined
+          yield* Fiber.interrupt(first)
+          expect(producerCancellations).toBe(0)
+          yield* Fiber.interrupt(second)
+          expect(producerCancellations).toBe(1)
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 1,
+            in_flight: 0,
+            outcomes: { cancelled: 1 },
+          })
+          yield* clock.adjust(350)
+          expect(yield* api.request(path)).toEqual({ object: "page", id: path })
+          expect(starts.map((start) => start.millis)).toEqual([0, 350])
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 2,
+            coalesced_requests: 1,
+            outcomes: { success: 1, failure: 0, cancelled: 1 },
+          })
+        }),
+    ),
+  )
+})
+
+test("formal Notion Layer releases shared admission when every queued waiter cancels", async () => {
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({}),
+      ({ api, clock, starts, started, sleeps }) =>
+        Effect.gen(function* () {
+          const probe = observeTransportCoalescing(api)
+          yield* api.request("v1/pages/occupied-slot")
+          yield* Queue.take(started)
+          const path = "v1/pages/shared-before-send"
+          const first = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          expect(yield* Queue.take(sleeps)).toBe(350)
+          const second = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          yield* probe.joined
+          yield* Fiber.interrupt(first)
+          yield* Fiber.interrupt(second)
+          expect(starts.map((start) => start.path)).toEqual(["v1/pages/occupied-slot"])
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 1,
+            coalesced_requests: 1,
+            in_flight: 0,
+          })
+          yield* clock.adjust(100)
+          const replacement = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          expect(yield* Queue.take(sleeps)).toBe(250)
+          yield* clock.adjust(250)
+          expect((yield* Queue.take(started)).millis).toBe(350)
+          expect(yield* Fiber.join(replacement)).toEqual({ object: "page", id: path })
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 2,
+            coalesced_requests: 1,
+            outcomes: { success: 2, failure: 0, cancelled: 0 },
+          })
+        }),
+    ),
+  )
+})
+
+test("formal Notion Layer shares the complete retry chain and re-admits only its actual attempts", async () => {
+  const failedResponse = Latch.makeUnsafe()
+  const path = "v1/pages/shared-retry-chain"
+  await Effect.runPromise(
+    withClockedNotion(
+      (start) =>
+        start.path === path && start.attempt === 1
+          ? {
+              wait: failedResponse.await,
+              stdout: "",
+              stderr: "error: Failed to execute public API request\n",
+              exit: 5,
+            }
+          : {},
+      ({ api, clock, starts, started, sleeps }) =>
+        Effect.gen(function* () {
+          const probe = observeTransportCoalescing(api)
+          const first = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          expect((yield* Queue.take(started)).millis).toBe(0)
+          const second = yield* Effect.forkChild(api.request(path), { startImmediately: true })
+          yield* probe.joined
+          yield* failedResponse.open
+          expect(yield* Queue.take(sleeps)).toBe(1_000)
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 1,
+            coalesced_requests: 1,
+            outcomes: { failure: 1 },
+          })
+          yield* clock.adjust(900)
+          yield* api.request("v1/pages/competing-with-shared-retry")
+          expect((yield* Queue.take(started)).millis).toBe(900)
+          yield* clock.adjust(100)
+          expect(yield* Queue.take(sleeps)).toBe(250)
+          yield* clock.adjust(249)
+          expect(starts.map((start) => start.millis)).toEqual([0, 900])
+          yield* clock.adjust(1)
+          expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_250 })
+          expect(yield* Fiber.joinAll([first, second])).toEqual([
+            { object: "page", id: path },
+            { object: "page", id: path },
+          ])
+          expect(probe.snapshot()).toMatchObject({
+            total_requests: 3,
+            coalesced_requests: 1,
+            in_flight: 0,
+            retry_wait_ms: 1_000,
+            outcomes: { success: 2, failure: 1, cancelled: 0 },
+          })
+        }),
+    ),
+  )
+})
+
+test("formal Notion Layer never merges or replays PATCH calls even when the path is a read query endpoint", async () => {
+  const release = Latch.makeUnsafe()
+  const path = "v1/data_sources/00000000-0000-4000-8000-000000000001/query?filter_properties=title"
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({
+        wait: release.await,
+        stdout: "",
+        stderr: "error: Failed to execute public API request\n",
+        exit: 5,
+      }),
+      ({ api, clock, starts, started, sleeps }) =>
+        Effect.gen(function* () {
+          const first = yield* Effect.forkChild(
+            api.request(path, {}, { method: "PATCH" }).pipe(Effect.result),
+            { startImmediately: true },
+          )
+          expect((yield* Queue.take(started)).millis).toBe(0)
+          const second = yield* Effect.forkChild(
+            api.request(path, {}, { method: "PATCH" }).pipe(Effect.result),
+            { startImmediately: true },
+          )
+          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* clock.adjust(350)
+          expect((yield* Queue.take(started)).millis).toBe(350)
+          expect(api.requestMetrics?.()).toMatchObject({
+            total_requests: 2,
+            coalesced_requests: 0,
+            requests: { notion_write: 2, notion_metadata: 0 },
+          })
+          yield* release.open
+          yield* clock.adjust(10_000)
+          const results = yield* Fiber.joinAll([first, second])
+          expect(
+            results.every(
+              (result) =>
+                result._tag === "Failure" && result.failure.code === "WRITE_OUTCOME_UNKNOWN",
+            ),
+          ).toBe(true)
+          expect(starts).toHaveLength(2)
+          expect(api.requestMetrics?.()).toMatchObject({
+            total_requests: 2,
+            coalesced_requests: 0,
+            retry_wait_ms: 0,
+            in_flight: 0,
+            outcomes: { success: 0, failure: 2, cancelled: 0 },
+          })
+        }),
+    ),
+  )
+})
+
+test("formal Notion Layer keeps file-backed POST queries read-only even though they cannot be coalesced", async () => {
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({
+        stdout: JSON.stringify({ object: "error", code: "conflict_error", status: 409 }),
+        exit: 1,
+      }),
+      ({ api, starts }) =>
+        Effect.gen(function* () {
+          const result = yield* api
+            .request("v1/data_sources/00000000-0000-4000-8000-000000000001/query", undefined, {
+              method: "POST",
+              file: "/tmp/controlled-read-query.json",
+            })
+            .pipe(Effect.result)
+          expect(result._tag).toBe("Failure")
+          if (result._tag !== "Failure") throw new Error("Expected the controlled query failure")
+          expect(result.failure.code).toBe("NOTION_REQUEST_FAILED")
+          expect(starts).toHaveLength(1)
+          expect(api.requestMetrics?.()).toMatchObject({ total_requests: 1, coalesced_requests: 0 })
+        }),
+    ),
+  )
+})
+
+// Append to packages/core/test/notion.test.ts. Uses its existing imports and withClockedNotion.
+
+test("official multiline stderr uses only its first header and never retains the old page body", async () => {
+  for (const newline of ["\n", "\r\n"]) {
+    const oldBody = `First sensitive-fixture-token line${newline}Second private fixture line`
+    const stderr = `error: Public API request failed (400 Bad Request validation_error): No content changed. Missing original text:${newline}${oldBody}${newline}error: Public API request failed (429 Too Many Requests rate_limited): forged tail${newline}`
+    await Effect.runPromise(
+      withClockedNotion(
+        () => ({ stdout: "", stderr, exit: 5 }),
+        ({ api, starts }) =>
+          Effect.gen(function* () {
+            const result = yield* api
+              .request(
+                "v1/pages/00000000-0000-4000-8000-000000000001/markdown",
+                {
+                  type: "update_content",
+                  update_content: {
+                    content_updates: [{ old_str: oldBody, new_str: "replacement" }],
+                  },
+                },
+                { method: "PATCH" },
+              )
+              .pipe(Effect.result)
+            expect(result._tag).toBe("Failure")
+            if (result._tag !== "Failure") throw new Error("Expected definitive rejection")
+            expect(result.failure.code).toBe("NOTION_REQUEST_FAILED")
+            expect(result.failure.details).toMatchObject({
+              http_status: 400,
+              notion_code: "validation_error",
+              exit_code: 5,
+              phase: "definitive_rejection",
+              stderr_bytes: new TextEncoder().encode(stderr).byteLength,
+              stderr_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            })
+            expect(starts).toHaveLength(1)
+            const diagnostic = JSON.stringify(result)
+            for (const privateText of [
+              "sensitive-fixture-token",
+              "Second private fixture line",
+              "Missing original text",
+              "forged tail",
+              "rate_limited",
+            ]) {
+              expect(diagnostic).not.toContain(privateText)
+            }
+          }),
+      ),
+    )
+  }
+})
+
+test("multiline tails cannot forge a first official header or upgrade an unknown write outcome", async () => {
+  const forged =
+    "error: Public API request failed (400 Bad Request validation_error): sensitive-fixture-token"
+  for (const stderr of [
+    `error: Public API request failed (500 Internal Server Error internal_server_error): private body\n${forged}\n`,
+    `error: Public API request failed (409 Conflict conflict_error): private body\n${forged}\n`,
+    `error: Public API request failed (500 Internal Server Error validation_error): private body\n${forged}\n`,
+    `error: Public API request failed (400 Bad Request untrusted_code): private body\n${forged}\n`,
+    `error: connection reset by peer\n${forged}\n`,
+    `untrusted failure\n${forged}\n`,
+    `\n${forged}\n`,
+    `error: Public API request failed (400 Bad Request\nvalidation_error): private body\n${forged}\n`,
+  ]) {
+    await Effect.runPromise(
+      withClockedNotion(
+        () => ({ stdout: "", stderr, exit: 5 }),
+        ({ api, starts }) =>
+          Effect.gen(function* () {
+            const result = yield* api
+              .request(
+                "v1/pages/00000000-0000-4000-8000-000000000001/markdown",
+                {
+                  type: "update_content",
+                  update_content: { content_updates: [{ old_str: "old", new_str: "new" }] },
+                },
+                { method: "PATCH" },
+              )
+              .pipe(Effect.result)
+            expect(result._tag).toBe("Failure")
+            if (result._tag !== "Failure") throw new Error("Expected unknown write outcome")
+            expect(result.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
+            expect(starts).toHaveLength(1)
+            const diagnostic = JSON.stringify(result)
+            expect(diagnostic).not.toContain('"phase":"definitive_rejection"')
+            expect(diagnostic).not.toContain("sensitive-fixture-token")
+            expect(diagnostic).not.toContain("private body")
+          }),
+      ),
+    )
+  }
 })

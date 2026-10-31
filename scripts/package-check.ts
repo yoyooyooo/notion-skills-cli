@@ -57,6 +57,7 @@ const publicFiles = [
   "docs/README.md",
   "docs/usage.md",
   "docs/protocol.md",
+  "docs/shared-ssot-architecture.md",
   "docs/historical-operations.md",
   "docs/host-integration.md",
   "docs/releasing.md",

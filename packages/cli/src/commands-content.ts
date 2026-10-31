@@ -1,11 +1,9 @@
-import { Context, Effect, Option, Stdio, Stream } from "effect"
+import { Clock, Context, Effect, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 
 import {
   Notion,
   SkillsError,
-  catalog,
-  viewCatalog,
   listViews,
   createSkill,
   applySkill,
@@ -19,6 +17,7 @@ import {
 } from "@notion-skills-cli/core"
 
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
+import { catalogWithProfile } from "../../core/src/shared-profile-config.ts"
 
 import {
   filesConstraints,
@@ -39,6 +38,20 @@ import {
   dryRunFlag,
   memberFlags,
 } from "./command-options.ts"
+const requestMetricsFlag = switchFlag(
+  "metrics",
+  "Include measured request counts, payload bytes and elapsed time in JSON output",
+)
+function measuredOutput<A extends object>(value: A, enabled: boolean, startedAt: number) {
+  return Effect.gen(function* () {
+    if (!enabled) return value
+    return {
+      ...value,
+      elapsed_ms: (yield* Clock.currentTimeMillis) - startedAt,
+      request_metrics: (yield* Notion).requestMetrics?.(),
+    }
+  })
+}
 export const listCommand = defineCommand(
   "list",
   {
@@ -49,13 +62,19 @@ export const listCommand = defineCommand(
     ),
     defaultView: switchFlag(
       "default-view",
-      "Use the first View returned for the selected content database",
+      "Use the bound Profile default, or the first View for the selected content database",
+    ),
+    profile: singleton(
+      "profile",
+      "Use this shared Profile default; requires --database, and an explicit --view takes precedence",
     ),
     ...readPolicyFlags,
+    metrics: requestMetricsFlag,
     query: singleton("query", "Case-insensitive filter on Name, invocation alias and Description"),
   },
   (config) =>
     Effect.gen(function* () {
+      const startedAt = yield* Clock.currentTimeMillis
       if (Option.isSome(config.view) && config.defaultView)
         return yield* Effect.fail(
           new SkillsError({
@@ -67,38 +86,50 @@ export const listCommand = defineCommand(
         database: Option.getOrUndefined(config.database),
         ...(yield* readPolicy(config)),
       }
-      const result =
-        Option.isSome(config.view) || config.defaultView
-          ? yield* viewCatalog({ ...options, view: Option.getOrUndefined(config.view) })
-          : yield* catalog(options)
+      const result = yield* catalogWithProfile({
+        ...options,
+        view: Option.getOrUndefined(config.view),
+        defaultView: config.defaultView,
+        profile: Option.getOrUndefined(config.profile),
+      })
       const query = Option.getOrUndefined(config.query)?.toLocaleLowerCase()
       const skills = query
         ? result.records.filter((s) =>
             `${s.name}\n${s.alias}\n${s.description}`.toLocaleLowerCase().includes(query),
           )
         : result.records
-      yield* emit({
-        scope: result.scope,
-        fetched_at: result.fetched_at,
-        databases: result.databases,
-        records: skills,
-        count: skills.length,
-        coverage: result.coverage,
-        source: result.source,
-        freshness: result.freshness,
-        ...("view" in result
-          ? {
-              view: result.view,
-              view_selection: result.view_selection,
-              view_query: result.view_query,
-            }
-          : {}),
-      })
+      yield* emit(
+        yield* measuredOutput(
+          {
+            scope: result.scope,
+            fetched_at: result.fetched_at,
+            databases: result.databases,
+            records: skills,
+            count: skills.length,
+            coverage: result.coverage,
+            source: result.source,
+            freshness: result.freshness,
+            ...("capability_directory" in result
+              ? { capability_directory: result.capability_directory }
+              : {}),
+            ...("profile" in result ? { profile: result.profile } : {}),
+            ...("view" in result
+              ? {
+                  view: result.view,
+                  view_selection: result.view_selection,
+                  view_query: result.view_query,
+                }
+              : {}),
+          },
+          config.metrics,
+          startedAt,
+        ),
+      )
     }),
 ).pipe(
   Command.withShortDescription("List available skills with names, descriptions and refs"),
   Command.withDescription(
-    "Use --view ID/Notion-URL for a saved Notion View, or --default-view for the first View in API order; these options are mutually exclusive. View membership uses the native query including quick filters, not an additional Default Context gate. Without either option, list retains the complete explicit discovery scope. List paginated lightweight content metadata with role-tagged content/upstream database maps and successful-query coverage. Automatic subscription Routers require at least two verified published active Skills; individual Skill records remain independently available. Subscription Router locators belong to upstream sources; --database constrains their content target. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
+    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list retains complete explicit discovery, including Prompts, regardless of the machine binding. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight content metadata with role-tagged content/upstream database maps and successful-query coverage. Automatic subscription Routers require at least two verified published active Skills; individual Skill records remain independently available. Subscription Router locators belong to upstream sources; --database constrains their content target. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
   ),
   Command.withExamples([
     {
@@ -117,6 +148,10 @@ export const listCommand = defineCommand(
       command: "ntn-skills list --database frontend",
       description:
         "Query the database previously registered with ctl database register frontend --database DATABASE_ID",
+    },
+    {
+      command: "ntn-skills list --profile daily --database LIBRARY_ID",
+      description: "Use the shared daily Profile's default capability directory",
     },
   ]),
 )
@@ -149,6 +184,7 @@ export const readCommand = defineCommand(
     ),
     path: singleton("path", "Skill-relative file path; target must not already contain a path"),
     database: databaseFlag,
+    metrics: requestMetricsFlag,
     ...readPolicyFlags,
     from: singleton(
       "from",
@@ -169,6 +205,14 @@ export const readCommand = defineCommand(
   },
   (config) =>
     Effect.gen(function* () {
+      const startedAt = yield* Clock.currentTimeMillis
+      if (config.raw && config.metrics)
+        return yield* Effect.fail(
+          new SkillsError({
+            code: "INVALID_ARGUMENT",
+            message: "--metrics requires JSON output; omit --raw.",
+          }),
+        )
       yield* validateConstraints(readConstraints, config)
       const result = yield* readSkill(config.selector, {
         path: Option.getOrUndefined(config.path),
@@ -183,12 +227,12 @@ export const readCommand = defineCommand(
         yield* Stream.make("content" in result ? result.content : "").pipe(
           Stream.run(stdio.stdout()),
         )
-      } else yield* emit(result)
+      } else yield* emit(yield* measuredOutput(result, config.metrics, startedAt))
     }),
 ).pipe(
   Command.withShortDescription("Read one file with bounded cache freshness or a pinned snapshot"),
   Command.withDescription(
-    "Read one file, defaulting to the selected record's entrypoint: SKILL.md, ROUTER.md or PROMPT.md. Names/aliases/page IDs/URLs/unpinned refs reuse complete eligible observations for 5m; --refresh validates complete bodies/resources online, --offline reads local observations, --max-age overrides age (explicit 0 also requires complete validation). Ordinary aligned native Skills may revalidate page metadata and reuse their verified source files, reporting freshness.validation=metadata; same-timestamp edits may be missed. Policies are mutually exclusive. Pinned targets (including relative --from pinned refs) stay immutable/offline and reject refresh/max-age. --path supplies a file only when the target has no path. Relative --from rejects --path. JSON includes source/freshness, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges. --output writes exact bytes with identical reuse and differing-output rejection; --raw emits successful text only. Missing cached versions require a new current read; arbitrary historical versions cannot be fetched.",
+    "Read one file, defaulting to the selected record's entrypoint: SKILL.md, ROUTER.md or PROMPT.md. Names/aliases/page IDs/URLs/unpinned refs reuse complete eligible observations for 5m; --refresh validates complete bodies/resources online, --offline reads local observations, --max-age overrides age (explicit 0 also requires complete validation). Shared Skills revalidate flat file metadata and immutable ownership facts; an independent 24-hour full-body deadline bounds same-timestamp edits. Notion native content is retained before whole-file custom adoption. Legacy aligned native Skills may reuse verified files after metadata checks. Both report freshness.validation=metadata when bodies were reused. Policies are mutually exclusive. Pinned targets (including relative --from pinned refs) stay immutable/offline and reject refresh/max-age. --path supplies a file only when the target has no path. Relative --from rejects --path. JSON includes source/freshness, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges. --output writes exact bytes with identical reuse and differing-output rejection; --raw emits successful text only. Missing cached versions require a new current read; arbitrary historical versions cannot be fetched.",
   ),
   Command.withExamples([
     {
@@ -227,18 +271,19 @@ export const filesCommand = defineCommand(
       "File/directory filter; omit for every file; cannot replace a ref's path",
     ),
     database: databaseFlag,
+    metrics: requestMetricsFlag,
     ...readPolicyFlags,
   },
   (config) =>
     Effect.gen(function* () {
+      const startedAt = yield* Clock.currentTimeMillis
       yield* validateConstraints(filesConstraints, config)
-      yield* emit(
-        yield* listSkill(config.selector, {
-          path: Option.getOrUndefined(config.path),
-          database: Option.getOrUndefined(config.database),
-          ...(yield* readPolicy(config)),
-        }),
-      )
+      const result = yield* listSkill(config.selector, {
+        path: Option.getOrUndefined(config.path),
+        database: Option.getOrUndefined(config.database),
+        ...(yield* readPolicy(config)),
+      })
+      yield* emit(yield* measuredOutput(result, config.metrics, startedAt))
     }),
 ).pipe(
   Command.withShortDescription("List snapshot files and their pinned refs"),

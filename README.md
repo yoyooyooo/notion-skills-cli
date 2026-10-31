@@ -114,9 +114,64 @@ ntn-skills files 'SNAPSHOT_ID_FROM_READ'
 ntn-skills read 'ATTACHMENT_REF_FROM_FILES'
 ```
 
-Use the snapshot ID to list **all** files; passing a file ref lists only that file. Read an attachment actually returned by `files`. Its pinned ref uses the same snapshot and returns `source: "local_snapshot"`, even without authentication or network access. Historical versions are available only if already saved on this machine.
+Use the snapshot ID to list **all** files; passing a file ref lists only that file. Read an attachment actually returned by `files`. Its pinned ref uses the same snapshot and returns `source: "local_snapshot"`, even without authentication or network access. Ordinary `s_` snapshot refs require the bytes to be present on this machine. A shared library can separately archive and restore exact versions through the commands below.
 
 For a binary attachment, add `--output ./attachment.bin` and use an appropriate viewer. For text, use `--lines 10-30` for an inclusive line range or `--raw` for plain UTF-8 output. Scripts are never executed automatically.
+
+## Shared Notion library
+
+The current source build adds a shared library with three Notion tables: **Skills** holds metadata and the main editable body, **Files** holds supporting editable pages, and **Records** retains source manifests, file ownership and historical bytes. Notion owns these shared facts; local catalog, object and snapshot caches can be rebuilt. This is a development checkpoint for [AH-498](https://linear.app/yoyooyooo/issue/AH-498), not a completed migration or a claim about the currently published npm package.
+
+Initialize under an owned parent page, or inspect an exact existing entry. Use IDs returned by these commands in subsequent calls:
+
+```bash
+ntn-skills ctl library init --parent 'PARENT_PAGE_ID'
+ntn-skills ctl library inspect 'ENTRY_DATABASE_ID'
+ntn-skills list --database 'ENTRY_DATABASE_ID' --metrics
+ntn-skills ctl library files 'SKILL_PAGE_ID' --entry 'ENTRY_DATABASE_ID'
+ntn-skills read 'REF_FROM_LIST' --database 'ENTRY_DATABASE_ID' --metrics
+```
+
+Initialization creates the layout, including a native `Members` relation from Skills to itself; it does not move existing content or change your default database. `ctl library files` inspects the complete flat file index without bodies. Ordinary `read` builds the selected Skill's complete snapshot. A confirmed change to a page retains the complete normalized body and records the whole file as `custom`; editing it back to its earlier text does not restore source following. `ctl library state SKILL_PAGE_ID --entry ENTRY_DATABASE_ID` inspects the recorded ownership without modifying it. A first native read may retain new shared facts; it is not guaranteed to be a remote read-only operation.
+
+Reading a shared Router resolves its native Members relation by registered property identity, validates the selected members, and generates a metadata/ref index. Member bodies load only when selected. Each Router snapshot freezes that index's metadata. Existing libraries without a registered Members property keep ordinary Skill support, but Router reads fail explicitly; initialization does not silently upgrade their descriptors. Historical Router snapshots missing the required frozen metadata also fail offline.
+
+Fixed public GitHub source inspection takes an exact commit and root:
+
+```bash
+ntn-skills ctl library source inspect 'https://github.com/OWNER/REPOSITORY' --commit 'FULL_40_HEX_COMMIT' --root 'PATH_IN_REPOSITORY'
+ntn-skills ctl library source register 'SKILL_PAGE_ID' --entry 'ENTRY_DATABASE_ID' --url 'https://github.com/OWNER/REPOSITORY' --commit 'FULL_40_HEX_COMMIT' --root 'PATH_IN_REPOSITORY'
+```
+
+Inspection reads the fixed tree without downloading file bodies. Save its complete JSON response as `fixed-source.json`, or supply a bare fixed manifest, to register the exact inspected candidate without another provider request:
+
+```bash
+ntn-skills ctl library source register 'SKILL_PAGE_ID' --entry 'ENTRY_DATABASE_ID' --manifest ./fixed-source.json
+```
+
+`--manifest` cannot be combined with `--url`, `--commit` or `--root`. Either registration form retains a candidate manifest and returns its stable source ID. Registration does not select the source, establish a following baseline or overwrite an editable page. No command here advances a branch to its latest commit automatically.
+
+To make one complete local shared snapshot recoverable on another machine, archive it explicitly, retain the returned `shared_pin`, then restore that exact pin with current Notion access:
+
+```bash
+ntn-skills ctl library snapshot save 'LOCAL_SNAPSHOT_ID' --entry 'ENTRY_DATABASE_ID'
+ntn-skills ctl library snapshot restore 'SHARED_PIN_FROM_SAVE' --entry 'ENTRY_DATABASE_ID' --target 'SKILL_PAGE_ID'
+ntn-skills files 'LOCAL_SNAPSHOT_ID_FROM_RESTORE' --metrics
+```
+
+The shared pin starts with `snapshot-`; the restored local snapshot starts with `s_`. Restore validates the archived manifest and every file's exact bytes. Missing history fails instead of using current Notion text or a newer Git object. The returned local snapshot supports ordinary pinned `read`, `files` and `export --projection snapshot`.
+
+Review an explicitly frozen migration inventory with the read-only planner:
+
+```bash
+ntn-skills ctl library migration plan --input ./migration-evidence.json
+```
+
+The input follows the [migration evidence contract](docs/protocol.md#shared-migration-review). The result is `reviewable` or `blocked` and always has `apply_allowed: false`; it preserves the supplied evidence and does not execute a migration or authorize a production switch.
+
+`--metrics` is available on root `list`, `read` and `files`; `read --raw` cannot be combined with it. Shared `files`, `state`, `source inspect/register` and `snapshot save/restore` return `request_metrics` automatically. The Notion service merges eligible identical in-flight reads and bounds attempts to four concurrent requests by default. `NTN_SKILLS_NOTION_CONCURRENCY` accepts integers from 1 through 64; unset or empty uses four. These are service-local controls, independent of the shared local request-admission schedule.
+
+Source-built CLI checks have exercised isolated native content, persistent whole-file adoption, lightweight revalidation, a three-member native View, lazy Router member metadata, fixed Git consumption and exact three-file history restoration into a new local state root. Complete migration, first-plan unknown recovery across an empty second client, production release, candidate-package acceptance on independent physical machines and host/model acceptance remain open. See the [shared protocol](docs/protocol.md#shared-notion-library), [architecture and evidence checkpoint](docs/shared-ssot-architecture.md), and [verification recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md).
 
 ## Common workflows
 
@@ -227,6 +282,7 @@ Remove a global installation with `npm uninstall --global ntn-skills`. Configura
 | --- | --- |
 | Installation variants and everyday CLI usage | [Usage guide](docs/usage.md) |
 | Selectors, JSON output, storage and errors | [CLI and ref contract](docs/protocol.md) |
+| Shared Notion ownership, fixed sources and current acceptance | [Shared architecture checkpoint](docs/shared-ssot-architecture.md) |
 | Startup metadata and Read/Write adapters | [Host integration](docs/host-integration.md) |
 | Development setup and compatibility policy | [Contributing](CONTRIBUTING.md) |
 | Publishing and release verification | [Releasing](docs/releasing.md) |

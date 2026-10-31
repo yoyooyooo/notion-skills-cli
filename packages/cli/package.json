@@ -36,6 +36,7 @@
     "docs/README.md",
     "docs/usage.md",
     "docs/protocol.md",
+    "docs/shared-ssot-architecture.md",
     "docs/historical-operations.md",
     "docs/host-integration.md",
     "docs/releasing.md",
@@ -55,6 +56,7 @@
   "dependencies": {
     "effect": "4.0.5",
     "@effect/platform-node": "4.0.5",
+    "@effect/platform-node-shared": "4.0.5",
     "@effect/sql-sqlite-node": "4.0.5"
   },
   "devDependencies": {

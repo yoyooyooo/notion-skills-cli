@@ -36,6 +36,7 @@ import {
 } from "./commands-content.ts"
 import { configCommand } from "./commands-configuration.ts"
 import { databaseCommand } from "./commands-database.ts"
+import { libraryCommand } from "./commands-library.ts"
 import { syncLocalCommand } from "./commands-local-sync.ts"
 import { cacheCommand } from "./commands-cache.ts"
 import { builtinCommand } from "./commands-builtin.ts"
@@ -47,6 +48,7 @@ const ctlCommand = defineCommand("ctl").pipe(
     "Inspect local setup with status, diagnose access with doctor, and manage configuration, registered databases, cache and bundled Skills. Status reports local configuration and recorded operations; it does not establish current remote content health.",
   ),
   Command.withSubcommands([
+    withRuntime(libraryCommand, live),
     withRuntime(databaseCommand, upstreamLive),
     withRuntime(configCommand, upstreamLive),
     withRuntime(cacheCommand, upstreamLive),

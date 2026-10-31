@@ -314,6 +314,8 @@ it.live("official Node driver owns migrations, record schema and typed SQL failu
       { migration_id: 6, name: "typed_publication_integrity" },
       { migration_id: 7, name: "operation_reviews" },
       { migration_id: 8, name: "view_observations" },
+      { migration_id: 9, name: "shared_local_records" },
+      { migration_id: 10, name: "local_content_restrictions" },
     ])
     expect(inspect.wal).toEqual([{ journal_mode: "wal" }])
     expect(inspect.synchronous).toEqual([{ synchronous: 2 }])

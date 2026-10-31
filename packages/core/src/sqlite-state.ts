@@ -74,6 +74,89 @@ const migrations = {
     const sql = yield* SqlClient.SqlClient
     yield* sql`CREATE TABLE view_observations (scope TEXT NOT NULL, selection TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,selection))`
   }),
+  "0009_shared_local_records": Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`CREATE TABLE shared_local_records (key TEXT PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('cache','dispatch')), payload TEXT NOT NULL CHECK(json_valid(payload)), retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN (0,1)))`
+    yield* sql`CREATE INDEX shared_local_records_active ON shared_local_records(category,retired,key)`
+  }),
+  "0010_local_content_restrictions": Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`CREATE TABLE local_content_restrictions (sha256 TEXT PRIMARY KEY CHECK(length(sha256)=64), payload TEXT NOT NULL CHECK(json_valid(payload)))`
+  }),
+}
+
+type SharedLocalCategory = "cache" | "dispatch"
+const sharedLocalDomains: readonly {
+  readonly prefix: string
+  readonly category: SharedLocalCategory
+  readonly address: RegExp
+}[] = [
+  {
+    prefix: "cache/shared-file-observations",
+    category: "cache",
+    address: /^cache\/shared-file-observations\/[a-f0-9]{64}\/[0-9]{20}\.json$/u,
+  },
+  {
+    prefix: "cache/shared-page-identities",
+    category: "cache",
+    address:
+      /^cache\/shared-page-identities\/[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+  },
+  {
+    prefix: "cache/shared-github-blobs",
+    category: "cache",
+    address: /^cache\/shared-github-blobs\/[a-f0-9]{40}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-observation-pending",
+    category: "dispatch",
+    address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-snapshot-history",
+    category: "dispatch",
+    address: /^operations\/shared-snapshot-history\/[a-f0-9]{64}\/snapshot-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-profile-pending",
+    category: "dispatch",
+    address:
+      /^operations\/shared-profile-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\/profile-[a-f0-9]{64}\.json$/u,
+  },
+]
+
+function localContentHash(key: string): string | undefined {
+  if (key !== "content-restrictions" && !key.startsWith("content-restrictions/")) return undefined
+  const match = /^content-restrictions\/local\/([a-f0-9]{64})\.json$/u.exec(key)
+  if (match === null)
+    throw fail("INVALID_ARGUMENT", "Invalid local content restriction address.", { key })
+  return match[1]!
+}
+
+function localContentPayload(hash: string, value: unknown): string {
+  const record = property(value)
+  if (
+    record.version !== 1 ||
+    record.sha256 !== hash ||
+    record.reason !== "local_resource" ||
+    Object.keys(record).sort().join(",") !== "reason,sha256,version"
+  )
+    throw fail(
+      "STATE_CORRUPT",
+      "A local content restriction must preserve its exact hash and reason.",
+    )
+  return JSON.stringify({ version: 1, sha256: hash, reason: "local_resource" })
+}
+
+/** Explicit shared-derived and dispatch domains; this is not an arbitrary JSON key store. */
+function sharedLocalCategory(key: string): SharedLocalCategory | undefined {
+  const domain = sharedLocalDomains.find(
+    (entry) => key === entry.prefix || key.startsWith(`${entry.prefix}/`),
+  )
+  if (domain === undefined) return undefined
+  if (!domain.address.test(key))
+    throw fail("INVALID_ARGUMENT", "Invalid shared SQLite domain address.", { key })
+  return domain.category
 }
 
 function storageError(error: unknown): SkillsError {
@@ -326,8 +409,22 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient
           const parts = key.split("/")
+          const sharedCategory = yield* Effect.try({
+            try: () => sharedLocalCategory(key),
+            catch: storageError,
+          })
+          const restrictedHash = yield* Effect.try({
+            try: () => localContentHash(key),
+            catch: storageError,
+          })
           let rows: readonly Record<string, unknown>[] = []
-          if (parts[0] === "database-init") {
+          if (restrictedHash !== undefined) {
+            rows =
+              yield* sql`SELECT payload FROM local_content_restrictions WHERE sha256=${restrictedHash}`
+          } else if (sharedCategory !== undefined) {
+            rows =
+              yield* sql`SELECT payload FROM shared_local_records WHERE key=${key} AND category=${sharedCategory} AND retired=0`
+          } else if (parts[0] === "database-init") {
             if (parts.length !== 3 || !/^(0|[1-9][0-9]*)\.json$/.test(parts[2]!))
               return yield* Effect.fail(
                 fail("INVALID_ARGUMENT", "Invalid database init event address.", { key }),
@@ -376,7 +473,13 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
             return yield* Effect.fail(
               fail("STATE_CORRUPT", "Domain query returned an invalid payload."),
             )
-          return yield* parse(rows[0].payload)
+          const parsed = yield* parse(rows[0].payload)
+          if (restrictedHash !== undefined)
+            yield* Effect.try({
+              try: () => localContentPayload(restrictedHash, parsed),
+              catch: storageError,
+            })
+          return parsed
         }),
       )
     const writeReceipt = (sql: SqlClient.SqlClient, value: unknown) =>
@@ -398,9 +501,85 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
           const sql = yield* SqlClient.SqlClient
           const v = property(value)
           const parts = key.split("/")
+          const sharedCategory = yield* Effect.try({
+            try: () => sharedLocalCategory(key),
+            catch: storageError,
+          })
+          const restrictedHash = yield* Effect.try({
+            try: () => localContentHash(key),
+            catch: storageError,
+          })
           yield* sql.withTransaction(
             Effect.gen(function* () {
-              if (parts[0] === "database-init") {
+              if (restrictedHash !== undefined) {
+                const payload = yield* Effect.try({
+                  try: () => localContentPayload(restrictedHash, value),
+                  catch: storageError,
+                })
+                yield* sql`INSERT INTO local_content_restrictions(sha256,payload) VALUES(${restrictedHash},${payload}) ON CONFLICT(sha256) DO NOTHING`
+                const stored = yield* sql<{
+                  payload: string
+                }>`SELECT payload FROM local_content_restrictions WHERE sha256=${restrictedHash}`
+                if (stored[0]?.payload !== payload)
+                  return yield* Effect.fail(
+                    fail(
+                      "STATE_CONFLICT",
+                      "A durable local content restriction cannot be replaced.",
+                    ),
+                  )
+              } else if (sharedCategory !== undefined) {
+                const payload = yield* Effect.try({
+                  try: () => {
+                    const encoded = json(value)
+                    if (typeof encoded !== "string")
+                      throw fail(
+                        "INVALID_ARGUMENT",
+                        "A shared local record requires a frozen JSON payload.",
+                        { key },
+                      )
+                    return encoded
+                  },
+                  catch: (error) =>
+                    error instanceof SkillsError
+                      ? error
+                      : fail(
+                          "INVALID_ARGUMENT",
+                          "A shared local record could not be encoded as JSON.",
+                          { key },
+                        ),
+                })
+                // Insert before checking: the unique key and transaction also cover competing processes.
+                yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO NOTHING`
+                const stored = yield* sql<{
+                  category: string
+                  payload: string
+                  retired: number
+                }>`SELECT category,payload,retired FROM shared_local_records WHERE key=${key}`
+                const previous = stored[0]
+                if (
+                  previous === undefined ||
+                  previous.category !== sharedCategory ||
+                  previous.payload !== payload
+                )
+                  return yield* Effect.fail(
+                    fail(
+                      "STATE_CONFLICT",
+                      "A frozen shared local record cannot be overwritten by different content.",
+                      { key },
+                    ),
+                  )
+                if (sharedCategory === "dispatch" && previous.retired === 1)
+                  return yield* Effect.fail(
+                    fail(
+                      "STATE_CONFLICT",
+                      "A retired shared dispatch receipt cannot authorize a new dispatch; reconcile the original shared facts.",
+                      { key },
+                    ),
+                  )
+                // Disposable immutable lookups can be rebuilt from the same exact payload.
+                if (sharedCategory === "cache" && previous.retired === 1)
+                  yield* sql`UPDATE shared_local_records SET retired=0 WHERE key=${key} AND category='cache'`
+              } else if (parts[0] === "database-init") {
                 if (parts.length !== 3 || !/^(0|[1-9][0-9]*)\.json$/.test(parts[2]!))
                   return yield* Effect.fail(
                     fail("INVALID_ARGUMENT", "Invalid database init event address.", { key }),
@@ -499,6 +678,8 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
       SELECT id FROM observations UNION ALL SELECT 'cache/catalogs/'||scope||'/'||selection||'.json' FROM catalogs UNION ALL
       SELECT 'cache/views/'||scope||'/'||selection||'.json' FROM view_observations UNION ALL
       SELECT 'cache/identities/'||id||'.json' FROM identities UNION ALL
+      SELECT key FROM shared_local_records WHERE retired=0 UNION ALL
+      SELECT 'content-restrictions/local/'||sha256||'.json' FROM local_content_restrictions UNION ALL
       SELECT 'sync/bases/'||binding_id||'.json' FROM bases UNION ALL SELECT 'sync/plans/'||id||'.json' FROM plans UNION ALL
       SELECT 'sync/receipts/'||id||'.json' FROM sync_receipts UNION ALL SELECT 'publications/'||id||'.json' FROM publications UNION ALL SELECT 'operation-reviews/'||id||'.json' FROM operation_reviews
     `,
@@ -533,6 +714,15 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
           return yield* sql.withTransaction(
             Effect.gen(function* () {
               for (const key of keys) {
+                const sharedCategory = yield* Effect.try({
+                  try: () => sharedLocalCategory(key),
+                  catch: storageError,
+                })
+                if (sharedCategory !== undefined) {
+                  // Dispatch payloads remain auditable after completion and never join cache clearing.
+                  yield* sql`UPDATE shared_local_records SET retired=1 WHERE key=${key} AND category=${sharedCategory}`
+                  continue
+                }
                 const p = key.split("/")
                 if (
                   p[0] !== "cache" ||
@@ -559,7 +749,13 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                 } else if (p[1] === "identities")
                   yield* sql`DELETE FROM identities WHERE id=${p[2]!.replace(/\.json$/, "")}`
               }
-              return keys.map((key) => ({ key, retention_path: "sqlite_observation_retirement" }))
+              return keys.map((key) => ({
+                key,
+                retention_path:
+                  sharedLocalCategory(key) === "dispatch"
+                    ? "sqlite_shared_dispatch_retirement"
+                    : "sqlite_observation_retirement",
+              }))
             }),
           )
         }),

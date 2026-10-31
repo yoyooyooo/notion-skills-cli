@@ -2,7 +2,7 @@ import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixture
 import { expect, test } from "bun:test"
 import { Clock, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { catalog } from "../src/catalog.ts"
+import { catalog, explicitSource } from "../src/catalog.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import {
@@ -53,6 +53,32 @@ const memoryStore = Layer.succeed(Store, {
   readBytes: () => Effect.fail(fail("UNUSED", "unused")),
   writeBytes: () => Effect.void,
   output: () => Effect.fail(fail("UNUSED", "unused")),
+})
+
+test("a shared library never falls through to the legacy References consumer", async () => {
+  const calls: string[] = []
+  const api = Layer.succeed(Notion, {
+    version: Effect.succeed("fixture"),
+    credentialIdentity: Effect.succeed("fixture-credential"),
+    request: (path: string) => {
+      calls.push(path)
+      return Effect.succeed({
+        id: database,
+        description: [{ plain_text: "ntn-skills-library:v1 {}" }],
+        data_sources: [{ id: "ds" }],
+      })
+    },
+  })
+  const result = await Effect.runPromise(
+    explicitSource(database).pipe(
+      Effect.provide(Layer.mergeAll(NodeServices.layer, memoryStore, api)),
+      Effect.result,
+    ),
+  )
+  expect(result._tag).toBe("Failure")
+  if (result._tag !== "Failure") throw Error("Expected a protected boundary")
+  expect(result.failure.code).toBe("SHARED_LIBRARY_CONSUMER_PENDING")
+  expect(calls).toEqual([`v1/databases/${database}`])
 })
 
 test("discovery follows both search and row cursors, excludes ordinary databases, deduplicates pages", async () => {
@@ -284,7 +310,7 @@ test("metadata cached before the naming contract cannot bypass title validation"
         if (!key.startsWith("cache/catalogs/")) return undefined
         return decode(schema, {
           scope: key.split("/")[2],
-          fetched_at: yield* Clock.currentTimeMillis,
+          fetched_at: (yield* Clock.currentTimeMillis) - 1000,
           databases: [],
           records: [
             {

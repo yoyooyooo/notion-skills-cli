@@ -1,11 +1,13 @@
 ---
 name: verify-ntn-skills
-description: "Drive the ntn-skills source and installed Node.js CLI for builtin installation/update/status, import, References, snapshots, broker consumption, export, recovery and package verification; retain entrypoint evidence without claiming unexercised host installation."
+description: "Verify ntn-skills source and installed Node.js CLI behavior: shared Notion libraries, whole-file ownership, fixed manifests, archived snapshots, Router members, read-only migration plans, request budgets, builtin management, References, recovery and broker consumption. Retain exact entrypoint evidence and distinguish live CLI, installed package, host and model acceptance."
 ---
 
 # Verify ntn-skills
 
 The primary surface is the JSON CLI. Use the repository's TypeScript dev entrypoint for live Notion operations and its existing npm consumer smoke for the built Node.js package. Read [the feature map](features/README.md) first; a passing convenient path does not prove the other mapped entrypoints.
+
+For AH-498 shared-library work, follow [shared SSOT verification](features/shared-ssot.md), cases SS01–SS13. Drive `ctl library` and root `list/read/files` through helper `cli`; the existing References import/consumption harness does not prove the shared layout. Include fixed `--manifest` registration, read-only migration review and Router Members when those paths change. Record current-body, retained-body, metadata, write and provider costs separately. Keep unfinished original-operation state until reconciliation; a recipe or selected test count is not epic completion.
 
 For Broker missing-reference changes, follow [the consumption boundary recipe](features/broker-consumption.md#missing-reference-boundary). Broker soft misses preserve ordinary user text; this does not change CLI error JSON or genuine selected-record access/integrity failures. Host/provider acceptance belongs to the separate Broker recipes, not a CLI-only pass.
 
@@ -14,6 +16,10 @@ This is a developer/regression workflow. Daily work uses current reads, one pinn
 ## Accepted design and readiness
 
 The [sync/cache CLI design](../../../docs/sync-cache-cli-design.md) is implemented. The [command coverage map](features/README.md#accepted-design-coverage) connects implemented entries to their acceptance cases; [protocol](../../../docs/protocol.md) owns executable semantics. Consult actual command help before driving an entry point and record each exercised result separately.
+
+The [shared architecture checkpoint](../../../docs/shared-ssot-architecture.md) records the new layout's partial implementation and evidence. First-plan unknown outcomes that are invisible to an empty independent client remain an open boundary. Do not claim shared write safety from timestamps, page locks, stable IDs or read-after-write. Source-build passes do not establish a production migration, release, second physical machine, native UI or model behavior.
+
+Shared command claims need their exact boundaries: manifest registration uses zero provider requests but still verifies Notion facts; migration output is always `apply_allowed:false`; Router snapshots freeze member metadata while member bodies remain lazy. New init registers native Members, whereas old missing bindings fail Router explicitly. Transport checks exercise service-local coalescing, default-four permits and the original five-minute permit/SQL admission deadline independently of network timeouts. Keep controlled cancellation/timeout evidence separate from live elapsed samples.
 
 The [sync/cache verification plan](features/sync-cache-verification-plan.md) separates deterministic regressions, real Notion readback and installed Node.js proof. It covers bindings/common bases, checked plans, real symlink targets, TTL/identity scopes and unknown outcomes. Core tests provide controlled clocks and real-link fixtures; the helper isolates product config/state/cache for live command evidence.
 
@@ -38,11 +44,12 @@ RUN="$(mktemp -d "${TMPDIR:-/tmp}/ntn-skills-verification-XXXXXX")"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts init --run "$RUN"
 ```
 
-There is no persistent server, browser, port, or PTY. `init` returning `ready:true` establishes an owned run with private `scratch/config`, `scratch/state`, `scratch/cache`, `scratch/data`, `scratch/builtin-home` and a separate `evidence` directory. The helper overrides all application roots plus XDG config/state/cache/data bases under scratch. Offline `cli -- ctl builtin list/read/export/status/install/update` also uses `scratch/builtin-home` as HOME, keeping default shared links isolated. Online commands, including `ctl builtin publish`, retain HOME for the official `ntn` login; no credentials are copied. Each source drive uses the canonical `scripts/dev.ts` runner to build the formal entry afresh and execute the result with Node.js, then waits for its exit. The helper derives this checkout from its own location, removes `NTN_SKILLS_NTN_BIN` overrides, and inherits ordinary network settings. Local runs can coexist; live runs targeting the same Notion Skill require a single writer. Controlled multi-process cases use designated fixtures. Finish with Cleanup, including after failures.
+There is no persistent server, browser, port, or PTY. `init` returning `ready:true` establishes an owned run with private `scratch/config`, `scratch/state`, `scratch/cache`, `scratch/data`, `scratch/builtin-home` and a separate `evidence` directory. The helper overrides all application roots plus XDG config/state/cache/data bases under scratch. Offline `cli -- ctl builtin list/read/export/status/install/update` also uses `scratch/builtin-home` as HOME, keeping default shared links isolated. Online commands, including `ctl builtin publish`, retain HOME for the official `ntn` login; no credentials are copied. Each source drive uses the canonical `scripts/dev.ts` runner to build the formal entry afresh and execute the result with Node.js, then waits for its exit. The helper derives this checkout from its own location, removes `NTN_SKILLS_NTN_BIN` overrides, and inherits ordinary network settings. Local runs can coexist; live runs targeting the same Notion Skill require a single writer. Controlled multi-process cases use designated fixtures. Finish with Cleanup after preserving evidence and resolving any original operation that still depends on scratch recovery state.
 
 The overrides isolate driven product processes. Bun can create its own transpiler cache before this helper starts, using the launcher's inherited XDG cache. For strict host-sentinel checks, give the parent Bun process a separate owned temporary `XDG_CACHE_HOME` outside the empty run root and record it for system-trash cleanup. Do not create that launcher cache inside the run before `init`; `init` requires an empty owned root. Distinguish launcher writes from product writes in evidence.
 
 ## Doctor
+
 Harness discovery is offline and does not initialize a run:
 
 ```bash
@@ -101,7 +108,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts reuse --run "$RUN" --pla
 
 Repeat `--input` in `prepare` for several Skill directories. An existing frozen plan may instead be passed directly; its exact shape is `{database,entries:[{name,input,files,file_hashes:[{path,bytes,sha256}]}]}`. `input` is absolute; paths are relative. Plans contain no credentials or machine defaults in the committed Skill.
 
-`IMPORT_PLAN` is this helper's frozen migration input, not a product sync plan. Product `SYNC_PLAN_ID`/`SYNC_PLAN_FILE` belongs to `ntn-skills sync local apply` and is passed through helper `cli -- ...`; outer helper `--plan` still accepts only the migration schema. Live import/verify/reuse readbacks explicitly refresh current targets before claiming fresh remote state; pinned reads retain their fixed versions.
+`IMPORT_PLAN` is this helper's frozen References import input, not a product sync plan or shared migration evidence. Product `SYNC_PLAN_ID`/`SYNC_PLAN_FILE` belongs to `ntn-skills sync local apply`; shared `MIGRATION_INPUT` belongs to `ctl library migration plan --input`. Pass those product arguments through helper `cli -- ...`; outer helper `--plan` still accepts only the References import schema. Live import/verify/reuse readbacks explicitly refresh current targets before claiming fresh remote state; pinned reads retain their fixed versions.
 
 `prepare` uses the existing input/portable parsers to determine the invocation name, refreshes the selected catalog, then dry-runs `create` for an absent name or `replace --target PAGE_ID` for an existing exact identity. Helper `import` records the catalog and existing version before/after that dry-run, then performs the explicitly authorized command. It checks that dry-run leaves remote state unchanged; dry-run still reads the network and creates local caches. `verify` freshly enumerates every page through `files --refresh`, enumerates child pages through official `ntn`, checks References paths/IDs from the immutable snapshot manifest, reads pinned main/reference files, reads a supporting asset where present, and exports every source file with SHA-256 equality. Mutable product state is accessed through the CLI and its SQL store. The automated live recipe requires a References library with optional Files enabled to preserve arbitrary assets and exact source bytes. Page-only, ZIP/single-Markdown, individual write and conflict paths use their mapped CLI recipes.
 
@@ -118,6 +125,7 @@ Proof survives at `$RUN/evidence/`:
 - `imports.json`, `verification.json`, `reimports.json`, child-page ID inventories and `final-catalog.json`.
 - `exported/`, `read-assets/`, `summary.json`, failure and cleanup receipts.
 - For sync/cache acceptance: case ledger, imported fixture manifest, before/after baseline generations, plan/receipt copies, logical/resolved path and link proof, freshness observations and measured performance samples. Preserve these before scratch cleanup; do not claim missing artifacts or inject private state to manufacture a live result.
+- For shared-library acceptance: descriptor and stable identities, complete cursor coverage, original plan IDs, before/after body hashes, current and shared pin identities, fixed source manifests, frozen Router member metadata, read-only migration inputs/results, `request_metrics`, exact archive/restore inventories and source-build versus installed-runtime provenance. Keep failed and unrun cases in the same ledger; mark controlled fixtures separately from real Notion and physical-machine evidence. Mini connectivity and independent authentication are available, but its older installed 0.3.0 does not prove the candidate package; preserve the candidate's separate installation and verification status.
 
 Capture both action and resulting state. A successful write response alone is insufficient: reopen through the user-facing CLI, verify page identity/content and file side effects. Do not call internal setters, mutate cache objects for live proof, introduce REST transport substitutes, or execute imported scripts. Test fixtures remain explicitly scoped to offline package proof. Evidence may contain private Skill contents and page IDs; keep it outside the checkout and do not commit it. CLI JSON excludes credentials and signed URLs. Never record raw `ntn -v` output.
 
@@ -130,7 +138,7 @@ test -f "$RUN/evidence/cleanup.json"
 
 On macOS the helper moves its owned local scratch and recorded package scratch to `/usr/bin/trash`; it never permanently removes files. On other hosts it stops with an explicit recycle-bin prerequisite and retains scratch until a system recycle path is verified. Cleanup preserves the evidence directory and retained Notion Skills. It never archives/deletes remote pages automatically. A disposable remote fixture requires task authorization and a recorded page ID before explicit trashing. Never kill by process name; the helper terminates only children it spawned on its own timeout, with no background service to stop.
 
-Run cleanup after failures too. Verify the evidence remains after cleanup before calling the Skill proven. Fix the failed recipe and use a fresh run rather than reusing a cleaned state directory.
+Run cleanup after failures once no unresolved original operation depends on the run's scratch state. Preserve that state and its exact run path while a write is unknown; do not clear dispatch records, invent a new operation or treat cleanup as recovery. Verify the evidence remains after cleanup before calling the exercised cases proven. Fix the failed recipe and use a fresh run rather than reusing a cleaned state directory. A separate fresh-session instruction evaluation is still required to claim the Skill itself proven.
 
 ## Helpers
 

@@ -1,6 +1,8 @@
 import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
+import { openSharedConsumer } from "./shared-consumer.ts"
+import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
 import {
   authScope,
   catalog,
@@ -195,7 +197,7 @@ function openSubscription(id: string, options: CatalogOptions) {
 
 export function openSkill(
   selector: string,
-  options: CatalogOptions = {},
+  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
   view: SnapshotView = "generated",
 ) {
   return openSnapshot(selector, options, view)
@@ -203,7 +205,7 @@ export function openSkill(
 
 function openSnapshot(
   selector: string,
-  options: CatalogOptions = {},
+  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
   view: SnapshotView = "generated",
   allowBundleCache = false,
 ) {
@@ -240,7 +242,25 @@ function openSnapshot(
         return yield* Effect.fail(
           fail("SKILL_NOT_FOUND", "The skill does not belong to the selected database."),
         )
-      const source = yield* explicitSource(databaseId)
+      const source = yield* explicitSource(databaseId, undefined, { allowShared: true })
+      if (source.shared_library !== undefined) {
+        if (view === "authored")
+          return yield* Effect.fail(
+            fail(
+              "CONTENT_NOT_MUTABLE",
+              "The legacy authored projection does not support shared Skills.",
+            ),
+          )
+        return yield* openSharedConsumer({
+          library: source.shared_library,
+          target: id,
+          rawPage,
+          scope,
+          startedAt,
+          forceFull: Boolean(options.refresh) || options.maxAge === 0,
+          readOnly: options.sharedReadOnly,
+        })
+      }
       skill = yield* Effect.try({
         try: () => recordFromPage(row, source, dataSourceId),
         catch: (e) => e as SkillsError,
@@ -254,6 +274,31 @@ function openSnapshot(
       })
       if (resolved.locator.type === "notion_subscription")
         return yield* openSubscription(resolved.locator.subscription_id, options)
+      if (resolved.locator.type === "shared_skill") {
+        if (view === "authored")
+          return yield* Effect.fail(
+            fail(
+              "CONTENT_NOT_MUTABLE",
+              "The legacy authored projection does not support shared Skills.",
+            ),
+          )
+        const locator = resolved.locator
+        const library = directory.databases.find(
+          (entry) => entry.database_id === locator.database_id,
+        )?.shared_library
+        if (library === undefined || library.library_id !== resolved.locator.library_id)
+          return yield* Effect.fail(
+            fail("LIBRARY_INVALID", "The shared record has no matching catalog descriptor."),
+          )
+        return yield* openSharedConsumer({
+          library,
+          target: resolved.locator.page_id,
+          scope,
+          startedAt,
+          forceFull: Boolean(options.refresh) || options.maxAge === 0,
+          readOnly: options.sharedReadOnly,
+        })
+      }
       skill = yield* Effect.try({
         try: () => notionPage(resolved),
         catch: (error) => error as SkillsError,
@@ -713,7 +758,9 @@ export function targetSnapshot(
         ? `notion_subscription:${subscriptionId}`
         : pageId(target.selector)
           ? `notion_page:${pageId(target.selector)}`
-          : undefined
+          : target.selector.startsWith("shared_skill:")
+            ? target.selector
+            : undefined
       if (!selected && !options.refresh) {
         const directoryResult = yield* catalog(options).pipe(Effect.result)
         if (directoryResult._tag === "Failure") return yield* Effect.fail(directoryResult.failure)
@@ -731,12 +778,31 @@ export function targetSnapshot(
       const observed = observedResult?._tag === "Success" ? observedResult.success : undefined
       const now = yield* Clock.currentTimeMillis
       const age = observed ? now - observed.validated_at : NaN
-      if (observed && (options.offline || (Number.isFinite(age) && age >= 0 && age < maxAge))) {
+      const bodyFresh =
+        observed?.snapshot.record.locator.type !== "shared_skill" ||
+        (observed.shared_body_valid_until !== undefined &&
+          now < observed.shared_body_valid_until &&
+          (observed.snapshot.record.kind !== "router" ||
+            observed.snapshot.router_members !== undefined))
+      const locator = observed?.snapshot.record.locator
+      const pending =
+        !options.offline && scope && locator?.type === "shared_skill"
+          ? (yield* (yield* Store).listKeys(
+              `${yield* sharedPendingObservationPrefix(scope, locator.library_id, locator.skill_id)}/`,
+            )).some((key) => key.endsWith(".json"))
+          : false
+      if (
+        observed &&
+        (options.offline ||
+          (Number.isFinite(age) && age >= 0 && age < maxAge && bodyFresh && !pending))
+      ) {
         if (
           options.database !== undefined &&
           (observed.snapshot.record.locator.type === "notion_subscription"
             ? observed.snapshot.record.locator.target_database_id
-            : notionPage(observed.snapshot.record).locator.database_id) !==
+            : observed.snapshot.record.locator.type === "local"
+              ? undefined
+              : observed.snapshot.record.locator.database_id) !==
             (yield* resolveDatabaseId(options.database))
         )
           return yield* Effect.fail(
@@ -744,6 +810,9 @@ export function targetSnapshot(
           )
         snapshot = {
           ...observed.snapshot,
+          ...(observed.shared_body_valid_until === undefined
+            ? {}
+            : { shared_body_valid_until: observed.shared_body_valid_until }),
           source: "local_cache",
           freshness: freshness(options, observed.validated_at, now, maxAge, observed.metadata_only),
         }
@@ -755,9 +824,14 @@ export function targetSnapshot(
               "No complete Skill observation is available in the selected scope.",
             ),
           )
+        const previousLocator = observed?.snapshot.record.locator
         const online = yield* openSnapshot(
-          options.refresh ? target.selector : (selected ?? target.selector),
-          { database: options.database },
+          previousLocator?.type === "shared_skill" || previousLocator?.type === "notion_page"
+            ? previousLocator.page_id
+            : options.refresh
+              ? target.selector
+              : (selected ?? target.selector),
+          options,
           view,
           !options.refresh && options.maxAge !== 0,
         )
@@ -784,7 +858,8 @@ export function targetSnapshot(
         snapshot.record.id,
         snapshot.record.name,
         snapshot.record.alias,
-        snapshot.record.locator.type === "notion_page"
+        snapshot.record.locator.type === "notion_page" ||
+        snapshot.record.locator.type === "shared_skill"
           ? snapshot.record.locator.page_id
           : snapshot.record.locator.type === "notion_subscription"
             ? `upstream:${snapshot.record.locator.subscription_id}`
@@ -797,11 +872,30 @@ export function targetSnapshot(
       options.database !== undefined &&
       (snapshot.record.locator.type === "notion_subscription"
         ? snapshot.record.locator.target_database_id
-        : notionPage(snapshot.record).locator.database_id) !==
-        (yield* resolveDatabaseId(options.database))
+        : snapshot.record.locator.type === "local"
+          ? undefined
+          : snapshot.record.locator.database_id) !== (yield* resolveDatabaseId(options.database))
     )
       return yield* Effect.fail(
         fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
+      )
+    if (view === "authored" && snapshot.record.locator.type === "shared_skill")
+      return yield* Effect.fail(
+        fail(
+          "CONTENT_NOT_MUTABLE",
+          "The legacy authored projection does not support shared Skills; export the fixed snapshot projection explicitly.",
+        ),
+      )
+    if (
+      snapshot.record.locator.type === "shared_skill" &&
+      snapshot.record.kind === "router" &&
+      snapshot.router_members === undefined
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_ROUTER_SNAPSHOT_INCOMPLETE",
+          "This older shared Router snapshot has no frozen Members index. Refresh its current page online before consuming it as a complete Router.",
+        ),
       )
     return snapshot
   })

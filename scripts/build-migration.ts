@@ -44,6 +44,7 @@ await writeFile(
       dependencies: {
         effect: "4.0.5",
         "@effect/platform-node": "4.0.5",
+        "@effect/platform-node-shared": "4.0.5",
         "@effect/sql-sqlite-node": "4.0.5",
       },
       license: "MIT",

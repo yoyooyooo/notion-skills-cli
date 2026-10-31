@@ -119,6 +119,7 @@ export const ObservationSchema = Schema.Struct({
   materialization_version: Schema.optional(Schema.String),
   bundle_checkpoint: Schema.optional(SourceBundleCheckpointSchema),
   metadata_only: Schema.optional(Schema.Literal(true)),
+  shared_body_valid_until: Schema.optional(Schema.Number),
 })
 export interface Freshness {
   readonly policy: "default" | "refresh" | "offline" | "max_age" | "pinned"
@@ -129,6 +130,7 @@ export interface Freshness {
   readonly validation?: "metadata"
 }
 export interface ObservedSnapshot extends Snapshot {
+  readonly shared_body_valid_until?: number
   readonly source?: "notion" | "local_cache" | "local_snapshot"
   readonly freshness?: Freshness
 }
@@ -260,12 +262,43 @@ export function publishSnapshotObservation(
   options: {
     readonly bundleCheckpoint?: SourceBundleCheckpoint
     readonly metadataOnly?: true
+    readonly sharedBodyValidUntil?: number
   } = {},
 ) {
   return Effect.gen(function* () {
     yield* validateSnapshot(snapshot)
     const store = yield* Store
     const validatedAt = yield* Clock.currentTimeMillis
+    if (snapshot.record.locator.type === "shared_skill") {
+      if (!Number.isFinite(options.sharedBodyValidUntil) || options.sharedBodyValidUntil! <= 0)
+        return yield* Effect.fail(
+          fail(
+            "STATE_CORRUPT",
+            "A shared observation requires its independent full-body validation deadline.",
+          ),
+        )
+      const locator = snapshot.record.locator
+      const key = `cache/shared-page-identities/${snapshot.scope}/${locator.page_id}.json`
+      const previous = yield* store.readJson(key, SharedPageAliasSchema)
+      if (
+        previous &&
+        (previous.scope !== snapshot.scope ||
+          previous.page_id !== locator.page_id ||
+          previous.record_identity !== snapshot.record.id)
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_SKILL_ID_CONFLICT",
+            "One page was observed with incompatible stable Skill identities.",
+          ),
+        )
+      yield* store.writeJson(key, {
+        version: 1,
+        scope: snapshot.scope,
+        page_id: locator.page_id,
+        record_identity: snapshot.record.id,
+      })
+    }
     const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
     // Each publisher owns a new immutable journal entry. An older request cannot overwrite a newer pointer.
     yield* store.writeJson(`cache/latest/${snapshot.scope}/${snapshot.record.id}/${id}.json`, {
@@ -280,11 +313,17 @@ export function publishSnapshotObservation(
       invalidated: false,
       ...(options.bundleCheckpoint ? { bundle_checkpoint: options.bundleCheckpoint } : {}),
       ...(options.metadataOnly ? { metadata_only: true } : {}),
+      ...(options.sharedBodyValidUntil === undefined
+        ? {}
+        : { shared_body_valid_until: options.sharedBodyValidUntil }),
     })
     yield* recordScope(snapshot.scope)
     return {
       ...snapshot,
       source: "notion" as const,
+      ...(options.sharedBodyValidUntil === undefined
+        ? {}
+        : { shared_body_valid_until: options.sharedBodyValidUntil }),
       freshness: freshness(
         { refresh: true },
         validatedAt,
@@ -301,9 +340,38 @@ export function publishSnapshotObservation(
     ),
   )
 }
-export function cachedRemoteObservation(page: string, scope: string) {
-  if (pageId(page)) page = `notion_page:${pageId(page)}`
+const SharedPageAliasSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  scope: Schema.String,
+  page_id: Schema.String,
+  record_identity: Schema.String,
+})
+function cachedRecordIdentity(selector: string, scope: string) {
   return Effect.gen(function* () {
+    const id = pageId(
+      selector.startsWith("notion_page:") ? selector.slice("notion_page:".length) : selector,
+    )
+    if (!id) return { identity: selector, page: undefined }
+    const saved = yield* (yield* Store).readJson(
+      `cache/shared-page-identities/${scope}/${id}.json`,
+      SharedPageAliasSchema,
+    )
+    if (
+      saved &&
+      (saved.scope !== scope ||
+        saved.page_id !== id ||
+        !saved.record_identity.startsWith("shared_skill:"))
+    )
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "Cached page alias differs from the selected scope or page."),
+      )
+    return { identity: saved?.record_identity ?? `notion_page:${id}`, page: id }
+  })
+}
+export function cachedRemoteObservation(page: string, scope: string) {
+  return Effect.gen(function* () {
+    const selected = yield* cachedRecordIdentity(page, scope)
+    page = selected.identity
     const store = yield* Store
     const keys = yield* store.listKeys(`cache/latest/${scope}/${page}`)
     const entries: Array<typeof ObservationSchema.Type> = []
@@ -345,6 +413,25 @@ export function cachedRemoteObservation(page: string, scope: string) {
         fail("STATE_CORRUPT", "Latest observation points to a missing or foreign snapshot."),
       )
     yield* validateSnapshot(snapshot)
+    if (
+      selected.page &&
+      ((snapshot.record.locator.type !== "shared_skill" &&
+        snapshot.record.locator.type !== "notion_page") ||
+        snapshot.record.locator.page_id !== selected.page)
+    )
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "Cached page alias points to a different page binding."),
+      )
+    if (
+      snapshot.record.locator.type === "shared_skill" &&
+      (!Number.isFinite(latest.shared_body_valid_until) || latest.shared_body_valid_until! <= 0)
+    )
+      return yield* Effect.fail(
+        fail(
+          "CACHE_REFRESH_REQUIRED",
+          "Shared content needs a complete body validation observation.",
+        ),
+      )
     return {
       snapshot:
         latest.default_context === undefined
@@ -356,6 +443,7 @@ export function cachedRemoteObservation(page: string, scope: string) {
       validated_at: latest.validated_at,
       bundle_checkpoint: latest.bundle_checkpoint,
       metadata_only: latest.metadata_only,
+      shared_body_valid_until: latest.shared_body_valid_until,
     }
   })
 }
@@ -405,10 +493,11 @@ export function invalidateSnapshotCache(page: string, scope?: string) {
           viewKeys.add(`cache/views/${selected}/${identity.slice(6)}.json`)
       }
       if (viewKeys.size) yield* store.retireKeys([...viewKeys])
-      const generation = yield* store.reserveCacheGeneration(selected, page)
+      const identity = (yield* cachedRecordIdentity(page, selected)).identity
+      const generation = yield* store.reserveCacheGeneration(selected, identity)
       const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
-      yield* store.writeJson(`cache/latest/${selected}/${page}/${id}.json`, {
-        record_identity: page,
+      yield* store.writeJson(`cache/latest/${selected}/${identity}/${id}.json`, {
+        record_identity: identity,
         scope: selected,
         started_at: now,
         validated_at: now,
@@ -459,24 +548,22 @@ function cachedTarget(target: string, database?: string) {
       if (
         selectedDatabase &&
         observed &&
-        notionPage(observed.snapshot.record).locator.database_id !== selectedDatabase
+        (observed.snapshot.record.locator.type === "local"
+          ? undefined
+          : observed.snapshot.record.locator.database_id) !== selectedDatabase
       )
         return yield* Effect.fail(
           fail("SKILL_NOT_FOUND", "Target is outside the selected database."),
         )
-      return { page: `notion_page:${id}`, scope: scope! }
+      return { page: observed?.snapshot.record.id ?? `notion_page:${id}`, scope: scope! }
     }
-    const key = `cache/catalogs/${scope}/${yield* sha256(JSON.stringify(["database-selection-v2", database ?? "auto", config.sources ?? []]))}.json`
-    const catalog = yield* store.readJson(key, CatalogSchema)
-    if (!catalog || catalog.scope !== scope || catalog.coverage.failed_sources.length)
+    const directory = yield* catalog({ database, offline: true })
+    if (directory.scope !== scope || directory.coverage.failed_sources.length)
       return yield* Effect.fail(
-        fail(
-          "CACHE_MISSING",
-          "A complete catalog for this exact scope and database selection is required.",
-        ),
+        fail("CACHE_MISSING", "A complete catalog for this scope is required."),
       )
     const skill = yield* Effect.try({
-      try: () => resolveRecord(parsed.selector, catalog, selectedDatabase),
+      try: () => resolveRecord(parsed.selector, directory, selectedDatabase),
       catch: (error) => error as SkillsError,
     })
     return { page: skill.id, scope: scope! }
