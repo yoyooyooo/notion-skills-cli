@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { Crypto, Effect } from "effect"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { HttpClient } from "effect/http"
 import { fail, property, SkillsError, text, type Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
-import { parseTarget } from "../src/ref.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
 import { openSkill } from "../src/snapshot.ts"
+import { writeSkill } from "../src/mutation.ts"
 import {
   sharedAuthoringMarkdown,
   verifySharedAuthoredSnapshot,
@@ -104,6 +109,49 @@ function withBodyWriter<A, E>(
 }
 
 describe("shared authoring through the standard fresh snapshot", () => {
+  test("a verified shared pin scopes public write without database even when an unrelated configured source fails", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await f.target(parseTarget(skillPage), options)
+    f.json.set("config.json", {
+      sources: [
+        {
+          alias: "unrelated-broken",
+          database_id: id(5000),
+          data_source_ids: [id(5001)],
+          title: "Guizang",
+          role: "content",
+        },
+      ],
+    })
+    const directory = mkdtempSync(join(tmpdir(), "shared-pinned-write-"))
+    const input = join(directory, "SKILL.md")
+    writeFileSync(input, mainInput("# A pinned proposed edit\n"))
+    try {
+      f.clearCalls()
+      const result = await f.run(
+        writeSkill(fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id), {
+          input,
+          dryRun: true,
+        }).pipe(Effect.provide(NodeServices.layer)),
+      )
+      expect("dry_run" in result && result.dry_run).toBe(true)
+      expect(result.operation).toBe("write")
+      expect(
+        f.calls.some(
+          (call) =>
+            call.path.includes(id(5000)) ||
+            call.path.includes(id(5001)) ||
+            call.path.includes("/search"),
+        ),
+      ).toBe(false)
+      expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(
+        false,
+      )
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
   test("fresh heads and body evidence stay in memory and are absent from immutable snapshots", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await f.target(parseTarget(skillPage), options)

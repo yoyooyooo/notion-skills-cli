@@ -292,11 +292,17 @@ export function writeSkill(inputTarget: string, options: WriteOptions) {
       return yield* Effect.fail(
         fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another authentication scope."),
       )
-    const current = yield* openSkill(baseline?.record.id ?? target.selector, {
-      database: options.database,
-      refresh: true,
-      sharedReadOnly: Boolean(options.dryRun),
-    })
+    const sharedBaseline =
+      baseline?.record.locator.type === "shared_skill" ? baseline.record.locator : undefined
+    const selectedDatabase = options.database ?? sharedBaseline?.database_id
+    const current = yield* openSkill(
+      sharedBaseline?.page_id ?? baseline?.record.id ?? target.selector,
+      {
+        database: selectedDatabase,
+        refresh: true,
+        sharedReadOnly: Boolean(options.dryRun),
+      },
+    )
     if (baseline && baseline.version_id !== current.version_id)
       return yield* Effect.fail(
         fail("WRITE_CONFLICT", "The remote Skill changed since the pinned read.", {
@@ -349,7 +355,7 @@ export function writeSkill(inputTarget: string, options: WriteOptions) {
           ...(result.status === "planned" ? { dry_run: true } : {}),
         }
       const observed = yield* openSkill(current.record.locator.page_id, {
-        database: options.database,
+        database: selectedDatabase,
         refresh: true,
       }).pipe(
         Effect.mapError((error) =>
