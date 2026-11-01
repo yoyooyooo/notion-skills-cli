@@ -10,6 +10,7 @@ import {
 import { afterAll, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { mkdtempSync } from "node:fs"
+import { retainedLockFixture } from "./retained-lock-fixture.ts"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
@@ -411,6 +412,7 @@ function fixture(
     properties: properties(),
   })
   const stateRoot = mkdtempSync(join(tmpdir(), "missing-root-inventory-production-"))
+  const lockRetentionRoots = new Set([stateRoot])
   const service: Store["Service"] = {
     upstream,
     registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
@@ -945,6 +947,7 @@ function fixture(
     Layer.succeed(FileSystem.FileSystem, fs),
     Layer.succeed(FetchHttpClient.Fetch, fixtureFetch),
     Layer.succeed(UpstreamState, upstream),
+    retainedLockFixture(lockRetentionRoots),
   )
   return {
     children,
@@ -1170,9 +1173,11 @@ function fixture(
           }),
       }
       saved.set("config.json", { default_database: database, upstream_database: upstreamDatabase })
+      const machineRoot = mkdtempSync(join(tmpdir(), "content-adoption-new-machine-"))
+      lockRetentionRoots.add(machineRoot)
       const machine: Store["Service"] = {
         ...service,
-        root: mkdtempSync(join(tmpdir(), "content-adoption-new-machine-")),
+        root: machineRoot,
         upstream: repository,
         integrity: integrityRepositoryFixture(saved),
         listKeys: (prefix) =>

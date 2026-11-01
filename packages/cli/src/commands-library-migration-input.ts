@@ -4,7 +4,10 @@ import { fail, property, SkillsError } from "../../core/src/model.ts"
 import { pageId } from "../../core/src/ref.ts"
 import { MANIFEST, readPortable } from "../../core/src/portable.ts"
 import type { SharedLibrary } from "../../core/src/shared-library-model.ts"
-import { reviewSharedMigrationCreateInput } from "../../core/src/shared-migration-create-binding.ts"
+import {
+  reviewSharedMigrationCreateInput,
+  selectSharedMigrationReviewPolicy,
+} from "../../core/src/shared-migration-create-binding.ts"
 import {
   MigrationNativePreimageSchema,
   type MigrationConversionInput,
@@ -49,15 +52,13 @@ function bytesAt(filename: string) {
           input: location,
         }),
       )
-    return yield* fs
-      .readFile(location)
-      .pipe(
-        Effect.mapError(() =>
-          fail("MIGRATION_INPUT_READ_FAILED", "Could not read the frozen migration input file.", {
-            input: location,
-          }),
-        ),
-      )
+    return yield* fs.readFile(location).pipe(
+      Effect.mapError(() =>
+        fail("MIGRATION_INPUT_READ_FAILED", "Could not read the frozen migration input file.", {
+          input: location,
+        }),
+      ),
+    )
   })
 }
 export function readMigrationJson(filename: string) {
@@ -122,12 +123,16 @@ export function readMigrationRetained(input: {
         }
       }),
     )
-    const prepared = yield* reviewSharedMigrationCreateInput({
-      migration_input: frozen,
-      legacy_id: input.legacyId,
-      library: input.library,
-      files,
-    })
+    const executionPolicy = selectSharedMigrationReviewPolicy(selected)
+    const prepared = yield* reviewSharedMigrationCreateInput(
+      {
+        migration_input: frozen,
+        legacy_id: input.legacyId,
+        library: input.library,
+        files,
+      },
+      executionPolicy,
+    )
     const path = yield* Path.Path
     const nativeFiles: MigrationConversionInput["files"][number][] = []
     for (const file of selected.files) {
@@ -227,6 +232,7 @@ export function readMigrationRetained(input: {
         migration_input: frozen,
         legacy_id: input.legacyId,
         library: input.library,
+        execution_policy: executionPolicy,
         files: nativeFiles,
         source_files: sourceFiles,
       } satisfies MigrationConversionInput,

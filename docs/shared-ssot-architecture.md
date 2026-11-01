@@ -4,14 +4,14 @@
 
 ## 状态与证据
 
-**2026-11-01（Asia/Shanghai）开发检查点：AH-498 尚未全部完成。** 下表中的真实 CLI 指本次源码构建后由 Node.js 执行的正式命令，不代表已发行 npm 包、已安装宿主、两台物理机或模型/UI 验收。原始命令、私人页面身份、完整共享 pin 和备份位置保留在外部运行证据中，本文只记录可公开的范围与结果。
+**2026-11-01 UTC 开发检查点：AH-498 尚未全部完成。** 下表中的真实 CLI 指本次源码构建后由 Node.js 执行的正式命令，不代表已发行 npm 包、已安装宿主、两台物理机或模型/UI 验收。原始命令、私人页面身份、完整共享 pin 和备份位置保留在外部运行证据中，本文只记录可公开的范围与结果。
 
 | 项目 | 当前结论 | 尚不能由该结果推出的结论 |
 | --- | --- | --- |
 | Notion 共享管理权威、本地状态可重建 | 已确定产品边界；共享 Records、精确来源与历史读取已接线 | 全部管理工作流、空缓存独立物理机验收 |
 | 隔离库初始化与 descriptor | 真实 `ctl library init/inspect` 成功；三表及稳定属性身份可读回。当前新库初始化已加入 Members 自关联 | 既有库已自动升级、新增 Members 分支的全部真实故障验收、生产迁移或通用幂等事务 |
 | 主文和支持文件布局 | 真实 Skills 主文与两个 Files 行的扁平索引已验证 | 101+ 真实分页、原生 UI 直达体验 |
-| 共享文件状态 | DAG、Records、正文观察与普通 `read` 已接线；真实整页接管后改回原文仍为 custom | 恢复跟随、完整文件生命周期、全部跨机并发验收 |
+| 共享文件状态 | DAG、Records、正文观察与普通 `read` 已接线；真实整页接管后改回原文仍为 custom；独立七文件 fixture 的显式恢复跟随、fresh read 与旧 pin 核对已通过 | 完整文件生命周期、全部跨机并发验收 |
 | 保留正文 | 真实 Notion 历史对象按精确内容摘要恢复已证 | 任意大正文、所有资源类型或跨物理机完整快照恢复 |
 | 共享 snapshot save/restore | 真实公开 CLI 保存三个文件，`verification=objects_and_manifest`；新本地状态根恢复并导出的三个文件 SHA-256 全部一致 | 任意资源类型、历史故障全矩阵和独立物理机恢复 |
 | 固定 Git 来源 | inspect 固定 commit/tree/root 的 18 文件清单；真实消费产出 20 文件，17 个 Git 资源逐一核对 Git OID，三个 custom 文件保留原 SHA-256 | 完整来源选择管理、二进制全覆盖、投影写回或私有仓库支持 |
@@ -22,7 +22,7 @@
 | 在途合并与请求准入 | Notion 服务内同请求合并、默认四个并发 permit；permit 与 SQL 准入受原五分钟 deadline 约束，网络 timeout 独立 | 跨进程或跨机器全局并发锁、全部真实服务负载矩阵 |
 | 迁移审阅计划 | `ctl library migration plan --input` 已提供只读映射、冻结证据和 blockers；`reviewable` 与 `blocked` 均 `apply_allowed:false` | 已获得生产切换授权、已实际迁移或可以清理旧数据 |
 | SQLite 派生域 | 六类白名单 cache/dispatch 地址；0010 独立持久 local 内容限制不受 cache clear 影响。真实 Node SQLite 基础 7 项及 shared 9 项通过 | 本地状态成为管理权威或跨机器锁 |
-| 类型、构建与专项测试 | 当前 typecheck/build 通过；Notion + coalescer 70 项无 skip，通过实际官方 CLI 的多行错误响应；固定资源/复合来源/限制 87 项、写入接线 83 项、Profile/Records/history 62 项通过 | 这些专项存在重叠，不相加宣称总数；此前完整 Node lane 为 737 pass，后续新增模块仅按专项结果记录；完整产品 unit lane 仍在运行 |
+| 类型、构建与专项测试 | 当前 typecheck/build 通过；完整 Node/Vitest 为 739 pass（50 files），Node 24 inventory 为 7 pass；本轮修改的 36 个 TypeScript 文件通过 Biome 检查。完整 unit 首次为 2931 pass、1 skip、14 fail；修正测试边界后六文件 121 项与 inventory 7 项复验通过 | 14 个初始失败分别为 8 次宿主 Trash 超时、6 次 Node 专用测试被 Bun 执行；失败记录保留，未重跑一次完整全绿 suite。专项存在重叠，不相加宣称总数；默认 unit 的官方 CLI 回环场景仍为条件 skip |
 | 真实大规模 fixture | 两个独立 101 文件 fixture 均未完成：第一套第 77 个创建 unknown，76 个可见且原操作未结清；第二套第 97 个 unknown，96 个可见 | 两套都不记作真实 101 文件通过；受控分页测试分开报告 |
 | 当前生产目录盘点 | 只读返回 300 条，Guizang 来源 coverage 失败；已保留 2509 个历史快照候选、483 份原操作记录，3105 个引用对象全部校验。只读计划稳定输出 8647 项显式 blockers | 快照候选不等于用户指定 pin；不能视作完整批准清单或迁移成功 |
 | 现有本地状态保护 | 公开 backup 返回 `verified:true`；两个旧 scoped operation 的 `external_assets` schema 未知，已备份诊断且未删除 | 不推断这些旧操作完成、可安全重放或可以清理 |
@@ -38,6 +38,24 @@
 同一既有 mixed fixture 的 N07 `file add --dry-run` 实际返回 `SHARED_REFERENCE_BROKEN`：固定 HTTP 挂载的 README 中有七条未纳入最终目录的相对资源引用。新增生命周期文件自身没有引用；此次停止发生在 mutation 之前，没有产生 file-management operation ID。原停止记录保持为真实 negative，不能通过换来源、改 HTTP 字节或省略全树检查改判为通过。
 
 此前该 mixed fixture 的 N11 来源切换、旧 pin、对象复用和 rollback 已按各自保留的 CLI 版本与请求证据完成；那些执行版本尚未对消费侧最终树执行此引用门槛。本次发现补齐了该漏检，不能把旧 N11 PASS 重新标为新版引用校验通过，也不回写其历史快照、原操作或原验收记录。后续 lifecycle 正例应单独记录已有完整 native 对象的实际运行，不能冒充该 mixed run 的结果。
+
+### 2026-11-01：保留发布副本的迁移试点
+
+`copy_to_new_native_v2` 从完整保留的 committed publication、固定来源及所选页面原始正文派生新副本。真实 `lark-shared` 七文件输入通过了公开 review 和 apply dry-run；目标绑定与单项批准分别保留，原 300 行目录、483 份操作、2509 个 pin 候选及 coverage 失败没有被删改。review 为 4 次 Metadata 请求，dry-run 为 3 次，正文、写入与 provider 均为零。这证明所选历史副本可以单独审阅，不证明整个旧目录可切换。旧 policy 和已保存 review 继续使用原门槛。
+
+一次实际 apply 使用已冻结的 Markdown projection 4。主文件的 4558 字节原生正文完全匹配；首个支持文件在段落与后续列表之间多出一个换行，返回 `SHARED_CREATE_BODY_MISMATCH`。新 Skill 保持禁用，仅主文件和该支持文件两页已分配，其余五文件尚未创建。原 create 保留 `needs_review`；随后一次公开 reconcile 返回 `SHARED_CREATE_REVIEW_REQUIRED`，没有重复创建或补写。该试点不能记为迁移完成，也没有授权清理旧数据或进行生产切换。
+
+后续两个原生 Markdown GET 只用于诊断当前正文，不冒充原 mutation response。新增 projection 5 对段落后接列表的分隔进行独立预测，两份诊断正文均与新预测逐字节相等；projection 1–4、原失败候选和 operation digest 保持原解释。新 policy 的离线比较不能改判原 v4 操作，也不替代完整七文件创建的真实验收。
+
+打包检查已在独立 Node 24 consumer 中安装源码候选 tarball 并完成 43 项 `seeded_offline_consumer` 检查。该候选的包版本仍为 0.1.0；这不是 npm 发行、mini 安装或真实服务端到端通过。
+
+正式测试入口只发现 package test 目录，Node 24 专用 inventory 测试由 Node lane 执行，历史 debug 取证文件未改。六套纯发布 fixture 使用同一精确限定的进程适配器，将各自已释放的锁目录实际移到自有保留目录，核对 inode、owner 收据与原路径消失；其它进程仍由真实 spawner 执行。生产 `local-locks` 的同步 Trash 行为没有改动，这些纯测试不承担系统 Trash 集成验收。
+
+### 2026-11-01：独立 fixture 恢复跟随通过
+
+此前独立 N07 fixture 的 v3 restore-follow 因原生读回差异停止，已通过另一明确审阅接受观察正文并保持 custom。本次从 fresh read 为主文件创建新的 v5 restore-follow，实际返回 `applied` 和 `following_restored`，父事件指向原 review adoption；原 4558 字节自定义正文仍保留为历史对象。新事件绑定原固定 Git commit，当前投影基线与完整原生正文逐字节相等，旧 v3 操作没有被改判或重放。由于候选与当前正文已相等，本例没有发送正文 PATCH，实际提交的是恢复跟随的管理事实；不能将它记成 v5 改变正文的写回验收。执行共 82 请求：54 Metadata、25 正文、3 写入，provider 为零。
+
+执行后的 fresh read 为 20 次 Metadata、1 次当前正文、零写入/provider；公开 state 显示 following。公开 files 和 snapshot export 得到七文件完整目录：主文件等于当前 read 的物化字节，六个资源逐字节等于固定 Source archive。恢复前旧 pin 的主文和 snapshot identity 不变，读取为零远端请求。该正例属于既有 N07 对象，不替代上述迁移 create 的未完成结果，也不覆盖完整生命周期或第二物理机。
 
 ### 真实请求观察
 

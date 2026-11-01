@@ -35,6 +35,7 @@ import {
 } from "../src/publication-body-completion-model.ts"
 import { deriveBodyCompletion } from "../src/publication-body-completion-proof.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { retainedLockFixture } from "./retained-lock-fixture.ts"
 import {
   advanceCompletion,
   completionArray,
@@ -249,6 +250,7 @@ async function fixture() {
   }
   const layer = Layer.mergeAll(
     NodeServices.layer,
+    retainedLockFixture(new Set([stateRoot])),
     NodeHttpClient.layerFetch,
     Layer.succeed(Store, store),
     Layer.succeed(Notion, api),

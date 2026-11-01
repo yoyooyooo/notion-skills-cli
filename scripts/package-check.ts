@@ -3,6 +3,30 @@ import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join, relative as relativePath } from "node:path"
 import { fileURLToPath } from "node:url"
+import { SourceLexer } from "../packages/markdown/src/index.ts"
+
+type Token = ReturnType<typeof SourceLexer.lex>[number]
+
+function documentLinks(tokens: readonly Token[]): string[] {
+  const links: string[] = []
+  for (const token of tokens) {
+    if (token.type === "code" || token.type === "codespan") continue
+    if (token.type === "link" || token.type === "image") links.push(token.href)
+    if (token.type === "html")
+      links.push(...Array.from(token.raw.matchAll(/href=["']([^"']+)["']/g), (match) => match[1]!))
+    if (token.type === "list") {
+      if (Array.isArray(token.items)) links.push(...documentLinks(token.items))
+    } else if (token.type === "table") {
+      if (Array.isArray(token.header))
+        for (const cell of token.header) links.push(...documentLinks(cell.tokens))
+      if (Array.isArray(token.rows))
+        for (const row of token.rows)
+          for (const cell of row) links.push(...documentLinks(cell.tokens))
+    } else if ("tokens" in token && Array.isArray(token.tokens))
+      links.push(...documentLinks(token.tokens))
+  }
+  return links
+}
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const destination = await mkdtemp(join(tmpdir(), "ntn-skills-pack-"))
@@ -57,6 +81,8 @@ const publicFiles = [
   "docs/README.md",
   "docs/usage.md",
   "docs/protocol.md",
+  "docs/shared-authoring.md",
+  "docs/shared-migration-activation.md",
   "docs/shared-ssot-architecture.md",
   "docs/historical-operations.md",
   "docs/host-integration.md",
@@ -84,10 +110,9 @@ for (const file of publicFiles) {
   const bytes = await readFile(join(root, file))
   const bundled = await run(["tar", "-xOf", archive, `package/${file}`])
   if (bundled !== bytes.toString("utf8")) throw new Error(`Bundled document is stale: ${file}`)
-  const links = [
-    ...Array.from(bundled.matchAll(/\[[^\]]*\]\(([^)]+)\)/g), (match) => match[1]!),
-    ...Array.from(bundled.matchAll(/href=["']([^"']+)["']/g), (match) => match[1]!),
-  ]
+  // Examples describe a Skill's own file tree. Only rendered document links,
+  // including nested and reference links, must resolve inside this package.
+  const links = documentLinks(SourceLexer.lex(bundled))
   for (const href of links) {
     if (/^(?:[a-z]+:|#)/i.test(href)) continue
     const [relative] = href.split("#")

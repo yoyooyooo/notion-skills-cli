@@ -4,9 +4,9 @@ import { pageId } from "./ref.ts"
 import { RetainedContentSchema } from "./shared-file-state.ts"
 import {
   SharedMigrationConversionCandidateSchema,
-  validateRetainedMigrationConversion,
   type SharedMigrationConversionCandidate,
-} from "./shared-migration-conversion.ts"
+} from "./shared-migration-conversion-model.ts"
+import { validateRetainedMigrationConversion } from "./shared-migration-conversion.ts"
 import { sharedCreateInputPayload } from "./shared-create-objects.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"

@@ -5,6 +5,7 @@ import { property } from "../src/model.ts"
 import { makeSharedMigrationCreateCandidate } from "../src/shared-migration-create-binding.ts"
 import {
   makeSharedMigrationConversion,
+  retainedMigrationConversionInput,
   validateRetainedMigrationConversion,
   validateSharedMigrationConversion,
 } from "../src/shared-migration-conversion.ts"
@@ -43,7 +44,7 @@ test("v2 retains exact legacy bytes and native response while freezing the disti
     first(fixture.input.files).native_preimage.response_json,
   )
   expect(main.projection).toMatchObject({
-    version: 3,
+    version: 5,
     purpose: "data_source_create",
     input_markdown: "# Migration heading\n\nUse `code`.",
     wire_markdown: "<h1>Migration heading</h1>\n\nUse `code`.",
@@ -87,6 +88,41 @@ test("following uses the exact fixed Source and new native baseline without recl
     candidate,
   )
 })
+
+test.each([3, 4] as const)(
+  "saved projection-v%s migration candidates keep their policy after new reviews select v5",
+  async (projectionVersion) => {
+    const fixture = migrationConversionFixture({
+      main: "Notes:\n1. First\n\n2. [`notes`](notes.md)",
+    })
+    const retained = await run(
+      makeSharedMigrationConversion({
+        ...fixture.input,
+        projection_version: projectionVersion,
+      }),
+    )
+    const current = await run(makeSharedMigrationConversion(fixture.input))
+    expect(first(retained.files).projection.version).toBe(projectionVersion)
+    expect(first(current.files).projection.version).toBe(5)
+    expect(first(retained.files).content.sha256).not.toBe(first(current.files).content.sha256)
+    expect(
+      retainedMigrationConversionInput(fixture.migrationInput, retained).projection_version,
+    ).toBe(projectionVersion)
+    expect(await run(validateRetainedMigrationConversion(retained))).toEqual(retained)
+    expect(await run(validateSharedMigrationConversion(fixture.migrationInput, retained))).toEqual(
+      retained,
+    )
+    expect(await run(validateSharedMigrationConversion(fixture.migrationInput, current))).toEqual(
+      current,
+    )
+    const savedPlan = await run(makeSharedMigrationCreatePlan(retained, []))
+    expect(savedPlan.files.every((file) => file.projection.version === projectionVersion)).toBe(
+      true,
+    )
+    expect(first(savedPlan.files).projection).toEqual(first(retained.files).projection)
+    expect(await run(validateSharedCreatePlan(savedPlan))).toEqual(savedPlan)
+  },
+)
 
 test("source bytes require the complete selected tree and exact Git object bytes", async () => {
   const fixture = migrationConversionFixture({ following: true })

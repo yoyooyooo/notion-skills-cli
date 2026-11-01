@@ -2,6 +2,7 @@ import { fail } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
 import { normalizePath } from "./ref.ts"
 import type { CompositionFile } from "./shared-composition.ts"
+import type { SharedNotionMarkdownVersion } from "./shared-notion-projection.ts"
 
 export type SharedFileReference = {
   readonly from: string
@@ -58,7 +59,7 @@ function withoutNativeCode(text: string): string {
 }
 
 /** Preserve line positions while removing fenced code, inline code and comments. */
-function prose(markdown: string, policy: 1 | 2 | 3): string {
+function prose(markdown: string, policy: SharedNotionMarkdownVersion): string {
   let fence: { marker: string; length: number } | undefined
   const lines = markdown
     .replace(/\r\n/gu, "\n")
@@ -198,7 +199,7 @@ function localTarget(from: string, raw: string): string | undefined {
 export function sharedMarkdownReferences(
   path: string,
   markdown: string,
-  policy: 1 | 2 | 3 = 3,
+  policy: SharedNotionMarkdownVersion = 5,
 ): readonly SharedFileReference[] {
   const text = prose(markdown, policy)
   const definitions = new Map<string, string>()
@@ -281,10 +282,10 @@ export function sharedMarkdownReferences(
 /** The caller must supply the complete, byte-verified proposed tree. Retained
  * authoring-v1 creation plans explicitly select policy 1 so their original
  * reference counts and hashed identities do not change during reconstruction.
- * All policies check every file; policies 2/3 understand native code spans. */
+ * All policies check every file; policies 2 and later understand native code spans. */
 export function assertSharedFileReferences(
   files: readonly CompositionFile[],
-  policy: 1 | 2 | 3 = 3,
+  policy: SharedNotionMarkdownVersion = 5,
 ) {
   const paths = new Set(files.map((file) => file.path))
   const references: SharedFileReference[] = []

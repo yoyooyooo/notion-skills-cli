@@ -65,13 +65,16 @@ const PreservedItemSchema = Schema.Struct({
       receipt_ref: Schema.String,
     }),
   ),
-  source_semantics: Schema.optional(Schema.Literals(["fixed_git_v1", "unsupported", "unknown"])),
+  source_semantics: Schema.optional(
+    Schema.Literals(["fixed_git_v1", "legacy_fixed_git_member_v1", "unsupported", "unknown"]),
+  ),
   fixed_source: Schema.optional(Schema.Unknown),
 })
 const InventorySchema = Schema.Struct({
   complete: Schema.Boolean,
   items: Schema.Array(PreservedItemSchema),
 })
+export { InventorySchema as SharedMigrationPreservationInventorySchema }
 export const SharedMigrationInputSchema = Schema.Struct({
   version: Schema.Literal(1),
   scope: Schema.String,

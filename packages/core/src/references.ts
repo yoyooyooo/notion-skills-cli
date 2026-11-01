@@ -328,6 +328,43 @@ function stableBlockBoundaries(
   })
 }
 
+/** Reuse the ordinary legacy page materialization exactly for retained evidence.
+ * This performs no page reads and grants no publication or ownership authority. */
+export function materializeReferenceFiles(
+  skill: Pick<NotionPageRecord, "name" | "description" | "entrypoint">,
+  pages: readonly ReferencePage[],
+  members: readonly { readonly id: string; readonly ref: string }[] = [],
+  memberIndex = "",
+): ImportFile[] {
+  return pages.map((page) =>
+    page.path === skill.entrypoint
+      ? canonicalMain(
+          skill.name,
+          skill.description,
+          rewritePageLinks(
+            fromNotionMarkdown(withoutChildPages(page.markdown), page.blocks),
+            page.path,
+            pages,
+            "local",
+            members,
+          ) + memberIndex,
+          { path: skill.entrypoint, bytes: new Uint8Array() },
+        )
+      : {
+          path: page.path,
+          bytes: new TextEncoder().encode(
+            rewritePageLinks(
+              fromNotionMarkdown(withoutCreationMarker(page.markdown), page.blocks),
+              page.path,
+              pages,
+              "local",
+              members,
+            ),
+          ),
+        },
+  )
+}
+
 // Editable Markdown files consume the live code-block bytes, never an archived ZIP.
 export function readReferences(skill: NotionPageRecord, rawPage: unknown) {
   return Effect.gen(function* () {
@@ -568,33 +605,7 @@ export function readReferences(skill: NotionPageRecord, rawPage: unknown) {
       ...pages[0]!,
       blocks: yield* stableBlockBoundaries(skill.locator.page_id, rawPage, blocks, api),
     }
-    const files: ImportFile[] = pages.map((page) =>
-      page.path === skill.entrypoint
-        ? canonicalMain(
-            skill.name,
-            skill.description,
-            rewritePageLinks(
-              fromNotionMarkdown(withoutChildPages(page.markdown), page.blocks),
-              page.path,
-              pages,
-              "local",
-              members,
-            ) + memberIndex,
-            { path: skill.entrypoint, bytes: new Uint8Array() },
-          )
-        : {
-            path: page.path,
-            bytes: new TextEncoder().encode(
-              rewritePageLinks(
-                fromNotionMarkdown(withoutCreationMarker(page.markdown), page.blocks),
-                page.path,
-                pages,
-                "local",
-                members,
-              ),
-            ),
-          },
-    )
+    const files = materializeReferenceFiles(skill, pages, members, memberIndex)
     if (
       files.length + preserved.length > 10_000 ||
       [...files, ...preserved].reduce((size, file) => size + file.bytes.length, 0) >

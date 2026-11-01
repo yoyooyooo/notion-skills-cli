@@ -42,6 +42,7 @@ import {
   sourceRichTextRepairKey,
 } from "../src/upstream-source-rich-text-repair-model.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { retainedLockFixture } from "./retained-lock-fixture.ts"
 
 const id = (value: number) => `11111111-1111-4111-8111-${String(value).padStart(12, "0")}`
 const root = id(1),
@@ -484,6 +485,7 @@ async function fixture(initialBody: "broken" | "exact" = "broken") {
   }
   const layer = Layer.mergeAll(
     NodeServices.layer,
+    retainedLockFixture(new Set([stateRoot])),
     NodeHttpClient.layerFetch,
     Layer.succeed(Store, store),
     Layer.succeed(Notion, api),

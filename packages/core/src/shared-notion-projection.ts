@@ -4,6 +4,8 @@ import { normalizeObservedBody } from "./shared-file-state.ts"
 import { assertNotionInlineBoundary } from "./shared-notion-inline-boundary.ts"
 import {
   projectNotionMarkdownV2,
+  projectNotionMarkdownV4,
+  projectNotionMarkdownV5,
   type SharedNotionMarkdownPurpose,
 } from "./shared-notion-markdown-v2.ts"
 
@@ -41,12 +43,35 @@ const ProjectionV3Schema = Schema.Struct({
   markdown: Schema.String,
   removed_terminal_lfs: Schema.Number,
 })
+const ProjectionV4Schema = Schema.Struct({
+  version: Schema.Literal(4),
+  format: Schema.Literal("notion_markdown_v2"),
+  normalization_version: Schema.Literal(1),
+  purpose: Schema.Literals(["body_write", "data_source_create"]),
+  input_markdown: Schema.String,
+  wire_markdown: Schema.String,
+  markdown: Schema.String,
+  removed_terminal_lfs: Schema.Number,
+})
+const ProjectionV5Schema = Schema.Struct({
+  version: Schema.Literal(5),
+  format: Schema.Literal("notion_markdown_v2"),
+  normalization_version: Schema.Literal(1),
+  purpose: Schema.Literals(["body_write", "data_source_create"]),
+  input_markdown: Schema.String,
+  wire_markdown: Schema.String,
+  markdown: Schema.String,
+  removed_terminal_lfs: Schema.Number,
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
   ProjectionV3Schema,
+  ProjectionV4Schema,
+  ProjectionV5Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
+export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
 
 export const SharedNotionMarkdownPolicySchema = Schema.Union([
   Schema.Struct({
@@ -69,13 +94,30 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(4),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(5),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
-/** Retained v1/v2 records keep their historical bytes and policy. New policy 3
- * adds only a preflight inline boundary; its renderer remains the v2 policy. */
+/** Retained v1-v4 records keep their historical bytes and policy. New policy 5
+ * also predicts the native separator between a paragraph and following list. */
 export function projectSharedNotionMarkdown(
   input: string,
-  options: { readonly version?: 1 | 2 | 3; readonly purpose?: SharedNotionMarkdownPurpose } = {},
+  options: {
+    readonly version?: SharedNotionMarkdownVersion
+    readonly purpose?: SharedNotionMarkdownPurpose
+  } = {},
 ): SharedNotionMarkdownProjection {
   if (
     typeof input !== "string" ||
@@ -96,10 +138,15 @@ export function projectSharedNotionMarkdown(
     removed_terminal_lfs: normalized.length - markdown.length,
   } as const
   if (options.version === 1) return { version: 1, ...common }
-  const version = options.version ?? 3
-  if (version === 3) assertNotionInlineBoundary(markdown)
+  const version = options.version ?? 5
+  if (version >= 3) assertNotionInlineBoundary(markdown)
   const purpose = options.purpose ?? "body_write"
-  const projected = projectNotionMarkdownV2(markdown, purpose)
+  const projected =
+    version === 5
+      ? projectNotionMarkdownV5(markdown, purpose)
+      : version === 4
+        ? projectNotionMarkdownV4(markdown, purpose)
+        : projectNotionMarkdownV2(markdown, purpose)
   return {
     version,
     ...common,

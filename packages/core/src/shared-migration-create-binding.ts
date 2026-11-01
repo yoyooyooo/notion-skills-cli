@@ -9,7 +9,8 @@ import {
   validateDisplayName,
 } from "./model.ts"
 import { pageId } from "./ref.ts"
-import { planSharedMigration } from "./shared-migration-plan.ts"
+import { inspectMigrationAsOfCopy } from "./shared-migration-asof-copy.ts"
+import { planSharedMigration, type SharedMigrationEntry } from "./shared-migration-plan.ts"
 import {
   migrationTargetReviewBlockers,
   unverifiedMigrationIsolationReceipts,
@@ -127,7 +128,16 @@ export type MigrationCreateBindingInput = {
 }
 /** Only the v2 native-create conversion can request this narrower execution
  * boundary. It creates new pages; it grants no cutover or legacy retirement. */
-export type MigrationCopyExecutionPolicy = "copy_to_new_native_v1"
+export type MigrationCopyExecutionPolicy = "copy_to_new_native_v1" | "copy_to_new_native_v2"
+/** Select a policy only for a new review. Saved candidates keep their exact
+ * explicit policy, including absence; the selected proof is verified below. */
+export function selectSharedMigrationReviewPolicy(
+  entry: Pick<SharedMigrationEntry, "metadata"> | undefined,
+): MigrationCopyExecutionPolicy {
+  return Object.hasOwn(property(entry?.metadata), "legacy_committed_publication")
+    ? "copy_to_new_native_v2"
+    : "copy_to_new_native_v1"
+}
 const checked = <A>(run: () => A) =>
   Effect.try({
     try: run,
@@ -155,8 +165,16 @@ function inspectSharedMigrationCreateInput(
         { onExcessProperty: "error" },
       ),
     )
+    const asOf =
+      executionPolicy === "copy_to_new_native_v2"
+        ? yield* inspectMigrationAsOfCopy(plan, input.legacy_id)
+        : undefined
     const prepared = yield* checked(() => {
-      if (executionPolicy !== undefined && executionPolicy !== "copy_to_new_native_v1")
+      if (
+        executionPolicy !== undefined &&
+        executionPolicy !== "copy_to_new_native_v1" &&
+        executionPolicy !== "copy_to_new_native_v2"
+      )
         reject("SHARED_MIGRATION_CREATE_POLICY", "Unsupported migration execution boundary.")
       if (library.library_id !== plan.evidence.target_library_id)
         reject(
@@ -199,12 +217,13 @@ function inspectSharedMigrationCreateInput(
         )
       const readiness = plan.readiness.items.find((item) => item.legacy_id === input.legacy_id)
       const targetReview =
-        review || executionPolicy === "copy_to_new_native_v1"
+        asOf?.target_review ??
+        (review || executionPolicy === "copy_to_new_native_v1"
           ? migrationTargetReviewBlockers(plan, input.legacy_id)
-          : undefined
+          : undefined)
       const targetReady =
         readiness?.observed === true &&
-        plan.readiness.evidence_issues.length === 0 &&
+        (asOf !== undefined || plan.readiness.evidence_issues.length === 0) &&
         targetReview?.blocking_indexes.length === 0
       if (targetReview === undefined ? readiness?.evidence_ready !== true : !targetReady)
         reject(
@@ -215,7 +234,7 @@ function inspectSharedMigrationCreateInput(
             ...(targetReview === undefined ? {} : { target_review: targetReview }),
           },
         )
-      if (!review) {
+      if (!review && asOf === undefined) {
         const receipts = unverifiedMigrationIsolationReceipts(plan)
         if (receipts.length > 0)
           reject(
@@ -270,21 +289,25 @@ function inspectSharedMigrationCreateInput(
       })
       // A custom file's source_id can be historical provenance. Only a complete
       // following mapping establishes a current selection in this bounded slice.
-      const sources = [
-        ...new Set(
-          mapping.files.flatMap((file) =>
-            (file.state === "following" ||
-              (review &&
-                entry.files.some(
-                  (original) =>
-                    original.legacy_id === file.legacy_id && original.ownership === "following",
-                ))) &&
-            file.source_id !== undefined
-              ? [file.source_id]
-              : [],
-          ),
-        ),
-      ]
+      const sources =
+        asOf === undefined
+          ? [
+              ...new Set(
+                mapping.files.flatMap((file) =>
+                  (file.state === "following" ||
+                    (review &&
+                      entry.files.some(
+                        (original) =>
+                          original.legacy_id === file.legacy_id &&
+                          original.ownership === "following",
+                      ))) &&
+                  file.source_id !== undefined
+                    ? [file.source_id]
+                    : [],
+                ),
+              ),
+            ]
+          : [asOf.publication.source_binding.source_id]
       if (
         sources.length > 1 ||
         (mapping.legacy_mode === "tracked" && sources.length !== 1) ||
@@ -306,7 +329,10 @@ function inspectSharedMigrationCreateInput(
 
     let source: SharedGitSourceBinding | null = null
     let legacySource: unknown = null
-    if (prepared.source_id !== undefined) {
+    if (asOf !== undefined) {
+      source = asOf.publication.source_binding
+      legacySource = asOf.publication.source
+    } else if (prepared.source_id !== undefined) {
       const matches = plan.preservation.filter(
         (item) => item.domain === "sources" && item.source_id === prepared.source_id,
       )
@@ -339,9 +365,10 @@ function inspectSharedMigrationCreateInput(
   })
 }
 
-/** An absent policy preserves the original full-plan gate. The explicit v2 copy
- * boundary only defers unrelated entry/file gaps; approval, dependencies and
- * every unresolved operation or unverified isolation receipt still block. */
+/** An absent policy preserves the original full-plan gate; copy policy v1 keeps
+ * its original operation/isolation requirements. Policy v2 verifies a retained
+ * as-of publication for new pages only. It leaves old history unresolved and
+ * unused, and still requires approval and every actual target dependency. */
 export function prepareSharedMigrationCreateInput(
   input: MigrationCreateBindingInput,
   executionPolicy?: MigrationCopyExecutionPolicy,
@@ -350,8 +377,11 @@ export function prepareSharedMigrationCreateInput(
 }
 
 /** Pure unapproved review only. No dispatcher calls this in place of approval. */
-export function reviewSharedMigrationCreateInput(input: MigrationCreateBindingInput) {
-  return inspectSharedMigrationCreateInput(input, true)
+export function reviewSharedMigrationCreateInput(
+  input: MigrationCreateBindingInput,
+  executionPolicy?: MigrationCopyExecutionPolicy,
+) {
+  return inspectSharedMigrationCreateInput(input, true, executionPolicy)
 }
 
 /**

@@ -131,7 +131,7 @@ function pattern(value: string): RegExp {
 function under(path: string, root: string) {
   return root === "." || path === root || path.startsWith(root + "/")
 }
-function selectMembers(
+export function selectMembers(
   input: DiscoverSourceInput,
   candidates: readonly string[],
   available: readonly string[],

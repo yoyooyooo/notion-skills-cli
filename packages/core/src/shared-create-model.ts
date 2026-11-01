@@ -19,6 +19,7 @@ import {
   sharedNotionMarkdownPolicy,
   SharedNotionMarkdownPolicySchema,
   SharedNotionMarkdownProjectionSchema,
+  type SharedNotionMarkdownVersion,
 } from "./shared-notion-projection.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
@@ -245,7 +246,7 @@ export interface SharedCreateInput {
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: 1 | 2 | 3 = 3,
+  projectionVersion: SharedNotionMarkdownVersion = 5,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable
@@ -503,9 +504,12 @@ export function makeSharedMigrationCreatePlan(
  * Every file in one native create shares the same creation policy. */
 export function sharedCreateProjectionVersion(
   files: readonly {
-    readonly projection: { readonly version: 1 | 2 | 3; readonly purpose?: string }
+    readonly projection: {
+      readonly version: SharedNotionMarkdownVersion
+      readonly purpose?: string
+    }
   }[],
-): 1 | 2 | 3 {
+): SharedNotionMarkdownVersion {
   const version = files[0]?.projection.version
   if (
     version === undefined ||

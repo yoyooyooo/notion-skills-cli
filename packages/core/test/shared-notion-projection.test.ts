@@ -208,6 +208,11 @@ describe("native Markdown projection v2", () => {
   })
 })
 
+const projectV3 = (
+  input: string,
+  options: { readonly purpose?: "body_write" | "data_source_create" } = {},
+) => projectSharedNotionMarkdown(input, { ...options, version: 3 })
+
 describe("native Markdown projection v3 inline boundary", () => {
   test.each([
     "Native <code>a`b</code>.\n\nFollowing paragraph.",
@@ -224,7 +229,7 @@ describe("native Markdown projection v3 inline boundary", () => {
     "[Visible ``a`b``](https://example.com)",
   ])("rejects literal backticks inside inline code before projection (%s)", (input) => {
     for (const purpose of ["body_write", "data_source_create"] as const)
-      expect(() => projectSharedNotionMarkdown(input, { purpose })).toThrow(
+      expect(() => projectV3(input, { purpose })).toThrow(
         "inline code containing a literal backtick",
       )
   })
@@ -232,7 +237,7 @@ describe("native Markdown projection v3 inline boundary", () => {
   test("literal fences remain complete and use the unchanged renderer", () => {
     const input = "```text\n<code>a`b</code>\n``a`b``\n```\n"
     for (const purpose of ["body_write", "data_source_create"] as const) {
-      const projected = projectSharedNotionMarkdown(input, { purpose })
+      const projected = projectV3(input, { purpose })
       expect(projected.version).toBe(3)
       expect(projected.input_markdown).toBe(input)
       expect(sharedNotionMarkdownWire(projected)).toBe(input.slice(0, -1))
@@ -252,7 +257,7 @@ describe("native Markdown projection v3 inline boundary", () => {
       "<!-- <code>a`b</code> -->\n\nOrdinary text.",
       "\\<code>a`b\\</code> and `ordinary`.",
     ]) {
-      const projected = projectSharedNotionMarkdown(input)
+      const projected = projectV3(input)
       expect(projected.version).toBe(3)
       expect(projected.input_markdown).toBe(input)
       expect(sharedNotionMarkdownWire(projected)).toBe(sharedNotionMarkdownWire(projectV2(input)))
@@ -288,8 +293,8 @@ describe("native Markdown projection v3 inline boundary", () => {
     )
   })
 
-  test("current policy metadata reports version 3 without relabeling old records", () => {
-    const projected = projectSharedNotionMarkdown("# Title\n\n`marker`\n")
+  test("retained policy metadata reports version 3 without relabeling old records", () => {
+    const projected = projectV3("# Title\n\n`marker`\n")
     expect(sharedNotionMarkdownPolicy(projected)).toEqual({
       version: 3,
       format: "notion_markdown_v2",

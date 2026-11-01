@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
-import { fail, property, SkillsError } from "./model.ts"
+import { CoverageSchema, fail, property, SkillsError } from "./model.ts"
 import { pageId } from "./ref.ts"
 import { consumeSharedCreation } from "./shared-create-consumption.ts"
 import { SharedCreateJournalSchema, validateSharedCreatePlan } from "./shared-create-model.ts"
@@ -24,7 +24,11 @@ import {
   makeSharedMigrationCreateOrigin,
   SharedMigrationCreateOriginSchema,
 } from "./shared-migration-create-origin.ts"
-import { SharedMigrationInputSchema } from "./shared-migration-plan.ts"
+import { selectSharedMigrationReviewPolicy } from "./shared-migration-create-binding.ts"
+import {
+  SharedMigrationInputSchema,
+  SharedMigrationPreservationInventorySchema,
+} from "./shared-migration-plan.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 
@@ -36,6 +40,10 @@ export const SharedMigrationReviewSchema = Schema.Struct({
   approval_independent_sha256: Hash,
   originally_approved_legacy_ids: Schema.Array(Schema.String),
   origin: SharedMigrationCreateOriginSchema,
+  /** v2 copies preserve original history visibly; this is no terminal receipt. */
+  retained_operations: Schema.optional(SharedMigrationPreservationInventorySchema),
+  /** Enumeration gaps remain visible and do not establish absent old aliases. */
+  retained_catalog_coverage: Schema.optional(CoverageSchema),
   execution: Schema.Struct({
     read_only: Schema.Literal(true),
     apply_allowed: Schema.Literal(false),
@@ -54,9 +62,9 @@ const checked = <A>(run: () => A) =>
           ),
   })
 
-/** Approval may change; every original fact and every isolation receipt remains
- * bound. The readiness basis hash is derived from the changed approval set and
- * is still checked by the original planner before dispatch. */
+/** Approval may change; every original fact and every isolation declaration
+ * remains bound. The readiness basis is derived from the changed approval set.
+ * Policy v2 does not consume that declaration as proof of historical effects. */
 function approvalIndependent(input: unknown) {
   const decoded = Schema.decodeUnknownSync(SharedMigrationInputSchema)(input, {
     onExcessProperty: "error",
@@ -79,15 +87,22 @@ function reviewId(fields: Omit<SharedMigrationReview, "review_id">) {
   return sha256(canonicalSharedJson(fields)).pipe(Effect.map((hash) => `migration-review-${hash}`))
 }
 
-/** New reviews explicitly describe copying one frozen target to new native
- * pages, without cutover or legacy retirement. The policy is part of the origin
- * and review digest. No approval flag is changed; saved unmarked reviews retain
- * their original policy when validated or applied. */
+/** New reviews with a retained publication proof use the explicit v2 as-of copy
+ * boundary. The conversion revalidates the actual bytes; a descriptor alone is
+ * not evidence. Other new reviews retain policy v1. Saved reviews keep their
+ * exact policy and digest; neither review authorizes cutover or old replay. */
 export function reviewSharedMigration(input: MigrationConversionInput) {
   return Effect.gen(function* () {
+    const original = yield* checked(() =>
+      Schema.decodeUnknownSync(SharedMigrationInputSchema)(input.migration_input, {
+        onExcessProperty: "error",
+      }),
+    )
+    const entry = original.catalog.entries.find((item) => item.legacy_id === input.legacy_id)
+    const policy = input.execution_policy ?? selectSharedMigrationReviewPolicy(entry)
     const candidate = yield* reviewSharedMigrationConversion({
       ...input,
-      execution_policy: "copy_to_new_native_v1",
+      execution_policy: policy,
     })
     const plan = yield* prepareSharedMigrationReview(input.library, candidate)
     if (plan.version !== 2)
@@ -97,11 +112,6 @@ export function reviewSharedMigration(input: MigrationConversionInput) {
           "Migration review requires the exact versioned origin.",
         ),
       )
-    const original = yield* checked(() =>
-      Schema.decodeUnknownSync(SharedMigrationInputSchema)(input.migration_input, {
-        onExcessProperty: "error",
-      }),
-    )
     const fields = {
       version: 1 as const,
       kind: "migration_create_review" as const,
@@ -110,6 +120,12 @@ export function reviewSharedMigration(input: MigrationConversionInput) {
       ),
       originally_approved_legacy_ids: [...original.approved_legacy_ids].sort(),
       origin: plan.origin,
+      ...(policy === "copy_to_new_native_v2"
+        ? {
+            retained_operations: original.preservation.operations,
+            retained_catalog_coverage: original.catalog.coverage,
+          }
+        : {}),
       execution: { read_only: true as const, apply_allowed: false as const },
     }
     return { ...fields, review_id: yield* reviewId(fields) } satisfies SharedMigrationReview
@@ -129,6 +145,17 @@ export function validateSharedMigrationReview(input: unknown, expectedReviewId: 
           "Use the exact digest of the concrete review that was approved; changed content cannot inherit approval.",
         ),
       )
+    const asOf = review.origin.candidate.execution_policy === "copy_to_new_native_v2"
+    if (
+      asOf !== (review.retained_operations !== undefined) ||
+      asOf !== (review.retained_catalog_coverage !== undefined)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_MIGRATION_REVIEW_INVALID",
+          "Only an as-of copy review retains original operations and catalog coverage in its versioned digest; it cannot omit that history or imply enumeration is complete.",
+        ),
+      )
     const origin = yield* makeSharedMigrationCreateOrigin(
       review.origin.candidate,
       review.origin.member_bindings,
@@ -144,8 +171,8 @@ export function validateSharedMigrationReview(input: unknown, expectedReviewId: 
   })
 }
 
-/** Explicit one-target apply. It creates no batch engine and cannot waive the
- * original approved input, unresolved operations or unsupported conversions. */
+/** Explicit one-target apply. The exact approved input and stored copy policy
+ * are required. No old operation is replayed, retired or declared terminal. */
 export function applySharedMigration(input: {
   readonly migrationInput: unknown
   readonly review: unknown
@@ -162,6 +189,28 @@ export function applySharedMigration(input: {
         fail(
           "SHARED_MIGRATION_REVIEW_CHANGED",
           "The approved input changed original evidence or content. Obtain a new concrete review instead of carrying approval to it.",
+        ),
+      )
+    if (
+      review.retained_operations !== undefined &&
+      canonicalSharedJson(review.retained_operations) !==
+        canonicalSharedJson(property(property(input.migrationInput).preservation).operations)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_MIGRATION_REVIEW_CHANGED",
+          "The as-of review must retain every original operation and unresolved flag exactly as supplied in the approved input.",
+        ),
+      )
+    if (
+      review.retained_catalog_coverage !== undefined &&
+      canonicalSharedJson(review.retained_catalog_coverage) !==
+        canonicalSharedJson(property(property(input.migrationInput).catalog).coverage)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_MIGRATION_REVIEW_CHANGED",
+          "The as-of review must retain the exact original catalog coverage and failures; a frozen copy does not complete enumeration or authorize cutover.",
         ),
       )
     const candidate = yield* makeSharedMigrationConversion(

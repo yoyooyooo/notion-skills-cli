@@ -13,18 +13,12 @@ import { pageId } from "./ref.ts"
 import { sharedSkillId } from "./shared-content.ts"
 import { composeSharedFiles } from "./shared-composition.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
-import {
-  FileEventSchema,
-  normalizeObservedBody,
-  RetainedContentSchema,
-  type FileEvent,
-} from "./shared-file-state.ts"
+import { normalizeObservedBody, type FileEvent } from "./shared-file-state.ts"
 import { gitBlobOid } from "./shared-github-source.ts"
 import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
 import {
   migrationConversionPolicy,
   resolveMigrationActivation,
-  SharedMigrationActivationSchema,
   type SharedMigrationActivation,
 } from "./shared-migration-activation.ts"
 import {
@@ -34,6 +28,7 @@ import {
   type MigrationCreateBindingInput,
   type MigrationRetainedFile,
 } from "./shared-migration-create-binding.ts"
+import { validateLegacyCommittedPublicationSource } from "./shared-migration-legacy-publication.ts"
 import {
   SharedMigrationEntrySchema,
   SharedMigrationPreservedItemSchema,
@@ -41,111 +36,25 @@ import {
 } from "./shared-migration-plan.ts"
 import {
   projectSharedNotionMarkdown,
-  SharedNotionMarkdownProjectionSchema,
+  type SharedNotionMarkdownVersion,
 } from "./shared-notion-projection.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import {
-  makeSourceBinding,
-  SharedGitSourceBindingSchema,
-  type SharedGitSourceBinding,
-} from "./shared-source-binding.ts"
+import { makeSourceBinding, type SharedGitSourceBinding } from "./shared-source-binding.ts"
 import { sha256 } from "./store.ts"
 import { parseYaml } from "./yaml.ts"
 
-const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
-const Size = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
-const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
-const TextObject = Schema.Struct({
-  text: Schema.String,
-  sha256: Hash,
-  bytes: Size,
-  retention_ref: Schema.String,
-})
-const NativeFields = {
-  kind: Schema.Literal("notion_page_markdown"),
-  page_id: Schema.String,
-  api_version: Schema.Literal("2026-03-11"),
-  markdown_version: Schema.Literals(["default", "v2"]),
-  request_path: Schema.String,
-  retention_ref: Schema.String,
-}
-export const MigrationNativePreimageSchema = Schema.Struct({
-  ...NativeFields,
-  response_json: Schema.String,
-})
-export type MigrationNativePreimage = typeof MigrationNativePreimageSchema.Type
-const NativeEvidenceSchema = Schema.Struct({
-  ...NativeFields,
-  response_json: Schema.String,
-  response_sha256: Hash,
-  response_bytes: Size,
-  body_sha256: Hash,
-})
-const SourceFileSchema = Schema.Struct({
-  path: Schema.String,
-  retention_ref: Schema.String,
-  sha256: Hash,
-  bytes: Size,
-  base64: Schema.String,
-})
-const MetadataSchema = Schema.Struct({
-  name: Schema.String,
-  description: Schema.String,
-  kind: ContentKindSchema,
-  enabled: Schema.Literal(true),
-  default_context: Schema.Boolean,
-  entrypoint: Schema.String,
-})
-const MemberSchema = Schema.Struct({
-  legacy_id: Schema.String,
-  skill_id: Identity,
-  record_id: Schema.String,
-  page_id: Schema.Null,
-})
-const ConvertedFileSchema = Schema.Struct({
-  legacy_id: Schema.String,
-  file_id: Identity,
-  path: Schema.String,
-  selection: Schema.Literals(["current", "source"]),
-  original: TextObject,
-  native_preimage: NativeEvidenceSchema,
-  input: TextObject,
-  projection: SharedNotionMarkdownProjectionSchema,
-  content: RetainedContentSchema,
-  initial_event: FileEventSchema,
-})
-export const SharedMigrationConversionCandidateSchema = Schema.Struct({
-  version: Schema.Literal(2),
-  kind: Schema.Literal("migration_create_candidate"),
-  conversion_policy: Schema.Literals(["legacy_page_to_native_v1", "legacy_page_to_native_v2"]),
-  /** Absent in saved candidates: retain their original full-plan execution gate. */
-  execution_policy: Schema.optional(Schema.Literal("copy_to_new_native_v1")),
-  activation: Schema.optional(SharedMigrationActivationSchema),
-  candidate_id: Schema.String.check(Schema.isPattern(/^migration-create-[a-f0-9]{64}$/u)),
-  migration_plan_id: Schema.String,
-  migration_input_sha256: Hash,
-  legacy_id: Schema.String,
-  skill_id: Identity,
-  record_id: Schema.String,
-  library: SharedLibrarySchema,
-  metadata: MetadataSchema,
-  legacy_entry: Schema.Unknown,
-  legacy_source: Schema.NullOr(Schema.Unknown),
-  legacy_router: Schema.NullOr(Schema.Unknown),
-  source: Schema.NullOr(SharedGitSourceBindingSchema),
-  source_files: Schema.Array(SourceFileSchema),
-  files: Schema.Array(ConvertedFileSchema),
-  member_bindings: Schema.Array(MemberSchema),
-  reference_check: Schema.Struct({ checked_files: Size, local_references: Size }),
-  execution: Schema.Struct({
-    apply_allowed: Schema.Literal(false),
-    original_migration_input_required: Schema.Literal(true),
-    physical_bindings_verified: Schema.Literal(false),
-    native_receipt_verified: Schema.Literal(false),
-  }),
-})
-export type SharedMigrationConversionCandidate =
-  typeof SharedMigrationConversionCandidateSchema.Type
+import {
+  MigrationNativePreimageSchema,
+  SharedMigrationConversionCandidateSchema,
+  type MigrationNativePreimage,
+  type SharedMigrationConversionCandidate,
+} from "./shared-migration-conversion-model.ts"
+export {
+  MigrationNativePreimageSchema,
+  SharedMigrationConversionCandidateSchema,
+  type MigrationNativePreimage,
+  type SharedMigrationConversionCandidate,
+} from "./shared-migration-conversion-model.ts"
 export type MigrationConversionFile = MigrationRetainedFile & {
   readonly native_preimage: MigrationNativePreimage
 }
@@ -158,6 +67,8 @@ export type MigrationConversionInput = Omit<MigrationCreateBindingInput, "files"
   readonly files: readonly MigrationConversionFile[]
   /** Explicitly bound into the candidate, origin and public review digest. */
   readonly execution_policy?: MigrationCopyExecutionPolicy
+  /** Reconstruction uses the saved files' policy; new reviews select policy 5. */
+  readonly projection_version?: Extract<SharedNotionMarkdownVersion, 3 | 4 | 5>
   /** The complete selected fixed tree, including assets that will never be body pages. */
   readonly source_files?: readonly MigrationSourceFile[]
 }
@@ -246,7 +157,7 @@ function metadata(entry: SharedMigrationEntry, activation?: SharedMigrationActiv
 function authored(
   text: string,
   path: string,
-  meta: typeof MetadataSchema.Type,
+  meta: SharedMigrationConversionCandidate["metadata"],
   following: boolean,
 ) {
   if (path !== meta.entrypoint) return text
@@ -292,7 +203,7 @@ function retainSourceFiles(
             "A source-less record cannot borrow supplied source bytes.",
           ),
         )
-      return [] as readonly (typeof SourceFileSchema.Type)[]
+      return [] satisfies SharedMigrationConversionCandidate["source_files"]
     }
     if (
       supplied.length !== source.files.length ||
@@ -304,7 +215,7 @@ function retainSourceFiles(
           "Supply the complete exact fixed Source tree once, including non-page assets.",
         ),
       )
-    const result: (typeof SourceFileSchema.Type)[] = []
+    const result: Array<SharedMigrationConversionCandidate["source_files"][number]> = []
     for (const expected of source.files) {
       const file = supplied.find((item) => item.path === expected.path)
       if (
@@ -336,11 +247,12 @@ function retainSourceFiles(
 function convertFile(input: {
   readonly library: SharedLibrary
   readonly entry: SharedMigrationEntry
-  readonly meta: typeof MetadataSchema.Type
+  readonly meta: SharedMigrationConversionCandidate["metadata"]
   readonly legacyFile: SharedMigrationEntry["files"][number]
   readonly source: SharedGitSourceBinding | null
   readonly legacySourceId?: string
-  readonly sourceFiles: readonly (typeof SourceFileSchema.Type)[]
+  readonly sourceFiles: SharedMigrationConversionCandidate["source_files"]
+  readonly projectionVersion: NonNullable<MigrationConversionInput["projection_version"]>
   readonly supplied: MigrationConversionFile
 }) {
   return Effect.gen(function* () {
@@ -453,7 +365,7 @@ function convertFile(input: {
     }
     const projection = yield* checked(() =>
       projectSharedNotionMarkdown(authored(selected.text, old.path, input.meta, following), {
-        version: 3,
+        version: input.projectionVersion,
         purpose: "data_source_create",
       }),
     )
@@ -496,8 +408,27 @@ function convertFile(input: {
 /** Rebuild only the retained target's deterministic conversion. This is not an
  * approval check and grants no dispatch permission; creation re-runs the original
  * full migration planner with the caller's frozen migration input below. */
+function migrationProjectionVersion(
+  files: SharedMigrationConversionCandidate["files"],
+): NonNullable<MigrationConversionInput["projection_version"]> {
+  const version = files[0]?.projection.version
+  if (
+    (version !== 3 && version !== 4 && version !== 5) ||
+    files.some(
+      (file) =>
+        file.projection.version !== version || file.projection.purpose !== "data_source_create",
+    )
+  )
+    return reject(
+      "SHARED_MIGRATION_CONVERSION_INVALID",
+      "Every retained migration file must keep the same explicit native creation policy.",
+    )
+  return version
+}
+
 function rebuildRetainedCandidate(input: Omit<SharedMigrationConversionCandidate, "candidate_id">) {
   return Effect.gen(function* () {
+    const projectionVersion = yield* checked(() => migrationProjectionVersion(input.files))
     const library = yield* checked(() =>
       Schema.decodeUnknownSync(SharedLibrarySchema)(input.library, { onExcessProperty: "error" }),
     )
@@ -535,7 +466,11 @@ function rebuildRetainedCandidate(input: Omit<SharedMigrationConversionCandidate
       )
     let source: SharedGitSourceBinding | null = null
     let legacySourceId: string | undefined
-    if (input.legacy_source !== null) {
+    if (input.execution_policy === "copy_to_new_native_v2") {
+      const retained = yield* validateLegacyCommittedPublicationSource(input.legacy_source, entry)
+      source = retained.source_binding
+      legacySourceId = retained.source.legacy_id
+    } else if (input.legacy_source !== null) {
       const original = yield* checked(() =>
         Schema.decodeUnknownSync(SharedMigrationPreservedItemSchema)(input.legacy_source, {
           onExcessProperty: "error",
@@ -583,7 +518,7 @@ function rebuildRetainedCandidate(input: Omit<SharedMigrationConversionCandidate
           "Retain every original managed file once; Source assets are a separate complete collection.",
         ),
       )
-    const files: (typeof ConvertedFileSchema.Type)[] = []
+    const files: Array<SharedMigrationConversionCandidate["files"][number]> = []
     for (const old of [...entry.files].sort((a, b) =>
       a.legacy_id < b.legacy_id ? -1 : a.legacy_id > b.legacy_id ? 1 : 0,
     )) {
@@ -607,6 +542,7 @@ function rebuildRetainedCandidate(input: Omit<SharedMigrationConversionCandidate
           source,
           ...(legacySourceId === undefined ? {} : { legacySourceId }),
           sourceFiles,
+          projectionVersion,
           supplied: {
             legacy_id: file.legacy_id,
             retention_ref: file.original.retention_ref,
@@ -627,7 +563,7 @@ function rebuildRetainedCandidate(input: Omit<SharedMigrationConversionCandidate
           "A tracked record cannot lose its selected Source, and historical custom provenance is not current following.",
         ),
       )
-    let members: (typeof MemberSchema.Type)[] = []
+    let members: Array<SharedMigrationConversionCandidate["member_bindings"][number]> = []
     if (meta.kind === "router") {
       const router = yield* checked(() =>
         Schema.decodeUnknownSync(SharedMigrationPreservedItemSchema)(input.legacy_router, {
@@ -723,8 +659,9 @@ export function validateRetainedMigrationConversion(input: unknown) {
  * target approval, complete dependencies and the original operation safeguards. */
 function makeConversion(input: MigrationConversionInput, review: boolean) {
   return Effect.gen(function* () {
+    const projectionVersion = input.projection_version ?? 5
     const { plan, library, prepared, source, legacySource } = yield* review
-      ? reviewSharedMigrationCreateInput(input)
+      ? reviewSharedMigrationCreateInput(input, input.execution_policy)
       : prepareSharedMigrationCreateInput(input, input.execution_policy)
     const conversionPolicy = migrationConversionPolicy(prepared.entry)
     const activation = yield* resolveMigrationActivation(prepared.entry, conversionPolicy)
@@ -732,7 +669,7 @@ function makeConversion(input: MigrationConversionInput, review: boolean) {
     const sourceFiles = yield* retainSourceFiles(source, input.source_files ?? [])
     const legacySourceId =
       legacySource === null ? undefined : String(property(legacySource).legacy_id)
-    const files: (typeof ConvertedFileSchema.Type)[] = []
+    const files: Array<SharedMigrationConversionCandidate["files"][number]> = []
     for (const old of [...prepared.entry.files].sort((a, b) =>
       a.legacy_id < b.legacy_id ? -1 : a.legacy_id > b.legacy_id ? 1 : 0,
     )) {
@@ -750,6 +687,7 @@ function makeConversion(input: MigrationConversionInput, review: boolean) {
           source,
           ...(legacySourceId === undefined ? {} : { legacySourceId }),
           sourceFiles,
+          projectionVersion,
           supplied,
         }),
       )
@@ -811,6 +749,7 @@ export function retainedMigrationConversionInput(
     migration_input: migrationInput,
     legacy_id: candidate.legacy_id,
     library: candidate.library,
+    projection_version: migrationProjectionVersion(candidate.files),
     ...(candidate.execution_policy === undefined
       ? {}
       : { execution_policy: candidate.execution_policy }),

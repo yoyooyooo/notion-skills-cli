@@ -7,8 +7,10 @@ import { Effect } from "effect"
 import { portableZip, MANIFEST } from "../../core/src/portable.ts"
 import { reviewSharedMigrationConversion } from "../../core/src/shared-migration-conversion.ts"
 import { reviewSharedMigration } from "../../core/src/shared-migration-review.ts"
+import type { SharedMigrationInput } from "../../core/src/shared-migration-plan.ts"
 import { sharedCreateFixture } from "../../core/test/shared-create-fixture.ts"
 import { migrationConversionFixture } from "../../core/test/shared-migration-conversion-fixture.ts"
+import { legacyCommittedPublicationFixture } from "../../core/test/shared-migration-legacy-publication-fixture.ts"
 import {
   readMigrationJson,
   readMigrationRetained,
@@ -198,6 +200,82 @@ test("production apply checks the independently supplied review digest before an
     "SHARED_MIGRATION_REVIEW_CHANGED",
   )
   expect(f.writes()).toHaveLength(0)
+})
+
+test("the public retained-input loader selects the proved as-of policy before checking unresolved legacy history", async () => {
+  const root = await directory(),
+    original = await legacyCommittedPublicationFixture(),
+    base = migrationConversionFixture(),
+    f = sharedCreateFixture()
+  const entry = original.derived.entry,
+    files = join(root, "native"),
+    preimages = join(root, "preimages"),
+    sourceFiles = join(root, "source")
+  if (original.snapshot.record.locator.type !== "notion_page")
+    throw new Error("The retained publication fixture must identify its original Notion page")
+  const originalPage = original.snapshot.record.locator.page_id
+  await Promise.all([files, preimages, sourceFiles].map((path) => mkdir(path)))
+  for (const file of original.native_files) {
+    await mkdir(dirname(join(files, file.path)), { recursive: true })
+    await writeFile(join(files, file.path), file.bytes)
+  }
+  for (const raw of original.proof.native_preimages)
+    await writeFile(
+      join(preimages, `${raw.page_id}.${raw.markdown_version}.json`),
+      raw.response_json,
+    )
+  for (const file of original.source_files) {
+    await mkdir(dirname(join(sourceFiles, file.path)), { recursive: true })
+    await writeFile(join(sourceFiles, file.path), file.bytes)
+  }
+  const frozen: SharedMigrationInput = {
+    ...base.migrationInput,
+    scope: original.derived.scope,
+    approved_legacy_ids: [],
+    catalog: {
+      coverage: { ...base.migrationInput.catalog.coverage, exhaustive: false },
+      entries: [entry],
+    },
+    preservation: {
+      ...base.migrationInput.preservation,
+      sources: { complete: false, items: [original.derived.source] },
+      operations: {
+        complete: false,
+        items: [
+          {
+            legacy_id: "retained-unknown-operation",
+            raw: { state: "unknown", page_id: originalPage },
+            complete: false,
+            references: [],
+            retention_ref: "retained:original-operation",
+            retention_verified: true,
+            terminal_verified: false,
+          },
+        ],
+      },
+    },
+  }
+  const before = structuredClone(frozen)
+  const loaded = await Effect.runPromise(
+    readMigrationRetained({
+      migrationInput: frozen,
+      legacyId: entry.legacy_id,
+      library: base.input.library,
+      files,
+      preimages,
+      sourceFiles,
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+  expect(loaded.input.execution_policy).toBe("copy_to_new_native_v2")
+  const review = await f.run(reviewSharedMigration(loaded.input))
+  expect(review.origin.candidate.execution_policy).toBe("copy_to_new_native_v2")
+  expect(review.origin.candidate.files).toHaveLength(2)
+  expect(review.retained_operations).toEqual(frozen.preservation.operations)
+  expect(review.retained_catalog_coverage).toEqual(frozen.catalog.coverage)
+  expect(review.originally_approved_legacy_ids).toEqual([])
+  expect(frozen).toEqual(before)
+  expect(f.writes()).toHaveLength(0)
+  expect(f.pending()).toHaveLength(0)
 })
 
 test("the public retained-input loader preserves exact files, raw response bytes and the full Source tree", async () => {

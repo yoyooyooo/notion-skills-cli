@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as NodeServices from "@effect/platform-node/NodeServices"
+import { retainedLockFixture } from "./retained-lock-fixture.ts"
 import { Crypto, Effect, FileSystem, Layer, Path } from "effect"
 import { FetchHttpClient, type HttpClient } from "effect/http"
 import { SourceLexer as Lexer } from "@notion-skills-cli/markdown"
@@ -734,6 +735,7 @@ export async function sourceRootFidelityFixture(initialBody: "empty" | "exact" =
   }
   const layer = Layer.mergeAll(
     NodeServices.layer,
+    retainedLockFixture(new Set([stateRoot])),
     NodeHttpClient.layerFetch,
     Layer.succeed(Store, store),
     Layer.succeed(Notion, api),
