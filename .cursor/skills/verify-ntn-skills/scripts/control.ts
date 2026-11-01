@@ -173,11 +173,21 @@ delete env.NTN_SKILLS_NTN_BIN
 async function command(args: string[], cwd = repo, childEnv = env) {
   if (args.includes("set-token") || args.some((arg) => /^(?:Bearer |secret_|ntn_)/.test(arg)))
     throw new Error("Do not pass credentials to the verification harness.")
-  const record = join(evidence, "commands", `${Date.now()}-${randomUUID()}.json`)
+  const commandId = randomUUID()
+  const record = join(evidence, "commands", `${Date.now()}-${commandId}.json`)
+  const sourceCli = args[0] === sourceLaunch[0] && args[1] === sourceLaunch[1]
+  const timingFile = sourceCli ? join(evidence, "cli-timing", `${commandId}.json`) : undefined
+  if (timingFile) await mkdir(dirname(timingFile), { recursive: true, mode: 0o700 })
   const started = new Date().toISOString()
   const child = Bun.spawn(args, {
     cwd,
-    env: childEnv,
+    env: timingFile
+      ? {
+          ...childEnv,
+          NTN_SKILLS_VERIFY_CLI_TIMING_FILE: timingFile,
+          NTN_SKILLS_VERIFY_CLI_TIMING_ID: commandId,
+        }
+      : childEnv,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -204,6 +214,54 @@ async function command(args: string[], cwd = repo, childEnv = env) {
     } catch {
       output = stdout
     }
+    let cliProcessTiming: unknown
+    if (timingFile) {
+      try {
+        const bytes = await readFile(timingFile)
+        const measured = JSON.parse(bytes.toString("utf8"))
+        const entry = join(repo, "packages/cli/dist/ntn-skills.js")
+        const valid =
+          measured !== null &&
+          typeof measured === "object" &&
+          measured.version === 1 &&
+          measured.kind === "node_cli_process" &&
+          measured.command_id === commandId &&
+          measured.entry === entry &&
+          measured.entry_sha256 === digest(await readFile(entry)) &&
+          measured.argv_sha256 ===
+            digest(Buffer.from(JSON.stringify(args.slice(sourceLaunch.length)))) &&
+          measured.build_included === false &&
+          measured.boundary === "spawn_to_close" &&
+          Number.isInteger(measured.exit_code) &&
+          measured.exit_code === exit &&
+          (measured.signal === null || typeof measured.signal === "string") &&
+          (measured.status === "completed"
+            ? Number.isInteger(measured.pid) &&
+              measured.pid > 0 &&
+              Number.isFinite(measured.wall_elapsed_ms) &&
+              measured.wall_elapsed_ms >= 0
+            : measured.status === "not_started" && measured.wall_elapsed_ms === null)
+        cliProcessTiming = {
+          receipt: timingFile,
+          sha256: digest(bytes),
+          measured,
+          sample_status: !valid
+            ? "invalid"
+            : !timeout &&
+                exit === 0 &&
+                measured.status === "completed" &&
+                measured.signal === null &&
+                output !== null &&
+                typeof output === "object" &&
+                "ok" in output &&
+                output.ok === true
+              ? "eligible"
+              : "failed",
+        }
+      } catch {
+        cliProcessTiming = { receipt: timingFile, sample_status: "unavailable" }
+      }
+    }
     await save(record, {
       command: args,
       cwd,
@@ -214,6 +272,7 @@ async function command(args: string[], cwd = repo, childEnv = env) {
       signal: child.signalCode,
       observed_exit: true,
       timeout,
+      ...(cliProcessTiming === undefined ? {} : { cli_process_timing: cliProcessTiming }),
       output:
         args[0] === "ntn" && output && typeof output === "object"
           ? {
