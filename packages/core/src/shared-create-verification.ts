@@ -30,6 +30,20 @@ export function verifySharedCreatedSnapshot(
   const expected = [...input.expected_files].sort((left, right) =>
     left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
   )
+  const migration = input.expected_migration
+  const expectedPaths = migration?.consumed_paths ?? expected.map((file) => file.path)
+  const exactInitialEvents =
+    migration === undefined ||
+    canonicalSharedJson(
+      evidence.files
+        .map((file) => ({ file_id: file.file_id, heads: file.heads }))
+        .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0)),
+    ) ===
+      canonicalSharedJson(
+        migration.events
+          .map((file) => ({ file_id: file.file_id, heads: [file.event_id] }))
+          .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0)),
+      )
   const metadata = {
     name: snapshot.record.name,
     description: snapshot.record.description,
@@ -52,11 +66,12 @@ export function verifySharedCreatedSnapshot(
     evidence.library_id !== locator.library_id ||
     evidence.skill_page_id !== input.skill_page_id ||
     evidence.skill_id !== input.skill_id ||
-    evidence.source_id !== "" ||
-    evidence.source_revision !== "" ||
+    evidence.source_id !== (migration?.source_id ?? "") ||
+    evidence.source_revision !== (migration?.source_revision ?? "") ||
+    !exactInitialEvents ||
     snapshot.entrypoint !== input.entrypoint ||
     canonicalSharedJson(snapshot.files.map((file) => file.path).sort()) !==
-      canonicalSharedJson(expected.map((file) => file.path)) ||
+      canonicalSharedJson(expectedPaths) ||
     canonicalSharedJson(files) !== canonicalSharedJson(expected) ||
     canonicalSharedJson(metadata) !== canonicalSharedJson(input.expected_metadata)
   )

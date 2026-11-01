@@ -23,6 +23,14 @@ import {
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { parseYaml } from "./yaml.ts"
+import { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-objects.ts"
+export { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-objects.ts"
+import {
+  makeSharedMigrationCreateOrigin,
+  SharedMigrationCreateOriginSchema,
+  SharedMigrationOriginManifestSchema,
+  type MigrationMemberBinding,
+} from "./shared-migration-create-origin.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
@@ -35,8 +43,7 @@ const PortableProjectionSchema = Schema.Struct({
     Schema.Struct({ authored: Schema.String, generated: Schema.String }),
   ),
 })
-export const SharedCreatePlanSchema = Schema.Struct({
-  version: Schema.Literal(1),
+const CreatePlanFields = {
   kind: Schema.Literal("skill_create"),
   operation_id: Schema.String.check(Schema.isPattern(/^skill-create-[a-f0-9]{64}$/u)),
   library: SharedLibrarySchema,
@@ -66,10 +73,17 @@ export const SharedCreatePlanSchema = Schema.Struct({
       event: FileEventSchema,
     }),
   ),
-})
+}
+export const SharedCreatePlanSchema = Schema.Union([
+  Schema.Struct({ version: Schema.Literal(1), ...CreatePlanFields }),
+  Schema.Struct({
+    version: Schema.Literal(2),
+    ...CreatePlanFields,
+    origin: SharedMigrationCreateOriginSchema,
+  }),
+])
 export type SharedCreatePlan = typeof SharedCreatePlanSchema.Type
-export const SharedCreateManifestSchema = Schema.Struct({
-  version: Schema.Literal(1),
+const CreateManifestFields = {
   kind: Schema.Literal("skill_create_manifest"),
   operation_id: Schema.String.check(Schema.isPattern(/^skill-create-[a-f0-9]{64}$/u)),
   library: SharedLibrarySchema,
@@ -94,7 +108,15 @@ export const SharedCreateManifestSchema = Schema.Struct({
       event: FileEventSchema,
     }),
   ),
-})
+}
+export const SharedCreateManifestSchema = Schema.Union([
+  Schema.Struct({ version: Schema.Literal(1), ...CreateManifestFields }),
+  Schema.Struct({
+    version: Schema.Literal(2),
+    ...CreateManifestFields,
+    origin: SharedMigrationOriginManifestSchema,
+  }),
+])
 export const SharedCreateJournalSchema = Schema.Struct({
   version: Schema.Literal(1),
   scope: Hash,
@@ -138,6 +160,25 @@ export function sharedCreateExpectations(
         sha256: file.content.sha256,
       }
     }),
+    ...(plan.version === 2
+      ? {
+          expected_migration: {
+            candidate_id: plan.origin.candidate.candidate_id,
+            source_id: plan.origin.candidate.source?.source_id ?? "",
+            source_revision: plan.origin.candidate.source?.commit ?? "",
+            consumed_paths: [
+              ...new Set([
+                ...plan.origin.candidate.source_files.map((file) => file.path),
+                ...plan.files.map((file) => file.path),
+              ]),
+            ].sort(),
+            events: plan.files.map((file) => ({
+              file_id: file.file_id,
+              event_id: file.event.event_id,
+            })),
+          },
+        }
+      : {}),
     expected_metadata: {
       name: plan.name,
       description: plan.description,
@@ -157,23 +198,14 @@ export const createChecked = <A>(action: () => A) =>
         ? error
         : fail("SHARED_CREATE_INVALID", "Invalid frozen native creation input or response."),
   })
-export function sharedCreateInputPayload(text: string) {
-  return { version: 1 as const, kind: "utf8_input" as const, text }
-}
-export function sharedCreateBodyPayload(markdown: string) {
-  return {
-    version: 1 as const,
-    kind: "normalized_markdown" as const,
-    normalization_version: 1 as const,
-    markdown,
-  }
-}
-
 /** Only hashes and exact identities live in the manifest; body objects are separate. */
 export function sharedCreateManifest(plan: SharedCreatePlan) {
   return {
-    version: 1 as const,
+    version: plan.version,
     kind: "skill_create_manifest" as const,
+    ...(plan.version === 2
+      ? { origin: { archive: plan.origin.archive, member_bindings: plan.origin.member_bindings } }
+      : {}),
     operation_id: plan.operation_id,
     library: plan.library,
     skill_id: plan.skill_id,
@@ -406,6 +438,67 @@ export function makeSharedCreatePlan(
   })
 }
 
+/** Prepare the same dispatcher input with migration identities and ownership.
+ * This is a deterministic origin reconstruction, not permission to dispatch;
+ * executeSharedCreate requires the original migration input for new writes. */
+export function makeSharedMigrationCreatePlan(
+  candidate: unknown,
+  members: readonly MigrationMemberBinding[] = [],
+) {
+  return Effect.gen(function* () {
+    const origin = yield* makeSharedMigrationCreateOrigin(candidate, members)
+    const source = origin.candidate
+    const files = source.files.map((file) => ({
+      file_id: file.file_id,
+      path: file.path,
+      input_path: file.path,
+      input: {
+        object_id: `input-${file.input.sha256}`,
+        text: file.input.text,
+        sha256: file.input.sha256,
+        bytes: file.input.bytes,
+      },
+      projection: file.projection,
+      content: file.content,
+      event: file.initial_event,
+    }))
+    const fields = {
+      version: 2 as const,
+      kind: "skill_create" as const,
+      library: source.library,
+      skill_id: source.skill_id,
+      content_kind: source.metadata.kind,
+      name: source.metadata.name,
+      description: source.metadata.description,
+      default_context: source.metadata.default_context,
+      original_main_path: source.metadata.entrypoint,
+      entrypoint: source.metadata.entrypoint,
+      members: origin.member_bindings.map((member) => member.page_id).sort(),
+      reference_check: source.reference_check,
+      files,
+      origin,
+    }
+    const digest = yield* sha256(canonicalSharedJson(fields))
+    const plan: SharedCreatePlan = { ...fields, operation_id: `skill-create-${digest}` }
+    yield* createChecked(() => {
+      Schema.decodeUnknownSync(SharedCreatePlanSchema)(plan, { onExcessProperty: "error" })
+      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan))
+      for (const file of files) {
+        validateSharedRecordEnvelope(
+          `retain-input-${file.input.sha256}`,
+          sharedCreateInputPayload(file.input.text),
+        )
+        validateSharedRecordEnvelope(
+          `retain-${file.content.sha256}`,
+          sharedCreateBodyPayload(file.projection.markdown),
+        )
+        validateSharedRecordEnvelope(file.event.event_id, file.event)
+      }
+    })
+    return plan
+  })
+}
+
 /** Reconstruction must select the retained policy, never the newest default.
  * Every file in one native create shares the same creation policy. */
 export function sharedCreateProjectionVersion(
@@ -436,6 +529,20 @@ export function validateSharedCreatePlan(input: unknown) {
     )
     // Reconstruct only from exact retained original inputs; expected candidates,
     // stable IDs and hashes are never accepted from a mutable caller as authority.
+    if (plan.version === 2) {
+      const expected = yield* makeSharedMigrationCreatePlan(
+        plan.origin.candidate,
+        plan.origin.member_bindings,
+      )
+      if (canonicalSharedJson(expected) !== canonicalSharedJson(plan))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CREATE_INVALID",
+            "The native create differs from its complete retained migration origin.",
+          ),
+        )
+      return expected
+    }
     const portable: PortableSkill = {
       kind: plan.content_kind,
       name: plan.name,

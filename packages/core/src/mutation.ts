@@ -64,7 +64,7 @@ import {
 } from "./markdown-files-publication.ts"
 import { writeSharedSkillFile, verifySharedAuthoredSnapshot } from "./shared-authoring.ts"
 import { createSharedNative } from "./shared-create.ts"
-import { verifySharedCreatedSnapshot } from "./shared-create-verification.ts"
+import { consumeSharedCreation } from "./shared-create-consumption.ts"
 import {
   applySharedSkillChanges,
   verifySharedAppliedSnapshot,
@@ -1048,41 +1048,7 @@ function saveDocument(
           action: "create" as const,
           dry_run: true as const,
         })
-      const current = yield* openSkill(result.skill_page_id, {
-        database: selectedSource.database_id,
-        refresh: true,
-      })
-      if (
-        current.record.locator.type !== "shared_skill" ||
-        current.record.locator.library_id !== selectedSource.shared_library.library_id ||
-        current.record.locator.skill_id !== result.skill_id
-      )
-        return yield* Effect.fail(
-          fail(
-            "WRITE_VERIFICATION_FAILED",
-            "The created shared Skill no longer has its exact original identity.",
-            { create_operation_id: result.operation_id },
-          ),
-        )
-      yield* Effect.try({
-        try: () => verifySharedCreatedSnapshot(current, result),
-        catch: (error) =>
-          error instanceof SkillsError
-            ? error
-            : fail(
-                "WRITE_VERIFICATION_FAILED",
-                "The current shared tree could not be compared with the original create.",
-                { create_operation_id: result.operation_id },
-              ),
-      })
-      return mutationOutcome({
-        ...snapshotInfo(current),
-        operation,
-        action: "create" as const,
-        verified: true as const,
-        create_operation_id: result.operation_id,
-        reused: result.reused,
-      })
+      return mutationOutcome(yield* consumeSharedCreation(selectedSource.shared_library, result))
     }
     if (
       portable.main !== entrypointFor(portable.kind) &&

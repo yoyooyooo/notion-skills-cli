@@ -13,6 +13,7 @@ This guide covers the shared Skills / Files / Records model. Existing libraries 
 - [Select a fixed source and restore following](#select-a-fixed-source-and-restore-following)
 - [Choose a Profile and View](#choose-a-profile-and-view)
 - [Keep a version across machines](#keep-a-version-across-machines)
+- [Review and migrate one legacy record](#review-and-migrate-one-legacy-record)
 - [Handle an interrupted operation](#handle-an-interrupted-operation)
 - [Current limits](#current-limits)
 
@@ -216,6 +217,69 @@ ntn-skills export RESTORED_SNAPSHOT_ID --projection snapshot --format directory 
 
 The receiving machine uses its own Notion authentication. Restore validates access and reads the archived bytes; it does not substitute current bodies or fetch a newer provider version. A local resource binding grants read access on that machine and does not authorize shared archival. When the exact selected snapshot contains local-restricted bytes, a new archive requires `snapshot save SNAPSHOT_ID --entry LIBRARY_ENTRY --allow-local-archive`. That flag authorizes this one archive and does not remove durable local-content restrictions. The separate `restore-follow --allow-local-archive` flag applies only to its selected native body.
 
+## Review and migrate one legacy record
+
+Migration uses a separate, explicit workflow. It preserves the old pages, pins and original operations while preparing one new native Skill, Prompt or supported Router. Start with the complete frozen [migration evidence input](protocol.md#shared-migration-review), including its coverage, backup and preservation inventories. Retain the original input; put newly collected evidence in a new draft. Do not reduce that inventory or change ownership, Source options or completeness merely to obtain an executable proposal.
+
+The full-inventory plan is offline and never authorizes execution:
+
+```bash
+ntn-skills ctl library migration plan --input ./migration-input.json
+```
+
+Prepare one concrete review before adding that identity to the approved scope:
+
+```bash
+ntn-skills ctl library migration review \
+  --input ./migration-input.json --legacy-id LEGACY_ID --entry LIBRARY_ENTRY \
+  --files ./retained-current-files --preimages ./retained-native-responses \
+  --source-files ./fixed-source.zip > ./migration-review.json
+```
+
+`--files` supplies the complete declared managed paths as a directory or ZIP. `--preimages` supplies the exact retained Notion response files named `PAGE_UUID.default.json` or `PAGE_UUID.v2.json`; their page, API/Markdown versions, request path, body hash and original response hash/size must already be frozen in each input file's `raw.native_preimage` descriptor. A materialized snapshot or a source ZIP does not replace this original native response. `--source-files` supplies every actual byte in the selected fixed Source tree, including source-only assets; omit it only when the proposal selects no Source. Extra managed-input paths and valid portable container metadata are reported separately, not silently turned into native files.
+
+Review may read target-library and exact Router member metadata. It does not fetch current bodies or providers, write Notion, create a dispatch journal or change `approved_legacy_ids`. Inspect the complete saved `review`, its `review_id`, file conversion and Source/ownership choices. Known legacy facts may use an explicit, verifiable migration policy; for absent `Enabled` on an ordinary legacy Skill or Prompt, see the [legacy active-page policy](shared-migration-activation.md). That policy retains the original field absence and complete row/schema evidence. It does not infer following/custom ownership or repair an incomplete Router.
+
+New reviews explicitly bind `origin.candidate.execution_policy: copy_to_new_native_v1` into their digest. This boundary copies the reviewed frozen target to new native pages; it performs no source cutover or legacy retirement. Review can defer entry/file gaps that belong to other independent records while retaining the complete input and every full-plan blocker. The target's own bytes, ownership and dependencies remain required; Source gaps and unknown operation impact remain blocking. A concrete review can therefore coexist with a full-inventory plan whose status is still `blocked`.
+
+After explicit approval of this exact proposal, retain a separate approved input whose `approved_legacy_ids` includes the reviewed identity. Only that approval set and its derived `readiness_evidence.basis_sha256` may differ from the reviewed input. Content, Source, original preimages, target library, exact member bindings, preservation and isolation receipts remain bound to the review digest. Do not hand-edit the saved review or reuse its digest after changing those facts; collect a new review instead. Keep the independently approved `review_id` and preview the exact execution:
+
+```bash
+ntn-skills ctl library migration apply \
+  --input ./migration-approved.json --review ./migration-review.json \
+  --review-id MIGRATION_REVIEW_ID --dry-run
+```
+
+For the explicit copy policy, `apply` and `--dry-run` require the target's approval and complete dependency evidence. Another independent, unapproved entry's own metadata/file gaps can remain deferred while the full plan stays `blocked`. Same-page aliases, Router members, Source gaps and unknown operation impact remain blocking; an empty approval set permits no creation. Saved candidates without `execution_policy` keep the original full-plan evidence-readiness gate. Do not add the field to a saved review or reuse its digest for a changed policy.
+
+Unresolved dependencies return `SHARED_MIGRATION_CREATE_BLOCKED`. If execution relies on supplied impact/isolation receipts whose actual contents and hashes have not been verified, preparation returns `SHARED_MIGRATION_RECEIPT_UNVERIFIED` and identifies the original operation and exact receipt references. Both preparation and direct create execution enforce these gates before a new dispatch journal or native write. Preserve the full input, original operations and their recovery paths; approval or a receipt boolean alone cannot resolve either refusal.
+
+Once these gates pass, dry-run checks current target/member metadata and returns the frozen native plan. It creates no dispatch journal and performs no current-body read or Notion write. When that exact result matches the approval, execute the same command without `--dry-run`:
+
+```bash
+ntn-skills ctl library migration apply \
+  --input ./migration-approved.json --review ./migration-review.json \
+  --review-id MIGRATION_REVIEW_ID
+```
+
+Execution reuses native create and keeps the new Skill disabled until its complete native file set verifies. The final snapshot check is read-only: a concurrent user edit fails verification without being adopted by that check. Success reports `status: "created"`, `verified: true`, the original `operation_id`/`create_operation_id`, `review_id`, `migration_candidate_id` and a verified pinned snapshot. This is one target, not a transaction across a library, a source cutover or permission to retire legacy callers.
+
+Preserve the original operation on either of these failures:
+
+| Result | Meaning and next step |
+| --- | --- |
+| `WRITE_OUTCOME_UNKNOWN` | An original dispatch is unsettled. Keep the frozen input, review and operation; do not repeat apply, rename the input or generate another intent to bypass it. |
+| `WRITE_VERIFICATION_FAILED` with `native_create_completed: true` | The native create completed, but its current snapshot could not be verified. `current_snapshot_verified: false` and `requires_fresh_read: true` keep that distinction explicit; the original verification error remains in the details. Do not report a successful current migration or assume no write occurred. |
+
+For either case, use only the original migration operation:
+
+```bash
+ntn-skills ctl library migration reconcile \
+  --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID
+```
+
+On a machine without the original local journal, add `--target EXACT_NEW_PAGE_ID` from an existing receipt. Reconciliation reads the retained original intent/outcome only: it makes no Notion POST/PATCH, resumes no partial tree and never adopts today's body. A successful result says `verification: "original_create_outcome"`, `current_snapshot_verified: false` and `requires_fresh_read: true`; it does not supply a current pin. A later explicit current read is a separate action and follows ordinary whole-file adoption rules. Missing original facts or an invisible first create remain unresolved. Preserve them and do not use the legacy `operation resume` command for this migration family.
+
 ## Handle an interrupted operation
 
 Keep the original input, exact target, operation ID and recovery details. A matching current body or property does not prove that an unknown original request completed. Do not change input or choose a new name to bypass a pending operation. A recovery result with `verified: true` confirms its reported outcome: `not_applied` or `partial` does not mean that the requested edit completed.
@@ -224,6 +288,7 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 | --- | --- |
 | Shared body write, apply or restore-follow | Read the exact current Skill. The reader checks retained original operations before adopting new bodies. If it reports `read_again`, read once more. Missing original facts remain unresolved. |
 | Native create | Retain the complete original input and operation. Repeating the same create intent takes its original reconciliation path; it does not blindly repeat a page POST. A partially created Skill remains disabled until verified. |
+| Reviewed migration | `ctl library migration reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID`; add `--target EXACT_NEW_PAGE_ID` only when needed to recover the retained origin on another machine. See the [migration workflow](#review-and-migrate-one-legacy-record). |
 | File add, delete or move | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | Source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
 | Source selection | `ctl library source select reconcile ./source-selection.json --entry LIBRARY_ENTRY` |

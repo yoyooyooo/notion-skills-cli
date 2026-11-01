@@ -117,6 +117,11 @@ export const SharedMigrationInputSchema = Schema.Struct({
 })
 export type SharedMigrationInput = typeof SharedMigrationInputSchema.Type
 
+/** Exact retained records used by versioned migration conversion; no gate changes. */
+export const SharedMigrationEntrySchema = EntrySchema
+export const SharedMigrationPreservedItemSchema = PreservedItemSchema
+export type SharedMigrationEntry = typeof EntrySchema.Type
+
 export type MigrationFileMapping = {
   readonly legacy_id: string
   readonly file_id: string

@@ -11,6 +11,10 @@ import {
 import { pageId } from "./ref.ts"
 import { planSharedMigration } from "./shared-migration-plan.ts"
 import {
+  migrationTargetReviewBlockers,
+  unverifiedMigrationIsolationReceipts,
+} from "./shared-migration-target-review.ts"
+import {
   FileEventSchema,
   FileOwnershipSchema,
   normalizeObservedBody,
@@ -29,7 +33,7 @@ import {
   SharedGitSourceBindingSchema,
   type SharedGitSourceBinding,
 } from "./shared-source-binding.ts"
-import { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-model.ts"
+import { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-objects.ts"
 import { sha256 } from "./store.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
@@ -121,6 +125,9 @@ export type MigrationCreateBindingInput = {
   /** Only the frozen managed file inventory. Additional Git resources stay in Source. */
   readonly files: readonly MigrationRetainedFile[]
 }
+/** Only the v2 native-create conversion can request this narrower execution
+ * boundary. It creates new pages; it grants no cutover or legacy retirement. */
+export type MigrationCopyExecutionPolicy = "copy_to_new_native_v1"
 const checked = <A>(run: () => A) =>
   Effect.try({
     try: run,
@@ -133,15 +140,13 @@ function reject(code: string, message: string, details?: unknown): never {
   throw fail(code, message, details)
 }
 
-/**
- * Pure identity/body/ownership conversion. This is deliberately not SharedCreatePlan:
- * no dispatcher accepts it, no page UUID is invented, and no receipt is verified.
- * Existing Source resources are retained as a complete immutable manifest, never
- * expanded into body pages. Real binding and relation conversion remain explicit.
- * This candidate is a new authoring intent, so it uses policy 3. Historical
- * create/write records retain their original policy in their own validators.
- */
-export function makeSharedMigrationCreateCandidate(input: MigrationCreateBindingInput) {
+/** Review changes no approval or readiness fact; it may describe only the
+ * otherwise-ready selected object before its scope has been approved. */
+function inspectSharedMigrationCreateInput(
+  input: MigrationCreateBindingInput,
+  review: boolean,
+  executionPolicy?: MigrationCopyExecutionPolicy,
+) {
   return Effect.gen(function* () {
     const plan = yield* planSharedMigration(input.migration_input)
     const library = yield* checked(() =>
@@ -151,6 +156,8 @@ export function makeSharedMigrationCreateCandidate(input: MigrationCreateBinding
       ),
     )
     const prepared = yield* checked(() => {
+      if (executionPolicy !== undefined && executionPolicy !== "copy_to_new_native_v1")
+        reject("SHARED_MIGRATION_CREATE_POLICY", "Unsupported migration execution boundary.")
       if (library.library_id !== plan.evidence.target_library_id)
         reject(
           "SHARED_MIGRATION_CREATE_SCOPE",
@@ -179,7 +186,7 @@ export function makeSharedMigrationCreateCandidate(input: MigrationCreateBinding
         mappings.length !== 1 ||
         entry === undefined ||
         mapping === undefined ||
-        !mapping.approved
+        (!review && !mapping.approved)
       )
         reject(
           "SHARED_MIGRATION_CREATE_NOT_APPROVED",
@@ -190,15 +197,33 @@ export function makeSharedMigrationCreateCandidate(input: MigrationCreateBinding
           "SHARED_MIGRATION_CREATE_TOMBSTONE_UNSUPPORTED",
           "The frozen tombstone is retained. A deleted initial event needs verifiable prior shared state; this adapter does not invent an adopted predecessor.",
         )
-      if (
-        plan.readiness.items.find((item) => item.legacy_id === input.legacy_id)?.evidence_ready !==
-        true
-      )
+      const readiness = plan.readiness.items.find((item) => item.legacy_id === input.legacy_id)
+      const targetReview =
+        review || executionPolicy === "copy_to_new_native_v1"
+          ? migrationTargetReviewBlockers(plan, input.legacy_id)
+          : undefined
+      const targetReady =
+        readiness?.observed === true &&
+        plan.readiness.evidence_issues.length === 0 &&
+        targetReview?.blocking_indexes.length === 0
+      if (targetReview === undefined ? readiness?.evidence_ready !== true : !targetReady)
         reject(
           "SHARED_MIGRATION_CREATE_BLOCKED",
           "The selected mapping still has structural evidence blockers. Readiness is not authorization or receipt verification.",
-          { legacy_id: input.legacy_id },
+          {
+            legacy_id: input.legacy_id,
+            ...(targetReview === undefined ? {} : { target_review: targetReview }),
+          },
         )
+      if (!review) {
+        const receipts = unverifiedMigrationIsolationReceipts(plan)
+        if (receipts.length > 0)
+          reject(
+            "SHARED_MIGRATION_RECEIPT_UNVERIFIED",
+            "Creation depends on impact/isolation receipts whose actual contents and hashes have not been verified. Structural readiness cannot authorize a write; retain the original operations and review the exact receipts.",
+            { legacy_id: input.legacy_id, receipt_content_verified: false, receipts },
+          )
+      }
       const record = property(entry.record)
       const kind = Schema.decodeUnknownSync(ContentKindSchema)(record.kind)
       if (typeof record.name !== "string")
@@ -248,7 +273,15 @@ export function makeSharedMigrationCreateCandidate(input: MigrationCreateBinding
       const sources = [
         ...new Set(
           mapping.files.flatMap((file) =>
-            file.state === "following" && file.source_id !== undefined ? [file.source_id] : [],
+            (file.state === "following" ||
+              (review &&
+                entry.files.some(
+                  (original) =>
+                    original.legacy_id === file.legacy_id && original.ownership === "following",
+                ))) &&
+            file.source_id !== undefined
+              ? [file.source_id]
+              : [],
           ),
         ),
       ]
@@ -302,6 +335,37 @@ export function makeSharedMigrationCreateCandidate(input: MigrationCreateBinding
       legacySource = original
     }
 
+    return { plan, library, prepared, source, legacySource }
+  })
+}
+
+/** An absent policy preserves the original full-plan gate. The explicit v2 copy
+ * boundary only defers unrelated entry/file gaps; approval, dependencies and
+ * every unresolved operation or unverified isolation receipt still block. */
+export function prepareSharedMigrationCreateInput(
+  input: MigrationCreateBindingInput,
+  executionPolicy?: MigrationCopyExecutionPolicy,
+) {
+  return inspectSharedMigrationCreateInput(input, false, executionPolicy)
+}
+
+/** Pure unapproved review only. No dispatcher calls this in place of approval. */
+export function reviewSharedMigrationCreateInput(input: MigrationCreateBindingInput) {
+  return inspectSharedMigrationCreateInput(input, true)
+}
+
+/**
+ * Pure identity/body/ownership conversion. This is deliberately not SharedCreatePlan:
+ * no dispatcher accepts it, no page UUID is invented, and no receipt is verified.
+ * Existing Source resources are retained as a complete immutable manifest, never
+ * expanded into body pages. Real binding and relation conversion remain explicit.
+ * This candidate is a new authoring intent, so it uses policy 3. Historical
+ * create/write records retain their original policy in their own validators.
+ */
+export function makeSharedMigrationCreateCandidate(input: MigrationCreateBindingInput) {
+  return Effect.gen(function* () {
+    const { plan, library, prepared, source, legacySource } =
+      yield* prepareSharedMigrationCreateInput(input)
     const files: (typeof FileCandidateSchema.Type)[] = []
     for (const file of prepared.mapping.files) {
       const retained = prepared.retained.find((item) => item.legacy_id === file.legacy_id)

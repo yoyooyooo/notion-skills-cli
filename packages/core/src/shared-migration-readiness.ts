@@ -47,7 +47,7 @@ function knownImpact(input: SharedMigrationInput, operation: Operation): string[
   const observe = (value: unknown) => {
     const raw = object(value)
     if (text(raw.record_identity)) known.add(raw.record_identity)
-    for (const key of ["page_id", "subscription_id", "publisher_subscription_id"]) {
+    for (const key of ["page_id", "subscription_id", "publisher_subscription_id", "parent_id"]) {
       const id = raw[key]
       if (text(id)) for (const legacy of physical.get(physicalIdentity(id)) ?? []) known.add(legacy)
     }
@@ -55,6 +55,10 @@ function knownImpact(input: SharedMigrationInput, operation: Operation): string[
   observe(operation.raw)
   observe(operation.operation_origin?.row_metadata)
   const raw = object(operation.raw)
+  // Publication creation can have no returned page yet. Its original parent and
+  // subscription still constrain impact; database/member fields remain retained
+  // facts, never a guessed complete or empty affected-target closure.
+  observe(object(raw.marker).creation)
   if (Array.isArray(raw.items)) for (const item of raw.items) observe(item)
   return sorted(known)
 }

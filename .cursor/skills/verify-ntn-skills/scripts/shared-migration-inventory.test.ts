@@ -259,6 +259,152 @@ test("collects a private reproducible input with compact exact snapshot pointers
   assert.equal(repeated.input_sha256, result.input_sha256)
 })
 
+test("enumerates every durable row while keeping reviews and support out of the original selected operations", () => {
+  const f = fixture()
+  const reviewPayload =
+    '{\r\n  "kind": "review", "operation_id": "review-original", "state": "unknown",\r\n  "reason": "UNRESOLVED_NO_REPLAY", "refs": ["历史页面"], "extra": {"keep": false}\r\n}\n'
+  const extras: readonly [string, string][] = [
+    [
+      "materialized:exact",
+      JSON.stringify({
+        content_hash: "a".repeat(64),
+        portable: { files: [] },
+        revision: "original-ref",
+      }),
+    ],
+    [
+      "materialized:unexpected-shape",
+      JSON.stringify({
+        content_hash: "a".repeat(64),
+        portable: {},
+        revision: "original-ref",
+        intent: { preserve: true },
+      }),
+    ],
+    [
+      "markdown-files:member:original",
+      JSON.stringify({
+        plan_id: "original-plan",
+        original_operation_id: "upstream-original",
+        original_publication_id: "integrity-original",
+      }),
+    ],
+    ["up_ab:accepted-config", JSON.stringify("retained configuration bytes\n")],
+    ["broken-json", '{"incomplete":'],
+  ]
+  const db = new DatabaseSync(f.database)
+  db.exec(
+    "CREATE TABLE operation_reviews(id TEXT PRIMARY KEY,operation_id TEXT,state TEXT,payload TEXT)",
+  )
+  db.prepare("INSERT INTO operation_reviews VALUES (?,?,?,?)").run(
+    "review-row-key",
+    "review-original",
+    "unknown",
+    reviewPayload,
+  )
+  for (const [key, payload] of extras)
+    db.prepare("INSERT INTO upstream_commands VALUES (?,?)").run(key, payload)
+  db.close()
+  const databaseHash = sha(readFileSync(f.database))
+  const result = collectMigrationInventory(f.args)
+  const input = read(result.input)
+  const summary = read(result.summary)
+  const storage = read(join(f.args.run, "operation-storage-index.json"))
+  const reviews = read(join(f.args.run, "operation-reviews.json"))
+  const fingerprints = read(join(f.args.run, "source-fingerprints.json"))
+  assert.deepEqual(storage.table_counts, {
+    upstream_commands: 7,
+    upstream_operations: 1,
+    integrity_operations: 1,
+    operation_reviews: 1,
+  })
+  assert.equal(storage.rows.length, 10)
+  assert.deepEqual(
+    input.preservation.operations.items.map((item: any) => item.raw),
+    [f.command, f.upstream, f.integrity],
+  )
+  assert.equal(input.preservation.operations.complete, false)
+  assert.deepEqual(input.approved_legacy_ids, [])
+  const byKey = new Map<string, any>(
+    storage.rows.map((row: any) => [row.key.operation_id ?? row.key.id, row]),
+  )
+  assert.equal(byKey.get("materialized:exact").role, "cache")
+  assert.equal(byKey.get("materialized:unexpected-shape").role, "unclassified")
+  assert.equal(byKey.get("markdown-files:member:original").role, "support")
+  assert.equal(byKey.get("up_ab:accepted-config").json_type, "string")
+  assert.equal(byKey.get("broken-json").valid_json, false)
+  for (const [key, payload] of extras) {
+    const row = byKey.get(key)
+    assert.equal(row.payload_sha256, sha(payload))
+    assert.equal(row.payload_bytes, Buffer.byteLength(payload))
+    assert.equal(row.selected_for_plan, false)
+    assert.equal(row.references_complete, false)
+    assert.equal(row.current_terminal_outcome_verified, false)
+    assert.ok(
+      row.retention_ref.includes(
+        `&operation_or_snapshot_id=${encodeURIComponent(key)}&payload_sha256=${sha(payload)}`,
+      ),
+    )
+  }
+  assert.equal(reviews.items[0].payload_json, reviewPayload)
+  assert.equal(reviews.items[0].payload_sha256, sha(reviewPayload))
+  assert.deepEqual(reviews.items[0].key, { id: "review-row-key" })
+  assert.deepEqual(reviews.items[0].row_metadata, {
+    id: "review-row-key",
+    operation_id: "review-original",
+    state: "unknown",
+  })
+  assert.equal(reviews.items[0].selected_for_plan, false)
+  assert.equal(reviews.items[0].interpretation_complete, false)
+  assert.equal(
+    storage.collector_sha256,
+    sha(readFileSync(new URL("./shared-migration-inventory.ts", import.meta.url))),
+  )
+  assert.equal(fingerprints.collector.sha256, storage.collector_sha256)
+  for (const [field, name] of [
+    ["index", "operation-storage-index.json"],
+    ["reviews", "operation-reviews.json"],
+    ["source_fingerprints", "source-fingerprints.json"],
+  ] as const)
+    assert.equal(summary.operation_storage[field].sha256, sha(readFileSync(join(f.args.run, name))))
+  assert.equal(summary.operation_storage.selected_operations_unchanged, true)
+  assert.equal(summary.operation_storage.references_complete, false)
+  assert.equal(summary.operation_storage.current_terminal_outcomes_verified, 0)
+  assert.equal(sha(readFileSync(f.database)), databaseHash)
+})
+
+test("keeps the original SQL command filter even when duplicate JSON domain keys parse differently", () => {
+  const f = fixture()
+  const db = new DatabaseSync(f.database)
+  db.prepare("INSERT INTO upstream_commands VALUES (?,?)").run(
+    "sql-selected",
+    '{"domain":"subscription_add","domain":"not-selected","operation_id":"sql-selected"}',
+  )
+  db.prepare("INSERT INTO upstream_commands VALUES (?,?)").run(
+    "sql-excluded",
+    '{"domain":"not-selected","domain":"subscription_add","operation_id":"sql-excluded"}',
+  )
+  db.close()
+  const result = collectMigrationInventory(f.args)
+  const selected = read(join(f.args.run, "operation-index.json")).map(
+    (row: any) => row.key.operation_id,
+  )
+  assert.ok(selected.includes("sql-selected"))
+  assert.equal(selected.includes("sql-excluded"), false)
+  const storage = read(join(f.args.run, "operation-storage-index.json"))
+  assert.equal(
+    storage.rows.find((row: any) => row.key.operation_id === "sql-selected").selected_for_plan,
+    true,
+  )
+  assert.equal(
+    storage.rows.find((row: any) => row.key.operation_id === "sql-excluded").selected_for_plan,
+    false,
+  )
+  assert.equal(storage.table_counts.operation_reviews, null)
+  assert.equal(read(join(f.args.run, "operation-reviews.json")).table_present, false)
+  assert.equal(read(result.input).preservation.operations.complete, false)
+})
+
 test("database verification never substitutes for corrupt source_files bytes", () => {
   const f = fixture()
   writeFileSync(join(f.backup, "objects", f.sourceHash), "changed bytes")

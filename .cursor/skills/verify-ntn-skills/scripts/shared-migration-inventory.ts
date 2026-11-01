@@ -35,6 +35,20 @@ const businessDomains = [
   "upstream_fork",
   "upstream_track",
 ] as const
+const operationTables = [
+  "upstream_commands",
+  "upstream_operations",
+  "integrity_operations",
+  "operation_reviews",
+] as const
+type OperationTable = (typeof operationTables)[number]
+type StorageRole =
+  | "plan_operation"
+  | "cache"
+  | "support"
+  | "durable_history"
+  | "review"
+  | "unclassified"
 const objectHash = /^[a-f0-9]{64}$/u
 const own = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -227,6 +241,148 @@ function rowPointer(
   return `sqlite-backup:${database}#database_sha256=${databaseSha}&table=${table}&operation_or_snapshot_id=${encodeURIComponent(key)}&payload_sha256=${payloadSha}`
 }
 
+/** Observed storage family, not a decoder, impact closure, or remote outcome.
+ * Keep unknown shapes visible; no family label can mark an operation complete. */
+export function operationStorageFamily(
+  table: OperationTable,
+  key: string,
+  raw: unknown,
+  validJson: boolean,
+): { family: string; role: StorageRole } {
+  if (table === "upstream_operations") return { family: "upstream_batch", role: "plan_operation" }
+  if (table === "integrity_operations")
+    return { family: "publication_integrity", role: "plan_operation" }
+  const value = own(raw)
+  if (table === "operation_reviews")
+    return validJson && value.kind === "review" && typeof value.operation_id === "string"
+      ? { family: "operation_review", role: "review" }
+      : { family: "unrecognized_review", role: "unclassified" }
+  if (!validJson) return { family: "invalid_json", role: "unclassified" }
+  if (typeof value.domain === "string" && businessDomains.some((domain) => domain === value.domain))
+    return { family: `command:${value.domain}`, role: "plan_operation" }
+  if (
+    key.startsWith("materialized:") &&
+    Object.keys(value).sort().join(",") === "content_hash,portable,revision" &&
+    typeof value.content_hash === "string" &&
+    objectHash.test(value.content_hash) &&
+    typeof value.revision === "string" &&
+    value.portable !== null &&
+    typeof value.portable === "object" &&
+    !Array.isArray(value.portable)
+  )
+    return { family: "materialized", role: "cache" }
+  const prefixes: readonly [string, string, StorageRole, readonly string[]][] = [
+    ["content-adoption:member:", "content_adoption_member", "support", ["plan_id"]],
+    ["content-adoption:publication:", "content_adoption_publication", "support", ["plan_id"]],
+    ["content-adoption:plan:", "content_adoption_plan", "durable_history", ["plan", "state"]],
+    ["file-acceptance:", "file_acceptance", "durable_history", ["operation_id", "state"]],
+    [
+      "map-checkpoint-adoption:plan:",
+      "map_checkpoint_adoption_plan",
+      "durable_history",
+      ["domain", "plan_id"],
+    ],
+    [
+      "map-checkpoint-adoption:receipt:",
+      "map_checkpoint_adoption_receipt",
+      "durable_history",
+      ["domain", "operation_id"],
+    ],
+    [
+      "markdown-files:member:",
+      "markdown_files_member",
+      "support",
+      ["plan_id", "original_operation_id", "original_publication_id"],
+    ],
+    [
+      "publication-body-completion:plan:",
+      "publication_body_completion_plan",
+      "durable_history",
+      ["domain", "plan_id", "operation_id"],
+    ],
+    [
+      "publication-supersede:new:",
+      "publication_supersede_new",
+      "support",
+      ["plan_id", "old_operation_id"],
+    ],
+    [
+      "publication-supersede:original:",
+      "publication_supersede_original",
+      "durable_history",
+      ["plan_id", "state"],
+    ],
+    [
+      "publication-supersede:plan:",
+      "publication_supersede_plan",
+      "durable_history",
+      ["plan", "state"],
+    ],
+    [
+      "source-rich-text-repair:member:",
+      "source_rich_text_repair",
+      "durable_history",
+      ["domain", "phase", "plan"],
+    ],
+    [
+      "source-root-completion:member:",
+      "source_root_completion",
+      "durable_history",
+      ["domain", "phase", "plan"],
+    ],
+    [
+      "source-root-fidelity:member:",
+      "source_root_fidelity",
+      "durable_history",
+      ["domain", "phase", "plan"],
+    ],
+    ["upstream-observation:", "upstream_observation", "support", ["subscription", "members"]],
+    ["upstream-rebuild:", "upstream_rebuild", "durable_history", ["operation_id", "state"]],
+  ]
+  for (const [prefix, family, role, fields] of prefixes)
+    if (key.startsWith(prefix) && fields.every((field) => Object.hasOwn(value, field)))
+      return { family, role }
+  if (
+    /^uo_[a-f0-9]+:projections$/u.test(key) &&
+    Object.hasOwn(value, "entries") &&
+    Object.hasOwn(value, "operation_id")
+  )
+    return { family: "upstream_projections", role: "support" }
+  if (/^up_[a-f0-9]+:accepted-config$/u.test(key) && typeof raw === "string")
+    return { family: "accepted_config", role: "support" }
+  if (
+    /^up_[a-f0-9]+:subscription-map:checkpoint$/u.test(key) &&
+    ["published", "subscription_id", "version"].every((field) => Object.hasOwn(value, field))
+  )
+    return { family: "subscription_map_checkpoint", role: "support" }
+  if (
+    /^up_[a-f0-9]+:subscription-map(?::intended)?$/u.test(key) &&
+    (Object.hasOwn(value, "unpublished") ||
+      [
+        "members",
+        "plan_hash",
+        "publisher_subscription_id",
+        "revision",
+        "source_manifest",
+        "version",
+      ].every((field) => Object.hasOwn(value, field)))
+  )
+    return {
+      family: key.endsWith(":intended") ? "subscription_map_intended" : "subscription_map",
+      role: "support",
+    }
+  return { family: "unrecognized", role: "unclassified" }
+}
+function jsonType(value: unknown, valid: boolean): string {
+  return !valid
+    ? "invalid"
+    : value === null
+      ? "null"
+      : Array.isArray(value)
+        ? "array"
+        : typeof value
+}
+
 export function collectMigrationInventory(arguments_: InventoryArguments) {
   if (!process.versions.node.startsWith("24."))
     stop("NODE_24_REQUIRED", "Run this read-only collector with Node.js 24.")
@@ -285,7 +441,8 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
     const scope = string(root.scope, "catalog scope", true)
     const observedCoverage = coverage(root.coverage)
     const databaseBefore = hashFile(database)
-    exclusiveJson(
+    const collectorSha = hashFile(fileURLToPath(import.meta.url)).sha256
+    const fingerprintsSha = exclusiveJson(
       join(run, "source-fingerprints.json"),
       {
         version: 1,
@@ -293,7 +450,7 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
         database: { path: database, sha256: databaseBefore.sha256, bytes: databaseBefore.bytes },
         collector: {
           path: fileURLToPath(import.meta.url),
-          sha256: hashFile(fileURLToPath(import.meta.url)).sha256,
+          sha256: collectorSha,
           node: process.version,
         },
         selected_command_domains: businessDomains,
@@ -477,31 +634,42 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
 
     const operations: SharedMigrationInput["preservation"]["operations"]["items"][number][] = []
     const operationIndex: Record<string, unknown>[] = []
+    const storageRows: Record<string, unknown>[] = []
+    const reviewRows: Record<string, unknown>[] = []
+    const tableCounts: Record<string, number | null> = {}
+    const familyCounts: Record<string, number> = {}
     const sourceOptionReviews: Record<string, unknown>[] = []
     const operationCounts: Record<string, number> = {}
-    const domainParameters = businessDomains.map(() => "?").join(",")
-    const selectedDomains = `CASE WHEN json_valid(payload) THEN json_extract(payload,'$.domain') END IN (${domainParameters})`
     const commandTotal = db.prepare("SELECT count(*) AS count FROM upstream_commands").get()?.count
     const commandInvalid = db
       .prepare("SELECT count(*) AS count FROM upstream_commands WHERE NOT json_valid(payload)")
       .get()?.count
-    for (const table of [
-      "upstream_commands",
-      "upstream_operations",
-      "integrity_operations",
-    ] as const) {
-      const query =
-        table === "upstream_commands"
-          ? db.prepare(
-              `SELECT operation_id,payload FROM upstream_commands WHERE ${selectedDomains} ORDER BY operation_id`,
-            )
-          : db.prepare(`SELECT * FROM ${table} ORDER BY operation_id`)
-      const rows =
-        table === "upstream_commands" ? query.iterate(...businessDomains) : query.iterate()
+    // Preserve the original SQL selection exactly, including ambiguous JSON.
+    // The sidecar is a larger enumeration, never a reinterpretation of that set.
+    const parameters = businessDomains.map(() => "?").join(",")
+    const selectedCommands = new Set(
+      db
+        .prepare(
+          `SELECT operation_id FROM upstream_commands WHERE CASE WHEN json_valid(payload) THEN json_extract(payload,'$.domain') END IN (${parameters})`,
+        )
+        .all(...businessDomains)
+        .map((row) => string(row.operation_id, "selected command identity", true)),
+    )
+    for (const table of operationTables) {
+      const present =
+        db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name=?").get(table) !==
+        undefined
+      if (!present) {
+        tableCounts[table] = null
+        continue
+      }
+      const column = table === "operation_reviews" ? "id" : "operation_id"
+      const rows = db.prepare(`SELECT * FROM ${table} ORDER BY ${column}`).iterate()
       let count = 0
+      tableCounts[table] = 0
       for (const row of rows) {
-        count += 1
-        const key = string(row.operation_id, "operation table row identity", true)
+        tableCounts[table] = (tableCounts[table] ?? 0) + 1
+        const key = string(row[column], "operation table row identity", true)
         const serialized = string(row.payload, "original operation payload")
         let raw: unknown
         let validJson = true
@@ -512,11 +680,42 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
           validJson = false
         }
         const original = own(raw)
+        const pointer = rowPointer(database, databaseBefore.sha256, table, key, digest(serialized))
+        const selected =
+          table !== "operation_reviews" &&
+          (table !== "upstream_commands" || selectedCommands.has(key))
+        const observedFamily = operationStorageFamily(table, key, raw, validJson)
+        const indexed = {
+          table,
+          key: { [column]: key },
+          payload_sha256: digest(serialized),
+          payload_bytes: Buffer.byteLength(serialized, "utf8"),
+          valid_json: validJson,
+          json_type: jsonType(raw, validJson),
+          top_level_keys: Object.keys(own(raw)).sort(),
+          ...observedFamily,
+          selected_for_plan: selected,
+          row_metadata: Object.fromEntries(
+            Object.entries(row).filter(([name]) => name !== "payload"),
+          ),
+          retention_ref: pointer,
+          references_complete: false,
+          current_terminal_outcome_verified: false,
+        }
+        storageRows.push(indexed)
+        familyCounts[observedFamily.family] = (familyCounts[observedFamily.family] ?? 0) + 1
+        if (table === "operation_reviews")
+          reviewRows.push({
+            ...indexed,
+            payload_json: serialized,
+            interpretation_complete: false,
+          })
+        if (!selected) continue
+        count += 1
         const legacyId =
           typeof original.operation_id === "string" && original.operation_id !== ""
             ? original.operation_id
             : key
-        const pointer = rowPointer(database, databaseBefore.sha256, table, key, digest(serialized))
         const references =
           typeof original.record_identity === "string"
             ? [original.record_identity]
@@ -548,7 +747,7 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
         const options = sourceOptions(raw)
         if (options.length > 0) sourceOptionReviews.push({ table, key, paths: options })
       }
-      operationCounts[table] = count
+      if (table !== "operation_reviews") operationCounts[table] = count
     }
     db.exec("ROLLBACK")
     db.close()
@@ -651,6 +850,27 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
     const inputPath = join(run, "input.json")
     const inputSha = exclusiveJson(inputPath, frozen)
     exclusiveJson(join(run, "operation-index.json"), operationIndex)
+    const storageIndexPath = join(run, "operation-storage-index.json")
+    const reviewPath = join(run, "operation-reviews.json")
+    const storageIndexSha = exclusiveJson(storageIndexPath, {
+      version: 1,
+      kind: "operation_storage_index",
+      database_sha256: databaseBefore.sha256,
+      collector_sha256: collectorSha,
+      selected_command_domains: businessDomains,
+      table_counts: tableCounts,
+      rows: storageRows,
+      references_complete: false,
+      current_terminal_outcomes_verified: 0,
+    })
+    const reviewSha = exclusiveJson(reviewPath, {
+      version: 1,
+      kind: "retained_operation_reviews",
+      database_sha256: databaseBefore.sha256,
+      table_present: tableCounts.operation_reviews !== null,
+      items: reviewRows,
+      interpretation_complete: false,
+    })
     const counts = {
       catalog_records: entries.length,
       cached_snapshot_candidates: pins.length,
@@ -713,6 +933,21 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
         current_terminal_outcomes_verified: 0,
         row_index: join(run, "operation-index.json"),
       },
+      operation_storage: {
+        version: 1,
+        row_count: storageRows.length,
+        table_counts: tableCounts,
+        families: familyCounts,
+        index: { path: storageIndexPath, sha256: storageIndexSha },
+        reviews: { path: reviewPath, sha256: reviewSha },
+        source_fingerprints: {
+          path: join(run, "source-fingerprints.json"),
+          sha256: fingerprintsSha,
+        },
+        selected_operations_unchanged: true,
+        references_complete: false,
+        current_terminal_outcomes_verified: 0,
+      },
       source_options_requiring_review: sourceOptionReviews,
       unknown: [
         "approved migration scope",
@@ -720,7 +955,7 @@ export function collectMigrationInventory(arguments_: InventoryArguments) {
         "tracked/fork/local and historical layouts",
         "complete Sources/Views/Router inventories",
         "user pin designations",
-        "other durable operation domains and current terminal outcomes",
+        "complete durable-row references, family interpretation and current terminal outcomes",
         "AK registrations",
       ],
       safeguards: {

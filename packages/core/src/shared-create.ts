@@ -33,8 +33,20 @@ import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { sha256, Store } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
 import {
+  validateRetainedMigrationConversion,
+  validateSharedMigrationConversion,
+  type SharedMigrationConversionCandidate,
+} from "./shared-migration-conversion.ts"
+import {
+  restoreSharedMigrationCreateOrigin,
+  sharedMigrationOriginObjects,
+  type MigrationMemberBinding,
+} from "./shared-migration-create-origin.ts"
+import { registerSourceBinding, resolveSourceBinding } from "./shared-source-binding.ts"
+import {
   createChecked,
   makeSharedCreatePlan,
+  makeSharedMigrationCreatePlan,
   SharedCreateJournalSchema,
   SharedCreateManifestSchema,
   sharedCreateBodyPayload,
@@ -67,8 +79,7 @@ const InputObjectSchema = Schema.Struct({
   kind: Schema.Literal("utf8_input"),
   text: Schema.String,
 })
-const OutcomeSchema = Schema.Struct({
-  version: Schema.Literal(1),
+const OutcomeFields = {
   kind: Schema.Literal("skill_create_outcome"),
   operation_id: Schema.String,
   skill_id: Schema.String,
@@ -83,7 +94,18 @@ const OutcomeSchema = Schema.Struct({
       event_id: Schema.String,
     }),
   ),
-})
+}
+const OutcomeSchema = Schema.Union([
+  Schema.Struct({ version: Schema.Literal(1), ...OutcomeFields }),
+  Schema.Struct({
+    version: Schema.Literal(2),
+    ...OutcomeFields,
+    migration_candidate_id: Schema.String.check(
+      Schema.isPattern(/^migration-create-[a-f0-9]{64}$/u),
+    ),
+    manifest_record_hash: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+  }),
+])
 type Outcome = typeof OutcomeSchema.Type
 type Binding = Outcome["bindings"][number]
 type Inventory = readonly { readonly raw: unknown; readonly record: SharedSkillRecord }[]
@@ -99,6 +121,15 @@ function sourceFor(library: SharedLibrary): Source {
   }
 }
 const outcomeId = (operation: string) => `outcome-${operation}`
+function createManifestRecordHash(plan: SharedCreatePlan) {
+  return sha256(
+    canonicalSharedJson({
+      version: 1,
+      operation_id: plan.operation_id,
+      payload: sharedCreateManifest(plan),
+    }),
+  )
+}
 function recover(error: SkillsError, plan: SharedCreatePlan, stage: string, page?: string) {
   return fail(error.code, error.message, {
     ...property(error.details),
@@ -174,13 +205,14 @@ export function hasPendingSharedCreate(scope: string, libraryId: string, skillId
 function guardOriginalCreate(scope: string, plan: SharedCreatePlan) {
   return Effect.gen(function* () {
     for (const original of yield* pendingSharedCreatePlans(scope, plan.library.library_id)) {
-      if (aliasFor(original.name) !== aliasFor(plan.name)) continue
+      if (original.skill_id !== plan.skill_id && aliasFor(original.name) !== aliasFor(plan.name))
+        continue
       if (canonicalSharedJson(original) !== canonicalSharedJson(plan))
         return yield* Effect.fail(
           recover(
             fail(
               "SHARED_CREATE_PENDING",
-              "This library and local credential already retain an original creation for this name or alias. Changed input cannot silently replace or replay that unresolved intent.",
+              "This library and local credential already retain an original creation for this stable identity, name or alias. Changed input cannot silently replace or replay that unresolved intent.",
               { requested_operation_id: plan.operation_id },
             ),
             original,
@@ -347,6 +379,19 @@ function checkInventory(plan: SharedCreatePlan, records: Inventory) {
         "A frozen member is no longer one enabled same-library Skill.",
         { page_id: member },
       )
+    if (plan.version === 2) {
+      const binding = plan.origin.member_bindings.find((item) => item.page_id === member)
+      if (
+        !binding ||
+        selected.id !== binding.record_id ||
+        selected.locator.skill_id !== binding.skill_id
+      )
+        throw fail(
+          "SHARED_MIGRATION_MEMBERS_UNBOUND",
+          "A frozen member page no longer binds its exact original migration identity.",
+          { page_id: member },
+        )
+    }
   }
   return exact[0]
 }
@@ -375,6 +420,72 @@ export function prepareSharedCreate(
     return plan
   })
 }
+/** Resolve original logical member mappings only to actual same-library pages.
+ * No old page UUID or generated placeholder can satisfy the new relation. */
+function prepareMigrationPlan(
+  library: SharedLibrary,
+  candidate: SharedMigrationConversionCandidate,
+) {
+  return Effect.gen(function* () {
+    if (canonicalSharedJson(candidate.library) !== canonicalSharedJson(library))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_MIGRATION_CREATE_SCOPE",
+          "The migration candidate belongs to another exact shared library.",
+        ),
+      )
+    const scope = yield* authScope
+    yield* verifyLibrary(library)
+    const records = yield* inventory(library)
+    const members = yield* createChecked(() =>
+      candidate.member_bindings.map((original): MigrationMemberBinding => {
+        const matches = records.filter(
+          ({ record }) =>
+            record.id === original.record_id || record.locator.skill_id === original.skill_id,
+        )
+        const record = matches[0]?.record
+        if (
+          matches.length !== 1 ||
+          !record ||
+          record.id !== original.record_id ||
+          record.locator.skill_id !== original.skill_id ||
+          record.kind !== "skill" ||
+          !record.enabled
+        )
+          throw fail(
+            "SHARED_MIGRATION_MEMBERS_UNBOUND",
+            "Create and verify each exact migrated Skill before binding its original Router membership.",
+            { legacy_id: original.legacy_id },
+          )
+        return { ...original, page_id: record.locator.page_id }
+      }),
+    )
+    const plan = yield* makeSharedMigrationCreatePlan(candidate, members)
+    yield* guardOriginalCreate(scope, plan)
+    yield* createChecked(() => checkInventory(plan, records))
+    return plan
+  })
+}
+export function prepareSharedMigrationCreate(
+  library: SharedLibrary,
+  input: { readonly migrationInput: unknown; readonly candidate: unknown },
+) {
+  return validateSharedMigrationConversion(input.migrationInput, input.candidate).pipe(
+    Effect.flatMap((candidate) => prepareMigrationPlan(library, candidate)),
+  )
+}
+/** Read-only online scope/member checks for an unapproved, frozen proposal.
+ * The resulting plan still cannot be dispatched without original approved input. */
+export function prepareSharedMigrationReview(library: SharedLibrary, input: unknown) {
+  return validateRetainedMigrationConversion(input).pipe(
+    Effect.flatMap((candidate) => prepareMigrationPlan(library, candidate)),
+  )
+}
+function createProjectionBaseline(file: SharedCreatePlan["files"][number]) {
+  return file.event.kind === "projected"
+    ? canonicalSharedJson({ ...file.event.projection, source_revision: file.event.source_revision })
+    : ""
+}
 function recordProperties(plan: SharedCreatePlan) {
   const ids = plan.library.skills.property_ids,
     main = plan.files.find((file) => file.path === plan.entrypoint)!
@@ -387,8 +498,8 @@ function recordProperties(plan: SharedCreatePlan) {
     [ids["Default Context"]!]: { checkbox: plan.default_context },
     [ids["Skill ID"]!]: rich(plan.skill_id),
     [ids["Main File ID"]!]: rich(main.file_id),
-    [ids.Projection!]: rich(""),
-    [ids.Source!]: rich(""),
+    [ids.Projection!]: rich(createProjectionBaseline(main)),
+    [ids.Source!]: rich(plan.version === 2 ? (plan.origin.candidate.source?.source_id ?? "") : ""),
     [ids.References!]: rich(""),
     ...(plan.content_kind === "router"
       ? { [ids.Members!]: { relation: plan.members.map((id) => ({ id })) } }
@@ -490,6 +601,26 @@ function retainInputs(
         payload: sharedCreateBodyPayload(file.projection.markdown),
       })
     }
+    if (plan.version === 2) {
+      const retained = yield* sharedMigrationOriginObjects(plan.origin.candidate)
+      if (canonicalSharedJson(retained.archive) !== canonicalSharedJson(plan.origin.archive))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_MIGRATION_ORIGIN_INVALID",
+            "The original migration evidence differs from its frozen archive.",
+          ),
+        )
+      for (const object of retained.objects)
+        yield* appendSharedRecord(library, {
+          mode,
+          recordId: object.object_id,
+          operationId: `retain-input-${object.sha256}`,
+          skillPageId: page,
+          kind: "object",
+          entityId: object.object_id,
+          payload: sharedCreateInputPayload(object.text),
+        })
+    }
   })
 }
 function decodeOutcome(row: SharedRecord): Outcome {
@@ -519,24 +650,34 @@ function saveOutcome(
   reason: string,
   bindings: readonly Binding[],
 ) {
-  const payload: Outcome = {
-    version: 1,
-    kind: "skill_create_outcome",
-    operation_id: plan.operation_id,
-    skill_id: plan.skill_id,
-    skill_page_id: page,
-    status,
-    reason_code: reason,
-    bindings,
-  }
-  return appendSharedRecord(library, {
-    mode: "create",
-    recordId: outcomeId(plan.operation_id),
-    operationId: plan.operation_id,
-    skillPageId: page,
-    kind: "operation",
-    entityId: sharedCreateOutcomesEntity,
-    payload,
+  return Effect.gen(function* () {
+    const fields = {
+      kind: "skill_create_outcome" as const,
+      operation_id: plan.operation_id,
+      skill_id: plan.skill_id,
+      skill_page_id: page,
+      status,
+      reason_code: reason,
+      bindings,
+    }
+    const payload: Outcome =
+      plan.version === 2
+        ? {
+            ...fields,
+            version: 2,
+            migration_candidate_id: plan.origin.candidate.candidate_id,
+            manifest_record_hash: yield* createManifestRecordHash(plan),
+          }
+        : { ...fields, version: 1 }
+    return yield* appendSharedRecord(library, {
+      mode: "create",
+      recordId: outcomeId(plan.operation_id),
+      operationId: plan.operation_id,
+      skillPageId: page,
+      kind: "operation",
+      entityId: sharedCreateOutcomesEntity,
+      payload,
+    })
   })
 }
 function verifyIndex(
@@ -555,7 +696,8 @@ function verifyIndex(
       index.kind !== plan.content_kind ||
       index.default_context !== plan.default_context ||
       index.enabled !== enabled ||
-      index.source_reference !== ""
+      index.source_reference !==
+        (plan.version === 2 ? (plan.origin.candidate.source?.source_id ?? "") : "")
     )
       return yield* Effect.fail(
         fail(
@@ -580,6 +722,29 @@ function verifyIndex(
           "The complete stable File/page/path bindings differ from the frozen creation intent.",
         ),
       )
+    if (plan.version === 2) {
+      for (const file of plan.files) {
+        const binding = [index.main, ...index.files].find((item) => item.file_id === file.file_id)
+        const baseline =
+          file.event.kind === "projected"
+            ? { ...file.event.projection, source_revision: file.event.source_revision }
+            : null
+        const supporting = index.files.find((item) => item.file_id === file.file_id)
+        if (
+          !binding ||
+          canonicalSharedJson(binding.baseline ?? null) !== canonicalSharedJson(baseline) ||
+          (supporting !== undefined &&
+            supporting.display_status !==
+              (file.event.kind === "projected" ? "following" : "custom"))
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_REVIEW_REQUIRED",
+              "The migrated projection baseline or ownership display differs from the frozen initial fact.",
+            ),
+          )
+      }
+    }
     if (plan.content_kind === "router") {
       const members = yield* currentMemberIds(library, page)
       if (canonicalSharedJson(members) !== canonicalSharedJson(plan.members))
@@ -690,6 +855,20 @@ function currentMemberIds(library: SharedLibrary, page: string) {
 }
 function verifyFacts(library: SharedLibrary, plan: SharedCreatePlan, page: string) {
   return Effect.gen(function* () {
+    if (plan.version === 2 && plan.origin.candidate.source !== null) {
+      const expected = plan.origin.candidate.source
+      const actual = yield* resolveSourceBinding(library, {
+        skillPageId: page,
+        sourceId: expected.source_id,
+      })
+      if (canonicalSharedJson(actual) !== canonicalSharedJson(expected))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CREATE_REVIEW_REQUIRED",
+            "The migrated Source differs from the exact fixed selection in the original intent.",
+          ),
+        )
+    }
     const rows = yield* querySharedRecords(library, { skillPageId: page, kind: "file_event" })
     const events = yield* createChecked(() =>
       rows.map((row) => {
@@ -733,6 +912,40 @@ function retire(plan: SharedCreatePlan, scope: string) {
     yield* (yield* Store).retireKeys([
       yield* sharedCreateJournalKey(scope, plan.library.library_id, plan.operation_id),
     ])
+  })
+}
+
+function readRetainedCreateInput(
+  library: SharedLibrary,
+  page: string,
+  expected: { readonly object_id: string; readonly sha256: string; readonly bytes: number },
+) {
+  return Effect.gen(function* () {
+    const objects = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "object",
+      entityId: expected.object_id,
+      recordId: expected.object_id,
+      payloadContainsBody: true,
+    })
+    const object = objects[0]
+    if (
+      objects.length !== 1 ||
+      object === undefined ||
+      object.operation_id !== `retain-input-${expected.sha256}`
+    )
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_UNRESOLVED", "An exact retained original input object is unavailable."),
+      )
+    const body = yield* createChecked(() =>
+      Schema.decodeUnknownSync(InputObjectSchema)(object.payload, { onExcessProperty: "error" }),
+    )
+    const bytes = new TextEncoder().encode(body.text)
+    if (bytes.length !== expected.bytes || (yield* sha256(bytes)) !== expected.sha256)
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_INVALID", "An original input object failed its immutable checksum."),
+      )
+    return body.text
   })
 }
 
@@ -791,36 +1004,28 @@ export function loadSharedCreatePlan(
           "The original creation manifest belongs to another library or stable Skill.",
         ),
       )
-    const files = []
-    for (const file of manifest.files) {
-      const objects = yield* querySharedRecords(library, {
-        skillPageId: input.skillPageId,
-        kind: "object",
-        entityId: file.input.object_id,
-        recordId: file.input.object_id,
-        payloadContainsBody: true,
-      })
-      const object = objects[0]
-      if (
-        objects.length !== 1 ||
-        object === undefined ||
-        object.operation_id !== `retain-input-${file.input.sha256}`
-      )
+    if (manifest.version === 2) {
+      const parts = []
+      for (const chunk of manifest.origin.archive.chunks)
+        parts.push({
+          object_id: chunk.object_id,
+          text: yield* readRetainedCreateInput(library, input.skillPageId, chunk),
+        })
+      const origin = yield* restoreSharedMigrationCreateOrigin(manifest.origin, parts)
+      const plan = yield* makeSharedMigrationCreatePlan(origin.candidate, origin.member_bindings)
+      if (canonicalSharedJson(sharedCreateManifest(plan)) !== canonicalSharedJson(manifest))
         return yield* Effect.fail(
           fail(
-            "SHARED_CREATE_UNRESOLVED",
-            "An exact retained original input object is unavailable.",
+            "SHARED_CREATE_INVALID",
+            "The retained migration origin does not reconstruct the exact original creation manifest.",
           ),
         )
-      const body = yield* createChecked(() =>
-        Schema.decodeUnknownSync(InputObjectSchema)(object.payload, { onExcessProperty: "error" }),
-      )
-      const bytes = new TextEncoder().encode(body.text)
-      if (bytes.length !== file.input.bytes || (yield* sha256(bytes)) !== file.input.sha256)
-        return yield* Effect.fail(
-          fail("SHARED_CREATE_INVALID", "An original input object failed its immutable checksum."),
-        )
-      files.push({ path: file.input_path, bytes })
+      return plan
+    }
+    const files = []
+    for (const file of manifest.files) {
+      const text = yield* readRetainedCreateInput(library, input.skillPageId, file.input)
+      files.push({ path: file.input_path, bytes: new TextEncoder().encode(text) })
     }
     const projectionVersion = yield* createChecked(() =>
       sharedCreateProjectionVersion(manifest.files),
@@ -898,7 +1103,15 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
         ),
       )
     const outcome = yield* createChecked(() => decodeOutcome(row))
-    if (outcome.skill_id !== plan.skill_id || outcome.skill_page_id !== page)
+    if (
+      outcome.skill_id !== plan.skill_id ||
+      outcome.skill_page_id !== page ||
+      outcome.version !== plan.version ||
+      (plan.version === 2 &&
+        (outcome.version !== 2 ||
+          outcome.migration_candidate_id !== plan.origin.candidate.candidate_id ||
+          outcome.manifest_record_hash !== (yield* createManifestRecordHash(plan))))
+    )
       return yield* Effect.fail(
         fail("SHARED_CREATE_SCOPE", "The exact original outcome belongs to another Skill."),
       )
@@ -933,6 +1146,20 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
     yield* retainInputs(library, plan, page, "reconcile").pipe(
       Effect.mapError((error) => recover(error, plan, "retained_inputs", page)),
     )
+    if (plan.version === 2 && plan.origin.candidate.source !== null) {
+      const source = plan.origin.candidate.source
+      yield* registerSourceBinding(library, {
+        skillPageId: page,
+        mode: "reconcile",
+        fixedSource: {
+          url: source.url,
+          commit: source.commit,
+          root: source.root,
+          tree: source.tree,
+          files: source.files,
+        },
+      }).pipe(Effect.mapError((error) => recover(error, plan, "source_registration", page)))
+    }
     for (const file of plan.files)
       yield* appendSharedRecord(library, {
         mode: "reconcile",
@@ -968,7 +1195,11 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
 
 export function executeSharedCreate(
   library: SharedLibrary,
-  input: { readonly plan: SharedCreatePlan; readonly mode: "create" | "reconcile" },
+  input: {
+    readonly plan: SharedCreatePlan
+    readonly mode: "create" | "reconcile"
+    readonly migrationInput?: unknown
+  },
 ) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedCreatePlan(input.plan)
@@ -977,6 +1208,16 @@ export function executeSharedCreate(
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "Native create mode must be create or reconcile."),
       )
+    if (plan.version === 2) {
+      if (input.migrationInput === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_MIGRATION_INPUT_REQUIRED",
+            "A retained origin grants read-only reconciliation only. New creation requires its original frozen migration input.",
+          ),
+        )
+      yield* validateSharedMigrationConversion(input.migrationInput, plan.origin.candidate)
+    }
     const scope = yield* authScope,
       store = yield* Store
     yield* verifyLibrary(library, plan)
@@ -1026,6 +1267,21 @@ export function executeSharedCreate(
       yield* manifestRecord(library, plan, skillPage, "create")
       stage = "retained_inputs"
       yield* retainInputs(library, plan, skillPage, "create")
+      if (plan.version === 2 && plan.origin.candidate.source !== null) {
+        stage = "source_registration"
+        const source = plan.origin.candidate.source
+        yield* registerSourceBinding(library, {
+          skillPageId: skillPage,
+          mode: "create",
+          fixedSource: {
+            url: source.url,
+            commit: source.commit,
+            root: source.root,
+            tree: source.tree,
+            files: source.files,
+          },
+        })
+      }
       stage = "main_body"
       yield* assertBody(skillPage, main.projection.markdown)
       for (const file of plan.files.filter((file) => file.path !== plan.entrypoint)) {
@@ -1040,8 +1296,10 @@ export function executeSharedCreate(
               [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
               [ids["File ID"]!]: rich(file.file_id),
               [ids.Path!]: rich(file.path),
-              [ids.Projection!]: rich(""),
-              [ids.Status!]: { select: { name: "custom" } },
+              [ids.Projection!]: rich(createProjectionBaseline(file)),
+              [ids.Status!]: {
+                select: { name: file.event.kind === "projected" ? "following" : "custom" },
+              },
               [ids.Skill!]: { relation: [{ id: skillPage }] },
             },
             markdown: sharedNotionMarkdownWire(file.projection),
@@ -1197,6 +1455,13 @@ export function loadPendingSharedCreates(
     for (const header of candidates) {
       const terminal = outcomes.get(header.record_id)
       if (terminal?.status === "applied") {
+        if (terminal.version === 2 && terminal.manifest_record_hash !== header.hash)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_INVALID",
+              "The migration completion belongs to another exact original manifest.",
+            ),
+          )
         if (
           terminal.bindings.length === 0 ||
           !terminal.bindings.some((binding) => binding.page_id === input.skillPageId)
@@ -1206,7 +1471,11 @@ export function loadPendingSharedCreates(
           )
         for (const binding of terminal.bindings) {
           const event = input.events.find((event) => event.event_id === binding.event_id)
-          if (event === undefined || event.kind !== "adopted" || event.file_id !== binding.file_id)
+          if (
+            event === undefined ||
+            event.file_id !== binding.file_id ||
+            (event.kind !== "adopted" && (terminal.version !== 2 || event.kind !== "projected"))
+          )
             return yield* Effect.fail(
               fail(
                 "SHARED_CREATE_UNRESOLVED",
@@ -1216,7 +1485,7 @@ export function loadPendingSharedCreates(
           const { event_id: _event, ...fields } = event
           if (
             event.event_id !==
-            `create-file-${yield* sha256(canonicalSharedJson({ version: 1, ...fields }))}`
+            `${terminal.version === 2 ? "migration-event" : "create-file"}-${yield* sha256(canonicalSharedJson({ version: 1, ...fields }))}`
           )
             return yield* Effect.fail(
               fail(
@@ -1263,5 +1532,36 @@ export function createSharedNative(
         protection: sharedCreateProtection,
       }
     return yield* executeSharedCreate(library, { plan, mode: "create" })
+  })
+}
+
+/** Migration origin uses the existing native dispatcher and recovery boundary. */
+export function createSharedMigrationNative(
+  library: SharedLibrary,
+  input: {
+    readonly migrationInput: unknown
+    readonly candidate: unknown
+    readonly dryRun?: boolean
+  },
+) {
+  return Effect.gen(function* () {
+    const plan = yield* prepareSharedMigrationCreate(library, input)
+    if (input.dryRun)
+      return {
+        status: "planned" as const,
+        operation: "create" as const,
+        action: "planned" as const,
+        dry_run: true as const,
+        operation_id: plan.operation_id,
+        skill_id: plan.skill_id,
+        entrypoint: plan.entrypoint,
+        plan,
+        protection: sharedCreateProtection,
+      }
+    return yield* executeSharedCreate(library, {
+      plan,
+      mode: "create",
+      migrationInput: input.migrationInput,
+    })
   })
 }

@@ -52,10 +52,31 @@ Inspect native Views with `ntn-skills views --database LIBRARY_ENTRY`. Select an
 | Execute an existing remote workflow | Select/read as above; no local installation or sync binding is required |
 | Create a Notion Skill, apply a change to a pinned page, or transfer a portable copy | Select `$ntn-skills-maintain@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-maintain` |
 | Select fixed shared sources or Profiles, maintain existing upstream/local bindings, or resolve their original interrupted work | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |
+| Review and migrate one legacy record into a shared library | Use `ctl library migration --help` and the approval workflow below; retain the original evidence |
 | Inspect, install or update package-supplied Skills | Use `ctl builtin list/read/status/install/update`; installation is central with shared links by default, and optional Agent roots add links. See [local management](references/commands.md#local-builtins) |
 | Missing workflow, failed load or old content | Follow [diagnosis](references/integration.md#diagnose-discovery-and-loading) before changing configuration or clearing caches |
 
 Context Broker exposes package builtins through ordinary `$`, including `$ntn-skills@builtin`. The exact `@builtin` suffix preserves package identity when names collide. Reading package instructions does not require publishing a copy to Notion or creating a local sync binding. When using a builtin through CLI reads, read its `files` inventory and supporting files with `ctl builtin read EXACT_ID --path PATH`. Do not assume sibling Skills are installed. `ctl builtin read` returns package content; ordinary `list/read` continue to select remote Notion pages.
+
+## Review a legacy migration
+
+Keep the complete frozen input, retained managed files, exact native response JSON and selected fixed Source bytes. Use `ctl library migration plan --input FROZEN_JSON` for the offline inventory, then prepare the concrete target without changing approvals:
+
+```bash
+ntn-skills ctl library migration review --input FROZEN_JSON \
+  --legacy-id LEGACY_ID --entry LIBRARY_ENTRY --files RETAINED_FILES \
+  --preimages RAW_RESPONSES
+```
+
+Add `--source-files EXACT_SOURCE_DIR_OR_ZIP` when the frozen target selects a Source. Save the complete JSON and inspect its `review_id`, content, ownership, Source, target and member bindings. Review can read target metadata; it performs no Notion writes and does not approve migration. For absent `Enabled`, use complete original row/schema evidence with `legacy_catalog_active_page_v1`, or explicitly select `legacy_catalog_active_page_v2` and API `2026-03-11`. V1 requires `archived:false` and `in_trash:false`; v2 requires `in_trash:false` and rejects contradictory archive flags when present. Retain `original_enabled: absent`; never invent an `Enabled` or missing `archived` value or reclassify ownership from activity. Consult each subcommand's `--help` for its exact retained-input contract.
+
+New reviews bind `origin.candidate.execution_policy: copy_to_new_native_v1` into the digest. This policy copies one frozen target to new native pages without cutover or legacy retirement. It may defer other independent entries' own file/metadata gaps while preserving the full input and all full-plan diagnostics. Keep the target's bytes, ownership, same-page aliases, Router members, Source gaps and unknown operation impact as blocking requirements.
+
+After explicit approval, keep a separate frozen input with the reviewed identity in `approved_legacy_ids`. Preserve all other review-bound facts and the independent approved digest. Run `ctl library migration apply --input APPROVED_JSON --review REVIEW_JSON --review-id MIGRATION_REVIEW_ID --dry-run`; execute the same command without `--dry-run` only for that approved result. Require `status: created`, `verified: true` and a verified current pin before reporting migration success.
+
+For the explicit copy policy, apply/dry-run and direct create execution require the approved target and complete dependency evidence; independent unapproved entries may remain blocked. Empty approval permits no creation. Saved candidates without this policy keep the original full-plan gate. Unresolved dependencies return `SHARED_MIGRATION_CREATE_BLOCKED`; reliance on unread/unverified impact/isolation receipts returns `SHARED_MIGRATION_RECEIPT_UNVERIFIED` with their exact references. Both refusals precede a new journal or native write. Preserve the full input and original operations; approval or receipt booleans alone do not resolve these gates.
+
+Keep an unknown operation unchanged and use `ctl library migration reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID`; add the exact new `--target PAGE_ID` from a receipt when the original journal is unavailable on another machine. Reconciliation verifies only the original create outcome and does not replay writes or prove a current pin. `WRITE_VERIFICATION_FAILED` with `native_create_completed: true` also needs this distinction: native creation finished, but the final current-snapshot check failed without adopting user edits. Preserve the error and original operation; never switch to generic `operation resume` or issue a replacement intent. Ordinary later current reads have their own adoption behavior.
 
 ## Host and connection boundaries
 

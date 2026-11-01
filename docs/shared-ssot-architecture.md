@@ -16,7 +16,7 @@
 | 共享 snapshot save/restore | 真实公开 CLI 保存三个文件，`verification=objects_and_manifest`；新本地状态根恢复并导出的三个文件 SHA-256 全部一致 | 任意资源类型、历史故障全矩阵和独立物理机恢复 |
 | 固定 Git 来源 | inspect 固定 commit/tree/root 的 18 文件清单；真实消费产出 20 文件，17 个 Git 资源逐一核对 Git OID，三个 custom 文件保留原 SHA-256 | 完整来源选择管理、二进制全覆盖、投影写回或私有仓库支持 |
 | 固定 manifest 登记 | `source register --manifest` 接受完整 inspect JSON 或裸固定 manifest，登记过程零 provider 请求；保留精确候选身份 | 登记即选中来源、建立 following 基线或改写正文 |
-| 低请求标准 CLI | explicit shared catalog、native cold read、过期 Metadata 复验和固定资源零请求已观察 | 全规模矩阵、p50/p95、安装包或宿主端到端性能 |
+| 低请求标准 CLI | 单个 native fixture 的 warm / exact-pin 各 20 次零远端请求，expired 20 次每次 20 Metadata、零正文；已记录实际 CLI 进程 p50/p95 | 全 N/k 规模矩阵、安装包或宿主端到端性能；零正文不代表普遍低延迟 |
 | 原生 View metadata | 真实三成员 View 使用五次 Metadata 请求，正文、写入、provider 均为零；保留原生成员与顺序、Enabled 和稳定身份校验 | Profile 管理或宿主供给通过 |
 | Router Members | 新库真实原生 Members 验证；两成员 Router 冷读 14 请求且无成员正文，warm 为零；成员描述更新后 7 次 Metadata、零正文/写入/provider，旧 pin 保留旧目录 | 原生 UI、已安装宿主或实际模型消费通过；旧库已隐式升级 |
 | 在途合并与请求准入 | Notion 服务内同请求合并、默认四个并发 permit；permit 与 SQL 准入受原五分钟 deadline 约束，网络 timeout 独立 | 跨进程或跨机器全局并发锁、全部真实服务负载矩阵 |
@@ -49,7 +49,9 @@
 | 同一目录 warm | 0 | 完整且未过期的既有观察 |
 | 三成员 shared View | 5 Metadata；0 正文、0 写入、0 provider | 原生成员 Metadata 供给；不等于 Profile 或宿主验收 |
 | native 三文件首次 read | 27：9 Metadata、3 当前正文、6 保留正文查询、9 写入 | 三个文件各建立 plan/object/event；不当作普通重复读取成本 |
-| 普通过期 `read --max-age 1s` | 6 Metadata；0 正文、0 写入、0 provider | 与前次相同 snapshot；不同于强制完整 `--refresh` |
+| 早期三文件 fixture 普通过期 `read --max-age 1s` | 6 Metadata；0 正文、0 写入、0 provider | 与前次相同 snapshot；不是下述已有 write/review 历史对象的成本 |
+| 已审阅历史 native fixture 冷消费 | 27：20 Metadata、2 当前正文、5 保留正文查询；0 写入/provider | 空缓存填充的一次实际观察，43.548 秒；与首次 adoption 的 27 请求分开记录 |
+| 同一历史对象过期复验 | 20 个样本各为 20 Metadata；0 正文、0 写入、0 provider | 2 个逻辑文件、3 个物理文件的单一 fixture；进程 p50 28.692 秒、p95 35.386 秒，详见读取成本章节 |
 | TTL 内 files 与 pinned resource | 0 | 使用已完整验证的本地版本 |
 | 三文件 snapshot save | 14：7 Metadata、3 保留正文查询、4 写入 | 当前正文 0、provider 0；精确 chunks + manifest |
 | 新本地状态根 snapshot restore | 8：5 Metadata、3 保留正文查询 | 当前正文、provider、写入均为 0；导出的三个文件 SHA-256 全部相同，尚非另一物理机 |
@@ -284,7 +286,24 @@ Base 与 Mount 组合时检查路径逃逸、重复路径和大小写冲突。�
 
 首次消费、升级后尚无验证记录或缓存缺失时，需要额外 Metadata 查询和完整 Payload 补证；未命中的页面版本也必须重新读取并验证正文。冷读成本单列，不能把这轮补证计作已命中的廉价 expiry。实际正文查询仍计入 `retained_body`；对这些含正文的 Records，只有传输时确实排除 Payload 的查询才属于 Metadata。按完整分页读取相关记录，不引入每个 native 文件的额外 GET，也不能把随历史数量增加的工作隐藏进固定 K。
 
-2026-11-01 的真实 negative：同一个已经完成独立 review 的 native 对象在 `--max-age 1s` 过期读取中返回相同 snapshot，但实际发生 14 次 Metadata 和 6 次 retained-body 请求，违反零正文预算。正式仓库在产品修复前的受控 RED 同样得到 `retained_body=6`。修复后的单条 reviewed-history 回归为恰好 15 次 Metadata、零正文/写入/provider：三页 Files/events/operations，加一个 Skill 请求和 11 个明确历史查询；这是该测试形态的预算，不能推广成所有规模或历史的常数。缺失事实、冲突、页面版本变化、账户隔离和缓存损坏的边界测试也已通过。新版真实 expired 样本尚待重新采集，原失败记录不改为 PASS，受控结果也不代替完整真实规模矩阵或端到端延迟。
+2026-11-01 的真实 negative：同一个已经完成独立 review 的 native 对象在 `--max-age 1s` 过期读取中返回相同 snapshot，但实际发生 14 次 Metadata 和 6 次 retained-body 请求，违反零正文预算。正式仓库在产品修复前的受控 RED 同样得到 `retained_body=6`。修复后的单条 reviewed-history 回归为恰好 15 次 Metadata、零正文/写入/provider：三页 Files/events/operations，加一个 Skill 请求和 11 个明确历史查询；这是该测试形态的预算，不能推广成所有规模或历史的常数。缺失事实、冲突、页面版本变化、账户隔离和缓存损坏的边界测试也已通过。原真实失败及停止记录继续保留，以下独立新运行不会把它们改为 PASS。
+
+#### N02：同一 native fixture 的真实重复样本
+
+源码提交 `6df0c30143d3de5d74dae45e20d30c131f85045a` 的 Node CLI 在同一宿主完成 61 个有效进程样本：cold 一次，warm、expired 和 exact-pin 各 20 次。范围为同一个 2 逻辑文件、3 物理文件的 native fixture；exact-pin 使用原 N13 固定历史 pin。各组分别核验其目标版本与字节，不把一次零请求推导成所有内容或历史的预算。
+
+| 路径 | 有效样本 | 每次远端请求 | 进程耗时（ms） | min–max（ms） |
+| --- | --- | --- | --- | --- |
+| cold，填充当前与历史缓存 | 1 | 27：20 Metadata、2 current-body、5 retained-body；0 写入/provider | 单次 43,548.159，不报百分位 | — |
+| warm current | 20 | 全部为 0 | p50 329.364；p95 668.813 | 302.879–706.972 |
+| expired current | 20 | 全部为 20 Metadata；0 current-body / retained-body / 写入 / provider | p50 28,691.717；p95 35,386.392 | 23,465.101–39,016.385 |
+| 原 N13 exact pin | 20 | 全部为 0 | p50 314.781；p95 389.819 | 281.967–404.577 |
+
+cold 单样本另记录请求 6,512 B、响应 189,995 B、并发峰值 1、重复请求 0、retry wait 0；它需要读取尚未缓存的当前正文和历史 Payload，不能并入 warm 或廉价 expiry。真实 expired 的 20 次 Metadata 包含本对象分页、Skill 身份和原 write/review 历史管理查询。这里的历史 K 是必须付出的实际工作；不能把新增逐文件 GET 或随历史增长的查询隐藏进固定 K，也不能对所有历史长度承诺常数 20。受控单条历史的 15 次查询不能替代这个对象的实测成本。零正文预算已经达到，但 23.465–39.016 秒的真实 expired 延迟仍然存在，不能据此宣称普遍低延迟。
+
+每条计时取已核对的 `cli_process_timing`：实际 Node CLI spawn 至 process close，不含构建、执行文件/参数哈希或回执写入。百分位使用 nearest rank，即排序后的第 `ceil(p × n)` 个样本；表格仅将毫秒显示值四舍五入到三位小数。它们不是逐请求 `request_duration`，也不是缺少样本的 `operation_duration`。此次 `full_N_k_matrix_claimed=false`，N=1/10/100/101/300 与不同变化文件数仍按各自范围验收。
+
+外部证据保留完整进程样本与请求指标：summary SHA-256 `85320a5c643056b40c62680d1bf4b0ad0a919736cf6bf792f3b21bf73416a81d`；samples SHA-256 `2d222433d5da147470d70c408d0332398f8fe6a5fcecc3dd437f4e058707586a`。此处不公开私人页面、历史 pin 或本机状态路径。
 
 ## Effect 与故障
 
