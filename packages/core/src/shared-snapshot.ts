@@ -42,7 +42,11 @@ import {
   loadPendingSharedObservationPlans,
   type SharedObservationPlan,
 } from "./shared-observation-operation.ts"
-import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
+import {
+  canonicalSharedJson,
+  querySharedRecords,
+  withSharedRecordPayloadCache,
+} from "./shared-records.ts"
 import {
   loadPendingSharedBodyWrites,
   reconcileSharedBodyWrite,
@@ -211,7 +215,7 @@ function fileRevision(
  * the selected Skills row, Files membership and shared facts through batched metadata.
  */
 export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
-  return Effect.gen(function* () {
+  const consume = Effect.gen(function* () {
     const store = yield* Store
     const api = yield* Notion
     const selected = yield* checked(() => {
@@ -1043,4 +1047,5 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     )
     return { ...published, shared_authoring }
   })
+  return input.readOnly === true ? consume : withSharedRecordPayloadCache(consume, input.scope)
 }

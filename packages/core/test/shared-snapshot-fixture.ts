@@ -337,6 +337,7 @@ export function sharedSnapshotFixture(
             const row = {
               object: "page",
               id: page,
+              last_edited_time: editedAt,
               parent: { ...property(input.parent), database_id: library.records.database_id },
               properties,
             }
@@ -414,6 +415,7 @@ export function sharedSnapshotFixture(
     records.set(page, {
       object: "page",
       id: page,
+      last_edited_time: editedAt,
       parent: {
         type: "data_source_id",
         data_source_id: library.records.data_source_id,

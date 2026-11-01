@@ -276,6 +276,16 @@ Base 与 Mount 组合时检查路径逃逸、重复路径和大小写冲突。�
 
 轻量检查与完整正文检查分别计时。持续轻量续期不能无限延后完整校验，避免同时间戳变化永久不可见。强制刷新、写入前检查和缺失基线使用明确路径。
 
+### 已审阅历史正文的消费缓存
+
+正常 current 消费可以复用已经完整验证的 Records Payload。边界位于 `shared-records.ts`，只在消费范围内、明确 Record ID 的正文读取及原事实 reconcile 中启用；`readOnly` authoring preflight、公开 review dry-run 和默认 Records 调用保持原行为。原 `needs_review` outcome、独立 `accepted_observed` review、原文和候选都继续保留，复用缓存不改变任何操作的终局。
+
+每次复验先用相同筛选条件完整分页查询不含 Payload 的 Metadata，验证父库、Skill 关系、Kind、Record ID、Entity ID、Hash、页面身份和 `last_edited_time`。本地小型验证记录绑定权限 scope、凭据身份、库及 Records 属性身份和该页面版本；canonical envelope 使用现有内容寻址 `objects` 保存，命中后仍重新校验对象 SHA-256、envelope 格式和 canonical hash。既有 SQLite cache 域只增加严格地址，不形成新的共享权威。远端事实消失、重复 ID 冲突、缺失 review 环节或对象损坏不能由缓存补成完成。这是当前 Metadata 与此前完整 Payload 观察一致时的复用，不是本轮重新下载 Payload 或原子快照的证明。
+
+首次消费、升级后尚无验证记录或缓存缺失时，需要额外 Metadata 查询和完整 Payload 补证；未命中的页面版本也必须重新读取并验证正文。冷读成本单列，不能把这轮补证计作已命中的廉价 expiry。实际正文查询仍计入 `retained_body`；对这些含正文的 Records，只有传输时确实排除 Payload 的查询才属于 Metadata。按完整分页读取相关记录，不引入每个 native 文件的额外 GET，也不能把随历史数量增加的工作隐藏进固定 K。
+
+2026-11-01 的真实 negative：同一个已经完成独立 review 的 native 对象在 `--max-age 1s` 过期读取中返回相同 snapshot，但实际发生 14 次 Metadata 和 6 次 retained-body 请求，违反零正文预算。正式仓库在产品修复前的受控 RED 同样得到 `retained_body=6`。修复后的单条 reviewed-history 回归为恰好 15 次 Metadata、零正文/写入/provider：三页 Files/events/operations，加一个 Skill 请求和 11 个明确历史查询；这是该测试形态的预算，不能推广成所有规模或历史的常数。缺失事实、冲突、页面版本变化、账户隔离和缓存损坏的边界测试也已通过。新版真实 expired 样本尚待重新采集，原失败记录不改为 PASS，受控结果也不代替完整真实规模矩阵或端到端延迟。
+
 ## Effect 与故障
 
 使用仓库 exact pin Effect v4 及实际安装 API。先减少 I/O 和重复工作，再为必要工作设置有界并发。正式路径统一处理并发上限、速率准入、队列背压、同 key 请求合并、依赖串行、超时、取消和 Scope 释放。

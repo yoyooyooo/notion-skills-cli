@@ -108,6 +108,11 @@ const sharedLocalDomains: readonly {
     address: /^cache\/shared-github-blobs\/[a-f0-9]{40}\.json$/u,
   },
   {
+    prefix: "cache/shared-record-payloads",
+    category: "cache",
+    address: /^cache\/shared-record-payloads\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-observation-pending",
     category: "dispatch",
     address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,

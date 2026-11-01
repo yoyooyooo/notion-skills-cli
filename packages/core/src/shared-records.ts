@@ -1,8 +1,8 @@
-import { Crypto, Effect, Schema } from "effect"
+import { Context, Crypto, Effect, Option, Schema } from "effect"
 import { decode, fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library.ts"
-import { sha256 } from "./store.ts"
+import { sha256, Store } from "./store.ts"
 
 export const SharedRecordKindSchema = Schema.Literals([
   "file_event",
@@ -39,6 +39,30 @@ export type SharedProfileRecord = Omit<SharedRecord, "kind" | "skill_page_id"> &
   readonly skill_page_id: null
 }
 type AnySharedRecord = SharedRecord | SharedProfileRecord
+
+// Enabled only by current consumption. Authoring and explicit reconcile keep
+// their existing behavior, including dry-run's no-new-local-state contract.
+class SharedRecordPayloadCache extends Context.Service<
+  SharedRecordPayloadCache,
+  { readonly scope: string; readonly store: Store["Service"] }
+>()("ntn-skills/SharedRecordPayloadCache") {}
+
+export function withSharedRecordPayloadCache<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  scope: string,
+) {
+  return Effect.gen(function* () {
+    const store = yield* Store
+    return yield* effect.pipe(Effect.provideService(SharedRecordPayloadCache, { scope, store }))
+  })
+}
+
+const PayloadCacheReceiptSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  context_sha256: Schema.String,
+  metadata_sha256: Schema.String,
+  object_sha256: Schema.String,
+})
 
 export type QuerySharedRecordsInput = {
   readonly skillPageId: string
@@ -285,7 +309,16 @@ function richText(field: Record<string, unknown>, label: string) {
 type SkillRecordSelection = QuerySharedRecordsInput & { readonly libraryProfile?: false }
 type SelectedRecords = SkillRecordSelection | LibraryProfileSelection
 
-function decodeRecord(rawValue: unknown, library: SharedLibrary, selected: SelectedRecords) {
+type RecordHeader = Omit<AnySharedRecord, "operation_id" | "payload"> & {
+  readonly last_edited_time: string | null
+}
+type RecordRow = { readonly header: RecordHeader; readonly record?: AnySharedRecord }
+
+function decodeHeader(
+  rawValue: unknown,
+  library: SharedLibrary,
+  selected: SelectedRecords,
+): RecordHeader {
   const raw = object(rawValue, "Record page")
   if (
     raw.object !== "page" ||
@@ -349,7 +382,22 @@ function decodeRecord(rawValue: unknown, library: SharedLibrary, selected: Selec
   const hash = richText(getField(properties, "Hash", ids), "Hash")
   if (!/^[0-9a-f]{64}$/u.test(hash))
     throw invalid("Record Hash must be a lowercase SHA-256 digest.")
-  const encoded = richText(getField(properties, "Payload", ids), "Payload")
+  const edited = raw.last_edited_time
+  return {
+    page_id: pageId,
+    record_id: recordId,
+    skill_page_id: skillPageId,
+    kind,
+    entity_id: entityId,
+    hash,
+    // Older callers may supply no edit timestamp. Such rows remain readable,
+    // but cannot establish a reusable remote observation.
+    last_edited_time:
+      typeof edited === "string" && Number.isFinite(Date.parse(edited)) ? edited : null,
+  }
+}
+
+function recordFromEnvelope(header: RecordHeader, encoded: string) {
   if (new TextEncoder().encode(encoded).byteLength > maxPayloadBytes)
     throw fail("SHARED_RECORD_TOO_LARGE", "Stored shared record payload exceeds 64 KiB.")
   let envelope: unknown
@@ -360,19 +408,29 @@ function decodeRecord(rawValue: unknown, library: SharedLibrary, selected: Selec
   }
   const parsed = boundedEnvelope(envelope)
   const common = {
-    page_id: pageId,
-    record_id: recordId,
+    page_id: header.page_id,
+    record_id: header.record_id,
     operation_id: parsed.operationId,
-    kind,
-    entity_id: entityId,
-    hash,
+    kind: header.kind,
+    entity_id: header.entity_id,
+    hash: header.hash,
     payload: parsed.payload,
   }
   const record: AnySharedRecord =
-    skillPageId === null
+    header.skill_page_id === null
       ? { ...common, kind: "profile", skill_page_id: null }
-      : { ...common, skill_page_id: skillPageId }
+      : { ...common, skill_page_id: header.skill_page_id }
   return { canonical: parsed.canonical, record }
+}
+
+function decodeRecord(rawValue: unknown, library: SharedLibrary, selected: SelectedRecords) {
+  const header = decodeHeader(rawValue, library, selected)
+  const raw = object(rawValue, "Record page")
+  const properties = object(raw.properties, "Record properties")
+  return recordFromEnvelope(
+    header,
+    richText(getField(properties, "Payload", fieldIds(library)), "Payload"),
+  )
 }
 
 function verifiedRecord(raw: unknown, library: SharedLibrary, selected: SelectedRecords) {
@@ -403,21 +461,22 @@ function sameFact(
   )
 }
 
-function queryRecords(
-  library: SharedLibrary,
-  selected: SkillRecordSelection,
-  content?: "body",
-): Effect.Effect<readonly SharedRecord[], SkillsError, Notion | Crypto.Crypto>
-function queryRecords(
-  library: SharedLibrary,
-  selected: LibraryProfileSelection,
-  content?: "body",
-): Effect.Effect<readonly SharedProfileRecord[], SkillsError, Notion | Crypto.Crypto>
-function queryRecords(
+function sameHeaderFact(left: RecordHeader, right: RecordHeader) {
+  return (
+    left.record_id === right.record_id &&
+    left.skill_page_id === right.skill_page_id &&
+    left.kind === right.kind &&
+    left.entity_id === right.entity_id &&
+    left.hash === right.hash
+  )
+}
+
+function queryRecordRows(
   library: SharedLibrary,
   selected: SelectedRecords,
   content?: "body",
-): Effect.Effect<readonly AnySharedRecord[], SkillsError, Notion | Crypto.Crypto> {
+  metadataOnly = false,
+): Effect.Effect<readonly RecordRow[], SkillsError, Notion | Crypto.Crypto> {
   return Effect.gen(function* () {
     const api = yield* Notion
     const query = yield* checked(() => {
@@ -449,14 +508,18 @@ function queryRecords(
           rich_text: { equals: identifier(selected.recordId, "Record ID") },
         })
       const parameters = new URLSearchParams()
-      for (const field of fields.filter((field) => field !== "Name"))
+      for (const field of fields.filter(
+        (field) => field !== "Name" && (!metadataOnly || field !== "Payload"),
+      ))
         parameters.append("filter_properties", identifier(ids[field], `${field} property ID`))
       return {
         path: `v1/data_sources/${dataSourceId}/query?${parameters.toString()}`,
         filter: filters.length === 1 ? filters[0] : { and: filters },
+        payloadPropertyId: ids.Payload,
       }
     })
-    const records = new Map<string, AnySharedRecord>()
+    const records = new Map<string, RecordHeader>()
+    const rows: RecordRow[] = []
     const pages = new Set<string>()
     const cursors = new Set<string>()
     let cursor: string | undefined
@@ -489,29 +552,187 @@ function queryRecords(
         return result
       })
       for (const raw of page.results) {
-        const record = yield* verifiedRecord(raw, library, selected)
-        if (pages.has(record.page_id))
-          return yield* Effect.fail(
-            invalid("Records query repeated a page.", { page_id: record.page_id }),
+        if (
+          metadataOnly &&
+          Object.entries(property(property(raw).properties)).some(
+            ([key, value]) =>
+              key === query.payloadPropertyId || property(value).id === query.payloadPropertyId,
           )
-        pages.add(record.page_id)
-        const previous = records.get(record.record_id)
-        if (previous !== undefined && !sameFact(previous, record))
+        )
+          return yield* Effect.fail(
+            invalid("Records metadata projection unexpectedly included Payload."),
+          )
+        const header = yield* checked(() => decodeHeader(raw, library, selected))
+        const record = metadataOnly ? undefined : yield* verifiedRecord(raw, library, selected)
+        if (pages.has(header.page_id))
+          return yield* Effect.fail(
+            invalid("Records query repeated a page.", { page_id: header.page_id }),
+          )
+        pages.add(header.page_id)
+        const previous = records.get(header.record_id)
+        if (previous !== undefined && !sameHeaderFact(previous, header))
           return yield* Effect.fail(
             fail("SHARED_RECORD_CONFLICT", "The same Record ID names incompatible shared facts.", {
-              record_id: record.record_id,
-              page_ids: [previous.page_id, record.page_id],
+              record_id: header.record_id,
+              page_ids: [previous.page_id, header.page_id],
             }),
           )
-        if (previous === undefined || record.page_id < previous.page_id)
-          records.set(record.record_id, record)
+        if (previous === undefined || header.page_id < previous.page_id)
+          records.set(header.record_id, header)
+        rows.push({ header, ...(record === undefined ? {} : { record }) })
       }
-      if (!page.has_more)
-        return [...records.values()].sort((a, b) =>
-          a.record_id < b.record_id ? -1 : a.record_id > b.record_id ? 1 : 0,
-        )
+      if (!page.has_more) return rows
       cursor = yield* checked(() => identifier(page.next_cursor, "Records cursor", 2048))
     }
+  })
+}
+
+function uniqueRecords(rows: readonly RecordRow[]) {
+  const records = new Map<string, AnySharedRecord>()
+  for (const row of rows) {
+    const record = row.record
+    if (record === undefined) throw invalid("A retained Record payload has not been verified.")
+    const previous = records.get(record.record_id)
+    if (previous !== undefined && !sameFact(previous, record))
+      throw fail("SHARED_RECORD_CONFLICT", "The same Record ID names incompatible shared facts.")
+    if (previous === undefined || record.page_id < previous.page_id)
+      records.set(record.record_id, record)
+  }
+  return [...records.values()].sort((a, b) =>
+    a.record_id < b.record_id ? -1 : a.record_id > b.record_id ? 1 : 0,
+  )
+}
+
+function payloadCacheAddress(context: string, header: RecordHeader) {
+  return Effect.gen(function* () {
+    const metadata = yield* sha256(canonicalSharedJson(header))
+    return {
+      key: `cache/shared-record-payloads/${context}/${metadata}.json`,
+      receipt: {
+        version: 1 as const,
+        context_sha256: context,
+        metadata_sha256: metadata,
+        object_sha256: header.hash,
+      },
+    }
+  })
+}
+
+function queryCachedRecordPayloads(
+  library: SharedLibrary,
+  selected: SkillRecordSelection,
+  cache: SharedRecordPayloadCache["Service"],
+) {
+  return Effect.gen(function* () {
+    const api = yield* Notion
+    const context = yield* sha256(
+      canonicalSharedJson({
+        version: 1,
+        scope: cache.scope,
+        credential_identity: yield* api.credentialIdentity,
+        library_id: library.library_id,
+        records: library.records,
+      }),
+    )
+    // This query omits Payload at the transport boundary. Every page, duplicate,
+    // relation and hash is still checked before any cached bytes are accepted.
+    const metadata = yield* queryRecordRows(library, selected, undefined, true)
+    const cached: RecordRow[] = []
+    for (const row of metadata) {
+      if (row.header.last_edited_time === null) continue
+      const address = yield* payloadCacheAddress(context, row.header)
+      const saved = yield* cache.store.readJson(address.key, PayloadCacheReceiptSchema)
+      if (saved === undefined) continue
+      if (canonicalSharedJson(saved) !== canonicalSharedJson(address.receipt))
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "Retained Record cache has a different identity."),
+        )
+      const bytes = yield* cache.store.readBytes(`objects/${row.header.hash}`).pipe(Effect.result)
+      if (bytes._tag === "Failure") {
+        if (bytes.failure.code === "SNAPSHOT_MISSING") continue
+        return yield* Effect.fail(bytes.failure)
+      }
+      if ((yield* sha256(bytes.success)) !== row.header.hash)
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "A cached Record envelope failed checksum validation."),
+        )
+      const parsed = yield* checked(() =>
+        recordFromEnvelope(
+          row.header,
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes.success),
+        ),
+      )
+      if ((yield* sha256(parsed.canonical)) !== row.header.hash)
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "A cached Record envelope is not canonical."),
+        )
+      cached.push({ header: row.header, record: parsed.record })
+    }
+    if (cached.length === metadata.length) return yield* checked(() => uniqueRecords(cached))
+    const loaded = yield* queryRecordRows(library, selected, "body")
+    const headers = (rows: readonly RecordRow[]) =>
+      canonicalSharedJson(
+        rows
+          .map((row) => row.header)
+          .sort((a, b) => (a.page_id < b.page_id ? -1 : a.page_id > b.page_id ? 1 : 0)),
+      )
+    if (headers(loaded) !== headers(metadata))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_RECORD_CONFLICT",
+          "Retained Record metadata changed while its payload was read.",
+        ),
+      )
+    for (const row of loaded) {
+      if (row.header.last_edited_time === null) continue
+      const record = row.record
+      if (record === undefined)
+        return yield* Effect.fail(invalid("A retained Record payload is unavailable."))
+      const canonical = canonicalSharedJson({
+        version: 1,
+        operation_id: record.operation_id,
+        payload: record.payload,
+      })
+      // Existing content-addressed objects carry the original verified envelope.
+      // The small scoped receipt binds it to a complete remote page observation.
+      yield* cache.store.writeBytes(`objects/${record.hash}`, new TextEncoder().encode(canonical))
+      const address = yield* payloadCacheAddress(context, row.header)
+      yield* cache.store.writeJson(address.key, address.receipt)
+    }
+    return yield* checked(() => uniqueRecords(loaded))
+  })
+}
+
+function queryRecords(
+  library: SharedLibrary,
+  selected: SkillRecordSelection,
+  content?: "body",
+  reusePayload?: boolean,
+): Effect.Effect<readonly SharedRecord[], SkillsError, Notion | Crypto.Crypto>
+function queryRecords(
+  library: SharedLibrary,
+  selected: LibraryProfileSelection,
+  content?: "body",
+  reusePayload?: boolean,
+): Effect.Effect<readonly SharedProfileRecord[], SkillsError, Notion | Crypto.Crypto>
+function queryRecords(
+  library: SharedLibrary,
+  selected: SelectedRecords,
+  content?: "body",
+  reusePayload = true,
+): Effect.Effect<readonly AnySharedRecord[], SkillsError, Notion | Crypto.Crypto> {
+  return Effect.gen(function* () {
+    const cache = yield* Effect.serviceOption(SharedRecordPayloadCache)
+    if (
+      reusePayload &&
+      content === "body" &&
+      selected.libraryProfile !== true &&
+      selected.recordId !== undefined &&
+      Option.isSome(cache)
+    )
+      return yield* queryCachedRecordPayloads(library, selected, cache.value)
+    const rows = yield* queryRecordRows(library, selected, content)
+    return yield* checked(() => uniqueRecords(rows))
   })
 }
 
@@ -598,6 +819,7 @@ function appendRecord(
             library,
             { skillPageId: prepared.skillPageId, recordId: prepared.recordId },
             prepared.kind === "object" || input.payloadContainsBody === true ? "body" : undefined,
+            input.mode === "reconcile",
           )
     const found = existing[0]
     if (found !== undefined) {
