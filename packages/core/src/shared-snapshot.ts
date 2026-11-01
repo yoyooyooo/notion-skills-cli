@@ -23,6 +23,7 @@ import { sharedRecordFromPage } from "./shared-content.ts"
 import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
 import { loadRetainedBody, observeSharedFile } from "./shared-file-observer.ts"
 import { composeSharedFilePlacements, sharedFileSourcePath } from "./shared-file-placement.ts"
+import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
 import {
   planFileValidation,
@@ -919,6 +920,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         return canonicalMain(record.name, record.description, body, file)
       }),
     )
+    // Only the final tree can resolve references: native custom files may repair
+    // or replace provider links, while tombstones and moves may break them.
+    yield* checked(() => assertSharedFileReferences(completeFiles))
     const files: Snapshot["files"][number][] = []
     for (const file of completeFiles) {
       const hash = yield* sha256(file.bytes)

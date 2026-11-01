@@ -33,6 +33,12 @@
 
 隔离初始化中遇到过调用输出丢失而远端创建成功。通过固定父页下的实际成员及公开 inspect 读回确认结果，没有盲目重发创建。这验证的是一次具体恢复，不能推广为 Notion 提供通用幂等事务。
 
+### 2026-11-01：混合来源的引用负例与证据版本
+
+同一既有 mixed fixture 的 N07 `file add --dry-run` 实际返回 `SHARED_REFERENCE_BROKEN`：固定 HTTP 挂载的 README 中有七条未纳入最终目录的相对资源引用。新增生命周期文件自身没有引用；此次停止发生在 mutation 之前，没有产生 file-management operation ID。原停止记录保持为真实 negative，不能通过换来源、改 HTTP 字节或省略全树检查改判为通过。
+
+此前该 mixed fixture 的 N11 来源切换、旧 pin、对象复用和 rollback 已按各自保留的 CLI 版本与请求证据完成；那些执行版本尚未对消费侧最终树执行此引用门槛。本次发现补齐了该漏检，不能把旧 N11 PASS 重新标为新版引用校验通过，也不回写其历史快照、原操作或原验收记录。后续 lifecycle 正例应单独记录已有完整 native 对象的实际运行，不能冒充该 mixed run 的结果。
+
 ### 真实请求观察
 
 以下均为本次指定范围的实测样本，不是所有库的固定常数。没有独立多次样本时不报告 p50/p95。
@@ -232,7 +238,9 @@ flowchart TD
 
 Provider 接收固定选择，返回完整范围、字节身份与获取方法。Git 分支 HEAD 变化不改变已经选择的 commit。HTTP 对象必须以摘要或明确版本约束；需要支持历史恢复的可变字节应先保存在 Notion。机器本地来源必须携带 machine/workspace scope，另一机器不可达时明确失败。
 
-Base 与 Mount 组合后检查路径逃逸、重复路径、大小写冲突和确定性的相对引用。下载不执行脚本。只有完整文件树与摘要验证完成后才能对外发布目录；失败不得留可见半成品。
+Base 与 Mount 组合时检查路径逃逸、重复路径和大小写冲突。确定性的相对 Markdown 链接与图片在整文件 custom、tombstone、逻辑路径移动以及主文 Metadata/Router 索引生成全部完成后，对最终有效树校验。custom 文件可以补齐来源引用，也可以完整替换含断链的上游正文；不能只检查尚未应用覆盖的 provider 子树。任何最终缺失引用返回 `SHARED_REFERENCE_BROKEN`，不发布该 current 快照。普通 TTL 命中和 unpinned offline current 也从已校验 hash 的本地对象执行同一检查，不增加网络请求。下载不执行脚本。
+
+固定来源 inspect/register 的完整 paths 与字节摘要不证明某个 Skill 的最终引用闭合。尤其在上游更换脚本路径后，保留的 custom 主文若仍引用旧路径，current 读取必须失败并列出缺失目标，不能交付已知残缺目录。明确指定的历史 pin 仍按原 manifest 与字节读取；它是历史内容证据，不证明今天的 current 引用完整。
 
 快照清单固定每个文件的准确对象。允许按需获取已固定对象，不能把尚未固定的当前 Notion 正文延迟读入旧 pin。清空缓存后恢复旧 pin 时，必须使用共享历史的精确字节；缺失就失败，不能代入当前正文。
 

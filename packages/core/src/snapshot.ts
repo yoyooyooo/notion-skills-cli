@@ -2,6 +2,7 @@ import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
+import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
 import { hasPendingSharedCreate } from "./shared-create.ts"
 import {
@@ -810,6 +811,27 @@ export function targetSnapshot(
           return yield* Effect.fail(
             fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
           )
+        if (observed.snapshot.record.locator.type === "shared_skill") {
+          // cachedRemoteObservation already verifies every object hash. A prior
+          // unchecked current result is not an exemption from the reference gate;
+          // the explicit historical-pin branch above keeps its original bytes.
+          const store = yield* Store
+          const files = yield* Effect.forEach(observed.snapshot.files, (file) =>
+            store
+              .readBytes(`objects/${file.sha256}`)
+              .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
+          )
+          yield* Effect.try({
+            try: () => assertSharedFileReferences(files),
+            catch: (error) =>
+              error instanceof SkillsError
+                ? error
+                : fail(
+                    "SHARED_REFERENCE_INVALID",
+                    "The complete current tree could not be checked.",
+                  ),
+          })
+        }
         snapshot = {
           ...observed.snapshot,
           ...(observed.shared_body_valid_until === undefined

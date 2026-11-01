@@ -80,6 +80,14 @@ Require a complete main plus supporting-file inventory, correct hashes/lengths a
 
 Record first adoption writes separately from steady-state consumption. The development three-file native example made 27 requests: 9 metadata, 3 current-body, 6 retained-body queries and 9 writes. This is a measured fixture result, not a required constant for every library or later revision.
 
+### Current effective-tree references and historical pins
+
+Validate deterministic local Markdown links/images after fixed Base/Mount files, native whole-file customizations, tombstones, logical moves and canonical main generation form the complete effective tree. A provider-only subtree may be incomplete until custom files supply its targets or replace its body. Current reads must return `SHARED_REFERENCE_BROKEN` for any unresolved final target before publishing a snapshot. Existing broken references also block an unrelated lifecycle addition; do not introduce a delta-only exemption.
+
+Exercise the retained failure shape with synthetic data: an HTTP README with seven missing relative targets, an unrelated plain-text addition, a custom file that supplies a provider target, and a complete custom body that replaces broken provider Markdown. Change an upstream script path while retaining the custom main's old reference and require an explicit current failure. Verify that a previously admitted unchecked current cache fails without network access for both TTL hits and unpinned offline reads. Reading that exact historical pin must still verify and return the original bytes with zero requests.
+
+The 2026-11-01 real mixed-fixture lifecycle dry-run stopped on seven inherited HTTP links before mutation and without a file-management operation ID. Preserve that run as a negative result. Its earlier N11 source-selection, reuse, rollback and historical-byte evidence belongs to the recorded CLI versions before the consumption reference gate; do not relabel those results as a pass under the new gate. Any positive lifecycle run on an already existing complete native fixture is separate evidence.
+
 ## SS04 — Whole-file adoption persists
 
 Use native Notion editing on the owned fixture to make one substantive main-body change, then one supporting-body change. Keep the unchanged files' exact hashes and state heads for comparison. Read the current target with `--refresh --metrics`, inspect shared state, and require the entire changed file to become `custom` with retained exact normalized bytes. Only CRLF-to-LF normalization is permitted in normalization version 1.

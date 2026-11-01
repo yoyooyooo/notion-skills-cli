@@ -1,8 +1,17 @@
 import { describe, expect, test } from "bun:test"
-import { property } from "../src/model.ts"
+import { Effect } from "effect"
+import { decode, property, SnapshotSchema } from "../src/model.ts"
+import { targetSnapshot } from "../src/snapshot.ts"
 import { parseTarget } from "../src/ref.ts"
 import { SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-snapshot.ts"
-import { sharedSnapshotFixture, library, skillPage, rich } from "./shared-snapshot-fixture.ts"
+import {
+  sharedSnapshotFixture,
+  library,
+  skillPage,
+  rich,
+  digest,
+  encode,
+} from "./shared-snapshot-fixture.ts"
 
 const options = { database: library.skills.database_id }
 const stableId = "shared_skill:library-snapshot:stable-skill"
@@ -15,6 +24,59 @@ function latestEntries(fixture: ReturnType<typeof sharedSnapshotFixture>) {
 }
 
 describe("standard targetSnapshot shared-library integration", () => {
+  test("an unchecked old current cache fails locally while its exact historical pin remains readable", async () => {
+    const f = sharedSnapshotFixture()
+    const first = await f.target(parseTarget(skillPage), options)
+    const bytes = encode("[Historical unresolved resource](./missing.md)\n")
+    const hash = digest(bytes)
+    f.objects.set(`objects/${hash}`, bytes)
+    const files = [
+      ...first.files,
+      { path: "mounted/README.md", bytes: bytes.byteLength, sha256: hash },
+    ].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+    // Model a snapshot actually admitted before current-tree reference checking.
+    // All retained identities and object hashes remain internally valid.
+    const version = digest(JSON.stringify(["pre-reference-check", first.version_id, files]))
+    const snapshotId = `s_${digest(JSON.stringify([first.scope, first.record.id, version]))}`
+    const historical = decode(SnapshotSchema, {
+      ...first,
+      files,
+      version_id: version,
+      snapshot_id: snapshotId,
+    })
+    f.json.set(`snapshots/${snapshotId}.json`, historical)
+    for (const entry of latestEntries(f)) entry.snapshot_id = snapshotId
+    const retained = structuredClone(historical)
+    const observations = structuredClone(latestEntries(f))
+    f.clearCalls()
+    for (const policy of [options, { ...options, offline: true }]) {
+      const error = await f.run(Effect.flip(targetSnapshot(parseTarget(stableRef), policy)))
+      expect(error.code).toBe("SHARED_REFERENCE_BROKEN")
+      expect(property(error.details).references).toEqual([
+        {
+          from: "mounted/README.md",
+          target: "mounted/missing.md",
+          href: "./missing.md",
+          line: 1,
+          kind: "link",
+        },
+      ])
+    }
+    expect(f.calls).toHaveLength(0)
+    expect(latestEntries(f)).toEqual(observations)
+    expect(f.json.get(`snapshots/${snapshotId}.json`)).toEqual(retained)
+    const pinned = await f.target(
+      { ...parseTarget(stableRef), snapshot: snapshotId },
+      { offline: true },
+    )
+    expect(pinned.snapshot_id).toBe(snapshotId)
+    expect(pinned.files).toEqual(historical.files)
+    expect(pinned.source).toBe("local_snapshot")
+    expect(pinned.freshness?.policy).toBe("pinned")
+    expect(f.objects.get(`objects/${hash}`)).toEqual(bytes)
+    expect(f.calls).toHaveLength(0)
+  })
+
   test("cold page ID then page ID and stable reference TTL hits use one shared identity and zero requests", async () => {
     const f = sharedSnapshotFixture()
     const first = await f.target(parseTarget(skillPage), options)

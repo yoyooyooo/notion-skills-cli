@@ -5,6 +5,8 @@ import { join } from "node:path"
 import { Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { property, text } from "../src/model.ts"
+import { assertSharedFileReferences } from "../src/shared-file-references.ts"
+import { targetSnapshot } from "../src/snapshot.ts"
 import { bindSharedLocalResource, configureSharedHttpOrigins } from "../src/shared-source-config.ts"
 import { registerSourcePlanBinding } from "../src/shared-source-plan-binding.ts"
 import type { SharedSourcePlan } from "../src/shared-source-plan.ts"
@@ -229,4 +231,165 @@ test("an incomplete fixed provider read prevents the standard consumer from publ
   expect(f.readBodyCount()).toBe(0)
   expect(f.writeCount()).toBe(0)
   expect([...f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
+})
+
+// Matches the real N07 failure shape without retaining any private source bytes.
+const missingHttpTargets = [
+  "skills/docx",
+  "skills/pdf",
+  "skills/pptx",
+  "skills/xlsx",
+  "skills",
+  "spec",
+  "template",
+]
+const inheritedHttpReadme = missingHttpTargets.map((path) => `[Resource](./${path})`).join("\n")
+
+async function referenceCompositionFixture() {
+  const requests: string[] = []
+  const objects = new Map<string, Uint8Array>()
+  const client = HttpClient.make((request, url) =>
+    Effect.sync(() => {
+      requests.push(url.toString())
+      const bytes = objects.get(url.toString())
+      return HttpClientResponse.fromWeb(
+        request,
+        bytes === undefined
+          ? new Response(null, { status: 404 })
+          : new Response(bytes.slice(), {
+              headers: { "content-length": String(bytes.byteLength) },
+            }),
+      )
+    }),
+  )
+  const f = sharedSnapshotFixture({ httpClient: client })
+  await f.run(configureSharedHttpOrigins([origin]))
+  await f.target({ selector: skillPage })
+  const select = async (
+    files: readonly { readonly path: string; readonly bytes: Uint8Array }[],
+    mountPath: string | null,
+  ) => {
+    const resource = {
+      kind: "http" as const,
+      manifest: {
+        version: 1 as const,
+        files: files.map((file) => ({
+          path: file.path,
+          sha256: digest(file.bytes),
+          bytes: file.bytes.byteLength,
+        })),
+      },
+      locations: files.map((file) => ({
+        sha256: digest(file.bytes),
+        url: `${origin}/fixed/${digest(file.bytes)}`,
+      })),
+    }
+    for (const file of files) objects.set(`${origin}/fixed/${digest(file.bytes)}`, file.bytes)
+    const plan: SharedSourcePlan = {
+      version: 1,
+      kind: "composition",
+      base: mountPath === null ? resource : null,
+      mounts: mountPath === null ? [] : [{ mount_path: mountPath, resource }],
+    }
+    const registered = await f.run(
+      registerSourcePlanBinding(library, { skillPageId: skillPage, mode: "create", plan }),
+    )
+    property(f.main.properties).source = rich("source", registered.binding.source_plan_id)
+    f.main.last_edited_time = new Date(
+      Date.parse(String(f.main.last_edited_time)) + 1,
+    ).toISOString()
+    return registered.binding.source_plan_id
+  }
+  return { f, requests, select }
+}
+
+test("seven inherited HTTP Markdown targets prevent publishing a current complete snapshot", async () => {
+  const { f, requests, select } = await referenceCompositionFixture()
+  const before = [...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))
+  await select([{ path: "README.md", bytes: encode(inheritedHttpReadme) }], "acceptance/http")
+  f.clearCalls()
+  const error = await f.run(Effect.flip(targetSnapshot({ selector: skillPage }, { refresh: true })))
+  expect(error.code).toBe("SHARED_REFERENCE_BROKEN")
+  expect(property(error.details).references).toEqual(
+    missingHttpTargets.map((path, index) => ({
+      from: "acceptance/http/README.md",
+      target: `acceptance/http/${path}`,
+      href: `./${path}`,
+      line: index + 1,
+      kind: "link",
+    })),
+  )
+  expect(requests).toHaveLength(1)
+  expect(f.writeCount()).toBe(0)
+  expect([...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))).toEqual(before)
+  // Lifecycle validation remains strict even when the proposed addition has no references.
+  expect(() =>
+    assertSharedFileReferences([
+      { path: "SKILL.md", bytes: encode("Main") },
+      { path: "acceptance/http/README.md", bytes: encode(inheritedHttpReadme) },
+      { path: "references/lifecycle.md", bytes: encode("Independent owned marker") },
+    ]),
+  ).toThrow("unresolved local Markdown")
+})
+
+test("a native custom resource may complete a provider reference in the final effective tree", async () => {
+  const { f, select } = await referenceCompositionFixture()
+  const readme = encode("[Native guide](../../references/1.md)")
+  expect(() =>
+    assertSharedFileReferences([{ path: "acceptance/http/README.md", bytes: readme }]),
+  ).toThrow()
+  await select([{ path: "README.md", bytes: readme }], "acceptance/http")
+  const snapshot = await f.target({ selector: skillPage }, { refresh: true })
+  expect(snapshot.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "acceptance/http/README.md",
+    "references/1.md",
+    "references/2.md",
+  ])
+  const retained = snapshot.files.find((file) => file.path === "references/1.md")
+  expect(retained?.sha256).toBe(digest("Reference one\n"))
+})
+
+test("a whole-file native custom body may replace a provider body containing broken links", async () => {
+  const { f, select } = await referenceCompositionFixture()
+  const source = { path: "SKILL.md", bytes: encode("[Upstream missing](absent.md)") }
+  expect(() => assertSharedFileReferences([source])).toThrow()
+  await select([source], null)
+  const snapshot = await f.target({ selector: skillPage }, { refresh: true })
+  const main = snapshot.files.find((file) => file.path === "SKILL.md")
+  if (main === undefined) throw new Error("Missing final custom main")
+  const bytes = f.objects.get(`objects/${main.sha256}`)
+  if (bytes === undefined) throw new Error("Missing verified custom bytes")
+  expect(new TextDecoder().decode(bytes)).toContain("# Native main")
+  expect(new TextDecoder().decode(bytes)).not.toContain("absent.md")
+})
+
+test("a fixed upstream path change cannot publish a custom main with a now-missing script reference", async () => {
+  const { f, select } = await referenceCompositionFixture()
+  await select([{ path: "scripts/old.ts", bytes: encode("old script bytes") }], null)
+  f.bodies.set(skillPage, "[Required script](scripts/old.ts)\n")
+  f.main.last_edited_time = new Date(Date.parse(String(f.main.last_edited_time)) + 1).toISOString()
+  const before = await f.target({ selector: skillPage }, { refresh: true })
+  const snapshots = [...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))
+  await select([{ path: "scripts/new.ts", bytes: encode("new script bytes") }], null)
+  f.clearCalls()
+  const error = await f.run(Effect.flip(targetSnapshot({ selector: skillPage }, { refresh: true })))
+  expect(error.code).toBe("SHARED_REFERENCE_BROKEN")
+  expect(property(error.details).references).toEqual([
+    expect.objectContaining({
+      from: "SKILL.md",
+      target: "scripts/old.ts",
+      href: "scripts/old.ts",
+      kind: "link",
+    }),
+  ])
+  expect(f.writeCount()).toBe(0)
+  expect([...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))).toEqual(snapshots)
+  f.clearCalls()
+  const pin = await f.target(
+    { selector: skillPage, snapshot: before.snapshot_id },
+    { offline: true },
+  )
+  expect(pin.files).toEqual(before.files)
+  expect(f.calls).toHaveLength(0)
 })
