@@ -160,6 +160,12 @@ describe("readonly shared migration planning", () => {
     expect(actual.apply_allowed).toBe(false)
     expect(actual.production_authorization).toBe("not_requested_by_this_planner")
     expect(actual.blockers).toEqual([])
+    expect(actual.blocker_summary).toEqual({
+      total: 0,
+      affected_subjects: 0,
+      by_code: [],
+      by_work: [],
+    })
     expect(actual.plan_id).toMatch(/^migration-[a-f0-9]{64}$/u)
     expect(first(actual.records).approved).toBe(true)
     expect(first(first(actual.records).files).state).toBe("custom")
@@ -208,17 +214,17 @@ describe("readonly shared migration planning", () => {
           method: "explicit_database",
           exhaustive: false,
           queried_data_sources: [
-            "b817f726-0d83-47dd-aec6-868d72fbdd09",
-            "f68fc4c1-507e-4a64-be11-550748f4666a",
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
           ],
           failed_sources: [
             {
-              id: "00000000-0000-4000-8000-000000000216",
+              id: "00000000-0000-4000-8000-000000000003",
               code: "INVALID_UPSTREAM",
-              database_id: "845f8807-4a36-431b-ae9b-5bea2be1ff77",
-              data_source_id: "f68fc4c1-507e-4a64-be11-550748f4666a",
-              alias: "845f8807-4a36-431b-ae9b-5bea2be1ff77",
-              title: "Guizang PPT",
+              database_id: "00000000-0000-4000-8000-000000000004",
+              data_source_id: "00000000-0000-4000-8000-000000000002",
+              alias: "fixture-upstream",
+              title: "Fixture source with unported options",
             },
           ],
           search_index_limited: false,
@@ -232,6 +238,10 @@ describe("readonly shared migration planning", () => {
       new Set(actual.records.flatMap((record) => record.files.map((file) => file.file_id))).size,
     ).toBe(300)
     expect(actual.data_ready).toBe(false)
+    expect(actual.blocker_summary.total).toBe(actual.blockers.length)
+    expect(
+      actual.blocker_summary.by_code.find((group) => group.code === "CATALOG_INCOMPLETE"),
+    ).toEqual({ code: "CATALOG_INCOMPLETE", count: 1, affected_subjects: 1, work: "observe" })
     expect(codes(actual)).toContain("CATALOG_INCOMPLETE")
     expect(actual.evidence.catalog.coverage).toEqual(observed.catalog.coverage)
   })

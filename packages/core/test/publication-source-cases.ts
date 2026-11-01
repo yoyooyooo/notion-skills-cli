@@ -253,6 +253,8 @@ export function registerPublicationSourceTests(
       })
       expect(f.writes.length).toBe(before)
       const result = await f.run(publishBuiltin(builtin, { target: page }))
+      if (typeof result.operation_id !== "string" || result.operation_id.length === 0)
+        throw new Error("Expected builtin publication to retain its publication operation ID")
       expect(result).toMatchObject({
         action: "update",
         reused: false,

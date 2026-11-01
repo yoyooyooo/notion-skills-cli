@@ -67,7 +67,7 @@ const plan = defineCommand(
 ).pipe(
   Command.withShortDescription("Plan a migration from an exact frozen evidence file"),
   Command.withDescription(
-    "Read one complete frozen JSON input and emit its deterministic migration plan, including original evidence and every item-level mapping or blocker. reviewable means the supplied evidence has no unresolved blockers; blocked lists what remains incomplete. Both return apply_allowed:false: neither executes or authorizes production migration. Approved scope must already be explicitly frozen in the input. This command does not discover Notion content, contact source providers, change configuration or write migration state. Output is complete and is not truncated.",
+    "Read one complete frozen JSON input and emit its deterministic migration plan, including original evidence and every item-level mapping or blocker. blocker_summary groups the unchanged blockers by exact code and required work: read-only observation, scope, legacy interpretation, provenance review, original-operation reconciliation or inventory correction. reviewable means the supplied evidence has no unresolved blockers; blocked lists what remains incomplete. Both return apply_allowed:false: neither executes or authorizes production migration. Approved scope must already be explicitly frozen in the input. This command does not discover Notion content, contact source providers, change configuration or write migration state. Output is complete and is not truncated.",
   ),
   Command.withExamples([
     {

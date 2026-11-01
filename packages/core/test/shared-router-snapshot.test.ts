@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Crypto, Effect } from "effect"
+import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
@@ -47,7 +47,11 @@ function routerFixture(registered = true) {
   }
   fields.description = rich("description", "First member description")
   const run = <A, E>(
-    effect: Effect.Effect<A, E, Notion | Store | Crypto.Crypto | HttpClient.HttpClient>,
+    effect: Effect.Effect<
+      A,
+      E,
+      Notion | Store | Crypto.Crypto | HttpClient.HttpClient | FileSystem.FileSystem | Path.Path
+    >,
   ) =>
     f.run(
       Effect.gen(function* () {

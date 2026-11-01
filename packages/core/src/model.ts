@@ -1,3 +1,4 @@
+import { SourceResourceConfigurationSchema } from "./shared-source-config-model.ts"
 import { Data, Effect, Schema } from "effect"
 import { SourceProjectionSchema } from "./upstream-member-model.ts"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
@@ -268,6 +269,7 @@ export const SharedProfileBindingSchema = Schema.Struct({
 })
 export type SharedProfileBinding = typeof SharedProfileBindingSchema.Type
 export const ConfigSchema = Schema.Struct({
+  source_resources: Schema.optional(SourceResourceConfigurationSchema),
   sources: Schema.optional(Schema.Array(SourceSchema)),
   shared_profile: Schema.optional(SharedProfileBindingSchema),
   default_database: Schema.optional(Schema.String),

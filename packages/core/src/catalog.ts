@@ -362,12 +362,16 @@ export function discoverDatabases(options: { readonly allowShared?: boolean } = 
   })
 }
 
-export function creationSource(database?: string) {
+export function creationSource(
+  database?: string,
+  options: { readonly allowShared?: boolean } = {},
+) {
   return Effect.gen(function* () {
-    if (database !== undefined) return yield* explicitSource(database)
+    if (database !== undefined) return yield* explicitSource(database, undefined, options)
     const config = yield* configuration
-    if (config.default_database !== undefined) return yield* explicitSource(config.default_database)
-    const discovered = yield* discoverDatabases()
+    if (config.default_database !== undefined)
+      return yield* explicitSource(config.default_database, undefined, options)
+    const discovered = yield* discoverDatabases(options)
     if (discovered.failures.length)
       return yield* Effect.fail(
         fail(
@@ -384,14 +388,17 @@ export function creationSource(database?: string) {
           { candidates: discovered.databases },
         ),
       )
-    return yield* explicitSource(discovered.databases[0]!.database_id)
+    return yield* explicitSource(discovered.databases[0]!.database_id, undefined, options)
   })
 }
 
 export function setDefaultDatabase(database?: string) {
   return Effect.gen(function* () {
     const config = yield* configuration
-    const source = database === undefined ? undefined : yield* explicitSource(database)
+    const source =
+      database === undefined
+        ? undefined
+        : yield* explicitSource(database, undefined, { allowShared: true })
     const { default_database: _previous, ...rest } = config
     const next = { ...rest, ...(source ? { default_database: source.database_id } : {}) }
     const store = yield* Store
@@ -854,7 +861,7 @@ export function addSource(alias: string, input: string) {
   return Effect.gen(function* () {
     if (!alias.trim())
       return yield* Effect.fail(fail("INVALID_SOURCE", "Source alias must not be empty."))
-    const source = { ...(yield* explicitSource(input)), alias }
+    const source = { ...(yield* explicitSource(input, undefined, { allowShared: true })), alias }
     const config = yield* configuration
     const configured = config.sources ?? []
     const sameAlias = configured.find((s) => s.alias === alias)

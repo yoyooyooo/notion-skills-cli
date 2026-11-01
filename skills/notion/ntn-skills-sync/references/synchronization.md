@@ -4,14 +4,57 @@
 
 | Relationship | Start once | Continue |
 | --- | --- | --- |
-| Git source to Notion | `sync upstream connect SOURCE --database LIBRARY` | `sync upstream run --target SUBSCRIPTION_ID` |
-| Existing Notion item to one local directory | `sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL` | `sync local run LABEL` |
-| All authorized active relationships | Register each relationship | The relevant `run --all` |
+| Existing legacy Git subscription | `sync upstream connect SOURCE --database LIBRARY` | `sync upstream run --target SUBSCRIPTION_ID` |
+| Existing legacy local relationship | `sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL` | `sync local run LABEL` |
+| All authorized active legacy relationships | Register each relationship | The relevant `run --all` |
 | One-time import/export/edit | Use `ntn-skills-maintain` | No recurring binding is established |
 
 Use installed help/schema for flags and actual output fields. Do not manufacture internal subscription, plan, proof or receipt JSON as part of a normal connection. Existing low-level add/update and plan/apply commands remain useful for explicit advanced configuration or saved-plan review.
 
-## Upstream connection and run
+## Shared fixed sources
+
+A shared library selects immutable source identities while native Notion properties and whole-file customizations remain authoritative. Use the exact page and Skills database entry:
+
+```bash
+ntn-skills ctl library source inspect https://github.com/OWNER/REPOSITORY --commit FULL_40_HEX_COMMIT --root skills/example
+ntn-skills ctl library source register SKILL_PAGE_ID --entry LIBRARY_ENTRY --url https://github.com/OWNER/REPOSITORY --commit FULL_40_HEX_COMMIT --root skills/example
+ntn-skills ctl library source select prepare SKILL_PAGE_ID --entry LIBRARY_ENTRY --source SOURCE_ID --output ./source-selection.json
+ntn-skills ctl library source select apply ./source-selection.json --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library source select apply ./source-selection.json --entry LIBRARY_ENTRY
+```
+
+Register freezes the candidate; select changes only the native Source property. The CLI generates the plan. Keep its exact content and IDs for application or reconciliation. Use `--native` instead of `--source` to clear Source intentionally. Register can also consume the complete `source inspect` JSON or its bare manifest with `--manifest FILE`, mutually exclusive with URL/commit/root; this form makes no provider request. A source change never selects a newer revision implicitly or discards customized Notion bodies. Content maintenance owns an explicit `ctl library file restore-follow`.
+
+### HTTP/local composition and resource bindings
+
+`ctl library source composition inspect PLAN_JSON --verify` and `composition register SKILL_PAGE_ID --entry LIBRARY_ENTRY --manifest PLAN_JSON` accept an existing fixed composition plan. There is no ordinary interactive builder. Files must have complete fixed identities; unresolved paths, collisions or access failures remain errors. `source resource show` reports redacted machine configuration. Use `source resource --help` for local workspace bindings, exact HTTP origin policy and machine-only retrieval locations. These bindings grant reads, not a two-way sync relationship or authorization to publish local bytes. Machine paths, credentials and signed retrieval URLs never belong in shared records or portable manifests. Native restore-follow requires separate `--allow-local-archive` authorization for selected local bytes.
+
+Archiving an exact complete local snapshot uses `ctl library snapshot save SNAPSHOT_ID --entry LIBRARY_ENTRY`. A new archive containing local-restricted bytes requires its own `--allow-local-archive`; that flag authorizes only this archive and preserves durable content restrictions. Use the original snapshot with `--reconcile` after interruption. It does not authorize a different snapshot or replay an unknown write. Restore-follow's same-named flag covers only its selected native body.
+
+### Shared Profile defaults
+
+```bash
+ntn-skills ctl library profile list --entry LIBRARY_ENTRY
+ntn-skills ctl library profile show PROFILE_ID --entry LIBRARY_ENTRY
+ntn-skills list --profile PROFILE_ID --database LIBRARY_ENTRY
+ntn-skills ctl library profile bind PROFILE_ID --entry LIBRARY_ENTRY
+ntn-skills list --default-view
+```
+
+Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_ENTRY --name NAME --enabled true|false --base REVISION [--default-view VIEW_ID]`. Use `--base new` only for a new Profile; otherwise copy the exact current revision from show. Omitting the optional View removes an old default. `profile unbind` removes only the machine binding. Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence; absent a configured default, use the first View in API order. Bare list remains full discovery. Rules do not grant access or activate bodies.
+
+### Shared recovery
+
+| Original operation | Read-only reconciliation |
+| --- | --- |
+| Git source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
+| Composition registration | Repeat its exact `composition register` input with `--reconcile` |
+| Source selection | `ctl library source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` |
+| Profile revision | Repeat the exact complete `profile set` intent with `--reconcile` |
+
+Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. Do not send these shared IDs to legacy `operation resume`. A verified recovery proves its reported status, not necessarily completion of the intended change.
+
+## Existing legacy upstream connection and run
 
 The connection chooses a source, target database and member discovery scope. Optional ref/root/include/exclude values belong to the selected source. A repeated structural connection reuses its existing subscription; a display-name match alone does not establish identity. If configuration needs to change, inspect and update the exact subscription rather than creating another row.
 
@@ -23,7 +66,7 @@ Tracked content changes belong to the upstream source. Ordinary local edits to b
 
 Notion's Upstream row reports Sync Status, Last Sync Attempt, Last Synced and Sync Summary. Only successful completion advances Last Synced. CLI member results distinguish created/updated/unchanged/retained/forked/restored/conflicted/unresolved outcomes. A status-write failure can coexist with successful member effects; inspect the returned original operation before deciding what remains.
 
-## Local initialization and direction
+## Existing legacy local initialization and direction
 
 A local connection follows an existing current page ID and a logical local path. It does not create the remote item. Preserve intended symlinks. A missing ordinary leaf under an accessible parent can be created from Notion; a dangling link or a missing established root is a path error.
 
@@ -38,7 +81,7 @@ Use one of these, not both. If the task has not chosen between distinct work, sh
 
 A tracked upstream item can be pulled locally, but local changes cannot be pushed back over its upstream ownership. Edit the source or deliberately fork first. An ordinary import/edit outside sync does not advance the local common baseline.
 
-## Deliberate plan review
+## Legacy saved-plan review
 
 When a task needs a frozen preview before mutation:
 
@@ -51,7 +94,7 @@ Review applicability, conflicts, target page/path, direction and file additions/
 
 For multiple copies of one page, inconsistent local candidates conflict before writes. Execution across several pages/directories is not globally atomic. Some bindings can finish before a later failure; report their actual results. Plans are local execution artifacts, not instructions to copy to another machine.
 
-## Recovery and completion
+## Legacy recovery and completion
 
 Use ordinary run first for an authorized retry. It checks original unfinished work before creating new plans. Retain the returned operation ID if the result remains partial or unknown:
 
@@ -75,7 +118,7 @@ Use the next action reported for that operation. Reconcile reads actual effects;
 
 Historical migration and repair work belongs to the separate operator tool for an explicitly diagnosed case. Do not turn its internal proof commands into a daily run prerequisite. Preserve operation records, baselines and original configuration while a result is unresolved.
 
-## Observation and stopping
+## Legacy observation and stopping
 
 Upstream `status` is an offline scoped view; `check` reads current subscription/member metadata. Metadata is not a fresh body read. Unknown means unobserved, not missing. Automatic subscription Routers require at least two active published Skills; one member remains independently usable without a Router. Read a returned Router/member ref only when the current task needs its instructions.
 

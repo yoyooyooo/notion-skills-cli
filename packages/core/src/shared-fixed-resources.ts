@@ -753,3 +753,23 @@ export function materializeFixedLocalFiles(
     )
   })
 }
+
+export function validateHttpResourceOrigins(origins: readonly string[]): readonly string[] {
+  const result = origins.map((origin) => publicAddress(origin, true).origin)
+  if (new Set(result).size !== result.length)
+    throw fail(
+      "INVALID_HTTP_RESOURCE_URL",
+      "Each explicitly authorized HTTP origin must be listed once.",
+    )
+  return result.sort()
+}
+
+export function validateFixedHttpLocations(
+  input: readonly FixedHttpLocation[],
+  manifest: FixedFileManifest,
+  options: HttpResourceOptions = {},
+): readonly FixedHttpLocation[] {
+  return [...httpLocations(input, validateFixedFileManifest(manifest), options)]
+    .map(([sha256, url]) => ({ sha256, url }))
+    .sort((a, b) => (a.sha256 < b.sha256 ? -1 : a.sha256 > b.sha256 ? 1 : 0))
+}

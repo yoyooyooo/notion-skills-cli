@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
+import { mkdtempSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { Crypto, Effect } from "effect"
+import { Crypto, Effect, FileSystem, Path } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { HttpClient } from "effect/http"
 import { fail, property, SkillsError, text, type Snapshot } from "../src/model.ts"
@@ -11,6 +11,7 @@ import { Store } from "../src/store.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
 import { openSkill } from "../src/snapshot.ts"
 import { writeSkill } from "../src/mutation.ts"
+import { trashPath } from "../src/local-locks.ts"
 import {
   sharedAuthoringMarkdown,
   verifySharedAuthoredSnapshot,
@@ -42,7 +43,11 @@ function failure<A>(
 /** Extend the metadata fixture with the one actual whole-body mutation boundary. */
 function withBodyWriter<A, E>(
   f: ReturnType<typeof sharedSnapshotFixture>,
-  action: Effect.Effect<A, E, Notion | Store | Crypto.Crypto | HttpClient.HttpClient>,
+  action: Effect.Effect<
+    A,
+    E,
+    Notion | Store | Crypto.Crypto | HttpClient.HttpClient | FileSystem.FileSystem | Path.Path
+  >,
   options: { readonly unknownCompletion?: boolean } = {},
 ) {
   return Effect.gen(function* () {
@@ -148,7 +153,7 @@ describe("shared authoring through the standard fresh snapshot", () => {
         false,
       )
     } finally {
-      rmSync(directory, { recursive: true, force: true })
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
     }
   })
 
@@ -177,7 +182,11 @@ describe("shared authoring through the standard fresh snapshot", () => {
       }),
     )
     expect(result.status).toBe("planned")
-    expect(result.candidate_sha256).toBe(digest("# Proposed\n"))
+    expect(result.candidate_sha256).toBe(digest("# Proposed"))
+    expect(result.input_projection).toMatchObject({
+      removed_terminal_lfs: 1,
+      input_sha256: digest(mainInput("# Proposed\n")),
+    })
     expect(f.bodies.get(skillPage)).toBe("# Native main\n")
     expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
@@ -195,7 +204,16 @@ describe("shared authoring through the standard fresh snapshot", () => {
       ),
     )
     expect(result.status).toBe("applied")
-    expect(f.bodies.get(skillPage)).toBe("# Agent edit\n")
+    expect(f.bodies.get(skillPage)).toBe("# Agent edit")
+    const retainedPlan = [...f.records.values()]
+      .map((row) =>
+        property(
+          property(JSON.parse(text(property(property(row.properties).payload).rich_text))).payload,
+        ),
+      )
+      .find((value) => value.kind === "body_write")
+    expect(property(retainedPlan?.input_projection).input_markdown).toBe("# Agent edit\n")
+    expect(retainedPlan?.authored_input_sha256).toBe(digest(mainInput("# Agent edit\n")))
     expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(1)
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
     expect([...f.json.values()].some((value) => property(value).invalidated === true)).toBe(true)
@@ -205,12 +223,39 @@ describe("shared authoring through the standard fresh snapshot", () => {
     expect(f.json.get(`snapshots/${snapshot.snapshot_id}.json`)).toEqual(saved)
   })
 
-  test("supporting UTF-8 files are complete raw bodies on their existing Files page", async () => {
+  test("unverified supporting frontmatter retains the complete input and fails before any write", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await f.target(parseTarget(skillPage), options)
     const row = f.files[0]
     if (row === undefined) throw new Error("Missing fixture file")
     const value = "---\ncustom: supporting-file-frontmatter\n---\n\nexact support text\n"
+    const bytes = encode(value)
+    const originalBody = f.bodies.get(row.id)
+    const originalRecords = structuredClone([...f.records.entries()])
+    expect(sharedAuthoringMarkdown(snapshot, "references/1.md", bytes)).toBe(value)
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        withBodyWriter(f, writeSharedSkillFile({ snapshot, path: "references/1.md", bytes })).pipe(
+          Effect.result,
+        ),
+      ),
+    )
+    expect(result.code).toBe("SHARED_MARKDOWN_PROJECTION_UNSUPPORTED")
+    expect(bytes).toEqual(encode(value))
+    expect(f.bodies.get(row.id)).toBe(originalBody)
+    expect(f.bodies.get(skillPage)).toBe("# Native main\n")
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
+    expect([...f.records.entries()]).toEqual(originalRecords)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+  })
+
+  test("supported UTF-8 resource bodies replace the whole existing Files page", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await f.target(parseTarget(skillPage), options)
+    const row = f.files[0]
+    if (row === undefined) throw new Error("Missing fixture file")
+    const value = "Exact support text\n\nA second paragraph.\n"
     const result = await f.run(
       withBodyWriter(
         f,
@@ -218,7 +263,7 @@ describe("shared authoring through the standard fresh snapshot", () => {
       ),
     )
     expect(result.status).toBe("applied")
-    expect(f.bodies.get(row.id)).toBe(value)
+    expect(f.bodies.get(row.id)).toBe("Exact support text\n\nA second paragraph.")
     expect(f.bodies.get(skillPage)).toBe("# Native main\n")
   })
 
@@ -292,7 +337,7 @@ describe("shared authoring through the standard fresh snapshot", () => {
     const current = await f.target(parseTarget(skillPage), options)
     expect(current.snapshot_id).not.toBe(snapshot.snapshot_id)
     expect(current.source).toBe("notion")
-    expect(f.bodies.get(skillPage)).toBe("# Applied before disconnect\n")
+    expect(f.bodies.get(skillPage)).toBe("# Applied before disconnect")
     expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
   })
 

@@ -22,7 +22,7 @@ import {
   entrypointFor,
   validateDescription,
 } from "./model.ts"
-import type { Snapshot } from "./model.ts"
+import type { Snapshot, Source } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { fileRef, normalizePath, pageId, parseTarget } from "./ref.ts"
 import { openSkill, targetSnapshot, snapshotInfo } from "./snapshot.ts"
@@ -63,6 +63,13 @@ import {
   resumeMarkdownFilesPublication,
 } from "./markdown-files-publication.ts"
 import { writeSharedSkillFile, verifySharedAuthoredSnapshot } from "./shared-authoring.ts"
+import { createSharedNative } from "./shared-create.ts"
+import { verifySharedCreatedSnapshot } from "./shared-create-verification.ts"
+import {
+  applySharedSkillChanges,
+  verifySharedAppliedSnapshot,
+  type SharedApplyInput,
+} from "./shared-skill-apply-authoring.ts"
 
 const DESCRIPTION = "notion%3A%2F%2Fskills%2Fdescription_property"
 const FILES = "notion%3A%2F%2Fskills%2Ffiles_property"
@@ -471,7 +478,106 @@ export interface ApplyOptions extends Omit<WriteOptions, "input" | "path"> {
   readonly members?: readonly string[]
 }
 
-/** Merge one pinned edit, then use the existing complete replacement publication. */
+interface MutationOutcomeFields {
+  readonly operation: "create" | "replace" | "write" | "apply"
+  readonly action?: string
+  readonly snapshot_id?: string
+  readonly previous_version_id?: string
+  readonly reused?: boolean
+  readonly operation_id?: string
+}
+
+/** A preview may have no snapshot, and shared results have no legacy Publication ID. */
+function mutationOutcome<A extends MutationOutcomeFields>(value: A): A & MutationOutcomeFields {
+  return value
+}
+
+function sharedApplyResult(
+  current: Snapshot,
+  input: SharedApplyInput,
+  operation: "apply" | "replace" | "write",
+) {
+  return Effect.gen(function* () {
+    const locator = current.record.locator
+    if (locator.type !== "shared_skill")
+      return yield* Effect.fail(
+        fail("CONTENT_NOT_MUTABLE", "This apply requires an exact shared Skill."),
+      )
+    const result = yield* applySharedSkillChanges(current, input)
+    const identity = "operation_id" in result ? { apply_operation_id: result.operation_id } : {}
+    const projection =
+      "plan" in result && result.plan !== undefined && result.kind === "skill_apply"
+        ? {
+            input_projections: result.plan.bodies.map((body) => ({
+              path: body.path,
+              input_sha256: body.authored_input_sha256,
+              candidate_sha256: body.candidate.content.sha256,
+              removed_terminal_lfs: body.input_projection?.removed_terminal_lfs,
+            })),
+          }
+        : {}
+    if (result.status === "planned" || result.status === "unchanged")
+      return mutationOutcome({
+        ...snapshotInfo(current),
+        operation,
+        status: result.status,
+        changes: result.changes,
+        ...identity,
+        ...projection,
+        protection: result.protection,
+        ...(result.status === "planned"
+          ? { dry_run: true as const }
+          : { unchanged: true as const }),
+        verified: true as const,
+      })
+    const after = yield* openSkill(locator.page_id, {
+      database: locator.database_id,
+      refresh: true,
+    })
+    yield* Effect.try({
+      try: () => {
+        if (after.record.id !== current.record.id)
+          throw fail(
+            "WRITE_VERIFICATION_FAILED",
+            "The original apply target identity changed before the current read.",
+          )
+        if (result.kind === "skill_apply") verifySharedAppliedSnapshot(after, result.plan)
+        else if (result.plan.action === "add")
+          verifySharedAuthoredSnapshot(after, {
+            file_id: result.plan.file_id,
+            candidate_sha256: result.plan.content.retained.sha256,
+            operation_id: result.plan.operation_id,
+          })
+        else if (after.files.some((file) => file.path === result.plan.path))
+          throw fail(
+            "WRITE_VERIFICATION_FAILED",
+            "The deleted logical path is still present in the current complete snapshot.",
+          )
+      },
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail(
+              "WRITE_VERIFICATION_FAILED",
+              "The current shared apply result could not be verified.",
+            ),
+    })
+    return mutationOutcome({
+      ...snapshotInfo(after),
+      operation,
+      status: "applied" as const,
+      changes: result.changes,
+      ...identity,
+      ...projection,
+      protection: result.protection,
+      verified: true as const,
+      previous_version_id: current.version_id,
+      expected_version_id: current.version_id,
+    })
+  })
+}
+
+/** A shared pin selects native operations; legacy targets retain their publication path. */
 export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
   return Effect.gen(function* () {
     yield* rejectPublicationSourceOverride(options as PublicationOptions)
@@ -505,7 +611,9 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
       return yield* Effect.fail(
         fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another authentication scope."),
       )
-    const id = notionPage(baseline.record).locator.page_id
+    const shared =
+      baseline.record.locator.type === "shared_skill" ? baseline.record.locator : undefined
+    const id = shared?.page_id ?? notionPage(baseline.record).locator.page_id
     if (target.path && target.path !== baseline.entrypoint)
       return yield* Effect.fail(
         fail(
@@ -513,7 +621,11 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
           "Apply targets the complete Skill; use its main ref or snapshot ID.",
         ),
       )
-    const current = yield* openSkill(id, { database: options.database, refresh: true })
+    const current = yield* openSkill(id, {
+      database: options.database ?? shared?.database_id,
+      refresh: true,
+      ...(shared === undefined ? {} : { sharedReadOnly: true }),
+    })
     if (
       current.version_id !== baseline.version_id ||
       (options.defaultContext !== undefined &&
@@ -526,6 +638,53 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
           actual_version: current.version_id,
         }),
       )
+    if (shared !== undefined) {
+      if (
+        current.record.locator.type !== "shared_skill" ||
+        current.record.id !== baseline.record.id ||
+        current.record.locator.database_id !== shared.database_id ||
+        current.record.locator.library_id !== shared.library_id
+      )
+        return yield* Effect.fail(
+          fail("WRITE_CONFLICT", "The exact shared apply target changed after the pinned read."),
+        )
+      const loaded = options.input === undefined ? undefined : yield* loadImport(options.input)
+      const files = yield* Effect.try({
+        try: () => {
+          const packaged = loaded?.files.some((file) => file.path === MANIFEST)
+            ? readPortable(loaded.files)
+            : undefined
+          if (
+            packaged &&
+            (packaged.kind !== current.record.kind ||
+              packaged.main !== current.entrypoint ||
+              packaged.projection !== undefined)
+          )
+            throw fail(
+              "INVALID_CONTENT_SOURCE",
+              "A shared apply package must preserve the canonical kind/main path and cannot supply hidden legacy projection authority.",
+            )
+          return packaged?.files ?? loaded?.files ?? []
+        },
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("INVALID_INPUT", "The shared apply input could not be decoded."),
+      })
+      return yield* sharedApplyResult(
+        current,
+        {
+          files,
+          remove: options.remove,
+          name: options.name,
+          description: options.description,
+          defaultContext: options.defaultContext,
+          members: options.members,
+          dryRun: options.dryRun,
+        },
+        "apply",
+      )
+    }
     const portable = yield* snapshotAuthoredPortable(current)
     const loaded = options.input === undefined ? undefined : yield* loadImport(options.input)
     const changes = yield* Effect.try({
@@ -806,6 +965,125 @@ function saveDocument(
       try: () => authoredPortable(portable),
       catch: (error) => error as SkillsError,
     })
+    if (baseline?.record.locator.type === "shared_skill") {
+      const locator = baseline.record.locator
+      if (baseline.scope !== (yield* authScope))
+        return yield* Effect.fail(
+          fail(
+            "SNAPSHOT_CONFLICT",
+            "The shared replacement baseline belongs to another authentication scope.",
+          ),
+        )
+      if (portable.kind !== baseline.record.kind || portable.projection !== undefined)
+        return yield* Effect.fail(
+          fail(
+            "INVALID_CONTENT_SOURCE",
+            "Shared replacement preserves the content kind and requires explicit native input without legacy projection authority.",
+          ),
+        )
+      const current = yield* openSkill(locator.page_id, {
+        database: options.database ?? locator.database_id,
+        refresh: true,
+        sharedReadOnly: true,
+      })
+      if (current.record.id !== baseline.record.id || current.version_id !== baseline.version_id)
+        return yield* Effect.fail(
+          fail(
+            "WRITE_CONFLICT",
+            "The shared Skill changed since the selected replacement baseline.",
+          ),
+        )
+      const files = portable.files.map((file) => ({
+        ...file,
+        path: file.path === portable.main ? current.entrypoint : file.path,
+      }))
+      const removed = current.files
+        .filter((file) => !files.some((input) => input.path === file.path))
+        .map((file) => file.path)
+      return yield* sharedApplyResult(
+        current,
+        {
+          files,
+          remove: removed,
+          name: options.name ?? portable.name,
+          description: options.description ?? portable.description,
+          defaultContext: options.defaultContext,
+          members: options.members,
+          dryRun: options.dryRun,
+        },
+        operation === "create" ? "replace" : operation,
+      )
+    }
+    // Resolve the entry before allocating a legacy Publication. Its shared
+    // descriptor selects the native creation protocol, including dry runs.
+    const selectedSource =
+      baseline === undefined
+        ? yield* creationSource(options.database, { allowShared: true })
+        : undefined
+    if (selectedSource?.shared_library !== undefined) {
+      if (operation !== "create")
+        return yield* Effect.fail(
+          fail(
+            "EXACT_TARGET_REQUIRED",
+            "An existing shared target is required for replacement or write.",
+          ),
+        )
+      if (options.storage === "markdown_files")
+        return yield* Effect.fail(
+          fail(
+            "INVALID_CONTENT_SOURCE",
+            "A shared library uses its registered native Skills and Files pages; choose native storage.",
+          ),
+        )
+      const result = yield* createSharedNative(selectedSource.shared_library, {
+        portable,
+        ...(options.defaultContext === undefined ? {} : { defaultContext: options.defaultContext }),
+        ...(options.members === undefined ? {} : { members: options.members }),
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      })
+      if (result.status === "planned")
+        return mutationOutcome({
+          ...result,
+          operation,
+          action: "create" as const,
+          dry_run: true as const,
+        })
+      const current = yield* openSkill(result.skill_page_id, {
+        database: selectedSource.database_id,
+        refresh: true,
+      })
+      if (
+        current.record.locator.type !== "shared_skill" ||
+        current.record.locator.library_id !== selectedSource.shared_library.library_id ||
+        current.record.locator.skill_id !== result.skill_id
+      )
+        return yield* Effect.fail(
+          fail(
+            "WRITE_VERIFICATION_FAILED",
+            "The created shared Skill no longer has its exact original identity.",
+            { create_operation_id: result.operation_id },
+          ),
+        )
+      yield* Effect.try({
+        try: () => verifySharedCreatedSnapshot(current, result),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail(
+                "WRITE_VERIFICATION_FAILED",
+                "The current shared tree could not be compared with the original create.",
+                { create_operation_id: result.operation_id },
+              ),
+      })
+      return mutationOutcome({
+        ...snapshotInfo(current),
+        operation,
+        action: "create" as const,
+        verified: true as const,
+        create_operation_id: result.operation_id,
+        reused: result.reused,
+      })
+    }
     if (
       portable.main !== entrypointFor(portable.kind) &&
       portable.files.some(
@@ -855,7 +1133,17 @@ function saveDocument(
       : beginPublication(portable, operation, options, retainedContext)
     return yield* session.finish(
       session
-        .run("prepare", executePublicationDocument(portable, options, operation, session, baseline))
+        .run(
+          "prepare",
+          executePublicationDocument(
+            portable,
+            options,
+            operation,
+            session,
+            baseline,
+            selectedSource,
+          ),
+        )
         .pipe(Effect.provideService(Notion, session.notion)),
     )
   })
@@ -902,6 +1190,7 @@ export function executePublicationDocument(
   operation: "create" | "replace" | "write",
   session: Publication,
   baseline?: Snapshot,
+  resolvedCreationSource?: Source,
 ) {
   return Effect.gen(function* () {
     const contentId = yield* portableIdentity(portable)
@@ -991,7 +1280,7 @@ export function executePublicationDocument(
     let databaseId = current ? notionPage(current.record).locator.database_id : undefined
     let dataSourceId = current ? notionPage(current.record).locator.data_source_id : undefined
     if (!current) {
-      const source = yield* creationSource(options.database)
+      const source = resolvedCreationSource ?? (yield* creationSource(options.database))
       databaseId = source.database_id
       if (source.data_source_ids.length !== 1)
         return yield* Effect.fail(

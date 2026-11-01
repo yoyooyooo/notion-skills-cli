@@ -1014,6 +1014,8 @@ async function prepared(active = true) {
   f.input.set("SKILL.md", encoder.encode(originalSource))
   const created = await f.run(createSkill("/input", { database, ownership: managedOwnership }))
   expect(created).toMatchObject({ verified: true })
+  if (typeof created.operation_id !== "string" || created.operation_id.length === 0)
+    throw new Error("Expected the legacy source baseline to retain its publication operation ID")
   const oldId = created.operation_id,
     oldReceipt = structuredClone(f.receipt(oldId))
   expect(oldReceipt.state).toBe("completed")
@@ -1090,6 +1092,8 @@ for (const active of [true, false])
     const saved = await f.run(
       replaceSkill("/input", { database, target: pinned.snapshot_id, ownership: nextOwnership }),
     )
+    if (typeof saved.operation_id !== "string" || saved.operation_id.length === 0)
+      throw new Error("Expected source replacement to retain its publication operation ID")
     expect(saved).toMatchObject({
       action: "update",
       verified: true,

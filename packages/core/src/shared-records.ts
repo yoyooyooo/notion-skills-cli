@@ -50,6 +50,7 @@ export type QuerySharedRecordsInput = {
 }
 
 export type AppendSharedRecordInput = {
+  readonly beforeCreate?: Effect.Effect<void, SkillsError>
   readonly mode: "create" | "reconcile"
   readonly recordId: string
   readonly operationId: string
@@ -65,6 +66,7 @@ export type QuerySharedProfileRecordsInput = {
   readonly recordId?: string
 }
 export type AppendSharedProfileRecordInput = {
+  readonly beforeCreate?: Effect.Effect<void, SkillsError>
   readonly mode: "create" | "reconcile"
   readonly recordId: string
   readonly operationId: string
@@ -617,6 +619,7 @@ function appendRecord(
           { record_id: prepared.recordId, operation_id: prepared.operationId },
         ),
       )
+    yield* input.beforeCreate ?? Effect.void
     const api = yield* Notion
     const rich = (value: string) => ({ rich_text: textChunks(value) })
     const created = yield* api

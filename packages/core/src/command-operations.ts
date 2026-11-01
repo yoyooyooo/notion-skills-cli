@@ -40,6 +40,7 @@ import { sha256 } from "./store.ts"
 import { creationProofFromBody } from "./publication-create-identity.ts"
 import { provePublicationListRepair, retainedListSource } from "./publication-list-repair.ts"
 import { resumePublicationListRepair } from "./publication-recovery.ts"
+import { updateSharedSkillMetadata } from "./shared-metadata-authoring.ts"
 export {
   PublicationSupersedePlanSchema,
   supersedePlanOperation,
@@ -446,11 +447,91 @@ export function updateSkill(
       )
     const baseline = target.snapshot
       ? yield* targetSnapshot(target, options)
-      : yield* openSkill(target.selector, { database: options.database, refresh: true })
+      : yield* openSkill(target.selector, {
+          database: options.database,
+          refresh: true,
+          sharedReadOnly: Boolean(options.dryRun),
+        })
     if (target.path && target.path !== baseline.entrypoint)
       return yield* Effect.fail(
         fail("EXACT_TARGET_REQUIRED", "Property updates require the selected record entrypoint."),
       )
+    if (baseline.record.locator.type === "shared_skill") {
+      const locator = baseline.record.locator
+      const database = options.database ?? locator.database_id
+      const current = target.snapshot
+        ? yield* openSkill(locator.page_id, {
+            database,
+            refresh: true,
+            sharedReadOnly: Boolean(options.dryRun),
+          })
+        : baseline
+      if (
+        current.record.locator.type !== "shared_skill" ||
+        current.record.id !== baseline.record.id ||
+        current.record.locator.database_id !== locator.database_id ||
+        current.record.locator.data_source_id !== locator.data_source_id ||
+        current.scope !== baseline.scope ||
+        current.version_id !== baseline.version_id
+      )
+        return yield* Effect.fail(
+          fail("WRITE_CONFLICT", "The shared Skill changed since the expected metadata baseline."),
+        )
+      const result = yield* updateSharedSkillMetadata(current, options)
+      if (result.status === "not_applied")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_METADATA_WRITE_NOT_APPLIED",
+            "The original metadata operation was verified as having no native effect; read current state before new intent.",
+            { metadata_operation_id: result.operation_id, read_again: true },
+          ),
+        )
+      if (result.status === "planned" || result.status === "unchanged")
+        return {
+          ...snapshotInfo(current),
+          ...result,
+          operation: "update",
+          action: result.status,
+          previous_version_id: current.version_id,
+        }
+      const saved = yield* openSkill(locator.page_id, { database }).pipe(
+        Effect.mapError((error) =>
+          fail(
+            "SHARED_METADATA_REFRESH_FAILED",
+            "The original native property update was verified, but its current snapshot could not be refreshed. Retry the read only.",
+            {
+              metadata_operation_id: result.operation_id,
+              cause_code: error instanceof SkillsError ? error.code : "REFRESH_FAILED",
+              read_again: true,
+            },
+          ),
+        ),
+      )
+      if (
+        (options.name !== undefined && saved.record.name !== options.name) ||
+        (options.description !== undefined && saved.record.description !== options.description) ||
+        (options.defaultContext !== undefined &&
+          saved.record.default_context !== options.defaultContext) ||
+        (result.requested_members !== undefined &&
+          JSON.stringify(
+            saved.router_members?.map((member) => property(member.metadata).page_id).sort(),
+          ) !== JSON.stringify(result.requested_members))
+      )
+        return yield* Effect.fail(
+          fail(
+            "WRITE_VERIFICATION_FAILED",
+            "A later current read differs from the original requested metadata. Preserve current native properties.",
+            { metadata_operation_id: result.operation_id },
+          ),
+        )
+      return {
+        ...snapshotInfo(saved),
+        ...result,
+        operation: "update",
+        action: "updated",
+        previous_version_id: current.version_id,
+      }
+    }
     const api = yield* Notion
     const observations: Record<string, unknown> = {}
     observations[`v1/pages/${notionPage(baseline.record).locator.page_id}/markdown`] =

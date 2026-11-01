@@ -1515,6 +1515,8 @@ for (const rewriteSourceArchive of [false, true]) {
 test("source rewrite preserves external-edit conflicts without writing", async () => {
   const f = fixture(undefined, true)
   const created = await f.run(createSkill("/input", { database }))
+  if (typeof created.operation_id !== "string" || created.operation_id.length === 0)
+    throw new Error("Expected reference creation to retain its publication operation ID")
   const originalReceipt = structuredClone(f.receipt(created.operation_id))
   const baseline = await f.run(openSkill(root, { refresh: true }))
   f.children[0]!.body += "\nAn independent external edit.\n"

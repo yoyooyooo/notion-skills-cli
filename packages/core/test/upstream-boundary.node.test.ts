@@ -1,12 +1,13 @@
 import { expect, test, vi } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
-import { ConfigProvider, Crypto, Effect, Layer } from "effect"
+import { ConfigProvider, Crypto, Effect, FileSystem, Layer, Path } from "effect"
 import type { HttpClient } from "effect/http"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Store, StoreLive } from "../src/store.ts"
+import { trashPath } from "../src/local-locks.ts"
 import { Notion } from "../src/notion.ts"
 import { catalog } from "../src/catalog.ts"
 import { readSkill } from "../src/snapshot.ts"
@@ -118,7 +119,13 @@ async function boundary(
   }) => Effect.Effect<
     unknown,
     unknown,
-    Store | Notion | UpstreamState | Crypto.Crypto | HttpClient.HttpClient
+    | Store
+    | Notion
+    | UpstreamState
+    | Crypto.Crypto
+    | HttpClient.HttpClient
+    | FileSystem.FileSystem
+    | Path.Path
   >,
 ) {
   const root = await mkdtemp(join(tmpdir(), "ntn-boundary-"))
@@ -309,7 +316,7 @@ async function boundary(
     )
   } finally {
     vi.unstubAllEnvs()
-    await rm(root, { recursive: true, force: true })
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
   }
 }
 

@@ -1,6 +1,6 @@
 # Shared Notion SSOT verification
 
-Verify the implemented AH-498 slice through `ctl library` and ordinary `list/read/files`. The [protocol](../../../../docs/protocol.md#shared-notion-library) owns command semantics; the [architecture checkpoint](../../../../docs/shared-ssot-architecture.md) records observed results and open work. This recipe defines acceptance work. Its presence is not a pass, and the complete epic remains open.
+Verify the implemented AH-498 slice through `ctl library`, ordinary `list/read/files` and native `create/apply/write/update`. The [shared authoring guide](../../../../docs/shared-authoring.md) provides the user workflow; SS14–SS16 below cover N07 file lifecycle, N10 fixed compositions and N13 authoring. The [protocol](../../../../docs/protocol.md#shared-notion-library) owns command semantics; the [architecture checkpoint](../../../../docs/shared-ssot-architecture.md) records observed results and open work. This recipe defines acceptance work. Its presence is not a pass, and the complete epic remains open.
 
 ## Scope and preparation
 
@@ -22,7 +22,7 @@ Bind these values from captured outputs or the task's exact fixture receipt:
 | `MIGRATION_INPUT` | Version 1 migration evidence with explicitly frozen scope and preservation inventories |
 | `ROUTER_REF`, `ROUTER_SNAPSHOT`, `MEMBER_REF` | Selected current Router ref, its complete fixed snapshot, and a member ref actually returned by its index |
 
-For native ownership cases, select an owned fixture with a valid Skill ID, main File ID and at least two distinct supporting File IDs, canonical logical paths, exact Skill relations and complete editable bodies. Preserve how those rows were created. `ctl library init` creates tables, not populated Skill examples; no normal shared-row creation command is implied by this recipe. Use authorized native Notion editing or a separately recorded fixture setup. Do not route fixture creation through legacy References import commands.
+For native ownership cases, select an owned fixture with a valid Skill ID, main File ID and at least two distinct supporting File IDs, canonical logical paths, exact Skill relations and complete editable bodies. Preserve how those rows were created. `ctl library init` creates tables; use ordinary `create INPUT --database ENTRY` with the complete authorized UTF-8 Skill folder to populate a native fixture through SS16. Keep its returned stable identities and create operation. Authorized native Notion editing remains available for natural-edit cases. Do not use legacy References import or hand-written ownership/proof facts to manufacture shared acceptance.
 
 Inspect the actual command surface before live effects:
 
@@ -84,7 +84,7 @@ Record first adoption writes separately from steady-state consumption. The devel
 
 Use native Notion editing on the owned fixture to make one substantive main-body change, then one supporting-body change. Keep the unchanged files' exact hashes and state heads for comparison. Read the current target with `--refresh --metrics`, inspect shared state, and require the entire changed file to become `custom` with retained exact normalized bytes. Only CRLF-to-LF normalization is permitted in normalization version 1.
 
-Change that body back to the earlier text, read again and require it to stay `custom`. Change only Name or Description and verify unchanged normalized body does not create an adoption event. A source-following fixture must use an actual established projection baseline; never substitute the latest Git text as a baseline. Restore-follow, tombstone, movement and other lifecycle cases require their own implemented public actions and evidence; `ctl library state` does not perform them.
+Change that body back to the earlier text, read again and require it to stay `custom`. Change only Name or Description and verify unchanged normalized body does not create an adoption event. A source-following fixture must use an actual established projection baseline; never substitute the latest Git text as a baseline. SS14 drives restore-follow, tombstone and movement through their public actions; `ctl library state` only inspects their results.
 
 Repeat state/retained-body reconstruction in a fresh independent state root using the same authorized remote library. This proves cache independence on that host. It does not count as a second physical machine.
 
@@ -139,6 +139,8 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl 
 
 Retain `shared_pin` and `verification`. `objects_and_manifest` records object and manifest confirmation for that operation; an idempotent existing completion may report `manifest` only. A manifest-only response does not prove every object remains available now. Unknown archive outcomes retain the same snapshot/plan and require `--reconcile`; do not replace the original local snapshot.
 
+For a new archive containing local-restricted bytes, require `LOCAL_RESOURCE_ARCHIVE_REQUIRED` without authorization and zero archive writes. After reviewing that exact snapshot and its paths, drive `ctl library snapshot save "$SNAPSHOT" --entry "$ENTRY" --allow-local-archive` through the same helper. This authorizes only that archive; durable content restrictions survive it and cache clearing. An original pending archive still reconciles its frozen plan without replay. Restore-follow's same-named flag covers only its selected body, not arbitrary snapshots.
+
 Initialize a separate owned helper run on an empty state root, without copying objects, snapshots or private configuration. Supply ordinary authentication and only the exact library entry, Skill target and shared pin. Bind `RESTORED_OUTPUT` to an absent directory under that run's owned scratch area. Drive:
 
 ```bash
@@ -157,7 +159,7 @@ The real new-state restore sample made five metadata and three retained-body req
 
 Use designated fixtures or controlled tests for missing/corrupt chunks, malformed manifest, conflicting same record ID, foreign Skill relation, inaccessible target, removed property ID and body/envelope size overflow. Require explicit failure before visible snapshot publication. Missing history must not substitute current text, latest Git or another pin. Oversized observation envelopes must fail before storing a dispatch receipt for a write that was never sent.
 
-Exercise legacy creation/publication/mutation calls against shared locators and require their documented refusal while their shared implementations remain unavailable. Do not mark Profile, normal write/project-back or host supply complete from metadata parsing alone. Shared Router metadata consumption has SS13; it does not stand in for actual host selection or member-body execution.
+Exercise the public shared creation/mutation routes in SS16 and require their native protocol, with no hidden References/Publication fallback. Unsupported native binary creation, legacy `markdown_files` storage and mixed/multiple layout apply must fail before writes without omitting files. Existing legacy bindings retain their own supported recovery. Do not mark Profile or host supply complete from metadata parsing alone. Shared Router metadata consumption has SS13; it does not stand in for actual host selection or member-body execution.
 
 ## SS10 — Pagination and cost matrix
 
@@ -168,6 +170,8 @@ Two independent real 101-file fixtures remain incomplete. The first stopped when
 ## SS11 — Delivery and remaining acceptance
 
 Run the installed package against the same explicit entry after the public source path succeeds. Record archive integrity, installed executable path/version, Node runtime and exact results. Then run pro and mini on distinct physical machines, followed by the linked Broker native UI and real-model recipes. Mini is now reachable through its registered SSH connection and has independently available authentication; its installed package is the older 0.3.0. The candidate has not been installed or verified there. Connectivity and old-package availability do not complete candidate acceptance. Uninstalled candidate hosts, unopened UI or fixture-only model responses remain unrun.
+
+The controlled phase11 checkpoint passed full typecheck/build, 9 pin verifier tests, shared core 658/658, and 5/5 Source tests through the actual built CLI with a controlled service. Broker 58/58 covers controlled adapter/View/model-observer behavior, not actual model responses. These suite results do not satisfy the live Notion, installed-host, UI or physical-machine cases below, and overlapping counts must not be summed into a repository total.
 
 Before any production migration, preserve an approved exact inventory, backup verification, existing user edits, old pins and original unresolved operations. A catalog with returned rows and failed coverage is not a complete migration list. Keep legacy schema-unknown operations intact for diagnosis. Production switch, AK ownership handoff, old caller retirement and release each need their own evidence; do not infer them from this recipe.
 
@@ -195,6 +199,53 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read
 Require complete relation pagination, batched member metadata, stable identities and the generated `## Members` list of name/ref/description. The Router's own body may be read or initially retained; none of its members' bodies, Files, Records or provider blobs may be prefetched. After deliberately changing a member name, description or membership in the owned fixture, a refreshed current Router must reflect the new metadata while the old snapshot keeps its exact index. Selecting an actual returned `MEMBER_REF` then reads that member's own snapshot lazily. A Router pin freezes the index, not every member's body version.
 
 Cover renamed registered properties, more than 25 relation entries, 101-entry controlled pagination, incomplete/repeated cursors, disabled or missing members, foreign library/parent, Prompt/nested Router and stable-ID conflict. A valid nonmember claiming a selected member's ID must conflict, while unrelated malformed nonmembers do not become an unrelated failure. A library without registered Members fails before Router body observation or shared writes; ordinary Skills remain usable. Old incomplete shared Router snapshots must fail even with `--offline` instead of producing a misleading empty index or adopting today's metadata. Record installed-host/UI selection and actual model/member-body use separately under SS11.
+
+## SS14 — N07 native file lifecycle and restore-follow
+
+Use one owned Skill with a complete baseline. Bind `NEW_PATH` to an absent supporting path, `MOVED_PATH` to a safe unused destination, `BODY_INPUT` to retained UTF-8 input, and `FOLLOW_PATH` to a customized file with an actual fixed-source baseline. Inspect each command's help and exercise its `--dry-run` first, requiring zero Notion writes. Positive add/move/delete inputs must keep the complete tree's relative links valid; the commands never rewrite references for the test.
+
+```bash
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library file add "$TARGET" "$NEW_PATH" --entry "$ENTRY" --input "$BODY_INPUT"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library file move "$TARGET" "$NEW_PATH" "$MOVED_PATH" --entry "$ENTRY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library file delete "$TARGET" "$MOVED_PATH" --entry "$ENTRY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library file restore-follow "$TARGET" "$FOLLOW_PATH" --entry "$ENTRY"
+```
+
+Capture fresh `files/state/read` results between completed operations. Add must create exactly one File identity/page; move must keep that identity, body and original source path; delete must retain the page/body and an explicit tombstone. Old pins retain their earlier inventory. Incoming or moved-file relative link/image breakage, path collision, unsafe paths, stale metadata/event heads, main move/delete and missing access must fail without weakening complete-tree checks. Missing access is never deletion intent; upstream reappearance cannot revive a tombstone.
+
+Restore-follow must retain the complete custom body, use the exact currently selected revision and a moved file's original source path, then verify the new body and following state. Cover main and supporting files, missing source content, binary rejection, source changes during preparation and `--allow-local-archive` for the selected local body. Native Name/Description must remain authoritative. For unknown add/delete/move, preserve `OPERATION` and drive `ctl library file reconcile "$TARGET" "$OPERATION" --entry "$ENTRY"` through the helper. For unknown restore-follow, drive an exact current read; follow `read_again` after the original body operation settles. Neither path may repeat an unknown write or infer success from today's equal body. Record `not_applied`/`partial` as those verified outcomes, not completed edits.
+
+## SS15 — N10 fixed composition, resource scope and Source selection
+
+Use a reviewed immutable `COMPOSITION` fixture containing the affected Git/HTTP/local mounts plus native custom files. This advanced input is a fixed source plan, not a hand-authored adoption/proof requirement for daily Skill creation. Configure only its explicitly authorized machine/workspace resources through helper `cli`: `ctl library source resource bind-local BINDING --machine-scope MACHINE_SCOPE --workspace-scope WORKSPACE_SCOPE --workspace-root WORKSPACE_ROOT --root RESOURCE_ROOT`, and exact HTTPS origins through `resource http-policy --origin ORIGIN`. Machine-only HTTP retrieval input uses `resource http-locations --manifest FIXED_FILES --locations PRIVATE_LOCATIONS`. Copy placeholder values from the reviewed fixture; never put its machine paths, credentials or signed URLs into shared facts or the checkout. `resource show` must expose only redacted identities/policy.
+
+```bash
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library source composition inspect "$COMPOSITION" --verify
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library source composition register "$TARGET" --entry "$ENTRY" --manifest "$COMPOSITION"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library source select prepare "$TARGET" --entry "$ENTRY" --source "$SOURCE_ID" --output "$SELECTION_PLAN"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library source select apply "$SELECTION_PLAN" --entry "$ENTRY" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library source select apply "$SELECTION_PLAN" --entry "$ENTRY"
+```
+
+Bind `SOURCE_ID` from registration and `SELECTION_PLAN` to a new owned evidence file. Verify fixed hashes/lengths for every materialized byte and separate provider metadata/blob work. Composition registration must remain metadata-only and unselected; selection must use the unedited CLI-generated plan and change only native Source. Current consumption must preserve custom Notion files/metadata, moved source paths and tombstones while materializing the complete mixed tree. No branch advances implicitly. `--native` is the explicit alternative to `--source` when clearing selection.
+
+Cover path/prefix collisions, missing or foreign workspace binding, revoked HTTP origins, wrong hashes/sizes and provider failures without another source fallback or partial snapshot. Local-content restrictions remain durable even when exact bytes are reused through another cache path; SS08 covers explicit one-archive authorization. Do not claim the origin policy is DNS-rebinding isolation. Unknown registration uses `source reconcile "$TARGET" --entry "$ENTRY" --source "$SOURCE_ID"`; unknown selection uses `source select reconcile "$SELECTION_PLAN" --entry "$ENTRY"`, both through helper `cli` with zero replay writes. Equal current Source is insufficient proof. Keep controlled resource/service cases distinct from real Git/HTTP/local/Notion consumption and independent-machine evidence.
+
+## SS16 — N13 public native create and pinned authoring
+
+Stage `AUTHOR_INPUT` as an ordinary UTF-8 Skill folder with main and two supporting files; preserve original bytes and expected complete paths. No manifest or adopt/proof command is required for this Skill input. Prompt/Router still use their explicit portable v2 kind declaration. After creation, bind `CURRENT_REF`, `PINNED_MAIN` and file refs from the returned/discovered exact record. Stage `CHANGE_INPUT` with only changed existing main/support files and an explicitly nominated `DESCRIPTION`. Re-read and rebind the current pin between separate completed mutations.
+
+```bash
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$AUTHOR_INPUT" --database "$ENTRY" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$AUTHOR_INPUT" --database "$ENTRY"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read "$CURRENT_REF" --database "$ENTRY" --refresh
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- apply "$PINNED_MAIN" --database "$ENTRY" --input "$CHANGE_INPUT" --description "$DESCRIPTION" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- apply "$PINNED_MAIN" --database "$ENTRY" --input "$CHANGE_INPUT" --description "$DESCRIPTION"
+```
+
+Creation must keep the new Skill disabled until its whole native body set verifies; retain exact Skill/File/page IDs, original input and `create_operation_id`. Name collision, binary input and unsupported projection must fail without partial omission. An interrupted same-intent retry must reconcile original allocations without blind page POST replay. For apply, verify complete fresh-tree preflight, changed main/support bytes and nominated native properties, unchanged other files/properties, and immutable old pins. Retain `apply_operation_id`, child outcomes, `changes`, scope and new refs. Exercise `write "$FILE_REF" --database "$ENTRY" --input "$BODY_INPUT"` and `update "$PINNED_MAIN" --database "$ENTRY" --description "$DESCRIPTION"` through the same helper with fresh baselines; retain their body/metadata operation IDs. Matching frontmatter is allowed; unrequested Name/Description changes, unsupported main fields or mismatched page identity are rejected. Record original-input, frozen request and projected-candidate hashes separately. Include an authored H1, inline code, bold containing inline code, and a fenced-code block in the native fixture; require the heading and literal code content to survive. Projection version 2 must select the create/file-add wire separately from body-write wire and freeze the expected native readback before dispatch. Use independent captured native responses rather than echoing request Markdown as the test oracle. Retained version 1 plans must reconstruct without adopting the new policy; projection does not permit arbitrary changed Markdown.
+
+Controlled failures must cover stale pins, a stale later child after an earlier applied child, unknown child stopping the remainder, lost parent outcome resolved only from exact child outcomes, missing/corrupt original plans, and oversized complete envelopes before dispatch. Apply is sequential and non-atomic. One isolated add/delete is supported; mixed/multiple layout changes must return `SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED` before writes, with full reference checks intact. Exact-target replace inherits these limits. Native metadata has no atomic CAS. Require zero writes for dry-run and true no-op paths; an unchanged result creates no substitute operation. Shared current-read reconciliation must preserve original intent and refuse to turn missing facts into unsent work; shared IDs never enter legacy `operation resume`. The SS06 invisible-first-plan boundary remains open. Successful cases require the requested applied/already-unchanged result, `verified:true` and no dry-run; a verified `not_applied`/`partial` recovery is not success. Fresh-session builtin/help usage, actual Notion writes and installed-host/model behavior remain separate evidence.
 
 ## Evidence and cleanup
 

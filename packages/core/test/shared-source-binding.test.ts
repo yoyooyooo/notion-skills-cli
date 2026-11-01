@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { Crypto, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { fail, property, text, SkillsError } from "../src/model.ts"
+import { fail, property, text, type SkillsError } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import type { FixedGithubSource } from "../src/shared-github-source.ts"
@@ -12,6 +12,8 @@ import {
   registerSourceBinding,
   resolveSourceBinding,
 } from "../src/shared-source-binding.ts"
+import { Store } from "../src/store.ts"
+import { registrationStore } from "./shared-source-registration-fixture.ts"
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
 const skillId = id(1)
@@ -129,11 +131,16 @@ function fixture(options: { unknownCreate?: "retained" | "absent" } = {}) {
         )
       }),
   }
-  const layer = Layer.mergeAll(NodeServices.layer, Layer.succeed(Notion, api))
+  const local = registrationStore()
+  const layer = Layer.mergeAll(
+    NodeServices.layer,
+    Layer.succeed(Notion, api),
+    Layer.succeed(Store, local.store),
+  )
   return {
     calls,
     records,
-    run: <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto>) =>
+    run: <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto | Store>) =>
       Effect.runPromise(effect.pipe(Effect.provide(layer))),
   }
 }
@@ -159,6 +166,23 @@ function changeStoredPayload(
 }
 
 describe("immutable shared Git source binding", () => {
+  test.each(["retained", "absent"] as const)(
+    "ordinary create retry after an unknown %s Git record only reconciles",
+    async (unknownCreate) => {
+      const f = fixture({ unknownCreate })
+      const input = { skillPageId: skillId, mode: "create" as const, fixedSource: source }
+      const first = await f.run(registerSourceBinding(library, input).pipe(Effect.result))
+      expect(first._tag).toBe("Failure")
+      const second = await f.run(registerSourceBinding(library, input).pipe(Effect.result))
+      expect(second._tag).toBe(unknownCreate === "retained" ? "Success" : "Failure")
+      expect(f.calls.filter((call) => call.path === "v1/pages")).toHaveLength(1)
+      if (unknownCreate === "absent") {
+        if (second._tag !== "Failure") throw new Error("Expected unresolved original create")
+        expect(second.failure.code).toBe("SHARED_RECORD_UNRESOLVED")
+      }
+    },
+  )
+
   test("registers the full fixed selection without contacting the provider or writing a page body", async () => {
     const f = fixture()
     const result = await f.run(

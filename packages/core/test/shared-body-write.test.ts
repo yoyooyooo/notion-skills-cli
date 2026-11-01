@@ -15,6 +15,7 @@ import {
   bodyWriteOutcomesEntity,
   makeSharedBodyWritePlan,
 } from "../src/shared-body-write-model.ts"
+import { projectSharedNotionMarkdown } from "../src/shared-notion-projection.ts"
 import {
   executeSharedBodyWrite,
   loadPendingSharedBodyWrites,
@@ -109,6 +110,7 @@ interface Remote {
   rows: Map<string, Record<string, unknown>>
   hidden: Set<string>
   initial: FileEvent
+  support?: { page_id: string; file_id: string; path: string; markdown: string }
 }
 function remote(markdown = original): Remote {
   const normalized = markdown.replace(/\r\n/g, "\n")
@@ -198,6 +200,7 @@ function client(
     afterRecord?: (kind: string, recordId: string) => void
     response?: (raw: Record<string, unknown>) => unknown
     bodyError?: SkillsError
+    readback?: (wire: string) => string
   } = {},
 ) {
   const calls: Array<{
@@ -236,7 +239,16 @@ function client(
             ),
           })
         }
-        if (url.pathname === `/v1/pages/${skillPage}/markdown`) {
+        const selectedBody =
+          url.pathname === `/v1/pages/${skillPage}/markdown`
+            ? skillPage
+            : shared.support !== undefined &&
+                url.pathname === `/v1/pages/${shared.support.page_id}/markdown`
+              ? shared.support.page_id
+              : undefined
+        if (selectedBody !== undefined) {
+          const support = selectedBody === skillPage ? undefined : shared.support
+          const currentBody = () => (support === undefined ? shared.markdown : support.markdown)
           if (requestOptions?.method === "PATCH") {
             options.beforeBody?.()
             if (options.bodyError !== undefined) return Effect.fail(options.bodyError)
@@ -246,12 +258,9 @@ function client(
             const change = property(updates[0]),
               oldText = String(change.old_str),
               newText = String(change.new_str)
-            const first = shared.markdown.indexOf(oldText)
-            if (
-              !oldText ||
-              first < 0 ||
-              shared.markdown.indexOf(oldText, first + oldText.length) >= 0
-            )
+            const prior = currentBody(),
+              first = prior.indexOf(oldText)
+            if (!oldText || first < 0 || prior.indexOf(oldText, first + oldText.length) >= 0)
               return Effect.fail(
                 fail("NOTION_REQUEST_FAILED", "The official API rejected this request.", {
                   http_status: 400,
@@ -259,18 +268,20 @@ function client(
                   phase: "definitive_rejection",
                 }),
               )
-            shared.markdown =
-              shared.markdown.slice(0, first) +
-              newText +
-              shared.markdown.slice(first + oldText.length)
+            const changed =
+              prior.slice(0, first) +
+              (options.readback?.(newText) ?? newText) +
+              prior.slice(first + oldText.length)
+            if (support === undefined) shared.markdown = changed
+            else support.markdown = changed
             if (options.unknownBody)
               return Effect.fail(
                 fail("WRITE_OUTCOME_UNKNOWN", "The original write result was lost."),
               )
           }
           const response = {
-            id: skillPage,
-            markdown: shared.markdown,
+            id: selectedBody,
+            markdown: currentBody(),
             truncated: false,
             unknown_block_ids: [],
           }
@@ -280,8 +291,37 @@ function client(
               : response,
           )
         }
-        if (url.pathname === `/v1/data_sources/${filesDs}/query`)
-          return Effect.succeed({ object: "list", results: [], has_more: false, next_cursor: null })
+        if (url.pathname === `/v1/data_sources/${filesDs}/query`) {
+          const support = shared.support
+          const fields =
+            support === undefined
+              ? {}
+              : {
+                  file: rich(support.file_id),
+                  path: rich(support.path),
+                  projection: rich(""),
+                  status: { select: { name: "custom" } },
+                  skill: { relation: [{ id: skillPage }] },
+                }
+          const results =
+            support === undefined
+              ? []
+              : [
+                  {
+                    object: "page",
+                    id: support.page_id,
+                    parent: { type: "data_source_id", data_source_id: filesDs },
+                    last_edited_time: "2026-10-31T00:00:00.000Z",
+                    properties: Object.fromEntries(
+                      Object.entries(fields).map(([key, value]) => [
+                        key,
+                        responseProperty(key, value),
+                      ]),
+                    ),
+                  },
+                ]
+          return Effect.succeed({ object: "list", results, has_more: false, next_cursor: null })
+        }
         if (url.pathname === `/v1/data_sources/${recordsDs}/query`) {
           const request = property(body)
           const selected = [...shared.rows.values()].filter(
@@ -292,16 +332,14 @@ function client(
               ? Number(request.start_cursor.replace("cursor-", ""))
               : 0
           const projection = new Set(url.searchParams.getAll("filter_properties"))
-          const results = selected
-            .slice(start, start + 100)
-            .map((row) => ({
-              ...row,
-              properties: Object.fromEntries(
-                Object.entries(property(row.properties)).filter(
-                  ([key]) => projection.size === 0 || projection.has(key),
-                ),
+          const results = selected.slice(start, start + 100).map((row) => ({
+            ...row,
+            properties: Object.fromEntries(
+              Object.entries(property(row.properties)).filter(
+                ([key]) => projection.size === 0 || projection.has(key),
               ),
-            }))
+            ),
+          }))
           const more = start + 100 < selected.length
           return Effect.succeed({
             object: "list",
@@ -379,6 +417,92 @@ function failure<A>(
 }
 
 describe("explicit shared whole-body writes", () => {
+  test("v2 body write sends authored Markdown and verifies the separately frozen native candidate", async () => {
+    const input = "# Updated\n\n**bold `code` bold**.\n"
+    const wire = "# Updated\n\n**bold `code` bold**."
+    const observed = "# Updated\n\n<b>bold </b><b><code>code</code></b><b> bold</b>."
+    const shared = remote()
+    const api = client(shared, {
+      readback: (actual) => {
+        expect(actual).toBe(wire)
+        return observed
+      },
+    })
+    const inputProjection = projectSharedNotionMarkdown(input)
+    const plan = await api.run(
+      prepareSharedBodyWrite({
+        library,
+        skillPageId: skillPage,
+        fileId,
+        action: "write",
+        candidateMarkdown: inputProjection.markdown,
+        inputProjection,
+        authoredInputSha256: hash(input),
+      }),
+    )
+    expect(plan.candidate.markdown).toBe(observed)
+    expect(plan.candidate.content.sha256).toBe(hash(observed))
+    const wrong = {
+      ...plan,
+      input_projection: projectSharedNotionMarkdown(input, { purpose: "data_source_create" }),
+    }
+    expect(
+      failure(await api.run(validateSharedBodyWritePlan(wrong).pipe(Effect.result))).code,
+    ).toBe("SHARED_BODY_WRITE_INVALID")
+    const result = await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))
+    expect(result.status).toBe("applied")
+    expect(patches(api)).toHaveLength(1)
+    expect(property(property(patches(api)[0]?.body).update_content).content_updates).toEqual([
+      { old_str: original, new_str: wire },
+    ])
+    expect(shared.markdown).toBe(observed)
+    expect(plan.input_projection?.input_markdown).toBe(input)
+  })
+
+  test("matching v2 readback after an unknown body response never authorizes replay or acceptance", async () => {
+    const input = "# Updated\n\n`exact`."
+    const observed = "# Updated\n\n<code>exact</code>."
+    const shared = remote(),
+      api = client(shared, {
+        unknownBody: true,
+        readback: (wire) => {
+          expect(wire).toBe(input)
+          return observed
+        },
+      })
+    const inputProjection = projectSharedNotionMarkdown(input)
+    const plan = await api.run(
+      prepareSharedBodyWrite({
+        library,
+        skillPageId: skillPage,
+        fileId,
+        action: "write",
+        candidateMarkdown: inputProjection.markdown,
+        inputProjection,
+      }),
+    )
+    const frozen = canonicalSharedJson(plan)
+    expect(
+      failure(
+        await api.run(
+          executeSharedBodyWrite(library, { plan, mode: "create" }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("WRITE_OUTCOME_UNKNOWN")
+    expect(shared.markdown).toBe(observed)
+    expect(patches(api)).toHaveLength(1)
+    const next = client(shared)
+    expect(
+      failure(
+        await next.run(
+          executeSharedBodyWrite(library, { plan, mode: "create" }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("SHARED_BODY_WRITE_UNRESOLVED")
+    expect(patches(next)).toHaveLength(0)
+    expect(canonicalSharedJson(plan)).toBe(frozen)
+  })
+
   test("freezes exact old/candidate bytes and retains them before one complete update", async () => {
     const shared = remote(),
       api = client(shared)
@@ -783,6 +907,113 @@ describe("explicit shared whole-body writes", () => {
     expect(patches(api)).toHaveLength(1)
   })
 
+  test.each(["references/original.md", null])(
+    "moved restore uses its retained source path (%s), never the logical destination",
+    async (sourcePath) => {
+      const shared = remote(),
+        api = client(shared),
+        supportingFile = "supporting-file",
+        supportingPage = id(450)
+      const oldPath = "references/original.md",
+        newPath = "references/moved.md",
+        custom = "Custom support\n",
+        upstream = "Fixed upstream\n"
+      shared.support = {
+        page_id: supportingPage,
+        file_id: supportingFile,
+        path: newPath,
+        markdown: custom,
+      }
+      const fixed = await api.run(
+        makeSourceBinding({
+          url: "https://github.com/owner/repo",
+          commit: "c".repeat(40),
+          tree: "d".repeat(40),
+          root: "skill",
+          files: [
+            {
+              path: "SKILL.md",
+              source_path: "skill/SKILL.md",
+              git_oid: "e".repeat(40),
+              bytes: original.length,
+            },
+            {
+              path: oldPath,
+              source_path: `skill/${oldPath}`,
+              git_oid: "f".repeat(40),
+              bytes: upstream.length,
+            },
+          ],
+        }),
+      )
+      seed(shared, "source", fixed.source_id, `register-${fixed.source_id}`, fixed.source_id, fixed)
+      shared.source = fixed.source_id
+      const content = {
+        object_id: `body-${hash(custom)}`,
+        sha256: hash(custom),
+        bytes: custom.length,
+      }
+      const projected: FileEvent = {
+        event_id: "support-projection",
+        file_id: supportingFile,
+        parents: [],
+        kind: "projected",
+        source_revision: fixed.commit,
+        projection: { normalization_version: 1, sha256: hash(upstream) },
+      }
+      const adopted: FileEvent = {
+        event_id: "support-custom",
+        file_id: supportingFile,
+        parents: sourcePath === null ? [] : [projected.event_id],
+        kind: "adopted",
+        content,
+      }
+      const moved: FileEvent = {
+        event_id: "support-move",
+        file_id: supportingFile,
+        parents: [adopted.event_id],
+        kind: "moved",
+        from_path: oldPath,
+        to_path: newPath,
+        source_path: sourcePath,
+        suppressed_paths: [oldPath],
+        retained: content,
+      }
+      for (const event of [...(sourcePath === null ? [] : [projected]), adopted, moved])
+        seed(shared, "file_event", event.event_id, event.event_id, supportingFile, event)
+      api.calls.length = 0
+      const prepared = await api.run(
+        prepareSharedBodyWrite({
+          library,
+          skillPageId: skillPage,
+          fileId: supportingFile,
+          candidateMarkdown: upstream,
+          action: "restore_follow",
+          source: { source_id: fixed.source_id, revision: fixed.commit, path: oldPath },
+        }).pipe(Effect.result),
+      )
+      if (sourcePath === null) {
+        expect(failure(prepared).code).toBe("SHARED_SOURCE_PATH_UNAVAILABLE")
+        expect(creates(api)).toHaveLength(0)
+        expect(patches(api)).toHaveLength(0)
+      } else {
+        if (prepared._tag !== "Success") throw new Error("Expected retained source mapping")
+        const plan = prepared.success
+        expect(plan.path).toBe(newPath)
+        expect(plan.restore_source?.path).toBe(oldPath)
+        const result = await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))
+        expect(result.status).toBe("applied")
+        const state = resolveFileState(
+          supportingFile,
+          eventRows(shared).filter((event) => event.file_id === supportingFile),
+        )
+        expect(state.ownership.kind).toBe("following")
+        expect(state.placement?.source_path).toBe(oldPath)
+        expect(shared.support.markdown).toBe(upstream)
+      }
+    },
+  )
+
   test("plan identities reject changed source, page, parents, bytes and original time", async () => {
     const api = client(remote()),
       plan = await api.run(prepare())
@@ -798,6 +1029,40 @@ describe("explicit shared whole-body writes", () => {
         failure(await api.run(validateSharedBodyWritePlan(value).pipe(Effect.result))).code,
       ).toBe("SHARED_BODY_WRITE_INVALID")
     expect(creates(api)).toHaveLength(0)
+  })
+
+  test("input projection freezes original text while preserving validation of older unprojected plans", async () => {
+    const api = client(remote()),
+      old = await api.run(prepare())
+    expect((await api.run(validateSharedBodyWritePlan(old))).operation_id).toBe(old.operation_id)
+    const inputProjection = projectSharedNotionMarkdown(candidate)
+    const plan = await api.run(
+      prepareSharedBodyWrite({
+        library,
+        skillPageId: skillPage,
+        fileId,
+        action: "write",
+        candidateMarkdown: inputProjection.markdown,
+        inputProjection,
+        authoredInputSha256: hash(candidate),
+      }),
+    )
+    expect(plan.candidate.markdown).toBe(candidate.slice(0, -1))
+    expect(plan.input_projection?.input_markdown).toBe(candidate)
+    expect(plan.authored_input_sha256).toBe(hash(candidate))
+    expect(plan.operation_id).not.toBe(old.operation_id)
+    expect(
+      failure(
+        await api.run(
+          validateSharedBodyWritePlan({
+            ...plan,
+            input_projection: { ...inputProjection, removed_terminal_lfs: 0 },
+          }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("SHARED_MARKDOWN_PROJECTION_INVALID")
+    expect(creates(api)).toHaveLength(0)
+    expect(patches(api)).toHaveLength(0)
   })
 
   test("completed writes use the compact shared index and small outcomes without old body plans", async () => {

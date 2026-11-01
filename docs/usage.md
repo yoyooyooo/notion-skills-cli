@@ -11,11 +11,18 @@ Choose the task, then retain the returned identities for subsequent commands:
 | Use a stored workflow | `list`, then `read` and pinned supporting-file reads |
 | Create content | `create INPUT --database LIBRARY` |
 | Change files and properties together | `read CURRENT --refresh`, then `apply PINNED_MAIN_REF --input CHANGED_FILES` |
-| Bring Git Skills into Notion | `sync upstream connect SOURCE --database LIBRARY`, then `sync upstream run --target SUBSCRIPTION_ID` |
+| Maintain an existing upstream subscription | `sync upstream connect SOURCE --database LIBRARY`, then `sync upstream run --target SUBSCRIPTION_ID` |
 | Keep a Notion page and local directory synchronized | `sync local connect PAGE_ID --path DIRECTORY`, then `sync local run BINDING` |
-| Inspect an interrupted operation | `operation show OPERATION_ID`, then its returned `next.argv` |
+| Select a fixed shared source or Profile | [Shared source selection and defaults](shared-authoring.md#select-a-fixed-source-and-restore-following) |
+| Inspect an interrupted operation | Use the [matching shared recovery path](shared-authoring.md#handle-an-interrupted-operation), or `operation show OPERATION_ID` for an earlier Publication/sync result |
 
-In Context Broker, select `$ntn-skills-maintain@builtin` for content changes or `$ntn-skills-sync@builtin` for subscriptions and local synchronization. These package Skills are available through ordinary `$` discovery with their supporting files, without publishing a copy to Notion. The host supplies the executable argv and source/database scope; use those values when there are multiple configured sources.
+In Context Broker, select `$ntn-skills-maintain@builtin` for content changes or `$ntn-skills-sync@builtin` for fixed sources, Profile defaults and existing synchronization relationships. These package Skills are available through ordinary `$` discovery with their supporting files, without publishing a copy to Notion. The host supplies the executable argv and source/database scope; use those values when there are multiple configured sources.
+
+## Shared libraries
+
+For a shared Skills / Files / Records entry, use the [shared authoring guide](shared-authoring.md). Ordinary `create`, `apply`, `write` and `update` select that protocol from the exact library descriptor; they do not require a hand-authored manifest for an ordinary Skill or manual adopt/proof steps. Shared apply supports existing bound UTF-8 files and nominated native metadata in a sequential, non-atomic batch. One isolated add/delete is supported; mixed or multiple layout changes fail before writes. Use the dedicated file, fixed-source and Profile commands for their respective operations and preserve their original IDs on failure.
+
+The following two-table initialization and recurring synchronization sections describe existing legacy relationships. They remain available until their callers and content have been explicitly migrated.
 
 ## Initialize content and subscription tables
 
@@ -285,6 +292,8 @@ Create/replace render every supporting Markdown document as a child page, preser
 
 ## Creating, importing, exporting and updating skills
 
+Shared targets use the [native shared authoring contract](shared-authoring.md); the References/source-ZIP storage and Publication recovery described below apply to earlier libraries. Shared operations return their own exact operation IDs and must not be sent to legacy `operation resume`.
+
 Select a database explicitly, save a creation default, or let the CLI use the sole discovered skill database. The order is `--database` → `config.default_database` → sole fresh discovery. Multiple databases, failed registered sources or an inaccessible configured default require a valid selection. `ctl config unset default_database` removes the preference offline; it does not change read scope.
 
 After registering `ops`, replace the pinned-ref placeholder with a ref returned by `read`:
@@ -365,11 +374,11 @@ For one change to an existing page, read its current state and use the returned 
 
 ```bash
 ntn-skills read CURRENT_PAGE_ID --refresh
-ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --remove references/obsolete.md --description 'Updated purpose' --dry-run
-ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --remove references/obsolete.md --description 'Updated purpose'
+ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --description 'Updated purpose' --dry-run
+ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --description 'Updated purpose'
 ```
 
-This merges file and metadata changes into one guarded publication and returns one operation ID. The main entrypoint cannot be deleted. A stale baseline stops before publication; reread and review the intended changes before retrying. Success returns `changes.files` and `changes.removed` with the verified snapshot. After interruption, resume the original operation. Use `replace` when the prepared input deliberately represents the complete source.
+Shared targets freeze the existing body and metadata operations in one sequential batch; earlier targets retain one guarded replacement Publication. `--remove PATH` explicitly requests removal, but a shared batch currently permits only one isolated add/delete and rejects mixed/multiple layout changes. The main entrypoint cannot be deleted. A stale baseline stops before writing; reread and review the intended changes before retrying. Success returns `changes.files` and `changes.removed` with the verified snapshot. Shared success has `status: "applied"` and `apply_operation_id`; its interrupted work is reconciled by an exact current read. Use legacy `operation resume` only for a returned Publication ID. `replace` deliberately represents the complete input tree and keeps the same shared limits.
 
 `create` rejects an existing invocation name with `CREATE_CONFLICT`. `replace INPUT --target EXACT` requires an exact existing page identity and preserves its page ID. Names cannot select a replacement and absence never creates a page. `--dry-run` performs online preflight and reports create/reuse/update without uploading or mutating.
 
@@ -380,19 +389,19 @@ ntn-skills replace ./renamed-skill --target 'PINNED_MAIN_REF_FROM_READ' --databa
 ntn-skills replace ./renamed-skill --target 'PINNED_MAIN_REF_FROM_READ' --database ops
 ```
 
-`write` replaces one logical file and retains the others. A target ref with a file path cannot combine with `--path`. Pinned refs and snapshot IDs provide an online version baseline; stale versions return `WRITE_CONFLICT`. Identical input returns `unchanged=true` without uploading or mutating. `SKILL.md` frontmatter name/description remain file content and never change Notion page properties; use `update` to change those properties or `replace` to publish a complete Skill. If `notion_page_id` is present, it must match the target.
+`write` replaces one logical file and retains the others. A target ref with a file path cannot combine with `--path`. Pinned refs and snapshot IDs provide an online version baseline; stale versions return `WRITE_CONFLICT`. Identical input returns `unchanged=true` without uploading or mutating. In a shared library, main frontmatter must match native Name/Description or values explicitly nominated in the same apply; an unrequested metadata change or unsupported main field is rejected. In an earlier publication library, `SKILL.md` frontmatter name/description remain file content and never change Notion page properties. Use `update` for properties or explicit apply metadata flags. If `notion_page_id` is present, it must match the target.
 
 `export` writes every file plus the portable manifest. `.zip` selects ZIP; other paths select a directory; `--format zip|directory` overrides that choice. Pinned exports work offline. Preserve the manifest for reimport. ZIP bytes are deterministic; differing existing output fails rather than overwriting. [Portable format and source preservation](protocol.md#portable-export-contract).
 
 ZIP input is limited to 32 MiB compressed, 128 MiB expanded and 10,000 entries; folders use the expanded/entry limits. Generated source ZIPs and portable ZIP output must fit 20 MiB compressed. Unsafe paths, links, special files, duplicates and checksum failures are rejected. Notion read-export archives use gzip/tar and are separate from local import inputs.
 
-Successful changes return a verified snapshot and pinned refs. Publications retain a private receipt and frozen input objects before the first remote mutation; responses and failures include `operation_id` and `receipt_path` once bound. The receipt path is relative to the state root reported by `ctl cache status`. Local source edits or a later CLI/builtin upgrade do not change the retained input. Dry runs do not create a publication receipt or prove service acceptance.
+Successful changes return a verified snapshot and pinned refs. Earlier Publications retain a private receipt and frozen input objects before the first remote mutation; responses and failures include `operation_id` and `receipt_path` once bound. The receipt path is relative to the state root reported by `ctl cache status`. Local source edits or a later CLI/builtin upgrade do not change the retained input. Dry runs do not create a publication receipt or prove service acceptance.
 
 For an ordinary authorized import into a known database, run `create INPUT --database SELECTOR` for a new page or `apply PINNED_MAIN_REF --input CHANGED_FILES` for a change to an existing page. Use `replace INPUT --target EXACT` when replacing its whole source. Exit 0 with `ok: true`, `verified: true` and no `dry_run: true` is the completion criterion: the CLI has read back metadata, main/reference instructions, inclusion paths and the complete portable file identity. Files mode checks source bytes separately from live-page Markdown; page-only mode uses normalized Markdown. Retain the returned page ID, action and pinned ref. Additional read/files/export/hash checks are for discrepancies, development regression or an explicit audit. This verifies storage rather than executing or assessing the workflow.
 
-The goal is complete consumption from upstream to Notion and from current Notion to Markdown/cache/Agent. Daily maintenance and upstream publication use a rendered main page with all supporting Markdown documents rendered as child pages included through `References`, retaining original paths for root and nested files as well as the common `references/**` directory; scripts and non-Markdown resources remain in `Files`/the source bundle. Only whitespace and equivalent local formatting differences are acceptable. Do not drop chapters, lists, tables, code, links or resources, or substitute a whole-document source-code block for a normally rendered page. Not requiring arbitrary Markdown↔Notion byte-identical round trips does not relax these requirements. Use a one-time portable export/import when ownership is moving; bind only for an ongoing relationship. Deliberate exact-target replacement remains within the selected source's authorization.
+The goal is complete consumption from upstream to Notion and from current Notion to Markdown/cache/Agent. Existing legacy native maintenance and upstream publication use a rendered main page with all supporting Markdown documents rendered as child pages included through `References`, retaining original paths for root and nested files as well as the common `references/**` directory; scripts and non-Markdown resources remain in `Files`/the source bundle. Only whitespace and equivalent local formatting differences are acceptable. Do not drop chapters, lists, tables, code, links or resources, or substitute a whole-document source-code block for a normally rendered page. Not requiring arbitrary Markdown↔Notion byte-identical round trips does not relax these requirements. Use a one-time portable export/import when ownership is moving; bind only for an ongoing relationship. Deliberate exact-target replacement remains within the selected source's authorization.
 
-`markdown_files` is an explicit choice for a particular source-file maintenance workflow, never the default bulk migration or a fallback after conversion/verification failure. For a Skill consisting entirely of UTF-8 text, `create INPUT --database SELECTOR --storage markdown_files` stores each original file as editable literal code inside a path-labeled Notion toggle. `replace INPUT --target EXACT --storage markdown_files` selects it on an existing page; later writes retain it. Current code text drives read/files/export, including nested scripts/resources and relative links; no saved ZIP masks later edits. Binary resources require native Files storage. Omission uses rendered storage for new/native pages; an existing literal page retains its mode. To return that page to rendered main/reference pages, explicitly run `replace INPUT --target EXACT --storage notion_blocks` with the complete source and resources. Prompt/Router remain native. See [the storage and recovery contract](protocol.md#mutation-contract).
+`markdown_files` is an explicit choice in earlier publication libraries for a particular source-file maintenance workflow, never the default bulk migration or a fallback after conversion/verification failure. For a Skill consisting entirely of UTF-8 text, `create INPUT --database SELECTOR --storage markdown_files` stores each original file as editable literal code inside a path-labeled Notion toggle. `replace INPUT --target EXACT --storage markdown_files` selects it on an existing page; later writes retain it. Current code text drives read/files/export, including nested scripts/resources and relative links; no saved ZIP masks later edits. Binary resources require native Files storage. Omission uses rendered storage for new/native pages; an existing literal page retains its mode. To return that page to rendered main/reference pages, explicitly run `replace INPUT --target EXACT --storage notion_blocks` with the complete source and resources. Prompt/Router remain native. See [the storage and recovery contract](protocol.md#mutation-contract).
 
 Editable files require LF line endings: Notion normalizes CR/CRLF inside code blocks. The CLI rejects such input before mutation; normalize the chosen text deliberately or keep native Files storage for exact original bytes.
 
@@ -400,7 +409,7 @@ Large editable files use ordered code blocks with at most 30000 UTF-16 code unit
 
 The CLI writes CommonMark/GFM through Notion's v2 parser and restores v1 readback boundaries and split emphasis for local consumption. It repairs changed table literals and code-block languages through the block API, then compares saved instructions; it does not equate a changed operator, command, language or link destination with the input. Parser warnings are failures. Preserve the operation receipt on partial/unknown outcomes and use the recovery path below.
 
-After an interruption, use the returned operation ID:
+After an earlier Publication interruption, use its returned operation ID and recovery action. Shared IDs use the [shared recovery table](shared-authoring.md#handle-an-interrupted-operation).
 
 ```bash
 ntn-skills operation resume OPERATION_ID --progress

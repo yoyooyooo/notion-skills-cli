@@ -1204,6 +1204,8 @@ for (const historical of [false, true])
   test(`legacy ${historical ? "old receipt" : "frozen unavailable"} never acquires source on resume`, async () => {
     const f = fixture()
     const created = await f.run(createSkill("/input", { database }))
+    if (typeof created.operation_id !== "string" || created.operation_id.length === 0)
+      throw new Error("Expected legacy creation to retain its publication operation ID")
     const receipt = property(f.receipts.get(`publications/${created.operation_id}.json`))
     expect(receipt.source_binding).toMatchObject({
       status: "unavailable",

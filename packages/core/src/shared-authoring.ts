@@ -4,6 +4,7 @@ import { invalidateSnapshotCache } from "./cache.ts"
 import { fail, property, SkillsError, type Snapshot } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { parseYaml } from "./yaml.ts"
+import { sharedSkillId } from "./shared-content.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
@@ -27,6 +28,7 @@ import {
   type SharedPendingFileScope,
 } from "./shared-pending-file-operations.ts"
 import { sha256, Store } from "./store.ts"
+import { projectSharedNotionMarkdown } from "./shared-notion-projection.ts"
 
 /** Fresh-read evidence only; never serialized into a fixed snapshot or used as shared ownership. */
 export type SharedAuthoringEvidence = {
@@ -37,15 +39,20 @@ export type SharedAuthoringEvidence = {
   readonly skill_id: string
   readonly skill_page_id: string
   readonly source_id: string
+  readonly source_revision: string
+  readonly read_only: boolean
   readonly files: readonly {
     readonly file_id: string
     readonly page_id: string
     readonly path: string
     readonly heads: readonly string[]
     readonly body_sha256: string
+    readonly last_edited_time: string
+    readonly metadata_validated_at: number
+    readonly body_verified_at: number
   }[]
 }
-const EvidenceSchema = Schema.Struct({
+export const SharedAuthoringEvidenceSchema = Schema.Struct({
   version: Schema.Literal(1),
   scope: Schema.String,
   snapshot_id: Schema.String,
@@ -53,6 +60,8 @@ const EvidenceSchema = Schema.Struct({
   skill_id: Schema.String,
   skill_page_id: Schema.String,
   source_id: Schema.String,
+  source_revision: Schema.String,
+  read_only: Schema.Boolean,
   files: Schema.Array(
     Schema.Struct({
       file_id: Schema.String,
@@ -60,9 +69,13 @@ const EvidenceSchema = Schema.Struct({
       path: Schema.String,
       heads: Schema.Array(Schema.String),
       body_sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+      last_edited_time: Schema.String,
+      metadata_validated_at: Schema.Number,
+      body_verified_at: Schema.Number,
     }),
   ),
 })
+const EvidenceSchema = SharedAuthoringEvidenceSchema
 const checked = <A>(action: () => A) =>
   Effect.try({
     try: action,
@@ -77,6 +90,7 @@ export function sharedAuthoringMarkdown(
   snapshot: Snapshot,
   path: string,
   bytes: Uint8Array,
+  metadata?: { readonly name?: string; readonly description?: string },
 ): string {
   const locator = snapshot.record.locator
   if (locator.type !== "shared_skill")
@@ -107,8 +121,8 @@ export function sharedAuthoringMarkdown(
     }
     if (typeof value !== "object" || value === null || Array.isArray(value))
       throw fail("INVALID_SKILL", "The main file frontmatter must be a metadata mapping.")
-    const metadata = property(value)
-    const unknown = Object.keys(metadata)
+    const frontmatter = property(value)
+    const unknown = Object.keys(frontmatter)
       .filter((name) => !["name", "description", "notion_page_id"].includes(name))
       .sort()
     if (unknown.length !== 0)
@@ -118,17 +132,21 @@ export function sharedAuthoringMarkdown(
         { fields: unknown },
       )
     if (
-      (metadata.name !== undefined && metadata.name !== snapshot.record.name) ||
-      (metadata.description !== undefined && metadata.description !== snapshot.record.description)
+      (frontmatter.name !== undefined &&
+        frontmatter.name !== snapshot.record.name &&
+        frontmatter.name !== metadata?.name) ||
+      (frontmatter.description !== undefined &&
+        frontmatter.description !== snapshot.record.description &&
+        frontmatter.description !== metadata?.description)
     )
       throw fail(
         "SHARED_METADATA_CONFLICT",
         "Main name and description must match the current Notion properties; edit those properties explicitly.",
       )
     if (
-      metadata.notion_page_id !== undefined &&
-      (typeof metadata.notion_page_id !== "string" ||
-        pageId(metadata.notion_page_id) !== locator.page_id)
+      frontmatter.notion_page_id !== undefined &&
+      (typeof frontmatter.notion_page_id !== "string" ||
+        pageId(frontmatter.notion_page_id) !== locator.page_id)
     )
       throw fail(
         "SNAPSHOT_CONFLICT",
@@ -186,16 +204,13 @@ function reconcileLocalBeforeNewPlan(library: SharedLibrary, scope: SharedPendin
     if (first.plan.kind !== "body_write")
       return yield* Effect.fail(
         fail(
-          "SHARED_OBSERVATION_PENDING",
-          "A previous observation must be reconciled by a current read before another write can be planned.",
-          { observation_operation_id: first.plan.operation_id },
+          "SHARED_PENDING_OPERATION",
+          "The original shared operation must be reconciled by its current read or explicit recovery entry before another body write can be planned.",
+          { kind: first.plan.kind, operation_id: first.plan.operation_id },
         ),
       )
     const result = yield* reconcileSharedBodyWrite(library, first.plan)
-    yield* invalidateSnapshotCache(
-      `shared_skill:${library.library_id}:${scope.skill_id}`,
-      scope.scope,
-    )
+    yield* invalidateSnapshotCache(sharedSkillId(library.library_id, scope.skill_id), scope.scope)
     yield* (yield* Store).retireKeys([first.key])
     return yield* Effect.fail(
       fail(
@@ -218,6 +233,20 @@ function dispatch(
   dryRun: boolean,
 ) {
   return Effect.gen(function* () {
+    const projection =
+      plan.input_projection === undefined
+        ? undefined
+        : {
+            version: plan.input_projection.version,
+            format: plan.input_projection.format,
+            normalization_version: plan.input_projection.normalization_version,
+            removed_terminal_lfs: plan.input_projection.removed_terminal_lfs,
+            body_input_sha256: yield* sha256(plan.input_projection.input_markdown),
+            candidate_sha256: plan.candidate.content.sha256,
+            ...(plan.authored_input_sha256 === undefined
+              ? {}
+              : { input_sha256: plan.authored_input_sha256 }),
+          }
     if (dryRun)
       return {
         status: "planned" as const,
@@ -233,6 +262,7 @@ function dispatch(
         unchanged:
           plan.action === "write" &&
           plan.before.fingerprint.sha256 === plan.candidate.content.sha256,
+        ...(projection === undefined ? {} : { input_projection: projection }),
       }
     const result = yield* executeSharedBodyWrite(library, {
       plan,
@@ -240,10 +270,7 @@ function dispatch(
       beforePlanWrite: (original) => retainPendingFileOperation(scope, original),
     })
     if (result.status !== "unchanged") {
-      yield* invalidateSnapshotCache(
-        `shared_skill:${library.library_id}:${scope.skill_id}`,
-        scope.scope,
-      )
+      yield* invalidateSnapshotCache(sharedSkillId(library.library_id, scope.skill_id), scope.scope)
       yield* (yield* Store).retireKeys([yield* pendingFileOperationKey(scope.prefix, plan)])
     }
     return {
@@ -255,6 +282,7 @@ function dispatch(
       candidate_sha256: plan.candidate.content.sha256,
       unchanged: result.status === "unchanged",
       protection: sharedBodyWriteProtection,
+      ...(projection === undefined ? {} : { input_projection: projection }),
     }
   })
 }
@@ -274,6 +302,8 @@ export function writeSharedSkillFile(input: {
     const markdown = yield* checked(() =>
       sharedAuthoringMarkdown(snapshot, input.path, input.bytes),
     )
+    const projection = yield* checked(() => projectSharedNotionMarkdown(markdown))
+    const inputHash = yield* sha256(input.bytes)
     const evidence = yield* checked(() =>
       Schema.decodeUnknownSync(EvidenceSchema)(property(snapshot).shared_authoring),
     )
@@ -333,7 +363,9 @@ export function writeSharedSkillFile(input: {
       skillPageId: locator.page_id,
       fileId: file.file_id,
       action: "write",
-      candidateMarkdown: markdown,
+      candidateMarkdown: projection.markdown,
+      inputProjection: projection,
+      authoredInputSha256: inputHash,
       expected: { heads: file.heads, body_sha256: file.body_sha256 },
     })
     if (
@@ -350,7 +382,7 @@ export function writeSharedSkillFile(input: {
       )
     return {
       ...(yield* dispatch(library, journal, plan, input.dryRun ?? false)),
-      input_sha256: yield* sha256(input.bytes),
+      input_sha256: inputHash,
     }
   })
 }
@@ -362,6 +394,11 @@ export function restoreSharedFileFollowing(input: {
   readonly fileId: string
   readonly candidateMarkdown: string
   readonly source: RestoreSource
+  readonly expected?: {
+    readonly path: string
+    readonly heads: readonly string[]
+    readonly body_sha256: string
+  }
   readonly dryRun?: boolean
 }) {
   return Effect.gen(function* () {
@@ -377,14 +414,27 @@ export function restoreSharedFileFollowing(input: {
     const index = yield* querySharedSkillIndex(library, input.skillPageId)
     const journal = yield* pendingScope(scope, library, index.skill_id, input.skillPageId)
     yield* reconcileLocalBeforeNewPlan(library, journal)
+    const projection = yield* checked(() => projectSharedNotionMarkdown(input.candidateMarkdown))
     const plan = yield* prepareSharedBodyWrite({
       library,
       skillPageId: input.skillPageId,
       fileId: input.fileId,
       action: "restore_follow",
-      candidateMarkdown: input.candidateMarkdown,
+      candidateMarkdown: projection.markdown,
       source: input.source,
+      inputProjection: projection,
+      authoredInputSha256: yield* sha256(input.candidateMarkdown),
+      ...(input.expected === undefined
+        ? {}
+        : { expected: { heads: input.expected.heads, body_sha256: input.expected.body_sha256 } }),
     })
+    if (input.expected !== undefined && plan.path !== input.expected.path)
+      return yield* Effect.fail(
+        fail(
+          "WRITE_CONFLICT",
+          "The selected logical file path moved before restore-follow was prepared.",
+        ),
+      )
     return yield* dispatch(library, journal, plan, input.dryRun ?? false)
   })
 }

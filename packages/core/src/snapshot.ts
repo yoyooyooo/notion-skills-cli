@@ -3,6 +3,7 @@ import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
 import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
+import { hasPendingSharedCreate } from "./shared-create.ts"
 import {
   authScope,
   catalog,
@@ -785,12 +786,13 @@ export function targetSnapshot(
           (observed.snapshot.record.kind !== "router" ||
             observed.snapshot.router_members !== undefined))
       const locator = observed?.snapshot.record.locator
-      const pending =
-        !options.offline && scope && locator?.type === "shared_skill"
-          ? (yield* (yield* Store).listKeys(
-              `${yield* sharedPendingObservationPrefix(scope, locator.library_id, locator.skill_id)}/`,
-            )).some((key) => key.endsWith(".json"))
-          : false
+      let pending = false
+      if (!options.offline && scope && locator?.type === "shared_skill")
+        pending =
+          (yield* (yield* Store).listKeys(
+            `${yield* sharedPendingObservationPrefix(scope, locator.library_id, locator.skill_id)}/`,
+          )).some((key) => key.endsWith(".json")) ||
+          (yield* hasPendingSharedCreate(scope, locator.library_id, locator.skill_id))
       if (
         observed &&
         (options.offline ||

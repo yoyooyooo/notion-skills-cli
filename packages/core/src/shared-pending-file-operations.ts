@@ -10,10 +10,30 @@ import {
   validateSharedObservationPlan,
   type SharedObservationPlan,
 } from "./shared-observation-operation.ts"
+import {
+  SharedMetadataWritePlanSchema,
+  validateSharedMetadataWritePlan,
+  type SharedMetadataWritePlan,
+} from "./shared-metadata-write-model.ts"
+import {
+  SharedFileManagementPlanSchema,
+  validateSharedFileManagementPlan,
+  type SharedFileManagementPlan,
+} from "./shared-file-management-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import {
+  SharedSkillApplyPlanSchema,
+  validateSharedSkillApplyPlan,
+  type SharedSkillApplyPlan,
+} from "./shared-skill-apply-model.ts"
 import { sha256, Store } from "./store.ts"
 
-export type SharedPendingFilePlan = SharedObservationPlan | SharedBodyWritePlan
+export type SharedPendingFilePlan =
+  | SharedObservationPlan
+  | SharedBodyWritePlan
+  | SharedMetadataWritePlan
+  | SharedFileManagementPlan
+  | SharedSkillApplyPlan
 export type SharedPendingFileScope = {
   readonly prefix: string
   readonly scope: string
@@ -28,7 +48,13 @@ const PendingFileOperationSchema = Schema.Struct({
   library_id: Schema.String,
   skill_id: Schema.String,
   skill_page_id: Schema.String,
-  plan: Schema.Union([SharedObservationPlanSchema, SharedBodyWritePlanSchema]),
+  plan: Schema.Union([
+    SharedObservationPlanSchema,
+    SharedBodyWritePlanSchema,
+    SharedMetadataWritePlanSchema,
+    SharedFileManagementPlanSchema,
+    SharedSkillApplyPlanSchema,
+  ]),
 })
 
 /** A dispatch barrier, not ownership state. Keep the registered SQLite namespace. */
@@ -45,15 +71,34 @@ export function pendingFileOperationKey(prefix: string, plan: SharedPendingFileP
 }
 
 function validatePlan(plan: SharedPendingFilePlan) {
-  return plan.kind === "body_write"
-    ? validateSharedBodyWritePlan(plan).pipe(Effect.map((value): SharedPendingFilePlan => value))
-    : validateSharedObservationPlan(plan).pipe(Effect.map((value): SharedPendingFilePlan => value))
+  switch (plan.kind) {
+    case "body_write":
+      return validateSharedBodyWritePlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+    case "file_observation":
+      return validateSharedObservationPlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+    case "metadata_write":
+      return validateSharedMetadataWritePlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+    case "file_management":
+      return validateSharedFileManagementPlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+    case "skill_apply":
+      return validateSharedSkillApplyPlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+  }
 }
 
 function scopeMatches(input: SharedPendingFileScope, plan: SharedPendingFilePlan) {
   return (
     plan.skill_page_id === input.skill_page_id &&
-    (plan.kind !== "body_write" ||
+    (plan.kind === "file_observation" ||
       (plan.library_id === input.library_id && plan.skill_id === input.skill_id))
   )
 }

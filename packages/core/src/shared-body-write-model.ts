@@ -11,6 +11,10 @@ import {
 } from "./shared-file-state.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import {
+  SharedNotionMarkdownProjectionSchema,
+  validateSharedNotionMarkdownProjection,
+} from "./shared-notion-projection.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 export const BodyWriteActionSchema = Schema.Literals(["write", "restore_follow"])
@@ -47,6 +51,10 @@ export const SharedBodyWritePlanSchema = Schema.Struct({
   restore_source: Schema.optional(RestoreSourceSchema),
   before: FrozenWriteBodySchema,
   candidate: Schema.Struct({ markdown: Schema.String, content: RetainedContentSchema }),
+  /** Optional for previously frozen plans; the full preprojection body remains retained here. */
+  input_projection: Schema.optional(SharedNotionMarkdownProjectionSchema),
+  /** Provenance of the original complete UTF-8 input, including validated main frontmatter. */
+  authored_input_sha256: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
   event: FileEventSchema,
 })
 export type SharedBodyWritePlan = typeof SharedBodyWritePlanSchema.Type
@@ -122,6 +130,10 @@ function description(plan: Omit<SharedBodyWritePlan, "operation_id">) {
     before: plan.before,
     candidate: plan.candidate,
     event: plan.event,
+    ...(plan.input_projection === undefined ? {} : { input_projection: plan.input_projection }),
+    ...(plan.authored_input_sha256 === undefined
+      ? {}
+      : { authored_input_sha256: plan.authored_input_sha256 }),
   }
 }
 
@@ -169,6 +181,21 @@ export function validateSharedBodyWritePlan(input: unknown) {
           "Frozen bodies do not use the declared normalization.",
         )
       if (
+        plan.input_projection !== undefined &&
+        ((plan.input_projection.version === 2 && plan.input_projection.purpose !== "body_write") ||
+          validateSharedNotionMarkdownProjection(plan.input_projection).markdown !==
+            plan.candidate.markdown)
+      )
+        throw fail(
+          "SHARED_BODY_WRITE_INVALID",
+          "The candidate differs from the exact input projection frozen before dispatch.",
+        )
+      if (plan.authored_input_sha256 !== undefined && plan.input_projection === undefined)
+        throw fail(
+          "SHARED_BODY_WRITE_INVALID",
+          "An authored-input identity requires its explicit native body projection.",
+        )
+      if (
         !Number.isSafeInteger(plan.before.bytes) ||
         plan.before.bytes < 0 ||
         !Number.isSafeInteger(plan.before.downloaded_at) ||
@@ -203,7 +230,9 @@ export function validateSharedBodyWritePlan(input: unknown) {
           !source ||
           source.source_id === "" ||
           source.source_id !== plan.source_id ||
-          source.path !== plan.path ||
+          source.path === "" ||
+          source.path === "." ||
+          normalizePath(source.path) !== source.path ||
           plan.event.kind !== "following_restored" ||
           plan.event.source_revision !== source.revision
         )
@@ -329,6 +358,10 @@ export function makeSharedBodyWritePlan(
       before: input.before,
       candidate: { markdown, content },
       event,
+      ...(input.input_projection === undefined ? {} : { input_projection: input.input_projection }),
+      ...(input.authored_input_sha256 === undefined
+        ? {}
+        : { authored_input_sha256: input.authored_input_sha256 }),
     }
     const planHash = yield* sha256(canonicalSharedJson(plan))
     return yield* validateSharedBodyWritePlan({

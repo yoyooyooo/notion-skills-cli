@@ -1,3 +1,4 @@
+import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
 import { Config, Context, Crypto, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { ConfigSchema, SnapshotSchema, decode, fail, property, SkillsError } from "./model.ts"
 import type { Base, SyncBinding, SyncReceipt } from "./sync.ts"
@@ -399,8 +400,14 @@ export const configuredToken = Effect.gen(function* () {
   return Option.getOrUndefined(token)?.trim() || undefined
 })
 export function publicConfiguration(config: typeof ConfigSchema.Type) {
-  const { token, ...visible } = config
-  return { ...visible, token_configured: Boolean(token?.trim()) }
+  const { token, source_resources, ...visible } = config
+  return {
+    ...visible,
+    ...(source_resources === undefined
+      ? {}
+      : { source_resources: publicSourceResourceConfiguration(source_resources) }),
+    token_configured: Boolean(token?.trim()),
+  }
 }
 export function setToken(input?: string) {
   return Effect.gen(function* () {

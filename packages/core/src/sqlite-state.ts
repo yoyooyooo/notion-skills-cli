@@ -123,6 +123,17 @@ const sharedLocalDomains: readonly {
     address:
       /^operations\/shared-profile-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\/profile-[a-f0-9]{64}\.json$/u,
   },
+  {
+    prefix: "operations/shared-source-registration",
+    category: "dispatch",
+    address:
+      /^operations\/shared-source-registration\/[a-f0-9]{64}\/source(?:-plan)?-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-native-create",
+    category: "dispatch",
+    address: /^operations\/shared-native-create\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
+  },
 ]
 
 function localContentHash(key: string): string | undefined {

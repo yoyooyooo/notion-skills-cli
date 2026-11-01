@@ -15,6 +15,8 @@ const keys = {
   github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
   observationPending: `operations/shared-observation-pending/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
+  sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
+  nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
   profilePending: `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/profile-${"c".repeat(64)}.json`,
 }
 const pendingPayload = {
@@ -66,7 +68,7 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
-test("shared cache and three dispatch domains persist across real Node restarts", async () => {
+test("shared cache and five dispatch domains persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({
       key,
@@ -85,7 +87,13 @@ test("shared cache and three dispatch domains persist across real Node restarts"
     expect(JSON.parse(reader.stdout)).toEqual({
       values: entries.map((entry) => entry.payload),
       cache: [keys.observations, keys.page, keys.github].sort(),
-      dispatch: [keys.observationPending, keys.historyPending, keys.profilePending].sort(),
+      dispatch: [
+        keys.observationPending,
+        keys.historyPending,
+        keys.profilePending,
+        keys.sourceRegistration,
+        keys.nativeCreate,
+      ].sort(),
       legacy: { legacy: true },
     })
     const schema = await child(
@@ -95,7 +103,7 @@ test("shared cache and three dispatch domains persist across real Node restarts"
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
       { category: "cache", retired: 0, count: 3 },
-      { category: "dispatch", retired: 0, count: 3 },
+      { category: "dispatch", retired: 0, count: 5 },
     ])
   })
 }, 30_000)
@@ -190,7 +198,13 @@ test("a committed pending receipt survives abrupt process death and is readable 
 
 test("dispatch retirement hides active work but retains its exact payload and never silently reactivates it", async () => {
   await isolated(async (root) => {
-    const dispatched = [keys.observationPending, keys.historyPending, keys.profilePending]
+    const dispatched = [
+      keys.observationPending,
+      keys.historyPending,
+      keys.profilePending,
+      keys.sourceRegistration,
+      keys.nativeCreate,
+    ]
     const retired = await child(
       root,
       `for(const key of ${JSON.stringify(dispatched)}) yield* state.write(key,${JSON.stringify(pendingPayload)});yield* state.retire(${JSON.stringify(dispatched)});yield* state.retire(${JSON.stringify(dispatched)});console.log(JSON.stringify({active:yield* state.list('operations'),read:yield* state.read(${JSON.stringify(keys.observationPending)})}));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT key,payload,retired FROM shared_local_records ORDER BY key\`))}))`,
@@ -238,7 +252,13 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
     expect(result.entries.sort()).toEqual([keys.observations, keys.page, keys.github].sort())
     expect(result.cache).toEqual([])
     expect(result.dispatch).toEqual(
-      [keys.observationPending, keys.historyPending, keys.profilePending].sort(),
+      [
+        keys.observationPending,
+        keys.historyPending,
+        keys.profilePending,
+        keys.sourceRegistration,
+        keys.nativeCreate,
+      ].sort(),
     )
     expect(result.receipt).toEqual(pendingPayload)
     const rebuilt = await child(
@@ -267,6 +287,10 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `cache/shared-github-blobs/${"c".repeat(40)}`,
       `cache/shared-file-observations/${scope}/1.json`,
       `operations/shared-profile-pending/${scope}/profile-${"c".repeat(64)}.json`,
+      `operations/shared-source-registration/${scope}/source-other.json`,
+      `operations/shared-source-registration/${scope}/../source-${"7".repeat(64)}.json`,
+      `operations/shared-native-create/${scope}/skill-create-invalid.json`,
+      `operations/shared-native-create/${scope}/../skill-create-${"8".repeat(64)}.json`,
       `content-restrictions/other/${scope}.json`,
       `content-restrictions/local/${scope}.json/extra`,
     ]

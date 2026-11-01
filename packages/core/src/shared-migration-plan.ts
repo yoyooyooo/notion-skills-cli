@@ -4,7 +4,15 @@ import { composeSharedFiles } from "./shared-composition.ts"
 import { sharedSkillId } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { makeSourceBinding } from "./shared-source-binding.ts"
+import { summarizeMigrationBlockers, type MigrationBlocker } from "./shared-migration-blockers.ts"
+import {
+  inspectMigrationOperation,
+  type MigrationOperationTable,
+} from "./shared-migration-operation.ts"
+import { analyzeMigrationReadiness, migrationReadinessBasis } from "./shared-migration-readiness.ts"
 import { sha256 } from "./store.ts"
+
+export type { MigrationBlocker } from "./shared-migration-blockers.ts"
 
 const BodySchema = Schema.Struct({
   complete: Schema.Boolean,
@@ -44,6 +52,19 @@ const PreservedItemSchema = Schema.Struct({
   retention_verified: Schema.optional(Schema.Boolean),
   terminal_verified: Schema.optional(Schema.Boolean),
   terminal_evidence: Schema.optional(Schema.String),
+  operation_origin: Schema.optional(
+    Schema.Struct({
+      version: Schema.Literal(1),
+      table: Schema.Literals(["upstream_commands", "upstream_operations", "integrity_operations"]),
+      row_key: Schema.String,
+      database_sha256: Schema.String,
+      payload_sha256: Schema.String,
+      payload_bytes: Schema.Number,
+      row_metadata: Schema.Unknown,
+      verified: Schema.Boolean,
+      receipt_ref: Schema.String,
+    }),
+  ),
   source_semantics: Schema.optional(Schema.Literals(["fixed_git_v1", "unsupported", "unknown"])),
   fixed_source: Schema.optional(Schema.Unknown),
 })
@@ -66,14 +87,36 @@ export const SharedMigrationInputSchema = Schema.Struct({
     pins: InventorySchema,
     operations: InventorySchema,
   }),
+  /** Optional supplied receipts; the read-only planner cannot verify their external contents. */
+  readiness_evidence: Schema.optional(
+    Schema.Struct({
+      version: Schema.Literal(1),
+      /** Canonical SHA-256 of this entire input without readiness_evidence. */
+      basis_sha256: Schema.String,
+      operations: Schema.Array(
+        Schema.Struct({
+          legacy_id: Schema.String,
+          impact: Schema.Struct({
+            /** Complete affected-target closure, including indirect binding/member effects. */
+            complete: Schema.Boolean,
+            legacy_ids: Schema.Array(Schema.String),
+            receipt_ref: Schema.String,
+          }),
+          isolation: Schema.Struct({
+            verified: Schema.Boolean,
+            receipt_ref: Schema.String,
+            recovery: Schema.Struct({
+              action: Schema.Literals(["inspect_original", "reconcile_original"]),
+              reference: Schema.String,
+            }),
+          }),
+        }),
+      ),
+    }),
+  ),
 })
 export type SharedMigrationInput = typeof SharedMigrationInputSchema.Type
 
-export type MigrationBlocker = {
-  readonly code: string
-  readonly subject: string
-  readonly message: string
-}
 export type MigrationFileMapping = {
   readonly legacy_id: string
   readonly file_id: string
@@ -105,6 +148,9 @@ export type MigrationPreservationMapping = {
     readonly database_id: unknown
     readonly state: unknown
     readonly phase: unknown
+    readonly table?: MigrationOperationTable
+    readonly identity_verified?: boolean
+    readonly state_field?: "state" | "marker.state"
     readonly automatic_replay: false
   }
 }
@@ -171,7 +217,7 @@ export function planSharedMigration(input: unknown) {
         ),
       )
     const blockers: MigrationBlocker[] = []
-    const block = (code: string, subject: string, message: string) => {
+    const block = (code: MigrationBlocker["code"], subject: string, message: string) => {
       blockers.push({ code, subject, message })
     }
     const inputHash = yield* sha256(canonicalSharedJson(frozen))
@@ -322,17 +368,13 @@ export function planSharedMigration(input: unknown) {
             subject,
             "The original pin and its complete exact bytes require recoverable retention evidence.",
           )
-        if (domain === "operations") {
-          if (
-            raw.operation_id !== item.legacy_id ||
-            typeof raw.state !== "string" ||
-            typeof raw.phase !== "string" ||
-            typeof raw.scope !== "string"
-          )
+        const operation = domain === "operations" ? inspectMigrationOperation(item) : undefined
+        if (operation !== undefined) {
+          if (!operation.identity_verified)
             block(
               "OPERATION_IDENTITY_UNCERTAIN",
               subject,
-              "Preserve the original command envelope, including operation_id, scope, state and phase.",
+              "Preserve verified original SQL provenance and the identity fields of its operation family; never invent a missing scope or phase.",
             )
           if (!item.terminal_verified || !item.terminal_evidence)
             block(
@@ -358,8 +400,15 @@ export function planSharedMigration(input: unknown) {
                   operation_id: raw.operation_id ?? null,
                   scope: raw.scope ?? null,
                   database_id: raw.database_id ?? null,
-                  state: raw.state ?? null,
+                  state: operation?.local_state ?? null,
                   phase: raw.phase ?? null,
+                  ...(item.operation_origin === undefined
+                    ? {}
+                    : {
+                        table: item.operation_origin.table,
+                        identity_verified: operation?.identity_verified ?? false,
+                        state_field: operation?.state_field ?? "state",
+                      }),
                   automatic_replay: false as const,
                 },
               }
@@ -556,6 +605,7 @@ export function planSharedMigration(input: unknown) {
       (a, b) =>
         compare(a.subject, b.subject) || compare(a.code, b.code) || compare(a.message, b.message),
     )
+    const readinessBasisHash = yield* sha256(canonicalSharedJson(migrationReadinessBasis(frozen)))
     return {
       version: 1 as const,
       plan_id: `migration-${inputHash}`,
@@ -570,6 +620,9 @@ export function planSharedMigration(input: unknown) {
       records,
       preservation,
       blockers,
+      blocker_summary: summarizeMigrationBlockers(blockers),
+      // Evidence readiness neither changes v1 blocked/reviewable nor authorizes or executes a batch.
+      readiness: analyzeMigrationReadiness(frozen, blockers, readinessBasisHash),
       stop_conditions: [...new Set(blockers.map((blocker) => blocker.code))].sort(),
       // This complete frozen evidence keeps ref/commit/include/exclude/patch,
       // sharedTargetSet, opaque Metadata and original operation input/intent.

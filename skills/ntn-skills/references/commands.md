@@ -15,7 +15,7 @@ ntn-skills read 'PINNED_FILE_REF' --lines 10-30
 ntn-skills read 'PINNED_BINARY_REF' --output NEW_LOCAL_PATH
 ```
 
-`list` paginates metadata without bodies or file manifests and retains coverage, database identity and freshness. `--query` filters Name/alias/Description. Database selectors accept one ID, URL or exact case-sensitive registered alias; titles are labels. Unknown/ambiguous selectors fail without fallback. Different databases may contain same-name Skills; preserve page identities and select a database or exact returned page-ID ref. `ctl config show` inspects local aliases; `ctl database register ALIAS --database SELECTOR` validates and registers one, and `ctl database unregister ALIAS` removes only the exact local alias offline. `ctl config set default_database SELECTOR` affects create only and does not constrain discovery. `ctl config unset default_database` clears the preference offline.
+`list` paginates metadata without bodies or file manifests and retains coverage, database identity and freshness. `--query` filters Name/alias/Description. Database selectors accept one ID, URL or exact case-sensitive registered alias; titles are labels. Unknown/ambiguous selectors fail without fallback. Different databases may contain same-name Skills; preserve page identities and select a database or exact returned record ref. `ctl config show` inspects local aliases; `ctl database register ALIAS --database SELECTOR` validates and registers one, and `ctl database unregister ALIAS` removes only the exact local alias offline. `ctl config set default_database SELECTOR` affects create only and does not constrain discovery. `ctl config unset default_database` clears the preference offline.
 
 Each `list` row also carries boolean `default_context` (missing or unchecked is false); this field never filters `list` or explicit reads.
 
@@ -34,7 +34,9 @@ These illustrative JSON excerpts show the naming fields in successful `read` out
 
 Current `read/files/export/list` accept one of `--refresh`, `--offline`, `--max-age DURATION`. Defaults are 5m for content and 60s for metadata. Refresh validates online; offline intentionally selects eligible local observations and reports their age; max-age overrides the limit (`0` requires validation). Failed validation never falls back silently to stale bytes. Official `ntn login` may require online scope validation even for warm reads; unpinned offline lookup fails if scope cannot be selected safely.
 
-An ordinary native Skill read/files/export may renew an aligned source-bundle observation through root/reference metadata, complete inclusion and immutable attachment checks, returning `freshness.validation="metadata"`. This avoids repeated body/ZIP downloads but can miss edits with unchanged reported versions. `--refresh` or explicit `--max-age 0` always validates complete bodies/resources. A cold machine or missing version checkpoint uses the complete path. Mutation/sync validation is unchanged.
+Shared current reads batch flat Files metadata and retained ownership before reusing unchanged bodies. Complete newly observed Notion edits become whole-file customizations after their shared facts verify; no manual adopt marker is required. An independent full-body deadline bounds same-timestamp edits. Preserve the exact `shared_skill` locator, encoded stable record ID and scope; a stable ID is not a page UUID.
+
+An existing legacy native Skill read/files/export may renew an aligned source-bundle observation through root/reference metadata, complete inclusion and immutable attachment checks, returning `freshness.validation="metadata"`. This avoids repeated body/ZIP downloads but can miss edits with unchanged reported versions. `--refresh` or explicit `--max-age 0` always validates complete bodies/resources. A cold machine or missing version checkpoint uses the complete path. Mutation/sync validation is unchanged.
 
 Host metadata consumers can use `ctl cache identity` to obtain an opaque local credential/configuration digest and effective catalog TTL without contacting Notion. It exposes no credential or account, does not establish current permission, and does not change read/offline scope validation. See the [cache contract](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/protocol.md#read-policy-and-cache-management).
 
@@ -42,7 +44,7 @@ Pinned refs and snapshots are immutable and offline; pinned relative `--from` pr
 
 ## Task routing
 
-For Notion page creation, a combined file/metadata change through `apply` against a pinned baseline, or a one-time portable import/export, load `ntn-skills-maintain`. For upstream subscriptions, local-directory synchronization, baseline conflicts or interrupted sync recovery, load `ntn-skills-sync`. If a sibling is unavailable, read its exact ID with `ctl builtin read`, then read the needed supporting files from the returned inventory using `--path`. No local install is required just to inspect package instructions.
+For Notion page creation, a combined file/metadata change through `apply` against a pinned baseline, or a one-time portable import/export, load `ntn-skills-maintain`. For fixed shared sources, Profile/View defaults, existing upstream subscriptions, local-directory synchronization, baseline conflicts or their interrupted operations, load `ntn-skills-sync`. If a sibling is unavailable, read its exact ID with `ctl builtin read`, then read the needed supporting files from the returned inventory using `--path`. No local install is required just to inspect package instructions.
 
 ## Local builtins
 
@@ -85,7 +87,7 @@ States are `not_installed`, `current`, `update_available`, `modified`, `unmanage
 | `OUTPUT_CONFLICT` | Select a fresh output or review the existing bytes; no blind overwrite |
 | `AUTH_REQUIRED`, `ACCESS_DENIED`, `NTN_UNAVAILABLE` | Follow [diagnosis](integration.md#diagnose-discovery-and-loading) |
 
-Unknown errors remain failures. Read sanitized transport `details.reason` or nested `cause_details.reason`; do not request raw stderr that may contain credentials/signed URLs. For partial or unknown remote writes, retain the original operation ID and follow `operation show` and its `next.argv`; ordinary continuation uses `operation resume` on that same ID. `operation reconcile` only observes the retained effects. Creating another operation never resolves an unknown request. A stable manual edit after a committed publication can be read normally and does not need a separate acceptance command.
+Unknown errors remain failures. Read sanitized transport `details.reason` or nested `cause_details.reason`; do not request raw stderr that may contain credentials/signed URLs. For a partial or unknown shared operation, retain its original ID/input and use the matching maintenance or source recovery path. A fresh exact current read reconciles shared body writes, metadata, apply and restore-follow; `read_again` requests another read after the original outcome has been verified. Add/delete/move use `ctl library file reconcile TARGET OPERATION_ID --entry ENTRY`. Shared IDs are not legacy Publication IDs. Use `operation show`/`reconcile`/`resume` only for an operation returned by that earlier workflow. Creating another operation never resolves an unknown request. A verified `not_applied` or `partial` recovery confirms the reported outcome, not a completed edit.
 
 [Public CLI contract](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/protocol.md) owns exact response, identity, storage and recovery semantics.
 
@@ -95,8 +97,9 @@ Unknown errors remain failures. Read sanitized transport `details.reason` or nes
 ntn-skills views --database library
 ntn-skills list --default-view --database library
 ntn-skills list --view 'VIEW_ID_OR_NOTION_URL' --database library
+ntn-skills list --profile PROFILE_ID --database library
 ```
 
-Replace selectors with returned identities. `views` preserves the Notion API order, not an alphabetical sort or a promise about UI tab order. `--default-view` selects its first entry; an explicit `--view` does not fall back when missing or inaccessible. Omit both to discover the full configured library. `--query` filters returned metadata and never reads bodies. A selected View includes native quick filters. Empty results and no Views are successful empty directories; failed or incomplete queries are not. View membership is discovery policy, not permission.
+Replace selectors with returned identities. `views` preserves the Notion API order, not an alphabetical sort or a promise about UI tab order. `--default-view` consults the machine-bound shared Profile, falling back to the first API-order View when no default is configured. `--profile PROFILE_ID` selects a shared rule with an explicit `--database`. Explicit `--view` takes precedence over Profile defaults and does not fall back when missing or inaccessible. Omit these selections to discover the full configured library. Profile rules do not activate bodies or grant access; route rule changes to `ntn-skills-sync`. `--query` filters returned metadata and never reads bodies. A selected View includes native quick filters. Empty results and no Views are successful empty directories; failed or incomplete queries are not. View membership is discovery policy, not permission.
 
 View observations use the catalog freshness policy, isolated by credential, database and selector. `--refresh` starts a new native query. Continuation pages retain its query ID and expiry; expiry never extends the observation TTL. Incomplete, missing or repeating pagination fails. Known member metadata errors remain explicit in `coverage.failed_sources`; valid rows are returned, but a partial result cannot establish unique-name resolution.

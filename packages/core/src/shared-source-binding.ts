@@ -2,30 +2,18 @@ import { Effect, Schema } from "effect"
 import { decode, fail, SkillsError } from "./model.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { validateFixedGithubSource, type FixedGithubSource } from "./shared-github-source.ts"
-import { appendSharedRecord, canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
+import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
+import {
+  SharedGitSourceBindingSchema,
+  type SharedGitSourceBinding,
+} from "./shared-source-binding-model.ts"
+import { registerSharedSourceFact } from "./shared-source-registration.ts"
 import { sha256 } from "./store.ts"
 
 const SourceIdSchema = Schema.String.check(Schema.isPattern(/^source-[a-f0-9]{64}$/u))
 
-/** Wire shape only; the provider owns canonical URL, path, OID and file validation. */
-export const SharedGitSourceBindingSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  kind: Schema.Literal("git"),
-  source_id: SourceIdSchema,
-  url: Schema.String,
-  commit: Schema.String,
-  root: Schema.String,
-  tree: Schema.String,
-  files: Schema.Array(
-    Schema.Struct({
-      path: Schema.String,
-      source_path: Schema.String,
-      git_oid: Schema.String,
-      bytes: Schema.Number,
-    }),
-  ),
-})
-export type SharedGitSourceBinding = typeof SharedGitSourceBindingSchema.Type
+export { SharedGitSourceBindingSchema }
+export type { SharedGitSourceBinding }
 
 function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
   return Effect.try({
@@ -76,13 +64,10 @@ export function registerSourceBinding(
 ) {
   return Effect.gen(function* () {
     const binding = yield* makeSourceBinding(input.fixedSource)
-    const record = yield* appendSharedRecord(library, {
+    const record = yield* registerSharedSourceFact(library, {
       mode: input.mode,
-      recordId: binding.source_id,
-      operationId: `register-${binding.source_id}`,
       skillPageId: input.skillPageId,
-      kind: "source",
-      entityId: binding.source_id,
+      sourceId: binding.source_id,
       payload: binding,
     })
     return { binding, record }

@@ -162,6 +162,7 @@ function initialLocations(
       url.password !== "" ||
       url.port !== "" ||
       url.hash !== "" ||
+      url.search !== "" ||
       labels.length < 2 ||
       !/[a-z]/u.test(suffix) ||
       !labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label)) ||
@@ -169,7 +170,7 @@ function initialLocations(
     ) {
       throw fail(
         "INVALID_SOURCE_PLAN",
-        "Initial HTTP locations must be canonical public HTTPS URLs without embedded credentials or local addresses.",
+        "Shared initial HTTP locations must be canonical public HTTPS URLs without credentials, query parameters, or local addresses; configure signed retrieval URLs only on the consuming machine.",
       )
     }
     locations.set(location.sha256, { sha256: location.sha256, url: location.url })

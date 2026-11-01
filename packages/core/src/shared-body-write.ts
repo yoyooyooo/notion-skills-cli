@@ -16,7 +16,7 @@ import {
   type SharedRecord,
 } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
-import { resolveSourceBinding } from "./shared-source-binding.ts"
+import { resolveSelectedSharedSourceReference } from "./shared-selected-source.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import {
   bodyWriteChecked,
@@ -33,6 +33,7 @@ import {
   type SharedBodyWritePlan,
 } from "./shared-body-write-model.ts"
 import { sha256 } from "./store.ts"
+import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
 
 export {
   SharedBodyWritePlanSchema,
@@ -134,6 +135,7 @@ function validateSource(
   skillPageId: string,
   selected: string,
   source: RestoreSource | undefined,
+  sourcePath: string | null,
 ) {
   return Effect.gen(function* () {
     if (source === undefined) return
@@ -144,14 +146,18 @@ function validateSource(
           "The exact source selected in Notion differs from the frozen restore source.",
         ),
       )
-    const binding = yield* resolveSourceBinding(library, {
+    if (sourcePath === null || source.path !== sourcePath)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_SOURCE_PATH_UNAVAILABLE",
+          "Restore-follow requires the retained original source path; a moved native file cannot infer a new source mapping.",
+        ),
+      )
+    const binding = yield* resolveSelectedSharedSourceReference(library, {
       skillPageId,
       sourceId: source.source_id,
     })
-    if (
-      binding.commit !== source.revision ||
-      !binding.files.some((file) => file.path === source.path)
-    )
+    if (binding.revision !== source.revision || !binding.paths.includes(source.path))
       return yield* Effect.fail(
         fail(
           "SHARED_SOURCE_FILE_MISSING",
@@ -172,6 +178,8 @@ export function prepareSharedBodyWrite(input: {
   readonly candidateMarkdown: string
   readonly action: "write" | "restore_follow"
   readonly source?: RestoreSource
+  readonly inputProjection?: SharedBodyWritePlan["input_projection"]
+  readonly authoredInputSha256?: string
   readonly expected?: { readonly heads: readonly string[]; readonly body_sha256: string }
 }) {
   return Effect.gen(function* () {
@@ -220,6 +228,9 @@ export function prepareSharedBodyWrite(input: {
       input.skillPageId,
       context.index.source_reference,
       input.source,
+      context.state.placement === undefined
+        ? context.binding.path
+        : context.state.placement.source_path,
     )
     const before = yield* readExactBody(context.binding.page_id)
     const decision = yield* bodyWriteChecked(() =>
@@ -254,6 +265,10 @@ export function prepareSharedBodyWrite(input: {
       before,
       candidateMarkdown: input.candidateMarkdown,
       parents: context.state.heads,
+      ...(input.inputProjection === undefined ? {} : { input_projection: input.inputProjection }),
+      ...(input.authoredInputSha256 === undefined
+        ? {}
+        : { authored_input_sha256: input.authoredInputSha256 }),
     })
     yield* bodyWriteChecked(() => resolveFileState(input.fileId, [...context.events, plan.event]))
     return plan
@@ -305,6 +320,9 @@ function verifyCurrent(library: SharedLibrary, plan: SharedBodyWritePlan, includ
       plan.skill_page_id,
       context.index.source_reference,
       plan.restore_source,
+      context.state.placement === undefined
+        ? context.binding.path
+        : context.state.placement.source_path,
     )
     yield* bodyWriteChecked(() => resolveFileState(plan.file_id, [...context.events, plan.event]))
     if (includeBody) {
@@ -670,7 +688,13 @@ export function executeSharedBodyWrite<R = never>(
             type: "update_content",
             update_content: {
               content_updates: [
-                { old_str: plan.before.raw_markdown, new_str: plan.candidate.markdown },
+                {
+                  old_str: plan.before.raw_markdown,
+                  new_str:
+                    plan.input_projection === undefined
+                      ? plan.candidate.markdown
+                      : sharedNotionMarkdownWire(plan.input_projection),
+                },
               ],
             },
           },

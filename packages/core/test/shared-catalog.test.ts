@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { catalog, creationSource, explicitSource } from "../src/catalog.ts"
+import {
+  addSource,
+  catalog,
+  creationSource,
+  explicitSource,
+  setDefaultDatabase,
+} from "../src/catalog.ts"
 import {
   ContentRecordSchema,
   decode,
@@ -325,16 +331,6 @@ describe("shared content metadata", () => {
 })
 
 describe("shared catalog routing", () => {
-  test("an explicit shared library excludes unrelated legacy upstream configuration", async () => {
-    const f = fixture({ configuration: { upstream_database: id(900) } })
-    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
-    expect(result.coverage.exhaustive).toBe(true)
-    expect(result.coverage.failed_sources).toEqual([])
-    expect(result.coverage.queried_data_sources).toEqual([library.skills.data_source_id])
-    expect(f.calls).toHaveLength(3)
-    expect(f.calls.some((call) => call.path.includes(id(900)))).toBe(false)
-  })
-
   test("explicit source defaults to the legacy write fence, including malformed marked descriptors", async () => {
     for (const databaseValue of [
       database(),
@@ -349,6 +345,77 @@ describe("shared catalog routing", () => {
     }
   })
 
+  test("shared registration and defaults preserve configuration without opening legacy writes", async () => {
+    const f = fixture({
+      configuration: { token: "preserved-fixture-token", default_database: id(88), sources: [] },
+    })
+    const registered = await f.run(addSource("team", library.skills.database_id))
+    expect(registered).toEqual({
+      ...source,
+      alias: "team",
+      role: "content",
+      data_source_ids: [...source.data_source_ids],
+    })
+    expect(f.saved.get("config.json")).toEqual({
+      token: "preserved-fixture-token",
+      default_database: id(88),
+      sources: [registered],
+    })
+    await f.run(setDefaultDatabase("team"))
+    expect(f.saved.get("config.json")).toEqual({
+      token: "preserved-fixture-token",
+      default_database: library.skills.database_id,
+      sources: [registered],
+    })
+    for (const legacy of [explicitSource("team"), creationSource()]) {
+      const result = await f.run(legacy.pipe(Effect.result))
+      expect(result._tag === "Failure" && result.failure.code).toBe(
+        "SHARED_LIBRARY_CONSUMER_PENDING",
+      )
+    }
+    const selected = await f.run(creationSource(undefined, { allowShared: true }))
+    expect(selected).toEqual(registered)
+    expect(f.calls).toHaveLength(5)
+    expect(
+      f.calls.every(
+        (call) =>
+          call.path === `v1/databases/${library.skills.database_id}` &&
+          call.body === undefined &&
+          call.method === undefined,
+      ),
+    ).toBe(true)
+  })
+
+  test("shared configuration refuses malformed descriptors and mismatched identities without persisting", async () => {
+    for (const databaseValue of [
+      { ...database(), description: [{ plain_text: `${LIBRARY_MARKER}{}` }] },
+      { ...database(), id: id(99) },
+      { ...database(), data_sources: [{ id: id(99), name: "Unexpected" }] },
+    ]) {
+      for (const operation of [
+        addSource("team", library.skills.database_id).pipe(Effect.as(undefined)),
+        setDefaultDatabase(library.skills.database_id).pipe(Effect.as(undefined)),
+      ]) {
+        const configuration = {
+          token: "preserved-fixture-token",
+          default_database: id(88),
+          sources: [],
+        }
+        const f = fixture({ configuration, databaseValue })
+        const result = await f.run(operation.pipe(Effect.result))
+        expect(result._tag).toBe("Failure")
+        expect(f.saved.get("config.json")).toEqual(configuration)
+        expect(f.calls).toEqual([
+          {
+            path: `v1/databases/${library.skills.database_id}`,
+            body: undefined,
+            method: undefined,
+          },
+        ])
+      }
+    }
+  })
+
   test("explicit metadata opt-in preserves the descriptor without querying Files or Records", async () => {
     const f = fixture()
     const result = await f.run(
@@ -358,6 +425,29 @@ describe("shared catalog routing", () => {
     expect(result.data_source_ids).toEqual([library.skills.data_source_id])
     expect(f.calls.map((call) => call.path)).toEqual([`v1/databases/${library.skills.database_id}`])
   })
+
+  test.each(["explicit", "default", "discovery"])(
+    "only the shared-aware creation caller opts in (%s)",
+    async (selection) => {
+      const configured =
+        selection === "default" ? { default_database: library.skills.database_id } : undefined
+      const f = fixture({ configuration: configured })
+      const selected = selection === "explicit" ? library.skills.database_id : undefined
+      const source = await f.run(creationSource(selected, { allowShared: true }))
+      expect(source.shared_library).toEqual(library)
+      expect(
+        f.calls.some(
+          (call) =>
+            call.path.includes("/markdown") ||
+            call.path.includes(library.files.data_source_id) ||
+            call.path.includes(library.records.data_source_id),
+        ),
+      ).toBe(false)
+      const legacy = fixture({ configuration: configured })
+      const fenced = await legacy.run(creationSource(selected).pipe(Effect.result))
+      expect(fenced._tag).toBe("Failure")
+    },
+  )
 
   test("cold explicit catalog is metadata only and includes the shared stable identity", async () => {
     const f = fixture({ rows: [row({ renamed: true })] })

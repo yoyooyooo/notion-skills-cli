@@ -1,3 +1,10 @@
+import {
+  librarySourceCompositionCommand,
+  librarySourceReconcileCommand,
+  librarySourceSelectCommand,
+  librarySourceResourceCommand,
+} from "./commands-library-sources.ts"
+import { libraryFilesCommand } from "./commands-library-files.ts"
 import { Clock, Effect, FileSystem, Option } from "effect"
 import { Store } from "../../core/src/store.ts"
 import {
@@ -274,7 +281,14 @@ const sourceRegister = defineCommand(
   ),
 )
 const sources = defineCommand("source").pipe(
-  Command.withSubcommands([sourceInspect, sourceRegister]),
+  Command.withSubcommands([
+    sourceInspect,
+    sourceRegister,
+    librarySourceCompositionCommand,
+    librarySourceReconcileCommand,
+    librarySourceSelectCommand,
+    librarySourceResourceCommand,
+  ]),
 )
 
 const snapshotSave = defineCommand(
@@ -357,5 +371,6 @@ export const libraryCommand = defineCommand("library").pipe(
     snapshots,
     libraryMigrationCommand,
     libraryProfilesCommand,
+    libraryFilesCommand,
   ]),
 )

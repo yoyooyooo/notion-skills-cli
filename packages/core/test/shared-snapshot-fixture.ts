@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { Crypto, Effect, Layer } from "effect"
+import { Crypto, Effect, FileSystem, Layer, Path } from "effect"
 import { HttpClient } from "effect/http"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
@@ -18,7 +18,7 @@ export const digest = (value: string | Uint8Array) =>
   createHash("sha256").update(value).digest("hex")
 export const encode = (value: string) => new TextEncoder().encode(value)
 export const skillPage = id(1)
-const scope = "shared-fixture-scope"
+const scope = digest("shared-fixture-scope")
 const skillProperties = {
   Name: "title",
   Description: "description",
@@ -382,7 +382,11 @@ export function sharedSnapshotFixture(
     Layer.succeed(HttpClient.HttpClient, options.httpClient ?? unexpectedHttp),
   )
   const run = <A, E>(
-    effect: Effect.Effect<A, E, Store | Notion | Crypto.Crypto | HttpClient.HttpClient>,
+    effect: Effect.Effect<
+      A,
+      E,
+      Store | Notion | Crypto.Crypto | HttpClient.HttpClient | FileSystem.FileSystem | Path.Path
+    >,
   ) => Effect.runPromise(effect.pipe(Effect.provide(layer)))
   const target = (
     selected: Parameters<typeof targetSnapshot>[0],

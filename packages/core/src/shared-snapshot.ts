@@ -1,3 +1,12 @@
+import {
+  localContentRestrictedHashes,
+  markLocalContentRestriction,
+} from "./content-restrictions.ts"
+import {
+  loadPendingSharedFileManagement,
+  reconcileSharedFileManagement,
+  type SharedFileManagementPlan,
+} from "./shared-file-management.ts"
 import { Clock, Effect, Schema } from "effect"
 import {
   effectiveCachePolicy,
@@ -11,12 +20,10 @@ import { Notion } from "./notion.ts"
 import { canonicalMain } from "./portable.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
-import {
-  composeSharedFiles,
-  type CompositionFile,
-  type CompositionOverride,
-} from "./shared-composition.ts"
+import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
 import { loadRetainedBody, observeSharedFile } from "./shared-file-observer.ts"
+import { composeSharedFilePlacements, sharedFileSourcePath } from "./shared-file-placement.ts"
+import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
 import {
   planFileValidation,
   refreshMetadataObservation,
@@ -40,7 +47,20 @@ import {
   reconcileSharedBodyWrite,
   type SharedBodyWritePlan,
 } from "./shared-body-write.ts"
+import {
+  loadPendingSharedMetadataWrites,
+  reconcileSharedMetadataWrite,
+  type SharedMetadataWritePlan,
+} from "./shared-metadata-write.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
+import {
+  loadPendingSharedCreates,
+  pendingSharedCreatePlans,
+  reconcileSharedCreate,
+  type SharedCreatePlan,
+} from "./shared-create.ts"
+import { loadPendingSharedSkillApplies, reconcileSharedSkillApply } from "./shared-skill-apply.ts"
+import type { SharedSkillApplyPlan } from "./shared-skill-apply-model.ts"
 import {
   pendingFileOperations,
   pendingFileOperationKey,
@@ -86,6 +106,8 @@ export type FixedSharedSource = {
   readonly revision: string
   /** Already resolved, selected immutable bytes. This builder never resolves a branch or downloads. */
   readonly files: readonly CompositionFile[]
+  /** Conservative restriction follows a source path through rendering and logical moves. */
+  readonly local_paths?: readonly string[]
 }
 export type OpenSharedSnapshotInput = {
   readonly library: SharedLibrary
@@ -270,6 +292,21 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       sourceByPath.set(file.path, file)
       sourceHashes.set(file.path, yield* sha256(file.bytes))
     }
+    const localSourcePaths = new Set(input.fixedSource?.local_paths ?? [])
+    for (const path of localSourcePaths) {
+      if (!sourceByPath.has(path))
+        return yield* Effect.fail(
+          fail(
+            "INVALID_SOURCE",
+            "A restricted source path is absent from the complete fixed source tree.",
+          ),
+        )
+    }
+    const sourceRestrictions = new Set(
+      yield* localContentRestrictedHashes([...sourceHashes.values()]),
+    )
+    for (const [path, hash] of sourceHashes)
+      if (sourceRestrictions.has(hash)) localSourcePaths.add(path)
     const scopeIdentity = yield* sha256(
       canonicalSharedJson([input.scope, input.library.library_id, index.skill_id]),
     )
@@ -316,10 +353,58 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const plans = new Map<string, SharedObservationPlan>()
     const localPending = yield* pendingFileOperations(pendingScope)
     const operationHeaders = yield* querySharedOperationIndex(input.library, selected)
+    const creates = new Map<string, SharedCreatePlan>()
+    for (const plan of yield* pendingSharedCreatePlans(
+      input.scope,
+      input.library.library_id,
+      index.skill_id,
+    ))
+      creates.set(plan.operation_id, plan)
+    for (const plan of yield* loadPendingSharedCreates(input.library, {
+      skillPageId: selected,
+      events: allEvents,
+      headers: operationHeaders,
+    })) {
+      const original = creates.get(plan.operation_id)
+      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
+        return yield* Effect.fail(
+          fail("SHARED_RECORD_CONFLICT", "The shared and local original create plans disagree."),
+        )
+      creates.set(plan.operation_id, plan)
+    }
+    for (const plan of creates.values()) {
+      const result = yield* reconcileSharedCreate(input.library, plan)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_RECONCILED",
+          "The original native create outcome is verified. Read current metadata again before publishing.",
+          {
+            create_operation_id: plan.operation_id,
+            status: result.status,
+            read_again: true,
+          },
+        ),
+      )
+    }
     const bodyWrites = new Map<string, SharedBodyWritePlan>()
+    const metadataWrites = new Map<string, SharedMetadataWritePlan>()
+    const fileManagements = new Map<string, SharedFileManagementPlan>()
+    const skillApplies = new Map<string, SharedSkillApplyPlan>()
     for (const entry of localPending) {
+      if (entry.plan.kind === "skill_apply") {
+        skillApplies.set(entry.plan.operation_id, entry.plan)
+        continue
+      }
       if (entry.plan.kind === "body_write") {
         bodyWrites.set(entry.plan.operation_id, entry.plan)
+        continue
+      }
+      if (entry.plan.kind === "metadata_write") {
+        metadataWrites.set(entry.plan.operation_id, entry.plan)
+        continue
+      }
+      if (entry.plan.kind === "file_management") {
+        fileManagements.set(entry.plan.operation_id, entry.plan)
         continue
       }
       const completed = eventById.get(entry.plan.event.event_id)
@@ -333,6 +418,29 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           )
         yield* store.retireKeys([entry.key])
       } else plans.set(entry.plan.operation_id, entry.plan)
+    }
+    // Reconcile a frozen batch before its children. A partial terminal outcome
+    // defines which remaining children were never dispatched; absence alone does not.
+    for (const plan of yield* loadPendingSharedSkillApplies(input.library, {
+      skillPageId: selected,
+      headers: operationHeaders,
+    })) {
+      const original = skillApplies.get(plan.operation_id)
+      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
+        return yield* Effect.fail(
+          fail("SHARED_RECORD_CONFLICT", "The shared and local original apply plans disagree."),
+        )
+      skillApplies.set(plan.operation_id, plan)
+    }
+    for (const plan of skillApplies.values()) {
+      const result = yield* reconcileSharedSkillApply(input.library, plan)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_RECONCILED",
+          "The original apply outcome is verified. Read current metadata again before publishing.",
+          { apply_operation_id: plan.operation_id, status: result.status, read_again: true },
+        ),
+      )
     }
     for (const plan of yield* loadPendingSharedObservationPlans(input.library, {
       skillPageId: selected,
@@ -357,6 +465,59 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           fail("SHARED_RECORD_CONFLICT", "Shared and local original body-write plans disagree."),
         )
       bodyWrites.set(plan.operation_id, plan)
+    }
+    for (const plan of yield* loadPendingSharedMetadataWrites(input.library, {
+      skillPageId: selected,
+      headers: operationHeaders,
+    })) {
+      const original = metadataWrites.get(plan.operation_id)
+      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_RECORD_CONFLICT",
+            "The shared and local original metadata operations disagree.",
+          ),
+        )
+      metadataWrites.set(plan.operation_id, plan)
+    }
+    for (const plan of yield* loadPendingSharedFileManagement(input.library, {
+      skillPageId: selected,
+      events: allEvents,
+      headers: operationHeaders,
+    })) {
+      const original = fileManagements.get(plan.operation_id)
+      if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))
+        return yield* Effect.fail(
+          fail("SHARED_RECORD_CONFLICT", "The shared and local original file operations disagree."),
+        )
+      fileManagements.set(plan.operation_id, plan)
+    }
+    for (const plan of fileManagements.values()) {
+      const result = yield* reconcileSharedFileManagement(input.library, plan)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_MANAGEMENT_RECONCILED",
+          "The original file lifecycle outcome is verified. Read current metadata again before publishing.",
+          {
+            file_management_operation_id: plan.operation_id,
+            status: result.status,
+            read_again: true,
+          },
+        ),
+      )
+    }
+    for (const plan of metadataWrites.values()) {
+      const result = yield* reconcileSharedMetadataWrite(input.library, plan)
+      yield* invalidateSnapshotCache(record.id, input.scope)
+      const local = localPending.find((entry) => entry.plan.operation_id === plan.operation_id)
+      if (local !== undefined) yield* store.retireKeys([local.key])
+      return yield* Effect.fail(
+        fail(
+          "SHARED_METADATA_WRITE_RECONCILED",
+          "The original metadata outcome is verified. Read current metadata again before publishing.",
+          { metadata_operation_id: plan.operation_id, status: result.status, read_again: true },
+        ),
+      )
     }
     // Explicit system candidates must never be observed as natural user edits.
     // Completion requires the exact operation outcome, not a content event alone.
@@ -444,7 +605,18 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         continue
       }
       const state = yield* checked(() => resolveFileState(binding.file_id, events))
-      if (state.ownership.kind === "following" && !sourceByPath.has(binding.path))
+      if (state.placement !== undefined && state.placement.path !== binding.path)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_PATH_CONFLICT",
+            "The current Path property differs from the exact shared file placement.",
+            { file_id: binding.file_id, path: binding.path, expected_path: state.placement.path },
+          ),
+        )
+      if (
+        state.ownership.kind === "following" &&
+        !(yield* checked(() => sourceByPath.has(sharedFileSourcePath(binding.path, state))))
+      )
         return yield* Effect.fail(
           fail(
             "SHARED_SOURCE_FILE_MISSING",
@@ -513,7 +685,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         states.get(binding.file_id)?.ownership.kind !== "following"
       )
         return undefined
-      const pathHash = sourceHashes.get(binding.path)
+      const state = states.get(binding.file_id)!
+      const pathHash = sourceHashes.get(sharedFileSourcePath(binding.path, state))
       return pathHash === undefined ? undefined : { path_hash: pathHash }
     }
     for (const binding of activeBindings)
@@ -525,7 +698,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         management_revision: yield* fileRevision(
           binding,
           eventsByFile.get(binding.file_id) ?? [],
-          sourceIdentity(binding),
+          yield* checked(() => sourceIdentity(binding)),
         ),
       })
     const metadataObservedAt = yield* Clock.currentTimeMillis
@@ -593,7 +766,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           management_revision: yield* fileRevision(
             binding,
             eventsByFile.get(binding.file_id) ?? [],
-            sourceIdentity(binding),
+            yield* checked(() => sourceIdentity(binding)),
           ),
           body_sha256: observed.body.fingerprint.sha256,
           body_verified_at: observed.body.downloaded_at,
@@ -643,7 +816,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       nextObservations.push(next)
       switch (state.ownership.kind) {
         case "following":
-          if (!sourceByPath.has(binding.path))
+          if (!(yield* checked(() => sourceByPath.has(sharedFileSourcePath(binding.path, state)))))
             return yield* Effect.fail(
               fail(
                 "SHARED_SOURCE_FILE_MISSING",
@@ -682,10 +855,18 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
         overrides.push({ kind: "tombstone", file_id: binding.file_id, path: binding.path })
     const composed = yield* checked(() =>
-      composeSharedFiles({
-        base: sourceFiles,
-        mounts: [],
+      composeSharedFilePlacements({
+        source: sourceFiles,
         overrides,
+        bindings: bindings.map((binding) => {
+          const state = states.get(binding.file_id)
+          if (state === undefined)
+            throw fail(
+              "BASELINE_MISSING",
+              "No shared ownership fact exists for the complete file tree.",
+            )
+          return { file_id: binding.file_id, path: binding.path, state }
+        }),
         entrypoint: record.entrypoint,
       }),
     )
@@ -705,28 +886,36 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const files: Snapshot["files"][number][] = []
     for (const file of completeFiles) {
       const hash = yield* sha256(file.bytes)
+      const provenance = composed.provenance.get(file.path)
+      const original = provenance?.kind === "custom" ? provenance.replaces : provenance
+      const sourcePath =
+        original === undefined
+          ? undefined
+          : original.kind === "mount"
+            ? (original.mount_path ? original.mount_path + "/" : "") + original.source_path
+            : original.source_path
+      if (
+        localSourcePaths.has(file.path) ||
+        (sourcePath !== undefined && localSourcePaths.has(sourcePath))
+      )
+        yield* markLocalContentRestriction(hash)
       yield* store.writeBytes(`objects/${hash}`, file.bytes)
       files.push({ path: file.path, bytes: file.bytes.length, sha256: hash })
     }
-    const version = yield* sha256(
-      canonicalSharedJson({
-        version: 1,
-        record,
-        files,
-        ...(frozenMembers === undefined ? {} : { router_members: frozenMembers }),
-        source:
-          input.fixedSource === undefined
-            ? null
-            : { source_id: input.fixedSource.source_id, revision: input.fixedSource.revision },
-        ownership: [...bindings]
-          .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
-          .map((binding) => ({
-            file_id: binding.file_id,
-            path: binding.path,
-            state: states.get(binding.file_id),
-          })),
-      }),
-    )
+    const version = yield* sharedSnapshotVersion({
+      record,
+      files,
+      router_members: frozenMembers,
+      source:
+        input.fixedSource === undefined
+          ? null
+          : { source_id: input.fixedSource.source_id, revision: input.fixedSource.revision },
+      ownership: bindings.map((binding) => ({
+        file_id: binding.file_id,
+        path: binding.path,
+        state: states.get(binding.file_id),
+      })),
+    })
     const snapshotId = `s_${yield* sha256(JSON.stringify([input.scope, record.id, version]))}`
     const saved = yield* store.readJson(`snapshots/${snapshotId}.json`, SnapshotSchema)
     const snapshot =
@@ -789,6 +978,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           skill_id: index.skill_id,
           skill_page_id: selected,
           source_id: index.source_reference,
+          source_revision: input.fixedSource?.revision ?? "",
+          read_only: input.readOnly === true,
           files: activeBindings.map((binding) => {
             const state = states.get(binding.file_id)
             const observation = nextObservations.find((value) => value.file_id === binding.file_id)
@@ -803,6 +994,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
               path: binding.path,
               heads: state.heads,
               body_sha256: observation.body_sha256,
+              last_edited_time: binding.last_edited_time,
+              metadata_validated_at: observation.metadata_validated_at,
+              body_verified_at: observation.body_verified_at,
             }
           }),
         }) satisfies SharedAuthoringEvidence,

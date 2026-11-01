@@ -3,16 +3,18 @@ import { fail, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage, sharedSkillProperty } from "./shared-content.ts"
-import { resolveSourceBinding } from "./shared-source-binding.ts"
-import { materializeFixedGithubSource } from "./shared-source-materialization.ts"
+import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
+import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "./shared-snapshot.ts"
-import { querySharedRouterMembers } from "./shared-router-members.ts"
 
 /** Resolve only the immutable source explicitly selected in the current Skills row. */
 export function openSharedConsumer(
-  input: Omit<OpenSharedSnapshotInput, "fixedSource" | "routerMembers">,
+  input: Omit<OpenSharedSnapshotInput, "fixedSource"> & {
+    readonly sourceOptions?: SharedSourcePlanOptions
+  },
 ) {
   return Effect.gen(function* () {
+    const { sourceOptions, ...snapshotInput } = input
     const api = yield* Notion
     const selected = pageId(input.target)
     if (!selected)
@@ -20,7 +22,7 @@ export function openSharedConsumer(
         fail("INVALID_ARGUMENT", "Shared consumption requires an exact Skill page."),
       )
     const rawPage = input.rawPage ?? (yield* api.request(`v1/pages/${selected}`))
-    const selection = yield* Effect.try({
+    const sourceId = yield* Effect.try({
       try: () => {
         const record = sharedRecordFromPage(
           rawPage,
@@ -48,33 +50,24 @@ export function openSharedConsumer(
             "INVALID_SHARED_SKILL",
             "The Source selection must be a complete rich-text identity.",
           )
-        return { record, sourceId: text(field.rich_text) }
+        return text(field.rich_text)
       },
       catch: (error) =>
         error instanceof SkillsError
           ? error
           : fail("INVALID_SHARED_SKILL", "Invalid shared source selection."),
     })
-    const { sourceId, record } = selection
-    const routerMembers =
-      record.kind === "router"
-        ? yield* querySharedRouterMembers(input.library, { router: record, rawPage })
-        : undefined
-    const sharedInput = {
-      ...input,
-      rawPage,
-      ...(routerMembers === undefined ? {} : { routerMembers }),
-    }
-    if (!sourceId) return yield* openSharedSnapshot(sharedInput)
-    const binding = yield* resolveSourceBinding(input.library, { skillPageId: selected, sourceId })
-    const files = yield* materializeFixedGithubSource(binding, { metrics: api.metrics })
+    if (!sourceId) return yield* openSharedSnapshot({ ...snapshotInput, rawPage })
+    const fixedSource = yield* resolveSelectedSharedSource(
+      input.library,
+      selected,
+      sourceId,
+      sourceOptions,
+    )
     return yield* openSharedSnapshot({
-      ...sharedInput,
-      fixedSource: {
-        source_id: binding.source_id,
-        revision: binding.commit,
-        files: files.map((file) => ({ path: file.path, bytes: file.bytes })),
-      },
+      ...snapshotInput,
+      rawPage,
+      fixedSource,
     })
   })
 }

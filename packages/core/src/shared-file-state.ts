@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { decode, fail } from "./model.ts"
+import { normalizePath } from "./ref.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/))
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
@@ -48,12 +49,27 @@ export const FileEventSchema = Schema.Union([
     retained: RetainedContentSchema,
   }),
   Schema.Struct({ ...Common, kind: Schema.Literal("deleted"), retained: RetainedContentSchema }),
+  Schema.Struct({
+    ...Common,
+    kind: Schema.Literal("moved"),
+    from_path: Schema.String,
+    to_path: Schema.String,
+    source_path: Schema.NullOr(Schema.String),
+    suppressed_paths: Schema.Array(Schema.String),
+    retained: RetainedContentSchema,
+  }),
 ])
 export type FileEvent = typeof FileEventSchema.Type
+export interface FilePlacement {
+  readonly path: string
+  readonly source_path: string | null
+  readonly suppressed_paths: readonly string[]
+}
 export interface ResolvedFileState {
   readonly file_id: string
   readonly heads: readonly string[]
   readonly ownership: FileOwnership
+  readonly placement?: FilePlacement
 }
 
 /** Preserve whitespace, code, links and instructions. Only transport newlines normalize. */
@@ -64,7 +80,7 @@ export function normalizeObservedBody(markdown: string, version: 1 = 1): string 
   return markdown.replace(/\r\n/g, "\n")
 }
 
-function stateAfter(event: FileEvent): FileOwnership {
+function stateAfter(event: FileEvent, parents: readonly FileOwnership[] = []): FileOwnership {
   switch (event.kind) {
     case "projected":
     case "following_restored":
@@ -77,11 +93,76 @@ function stateAfter(event: FileEvent): FileOwnership {
       return { kind: "custom", content: event.content }
     case "deleted":
       return { kind: "tombstone", retained: event.retained }
+    case "moved": {
+      const parent = parents[0]
+      if (
+        parent === undefined ||
+        parent.kind === "tombstone" ||
+        parents.some((value) => !sameOwnership(parent, value))
+      )
+        throw fail(
+          "OWNERSHIP_TRANSITION_INVALID",
+          "Moving requires compatible active parent ownership; a path change cannot release customization or restore a deletion.",
+        )
+      return parent
+    }
     default: {
       const exhaustive: never = event
       return exhaustive
     }
   }
+}
+
+function placementPath(value: string): string {
+  if (
+    value === "" ||
+    value === "." ||
+    normalizePath(value) !== value ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(value)
+  )
+    throw fail("SHARED_PATH_INVALID", "A shared file placement requires canonical relative paths.")
+  return value
+}
+function samePlacement(left: FilePlacement | undefined, right: FilePlacement | undefined): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+function placementAfter(
+  event: FileEvent,
+  parents: readonly (FilePlacement | undefined)[],
+  ownership: FileOwnership,
+): FilePlacement | undefined {
+  const previous = parents[0]
+  if (parents.some((value) => !samePlacement(previous, value)))
+    throw fail(
+      "SHARED_PATH_CONFLICT",
+      "The file's parent events have incompatible logical placements; a body edit cannot choose a path winner.",
+    )
+  if (event.kind !== "moved") return previous
+  const from = placementPath(event.from_path),
+    to = placementPath(event.to_path)
+  if (from === to || (previous !== undefined && previous.path !== from))
+    throw fail("SHARED_PATH_CONFLICT", "A move must continue from its exact prior logical path.")
+  const source = event.source_path === null ? null : placementPath(event.source_path)
+  if (
+    (previous !== undefined && previous.source_path !== source) ||
+    (previous === undefined && source !== null && source !== from) ||
+    (ownership.kind === "following" && source === null)
+  )
+    throw fail(
+      "SHARED_PATH_CONFLICT",
+      "A move must preserve its original source path independently of its logical destination.",
+    )
+  const suppressed = [
+    ...new Set([...(previous?.suppressed_paths ?? []), from, ...(source === null ? [] : [source])]),
+  ]
+    .filter((path) => path !== to)
+    .sort()
+  if (JSON.stringify(event.suppressed_paths) !== JSON.stringify(suppressed))
+    throw fail(
+      "SHARED_PATH_INVALID",
+      "The move's explicit old-path suppression does not match its complete path history.",
+    )
+  return { path: to, source_path: source, suppressed_paths: suppressed }
 }
 
 function contentEqual(left: RetainedContent, right: RetainedContent): boolean {
@@ -134,6 +215,8 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
   const visited = new Set<string>(),
     visiting = new Set<string>(),
     superseded = new Set<string>()
+  const ownershipByEvent = new Map<string, FileOwnership>()
+  const placementByEvent = new Map<string, FilePlacement | undefined>()
   const visit = (event: FileEvent): void => {
     if (visited.has(event.event_id)) return
     if (visiting.has(event.event_id))
@@ -151,22 +234,27 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
       parents.push(parent)
       superseded.add(id)
     }
-    if (
-      event.kind === "projected" &&
-      parents.some((parent) => parent.kind !== "projected" && parent.kind !== "following_restored")
-    )
+    const parentStates = parents.map((parent) => {
+      const state = ownershipByEvent.get(parent.event_id)
+      if (state === undefined)
+        throw fail("SHARED_STATE_INVALID", "A resolved parent has no ownership state.")
+      return state
+    })
+    if (event.kind === "projected" && parentStates.some((parent) => parent.kind !== "following"))
       throw fail(
         "OWNERSHIP_TRANSITION_INVALID",
         "A projection cannot release customization or a tombstone.",
       )
-    if ((event.kind === "following_restored" || event.kind === "deleted") && !parents.length)
+    if (
+      (event.kind === "following_restored" || event.kind === "deleted" || event.kind === "moved") &&
+      !parents.length
+    )
       throw fail(
         "OWNERSHIP_TRANSITION_INVALID",
-        "Restoring or deleting requires shared prior state.",
+        "Restoring, deleting or moving requires shared prior state.",
       )
     if (event.kind === "following_restored") {
-      for (const parent of parents) {
-        const state = stateAfter(parent)
+      for (const state of parentStates) {
         const retained =
           state.kind === "custom"
             ? state.content
@@ -180,6 +268,34 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
           )
       }
     }
+    if (event.kind === "deleted" || event.kind === "moved") {
+      for (const state of parentStates) {
+        const retained =
+          state.kind === "custom"
+            ? state.content
+            : state.kind === "tombstone"
+              ? state.retained
+              : undefined
+        if (
+          (retained !== undefined && !contentEqual(event.retained, retained)) ||
+          (state.kind === "following" && event.retained.sha256 !== state.projection.sha256)
+        )
+          throw fail(
+            "OWNERSHIP_TRANSITION_INVALID",
+            "Deleting or moving must retain the complete previously observed body.",
+          )
+      }
+    }
+    const ownership = stateAfter(event, parentStates)
+    ownershipByEvent.set(event.event_id, ownership)
+    placementByEvent.set(
+      event.event_id,
+      placementAfter(
+        event,
+        parents.map((parent) => placementByEvent.get(parent.event_id)),
+        ownership,
+      ),
+    )
     visiting.delete(event.event_id)
     visited.add(event.event_id)
   }
@@ -189,8 +305,15 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
     .sort((a, b) => a.event_id.localeCompare(b.event_id))
   const head = heads[0]
   if (!head) throw fail("SHARED_STATE_INVALID", "Shared file state has no head.")
-  const ownership = stateAfter(head)
-  if (heads.some((event) => !sameOwnership(ownership, stateAfter(event))))
+  const ownership = ownershipByEvent.get(head.event_id)
+  if (ownership === undefined)
+    throw fail("SHARED_STATE_INVALID", "The shared file head has no resolved ownership.")
+  if (
+    heads.some((event) => {
+      const other = ownershipByEvent.get(event.event_id)
+      return other === undefined || !sameOwnership(ownership, other)
+    })
+  )
     throw fail(
       "SHARED_STATE_CONFLICT",
       "Concurrent file changes require an explicit resolution; all candidates are retained.",
@@ -199,7 +322,19 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
         heads: heads.map((event) => event.event_id),
       },
     )
-  return { file_id: fileId, heads: heads.map((event) => event.event_id), ownership }
+  const placement = placementByEvent.get(head.event_id)
+  if (heads.some((event) => !samePlacement(placement, placementByEvent.get(event.event_id))))
+    throw fail(
+      "SHARED_PATH_CONFLICT",
+      "Concurrent file events have incompatible logical paths; all original candidates remain available.",
+      { file_id: fileId, heads: heads.map((event) => event.event_id) },
+    )
+  return {
+    file_id: fileId,
+    heads: heads.map((event) => event.event_id),
+    ownership,
+    ...(placement === undefined ? {} : { placement }),
+  }
 }
 
 export type BodyDecision =

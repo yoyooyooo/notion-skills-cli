@@ -55,6 +55,14 @@
 
 验证步骤见 [shared SSOT recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md)，实际命令合同见 [protocol](protocol.md#shared-notion-library)。本检查点不会把新增 recipe、架构描述或未执行的测试定义当作验收结果。
 
+## 已接线的公开创作与管理入口
+
+普通 `create/apply/replace/write/update` 已按目标 descriptor 接到 shared native 路径。普通 Skill 文件夹无需手写 manifest：create 冻结完整 UTF-8 输入，验证全部正文后才启用新 Skill；二进制和不支持的投影在创建前拒绝。apply 把已有绑定文件和显式 Metadata 变更放入一个冻结顺序批次，先检查全部输入及完整候选树，再逐项执行。它不是事务；后项失败保留前项已验证结果和原剩余意图。单独一项 add/delete 可走文件协议，混合或多项布局变更目前明确拒绝，不能绕过全树引用检查。
+
+独立文件入口为 `ctl library file add/delete/move/restore-follow`。新增创建稳定 File 身份；移动保留身份、正文绑定和原来源路径；删除保留 tombstone 与正文页。restore-follow 从 Notion 当前选择的固定来源取得精确内容，先保留自定义版本。Git 来源选择由 `source select prepare` 生成计划，`select apply` 只改原生 Source；HTTP/local composition 仍消费显式固定计划。Profile 通过 `profile list/show/set/bind/unbind` 管理，机器只绑定库入口与 Profile ID，显式 View 优先。
+
+共享 create/body/metadata/apply/restore 的原操作由 current read 核对；add/delete/move 另有 `file reconcile`。unknown 不续发，`verified:true` 的 `not_applied/partial` 仅证明结论，不等于用户编辑完成。共享 ID 不传给 legacy `operation resume`。源码接线和公开帮助不替代真实服务、双机、宿主或迁移验收；具体命令见[共享库创作指南](shared-authoring.md)，结果字段见[协议](protocol.md#shared-authoring)。
+
 ## 用户行为
 
 用户在 Notion 修改 Skill 主文或支持文件正文。CLI 下次确认正文与该文件最后实际投影基线不同后，持久登记整个文件由 Notion 接管。同一 Skill 的其他文件仍按所选来源更新。
@@ -279,6 +287,8 @@ Base 与 Mount 组合后检查路径逃逸、重复路径、大小写冲突和�
 ## 现有模块的迁移边界
 
 `ctl library migration plan --input FILE` 当前只审阅显式冻结的证据：批准的旧身份范围、备份、含 coverage 的目录/文件/正文清单，以及来源、View、Router、旧 pin 和原操作的保留清单。输出固定输入 hash、稳定映射、完整原始证据、blockers 与 stop conditions。`reviewable` 只说明这些输入没有发现阻塞，`blocked` 保留缺口；两种结果都为 `apply_allowed:false`，不授权迁移、清理或未结清操作重放。它不会现场核实输入中的外部事实，不能把生产目录返回的 300 行当成完整批准范围。
+
+计划另外输出逐项及批准批次的 `readiness`，其含义固定为 `frozen_evidence_structure_only`，且 `receipt_content_verified:false`。可选 `readiness_evidence` 用排除自身后的完整输入 hash 绑定原始记录和批准范围；只有完整保留、原始家族身份一致，并提供完整影响范围、隔离及原身份恢复引用的 operation，才能在这一结构分析中按声明影响范围定位相关诊断。缺少证据时仍保守阻断，空批准集合不会产生 ready 项。原始 payload、terminal 状态、全部 blockers 和整体 `apply_allowed:false` 保持不变。后续执行端仍须独立核实实际 receipt 内容及 hash；这一字段不能作为可执行授权。
 
 | 当前模块 | 新职责或处理 |
 | --- | --- |

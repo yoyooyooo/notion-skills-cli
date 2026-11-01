@@ -1,0 +1,562 @@
+import { describe, expect, test } from "bun:test"
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { Crypto, Effect, FileSystem, Path } from "effect"
+import { HttpClient } from "effect/http"
+import { fail, property, SkillsError, text, type Snapshot } from "../src/model.ts"
+import { Notion } from "../src/notion.ts"
+import { Store } from "../src/store.ts"
+import { fileRef, parseTarget } from "../src/ref.ts"
+import { openSkill } from "../src/snapshot.ts"
+import { applySkill, replaceSkill } from "../src/mutation.ts"
+import { trashPath } from "../src/local-locks.ts"
+import { applySharedSkillChanges } from "../src/shared-skill-apply-authoring.ts"
+import {
+  executeSharedSkillApply,
+  loadPendingSharedSkillApplies,
+  reconcileSharedSkillApply,
+} from "../src/shared-skill-apply.ts"
+import { executeSharedBodyWrite } from "../src/shared-body-write.ts"
+import { appendSharedRecord } from "../src/shared-records.ts"
+import {
+  validateSharedSkillApplyPlan,
+  type SharedSkillApplyPlan,
+} from "../src/shared-skill-apply-model.ts"
+import { sharedSnapshotFixture, library, skillPage, encode, id } from "./shared-snapshot-fixture.ts"
+
+type Fixture = ReturnType<typeof sharedSnapshotFixture>
+type Environment =
+  | Notion
+  | Store
+  | Crypto.Crypto
+  | HttpClient.HttpClient
+  | FileSystem.FileSystem
+  | Path.Path
+const selected = { database: library.skills.database_id }
+const input = [
+  {
+    path: "SKILL.md",
+    bytes: encode(
+      "---\nname: Managed Name\ndescription: Updated description\n---\n\n# Applied main\n\n[One](references/1.md)\n",
+    ),
+  },
+  { path: "references/1.md", bytes: encode("# Applied support\n") },
+]
+const metadata = { name: "Updated name", description: "Updated description", defaultContext: true }
+
+function failure<A>(
+  result:
+    | { readonly _tag: "Success"; readonly success: A }
+    | { readonly _tag: "Failure"; readonly failure: unknown },
+): SkillsError {
+  if (result._tag !== "Failure" || !(result.failure instanceof SkillsError))
+    throw new Error("Expected a typed SkillsError")
+  return result.failure
+}
+
+function withWriter<A, E>(
+  f: Fixture,
+  action: Effect.Effect<A, E, Environment>,
+  options: {
+    readonly afterBody?: (page: string, count: number) => void
+    readonly unknownBodyAt?: number
+    readonly unknownParentPlan?: boolean
+    readonly unknownParentOutcome?: boolean
+  } = {},
+) {
+  return Effect.gen(function* () {
+    const original = yield* Notion
+    let bodyCount = 0
+    const api: Notion["Service"] = {
+      ...original,
+      request: (path, body, requestOptions) => {
+        if (path === "v1/pages") {
+          const recordId = text(property(property(property(body).properties).record).rich_text)
+          if (options.unknownParentPlan && recordId.startsWith("skill-apply-"))
+            return Effect.fail(
+              fail("WRITE_OUTCOME_UNKNOWN", "The original apply plan was not observed."),
+            )
+          if (options.unknownParentOutcome && recordId.startsWith("outcome-skill-apply-"))
+            return Effect.fail(
+              fail("WRITE_OUTCOME_UNKNOWN", "The original apply completion was not observed."),
+            )
+          return original.request(path, body, requestOptions)
+        }
+        if (requestOptions?.method !== "PATCH") return original.request(path, body, requestOptions)
+        return Effect.suspend((): Effect.Effect<unknown, SkillsError> => {
+          f.calls.push({ path, method: "PATCH", body })
+          const match = /^v1\/pages\/([^/]+)\/markdown$/u.exec(path)
+          if (match !== null) {
+            const page = match[1]!,
+              raw = f.bodies.get(page),
+              updates = property(property(body).update_content).content_updates
+            if (raw === undefined || !Array.isArray(updates) || updates.length !== 1)
+              return Effect.fail(fail("TEST_BODY_REQUEST", "Expected one complete old-body match."))
+            const changed = property(updates[0])
+            if (
+              typeof changed.old_str !== "string" ||
+              changed.old_str === "" ||
+              typeof changed.new_str !== "string" ||
+              !raw.includes(changed.old_str)
+            )
+              return Effect.fail(
+                fail("NOTION_REQUEST_FAILED", "Definitive original stale body rejection", {
+                  phase: "definitive_rejection",
+                  http_status: 400,
+                  notion_code: "validation_error",
+                }),
+              )
+            const markdown = raw.replace(changed.old_str, changed.new_str)
+            f.bodies.set(page, markdown)
+            const row = page === skillPage ? f.main : f.files.find((file) => file.id === page)
+            if (row !== undefined) row.last_edited_time = new Date().toISOString()
+            bodyCount++
+            options.afterBody?.(page, bodyCount)
+            return options.unknownBodyAt === bodyCount
+              ? Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "The original child response was lost."))
+              : Effect.succeed({ id: page, markdown, truncated: false, unknown_block_ids: [] })
+          }
+          if (path !== `v1/pages/${skillPage}`)
+            return Effect.fail(
+              fail("TEST_UNEXPECTED_PATCH", "An unrelated native page was patched."),
+            )
+          const properties = property(f.main.properties)
+          for (const [propertyId, value] of Object.entries(property(property(body).properties))) {
+            const key = Object.entries(properties).find(
+              ([key, raw]) => key === propertyId || property(raw).id === propertyId,
+            )?.[0]
+            if (key === undefined)
+              return Effect.fail(
+                fail("TEST_PROPERTY", "An unregistered native property was patched."),
+              )
+            properties[key] = { ...property(properties[key]), ...property(value) }
+          }
+          f.main.last_edited_time = new Date().toISOString()
+          return Effect.succeed(structuredClone(f.main))
+        })
+      },
+    }
+    return yield* action.pipe(Effect.provideService(Notion, api))
+  })
+}
+
+async function fresh(f: Fixture): Promise<Snapshot> {
+  await f.target(parseTarget(skillPage), selected)
+  return f.run(openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }))
+}
+async function prepared(f: Fixture, snapshot: Snapshot): Promise<SharedSkillApplyPlan> {
+  const result = await f.run(
+    applySharedSkillChanges(snapshot, { files: input, ...metadata, dryRun: true }),
+  )
+  if (result.status !== "planned" || result.kind !== "skill_apply")
+    throw new Error("Expected a complete apply plan")
+  return result.plan
+}
+function payloads(f: Fixture) {
+  return [...f.records.values()].map((row) =>
+    property(
+      property(JSON.parse(text(property(property(row.properties).payload).rich_text))).payload,
+    ),
+  )
+}
+
+describe("frozen sequential shared apply", () => {
+  test("one original batch changes main, supporting body and nominated metadata; old pin bytes remain", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      old = structuredClone(f.json.get(`snapshots/${snapshot.snapshot_id}.json`)),
+      plan = await prepared(f, snapshot)
+    expect(plan.bodies).toHaveLength(2)
+    expect(plan.metadata?.changes).toHaveLength(3)
+    f.clearCalls()
+    const result = await f.run(
+      withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" })),
+    )
+    expect(result.status).toBe("applied")
+    expect(result.protection.atomic).toBe(false)
+    expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(3)
+    expect(f.bodies.get(skillPage)).toBe("# Applied main\n\n[One](references/1.md)")
+    expect(f.bodies.get(f.files[0]!.id)).toBe("# Applied support")
+    expect(text(property(property(f.main.properties).title).title)).toBe(metadata.name)
+    expect(f.json.get(`snapshots/${snapshot.snapshot_id}.json`)).toEqual(old)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    const apply = payloads(f).find((value) => value.kind === "skill_apply")
+    expect(apply?.operation_id).toBe(plan.operation_id)
+    expect(payloads(f).find((value) => value.kind === "skill_apply_outcome")?.status).toBe(
+      "applied",
+    )
+  })
+
+  test("dry-run preflights every file and property without a pending receipt or Notion write", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    f.clearCalls()
+    const plan = await prepared(f, snapshot)
+    expect(plan.bodies[0]?.input_projection?.removed_terminal_lfs).toBe(1)
+    expect(f.writeCount()).toBe(0)
+    expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+  })
+
+  test("a later child stale preflight records an exact partial outcome and retains the new user body", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" }), {
+          afterBody: (_page, count) => {
+            if (count === 1) f.bodies.set(f.files[0]!.id, "Later user support edit\n")
+          },
+        }).pipe(Effect.result),
+      ),
+    )
+    expect(result.code).toBe("SHARED_APPLY_PARTIAL")
+    expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(1)
+    expect(f.bodies.get(f.files[0]!.id)).toBe("Later user support edit\n")
+    const outcome = payloads(f).find((value) => value.kind === "skill_apply_outcome")
+    expect(outcome?.status).toBe("partial")
+    const children = property(outcome).children
+    if (!Array.isArray(children)) throw new Error("Expected exact original child outcomes")
+    expect(
+      children.map((child) => ({
+        operation_id: property(child).operation_id,
+        status: property(child).status,
+      })),
+    ).toEqual([
+      { operation_id: plan.bodies[0]!.operation_id, status: "applied" },
+      { operation_id: plan.bodies[1]!.operation_id, status: "not_sent" },
+      { operation_id: plan.metadata!.operation_id, status: "not_sent" },
+    ])
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, plan))).status).toBe("partial")
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+  })
+
+  test("unknown child stops the batch and original recovery cannot infer unsent remaining work", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    const result = failure(
+      await f.run(
+        withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" }), {
+          unknownBodyAt: 2,
+        }).pipe(Effect.result),
+      ),
+    )
+    expect(result.code).toBe("WRITE_OUTCOME_UNKNOWN")
+    expect(property(result.details).apply_operation_id).toBe(plan.operation_id)
+    expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(2)
+    expect(
+      payloads(f).some(
+        (value) => value.kind === "metadata_write" || value.kind === "skill_apply_outcome",
+      ),
+    ).toBe(false)
+    f.clearCalls()
+    const again = failure(
+      await f.run(executeSharedSkillApply(library, { plan, mode: "create" }).pipe(Effect.result)),
+    )
+    expect(property(again.details).apply_operation_id).toBe(plan.operation_id)
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(true)
+  })
+
+  test("a lost final parent POST is recoverable from every original child's exact shared outcome", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    expect(
+      failure(
+        await f.run(
+          withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" }), {
+            unknownParentOutcome: true,
+          }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("WRITE_OUTCOME_UNKNOWN")
+    expect(payloads(f).some((value) => value.kind === "skill_apply_outcome")).toBe(false)
+    f.clearCalls()
+    const result = await f.run(reconcileSharedSkillApply(library, plan))
+    expect(result.status).toBe("applied")
+    expect(result.verification).toBe("exact_child_outcomes")
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+    expect(await f.run(loadPendingSharedSkillApplies(library, { skillPageId: skillPage }))).toEqual(
+      [],
+    )
+  })
+
+  test("an invisible original parent fences a standard fresh read before any current body can be adopted", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    expect(
+      failure(
+        await f.run(
+          withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" }), {
+            unknownParentPlan: true,
+          }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("WRITE_OUTCOME_UNKNOWN")
+    expect(payloads(f).some((value) => value.kind === "skill_apply")).toBe(false)
+    f.bodies.set(skillPage, "A later body cannot resolve an invisible original plan")
+    f.clearCalls()
+    const result = failure(
+      await f.run(openSkill(skillPage, { ...selected, refresh: true }).pipe(Effect.result)),
+    )
+    expect(property(result.details).apply_operation_id).toBe(plan.operation_id)
+    expect(f.readBodyCount()).toBe(0)
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(true)
+  })
+
+  test("a standard fresh read resolves an exact completed parent before reloading its new snapshot", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    expect(
+      failure(
+        await f.run(
+          withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" }), {
+            unknownParentOutcome: true,
+          }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("WRITE_OUTCOME_UNKNOWN")
+    f.clearCalls()
+    const first = failure(
+      await f.run(openSkill(skillPage, { ...selected, refresh: true }).pipe(Effect.result)),
+    )
+    expect(first.code).toBe("SHARED_APPLY_RECONCILED")
+    expect(property(first.details).apply_operation_id).toBe(plan.operation_id)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    const current = await f.run(openSkill(skillPage, { ...selected, refresh: true }))
+    expect(current.snapshot_id).not.toBe(snapshot.snapshot_id)
+    expect(current.record.name).toBe(metadata.name)
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+  })
+
+  test("completed normal apply scans small outcomes without old full parent or child bodies", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    await f.run(withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" })))
+    f.clearCalls()
+    expect(await f.run(loadPendingSharedSkillApplies(library, { skillPageId: skillPage }))).toEqual(
+      [],
+    )
+    expect(f.calls).toHaveLength(2)
+    expect(f.calls.every((call) => !call.path.includes("/markdown"))).toBe(true)
+    expect(JSON.stringify(f.calls[1]?.body)).toContain("skill-apply-outcomes-v1")
+  })
+
+  test("an existing malformed child outcome cannot be relabelled not_sent by its parent", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot),
+      child = plan.bodies[0]!
+    await f.run(withWriter(f, executeSharedBodyWrite(library, { plan: child, mode: "create" })))
+    for (const [key, row] of f.records)
+      if (
+        text(property(property(row.properties).record).rich_text) ===
+        `outcome-${child.operation_id}`
+      )
+        f.records.delete(key)
+    await f.run(
+      appendSharedRecord(library, {
+        mode: "create",
+        recordId: `outcome-${child.operation_id}`,
+        operationId: child.operation_id,
+        skillPageId: skillPage,
+        kind: "operation",
+        entityId: "body-write-outcomes-v1",
+        payload: {
+          version: 1,
+          kind: "body_write_outcome",
+          operation_id: child.operation_id,
+          status: "invalid",
+        },
+      }),
+    )
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" })).pipe(
+          Effect.result,
+        ),
+      ),
+    )
+    expect(result.code).not.toBe("SHARED_APPLY_PARTIAL")
+    expect(payloads(f).some((value) => value.kind === "skill_apply_outcome")).toBe(false)
+    expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(true)
+  })
+
+  test("a retained parent completion cannot hide a missing child plan and outcome", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    await f.run(withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" })))
+    const child = plan.bodies[0]!.operation_id
+    for (const [key, row] of f.records)
+      if (
+        [child, `outcome-${child}`].includes(
+          text(property(property(row.properties).record).rich_text),
+        )
+      )
+        f.records.delete(key)
+    f.clearCalls()
+    expect(
+      failure(
+        await f.run(
+          loadPendingSharedSkillApplies(library, { skillPageId: skillPage }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("SHARED_APPLY_UNRESOLVED")
+    expect(
+      f.calls.some(
+        (call) =>
+          call.method === "PATCH" || call.path === "v1/pages" || call.path.includes("/markdown"),
+      ),
+    ).toBe(false)
+  })
+
+  test("child substitution, foreign identity and incomplete batch input fail before dispatch", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    f.clearCalls()
+    for (const value of [
+      { ...plan, bodies: [...plan.bodies].reverse() },
+      { ...plan, skill_id: "foreign" },
+      { ...plan, bodies: [plan.bodies[0]] },
+      { ...plan, snapshot_version_id: "other" },
+    ])
+      expect((await f.run(validateSharedSkillApplyPlan(value).pipe(Effect.result)))._tag).toBe(
+        "Failure",
+      )
+    expect(f.writeCount()).toBe(0)
+    expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(0)
+  })
+
+  test("the combined 64 KiB envelope limit fails before poisoning any dispatch receipt", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [
+            { path: "SKILL.md", bytes: encode("A".repeat(20_000)) },
+            { path: "references/1.md", bytes: encode("B".repeat(20_000)) },
+          ],
+        }).pipe(Effect.result),
+      ),
+    )
+    expect(result.code).toBe("SHARED_RECORD_TOO_LARGE")
+    expect(f.writeCount()).toBe(0)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+  })
+
+  test("mixed new layout is rejected with zero writes instead of silently rebasing after each child", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [input[0]!, { path: "references/new.md", bytes: encode("new") }],
+        }).pipe(Effect.result),
+      ),
+    )
+    expect(result.code).toBe("SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED")
+    expect(property(result.details).writes_sent).toBe(false)
+    expect(f.writeCount()).toBe(0)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+  })
+})
+
+describe("public shared apply and replace routing", () => {
+  test("one public pinned apply maintains main, resource and metadata despite an unrelated broken source", async () => {
+    const f = sharedSnapshotFixture(),
+      baseline = await fresh(f)
+    f.json.set("config.json", {
+      sources: [
+        {
+          alias: "unrelated-broken",
+          database_id: id(5000),
+          data_source_ids: [id(5001)],
+          title: "Guizang",
+          role: "content",
+        },
+      ],
+    })
+    const directory = mkdtempSync(join(tmpdir(), "shared-public-apply-"))
+    mkdirSync(join(directory, "references"))
+    for (const file of input) writeFileSync(join(directory, file.path), file.bytes)
+    try {
+      f.clearCalls()
+      const result = await f.run(
+        withWriter(
+          f,
+          applySkill(fileRef(baseline.record.id, baseline.entrypoint, baseline.snapshot_id), {
+            input: directory,
+            ...metadata,
+          }),
+        ),
+      )
+      expect(result.operation).toBe("apply")
+      expect(property(result).status).toBe("applied")
+      expect(property(property(result).record).name).toBe(metadata.name)
+      expect(property(result).snapshot_id).not.toBe(baseline.snapshot_id)
+      expect(property(result).changes).toEqual({
+        files: ["SKILL.md", "references/1.md"],
+        removed: [],
+      })
+      expect(
+        f.calls.some(
+          (call) =>
+            call.path.includes(id(5000)) ||
+            call.path.includes(id(5001)) ||
+            call.path.includes("/ai/skills/") ||
+            call.path.includes("/search"),
+        ),
+      ).toBe(false)
+      expect([...f.json.keys()].some((key) => key.startsWith("publications/"))).toBe(false)
+    } finally {
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    }
+  })
+
+  test("public shared replace uses the same native original plans without legacy publication", async () => {
+    const f = sharedSnapshotFixture(),
+      baseline = await fresh(f)
+    const files = [...input, { path: "references/2.md", bytes: encode("Reference two\n") }]
+    const result = await f.run(
+      withWriter(
+        f,
+        replaceSkill(
+          {
+            kind: "skill",
+            name: metadata.name,
+            description: metadata.description,
+            main: "SKILL.md",
+            files,
+          },
+          { target: baseline, defaultContext: true },
+        ),
+      ),
+    )
+    expect(result.operation).toBe("replace")
+    expect(property(result).status).toBe("applied")
+    expect(property(property(result).record).name).toBe(metadata.name)
+    expect(
+      f.calls.some(
+        (call) => call.path.includes("/ai/skills/") || call.path.includes("/file_uploads"),
+      ),
+    ).toBe(false)
+    expect([...f.json.keys()].some((key) => key.startsWith("publications/"))).toBe(false)
+  })
+})

@@ -135,9 +135,11 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
           "Credential scope changed between Profile and View observation; retry discovery.",
         ),
       )
+    const records = result.records.filter((record) => record.kind !== "prompt")
     return {
       ...result,
-      records: result.records.filter((record) => record.kind !== "prompt"),
+      records,
+      count: records.length,
       capability_directory: true as const,
       ...(observed === undefined
         ? {}

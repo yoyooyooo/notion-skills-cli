@@ -978,6 +978,7 @@ describe("Profile machine binding and default discovery", () => {
       source: "notion",
     })
     expect(first.records.map((record) => record.kind)).toEqual(["skill"])
+    expect("count" in first ? first.count : undefined).toBe(1)
     expect(f.queries()).toBe(1)
     expect(
       f.calls.filter((call) =>
@@ -991,6 +992,8 @@ describe("Profile machine binding and default discovery", () => {
     expect(f.writes()).toBe(0)
     f.clear()
     const warm = await f.run(catalogWithProfile({ defaultView: true }))
+    expect("count" in warm ? warm.count : undefined).toBe(warm.records.length)
+    expect("count" in warm ? warm.count : undefined).toBe(1)
     expect(warm.source).toBe("local_cache")
     expect("profile" in warm && warm.profile).toMatchObject({ source: "local_cache" })
     expect(

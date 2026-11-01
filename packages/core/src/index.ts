@@ -92,3 +92,9 @@ export {
   SourceRootFidelityPlanSchema,
   SourceRootFidelityReceiptSchema,
 } from "./upstream-source-root-fidelity-model.ts"
+export * from "./shared-source-plan-binding.ts"
+export * from "./shared-source-registration-reconcile.ts"
+export * from "./shared-source-selection.ts"
+export * from "./shared-source-config.ts"
+export * from "./shared-selected-source.ts"
+export * from "./shared-file-restore.ts"

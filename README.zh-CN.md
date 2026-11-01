@@ -118,6 +118,28 @@ ntn-skills read 'ATTACHMENT_REF_FROM_FILES'
 
 二进制附件加上 `--output ./attachment.bin`，再用合适的查看器打开。文本可用 `--lines 10-30` 读取包含首尾的行区间，或用 `--raw` 输出 UTF-8 原文。脚本不会被自动执行。
 
+## 共享 Notion 库
+
+当前源码构建支持 Skills、Files、Records 三表模型：Skills 保存原生属性和主文，Files 直接保存支持文件正文，Records 保留固定来源、文件归属与历史。共享事实由 Notion 持有，本地目录、对象与快照缓存可以重建。这是 AH-498 的开发检查点，不代表生产迁移、当前 npm 发行或宿主验收已全部完成。
+
+使用目标库实际返回的入口与身份：
+
+```bash
+ntn-skills ctl library inspect 'ENTRY_DATABASE_ID'
+ntn-skills list --database 'ENTRY_DATABASE_ID'
+ntn-skills read 'REF_FROM_LIST' --database 'ENTRY_DATABASE_ID'
+ntn-skills create ./my-skill --database 'ENTRY_DATABASE_ID'
+ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --input ./changed-existing-files --description '更新后的用途'
+```
+
+新建库可用 `ctl library init --parent PARENT_PAGE_ID`；它不迁移旧内容或更改默认库。普通 Skill 文件夹不需要手写 manifest。原生创建支持 UTF-8 文件，完整文件集验证后才启用新 Skill。`apply` 可把已有绑定文件和显式属性变更冻结为一个顺序执行的批次；它不是原子事务，后项失败时前项可能已经完成。当前只支持单独的一项新增或删除，混合或多项布局变更会在写入前拒绝。文件生命周期使用 `ctl library file add/delete/move/restore-follow`。
+
+正常 current read 完整确认 Notion 正文编辑并保留原操作事实后，将整个文件记为自定义；其他文件继续自己的来源行为。改回原文不恢复跟随，也不要求手工接管标记或旧的整 Skill fork。名称、Description、Default Context 与 Router Members 始终来自 Notion 原生属性。
+
+固定来源先用 `source inspect/register` 登记精确 commit/root，再由 `ctl library source select prepare ... --output PLAN` 生成计划并用 `source select apply PLAN --entry ENTRY` 选择。共享 Profile 可通过 `ctl library profile list/show/set/bind/unbind` 管理；`list --profile PROFILE_ID --database ENTRY` 采用共享默认 View，显式 View 优先，普通 `list` 保持完整发现。
+
+完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[架构证据检查点](docs/shared-ssot-architecture.md)。原生二进制创建、多项布局 apply、首次未知请求在空客户端不可见等边界仍保留。固定来源可供给二进制资源；共享操作 ID 不传给旧 `operation resume`。现有 upstream/local 绑定在明确迁移前继续使用各自的原操作恢复流程。
+
 ## 常用场景
 
 ### 按领域选择工作流库
@@ -143,13 +165,13 @@ ntn-skills export 'My Skill' --database ops --output ./my-skill.zip
 ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --dry-run
 ```
 
-`create` 要求名称尚不存在。更新已有页面时，`apply` 针对一个 pinned 主文件 ref 或 snapshot，一次合并变更文件、可重复的 `--remove PATH` 和显式属性参数。`./changed-files` 只放本次新增或修改的文件，其余文件保留；去掉 `--dry-run` 执行已审阅的变更。基线过期会在发布前失败。单独修改文件或属性仍可使用 `write`、`update`。[输入格式、冲突与部分成功的处理](docs/usage.md#creating-importing-exporting-and-updating-skills)。
+`create` 要求名称尚不存在。更新已有页面时，`apply` 针对一个 pinned 主文件 ref 或 snapshot，接受变更文件、可重复的 `--remove PATH` 和显式属性参数，省略的文件保留。共享目标当前支持已有绑定文件与属性，或单独一项新增/删除；混合或多项布局变更会在写入前拒绝。旧 Publication 目标继续使用其完整稀疏替换流程。去掉 `--dry-run` 执行已审阅的变更；基线过期会在写入前失败。单独修改文件或属性仍可使用 `write`、`update`。[输入格式、冲突与部分成功的处理](docs/usage.md#creating-importing-exporting-and-updating-skills)。
 
 用 `replace ./my-skill --target 'CURRENT_PAGE_ID_OR_PINNED_MAIN_REF' --database ops --dry-run` 明确替换已有页面。即使导入的名称、描述变化，`--target` 仍保留选定页面身份；目标缺失、不可访问或版本过期时失败，不按导入名称回退或创建新页。
 
 普通导入在目标和替换行为已获授权后，执行一次即可；退出码 0、`ok: true`、`verified: true` 且没有 `dry_run: true` 就是完成标准。CLI 自动读回核对正文、参考页和完整文件身份；有 Files 时同时保留并校验原始字节。日常无需再逐项 read/files/export 验收。这验证的是存储结果，不代表已执行或验证 Skill 工作流本身。
 
-目标是 upstream → Notion，以及当前 Notion → Markdown/缓存 → Agent 两条链路不丢指令、代码、链接和资源，不要求任意 Markdown 与 Notion 无限双向逐字节可逆。原生 Markdown 允许约定的格式归一化，但拒绝指令变化。纯文本 Skill 可显式用 `--storage markdown_files` 存成 Notion 中可编辑的文件代码块；消费读取当前代码正文，不用源 ZIP 掩盖后续编辑。[存储、归一化与恢复契约](docs/protocol.md#mutation-contract)。
+目标是 upstream → Notion，以及当前 Notion → Markdown/缓存 → Agent 两条链路不丢指令、代码、链接和资源，不要求任意 Markdown 与 Notion 无限双向逐字节可逆。原生 Markdown 允许约定的格式归一化，但拒绝指令变化。旧 Publication 库中的纯文本 Skill 可显式用 `--storage markdown_files` 存成 Notion 中可编辑的文件代码块；消费读取当前代码正文，不用源 ZIP 掩盖后续编辑。[存储、归一化与恢复契约](docs/protocol.md#mutation-contract)。
 
 ### 同步本地分发目录
 
@@ -166,6 +188,8 @@ ntn-skills sync local status release-review-global
 需要分别审阅计划时，可用高级 `bind`、`plan`、`apply --plan`。执行前重新检查绑定、版本、内容及逻辑路径和真实目标。`status` 默认报告已有观察，`--refresh` 才在线验证；`unbind` 保留内容、基线、计划和回执。符号链接保持原链接，移除或替换的旧字节通过系统废纸篓保留。详见[同步使用说明](docs/usage.md#synchronizing-local-skills)。
 
 ### 在 Notion 中维护参考页面
+
+以下 References 流程适用于旧库；共享库通过原生 Files 关系和上述文件命令维护支持文件。
 
 在富文本 `References` 属性中添加页面提及或链接。链接文字写成 `references/guide.md` 时固定本地路径，否则按页面标题生成文件名。正文照常使用 Notion 页面链接；CLI 读取和导出时转换为 `./references/guide.md` 等相对路径。参考文档互相引用时按所在文件目录解析，CLI 写回时恢复 Notion URL。其他网站链接和代码示例保持原样。
 
@@ -209,7 +233,7 @@ ntn-skills ctl builtin update notion/ntn-skills
 ## 使用边界与本地数据
 
 - 历史本地验证覆盖 macOS arm64 的 Node.js 24.20.0 和 Linux arm64 的 Node.js 22.19.0 上的 npm 安装与预置快照离线行为；后者现已不受支持。真实 Notion 读取使用 macOS 和 `ntn` 0.22.12 验证。CI 配置为 Ubuntu、macOS 15 上的 Node.js 22.22.3 和 24.20.0；工作流配置不代表新变更已运行成功。Windows 未验证。
-- 内容写入、`ctl builtin publish` 和同步的 `connect/run/apply` 可能修改内容。发布支持 `--progress` 输出 stderr 阶段与耗时，并保留冻结输入和回执；中断后用 `operation resume OPERATION_ID` 在原发布上继续，无法确认的写入仍明确报错。本地同步检查原有回执，未确认收敛时返回原 operation 和下一步指引。客户端版本检查不等于原子提交。[发布恢复](docs/usage.md#creating-importing-exporting-and-updating-skills)。
+- 内容写入、`ctl builtin publish` 和同步的 `connect/run/apply` 可能修改内容。旧 Publication 流程支持 `--progress` 输出 stderr 阶段与耗时，并保留冻结输入和回执；中断后按返回指引用 `operation resume OPERATION_ID` 在原发布上继续。共享库使用[各自的恢复入口](docs/shared-authoring.md#handle-an-interrupted-operation)，无法确认的写入仍明确报错。本地同步检查原有回执，未确认收敛时返回原 operation 和下一步指引。客户端版本检查不等于原子提交。[发布恢复](docs/usage.md#creating-importing-exporting-and-updating-skills)。
 - 配置默认位于 `~/.config/ntn-skills/config.json`；快照、上传暂存和同步恢复状态位于 `~/.local/state/ntn-skills`；可丢弃观察缓存位于 `~/.cache/ntn-skills`。受管 builtin 位于 `~/.local/share/ntn-skills`，可用 `NTN_SKILLS_DATA_HOME` 或 XDG 数据根覆盖。正文默认五分钟、目录元数据默认 60 秒；[缓存策略与清理](docs/usage.md#cache-policy-and-cleanup)说明配置及系统废纸篓保留。
 - 在线操作通过 `ntn` 和 Notion 的签名下载 URL 完成。未固定版本的离线查找必须能安全确定本地身份范围；官方登录身份可能仍需在线检查。缓存观察不能证明当前权限。CLI 自身不发送遥测请求；`ntn` 有自己的政策。导入的脚本不会自动执行。
 

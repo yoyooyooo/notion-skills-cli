@@ -684,7 +684,12 @@ test("attachment writes preserve other files and historical snapshot content", a
   const old = await f.run(readSkill(`skill://${page}/guide.md?snapshot=${first.snapshot_id}`))
   expect("content" in old && old.content).toBe("Original guide.\n")
   expect("snapshot_id" in result && result.snapshot_id).not.toBe(first.snapshot_id)
-  if (!("operation_id" in result)) throw new Error("Expected a retained publication")
+  if (
+    !("operation_id" in result) ||
+    typeof result.operation_id !== "string" ||
+    result.operation_id.length === 0
+  )
+    throw new Error("Expected a retained publication operation ID")
   const recovered = await f.run(resumePublication(result.operation_id))
   expect(recovered as unknown).toEqual(result)
   expect(property(recovered).path).toBe("guide.md")

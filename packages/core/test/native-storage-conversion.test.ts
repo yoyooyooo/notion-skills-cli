@@ -195,6 +195,8 @@ test("reconcile and resume keep native nested reference paths and refuse externa
   const created = await f.run(
     replaceSkill("/input", { database, target: root, storage: "notion_blocks" }),
   )
+  if (typeof created.operation_id !== "string" || created.operation_id.length === 0)
+    throw new Error("Expected native storage conversion to retain its publication operation ID")
   const operationId = created.operation_id
   expect(f.children.map((child) => child.title).sort()).toEqual([...paths].sort())
   const writes = f.mutations()

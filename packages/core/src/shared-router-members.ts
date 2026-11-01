@@ -157,7 +157,11 @@ function relationBinding(library: SharedLibrary, router: SharedSkillRecord, rawP
   return { id, inline, has_more: relation.has_more }
 }
 
-function completeMemberIds(library: SharedLibrary, router: SharedSkillRecord, rawPage: unknown) {
+export function completeSharedRouterMemberIds(
+  library: SharedLibrary,
+  router: SharedSkillRecord,
+  rawPage: unknown,
+) {
   return Effect.gen(function* () {
     const relation = yield* checked(() => relationBinding(library, router, rawPage))
     if (!relation.has_more) return relation.inline
@@ -247,7 +251,9 @@ export function querySharedRouterMembers(
   },
 ): Effect.Effect<readonly SharedRouterMember[], SkillsError, Notion> {
   return Effect.gen(function* () {
-    const wanted = new Set(yield* completeMemberIds(library, input.router, input.rawPage))
+    const wanted = new Set(
+      yield* completeSharedRouterMemberIds(library, input.router, input.rawPage),
+    )
     if (wanted.size === 0) return []
     const source = sourceFor(library)
     const api = yield* Notion
