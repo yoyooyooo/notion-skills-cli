@@ -47,6 +47,8 @@ import {
   reconcileSharedBodyWrite,
   type SharedBodyWritePlan,
 } from "./shared-body-write.ts"
+import { reconcileSharedBodyWriteReview } from "./shared-body-write-review.ts"
+import type { SharedBodyWriteReviewPlan } from "./shared-body-write-review-model.ts"
 import {
   loadPendingSharedMetadataWrites,
   reconcileSharedMetadataWrite,
@@ -387,10 +389,15 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
     }
     const bodyWrites = new Map<string, SharedBodyWritePlan>()
+    const bodyReviews = new Map<string, SharedBodyWriteReviewPlan>()
     const metadataWrites = new Map<string, SharedMetadataWritePlan>()
     const fileManagements = new Map<string, SharedFileManagementPlan>()
     const skillApplies = new Map<string, SharedSkillApplyPlan>()
     for (const entry of localPending) {
+      if (entry.plan.kind === "body_write_review") {
+        bodyReviews.set(entry.plan.operation_id, entry.plan)
+        continue
+      }
       if (entry.plan.kind === "skill_apply") {
         skillApplies.set(entry.plan.operation_id, entry.plan)
         continue
@@ -519,6 +526,33 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         ),
       )
     }
+    for (const plan of bodyReviews.values()) {
+      const result = yield* reconcileSharedBodyWriteReview(input.library, plan)
+      yield* invalidateSnapshotCache(record.id, input.scope)
+      yield* store.retireKeys(
+        localPending
+          .filter(
+            (entry) =>
+              entry.plan.operation_id === plan.operation_id ||
+              entry.plan.operation_id === plan.original_operation_id,
+          )
+          .map((entry) => entry.key),
+      )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_BODY_REVIEW_RECONCILED",
+          "The independent review is verified; the original write remains needs_review. Read current metadata again before publishing.",
+          {
+            review_operation_id: plan.operation_id,
+            original_operation_id: plan.original_operation_id,
+            status: result.status,
+            decision: result.decision,
+            original_status: result.original_status,
+            read_again: true,
+          },
+        ),
+      )
+    }
     // Explicit system candidates must never be observed as natural user edits.
     // Completion requires the exact operation outcome, not a content event alone.
     for (const plan of bodyWrites.values()) {
@@ -542,7 +576,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       return yield* Effect.fail(
         fail(
           "SHARED_BODY_WRITE_RECONCILED",
-          "The original body write is now verified. Read the current page again before publishing a new snapshot.",
+          result.status === "reviewed"
+            ? "The independent accepted-observed review is verified; the original write remains needs_review. Read the current page again."
+            : "The original body write is now verified. Read the current page again before publishing a new snapshot.",
           {
             body_write_operation_id: plan.operation_id,
             status: result.status,

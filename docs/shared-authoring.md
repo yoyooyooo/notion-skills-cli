@@ -232,6 +232,30 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 
 These shared IDs are distinct from older Publication IDs. Do not pass them to the legacy `operation resume` workflow. An empty independent machine may be unable to distinguish an invisible first request from one never sent; preserve the original machine's pending operation instead of recreating it elsewhere.
 
+### Review a retained body mismatch
+
+A `needs_review` body write can retain a complete native response that differs from its frozen candidate. Inspect that original response before deciding whether to accept it as the current customized body. An unknown write, an incomplete response, or missing original evidence is not eligible for this decision.
+
+The accepted digest is the SHA-256 of the original `response.markdown` string encoded as UTF-8. Preserve its exact bytes, including CRLF and terminal newlines; do not hash normalized content or a JSON wrapper. Preview with the exact original operation and the containing Skill page:
+
+```bash
+ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+  --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --dry-run
+```
+
+The preview verifies the retained plan, outcome, complete original observation, current body, file binding, source selection and original parent events. If those facts still match the decision you intend to make, execute the same command without `--dry-run`:
+
+```bash
+ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+  --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256
+```
+
+Completion returns `reviewed` with `decision: accepted_observed`. The original operation remains `needs_review`, and its preimage, candidate and observed response remain unchanged. The independent review retains the accepted body and an adoption event; it does not rewrite the native body or report the original candidate as applied. To make a correction afterward, perform a fresh read and submit a new explicit write from that current version.
+
+If review is interrupted, retain its original receipt and repeat the exact review with `--reconcile`. Reconciliation only verifies the original review facts and never fills missing facts by repeating unknown writes. `--dry-run` and `--reconcile` are mutually exclusive.
+
 ## Current limits
 
 Shared authoring currently requires existing editable bindings for changed files. Native binary creation, mixed or multiple layout changes in one `apply`, and arbitrary lossless Markdown rendering are not implemented. New plans reject Setext headings and YAML frontmatter in supporting files before any Notion write because native readback does not preserve their original structure. Main-file frontmatter is limited to the supported name and description fields; unknown fields are rejected. Excessive operation-envelope size fails before dispatch. HTTP/local composition still requires a reviewed fixed plan. These limits do not change old pins or authorize omission of input files.
+
+New authoring plans use Markdown projection policy 3. Inline code containing a literal backtick is rejected before dispatch because the observed native conversion can merge adjacent paragraphs. This applies to both Markdown code spans and native `<code>` content, including visible nested text. Fenced code may contain literal backticks. The CLI leaves the input unchanged; it does not silently convert inline code into a fence. Retained policy 1 and 2 plans continue to validate against their original renderer, expected bytes and operation identity.

@@ -87,7 +87,7 @@ describe("native shared creation", () => {
     })
     const plan = await f.run(prepareSharedCreate(createLibrary, { portable: input }))
     for (const file of plan.files) {
-      expect(file.projection.version).toBe(2)
+      expect(file.projection.version).toBe(3)
       const expected = responses.get(sharedNotionMarkdownWire(file.projection))
       if (expected === undefined) throw new Error("Missing independent native readback")
       expect(file.projection.markdown).toBe(expected)
@@ -102,7 +102,7 @@ describe("native shared creation", () => {
     )
   })
 
-  test("a failed v1 H1 create retains its original expected bytes and cannot be replayed as v2", async () => {
+  test("a failed v1 H1 create retains its original expected bytes and cannot be replayed under a new policy", async () => {
     const main = "# Native acceptance\n\nRead `references/guide.md`."
     const f = sharedCreateFixture({ readback: () => "Read <code>references/guide.md</code>." })
     const input = portable({ files: [{ path: "SKILL.md", bytes: encode(main) }] })
@@ -125,6 +125,24 @@ describe("native shared creation", () => {
     expect(f.writes()).toHaveLength(0)
     expect(f.pending()).toHaveLength(1)
     expect(canonicalSharedJson(old)).toBe(original)
+  })
+
+  test("a retained v2 creation remains valid when policy 3 rejects its inline literal backtick", async () => {
+    const f = sharedCreateFixture()
+    const main = "Native <code>a`b</code>.\n\nNext paragraph.\n"
+    const input = portable({ files: [{ path: "SKILL.md", bytes: encode(main) }] })
+    const retained = await f.run(makeSharedCreatePlan(createLibrary, { portable: input }, 2))
+    const original = canonicalSharedJson(retained)
+    expect(retained.files[0]!.projection.version).toBe(2)
+    expect(sharedNotionMarkdownWire(retained.files[0]!.projection)).toBe(main.slice(0, -1))
+    expect(sharedCreateManifest(retained).files[0]!.projection.version).toBe(2)
+    expect(canonicalSharedJson(await f.run(validateSharedCreatePlan(retained)))).toBe(original)
+    expect(
+      (await f.run(Effect.flip(makeSharedCreatePlan(createLibrary, { portable: input })))).code,
+    ).toBe("SHARED_MARKDOWN_PROJECTION_UNSUPPORTED")
+    expect(new TextDecoder().decode(input.files[0]!.bytes)).toBe(main)
+    expect(canonicalSharedJson(retained)).toBe(original)
+    expect(f.calls).toHaveLength(0)
   })
 
   test("a retained v1 manifest reconstructs under its original policy, including previously accepted frontmatter", async () => {

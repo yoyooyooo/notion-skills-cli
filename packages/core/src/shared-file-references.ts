@@ -58,7 +58,7 @@ function withoutNativeCode(text: string): string {
 }
 
 /** Preserve line positions while removing fenced code, inline code and comments. */
-function prose(markdown: string, policy: 1 | 2): string {
+function prose(markdown: string, policy: 1 | 2 | 3): string {
   let fence: { marker: string; length: number } | undefined
   const lines = markdown
     .replace(/\r\n/gu, "\n")
@@ -198,7 +198,7 @@ function localTarget(from: string, raw: string): string | undefined {
 export function sharedMarkdownReferences(
   path: string,
   markdown: string,
-  policy: 1 | 2 = 2,
+  policy: 1 | 2 | 3 = 3,
 ): readonly SharedFileReference[] {
   const text = prose(markdown, policy)
   const definitions = new Map<string, string>()
@@ -281,8 +281,11 @@ export function sharedMarkdownReferences(
 /** The caller must supply the complete, byte-verified proposed tree. Retained
  * authoring-v1 creation plans explicitly select policy 1 so their original
  * reference counts and hashed identities do not change during reconstruction.
- * Both policies check every file; policy 2 understands native code spans. */
-export function assertSharedFileReferences(files: readonly CompositionFile[], policy: 1 | 2 = 2) {
+ * All policies check every file; policies 2/3 understand native code spans. */
+export function assertSharedFileReferences(
+  files: readonly CompositionFile[],
+  policy: 1 | 2 | 3 = 3,
+) {
   const paths = new Set(files.map((file) => file.path))
   const references: SharedFileReference[] = []
   let checkedFiles = 0

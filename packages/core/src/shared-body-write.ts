@@ -34,6 +34,7 @@ import {
 } from "./shared-body-write-model.ts"
 import { sha256 } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
+import { completedSharedBodyWriteReview } from "./shared-body-write-review.ts"
 
 export {
   SharedBodyWritePlanSchema,
@@ -530,7 +531,9 @@ export function reconcileSharedBodyWrite(library: SharedLibrary, input: SharedBo
             "outcome",
           ),
         )
-      if (outcome.status === "needs_review")
+      if (outcome.status === "needs_review") {
+        const review = yield* completedSharedBodyWriteReview(library, plan)
+        if (review !== undefined) return review
         return yield* Effect.fail(
           recoveryError(
             fail(
@@ -545,6 +548,7 @@ export function reconcileSharedBodyWrite(library: SharedLibrary, input: SharedBo
             "outcome",
           ),
         )
+      }
       if (outcome.status !== "applied")
         return {
           status: "not_applied" as const,
@@ -928,6 +932,13 @@ export function loadPendingSharedBodyWrites(
             "The original write plan differs from its exact shared index identity.",
           ),
         )
+      if (outcome?.status === "needs_review") {
+        const review = yield* completedSharedBodyWriteReview(library, plan, {
+          headers,
+          events: input.events,
+        })
+        if (review !== undefined) continue
+      }
       plans.push(plan)
     }
     return plans.sort(

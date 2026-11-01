@@ -16,6 +16,7 @@ import {
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryFileRestoreCommand } from "./commands-library-file-restore.ts"
+import { libraryFileReviewCommand } from "./commands-library-file-review.ts"
 
 const entry = requiredSingleton("entry", "Exact shared library entry ID, URL or registered alias")
 const target = Argument.String("target").pipe(
@@ -241,7 +242,14 @@ const reconcile = defineCommand(
 
 export const libraryFilesCommand = defineCommand("file").pipe(
   Command.withDescription(
-    "Manage stable shared supporting files, explicit tombstones and source-preserving logical moves. The main body cannot be moved or deleted.",
+    "Manage stable shared file lifecycle, restore following and explicitly review original body-write outcomes. Review supports the main body; moving and deleting it remain protected.",
   ),
-  Command.withSubcommands([add, remove, move, reconcile, libraryFileRestoreCommand]),
+  Command.withSubcommands([
+    add,
+    remove,
+    move,
+    reconcile,
+    libraryFileRestoreCommand,
+    libraryFileReviewCommand,
+  ]),
 )

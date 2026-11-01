@@ -1,6 +1,11 @@
 import { Effect, Schema } from "effect"
 import { fail } from "./model.ts"
 import {
+  SharedBodyWriteReviewPlanSchema,
+  validateSharedBodyWriteReviewPlan,
+  type SharedBodyWriteReviewPlan,
+} from "./shared-body-write-review-model.ts"
+import {
   SharedBodyWritePlanSchema,
   validateSharedBodyWritePlan,
   type SharedBodyWritePlan,
@@ -31,6 +36,7 @@ import { sha256, Store } from "./store.ts"
 export type SharedPendingFilePlan =
   | SharedObservationPlan
   | SharedBodyWritePlan
+  | SharedBodyWriteReviewPlan
   | SharedMetadataWritePlan
   | SharedFileManagementPlan
   | SharedSkillApplyPlan
@@ -51,6 +57,7 @@ const PendingFileOperationSchema = Schema.Struct({
   plan: Schema.Union([
     SharedObservationPlanSchema,
     SharedBodyWritePlanSchema,
+    SharedBodyWriteReviewPlanSchema,
     SharedMetadataWritePlanSchema,
     SharedFileManagementPlanSchema,
     SharedSkillApplyPlanSchema,
@@ -74,6 +81,10 @@ function validatePlan(plan: SharedPendingFilePlan) {
   switch (plan.kind) {
     case "body_write":
       return validateSharedBodyWritePlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+    case "body_write_review":
+      return validateSharedBodyWriteReviewPlan(plan).pipe(
         Effect.map((value): SharedPendingFilePlan => value),
       )
     case "file_observation":

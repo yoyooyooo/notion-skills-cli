@@ -213,7 +213,7 @@ export interface SharedCreateInput {
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: 1 | 2 = 2,
+  projectionVersion: 1 | 2 | 3 = 3,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable
@@ -270,7 +270,7 @@ export function makeSharedCreatePlan(
               { path: file.path, bytes: file.bytes.length },
             )
           const path = file.path === portable.main ? entrypoint : file.path
-          if (file.path === portable.main && projectionVersion === 2) {
+          if (file.path === portable.main && projectionVersion !== 1) {
             const frontmatter = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(text)
             if (frontmatter !== null) {
               const metadata: unknown = parseYaml(frontmatter[1] ?? "")
@@ -409,15 +409,17 @@ export function makeSharedCreatePlan(
 /** Reconstruction must select the retained policy, never the newest default.
  * Every file in one native create shares the same creation policy. */
 export function sharedCreateProjectionVersion(
-  files: readonly { readonly projection: { readonly version: 1 | 2; readonly purpose?: string } }[],
-): 1 | 2 {
+  files: readonly {
+    readonly projection: { readonly version: 1 | 2 | 3; readonly purpose?: string }
+  }[],
+): 1 | 2 | 3 {
   const version = files[0]?.projection.version
   if (
     version === undefined ||
     files.some(
       (file) =>
         file.projection.version !== version ||
-        (file.projection.version === 2 && file.projection.purpose !== "data_source_create"),
+        (file.projection.version !== 1 && file.projection.purpose !== "data_source_create"),
     )
   )
     throw fail(

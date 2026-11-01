@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { normalizeObservedBody } from "./shared-file-state.ts"
+import { assertNotionInlineBoundary } from "./shared-notion-inline-boundary.ts"
 import {
   projectNotionMarkdownV2,
   type SharedNotionMarkdownPurpose,
@@ -30,9 +31,20 @@ const ProjectionV2Schema = Schema.Struct({
   markdown: Schema.String,
   removed_terminal_lfs: Schema.Number,
 })
+const ProjectionV3Schema = Schema.Struct({
+  version: Schema.Literal(3),
+  format: Schema.Literal("notion_markdown_v2"),
+  normalization_version: Schema.Literal(1),
+  purpose: Schema.Literals(["body_write", "data_source_create"]),
+  input_markdown: Schema.String,
+  wire_markdown: Schema.String,
+  markdown: Schema.String,
+  removed_terminal_lfs: Schema.Number,
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
+  ProjectionV3Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 
@@ -50,13 +62,20 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(3),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
-/** A v1 record always keeps its historical bytes and policy. New authoring
- * explicitly freezes v2 request bytes separately from exact readback bytes. */
+/** Retained v1/v2 records keep their historical bytes and policy. New policy 3
+ * adds only a preflight inline boundary; its renderer remains the v2 policy. */
 export function projectSharedNotionMarkdown(
   input: string,
-  options: { readonly version?: 1 | 2; readonly purpose?: SharedNotionMarkdownPurpose } = {},
+  options: { readonly version?: 1 | 2 | 3; readonly purpose?: SharedNotionMarkdownPurpose } = {},
 ): SharedNotionMarkdownProjection {
   if (
     typeof input !== "string" ||
@@ -77,10 +96,12 @@ export function projectSharedNotionMarkdown(
     removed_terminal_lfs: normalized.length - markdown.length,
   } as const
   if (options.version === 1) return { version: 1, ...common }
+  const version = options.version ?? 3
+  if (version === 3) assertNotionInlineBoundary(markdown)
   const purpose = options.purpose ?? "body_write"
   const projected = projectNotionMarkdownV2(markdown, purpose)
   return {
-    version: 2,
+    version,
     ...common,
     purpose,
     wire_markdown: projected.wire,
@@ -102,7 +123,7 @@ export function sharedNotionMarkdownPolicy(projection: SharedNotionMarkdownProje
   }
   return projection.version === 1
     ? { version: 1 as const, ...common }
-    : { version: 2 as const, ...common, purpose: projection.purpose }
+    : { version: projection.version, ...common, purpose: projection.purpose }
 }
 
 export function validateSharedNotionMarkdownProjection(

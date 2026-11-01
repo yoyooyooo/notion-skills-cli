@@ -3,12 +3,17 @@ import { SkillsError } from "../src/model.ts"
 import { normalizeObservedBody } from "../src/shared-file-state.ts"
 import {
   projectSharedNotionMarkdown,
+  sharedNotionMarkdownPolicy,
   sharedNotionMarkdownWire,
   validateSharedNotionMarkdownProjection,
 } from "../src/shared-notion-projection.ts"
 import { notionV2Observations } from "./shared-notion-projection-observations.ts"
 
 const projectV1 = (input: string) => projectSharedNotionMarkdown(input, { version: 1 })
+const projectV2 = (
+  input: string,
+  options: { readonly purpose?: "body_write" | "data_source_create" } = {},
+) => projectSharedNotionMarkdown(input, { ...options, version: 2 })
 
 describe("retained native Markdown projection v1", () => {
   test("freezes one editor EOF newline as an explicit change while preserving the input", () => {
@@ -65,7 +70,7 @@ describe("native Markdown projection v2", () => {
     for (const sample of notionV2Observations.filter((sample) =>
       ["prefix-probe", "explicit-languages-ds"].includes(sample.case),
     )) {
-      const projection = projectSharedNotionMarkdown(sample.request_markdown, {
+      const projection = projectV2(sample.request_markdown, {
         purpose: "data_source_create",
       })
       expect(projection.markdown).toBe(sample.response_markdown)
@@ -77,7 +82,7 @@ describe("native Markdown projection v2", () => {
     for (const sample of notionV2Observations.filter((sample) =>
       ["double-h1-ds", "xml-h1-ds"].includes(sample.case),
     )) {
-      const projection = projectSharedNotionMarkdown(sample.request_markdown, {
+      const projection = projectV2(sample.request_markdown, {
         purpose: "data_source_create",
       })
       // The old unlabelled fence was guessed as javascript by the service.
@@ -93,8 +98,8 @@ describe("native Markdown projection v2", () => {
 
   test("retains the authored H1 and uses XML only for data-source creation", () => {
     const input = "# Native acceptance\n\nRead `references/guide.md`.\n"
-    const create = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
-    const write = projectSharedNotionMarkdown(input)
+    const create = projectV2(input, { purpose: "data_source_create" })
+    const write = projectV2(input)
     expect(create.version).toBe(2)
     expect(create.input_markdown).toBe(input)
     expect(create.markdown).toBe("# Native acceptance\n\nRead <code>references/guide.md</code>.")
@@ -112,7 +117,7 @@ describe("native Markdown projection v2", () => {
   test("freezes each observed rich-text segment without escaping literal code content", () => {
     const input =
       "Paragraph with **bold `code` bold** and *italic* and ~~strike~~.\n\nCode: `a < b & c > d` and ``a`b``."
-    expect(projectSharedNotionMarkdown(input).markdown).toBe(
+    expect(projectV2(input).markdown).toBe(
       "Paragraph with <b>bold </b><b><code>code</code></b><b> bold</b> and <i>italic</i> and <s>strike</s>.\n\nCode: <code>a < b & c > d</code> and <code>a`b</code>.",
     )
   })
@@ -121,7 +126,7 @@ describe("native Markdown projection v2", () => {
     "explicitly freezes plain-text fences (%s)",
     (language) => {
       const input = `\`\`\`${language}\nliteral <angle> & text\n\`\`\``
-      const projection = projectSharedNotionMarkdown(input)
+      const projection = projectV2(input)
       expect(sharedNotionMarkdownWire(projection)).toBe("```text\nliteral <angle> & text\n```")
       expect(projection.markdown).toBe("```txt\nliteral <angle> & text\n```")
       expect(projection.input_markdown).toBe(input)
@@ -139,7 +144,7 @@ describe("native Markdown projection v2", () => {
     ["json", "json"],
   ])("freezes the observed %s fence readback label %s", (language, observed) => {
     const input = `\`\`\`${language}\nvalue\n\`\`\``
-    const projection = projectSharedNotionMarkdown(input)
+    const projection = projectV2(input)
     expect(sharedNotionMarkdownWire(projection)).toBe(input)
     expect(projection.markdown).toBe(`\`\`\`${observed}\nvalue\n\`\`\``)
   })
@@ -147,7 +152,7 @@ describe("native Markdown projection v2", () => {
   test("fenced code remains literal while headings, lists and table cells use their AST spans", () => {
     const input =
       "# Title\n\n- [ ] **Todo**\n- [x] `Done`\n\n| Key | Value |\n| --- | --- |\n| `key` | **value** |\n\n```js\n// # heading **bold** `code`\nconst value = 1\n```"
-    const projection = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+    const projection = projectV2(input, { purpose: "data_source_create" })
     expect(projection.markdown).toBe(
       "# Title\n\n- [ ] <b>Todo</b>\n- [x] <code>Done</code>\n\n| Key | Value |\n| --- | --- |\n| <code>key</code> | <b>value</b> |\n\n```javascript\n// # heading **bold** `code`\nconst value = 1\n```",
     )
@@ -159,18 +164,18 @@ describe("native Markdown projection v2", () => {
   test("already serialized native inline content and link destinations remain exact", () => {
     const input =
       "<b>bold </b><b><code>code</code></b><b> bold</b>\n\n[Local](references/guide.md) and [External](https://example.com/a_b?q=x*y)."
-    expect(projectSharedNotionMarkdown(input).markdown).toBe(input)
+    expect(projectV2(input).markdown).toBe(input)
   })
 
   test("native code containing backticks stays opaque while following Markdown still projects", () => {
     const input = "<b><code>[example](missing.md) and a`b</code></b> [real](real.md) and `outside`."
-    expect(projectSharedNotionMarkdown(input).markdown).toBe(
+    expect(projectV2(input).markdown).toBe(
       "<b><code>[example](missing.md) and a`b</code></b> [real](real.md) and <code>outside</code>.",
     )
   })
 
   test("neither request bytes nor returned bytes can redefine the frozen v2 policy", () => {
-    const projection = projectSharedNotionMarkdown("# Title\n\n**Body**", {
+    const projection = projectV2("# Title\n\n**Body**", {
       purpose: "data_source_create",
     })
     if (projection.version !== 2) throw new Error("Expected current projection")
@@ -190,7 +195,7 @@ describe("native Markdown projection v2", () => {
     "---\ncustom: supporting-file-frontmatter\n---\n\nexact support text",
   ])("unverified Setext or supporting frontmatter fails before a v2 candidate (%s)", (input) => {
     for (const purpose of ["body_write", "data_source_create"] as const)
-      expect(() => projectSharedNotionMarkdown(input, { purpose })).toThrow(SkillsError)
+      expect(() => projectV2(input, { purpose })).toThrow(SkillsError)
     // Retained operations use their saved policy; this limit is not retroactive.
     const retained = projectV1(input)
     expect(retained.markdown).toBe(input)
@@ -199,6 +204,100 @@ describe("native Markdown projection v2", () => {
   })
 
   test("an unrepresentable indented code block fails before a candidate is accepted", () => {
-    expect(() => projectSharedNotionMarkdown("    const value = 1")).toThrow(SkillsError)
+    expect(() => projectV2("    const value = 1")).toThrow(SkillsError)
+  })
+})
+
+describe("native Markdown projection v3 inline boundary", () => {
+  test.each([
+    "Native <code>a`b</code>.\n\nFollowing paragraph.",
+    "Markdown ``a`b``.\n\nFollowing paragraph.",
+    "**Bold ``a`b`` text**.",
+    "<b><code>a`b</code></b>.",
+    "# Heading ``a`b``",
+    "<h1>Heading <code>a`b</code></h1>",
+    "- Native <code>a`b</code>",
+    "> Quoted **``a`b``**.",
+    "- [ ] Nested\n  - <code>a`b</code>",
+    "| ``a`b`` | Heading |\n| --- | --- |\n| Value | Value |",
+    "| Heading | Heading |\n| --- | --- |\n| <code>a`b</code> | Value |",
+    "[Visible ``a`b``](https://example.com)",
+  ])("rejects literal backticks inside inline code before projection (%s)", (input) => {
+    for (const purpose of ["body_write", "data_source_create"] as const)
+      expect(() => projectSharedNotionMarkdown(input, { purpose })).toThrow(
+        "inline code containing a literal backtick",
+      )
+  })
+
+  test("literal fences remain complete and use the unchanged renderer", () => {
+    const input = "```text\n<code>a`b</code>\n``a`b``\n```\n"
+    for (const purpose of ["body_write", "data_source_create"] as const) {
+      const projected = projectSharedNotionMarkdown(input, { purpose })
+      expect(projected.version).toBe(3)
+      expect(projected.input_markdown).toBe(input)
+      expect(sharedNotionMarkdownWire(projected)).toBe(input.slice(0, -1))
+      expect(projected.markdown).toBe("```txt\n<code>a`b</code>\n``a`b``\n```")
+      expect(validateSharedNotionMarkdownProjection(projected)).toEqual(projected)
+    }
+  })
+
+  test("ordinary inline code and literal URL destinations remain accepted", () => {
+    for (const input of [
+      "Native <code>marker</code> and Markdown `marker`.",
+      "[Link](https://example.com/``a`b``)",
+      "[Reference][target]\n\n[target]: https://example.com/``a`b``",
+      "[visible][``a`b``]\n\n[``a`b``]: https://example.com",
+      "[visible][<code>a`b</code>]\n\n[<code>a`b</code>]: https://example.com",
+      "![Image](https://example.com/``a`b``)",
+      "<!-- <code>a`b</code> -->\n\nOrdinary text.",
+      "\\<code>a`b\\</code> and `ordinary`.",
+    ]) {
+      const projected = projectSharedNotionMarkdown(input)
+      expect(projected.version).toBe(3)
+      expect(projected.input_markdown).toBe(input)
+      expect(sharedNotionMarkdownWire(projected)).toBe(sharedNotionMarkdownWire(projectV2(input)))
+      expect(projected.markdown).toBe(projectV2(input).markdown)
+    }
+  })
+
+  test("old v1/v2 records retain their exact wire, expected body and validation", () => {
+    const input = "Native <code>a`b</code>.\n\nNext `code`.\n"
+    const historical = {
+      format: "notion_markdown_v2",
+      normalization_version: 1,
+      input_markdown: input,
+      removed_terminal_lfs: 1,
+    } as const
+    const v1 = { version: 1, ...historical, markdown: input.slice(0, -1) } as const
+    const v2 = {
+      version: 2,
+      ...historical,
+      purpose: "body_write",
+      wire_markdown: input.slice(0, -1),
+      markdown: "Native <code>a`b</code>.\n\nNext <code>code</code>.",
+    } as const
+    expect(projectV1(input)).toEqual(v1)
+    expect(projectV2(input)).toEqual(v2)
+    expect(validateSharedNotionMarkdownProjection(v1)).toEqual(v1)
+    expect(validateSharedNotionMarkdownProjection(v2)).toEqual(v2)
+    expect(sharedNotionMarkdownWire(v1)).toBe(input.slice(0, -1))
+    expect(sharedNotionMarkdownWire(v2)).toBe(input.slice(0, -1))
+    expect(sharedNotionMarkdownPolicy(v2).version).toBe(2)
+    expect(() => validateSharedNotionMarkdownProjection({ ...v2, version: 3 })).toThrow(
+      "inline code containing a literal backtick",
+    )
+  })
+
+  test("current policy metadata reports version 3 without relabeling old records", () => {
+    const projected = projectSharedNotionMarkdown("# Title\n\n`marker`\n")
+    expect(sharedNotionMarkdownPolicy(projected)).toEqual({
+      version: 3,
+      format: "notion_markdown_v2",
+      normalization_version: 1,
+      removed_terminal_lfs: 1,
+      purpose: "body_write",
+    })
+    expect(sharedNotionMarkdownWire(projected)).toBe("# Title\n\n`marker`")
+    expect(projected.markdown).toBe("# Title\n\n<code>marker</code>")
   })
 })

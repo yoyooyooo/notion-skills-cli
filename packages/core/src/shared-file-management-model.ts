@@ -177,7 +177,7 @@ export function validateSharedFileManagementPlan(input: unknown) {
           )
         if (
           plan.creation_projection === null ||
-          (plan.creation_projection.version === 2 &&
+          (plan.creation_projection.version !== 1 &&
             plan.creation_projection.purpose !== "data_source_create") ||
           validateSharedNotionMarkdownProjection(plan.creation_projection).markdown !==
             plan.content.markdown

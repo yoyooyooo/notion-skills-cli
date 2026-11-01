@@ -215,7 +215,9 @@ function reconcileLocalBeforeNewPlan(library: SharedLibrary, scope: SharedPendin
     return yield* Effect.fail(
       fail(
         "SHARED_BODY_WRITE_RECONCILED",
-        "The original body write is verified. Read the current page again before preparing new intent.",
+        result.status === "reviewed"
+          ? "The independent accepted-observed review is verified; the original write remains needs_review. Read the current page again before preparing new intent."
+          : "The original body write is verified. Read the current page again before preparing new intent.",
         {
           body_write_operation_id: first.plan.operation_id,
           status: result.status,
