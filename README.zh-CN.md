@@ -134,6 +134,8 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 新建库可用 `ctl library init --parent PARENT_PAGE_ID`；它不迁移旧内容或更改默认库。普通 Skill 文件夹不需要手写 manifest。原生创建支持 UTF-8 文件，完整文件集验证后才启用新 Skill。`apply` 可把已有绑定文件和显式属性变更冻结为一个顺序执行的批次；它不是原子事务，后项失败时前项可能已经完成。当前只支持单独的一项新增或删除，混合或多项布局变更会在写入前拒绝。文件生命周期使用 `ctl library file add/delete/move/restore-follow`。
 
+三张 Database 均为独立非 inline 页面，显示名直接使用 **Skills、Files、Records**，无需 library 后缀。初始化标识与最终 descriptor 保存内部身份，改名不影响正常附着或原操作复查。已确认的收敛目标是唯一三表库，不长期双写、不隐式回退旧模型；完整数据迁移与日用入口切换分别验收。
+
 正常 current read 完整确认 Notion 正文编辑并保留原操作事实后，将整个文件记为自定义；其他文件继续自己的来源行为。改回原文不恢复跟随，也不要求手工接管标记或旧的整 Skill fork。名称、Description、Default Context 与 Router Members 始终来自 Notion 原生属性。
 
 固定来源先用 `source inspect/register` 登记精确 commit/root，再由 `ctl library source select prepare ... --output PLAN` 生成计划并用 `source select apply PLAN --entry ENTRY` 选择。共享 Profile 可通过 `ctl library profile list/show/set/bind/unbind` 管理；`list --profile PROFILE_ID --database ENTRY` 采用共享默认 View，显式 View 优先，普通 `list` 保持完整发现。

@@ -30,6 +30,45 @@ const select = (names: readonly string[]) => ({
   select: { options: names.map((name) => ({ name })) },
 })
 const title = (content: string) => [{ type: "text", text: { content } }]
+const TABLE_MARKER = "ntn-skills-table:v1 "
+const tableRoles = ["Skills", "Files", "Records"] as const
+type TableRole = (typeof tableRoles)[number]
+const TableInitializationSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  operation_id: Schema.String,
+  parent_page_id: Schema.String,
+  role: Schema.Literals(tableRoles),
+})
+function tableDescription(operation: string, parent: string, role: TableRole): string {
+  return (
+    TABLE_MARKER +
+    JSON.stringify({
+      version: 1,
+      operation_id: operation,
+      parent_page_id: parent,
+      role,
+    })
+  )
+}
+function tableInitialization(raw: unknown) {
+  const database = property(raw)
+  const description = text(database.description)
+  if (!description.startsWith(TABLE_MARKER)) return undefined
+  const identity = decode(
+    TableInitializationSchema,
+    JSON.parse(description.slice(TABLE_MARKER.length)),
+  )
+  if (
+    !/^library-[a-zA-Z0-9-]{1,80}$/.test(identity.operation_id) ||
+    exactId(identity.parent_page_id) !== property(database.parent).page_id ||
+    database.in_trash === true
+  )
+    throw fail(
+      "LIBRARY_INIT_CONFLICT",
+      "The table initialization identity does not match its actual parent.",
+    )
+  return identity
+}
 export const sharedSkillProperties = {
   Name: { title: {} },
   Description: rich,
@@ -373,10 +412,10 @@ function initializeMembers(
   })
 }
 
-function ownedTables(parent: string, operation?: string) {
+function ownedTables(parent: string) {
   return Effect.gen(function* () {
     const api = yield* Notion,
-      found = new Map<string, string>(),
+      found = new Map<string, unknown>(),
       cursors = new Set<string>()
     let cursor: string | undefined
     do {
@@ -387,30 +426,16 @@ function ownedTables(parent: string, operation?: string) {
       )
       const page = yield* checked(() => decode(listSchema(Schema.Unknown), raw))
       for (const item of page.results) {
-        const row = property(item),
-          label = property(row.child_database).title
-        if (
-          row.type !== "child_database" ||
-          typeof label !== "string" ||
-          typeof row.id !== "string"
-        )
-          continue
-        if (operation === undefined) {
-          found.set(row.id, label)
-          continue
-        }
-        for (const role of ["Skills", "Files", "Records"]) {
-          if (label !== `${role} [${operation}]`) continue
-          if (found.has(role))
-            return yield* Effect.fail(
-              fail(
-                "LIBRARY_INIT_CONFLICT",
-                "Multiple tables claim one initialization operation; preserve all candidates.",
-                { operation_id: operation, role },
-              ),
-            )
-          found.set(role, row.id)
-        }
+        const row = property(item)
+        if (row.type !== "child_database" || typeof row.id !== "string") continue
+        if (found.has(row.id))
+          return yield* Effect.fail(
+            fail(
+              "LIBRARY_DISCOVERY_INCOMPLETE",
+              "Initialization enumeration repeated a database identity.",
+            ),
+          )
+        found.set(row.id, yield* api.request(`v1/databases/${row.id}`))
       }
       if (!page.has_more) break
       if (!page.next_cursor || cursors.has(page.next_cursor))
@@ -451,51 +476,65 @@ export function initializeSharedLibrary(input: {
     if (!/^library-[a-zA-Z0-9-]{1,80}$/.test(operation))
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "Invalid library operation identity."))
     const api = yield* Notion
-    if (input.operation === undefined) {
-      const children = yield* ownedTables(parent)
-      const libraries: SharedLibrary[] = []
-      const unfinished: string[] = []
-      for (const [id, name] of children) {
-        const raw = yield* api.request(`v1/databases/${id}`)
-        const library = yield* checked(() => libraryFromDatabase(raw))
-        if (library) libraries.push(library)
-        else if (/^(Skills|Files|Records) \[library-[a-zA-Z0-9-]+\]$/.test(name))
-          unfinished.push(id)
-      }
-      if (libraries.length > 1)
-        return yield* Effect.fail(
-          fail(
-            "LIBRARY_AMBIGUOUS",
-            "Several shared libraries exist under this parent; attach an exact entry.",
-            { entries: libraries.map((library) => library.skills.database_id) },
-          ),
-        )
-      const existing = libraries[0]
-      if (existing) {
-        if (existing.parent_page_id !== parent)
+    const children = yield* ownedTables(parent)
+    const libraries: SharedLibrary[] = []
+    const found = new Map<TableRole, string>()
+    for (const [id, raw] of children) {
+      const library = yield* checked(() => libraryFromDatabase(raw))
+      if (library) libraries.push(library)
+      const initialization = yield* checked(() => tableInitialization(raw))
+      if (initialization?.operation_id === operation) {
+        if (found.has(initialization.role))
           return yield* Effect.fail(
             fail(
-              "LIBRARY_SCHEMA_CONFLICT",
-              "The library entry belongs to a different initialization parent.",
+              "LIBRARY_INIT_CONFLICT",
+              "Multiple tables claim one initialization operation; preserve all candidates.",
+              { operation_id: operation, role: initialization.role },
             ),
           )
-        yield* inspectLibrary(existing)
-        return { library: existing, reused: true }
+        found.set(initialization.role, id)
       }
-      if (unfinished.length)
+    }
+    if (libraries.length > 1)
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_AMBIGUOUS",
+          "Several shared libraries exist under this parent; attach an exact entry.",
+          { entries: libraries.map((library) => library.skills.database_id) },
+        ),
+      )
+    const existing = libraries[0]
+    if (existing) {
+      if (
+        existing.parent_page_id !== parent ||
+        (input.operation !== undefined && existing.operation_id !== operation)
+      )
         return yield* Effect.fail(
           fail(
-            "LIBRARY_INIT_INCOMPLETE",
-            "An unfinished initialization already owns tables here. Preserve it and inspect its original operation before creating another library.",
-            { tables: unfinished },
+            "LIBRARY_SCHEMA_CONFLICT",
+            "The library entry belongs to a different initialization parent or operation.",
           ),
         )
+      for (const binding of [existing.skills, existing.files, existing.records])
+        if (!children.has(binding.database_id))
+          return yield* Effect.fail(
+            fail(
+              "LIBRARY_INIT_INCOMPLETE",
+              "A registered table is missing from the complete parent enumeration.",
+            ),
+          )
+      yield* inspectLibrary(existing)
+      return { library: existing, reused: true }
     }
-    const found = yield* ownedTables(parent, operation)
-    if (
-      input.operation !== undefined &&
-      ["Skills", "Files", "Records"].some((role) => !found.has(role))
-    )
+    if (input.operation === undefined && children.size)
+      return yield* Effect.fail(
+        fail(
+          "LIBRARY_INIT_INCOMPLETE",
+          "An unfinished initialization or unregistered database already exists here. Preserve it and inspect its original operation before creating another library; display titles do not establish identity.",
+          { tables: [...children.keys()] },
+        ),
+      )
+    if (input.operation !== undefined && tableRoles.some((role) => !found.has(role)))
       return yield* Effect.fail(
         fail(
           "LIBRARY_INIT_INCOMPLETE",
@@ -503,34 +542,7 @@ export function initializeSharedLibrary(input: {
           { operation_id: operation, tables: Object.fromEntries(found) },
         ),
       )
-    // A registered original operation is already complete. Inspect its exact
-    // IDs, including an optional renamed Members field, before any name-based
-    // inspection of an unregistered initialization.
-    const knownSkills = found.get("Skills")
-    if (input.operation !== undefined && knownSkills !== undefined) {
-      const originalEntry = yield* api.request(`v1/databases/${knownSkills}`)
-      const previous = yield* checked(() => libraryFromDatabase(originalEntry))
-      if (previous !== undefined) {
-        if (
-          previous.operation_id !== operation ||
-          previous.library_id !== operation ||
-          previous.parent_page_id !== parent ||
-          previous.skills.database_id !== knownSkills ||
-          previous.files.database_id !== found.get("Files") ||
-          previous.records.database_id !== found.get("Records")
-        )
-          return yield* Effect.fail(
-            fail(
-              "LIBRARY_INIT_CONFLICT",
-              "The registered library differs from the original initialization identities.",
-              { operation_id: operation },
-            ),
-          )
-        yield* inspectLibrary(previous)
-        return { library: previous, reused: true }
-      }
-    }
-    const create = (role: string, properties: Readonly<Record<string, unknown>>) =>
+    const create = (role: TableRole, properties: Readonly<Record<string, unknown>>) =>
       Effect.gen(function* () {
         let id = found.get(role)
         if (id === undefined) {
@@ -538,7 +550,9 @@ export function initializeSharedLibrary(input: {
           const raw = yield* api
             .request("v1/databases", {
               parent: { type: "page_id", page_id: parent },
-              title: title(`${role} [${operation}]`),
+              title: title(role),
+              description: title(tableDescription(operation, parent, role)),
+              is_inline: false,
               initial_data_source: { properties },
             })
             .pipe(
@@ -577,7 +591,7 @@ export function initializeSharedLibrary(input: {
           { operation_id: operation },
         ),
       )
-    if (text(property(current).description).trim() !== "")
+    if (text(property(current).description) !== tableDescription(operation, parent, "Skills"))
       return yield* Effect.fail(
         fail(
           "LIBRARY_INIT_CONFLICT",
@@ -630,7 +644,10 @@ export function initializeSharedLibrary(input: {
         )
       return { library, reused: true }
     }
-    if (text(property(beforeRegistration).description).trim() !== "")
+    if (
+      text(property(beforeRegistration).description) !==
+      tableDescription(operation, parent, "Skills")
+    )
       return yield* Effect.fail(
         fail(
           "LIBRARY_INIT_CONFLICT",

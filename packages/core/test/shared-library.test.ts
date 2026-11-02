@@ -58,7 +58,8 @@ function fixture(
             id: dbId,
             parent: { page_id: parent },
             title: value.title,
-            description: [],
+            description: value.description ?? [],
+            is_inline: value.is_inline ?? false,
             data_sources: [{ id: sourceId, name: "fixture" }],
             in_trash: false,
           }
@@ -163,6 +164,87 @@ test("one parent initializes three related tables and repeats without writes or 
   expect(f.calls.some((call) => call.path.includes("/markdown"))).toBe(false)
   const attached = await f.run(initializeSharedLibrary({ entry: first.library.skills.database_id }))
   expect(attached.library).toEqual(first.library)
+  expect(f.calls.filter((call) => call.write).length).toBe(writes)
+})
+
+test("new libraries use clean full-page titles and atomic internal table identities", async () => {
+  const f = fixture()
+  const { library } = await f.run(initializeSharedLibrary({ parent }))
+  const creates = f.calls.filter((call) => call.path === "v1/databases" && call.method === "POST")
+  expect(creates.map((call) => text(property(call.body).title))).toEqual([
+    "Skills",
+    "Files",
+    "Records",
+  ])
+  for (const call of creates) {
+    const body = property(call.body)
+    expect(body.is_inline).toBe(false)
+    const description = text(body.description)
+    expect(description.startsWith("ntn-skills-table:v1 ")).toBe(true)
+    expect(JSON.parse(description.slice("ntn-skills-table:v1 ".length))).toEqual({
+      version: 1,
+      operation_id: library.operation_id,
+      parent_page_id: parent,
+      role: text(body.title),
+    })
+  }
+})
+
+test("completed library discovery and original-operation recovery ignore all display titles", async () => {
+  const f = fixture()
+  const first = await f.run(initializeSharedLibrary({ parent }))
+  for (const [databaseId, table] of f.databases) {
+    table.name = `用户自定义 ${databaseId}`
+    table.raw.title = [{ text: { content: table.name } }]
+  }
+  const writes = f.calls.filter((call) => call.write).length
+  expect(await f.run(initializeSharedLibrary({ parent }))).toEqual({ ...first, reused: true })
+  expect(
+    await f.run(initializeSharedLibrary({ parent, operation: first.library.operation_id })),
+  ).toEqual({ ...first, reused: true })
+  expect(f.calls.filter((call) => call.write).length).toBe(writes)
+})
+
+test("renaming an unfinished table cannot hide its initialization or permit another create", async () => {
+  const f = fixture(true)
+  const first = await f.run(initializeSharedLibrary({ parent }).pipe(Effect.result))
+  if (first._tag !== "Failure") throw Error("Expected unknown create")
+  if (!(first.failure instanceof SkillsError)) throw first.failure
+  const operation = String(property(first.failure.details).operation_id)
+  for (const table of f.databases.values()) {
+    table.name = "任意名称"
+    table.raw.title = [{ text: { content: table.name } }]
+  }
+  const writes = f.calls.filter((call) => call.write).length
+  await expect(f.run(initializeSharedLibrary({ parent }))).rejects.toThrow(
+    "unfinished initialization",
+  )
+  await expect(f.run(initializeSharedLibrary({ parent, operation }))).rejects.toThrow(
+    "Missing rows are not permission",
+  )
+  expect(f.calls.filter((call) => call.write).length).toBe(writes)
+})
+
+test("a renamed complete original operation cannot be selected through another operation id", async () => {
+  const f = fixture()
+  await f.run(initializeSharedLibrary({ parent }))
+  const writes = f.calls.filter((call) => call.write).length
+  await expect(
+    f.run(initializeSharedLibrary({ parent, operation: "library-other" })),
+  ).rejects.toThrow()
+  expect(f.calls.filter((call) => call.write).length).toBe(writes)
+})
+
+test("unregistered tables without internal identities are never adopted by their display name", async () => {
+  const f = fixture(true)
+  const first = await f.run(initializeSharedLibrary({ parent }).pipe(Effect.result))
+  if (first._tag !== "Failure") throw Error("Expected unknown create")
+  if (!(first.failure instanceof SkillsError)) throw first.failure
+  for (const table of f.databases.values()) table.raw.description = []
+  const writes = f.calls.filter((call) => call.write).length
+  const operation = String(property(first.failure.details).operation_id)
+  await expect(f.run(initializeSharedLibrary({ parent, operation }))).rejects.toThrow()
+  await expect(f.run(initializeSharedLibrary({ parent }))).rejects.toThrow()
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
 })
 

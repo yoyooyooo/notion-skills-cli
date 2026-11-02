@@ -54,7 +54,7 @@ const initialize = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Create Skills, flat Skill Files and shared Records tables, or attach an exact existing entry. Stable property/data-source IDs live in Notion. Repeating the same parent reuses its unique registered library. Unknown creation is retained with its original operation; this command does not migrate existing content or change machine defaults.",
+    "Create three full-page databases named Skills, Files and Records, or attach an exact existing entry. Display titles have no identity role and need no library suffix. Stable property/data-source IDs live in the registered Notion descriptor; each initial table POST also carries its original operation, role and parent in an internal description marker. Repeating the same dedicated parent reuses its unique registered library even after renaming. Unregistered tables stop a new initialization rather than being adopted by name. Unknown creation is retained with its original operation and never replayed; this command does not migrate existing content or change machine defaults.",
   ),
 )
 

@@ -41,6 +41,10 @@ ntn-skills ctl library init --parent PARENT_PAGE_ID
 
 Use the returned `library.skills.database_id` as the entry. Initialization creates the shared tables and descriptor; it does not migrate another library or change machine defaults. `ctl library init --entry LIBRARY_ENTRY` validates an existing entry.
 
+New databases are full-page, not inline, and are named **Skills**, **Files** and **Records**. No `[library-...]` suffix is required. Display names may change without changing identity: attachment and completed-operation readback use the registered descriptor's exact database, data-source and property IDs. During initialization, each initial table POST carries its operation ID, parent and role in an internal `ntn-skills-table:v1` description; the completed Skills descriptor replaces its temporary marker. Keep these internal descriptions intact. Unregistered databases under a chosen parent block a new initialization rather than being adopted by title, so choose a dedicated parent or attach the exact established entry.
+
+The current consolidation target is one active three-table library. Migration validates complete content, resources, management facts and historical retention before changing CLI/Pi defaults and archiving old libraries. Old/new dual writes and runtime fallback are not the target design. A partial copied batch is not permission to switch users to an incomplete catalog.
+
 Direct edits to a bound Notion body are detected by normal current reads. After the complete edited body has been retained and verified, that whole file becomes customized. Other files retain their own ownership. Name, Description, Default Context and Router Members remain native Notion properties; a body edit does not change them.
 
 ## Use the remote Skill in Pi
