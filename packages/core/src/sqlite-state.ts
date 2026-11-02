@@ -145,10 +145,16 @@ const sharedLocalDomains: readonly {
     address: /^operations\/shared-native-recovery\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/shared-native-continuation",
+    category: "dispatch",
+    address:
+      /^operations\/shared-native-continuation\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-native-recovery-responses",
     category: "dispatch",
     address:
-      /^operations\/shared-native-recovery-responses\/create-recovery-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+      /^operations\/shared-native-recovery-responses\/create-(?:recovery|continuation)-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
   },
 ]
 

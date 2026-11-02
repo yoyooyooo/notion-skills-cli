@@ -10,6 +10,7 @@ import {
 } from "../../core/src/shared-create-recovery.ts"
 import { dryRunFlag, emit, requiredSingleton } from "./command-options.ts"
 import { readMigrationJson } from "./commands-library-migration-input.ts"
+import { libraryMigrationContinuationCommand } from "./commands-library-migration-continuation.ts"
 
 const review = defineCommand(
   "review",
@@ -128,5 +129,5 @@ export const libraryMigrationRecoveryCommand = defineCommand("recovery").pipe(
   Command.withDescription(
     "Recover an existing v4 partial create through a fixed v5 review with unchanged submitted wire content. Preserve original failures and page identities; unknown writes remain unreplayed.",
   ),
-  Command.withSubcommands([review, apply, reconcile]),
+  Command.withSubcommands([review, apply, reconcile, libraryMigrationContinuationCommand]),
 )

@@ -92,7 +92,13 @@ export function sharedCreateFixture(
     credential = "native-create-credential"
   let unknown:
     | {
-        readonly stage: "skill" | "file" | "enable" | "outcome" | "recovery_outcome"
+        readonly stage:
+          | "skill"
+          | "file"
+          | "enable"
+          | "outcome"
+          | "recovery_outcome"
+          | "recovery_receipt"
         readonly visible: boolean
       }
     | undefined
@@ -318,6 +324,21 @@ export function sharedCreateFixture(
                 )
                 const payload = property(property(JSON.parse(envelopeText)).payload)
                 if (
+                  payload.kind === "skill_create_recovery_response" &&
+                  payload.action === "create_file_response" &&
+                  unknown?.stage === "recovery_receipt"
+                ) {
+                  const uncertain = unknown
+                  unknown = undefined
+                  return (uncertain.visible ? api.request(path, body, options) : Effect.void).pipe(
+                    Effect.flatMap(() =>
+                      Effect.fail(
+                        fail("WRITE_OUTCOME_UNKNOWN", "Lost response-record publication"),
+                      ),
+                    ),
+                  )
+                }
+                if (
                   (payload.kind === "skill_create_outcome" ||
                     payload.kind === "skill_create_recovery_outcome") &&
                   payload.status === "applied"
@@ -368,7 +389,7 @@ export function sharedCreateFixture(
       base.clearCalls()
     },
     unknown: (
-      stage: "skill" | "file" | "enable" | "outcome" | "recovery_outcome",
+      stage: "skill" | "file" | "enable" | "outcome" | "recovery_outcome" | "recovery_receipt",
       visible: boolean,
     ) => {
       unknown = { stage, visible }

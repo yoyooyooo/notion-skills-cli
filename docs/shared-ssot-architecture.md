@@ -63,6 +63,18 @@
 
 同一候选程序随后在 pro（Node 24.20.0）和 mini（Node 24.21.0）独立安装，安装包与 CLI 文件摘要一致，各自从空配置/状态/缓存读取，仅使用本机已有认证。没有复制 SQLite、凭据或另一机器生成的内容目录。两机公开 files 的完整 Metadata 与 state 的四个 uninitialized 结果相同；各自 files 为 3 次 Metadata，state 为 4 次，正文/写入/provider 均为零。mini 的公开 recovery reconcile 也返回相同原 operation/recovery 身份及 `SHARED_CREATE_RECOVERY_REQUIRED`。这证明已可见共享恢复事实的跨物理机阻塞边界；缺失的三文件、七文件完整消费、未知分配的显式接受与继续协议仍待完成。候选包另通过 43 项 `seeded_offline_consumer` 检查，不能替代这些真实正例。
 
+### 2026-11-02：限定 continuation 与历史证据缺口
+
+新增 `migration recovery continuation review/apply`。实际恢复的页面 POST 返回 unknown 后，串行执行器保留独立 terminal，绑定原 review、已确认前缀、失败文件、尚未尝试的后缀及原错误。它只在页面 POST 的失败分支生成；成功 POST 的响应记录保存失败不能被误记为页面 POST unknown。新的 review 接受当前可见分配，但不改判原写入；apply 仍须完整原批准输入，跳过所有已接受页面，只创建有终止证据约束的未尝试文件。
+
+完成记录 v2 绑定原恢复 review、terminal、独立 continuation 决定、完整页映射和初始事件。空状态消费者通过紧凑共享证明核验，不为这项历史证明加载大 origin 或当前正文。已有 terminal/continuation 不能降级为 v1 completion；continuation 再次 unknown 即停止，也不能再生成下一轮 continuation。
+
+受控六文件正例通过：原两页、一次成功恢复创建、一次可见 unknown，随后仅补其余两页；现有正文及原失败证据保留。相关四组核心测试共 54 项通过，真实 Node SQLite 10 项通过，公开 CLI 5 项通过，完整类型检查与 12 个 TypeScript 文件格式检查通过。安装候选包通过 43 项 seeded offline consumer 检查。这些计数分别描述所运行的集合，不是整个仓库或真实迁移验收。同步更新协议、help、作者指南、Skill 与验证地图；未声称新的独立模型使用效果通过。
+
+真实原目标继续受保护：本轮公开 files 确认四页、原身份与固定 Source、disabled 状态；recovery reconcile 仍无完成记录。新的只读 continuation review 返回 `SHARED_CREATE_CONTINUATION_EVIDENCE_REQUIRED`，旧运行没有保存当时的 terminal。当前机器上原临时证据目录已不在，完整原批准输入尚未恢复；共享 origin 只保留所选 candidate 及原输入摘要，不能补造完整批准输入。事后整理或当前 GET 也不能补成原 terminal。本轮没有执行真实 continuation apply，原 unknown 与未完成目标保留；原七文件迁移、跨机完整消费及后续真实编辑/上游推进仍未完成。
+
+同一候选 CLI 在 pro（Node 24.20.0）与 mini（Node 24.21.0）独立安装，程序 SHA-256 相同。两机各用空配置/状态/缓存及本机已有认证，未复制 SQLite、凭据或生成内容目录。公开 files 的完整四页 Metadata、Source 与 disabled 状态相同，各为 3 次 Metadata，正文/写入/provider 为零；新的 continuation review 均返回相同的证据缺失错误和原 operation/recovery/target 身份。这是实际跨机只读阻塞验证，仍不替代七文件内容消费。mini 的原 checkout、全局安装与用户配置保留。
+
 ### 2026-11-01：独立 fixture 恢复跟随通过
 
 此前独立 N07 fixture 的 v3 restore-follow 因原生读回差异停止，已通过另一明确审阅接受观察正文并保持 custom。本次从 fresh read 为主文件创建新的 v5 restore-follow，实际返回 `applied` 和 `following_restored`，父事件指向原 review adoption；原 4558 字节自定义正文仍保留为历史对象。新事件绑定原固定 Git commit，当前投影基线与完整原生正文逐字节相等，旧 v3 操作没有被改判或重放。由于候选与当前正文已相等，本例没有发送正文 PATCH，实际提交的是恢复跟随的管理事实；不能将它记成 v5 改变正文的写回验收。执行共 82 请求：54 Metadata、25 正文、3 写入，provider 为零。

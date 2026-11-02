@@ -6,6 +6,7 @@ import {
   applySharedCreateRecovery,
   reconcileSharedCreateRecovery,
   reviewSharedCreateRecovery,
+  reviewSharedCreateContinuation,
 } from "../src/shared-create-recovery.ts"
 import { makeSharedCreateRecoveryFiles } from "../src/shared-create-recovery-model.ts"
 import {
@@ -204,6 +205,28 @@ test("review cannot carry an arbitrary changed name or body across its independe
   )
   expect(error.code).toMatch(/RECOVERY/)
   expect(f.writes()).toHaveLength(0)
+})
+
+test("a lost successful-response publication cannot be mislabeled as an unknown page POST terminal", async () => {
+  const { fixture: f, retained, selection } = await partial()
+  const review = await f.run(reviewSharedCreateRecovery(selection))
+  f.unknown("recovery_receipt", false)
+  const error = await f.run(
+    Effect.flip(
+      applySharedCreateRecovery({
+        review,
+        reviewId: review.review_id,
+        migrationInput: retained.migrationInput,
+      }),
+    ),
+  )
+  expect(error.code).toBe("WRITE_OUTCOME_UNKNOWN")
+  expect(f.nativeCreates()).toHaveLength(1)
+  f.clear()
+  const continuation = await f.run(Effect.flip(reviewSharedCreateContinuation(selection)))
+  expect(continuation.code).toBe("SHARED_CREATE_CONTINUATION_EVIDENCE_REQUIRED")
+  expect(f.writes()).toHaveLength(0)
+  expect(f.currentBodies()).toHaveLength(0)
 })
 
 for (const visible of [false, true]) {

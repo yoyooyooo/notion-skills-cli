@@ -37,6 +37,7 @@ export function migrationConversionFixture(
     readonly following?: boolean
     readonly sourceMain?: string
     readonly sourceAsset?: Uint8Array
+    readonly extraFiles?: readonly { readonly path: string; readonly body: string }[]
   } = {},
 ) {
   const kind = options.kind ?? "skill"
@@ -65,6 +66,15 @@ export function migrationConversionFixture(
       body: notes,
       native: notes,
     },
+    ...(options.extraFiles ?? []).map((file, index) => ({
+      legacy_id: `old-support-extra-${String(index + 1).padStart(3, "0")}`,
+      path: file.path,
+      page_id:
+        oldPage.slice(0, -12) +
+        (Number.parseInt(oldPage.slice(-12), 16) + index + 2).toString(16).padStart(12, "0"),
+      body: file.body,
+      native: file.body,
+    })),
   ]
   const native = originals.map(
     (file): MigrationNativePreimage => ({

@@ -19,6 +19,8 @@ const keys = {
   nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
   nativeRecovery: `operations/shared-native-recovery/${scope}/skill-create-${"8".repeat(64)}.json`,
   recoveryResponse: `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/${"e".repeat(64)}.json`,
+  nativeContinuation: `operations/shared-native-continuation/${scope}/skill-create-${"8".repeat(64)}.json`,
+  continuationResponse: `operations/shared-native-recovery-responses/create-continuation-${"9".repeat(64)}/${"e".repeat(64)}.json`,
   profilePending: `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/profile-${"c".repeat(64)}.json`,
 }
 const pendingPayload = {
@@ -70,7 +72,7 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
-test("shared cache and seven dispatch domains persist across real Node restarts", async () => {
+test("shared cache and nine dispatch addresses persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({
       key,
@@ -98,6 +100,8 @@ test("shared cache and seven dispatch domains persist across real Node restarts"
         keys.nativeCreate,
         keys.nativeRecovery,
         keys.recoveryResponse,
+        keys.nativeContinuation,
+        keys.continuationResponse,
       ].sort(),
       legacy: { legacy: true },
     })
@@ -108,7 +112,7 @@ test("shared cache and seven dispatch domains persist across real Node restarts"
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
       { category: "cache", retired: 0, count: 3 },
-      { category: "dispatch", retired: 0, count: 7 },
+      { category: "dispatch", retired: 0, count: 9 },
     ])
   })
 }, 30_000)
@@ -211,6 +215,8 @@ test("dispatch retirement hides active work but retains its exact payload and ne
       keys.nativeCreate,
       keys.nativeRecovery,
       keys.recoveryResponse,
+      keys.nativeContinuation,
+      keys.continuationResponse,
     ]
     const retired = await child(
       root,
@@ -306,6 +312,8 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
         keys.nativeCreate,
         keys.nativeRecovery,
         keys.recoveryResponse,
+        keys.nativeContinuation,
+        keys.continuationResponse,
       ].sort(),
     )
     expect(result.receipt).toEqual(pendingPayload)

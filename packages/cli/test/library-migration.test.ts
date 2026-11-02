@@ -104,7 +104,15 @@ test("production migration help exposes exact review, approval and read-only rec
     ],
     [
       ["recovery", "--help"],
-      ["review", "apply", "reconcile"],
+      ["review", "apply", "reconcile", "continuation"],
+    ],
+    [
+      ["recovery", "continuation", "review", "--help"],
+      ["--entry", "--operation", "--target", "terminal"],
+    ],
+    [
+      ["recovery", "continuation", "apply", "--help"],
+      ["--input", "--review", "--review-id", "--dry-run"],
     ],
     [
       ["recovery", "review", "--help"],

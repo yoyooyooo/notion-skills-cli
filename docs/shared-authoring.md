@@ -313,6 +313,29 @@ ntn-skills ctl library migration recovery reconcile \
 
 Reconciliation sends no writes and publishes no current pin. A missing completion remains unresolved; another apply does not restart this recovery. Unknown original creates, changed current bodies or Source, existing ownership events and unrelated operations require their own resolution. The [protocol](protocol.md#recovery-of-a-known-partial-migration-create) defines the full supported boundary.
 
+### Continue after an unknown recovery create
+
+If a recovery page POST returned unknown, retain its error and inspect the current allocation through a separate continuation review. This path requires the terminal recorded by that actual serial execution, the original successful responses and the complete original approved input. Older runs without this terminal remain blocked; current pages or a reconstructed summary cannot replace it.
+
+```bash
+ntn-skills ctl library migration recovery continuation review \
+  --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID \
+  --target EXACT_EXISTING_SKILL_PAGE_ID
+```
+
+Save the full result. Inspect its `review_id`, accepted page IDs, retained terminal, complete current observations and `remaining_file_ids`. The failed POST stays unknown; this decision accepts the page that is visible now. An absent or changed allocation requires further resolution and is never reposted.
+
+```bash
+ntn-skills ctl library migration recovery continuation apply \
+  --input APPROVED_JSON --review CONTINUATION_REVIEW_JSON \
+  --review-id CONTINUATION_ID --dry-run
+ntn-skills ctl library migration recovery continuation apply \
+  --input APPROVED_JSON --review CONTINUATION_REVIEW_JSON \
+  --review-id CONTINUATION_ID
+```
+
+Apply creates only the proven unattempted remaining files. It preserves all accepted page IDs and bodies, validates the complete tree and records completion v2. Keep the original approved input and execution evidence after interruption. Repeating this command only reconciles; another unknown stops further creation. Use the same `recovery reconcile` command above for the separate historical outcome. A missing original input, missing terminal or incomplete completion cannot be resolved by regenerating a plan or assuming the original POST succeeded.
+
 ## Handle an interrupted operation
 
 Keep the original input, exact target, operation ID and recovery details. A matching current body or property does not prove that an unknown original request completed. Do not change input or choose a new name to bypass a pending operation. A recovery result with `verified: true` confirms its reported outcome: `not_applied` or `partial` does not mean that the requested edit completed.

@@ -263,6 +263,20 @@ Bind the saved review/digest from the first response after inspecting every pres
 
 Run the native create/recovery and public migration tests for changed current body, invalid digest, missing original approval, unknown remaining-page creation, unknown completion with visible/absent receipts, late edits, independent credential reads and a forged completion. Reconcile performs zero POST/PATCH/current-body reads and reports only `original_recovery_outcome`. Both original and recovery local journals retire after exact completion; retained responses and original shared facts remain. Incomplete dispatches remain unresolved, including interruption before a visible shared review; do not claim general automatic resumption or cross-machine CAS.
 
+### SS12 continuation — Accept a visible unknown allocation separately
+
+Start with a recovery that actually stopped during a native page POST and retained its serial-dispatch terminal. Do not synthesize the terminal from a later GET, transcript or directory gap. Verify that prior successful page creates have their original response records and that no later receipt contradicts the terminal. Keep the complete original approved input; a retained origin does not replace approval.
+
+```bash
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library migration recovery continuation review --entry "$ENTRY" --operation "$MIGRATION_OPERATION" --target "$NEW_TARGET"
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library migration recovery continuation apply --input "$APPROVED_INPUT" --review "$CONTINUATION_REVIEW" --review-id "$CONTINUATION_ID" --dry-run
+bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl library migration recovery continuation apply --input "$APPROVED_INPUT" --review "$CONTINUATION_REVIEW" --review-id "$CONTINUATION_ID"
+```
+
+Require exact accepted page identities, full current v5 bodies, unchanged Source and a disabled complete prefix with no initial events. Review/dry-run must write nothing. Actual continuation must POST only the terminal's unattempted suffix, never the unknown or prior pages. Preserve original failure/terminal bytes and all existing bodies. Completion v2 must bind the separate decision and complete new event set. An empty independent client must validate the shared completion without current-body/provider requests or original origin chunks; normal full snapshot consumption remains a separate check.
+
+Run the continuation, native recovery and public CLI cases for invisible unknown, changed body or extra page, missing original input, removed terminal, successful-response publication failure, another unknown, repeated apply and tampered or downgraded completion. The actual native POST failure handler owns terminal creation: losing publication of a successful POST receipt must not produce a false native terminal. Check the continuation journal and response addresses through real Node SQLite first read, restart, immutability, retirement and cache clearing. Old live runs without their original terminal remain explicitly ineligible; do not report a controlled positive as their recovery or as two-machine seven-file acceptance.
+
 ## SS13 — Router member metadata and fixed index
 
 Use a library whose descriptor registers native Members and a Router selecting accessible, enabled Skill members from that same library. Drive its ordinary current read, retain the returned Router snapshot, and read that exact fixed version:

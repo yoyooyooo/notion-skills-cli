@@ -26,6 +26,8 @@ import {
   sharedCreateRecoveryReviewId,
   sharedCreateRecoveryOutcomeId,
   type SharedCreateRecoveryOutcome,
+  validateSharedCreateContinuationCompletion,
+  assertSharedCreateRecoveryNotContinued,
 } from "./shared-create-recovery-completion.ts"
 import {
   makeSharedCreateRecoveryFiles,
@@ -33,6 +35,19 @@ import {
   validateSharedCreateRecoveryReview,
   type SharedCreateRecoveryReview,
 } from "./shared-create-recovery-model.ts"
+import {
+  SharedCreateContinuationReviewSchema,
+  makeSharedCreateContinuationReview,
+  makeSharedCreateRecoveryTerminal,
+  sharedCreateContinuationReviewEntity,
+  sharedCreateContinuationReviewId,
+  sharedCreateRecoveryTerminalsEntity,
+  sharedCreateRecoveryTerminalId,
+  validateSharedCreateContinuationReview,
+  validateSharedCreateRecoveryTerminal,
+  type SharedCreateContinuationReview,
+  type SharedCreateRecoveryTerminal,
+} from "./shared-create-continuation-model.ts"
 import {
   loadSharedCreatePlan,
   prepareSharedMigrationReview,
@@ -253,7 +268,7 @@ function verifyEvents(original: Original, files: readonly OwnershipFile[]) {
   })
 }
 
-function verifyOperations(original: Original, recoveryId?: string) {
+function verifyOperations(original: Original, recoveryId?: string, continuationId?: string) {
   return Effect.gen(function* () {
     const headers = yield* querySharedOperationIndex(original.library, original.page)
     for (const header of headers) {
@@ -274,7 +289,15 @@ function verifyOperations(original: Original, recoveryId?: string) {
         ((header.record_id === sharedCreateRecoveryReviewId(original.plan.operation_id) &&
           header.entity_id === sharedCreateRecoveryReviewEntity) ||
           (header.record_id.startsWith("create-recovery-receipt-") &&
-            header.entity_id === recoveryReceiptsEntity))
+            header.entity_id === recoveryReceiptsEntity) ||
+          (header.record_id === sharedCreateRecoveryTerminalId(recoveryId) &&
+            header.entity_id === sharedCreateRecoveryTerminalsEntity))
+      )
+        continue
+      if (
+        continuationId !== undefined &&
+        header.record_id === sharedCreateContinuationReviewId(original.plan.operation_id) &&
+        header.entity_id === sharedCreateContinuationReviewEntity
       )
         continue
       return yield* Effect.fail(
@@ -369,13 +392,16 @@ export function reviewSharedCreateRecovery(input: {
   })
 }
 
-function journalKey(scope: string, libraryId: string, operation: string) {
+function journalKey(scope: string, libraryId: string, operation: string, continuation = false) {
   return sha256(canonicalSharedJson([scope, libraryId])).pipe(
-    Effect.map((hash) => `operations/shared-native-recovery/${hash}/${operation}.json`),
+    Effect.map(
+      (hash) =>
+        `operations/shared-native-${continuation ? "continuation" : "recovery"}/${hash}/${operation}.json`,
+    ),
   )
 }
 
-function retireRecovery(original: Original) {
+function retireRecovery(original: Original, continuation = false) {
   return Effect.gen(function* () {
     const scope = yield* authScope
     yield* invalidateSubscriptionCatalog(scope, original.library.skills.database_id)
@@ -386,6 +412,9 @@ function retireRecovery(original: Original) {
     yield* (yield* Store).retireKeys([
       yield* sharedCreateJournalKey(scope, original.library.library_id, original.plan.operation_id),
       yield* journalKey(scope, original.library.library_id, original.plan.operation_id),
+      ...(continuation
+        ? [yield* journalKey(scope, original.library.library_id, original.plan.operation_id, true)]
+        : []),
     ])
   })
 }
@@ -394,11 +423,13 @@ function recoveryError(
   error: { readonly code: string; readonly message: string; readonly details?: unknown },
   review: SharedCreateRecoveryReview,
   stage: string,
+  continuationId?: string,
 ) {
   return fail(error.code, error.message, {
     ...property(error.details),
     original_operation_id: review.original_operation_id,
     recovery_operation_id: review.review_id,
+    ...(continuationId === undefined ? {} : { continuation_operation_id: continuationId }),
     original_status: "needs_review",
     skill_page_id: review.skill_page_id,
     stage,
@@ -479,6 +510,23 @@ function spans(text: string) {
   return output
 }
 const rich = (text: string) => ({ rich_text: spans(text) })
+
+function fileCreateRequest(original: Original, file: RecoveryFile) {
+  const ids = original.library.files.property_ids
+  return {
+    parent: { type: "data_source_id", data_source_id: original.library.files.data_source_id },
+    properties: {
+      [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
+      [ids["File ID"]!]: rich(file.file_id),
+      [ids.Path!]: rich(file.path),
+      [ids.Projection!]: rich(baseline(file) === null ? "" : canonicalSharedJson(baseline(file))),
+      [ids.Status!]: { select: { name: file.event.kind === "projected" ? "following" : "custom" } },
+      [ids.Skill!]: { relation: [{ id: original.page }] },
+    },
+    markdown: sharedNotionMarkdownWire(file.projection),
+    markdown_version: "v2",
+  }
+}
 
 function expectations(
   original: Original,
@@ -564,21 +612,315 @@ function createdResult(
   })
 }
 
+function retainedRecoveryReview(original: Original) {
+  return Effect.gen(function* () {
+    const rows = yield* querySharedRecords(original.library, {
+      skillPageId: original.page,
+      kind: "operation",
+      recordId: sharedCreateRecoveryReviewId(original.plan.operation_id),
+      entityId: sharedCreateRecoveryReviewEntity,
+      payloadContainsBody: true,
+    })
+    const row = rows[0]
+    if (rows.length !== 1 || row === undefined)
+      return yield* Effect.fail(refused("The exact original recovery review is not visible."))
+    const review = yield* validateSharedCreateRecoveryReview(row.payload, row.operation_id)
+    const rebuilt = yield* makeSharedCreateRecoveryReview(original.plan, {
+      originalManifestHash: original.manifestHash,
+      originalOutcomeHash: original.outcomeHash,
+      skillPageId: original.page,
+      bindings: original.outcome.bindings,
+      observations: review.observations,
+    })
+    if (!same(review, rebuilt))
+      return yield* Effect.fail(refused("The recovery review differs from its retained origin."))
+    return { review, hash: row.hash }
+  })
+}
+
+function retainedRecoveryTerminal(
+  original: Original,
+  review: SharedCreateRecoveryReview,
+  hash: string,
+) {
+  return Effect.gen(function* () {
+    const rows = yield* querySharedRecords(original.library, {
+      skillPageId: original.page,
+      kind: "operation",
+      recordId: sharedCreateRecoveryTerminalId(review.review_id),
+      entityId: sharedCreateRecoveryTerminalsEntity,
+    })
+    const row = rows[0]
+    if (rows.length !== 1 || row === undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_CONTINUATION_EVIDENCE_REQUIRED",
+          "The original recovery has no retained terminal execution record. Current pages and retrospective summaries cannot prove which later creates were never dispatched.",
+          {
+            original_operation_id: original.plan.operation_id,
+            recovery_operation_id: review.review_id,
+            skill_page_id: original.page,
+            original_write_outcome: "unknown",
+            required_evidence: "original_serial_dispatch_terminal",
+            apply_allowed: false,
+          },
+        ),
+      )
+    if (row.operation_id !== review.review_id)
+      return yield* Effect.fail(refused("The terminal record belongs to another dispatch."))
+    const terminal = yield* validateSharedCreateRecoveryTerminal(row.payload, review, hash)
+    return { terminal, hash: row.hash }
+  })
+}
+
+function continuationResponses(
+  original: Original,
+  review: SharedCreateRecoveryReview,
+  terminal: SharedCreateRecoveryTerminal,
+  files: readonly RecoveryFile[],
+) {
+  return Effect.gen(function* () {
+    const records = []
+    for (const binding of terminal.bindings) {
+      if (review.bindings.some((item) => item.file_id === binding.file_id)) continue
+      const file = files.find((item) => item.file_id === binding.file_id)!
+      const digest = yield* sha256(
+        canonicalSharedJson([review.review_id, `create:${file.file_id}`]),
+      )
+      const recordId = `create-recovery-receipt-${digest}`
+      const rows = yield* querySharedRecords(original.library, {
+        skillPageId: original.page,
+        kind: "operation",
+        recordId,
+        entityId: recoveryReceiptsEntity,
+        payloadContainsBody: true,
+      })
+      const row = rows[0]
+      if (rows.length !== 1 || row === undefined || row.operation_id !== review.review_id)
+        return yield* Effect.fail(refused("A preceding create lacks its exact retained response."))
+      const payload = property(row.payload)
+      if (
+        payload.version !== 1 ||
+        payload.kind !== "skill_create_recovery_response" ||
+        payload.recovery_id !== review.review_id ||
+        payload.original_operation_id !== review.original_operation_id ||
+        payload.action !== "create_file_response" ||
+        !same(payload.request, {
+          path: "v1/pages",
+          method: "POST",
+          body: fileCreateRequest(original, file),
+        }) ||
+        (yield* createChecked(() => pageReceipt(payload.response))) !== binding.page_id
+      )
+        return yield* Effect.fail(
+          refused("A retained create response has another page or request."),
+        )
+      records.push({
+        file_id: file.file_id,
+        page_id: binding.page_id,
+        record_id: recordId,
+        hash: row.hash,
+      })
+    }
+    const expected = new Set<string>()
+    for (const receipt of records) {
+      expected.add(receipt.record_id)
+      const digest = yield* sha256(
+        canonicalSharedJson([review.review_id, `body:${receipt.file_id}`]),
+      )
+      expected.add(`create-recovery-receipt-${digest}`)
+    }
+    const headers = yield* querySharedOperationIndex(original.library, original.page)
+    const receipts = headers.filter((header) => header.entity_id === recoveryReceiptsEntity)
+    if (
+      receipts.length !== expected.size ||
+      receipts.some((header) => !expected.has(header.record_id))
+    )
+      return yield* Effect.fail(
+        refused(
+          "Recovery responses contradict the terminal's exact stopped prefix; no later create is inferred to be unattempted.",
+        ),
+      )
+    return records
+  })
+}
+
+function observeContinuation(
+  original: Original,
+  review: SharedCreateRecoveryReview,
+  terminal: SharedCreateRecoveryTerminal,
+  files: readonly RecoveryFile[],
+  accepted?: SharedCreateContinuationReview,
+  dispatched = false,
+) {
+  return Effect.gen(function* () {
+    const prepared = yield* prepareSharedMigrationReview(
+      original.library,
+      original.plan.origin.candidate,
+    )
+    if (!same(prepared, original.plan))
+      return yield* Effect.fail(refused("The original Source or Router selection changed."))
+    const index = yield* querySharedSkillIndex(original.library, original.page)
+    const file = files.find((item) => item.file_id === terminal.failed_file_id)!
+    const observed = [index.main, ...index.files].find((item) => item.file_id === file.file_id)
+    if (observed === undefined)
+      return yield* Effect.fail(
+        refused("The unknown create has no exact visible allocation. Its POST is never repeated."),
+      )
+    const bindings = [
+      ...terminal.bindings,
+      {
+        file_id: file.file_id,
+        path: file.path,
+        page_id: observed.page_id,
+        event_id: file.event.event_id,
+      },
+    ]
+    if (accepted !== undefined && !same(bindings, accepted.bindings))
+      return yield* Effect.fail(
+        refused("An accepted page allocation changed after the continuation review."),
+      )
+    yield* verifyIndex(
+      original,
+      files.map((item) =>
+        original.outcome.bindings.some((binding) => binding.file_id === item.file_id)
+          ? original.plan.files.find((prior) => prior.file_id === item.file_id)!
+          : item,
+      ),
+      bindings,
+      false,
+    )
+    yield* verifySource(original)
+    yield* verifyEvents(original, [])
+    yield* verifyOperations(
+      original,
+      review.review_id,
+      dispatched ? accepted?.continuation_id : undefined,
+    )
+    const observations = []
+    for (const binding of bindings) {
+      const raw = yield* (yield* Notion).request(
+        `v1/pages/${binding.page_id}/markdown?markdown_version=v2`,
+      )
+      const observation = yield* observeBody(binding.file_id, binding.page_id, raw)
+      const selected = files.find((item) => item.file_id === binding.file_id)!
+      if (
+        observation.body_sha256 !== selected.content.sha256 ||
+        observation.body_bytes !== selected.content.bytes
+      )
+        return yield* Effect.fail(
+          refused(
+            "A current allocation's complete body differs from the frozen recovery projection.",
+          ),
+        )
+      observations.push(observation)
+    }
+    return { bindings, observations }
+  })
+}
+
+/** A current allocation is accepted separately; the original POST remains unknown. */
+export function reviewSharedCreateContinuation(input: {
+  readonly entry: string
+  readonly operationId: string
+  readonly target: string
+}) {
+  return Effect.gen(function* () {
+    const original = yield* originalFacts(input.entry, input.operationId, input.target)
+    const retained = yield* retainedRecoveryReview(original)
+    const stopped = yield* retainedRecoveryTerminal(original, retained.review, retained.hash)
+    const files = yield* makeSharedCreateRecoveryFiles(original.plan)
+    const successfulResponseRecords = yield* continuationResponses(
+      original,
+      retained.review,
+      stopped.terminal,
+      files,
+    )
+    const observed = yield* observeContinuation(original, retained.review, stopped.terminal, files)
+    return yield* makeSharedCreateContinuationReview({
+      review: retained.review,
+      reviewRecordHash: retained.hash,
+      terminal: stopped.terminal,
+      terminalRecordHash: stopped.hash,
+      ...observed,
+      successfulResponseRecords,
+    })
+  })
+}
+
+/** This record is emitted only after a page POST has returned unknown and the serial loop stopped. */
+function retainRecoveryTerminal(
+  original: Original,
+  review: SharedCreateRecoveryReview,
+  reviewRecordHash: string,
+  attemptId: string,
+  failedFileId: string,
+  bindings: readonly SharedCreateBinding[],
+  error: { readonly code: string; readonly message: string; readonly details?: unknown },
+) {
+  return Effect.gen(function* () {
+    const terminal = yield* makeSharedCreateRecoveryTerminal({
+      review,
+      reviewRecordHash,
+      attemptId,
+      failedFileId,
+      bindings,
+      error,
+    })
+    const digest = yield* sha256(canonicalSharedJson([attemptId, "terminal"]))
+    yield* (yield* Store).writeJson(
+      `operations/shared-native-recovery-responses/${attemptId}/${digest}.json`,
+      terminal,
+    )
+    yield* appendSharedRecord(original.library, {
+      mode: "create",
+      recordId: sharedCreateRecoveryTerminalId(attemptId),
+      operationId: attemptId,
+      skillPageId: original.page,
+      kind: "operation",
+      entityId: sharedCreateRecoveryTerminalsEntity,
+      payload: terminal,
+    })
+  })
+}
+
 /** An existing dispatch always reconciles. It never restarts its page writes. */
-export function applySharedCreateRecovery(input: {
+type RecoveryApplyInput = {
   readonly review: unknown
   readonly reviewId: string
   readonly migrationInput: unknown
   readonly dryRun?: boolean
-}) {
+}
+export function applySharedCreateRecovery(input: RecoveryApplyInput) {
+  return applyRecovery(input, false)
+}
+
+export function applySharedCreateContinuation(input: RecoveryApplyInput) {
+  return applyRecovery(input, true)
+}
+
+function applyRecovery(input: RecoveryApplyInput, continuing: boolean) {
   return Effect.gen(function* () {
-    const review = yield* validateSharedCreateRecoveryReview(input.review, input.reviewId)
+    const continuationInput = continuing
+      ? yield* createChecked(() =>
+          Schema.decodeUnknownSync(SharedCreateContinuationReviewSchema)(input.review, {
+            onExcessProperty: "error",
+          }),
+        )
+      : undefined
+    const firstReview = continuing
+      ? undefined
+      : yield* validateSharedCreateRecoveryReview(input.review, input.reviewId)
+    const selection = continuationInput ?? firstReview!
     const original = yield* originalFacts(
-      review.library.skills.database_id,
-      review.original_operation_id,
-      review.skill_page_id,
+      selection.library.skills.database_id,
+      selection.original_operation_id,
+      selection.skill_page_id,
     )
+    // The retained origin and a continuation decision never replace original approval.
     yield* validateSharedMigrationConversion(input.migrationInput, original.plan.origin.candidate)
+    const retained = continuing ? yield* retainedRecoveryReview(original) : undefined
+    const review = retained?.review ?? firstReview!
     const reconstructed = yield* makeSharedCreateRecoveryReview(original.plan, {
       originalManifestHash: original.manifestHash,
       originalOutcomeHash: original.outcomeHash,
@@ -591,14 +933,37 @@ export function applySharedCreateRecovery(input: {
         refused("The saved recovery review differs from its original immutable facts."),
       )
     const files = yield* makeSharedCreateRecoveryFiles(original.plan)
+    let continuation: SharedCreateContinuationReview | undefined
+    let terminal: SharedCreateRecoveryTerminal | undefined
+    if (continuationInput !== undefined) {
+      const stopped = yield* retainedRecoveryTerminal(original, review, retained!.hash)
+      terminal = stopped.terminal
+      continuation = yield* validateSharedCreateContinuationReview(
+        continuationInput,
+        review,
+        retained!.hash,
+        terminal,
+        stopped.hash,
+        input.reviewId,
+      )
+    }
+    const attemptId = continuation?.continuation_id ?? review.review_id
+    const attemptReview = { ...review, review_id: attemptId }
     const scope = yield* authScope,
       store = yield* Store
-    const key = yield* journalKey(scope, original.library.library_id, original.plan.operation_id)
+    const key = yield* journalKey(
+      scope,
+      original.library.library_id,
+      original.plan.operation_id,
+      continuing,
+    )
     const previous = yield* store.readJson(key, Schema.Unknown)
     const shared = yield* querySharedRecords(original.library, {
       skillPageId: original.page,
       kind: "operation",
-      recordId: sharedCreateRecoveryReviewId(original.plan.operation_id),
+      recordId: continuing
+        ? sharedCreateContinuationReviewId(original.plan.operation_id)
+        : sharedCreateRecoveryReviewId(original.plan.operation_id),
       payloadContainsBody: true,
     })
     if (previous !== undefined || shared.length !== 0)
@@ -607,7 +972,13 @@ export function applySharedCreateRecovery(input: {
         operationId: original.plan.operation_id,
         target: original.page,
       })
-    yield* observeExisting(original, files)
+    if (continuation !== undefined) {
+      const responses = yield* continuationResponses(original, review, terminal!, files)
+      if (!same(responses, continuation.successful_response_records))
+        return yield* Effect.fail(refused("The continuation's retained response evidence changed."))
+      yield* observeContinuation(original, review, terminal!, files, continuation)
+    } else yield* observeExisting(original, files)
+    const existingPages = continuation?.bindings.length ?? original.outcome.bindings.length
     if (input.dryRun)
       return {
         status: "planned" as const,
@@ -616,9 +987,15 @@ export function applySharedCreateRecovery(input: {
         original_operation_id: original.plan.operation_id,
         recovery_operation_id: review.review_id,
         original_status: "needs_review" as const,
-        existing_pages: original.outcome.bindings.length,
-        remaining_pages: files.length - original.outcome.bindings.length,
-        review,
+        ...(continuation === undefined
+          ? {}
+          : {
+              continuation_operation_id: continuation.continuation_id,
+              original_write_outcome: "unknown" as const,
+            }),
+        existing_pages: existingPages,
+        remaining_pages: files.length - existingPages,
+        review: continuation ?? review,
       }
     yield* createChecked(() => {
       for (const file of files) {
@@ -634,12 +1011,16 @@ export function applySharedCreateRecovery(input: {
       scope,
       library_id: original.library.library_id,
       review,
+      ...(continuation === undefined ? {} : { continuation }),
     })
     let stage = "review"
-    const bindings = original.outcome.bindings.map((binding) => ({
-      ...binding,
-      event_id: files.find((file) => file.file_id === binding.file_id)!.event.event_id,
-    }))
+    const bindings =
+      continuation === undefined
+        ? original.outcome.bindings.map((binding) => ({
+            ...binding,
+            event_id: files.find((file) => file.file_id === binding.file_id)!.event.event_id,
+          }))
+        : continuation.bindings.map((binding) => ({ ...binding }))
     return yield* Effect.gen(function* () {
       const reviewRecord = yield* appendSharedRecord(original.library, {
         mode: "create",
@@ -651,8 +1032,25 @@ export function applySharedCreateRecovery(input: {
         payload: review,
         payloadContainsBody: true,
       })
+      let continuationRecordHash: string | undefined
+      if (continuation !== undefined) {
+        stage = "continuation_review"
+        const continuationRecord = yield* appendSharedRecord(original.library, {
+          mode: "create",
+          recordId: sharedCreateContinuationReviewId(original.plan.operation_id),
+          operationId: continuation.continuation_id,
+          skillPageId: original.page,
+          kind: "operation",
+          entityId: sharedCreateContinuationReviewEntity,
+          payload: continuation,
+          payloadContainsBody: true,
+        })
+        continuationRecordHash = continuationRecord.hash
+      }
       stage = "pre_dispatch"
-      yield* observeExisting(original, files, review.review_id)
+      if (continuation !== undefined)
+        yield* observeContinuation(original, review, terminal!, files, continuation, true)
+      else yield* observeExisting(original, files, review.review_id)
       for (const file of files) {
         stage = `retain:${file.file_id}`
         yield* appendSharedRecord(original.library, {
@@ -669,27 +1067,27 @@ export function applySharedCreateRecovery(input: {
       for (const file of files) {
         if (bindings.some((binding) => binding.file_id === file.file_id)) continue
         stage = `create_file:${file.file_id}`
-        const ids = original.library.files.property_ids
-        const request = {
-          parent: { type: "data_source_id", data_source_id: original.library.files.data_source_id },
-          properties: {
-            [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
-            [ids["File ID"]!]: rich(file.file_id),
-            [ids.Path!]: rich(file.path),
-            [ids.Projection!]: rich(
-              baseline(file) === null ? "" : canonicalSharedJson(baseline(file)),
-            ),
-            [ids.Status!]: {
-              select: { name: file.event.kind === "projected" ? "following" : "custom" },
-            },
-            [ids.Skill!]: { relation: [{ id: original.page }] },
-          },
-          markdown: sharedNotionMarkdownWire(file.projection),
-          markdown_version: "v2",
-        }
-        const response = yield* api.request("v1/pages", request, { method: "POST" })
+        const request = fileCreateRequest(original, file)
+        const response = yield* api.request("v1/pages", request, { method: "POST" }).pipe(
+          Effect.tapError((error) =>
+            error.code === "WRITE_OUTCOME_UNKNOWN"
+              ? retainRecoveryTerminal(
+                  original,
+                  review,
+                  reviewRecord.hash,
+                  attemptId,
+                  file.file_id,
+                  bindings,
+                  error,
+                ).pipe(
+                  // A lost terminal publication cannot replace or resolve the original error.
+                  Effect.catch(() => Effect.void),
+                )
+              : Effect.void,
+          ),
+        )
         yield* retainedResponse(
-          review,
+          attemptReview,
           `create:${file.file_id}`,
           "create_file_response",
           { path: "v1/pages", method: "POST", body: request },
@@ -706,7 +1104,7 @@ export function applySharedCreateRecovery(input: {
         const path = `v1/pages/${page}/markdown?markdown_version=v2`
         const raw = yield* api.request(path)
         yield* retainedResponse(
-          review,
+          attemptReview,
           `body:${file.file_id}`,
           "post_create_current_read",
           { path, method: "GET" },
@@ -755,7 +1153,7 @@ export function applySharedCreateRecovery(input: {
         }
         const response = yield* api.request(path, request, { method: "PATCH" })
         yield* retainedResponse(
-          review,
+          attemptReview,
           `projection:${file.file_id}`,
           "projection_metadata_response",
           { path, method: "PATCH", body: request },
@@ -781,7 +1179,7 @@ export function applySharedCreateRecovery(input: {
       yield* verifyIndex(original, files, bindings, false)
       yield* verifySource(original)
       yield* verifyEvents(original, files)
-      yield* verifyOperations(original, review.review_id)
+      yield* verifyOperations(original, review.review_id, continuation?.continuation_id)
       // Metadata cannot substitute for a complete, current body comparison.
       for (const file of files) {
         const binding = bindings.find((item) => item.file_id === file.file_id)!
@@ -802,7 +1200,7 @@ export function applySharedCreateRecovery(input: {
       }
       const enabled = yield* api.request(enablePath, enableRequest, { method: "PATCH" })
       yield* retainedResponse(
-        review,
+        attemptReview,
         "enable",
         "enable_response",
         { path: enablePath, method: "PATCH", body: enableRequest },
@@ -813,10 +1211,9 @@ export function applySharedCreateRecovery(input: {
       stage = "post_enable"
       yield* verifyIndex(original, files, bindings, true)
       yield* verifyEvents(original, files)
-      const completion: SharedCreateRecoveryOutcome = {
-        version: 1,
-        kind: "skill_create_recovery_outcome",
-        status: "applied",
+      const commonCompletion = {
+        kind: "skill_create_recovery_outcome" as const,
+        status: "applied" as const,
         original_operation_id: original.plan.operation_id,
         original_manifest_sha256: original.manifestHash,
         original_outcome_sha256: original.outcomeHash,
@@ -826,6 +1223,15 @@ export function applySharedCreateRecovery(input: {
         review_record_hash: reviewRecord.hash,
         bindings,
       }
+      const completion: SharedCreateRecoveryOutcome =
+        continuation === undefined
+          ? { ...commonCompletion, version: 1 }
+          : {
+              ...commonCompletion,
+              version: 2,
+              continuation_id: continuation.continuation_id,
+              continuation_review_record_hash: continuationRecordHash!,
+            }
       yield* createChecked(() =>
         Schema.decodeUnknownSync(SharedCreateRecoveryOutcomeSchema)(completion, {
           onExcessProperty: "error",
@@ -835,15 +1241,15 @@ export function applySharedCreateRecovery(input: {
       yield* appendSharedRecord(original.library, {
         mode: "create",
         recordId: sharedCreateRecoveryOutcomeId(original.plan.operation_id),
-        operationId: review.review_id,
+        operationId: attemptId,
         skillPageId: original.page,
         kind: "operation",
         entityId: sharedCreateRecoveryOutcomesEntity,
         payload: completion,
       })
-      yield* retireRecovery(original)
+      yield* retireRecovery(original, continuing)
       stage = "current_snapshot"
-      const created = yield* createdResult(original, review, files, bindings, false)
+      const created = yield* createdResult(original, attemptReview, files, bindings, false)
       return {
         ...(yield* consumeSharedCreation(original.library, created, { readOnly: true })),
         status: "recovered" as const,
@@ -851,10 +1257,20 @@ export function applySharedCreateRecovery(input: {
         recovery_operation_id: review.review_id,
         original_status: "needs_review" as const,
         skill_page_id: original.page,
-        existing_pages_preserved: original.outcome.bindings.length,
-        created_pages: files.length - original.outcome.bindings.length,
+        ...(continuation === undefined
+          ? {}
+          : {
+              continuation_operation_id: continuation.continuation_id,
+              original_write_outcome: "unknown" as const,
+            }),
+        existing_pages_preserved: existingPages,
+        created_pages: files.length - existingPages,
       }
-    }).pipe(Effect.mapError((error) => recoveryError(error, review, stage)))
+    }).pipe(
+      Effect.mapError((error) =>
+        recoveryError(error, review, stage, continuation?.continuation_id),
+      ),
+    )
   })
 }
 
@@ -866,30 +1282,8 @@ export function reconcileSharedCreateRecovery(input: {
 }) {
   return Effect.gen(function* () {
     const original = yield* originalFacts(input.entry, input.operationId, input.target)
-    const reviews = yield* querySharedRecords(original.library, {
-      skillPageId: original.page,
-      kind: "operation",
-      recordId: sharedCreateRecoveryReviewId(original.plan.operation_id),
-      entityId: sharedCreateRecoveryReviewEntity,
-      payloadContainsBody: true,
-    })
-    const row = reviews[0]
-    if (reviews.length !== 1 || row === undefined)
-      return yield* Effect.fail(
-        refused("The original recovery review is not visible. Its dispatch is never replayed."),
-      )
-    const review = yield* validateSharedCreateRecoveryReview(row.payload, row.operation_id)
-    const rebuilt = yield* makeSharedCreateRecoveryReview(original.plan, {
-      originalManifestHash: original.manifestHash,
-      originalOutcomeHash: original.outcomeHash,
-      skillPageId: original.page,
-      bindings: original.outcome.bindings,
-      observations: review.observations,
-    })
-    if (!same(review, rebuilt))
-      return yield* Effect.fail(
-        refused("The retained recovery differs from its complete original evidence."),
-      )
+    const retained = yield* retainedRecoveryReview(original)
+    const review = retained.review
     const outcomes = yield* querySharedRecords(original.library, {
       skillPageId: original.page,
       kind: "operation",
@@ -913,8 +1307,11 @@ export function reconcileSharedCreateRecovery(input: {
       }),
     )
     const files = yield* makeSharedCreateRecoveryFiles(original.plan)
+    if (outcome.version === 2)
+      yield* validateSharedCreateContinuationCompletion(original.library, outcome, review)
+    else yield* assertSharedCreateRecoveryNotContinued(original.library, review)
     const fields = {
-      version: 1,
+      version: outcome.version,
       kind: "skill_create_recovery_outcome",
       status: "applied",
       original_operation_id: original.plan.operation_id,
@@ -923,12 +1320,19 @@ export function reconcileSharedCreateRecovery(input: {
       recovery_id: review.review_id,
       skill_id: original.plan.skill_id,
       skill_page_id: original.page,
-      review_record_hash: row.hash,
+      review_record_hash: retained.hash,
       bindings: outcome.bindings,
+      ...(outcome.version === 2
+        ? {
+            continuation_id: outcome.continuation_id,
+            continuation_review_record_hash: outcome.continuation_review_record_hash,
+          }
+        : {}),
     }
     if (
       !same(outcome, fields) ||
-      record.operation_id !== review.review_id ||
+      record.operation_id !==
+        (outcome.version === 2 ? outcome.continuation_id : review.review_id) ||
       outcome.bindings.length !== files.length ||
       new Set(outcome.bindings.map((binding) => binding.page_id)).size !== files.length ||
       !same(
@@ -965,11 +1369,20 @@ export function reconcileSharedCreateRecovery(input: {
         entityId: file.file_id,
         payload: file.event,
       })
-    yield* retireRecovery(original)
+    yield* retireRecovery(original, outcome.version === 2)
     return {
       status: "recovered" as const,
       verified: true as const,
-      verification: "original_recovery_outcome" as const,
+      verification:
+        outcome.version === 2
+          ? ("reviewed_continuation_outcome" as const)
+          : ("original_recovery_outcome" as const),
+      ...(outcome.version === 2
+        ? {
+            continuation_operation_id: outcome.continuation_id,
+            original_write_outcome: "unknown" as const,
+          }
+        : {}),
       original_operation_id: original.plan.operation_id,
       recovery_operation_id: review.review_id,
       original_status: "needs_review" as const,
