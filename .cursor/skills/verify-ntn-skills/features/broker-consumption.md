@@ -7,7 +7,23 @@ Compare provider instructions with the selected snapshot's explicit `--projectio
 
 For independent Pi/OMP real-model consumption, use the broker's [host discovery/read map](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/host-skill-discovery-read.md): `node scripts/verify-notion-integration.mjs run --mode model --database DB --skill-ref skill://PAGE/SKILL.md --model magpie/group/flash-free --model-prompt TEXT`. It runs both hosts by default; `--host pi|omp` selects one and records the other as unrun. Each host must discover metadata without bodies, choose native entry/resource reads and return a nonempty successful assistant final reply. Pi terminal `$` and native `/skill:` selection use the separate [Pi terminal procedure](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/dollar-completion-selection.md#pi-独立终端); Tern/OMP UI evidence does not cover Pi.
 
-## Sub-features
+## Pi-only mainline
+
+The current delivery scope is Notion management → complete CLI remote consumption → Pi through Context Broker. OMP/Tern and unresolved historical migration objects are not prerequisites for exercising a separate complete normal Skill. Preserve their original state; a normal-path pass does not settle those operations.
+
+Create a uniquely identified owned native Skill through public `create --dry-run` then `create`, including a linked supporting file. Retain its input and verified result. Read and export snapshot A. Edit the actual Notion main/supporting bodies and metadata through the native interface or official API, keeping those entry types distinct in evidence. Ordinary current CLI consumption must observe the new bodies and persistent ownership, export snapshot B, preserve pinned A, and reconstruct the same B from empty local state. An API edit is not a manual browser UI test, and two local roots are not two physical machines.
+
+In the Broker repository, select the current built CLI with `NTN_SKILLS_BUILD_ENTRY`, run `bun run build:broker`, and install the npm candidate into an independent prefix. The corresponding pack target is `bun scripts/pack.mjs --target broker --out-dir ABSOLUTE_OUTPUT`; neither path constructs Tern. Use that installed extension and bundled CLI:
+
+```bash
+node scripts/verify-notion-integration.mjs doctor --mode live --host pi --database LIBRARY_ENTRY --skill-ref CURRENT_REF --extension INSTALLED_EXTENSION --command-json '["node","INSTALLED_CLI"]'
+node scripts/verify-notion-integration.mjs run --mode live --host pi --database LIBRARY_ENTRY --skill-ref CURRENT_REF --extension INSTALLED_EXTENSION --command-json '["node","INSTALLED_CLI"]' --evidence-root ABSOLUTE_EVIDENCE
+node scripts/verify-notion-integration.mjs run --mode model --host pi --database LIBRARY_ENTRY --skill-ref CURRENT_REF --extension INSTALLED_EXTENSION --command-json '["node","INSTALLED_CLI"]' --model magpie/group/flash-free --model-prompt NATURAL_TASK --evidence-root ABSOLUTE_EVIDENCE
+```
+
+Require metadata-only advertisement, actual native read and `/skill:`/`$` delivery, single-body repeat/continue behavior, and separate real-model entry/resource reads with verified complete snapshot receipts and a successful final answer. Real-model verification has its own recorded bounded prompt budget; HTTP success alone is insufficient. Keep earlier timeouts as failures and report the new run independently. Retain evidence durably outside checkout; do not rely on a temporary directory as the only copy of inputs or final records. Current Pi-only success does not establish OMP/Tern, production migration, npm publication, daily configuration replacement, or second-machine acceptance.
+
+## CLI contract sub-features
 
 - `broker-list`: metadata-only discovery preserves scope, fetched time, freshness, database map, coverage/failures, `default_context` and actual page IDs without instruction bodies or manifests. Missing or unchecked `Default Context` is false; full discovery keeps every record.
 - `broker-activate`: select a page ID, validate current scope against discovery, read instructions and retain the returned pinned snapshot/version/ref.

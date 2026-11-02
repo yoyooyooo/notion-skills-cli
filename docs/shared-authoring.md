@@ -7,6 +7,7 @@ This guide covers the shared Skills / Files / Records model. Existing libraries 
 ## Contents
 
 - [Connect and read](#connect-and-read)
+- [Use the remote Skill in Pi](#use-the-remote-skill-in-pi)
 - [Create a native Skill](#create-a-native-skill)
 - [Change existing files and metadata](#change-existing-files-and-metadata)
 - [Add, delete or move a file](#add-delete-or-move-a-file)
@@ -41,6 +42,26 @@ ntn-skills ctl library init --parent PARENT_PAGE_ID
 Use the returned `library.skills.database_id` as the entry. Initialization creates the shared tables and descriptor; it does not migrate another library or change machine defaults. `ctl library init --entry LIBRARY_ENTRY` validates an existing entry.
 
 Direct edits to a bound Notion body are detected by normal current reads. After the complete edited body has been retained and verified, that whole file becomes customized. Other files retain their own ownership. Name, Description, Default Context and Router Members remain native Notion properties; a body edit does not change them.
+
+## Use the remote Skill in Pi
+
+Use a shared-capable `pi-context-broker` installation. Add the selected library to Pi's existing `~/.pi/agent/context-broker/config.yml`, preserving any unrelated sources and preferences:
+
+```yaml
+sources:
+  - type: notion
+    id: shared
+    namespace: shared
+    database: LIBRARY_ENTRY
+```
+
+Replace `LIBRARY_ENTRY` with the exact Skills database entry. The Broker uses its packaged CLI unless this source explicitly supplies a `command` argv array. Existing Notion authentication remains in place; do not copy credentials or another machine's SQLite state. A standalone CLI upgrade does not upgrade the Broker's bundled CLI, so use matching candidate or released artifacts when changing shared contracts.
+
+Start a new Pi session after changing the installed extension. The selected/default native View supplies the metadata directory; full `$` discovery also includes accessible Skills outside that View. Submit `$ALIAS@shared` with the actual alias from `list`, or use Pi's advertised `/skill:` entry. Selection loads the complete main instructions and fixes a snapshot; relative resources resolve from that same snapshot. Descriptions and Router member indexes alone do not count as loaded Skill instructions.
+
+Direct Notion edits are observed by later current reads under the declared cache policy. Existing active sessions and explicit pinned refs retain their selected version. To inspect the latest version explicitly, use `read REF --database LIBRARY_ENTRY --refresh`; do not expect a historical pin to change. Disabling the native Skill removes it from current discovery and blocks a new current activation, without rewriting its retained history.
+
+Pi does not require OMP or Tern. For cross-repository development and independent installed-host proof, use the [Broker consumption verification map](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/broker-consumption.md#pi-only-mainline). That recipe separates CLI, real Pi with a controlled provider, and an authorized real model. It does not change daily host configuration or publish packages automatically.
 
 ## Create a native Skill
 

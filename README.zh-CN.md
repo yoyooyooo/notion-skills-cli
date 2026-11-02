@@ -140,6 +140,8 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[架构证据检查点](docs/shared-ssot-architecture.md)。原生二进制创建、多项布局 apply、首次未知请求在空客户端不可见等边界仍保留。固定来源可供给二进制资源；共享操作 ID 不传给旧 `operation resume`。现有 upstream/local 绑定在明确迁移前继续使用各自的原操作恢复流程。
 
+当前交付聚焦 **Notion → CLI → Pi**，OMP/Tern 延后。真实主文与支持页编辑、启停、固定快照及旧 pin、独立安装 Broker/CLI 的 Pi 消费、终端选择夹具，以及真实模型自主读取入口/资源并完成回答均已有本轮结果。原生正文编辑经官方 Notion API 验证，终端夹具与真实模型分别报告；不代表旧库全量迁移、正式发行、用户全局配置替换或另一物理机器验收完成。配置见[在 Pi 使用远程 Skill](docs/shared-authoring.md#use-the-remote-skill-in-pi)，范围与证据见[架构检查点](docs/shared-ssot-architecture.md)。
+
 ## 常用场景
 
 ### 按领域选择工作流库

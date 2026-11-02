@@ -2,6 +2,8 @@
 
 Start with [installation and Quick start](../README.md#installation) before configuring a host. The 0.x series is experimental; [the compatibility policy](../CONTRIBUTING.md#compatibility-and-deprecation) and [changelog](../CHANGELOG.md) describe consumer expectations. This document defines an adapter contract, not a claim that adapters have been installed in other applications.
 
+For the current Notion → CLI → Pi delivery, follow [Use the remote Skill in Pi](shared-authoring.md#use-the-remote-skill-in-pi). Pi requires neither OMP nor Tern. The [shared checkpoint](shared-ssot-architecture.md) separates real remote edits, independent installed Pi consumption, terminal fixtures and authorized real-model results; it does not claim a production migration or replacement of a user's daily configuration.
+
 ## Portable shell integration
 
 The host needs Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+ on PATH to launch the installed `ntn-skills` executable. Install the built package with npm using [the consumer installation instructions](../README.md#installation); online operations also need the official `ntn` CLI. Bun belongs to the repository's development/build path.

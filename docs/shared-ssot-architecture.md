@@ -4,6 +4,28 @@
 
 ## 状态与证据
 
+### 当前主线：Notion → CLI → Pi
+
+2026-11-02 用户收敛当前交付范围：Notion 管理 Skill、ntn-skills CLI 消费远程 Skill、Pi 通过 context-broker 实际使用。OMP/Tern 延后；旧迁移对象和全量切换保持原状态，不再作为正常对象纵向验收的前置。下方较早的全量矩阵仍是历史范围，不能据此把延期项目算作当前 Pi 主线失败，也不能反向用 Pi 结果将它们标成通过。
+
+本轮正常路径使用独立的两文件原生 Skill，与旧七文件迁移试点无关。公开 create 的 dry-run 与实际创建均通过，完整校验后启用。随后通过官方 Notion API 直接修改主文、支持文件和 Description，完整 GET 精确匹配；普通过期 read 观察新内容并持久保存两文件归属。此对象创建时就是 native/custom，结果不冒充 Git following → custom 的完整上游生命周期，也不冒充手工浏览器编辑验收。
+
+| 本轮三段链路 | 实际结果 | 范围 |
+| --- | --- | --- |
+| Notion 管理 | 主文、支持文件、描述编辑被观察；禁用后目录移除且 current read 返回 SKILL_NOT_FOUND；重新启用后身份、正文与原快照 B 相同 | 独立两文件原生 Skill，官方 API 管理 |
+| CLI 远程消费 | B 的完整导出包含更新资源；旧 pin A 保留原文且零远端请求；warm B 零远端请求；独立空本地状态恢复同一 B | 同一物理 pro，不宣称 mini 或全库迁移 |
+| 安装后的 Broker → Pi | 实际 Pi 1.4.0 / Node 24.20.0；metadata-only 目录、原生 read、/skill:、美元选择、双向切换、重复、持久续接通过 | npm 候选独立安装；真实 Notion，受控 provider；只运行 Pi |
+| Pi 终端交互 | 两个冷 PTY 实际输入前缀、Tab 接受、Enter 提交，覆盖 dollar → native → dollar 与 native → dollar；两个进程均自然退出 | 真实 Pi 终端，source/provider 为受控夹具，单独于真实 Notion 和模型报告 |
+| Pi 真实模型使用 | magpie/group/flash-free 自主读取完整入口和同一固定快照的资源，4 次 provider 请求后产生 stop 成功回复，明确引用修改后的两个版本标记和三项风险 | 1 次独立成功运行；入口读取 1 次、资源读取 2 次；非发布或性能总验收 |
+
+首次真实模型运行在原 120 秒 RPC 预算内未完成 final，保留为失败。模型多步路径随后使用单独的 300 秒有界 prompt budget，普通受控 RPC 和 Notion 单请求预算未改；新运行记录 elapsedMs=124061，并仍检查完整入口/资源回执、实际 provider 消费与非空成功 final。不能把收到 HTTP 200 或读到资源单独记为模型完成，也不将首轮失败覆盖为通过。
+
+Broker 新增 `build:broker`、`check:broker`、`pack --target broker` 和 integration `--host pi` 路径；未选宿主不探测、不启动、不计入通过。默认双宿主行为保留，跨宿主专项拒绝单宿主降级。现有 Tern 脏产物保持原字节。完整 `check:broker` 通过，包含包内行为回归、completion、类型检查、共享 adapter/View 的 66 项测试，以及 host/pack/model-budget 的 17 项测试；共享 adapter 的独立 62 项复验与前述集合重叠，不相加宣称总数。未运行整个双宿主验收。输入、原始响应、目录导出、安装包、宿主和模型证据保存在 checkout 外的持久验证目录，不再只依赖临时目录。
+
+当前已证明这条正常三段链路的功能闭环。用户日用全局 Pi 配置、原生产库、npm 发布、旧管理链退役均未在本轮替换；独立安装的候选不冒充已切换的日用默认。实际用法见[共享库指南](shared-authoring.md#use-the-remote-skill-in-pi)，可复跑步骤见 [Pi 主线验收](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/broker-consumption.md#pi-only-mainline)。
+
+### 较早检查点与历史完整范围
+
 **2026-11-02 UTC 开发检查点：AH-498 尚未全部完成。** 下表中的真实 CLI 指本次源码构建后由 Node.js 执行的正式命令，不代表已发行 npm 包、已安装宿主、两台物理机或模型/UI 验收。原始命令、私人页面身份、完整共享 pin 和备份位置保留在外部运行证据中，本文只记录可公开的范围与结果。
 
 | 项目 | 当前结论 | 尚不能由该结果推出的结论 |
