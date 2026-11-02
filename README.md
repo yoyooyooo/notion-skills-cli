@@ -42,6 +42,12 @@ Shared libraries batch native Files metadata and retained ownership facts, with 
 | Subscribe Git Skills into Notion and keep them current | `sync upstream connect`, `sync upstream run` |
 | Keep an existing page and local Skill directory in sync | `sync local connect`, `sync local run` |
 
+## Shared library sources
+
+The current shared model uses **Skills / Files / Sources / Records**. Sources owns editable provider/location/ref/selection settings and exact content relationships; Records owns fixed resource bytes, ownership and history. Ordinary discovery/read never polls upstream. Use `ctl library sources list/show/members/check/fetch/prepare/apply` for explicit provider acquisition and guarded version changes. Generic Git supports GitHub, GitLab and self-hosted repositories; Linear supports exact issue/document-to-file mappings. See [source management](docs/sources-management.md) for input shapes, recovery and scope boundaries.
+
+New `ctl library init --parent PAGE_ID` creates four full-page tables. An existing three-table library is upgraded explicitly using `ctl library sources init --entry ENTRY`. Earlier two-table `sync upstream` examples below describe only unmigrated legacy libraries; they are not the Sources management path.
+
 ## Installation
 
 Install [Node.js](https://nodejs.org) **22.22.3+ within 22.x, or 24.20.0+**, which includes npm. Online operations also need the [official Notion CLI](https://developers.notion.com/cli) **`ntn`** with `api --notion-version` support; `ntn` 0.22.12 has been exercised with this project.

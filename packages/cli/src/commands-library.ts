@@ -1,3 +1,5 @@
+import { initializeSourceLibrary } from "../../core/src/shared-sources-library.ts"
+import { librarySourceDefinitionsCommand } from "./commands-library-source-definitions.ts"
 import {
   librarySourceCompositionCommand,
   librarySourceReconcileCommand,
@@ -44,17 +46,37 @@ const initialize = defineCommand(
   },
   (options) =>
     Effect.gen(function* () {
-      yield* emit(
-        yield* initializeSharedLibrary({
-          parent: Option.getOrUndefined(options.parent),
-          entry: Option.getOrUndefined(options.entry),
-          operation: Option.getOrUndefined(options.operation),
-        }),
-      )
+      const base = yield* initializeSharedLibrary({
+        parent: Option.getOrUndefined(options.parent),
+        entry: Option.getOrUndefined(options.entry),
+        operation: Option.getOrUndefined(options.operation),
+      })
+      // Explicit attachment/reconciliation is read-only. A newly created
+      // library completes the current four-table layout before returning.
+      const result = !base.reused ? yield* initializeSourceLibrary(base.library) : base
+      yield* emit({
+        ...result,
+        source_management_ready: result.library.sources !== undefined,
+        ...(result.library.sources
+          ? {}
+          : {
+              next: {
+                argv: [
+                  "ntn-skills",
+                  "ctl",
+                  "library",
+                  "sources",
+                  "init",
+                  "--entry",
+                  result.library.skills.database_id,
+                ],
+              },
+            }),
+      })
     }),
 ).pipe(
   Command.withDescription(
-    "Create three full-page databases named Skills, Files and Records, or attach an exact existing entry. Display titles have no identity role and need no library suffix. Stable property/data-source IDs live in the registered Notion descriptor; each initial table POST also carries its original operation, role and parent in an internal description marker. Repeating the same dedicated parent reuses its unique registered library even after renaming. Unregistered tables stop a new initialization rather than being adopted by name. Unknown creation is retained with its original operation and never replayed; this command does not migrate existing content or change machine defaults.",
+    "Create four full-page databases named Skills, Files, Records and Sources, or attach an exact existing entry. Display titles have no identity role and need no library suffix. Stable property/data-source IDs live in the registered Notion descriptor; each initial table POST also carries its original operation, role and parent in an internal description marker. Repeating the same dedicated parent reuses its unique registered library even after renaming. Unregistered tables stop a new initialization rather than being adopted by name. Unknown creation is retained with its original operation and never replayed; this command does not migrate existing content or change machine defaults. An existing three-table library is upgraded explicitly with ctl library sources init.",
   ),
 )
 
@@ -368,6 +390,7 @@ export const libraryCommand = defineCommand("library").pipe(
     files,
     state,
     sources,
+    librarySourceDefinitionsCommand,
     snapshots,
     libraryMigrationCommand,
     libraryProfilesCommand,

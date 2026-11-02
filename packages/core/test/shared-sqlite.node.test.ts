@@ -15,6 +15,9 @@ const keys = {
   github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
   observationPending: `operations/shared-observation-pending/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
+  sourceReceipt: `operations/shared-sources/${scope}/source-receipt-${"b".repeat(64)}.json`,
+  sourceSelection: `operations/shared-sources/${scope}/source-selection-${"c".repeat(64)}.json`,
+  sourceDefinition: `operations/shared-sources/${scope}/source-op-${"a".repeat(64)}.json`,
   sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
   nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
   nativeRecovery: `operations/shared-native-recovery/${scope}/skill-create-${"8".repeat(64)}.json`,
@@ -72,7 +75,7 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
-test("shared cache and nine dispatch addresses persist across real Node restarts", async () => {
+test("shared cache and twelve dispatch addresses persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({
       key,
@@ -96,6 +99,9 @@ test("shared cache and nine dispatch addresses persist across real Node restarts
         keys.observationPending,
         keys.historyPending,
         keys.profilePending,
+        keys.sourceDefinition,
+        keys.sourceReceipt,
+        keys.sourceSelection,
         keys.sourceRegistration,
         keys.nativeCreate,
         keys.nativeRecovery,
@@ -112,7 +118,7 @@ test("shared cache and nine dispatch addresses persist across real Node restarts
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
       { category: "cache", retired: 0, count: 3 },
-      { category: "dispatch", retired: 0, count: 9 },
+      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 3 },
     ])
   })
 }, 30_000)
@@ -308,6 +314,9 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
         keys.observationPending,
         keys.historyPending,
         keys.profilePending,
+        keys.sourceDefinition,
+        keys.sourceReceipt,
+        keys.sourceSelection,
         keys.sourceRegistration,
         keys.nativeCreate,
         keys.nativeRecovery,

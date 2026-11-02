@@ -129,6 +129,12 @@ const sharedLocalDomains: readonly {
       /^operations\/shared-profile-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\/profile-[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/shared-sources",
+    category: "dispatch",
+    address:
+      /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection)-[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-source-registration",
     category: "dispatch",
     address:

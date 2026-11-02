@@ -81,7 +81,7 @@ export function validateMetadataValue(
     case "Source":
       if (
         typeof value !== "string" ||
-        (value !== "" && !/^(?:source|source-plan)-[a-f0-9]{64}$/u.test(value))
+        (value !== "" && !/^(?:source|source-plan|bundle|snapshot)-[a-f0-9]{64}$/u.test(value))
       )
         throw fail(
           "INVALID_SOURCE",

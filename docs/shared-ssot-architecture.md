@@ -4,7 +4,43 @@
 
 ## 状态与证据
 
-### 当前交付：300 个内容入口完整迁入唯一三表，日用入口已切换
+### 2026-11-03 当前交付：Sources 四表与主动来源管理
+
+用户在完整内容迁移后明确要求恢复活跃上游管理，并扩展到GitLab、Linear等提供内容的来源。本轮最终正式模型为 **Skills / Files / Sources / Records** 四张独立全页面数据库；没有恢复旧Upstream/Content双轨。Sources保存可变配置，Selected Version继续指向Records中已冻结的完整内容。以下为当前交付，后面的“唯一三表”是先前内容迁移的历史检查点。
+
+| 当前四表及关系 | 完整读回结果 |
+| --- | --- |
+| Sources | 59份原来源配置完整恢复为活动行，稳定Source ID唯一；Provider、Location、Ref、Selection、Options、Enabled、Policy与保留原始配置一致 |
+| Skills | 300入口，298启用；283主Origin关系和精确Source Member已登记，17个无原来源的独立入口不猜测绑定；现有主文、Metadata与内容pin不因来源迁接而改动 |
+| Files | 818行原生支持页，路径/身份/Skill绑定不变；Origin通过Skill关系只读rollup，不重复维护可写来源 |
+| Records | 4,905行；原4,902个事实的逻辑身份与hash保持不变，新增3条本轮验收归档；59份原来源档案及283份当前资源包关联Sources |
+| 用户导航 | 14个原生View设置读回通过；Sources有全部/启用/Git/Linear/需处理视图；Pstack筛选使用活动Origin；旧Source Archive关系留存并从日常View隐藏 |
+
+当前主Origin是一个明确的更新基底。原多贡献者shared_target_set设置完整保留，单来源refresh会拒绝覆盖合并结果，要求明确固定composition。不得根据同名内容猜测零成员来源的归属，也不得把原配置中的历史publisher标签解释成已恢复自动合并发布器。
+
+#### CLI与来源适配
+
+新增公开 `ctl library sources init/attach/providers/list/show/members/put/bind/check/fetch/prepare/apply/reconcile`。配置与固定内容命令分层：复数sources管理活动定义；单数source继续管理精确的不可变资源。list/members完整分页，show读取长属性；真实Synpraxis超过65KB选项原样核对，Pstack正向关系返回57项（56个Skill及1个Router），不依赖反向预览的25项限制。普通list/read不增加Sources扫描或provider抓取。
+
+Git适配使用通用HTTP(S)/SSH仓库、精确解析的commit/tree，不限定GitHubAPI。真实GitHub Humanizer Zh的9文件与GitLab官方skills仓库commit-messages成员5文件均完成check和完整目录导出。Linear从固定官方GraphQL只读明确issue/document，凭据仅取本机LINEAR_API_KEY；真实两类对象映射为2文件并完成读取/导出。Linearrevision绑定实际正文和updatedAt，不冒充服务端历史commit。registry/marketplace复用既有适配，不把本轮Git/Linear结果当作其新增真实验收。
+
+来源变更采用完整fingerprint期望值，bind仅改主关联/member。prepare冻结provider候选与当前ownership、pin和文件树；apply先验证限额、每块/全ZIP/每文件hash，再保留候选并走原共享元数据选择协议；自定义正文和旧pin保留，不回写原生投影，不执行脚本。新refresh v2把精确选择操作直接绑定到审批摘要，避免另建冗余派发映射。已存v1的原门槛与unknown保留；reconcile只观察原选择操作，不能由当前值可见伪造旧操作完成。协议仍是有界单写者与前像核验，不声称Notion原子CAS或跨机锁。
+
+#### 真实更新、安装与保护验收
+
+独立原生Notion条目含custom主文和custom本地检查表；真实Linear文档A→B经公开prepare/dry-run/apply/read/export完成版本推进。两份custom文件逐字节不变，新增Linear资源更新到B，旧A资源pin保持原字节；warm B和旧A读取均零远端请求，空状态消费者重建同一B快照且零provider。没有对生产59来源批量抓取或推进版本。
+
+完整四表最后分页对账验证300个生产pin及Metadata、818个文件绑定、59配置与原4902事实hash不变。实际创建的29个验收页面/记录先归档再可恢复地移入Notion回收站，没有测试条目混入生产目录。原始create因下划线原生转义而失败、v1B的冗余映射请求unknown均保持原结果；单独新原生条目和v2准备的通过不改判这些失败。
+
+pro已经安装新CLI与包含更新后官方Skill指引的Broker候选，日用注册包含四表descriptor，CLI shim和Pi package指向同一安装目录。现有Notion source选择、prefetch:false、其它插件、规则、认证与用户会话保持不变；新开Pi会话加载新版本。实际安装的Pi+真实Notion通过metadata目录、native read、/skill:、美元选择、双向切换、重复去重与续接；provider是受控验收，未运行新的真实模型任务。Broker源码和Tern既有脏产物未改变，只重建/安装Pi候选。
+
+实际安装后的当前298目录为5次Metadata，默认74项View为12次Metadata，正文/写入/provider均为零；这是本库实测，不宣称任意规模常量。共享核心977项（73文件）、Node SQLite10项、公开CLI9项（2文件）、类型/格式和43项独立安装消费检查通过。新增SQLite派发域导致旧测试计数9→12的期望差异已修正后复验，失败原日志保留。没有宣称全仓、全provider或所有宿主矩阵通过，也未公开发布npm。
+
+持久证据在本轮外部验证目录的 `final-audit.json`、`linear-native-a-summary.json`、`linear-native-b-summary.json`、`installed-cli-acceptance.json`、`host/summary.json`、`daily-cutover/summary.json` 与 `acceptance-retirement/summary.json`。Notion父页下00—03文档已改成四表模型，新增04 Sources管理指南。命令和配置见[来源管理](sources-management.md)，验证地图为SS19。
+
+### 以下三表完成记录为 Sources 增补前的历史状态
+
+### 2026-11-02 历史交付：300 个内容入口完整迁入三表，日用入口已切换
 
 2026-11-02 完成用户批准的完整生产数据迁移。当前正式库只使用指定父页下的 **Skills、Files、Records** 三张独立全页面 Database，显示名不带 library 后缀。旧内容表和旧来源表各自完整查询为零遗留行后，已可恢复地移入 Notion 回收站。以下是当前结果；后面的 12 项、3 项和旧恢复试点均为历史检查点，不再表示当前生产库尚未迁完。
 

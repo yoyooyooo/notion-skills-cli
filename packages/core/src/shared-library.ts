@@ -2,6 +2,7 @@ import { Crypto, Effect, Schema } from "effect"
 import { decode, fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { sourceDefinitionLayout } from "./shared-sources-model.ts"
 
 import {
   LIBRARY_MARKER,
@@ -155,14 +156,45 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
       "LIBRARY_INVALID",
       "The optional Members binding is not a unique stable property identity.",
     )
+  const tables = [
+    library.skills,
+    library.files,
+    library.records,
+    ...(library.sources ? [library.sources] : []),
+  ]
+  if (library.sources) {
+    exactId(library.sources.database_id)
+    exactId(library.sources.data_source_id)
+    const ids = Object.keys(
+      sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
+    ).map((key) => library.sources!.property_ids[key])
+    if (
+      library.sources.property_ids.Name !== "title" ||
+      ids.some((id) => !id) ||
+      new Set(ids).size !== ids.length ||
+      !library.skills.property_ids.Origin ||
+      !library.skills.property_ids["Source Member"] ||
+      !library.records.property_ids.Origin
+    )
+      throw fail(
+        "LIBRARY_INVALID",
+        "Sources requires complete stable table, member and relation bindings.",
+      )
+    for (const table of tables) {
+      const bindings = Object.values(table.property_ids)
+      if (
+        bindings.some((id) => !/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(id)) ||
+        new Set(bindings).size !== bindings.length
+      )
+        throw fail(
+          "LIBRARY_INVALID",
+          "Four-table bindings must have unique, safe stable property identities.",
+        )
+    }
+  }
   if (
-    new Set([library.skills.database_id, library.files.database_id, library.records.database_id])
-      .size !== 3 ||
-    new Set([
-      library.skills.data_source_id,
-      library.files.data_source_id,
-      library.records.data_source_id,
-    ]).size !== 3
+    new Set(tables.map((table) => table.database_id)).size !== tables.length ||
+    new Set(tables.map((table) => table.data_source_id)).size !== tables.length
   )
     throw fail("LIBRARY_INVALID", "Shared table identities overlap.")
   return library
@@ -202,7 +234,7 @@ function validateMembersField(value: unknown, skillsDataSourceId: string): strin
   return field.id
 }
 
-function inspectTable(
+export function inspectTable(
   id: string,
   expected: Readonly<Record<string, unknown>>,
   expectedParent: string,
@@ -306,6 +338,27 @@ function inspectLibrary(library: SharedLibrary) {
       library.parent_page_id,
       library.records,
     )
+    if (library.sources) {
+      yield* inspectTable(
+        library.sources.database_id,
+        sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
+        library.parent_page_id,
+        library.sources,
+      )
+      for (const table of [library.skills, library.records]) {
+        yield* inspectTable(
+          table.database_id,
+          {
+            Origin: {
+              relation: { data_source_id: library.sources.data_source_id, single_property: {} },
+            },
+            ...(table === library.skills ? { "Source Member": { rich_text: {} } } : {}),
+          },
+          library.parent_page_id,
+          table,
+        )
+      }
+    }
     return library
   })
 }

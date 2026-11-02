@@ -39,8 +39,14 @@ ntn-skills read 'Release Review'
 | 从同一版本读取指令和附件 | `read`，再用 `files` |
 | 在本地文件和 Notion 之间迁移完整 Skill | `create`、`replace`、`export` |
 | 对固定页面一次应用文件和属性变更 | `apply` |
-| 将 Git Skills 订阅到 Notion 并持续更新 | `sync upstream connect`、`sync upstream run` |
+| 在共享库管理 Git/GitLab、Linear 等来源并显式更新 | `ctl library sources list/show/check/fetch/prepare/apply` |
 | 同步已有 Notion 页面与本地 Skill 目录 | `sync local connect`、`sync local run` |
+
+## 共享库的四张表
+
+当前共享库采用 **Skills / Files / Sources / Records**。Skills 管主文与元数据，Files 打平可编辑支持页，Sources 管可编辑来源配置及关联，Records 保存固定资源、归属和历史。日常 `list/read` 不扫描 Sources、不自动抓取上游；显式来源更新先 `prepare`，再 `apply`，保留自定义文件和旧 pin。GitHub、GitLab、自托管 Git 使用同一 Git 适配边界；Linear 使用显式 issue/document 到文件的映射。完整用法和安全边界见[来源管理](docs/sources-management.md)。
+
+`ctl library init --parent PAGE_ID` 创建新的四表库；既有三表库用 `ctl library sources init --entry ENTRY` 显式升级。下文保留的旧两表及 `sync upstream` 操作只适用于尚未迁移的旧库，不能用来管理共享库的 Sources。
 
 ## 安装
 

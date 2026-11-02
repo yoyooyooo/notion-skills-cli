@@ -15,6 +15,7 @@ export const SharedLibrarySchema = Schema.Struct({
   skills: TableBindingSchema,
   files: TableBindingSchema,
   records: TableBindingSchema,
+  sources: Schema.optional(TableBindingSchema),
 })
 export type SharedLibrary = typeof SharedLibrarySchema.Type
 export type TableBinding = typeof TableBindingSchema.Type

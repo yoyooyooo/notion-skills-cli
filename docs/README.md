@@ -4,6 +4,7 @@ Start with the repository README in [English](../README.md) or [简体中文](..
 
 - [Usage guide](usage.md): installation, authentication, discovery, fixed/current reads, one pinned apply for file/metadata changes, source/local connection and recurring runs, publication progress and original-operation recovery, cache policy, upgrade and uninstall.
 - [Shared library authoring](shared-authoring.md): ordinary native creation, pinned body/resources/metadata apply, individual file lifecycle, fixed source selection, Profile/View defaults and matching original-operation recovery.
+- [Source management](sources-management.md): active provider-neutral Sources, exact Skill/member relationships, Git/GitLab and Linear acquisition, frozen prepare/apply and original-operation reconciliation. Mutable configuration stays separate from fixed content pins.
 - [CLI and ref contract](protocol.md): identities, selectors, fixed snapshots, JSON responses, storage, synchronization/recovery, cache boundaries and errors.
 - [Host integration](host-integration.md): metadata injection, activation state, ordinary `$...@builtin` selection across OMP/Pi/Tern, `/context-broker` session controls and explicit local distribution, plus Read/Write adapters.
 - [Historical operator commands](historical-operations.md): retained one-off actions in the independent migration artifact; absent from the daily CLI.

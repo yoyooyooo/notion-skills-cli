@@ -81,7 +81,7 @@ const schemaCommand = defineCommand(
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Discover with list, then read one exact target and keep its pinned ref for supporting files. Create new content with create and submit one pinned file/metadata change with apply. Use the bundled maintenance Skill for the complete workflow. Connect a Git source with sync upstream connect or a page/directory with sync local connect, then use the corresponding run command. If an operation stops, inspect its original ID with operation show and follow the returned next.argv; operation resume continues that same operation. Use ctl for setup and diagnostics. Help and schema work offline; reads and previews never execute Skill content.",
+      "Discover with list, then read one exact target and keep its pinned ref for supporting files. Create new content with create and submit one pinned file/metadata change with apply. Use the bundled maintenance Skill for the complete workflow. For a shared library manage active Sources with ctl library sources list/show/put/bind/check/fetch/prepare/apply; fixed content pins remain separate. Connect a page/directory with sync local connect. The legacy sync upstream workflow requires its explicitly configured legacy tables and does not manage the shared Sources catalog. If an operation stops, inspect its original ID with operation show and follow the returned next.argv; operation resume continues that same operation. Use ctl for setup and diagnostics. Help and schema work offline; reads and previews never execute Skill content.",
     ),
     Command.withExamples([
       {

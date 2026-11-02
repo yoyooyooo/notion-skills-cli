@@ -4,12 +4,25 @@
 
 | Relationship | Start once | Continue |
 | --- | --- | --- |
+| Active shared Source | `ctl library sources put` and exact `bind` | `sources prepare`, reviewed `apply`; `reconcile` original plan |
 | Existing legacy Git subscription | `sync upstream connect SOURCE --database LIBRARY` | `sync upstream run --target SUBSCRIPTION_ID` |
 | Existing legacy local relationship | `sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL` | `sync local run LABEL` |
 | All authorized active legacy relationships | Register each relationship | The relevant `run --all` |
 | One-time import/export/edit | Use `ntn-skills-maintain` | No recurring binding is established |
 
 Use installed help/schema for flags and actual output fields. Do not manufacture internal subscription, plan, proof or receipt JSON as part of a normal connection. Existing low-level add/update and plan/apply commands remain useful for explicit advanced configuration or saved-plan review.
+
+## Active Sources definitions
+
+The current four-table model separates mutable Sources from immutable selected content in Records. Use `ctl library sources providers` for offline capabilities and `list/show/members --entry ENTRY` for complete current identities and associations. The Sources reverse relation may be truncated by Notion; `members` queries the forward Skills Origin relation and follows all cursors. A Source with no current bound members is valid; a retained former published-members manifest is not permission to recreate deleted content or guess by name.
+
+`put` takes a complete version-1 definition with `source_id`, name, description, enabled, policy, adapter, selection and options. Read the installed `sources put --help` and the [Source management guide](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/sources-management.md) for exact Git and Linear JSON examples. Copy the last observed fingerprint into `--expect`; edits do not change current Skill pins. `bind` requires exact target/member and expected current Origin. Old multi-publisher settings remain provenance; a single-origin refresh deliberately rejects shared_target_set.
+
+`check` resolves a complete provider candidate. `fetch` writes one exact member's portable files to a new/identical directory. `prepare SOURCE --entry ENTRY --target PAGE --output PLAN` combines exact provider bytes with the current native custom/following/tombstone state and verifies the effective file tree without remote writes. `apply PLAN --entry ENTRY` checks the original configuration, target, resources and current expectations, stores content chunks and the bundle, then uses the common guarded selection journal. It verifies the result and records the last successful revision; no automatic cron, whole-library sync or native-body overwrite is implied.
+
+Linear uses a machine-only `LINEAR_API_KEY` and the fixed official GraphQL endpoint. Select explicit issue/document IDs and file paths including SKILL.md. An observation hash binds the returned bytes and updatedAt, not an invented historical API commit. Git uses host authentication and exact resolved commits. Shared definitions never contain credentials, arbitrary headers or executable commands. Do not copy credentials to test another machine.
+
+After interrupted refresh, `sources reconcile PLAN --entry ENTRY` observes the exact retained original selection. A visible new pin alone does not prove the original outcome. Acknowledged resource steps are immutable; an unknown original write is not resent. A candidate removing a bound following file or yielding broken final references needs an explicit content decision, not dropped files or looser validation.
 
 ## Shared fixed sources
 

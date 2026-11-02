@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-sync
-description: Select fixed Git/HTTP/local sources and shared Profile/View defaults for a Notion Skill library, or maintain existing upstream subscriptions and local synchronization bindings. Use for source revisions, shared supply rules, local resource scopes, recurring legacy sync or interrupted operations. Keep exact identities and original plans; report each affected item.
+description: Manage active Git/GitLab/Linear source definitions, explicitly refresh one bound Skill, and select fixed Git/HTTP/local sources or shared Profile/View defaults for a Notion Skill library, or maintain existing upstream subscriptions and local synchronization bindings. Use for source revisions, shared supply rules, local resource scopes, recurring legacy sync or interrupted operations. Keep exact identities and original plans; report each affected item.
 compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, official ntn and an existing Notion connection; reads need Read content and writes need Insert/Update content. Local replacement requires supported system Trash retention.
 metadata:
   publisher: ntn-skills
@@ -10,6 +10,25 @@ metadata:
 # Maintain sources and supply rules
 
 Identify the selected library and record first. A `shared_skill` locator uses shared native Source/Profile rules. Existing upstream subscriptions and local sync bindings keep their earlier workflows until explicitly migrated. One-time content edits belong to `ntn-skills-maintain`; consuming a remote workflow needs no sync binding.
+
+## Manage an active Source definition
+
+For the four-table shared library, use `ctl library sources`, not the retired library's `sync upstream` subscription path. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
+
+```bash
+ntn-skills ctl library sources list --entry LIBRARY_ENTRY
+ntn-skills ctl library sources show SOURCE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library sources members SOURCE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library sources check SOURCE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library sources fetch SOURCE_ID --entry LIBRARY_ENTRY --member EXACT_MEMBER --output ./source-files
+ntn-skills ctl library sources prepare SOURCE_ID --entry LIBRARY_ENTRY --target SKILL_PAGE_ID --output ./refresh.json
+ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY
+```
+
+`check/fetch` are read-only provider operations. `prepare` freezes the complete member plus current ownership and content expectations. `apply` retains the exact candidate before selecting it, preserves whole custom files and old pins, and verifies the resulting directory. It does not run scripts, update every member, rewrite native projections or silently follow a branch. Use `sources reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` to inspect the original selection without repeating it. Never re-create a frozen plan from current text to make an unknown result look complete.
+
+`put --input DEFINITION --expect FINGERPRINT` changes one full configuration; use the fingerprint from `show` or `absent` for a new stable ID. `bind SOURCE_ID --target SKILL_PAGE_ID --member EXACT_MEMBER --expect-origin CURRENT_SOURCE_PAGE_OR_none --entry LIBRARY_ENTRY` changes only association. Providers include generic Git, registry and explicitly mapped Linear issue/document content. Auth stays on the machine. Shared contributor sets require explicit composition, not a single-source overwrite. See [source decisions](references/synchronization.md#active-sources-definitions) before authoring configurations.
 
 ## Select a fixed shared source
 
