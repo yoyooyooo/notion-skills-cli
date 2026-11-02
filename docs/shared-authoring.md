@@ -361,6 +361,16 @@ ntn-skills ctl library migration recovery continuation apply \
 
 Apply creates only the proven unattempted remaining files. It preserves all accepted page IDs and bodies, validates the complete tree and records completion v2. Keep the original approved input and execution evidence after interruption. Repeating this command only reconciles; another unknown stops further creation. Use the same `recovery reconcile` command above for the separate historical outcome. A missing original input, missing terminal or incomplete completion cannot be resolved by regenerating a plan or assuming the original POST succeeded.
 
+## Complete resources after a single-library migration
+
+The active library has only Skills, Files and Records. Skills pages remain the main editing surface; editable supporting pages stay in Files with a stable Skill relation and logical path. Existing scripts, binary assets and source-only resources may be preserved in a complete immutable Notion-resident bundle in Records. They need not acquire invented native Markdown pages. Ordinary `list`, `read`, pinned resource reads and directory `export` use the same public interface for these bundles.
+
+A cold consumer reconstructs the whole selected bundle from checksum-bound Records chunks; no original machine, old database or live upstream provider is required. The normal reader still verifies current editable pages and respects whole-file customizations. Current Source pins are fixed choices; retaining original upstream settings in Records does not start an old synchronizer or automatically advance a branch. Select any future source revision explicitly through the supported source-management workflow.
+
+Library history, original source configurations and original page responses are preserved as archive records and attachments. Original incomplete operations retain their old outcomes. The archive is useful for audit and explicit restoration; it is not an alternative current content source. After complete new-library verification, obsolete database containers can be moved to Notion Trash without permanently deleting their recovery trail. Only the new Skills database should remain registered in the daily CLI/Broker configuration.
+
+For renamed or relocated pages, copy the actual returned shared ref and stable IDs. Database display names, old page links, cached aliases and the first 25 entries of an inline relation do not substitute for a complete file/member inventory. Default-context and source-specific Views retain their filtering in the new library; large Router relations require complete pagination. Disabled retired content stays outside normal discovery.
+
 ## Handle an interrupted operation
 
 Keep the original input, exact target, operation ID and recovery details. A matching current body or property does not prove that an unknown original request completed. Do not change input or choose a new name to bypass a pending operation. A recovery result with `verified: true` confirms its reported outcome: `not_applied` or `partial` does not mean that the requested edit completed.

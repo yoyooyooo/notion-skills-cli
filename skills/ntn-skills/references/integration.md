@@ -42,6 +42,12 @@ Shared readers batch native file metadata and shared ownership facts, preserve c
 
 For existing legacy native Skills, after initial full source-bundle alignment, ordinary reads can check all included page metadata, paginated References inclusion and immutable file identity before reusing the full local file set. They report `freshness.validation="metadata"`; `source=notion` may mean remote metadata checks rather than new body downloads. Metadata equality cannot detect every same-timestamp edit. `--refresh` and explicit `--max-age 0` force complete body/resource validation. Checkpoints stay in disposable scoped cache; missing checkpoints or versions use the full path, while access errors remain errors. Writes, sync and Publication recovery retain strong verification.
 
+## Consolidated shared libraries
+
+After an approved single-library migration, configure the exact new Skills entry in the CLI and Broker; remove obsolete active registrations rather than adding a hidden old-library fallback. A retained `bundle-...` Source reconstructs its complete resources from the new library's Records. Old source settings and operation history may be retained as archive data, but normal reads neither execute old operations nor fetch an old database to fill missing files. Preserve the returned current/pinned ref, full directory inventory and checksum-bound resources.
+
+A native References file-link map resolves exact cross-file or same-library references; it does not automatically load another Skill. Large Router member relations are paginated. Archive records remain separate from Profile rules and current discovery. Reading a script, ZIP or original historical operation never authorizes executing its contents.
+
 ## Diagnose discovery and loading
 
 Start from the actual symptom and existing result. Do not run every diagnostic or clear state by default.

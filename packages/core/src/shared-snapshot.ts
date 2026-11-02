@@ -18,6 +18,7 @@ import { importDocument } from "./import.ts"
 import { decode, fail, SkillsError, SnapshotSchema, type Snapshot, type Source } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { canonicalMain } from "./portable.ts"
+import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
 import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
@@ -85,7 +86,7 @@ import { sha256, Store } from "./store.ts"
 import type { SharedAuthoringEvidence } from "./shared-authoring.ts"
 
 export const SHARED_FULL_BODY_MAX_AGE_MS = 24 * 60 * 60 * 1000
-const MAX_OBJECT_BYTES = 64 * 1024
+const MAX_OBJECT_BYTES = 64 * 1024 * 1024
 const encoder = new TextEncoder()
 
 const LocalFileObservationSchema = Schema.Struct({
@@ -146,7 +147,7 @@ function objectSize(bytes: Uint8Array, path: string): void {
   if (bytes.byteLength > MAX_OBJECT_BYTES)
     throw fail(
       "SHARED_OBJECT_TOO_LARGE",
-      "This shared snapshot path supports objects up to 64 KiB.",
+      "This shared snapshot path supports native body observations up to 64 MiB.",
       {
         path,
         bytes: bytes.byteLength,
@@ -264,6 +265,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const frozenMembers = routerMembers?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
     const generation = yield* store.reserveCacheGeneration(input.scope, record.id)
     const index = yield* querySharedSkillIndex(input.library, selected, raw)
+    const fileLinks = yield* checked(() =>
+      parseSharedFileLinks(index.file_links, input.library.library_id),
+    )
     if (index.skill_id !== record.locator.skill_id)
       return yield* Effect.fail(
         fail("SHARED_FILE_SCOPE", "Shared Skill identity changed during metadata decoding."),
@@ -881,7 +885,14 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             kind: "custom",
             file_id: binding.file_id,
             path: binding.path,
-            bytes: body,
+            bytes: encoder.encode(
+              materializeSharedNativeFile(
+                new TextDecoder().decode(body),
+                binding.path,
+                bindings,
+                fileLinks,
+              ),
+            ),
           })
           break
         case "tombstone":
@@ -913,15 +924,31 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     )
     const completeFiles = yield* checked(() =>
       composed.files.map((file) => {
-        if (file.path !== record.entrypoint) return file
+        if (file.path !== record.entrypoint)
+          return /\.md$/iu.test(file.path)
+            ? {
+                ...file,
+                bytes: encoder.encode(
+                  materializeSharedNativeFile(
+                    new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
+                    file.path,
+                    bindings,
+                    fileLinks,
+                  ),
+                ),
+              }
+            : file
         const document = importDocument(file, {
           name: record.name,
           description: record.description,
         })
         const body =
-          document.body +
+          materializeSharedNativeFile(document.body, file.path, bindings, fileLinks) +
           (routerMembers === undefined ? "" : renderSharedRouterMembers(routerMembers))
-        return canonicalMain(record.name, record.description, body, file)
+        // Native main pages carry their editable body, not the source's YAML
+        // header. Keep extra fixed-source metadata when the body is customized.
+        const previous = sourceFiles.find((source) => source.path === record.entrypoint) ?? file
+        return canonicalMain(record.name, record.description, body, previous)
       }),
     )
     // Only the final tree can resolve references: native custom files may repair

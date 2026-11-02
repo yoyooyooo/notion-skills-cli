@@ -9,6 +9,8 @@ import {
   restoreSharedSnapshotHistory,
   validateSharedSnapshotHistoryPlan,
   SHARED_HISTORY_CHUNK_BYTES,
+  inspectSharedSnapshotHistory,
+  materializeSharedSnapshotSource,
   type SharedSnapshotHistoryPlan,
 } from "../src/shared-snapshot-history.ts"
 import {
@@ -20,6 +22,7 @@ import {
   encode,
   rich,
 } from "./shared-snapshot-fixture.ts"
+import { resolveSelectedSharedSource } from "../src/shared-selected-source.ts"
 
 type Fixture = ReturnType<typeof sharedSnapshotFixture>
 function required<T>(value: T | undefined, label: string): T {
@@ -71,6 +74,91 @@ async function archiveFixture() {
   f.clearCalls()
   return { f, snapshot, expected, large }
 }
+
+describe("Notion-resident fixed snapshot sources", () => {
+  test("metadata inspection stays body-free and a cold complete tree uses a batched object query", async () => {
+    const { f, snapshot, expected } = await archiveFixture()
+    const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
+    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
+    f.objects.clear()
+    f.clearCalls()
+    const header = await f.run(
+      inspectSharedSnapshotHistory(library, { skillPageId: skillPage, pinId: plan.pin_id }),
+    )
+    expect(header.manifest).toEqual(plan.manifest)
+    expect(f.calls).toHaveLength(1)
+    f.clearCalls()
+    const files = await f.run(
+      materializeSharedSnapshotSource(library, {
+        skillPageId: skillPage,
+        pinId: plan.pin_id,
+        manifest: header.manifest,
+      }),
+    )
+    expect(new Map(files.map((file) => [file.path, file.bytes]))).toEqual(expected)
+    expect(f.calls).toHaveLength(1)
+    expect(f.writeCount()).toBe(0)
+    f.clearCalls()
+    expect(
+      await f.run(
+        materializeSharedSnapshotSource(library, {
+          skillPageId: skillPage,
+          pinId: plan.pin_id,
+          manifest: header.manifest,
+        }),
+      ),
+    ).toEqual(files)
+    expect(f.calls).toHaveLength(0)
+  })
+
+  test("selected-source resolution reads only exact Notion records with no Git or old-store fallback", async () => {
+    const { f, snapshot, expected } = await archiveFixture()
+    const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
+    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
+    f.objects.clear()
+    f.clearCalls()
+    const source = await f.run(resolveSelectedSharedSource(library, skillPage, plan.pin_id))
+    expect(source.source_id).toBe(plan.pin_id)
+    expect(source.revision).toBe(plan.pin_id)
+    expect(source.local_paths).toEqual([])
+    expect(new Map(source.files.map((file) => [file.path, file.bytes]))).toEqual(expected)
+    expect(f.calls).toHaveLength(2)
+    expect(f.writeCount()).toBe(0)
+  })
+
+  test("a different Skill cannot borrow a retained source manifest", async () => {
+    const { f, snapshot } = await archiveFixture()
+    const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
+    const error = await f.run(
+      Effect.flip(
+        materializeSharedSnapshotSource(library, {
+          skillPageId: id(999),
+          pinId: plan.pin_id,
+          manifest: plan.manifest,
+        }),
+      ),
+    )
+    expect(error.code).toBe("SHARED_HISTORY_SCOPE")
+  })
+
+  test("corrupt local bytes are rejected rather than silently repaired from current content", async () => {
+    const { f, snapshot } = await archiveFixture()
+    const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
+    f.objects.set(`objects/${snapshot.files[0]!.sha256}`, encode("corrupt"))
+    f.clearCalls()
+    const error = await f.run(
+      Effect.flip(
+        materializeSharedSnapshotSource(library, {
+          skillPageId: skillPage,
+          pinId: plan.pin_id,
+          manifest: plan.manifest,
+        }),
+      ),
+    )
+    expect(error.code).toBe("SHARED_HISTORY_INVALID")
+    expect(f.calls).toHaveLength(0)
+  })
+})
 
 function kind(row: Record<string, unknown>): string {
   return String(property(property(property(row.properties).kind).select).name)

@@ -53,6 +53,7 @@ const s = {
   "Skill ID": "skill-id",
   "Main File ID": "main-file",
   Source: "source",
+  References: "references",
   Projection: "projection",
 }
 const library: SharedLibrary = {
@@ -227,6 +228,7 @@ function client(
             [s["Skill ID"]]: rich("skill-write"),
             [s["Main File ID"]]: rich(fileId),
             [s.Source]: rich(shared.source),
+            [s.References]: rich(""),
             [s.Projection]: rich(""),
           }
           return Effect.succeed({

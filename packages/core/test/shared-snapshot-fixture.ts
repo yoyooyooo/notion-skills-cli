@@ -80,6 +80,7 @@ const relation = (propertyId: string) => ({
 function matches(row: Record<string, unknown>, condition: unknown): boolean {
   const filter = property(condition)
   if (Array.isArray(filter.and)) return filter.and.every((part) => matches(row, part))
+  if (Array.isArray(filter.or)) return filter.or.some((part) => matches(row, part))
   const key = filter.property
   if (typeof key !== "string") return false
   const value = property(property(row.properties)[key])
@@ -123,6 +124,7 @@ export function sharedSnapshotFixture(
       database_id: library.skills.database_id,
     },
     properties: {
+      references: rich("references", ""),
       title: title("Managed Name"),
       description: rich("description", "Managed description"),
       kind: selection("kind", "skill"),

@@ -37,6 +37,7 @@ export interface SharedSkillIndex {
   readonly enabled: boolean
   readonly default_context: boolean
   readonly source_reference: string
+  readonly file_links: string
   readonly main: SharedBodyBinding
   readonly files: readonly FileRecord[]
 }
@@ -118,6 +119,7 @@ export function querySharedSkillIndex(
           enabled: checkbox("Enabled"),
           default_context: checkbox("Default Context"),
           source_reference: rich("Source"),
+          file_links: rich("References"),
           main: {
             file_id: identity(rich("Main File ID"), "Main File ID"),
             page_id: id,

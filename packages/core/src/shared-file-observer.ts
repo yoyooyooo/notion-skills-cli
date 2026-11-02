@@ -29,6 +29,7 @@ import {
   type SharedBodyWritePlan,
 } from "./shared-body-write.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
+import { loadSharedRetainedByteFile } from "./shared-snapshot-history.ts"
 
 type EffectValue<T> = T extends Effect.Effect<infer A, infer _E, infer _R> ? A : never
 type ObservedBody = EffectValue<ReturnType<typeof observeSharedBody>>
@@ -60,12 +61,26 @@ export type ObserveSharedFileInput<R = never> = {
   readonly beforePlanWrite?: (plan: SharedObservationPlan) => Effect.Effect<void, SkillsError, R>
 }
 
-const RetainedMarkdownSchema = Schema.Struct({
+const InlineRetainedMarkdownSchema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("normalized_markdown"),
   normalization_version: Schema.Literal(1),
   markdown: Schema.String,
 })
+const ChunkedRetainedMarkdownSchema = Schema.Struct({
+  version: Schema.Literal(2),
+  kind: Schema.Literal("chunked_normalized_markdown"),
+  normalization_version: Schema.Literal(1),
+  sha256: Schema.String,
+  bytes: Schema.Number,
+  chunks: Schema.Array(
+    Schema.Struct({ object_id: Schema.String, sha256: Schema.String, bytes: Schema.Number }),
+  ),
+})
+const RetainedMarkdownSchema = Schema.Union([
+  InlineRetainedMarkdownSchema,
+  ChunkedRetainedMarkdownSchema,
+])
 
 function checked<A>(action: () => A): Effect.Effect<A, SkillsError> {
   return Effect.try({
@@ -263,10 +278,29 @@ export function loadRetainedBody(
         ),
       )
     const payload = yield* checked(() => decode(RetainedMarkdownSchema, record.payload))
+    const retainedMarkdown =
+      payload.version === 1
+        ? payload.markdown
+        : yield* Effect.gen(function* () {
+            if (payload.sha256 !== content.sha256 || payload.bytes !== content.bytes)
+              return yield* Effect.fail(
+                fail(
+                  "RETAINED_BODY_INVALID",
+                  "The retained body header does not match its fixed content reference.",
+                ),
+              )
+            const bytes = yield* loadSharedRetainedByteFile(library, {
+              skillPageId,
+              sha256: payload.sha256,
+              bytes: payload.bytes,
+              chunks: payload.chunks,
+            })
+            return yield* checked(() => new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+          })
     const markdown = yield* checked(() =>
-      normalizeObservedBody(payload.markdown, payload.normalization_version),
+      normalizeObservedBody(retainedMarkdown, payload.normalization_version),
     )
-    if (markdown !== payload.markdown)
+    if (markdown !== retainedMarkdown)
       return yield* Effect.fail(
         fail(
           "RETAINED_BODY_INVALID",

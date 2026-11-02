@@ -8,6 +8,11 @@ import { loadSharedSourceOptions } from "./shared-source-config.ts"
 import { materializeFixedGithubSource } from "./shared-source-materialization.ts"
 import { resolveSourcePlanBinding } from "./shared-source-plan-binding.ts"
 import {
+  inspectSharedSnapshotHistory,
+  materializeSharedSnapshotSource,
+} from "./shared-snapshot-history.ts"
+import { inspectRetainedSource, materializeRetainedSource } from "./shared-retained-source.ts"
+import {
   inspectSharedSourcePlan,
   materializeSharedSourcePlan,
   type SharedSourcePlanOptions,
@@ -19,6 +24,29 @@ export function resolveSelectedSharedSourceReference(
   input: { readonly skillPageId: string; readonly sourceId: string },
 ) {
   return Effect.gen(function* () {
+    if (/^bundle-[a-f0-9]{64}$/u.test(input.sourceId)) {
+      const binding = yield* inspectRetainedSource(library, input)
+      return {
+        kind: "retained_bundle" as const,
+        source_id: input.sourceId,
+        revision: input.sourceId,
+        paths: binding.files.map((file) => file.path),
+        binding,
+      }
+    }
+    if (/^snapshot-[a-f0-9]{64}$/u.test(input.sourceId)) {
+      const binding = yield* inspectSharedSnapshotHistory(library, {
+        skillPageId: input.skillPageId,
+        pinId: input.sourceId,
+      })
+      return {
+        kind: "snapshot" as const,
+        source_id: binding.pin_id,
+        revision: binding.pin_id,
+        paths: binding.manifest.files.map((file) => file.path),
+        binding,
+      }
+    }
     if (/^source-[a-f0-9]{64}$/u.test(input.sourceId)) {
       const binding = yield* resolveSourceBinding(library, input)
       return {
@@ -68,6 +96,34 @@ export function resolveSelectedSharedSource(
   return Effect.gen(function* () {
     const selected = yield* resolveSelectedSharedSourceReference(library, { skillPageId, sourceId })
     const metrics = (yield* Notion).metrics ?? sourceOptions?.metrics
+    if (selected.kind === "retained_bundle") {
+      const files = yield* materializeRetainedSource(library, {
+        skillPageId,
+        sourceId,
+        source: selected.binding,
+      })
+      return {
+        source_id: sourceId,
+        revision: sourceId,
+        paths: selected.paths,
+        files,
+        local_paths: [] as string[],
+      }
+    }
+    if (selected.kind === "snapshot") {
+      const files = yield* materializeSharedSnapshotSource(library, {
+        skillPageId,
+        pinId: sourceId,
+        manifest: selected.binding.manifest,
+      })
+      return {
+        source_id: sourceId,
+        revision: selected.revision,
+        paths: selected.paths,
+        files,
+        local_paths: [] as string[],
+      }
+    }
     if (selected.kind === "git") {
       const materialized = yield* materializeFixedGithubSource(selected.binding, { metrics })
       const restricted = new Set(

@@ -556,6 +556,172 @@ function assembleFiles(manifest: SharedSnapshotManifest, chunks: ReadonlyMap<str
   )
 }
 
+/** Read the identity and layout of a retained snapshot without downloading its
+ * byte objects. A stored snapshot may also be selected as a complete fixed base.
+ * This is independent of the original machine and never consults a legacy store.
+ */
+export function inspectSharedSnapshotHistory(
+  library: SharedLibrary,
+  input: { readonly skillPageId: string; readonly pinId: string },
+) {
+  return Effect.gen(function* () {
+    if (
+      !/^snapshot-[0-9a-f]{64}$/u.test(input.pinId) ||
+      pageId(input.skillPageId) !== input.skillPageId
+    )
+      return yield* Effect.fail(invalid("Select an exact retained snapshot and Skill page."))
+    const records = yield* querySharedRecords(library, {
+      skillPageId: input.skillPageId,
+      kind: "snapshot",
+      entityId: input.pinId,
+    })
+    const record = yield* checked(() => exactRecord(records, input.pinId))
+    const verified = yield* verifiedManifest(
+      library,
+      record.payload,
+      input.pinId,
+      input.skillPageId,
+    )
+    return { pin_id: input.pinId, ...verified }
+  })
+}
+
+/** Exact byte object reuse for a large native retained body. Header and every
+ * chunk remain independently checksum-bound; no current-page fallback exists. */
+export function loadSharedRetainedByteFile(
+  library: SharedLibrary,
+  input: {
+    readonly skillPageId: string
+    readonly sha256: string
+    readonly bytes: number
+    readonly chunks: readonly Chunk[]
+  },
+) {
+  return Effect.gen(function* () {
+    const ids = new Set<string>()
+    let length = 0
+    if (
+      !/^[a-f0-9]{64}$/u.test(input.sha256) ||
+      !Number.isSafeInteger(input.bytes) ||
+      input.bytes < 0 ||
+      input.bytes > 64 * 1024 * 1024
+    )
+      return yield* Effect.fail(invalid("Invalid retained body size or checksum."))
+    for (const [index, chunk] of input.chunks.entries()) {
+      if (
+        chunk.object_id !== `chunk-${chunk.sha256}` ||
+        !/^[a-f0-9]{64}$/u.test(chunk.sha256) ||
+        !Number.isSafeInteger(chunk.bytes) ||
+        chunk.bytes <= 0 ||
+        chunk.bytes > SHARED_HISTORY_CHUNK_BYTES ||
+        (index < input.chunks.length - 1 && chunk.bytes !== SHARED_HISTORY_CHUNK_BYTES)
+      )
+        return yield* Effect.fail(invalid("Invalid retained body chunk layout."))
+      ids.add(chunk.object_id)
+      length += chunk.bytes
+    }
+    if (length !== input.bytes)
+      return yield* Effect.fail(invalid("Retained body chunks do not cover the complete bytes."))
+    const records: SharedRecord[] = []
+    const selected = [...ids]
+    for (let at = 0; at < selected.length; at += 80)
+      records.push(
+        ...(yield* querySharedRecords(library, {
+          skillPageId: input.skillPageId,
+          kind: "object",
+          entityIds: selected.slice(at, at + 80),
+          payloadContainsBody: true,
+        })),
+      )
+    const bytes = new Uint8Array(input.bytes)
+    let offset = 0
+    for (const chunk of input.chunks) {
+      const record = yield* checked(() =>
+        exactRecord(
+          records.filter((item) => item.record_id === chunk.object_id),
+          chunk.object_id,
+        ),
+      )
+      const value = yield* verifiedObject(record.payload, chunk)
+      bytes.set(value.bytes, offset)
+      offset += value.bytes.length
+    }
+    if ((yield* sha256(bytes)) !== input.sha256)
+      return yield* Effect.fail(invalid("Retained body assembly checksum failed."))
+    return bytes
+  })
+}
+
+/** Materialize a fixed Notion-resident base with complete byte verification.
+ * Valid local objects avoid body transport. Cold object acquisition is one
+ * paginated Skill-scoped query, not one request for each resource or chunk.
+ */
+export function materializeSharedSnapshotSource(
+  library: SharedLibrary,
+  input: {
+    readonly skillPageId: string
+    readonly pinId: string
+    readonly manifest: SharedSnapshotManifest
+  },
+) {
+  return Effect.gen(function* () {
+    const { manifest, chunks } = yield* verifiedManifest(
+      library,
+      input.manifest,
+      input.pinId,
+      input.skillPageId,
+    )
+    const store = yield* Store
+    const available = new Map<string, Uint8Array>()
+    const missing: SharedSnapshotManifest["files"][number][] = []
+    for (const file of manifest.files) {
+      const cached = yield* store.readBytes(`objects/${file.sha256}`).pipe(Effect.result)
+      if (cached._tag === "Failure") {
+        if (cached.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(cached.failure)
+        missing.push(file)
+      } else {
+        if (cached.success.length !== file.bytes || (yield* sha256(cached.success)) !== file.sha256)
+          return yield* Effect.fail(invalid("A cached source object failed its checksum."))
+        available.set(file.path, cached.success)
+      }
+    }
+    if (missing.length > 0) {
+      const requiredIds = [
+        ...new Set(missing.flatMap((file) => file.chunks.map((chunk) => chunk.object_id))),
+      ]
+      const records: SharedRecord[] = []
+      for (let at = 0; at < requiredIds.length; at += 80)
+        records.push(
+          ...(yield* querySharedRecords(library, {
+            skillPageId: input.skillPageId,
+            kind: "object",
+            entityIds: requiredIds.slice(at, at + 80),
+            payloadContainsBody: true,
+          })),
+        )
+      const loaded = new Map<string, Uint8Array>()
+      for (const chunk of chunks.values()) {
+        if (!missing.some((file) => file.chunks.some((item) => item.object_id === chunk.object_id)))
+          continue
+        const record = yield* checked(() =>
+          exactRecord(
+            records.filter((item) => item.record_id === chunk.object_id),
+            chunk.object_id,
+          ),
+        )
+        const verified = yield* verifiedObject(record.payload, chunk)
+        loaded.set(chunk.object_id, verified.bytes)
+      }
+      const files = yield* assembleFiles({ ...manifest, files: missing }, loaded)
+      for (const file of files) {
+        available.set(file.path, file.bytes)
+        yield* store.writeBytes(`objects/${yield* sha256(file.bytes)}`, file.bytes)
+      }
+    }
+    return manifest.files.map((file) => ({ path: file.path, bytes: available.get(file.path)! }))
+  })
+}
+
 /**
  * The caller validates current authentication and library access before using this primitive.
  * Restore reads only exact Records facts and returns frozen bytes; it performs no local writes,

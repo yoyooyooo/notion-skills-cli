@@ -134,7 +134,7 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 新建库可用 `ctl library init --parent PARENT_PAGE_ID`；它不迁移旧内容或更改默认库。普通 Skill 文件夹不需要手写 manifest。原生创建支持 UTF-8 文件，完整文件集验证后才启用新 Skill。`apply` 可把已有绑定文件和显式属性变更冻结为一个顺序执行的批次；它不是原子事务，后项失败时前项可能已经完成。当前只支持单独的一项新增或删除，混合或多项布局变更会在写入前拒绝。文件生命周期使用 `ctl library file add/delete/move/restore-follow`。
 
-三张 Database 均为独立非 inline 页面，显示名直接使用 **Skills、Files、Records**，无需 library 后缀。初始化标识与最终 descriptor 保存内部身份，改名不影响正常附着或原操作复查。已确认的收敛目标是唯一三表库，不长期双写、不隐式回退旧模型；完整数据迁移与日用入口切换分别验收。
+三张 Database 均为独立非 inline 页面，显示名直接使用 **Skills、Files、Records**，无需 library 后缀。初始化标识与最终 descriptor 保存内部身份，改名不影响正常附着或原操作复查。批准范围的完整迁移与pro日用切换现已验收：300个内容入口、818个可编辑支持页、完整资源与历史统一到三表；两张清空的旧业务表已可恢复退役。CLI/Pi使用新入口，mini独立内容验证通过，不长期双写、不隐式回退旧模型。日常明确使用 `--database skills` 或实际库ID；裸 `list` 仍是工作区发现。此用户部署不代表npm公开发布、OMP/Tern或新真实模型任务已通过，见[最终检查点](docs/shared-ssot-architecture.md)。
 
 当前正式迁入检查点已累计 12 个完整 Skill、18 个业务文件，保留来源资源、原标签/默认供给和入口额外 frontmatter。跨 Skill 引用与未结清原生写入仍明确阻塞；这不是全量迁移或全局 CLI/Pi 切换完成。详见[当前迁移范围](docs/shared-ssot-architecture.md)。
 

@@ -101,7 +101,7 @@ export const sharedFileProperties = (skillsDataSourceId: string) => ({
 export const sharedRecordProperties = (skillsDataSourceId: string) => ({
   Name: { title: {} },
   "Record ID": rich,
-  Kind: select(["file_event", "object", "source", "snapshot", "profile", "operation"]),
+  Kind: select(["file_event", "object", "source", "snapshot", "profile", "operation", "archive"]),
   "Entity ID": rich,
   Hash: rich,
   Payload: rich,

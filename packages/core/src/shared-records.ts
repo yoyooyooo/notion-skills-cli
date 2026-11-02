@@ -11,6 +11,7 @@ export const SharedRecordKindSchema = Schema.Literals([
   "snapshot",
   "profile",
   "operation",
+  "archive",
 ])
 export type SharedRecordKind = typeof SharedRecordKindSchema.Type
 
@@ -38,7 +39,12 @@ export type SharedProfileRecord = Omit<SharedRecord, "kind" | "skill_page_id"> &
   readonly kind: "profile"
   readonly skill_page_id: null
 }
-type AnySharedRecord = SharedRecord | SharedProfileRecord
+/** Library-wide retained history is not a fake Skill or a Profile revision. */
+export type SharedArchiveRecord = Omit<SharedRecord, "kind" | "skill_page_id"> & {
+  readonly kind: "archive"
+  readonly skill_page_id: null
+}
+type AnySharedRecord = SharedRecord | SharedProfileRecord | SharedArchiveRecord
 
 // Enabled only by current consumption. Authoring and explicit reconcile keep
 // their existing behavior, including dry-run's no-new-local-state contract.
@@ -68,6 +74,8 @@ export type QuerySharedRecordsInput = {
   readonly skillPageId: string
   readonly kind?: SharedRecordKind
   readonly entityId?: string
+  /** Exact bounded set for immutable byte acquisition, never an unfiltered object scan. */
+  readonly entityIds?: readonly string[]
   readonly recordId?: string
   /** Operation plans can retain original body bytes despite their metadata-shaped endpoint. */
   readonly payloadContainsBody?: true
@@ -99,7 +107,13 @@ export type AppendSharedProfileRecordInput = {
 }
 type LibraryProfileSelection = QuerySharedProfileRecordsInput & {
   readonly libraryProfile: true
+  readonly libraryArchive?: false
   readonly kind?: "profile"
+}
+type LibraryArchiveSelection = QuerySharedProfileRecordsInput & {
+  readonly libraryProfile: true
+  readonly libraryArchive: true
+  readonly kind?: "archive"
 }
 type AppendRecordInput =
   | (AppendSharedRecordInput & { readonly libraryProfile: false })
@@ -107,6 +121,12 @@ type AppendRecordInput =
       readonly libraryProfile: true
       readonly kind: "profile"
       readonly payloadContainsBody?: never
+    })
+  | (AppendSharedProfileRecordInput & {
+      readonly libraryProfile: true
+      readonly libraryArchive: true
+      readonly kind: "archive"
+      readonly payloadContainsBody?: true
     })
 
 type Field = "Name" | "Record ID" | "Kind" | "Entity ID" | "Hash" | "Payload" | "Skill"
@@ -307,7 +327,7 @@ function richText(field: Record<string, unknown>, label: string) {
 }
 
 type SkillRecordSelection = QuerySharedRecordsInput & { readonly libraryProfile?: false }
-type SelectedRecords = SkillRecordSelection | LibraryProfileSelection
+type SelectedRecords = SkillRecordSelection | LibraryProfileSelection | LibraryArchiveSelection
 
 type RecordHeader = Omit<AnySharedRecord, "operation_id" | "payload"> & {
   readonly last_edited_time: string | null
@@ -355,8 +375,11 @@ function decodeHeader(
     throw invalid("Record must have a complete Skill relation.")
   let skillPageId: string | null
   if (selected.libraryProfile === true) {
-    if (kind !== "profile" || relation.relation.length !== 0)
-      throw invalid("A library Profile must have Kind=profile and an empty Skill relation.")
+    const requiredKind = selected.libraryArchive === true ? "archive" : "profile"
+    if (kind !== requiredKind || relation.relation.length !== 0)
+      throw invalid(
+        `A library ${requiredKind} requires its exact Kind and an empty Skill relation.`,
+      )
     skillPageId = null
   } else {
     if (relation.relation.length !== 1)
@@ -376,6 +399,9 @@ function decodeHeader(
   if (
     (selected.recordId !== undefined && recordId !== selected.recordId) ||
     (selected.entityId !== undefined && entityId !== selected.entityId) ||
+    ("entityIds" in selected &&
+      selected.entityIds !== undefined &&
+      !selected.entityIds.includes(entityId)) ||
     (selected.kind !== undefined && kind !== selected.kind)
   )
     throw invalid("Records query returned a row outside the selected filter.", { page_id: pageId })
@@ -418,7 +444,7 @@ function recordFromEnvelope(header: RecordHeader, encoded: string) {
   }
   const record: AnySharedRecord =
     header.skill_page_id === null
-      ? { ...common, kind: "profile", skill_page_id: null }
+      ? { ...common, kind: header.kind === "archive" ? "archive" : "profile", skill_page_id: null }
       : { ...common, skill_page_id: header.skill_page_id }
   return { canonical: parsed.canonical, record }
 }
@@ -502,6 +528,23 @@ function queryRecordRows(
           property: ids["Entity ID"],
           rich_text: { equals: identifier(selected.entityId, "Entity ID") },
         })
+      if ("entityIds" in selected && selected.entityIds !== undefined) {
+        if (
+          selected.entityId !== undefined ||
+          selected.entityIds.length === 0 ||
+          selected.entityIds.length > 80 ||
+          new Set(selected.entityIds).size !== selected.entityIds.length
+        )
+          throw invalid(
+            "Select between one and 80 distinct exact Entity IDs without a single-ID filter.",
+          )
+        filters.push({
+          or: selected.entityIds.map((value) => ({
+            property: ids["Entity ID"],
+            rich_text: { equals: identifier(value, "Entity ID") },
+          })),
+        })
+      }
       if (selected.recordId !== undefined)
         filters.push({
           property: ids["Record ID"],
@@ -717,6 +760,12 @@ function queryRecords(
 ): Effect.Effect<readonly SharedProfileRecord[], SkillsError, Notion | Crypto.Crypto>
 function queryRecords(
   library: SharedLibrary,
+  selected: LibraryArchiveSelection,
+  content?: "body",
+  reusePayload?: boolean,
+): Effect.Effect<readonly SharedArchiveRecord[], SkillsError, Notion | Crypto.Crypto>
+function queryRecords(
+  library: SharedLibrary,
   selected: SelectedRecords,
   content?: "body",
   reusePayload = true,
@@ -741,7 +790,7 @@ function queryRecords(
  * Object content requires an explicit entity. Hash verification is local.
  */
 export function querySharedRecords(library: SharedLibrary, input: QuerySharedRecordsInput) {
-  if (input.kind === "object" && input.entityId === undefined)
+  if (input.kind === "object" && input.entityId === undefined && input.entityIds === undefined)
     return Effect.fail(
       invalid(
         "Object records require an explicit Entity ID; bulk ownership discovery never loads object bodies.",
@@ -760,6 +809,23 @@ export function querySharedProfileRecords(
   input: QuerySharedProfileRecordsInput = {},
 ) {
   return queryRecords(library, { ...input, libraryProfile: true, kind: "profile" })
+}
+
+/** Archive headers are separate from Profile discovery and normal Skill reads. */
+export function querySharedArchiveRecords(
+  library: SharedLibrary,
+  input: QuerySharedProfileRecordsInput = {},
+) {
+  return queryRecords(
+    library,
+    {
+      ...input,
+      libraryProfile: true,
+      libraryArchive: true,
+      kind: "archive",
+    },
+    "body",
+  )
 }
 
 function textChunks(value: string) {
@@ -814,7 +880,17 @@ function appendRecord(
     // Do not filter by kind/entity: that would hide a conflicting fact using this ID.
     const existing =
       prepared.skillPageId === null
-        ? yield* queryRecords(library, { libraryProfile: true, recordId: prepared.recordId })
+        ? prepared.kind === "archive"
+          ? yield* queryRecords(
+              library,
+              {
+                libraryProfile: true,
+                libraryArchive: true,
+                recordId: prepared.recordId,
+              },
+              "body",
+            )
+          : yield* queryRecords(library, { libraryProfile: true, recordId: prepared.recordId })
         : yield* queryRecords(
             library,
             { skillPageId: prepared.skillPageId, recordId: prepared.recordId },
@@ -880,12 +956,20 @@ function appendRecord(
       )
     const selection: SelectedRecords =
       prepared.skillPageId === null
-        ? {
-            libraryProfile: true,
-            recordId: prepared.recordId,
-            kind: "profile",
-            entityId: prepared.entityId,
-          }
+        ? prepared.kind === "archive"
+          ? {
+              libraryProfile: true,
+              libraryArchive: true,
+              recordId: prepared.recordId,
+              kind: "archive",
+              entityId: prepared.entityId,
+            }
+          : {
+              libraryProfile: true,
+              recordId: prepared.recordId,
+              kind: "profile",
+              entityId: prepared.entityId,
+            }
         : {
             skillPageId: prepared.skillPageId,
             recordId: prepared.recordId,
@@ -943,8 +1027,29 @@ export function appendSharedProfileRecord(
 ): Effect.Effect<SharedProfileRecord, SkillsError, Notion | Crypto.Crypto> {
   return appendRecord(library, { ...input, libraryProfile: true, kind: "profile" }).pipe(
     Effect.flatMap((record) =>
-      record.skill_page_id !== null
+      record.skill_page_id !== null || record.kind !== "profile"
         ? Effect.fail(invalid("A library Profile cannot have a Skill binding."))
+        : Effect.succeed(record),
+    ),
+  )
+}
+
+/** An immutable library archive keeps original history without claiming it is
+ * current state or a successfully completed former operation. */
+export function appendSharedArchiveRecord(
+  library: SharedLibrary,
+  input: AppendSharedProfileRecordInput,
+): Effect.Effect<SharedArchiveRecord, SkillsError, Notion | Crypto.Crypto> {
+  return appendRecord(library, {
+    ...input,
+    libraryProfile: true,
+    libraryArchive: true,
+    kind: "archive",
+    payloadContainsBody: true,
+  }).pipe(
+    Effect.flatMap((record) =>
+      record.skill_page_id !== null || record.kind !== "archive"
+        ? Effect.fail(invalid("A library archive cannot have a Skill binding or another Kind."))
         : Effect.succeed(record),
     ),
   )

@@ -7,7 +7,10 @@ import { Notion } from "../src/notion.ts"
 import type { SharedLibrary } from "../src/shared-library.ts"
 import {
   appendSharedRecord,
+  appendSharedArchiveRecord,
   canonicalSharedJson,
+  querySharedArchiveRecords,
+  querySharedProfileRecords,
   querySharedRecords,
   type AppendSharedRecordInput,
 } from "../src/shared-records.ts"
@@ -64,6 +67,7 @@ function row(
     skillIds?: readonly string[]
     relationHasMore?: boolean
     dataSourceId?: string
+    kind?: string
   } = {},
 ) {
   const properties: Record<string, unknown> = {
@@ -73,7 +77,7 @@ function row(
       title: [{ plain_text: "Unimportant display name" }],
     },
     "Record ID": rich(propertyIds["Record ID"], options.recordId ?? "record-1"),
-    Kind: { id: propertyIds.Kind, type: "select", select: { name: "file_event" } },
+    Kind: { id: propertyIds.Kind, type: "select", select: { name: options.kind ?? "file_event" } },
     "Entity ID": rich(propertyIds["Entity ID"], options.entityId ?? "file-1"),
     Hash: rich(propertyIds.Hash, options.hash ?? digest(envelope)),
     Payload: rich(propertyIds.Payload, options.encoded ?? envelope),
@@ -127,6 +131,45 @@ function client(responses: readonly unknown[]) {
 }
 
 describe("append-only shared Records", () => {
+  test("library archives retain exact envelopes with no fake Skill and remain separate from Profiles", async () => {
+    const archive = row({ kind: "archive", skillIds: [] })
+    const api = client([page([]), archive, page([archive]), page([])])
+    const { skillPageId: _skill, kind: _kind, ...input } = defaultInput
+    const created = await api.run(appendSharedArchiveRecord(library, input))
+    expect(created.kind).toBe("archive")
+    expect(created.skill_page_id).toBeNull()
+    expect(created.payload).toEqual({ a: 1, b: 2 })
+    const read = await api.run(querySharedArchiveRecords(library, { recordId: input.recordId }))
+    expect(read).toEqual([created])
+    expect(await api.run(querySharedProfileRecords(library))).toEqual([])
+    const create = property(property(api.calls[1]?.body).properties)
+    expect(property(create[propertyIds.Skill]).relation).toEqual([])
+    expect(api.calls[2]?.body).toMatchObject({
+      filter: {
+        and: [
+          { property: propertyIds.Skill, relation: { is_empty: true } },
+          { property: propertyIds.Kind, select: { equals: "archive" } },
+          { property: propertyIds["Record ID"], rich_text: { equals: input.recordId } },
+        ],
+      },
+    })
+  })
+
+  test("archives reject wrong-kind and Skill-bound rows and unknown create never authorizes replay", async () => {
+    for (const wrong of [row({ kind: "profile", skillIds: [] }), row({ kind: "archive" })]) {
+      const api = client([page([wrong])])
+      await expect(api.run(querySharedArchiveRecords(library))).rejects.toThrow()
+      expect(api.calls).toHaveLength(1)
+    }
+    const { skillPageId: _skill, kind: _kind, ...input } = defaultInput
+    const api = client([page([]), fail("WRITE_OUTCOME_UNKNOWN", "lost"), page([])])
+    await expect(api.run(appendSharedArchiveRecord(library, input))).rejects.toThrow("lost")
+    await expect(
+      api.run(appendSharedArchiveRecord(library, { ...input, mode: "reconcile" })),
+    ).rejects.toThrow("never repeats")
+    expect(api.calls.filter((call) => call.path === "v1/pages")).toHaveLength(1)
+  })
+
   test("creates one verified record using canonical envelope bytes and stable property IDs", async () => {
     const api = client([page([]), row()])
     const result = await api.run(appendSharedRecord(library, defaultInput))

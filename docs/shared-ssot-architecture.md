@@ -4,6 +4,39 @@
 
 ## 状态与证据
 
+### 当前交付：300 个内容入口完整迁入唯一三表，日用入口已切换
+
+2026-11-02 完成用户批准的完整生产数据迁移。当前正式库只使用指定父页下的 **Skills、Files、Records** 三张独立全页面 Database，显示名不带 library 后缀。旧内容表和旧来源表各自完整查询为零遗留行后，已可恢复地移入 Notion 回收站。以下是当前结果；后面的 12 项、3 项和旧恢复试点均为历史检查点，不再表示当前生产库尚未迁完。
+
+| 最终对账 | 数量与结论 |
+| --- | --- |
+| Skills | 300 项：287 个 Skill、13 个 Router；298 项启用，2 项原本退役内容保持禁用 |
+| Files | 818 个原生支持文件行；主文仍在 Skills，逻辑路径和正向 Skill Relation 完整 |
+| 完整业务文件 | 1,874 个，39,140,756 字节；含脚本、二进制和 source-only 资源，不强行转成可编辑 Markdown 页 |
+| Records | 4,902 条物理/逻辑记录，无重复逻辑身份；archive 76、operation 33、object 3,076、file_event 1,118、source 599 |
+| 来源与历史 | 59 个来源配置完整保留；2,529 个历史快照、6,285 个内容对象及旧操作保存在 Notion 归档，三个归档均下载复验 |
+| 完整性对账 | 核对全部 Records envelope hash、4,628 份必要事实、全部300份资源包、文件路径/字节/绑定/Metadata/成员关系 |
+| 原生正文 | 搬迁的1,103份当前正文逐字节读回通过；另12个先前完整副本完成当前资源收束、read/export及旧pin保留 |
+| 公开 CLI | 24个代表性用例完整read/export通过，包含全部13个Router；原12份完整副本另行验证，不冒充300项各自跑过完整CLI |
+| 独立物理机器 | mini用自身认证、空状态/缓存及安装包，读到298项目录；Resin、archify全部203文件及Pstack56成员索引与pro哈希/快照一致；未复制凭据/SQLite/内容 |
+| 安装后真实 Pi | 在本生产库通过metadata-only目录、native read、`/skill:`、`$`、双向切换、重复去重和持久续接；provider为受控验收 |
+
+完成方式是保存原生页面并搬到新 data source，按稳定身份补齐最终元数据和不可变归属；不用重新渲染全部旧正文来复制页面。只有原本空的入口按完整保留的输入补齐。archify读回的两处原生段落包装差异经独立精确审阅接受，原失败预测保留，未放松普通正文写入比较。跨Skill引用通过明确的逐文件引用映射承接，不能以删除链接或猜测basename来通过验收。旧原件、失败副本和未知操作均有Notion归档，不把迁移完成改写为旧请求已成功。
+
+当前完整来源选择为Notion-resident `retained_bundle`：完整manifest和ZIP精确字节块都在Records，冷客户端按精确对象集合批量读取并验证，无旧数据库或Git/provider补齐路径。原始Git/registry/patch/范围配置保留为可审计事实；旧自动发布器不再是当前管理入口，未来来源推进是显式管理操作。原生正文仍持久保持其已确认custom/following归属，修改主文时保留来源的额外frontmatter。记录限额保持64KiB，完整资源和大原生历史正文通过有界块处理，不扩大普通编辑计划的上限。
+
+**pro的日用切换已完成。** `ntn-skills`指向实际安装的新CLI，正式库注册为 `skills`，旧业务库注册与旧upstream配置移除；创建默认值指向新库。日常消费明确使用 `ntn-skills list --database skills`。裸 `list` 仍是工作区发现，`default_database` 不被悄悄重新解释为所有读取的过滤器。首次切换验收误用裸list触发广域发现，已保留超时与本地回退记录，随后以正确显式入口完成切换。Pi source已指向同一新库、安装新Broker，`prefetch:false`保留74项目录但只在选中时加载正文。无关本地技能、规则、插件与凭据不变，已有用户会话未终止；新开/重启Pi后加载新扩展。
+
+实际安装CLI的完整298项目录为5次Metadata，默认74项View为12次Metadata，均零正文/写入/provider；这是本次样本，不是任意规模常量或普遍性能承诺。Router关系超过25项已完整分页。一次Router测试oracle多加了主文末尾换行，已从精确原生正文修正预期；实际数据、CLI输出和旧失败记录均未改写。
+
+独立真实模型 `magpie/group/flash-free` 返回“需要Premium许可”，没有调用读取工具，本次真实模型验收明确失败。不得用受控provider结果或成功HTTP响应替代任务完成，也未切换到未经指定的模型。本次仍完成数据迁移、双机内容消费、实际Pi加载和日用配置切换；OMP/Tern、npm公开发布、全N/k性能矩阵及外部模型许可不纳入已通过结论。AH-498的其它工程矩阵不因本次迁移完成自动Done。
+
+本次共享核心 **940 pass / 69 files**、真实Node SQLite **10 pass**、独立安装消费 **43项**、typecheck与格式检查通过。Broker检查与66项共享适配/View测试通过，验证入口另有19项host/pack/prefetch回归。初次将Node专用测试放进Bun导致的失败及临时网络失败均保留，正确分道/独立重试的通过单独记录，未宣称全仓所有测试已跑。
+
+完整私有输入、原API响应、三表全分页、逐项对账、当前/历史导出、安装包hash、pro/mini和Pi证据保存在checkout外持久目录。统一证据入口为 `complete-data-audit.json`、`daily-cutover-explicit/summary.json`、`retire-old-tables/summary.json` 与 `mini/summary.json`；可复跑边界见[SS18](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md#ss18--complete-single-library-consolidation)。用户指定父页下的四份文档也按本最终状态更新。
+
+### 以下为保留的历史执行检查点
+
 ### 2026-11-02：批量迁入推进到 12 个完整生产 Skill
 
 本轮新增 **9 个 Skill、12 个业务文件**：bro、in-your-own-words、benchmark-checklist、blast-radius、automate-me、create-formal-verification-skill、arena、correct、better-layout。加上前批三项，累计 **12 个完整生产副本、18 个业务文件**。它们是批准目标三表库中的真实记录，不是新建测试库。主文、完整资源、固定 Git commit/root、原 Tags 和 Default Context 均有迁移前后记录；原生文件按已证明的来源保留 following。better-layout 的四个业务文件包括原先只存在于 source archive 中的资源，没有漏掉资源或虚构对应的旧子页。
