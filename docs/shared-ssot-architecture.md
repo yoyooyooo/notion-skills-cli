@@ -4,6 +4,18 @@
 
 ## 状态与证据
 
+### 2026-11-02：批量迁入推进到 12 个完整生产 Skill
+
+本轮新增 **9 个 Skill、12 个业务文件**：bro、in-your-own-words、benchmark-checklist、blast-radius、automate-me、create-formal-verification-skill、arena、correct、better-layout。加上前批三项，累计 **12 个完整生产副本、18 个业务文件**。它们是批准目标三表库中的真实记录，不是新建测试库。主文、完整资源、固定 Git commit/root、原 Tags 和 Default Context 均有迁移前后记录；原生文件按已证明的来源保留 following。better-layout 的四个业务文件包括原先只存在于 source archive 中的资源，没有漏掉资源或虚构对应的旧子页。
+
+一次性迁移证明补齐 source-bundle v2 和 current-metadata v3。v2 对没有原生页的来源文件仍要求 ZIP、旧快照、Git blob 和 authored export 全部相同。v3 仅将 Default Context 与正文归属分离：原完整 guard 可由该布尔值的两种候选精确重建，保留发布时/当前值；来源、成员、修订号与正文不得一起变化。旧 target_mode 作为原始分类标签保留，不引入 source patch/mapping/shared target-set 的新解释。已保存历史证明的校验不变；这些是迁入新模型的离线解释，不是旧库运行态兼容或双写。
+
+新原生投影 v6 在发出写入前预测段落/简单列表换行、裸 HTTP 链接与支持的链接内样式，保留原请求、原文和期望正文。代码、链接目的地及历史 v1–v5 投影保持原语义，读回仍严格相等。主文消费采用既有 canonicalMain 序列化：YAML key 顺序/引号可变化，但额外 frontmatter 和实际正文必须完整；资源保持原始字节。曾将该 YAML 排版差异误判为迁移验证失败的 bro 只补做观察核对，没有第二次创建。
+
+剩余真实阻塞保持可见：ketchup 的 `../bro/SKILL.md` 跨 Skill 引用在创建前拒绝；better-ui 一次原写返回 WRITE_OUTCOME_UNKNOWN，后续只读页面观察为 disabled，原请求未重发；better-accessibility 读回与预先冻结候选不同，保持禁用。一次共享 provider 元数据文件的并发创建冲突发生在目标写入前，已串行化这份共享观察并在独立保留目录完成 better-layout；失败记录不覆盖。该批另三项尚未派发。前批失败、来源语义、跨 Skill 引用、Views/Profile 与完整历史迁入仍不能算作完成。
+
+本轮核心专项 **365 pass / 29 files**、公开 CLI **10 pass / 2 files** 和 typecheck 通过；重叠专项不叠加，未重跑全仓全部矩阵。独立空本地状态逐项核对新副本的固定快照与完整导出；这是同一台 pro 的独立消费者，不冒充第二物理机。完整输入、原始响应、逐项结果及 347 源行更新台账均保存在 checkout 外的持久目录。全局 CLI/Pi 默认配置、旧库原件及长期单轨目标不变：完整数据和依赖核验之前不切断现有日用入口。
+
 ### 最新执行目标：唯一三表库与正式数据迁入
 
 2026-11-02 用户进一步批准：最终仅 Skills、Files、Records 三张业务 Database 参与管理与消费，全部受管内容和共享事实迁入指定父页；不保留长期新旧兼容、双写或隐藏 fallback。旧原件在完整迁移和依赖核验后归档，归档保留不再参与正常读取。Pi 优先，OMP/Tern 继续延期。以下进度是执行检查点，不代表全量切换已完成。

@@ -92,6 +92,11 @@ export async function deriveMigrationPublication(configPath: string) {
     config.version === 1 && config.format === "migration-retained-publication",
     "Use the explicit retained-publication config.",
   )
+  const proofVersion = config.proof_version === undefined ? 1 : config.proof_version
+  requireFact(
+    proofVersion === 1 || proofVersion === 2 || proofVersion === 3,
+    "proof_version must be 1, 2 or 3.",
+  )
   const output = string(config.output, "Choose a fresh output directory.")
   requireFact(isAbsolute(output), "Output must be absolute.")
   try {
@@ -175,8 +180,13 @@ export async function deriveMigrationPublication(configPath: string) {
     })
   }
   const proofInput = {
-    version: 1,
-    policy: "legacy_committed_publication_v1",
+    version: proofVersion,
+    policy:
+      proofVersion === 3
+        ? "legacy_committed_current_metadata_v3"
+        : proofVersion === 2
+          ? "legacy_committed_source_bundle_v2"
+          : "legacy_committed_publication_v1",
     observation: "retained",
     current_terminal_verified: false,
     human_edit_intent_inferred: false,

@@ -67,8 +67,8 @@ export type MigrationConversionInput = Omit<MigrationCreateBindingInput, "files"
   readonly files: readonly MigrationConversionFile[]
   /** Explicitly bound into the candidate, origin and public review digest. */
   readonly execution_policy?: MigrationCopyExecutionPolicy
-  /** Reconstruction uses the saved files' policy; new reviews select policy 5. */
-  readonly projection_version?: Extract<SharedNotionMarkdownVersion, 3 | 4 | 5>
+  /** Reconstruction uses the saved files' policy; new reviews select policy 6. */
+  readonly projection_version?: Extract<SharedNotionMarkdownVersion, 3 | 4 | 5 | 6>
   /** The complete selected fixed tree, including assets that will never be body pages. */
   readonly source_files?: readonly MigrationSourceFile[]
 }
@@ -413,7 +413,7 @@ function migrationProjectionVersion(
 ): NonNullable<MigrationConversionInput["projection_version"]> {
   const version = files[0]?.projection.version
   if (
-    (version !== 3 && version !== 4 && version !== 5) ||
+    (version !== 3 && version !== 4 && version !== 5 && version !== 6) ||
     files.some(
       (file) =>
         file.projection.version !== version || file.projection.purpose !== "data_source_create",
@@ -659,7 +659,7 @@ export function validateRetainedMigrationConversion(input: unknown) {
  * target approval, complete dependencies and the original operation safeguards. */
 function makeConversion(input: MigrationConversionInput, review: boolean) {
   return Effect.gen(function* () {
-    const projectionVersion = input.projection_version ?? 5
+    const projectionVersion = input.projection_version ?? 6
     const { plan, library, prepared, source, legacySource } = yield* review
       ? reviewSharedMigrationCreateInput(input, input.execution_policy)
       : prepareSharedMigrationCreateInput(input, input.execution_policy)

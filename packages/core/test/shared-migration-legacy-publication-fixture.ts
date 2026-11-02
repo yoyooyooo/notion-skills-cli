@@ -49,7 +49,9 @@ const rich = (id: string, value: string) => ({
 
 /** Explicit old native strings and original source bytes. No new native
  * projector or mutation response is used to construct this legacy evidence. */
-export async function legacyCommittedPublicationFixture() {
+export async function legacyCommittedPublicationFixture(
+  options: { sourceOnlyResources?: boolean } = {},
+) {
   const page = uuid(610),
     support = uuid(611),
     parent = uuid(620),
@@ -83,6 +85,12 @@ export async function legacyCommittedPublicationFixture() {
       ),
     },
     { path: "references/guide.md", bytes: bytes("# Guide\n\nOriginal guide.\n") },
+    ...(options.sourceOnlyResources
+      ? [
+          { path: "assets/data.bin", bytes: new Uint8Array([0, 255, 1, 127]) },
+          { path: "scripts/check.py", bytes: bytes('print("retained; never executed")\n') },
+        ]
+      : []),
   ]
   const sourcePortable: PortableSkill = {
     kind: "skill",
@@ -115,7 +123,11 @@ export async function legacyCommittedPublicationFixture() {
     entrypoint: "SKILL.md",
     version_id: "5".repeat(64),
     created_at: 1,
-    files: [...current, { path: BUNDLE, bytes: sourceArchive }].map((file) => ({
+    files: [
+      ...current,
+      ...sourceFiles.filter((file) => !pages.some((page) => page.path === file.path)),
+      { path: BUNDLE, bytes: sourceArchive },
+    ].map((file) => ({
       path: file.path,
       bytes: file.bytes.length,
       sha256: publicationHash(file.bytes),
@@ -244,33 +256,35 @@ export async function legacyCommittedPublicationFixture() {
         data_source_schema: retainPublicationJson(schema, "retained:catalog-schema"),
       },
     },
-    files: sourceFiles.map((file, index) => {
-      const native = nativePreimages[index]!
-      const {
-        path: _path,
-        body_retention_ref: _body,
-        response_json: _response,
-        ...descriptor
-      } = native
-      return {
-        legacy_id: `old-file-${index}`,
-        path: file.path,
-        ownership: "unknown",
-        body: {
-          complete: true,
-          sha256: publicationHash(file.bytes),
-          bytes: file.bytes.length,
-          retention_ref: `retained:original-authored/${file.path}`,
-          retention_verified: true,
-          normalization_version: 1,
-        },
-        raw: {
-          native_preimage: descriptor,
-          pilot_current_capture: { page_id: native.page_id },
-          original_unknown_field: "retained",
-        },
-      }
-    }),
+    files: sourceFiles
+      .filter((file) => pages.some((page) => page.path === file.path))
+      .map((file, index) => {
+        const native = nativePreimages[index]!
+        const {
+          path: _path,
+          body_retention_ref: _body,
+          response_json: _response,
+          ...descriptor
+        } = native
+        return {
+          legacy_id: `old-file-${index}`,
+          path: file.path,
+          ownership: "unknown",
+          body: {
+            complete: true,
+            sha256: publicationHash(file.bytes),
+            bytes: file.bytes.length,
+            retention_ref: `retained:original-authored/${file.path}`,
+            retention_verified: true,
+            normalization_version: 1,
+          },
+          raw: {
+            native_preimage: descriptor,
+            pilot_current_capture: { page_id: native.page_id },
+            original_unknown_field: "retained",
+          },
+        }
+      }),
   }
   const resources = sourceFiles.map((file) => ({
     path: file.path,
@@ -344,8 +358,9 @@ export async function legacyCommittedPublicationFixture() {
     ...retainedBinary(file.bytes, `${output}/${file.path}`),
   }))
   const proof: LegacyCommittedPublicationProof = {
-    version: 1,
-    policy: "legacy_committed_publication_v1",
+    ...(options.sourceOnlyResources
+      ? { version: 2 as const, policy: "legacy_committed_source_bundle_v2" as const }
+      : { version: 1 as const, policy: "legacy_committed_publication_v1" as const }),
     observation: "retained",
     current_terminal_verified: false,
     human_edit_intent_inferred: false,

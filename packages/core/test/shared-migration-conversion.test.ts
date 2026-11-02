@@ -44,7 +44,7 @@ test("v2 retains exact legacy bytes and native response while freezing the disti
     first(fixture.input.files).native_preimage.response_json,
   )
   expect(main.projection).toMatchObject({
-    version: 5,
+    version: 6,
     purpose: "data_source_create",
     input_markdown: "# Migration heading\n\nUse `code`.",
     wire_markdown: "<h1>Migration heading</h1>\n\nUse `code`.",
@@ -89,11 +89,11 @@ test("following uses the exact fixed Source and new native baseline without recl
   )
 })
 
-test.each([3, 4] as const)(
-  "saved projection-v%s migration candidates keep their policy after new reviews select v5",
+test.each([3, 4, 5] as const)(
+  "saved projection-v%s migration candidates keep their policy after new reviews select v6",
   async (projectionVersion) => {
     const fixture = migrationConversionFixture({
-      main: "Notes:\n1. First\n\n2. [`notes`](notes.md)",
+      main: "Notes:\n1. First\n\n2. [`notes`](notes.md)\n\nWrapped\nparagraph.",
     })
     const retained = await run(
       makeSharedMigrationConversion({
@@ -103,7 +103,7 @@ test.each([3, 4] as const)(
     )
     const current = await run(makeSharedMigrationConversion(fixture.input))
     expect(first(retained.files).projection.version).toBe(projectionVersion)
-    expect(first(current.files).projection.version).toBe(5)
+    expect(first(current.files).projection.version).toBe(6)
     expect(first(retained.files).content.sha256).not.toBe(first(current.files).content.sha256)
     expect(
       retainedMigrationConversionInput(fixture.migrationInput, retained).projection_version,

@@ -246,7 +246,7 @@ export interface SharedCreateInput {
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: SharedNotionMarkdownVersion = 5,
+  projectionVersion: SharedNotionMarkdownVersion = 6,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable

@@ -6,6 +6,7 @@ import { createRequestMetrics } from "../src/request-metrics.ts"
 import {
   fetchFixedGithubFile,
   inspectFixedGithubSource,
+  inspectFixedGithubMetadata,
   validateFixedGithubSource,
   type FixedGithubFile,
   type FixedGithubSource,
@@ -47,6 +48,28 @@ const treeBody = (entries: readonly unknown[], changes: Record<string, unknown> 
   ...changes,
 })
 const commitResponse = () => Response.json({ sha: commit, tree: { sha: tree } })
+
+test("retained metadata reuses a complete pinned tree with the same selection checks and no transport", () => {
+  const commitObject = { sha: commit, tree: { sha: tree } }
+  const rawTree = treeBody([rootEntry, entry("skills/demo/SKILL.md")])
+  expect(inspectFixedGithubMetadata(input, commitObject, rawTree)).toEqual(source)
+  expect(() =>
+    inspectFixedGithubMetadata(input, { ...commitObject, sha: "0".repeat(40) }, rawTree),
+  ).toThrow("different pinned commit")
+  expect(() =>
+    inspectFixedGithubMetadata(input, commitObject, { ...rawTree, sha: "0".repeat(40) }),
+  ).toThrow("differs from the pinned commit")
+  expect(() =>
+    inspectFixedGithubMetadata(input, commitObject, { ...rawTree, truncated: true }),
+  ).toThrow("truncated")
+  expect(() =>
+    inspectFixedGithubMetadata(
+      input,
+      commitObject,
+      treeBody([rootEntry, entry("skills/demo/link", { mode: "120000" })]),
+    ),
+  ).toThrow("symlinks")
+})
 
 function controlled(responses: readonly Response[]) {
   const requests: { readonly url: string; readonly headers: Readonly<Record<string, string>> }[] =

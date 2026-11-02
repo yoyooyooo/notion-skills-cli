@@ -136,6 +136,8 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 三张 Database 均为独立非 inline 页面，显示名直接使用 **Skills、Files、Records**，无需 library 后缀。初始化标识与最终 descriptor 保存内部身份，改名不影响正常附着或原操作复查。已确认的收敛目标是唯一三表库，不长期双写、不隐式回退旧模型；完整数据迁移与日用入口切换分别验收。
 
+当前正式迁入检查点已累计 12 个完整 Skill、18 个业务文件，保留来源资源、原标签/默认供给和入口额外 frontmatter。跨 Skill 引用与未结清原生写入仍明确阻塞；这不是全量迁移或全局 CLI/Pi 切换完成。详见[当前迁移范围](docs/shared-ssot-architecture.md)。
+
 正常 current read 完整确认 Notion 正文编辑并保留原操作事实后，将整个文件记为自定义；其他文件继续自己的来源行为。改回原文不恢复跟随，也不要求手工接管标记或旧的整 Skill fork。名称、Description、Default Context 与 Router Members 始终来自 Notion 原生属性。
 
 固定来源先用 `source inspect/register` 登记精确 commit/root，再由 `ctl library source select prepare ... --output PLAN` 生成计划并用 `source select apply PLAN --entry ENTRY` 选择。共享 Profile 可通过 `ctl library profile list/show/set/bind/unbind` 管理；`list --profile PROFILE_ID --database ENTRY` 采用共享默认 View，显式 View 优先，普通 `list` 保持完整发现。

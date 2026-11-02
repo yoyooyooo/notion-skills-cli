@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { normalizeObservedBody } from "./shared-file-state.ts"
 import { assertNotionInlineBoundary } from "./shared-notion-inline-boundary.ts"
+import { projectNativeTextBreaks } from "./shared-notion-text-breaks.ts"
 import {
   projectNotionMarkdownV2,
   projectNotionMarkdownV4,
@@ -63,12 +64,17 @@ const ProjectionV5Schema = Schema.Struct({
   markdown: Schema.String,
   removed_terminal_lfs: Schema.Number,
 })
+const ProjectionV6Schema = Schema.Struct({
+  ...ProjectionV5Schema.fields,
+  version: Schema.Literal(6),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
   ProjectionV3Schema,
   ProjectionV4Schema,
   ProjectionV5Schema,
+  ProjectionV6Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
@@ -108,10 +114,17 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(6),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
-/** Retained v1-v4 records keep their historical bytes and policy. New policy 5
- * also predicts the native separator between a paragraph and following list. */
+/** Retained v1-v5 records keep their historical bytes and policy. New policy 6
+ * also predicts native text breaks and the independently observed link labels. */
 export function projectSharedNotionMarkdown(
   input: string,
   options: {
@@ -138,11 +151,11 @@ export function projectSharedNotionMarkdown(
     removed_terminal_lfs: normalized.length - markdown.length,
   } as const
   if (options.version === 1) return { version: 1, ...common }
-  const version = options.version ?? 5
+  const version = options.version ?? 6
   if (version >= 3) assertNotionInlineBoundary(markdown)
   const purpose = options.purpose ?? "body_write"
   const projected =
-    version === 5
+    version >= 5
       ? projectNotionMarkdownV5(markdown, purpose)
       : version === 4
         ? projectNotionMarkdownV4(markdown, purpose)
@@ -152,7 +165,7 @@ export function projectSharedNotionMarkdown(
     ...common,
     purpose,
     wire_markdown: projected.wire,
-    markdown: projected.markdown,
+    markdown: version === 6 ? projectNativeTextBreaks(projected.markdown) : projected.markdown,
   }
 }
 

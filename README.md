@@ -136,6 +136,8 @@ Initialization creates the layout, including a native `Members` relation from Sk
 
 The three databases are full-page and use the clean display names **Skills**, **Files**, **Records**. Library suffixes are unnecessary: internal initialization markers and the final descriptor own identity, including after a rename. The approved consolidation target is one active three-table library, with no long-term old/new dual writes or hidden fallback; content migration and production cutover remain separately verified steps.
 
+The current production-copy checkpoint has 12 verified Skills (18 business files) in the approved three-table library. Source-only resources, original tags/default supply and extra main frontmatter are retained; cross-Skill links and unresolved native writes remain explicit blockers. This is partial data migration, not a global CLI/Pi cutover. See the [current ledger scope](docs/shared-ssot-architecture.md).
+
 Reading a shared Router resolves its native Members relation by registered property identity, validates the selected members, and generates a metadata/ref index. Member bodies load only when selected. Each Router snapshot freezes that index's metadata. Existing libraries without a registered Members property keep ordinary Skill support, but Router reads fail explicitly; initialization does not silently upgrade their descriptors. Historical Router snapshots missing the required frozen metadata also fail offline.
 
 Normal creation and authoring use the public content commands with that same entry:

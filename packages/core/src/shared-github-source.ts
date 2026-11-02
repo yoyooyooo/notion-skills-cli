@@ -487,6 +487,42 @@ function selectedFiles(
   return files.sort(comparePath)
 }
 
+/** Inspect retained complete provider metadata without another provider request.
+ * The caller owns its acquisition receipt. This does not prove current access
+ * or authenticate a supplied observation; exact blobs are verified separately.
+ */
+export function inspectFixedGithubMetadata(
+  input: Pick<FixedGithubSourceInput, "url" | "commit" | "root">,
+  commitResponse: unknown,
+  treeResponse: unknown,
+): FixedGithubSource {
+  const source = fixedInput(input)
+  let commit: typeof CommitSchema.Type
+  let tree: typeof TreeSchema.Type
+  try {
+    commit = Schema.decodeUnknownSync(CommitSchema)(commitResponse)
+    tree = Schema.decodeUnknownSync(TreeSchema)(treeResponse)
+  } catch {
+    throw fail("GITHUB_INVALID_RESPONSE", "Retain complete commit and recursive-tree metadata.")
+  }
+  if (commit.sha !== source.commit)
+    throw fail("GITHUB_COMMIT_MISMATCH", "Retained metadata names a different pinned commit.")
+  if (!oidPattern.test(commit.tree.sha))
+    throw fail("GITHUB_INVALID_RESPONSE", "The retained commit has no valid Git tree identity.")
+  if (tree.sha !== commit.tree.sha)
+    throw fail(
+      "GITHUB_TREE_MISMATCH",
+      "The retained recursive tree differs from the pinned commit.",
+    )
+  return {
+    url: source.url,
+    commit: source.commit,
+    root: source.root,
+    tree: tree.sha,
+    files: selectedFiles(source, tree),
+  }
+}
+
 /** Inspect a complete pinned tree. This never downloads file bodies or clones a repository. */
 export function inspectFixedGithubSource(
   input: FixedGithubSourceInput,
@@ -526,13 +562,7 @@ export function inspectFixedGithubSource(
       ...(input.metrics === undefined ? {} : { metrics: input.metrics }),
     })
     const tree = yield* json(treeBytes, Schema.decodeUnknownSync(TreeSchema))
-    if (tree.sha !== commit.tree.sha) {
-      return yield* Effect.fail(
-        fail("GITHUB_TREE_MISMATCH", "GitHub returned a tree other than the pinned commit's tree."),
-      )
-    }
-    const files = yield* checked(() => selectedFiles(source, tree))
-    return { url: source.url, commit: source.commit, root: source.root, tree: tree.sha, files }
+    return yield* checked(() => inspectFixedGithubMetadata(source, commit, tree))
   })
 }
 

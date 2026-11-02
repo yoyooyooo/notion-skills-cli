@@ -89,7 +89,7 @@ describe("native Markdown projection v5", () => {
     const source = "**Not allowed**:\n- First\n- Second"
     const observed = "<b>Not allowed</b>:\n\n- First\n- Second"
     const retained = projectV4(source)
-    const current = projectSharedNotionMarkdown(source)
+    const current = projectSharedNotionMarkdown(source, { version: 5 })
     expect(retained.markdown).toBe("<b>Not allowed</b>:\n- First\n- Second")
     expect(current.version).toBe(5)
     expect(current.markdown).toBe(observed)
@@ -104,6 +104,8 @@ describe("native Markdown projection v5", () => {
 
   test("an existing separator and list-like fenced text keep their exact boundaries", () => {
     for (const source of ["Paragraph.\n\n- First\n- Second", "```text\nParagraph.\n- First\n```"])
-      expect(projectSharedNotionMarkdown(source).markdown).toBe(projectV4(source).markdown)
+      expect(projectSharedNotionMarkdown(source, { version: 5 }).markdown).toBe(
+        projectV4(source).markdown,
+      )
   })
 })

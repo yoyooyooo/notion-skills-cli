@@ -82,9 +82,7 @@ const Native = Schema.Struct({
   response_bytes: Size,
   body_sha256: Hash,
 })
-export const LegacyCommittedPublicationProofSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  policy: Schema.Literal("legacy_committed_publication_v1"),
+const LegacyPublicationProofFields = {
   observation: Schema.Literal("retained"),
   current_terminal_verified: Schema.Literal(false),
   human_edit_intent_inferred: Schema.Literal(false),
@@ -101,7 +99,24 @@ export const LegacyCommittedPublicationProofSchema = Schema.Struct({
     files: Schema.Array(AuthoredFile),
   }),
   native_preimages: Schema.Array(Native),
-})
+}
+export const LegacyCommittedPublicationProofSchema = Schema.Union([
+  Schema.Struct({
+    version: Schema.Literal(1),
+    policy: Schema.Literal("legacy_committed_publication_v1"),
+    ...LegacyPublicationProofFields,
+  }),
+  Schema.Struct({
+    version: Schema.Literal(2),
+    policy: Schema.Literal("legacy_committed_source_bundle_v2"),
+    ...LegacyPublicationProofFields,
+  }),
+  Schema.Struct({
+    version: Schema.Literal(3),
+    policy: Schema.Literal("legacy_committed_current_metadata_v3"),
+    ...LegacyPublicationProofFields,
+  }),
+])
 export type LegacyCommittedPublicationProof = typeof LegacyCommittedPublicationProofSchema.Type
 
 const checked = <A>(run: () => A) =>
@@ -200,6 +215,7 @@ export function resolveLegacyCommittedPublication(input: unknown) {
       ),
     )
     const before = proof.entry_before
+    const sourceBundle = proof.version >= 2
     const activation = yield* resolveMigrationActivation(before, "legacy_page_to_native_v2")
     const activity = yield* checked(() =>
       Schema.decodeUnknownSync(LegacyCatalogActivitySchema)(
@@ -284,15 +300,33 @@ export function resolveLegacyCommittedPublication(input: unknown) {
           value.main === snapshot.entrypoint &&
           value.name === record.name &&
           value.description === record.description &&
-          value.files.length === before.files.length &&
-          value.files.every((file) => before.files.some((original) => original.path === file.path)),
+          (sourceBundle
+            ? value.files.length >= before.files.length &&
+              before.files.every((original) =>
+                value.files.some((file) => file.path === original.path),
+              )
+            : value.files.length === before.files.length &&
+              value.files.every((file) =>
+                before.files.some((original) => original.path === file.path),
+              )),
         "The retained source archive must contain this exact complete ordinary member.",
       )
+      if (sourceBundle) {
+        const nativeSupports = before.files
+          .filter((file) => file.path !== snapshot.entrypoint)
+          .map((file) => file.path)
+          .sort()
+        requireFact(
+          same(Object.keys(value.projection?.references ?? {}).sort(), nativeSupports),
+          "A source-only resource cannot hide a missing formerly editable native reference.",
+        )
+      }
       return value
     })
     const archiveFile = snapshot.files.find((file) => file.path === BUNDLE)
     yield* ensure(
-      snapshot.files.length === before.files.length + 1 &&
+      snapshot.files.length ===
+        (sourceBundle ? sourcePortable.files.length : before.files.length) + 1 &&
         archiveFile?.sha256 === proof.source_archive.sha256 &&
         archiveFile.bytes === sourceArchive.length &&
         new Set(snapshot.files.map((file) => file.path)).size === snapshot.files.length,
@@ -308,6 +342,22 @@ export function resolveLegacyCommittedPublication(input: unknown) {
         "The retained native references do not reconstruct the committed materialized file hashes.",
       )
     }
+    // A source-backed member can expose scripts, binary assets and Markdown
+    // that never had native child pages. Match the actual legacy materializer:
+    // native references win; every remaining path must come from the exact ZIP.
+    // Saved v1 evidence still requires one native page per source file.
+    if (sourceBundle) {
+      const nativePaths = new Set(before.files.map((file) => file.path))
+      for (const file of sourcePortable.files.filter((file) => !nativePaths.has(file.path))) {
+        const expected = snapshot.files.find((item) => item.path === file.path)
+        yield* ensure(
+          expected &&
+            expected.bytes === file.bytes.length &&
+            expected.sha256 === (yield* sha256(file.bytes)),
+          "An archive-only resource differs from the exact committed snapshot inventory.",
+        )
+      }
+    }
     const marker = yield* checked(() => publicationMarker(row)),
       guard = yield* checked(() => publicationGuard(row))
     const manifest = yield* publicationManifest(snapshot)
@@ -319,9 +369,26 @@ export function resolveLegacyCommittedPublication(input: unknown) {
       return yield* Effect.fail(
         fail("SHARED_MIGRATION_PUBLICATION_INVALID", "Missing committed marker."),
       )
+    // Default Context is supply metadata, not file ownership. A legacy marker
+    // included it in its guard. Policy 3 verifies the exact committed guard
+    // over both possible checkbox values, while retaining today's value.
+    // No other ownership/member field, file byte or historical result changes.
+    let publishedDefaultContext = guard.default_context
+    const currentGuardHash = yield* sha256(canonicalSharedJson(guard))
+    if (proof.version === 3 && currentGuardHash !== marker.ownership_hash) {
+      const otherDefault = !guard.default_context
+      const otherHash = yield* sha256(
+        canonicalSharedJson({ ...guard, default_context: otherDefault }),
+      )
+      yield* ensure(
+        otherHash === marker.ownership_hash,
+        "Only a Default Context checkbox change can differ from the committed tracked ownership guard.",
+      )
+      publishedDefaultContext = otherDefault
+    }
     yield* ensure(
       (yield* sha256(canonicalSharedJson(manifest))) === marker.manifest_hash &&
-        (yield* sha256(canonicalSharedJson(guard))) === marker.ownership_hash &&
+        (proof.version === 3 || currentGuardHash === marker.ownership_hash) &&
         (yield* sha256(
           canonicalSharedJson([
             marker.operation_id,
@@ -375,7 +442,7 @@ export function resolveLegacyCommittedPublication(input: unknown) {
       )
       requireFact(
         source.provider.type === "git" &&
-          source.target_mode === "manual" &&
+          (proof.version === 3 || source.target_mode === "manual") &&
           Object.keys(source).every((key) =>
             ["provider", "strip_prefix", "target_mode"].includes(key),
           ),
@@ -555,7 +622,7 @@ export function resolveLegacyCommittedPublication(input: unknown) {
       authored.push({ path: file.path, bytes })
     }
     yield* ensure(
-      authored.length === before.files.length + 1 &&
+      authored.length === (sourceBundle ? sourcePortable.files.length : before.files.length) + 1 &&
         new Set(authored.map((file) => file.path)).size === authored.length &&
         Object.keys(inventory).length === authored.length &&
         Array.isArray(receipt.files) &&
@@ -579,6 +646,17 @@ export function resolveLegacyCommittedPublication(input: unknown) {
       authoredIdentity === receipt.content_id && authoredIdentity === selected.member.content_hash,
       "The authored export differs from the retained member's published source content; keep the difference unresolved.",
     )
+    if (sourceBundle) {
+      for (const file of sourcePortable.files) {
+        const exported = proof.authored_export.files.find((item) => item.path === file.path)
+        yield* ensure(
+          exported &&
+            exported.bytes === file.bytes.length &&
+            exported.sha256 === (yield* sha256(file.bytes)),
+          "The complete authored source export must preserve every fixed source resource exactly.",
+        )
+      }
+    }
     for (const file of before.files) {
       const exported = proof.authored_export.files.find((item) => item.path === file.path)
       const source = sourcePortable.files.find((item) => item.path === file.path)
@@ -663,14 +741,24 @@ export function resolveLegacyCommittedPublication(input: unknown) {
       beforeHash = yield* sha256(canonicalSharedJson(before))
     const sourceLegacyId = `legacy-member-source-${yield* sha256(canonicalSharedJson([1, selected.parent_id, selected.member.member_key, binding.source_id]))}`
     const observation = {
-      version: 1 as const,
-      policy: "legacy_committed_publication_v1" as const,
+      version: proof.version,
+      policy: proof.policy,
       retained_observation: true as const,
       source_legacy_id: sourceLegacyId,
       proof_sha256: proofHash,
       before_entry_sha256: beforeHash,
       current_terminal_verified: false as const,
       human_edit_intent_inferred: false as const,
+      ...(proof.version === 3
+        ? {
+            metadata_transition: {
+              default_context: {
+                published: publishedDefaultContext,
+                current: guard.default_context,
+              },
+            },
+          }
+        : {}),
     }
     yield* ensure(
       !Object.hasOwn(property(before.metadata), "legacy_committed_publication"),
