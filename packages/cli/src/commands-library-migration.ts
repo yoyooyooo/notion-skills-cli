@@ -12,6 +12,7 @@ import {
 } from "../../core/src/shared-migration-review.ts"
 import { dryRunFlag, emit, requiredSingleton, singleton } from "./command-options.ts"
 import { readMigrationJson, readMigrationRetained } from "./commands-library-migration-input.ts"
+import { libraryMigrationRecoveryCommand } from "./commands-library-migration-recovery.ts"
 
 const plan = defineCommand(
   "plan",
@@ -238,5 +239,5 @@ export const libraryMigrationCommand = defineCommand("migration").pipe(
   Command.withDescription(
     "plan retains original evidence and readiness blockers; review freezes concrete files, Source, native preimages and target/member bindings without approval changes. apply requires that exact review digest and explicit frozen target approval. reconcile only observes the original operation. Unsupported or unknown data is never reclassified to make execution pass.",
   ),
-  Command.withSubcommands([plan, review, apply, reconcile]),
+  Command.withSubcommands([plan, review, apply, reconcile, libraryMigrationRecoveryCommand]),
 )

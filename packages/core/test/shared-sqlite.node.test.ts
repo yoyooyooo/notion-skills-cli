@@ -17,6 +17,8 @@ const keys = {
   historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
   sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
   nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
+  nativeRecovery: `operations/shared-native-recovery/${scope}/skill-create-${"8".repeat(64)}.json`,
+  recoveryResponse: `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/${"e".repeat(64)}.json`,
   profilePending: `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/profile-${"c".repeat(64)}.json`,
 }
 const pendingPayload = {
@@ -68,7 +70,7 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
-test("shared cache and five dispatch domains persist across real Node restarts", async () => {
+test("shared cache and seven dispatch domains persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({
       key,
@@ -76,9 +78,10 @@ test("shared cache and five dispatch domains persist across real Node restarts",
     }))
     const writer = await child(
       root,
-      `for(const entry of ${JSON.stringify(entries)}) yield* state.write(entry.key,entry.payload);yield* state.write('database-init/legacy/0.json',{legacy:true});console.log('written')`,
+      `const before=[];for(const entry of ${JSON.stringify(entries)}) before.push((yield* state.read(entry.key))??null);const empty=yield* state.list('operations');for(const entry of ${JSON.stringify(entries)}) yield* state.write(entry.key,entry.payload);yield* state.write('database-init/legacy/0.json',{legacy:true});console.log(JSON.stringify({before,empty}))`,
     )
     expect(writer.exit, writer.stderr).toBe(0)
+    expect(JSON.parse(writer.stdout)).toEqual({ before: entries.map(() => null), empty: [] })
     const reader = await child(
       root,
       `const values=[];for(const entry of ${JSON.stringify(entries)}) values.push(yield* state.read(entry.key));console.log(JSON.stringify({values,cache:yield* state.list('cache'),dispatch:yield* state.list('operations'),legacy:yield* state.read('database-init/legacy/0.json')}));`,
@@ -93,6 +96,8 @@ test("shared cache and five dispatch domains persist across real Node restarts",
         keys.profilePending,
         keys.sourceRegistration,
         keys.nativeCreate,
+        keys.nativeRecovery,
+        keys.recoveryResponse,
       ].sort(),
       legacy: { legacy: true },
     })
@@ -103,7 +108,7 @@ test("shared cache and five dispatch domains persist across real Node restarts",
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
       { category: "cache", retired: 0, count: 3 },
-      { category: "dispatch", retired: 0, count: 5 },
+      { category: "dispatch", retired: 0, count: 7 },
     ])
   })
 }, 30_000)
@@ -204,6 +209,8 @@ test("dispatch retirement hides active work but retains its exact payload and ne
       keys.profilePending,
       keys.sourceRegistration,
       keys.nativeCreate,
+      keys.nativeRecovery,
+      keys.recoveryResponse,
     ]
     const retired = await child(
       root,
@@ -235,6 +242,45 @@ test("dispatch retirement hides active work but retains its exact payload and ne
   })
 }, 30_000)
 
+test("completed recovery retires both journals across restarts and retains the captured response", async () => {
+  await isolated(async (root) => {
+    const journals = [keys.nativeCreate, keys.nativeRecovery]
+    const response = { version: 1, kind: "original_mutation_response", response: { id: "page" } }
+    const written = await child(
+      root,
+      `for(const key of ${JSON.stringify(journals)}) yield* state.write(key,${JSON.stringify(pendingPayload)});yield* state.write(${JSON.stringify(keys.recoveryResponse)},${JSON.stringify(response)})`,
+    )
+    expect(written.exit, written.stderr).toBe(0)
+    const retired = await child(
+      root,
+      `yield* state.retire(${JSON.stringify(journals)});yield* state.retire(${JSON.stringify(journals)})`,
+    )
+    expect(retired.exit, retired.stderr).toBe(0)
+    const reopened = await child(
+      root,
+      `const reads=[];for(const key of ${JSON.stringify(journals)}) reads.push((yield* state.read(key))??null);const replay=yield* state.write(${JSON.stringify(keys.nativeRecovery)},${JSON.stringify(pendingPayload)}).pipe(Effect.result);const replaced=yield* state.write(${JSON.stringify(keys.recoveryResponse)},{replacement:true}).pipe(Effect.result);console.log(JSON.stringify({reads,active:yield* state.list('operations'),response:yield* state.read(${JSON.stringify(keys.recoveryResponse)}),replay:replay._tag,replaced:replaced._tag}));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT key,payload,retired FROM shared_local_records ORDER BY key\`))}))`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    const [active, rows] = reopened.stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+    expect(active).toEqual({
+      reads: [null, null],
+      active: [keys.recoveryResponse],
+      response,
+      replay: "Failure",
+      replaced: "Failure",
+    })
+    expect(rows).toEqual(
+      [
+        ...journals.map((key) => ({ key, payload: JSON.stringify(pendingPayload), retired: 1 })),
+        { key: keys.recoveryResponse, payload: JSON.stringify(response), retired: 0 },
+      ].sort((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)),
+    )
+  })
+}, 30_000)
+
 test("public cache clear removes shared derived lookups and preserves unfinished dispatch domains", async () => {
   await isolated(async (root) => {
     const all = Object.values(keys)
@@ -258,6 +304,8 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
         keys.profilePending,
         keys.sourceRegistration,
         keys.nativeCreate,
+        keys.nativeRecovery,
+        keys.recoveryResponse,
       ].sort(),
     )
     expect(result.receipt).toEqual(pendingPayload)
@@ -291,6 +339,11 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `operations/shared-source-registration/${scope}/../source-${"7".repeat(64)}.json`,
       `operations/shared-native-create/${scope}/skill-create-invalid.json`,
       `operations/shared-native-create/${scope}/../skill-create-${"8".repeat(64)}.json`,
+      `operations/shared-native-recovery/${scope}/skill-create-invalid.json`,
+      `operations/shared-native-recovery/${scope}/../skill-create-${"8".repeat(64)}.json`,
+      `operations/shared-native-recovery-responses/create-recovery-invalid/${"e".repeat(64)}.json`,
+      `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/../${"e".repeat(64)}.json`,
+      `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/response.json`,
       `content-restrictions/other/${scope}.json`,
       `content-restrictions/local/${scope}.json/extra`,
     ]

@@ -139,6 +139,17 @@ const sharedLocalDomains: readonly {
     category: "dispatch",
     address: /^operations\/shared-native-create\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
   },
+  {
+    prefix: "operations/shared-native-recovery",
+    category: "dispatch",
+    address: /^operations\/shared-native-recovery\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-native-recovery-responses",
+    category: "dispatch",
+    address:
+      /^operations\/shared-native-recovery-responses\/create-recovery-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
 ]
 
 function localContentHash(key: string): string | undefined {

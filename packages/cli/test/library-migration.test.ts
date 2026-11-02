@@ -89,7 +89,7 @@ function failed(result: Awaited<ReturnType<typeof invoke>>, code: string) {
 test("production migration help exposes exact review, approval and read-only recovery boundaries offline", async () => {
   const root = await directory()
   for (const [args, flags] of [
-    [["--help"], ["plan", "review", "apply", "reconcile"]],
+    [["--help"], ["plan", "review", "apply", "reconcile", "recovery"]],
     [
       ["review", "--help"],
       ["--input", "--legacy-id", "--entry", "--files", "--preimages", "--source-files"],
@@ -101,6 +101,22 @@ test("production migration help exposes exact review, approval and read-only rec
     [
       ["reconcile", "--help"],
       ["--entry", "--operation", "--target"],
+    ],
+    [
+      ["recovery", "--help"],
+      ["review", "apply", "reconcile"],
+    ],
+    [
+      ["recovery", "review", "--help"],
+      ["--entry", "--operation", "--target", "post_failure_current_read"],
+    ],
+    [
+      ["recovery", "apply", "--help"],
+      ["--input", "--review", "--review-id", "--dry-run"],
+    ],
+    [
+      ["recovery", "reconcile", "--help"],
+      ["--entry", "--operation", "--target", "zero POST/PATCH"],
     ],
   ] satisfies Array<[string[], string[]]>) {
     const result = await invoke(root, args)
@@ -115,6 +131,27 @@ test("production migration help exposes exact review, approval and read-only rec
   )
   failed(
     await invoke(root, ["reconcile", "--entry", "missing", "--operation", "original", "--resume"]),
+    "INVALID_ARGUMENT",
+  )
+  failed(
+    await invoke(root, ["recovery", "apply", "--input", "missing", "--review", "missing"]),
+    "INVALID_ARGUMENT",
+  )
+  failed(
+    await invoke(root, ["recovery", "review", "--entry", "missing", "--operation", "original"]),
+    "INVALID_ARGUMENT",
+  )
+  failed(
+    await invoke(root, [
+      "recovery",
+      "reconcile",
+      "--entry",
+      "missing",
+      "--operation",
+      "original",
+      "--target",
+      "not-a-page",
+    ]),
     "INVALID_ARGUMENT",
   )
   failed(
@@ -150,6 +187,19 @@ test("public plan retains empty approval and invalid review or UTF-8 cannot cont
   expect(planned.online).toBe(false)
   expect(await readFile(input, "utf8")).toBe(original)
   await writeFile(review, "{}\n")
+  failed(
+    await invoke(root, [
+      "recovery",
+      "apply",
+      "--input",
+      input,
+      "--review",
+      review,
+      "--review-id",
+      `create-recovery-${"0".repeat(64)}`,
+    ]),
+    "SHARED_CREATE_RECOVERY_INVALID",
+  )
   failed(
     await invoke(root, [
       "apply",

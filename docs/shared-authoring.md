@@ -282,6 +282,37 @@ ntn-skills ctl library migration reconcile \
 
 On a machine without the original local journal, add `--target EXACT_NEW_PAGE_ID` from an existing receipt. Reconciliation reads the retained original intent/outcome only: it makes no Notion POST/PATCH, resumes no partial tree and never adopts today's body. A successful result says `verification: "original_create_outcome"`, `current_snapshot_verified: false` and `requires_fresh_read: true`; it does not supply a current pin. A later explicit current read is a separate action and follows ordinary whole-file adoption rules. Missing original facts or an invisible first create remain unresolved. Preserve them and do not use the legacy `operation resume` command for this migration family.
 
+### Recover a known partial migration create
+
+A disabled migration that stopped with `SHARED_CREATE_BODY_MISMATCH` can use the bounded v4-to-v5 recovery when the new projection preserves the original submitted wire bytes. Retain the existing target and original operation. Review reads the existing pages and requires their complete current bodies to match v5; it also checks the original Source, file bindings and unpublished initial ownership history.
+
+```bash
+ntn-skills ctl library migration recovery review \
+  --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID \
+  --target EXACT_EXISTING_SKILL_PAGE_ID
+```
+
+Save the complete output and inspect its `review_id`, original/current body evidence, preserved pages and remaining file inventory. The review labels its current observations `post_failure_current_read`. Apply that exact decision with the original approved input:
+
+```bash
+ntn-skills ctl library migration recovery apply \
+  --input APPROVED_JSON --review RECOVERY_REVIEW_JSON \
+  --review-id RECOVERY_REVIEW_ID --dry-run
+ntn-skills ctl library migration recovery apply \
+  --input APPROVED_JSON --review RECOVERY_REVIEW_JSON \
+  --review-id RECOVERY_REVIEW_ID
+```
+
+Recovery preserves existing bodies and IDs, adds missing pages, updates projection metadata and initial ownership facts, then enables the fully verified tree. Success is reported as `recovered` with a current pin; the original failed outcome remains unchanged. If the recovery is interrupted or its response is uncertain, retain both operation IDs and inspect its separate completion:
+
+```bash
+ntn-skills ctl library migration recovery reconcile \
+  --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID \
+  --target EXACT_EXISTING_SKILL_PAGE_ID
+```
+
+Reconciliation sends no writes and publishes no current pin. A missing completion remains unresolved; another apply does not restart this recovery. Unknown original creates, changed current bodies or Source, existing ownership events and unrelated operations require their own resolution. The [protocol](protocol.md#recovery-of-a-known-partial-migration-create) defines the full supported boundary.
+
 ## Handle an interrupted operation
 
 Keep the original input, exact target, operation ID and recovery details. A matching current body or property does not prove that an unknown original request completed. Do not change input or choose a new name to bypass a pending operation. A recovery result with `verified: true` confirms its reported outcome: `not_applied` or `partial` does not mean that the requested edit completed.
@@ -291,6 +322,7 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 | Shared body write, apply or restore-follow | Read the exact current Skill. The reader checks retained original operations before adopting new bodies. If it reports `read_again`, read once more. Missing original facts remain unresolved. |
 | Native create | Retain the complete original input and operation. Repeating the same create intent takes its original reconciliation path; it does not blindly repeat a page POST. A partially created Skill remains disabled until verified. |
 | Reviewed migration | `ctl library migration reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID`; add `--target EXACT_NEW_PAGE_ID` only when needed to recover the retained origin on another machine. See the [migration workflow](#review-and-migrate-one-legacy-record). |
+| Reviewed partial-create recovery | `ctl library migration recovery reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID --target EXACT_EXISTING_SKILL_PAGE_ID`; verifies the separate recovery completion while preserving the original failure. |
 | File add, delete or move | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | Source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
 | Source selection | `ctl library source select reconcile ./source-selection.json --entry LIBRARY_ENTRY` |

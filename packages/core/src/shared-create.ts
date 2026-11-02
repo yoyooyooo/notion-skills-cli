@@ -23,15 +23,18 @@ import {
 } from "./shared-file-state.ts"
 import { loadSharedLibrary, type SharedLibrary } from "./shared-library.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
-import {
-  appendSharedRecord,
-  canonicalSharedJson,
-  querySharedRecords,
-  type SharedRecord,
-} from "./shared-records.ts"
+import { appendSharedRecord, canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { sha256, Store } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
+import {
+  decodeSharedCreateOutcome as decodeOutcome,
+  sharedCreateOutcomeId as outcomeId,
+  sharedCreateManifestRecordHash as createManifestRecordHash,
+  type SharedCreateOutcome as Outcome,
+  type SharedCreateBinding as Binding,
+} from "./shared-create-outcome.ts"
+import { completedSharedCreateRecovery } from "./shared-create-recovery-completion.ts"
 import {
   validateRetainedMigrationConversion,
   validateSharedMigrationConversion,
@@ -79,35 +82,6 @@ const InputObjectSchema = Schema.Struct({
   kind: Schema.Literal("utf8_input"),
   text: Schema.String,
 })
-const OutcomeFields = {
-  kind: Schema.Literal("skill_create_outcome"),
-  operation_id: Schema.String,
-  skill_id: Schema.String,
-  skill_page_id: Schema.String,
-  status: Schema.Literals(["applied", "needs_review"]),
-  reason_code: Schema.String,
-  bindings: Schema.Array(
-    Schema.Struct({
-      file_id: Schema.String,
-      path: Schema.String,
-      page_id: Schema.String,
-      event_id: Schema.String,
-    }),
-  ),
-}
-const OutcomeSchema = Schema.Union([
-  Schema.Struct({ version: Schema.Literal(1), ...OutcomeFields }),
-  Schema.Struct({
-    version: Schema.Literal(2),
-    ...OutcomeFields,
-    migration_candidate_id: Schema.String.check(
-      Schema.isPattern(/^migration-create-[a-f0-9]{64}$/u),
-    ),
-    manifest_record_hash: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
-  }),
-])
-type Outcome = typeof OutcomeSchema.Type
-type Binding = Outcome["bindings"][number]
 type Inventory = readonly { readonly raw: unknown; readonly record: SharedSkillRecord }[]
 
 function sourceFor(library: SharedLibrary): Source {
@@ -119,16 +93,6 @@ function sourceFor(library: SharedLibrary): Source {
     data_source_ids: [library.skills.data_source_id],
     shared_library: library,
   }
-}
-const outcomeId = (operation: string) => `outcome-${operation}`
-function createManifestRecordHash(plan: SharedCreatePlan) {
-  return sha256(
-    canonicalSharedJson({
-      version: 1,
-      operation_id: plan.operation_id,
-      payload: sharedCreateManifest(plan),
-    }),
-  )
 }
 function recover(error: SkillsError, plan: SharedCreatePlan, stage: string, page?: string) {
   return fail(error.code, error.message, {
@@ -623,25 +587,6 @@ function retainInputs(
     }
   })
 }
-function decodeOutcome(row: SharedRecord): Outcome {
-  const result = Schema.decodeUnknownSync(OutcomeSchema)(row.payload, { onExcessProperty: "error" })
-  if (
-    !/^skill-create-[a-f0-9]{64}$/u.test(result.operation_id) ||
-    row.record_id !== outcomeId(result.operation_id) ||
-    row.operation_id !== result.operation_id ||
-    row.entity_id !== sharedCreateOutcomesEntity ||
-    row.kind !== "operation" ||
-    row.skill_page_id !== result.skill_page_id ||
-    pageId(result.skill_page_id) !== result.skill_page_id ||
-    result.bindings.some((binding) => pageId(binding.page_id) !== binding.page_id) ||
-    new Set(result.bindings.map((binding) => binding.file_id)).size !== result.bindings.length
-  )
-    throw fail(
-      "SHARED_CREATE_INVALID",
-      "The native creation outcome has a foreign original-operation identity or duplicate binding.",
-    )
-  return result
-}
 function saveOutcome(
   library: SharedLibrary,
   plan: SharedCreatePlan,
@@ -746,7 +691,7 @@ function verifyIndex(
       }
     }
     if (plan.content_kind === "router") {
-      const members = yield* currentMemberIds(library, page)
+      const members = yield* sharedCreateMemberIds(library, page)
       if (canonicalSharedJson(members) !== canonicalSharedJson(plan.members))
         return yield* Effect.fail(
           fail(
@@ -758,7 +703,7 @@ function verifyIndex(
     return index
   })
 }
-function currentMemberIds(library: SharedLibrary, page: string) {
+export function sharedCreateMemberIds(library: SharedLibrary, page: string) {
   return Effect.gen(function* () {
     const api = yield* Notion,
       raw = yield* api.request(`v1/pages/${page}`)
@@ -1434,6 +1379,7 @@ export function loadPendingSharedCreates(
     )
     if (candidates.length === 0) return [] as readonly SharedCreatePlan[]
     const outcomes = new Map<string, Outcome>()
+    const outcomeHashes = new Map<string, string>()
     if (headers.some((header) => header.entity_id === sharedCreateOutcomesEntity)) {
       for (const row of yield* querySharedRecords(library, {
         skillPageId: input.skillPageId,
@@ -1449,6 +1395,7 @@ export function loadPendingSharedCreates(
             ),
           )
         outcomes.set(outcome.operation_id, outcome)
+        outcomeHashes.set(outcome.operation_id, row.hash)
       }
     }
     const pending: SharedCreatePlan[] = []
@@ -1496,6 +1443,18 @@ export function loadPendingSharedCreates(
         }
         continue
       }
+      if (
+        terminal?.status === "needs_review" &&
+        (yield* completedSharedCreateRecovery(library, {
+          skillPageId: input.skillPageId,
+          originalManifestHeader: header,
+          originalOutcome: terminal,
+          originalOutcomeHash: outcomeHashes.get(header.record_id)!,
+          events: input.events,
+          headers,
+        }))
+      )
+        continue
       pending.push(
         yield* loadSharedCreatePlan(library, {
           skillPageId: input.skillPageId,

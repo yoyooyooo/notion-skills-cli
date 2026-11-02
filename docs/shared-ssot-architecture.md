@@ -4,7 +4,7 @@
 
 ## 状态与证据
 
-**2026-11-01 UTC 开发检查点：AH-498 尚未全部完成。** 下表中的真实 CLI 指本次源码构建后由 Node.js 执行的正式命令，不代表已发行 npm 包、已安装宿主、两台物理机或模型/UI 验收。原始命令、私人页面身份、完整共享 pin 和备份位置保留在外部运行证据中，本文只记录可公开的范围与结果。
+**2026-11-02 UTC 开发检查点：AH-498 尚未全部完成。** 下表中的真实 CLI 指本次源码构建后由 Node.js 执行的正式命令，不代表已发行 npm 包、已安装宿主、两台物理机或模型/UI 验收。原始命令、私人页面身份、完整共享 pin 和备份位置保留在外部运行证据中，本文只记录可公开的范围与结果。
 
 | 项目 | 当前结论 | 尚不能由该结果推出的结论 |
 | --- | --- | --- |
@@ -21,15 +21,15 @@
 | Router Members | 新库真实原生 Members 验证；两成员 Router 冷读 14 请求且无成员正文，warm 为零；成员描述更新后 7 次 Metadata、零正文/写入/provider，旧 pin 保留旧目录 | 原生 UI、已安装宿主或实际模型消费通过；旧库已隐式升级 |
 | 在途合并与请求准入 | Notion 服务内同请求合并、默认四个并发 permit；permit 与 SQL 准入受原五分钟 deadline 约束，网络 timeout 独立 | 跨进程或跨机器全局并发锁、全部真实服务负载矩阵 |
 | 迁移审阅计划 | `ctl library migration plan --input` 已提供只读映射、冻结证据和 blockers；`reviewable` 与 `blocked` 均 `apply_allowed:false` | 已获得生产切换授权、已实际迁移或可以清理旧数据 |
-| SQLite 派生域 | 六类白名单 cache/dispatch 地址；0010 独立持久 local 内容限制不受 cache clear 影响。真实 Node SQLite 基础 7 项及 shared 9 项通过 | 本地状态成为管理权威或跨机器锁 |
-| 类型、构建与专项测试 | 当前 typecheck/build 通过；完整 Node/Vitest 为 739 pass（50 files），Node 24 inventory 为 7 pass；本轮修改的 36 个 TypeScript 文件通过 Biome 检查。完整 unit 首次为 2931 pass、1 skip、14 fail；修正测试边界后六文件 121 项与 inventory 7 项复验通过 | 14 个初始失败分别为 8 次宿主 Trash 超时、6 次 Node 专用测试被 Bun 执行；失败记录保留，未重跑一次完整全绿 suite。专项存在重叠，不相加宣称总数；默认 unit 的官方 CLI 回环场景仍为条件 skip |
+| SQLite 派生域 | 四类 cache 与七类 dispatch 显式地址；新增恢复 journal 与原始响应域。0010 独立持久 local 内容限制不受 cache clear 影响；本轮真实 Node shared SQLite 10 项及空库首次读取复验通过 | 本地状态成为管理权威或跨机器锁 |
+| 类型、构建与专项测试 | 当前 typecheck 与公开 CLI 构建通过；本轮相关核心 40 项（含 recovery 11 项）、公开 migration CLI 5 项、真实 Node shared SQLite 10 项通过。前次完整 Node/Vitest 为 739 pass（50 files），Node 24 inventory 为 7 pass；前次完整 unit 为 2931 pass、1 skip、14 fail，修正边界后六文件 121 项与 inventory 7 项复验通过 | 14 个历史失败分别为 8 次宿主 Trash 超时、6 次 Node 专用测试被 Bun 执行；失败记录保留，未重跑一次完整全绿 suite。专项存在重叠，不相加宣称总数；默认 unit 的官方 CLI 回环场景仍为条件 skip |
 | 真实大规模 fixture | 两个独立 101 文件 fixture 均未完成：第一套第 77 个创建 unknown，76 个可见且原操作未结清；第二套第 97 个 unknown，96 个可见 | 两套都不记作真实 101 文件通过；受控分页测试分开报告 |
 | 当前生产目录盘点 | 只读返回 300 条，Guizang 来源 coverage 失败；已保留 2509 个历史快照候选、483 份原操作记录，3105 个引用对象全部校验。只读计划稳定输出 8647 项显式 blockers | 快照候选不等于用户指定 pin；不能视作完整批准清单或迁移成功 |
 | 现有本地状态保护 | 公开 backup 返回 `verified:true`；两个旧 scoped operation 的 `external_assets` schema 未知，已备份诊断且未删除 | 不推断这些旧操作完成、可安全重放或可以清理 |
 | 原未知操作 | 已有冻结 plan → object → event 与本地派生 dispatch 恢复；保留原 ID | 首次 plan unknown 且共享不可见时，空客户端仍无法判定；N09 未完成 |
 | 可编辑页写入 | 完整 old_str 的单次 update_content 真实验证：保留外部追加、内部漂移拒绝、两次连续竞争第二次拒绝；正文写入先保留原文/候选/plan，原 applied outcome 才能结清 | 不是原子 CAS；警告、不完整返回、不同实际结果或 unknown 保留待处理，不能用当前文本相等推断原写成功 |
-| mini 独立环境 | 已通过登记的 SSH 连通，独立认证 available；现安装版本为 0.3.0 | 本轮候选包尚未安装或验收，不能算第二物理机消费通过 |
-| 全量迁移、生产切换、发行与主机 | 本轮未完成；候选版本的双机、UI 与实际模型仍未验 | AH-513 至 AH-518 不得因源码切片通过而统一 Done |
+| mini 独立环境 | 同一候选包已在 pro/mini 独立前缀安装；空状态、各自认证得到相同四页 Metadata 和 uninitialized 归属，mini 也拒绝结清缺少 completion 的恢复 | 此次验证共享未完成事实与阻塞可从另一物理机恢复；七文件完整消费、宿主/UI 仍未通过 |
+| 全量迁移、生产切换、发行与主机 | 本轮未完成；候选版本的双机完整内容消费、UI 与实际模型仍未验 | AH-513 至 AH-518 不得因源码切片通过而统一 Done |
 
 隔离初始化中遇到过调用输出丢失而远端创建成功。通过固定父页下的实际成员及公开 inspect 读回确认结果，没有盲目重发创建。这验证的是一次具体恢复，不能推广为 Notion 提供通用幂等事务。
 
@@ -50,6 +50,18 @@
 打包检查已在独立 Node 24 consumer 中安装源码候选 tarball 并完成 43 项 `seeded_offline_consumer` 检查。该候选的包版本仍为 0.1.0；这不是 npm 发行、mini 安装或真实服务端到端通过。
 
 正式测试入口只发现 package test 目录，Node 24 专用 inventory 测试由 Node lane 执行，历史 debug 取证文件未改。六套纯发布 fixture 使用同一精确限定的进程适配器，将各自已释放的锁目录实际移到自有保留目录，核对 inode、owner 收据与原路径消失；其它进程仍由真实 spawner 执行。生产 `local-locks` 的同步 Trash 行为没有改动，这些纯测试不承担系统 Trash 集成验收。
+
+### 2026-11-02：原 partial create 的限定恢复与新的 unknown
+
+公开 `ctl library migration recovery review/apply/reconcile` 为上述 v4 原操作提供限定的 v5 恢复：校验原七文件输入、完整保留的 origin、原失败摘要及两页身份；新投影必须保持原提交 wire 不变，当前 GET 单独标记为 `post_failure_current_read`。原 `needs_review` 不改判，完成恢复需要另存覆盖完整文件集与新事件的 completion。该入口不 PATCH 已有正文，不自动续发未知写入，也不是通用可恢复事务。
+
+真实 review 使用 13 次 Metadata、2 次当前正文及 22 次保留正文请求，零写入/provider。首次 dry-run 在读取新恢复 journal 时发现生产 SQLite 地址尚未登记，写前停止；补齐两个显式 dispatch 域并通过真实 Node 存储测试后，同一 review 的 dry-run 返回原两页、待补五页。复验为 14 次 Metadata、2 次当前正文、23 次保留正文，零写入/provider；原批准输入及 review digest 均未改变。
+
+随后只发送一次实际 recovery apply。`lark-shared-output-contract.md` 创建成功，其原 mutation response 和后续 GET 分别保留；创建下一个 `lark-shared-update-notice.md` 时超时，返回 `WRITE_OUTCOME_UNKNOWN`。公开 Metadata 读回确认主文件及三个支持页可见：原两页身份和基线未动，两个新页可见，尚缺另外三个文件，Skill 仍禁用。超时页的可见性属于后续观察，不能补成丢失的原响应或完整恢复证明。
+
+公开 recovery reconcile 返回 `SHARED_CREATE_RECOVERY_REQUIRED`：完整 completion 不存在，原失败和恢复 journal 继续保留，没有重发 POST/PATCH。公开 state 将四个文件均判为 `uninitialized`，尚无完成创建所需的初始事件，不能把展示属性中的 following 当成已确认归属。现有协议不能凭可见页面继续剩余写入；后续若要接受当前可见分配，必须有独立审阅和可验证的继续边界。这次运行是原对象上的真实中断/保护证据，不记为七文件迁移、pro/mini 独立消费或生产切换通过。
+
+同一候选程序随后在 pro（Node 24.20.0）和 mini（Node 24.21.0）独立安装，安装包与 CLI 文件摘要一致，各自从空配置/状态/缓存读取，仅使用本机已有认证。没有复制 SQLite、凭据或另一机器生成的内容目录。两机公开 files 的完整 Metadata 与 state 的四个 uninitialized 结果相同；各自 files 为 3 次 Metadata，state 为 4 次，正文/写入/provider 均为零。mini 的公开 recovery reconcile 也返回相同原 operation/recovery 身份及 `SHARED_CREATE_RECOVERY_REQUIRED`。这证明已可见共享恢复事实的跨物理机阻塞边界；缺失的三文件、七文件完整消费、未知分配的显式接受与继续协议仍待完成。候选包另通过 43 项 `seeded_offline_consumer` 检查，不能替代这些真实正例。
 
 ### 2026-11-01：独立 fixture 恢复跟随通过
 

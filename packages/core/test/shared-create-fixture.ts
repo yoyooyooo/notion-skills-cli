@@ -70,9 +70,15 @@ function listed(rows: readonly unknown[], body: unknown) {
 
 /** Controlled Notion + memory Store; no user's store, credentials or provider requests. */
 export function sharedCreateFixture(
-  fixtureOptions: { readonly readback?: (wire: string) => string } = {},
+  fixtureOptions: {
+    readonly readback?: (wire: string) => string
+    readonly recovery?: boolean
+    readonly httpClient?: HttpClient.HttpClient
+  } = {},
 ) {
-  const base = sharedSnapshotFixture()
+  const base = sharedSnapshotFixture(
+    fixtureOptions.httpClient === undefined ? {} : { httpClient: fixtureOptions.httpClient },
+  )
   const skills = new Map<string, Record<string, unknown>>([
     [String(base.main.id), structuredClone(base.main)],
   ])
@@ -85,7 +91,10 @@ export function sharedCreateFixture(
   let nextPage = 60_000,
     credential = "native-create-credential"
   let unknown:
-    | { readonly stage: "skill" | "file" | "enable" | "outcome"; readonly visible: boolean }
+    | {
+        readonly stage: "skill" | "file" | "enable" | "outcome" | "recovery_outcome"
+        readonly visible: boolean
+      }
     | undefined
   let onCreate: ((page: Record<string, unknown>, kind: "skill" | "file") => void) | undefined
   let afterOutcome: (() => void) | undefined
@@ -249,19 +258,26 @@ export function sharedCreateFixture(
               if (selected !== undefined) {
                 if (method === "PATCH") {
                   const changes = property(property(body).properties)
-                  if (
-                    Object.keys(changes).length !== 1 ||
-                    property(changes[createLibrary.skills.property_ids.Enabled!]).checkbox !==
-                      true ||
-                    !skills.has(String(selected.id))
-                  )
+                  const enable =
+                    Object.keys(changes).length === 1 &&
+                    property(changes[createLibrary.skills.property_ids.Enabled!]).checkbox ===
+                      true &&
+                    skills.has(String(selected.id))
+                  const projectionId = skills.has(String(selected.id))
+                    ? createLibrary.skills.property_ids.Projection!
+                    : createLibrary.files.property_ids.Projection!
+                  const projection =
+                    fixtureOptions.recovery === true &&
+                    Object.keys(changes).length === 1 &&
+                    Array.isArray(property(changes[projectionId]).rich_text)
+                  if (!enable && !projection)
                     return Effect.fail(
                       fail(
                         "TEST_EXISTING_MUTATION",
                         "Native create attempted an existing-body or unrelated property replacement",
                       ),
                     )
-                  const uncertain = unknown?.stage === "enable" ? unknown : undefined
+                  const uncertain = enable && unknown?.stage === "enable" ? unknown : undefined
                   if (uncertain) unknown = undefined
                   if (uncertain?.visible !== false) {
                     for (const [key, value] of Object.entries(changes))
@@ -301,8 +317,14 @@ export function sharedCreateFixture(
                   ).rich_text,
                 )
                 const payload = property(property(JSON.parse(envelopeText)).payload)
-                if (payload.kind === "skill_create_outcome" && payload.status === "applied") {
-                  if (unknown?.stage !== "outcome")
+                if (
+                  (payload.kind === "skill_create_outcome" ||
+                    payload.kind === "skill_create_recovery_outcome") &&
+                  payload.status === "applied"
+                ) {
+                  const stage =
+                    payload.kind === "skill_create_outcome" ? "outcome" : "recovery_outcome"
+                  if (unknown?.stage !== stage)
                     return api
                       .request(path, body, options)
                       .pipe(Effect.tap(() => Effect.sync(() => afterOutcome?.())))
@@ -345,7 +367,10 @@ export function sharedCreateFixture(
       calls.length = 0
       base.clearCalls()
     },
-    unknown: (stage: "skill" | "file" | "enable" | "outcome", visible: boolean) => {
+    unknown: (
+      stage: "skill" | "file" | "enable" | "outcome" | "recovery_outcome",
+      visible: boolean,
+    ) => {
       unknown = { stage, visible }
     },
     onCreate: (hook: (page: Record<string, unknown>, kind: "skill" | "file") => void) => {
