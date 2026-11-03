@@ -87,6 +87,8 @@ const publicFiles = [
   "docs/shared-ssot-architecture.md",
   "docs/historical-operations.md",
   "docs/host-integration.md",
+  "docs/graph-releases.md",
+  "docs/graph-preparation-performance.md",
   "docs/releasing.md",
   "docs/portable-converter.md",
   "docs/remote-proof-converter.md",

@@ -226,6 +226,18 @@ export function explicitSource(
 export function discoverDatabases(options: { readonly allowShared?: boolean } = {}) {
   return Effect.gen(function* () {
     const databases = new Map<string, Source>()
+    const managementSources = new Map<string, Set<string>>()
+    const rememberManagementSources = (source: NonNullable<Source["shared_library"]>) => {
+      for (const table of [
+        source.files,
+        source.records,
+        ...(source.sources ? [source.sources] : []),
+      ]) {
+        const ids = managementSources.get(table.database_id) ?? new Set<string>()
+        ids.add(table.data_source_id)
+        managementSources.set(table.database_id, ids)
+      }
+    }
     const failures: SourceFailure[] = []
     const configured = yield* configuredSources
     const inspected = new Map<string, Source>()
@@ -266,12 +278,6 @@ export function discoverDatabases(options: { readonly allowShared?: boolean } = 
                 if (db.id !== id || db.in_trash)
                   throw fail("INVALID_RESPONSE", "Discovered database identity is unavailable.")
                 const library = libraryFromDatabase(raw)
-                if (library && options.allowShared !== true)
-                  throw fail(
-                    "SHARED_LIBRARY_CONSUMER_PENDING",
-                    "Shared library content requires the shared consumer; legacy creation and publication remain disabled.",
-                    { database_id: id },
-                  )
                 if (
                   library &&
                   (db.data_sources.length !== 1 ||
@@ -280,6 +286,13 @@ export function discoverDatabases(options: { readonly allowShared?: boolean } = 
                   throw fail(
                     "LIBRARY_SCHEMA_CONFLICT",
                     "Discovered shared data source differs from its descriptor.",
+                  )
+                if (library) rememberManagementSources(library)
+                if (library && options.allowShared !== true)
+                  throw fail(
+                    "SHARED_LIBRARY_CONSUMER_PENDING",
+                    "Shared library content requires the shared consumer; legacy creation and publication remain disabled.",
+                    { database_id: id },
                   )
                 return {
                   alias: registered?.alias ?? id,
@@ -356,7 +369,21 @@ export function discoverDatabases(options: { readonly allowShared?: boolean } = 
           alias: source.alias,
           title: source.title,
         })
-      else databases.set(source.database_id, result.success)
+      else {
+        if (result.success.shared_library) rememberManagementSources(result.success.shared_library)
+        databases.set(source.database_id, result.success)
+      }
+    }
+    // A management table can retain Description/References from an older schema.
+    // Its exact role in a freshly verified descriptor takes precedence over that
+    // loose legacy candidate shape, regardless of search order or configured alias.
+    for (const [id, source] of databases) {
+      if (source.shared_library !== undefined) continue
+      const managed = managementSources.get(id)
+      if (managed === undefined) continue
+      const content = source.data_source_ids.filter((id) => !managed.has(id))
+      if (content.length === 0) databases.delete(id)
+      else databases.set(id, { ...source, data_source_ids: content })
     }
     return { databases: [...databases.values()], failures }
   })
