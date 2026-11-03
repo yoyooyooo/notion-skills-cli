@@ -5,7 +5,11 @@
 
 ## 当前收口状态
 
-直连引擎、依赖图、Pstack 生产治理、历史恢复与独立安装已完成下列验证。当前候选产品为 CLI9/Broker8，21 张子票中 15 张按独立功能范围完成。H5 的原失败、合盖睡眠、观察器误拦与真实模型输入错误分别保留；独立补证已消除 retained-body 未知归属，未将原失败改为通过。H6 通过 88 项回归与两次实际安装 SDK；正式 A/B 冷样本仍未通过，单 Skill 初始 11 项实际为 10 pass、1 fail。当前正在修正已验证的观察器公共输入与选择时点问题，A 的资源和完整文件缺口仍是实际任务失败。文档发布、日用新会话和最终 push 尚未完成，此文件不表示 AH-561 已全部通过。
+直连引擎、依赖图、Pstack 生产治理、历史恢复与独立安装已完成下列验证。当前候选产品为 CLI9/Broker8，21 张子票中 16 张按独立功能范围完成；AH-566 已完成六份当前 Notion 文档发布和独立读回并转为 Done。H7 通过 96 项回归、两组实际安装 SDK 的分层核对与独立审查，产品实现和验收修复已线性推送两仓 main；最终报告与 33 条故事证据账本由独立文档提交交付。
+
+A 的最新 H6 样本在纠正观察标签后仍缺资源与完整 Skill；B 的 H7 样本在观察完整、服务可用的情况下仍未完成任务。单 Skill 的 17 项要求由 H6 初始 10 个成功病例、H7 targeted 1 个成功病例与 H7 updated 6 个成功病例分别覆盖，原 H6 10/1 结果不变。六份 Notion 文档已全部独立核验：5 页与最终候选逐字相同，05 页接受单独审阅的 3 处 Markdown 转义，原严格比较失败仍保留。生产 census、owned 页/View 和本批 18 个临时目录清理已完成，各自证据与范围如下。
+
+AH-572、AH-573、AH-576、AH-581、AH-582 与父 AH-561 继续 In Progress。当前 flash-free 服务可用而任务未达标，不满足规格规定的 worker fallback 条件；没有另换模型或重复采样隐藏失败。日用配置未激活候选，实际切换仍以全部必要 Gate 通过为前提，此文件不表示 AH-561 已全部通过。
 
 失败结果与修正后结果独立保留。HTTP 200、编译成功、固定 provider、直接调用投影函数或旧版通过，均不代替相应的真实入口验收。
 
@@ -36,7 +40,8 @@ prepare use 准备明确选择的根及递归 Requires，inspect 只观察根。
 | H3 历史模型验收脚本集合 SHA-256 | 565d414f70bcfb1742ba94a04efb7f4dad218fc8a3f9324f85eb7560c905d4b6 |
 | H4 历史模型验收脚本集合 SHA-256 | a58708b78cb9c4f4029f9c22b81478eccfd0a506828d4a24b9bbc181d4915ddd |
 | H5 历史模型验收脚本集合 SHA-256 | 83576bdd32d0e1c3419da8665adf035a0e3b456091dd6e21c46f268ff3532f19 |
-| H6 模型验收脚本集合 SHA-256 | 293c5d2718f326b43143e68a9623413d31386eae7413546e4713fcabd491726d |
+| H6 历史模型验收脚本集合 SHA-256 | 293c5d2718f326b43143e68a9623413d31386eae7413546e4713fcabd491726d |
+| H7 当前模型验收脚本集合 SHA-256 | b43eeaef8f76b5bf5c97eab4fd10de3367321d1fa5282dde423119e1958910f2 |
 
 CLI8 相对 CLI7 只有 docs/usage.md 变化，JS 字节相同；CLI9 相对 CLI8 的 30 个包文件只有 dist/ntn-skills.js 变化，修正目录发现对共享管理表的误分类。Broker5→6 的 62 个包文件只有 src/host-skills.ts 变化，修正树外路径别名；Broker6→7 只有 dist/ntn-skills.mjs 变化，带入 CLI9；Broker7→8 只有 src/index.ts 与 src/view-prompt.ts 变化，统一原生读取的目录与指导。旧包证据保留自己的身份，不能把历史 Mini8 或旧 TUI 记录改称在最终包上重跑。H3 仅调整观察和验收脚本，未改变产品包。
 
@@ -66,7 +71,8 @@ CLI8 相对 CLI7 只有 docs/usage.md 变化，JS 字节相同；CLI9 相对 CLI
 | Pi 终端 | 实际 Tab 选择、提交前零正文、Required 齐备、预算提示、Escape 子进程退出、同会话重试 | RPC abort、new_session、EOF 各自单列，不能互相代替 |
 | 请求优化 | 同 fixture、基线/优化每条件 n=3；独立 Node HTTPS/SQLite 公共 CLI 61 assertions | 不从受控时间推断生产时延或 p95 |
 | 物理双机 | Pro A→当前 B；Mini 自身认证和四个空目录恢复 3 节点 6 文件 A，CLI8 阶段全部 hash/版本向量一致 | 只复制 npm 包，没有复制 token、SQLite 或导出内容 |
-| 真实模型 | H5 A 已完整读到目标主文和三份资源，但 A/B 均无成功 final；原单 Skill 为 1 pass、2 fail、8 初始及 6 updated 未运行 | 合盖休眠、观察器误拦与模型输入错误分别报告；任务失败和环境中断不授权切 worker；全部必要 Gate 通过前不关闭根任务或激活日用 |
+| 真实模型 A/B | 最新 A 为 H6 NFvEez，独立纠正观察标签后仍 READ_MISSING；最新 B 为 H7 FUJa9C，原结果 READ_MISSING。各有成功 final，但未具备完整目标资源消费和可执行 Skill | 两条矩阵各 1 个 cold 失败、4 个后续样本未运行；任务失败不满足 worker 的服务不可用条件，也不满足日用激活门禁 |
+| 原单 Skill | H6 初始 10 pass / 1 fail；H7 targeted 1/1 pass；从 H6 真实自主读取基线续接的 updated 6/6 pass | 17 项要求分别有通过证据，原 H6 失败保持；不把跨阶段覆盖伪称为某一次 17/17 运行 |
 
 原单 Skill 的第一份新模型失败记录是 LZOyAZ，涉及漏关全局 Skill 和 macOS 路径别名。修正后 X8Dfhw 初始矩阵 10/11 通过，cold-native-command 中模型自行猜错引用，仍记录失败。两份均不能写为 15/15 通过。
 
@@ -113,6 +119,20 @@ H5 恢复连接后的独立补证位于 ng14/h5-supplementary-source-proof-BJqcC
 H6 只调整观察器的已发现引用匹配。无 FileID 的资源必须解析到同 owner、当前 manifest path 的唯一已验证身份；显式 FileID 保留实际已发现的旧显示路径别名，任意未公布路径、显式 pin/FileID 冲突与 scope 歧义仍拒绝。完整 expected 身份在调用时固定，返回内容不能借相同正文换绑 FileID。旧 H5 源上的新增回归先记录 7 fail/2 pass，修复后相关组合 88/88。Broker8/embedded CLI9 的两个实际 SDK 分别验证稳定 FileID 旧路径与省略可选字段的 canonical resource ref，每次 10 对 provider/wire、完整 70 B 资源、441 B host-index 主文和 77 B 相对资源，14/14 source close 与 Pi observedExit。冻结文件 ng14/harness-v6/freeze.json 的 SHA-256 为 b4e28f3bdc6720d87ed155dbb28ebec18663263ad14f954b9ed297f1ee85d48c，SDK 为 graph-observer-http-NGwP8n 与 graph-observer-http-Hgm7jA；这些受控 provider 结果不冒充真实模型通过。
 
 H6 真实运行保持 CLI9/Broker8、TASK、oracle、owned 项目、flash-free 与预算不变，每个 utility 用 caffeinate -i 防空闲睡眠。原启动信息另存 ng14/final-h6-config-a7VrBa/launch.json（SHA-256 6e0df95d98cab1d7336af57278fc68ba306fbc875c7187a53278498331e19f47）。A graph-model-A-NFvEez 原报 EAGER_MEMBERS，B graph-model-B-xoGFQs 原报 READ_MISSING，矩阵各余四项未运行；单 Skill pi-cache-evidence-HEjb03 初始 10/11 通过，仅 cold-native-command 因已公布的原生主文路径被 observer 拒绝而失败。原结果、独立诊断与修正后的必要验证分别登记，不将观察标签纠正等同于实际资源消费或完整规程生成。
+
+H6 A 的独立因果链复核位于 ng20/h6-a-eager-review-JuV3Ra。11 次原 EAGER 计数分别来自 target 5 次、technical-writing 2 次、maintain-verification-skill 2 次和 recall 2 次；每项均有同 callID、模型原参数、scoped prepare/read、HTTP 与 retained proof 的完整链。Pi 在 source 请求前已经收到模型的真实读取调用，但 Broker 的 prepareRead 先运行，后注册的 observer 才记录 admission。独立派生仅将这 11 个 beforeSelection 与合计改为 0，其余 trace 不变，原 evaluator 仍报 READ_MISSING。目标主文有 1 次 native read、6 次 provider 上下文，三份所需资源均为 0。9 次 provider transport 全部 200，成功 stop final 为 22,070 B，运行窗没有新的 Sleep/Wake/DarkWake；availabilityFailure=false。原文本确有 4 个文件标题以及 verify.mjs/run.sh 代码，原 collector 记录 files=0、plan-only，没有 SKILL.md，部分 Markdown 围栏有同长度嵌套歧义，不能将其称为完整 Skill 或已执行规程。52 项原文件与目录成员不变；diagnosis SHA-256 为 00d1f71e0f71eb2e14a06695190db4cd886a742f7096ab62c5812205d007f90b，派生 trace 为 ad787a08cf4c29ac420eb0fc6c0d1ef57e1301d8951b1213852ae69423bd544f。
+
+H6 B 唯一 blocked 调用是对已发现 poteto/unslop 的裸 owner URI 执行 skill_prepare。产品的 parseNativeReference 与 nativeResourcePath 正式支持省略主路径，旧 observer 却另用更窄语法而误拦；H6 native-command 的失败则来自真实 Pi `<skill location="...">` 主文路径没有登记。两个接缝的独立交叉核对位于 ng20/h6-gate-diagnosis/b-and-native-location.json，SHA-256 为 4d5e3e9d1e0d672eb1473f25dea6caafb6d3264d07ba70a50227b3bc501b6e7e。B 当时有 22,213 B 成功 final、8 组文件标题，但没有目标与资源消费或 SKILL.md；原失败不改判。
+
+H7 复用实际安装 Broker8 的公开 parser，按完整 provider/delivery/manifest/public-read 身份登记 native wrapper，并把真实收到的模型 authored call 与其后 allowed admission、完整结果匹配，使用正确选择时点。资源身份与发现边界、真正 eager read 拒绝都保留。收集器另支持实际输出的中文“文件路径”标签和精确 owned root 内的绝对路径，只规范存放路径，正文 bytes/SHA/sourceSpan 原样保留；外部、同前缀兄弟目录、点段、双斜线、围栏歧义与不完整 Skill 仍拒绝。原 94 项与两项格式回归最终 96/96；两个实际 SDK 各 10 对 provider/wire，source 15/15 和 14/14 关闭，Pi 均 observedExit。SDK 原 aggregate 为 c0165eb3923b887a1dd62fa85b11d3794363f0216532992cd79b4cf14074729d；最终唯一 helper 差异的 createOwnedGraphProject/inspectOwnedGraphProject 逐字未变，格式修复由新增回归证明，没有把旧 SDK 冒充为新 aggregate 重跑。freeze.json SHA-256 为 92c369b047339eb1388cb7081890212e539616d074dada0fdb90427849155cd4，两项独立代码审查均无阻断项。
+
+H7 仅补跑受误拦影响的 B 与单 Skill 病例，没有再采 A。B graph-model-B-FUJa9C 仍为 READ_MISSING：9 次真实 provider 全 200、observer-error=0、成功 final 23,643 B。模型首轮把五个已提供绝对路径的开头“/”遗漏，形成 cwd 内的重复嵌套相对路径，拒绝合理；另一次把 Pi docs 目录当文件读取。之后完整读取 12 份帮助与执行一次空搜索，但没有 skill_prepare、目标/资源读取或完整项目文件读取。Consumer 的 27 次 metadata、6 次 body 全部 200；六次正文均归属于 root/Required，提前成员正文读取为 0、归属完整。另一次补证为 4 metadata、0 body/write/provider。只提取出 acceptance/README.md 和 acceptance/results.md 两个文件，artifactStatus=incomplete-generated-files，skillFiles 为空；README 引用未提供的 ./run.sh，results 内 PASS 是模板文字，没有执行证据。原文 sourceSpan 匹配且 fileExtractionIssues 为空，没有完整 Skill，未执行。矩阵 graph-matrix-B-sOq1iM 为 1 个 cold 失败、4 个 notRun；服务可用不满足 worker fallback 条件。8/8 source 已关闭，Pi、collector、outer launcher 均 observedExit，十九个已记录 PID 最后核对均不存在。独立诊断 ng20/h7-b-diagnosis-vmBDYI/diagnosis.json 的 SHA-256 为 293c36c6f0bf188ac4a0ae79a51f43b84391032b2efd91636f1c6c27d8e1c292；41 份原证据 SHA 不变。
+
+单 Skill 的 H7 targeted pi-cache-evidence-Y9H1QF 为 1/1 通过，2 次 provider、28 次 Notion 请求（26 metadata、2 body）全部 200、0 write；1 个 Pi 与 8 组 public command 关闭，17 个 PID 均不存在。独立 broker8-h7-initial-coverage.json 将原 H6 的 10 个通过病例与这 1 个 targeted 病例对应到原 11 项需求，SHA-256 为 05248539256372d63569b4259eb26badf30d1a0f6994c6936d997257cdeb2c6b；HEjb03 原 manifest 仍保持 10/1，未伪称新的一次 11/11。
+
+主文与资源随后各自取得新鲜基线，经过公开单文件 dry-plan、唯一写入和完整独立回读，将远端从 B 恢复为 A；没有 aggregate 重放或 unknown。恢复后 snapshot 为 s_0deb9cf838ab8b7a25e10d09ba5154191dbd10c426c5f1174932342d50018700，主文 438 B、资源 201 B 的 SHA 与原 A 内容相同。updated pi-cache-evidence-tTddSZ 从 HEjb03 真正 cold-autonomous-native 的 B 会话续接，六项全部通过：旧会话在编辑后仍固定 B，刷新后新会话、暖新进程、续接、Broker 暖而 CLI 空和短 TTL 重验均读取 A。既有 case 名中的后缀 b 表示模板的 after 阶段，本次实际 after 内容为 A，不改名或混淆版本。全部成功 final 与实际 provider 的完整主文/资源四个标记一致，正文每份唯一；六个 Pi 都有退出回执。manifest SHA-256 为 a798e564c922c3330da79c4028b4651ccb5f3c1154a0394392997f8d7c37eb13。这些分层证据覆盖原 15 例与新增 2 例，A/B 图模型门禁仍分别未过。
+
+updated 整个阶段记录 116 次 Notion 请求（112 metadata、4 body、0 write）及 10 次真实 provider 请求，全部 HTTP 200；六个 Pi、48 组 public wrapper/CLI 均关闭，包含 runner 与 source 的 151 个记录 PID 最后核对均不存在。原 H6 的 114 项、targeted 的 18 项证据按不变字节或明确允许的 append 前缀核验；9 个冻结 harness 文件和 48 个安装运行文件仍匹配。17 项覆盖总回执 ng20/owned-single-final-ybVxon/broker8-h7-terminal-receipt.json 的 SHA-256 为 9a5168db218dcd5f448e770523693054793bed89c55fd3e3afdf97cd2d11ec55。
 
 ## 请求成本
 
@@ -181,13 +201,54 @@ architect 一次正文 PATCH 的原 operation 为 unknown。公开 accept-curren
 - /Users/yoyo/Library/Logs/ntn-skills/AH-561-20261103/ng09/final-census-WFsuRv/result.json
 - /Users/yoyo/Library/Logs/ntn-skills/AH-561-20261103/ng09/apply-01/architect-body-result.json
 
+### 最终生产复查
+
+清理后完整分页取得 Skills 300 行、Files 818 行、Sources 59 行。公开 catalog 为 298 项，差异恰为原本 Enabled=false 的 Topic Map Governance 与 Resource Tag Governance，不是分页缺失；Records 只核对表结构，未扫描总数。57 个指定 Pstack 页的稳定身份、Origin、Selected Version、Kind、Enabled、Main File ID 与用户字段均匹配，root Members 56、poteto Members 55，所有 Members/Requires 完整。
+
+原始字段对比出现 48 项 Files 附件临时签名和 expiry 轮换；独立离线核对每个附件的名称、类型、HTTPS origin/path 及全部非签名参数相同，未发现未解释的字段变化。没有下载附件或将 metadata 核对当作新的正文 hash 证明。默认 View b6c7bb99-ae7c-4be7-b98b-5703b09e8913 的实际 native query 与目录均为 74 项。当前共有 6 个 View；A/B 两个复现 View 保留，单 Skill 的第三 View 已不存在；两个已归档 owned 页不在活动 Skills/Files 清单。
+
+实际 44 次 HTTP 全 200（首阶段 30、窄续采 14），请求 1,422 B、响应 7,771,834 B，无未知字节。原始计数 42 metadata + 2 unclassified_body 保留；两个被通用计数器归入 body 的响应都只有完整 relation property_item IDs，current/retained 正文、写入与模型请求均为 0。首轮因此中断的 incomplete 和续采初始 differences-or-incomplete-proof 结果未修改，最终通过是独立语义核对，不是把原计数改成零。
+
+表清单与 schema 在 2026-11-03 22:13:35–22:14:08（UTC+8）取得，剩余关系、View 和两页状态在 22:24:14–22:24:23（UTC+8）取得。续采复用原 metadata 原件，未重扫三表或重取 catalog；这些是分阶段观察，不声称一次原子快照或全面 ACL 枚举。最终结论 ng21/final-census-conclusion-JkSnne/result.json 的 SHA-256 为 7f55c7120a7b75aa9f8bb5291fec26eac5316006e5f68dbb66a28dec6cfcaf39。
+
+## 当前 Notion 文档发布
+
+既有文档父页 40c5636c-236e-80e1-b440-c6d4b8310b72 下六个精确页面均完成当前使用说明与本轮证据更新。页身份、parent 和其余 properties 保持；最终独立 CLI9 metadata/body 读回无截断、无 unknown blocks。
+
+| 文档 | 最终正文 bytes | 最终正文 SHA-256 |
+| --- | ---: | --- |
+| [00 入口](https://app.notion.com/p/00-40c5636c236e81969ba8f77eb650d171) | 3713 | 059f172c8d843e7d213166ebff10fc7aee1ab34ac07a1e1b46d750828b157961 |
+| [01 依赖与引用](https://app.notion.com/p/01-40c5636c236e81bea195da74acc3ded0) | 5943 | b7fe6e4edaf433e27a2549276a0c78fc62890dde80b4e3bf048a4f19900ef429 |
+| [02 管理与消费](https://app.notion.com/p/02-Skill-Pi-40c5636c236e81fdb1f7f33e52acea02) | 5494 | 56287d1efb73d9eaa1e8da8066363209830dd78ce45d986d9e6017c323193654 |
+| [03 状态与历史](https://app.notion.com/p/03-40c5636c236e81aabf70f6d2ab41eaa8) | 7897 | 61323ed0d1dd0bad49e4c2df5a951cbafe18c27c79232a8539963e332e8a8d6a |
+| [04 Sources](https://app.notion.com/p/04-Sources-40c5636c236e8118ace7cf318f985e39) | 5341 | baf96d6efa9a79e129092272c570b6704d60cbf08ae9d1b4651faac985f953df |
+| [05 验收](https://app.notion.com/p/05-Pi-40d5636c236e813b8b22cb63e2f7d0b5) | 33445 | f5f3a2975ea3826f54083cd14c432e0d043b2d17ef51a73ef1bfd6c27ce162eb |
+
+03 的 AH-558 原始正文 2774 B（SHA-256 c929f25bf545078673e01e1d0bd5d5a4e76cf50aad82e92182cd0fa3ec2263e4）与 05 的 AH-560 原始正文 7292 B（ce1979985249ee384de19ee268da655b9b85ac0366064c5815cc3b605de211be）均作为明确历史段完整保留，并经最终 suffix 比对。
+
+发布中保留三类原失败。初次 Bun 1.4.3 运行因 STATE_RUNTIME_UNSUPPORTED 停在任何页面 intent/PATCH 之前，随后使用实际 Node 24.20。第一次 Node 发布成功写入并逐字核验前四页；02 的 PATCH 已明确成功，但 Notion 自动把裸 SKILL.md 变成链接，原严格比较失败。独立审核把该路径放入 code 标记后，用当前已知正文作为新基线生成明确的新格式修正计划；原 operation、候选与失败均保留，没有重放 unknown。
+
+05 首次派发前同样只对 8 个当前说明中的文件名增加 code 标记，历史段不变。其 PATCH 明确成功，独立读回相对该候选仅多 3 个 Markdown 转义反斜线，分别在表格 EAGER_MEMBERS、snapshot/file_id 与段落 ~/；没有新增链接、命令或可见文字变化。另存 accept-current serialization 决定，精确应用这三处变换后必须与完整读回正文逐字相同；没有再发 PATCH，也没有将 byteExact=false 或原严格比较失败改成 true。最终结论为 5 页 candidate-byte-exact，加 1 页已审序列化差异通过，不声称六页都与原候选相同。
+
+六页共有 7 个明确 Success 的逻辑页面更新操作，包含 02 的一次独立格式修正；未决页面派发为 0。首轮 publisher 的总 HTTP metrics 未在抛错前保存，因此总请求成本未知，不以逻辑更新数补造 HTTP 总数。最后两页 publisher 保留 10 次 HTTP（4 metadata、4 body、2 write），请求 52,344 B、响应 96,193 B。最终独立读回另用 12 条公开 CLI9 命令，全部 exit 0，共 12 次 HTTP（6 metadata、6 body、0 write/provider），请求 0 B、响应 69,128 B。
+
+最终证据均位于 /Users/yoyo/Library/Logs/ntn-skills/AH-561-20261103/ng21：
+
+- publication/accepted-current-serialization-1793717247785.json，SHA-256 3dfc6a08236b0c0af789944da8b6bab6a4126b1230aa7721a8a493b86d2a3628。
+- publication/independent-cli9-readback-VEUfV9/result.json，SHA-256 354cb080c95dee3953bbed9e548eeb8c5d89826357034e32f2532ca0846f8fa5。
+- publication-complete-TCdBv3/result.json，SHA-256 0b6b59f9e980ec677f30c52679862331b13103b1afcee9413ab278a601ad84bf。
+
 ## 历史恢复与清理
 
 保存图 graph-6b42b250d584cdd7faf1b45177c0cb22cc5b9fa1e97a7cd6c93015ed7e6870c2 后，当前三节点六文件均改为 B。Mini8 先只恢复完整 manifest，随后读入口与另一节点资源，最后完整导出全部六文件并离线复读。每个文件与 A 的 bytes/SHA-256 一致，版本向量逐项匹配，所有阶段 current body/write/provider 为 0，离线复读为 0 请求。
 
 这组六个 owned Skill/File 页已经按各原 create operation 经公开 archive 移入 Notion 回收站并 GET 确认。不可变 Records、图与原操作证据保留，永久删除为 0。早期 CLI6 的 full/partial 证据保留自己的包身份。
 
-原生链接测试与附件 owned 页已归档。三个早期失败创建页通过实际 UI 移入回收站，再由 CLI 读回 in_trash 确认。新单 Skill 模型 fixture、其独立 View 和最终生产目录复查等待相应模型运行结束后收口。
+原生链接测试与附件 owned 页已归档。三个早期失败创建页通过实际 UI 移入回收站，再由 CLI 读回 in_trash 确认。
+
+新单 Skill owner ah561-cache-96603f07 完成全部模型使用后，resource 40d5636c-236e-8140-b88f-fe839939e626 与 main 40d5636c-236e-8166-98db-c522df651215 均按原 create operation 独立 dry-run、单次 archive、公开 GET 回读，精确 ID 与 in_trash=true 全部匹配。六条命令均 exit 0，14 次 Notion HTTP 全 200（12 metadata、2 write），没有 unknown 或重放。第三 View 40d5636c-236e-80da-b51d-000cf22b6b45 在实际 Notion UI 经“删除视图”确认后移除，界面自动回到默认上下文。两页 complete 回执 SHA-256 为 881d2b064ebd302c4824bf0a7fb3a16a2258769080b30f8372513971186bcc07；独立 audit 为 b52f5873cd27ca28a8bc7706d74ed9acc8b06a1a32fb58f68fa7674fa6a852b5；UI after 回执为 8aa3f4a5e93898fed2f32a9808517a37661a2300fcbda976fea386a49b56f651。
+
+本批最后一组 H5/H6 图样本、H6/H7 SDK、H7 B 与单 Skill 的 18 个精确 owned 临时目录，在逐一核对归属及进程关闭后移入本机回收站，未泛扫或清空 /tmp。单 Skill 的 13 份完整 session 与 3 份原始前缀预先复制到 Logs 并逐字节核验；所有原始失败、产物与操作证据保留。三组清理回执分别为 ng20/h7-b-diagnosis-vmBDYI/cleanup-execution-6CsYI1/result.json（83c81a2fccf470853bb42b4528453d303b5c358e737a5d4735487ca14eb16ee2）、ng20/closed-graph-scratch-plan-KMtlaO/execution-tPpHCO/result.json（f257743d7345f2ef7c74b92186f00f6d1274c0711de3e30c0805bd4cdbca0f67）与 ng20/owned-single-final-ybVxon/legacy-h6-h7-scratch-trash-complete.json（6b9933e3276ddd56b9568a8ce0dde5c3e9a8140a3c1ad38fb79462ed1ee21c02）。
 
 旧单 Skill owner owned-single-ANVtV1 的 A2 aggregate apply 保留 parent/main unknown。当前主文经完整原计划、当前事件 frontier、精确候选 hash 核对后创建独立 accept-current 决定；该决定不完成父 skill_apply，也不把缺失的子事件当作未发送。父 fence 保持，两页按原 create operation 各归档一次，并独立 GET 确认 in_trash=true。实际共 10 次 HTTP（8 metadata、2 页面归档 PATCH）、29,318 B；正文、provider、Records 写入、重放与永久删除均为 0。清理回执为 ng20/owned-single-ANVtV1/retirement-execution-1793701037401/result.json（SHA-256 0ba2109d1a5dc1e2c480b7ae7b58b5b5ed658198a4410714c09647f3775a9a5d）。新独立 owner ah561-cache-96603f07 不继承旧操作状态。
 
@@ -197,7 +258,11 @@ CLI 原有 1615 个暂存路径的索引和内容逐项保护，恢复连接后�
 
 受保护旧 Tern completion 含历史 ntn 字样，保持用户原文件 SHA-256 262dcf14a6627406926a1ff47a3f0c8fb397b8001f7f8ed40aeff082ca980d0c。它不在新 Pi 包内。新生成的共享 completion 及 9 项共享 CLI/NOTICE/builtin 资产另行审计；没有将保护例外写成“全库所有历史文本 grep 为零”。
 
-日用激活计划只替换 ~/.pi/agent/settings.json 中既有 Broker package 项与 ~/.local/bin/ntn-skills。其余 20 个 package 项、来源配置、认证、模型配置和旧进程保持。候选新目录与回退用的旧文件备份已准备；实际激活仍以最终全部验收为前提，不设置新旧 API fallback。
+日用激活计划只替换 ~/.pi/agent/settings.json 中既有 Broker package 项与 ~/.local/bin/ntn-skills。其余 20 个 package 项、来源配置、认证、模型配置和旧进程保持。候选新目录与回退用的旧文件备份已准备；实际激活仍以最终全部验收为前提，不设置新旧 API fallback。当前 settings SHA-256 为 fb51d3931a0ee3d1b30aac79f9c4ff5198e6d23945c4ce140638f2ae00bf3f8b，旧 shim 为 bb9766af3b8bea9f8252b3fb6c7f1fe19460f75774adda48dbb5140cc40b3549；没有启用候选或以受控 SDK 代替实际日用新会话门禁。
+
+2026-11-03 22:18:05（UTC+8）的独立保护复查为 ng21/final-protection-FnM8Ik/result.json，SHA-256 f65217b64962a26957db42f41fd7ede6f7d41439ec52aa9026accad1991aa792。CLI 的 1615 项完整保留；Broker 原检查仍只报上述 Tern index 差异，恢复时的 index 为 100755 f8c49ae1887ee34b04b6582e99ddd30192ff548b 0，正文 SHA 未变。最终文档提交只含此验收报告及另一仓两份故事账本，不纳入受保护内容或五个独立未跟踪 pycache 文件。
+
+产品源提交 CLI9 dd801c1、Broker8 1809fd7 与测试产物身份固定。已推送的 CLI 检查点 7a8b1e7 和 Broker H7 修复 dfb64d8 及最终文档提交各自记录，不能用后来的验收/文档提交替换包的 source commit。最终 Git 提交、远端相等与保护前后回执另存 Logs 和 Linear，避免账本自引用包含自身的提交。
 
 ## 子任务与故事映射
 
@@ -228,6 +293,18 @@ CLI 原有 1615 个暂存路径的索引和内容逐项保护，恢复连接后�
 | [AH-582](https://linear.app/yoyooyooo/issue/AH-582) | NG21 | 文档、包、保护、日用新会话与双仓交付 |
 
 不为凑第二套生产数据而全量改造 Matt。已有更名、全部 ID 改写、异构 Required 反例和非 Pstack owned 图验证无 Pstack 名字硬编码；最终覆盖决定依这些证据登记。OMP/Tern 的业务产品验收不在本次 Pi 主线完成声明内。
+
+### 尚未完成的验收
+
+| Issue | 已有交付与剩余条件 |
+| --- | --- |
+| AH-572 | 原生发现、准备和精确读取实现及 SDK 证明已完成；原验收同时要求 NG11/NG14 自主真实模型通过，当前缺口不能由受控 provider 替代。 |
+| AH-573 | Gate A 最新 H6 有完整目标主文，三份所需资源未消费、未产出完整 Skill；独立修正观察标签后仍 READ_MISSING。 |
+| AH-576 | Gate B 最新 H7 服务可用、观察完整；模型路径输入错误后未取得目标/资源，也未产出完整 Skill，READ_MISSING。 |
+| AH-581 | 单 Skill 17 项要求已分别覆盖，图/缓存/故障证据已登记；A/B 各 cold 失败，后续各 4 个样本未运行，完整矩阵未通过。 |
+| AH-582 | 包、文档、生产复查、owned 清理与双仓交付已收口；全部门禁与正常日用激活后的新会话仍未完成。 |
+
+原规格只在 magpie/group/flash-free 当前实测不可用时允许改用 magpie/group/worker。A、B 最新样本各有 9 次 provider HTTP 200 和成功 final，availabilityFailure=false；任务未达标不满足该条件。若要在服务可用的情况下用 worker 继续相同验收，需要用户明确调整这一限制，TASK、私有 oracle、工具边界、内容完整性与失败保留规则均不随之放宽。
 
 AH-498 与既有历史 Issue 不随本批次自动关闭。Notion 原 AH-558/AH-560 文档内容以明确历史存档保留，当前使用说明与本轮结果另列。
 
