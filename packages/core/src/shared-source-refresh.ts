@@ -1,7 +1,7 @@
 import { Clock, Effect, Schema } from "effect"
 import { zipSync } from "fflate"
 import { authScope } from "./catalog.ts"
-import { fail, property, text, type SkillsError } from "./model.ts"
+import { fail, property, text, snapshotMembers, type SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { readImportZip, importDocument, type ImportFile } from "./import.ts"
 import { canonicalMain } from "./portable.ts"
@@ -11,6 +11,7 @@ import { discoverSourceDefinition } from "./shared-source-adapters.ts"
 import {
   guardedSourceMutation,
   readSourceDefinition,
+  listSourceMembers,
   sourceChecked,
   sourceField,
   sourceRich,
@@ -30,6 +31,10 @@ import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { resolveFileState, FileEventSchema } from "./shared-file-state.ts"
 import { composeSharedFilePlacements, sharedFileSourcePath } from "./shared-file-placement.ts"
 import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
+import { compileSharedNativeReferences } from "./shared-native-references.ts"
+import { sharedRecordFromPage } from "./shared-content.ts"
+import { querySharedSkillRelation, renderSharedRouterMembers } from "./shared-router-members.ts"
+import type { SourceSnapshot } from "./upstream-source.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import {
   applySharedSourceSelection,
@@ -44,8 +49,91 @@ import {
 import { prepareSharedMetadataWrite } from "./shared-metadata-write.ts"
 import { sha256, Store } from "./store.ts"
 
+const MemberReviewSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  comparison: Schema.Literal("current_origin_bindings"),
+  relation_ownership: Schema.Literal("notion"),
+  relation_writes: Schema.Literal(false),
+  added: Schema.Array(
+    Schema.Struct({ member_key: Schema.String, name: Schema.String, description: Schema.String }),
+  ),
+  missing: Schema.Array(
+    Schema.Struct({
+      member_key: Schema.String,
+      page_id: Schema.String,
+      skill_id: Schema.String,
+      name: Schema.String,
+    }),
+  ),
+  renamed: Schema.Array(
+    Schema.Struct({
+      member_key: Schema.String,
+      page_id: Schema.String,
+      skill_id: Schema.String,
+      before: Schema.String,
+      after: Schema.String,
+    }),
+  ),
+})
+
+/** Origin inventory is a review baseline, never an author-selected Members set. */
+export function reviewSourceMembers(
+  library: SharedLibrary,
+  source: string,
+  snapshot: SourceSnapshot,
+) {
+  return Effect.gen(function* () {
+    const bound = (yield* listSourceMembers(library, source)).items.filter(
+      (item) => item.kind === "skill" && item.member !== "",
+    )
+    return yield* sourceChecked(() => {
+      const candidates = snapshot.members
+        .map((member) => ({
+          member_key: member.member_key,
+          name: member.portable.name,
+          description: member.portable.description,
+        }))
+        .sort((a, b) => (a.member_key < b.member_key ? -1 : a.member_key > b.member_key ? 1 : 0))
+      if (new Set(candidates.map((item) => item.member_key)).size !== candidates.length)
+        throw fail(
+          "SOURCE_MEMBER_AMBIGUOUS",
+          "Candidate inventory repeated an exact source member key.",
+        )
+      return {
+        version: 1 as const,
+        comparison: "current_origin_bindings" as const,
+        relation_ownership: "notion" as const,
+        relation_writes: false as const,
+        added: candidates.filter((item) => !bound.some((row) => row.member === item.member_key)),
+        missing: bound
+          .filter((row) => !candidates.some((item) => item.member_key === row.member))
+          .map((row) => ({
+            member_key: row.member,
+            page_id: row.page_id,
+            skill_id: row.skill_id,
+            name: row.name,
+          })),
+        renamed: bound.flatMap((row) => {
+          const candidate = candidates.find((item) => item.member_key === row.member)
+          return candidate === undefined || candidate.name === row.name
+            ? []
+            : [
+                {
+                  member_key: row.member,
+                  page_id: row.page_id,
+                  skill_id: row.skill_id,
+                  before: row.name,
+                  after: candidate.name,
+                },
+              ]
+        }),
+      }
+    })
+  })
+}
+
 const RefreshSchema = Schema.Struct({
-  version: Schema.Literals([1, 2]),
+  version: Schema.Literals([1, 2, 3]),
   kind: Schema.Literal("source_refresh"),
   plan_id: Schema.String,
   library_id: Schema.String,
@@ -67,6 +155,7 @@ const RefreshSchema = Schema.Struct({
   ),
   custom_files_preserved: Schema.Array(Schema.String),
   selection: Schema.optional(SharedMetadataWritePlanSchema),
+  member_review: Schema.optional(MemberReviewSchema),
 })
 export type SourceRefreshPlan = typeof RefreshSchema.Type
 
@@ -124,6 +213,36 @@ function projectCandidate(
       ? yield* resolveSelectedSharedSource(library, selected.id, selected.index.source_reference)
       : undefined
     const scope = yield* authScope
+    const record = yield* sourceChecked(() =>
+      sharedRecordFromPage(
+        selected.raw,
+        {
+          alias: library.library_id,
+          database_id: library.skills.database_id,
+          data_source_ids: [library.skills.data_source_id],
+          title: "",
+          role: "content",
+          shared_library: library,
+        },
+        library.skills.data_source_id,
+      ),
+    )
+    const members =
+      library.skills.property_ids.Members === undefined
+        ? undefined
+        : yield* querySharedSkillRelation(library, {
+            record,
+            rawPage: selected.raw,
+            field: "Members",
+          })
+    const required =
+      library.skills.property_ids.Requires === undefined
+        ? undefined
+        : yield* querySharedSkillRelation(library, {
+            record,
+            rawPage: selected.raw,
+            field: "Requires",
+          })
     const current = yield* openSharedSnapshot({
       library,
       target: selected.id,
@@ -132,6 +251,7 @@ function projectCandidate(
       startedAt: yield* Clock.currentTimeMillis,
       forceFull: true,
       readOnly: true,
+      relations: { members, required },
       ...(fixed
         ? {
             fixedSource: {
@@ -191,14 +311,7 @@ function projectCandidate(
           kind: "custom",
           file_id: file.file_id,
           path: file.path,
-          bytes: new TextEncoder().encode(
-            materializeSharedNativeFile(
-              new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-              file.path,
-              bindings,
-              links,
-            ),
-          ),
+          bytes,
         })
         custom.push(file.path)
       }
@@ -211,6 +324,38 @@ function projectCandidate(
         entrypoint: current.entrypoint,
       }),
     )
+    const activeBindings = bindings.filter(
+      (binding) =>
+        states.find((item) => item.file_id === binding.file_id)?.state.ownership.kind !==
+        "tombstone",
+    )
+    const native = yield* compileSharedNativeReferences({
+      library,
+      record,
+      bindings: activeBindings,
+      files: yield* Effect.forEach(
+        composed.files.filter((file) => /\.md$/iu.test(file.path)),
+        (file) =>
+          Effect.gen(function* () {
+            const binding = activeBindings.find((item) => item.path === file.path)
+            const observed = current.shared_authoring.files.find((item) => item.path === file.path)
+            return {
+              path: file.path,
+              markdown: yield* sourceChecked(() =>
+                new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
+              ),
+              body_sha256: observed?.body_sha256 ?? (yield* sha256(file.bytes)),
+              ...(binding === undefined ? {} : { page_id: binding.page_id }),
+            }
+          }),
+      ),
+      relations: {
+        members: snapshotMembers(current) ?? [],
+        required: current.required ?? [],
+        file_links: links,
+      },
+    })
+    const resolvedLinks = [...links, ...native.links]
     const final = yield* sourceChecked(() =>
       composed.files.map((file) => {
         if (file.path !== current.entrypoint)
@@ -221,8 +366,9 @@ function projectCandidate(
                   materializeSharedNativeFile(
                     new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
                     file.path,
-                    bindings,
-                    links,
+                    activeBindings,
+                    resolvedLinks,
+                    native.linkedPages.get(file.path),
                   ),
                 ),
               }
@@ -234,8 +380,18 @@ function projectCandidate(
         return canonicalMain(
           current.record.name,
           current.record.description,
-          materializeSharedNativeFile(doc.body, file.path, bindings, links),
-          files.find((item) => item.path === file.path) ?? file,
+          materializeSharedNativeFile(
+            doc.body,
+            file.path,
+            activeBindings,
+            resolvedLinks,
+            native.linkedPages.get(file.path),
+          ) +
+            (members === undefined || members.length === 0
+              ? ""
+              : renderSharedRouterMembers(members)),
+          file,
+          files.find((item) => item.path === file.path),
         )
       }),
     )
@@ -271,6 +427,7 @@ export function prepareSourceRefresh(
       )
     const selected = yield* binding(library, definition.page_id, target)
     const acquired = yield* acquire(definition)
+    const memberReview = yield* reviewSourceMembers(library, definition.page_id, acquired)
     const matches = acquired.members.filter((item) => item.member_key === selected.member)
     if (matches.length !== 1)
       return yield* Effect.fail(
@@ -326,7 +483,7 @@ export function prepareSourceRefresh(
       expected: { values: [{ field: "Source", value: selected.index.source_reference }] },
     })
     const contents = {
-      version: 2 as const,
+      version: 3 as const,
       kind: "source_refresh" as const,
       library_id: library.library_id,
       sources_data_source_id: sourceTable(library).data_source_id,
@@ -343,6 +500,7 @@ export function prepareSourceRefresh(
       archive_base64: Buffer.from(archive).toString("base64"),
       ...preview,
       selection,
+      member_review: memberReview,
     }
     const plan = {
       ...contents,
@@ -365,6 +523,7 @@ export function validateSourceRefresh(library: SharedLibrary, input: unknown) {
     const { plan_id, ...rest } = plan
     if (
       (plan.version === 1 ? plan.selection !== undefined : plan.selection === undefined) ||
+      (plan.version === 3 ? plan.member_review === undefined : plan.member_review !== undefined) ||
       !Number.isSafeInteger(plan.created_at) ||
       plan.created_at < 0 ||
       !plan.provider_revision ||
@@ -498,7 +657,7 @@ function checkedSelection(library: SharedLibrary, plan: SourceRefreshPlan, value
 }
 function originalSelection(library: SharedLibrary, plan: SourceRefreshPlan) {
   return Effect.gen(function* () {
-    if (plan.version === 2)
+    if (plan.version >= 2)
       return yield* checkedSelection(library, plan, {
         version: 1,
         plan_id: plan.plan_id,
@@ -537,7 +696,7 @@ function saveSelection(
     const receipt = { version: 1, plan_id: plan.plan_id, selection }
     yield* (yield* Store).writeJson(yield* selectionReceiptKey(library, plan), receipt)
     // V1 keeps its original pre-selection mapping gate and outcome untouched.
-    // V2 is independently verifiable from its digest-bound approval and the
+    // V2 and V3 are independently verifiable from the digest-bound approval and the
     // normal shared metadata journal, so there is no second dispatch index.
     if (plan.version === 1)
       yield* retainFact(library, {
@@ -589,6 +748,7 @@ function sourceRefreshProvenance(plan: SourceRefreshPlan) {
     custom_files_preserved: plan.custom_files_preserved,
     plan_id: plan.plan_id,
     ...(plan.selection ? { selection_operation_id: plan.selection.operation_id } : {}),
+    ...(plan.member_review === undefined ? {} : { member_review: plan.member_review }),
   }
 }
 

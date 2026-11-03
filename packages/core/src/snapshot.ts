@@ -708,6 +708,61 @@ function snapshotFromPage(
   })
 }
 
+function snapshotReferences(snapshot: Snapshot) {
+  return {
+    ...(snapshot.file_bindings === undefined ? {} : { file_bindings: snapshot.file_bindings }),
+    ...(snapshot.native_references === undefined
+      ? {}
+      : { native_references: snapshot.native_references }),
+    ...((snapshot.members ?? snapshot.router_members) === undefined
+      ? {}
+      : { members: snapshot.members ?? snapshot.router_members }),
+    ...(snapshot.required === undefined ? {} : { required: snapshot.required }),
+  }
+}
+function snapshotFileRef(snapshot: Snapshot, path: string) {
+  return fileRef(
+    snapshot.record.id,
+    path,
+    snapshot.snapshot_id,
+    snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
+  )
+}
+function boundSnapshotPath(snapshot: Snapshot, target: SkillTarget): string | undefined {
+  if (target.file_id === undefined) return target.path
+  if (snapshot.record.locator.type !== "shared_skill" || target.selector !== snapshot.record.id)
+    throw fail(
+      "SHARED_REFERENCE_SCOPE",
+      "The stable File reference does not name this exact Skill owner.",
+    )
+  const bindings = snapshot.file_bindings
+  if (bindings === undefined)
+    throw fail(
+      "SHARED_FILE_BINDING_UNAVAILABLE",
+      "This historical snapshot has no frozen stable File bindings; its path bytes remain available through its original reference.",
+    )
+  const selected = bindings.filter((binding) => binding.file_id === target.file_id)
+  const binding = selected[0]
+  if (selected.length !== 1 || binding === undefined)
+    throw fail(
+      "SHARED_FILE_BINDING_UNAVAILABLE",
+      "The exact stable File ID is unavailable in this owner snapshot.",
+      { file_id: target.file_id },
+    )
+  if (
+    bindings.some(
+      (other) =>
+        other !== binding && (other.page_id === binding.page_id || other.path === binding.path),
+    ) ||
+    !snapshot.files.some((file) => file.path === binding.path)
+  )
+    throw fail(
+      "SHARED_FILE_ID_CONFLICT",
+      "The stable File ID has an ambiguous or missing physical binding.",
+    )
+  return binding.path
+}
+
 export function snapshotInfo(snapshot: ObservedSnapshot) {
   return {
     record: snapshot.record,
@@ -715,15 +770,16 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
     snapshot_id: snapshot.snapshot_id,
     version_id: snapshot.version_id,
     entrypoint: snapshot.entrypoint,
-    ref: fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id),
+    ref: snapshotFileRef(snapshot, snapshot.entrypoint),
     files: snapshot.files.map((f) => ({
       path: f.path,
       bytes: f.bytes,
-      ref: fileRef(snapshot.record.id, f.path, snapshot.snapshot_id),
+      ref: snapshotFileRef(snapshot, f.path),
     })),
     ...(snapshot.source ? { source: snapshot.source } : {}),
     ...(snapshot.freshness ? { freshness: snapshot.freshness } : {}),
     ...(snapshot.source_projection ? { source_projection: snapshot.source_projection } : {}),
+    ...snapshotReferences(snapshot),
   }
 }
 
@@ -913,7 +969,8 @@ export function targetSnapshot(
     if (
       snapshot.record.locator.type === "shared_skill" &&
       snapshot.record.kind === "router" &&
-      snapshot.router_members === undefined
+      snapshot.router_members === undefined &&
+      snapshot.members === undefined
     )
       return yield* Effect.fail(
         fail(
@@ -932,6 +989,18 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       try: () => parseRef(from),
       catch: (error) => error as SkillsError,
     })
+    if (base.file_id !== undefined) {
+      const containing = yield* targetSnapshot(base, options)
+      const path = yield* Effect.try({
+        try: () => boundSnapshotPath(containing, base),
+        catch: (error) => error as SkillsError,
+      })
+      return yield* resolveUpstreamMemberRelative(
+        containing,
+        path || containing.entrypoint,
+        relative,
+      )
+    }
     const local = yield* Effect.try({
       try: () => resolveRef(from, relative),
       catch: (error) => error as SkillsError,
@@ -981,9 +1050,13 @@ export function readSkill(input: string, options: ReadOptions = {}) {
         catch: (error) => error as SkillsError,
       })
       const containing = yield* targetSnapshot(base, options)
+      const basePath = yield* Effect.try({
+        try: () => boundSnapshotPath(containing, base),
+        catch: (error) => error as SkillsError,
+      })
       const resolved = yield* resolveUpstreamMemberRelative(
         containing,
-        base.path ?? containing.entrypoint,
+        basePath ?? containing.entrypoint,
         input,
       )
       target = yield* Effect.try({
@@ -1002,7 +1075,11 @@ export function readSkill(input: string, options: ReadOptions = {}) {
       })
       snapshot = yield* targetSnapshot(target, options)
     }
-    const path = target.path || snapshot.entrypoint
+    const path =
+      (yield* Effect.try({
+        try: () => boundSnapshotPath(snapshot, target),
+        catch: (error) => error as SkillsError,
+      })) || snapshot.entrypoint
     const file = snapshot.files.find((f) => f.path === path)
     if (!file)
       return yield* Effect.fail(
@@ -1024,10 +1101,11 @@ export function readSkill(input: string, options: ReadOptions = {}) {
       snapshot_id: snapshot.snapshot_id,
       version_id: snapshot.version_id,
       path,
-      ref: fileRef(snapshot.record.id, path, snapshot.snapshot_id),
+      ref: snapshotFileRef(snapshot, path),
       source: snapshot.source,
       freshness: snapshot.freshness,
       ...(snapshot.source_projection ? { source_projection: snapshot.source_projection } : {}),
+      ...snapshotReferences(snapshot),
     }
     if (options.output) {
       return {
@@ -1089,7 +1167,11 @@ export function listSkill(
       catch: (e) => e as SkillsError,
     })
     const snapshot = yield* targetSnapshot(target, options)
-    const path = target.path ?? ""
+    const path =
+      (yield* Effect.try({
+        try: () => boundSnapshotPath(snapshot, target),
+        catch: (error) => error as SkillsError,
+      })) ?? ""
     const files = snapshot.files.filter(
       (f) => !path || f.path.startsWith(path + "/") || f.path === path,
     )
@@ -1102,7 +1184,7 @@ export function listSkill(
       files: files.map((f) => ({
         path: f.path,
         bytes: f.bytes,
-        ref: fileRef(snapshot.record.id, f.path, snapshot.snapshot_id),
+        ref: snapshotFileRef(snapshot, f.path),
       })),
     }
   })

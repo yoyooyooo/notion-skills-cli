@@ -38,6 +38,11 @@ export const SharedSnapshotManifestSchema = Schema.Struct({
   record: ContentRecordSchema,
   entrypoint: Schema.String,
   version_id: ShaSchema,
+  file_bindings: SnapshotSchema.fields.file_bindings,
+  native_references: SnapshotSchema.fields.native_references,
+  members: SnapshotSchema.fields.members,
+  required: SnapshotSchema.fields.required,
+  router_members: SnapshotSchema.fields.router_members,
   files: Schema.Array(
     Schema.Struct({
       path: Schema.String,
@@ -410,6 +415,13 @@ export function prepareSharedSnapshotHistory(library: SharedLibrary, input: Snap
       record: snapshot.record,
       entrypoint: snapshot.entrypoint,
       version_id: snapshot.version_id,
+      ...(snapshot.file_bindings === undefined ? {} : { file_bindings: snapshot.file_bindings }),
+      ...(snapshot.native_references === undefined
+        ? {}
+        : { native_references: snapshot.native_references }),
+      ...(snapshot.members === undefined ? {} : { members: snapshot.members }),
+      ...(snapshot.required === undefined ? {} : { required: snapshot.required }),
+      ...(snapshot.router_members === undefined ? {} : { router_members: snapshot.router_members }),
       files,
     }
     const pinId = `snapshot-${yield* sha256(canonicalSharedJson(manifest))}`

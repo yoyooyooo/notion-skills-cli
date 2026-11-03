@@ -11,6 +11,7 @@ export const SharedMetadataFieldSchema = Schema.Literals([
   "Description",
   "Default Context",
   "Members",
+  "Requires",
   "Source",
 ])
 export type SharedMetadataField = typeof SharedMetadataFieldSchema.Type
@@ -88,13 +89,14 @@ export function validateMetadataValue(
           "Select native content or one exact immutable shared source identity.",
         )
       return value
-    case "Members": {
+    case "Members":
+    case "Requires": {
       if (
         !Array.isArray(value) ||
         value.some((id) => pageId(id) !== id) ||
         new Set(value).size !== value.length
       )
-        throw fail("INVALID_MEMBERS", "Members must be unique canonical page identities.")
+        throw fail("INVALID_MEMBERS", `${field} must be unique canonical page identities.`)
       return [...value].sort()
     }
   }
@@ -129,6 +131,16 @@ export function validateSharedMetadataWritePlan(input: unknown) {
           "Metadata changes require canonical field ordering.",
         )
       for (const change of plan.changes) {
+        if (
+          (change.field === "Members" || change.field === "Requires") &&
+          Array.isArray(change.after) &&
+          change.after.length > 100
+        )
+          throw fail(
+            "RELATION_WRITE_LIMIT",
+            "Notion replaces relation arrays and accepts at most 100 related pages in one write; this complete target set cannot be safely split.",
+            { field: change.field, count: change.after.length, limit: 100 },
+          )
         if (
           !/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(change.property_id) ||
           canonicalSharedJson(validateMetadataValue(change.field, change.before)) !==

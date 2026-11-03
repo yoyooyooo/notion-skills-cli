@@ -99,7 +99,7 @@ Preconditions:
 
 - Manifest format/version, display name, description and main path are portable; page/version/snapshot IDs and timestamps are excluded. Keep `.ntn-skills.json` for reimport.
 - Original bytes survive only while their saved source projections match remote content; page-only exports normalize Markdown. Omitted references remain excluded even when their Notion pages still exist.
-- Offline package smoke deliberately uses missing transport and synthetic local snapshots. Live recipes use official `ntn` without overrides; never substitute smoke fixtures for live acceptance.
+- Offline package smoke uses controlled HTTP endpoints and synthetic local snapshots. Live recipes use the same project HTTP engine with the intended existing token; never substitute smoke fixtures for live acceptance.
 - Retained Skill inspection/import/export is not activation. Hosts keep source/freshness on an explicitly selected workflow; no imported instructions or scripts execute automatically.
 - Dry-run may read network/cache but must leave remote contents unchanged. A partial/unknown reimport requires fresh readback and no automatic mutation retry.
 - No downloaded/imported Skill script is auto-executed. Cleanup moves run scratch and recorded successful package-check/smoke scratch to system Trash while preserving `$RUN/evidence` and retained user Notion skills. Package-check/smoke can report scratch outside the run; only recorded successful package scratch belongs to this helper cleanup.

@@ -32,7 +32,7 @@ These illustrative JSON excerpts show the naming fields in successful `read` out
 ]
 ```
 
-Current `read/files/export/list` accept one of `--refresh`, `--offline`, `--max-age DURATION`. Defaults are 5m for content and 60s for metadata. Refresh validates online; offline intentionally selects eligible local observations and reports their age; max-age overrides the limit (`0` requires validation). Failed validation never falls back silently to stale bytes. Official `ntn login` may require online scope validation even for warm reads; unpinned offline lookup fails if scope cannot be selected safely.
+Current `read/files/export/list` accept one of `--refresh`, `--offline`, `--max-age DURATION`. Defaults are 5m for content and 60s for metadata. Refresh validates online; offline intentionally selects eligible local observations and reports their age; max-age overrides the limit (`0` requires validation). Failed validation never falls back silently to stale bytes. Unpinned offline lookup requires the same locally identifiable credential and endpoint scope; explicit snapshot pins retain their own identity.
 
 Shared current reads batch flat Files metadata and retained ownership before reusing unchanged bodies. Complete newly observed Notion edits become whole-file customizations after their shared facts verify; no manual adopt marker is required. An independent full-body deadline bounds same-timestamp edits. Preserve the exact `shared_skill` locator, encoded stable record ID and scope; a stable ID is not a page UUID.
 
@@ -61,7 +61,7 @@ ntn-skills ctl builtin install notion/ntn-skills --agent-dir ~/.claude --agent-d
 ntn-skills ctl builtin export notion/ntn-skills --output ./portable-entrypoint
 ```
 
-These commands work offline without `ntn` or credentials. `ctl builtin list` returns metadata and installation state without instruction bodies. Install/status/update default to the central XDG data store and `~/.agents/skills/<name>` links. Optional repeated `--agent-dir DIR` adds `DIR/skills/<name>` destinations pointing to that same tree; registered targets persist for updates. `NTN_SKILLS_DATA_HOME` overrides the full data directory, otherwise `$XDG_DATA_HOME/ntn-skills` or `~/.local/share/ntn-skills` applies. Export is portable output without installation ownership. Exact IDs select builtins; ordinary remote `list/read` never fall back to package content.
+These commands work offline without network access or credentials. `ctl builtin list` returns metadata and installation state without instruction bodies. Install/status/update default to the central XDG data store and `~/.agents/skills/<name>` links. Optional repeated `--agent-dir DIR` adds `DIR/skills/<name>` destinations pointing to that same tree; registered targets persist for updates. `NTN_SKILLS_DATA_HOME` overrides the full data directory, otherwise `$XDG_DATA_HOME/ntn-skills` or `~/.local/share/ntn-skills` applies. Export is portable output without installation ownership. Exact IDs select builtins; ordinary remote `list/read` never fall back to package content.
 
 Keep the central version-2 `.ntn-builtin-install.json` and separate distribution records: they record exact ID/data-root/path/package/content identity, the complete file baseline and owned links. Repeated identical install reuses content and can add targets. Clean old content requires explicit update; all links share its replacement, with prior bytes retained through system Trash. Added/deleted/changed files, foreign links and unowned directories block replacement. Receipt-v1 profiles require independent migration; normal commands preserve them and report a conflict. Never fabricate a receipt or silently adopt another tool's target.
 
@@ -85,7 +85,7 @@ States are `not_installed`, `current`, `update_available`, `modified`, `unmanage
 | `BUILTIN_INTERRUPTED` | Inspect journal readback/outcome; preserve an unresolved fence |
 | `BUILTIN_PATH_CHANGED`, `BUILTIN_IO_ERROR` | Resolve path drift/I/O without discarding prior bytes or transaction records |
 | `OUTPUT_CONFLICT` | Select a fresh output or review the existing bytes; no blind overwrite |
-| `AUTH_REQUIRED`, `ACCESS_DENIED`, `NTN_UNAVAILABLE` | Follow [diagnosis](integration.md#diagnose-discovery-and-loading) |
+| `AUTH_REQUIRED`, `ACCESS_DENIED`, `NOTION_UNAVAILABLE`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Follow [diagnosis](integration.md#diagnose-discovery-and-loading) |
 
 Unknown errors remain failures. Read sanitized transport `details.reason` or nested `cause_details.reason`; do not request raw stderr that may contain credentials/signed URLs. For a partial or unknown shared operation, retain its original ID/input and use the matching maintenance or source recovery path. A fresh exact current read reconciles shared body writes, metadata, apply and restore-follow; `read_again` requests another read after the original outcome has been verified. Add/delete/move use `ctl library file reconcile TARGET OPERATION_ID --entry ENTRY`. Shared IDs are not legacy Publication IDs. Use `operation show`/`reconcile`/`resume` only for an operation returned by that earlier workflow. Creating another operation never resolves an unknown request. A verified `not_applied` or `partial` recovery confirms the reported outcome, not a completed edit.
 

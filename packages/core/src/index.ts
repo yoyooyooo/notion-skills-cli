@@ -5,6 +5,8 @@ export * from "./store.ts"
 export * from "./catalog.ts"
 export * from "./views.ts"
 export * from "./snapshot.ts"
+export * from "./graph-prepare-model.ts"
+export * from "./graph-prepare.ts"
 export {
   createSkill,
   createPortable,

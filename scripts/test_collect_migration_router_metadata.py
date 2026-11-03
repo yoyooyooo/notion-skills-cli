@@ -4,7 +4,6 @@ from copy import deepcopy
 import importlib.util
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -314,18 +313,6 @@ class RouterMetadataTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "OUTPUT_EXISTS")
         self.assertEqual(fixture.calls, [])
 
-    def test_transport_only_invokes_get_argv_without_shell_or_credential_arguments(self):
-        reader = collector.NtnReader(executable="synthetic-ntn", interval=0)
-        path = collector.property_path(uid(1), "mem%3Aroles", "cursor/plus+")
-        with patch.object(collector.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b'{"object":"page"}', b"")) as run:
-            self.assertEqual(reader(path), b'{"object":"page"}')
-        self.assertEqual(run.call_args.args[0], ["synthetic-ntn", "api", path, "--notion-version", "2026-03-11", "-X", "GET"])
-        self.assertNotIn("shell", run.call_args.kwargs)
-        self.assertNotIn("env", run.call_args.kwargs)
-        with patch.object(collector.subprocess, "run") as run:
-            with self.assertRaises(collector.EvidenceError):
-                reader("v1/blocks/" + uid(1))
-            run.assert_not_called()
 
 
 if __name__ == "__main__":

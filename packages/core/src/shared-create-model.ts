@@ -56,6 +56,7 @@ const CreatePlanFields = {
   original_main_path: Schema.String,
   entrypoint: Schema.String,
   members: Schema.Array(Schema.String),
+  requires: Schema.optional(Schema.Array(Schema.String)),
   input_projection: Schema.optional(PortableProjectionSchema),
   reference_check: Schema.Struct({ checked_files: Schema.Number, local_references: Schema.Number }),
   files: Schema.Array(
@@ -96,6 +97,7 @@ const CreateManifestFields = {
   original_main_path: Schema.String,
   entrypoint: Schema.String,
   members: Schema.Array(Schema.String),
+  requires: Schema.optional(Schema.Array(Schema.String)),
   input_projection: Schema.optional(PortableProjectionSchema),
   reference_check: Schema.Struct({ checked_files: Schema.Number, local_references: Schema.Number }),
   files: Schema.Array(
@@ -123,6 +125,7 @@ export const SharedCreateJournalSchema = Schema.Struct({
   scope: Hash,
   library_id: Identity,
   plan: SharedCreatePlanSchema,
+  ownership_receipt_version: Schema.optional(Schema.Literal(1)),
 })
 export const sharedCreateManifestEntity = "skill-create-manifest-v1"
 export const sharedCreateOutcomesEntity = "skill-create-outcomes-v1"
@@ -186,7 +189,10 @@ export function sharedCreateExpectations(
       kind: plan.content_kind,
       enabled: true as const,
       default_context: plan.default_context,
-      ...(plan.content_kind === "router" ? { members: plan.members } : {}),
+      ...(plan.content_kind === "router" || plan.members.length > 0
+        ? { members: plan.members }
+        : {}),
+      ...(plan.requires === undefined ? {} : { requires: plan.requires }),
     },
   }
 }
@@ -217,6 +223,7 @@ export function sharedCreateManifest(plan: SharedCreatePlan) {
     original_main_path: plan.original_main_path,
     entrypoint: plan.entrypoint,
     members: plan.members,
+    ...(plan.requires === undefined ? {} : { requires: plan.requires }),
     ...(plan.input_projection === undefined ? {} : { input_projection: plan.input_projection }),
     reference_check: plan.reference_check,
     files: plan.files.map((file) => ({
@@ -240,13 +247,14 @@ export interface SharedCreateInput {
   readonly defaultContext?: boolean
   /** Exact same-library current page identities, resolved before freezing. */
   readonly members?: readonly string[]
+  readonly requires?: readonly string[]
 }
 
 /** Deterministic, no I/O: input bytes, explicit projection and every identity freeze together. */
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: SharedNotionMarkdownVersion = 6,
+  projectionVersion: SharedNotionMarkdownVersion = 8,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable
@@ -271,14 +279,38 @@ export function makeSharedCreatePlan(
         )
       if (input.defaultContext !== undefined && typeof input.defaultContext !== "boolean")
         throw fail("INVALID_ARGUMENT", "Default Context must be a boolean.")
-      if (input.members !== undefined && portable.kind !== "router")
-        throw fail("INVALID_MEMBERS", "Only a native Router may specify Members.")
-      const members = [...new Set(input.members ?? [])].sort()
-      if (members.some((id) => pageId(id) !== id) || members.length > 100)
+      if (
+        (input.members !== undefined || input.requires !== undefined) &&
+        portable.kind === "prompt"
+      )
         throw fail(
           "INVALID_MEMBERS",
-          "Native create accepts at most 100 exact canonical member page identities in one relation create.",
+          "Only a native Skill or Router may specify Members or Requires.",
         )
+      const members = [...(input.members ?? [])].sort()
+      const required = input.requires === undefined ? undefined : [...input.requires].sort()
+      for (const [field, ids] of [
+        ["Members", members],
+        ["Requires", required],
+      ] as const) {
+        if (ids === undefined) continue
+        if (ids.some((id) => pageId(id) !== id) || new Set(ids).size !== ids.length)
+          throw fail("INVALID_MEMBERS", `${field} requires unique canonical page identities.`)
+        if (ids.length > 100)
+          throw fail(
+            "RELATION_WRITE_LIMIT",
+            "Notion relation arrays replace the complete value and accept at most 100 related pages per write.",
+            { field, count: ids.length, limit: 100 },
+          )
+        if (
+          (ids.length > 0 || (field === "Requires" && input.requires !== undefined)) &&
+          library.skills.property_ids[field] === undefined
+        )
+          throw fail(
+            "SHARED_ROUTER_MEMBERS_UNAVAILABLE",
+            `Register the native ${field} relation before creation.`,
+          )
+      }
       if (portable.kind === "router" && library.skills.property_ids.Members === undefined)
         throw fail(
           "SHARED_ROUTER_MEMBERS_UNAVAILABLE",
@@ -343,7 +375,7 @@ export function makeSharedCreatePlan(
         entrypoint,
       })
       const references = assertSharedFileReferences(tree.files, projectionVersion)
-      return { name, description, entrypoint, members, files, references }
+      return { name, description, entrypoint, members, required, files, references }
     })
     const candidates = yield* Effect.forEach(prepared.files, (file) =>
       Effect.gen(function* () {
@@ -377,6 +409,7 @@ export function makeSharedCreatePlan(
       original_main_path: portable.main,
       entrypoint: prepared.entrypoint,
       members: prepared.members,
+      ...(prepared.required === undefined ? {} : { requires: prepared.required }),
       ...(portable.projection === undefined ? {} : { input_projection: portable.projection }),
       files: candidates.map((file) => ({
         path: file.path,
@@ -416,6 +449,7 @@ export function makeSharedCreatePlan(
       original_main_path: portable.main,
       entrypoint: prepared.entrypoint,
       members: prepared.members,
+      ...(prepared.required === undefined ? {} : { requires: prepared.required }),
       reference_check: prepared.references,
       files,
       ...(portable.projection === undefined ? {} : { input_projection: portable.projection }),
@@ -564,7 +598,10 @@ export function validateSharedCreatePlan(input: unknown) {
       {
         portable,
         defaultContext: plan.default_context,
-        ...(plan.content_kind === "router" ? { members: plan.members } : {}),
+        ...(plan.content_kind === "router" || plan.members.length > 0
+          ? { members: plan.members }
+          : {}),
+        ...(plan.requires === undefined ? {} : { requires: plan.requires }),
       },
       projectionVersion,
     )

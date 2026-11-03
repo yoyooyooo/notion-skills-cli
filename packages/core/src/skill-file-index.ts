@@ -127,7 +127,7 @@ export function readProjectionBaseline(value: string): FileBaseline | undefined 
   }
 }
 
-function fileRecord(
+export function fileRecord(
   value: unknown,
   skillId: string,
   dataSourceId: string,

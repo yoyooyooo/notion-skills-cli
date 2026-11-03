@@ -7,16 +7,13 @@ Repeated page reads check observed stability; they are not an atomic snapshot.
 No scope, completeness, terminal outcome or approval fields are promoted.
 """
 
-import argparse
 from collections import Counter
 from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
 import re
-import subprocess
 import sys
-import time
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -96,35 +93,15 @@ def property_path(page, property_id, cursor=None):
     return "v1/pages/" + page_id(page) + "/properties/" + property_id + "?" + urlencode(query)
 
 
-class NtnReader:
-    """The sole transport is a sequential, shell-free, GET-only ntn invocation."""
+RETIRED_MESSAGE = (
+    "This AH498 raw-response collector is retired. Use current ntn-skills ctl api/read/files "
+    "to retain new-format evidence; never relabel its parsed response envelope as historical wire bytes."
+)
 
-    def __init__(self, executable="ntn", version="2026-03-11", timeout=45, interval=0.4):
-        require(0 < timeout <= 60 and 0 <= interval <= 5, "READ_LIMIT_INVALID",
-                "The request timeout must be at most 60 seconds and interval at most 5 seconds.")
-        self.executable, self.version, self.timeout, self.interval = executable, version, timeout, interval
-        self.next_request = 0.0
 
-    def __call__(self, path):
-        require(re.fullmatch("v1/pages/" + UUID_PATTERN +
-                             r"(?:/properties/" + PROPERTY_PATTERN + r"\?page_size=100(?:&start_cursor=[^#\s]*)?)?", path) is not None,
-                "READ_PATH_INVALID", "Only exact page and property metadata GET paths are allowed.")
-        time.sleep(max(0.0, self.next_request - time.monotonic()))
-        self.next_request = time.monotonic() + self.interval
-        try:
-            result = subprocess.run([self.executable, "api", path, "--notion-version", self.version, "-X", "GET"],
-                                    stdin=subprocess.DEVNULL, capture_output=True, timeout=self.timeout, check=False)
-        except subprocess.TimeoutExpired as error:
-            raise EvidenceError("READ_TIMEOUT", "The metadata GET did not finish within its bounded timeout.", error.stdout) from None
-        except OSError:
-            raise EvidenceError("NTN_UNAVAILABLE", "The configured ntn executable could not be run.") from None
-        require(len(result.stdout) <= 16 * 1024 * 1024, "RESPONSE_TOO_LARGE", "The metadata response exceeded 16 MiB.")
-        if result.returncode != 0:
-            # CLI diagnostics may contain sensitive context. Retain stdout only;
-            # never echo or persist credentials, environment or raw stderr.
-            raise EvidenceError("METADATA_READ_FAILED", "The ntn metadata GET returned a failure.", result.stdout)
-        return result.stdout
-
+def retired_entrypoint():
+    print(json.dumps({"ok": False, "error": {"code": "COLLECTOR_RETIRED", "message": RETIRED_MESSAGE}}))
+    return 2
 
 class Recorder:
     def __init__(self, output, reader):
@@ -395,7 +372,7 @@ def collect(*, input_path, summary_path, output_path, reader):
     result = {"version": 1, "mode": "read_only_router_metadata_observation",
               "inputs": {"inventory_sha256": digest(input_bytes), "summary_sha256": digest(prior_bytes)},
               "selection": {"inventory_domain": "preservation.routers.items", "other_subscriptions_enumerated": False},
-              "transport": {"method": "GET", "notion_version": reader.version if isinstance(reader, NtnReader) else None,
+              "transport": {"method": "GET", "notion_version": None,
                             "response_bytes": "original_reader_stdout"},
               "counts": {"routers": len(items), "stable": status_counts["stable"], "changed": status_counts["changed"],
                          "incomplete": status_counts["incomplete"], "unavailable": status_counts["unavailable"],
@@ -413,22 +390,7 @@ def collect(*, input_path, summary_path, output_path, reader):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("input", "input-summary", "output"):
-        parser.add_argument("--" + name, type=Path, required=True)
-    parser.add_argument("--ntn-bin", default="ntn")
-    parser.add_argument("--notion-version", default="2026-03-11")
-    parser.add_argument("--timeout", type=float, default=45)
-    parser.add_argument("--interval", type=float, default=0.4)
-    args = parser.parse_args()
-    try:
-        result = collect(input_path=args.input, summary_path=args.input_summary, output_path=args.output,
-                         reader=NtnReader(args.ntn_bin, args.notion_version, args.timeout, args.interval))
-    except (EvidenceError, ValueError, UnicodeError, OSError) as error:
-        print(json.dumps({"ok": False, "code": error.code if isinstance(error, EvidenceError) else "EVIDENCE_UNREADABLE"}), file=sys.stderr)
-        return 1
-    print(json.dumps({"ok": True, **result}, ensure_ascii=False))
-    return 0 if result["counts"]["stable"] == result["counts"]["routers"] else 2
+    return retired_entrypoint()
 
 
 if __name__ == "__main__":

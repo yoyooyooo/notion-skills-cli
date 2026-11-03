@@ -154,13 +154,17 @@ export function sharedAuthoringMarkdown(
       )
     markdown = markdown.slice(match[0].length).replace(/^\n/u, "")
   }
-  if (snapshot.record.kind === "router") {
-    if (snapshot.router_members === undefined)
+  const frozenMembers = snapshot.members ?? snapshot.router_members
+  if (
+    snapshot.record.kind === "router" ||
+    (snapshot.record.kind === "skill" && (frozenMembers?.length ?? 0) > 0)
+  ) {
+    if (frozenMembers === undefined)
       throw fail(
         "SHARED_ROUTER_SNAPSHOT_INCOMPLETE",
         "Refresh the Router to obtain its exact generated Members index before writing.",
       )
-    const members = snapshot.router_members.map((member) => {
+    const members = frozenMembers.map((member) => {
       const metadata = property(member.metadata)
       if (
         metadata.version !== 1 ||

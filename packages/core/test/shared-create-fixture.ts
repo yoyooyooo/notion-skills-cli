@@ -19,6 +19,13 @@ export const createLibrary: SharedLibrary = {
     property_ids: { ...baseLibrary.skills.property_ids, Members: "members" },
   },
 }
+export const createRelationsLibrary: SharedLibrary = {
+  ...createLibrary,
+  skills: {
+    ...createLibrary.skills,
+    property_ids: { ...createLibrary.skills.property_ids, Requires: "requires" },
+  },
+}
 function responseProperty(key: string, value: unknown) {
   const field = property(value)
   if (Array.isArray(field.rich_text))
@@ -71,6 +78,7 @@ function listed(rows: readonly unknown[], body: unknown) {
 /** Controlled Notion + memory Store; no user's store, credentials or provider requests. */
 export function sharedCreateFixture(
   fixtureOptions: {
+    readonly relations?: boolean
     readonly readback?: (wire: string) => string
     readonly recovery?: boolean
     readonly httpClient?: HttpClient.HttpClient
@@ -82,6 +90,16 @@ export function sharedCreateFixture(
   const skills = new Map<string, Record<string, unknown>>([
     [String(base.main.id), structuredClone(base.main)],
   ])
+  const emptyRelations = (row: Record<string, unknown>) => {
+    for (const field of ["members", "requires"])
+      property(row.properties)[field] ??= {
+        id: field,
+        type: "relation",
+        relation: [],
+        has_more: false,
+      }
+  }
+  for (const row of skills.values()) emptyRelations(row)
   const files = new Map<string, Record<string, unknown>>(
     base.files.map((file) => [file.id, structuredClone(file)]),
   )
@@ -167,7 +185,15 @@ export function sharedCreateFixture(
                   database_type: null,
                   in_trash: false,
                   title: [{ plain_text: "Shared library" }],
-                  description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(createLibrary) }],
+                  description: [
+                    {
+                      plain_text:
+                        LIBRARY_MARKER +
+                        JSON.stringify(
+                          fixtureOptions.relations ? createRelationsLibrary : createLibrary,
+                        ),
+                    },
+                  ],
                   data_sources: [{ id: createLibrary.skills.data_source_id, name: "Skills" }],
                 })
               if (pathname === `/v1/data_sources/${createLibrary.skills.data_source_id}/query`)
@@ -228,6 +254,7 @@ export function sharedCreateFixture(
                       ]),
                     ),
                   }
+                  if (kind === "skill") emptyRelations(created)
                   if (
                     kind === "skill" &&
                     property(property(created.properties).enabled).checkbox !== false
@@ -432,6 +459,7 @@ export function sharedCreateFixture(
       properties.title = { id: "title", type: "title", title: [{ plain_text: name }] }
       properties.kind = { id: "kind", type: "select", select: { name: kind } }
       properties.enabled = { id: "enabled", type: "checkbox", checkbox: enabled }
+      emptyRelations(row)
       skills.set(page, row)
       return row
     },

@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Option, Stdio, Stream } from "effect"
 import { Command, Flag } from "effect/cli"
+import { commandMetrics, selectCommandMetrics } from "./command-metrics.ts"
 
 import { SkillsError, configuration, fail, parseDuration } from "@notion-skills-cli/core"
 import type { ReadPolicyOptions } from "@notion-skills-cli/core"
@@ -52,6 +53,7 @@ export const exportConstraints: readonly CommandConstraint[] = [
 ]
 export const exactTargetConstraint: CommandConstraint = { kind: "exact_target", target: "target" }
 export const memberConstraint = exclusiveFlags(["member", "clear-members"])
+export const requiredConstraint = exclusiveFlags(["require", "clear-requires"])
 export function validateConstraints(
   constraints: readonly CommandConstraint[],
   values: Readonly<Record<string, unknown>>,
@@ -103,6 +105,7 @@ export function withRuntime<Name extends string, Input, ContextInput, Error, Req
     Option.getOrElse(() => []),
   )
   return command.pipe(
+    Command.provideEffectDiscard(selectCommandMetrics),
     Command.provide(layer),
     Command.provideEffectDiscard((input) =>
       validateConstraints(constraints, input as Readonly<Record<string, unknown>>),
@@ -173,7 +176,11 @@ export function readPolicy(config: {
 export function emit(value: object) {
   return Effect.gen(function* () {
     const stdio = yield* Stdio.Stdio
-    const result = Array.isArray(value) ? { ok: true, items: value } : { ok: true, ...value }
+    const metrics = yield* commandMetrics
+    const result = {
+      ...(Array.isArray(value) ? { ok: true, items: value } : { ok: true, ...value }),
+      ...(metrics === undefined ? {} : { request_metrics: metrics }),
+    }
     yield* Stream.make(JSON.stringify(result) + "\n").pipe(Stream.run(stdio.stdout()))
   })
 }
@@ -205,11 +212,23 @@ export const memberFlags = {
   member: Flag.String("member").pipe(
     Flag.atLeast(0),
     Flag.withDescription(
-      "Exact content Skill ID or ref for Router Members; repeat for multiple Skills in the same database",
+      "Exact Skill ID or ref for native Members on a Skill or Router; repeat within the same library",
     ),
   ),
   "clear-members": switchFlag(
     "clear-members",
-    "Clear Router Members; mutually exclusive with --member",
+    "Clear native Members; mutually exclusive with --member",
+  ),
+}
+export const requiredFlags = {
+  require: Flag.String("require").pipe(
+    Flag.atLeast(0),
+    Flag.withDescription(
+      "Exact same-library enabled Skill page or unpinned ref for an unconditional prerequisite; repeat for multiple Requires",
+    ),
+  ),
+  "clear-requires": switchFlag(
+    "clear-requires",
+    "Clear native Requires; mutually exclusive with --require",
   ),
 }

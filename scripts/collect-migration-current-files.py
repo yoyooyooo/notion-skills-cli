@@ -65,9 +65,7 @@ def load_config(path):
             and output.parent.is_dir(), "OUTPUT_NOT_FRESH", "Output must be a new directory.")
     timeout = config.get("timeoutSeconds", 600)
     require(type(timeout) is int and 1 <= timeout <= 1800, "CONFIG_INVALID", "Invalid command deadline.")
-    if "notionBinary" in config:
-        require(Path(config["notionBinary"]).is_absolute() and Path(config["notionBinary"]).is_file(),
-                "CONFIG_INVALID", "Supply an existing official ntn executable or reviewed read-only wrapper.")
+    require("notionBinary" not in config, "COLLECTOR_RETIRED", "Historical transport overrides are retired.")
     sources, bindings = {}, {"config": {"path": str(path), "sha256": digest(config_bytes)}}
     for key in ("subset", "metadata", "pins"):
         item = config[key]
@@ -129,8 +127,6 @@ class Collector:
         for key, folder in (("NTN_SKILLS_CONFIG_HOME", "config"), ("NTN_SKILLS_HOME", "state"),
                             ("NTN_SKILLS_CACHE_HOME", "cache"), ("NTN_SKILLS_DATA_HOME", "data")):
             self.env[key] = str(self.output / "runtime" / folder)
-        if config.get("notionBinary"):
-            self.env["NTN_SKILLS_NTN_BIN"] = config["notionBinary"]
 
     def command(self, label, args):
         require(args[0] in ("read", "files", "export"), "COMMAND_INVALID", "Only public read commands are allowed.")
@@ -298,19 +294,9 @@ class Collector:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--check-config", action="store_true")
-    args = parser.parse_args()
-    config, sources, bindings = load_config(args.config.resolve())
-    if args.check_config:
-        print(json.dumps({"ok": True, "mode": "config_only", "records": len(sources["subset"]["entries"]),
-                          "network_requests": 0, "input_unchanged": True, "output_created": False}))
-        return 0
-    result = Collector(config, sources, bindings).run()
-    print(json.dumps({"ok": result["status"] == "complete", "status": result["status"],
-                      "summary": str(Path(config["output"]) / "summary.json")}))
-    return 0 if result["status"] == "complete" else 2
+    print(json.dumps({"ok": False, "error": {"code": "COLLECTOR_RETIRED",
+          "message": "This frozen AH498 collector is retired. Use current ntn-skills read/files/export for new-format evidence; retain historical receipts unchanged."}}))
+    return 2
 
 
 if __name__ == "__main__":

@@ -339,6 +339,10 @@ function checkSnapshotIdentity(
       record: snapshot.record,
       files: snapshot.files,
       router_members: snapshot.router_members,
+      members: snapshot.members,
+      required: snapshot.required,
+      file_bindings: snapshot.file_bindings,
+      native_references: snapshot.native_references,
       source:
         index.source_reference === ""
           ? null

@@ -13,7 +13,7 @@ This recipe covers catalog policy, cache inspection/retirement and cache-policy 
 - `config-preferences`: sanitized configuration and creation-default changes.
 - `builtin-preference`: independently validated `builtin_database` for first publication, exact-target updates unaffected by that preference, sanitized set/clear preserving ordinary defaults and registrations.
 - `auth-token`: stdin token storage, configuration precedence and fallback restoration.
-- `doctor-access`: official `ntn` availability, authentication, coverage and one available Skill read.
+- `doctor-access`: direct API transport/version, project authentication, and optional scoped coverage plus one Skill read.
 - `cache-policy`: effective content/catalog defaults and persisted policy overrides.
 - `cache-retention`: offline scoped status and system-Trash retirement without state loss.
 - `database-init`: official two-table create/attach, durable operation recovery, exact property IDs and native relation validation; subscription database remains outside ordinary content discovery.
@@ -117,7 +117,7 @@ Preconditions:
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl doctor
   ```
 
-  Doctor reports `ntn_version`, `authentication`, counts, `coverage` and `skill_read`; require accessibility, then explicitly scope subsequent list operations to the selected plan database. When a Skill exists, require `checked=true`, `available=true` and the expected storage mode. Record `checked=false` as an unavailable read probe, not successful Skill-read proof.
+  Doctor reports `transport=direct_http`, `notion_api_version=2026-03-11` and `authentication`. With explicit `--database ID`, require complete coverage and inspect skill_read; without it, discovery/read remain checked=false. When a Skill exists, require checked=true, available=true and the expected storage mode. Do not report an unavailable probe as successful Skill consumption.
 
 - **Separate token-storage entry.** `ctl config set-token --stdin` is direct CLI proof outside the helper. Main verifier may cite config tests only after running them. Live precedence needs isolated config/state/cache and trusted piped input without token arguments/interpolation/recorded stdin; preserve sanitized transitions and doctor/current `read PAGE_ID --refresh` results. Baseline helper does not prove token storage/login fallback.
 
@@ -125,7 +125,7 @@ Preconditions:
 
 - Search is eventually consistent and not exhaustive. Inspect `coverage.failed_sources` and `search_index_limited`; a missing row is not proof of workspace absence.
 - Database aliases are case-sensitive; titles are display labels. Skill invocation aliases are a different namespace. A default affects create only, not read discovery or exact-target replacement.
-- Authentication priority is non-empty config token, non-empty environment token, then existing official `ntn` login. The helper's baseline uses inherited environment credentials; proving existing-login fallback separately requires an authorized environment with neither token source.
+- Authentication priority is non-empty config token, then non-empty `NOTION_API_TOKEN`; missing credentials return `AUTH_REQUIRED`. The isolated helper inherits the existing environment credential only after its identity has been checked against the intended project authorization, without printing or copying secrets.
 - Doctor has no database selector, reads broadly and may cache one available Skill. It never starts login. Local isolation does not isolate the shared remote database.
 - Fresh content readbacks use --refresh on a current page/ref; pinned refs remain unchanged. Cache/config operations preserve authentication/sources/bindings and cannot advance a sync baseline.
 - Tokens must never appear in arguments, evidence or reports. Scratch config stores its configured token in plaintext with private permissions; cleanup removes scratch and preserves evidence and retained Notion skills.

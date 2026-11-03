@@ -84,6 +84,8 @@ function matches(row: Record<string, unknown>, condition: unknown): boolean {
   const key = filter.property
   if (typeof key !== "string") return false
   const value = property(property(row.properties)[key])
+  if (property(filter.relation).is_empty === true)
+    return Array.isArray(value.relation) && value.relation.length === 0
   if (filter.relation !== undefined)
     return (
       Array.isArray(value.relation) &&

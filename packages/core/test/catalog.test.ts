@@ -2,7 +2,8 @@ import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixture
 import { expect, test } from "bun:test"
 import { Clock, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { catalog, explicitSource } from "../src/catalog.ts"
+import { createHash } from "node:crypto"
+import { authScope, catalog, explicitSource } from "../src/catalog.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import {
@@ -53,6 +54,42 @@ const memoryStore = Layer.succeed(Store, {
   readBytes: () => Effect.fail(fail("UNUSED", "unused")),
   writeBytes: () => Effect.void,
   output: () => Effect.fail(fail("UNUSED", "unused")),
+})
+
+test("verified quota identity preserves the legacy default authorization scope and existing pins", async () => {
+  const principal = "11111111-1111-4111-8111-111111111111"
+  const credential = "legacy-credential-digest"
+  const expected = createHash("sha256")
+    .update(JSON.stringify([principal, "", "https://api.notion.com", credential]))
+    .digest("hex")
+  for (const workspace of [null, "33333333-3333-4333-8333-333333333333"]) {
+    const api = Layer.succeed(Notion, {
+      version: Effect.succeed("2026-03-11"),
+      credentialIdentity: Effect.succeed(credential),
+      connectionIdentity: Effect.succeed({
+        principal,
+        credential,
+        connection: "verified-quota-connection",
+        workspace,
+        api_origin: "https://api.notion.com",
+      }),
+      request: () => Effect.die(new Error("Validated identity already owns the handshake")),
+    })
+    const actual = await Effect.runPromise(
+      authScope.pipe(Effect.provide(api), Effect.provide(NodeServices.layer)),
+    )
+    expect(actual).toBe(expected)
+  }
+  const legacy = Layer.succeed(Notion, {
+    version: Effect.succeed("fixture"),
+    credentialIdentity: Effect.succeed(credential),
+    request: () => Effect.succeed({ object: "user", id: principal }),
+  })
+  expect(
+    await Effect.runPromise(
+      authScope.pipe(Effect.provide(legacy), Effect.provide(NodeServices.layer)),
+    ),
+  ).toBe(expected)
 })
 
 test("a shared library never falls through to the legacy References consumer", async () => {

@@ -379,7 +379,7 @@ describe("shared file lifecycle operations", () => {
         markdown: input,
       }),
     )
-    expect(plan.creation_projection?.version).toBe(6)
+    expect(plan.creation_projection?.version).toBe(8)
     expect(plan.creation_projection?.input_markdown).toBe(input)
     expect(plan.content.markdown).toBe(observed)
     expect(plan.content.retained.sha256).toBe(digest(observed))
@@ -791,6 +791,8 @@ describe("shared file lifecycle operations", () => {
         sharedSnapshotVersion({
           record: snapshot.record,
           files: snapshot.files,
+          file_bindings: snapshot.file_bindings,
+          native_references: snapshot.native_references,
           source: null,
           ownership,
         }),

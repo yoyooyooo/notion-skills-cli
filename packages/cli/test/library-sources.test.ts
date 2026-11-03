@@ -1,9 +1,19 @@
-import { beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { createHttpProbe } from "./http-probe.ts"
 import { access, chmod, mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
+const http = createHttpProbe()
+const servers: Bun.Subprocess[] = []
+afterAll(async () => {
+  http.close()
+  for (const server of servers) {
+    server.kill()
+    await server.exited
+  }
+})
 const node = (() => {
   const executable = Bun.which("node")
   if (!executable) throw new Error("Production source-command tests require Node.js.")
@@ -86,13 +96,7 @@ async function directory() {
   return root
 }
 async function invoke(root: string, args: string[], provider?: string) {
-  const marker = join(root, "unexpected-online"),
-    blocked = join(root, "blocked-ntn")
-  await writeFile(
-    blocked,
-    `#!${node}\nrequire('node:fs').appendFileSync(${JSON.stringify(marker)}, 'called\\n'); process.exitCode=97;\n`,
-  )
-  await chmod(blocked, 0o700)
+  const requestsBefore = http.calls()
   const child = Bun.spawn([node, main, ...baseArgs, ...args], {
     cwd: root,
     stdout: "pipe",
@@ -100,12 +104,11 @@ async function invoke(root: string, args: string[], provider?: string) {
     stdin: "ignore",
     env: {
       ...process.env,
-      NOTION_API_TOKEN: provider === undefined ? "" : "controlled-source-cli-token",
+      NOTION_API_TOKEN: "controlled-source-cli-token",
       NOTION_WORKSPACE_ID: "",
-      NOTION_API_BASE_URL: "",
+      NOTION_API_BASE_URL: provider ?? http.origin,
       HOME: join(root, "home"),
       NTN_SKILLS_DATA_HOME: "",
-      NTN_SKILLS_NTN_BIN: provider ?? blocked,
       NTN_SKILLS_HOME: join(root, "state"),
       NTN_SKILLS_CONFIG_HOME: join(root, "config"),
       NTN_SKILLS_CACHE_HOME: join(root, "cache"),
@@ -120,10 +123,7 @@ async function invoke(root: string, args: string[], provider?: string) {
     new Response(child.stderr).text(),
     child.exited,
   ])
-  const online = await access(marker).then(
-    () => true,
-    () => false,
-  )
+  const online = http.calls() !== requestsBefore
   return { stdout, stderr, exit, online }
 }
 function success(result: Awaited<ReturnType<typeof invoke>>): Record<string, unknown> {
@@ -253,7 +253,7 @@ test("invalid policy and ambiguous Source intent fail without contacting Notion"
 
 async function fakeNotion(root: string, unknownSourceCreate = false) {
   const statePath = join(root, "notion-state.json"),
-    executable = join(root, "controlled-ntn")
+    executable = join(root, "controlled-http.cjs")
   const rich = (id: string, content: string) => ({
     id,
     type: "rich_text",
@@ -305,29 +305,35 @@ async function fakeNotion(root: string, unknownSourceCreate = false) {
   const script = `#!${node}
 const fs = require('node:fs');
 const filename = ${JSON.stringify(statePath)};
+const server = require('node:http').createServer(async (request, response) => {
 const state = JSON.parse(fs.readFileSync(filename,'utf8'));
-const args = process.argv.slice(2);
-if(args[0] === '--version') { process.stdout.write('ntn 1.0.0\\n'); process.exit(0); }
-const url = new URL(args[1], 'https://api.notion.com/');
-const method = args[args.indexOf('-X') + 1];
-const raw = args.includes('--data') ? fs.readFileSync(0,'utf8') : '';
+const url = new URL(request.url, 'http://127.0.0.1/');
+const method = request.method;
+const chunks=[]; for await (const chunk of request) chunks.push(chunk);
+const raw = Buffer.concat(chunks).toString('utf8');
 const body = raw ? JSON.parse(raw) : undefined;
 state.calls.push({path:url.pathname,method});
 const save = () => fs.writeFileSync(filename,JSON.stringify(state));
-const send = (value) => { save(); process.stdout.write(JSON.stringify(value)); };
+const send = (value) => { save(); response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify(value)); };
 const text = (spans) => (spans || []).map(x => x.plain_text ?? x.text?.content ?? '').join('');
 const matches = (row,filter) => { if(filter.and) return filter.and.every(x=>matches(row,x)); const field=row.properties[filter.property]; if(!field) return false; if(filter.relation) return field.relation.some(x=>x.id===filter.relation.contains); if(filter.select) return field.select.name===filter.select.equals; if(filter.rich_text) return text(field.rich_text)===filter.rich_text.equals; return false; };
 const property = (id,value) => ({id,type:Object.keys(value)[0],...value,...(value.rich_text || value.relation ? {has_more:false} : {})});
-if(url.pathname === '/v1/users/me') send({object:'user',id:'controlled-cli-user'});
+if(url.pathname === '/v1/users/me') send({object:'user',id:'33333333-3333-4333-8333-333333333333'});
 else if(url.pathname === '/v1/databases/'+state.library.skills.database_id) send({object:'database',id:state.library.skills.database_id,title:[{plain_text:'Controlled source library'}],description:[{plain_text:'ntn-skills-library:v1 '+JSON.stringify(state.library)}],data_sources:[{id:state.library.skills.data_source_id}]});
 else if(url.pathname === '/v1/pages/'+state.skillPage) { if(method==='PATCH') { for(const [key,value] of Object.entries(body.properties)) state.main.properties[key]=property(key,value); state.main.last_edited_time=new Date().toISOString(); } send(state.main); }
 else if(url.pathname === '/v1/data_sources/'+state.library.records.data_source_id+'/query') send({object:'list',results:state.records.filter(row=>matches(row,body.filter)),has_more:false,next_cursor:null});
-else if(url.pathname === '/v1/pages' && method === 'POST') { if(state.unknownSourceCreate && body.properties.kind.select.name==='source') {state.unknownSourceCreate=false; save(); process.stderr.write('controlled original create response lost\\n'); process.exitCode=5;} else {const id='00000000-0000-4000-8000-'+(state.nextPage++).toString(16).padStart(12,'0'); const row={object:'page',id,parent:{...body.parent,database_id:state.library.records.database_id},properties:Object.fromEntries(Object.entries(body.properties).map(([key,value])=>[key,property(key,value)]))}; state.records.push(row); send(row);}}
-else { save(); process.stderr.write('Unexpected controlled endpoint\\n'); process.exitCode=97; }
+else if(url.pathname === '/v1/pages' && method === 'POST') { if(state.unknownSourceCreate && body.properties.kind.select.name==='source') {state.unknownSourceCreate=false; save(); request.socket.destroy();} else {const id='00000000-0000-4000-8000-'+(state.nextPage++).toString(16).padStart(12,'0'); const row={object:'page',id,parent:{...body.parent,database_id:state.library.records.database_id},properties:Object.fromEntries(Object.entries(body.properties).map(([key,value])=>[key,property(key,value)]))}; state.records.push(row); send(row);}}
+else { save(); response.writeHead(404, {'content-type':'application/json'}); response.end(JSON.stringify({object:'error',code:'object_not_found',message:'Unexpected controlled endpoint'})); }
+});
+server.listen(0,'127.0.0.1',()=>process.stdout.write('http://127.0.0.1:'+server.address().port+'\\n'));
 `
   await writeFile(executable, script)
-  await chmod(executable, 0o700)
-  return { executable, read: async () => JSON.parse(await readFile(statePath, "utf8")) }
+  const server = Bun.spawn([node, executable], { stdout: "pipe", stderr: "pipe" })
+  servers.push(server)
+  const ready = await server.stdout.getReader().read()
+  const origin = new TextDecoder().decode(ready.value).trim()
+  expect(origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+  return { origin, read: async () => JSON.parse(await readFile(statePath, "utf8")) }
 }
 
 test("production CLI registers a composition, preserves its prepare file, and applies/reconciles only Source", async () => {
@@ -348,7 +354,7 @@ test("production CLI registers a composition, preserves its prepare file, and ap
         "--manifest",
         manifest,
       ],
-      fixture.executable,
+      fixture.origin,
     ),
   )
   const binding = registered.binding
@@ -373,7 +379,7 @@ test("production CLI registers a composition, preserves its prepare file, and ap
         "--output",
         operation,
       ],
-      fixture.executable,
+      fixture.origin,
     ),
   )
   expect(prepared.protection).toMatchObject({ conditional: false })
@@ -386,7 +392,7 @@ test("production CLI registers a composition, preserves its prepare file, and ap
     await invoke(
       root,
       ["select", "apply", operation, "--entry", library.skills.database_id],
-      fixture.executable,
+      fixture.origin,
     ),
   )
   expect(applied.status).toBe("applied")
@@ -395,7 +401,7 @@ test("production CLI registers a composition, preserves its prepare file, and ap
       await invoke(
         root,
         ["select", "reconcile", operation, "--entry", library.skills.database_id],
-        fixture.executable,
+        fixture.origin,
       ),
     ).status,
   ).toBe("applied")
@@ -420,8 +426,8 @@ test("production CLI ordinary registration retry reconciles its invisible unknow
     "--manifest",
     manifest,
   ]
-  failure(await invoke(root, args, fixture.executable), "WRITE_OUTCOME_UNKNOWN")
-  failure(await invoke(root, args, fixture.executable), "SHARED_RECORD_UNRESOLVED")
+  failure(await invoke(root, args, fixture.origin), "WRITE_OUTCOME_UNKNOWN")
+  failure(await invoke(root, args, fixture.origin), "SHARED_RECORD_UNRESOLVED")
   const state = await fixture.read()
   expect(
     state.calls.filter(

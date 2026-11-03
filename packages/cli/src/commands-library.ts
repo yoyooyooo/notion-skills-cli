@@ -33,6 +33,7 @@ import { defineCommand } from "../../core/src/command-schema.ts"
 import { emit, singleton, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryMigrationCommand } from "./commands-library-migration.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
+import { libraryRelationsCommand } from "./commands-library-relations.ts"
 
 const initialize = defineCommand(
   "init",
@@ -394,6 +395,7 @@ export const libraryCommand = defineCommand("library").pipe(
     snapshots,
     libraryMigrationCommand,
     libraryProfilesCommand,
+    libraryRelationsCommand,
     libraryFilesCommand,
   ]),
 )

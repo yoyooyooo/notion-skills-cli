@@ -12,7 +12,7 @@ Build to a fresh directory outside the normal package:
 bun scripts/build-proof-converter.ts /absolute/new-proof-converter-package
 ```
 
-Install that directory's exact dependencies with npm, then run its `ntn-skills-proof-convert.js` with supported Node (`^22.22.3 || >=24.20.0`). The generated package pins official `effect`, `@effect/platform-node` and `@effect/sql-sqlite-node` to `4.0.5`. Bun is the build tool, not the execution runtime. The entrypoint runs the same Node/SQLite admission policy as the CLI before opening Store. It uses the existing Notion and Store services, configured roots, credential routing and `ntn` transport. Configure these deliberately before planning; the plan binds the hashed credential identity and exact content-library parent. The converter does not discover pages or infer an allowlist from a database query.
+Install that directory's exact dependencies with npm, then run its `ntn-skills-proof-convert.js` with supported Node (`^22.22.3 || >=24.20.0`). The generated package pins official `effect`, `@effect/platform-node` and `@effect/sql-sqlite-node` to `4.0.5`. Bun is the build tool, not the execution runtime. The entrypoint runs the same Node/SQLite admission policy as the CLI before opening Store. It uses the existing Notion and Store services, configured roots, credential routing and direct HTTP transport. Configure these deliberately before planning; the plan binds the hashed credential identity and exact content-library parent. The converter does not discover pages or infer an allowlist from a database query.
 
 ## Operator input and historical evidence
 

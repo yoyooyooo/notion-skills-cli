@@ -61,3 +61,50 @@ node scripts/verify-skill-graph-contract.mjs evidence --evidence "$RUN_EVIDENCE"
 ```
 
 只对 ownership 匹配的离线 scratch 使用系统 Trash，不删除证据、不触碰远端或按进程名清理。`preserved` 只证明证据仍在；functionalStatus 与产品结论保持原值。其它 live runner 继续使用自身已有的 process/owned-fixture cleanup，不借用这份离线 ownership。
+
+## NG-RE-04：机器级调度的实际入口
+
+调度状态独立于内容缓存，默认位于操作系统提供的真实用户主目录下 `.local/state/ntn-skills/request-engine`。它不读取 `HOME`、`XDG_CACHE_HOME` 或项目 cache root 来选择协调目录。清空内容缓存不会重置发送预算。目录为 0700，SQLite 文件为 0600；现有目录、数据库、WAL/SHM 以及祖先路径中的符号链接会被拒绝。受控测试先解析系统临时目录的真实路径，再创建 owned 目录。
+
+| 配置 | 默认值与边界 |
+| --- | --- |
+| `NTN_SKILLS_SCHEDULER_ROOT` | 上述机器级目录；显式覆盖必须是绝对、当前用户私有且无符号链接的目录。故障注入必须使用独立 owned 根。 |
+| `NTN_SKILLS_NOTION_QUEUE_LIMIT` | 每个 connection 的待调度上限 256，允许 1–4096。满队列返回 `NOTION_QUEUE_FULL`。 |
+| `NTN_SKILLS_NOTION_INTERVAL_MS` | 保守发送间隔 350 ms，允许显式配置 100–60000 ms。降低间隔前应确认适用预算；配置值不是服务端永久配额。 |
+| `NTN_SKILLS_REQUEST_TRACE_LIMIT` | 默认 0，不保留明细；显式启用时允许 1–10000 条有界事件。 |
+
+未知身份先使用 credential 与 API origin 的保守引导预算。只有真实身份响应提供的 connection/workspace 才用于归组，数据库 ID、名称和内容缓存目录不决定限流范围。connection、workspace、endpoint 根据结构化 reason 延长对应冷却，未知 reason 保守作用于全部适用范围。同机不同进程共享此 SQLite；另一台机器、其他未接入本引擎的工具不共享这份状态。
+
+`withAdmission` 在真正发送前取得可用网络名额并原子准入。等待、优先级排队和冷却不占网络名额，也不持有 SQL 事务。写连接使用 exact pin 提供的 `BEGIN IMMEDIATE`；取得事务后重新采样时间，避免锁等待把旧时间变成过期发送时隙。每次实际 HTTP attempt 都重新准入，调度器不拥有第二个重试循环。
+
+队列位置有两秒租约，活动等待者至少每秒续租。没有网络容量的等待者仍计入上限并保持租约，但不阻挡其他进程当前可发送的请求。foreground/required 优先于新 prefetch；prefetch 随等待时间老化，避免永久饥饿。取消移除 owned 位置，进程崩溃后的过期位置可回收，不提前预约未来发送时隙。
+
+### 调度与取消复验
+
+从 CLI checkout 执行，使用当前仓库 Node/Vitest 配置：
+
+```bash
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-request-scheduler.node.test.ts packages/core/test/notion-scheduler-multiprocess.node.test.ts
+bun test packages/core/test/request-metrics.test.ts packages/core/test/shared-read-coalescing.test.ts
+bun run typecheck
+```
+
+第一条入口包含真实 SQLite、受控 Effect 时钟和独立 Node 进程；HTTP fixture 只监听 loopback。多进程配置不同内容缓存根和同一个 owned 调度根，观察真实 HTTP 发送与接收、共享 workspace 冷却和另一个 workspace 的进展、队列满载续租、崩溃后恢复、前台越过预取，以及符号链接拒绝。受控时钟另验证老化公平、已老化但网络满载的预取不挡前台、queue/operation 边界、取消后无未来预约和未知 reason 的保守范围。
+
+发送回调时刻与 loopback 接收时刻分别记录。首次 HTTP 客户端初始化、操作系统调度和网络投递可改变接收间隔，不能把接收时间直接当成发送时刻。共享读取反例验证取消一个 waiter 不停止其他消费者，最后一个 waiter 取消后才停止实际 producer。上述结果属于 controlled，不证明真实 Notion 配额、跨机器协调、安装包或真实模型消费。
+
+需要机器可读结果时，在本轮新建、位于 checkout 外的 `NG04_EVIDENCE` 目录输出，不覆盖上次结果：
+
+```bash
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-request-scheduler.node.test.ts packages/core/test/notion-scheduler-multiprocess.node.test.ts --reporter=json --outputFile="$NG04_EVIDENCE/scheduler.json"
+```
+
+测试只管理自己创建的进程和目录。多进程 fixture 关闭 owned server/worker 后移入可用的系统 Trash；没有 Trash 时保留目录。外部 JSON 证据不随 fixture 清理。
+
+### HTTP 账本合同
+
+`request_metrics.trace` 是有界事件数组。attempt 事件记录序号、请求分类及 body 分类、method、发送起点、实际耗时、结果、请求/响应字节、HTTP status、request ID、reason 和 Retry-After；没有观察到的安全字段为 null。wait 事件记录 queue/retry 和实测等待毫秒。数组不保存原始路径、正文、认证头或 token，`trace_dropped` 明确指出截断，不能把不完整账本计为完整请求证据。
+
+完整空账本需要同时看到 `trace_enabled:true`、`total_requests:0`、空 trace 和 `trace_dropped:0`。service 尚未创建或失败回执没有账本时不能推断零请求。真实入口成功与失败的统一输出由 NG-RE-05 验收；retry 策略接入后还须在唯一传输循环核对 `retry_wait_ms` 的实际归因，不能添加第二次 sleep 来满足数字。
+
+`notionRetryDelay` 只计算带 Effect Random jitter 的等待策略，服务端 Retry-After 始终是下限。实际循环、HTTP attempt timeout、operation deadline、明确拒绝恢复和未知写保护仍由同一传输/原 operation 拥有；单独通过策略测试不代表这些集成已通过。

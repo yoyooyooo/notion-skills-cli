@@ -1,7 +1,7 @@
 ---
 name: ntn-skills
 description: Discover and use workflows from the Notion Skill library. Use when a task may benefit from a stored workflow, names a remote Skill, or follows a Notion skill reference. Select from metadata, load only the chosen workflow, and keep its supporting files on one snapshot. Route Notion content changes to ntn-skills-maintain and fixed sources, shared Profiles and existing synchronization bindings to ntn-skills-sync.
-compatibility: Requires Node.js 22.22.3+ within 22.x or 24.20.0+ and ntn-skills; online discovery and reads require official ntn and an existing Notion connection; retaining newly observed shared edits also needs shared Record write access. Shell tools are sufficient; native Read integration requires a host adapter.
+compatibility: Requires Node.js 22.22.3+ within 22.x or 24.20.0+ and ntn-skills; online discovery and reads use the project's direct HTTP engine and existing Notion token; retaining newly observed shared edits also needs shared Record write access. Shell tools are sufficient; native Read integration requires a host adapter.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills
@@ -84,6 +84,6 @@ If that recovery itself reports an unknown page create, inspect `ctl library mig
 
 ## Host and connection boundaries
 
-Use the existing connection. Authentication priority is saved `config.token` > nonempty `NOTION_API_TOKEN` > existing `ntn login`. `ctl config show` exposes presence only; do not print credentials or initiate login implicitly. [Connection and host details](references/integration.md) are loaded only when needed.
+Use the existing connection. Authentication priority is saved `config.token` > nonempty `NOTION_API_TOKEN`; missing credentials return `AUTH_REQUIRED`. `ctl config show` exposes presence only; do not print credentials or initiate authentication implicitly. [Connection and host details](references/integration.md) are loaded only when needed.
 
 Installing this entrypoint makes its name and description discoverable in a supporting host. It does not automatically load its body, inject every remote Skill, register `Read skill://` or configure a broker. Startup awareness of remote workflows requires the host's metadata integration; without it, invoke discovery through this Skill. [Commands, selectors and recovery](references/commands.md) provide exact CLI details.

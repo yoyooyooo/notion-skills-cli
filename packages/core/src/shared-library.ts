@@ -83,13 +83,18 @@ export const sharedSkillProperties = {
   Projection: rich,
   Source: rich,
 }
-const sharedMembersProperty = (skillsDataSourceId: string) => ({
+export const sharedRelationProperty = (skillsDataSourceId: string) => ({
   relation: { data_source_id: skillsDataSourceId, single_property: {} },
 })
-function registeredSkillProperties(skills: TableBinding) {
-  return skills.property_ids.Members === undefined
-    ? sharedSkillProperties
-    : { ...sharedSkillProperties, Members: sharedMembersProperty(skills.data_source_id) }
+export function registeredSkillProperties(skills: TableBinding) {
+  return {
+    ...sharedSkillProperties,
+    ...Object.fromEntries(
+      ["Members", "Requires"]
+        .filter((field) => skills.property_ids[field] !== undefined)
+        .map((field) => [field, sharedRelationProperty(skills.data_source_id)]),
+    ),
+  }
 }
 export const sharedFileProperties = (skillsDataSourceId: string) => ({
   Name: { title: {} },
@@ -144,18 +149,20 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
     if (ids.some((id) => !id) || new Set(ids).size !== ids.length)
       throw fail("LIBRARY_INVALID", "A shared table has missing or overlapping property bindings.")
   }
-  const members = library.skills.property_ids.Members
-  if (
-    members !== undefined &&
-    (!/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(members) ||
-      Object.entries(library.skills.property_ids).some(
-        ([name, id]) => name !== "Members" && id === members,
-      ))
-  )
-    throw fail(
-      "LIBRARY_INVALID",
-      "The optional Members binding is not a unique stable property identity.",
+  for (const field of ["Members", "Requires"]) {
+    const members = library.skills.property_ids[field]
+    if (
+      members !== undefined &&
+      (!/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(members) ||
+        Object.entries(library.skills.property_ids).some(
+          ([name, id]) => name !== field && id === members,
+        ))
     )
+      throw fail(
+        "LIBRARY_INVALID",
+        `The optional ${field} binding is not a unique stable property identity.`,
+      )
+  }
   const tables = [
     library.skills,
     library.files,
@@ -213,7 +220,7 @@ export function loadSharedLibrary(entry: string) {
   })
 }
 
-function validateMembersField(value: unknown, skillsDataSourceId: string): string {
+export function validateSharedRelationField(value: unknown, skillsDataSourceId: string): string {
   const field = property(value)
   const relation = property(field.relation)
   const mode = relation.type
@@ -229,7 +236,7 @@ function validateMembersField(value: unknown, skillsDataSourceId: string): strin
   )
     throw fail(
       "LIBRARY_SCHEMA_CONFLICT",
-      "Members must be a registered native relation to this same Skills data source.",
+      "Members and Requires must be registered native relations to this same Skills data source.",
     )
   return field.id
 }
@@ -307,7 +314,8 @@ export function inspectTable(
             "A file or record relation targets a different Skills table.",
           ),
         )
-      if (name === "Members") yield* checked(() => validateMembersField(actual, dataSourceId))
+      if (name === "Members" || name === "Requires")
+        yield* checked(() => validateSharedRelationField(actual, dataSourceId))
       ids[name] = actual.id
     }
     return {
@@ -363,7 +371,7 @@ function inspectLibrary(library: SharedLibrary) {
   })
 }
 
-/** New libraries alone add Members; recovery observes the original schema without a PATCH. */
+/** New libraries add both native relations; recovery never repeats a schema PATCH. */
 function initializeMembers(
   skills: TableBinding,
   parent: string,
@@ -394,6 +402,7 @@ function initializeMembers(
         ),
       )
     const existing = property(before.properties).Members
+    const existingRequired = property(before.properties).Requires
     if (reconcile) {
       if (existing === undefined)
         return yield* Effect.fail(
@@ -403,10 +412,26 @@ function initializeMembers(
             details,
           ),
         )
-      const membersId = yield* checked(() => validateMembersField(existing, skills.data_source_id))
-      return { ...skills, property_ids: { ...skills.property_ids, Members: membersId } }
+      const membersId = yield* checked(() =>
+        validateSharedRelationField(existing, skills.data_source_id),
+      )
+      // Old initialization operations may predate Requires; preserve their exact observed schema.
+      const requiredId =
+        existingRequired === undefined
+          ? undefined
+          : yield* checked(() =>
+              validateSharedRelationField(existingRequired, skills.data_source_id),
+            )
+      return {
+        ...skills,
+        property_ids: {
+          ...skills.property_ids,
+          Members: membersId,
+          ...(requiredId === undefined ? {} : { Requires: requiredId }),
+        },
+      }
     }
-    if (existing !== undefined)
+    if (existing !== undefined || existingRequired !== undefined)
       return yield* Effect.fail(
         fail(
           "LIBRARY_SCHEMA_CONFLICT",
@@ -417,7 +442,12 @@ function initializeMembers(
     const response = yield* api
       .request(
         `v1/data_sources/${skills.data_source_id}`,
-        { properties: { Members: sharedMembersProperty(skills.data_source_id) } },
+        {
+          properties: {
+            Members: sharedRelationProperty(skills.data_source_id),
+            Requires: sharedRelationProperty(skills.data_source_id),
+          },
+        },
         { method: "PATCH" },
       )
       .pipe(
@@ -437,7 +467,7 @@ function initializeMembers(
           "Members creation returned no confirmed data-source identity.",
           details,
         )
-      return validateMembersField(property(after.properties).Members, skills.data_source_id)
+      return validateSharedRelationField(property(after.properties).Members, skills.data_source_id)
     }).pipe(
       Effect.mapError((error) =>
         fail(
@@ -447,7 +477,16 @@ function initializeMembers(
         ),
       ),
     )
-    const registered = { ...skills, property_ids: { ...skills.property_ids, Members: membersId } }
+    const requiredId = yield* checked(() =>
+      validateSharedRelationField(
+        property(property(response).properties).Requires,
+        skills.data_source_id,
+      ),
+    )
+    const registered = {
+      ...skills,
+      property_ids: { ...skills.property_ids, Members: membersId, Requires: requiredId },
+    }
     return yield* inspectTable(
       skills.database_id,
       registeredSkillProperties(registered),

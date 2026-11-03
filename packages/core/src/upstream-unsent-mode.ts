@@ -33,7 +33,7 @@ export function proveUnsentModePublication(
       !receipt.database_id ||
       !receipt.data_source_id ||
       !receipt.scope ||
-      !["NOTION_REQUEST_FAILED", "NTN_UNAVAILABLE", "RATE_LIMITED"].includes(
+      !["NOTION_REQUEST_FAILED", "NOTION_UNAVAILABLE", "RATE_LIMITED"].includes(
         receipt.failure?.code ?? "",
       )
     )

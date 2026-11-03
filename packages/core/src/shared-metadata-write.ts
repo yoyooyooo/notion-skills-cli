@@ -14,7 +14,10 @@ import {
   querySharedRecords,
   type SharedRecord,
 } from "./shared-records.ts"
-import { completeSharedRouterMemberIds, querySharedRouterMembers } from "./shared-router-members.ts"
+import {
+  completeSharedSkillRelationIds,
+  querySharedSkillRelation,
+} from "./shared-router-members.ts"
 import {
   pendingFileOperations,
   pendingFileOperationKey,
@@ -96,8 +99,8 @@ function readValue(
 ) {
   return Effect.gen(function* () {
     const value = yield* metadataChecked(() => sharedSkillProperty(raw, library, field))
-    if (field === "Members")
-      return (yield* completeSharedRouterMemberIds(library, record, raw)).sort()
+    if (field === "Members" || field === "Requires")
+      return (yield* completeSharedSkillRelationIds(library, record, raw, field)).sort()
     return yield* metadataChecked(() => {
       if (field === "Default Context") {
         if (value.type !== "checkbox" || typeof value.checkbox !== "boolean")
@@ -142,38 +145,47 @@ function verifyRequestedMembers(
   values: readonly SharedMetadataChange[],
 ) {
   return Effect.gen(function* () {
-    const members = values.find((change) => change.field === "Members")
-    if (members === undefined) return
-    if (record.kind !== "router" || !Array.isArray(members.value))
-      return yield* Effect.fail(
-        fail("INVALID_MEMBERS", "Only a Router may explicitly update native Members."),
-      )
-    const propertyId = library.skills.property_ids.Members
-    if (propertyId === undefined)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_ROUTER_MEMBERS_UNAVAILABLE",
-          "Register the native Members relation before updating it.",
+    for (const members of values) {
+      if (members.field !== "Members" && members.field !== "Requires") continue
+      if ((record.kind !== "router" && record.kind !== "skill") || !Array.isArray(members.value))
+        return yield* Effect.fail(
+          fail("INVALID_MEMBERS", "Only a Skill or Router may explicitly update native relations."),
+        )
+      if (members.value.length > 100)
+        return yield* Effect.fail(
+          fail(
+            "RELATION_WRITE_LIMIT",
+            "Notion replaces relation arrays and accepts at most 100 related pages in one write; this complete target set cannot be safely split.",
+            { field: members.field, count: members.value.length, limit: 100 },
+          ),
+        )
+      const propertyId = library.skills.property_ids[members.field]
+      if (propertyId === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_ROUTER_MEMBERS_UNAVAILABLE",
+            `Register the native ${members.field} relation before updating it.`,
+          ),
+        )
+      const properties = Object.fromEntries(
+        Object.entries(property(property(raw).properties)).filter(
+          ([key, value]) => key !== propertyId && property(value).id !== propertyId,
         ),
       )
-    const properties = Object.fromEntries(
-      Object.entries(property(property(raw).properties)).filter(
-        ([key, value]) => key !== propertyId && property(value).id !== propertyId,
-      ),
-    )
-    const candidate = {
-      ...property(raw),
-      properties: {
-        ...properties,
-        [propertyId]: {
-          id: propertyId,
-          type: "relation",
-          relation: members.value.map((id) => ({ id })),
-          has_more: false,
+      const candidate = {
+        ...property(raw),
+        properties: {
+          ...properties,
+          [propertyId]: {
+            id: propertyId,
+            type: "relation",
+            relation: members.value.map((id) => ({ id })),
+            has_more: false,
+          },
         },
-      },
+      }
+      yield* querySharedSkillRelation(library, { record, rawPage: candidate, field: members.field })
     }
-    yield* querySharedRouterMembers(library, { router: record, rawPage: candidate })
   })
 }
 
@@ -335,7 +347,7 @@ function patchProperties(plan: SharedMetadataWritePlan) {
     plan.changes.map((change) => {
       const value = change.after
       const native =
-        change.field === "Members" && Array.isArray(value)
+        (change.field === "Members" || change.field === "Requires") && Array.isArray(value)
           ? { relation: value.map((id) => ({ id })) }
           : change.field === "Default Context" && typeof value === "boolean"
             ? { checkbox: value }

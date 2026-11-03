@@ -72,7 +72,6 @@ test("independent historical operator help and parser recovery work without stat
     NTN_SKILLS_HOME: blocked,
     NTN_SKILLS_CONFIG_HOME: blocked,
     NTN_SKILLS_CACHE_HOME: blocked,
-    NTN_SKILLS_NTN_BIN: join(directory, "missing-ntn"),
     NOTION_API_TOKEN: "",
     NOTION_WORKSPACE_ID: "",
   }
@@ -557,7 +556,6 @@ test("unproven historical import remains public review evidence and cannot repla
       NTN_SKILLS_HOME: f.state,
       NTN_SKILLS_CONFIG_HOME: f.config,
       NTN_SKILLS_CACHE_HOME: f.cache,
-      NTN_SKILLS_NTN_BIN: join(f.directory, "missing-offline-provider"),
     },
     stdout: "pipe",
     stderr: "pipe",

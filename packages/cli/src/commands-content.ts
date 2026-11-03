@@ -25,6 +25,7 @@ import {
   exportConstraints,
   exactTargetConstraint,
   memberConstraint,
+  requiredConstraint,
   validateConstraints,
   databaseFlag,
   singleton,
@@ -37,6 +38,7 @@ import {
   publicationOptions,
   dryRunFlag,
   memberFlags,
+  requiredFlags,
 } from "./command-options.ts"
 const requestMetricsFlag = switchFlag(
   "metrics",
@@ -324,6 +326,7 @@ export const createCommand = defineCommand(
     dryRun: dryRunFlag,
     progress: progressFlag,
     ...memberFlags,
+    ...requiredFlags,
   },
   (config) =>
     Effect.gen(function* () {
@@ -334,16 +337,21 @@ export const createCommand = defineCommand(
           description: Option.getOrUndefined(config.description),
           storage: Option.getOrUndefined(config.storage),
           members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
+          requires: config["clear-requires"]
+            ? []
+            : config.require.length
+              ? config.require
+              : undefined,
           dryRun: config.dryRun,
           ...(yield* publicationOptions(config.progress)),
         }),
       )
     }),
 ).pipe(
-  withConstraints([memberConstraint]),
+  withConstraints([memberConstraint, requiredConstraint]),
   Command.withShortDescription("Create a new Skill, Router or Prompt from local input"),
   Command.withDescription(
-    'Create one new Skill, Router or Prompt in the selected database. Ordinary Skill folders with SKILL.md and supporting files, ZIPs, or a single Markdown file need no hand-authored manifest; use --name/--description for explicit metadata overrides. Database priority is --database, configured default, then one unambiguous discovered library. In a shared library, the CLI freezes all input, creates native Skills/Files identities, and enables the new Skill only after the complete body set verifies. Native creation supports UTF-8 text; binary, unsupported projection and size failures stop before page creation without omitting files. Omit --storage for this path; markdown_files is a legacy storage mode and is rejected for shared entries. A name collision never permits overwriting another Skill. Shared success returns a verified snapshot, pinned refs and create_operation_id. Preserve the exact input and original operation after an unknown response; repeating the same intent reconciles it without blindly repeating page creates. --dry-run performs online preflight but sends no Notion writes and is not proof of a completed create. For Prompt, stage a folder with root .ntn-skills.json containing {"format":"ntn-skills","version":2,"kind":"prompt","name":"Review Prompt","description":"Requirements for a review","main":"PROMPT.md"} and a UTF-8 PROMPT.md body containing \'Review the change and explain its risks.\'. For Router, use {"format":"ntn-skills","version":2,"kind":"router","name":"Review Router","description":"Select a review Skill","main":"ROUTER.md"} and a UTF-8 ROUTER.md body containing \'Select the relevant member Skill for this review.\'. kind must be skill, router or prompt; filenames/frontmatter never select kind. Without a manifest, ZIP/folder uses SKILL.md or unique top-level Markdown and kind defaults to skill; a single Markdown file is also a Skill regardless of filename. Portable v1 is unsupported. main must name an existing normalized relative source file (arbitrary filename allowed); published entrypoints are SKILL.md, ROUTER.md and PROMPT.md respectively. Manifest name must be nonblank without control characters; description must be nonblank and at most 2000 Unicode code points, even when overridden. --name/--description override manifest metadata, which overrides body frontmatter; ordinary Skill name falls back from frontmatter to filename and requires a description from frontmatter or --description. Router Members use repeatable --member with exact current accessible Skill page IDs or unpinned entrypoint refs in the same database AND data source. Nested Routers, Prompts, resource refs and pinned refs are invalid Members; do not copy member bodies or invent manifest members. For legacy entries, References Markdown becomes editable child pages and optional Files preserves original bytes; those targets retain content_id, --progress and operation resume OPERATION_ID publication recovery. Shared operation IDs do not use that legacy resume path. Insert, Update and Read content permissions are required.',
+    'Create one new Skill, Router or Prompt in the selected database. Ordinary Skill folders with SKILL.md and supporting files, ZIPs, or a single Markdown file need no hand-authored manifest; use --name/--description for explicit metadata overrides. Database priority is --database, configured default, then one unambiguous discovered library. In a shared library, the CLI freezes all input, creates native Skills/Files identities, and enables the new Skill only after the complete body set verifies. Native creation supports UTF-8 text; binary, unsupported projection and size failures stop before page creation without omitting files. Omit --storage for this path; markdown_files is a legacy storage mode and is rejected for shared entries. A name collision never permits overwriting another Skill. Shared success returns a verified snapshot, pinned refs and create_operation_id. Preserve the exact input and original operation after an unknown response; repeating the same intent reconciles it without blindly repeating page creates. --dry-run performs online preflight but sends no Notion writes and is not proof of a completed create. For Prompt, stage a folder with root .ntn-skills.json containing {"format":"ntn-skills","version":2,"kind":"prompt","name":"Review Prompt","description":"Requirements for a review","main":"PROMPT.md"} and a UTF-8 PROMPT.md body containing \'Review the change and explain its risks.\'. For Router, use {"format":"ntn-skills","version":2,"kind":"router","name":"Review Router","description":"Select a review Skill","main":"ROUTER.md"} and a UTF-8 ROUTER.md body containing \'Select the relevant member Skill for this review.\'. kind must be skill, router or prompt; filenames/frontmatter never select kind. Without a manifest, ZIP/folder uses SKILL.md or unique top-level Markdown and kind defaults to skill; a single Markdown file is also a Skill regardless of filename. Portable v1 is unsupported. main must name an existing normalized relative source file (arbitrary filename allowed); published entrypoints are SKILL.md, ROUTER.md and PROMPT.md respectively. Manifest name must be nonblank without control characters; description must be nonblank and at most 2000 Unicode code points, even when overridden. --name/--description override manifest metadata, which overrides body frontmatter; ordinary Skill name falls back from frontmatter to filename and requires a description from frontmatter or --description. Shared Skills and Routers accept repeatable --member and --require with exact current enabled Skill page IDs or unpinned entrypoint refs in the same library and data source. Requires is for unconditional prerequisites; member bodies remain lazy. Nested Routers, Prompts, resource refs and pinned refs are invalid relation targets. Each explicit relation write supports at most 100 targets and rejects larger replacements before writing. For legacy entries, References Markdown becomes editable child pages and optional Files preserves original bytes; those targets retain content_id, --progress and operation resume OPERATION_ID publication recovery. Shared operation IDs do not use that legacy resume path. Insert, Update and Read content permissions are required.',
   ),
   Command.withExamples([
     {
@@ -517,7 +525,7 @@ export const exportCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("Export a complete reversible Skill as ZIP or folder"),
   Command.withDescription(
-    "Export every content file and a versioned portable manifest. --projection source (default) preserves portable source files; --projection snapshot exports the materialized read view, including the Router Members index. Current inputs follow the 5m content policy; use mutually exclusive --refresh, --offline or --max-age. Ordinary aligned native Skills may revalidate metadata and reuse verified source files (freshness.validation=metadata); --refresh or explicit --max-age 0 requires complete body/resource validation. Pinned refs and snapshot IDs are immutable/offline and reject refresh/max-age. References links become relative paths; optional Files preserves source bytes, while page-only output is normalized. ZIP entries sort deterministically with fixed timestamps. --output is required; .zip selects ZIP, otherwise directory; --format overrides it. Identical output returns reused=true; differing output returns OUTPUT_CONFLICT. Cache policy changes input selection only, never output overwrite permission. Export never mutates Notion.",
+    "Export every content file and a versioned portable manifest. --projection source (default) preserves portable source files; --projection snapshot exports the materialized read view, including the native Skill or Router Members index. Current inputs follow the 5m content policy; use mutually exclusive --refresh, --offline or --max-age. Ordinary aligned native Skills may revalidate metadata and reuse verified source files (freshness.validation=metadata); --refresh or explicit --max-age 0 requires complete body/resource validation. Pinned refs and snapshot IDs are immutable/offline and reject refresh/max-age. References links become relative paths; optional Files preserves source bytes, while page-only output is normalized. ZIP entries sort deterministically with fixed timestamps. --output is required; .zip selects ZIP, otherwise directory; --format overrides it. Identical output returns reused=true; differing output returns OUTPUT_CONFLICT. Cache policy changes input selection only, never output overwrite permission. Export never mutates Notion.",
   ),
   Command.withExamples([
     {
@@ -625,6 +633,7 @@ export const updateCommand = defineCommand(
     ),
     dryRun: dryRunFlag,
     ...memberFlags,
+    ...requiredFlags,
     defaultContext: Flag.Boolean("default-context").pipe(
       Flag.atMost(1),
       Flag.map((values) => Option.fromUndefinedOr(values[0])),
@@ -632,7 +641,7 @@ export const updateCommand = defineCommand(
   },
   (config) =>
     Effect.gen(function* () {
-      yield* validateConstraints([memberConstraint], config)
+      yield* validateConstraints([memberConstraint, requiredConstraint], config)
       yield* emit(
         yield* updateSkill(config.target, {
           database: Option.getOrUndefined(config.database),
@@ -640,13 +649,18 @@ export const updateCommand = defineCommand(
           description: Option.getOrUndefined(config.description),
           defaultContext: Option.getOrUndefined(config.defaultContext),
           members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
+          requires: config["clear-requires"]
+            ? []
+            : config.require.length
+              ? config.require
+              : undefined,
           dryRun: config.dryRun,
         }),
       )
     }),
 ).pipe(
-  withConstraints([memberConstraint]),
+  withConstraints([memberConstraint, requiredConstraint]),
   Command.withDescription(
-    "Update only nominated Name, Description, Default Context or Router Members on an exact target; omitted fields and file bodies remain unchanged. Repeat --member with exact accessible Skill page IDs or unpinned entrypoint refs in the same database/data source, or use --clear-members; omit both to preserve Members. Pinned snapshots enforce their version baseline. A shared library uses registered native property IDs and the common original-operation journal; metadata uses native last-writer behavior, not compare-and-swap. Shared success reports action=updated, verified=true and metadata_operation_id. Unknown results retain their original plan for read-only reconciliation. Select a shared fixed Source with ctl library source select; update does not accept a Source or ownership override. Existing legacy SyncMode conversion remains a separate workflow.",
+    "Update only nominated Name, Description, Default Context, Members or Requires on an exact target; omitted fields and native file bodies remain unchanged. Shared Skills and Routers accept --member/--clear-members and --require/--clear-requires independently. Use exact accessible enabled Skill page IDs or unpinned entrypoint refs in the same library/data source. Requires is for unconditional prerequisites. Relation reads paginate completely; explicit replacement writes above 100 targets fail before dispatch because Notion arrays do not append. Pinned snapshots enforce their version baseline. A shared library uses registered native property IDs and the common original-operation journal; metadata uses native last-writer behavior, not compare-and-swap. Shared success reports action=updated, verified=true and metadata_operation_id. Unknown results retain their original plan for read-only reconciliation. Select a shared fixed Source with ctl library source select; update does not accept a Source or ownership override. Existing legacy SyncMode conversion remains a separate workflow.",
   ),
 )

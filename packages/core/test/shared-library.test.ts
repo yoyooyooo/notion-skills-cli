@@ -155,6 +155,9 @@ test("one parent initializes three related tables and repeats without writes or 
           single_property: {},
         },
       },
+      Requires: {
+        relation: { data_source_id: first.library.skills.data_source_id, single_property: {} },
+      },
     },
   })
   const writes = f.calls.filter((call) => call.write).length

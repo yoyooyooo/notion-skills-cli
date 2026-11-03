@@ -4,6 +4,19 @@
 
 Sources 是第四张独立全页面 Database。它拥有来源身份、Provider、Location、Ref、选择范围、显式转换选项、启停与更新策略。Skills 通过 Origin Relation 关联它，并保存 Source Member；现有 Source 属性仍保存精确内容 pin，显示为 Selected Version。Files 继续通过 Skill Relation 确定唯一归属，来源可从该关系显示；不维护另一份可分叉的来源字段。Records 的 Origin Relation 连接来源版本与操作审计，原有归档仍不可变。
 
+| 字段或内容 | 权威来源 | 显式来源刷新可做的修改 |
+| --- | --- | --- |
+| Selected Version（注册属性 ID 为 Source） | 审阅后的固定候选 | 仅选择已完整保留并验证的 bundle |
+| following 文件与源资源 | 选中的固定 Source + 原有文件归属事实 | 按新 pin 合成；删除仍在 following 的绑定文件会阻止刷新 |
+| custom 主文、资源与额外 frontmatter | Notion 作者与原有 custom 事实 | 保留完整字节；主文中同名额外 frontmatter 覆盖来源默认值 |
+| Members / Requires | Notion 作者显式选定的完整关系集合 | 不写入、不重建；空集合也是明确选择 |
+| Name / Description / Tags / Enabled / Default Context / 未注册属性 | Notion 作者 | 不写入；源名称差异只进入候选审阅 |
+| View 配置 | Notion 数据库 View | 不访问写入端点、不重置 |
+| Sources 的 Last Checked / Last Revision / Last Result / Status | 已完成的刷新操作 | 验证成功后写这四个注册属性 |
+| 历史 pin、归属事件、原始未知操作 | 不可变 Records 与原始操作凭据 | 保留，不把当前可见状态当成未知请求的成功回执 |
+
+目标 Skill 的 PATCH properties 只包含 Source 的注册 ID。Records 只附加该次来源审计所需的 Origin；Sources 状态只使用表中列出的四项。刷新不会把读到的旧整行属性回写，因此在 Source PATCH 前发生的无关关系编辑仍保留。这是字段级写入边界，不是 Notion 原子 compare-and-swap；正文、归属或选中 pin 漂移仍需要重新准备。
+
 比较过两种方案：把活跃配置混入不可变 Records，或独立 Sources。选后者，避免用户编辑配置破坏历史事件，也不把表数当作产品能力约束。普通 Skill 消费只依赖当前 pin、文件与已确认归属，不扫描 Sources、不访问上游；只有明确的来源管理命令读取配置并启动适配器。
 
 ## 来源适配
@@ -60,6 +73,16 @@ ntn-skills ctl library sources reconcile ./refresh.json --entry ENTRY
 `prepare` 会读取完整上游候选、当前自定义正文和绑定，并将待选字节写入私有本地计划。计划包含资源，可能有敏感业务内容；不要上传到公开仓库。`apply` 不再次追逐分支，用原计划中的字节、fingerprint、member、当前 pin 和快照核对后执行。内容变化需重新准备；未知写入继续核对原操作，不能通过改输入强行重发。普通 `read/files/export` 仍使用同一固定快照接口。
 
 成功 `apply` 更新 Sources 的 Last Checked / Last Revision / Last Result，表示最后一次完成验证的显式推进，**不是自动轮询或后台同步状态**。`check/fetch` 是只读操作，不修改这些栏位。一个来源对应多个 Skill 时逐个目标显式推进；Router 的成员索引与正文不被来源检查隐式重建。
+
+`check` 与新建 `prepare` 返回 `member_review`，按精确 Source Member key 比较当前完整 Origin 绑定与上游候选，列出 `added`、`missing`、`renamed`。这个比较基线是当前来源绑定，不是历史上游目录，也不是作者的 Members。缺失项要求人工判断；不能按显示名替换或清空 Requires。新增成员先按普通创建/导入流程建立，再由作者明确接受关系。来源刷新忽略上游包里的关系字段，不能通过来源内容取得修改本地关系的权限。
+
+当前来源工作流没有持续托管 Members 的模式。旧发布档案及其中的 baseline、显式 add/remove 和未结清操作继续保留，不能从当前差异猜造旧 baseline，也不能据此恢复旧发布器。若迁入的旧工作流仍声称持续管理成员，先审阅它的完整基线和增删意图，再明确选择当前 Notion 集合；不提供隐式 reseed 或自动跟随。
+
+### 导出与重导入关系
+
+同库 Skill 的现有 `.ntn-skills.json` 可携带可选 `relations`，包含 `ownership: "notion"`、稳定 `library_id` 以及明确的 `members` / `requires` 逻辑 Skill ID 集合。空数组保留删除意图，省略字段不产生覆盖请求。目录导出、ZIP 备份和读取该包使用同一清单，不需要手工维护额外关系 JSON；没有此字段的旧 v2 包保持原有格式与行为。
+
+显式导入或 `apply --input` 才会把该集合交给现有冻结元数据计划。所有目标仍按同库 Library + Skill 身份解析；跨库、缺失目标、同名替身以及与显式关系参数冲突的集合在写入前失败。完整导出中未改变的文件不会被重新写成 native custom：源资源、额外 frontmatter 与原归属保持。改变的正文仍受原生作者入口的完整校验约束；重导入不是跨库克隆或任意 frontmatter 编辑接口。
 
 ## 配置示例
 
@@ -125,4 +148,4 @@ Linear 来源明确把 issue/document 映射成文件，主入口必须有 `SKIL
 
 ## 原始计划的版本
 
-当前新建 refresh v2 把精确的原生 Source 选择操作直接绑定进计划摘要，执行时复用已有共享元数据日志；无需在选择前再写一份冗余映射。保存的 v1 计划继续按其原语义核对，失败或未知结果不会因新版本发布被改写。原计划与新计划分别留证，不把当前 pin 可见当作旧请求成功。候选 bundle、来源审计和字节块在任何远端派发之前检查64KiB单记录限额；长资源走现有有界分块，不能通过先写完再发现清单超限。
+当前新建 refresh v3 延续 v2 的精确原生 Source 选择操作，并把只供审阅的 `member_review` 绑定进同一计划摘要和来源审计。执行复用已有共享元数据日志，没有第二套关系同步账本。保存的 v1/v2 计划继续按原语义核对，不为它们制造历史成员基线；失败或未知结果不会因新版本发布被改写。原计划与新计划分别留证，不把当前 pin 可见当作旧请求成功。候选 bundle、来源审计和字节块在任何远端派发之前检查64KiB单记录限额；长资源走现有有界分块，不能通过先写完再发现清单超限。

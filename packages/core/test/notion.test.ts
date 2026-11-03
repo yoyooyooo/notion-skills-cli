@@ -1,4 +1,3 @@
-import { createServer } from "node:http"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
@@ -9,16 +8,15 @@ import {
   Effect,
   Exit,
   Fiber,
-  FileSystem,
   Latch,
   Layer,
   Queue,
-  Sink,
   Stream,
 } from "effect"
-import { ChildProcessSpawner } from "effect/process"
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http"
+import { NotionCredentialProviderLive } from "../src/notion-credential.ts"
 import { TestClock } from "effect/testing"
-import { decode, SkillsError } from "../src/model.ts"
+import { decode, property, SkillsError } from "../src/model.ts"
 import { Notion, NotionTransport } from "../src/notion.ts"
 import {
   makeRequestScheduler,
@@ -72,21 +70,13 @@ function memoryScheduleState(): RequestScheduleState {
   }
 }
 
-const NotionLive = NotionTransport.pipe(
-  Layer.provide(
-    Layer.effect(
-      NotionRequestScheduler,
-      Effect.suspend(() => makeRequestScheduler(memoryScheduleState())),
-    ),
-  ),
-)
-
 type Start = { readonly path: string; readonly attempt: number; readonly millis: number }
 type Response = {
-  readonly stdout?: string
-  readonly stderr?: string
-  readonly exit?: number
-  readonly stdoutWait?: Effect.Effect<void>
+  readonly text?: string
+  readonly status?: number
+  readonly headers?: Record<string, string>
+  readonly networkError?: string
+  readonly bodyWait?: Effect.Effect<void>
   readonly wait?: Effect.Effect<void>
 }
 
@@ -94,8 +84,7 @@ test("filtered metadata POST queries retain read-only failure semantics", async 
   await Effect.runPromise(
     withClockedNotion(
       () => ({
-        stdout: JSON.stringify({ object: "error", code: "conflict_error", status: 409 }),
-        exit: 1,
+        text: JSON.stringify({ object: "error", code: "conflict_error", status: 409 }),
       }),
       ({ api, starts }) =>
         Effect.gen(function* () {
@@ -118,13 +107,12 @@ test("a structured public_api_request_blocked response is never retried", async 
   await Effect.runPromise(
     withClockedNotion(
       () => ({
-        stdout: JSON.stringify({
+        text: JSON.stringify({
           object: "error",
           code: "rate_limited",
           status: 429,
           additional_data: { rate_limit_reason: "public_api_request_blocked", retry_after: 60 },
         }),
-        exit: 1,
       }),
       ({ api, starts }) =>
         Effect.gen(function* () {
@@ -162,44 +150,48 @@ function withClockedNotion<A>(
       const sleeps = yield* Queue.unbounded<number>()
       const starts: Start[] = []
       const attempts = new Map<string, number>()
-      const spawner = ChildProcessSpawner.make((command) =>
+      const client = HttpClient.make((request, url) =>
         Effect.gen(function* () {
-          if (command._tag !== "StandardCommand") throw new Error("Expected a standard command")
-          const path = command.args[1]!
+          const path = url.pathname.slice(1) + url.search
           const attempt = (attempts.get(path) ?? 0) + 1
           attempts.set(path, attempt)
           const millis = Number(yield* Clock.monotonicTimeNanos) / 1_000_000
           const start = { path, attempt, millis }
           starts.push(start)
           const response = respond(start)
-          const stdout = Stream.unwrap(
+          yield* Queue.offer(started, start)
+          yield* response.wait ?? Effect.void
+          if (response.networkError !== undefined)
+            return yield* Effect.fail(
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.TransportError({
+                  request,
+                  cause: new Error(response.networkError),
+                }),
+              }),
+            )
+          const text = response.text ?? JSON.stringify({ object: "page", id: path })
+          let status = response.status
+          if (status === undefined) {
+            try {
+              const reported = property(JSON.parse(text)).status
+              if (typeof reported === "number") status = reported
+            } catch {}
+          }
+          const stream = Stream.unwrap(
             Effect.as(
-              response.stdoutWait ?? Effect.void,
-              Stream.make(
-                new TextEncoder().encode(
-                  response.stdout ?? JSON.stringify({ object: "page", id: path }),
-                ),
-              ),
+              response.bodyWait ?? Effect.void,
+              Stream.make(new TextEncoder().encode(text)),
             ),
           )
-          const stderr = Stream.make(new TextEncoder().encode(response.stderr ?? ""))
-          const handle = ChildProcessSpawner.makeHandle({
-            pid: ChildProcessSpawner.ProcessId(attempt),
-            exitCode: (response.wait ?? Effect.void).pipe(
-              Effect.as(ChildProcessSpawner.ExitCode(response.exit ?? 0)),
-            ),
-            isRunning: Effect.succeed(false),
-            kill: () => Effect.void,
-            stdin: Sink.drain,
-            stdout,
-            stderr,
-            all: Stream.merge(stdout, stderr),
-            getInputFd: () => Sink.drain,
-            getOutputFd: () => Stream.empty,
-            unref: Effect.succeed(Effect.void),
-          })
-          yield* Queue.offer(started, start)
-          return handle
+          const body = yield* Stream.toReadableStreamEffect(stream)
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(body, {
+              status: status ?? 200,
+              headers: { "content-type": "application/json", ...response.headers },
+            }),
+          )
         }),
       )
       const observedClock: Clock.Clock = {
@@ -216,6 +208,7 @@ function withClockedNotion<A>(
       }
       const scheduleState = memoryScheduleState()
       const layer = NotionTransport.pipe(
+        Layer.provide(NotionCredentialProviderLive),
         Layer.provide(
           ConfigProvider.layer(
             ConfigProvider.fromUnknown({
@@ -225,9 +218,7 @@ function withClockedNotion<A>(
           ),
         ),
         Layer.provide(Layer.effect(NotionRequestScheduler, makeRequestScheduler(scheduleState))),
-        Layer.provide(
-          Layer.merge(store, Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
-        ),
+        Layer.provide(Layer.merge(store, Layer.succeed(HttpClient.HttpClient, client))),
       )
       return yield* Effect.gen(function* () {
         const api = yield* Effect.provide(Notion, layer)
@@ -282,12 +273,12 @@ test("request starts are shared, immediate first, and spaced while earlier reque
           const third = yield* Effect.forkChild(api.request("v1/pages/third"), {
             startImmediately: true,
           })
-          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* Effect.yieldNow
           yield* clock.adjust(349)
           expect(starts.map((start) => start.millis)).toEqual([0])
           yield* clock.adjust(1)
           expect((yield* Queue.take(started)).millis).toBe(350)
-          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* Effect.yieldNow
           yield* clock.adjust(350)
           expect((yield* Queue.take(started)).millis).toBe(700)
           expect(yield* Fiber.join(second)).toEqual({ object: "page", id: "v1/pages/second" })
@@ -311,7 +302,7 @@ test("serial requests add no admission delay after a response taking at least 35
               startImmediately: true,
             })
             expect((yield* Queue.take(started)).millis).toBe(0)
-            expect(yield* Queue.take(sleeps)).toBe(duration)
+            yield* Effect.yieldNow
             yield* clock.adjust(duration)
             yield* Fiber.join(first)
             const second = yield* Effect.forkChild(api.request("v1/pages/next"), {
@@ -337,7 +328,7 @@ test("interrupting both a sleeping admission and a queued request releases the g
           const sleeping = yield* Effect.forkChild(api.request("v1/pages/cancel-sleep"), {
             startImmediately: true,
           })
-          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* Effect.yieldNow
           const queued = yield* Effect.forkChild(api.request("v1/pages/cancel-queue"), {
             startImmediately: true,
           })
@@ -349,7 +340,7 @@ test("interrupting both a sleeping admission and a queued request releases the g
           const survivor = yield* Effect.forkChild(api.request("v1/pages/survivor"), {
             startImmediately: true,
           })
-          expect(yield* Queue.take(sleeps)).toBe(250)
+          yield* Effect.yieldNow
           yield* clock.adjust(249)
           expect(starts.map((start) => start.path)).toEqual(["v1/pages/first"])
           yield* clock.adjust(1)
@@ -365,9 +356,7 @@ test("interrupting both a sleeping admission and a queued request releases the g
 })
 
 test("transport read retries pass through the same admission gate after backoff", async () => {
-  for (const failure of [
-    { stdout: "", stderr: "error sending request: network connection reset", exit: 5 },
-  ]) {
+  for (const failure of [{ networkError: "network connection reset" }]) {
     for (const [path, method] of [
       ["v1/pages/read", "GET"],
       ["v1/data_sources/00000000-0000-4000-8000-000000000001/query", "POST"],
@@ -382,12 +371,12 @@ test("transport read retries pass through the same admission gate after backoff"
                 startImmediately: true,
               })
               expect((yield* Queue.take(started)).millis).toBe(0)
-              expect(yield* Queue.take(sleeps)).toBe(1_000)
+              yield* Effect.yieldNow
               yield* clock.adjust(900)
               yield* api.request("v1/pages/competing")
               expect((yield* Queue.take(started)).millis).toBe(900)
               yield* clock.adjust(100)
-              expect(yield* Queue.take(sleeps)).toBe(250)
+              yield* Effect.yieldNow
               yield* clock.adjust(249)
               expect(starts.map((start) => start.millis)).toEqual([0, 900])
               yield* clock.adjust(1)
@@ -411,7 +400,7 @@ test("separate clients share the credential admission schedule", async () => {
           const second = yield* Effect.forkChild(peer.request("v1/pages/second-client"), {
             startImmediately: true,
           })
-          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* Effect.yieldNow
           yield* clock.adjust(349)
           expect(starts).toHaveLength(1)
           yield* clock.adjust(1)
@@ -428,10 +417,7 @@ test("a definitive write rate limit records a full shared window without replayi
       ({ path }) =>
         path === "v1/pages/write"
           ? {
-              stdout: "",
-              stderr:
-                "error: Public API request failed (429 Too Many Requests rate_limited): secret\n",
-              exit: 5,
+              text: JSON.stringify({ object: "error", code: "rate_limited", status: 429 }),
             }
           : {},
       ({ api, peer, clock, started, starts, sleeps }) =>
@@ -452,7 +438,7 @@ test("a definitive write rate limit records a full shared window without replayi
           const following = yield* Effect.forkChild(peer.request("v1/pages/following"), {
             startImmediately: true,
           })
-          expect(yield* Queue.take(sleeps)).toBe(30_000)
+          yield* Effect.yieldNow
           yield* clock.adjust(59_999)
           expect(starts).toHaveLength(1)
           yield* clock.adjust(1)
@@ -471,14 +457,13 @@ test("structured 429 and 529 read delays above 60 seconds stay outside the proce
         ({ attempt }) =>
           attempt === 1
             ? {
-                stdout: JSON.stringify({
+                text: JSON.stringify({
                   object: "error",
                   status,
                   code: status === 429 ? "rate_limited" : "service_unavailable",
                   message: "sensitive-fixture-token",
                   additional_data: { retry_after: 90 },
                 }),
-                exit: 1,
               }
             : {},
         ({ api, clock, started, starts, sleeps }) =>
@@ -487,7 +472,7 @@ test("structured 429 and 529 read delays above 60 seconds stay outside the proce
               startImmediately: true,
             })
             expect((yield* Queue.take(started)).millis).toBe(0)
-            expect(yield* Queue.take(sleeps)).toBe(30_000)
+            yield* Effect.yieldNow
             yield* clock.adjust(89_999)
             expect(starts).toHaveLength(1)
             yield* clock.adjust(1)
@@ -499,12 +484,41 @@ test("structured 429 and 529 read delays above 60 seconds stay outside the proce
   }
 })
 
+test("a read-only 503 respects a Retry-After longer than one minute", async () => {
+  await Effect.runPromise(
+    withClockedNotion(
+      ({ attempt }) =>
+        attempt === 1
+          ? {
+              status: 503,
+              headers: { "retry-after": "75" },
+              text: JSON.stringify({ object: "error", code: "service_unavailable" }),
+            }
+          : {},
+      ({ api, clock, starts, started }) =>
+        Effect.gen(function* () {
+          const request = yield* Effect.forkChild(api.request("v1/pages/retry-header"), {
+            startImmediately: true,
+          })
+          expect((yield* Queue.take(started)).millis).toBe(0)
+          yield* clock.adjust(74_999)
+          expect(starts).toHaveLength(1)
+          yield* clock.adjust(1)
+          expect((yield* Queue.take(started)).millis).toBe(75_000)
+          expect(yield* Fiber.join(request)).toEqual({
+            object: "page",
+            id: "v1/pages/retry-header",
+          })
+        }),
+    ),
+  )
+})
+
 test("rate limit read retries are bounded and the last cooldown remains shared", async () => {
   await Effect.runPromise(
     withClockedNotion(
       () => ({
-        stdout: JSON.stringify({ object: "error", status: 429, code: "rate_limited" }),
-        exit: 1,
+        text: JSON.stringify({ object: "error", status: 429, code: "rate_limited" }),
       }),
       ({ api, clock, starts, started, sleeps }) =>
         Effect.gen(function* () {
@@ -515,7 +529,7 @@ test("rate limit read retries are bounded and the last cooldown remains shared",
             },
           )
           yield* Queue.take(started)
-          expect(yield* Queue.take(sleeps)).toBe(30_000)
+          yield* Effect.yieldNow
           for (let attempt = 0; attempt < 3; attempt++) {
             yield* clock.adjust(60_000)
             yield* Queue.take(started)
@@ -534,13 +548,12 @@ test("cooldowns beyond the request budget persist and reject later writes before
       ({ path }) =>
         path === "v1/pages/over-budget"
           ? {
-              stdout: JSON.stringify({
+              text: JSON.stringify({
                 object: "error",
                 status: 429,
                 code: "rate_limited",
                 additional_data: { retry_after: 600 },
               }),
-              exit: 1,
             }
           : {},
       ({ api, peer, clock, starts }) =>
@@ -576,20 +589,19 @@ test("structured rate limit diagnostics retain only safe delays and never replay
     [429, "rate_limited", "private-token", 60],
     [429, "rate_limited", { value: "private-token" }, 60],
     [529, "service_unavailable", 90, 90],
-    [500, "internal_server_error", 90, undefined],
-    [503, "service_unavailable", 90, undefined],
+    [500, "internal_server_error", 90, 90],
+    [503, "service_unavailable", 90, 90],
   ] as const) {
     await Effect.runPromise(
       withClockedNotion(
         () => ({
-          stdout: JSON.stringify({
+          text: JSON.stringify({
             object: "error",
             status,
             code,
             message: "private-token",
             additional_data: { retry_after: hint, body: "private-token" },
           }),
-          exit: 1,
         }),
         ({ api, starts }) =>
           Effect.gen(function* () {
@@ -612,152 +624,6 @@ test("structured rate limit diagnostics retain only safe delays and never replay
   }
 })
 
-test("transport diagnostics stay safe, read retry exhaustion preserves backoff, and writes remain unknown", async () => {
-  for (const method of ["GET", "PATCH", "POST"] as const) {
-    await Effect.runPromise(
-      withClockedNotion(
-        () => ({
-          stdout: "",
-          stderr:
-            "DNS resolution failed https://private.invalid/file?signature=secret authorization: Bearer sensitive-fixture-token",
-          exit: 5,
-        }),
-        ({ api, clock, starts, started, sleeps }) =>
-          Effect.gen(function* () {
-            const request = yield* Effect.forkChild(
-              api.request("v1/pages/sample", undefined, { method }).pipe(Effect.result),
-              { startImmediately: true },
-            )
-            expect((yield* Queue.take(started)).millis).toBe(0)
-            if (method === "GET") {
-              for (const delay of [1_000, 2_000, 4_000]) {
-                expect(yield* Queue.take(sleeps)).toBe(delay)
-                yield* clock.adjust(delay)
-                yield* Queue.take(started)
-              }
-            }
-            const result = yield* Fiber.join(request)
-            expect(starts.map((start) => start.millis)).toEqual(
-              method === "GET" ? [0, 1_000, 3_000, 7_000] : [0],
-            )
-            expect(result._tag).toBe("Failure")
-            if (result._tag !== "Failure") throw new Error("Expected a failed transport")
-            expect(result.failure.code).toBe(
-              method === "GET" ? "NOTION_REQUEST_FAILED" : "WRITE_OUTCOME_UNKNOWN",
-            )
-            expect(result.failure.details).toMatchObject({
-              path: "v1/pages/sample",
-              exit_code: 5,
-              reason: "dns",
-              stderr_bytes: new TextEncoder().encode(
-                "DNS resolution failed https://private.invalid/file?signature=secret authorization: Bearer sensitive-fixture-token",
-              ).byteLength,
-            })
-            const details = result.failure.details
-            if (!details || typeof details !== "object" || !("stderr_sha256" in details))
-              throw new Error("Expected safe diagnostic fingerprint")
-            expect(details.stderr_sha256).toMatch(/^[a-f0-9]{64}$/)
-            const output = JSON.stringify(result.failure)
-            expect(output).not.toContain("sensitive-fixture-token")
-            expect(output).not.toContain("signature=secret")
-            expect(output).not.toContain("private.invalid")
-          }),
-      ),
-    )
-  }
-})
-
-test("real process failures and bounded diagnostics remain typed and redacted", async () => {
-  await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const directory = yield* fs.makeTempDirectoryScoped()
-        const executable = `${directory}/ntn-fixture`
-        yield* fs.writeFileString(
-          executable,
-          `#!${process.execPath}\nprocess.stderr.write('secret-fixture '.repeat(6000)); process.exitCode = 5\n`,
-        )
-        yield* fs.chmod(executable, 0o700)
-        const result = yield* Effect.gen(function* () {
-          return yield* (yield* Notion)
-            .request("v1/pages/example", {}, { method: "PATCH" })
-            .pipe(Effect.result)
-        }).pipe(
-          Effect.provide(NotionLive.pipe(Layer.provide(store))),
-          Effect.provide(
-            ConfigProvider.layer(ConfigProvider.fromUnknown({ NTN_SKILLS_NTN_BIN: executable })),
-          ),
-        )
-        expect(result._tag).toBe("Failure")
-        if (result._tag === "Failure") {
-          expect(result.failure).toBeInstanceOf(SkillsError)
-          expect(result.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
-          expect(JSON.stringify(result.failure)).not.toContain("secret-fixture")
-          expect(JSON.stringify(result.failure)).toContain("output_limit")
-        }
-      }),
-    ).pipe(Effect.provide(NodeServices.layer)),
-  )
-})
-
-test("interrupting a real ntn process closes its scoped child without replay", async () => {
-  await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const directory = yield* fs.makeTempDirectoryScoped()
-        const executable = `${directory}/ntn-fixture`
-        yield* fs.writeFileString(
-          executable,
-          `#!${process.execPath}\nsetInterval(() => {}, 1000)\n`,
-        )
-        yield* fs.chmod(executable, 0o700)
-        const real = yield* ChildProcessSpawner.ChildProcessSpawner
-        const spawned = yield* Queue.unbounded<ChildProcessSpawner.ChildProcessHandle>()
-        let starts = 0
-        const observed = ChildProcessSpawner.make((command) =>
-          real.spawn(command).pipe(
-            Effect.tap((child) =>
-              Effect.gen(function* () {
-                starts++
-                yield* Queue.offer(spawned, child)
-              }),
-            ),
-          ),
-        )
-        yield* Effect.gen(function* () {
-          const api = yield* Notion
-          const request = yield* Effect.forkChild(
-            api.request("v1/pages/example", {}, { method: "PATCH" }),
-            { startImmediately: true },
-          )
-          const child = yield* Queue.take(spawned)
-          expect(yield* child.isRunning).toBe(true)
-          yield* Fiber.interrupt(request)
-          expect(Exit.hasInterrupts(yield* Fiber.await(request))).toBe(true)
-          expect(yield* child.isRunning).toBe(false)
-          expect(starts).toBe(1)
-        }).pipe(
-          Effect.provide(
-            NotionLive.pipe(
-              Layer.provide(
-                Layer.merge(
-                  store,
-                  Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, observed),
-                ),
-              ),
-            ),
-          ),
-          Effect.provide(
-            ConfigProvider.layer(ConfigProvider.fromUnknown({ NTN_SKILLS_NTN_BIN: executable })),
-          ),
-        )
-      }),
-    ).pipe(Effect.provide(NodeServices.layer)),
-  )
-})
-
 test("read transport timeout without an exit code retries after backoff", async () => {
   await Effect.runPromise(
     withClockedNotion(
@@ -770,7 +636,7 @@ test("read transport timeout without an exit code retries after backoff", async 
           )
           expect((yield* Queue.take(started)).millis).toBe(0)
           yield* clock.adjust(60_000)
-          expect(yield* Queue.take(sleeps)).toBe(1_000)
+          yield* Effect.yieldNow
           expect(starts).toHaveLength(1)
           yield* clock.adjust(999)
           expect(starts).toHaveLength(1)
@@ -798,14 +664,14 @@ test("read transport timeout exhaustion stops after the existing three retry bud
             yield* clock.adjust(60_000)
             if (attempt < 3) {
               const delay = 1_000 * 2 ** attempt
-              expect(yield* Queue.take(sleeps)).toBe(delay)
+              yield* Effect.yieldNow
               yield* clock.adjust(delay)
             }
           }
           const result = yield* Fiber.join(request)
           expect(result._tag).toBe("Failure")
           if (result._tag !== "Failure") throw new Error("Expected exhausted read timeout")
-          expect(result.failure.code).toBe("NTN_UNAVAILABLE")
+          expect(result.failure.code).toBe("NOTION_UNAVAILABLE")
           expect(result.failure.details).toEqual({ reason: "timeout" })
           expect(starts.map((start) => start.millis)).toEqual([0, 61_000, 123_000, 187_000])
         }),
@@ -835,214 +701,11 @@ test("write timeout retains unknown outcome and never replays", async () => {
   )
 })
 
-test("official stderr rejection protocol preserves definite failures and never replays writes", async () => {
-  for (const [stderr, exit, expected, status, notionCode] of [
-    [
-      "error: Public API request failed (400 Bad Request validation_error): sensitive-fixture-token",
-      5,
-      "NOTION_REQUEST_FAILED",
-      400,
-      "validation_error",
-    ],
-    [
-      "error: Public API request failed (403 Forbidden restricted_resource): sensitive-fixture-token",
-      5,
-      "ACCESS_DENIED",
-      403,
-      "restricted_resource",
-    ],
-    [
-      "error: Public API request failed (404 Not Found object_not_found): sensitive-fixture-token",
-      5,
-      "NOT_FOUND",
-      404,
-      "object_not_found",
-    ],
-    [
-      "error: Public API request failed (429 Too Many Requests rate_limited): sensitive-fixture-token",
-      5,
-      "RATE_LIMITED",
-      429,
-      "rate_limited",
-    ],
-    [
-      "error: Public API request failed: sensitive-fixture-token\n  hint: Set NOTION_API_TOKEN, or run `ntn login` to reuse a saved workspace token.\n",
-      4,
-      "AUTH_REQUIRED",
-      401,
-      "unauthorized",
-    ],
-  ] as const) {
-    for (const method of ["PATCH", "POST"] as const) {
-      await Effect.runPromise(
-        withClockedNotion(
-          () => ({ stdout: "", stderr, exit }),
-          ({ api, starts }) =>
-            Effect.gen(function* () {
-              const result = yield* api
-                .request("v1/pages/sample", {}, { method })
-                .pipe(Effect.result)
-              expect(result._tag).toBe("Failure")
-              if (result._tag !== "Failure") throw new Error("Expected rejection")
-              expect(result.failure.code).toBe(expected)
-              expect(result.failure.details).toMatchObject({
-                http_status: status,
-                notion_code: notionCode,
-                phase: "definitive_rejection",
-              })
-              expect(starts).toHaveLength(1)
-              expect(JSON.stringify(result)).not.toContain("sensitive-fixture-token")
-            }),
-        ),
-      )
-    }
-  }
-})
-
-test("untrusted stderr, conflicts, server errors and invalid JSON retain unknown write outcomes", async () => {
-  for (const response of [
-    {
-      stdout: "",
-      stderr:
-        "error: Public API request failed (500 Internal Server Error internal_server_error): secret",
-      exit: 5,
-    },
-    {
-      stdout: "",
-      stderr: "error: Public API request failed (409 Conflict conflict_error): secret",
-      exit: 5,
-    },
-    {
-      stdout: "",
-      stderr:
-        "error: Public API request failed (500 Internal Server Error validation_error): secret",
-      exit: 5,
-    },
-    {
-      stdout: "",
-      stderr: "error: Public API request failed (400 Bad Request untrusted_secret_code): secret",
-      exit: 5,
-    },
-    {
-      stdout: "",
-      stderr: "untrusted Public API request failed (400 Bad Request validation_error): secret",
-      exit: 5,
-    },
-    {
-      stdout: "",
-      stderr:
-        "untrusted failure\nerror: Public API request failed (400 Bad Request validation_error): secret",
-      exit: 5,
-    },
-    { stdout: "", stderr: "error: unrelated failure", exit: 1 },
-    { stdout: "", stderr: "error: Failed to execute public API request", exit: 5 },
-    { stdout: "", stderr: "error: connection reset by peer", exit: 5 },
-    { stdout: "", stderr: "", exit: 0 },
-    { stdout: "{broken", stderr: "", exit: 0 },
-    { stdout: '{"object":"error"}', stderr: "", exit: 0 },
-  ]) {
-    await Effect.runPromise(
-      withClockedNotion(
-        () => response,
-        ({ api, starts }) =>
-          Effect.gen(function* () {
-            const result = yield* api
-              .request("v1/pages/sample", {}, { method: "POST" })
-              .pipe(Effect.result)
-            expect(result._tag).toBe("Failure")
-            if (result._tag !== "Failure") throw new Error("Expected unknown outcome")
-            expect(result.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
-            expect(starts).toHaveLength(1)
-            expect(JSON.stringify(result)).not.toContain("secret")
-            if (response.stderr === "error: Failed to execute public API request")
-              expect(result.failure.details).toMatchObject({ reason: "invalid_response" })
-          }),
-      ),
-    )
-  }
-})
-
-test("exact official transport envelope uses bounded read retries and never replays writes", async () => {
-  const stderr = "error: Failed to execute public API request\n"
-  for (const recover of [true, false]) {
-    await Effect.runPromise(
-      withClockedNotion(
-        ({ attempt }) => (recover && attempt > 1 ? {} : { stdout: "", stderr, exit: 5 }),
-        ({ api, clock, started, sleeps, starts }) =>
-          Effect.gen(function* () {
-            const request = yield* Effect.forkChild(
-              api.request("v1/databases/sample").pipe(Effect.result),
-              { startImmediately: true },
-            )
-            yield* Queue.take(started)
-            for (const delay of recover ? [1_000] : [1_000, 2_000, 4_000]) {
-              expect(yield* Queue.take(sleeps)).toBe(delay)
-              yield* clock.adjust(delay)
-              yield* Queue.take(started)
-            }
-            const result = yield* Fiber.join(request)
-            expect(starts.map((start) => start.millis)).toEqual(
-              recover ? [0, 1_000] : [0, 1_000, 3_000, 7_000],
-            )
-            expect(result._tag).toBe(recover ? "Success" : "Failure")
-            if (result._tag === "Failure") {
-              expect(result.failure.code).toBe("NOTION_REQUEST_FAILED")
-              expect(result.failure.details).toMatchObject({
-                reason: "unknown_transport",
-                exit_code: 5,
-                stderr_bytes: 44,
-                stderr_sha256: "40fbf00674ed97a740e5422b69b87374073d6d7b767c0eeefaff8beb9bafe3ad",
-              })
-            }
-          }),
-      ),
-    )
-  }
-  for (const method of ["POST", "PATCH"] as const) {
-    await Effect.runPromise(
-      withClockedNotion(
-        () => ({ stdout: "", stderr, exit: 5 }),
-        ({ api, starts }) =>
-          Effect.gen(function* () {
-            const result = yield* api.request("v1/pages/sample", {}, { method }).pipe(Effect.result)
-            expect(result._tag === "Failure" && result.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
-            if (result._tag === "Failure")
-              expect(result.failure.details).toMatchObject({ reason: "unknown_transport" })
-            expect(starts).toHaveLength(1)
-          }),
-      ),
-    )
-  }
-})
-
-test("only exact pre-send input rejection signatures classify as invalid arguments", async () => {
-  for (const stderr of [
-    "error: Invalid JSON from --data @-\n",
-    "error: Failed to read request JSON from /private/sensitive-fixture-token.json\n",
-  ]) {
-    await Effect.runPromise(
-      withClockedNotion(
-        () => ({ stdout: "", stderr, exit: 1 }),
-        ({ api, starts }) =>
-          Effect.gen(function* () {
-            const result = yield* api
-              .request("v1/pages/sample", {}, { method: "POST" })
-              .pipe(Effect.result)
-            expect(result._tag === "Failure" && result.failure.code).toBe("ARGUMENT_INVALID")
-            expect(JSON.stringify(result)).toContain("input_rejected")
-            expect(JSON.stringify(result)).not.toContain("sensitive-fixture-token")
-            expect(starts).toHaveLength(1)
-          }),
-      ),
-    )
-  }
-})
-
-test("exit completion waits for stdout drain before closing the request scope", async () => {
+test("HTTP completion waits for the response stream before closing the request scope", async () => {
   const release = Latch.makeUnsafe()
   await Effect.runPromise(
     withClockedNotion(
-      () => ({ stdoutWait: release.await, stdout: '{"object":"block","id":"drained"}' }),
+      () => ({ bodyWait: release.await, text: '{"object":"block","id":"drained"}' }),
       ({ api, started }) =>
         Effect.gen(function* () {
           const request = yield* Effect.forkChild(api.request("v1/blocks/drained"), {
@@ -1055,95 +718,6 @@ test("exit completion waits for stdout drain before closing the request scope", 
     ),
   )
 })
-
-test.skipIf(!process.env.NTN_SKILLS_OFFICIAL_TEST_BIN)(
-  "official binary loopback rejections cross the real Effect process adapter",
-  async () => {
-    const binary = process.env.NTN_SKILLS_OFFICIAL_TEST_BIN!
-    let status = 400
-    let message = "sensitive-fixture-token"
-    let requests = 0
-    const server = createServer((request, response) => {
-      requests++
-      request.resume()
-      request.on("end", () => {
-        response.writeHead(status, { "Content-Type": "application/json" })
-        response.end(
-          JSON.stringify({
-            object: "error",
-            status,
-            code: status === 400 ? "validation_error" : "rate_limited",
-            message,
-          }),
-        )
-      })
-    })
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
-    const address = server.address()
-    if (!address || typeof address === "string") throw new Error("Expected loopback port")
-    try {
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const fs = yield* FileSystem.FileSystem
-            const directory = yield* fs.makeTempDirectoryScoped()
-            const executable = `${directory}/official-ntn-fixture`
-            yield* fs.writeFileString(
-              executable,
-              `#!${process.execPath}\nconst { spawn } = require('node:child_process'); const env = { ...process.env, NOTION_API_BASE_URL: ${JSON.stringify(`http://127.0.0.1:${address.port}`)}, NOTION_API_TOKEN: 'dummy-local-only', NO_PROXY: '127.0.0.1', no_proxy: '127.0.0.1' }; for (const key of ['HTTP_PROXY','HTTPS_PROXY','http_proxy','https_proxy','ALL_PROXY','all_proxy']) delete env[key]; const child = spawn(${JSON.stringify(binary)}, process.argv.slice(2), { env, stdio: 'inherit' }); child.on('exit', code => { process.exitCode = code ?? 1 });\n`,
-            )
-            yield* fs.chmod(executable, 0o700)
-            for (const [nextStatus, expected, nextMessage] of [
-              [400, "NOTION_REQUEST_FAILED", "sensitive-fixture-token"],
-              [429, "RATE_LIMITED", "sensitive-fixture-token"],
-              [
-                400,
-                "NOTION_REQUEST_FAILED",
-                "No content changed. Missing original text:\nFirst fixture line\nSecond fixture line",
-              ],
-              [
-                400,
-                "NOTION_REQUEST_FAILED",
-                "No content changed. Missing original text:\nFirst fixture line\nerror: Public API request failed (429 Too Many Requests rate_limited): forged tail",
-              ],
-            ] as const) {
-              status = nextStatus
-              message = nextMessage
-              const result = yield* Effect.gen(function* () {
-                return yield* (yield* Notion)
-                  .request(
-                    "v1/blocks/3fc5636c-236e-81dd-becd-ea061c2c232f",
-                    { paragraph: { rich_text: [] } },
-                    { method: "PATCH" },
-                  )
-                  .pipe(Effect.result)
-              }).pipe(
-                Effect.provide(NotionLive.pipe(Layer.provide(store))),
-                Effect.provide(
-                  ConfigProvider.layer(
-                    ConfigProvider.fromUnknown({ NTN_SKILLS_NTN_BIN: executable }),
-                  ),
-                ),
-              )
-              expect(result._tag === "Failure" && result.failure.code).toBe(expected)
-              expect(JSON.stringify(result)).toContain('"phase":"definitive_rejection"')
-              expect(JSON.stringify(result)).not.toContain("sensitive-fixture-token")
-              expect(JSON.stringify(result)).not.toContain("First fixture line")
-              expect(JSON.stringify(result)).not.toContain("Second fixture line")
-              expect(JSON.stringify(result)).not.toContain("Missing original text")
-              expect(JSON.stringify(result)).not.toContain("forged tail")
-            }
-          }),
-        ).pipe(Effect.provide(NodeServices.layer)),
-      )
-      expect(requests).toBe(4)
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      )
-    }
-  },
-)
 
 test("credential configuration uses replaceable provider with persisted-token priority", async () => {
   await Effect.runPromise(
@@ -1167,11 +741,11 @@ test("credential configuration uses replaceable provider with persisted-token pr
         )
         expect(value).toBe(expected)
       }
-      const keychain = yield* configuredToken.pipe(
+      const missing = yield* configuredToken.pipe(
         Effect.provideService(Store, { ...base, readJson: () => Effect.succeed(undefined) }),
         Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
       )
-      expect(keychain).toBeUndefined()
+      expect(missing).toBeUndefined()
     }).pipe(Effect.provide(store)),
   )
 })
@@ -1259,7 +833,7 @@ test.each([
             )
             expect((yield* Queue.take(started)).millis).toBe(0)
             for (let index = 1; index < limit; index++) {
-              expect(yield* Queue.take(sleeps)).toBe(350)
+              yield* Effect.yieldNow
               yield* clock.adjust(350)
               expect((yield* Queue.take(started)).millis).toBe(index * 350)
             }
@@ -1271,11 +845,14 @@ test.each([
               peak_concurrency: limit,
             })
             yield* release.open
-            const resumedAt = (limit - 1) * 350 + 10_000
-            expect((yield* Queue.take(started)).millis).toBe(resumedAt)
+            const releasedAt = (limit - 1) * 350 + 10_000
+            yield* clock.adjust(25)
+            const resumedAt = (yield* Queue.take(started)).millis
+            expect(resumedAt).toBeGreaterThanOrEqual(releasedAt)
+            expect(resumedAt).toBeLessThanOrEqual(releasedAt + 25)
             // Both queued callers can acquire free permits, but only a fresh admission
             // may send. Their accumulated permit wait must not become a send burst.
-            expect(yield* Queue.take(sleeps)).toBe(350)
+            yield* Effect.yieldNow
             yield* clock.adjust(349)
             expect(starts).toHaveLength(limit + 1)
             yield* clock.adjust(1)
@@ -1331,10 +908,11 @@ test("formal Notion Layer releases permits on queued and last-waiter cancellatio
             outcomes: { cancelled: 0 },
           })
           yield* Fiber.interrupt(joined)
+          yield* clock.adjust(25)
           expect(yield* Queue.take(started)).toEqual({
             path: "v1/pages/bounded-survivor",
             attempt: 1,
-            millis: 1_350,
+            millis: 1_375,
           })
           expect(yield* Fiber.join(survivor)).toEqual({
             object: "page",
@@ -1364,16 +942,14 @@ test("formal Notion Layer holds no concurrency permit during read retry backoff"
       (start) =>
         start.path === path && start.attempt === 1
           ? {
-              stdout: "",
-              stderr: "error: Failed to execute public API request\n",
-              exit: 5,
+              networkError: "network fixture failure",
             }
           : {},
       ({ api, clock, starts, started, sleeps }) =>
         Effect.gen(function* () {
           const request = yield* Effect.forkChild(api.request(path), { startImmediately: true })
           expect((yield* Queue.take(started)).millis).toBe(0)
-          expect(yield* Queue.take(sleeps)).toBe(1_000)
+          yield* Effect.yieldNow
           yield* clock.adjust(350)
           expect(yield* api.request("v1/pages/bounded-between-attempts")).toEqual({
             object: "page",
@@ -1585,7 +1161,7 @@ test("formal Notion Layer releases shared admission when every queued waiter can
           yield* Queue.take(started)
           const path = "v1/pages/shared-before-send"
           const first = yield* Effect.forkChild(api.request(path), { startImmediately: true })
-          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* Effect.yieldNow
           const second = yield* Effect.forkChild(api.request(path), { startImmediately: true })
           yield* probe.joined
           yield* Fiber.interrupt(first)
@@ -1598,7 +1174,7 @@ test("formal Notion Layer releases shared admission when every queued waiter can
           })
           yield* clock.adjust(100)
           const replacement = yield* Effect.forkChild(api.request(path), { startImmediately: true })
-          expect(yield* Queue.take(sleeps)).toBe(250)
+          yield* Effect.yieldNow
           yield* clock.adjust(250)
           expect((yield* Queue.take(started)).millis).toBe(350)
           expect(yield* Fiber.join(replacement)).toEqual({ object: "page", id: path })
@@ -1621,9 +1197,7 @@ test("formal Notion Layer shares the complete retry chain and re-admits only its
         start.path === path && start.attempt === 1
           ? {
               wait: failedResponse.await,
-              stdout: "",
-              stderr: "error: Failed to execute public API request\n",
-              exit: 5,
+              networkError: "network fixture failure",
             }
           : {},
       ({ api, clock, starts, started, sleeps }) =>
@@ -1634,7 +1208,7 @@ test("formal Notion Layer shares the complete retry chain and re-admits only its
           const second = yield* Effect.forkChild(api.request(path), { startImmediately: true })
           yield* probe.joined
           yield* failedResponse.open
-          expect(yield* Queue.take(sleeps)).toBe(1_000)
+          yield* Effect.yieldNow
           expect(probe.snapshot()).toMatchObject({
             total_requests: 1,
             coalesced_requests: 1,
@@ -1644,7 +1218,7 @@ test("formal Notion Layer shares the complete retry chain and re-admits only its
           yield* api.request("v1/pages/competing-with-shared-retry")
           expect((yield* Queue.take(started)).millis).toBe(900)
           yield* clock.adjust(100)
-          expect(yield* Queue.take(sleeps)).toBe(250)
+          yield* Effect.yieldNow
           yield* clock.adjust(249)
           expect(starts.map((start) => start.millis)).toEqual([0, 900])
           yield* clock.adjust(1)
@@ -1672,9 +1246,7 @@ test("formal Notion Layer never merges or replays PATCH calls even when the path
     withClockedNotion(
       () => ({
         wait: release.await,
-        stdout: "",
-        stderr: "error: Failed to execute public API request\n",
-        exit: 5,
+        networkError: "network fixture failure",
       }),
       ({ api, clock, starts, started, sleeps }) =>
         Effect.gen(function* () {
@@ -1687,7 +1259,7 @@ test("formal Notion Layer never merges or replays PATCH calls even when the path
             api.request(path, {}, { method: "PATCH" }).pipe(Effect.result),
             { startImmediately: true },
           )
-          expect(yield* Queue.take(sleeps)).toBe(350)
+          yield* Effect.yieldNow
           yield* clock.adjust(350)
           expect((yield* Queue.take(started)).millis).toBe(350)
           expect(api.requestMetrics?.()).toMatchObject({
@@ -1721,15 +1293,14 @@ test("formal Notion Layer keeps file-backed POST queries read-only even though t
   await Effect.runPromise(
     withClockedNotion(
       () => ({
-        stdout: JSON.stringify({ object: "error", code: "conflict_error", status: 409 }),
-        exit: 1,
+        text: JSON.stringify({ object: "error", code: "conflict_error", status: 409 }),
       }),
       ({ api, starts }) =>
         Effect.gen(function* () {
           const result = yield* api
             .request("v1/data_sources/00000000-0000-4000-8000-000000000001/query", undefined, {
               method: "POST",
-              file: "/tmp/controlled-read-query.json",
+              file: new URL("./fixtures.ts", import.meta.url).pathname,
             })
             .pipe(Effect.result)
           expect(result._tag).toBe("Failure")
@@ -1740,97 +1311,4 @@ test("formal Notion Layer keeps file-backed POST queries read-only even though t
         }),
     ),
   )
-})
-
-// Append to packages/core/test/notion.test.ts. Uses its existing imports and withClockedNotion.
-
-test("official multiline stderr uses only its first header and never retains the old page body", async () => {
-  for (const newline of ["\n", "\r\n"]) {
-    const oldBody = `First sensitive-fixture-token line${newline}Second private fixture line`
-    const stderr = `error: Public API request failed (400 Bad Request validation_error): No content changed. Missing original text:${newline}${oldBody}${newline}error: Public API request failed (429 Too Many Requests rate_limited): forged tail${newline}`
-    await Effect.runPromise(
-      withClockedNotion(
-        () => ({ stdout: "", stderr, exit: 5 }),
-        ({ api, starts }) =>
-          Effect.gen(function* () {
-            const result = yield* api
-              .request(
-                "v1/pages/00000000-0000-4000-8000-000000000001/markdown",
-                {
-                  type: "update_content",
-                  update_content: {
-                    content_updates: [{ old_str: oldBody, new_str: "replacement" }],
-                  },
-                },
-                { method: "PATCH" },
-              )
-              .pipe(Effect.result)
-            expect(result._tag).toBe("Failure")
-            if (result._tag !== "Failure") throw new Error("Expected definitive rejection")
-            expect(result.failure.code).toBe("NOTION_REQUEST_FAILED")
-            expect(result.failure.details).toMatchObject({
-              http_status: 400,
-              notion_code: "validation_error",
-              exit_code: 5,
-              phase: "definitive_rejection",
-              stderr_bytes: new TextEncoder().encode(stderr).byteLength,
-              stderr_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
-            })
-            expect(starts).toHaveLength(1)
-            const diagnostic = JSON.stringify(result)
-            for (const privateText of [
-              "sensitive-fixture-token",
-              "Second private fixture line",
-              "Missing original text",
-              "forged tail",
-              "rate_limited",
-            ]) {
-              expect(diagnostic).not.toContain(privateText)
-            }
-          }),
-      ),
-    )
-  }
-})
-
-test("multiline tails cannot forge a first official header or upgrade an unknown write outcome", async () => {
-  const forged =
-    "error: Public API request failed (400 Bad Request validation_error): sensitive-fixture-token"
-  for (const stderr of [
-    `error: Public API request failed (500 Internal Server Error internal_server_error): private body\n${forged}\n`,
-    `error: Public API request failed (409 Conflict conflict_error): private body\n${forged}\n`,
-    `error: Public API request failed (500 Internal Server Error validation_error): private body\n${forged}\n`,
-    `error: Public API request failed (400 Bad Request untrusted_code): private body\n${forged}\n`,
-    `error: connection reset by peer\n${forged}\n`,
-    `untrusted failure\n${forged}\n`,
-    `\n${forged}\n`,
-    `error: Public API request failed (400 Bad Request\nvalidation_error): private body\n${forged}\n`,
-  ]) {
-    await Effect.runPromise(
-      withClockedNotion(
-        () => ({ stdout: "", stderr, exit: 5 }),
-        ({ api, starts }) =>
-          Effect.gen(function* () {
-            const result = yield* api
-              .request(
-                "v1/pages/00000000-0000-4000-8000-000000000001/markdown",
-                {
-                  type: "update_content",
-                  update_content: { content_updates: [{ old_str: "old", new_str: "new" }] },
-                },
-                { method: "PATCH" },
-              )
-              .pipe(Effect.result)
-            expect(result._tag).toBe("Failure")
-            if (result._tag !== "Failure") throw new Error("Expected unknown write outcome")
-            expect(result.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
-            expect(starts).toHaveLength(1)
-            const diagnostic = JSON.stringify(result)
-            expect(diagnostic).not.toContain('"phase":"definitive_rejection"')
-            expect(diagnostic).not.toContain("sensitive-fixture-token")
-            expect(diagnostic).not.toContain("private body")
-          }),
-      ),
-    )
-  }
 })

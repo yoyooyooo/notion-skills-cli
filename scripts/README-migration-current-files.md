@@ -1,5 +1,7 @@
 # N15：三个代表条目的只读当前文件采集
 
+> AH498 历史专用采集器，已在 AH561 退役。命令入口在处理参数、启动子进程、访问网络或创建证据前返回 `COLLECTOR_RETIRED`；旧 transport override 已移除。原回执、输入与离线解析测试保留。当前采集使用正式 `ntn-skills read/files/export` 并创建新格式证据，不覆盖历史证据。下文是停用前的历史规程，不可按其认证或运行说明重跑。
+
 本轮只为 Lark Router、lark-doc、lark-shared 补齐**公开消费快照的完整文件树、实际字节与 SHA-256**。输入来自既有只读盘点和保留证据，批准集合仍为空。此采集不生成迁移输入、不迁移内容、不修改 Source 或 ownership，也不结清旧 operation。
 
 ## 已有证据与本轮缺口

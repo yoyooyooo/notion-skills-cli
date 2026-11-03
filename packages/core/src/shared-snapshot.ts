@@ -19,6 +19,7 @@ import { decode, fail, SkillsError, SnapshotSchema, type Snapshot, type Source }
 import { Notion } from "./notion.ts"
 import { canonicalMain } from "./portable.ts"
 import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
+import { compileSharedNativeReferences } from "./shared-native-references.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
 import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
@@ -79,6 +80,7 @@ export { sharedPendingObservationPrefix } from "./shared-pending-file-operations
 import { querySharedSkillIndex, type SharedBodyBinding } from "./shared-skill-index.ts"
 import {
   querySharedRouterMembers,
+  querySharedSkillRelation,
   renderSharedRouterMembers,
   type SharedRouterMember,
 } from "./shared-router-members.ts"
@@ -126,6 +128,10 @@ export type OpenSharedSnapshotInput = {
   readonly forceFull?: boolean
   readonly fixedSource?: FixedSharedSource
   readonly routerMembers?: readonly SharedRouterMember[]
+  readonly relations?: {
+    readonly members?: readonly SharedRouterMember[]
+    readonly required?: readonly SharedRouterMember[]
+  }
   /** Internal authoring preflight: never retain/adopt a newly observed body. */
   readonly readOnly?: boolean
 }
@@ -258,11 +264,23 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         fail("CONTENT_DISABLED", "The selected Skill is disabled in Notion.", { id: record.id }),
       )
     const routerMembers =
-      record.kind === "router"
-        ? (input.routerMembers ??
+      record.kind === "router" ||
+      (record.kind === "skill" && input.library.skills.property_ids.Members !== undefined)
+        ? (input.relations?.members ??
+          input.routerMembers ??
           (yield* querySharedRouterMembers(input.library, { router: record, rawPage: raw })))
         : undefined
     const frozenMembers = routerMembers?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
+    const required =
+      record.kind !== "prompt" && input.library.skills.property_ids.Requires !== undefined
+        ? (input.relations?.required ??
+          (yield* querySharedSkillRelation(input.library, {
+            record,
+            rawPage: raw,
+            field: "Requires",
+          })))
+        : undefined
+    const frozenRequired = required?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
     const generation = yield* store.reserveCacheGeneration(input.scope, record.id)
     const index = yield* querySharedSkillIndex(input.library, selected, raw)
     const fileLinks = yield* checked(() =>
@@ -885,14 +903,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             kind: "custom",
             file_id: binding.file_id,
             path: binding.path,
-            bytes: encoder.encode(
-              materializeSharedNativeFile(
-                new TextDecoder().decode(body),
-                binding.path,
-                bindings,
-                fileLinks,
-              ),
-            ),
+            bytes: body,
           })
           break
         case "tombstone":
@@ -922,6 +933,48 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         entrypoint: record.entrypoint,
       }),
     )
+    const nativeSources = yield* checked(() =>
+      composed.files
+        .filter((file) => /\.md$/iu.test(file.path))
+        .map((file) => {
+          const binding = activeBindings.find((value) => value.path === file.path)
+          const observation =
+            binding === undefined
+              ? undefined
+              : nextObservations.find((value) => value.file_id === binding.file_id)
+          return {
+            path: file.path,
+            markdown: new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
+            observation,
+            page_id: binding?.page_id,
+          }
+        }),
+    )
+    const native = yield* compileSharedNativeReferences({
+      library: input.library,
+      record,
+      bindings: activeBindings,
+      files: yield* Effect.forEach(nativeSources, (source) =>
+        Effect.gen(function* () {
+          return {
+            path: source.path,
+            markdown: source.markdown,
+            body_sha256: source.observation?.body_sha256 ?? (yield* sha256(source.markdown)),
+            ...(source.page_id === undefined ? {} : { page_id: source.page_id }),
+          }
+        }),
+      ),
+      relations: {
+        members: frozenMembers ?? [],
+        required: frozenRequired ?? [],
+        file_links: fileLinks,
+      },
+    })
+    const resolvedLinks = [...fileLinks, ...native.links]
+    const fileBindings = activeBindings
+      .filter((binding) => composed.files.some((file) => file.path === binding.path))
+      .map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
+      .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
     const completeFiles = yield* checked(() =>
       composed.files.map((file) => {
         if (file.path !== record.entrypoint)
@@ -932,8 +985,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
                   materializeSharedNativeFile(
                     new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
                     file.path,
-                    bindings,
-                    fileLinks,
+                    activeBindings,
+                    resolvedLinks,
+                    native.linkedPages.get(file.path),
                   ),
                 ),
               }
@@ -943,12 +997,25 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           description: record.description,
         })
         const body =
-          materializeSharedNativeFile(document.body, file.path, bindings, fileLinks) +
-          (routerMembers === undefined ? "" : renderSharedRouterMembers(routerMembers))
+          materializeSharedNativeFile(
+            document.body,
+            file.path,
+            activeBindings,
+            resolvedLinks,
+            native.linkedPages.get(file.path),
+          ) +
+          (routerMembers === undefined || (record.kind === "skill" && routerMembers.length === 0)
+            ? ""
+            : renderSharedRouterMembers(routerMembers))
         // Native main pages carry their editable body, not the source's YAML
         // header. Keep extra fixed-source metadata when the body is customized.
-        const previous = sourceFiles.find((source) => source.path === record.entrypoint) ?? file
-        return canonicalMain(record.name, record.description, body, previous)
+        return canonicalMain(
+          record.name,
+          record.description,
+          body,
+          file,
+          sourceFiles.find((source) => source.path === record.entrypoint),
+        )
       }),
     )
     // Only the final tree can resolve references: native custom files may repair
@@ -976,7 +1043,12 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const version = yield* sharedSnapshotVersion({
       record,
       files,
-      router_members: frozenMembers,
+      ...(record.kind === "router"
+        ? { router_members: frozenMembers }
+        : { members: frozenMembers }),
+      required: frozenRequired,
+      file_bindings: fileBindings,
+      native_references: native.index,
       source:
         input.fixedSource === undefined
           ? null
@@ -1000,7 +1072,14 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           version_id: version,
           created_at: metadataObservedAt,
           files,
-          ...(frozenMembers === undefined ? {} : { router_members: frozenMembers }),
+          file_bindings: fileBindings,
+          ...(native.index === undefined ? {} : { native_references: native.index }),
+          ...(frozenMembers === undefined
+            ? {}
+            : record.kind === "router"
+              ? { router_members: frozenMembers }
+              : { members: frozenMembers }),
+          ...(frozenRequired === undefined ? {} : { required: frozenRequired }),
         }),
       ))
     if (

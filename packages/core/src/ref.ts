@@ -4,6 +4,7 @@ export interface SkillRef {
   readonly selector: string
   readonly path: string
   readonly snapshot?: string
+  readonly file_id?: string
 }
 
 export function normalizePath(input: string, base = ""): string {
@@ -35,26 +36,59 @@ export function parseRef(input: string): SkillRef {
     const path = normalizePath(decodeURIComponent((match[2] ?? "/").slice(1)))
     const params = new URLSearchParams(match[3] ?? "")
     for (const key of params.keys())
-      if (key !== "snapshot") throw fail("INVALID_REF", `Unknown ref query parameter: ${key}.`)
+      if (key !== "snapshot" && key !== "file_id")
+        throw fail("INVALID_REF", `Unknown ref query parameter: ${key}.`)
     if (params.getAll("snapshot").length > 1)
       throw fail("INVALID_REF", "A ref may contain one snapshot parameter.")
+    if (params.getAll("file_id").length > 1)
+      throw fail("INVALID_REF", "A ref may contain one stable File ID.")
     if (!selector.trim() || selector.includes("/") || /[\p{Cc}\p{Cf}\p{Cs}]/u.test(selector))
       throw fail("INVALID_REF", "Invalid skill selector.")
     const snapshot = params.get("snapshot") ?? undefined
     if (snapshot !== undefined && !/^s_[a-f0-9]{64}$/.test(snapshot))
       throw fail("INVALID_REF", "Invalid snapshot ID.")
-    return { selector, path, ...(snapshot ? { snapshot } : {}) }
+    const fileId = params.get("file_id") ?? undefined
+    if (
+      fileId !== undefined &&
+      (!selector.startsWith("shared_skill:") ||
+        !path ||
+        !fileId ||
+        fileId.length > 256 ||
+        fileId.trim() !== fileId ||
+        /[\p{Cc}\p{Cf}\p{Cs}]/u.test(fileId))
+    )
+      throw fail(
+        "INVALID_REF",
+        "A stable File ID requires an exact shared Skill owner and file path.",
+      )
+    return {
+      selector,
+      path,
+      ...(snapshot ? { snapshot } : {}),
+      ...(fileId === undefined ? {} : { file_id: fileId }),
+    }
   } catch (error) {
     if (error && typeof error === "object" && "code" in error) throw error
     throw fail("INVALID_REF", "The ref contains invalid percent encoding.")
   }
 }
 
-export function fileRef(selector: string, path: string, snapshot?: string): string {
+export function fileRef(
+  selector: string,
+  path: string,
+  snapshot?: string,
+  fileId?: string,
+): string {
   if (selector.startsWith("notion_page:")) selector = selector.slice("notion_page:".length)
   else if (selector.startsWith("notion_subscription:"))
     selector = `upstream:${selector.slice("notion_subscription:".length)}`
-  return `skill://${encodeURIComponent(selector)}/${path.split("/").map(encodeURIComponent).join("/")}${snapshot ? `?snapshot=${snapshot}` : ""}`
+  const query = [
+    snapshot === undefined ? "" : `snapshot=${snapshot}`,
+    fileId === undefined ? "" : `file_id=${encodeURIComponent(fileId)}`,
+  ]
+    .filter(Boolean)
+    .join("&")
+  return `skill://${encodeURIComponent(selector)}/${path.split("/").map(encodeURIComponent).join("/")}${query ? `?${query}` : ""}`
 }
 
 export function resolveRef(base: string, relative: string): string {
@@ -90,6 +124,7 @@ export interface SkillTarget {
   readonly selector: string
   readonly path?: string
   readonly snapshot?: string
+  readonly file_id?: string
 }
 
 export function parseTarget(input: string, path?: string): SkillTarget {
@@ -101,6 +136,7 @@ export function parseTarget(input: string, path?: string): SkillTarget {
     target = {
       selector: ref.selector,
       snapshot: ref.snapshot,
+      ...(ref.file_id === undefined ? {} : { file_id: ref.file_id }),
       path: /^skill:\/\/[^/?#]+\/[^?#]+/.test(input) ? ref.path : undefined,
     }
   } else if (input.startsWith("s_")) {

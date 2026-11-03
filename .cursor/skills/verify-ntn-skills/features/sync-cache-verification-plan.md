@@ -37,7 +37,7 @@ Mutable state belongs to `state.sqlite`; historical JSON paths are importer inpu
 | Layer | Environment and entry | What it proves | What it cannot prove |
 | --- | --- | --- | --- |
 | Deterministic regression | Existing core test runner, injected provider and clock, isolated filesystem | Change classification, TTL boundaries, negative write paths, partial/unknown outcomes, restart transitions and link races | Actual Notion acceptance, real authentication or service timing |
-| Real CLI and Notion | `bun run dev`, default official `ntn`, isolated config/state/cache, designated disposable pages | Actual push/pull, Reference changes, saved content, identity preservation and warm-read timing | Every transport failure or atomic provider commit |
+| Real CLI and Notion | `bun run dev`, project direct HTTP engine, isolated config/state/cache, designated disposable pages | Actual push/pull, Reference changes, saved content, identity preservation and warm-read timing | Every transport failure or atomic provider commit |
 | Installed consumer | Existing `bun run package:check` and `scripts/package-smoke.ts`, npm tarball installed outside the workspace, Node.js | Packaged flags, XDG routing, offline cached reads and persisted state across CLI processes | Live Notion operations from seeded offline fixtures |
 
 A planned recipe is not a passing result. Do not infer the Node.js surface from Bun-only proof or actual provider behavior from a fake service. Maintainability review checks ownership of baseline writes, strong-validation bypass and symlink commit handling separately from runtime assertions.
@@ -46,14 +46,14 @@ A planned recipe is not a passing result. Do not infer the Node.js surface from 
 
 Extend the existing helper only where the new surface requires it:
 
-- The helper creates private `scratch/config`, `scratch/state`, `scratch/cache` and `scratch/data` and overrides the application roots plus XDG config/state/cache/data bases. Installed-consumer smoke also overrides all four roots/bases. Builtin management requires an owned HOME for default shared links. Verify selected paths in each run; root overrides alone do not prove a path honors them. Keep live runs on official `ntn`, with no alternate REST implementation.
+- The helper creates private config/state/cache/data under scratch and overrides their application/XDG roots. Builtin management also requires an owned HOME for links. Verify actual selected paths. Live runs use the same project HTTP engine; request scheduling remains machine-scoped rather than resetting with content caches.
 - Parent Bun startup may write a transpiler cache before helper isolation is active. Strict filesystem-sentinel proof must give that launcher an owned separate XDG cache outside the initially empty run root and include it in evidence/cleanup; distinguish it from child product writes.
 - Preserve local manifests, content hashes, baseline versions, link text/resolved destinations and operation receipts in `evidence` before cleanup. Keep content and IDs private; record argument arrays, safe error details, exit status and timestamps, never tokens, signed URLs or raw provider stderr.
 - Drive deterministic time at the application's clock boundary, not with five-minute sleeps or a production test-time environment variable. Use recorded requests at the injected provider boundary to assert reads versus mutations. Filesystem failure injection must target the actual commit operation, not return a fabricated success.
 - Run each scenario in its own temporary directory and launch a second CLI process for persistence/recovery cases. Place an unrelated sentinel outside the owned run and prove it survives. Use the existing system-trash cleanup procedure; do not permanently delete scratch or unrelated files.
 - Use a dedicated disposable Skill with a valid unique English title, `SKILL.md`, two reference pages including one nested path, and one binary asset. For byte-preservation proof the database must have `Files`. Use a separate page-only Skill to exercise normalized Markdown equality. Native Skills require an actual accessible native database before claiming that branch.
 - Create two independent local copies for multi-target scenarios. Create relative and multi-hop directory links, a linked parent directory and a per-file link in temporary locations. Record links and final destinations before the action. Do not use the six retained user Skills as failure-injection fixtures.
-- The real live fixture requires explicitly authorized page creation/edits and recorded page IDs. Modify reference pages through official `ntn` as an independent editor when testing Notion-side changes, then reopen through `ntn-skills`; do not use the sync implementation to synthesize both sides of a round trip.
+- The live fixture requires authorized page creation/edits and recorded ownership. Modify only its approved reference pages through the native Notion editor when testing independent edits, then reopen through `ntn-skills`. Public CLI pinned apply can verify a separately published revision B, but does not establish an external-editor round trip.
 
 ## Sync regression matrix
 
@@ -162,9 +162,9 @@ Inspect complete file sets and reference IDs after recovery, not just response c
 
 After implementation and deterministic tests pass, execute one small end-to-end sequence against the designated fixture. Capture fresh readback and portable file hashes after each mutation:
 
-1. Initialize isolated config/state/cache, diagnose official `ntn`, import the fixture through the real CLI and establish an equal binding. Record page/reference IDs, complete file manifest and baseline.
+1. Initialize isolated config/state/cache, run project `ctl doctor --database ID`, import the fixture through the real CLI and establish an equal binding. Record page/reference IDs, complete file manifest and baseline.
 2. Edit one local reference and the binary asset, generate/apply a push plan, reopen the page with the strong-read policy, and compare exported bytes with the expected local files. Repeat sync to observe no content writes.
-3. Independently edit only a Notion reference through official `ntn`; perform a strong read, generate/apply a pull plan through the multi-hop local link, and inspect the final real files and link identities.
+3. Independently edit only an owned Notion reference through the native editor; perform a strong read, generate/apply a pull plan through the multi-hop local link, and inspect the final files and link identities.
 4. Make differing local and Notion edits; generate a conflict and attempt the documented rejected apply. Read both sides again and compare them with pre-attempt evidence. Then resolve using the chosen explicit policy, confirming page identity and convergence.
 5. Save a valid plan, retarget one link to a byte-identical alternative, and prove apply rejects it without altering either destination.
 6. Read once to establish cache, repeat within TTL, then independently change the reference. Verify ordinary read's bounded-old result and immediate explicit refresh result. Record snapshot IDs, sources, validation times and wall-clock timings.
@@ -189,7 +189,7 @@ When changing this Skill's instructions, evaluate agent use separately from prod
 
 Use the same Skill, authentication mode, process entry, complete content and network environment for cold/strong-refresh versus warm eligible reads. Preserve per-run wall time, cache policy, snapshot ID, validation observation and safe provider request counts when actually observable. A changed result is not a comparable warm-read sample.
 
-Use a small fixed repeated sample (for example five runs per mode), report individual samples plus median, and exclude warm-up/setup explicitly. Count zero remote calls at the recorded provider boundary in deterministic tests; independently launch a warmed eligible CLI with an unavailable `ntn` executable outside the normal live helper to prove it does not depend on that executable. This is failure-injection/offline proof, not live authentication proof. Official-login modes that require online identity validation have a different expected request count and must not be labeled zero-network.
+Use a small fixed repeated sample, report individual samples plus median, and exclude warm-up/setup. Count remote calls from complete explicit HTTP attempt ledgers. A warmed eligible command must report an enabled, untruncated empty ledger to establish zero requests; missing evidence is unknown. Separately place a failing `ntn` sentinel on PATH and confirm zero invocations while the installed package consumes the real selected library.
 
 The acceptance invariant is elimination of remote calls for eligible fresh reads, correct result bytes and bounded freshness. Do not prescribe an unmeasured speedup factor or infer zero requests from a short elapsed time. References revalidation may still require full page/attachment reads; reducing expiry-time calls is a separate claim requiring its own correctness and measured evidence.
 

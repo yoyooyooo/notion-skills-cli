@@ -1,7 +1,7 @@
 ---
 name: ntn-skills-sync
 description: Manage active Git/GitLab/Linear source definitions, explicitly refresh one bound Skill, and select fixed Git/HTTP/local sources or shared Profile/View defaults for a Notion Skill library, or maintain existing upstream subscriptions and local synchronization bindings. Use for source revisions, shared supply rules, local resource scopes, recurring legacy sync or interrupted operations. Keep exact identities and original plans; report each affected item.
-compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, official ntn and an existing Notion connection; reads need Read content and writes need Insert/Update content. Local replacement requires supported system Trash retention.
+compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token; reads need Read content and writes need Insert/Update content. Local replacement requires supported system Trash retention.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-sync

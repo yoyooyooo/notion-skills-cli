@@ -1,5 +1,3 @@
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 
@@ -8,14 +6,14 @@ import {
   databaseId,
   cacheStatus,
   garbageCollectCache,
-  configuredToken,
+  Notion,
   configuration,
   effectiveCachePolicy,
-  fail,
   sha256,
 } from "@notion-skills-cli/core"
 
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
+import { notionApiOrigin } from "../../core/src/notion-http.ts"
 
 import {
   cacheClearConstraints,
@@ -39,33 +37,17 @@ const cacheIdentityCommand = defineCommand("identity", { database: databaseFlag 
     const registrations = selectedSources
       .map((source) => [source.database_id, source.alias])
       .sort((a, b) => a[0]!.localeCompare(b[0]!) || a[1]!.localeCompare(b[1]!))
-    let token = yield* configuredToken
-    if (!token) {
-      const result = yield* Effect.tryPromise({
-        try: (signal) =>
-          promisify(execFile)(
-            process.env.NTN_SKILLS_NTN_BIN ?? "ntn",
-            ["auth", "token", "--plain"],
-            { encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024, signal },
-          ),
-        catch: () =>
-          fail("CACHE_SCOPE_UNAVAILABLE", "The selected login cannot be identified locally."),
-      })
-      token = result.stdout.trim()
-      if (!token || /\s/.test(token))
-        return yield* Effect.fail(
-          fail("CACHE_SCOPE_UNAVAILABLE", "The selected login cannot be identified locally."),
-        )
-    }
+    const credential = yield* (yield* Notion).credentialIdentity
+    const origin = yield* notionApiOrigin
     const identity = yield* sha256(
       JSON.stringify([
         "catalog-identity-v2",
-        yield* sha256(token),
+        credential,
         database ?? null,
         registrations,
         config.upstream_database ?? null,
-        process.env.NOTION_WORKSPACE_ID ?? "",
-        process.env.NOTION_API_BASE_URL ?? "https://api.notion.com",
+        "",
+        origin,
         process.env.NOTION_ENV ?? "prod",
       ]),
     )
@@ -76,7 +58,7 @@ const cacheIdentityCommand = defineCommand("identity", { database: databaseFlag 
     "Identify the locally selected catalog credentials without network access",
   ),
   Command.withDescription(
-    "Returns an opaque identity digest for the selected credentials and remote catalog scope, plus the effective catalog TTL. --database resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy, creation preferences and sync bindings do not change identity. Uses the configured token, environment token or official ntn auth token --plain in memory. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
+    "Returns an opaque identity digest for the selected credentials and remote catalog scope, plus the effective catalog TTL. --database resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy, creation preferences and sync bindings do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
   ),
 )
 

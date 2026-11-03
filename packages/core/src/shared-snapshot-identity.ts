@@ -8,6 +8,10 @@ export function sharedSnapshotVersion(input: {
   readonly record: ContentRecord
   readonly files: Snapshot["files"]
   readonly router_members?: Snapshot["router_members"]
+  readonly members?: Snapshot["members"]
+  readonly required?: Snapshot["required"]
+  readonly file_bindings?: Snapshot["file_bindings"]
+  readonly native_references?: Snapshot["native_references"]
   readonly source: { readonly source_id: string; readonly revision: string } | null
   readonly ownership: readonly {
     readonly file_id: string
@@ -21,6 +25,12 @@ export function sharedSnapshotVersion(input: {
       record: input.record,
       files: input.files,
       ...(input.router_members === undefined ? {} : { router_members: input.router_members }),
+      ...(input.members === undefined ? {} : { members: input.members }),
+      ...(input.required === undefined ? {} : { required: input.required }),
+      ...(input.file_bindings === undefined ? {} : { file_bindings: input.file_bindings }),
+      ...(input.native_references === undefined
+        ? {}
+        : { native_references: input.native_references }),
       source: input.source,
       ownership: [...input.ownership].sort((left, right) =>
         left.file_id < right.file_id ? -1 : left.file_id > right.file_id ? 1 : 0,

@@ -1,10 +1,13 @@
-import { beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { createHttpProbe } from "./http-probe.ts"
 import { access, chmod, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 const root = new URL("../../../", import.meta.url).pathname
 const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
 const node = Bun.which("node")!
+const http = createHttpProbe()
+afterAll(() => http.close())
 beforeAll(async () => {
   const proc = Bun.spawn(["bun", "run", "build"], { cwd: root, stdout: "pipe", stderr: "pipe" })
   const [out, error, code] = await Promise.all([
@@ -15,15 +18,9 @@ beforeAll(async () => {
   if (code) throw new Error(out + error)
 }, 120_000)
 async function isolated() {
-  const directory = await mkdtemp(join(tmpdir(), "ntn-sources-surface-")),
-    marker = join(directory, "unexpected-request"),
-    cli = join(directory, "blocked-ntn")
-  await writeFile(
-    cli,
-    `#!${node}\nrequire('node:fs').appendFileSync(${JSON.stringify(marker)}, 'requested\\n'); process.exitCode=95;\n`,
-  )
-  await chmod(cli, 0o700)
+  const directory = await mkdtemp(join(tmpdir(), "ntn-sources-surface-"))
   const invoke = async (args: string[]) => {
+    const requestsBefore = http.calls()
     const child = Bun.spawn([node, main, ...args], {
       cwd: directory,
       stdin: "ignore",
@@ -32,8 +29,8 @@ async function isolated() {
       env: {
         ...process.env,
         HOME: join(directory, "home"),
-        NTN_SKILLS_NTN_BIN: cli,
-        NOTION_API_TOKEN: "",
+        NOTION_API_TOKEN: "controlled-offline-probe-token",
+        NOTION_API_BASE_URL: http.origin,
         NTN_SKILLS_CONFIG_HOME: join(directory, "config"),
         NTN_SKILLS_HOME: join(directory, "state"),
         NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
@@ -53,10 +50,7 @@ async function isolated() {
       stdout,
       stderr,
       exit,
-      online: await access(marker).then(
-        () => true,
-        () => false,
-      ),
+      online: http.calls() !== requestsBefore,
     }
   }
   return { directory, invoke }

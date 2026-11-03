@@ -50,7 +50,7 @@ New `ctl library init --parent PAGE_ID` creates four full-page tables. An existi
 
 ## Installation
 
-Install [Node.js](https://nodejs.org) **22.22.3+ within 22.x, or 24.20.0+**, which includes npm. Online operations also need the [official Notion CLI](https://developers.notion.com/cli) **`ntn`** with `api --notion-version` support; `ntn` 0.22.12 has been exercised with this project.
+Install [Node.js](https://nodejs.org) **22.22.3+ within 22.x, or 24.20.0+**, which includes npm. The package connects directly to the Notion API through its Effect HTTP engine.
 
 Install the published release from the official npm registry:
 
@@ -68,7 +68,7 @@ To produce a package yourself, follow [the contributor setup and build instructi
 
 ### 1. Connect Notion
 
-Configure `ntn` through [its authentication guide](https://developers.notion.com/cli/get-started/authentication). Your connection needs Read content access to a database with rich-text `Description` and `References` properties. `References` lists Notion page mentions or page links; each linked page becomes a Markdown file under `references/`. The native Skills database/export mode is also supported for existing libraries.
+Configure an existing Notion connection through `NOTION_API_TOKEN`, or pipe its token from a trusted secret source into `ntn-skills ctl config set-token --stdin`. Your connection needs Read content access to the selected library. A References database uses rich-text `Description` and `References` properties; each referenced page becomes a Markdown file under `references/`. Shared Skills / Files / Sources / Records libraries and existing native Skills libraries are also supported.
 
 That database needs at least one valid Skill. Notion Name and authored frontmatter `name` are human-readable names preserved exactly: Unicode, digits, spaces and hyphens are allowed; names must be nonempty and contain no control characters. For example, `Tty7` stays `Tty7`, while its callable alias is `tty7`. Aliases normalize to NFC and lowercase, trim surrounding whitespace, replace whitespace runs with `-`, and percent-encode characters outside Unicode letters, marks, numbers, `_` and `-`. Aliases are selection values, never identity; collisions require an exact page ID or ref. `--name` explicitly overrides the human title without changing page identity. [Naming and database requirements](docs/protocol.md#identity-and-references).
 
@@ -88,7 +88,7 @@ Automatic upstream subscription Routers require at least two verified published 
 
 `Default Context` is an independent checkbox for each Skill or Router. Missing or unchecked means false. Prompt is always excluded from default discovery, background prefetch and native Skill installation; explicitly selecting it again adds its requirements to the new turn. Initialization creates the checkbox but never checks it automatically.
 
-Authentication priority is saved `config.token` → non-empty `NOTION_API_TOKEN` → existing `ntn login`. A saved token is plaintext in the private config file; `ctl config show` reports only whether it is configured. [Token setup and removal](docs/usage.md#authentication).
+Authentication priority is saved `config.token` → non-empty `NOTION_API_TOKEN`. Missing credentials return `AUTH_REQUIRED`. A saved token is plaintext in the private config file; `ctl config show` reports only whether it is configured. [Token setup and removal](docs/usage.md#authentication).
 
 ### 2. Check access and choose a workflow
 
@@ -295,7 +295,7 @@ Inspecting or maintaining a Skill does not activate its instructions. Hosts acti
 - Historical local verification covered npm installation and seeded offline behavior on macOS arm64 with Node.js 24.20.0 and Linux arm64 with Node.js 22.19.0; the latter is now unsupported. Real Notion reads were verified on macOS with `ntn` 0.22.12. CI is configured for Node.js 22.22.3 and 24.20.0 on Ubuntu and macOS 15; configured jobs do not establish successful runs for a new change. Windows is unverified.
 - Content mutations, `ctl builtin publish` and sync `connect/run/apply` can change content. Publications support `--progress` on stderr and retain frozen input/receipts; use `operation resume OPERATION_ID` for guarded publication continuation. Unresolved writes remain explicit. Local sync checks retained receipts and reports the original operation and next action when convergence remains unresolved. Client version checks are not atomic commits. [Publication recovery](docs/usage.md#creating-importing-exporting-and-updating-skills).
 - Configuration defaults to `~/.config/ntn-skills/config.json`; retained snapshots, uploads and sync recovery state to `~/.local/state/ntn-skills`; disposable observations to `~/.cache/ntn-skills`. Managed builtins use `~/.local/share/ntn-skills`, overridden by `NTN_SKILLS_DATA_HOME` or the XDG data base. Freshness defaults are five minutes for content and 60 seconds for catalogs. [Cache policy and cleanup](docs/usage.md#cache-policy-and-cleanup) explain overrides and system Trash retention.
-- Online operations use `ntn` and Notion's signed download URLs. Safe local identity is required for unpinned offline lookup; official-login identity may still require online checks. A cached observation does not prove present access. The CLI sends no telemetry requests of its own; `ntn` has its own policies. Imported scripts are never executed automatically.
+- Online operations use the project's direct HTTP engine and Notion's signed download URLs. Safe local credential identity is required for unpinned offline lookup. A cached observation does not prove present access. The CLI sends no telemetry requests. Imported scripts are never executed automatically.
 
 See [configuration and storage](docs/protocol.md#environment-and-local-storage), [error recovery](docs/protocol.md#errors), and [security and privacy](SECURITY.md).
 

@@ -24,6 +24,7 @@ import {
   prepareSourceRefresh,
   applySourceRefresh,
   reconcileSourceRefresh,
+  reviewSourceMembers,
 } from "../../core/src/shared-source-refresh.ts"
 import { exportPortable } from "../../core/src/export.ts"
 import { assertSharedFileReferences } from "../../core/src/shared-file-references.ts"
@@ -137,7 +138,8 @@ const check = defineCommand(
   { source: Argument.String("source"), entry },
   ({ source, entry }) =>
     Effect.gen(function* () {
-      const definition = yield* readSourceDefinition(yield* loadSharedLibrary(entry), source)
+      const library = yield* loadSharedLibrary(entry)
+      const definition = yield* readSourceDefinition(library, source)
       const snapshot = yield* discoverSourceDefinition(definition)
       yield* emit({
         definition,
@@ -152,6 +154,7 @@ const check = defineCommand(
           bytes: m.portable.files.reduce((n, f) => n + f.bytes.length, 0),
         })),
         unavailable: snapshot.unavailable ?? [],
+        member_review: yield* reviewSourceMembers(library, definition.page_id, snapshot),
         remote_writes: 0,
         current_pins_changed: false,
       })
@@ -224,6 +227,7 @@ const prepare = defineCommand(
         source_pin: plan.bundle_id,
         projected_files: plan.projected_files,
         custom_files_preserved: plan.custom_files_preserved,
+        member_review: plan.member_review,
         remote_writes: 0,
       })
     }),

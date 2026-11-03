@@ -1,5 +1,7 @@
 # Observe current Router metadata for migration
 
+> Historical AH498 collector, retired during AH561. The executable now returns `COLLECTOR_RETIRED` before argument processing, subprocesses, network access or evidence creation. Its former transport implementation has been removed. Keep existing raw responses and receipts unchanged; offline parser tests remain available. For current observations use the project's `ntn-skills ctl api`, `read` or `files` and retain separate, new-format evidence. A parsed CLI response envelope is not the historical raw stdout format. The invocation and transport descriptions below document the former procedure and must not be executed.
+
 `collect-migration-router-metadata.py` collects native metadata for the exact
 Router items already retained in a frozen migration input. It writes a separate
 evidence directory and leaves the input unchanged. It does not produce a new

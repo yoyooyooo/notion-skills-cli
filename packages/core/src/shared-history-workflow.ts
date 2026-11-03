@@ -107,6 +107,13 @@ function frozenTree(value: Snapshot | SharedSnapshotManifest) {
     record: value.record,
     entrypoint: value.entrypoint,
     version_id: value.version_id,
+    ...(value.file_bindings === undefined ? {} : { file_bindings: value.file_bindings }),
+    ...(value.native_references === undefined
+      ? {}
+      : { native_references: value.native_references }),
+    ...(value.members === undefined ? {} : { members: value.members }),
+    ...(value.required === undefined ? {} : { required: value.required }),
+    ...(value.router_members === undefined ? {} : { router_members: value.router_members }),
     files: [...value.files]
       .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
       .map((file) => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 })),
@@ -334,6 +341,21 @@ export function restoreSharedHistory(
           record: restored.manifest.record,
           entrypoint: restored.manifest.entrypoint,
           version_id: restored.manifest.version_id,
+          ...(restored.manifest.file_bindings === undefined
+            ? {}
+            : { file_bindings: restored.manifest.file_bindings }),
+          ...(restored.manifest.native_references === undefined
+            ? {}
+            : { native_references: restored.manifest.native_references }),
+          ...(restored.manifest.members === undefined
+            ? {}
+            : { members: restored.manifest.members }),
+          ...(restored.manifest.required === undefined
+            ? {}
+            : { required: restored.manifest.required }),
+          ...(restored.manifest.router_members === undefined
+            ? {}
+            : { router_members: restored.manifest.router_members }),
           created_at: createdAt,
           files: restored.manifest.files.map((file) => ({
             path: file.path,

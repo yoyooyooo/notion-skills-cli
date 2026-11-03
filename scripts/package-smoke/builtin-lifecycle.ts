@@ -105,7 +105,7 @@ export async function checkBuiltinLifecycle(context: SmokeContext) {
   ])
   await rejected(["ctl", "builtin", "read", "ntn-skills-maintain"], "BUILTIN_NOT_FOUND", 1)
   await rejected(["ctl", "builtin", "publish", officialId, "--target", "Ntn Skills Maintain"])
-  await rejected(["read", "ntn-skills-maintain"], "NTN_UNAVAILABLE", 1)
+  await rejected(["read", "ntn-skills-maintain"], "AUTH_REQUIRED", 1)
   const officialAgent = join(scratch, "builtin-agent")
   const otherOfficialAgent = join(scratch, "other builtin agent")
   const defaultOfficialAgent = join(env.HOME, ".agents")

@@ -1,4 +1,4 @@
-import { Clock, Config, Crypto, Effect, FileSystem, Path, Schema } from "effect"
+import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import {
   CatalogSchema,
   SnapshotSchema,
@@ -11,6 +11,7 @@ import {
 } from "./model.ts"
 import { trashPath } from "./local-locks.ts"
 import { Notion } from "./notion.ts"
+import { notionApiOrigin } from "./notion-http.ts"
 import { pageId, parseTarget, normalizePath } from "./ref.ts"
 import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 import { currentMaterializationVersion } from "./materialization.ts"
@@ -159,40 +160,20 @@ export function freshness(
 }
 export const localIdentity = Effect.gen(function* () {
   const credential = yield* (yield* Notion).credentialIdentity
-  const keychain = credential === (yield* sha256("ntn-keychain"))
-  const identity = yield* Config.all({
-    workspace: Config.String("NOTION_WORKSPACE_ID").pipe(Config.withDefault("")),
-    baseUrl: Config.String("NOTION_API_BASE_URL").pipe(
-      Config.withDefault("https://api.notion.com"),
-    ),
-  }).pipe(
-    Effect.mapError(() =>
-      fail("CONFIG_ERROR", "The local credential scope configuration is invalid."),
-    ),
-  )
-  const key = yield* sha256(JSON.stringify([credential, identity.workspace, identity.baseUrl]))
-  return { key, keychain }
+  const origin = yield* notionApiOrigin
+  // Keep the default identity tuple stable for existing token-backed snapshots.
+  const key = yield* sha256(JSON.stringify([credential, "", origin]))
+  return { key }
 })
 export function recordScope(scope: string) {
   return Effect.gen(function* () {
     const identity = yield* localIdentity
-    if (!identity.keychain)
-      yield* (yield* Store).writeJson(`cache/identities/${identity.key}.json`, { scope })
+    yield* (yield* Store).writeJson(`cache/identities/${identity.key}.json`, { scope })
   })
 }
 export function locallySelectedScope(offline = false) {
   return Effect.gen(function* () {
     const identity = yield* localIdentity
-    if (identity.keychain) {
-      if (offline)
-        return yield* Effect.fail(
-          fail(
-            "CACHE_SCOPE_UNAVAILABLE",
-            "Official-login identity requires online validation; use an explicitly pinned snapshot offline.",
-          ),
-        )
-      return undefined
-    }
     const value = yield* (yield* Store).readJson(
       `cache/identities/${identity.key}.json`,
       ScopeSchema,

@@ -42,6 +42,9 @@ import { cacheCommand } from "./commands-cache.ts"
 import { builtinCommand } from "./commands-builtin.ts"
 import { operationCommand, statusCommand, backupCommand } from "./commands-operations.ts"
 import { doctorCommand } from "./commands-doctor.ts"
+import { apiCommand } from "./commands-api.ts"
+import { archiveCommand } from "./commands-archive.ts"
+import { prepareCommand } from "./commands-prepare.ts"
 import { live, upstreamLive } from "./command-runtime.ts"
 const ctlCommand = defineCommand("ctl").pipe(
   Command.withDescription(
@@ -55,6 +58,8 @@ const ctlCommand = defineCommand("ctl").pipe(
     builtinCommand,
     withRuntime(statusCommand, upstreamLive),
     withRuntime(doctorCommand, upstreamLive),
+    withRuntime(apiCommand, live),
+    withRuntime(archiveCommand, live),
     withRuntime(backupCommand, upstreamLive),
   ]),
 )
@@ -129,6 +134,7 @@ const rootDefinition = () =>
       withRuntime(viewsCommand.pipe(withConstraints([readPolicyConstraint])), live),
       ctlCommand,
       withRuntime(readCommand.pipe(withConstraints(readConstraints)), live),
+      withRuntime(prepareCommand, live),
       withRuntime(filesCommand.pipe(withConstraints(filesConstraints)), live),
       withRuntime(createCommand, live),
       withRuntime(applyCommand, live),

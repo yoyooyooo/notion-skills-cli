@@ -13,6 +13,7 @@ import { upstreamOperatorCommand } from "../../core/src/upstream-operator-comman
 import { operatorOperationCommand } from "./commands-operator.ts"
 import { emit, withRuntime } from "./command-options.ts"
 import { upstreamLive } from "./command-runtime.ts"
+import { commandMetrics, CommandMetricsLive } from "./command-metrics.ts"
 
 const root = defineCommand("ntn-skills-operator").pipe(
   Command.withDescription(
@@ -67,10 +68,12 @@ const program = Command.runWith(root, { version, renderErrors: false })(args).pi
           ? error.details
           : parseErrors.map((e) => ({ code: e._tag, message: e.message }))
       const stdio = yield* Stdio.Stdio
+      const metrics = yield* commandMetrics
       yield* Stream.make(
         JSON.stringify({
           ok: false,
           error: { code, message, ...(details === undefined ? {} : { details }) },
+          ...(metrics === undefined ? {} : { request_metrics: metrics }),
           ...(CliError.isCliError(error)
             ? {
                 next: {
@@ -84,6 +87,6 @@ const program = Command.runWith(root, { version, renderErrors: false })(args).pi
       process.exitCode = code === "INVALID_ARGUMENT" ? 2 : 1
     }),
   ),
-  Effect.provide(Layer.mergeAll(NodeServices.layer, cliConfiguration)),
+  Effect.provide(Layer.mergeAll(NodeServices.layer, cliConfiguration, CommandMetricsLive)),
 )
 NodeRuntime.runMain(program)

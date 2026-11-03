@@ -20,6 +20,11 @@ const keys = {
   sourceDefinition: `operations/shared-sources/${scope}/source-op-${"a".repeat(64)}.json`,
   sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
   nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
+  nativeOwnership: `operations/shared-native-create-owned/${scope}/skill-create-${"8".repeat(64)}.json`,
+  relationSchema: `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-schema.json`,
+  relationDescriptor: `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-descriptor.json`,
+  nativeArchive: `operations/owned-page-archive/${scope}/skill-create-${"8".repeat(64)}/00000000-0000-4000-8000-000000000001/00000000000000000000.json`,
+  legacyArchive: `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001/00000000000000000000.json`,
   nativeRecovery: `operations/shared-native-recovery/${scope}/skill-create-${"8".repeat(64)}.json`,
   recoveryResponse: `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/${"e".repeat(64)}.json`,
   nativeContinuation: `operations/shared-native-continuation/${scope}/skill-create-${"8".repeat(64)}.json`,
@@ -66,6 +71,68 @@ async function runProgram(program: string) {
 
 const child = (root: string, body: string) => runProgram(processProgram(root, body))
 
+function publicArchiveProgram(root: string, initiallyArchived: boolean, loseResponse = false) {
+  return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
+import {ConfigProvider,Effect,Layer} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
+import {Notion} from ${JSON.stringify(core + "notion.ts")};
+import {authScope} from ${JSON.stringify(core + "catalog.ts")};
+import {archiveOwnedPage} from ${JSON.stringify(core + "owned-page-archive.ts")};
+import {fail} from ${JSON.stringify(core + "model.ts")};
+process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
+process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
+process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
+const page='00000000-0000-4000-8000-000000000001',operation='skill-create-'+'8'.repeat(64);
+let archived=${initiallyArchived},patches=0;
+const api=Layer.succeed(Notion,{version:Effect.succeed('2026-03-11'),credentialIdentity:Effect.succeed('controlled-sqlite-archive'),request:(path,body,options)=>Effect.gen(function*(){
+  if(path==='v1/users/me')return {object:'user',id:'controlled-sqlite-user'};
+  if(path!=='v1/pages/'+page)return yield* Effect.fail(fail('NOT_FOUND','Unexpected controlled path'));
+  if(options?.method==='PATCH'){patches++;if(JSON.stringify(body)!=='{"in_trash":true}')throw new Error('Unexpected archive body');if(${loseResponse})return yield* Effect.fail(fail('WRITE_OUTCOME_UNKNOWN','Controlled lost response',{phase:'outcome_unknown'}));archived=true;}
+  return {id:page,in_trash:archived};
+})});
+Effect.runPromise(Effect.gen(function*(){
+  const store=yield* Store,scope=yield* authScope;
+  yield* store.writeJson('operations/shared-native-create-owned/'+scope+'/'+operation+'.json',{version:1,scope,operation_id:operation,library_id:'library-owned',skill_id:'skill-owned',skill_page_id:page,coverage:'created_native_content_pages',created_page_ids:[page],created_pages:[{page_id:page,kind:'skill',database_id:page,data_source_id:page,file_id:'file-main'}]});
+  const result=yield* archiveOwnedPage(page,operation).pipe(Effect.result);
+  console.log(JSON.stringify({patches,result:result._tag==='Success'?result.success:{code:result.failure.code},events:(yield* store.listKeys('operations/owned-page-archive')).length}));
+}).pipe(Effect.provide(Layer.mergeAll(api,StoreLive.pipe(Layer.provideMerge(NodeServices.layer)))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+}
+
+test("public owned archive persists each immutable transition and reopens without another PATCH", async () => {
+  await isolated(async (root) => {
+    const first = await runProgram(publicArchiveProgram(root, false))
+    expect(first.exit, first.stderr).toBe(0)
+    expect(JSON.parse(first.stdout)).toMatchObject({
+      patches: 1,
+      result: { archived: true, verified: true, reused: false },
+      events: 3,
+    })
+    const reopened = await runProgram(publicArchiveProgram(root, true))
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toMatchObject({
+      patches: 0,
+      result: { archived: true, verified: true, reused: true },
+      events: 3,
+    })
+  })
+}, 30_000)
+
+test("a lost archive response stays fenced across real SQLite restarts until readback confirms it", async () => {
+  await isolated(async (root) => {
+    for (const [index, confirmed] of [false, false, true].entries()) {
+      const result = await runProgram(publicArchiveProgram(root, confirmed, true))
+      expect(result.exit, result.stderr).toBe(0)
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        patches: index === 0 ? 1 : 0,
+        result: confirmed
+          ? { archived: true, verified: true, reused: true }
+          : { code: "ARCHIVE_OUTCOME_UNKNOWN" },
+        events: confirmed ? 3 : 2,
+      })
+    }
+  })
+}, 30_000)
+
 async function isolated(action: (root: string) => Promise<void>) {
   const directory = await mkdtemp(join(tmpdir(), "ntn-shared-sqlite-"))
   try {
@@ -75,7 +142,7 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
-test("shared cache and twelve dispatch addresses persist across real Node restarts", async () => {
+test("shared cache and typed dispatch addresses persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({
       key,
@@ -104,6 +171,11 @@ test("shared cache and twelve dispatch addresses persist across real Node restar
         keys.sourceSelection,
         keys.sourceRegistration,
         keys.nativeCreate,
+        keys.nativeOwnership,
+        keys.relationSchema,
+        keys.relationDescriptor,
+        keys.nativeArchive,
+        keys.legacyArchive,
         keys.nativeRecovery,
         keys.recoveryResponse,
         keys.nativeContinuation,
@@ -319,6 +391,11 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
         keys.sourceSelection,
         keys.sourceRegistration,
         keys.nativeCreate,
+        keys.nativeOwnership,
+        keys.relationSchema,
+        keys.relationDescriptor,
+        keys.nativeArchive,
+        keys.legacyArchive,
         keys.nativeRecovery,
         keys.recoveryResponse,
         keys.nativeContinuation,
@@ -356,6 +433,10 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `operations/shared-source-registration/${scope}/../source-${"7".repeat(64)}.json`,
       `operations/shared-native-create/${scope}/skill-create-invalid.json`,
       `operations/shared-native-create/${scope}/../skill-create-${"8".repeat(64)}.json`,
+      `operations/shared-native-create-owned/${scope}/skill-create-invalid.json`,
+      `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-other.json`,
+      `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001/../00000000000000000000.json`,
+      `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001.json`,
       `operations/shared-native-recovery/${scope}/skill-create-invalid.json`,
       `operations/shared-native-recovery/${scope}/../skill-create-${"8".repeat(64)}.json`,
       `operations/shared-native-recovery-responses/create-recovery-invalid/${"e".repeat(64)}.json`,

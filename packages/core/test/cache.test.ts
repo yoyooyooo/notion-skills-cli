@@ -388,9 +388,13 @@ test("C6/C7 failed expiry has no stale fallback or timestamp reset; explicit off
   expect(f.requests.length).toBe(before)
 })
 
-test("C8 token/workspace/endpoint scopes isolate cache and official-login offline refuses unsafe identity", async () => {
+test("C8 credential scopes isolate cache and a new credential requires online validation", async () => {
   const f = fixture()
   await f.run(readSkill(page))
+  const originalIdentity = await f.run(
+    sha256(JSON.stringify(["credential-one", "", "https://api.notion.com"])),
+  )
+  expect(f.json.has(`cache/identities/${originalIdentity}.json`)).toBe(true)
   f.credential("credential-two")
   expect((await f.run(readSkill(page, { offline: true }).pipe(Effect.result)))._tag).toBe("Failure")
   const second = await f.run(readSkill(page))
@@ -399,7 +403,7 @@ test("C8 token/workspace/endpoint scopes isolate cache and official-login offlin
   const before = f.requests.length
   expect((await f.run(readSkill(page))).source).toBe("local_cache")
   expect(f.requests.length).toBe(before)
-  f.credential(await f.run(sha256("ntn-keychain")))
+  f.credential("credential-without-recorded-scope")
   expect((await f.run(readSkill(page, { offline: true }).pipe(Effect.result)))._tag).toBe("Failure")
   const requests = f.requests.length
   await f.run(readSkill(page))

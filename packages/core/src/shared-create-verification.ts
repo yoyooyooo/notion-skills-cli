@@ -50,13 +50,16 @@ export function verifySharedCreatedSnapshot(
     kind: snapshot.record.kind,
     enabled: snapshot.record.enabled,
     default_context: snapshot.record.default_context,
-    ...(snapshot.record.kind === "router"
+    ...(input.expected_metadata.members !== undefined
       ? {
-          members: snapshot.router_members
+          members: (snapshot.members ?? snapshot.router_members)
             ?.map((member) => property(member.metadata).page_id)
             .sort(),
         }
       : {}),
+    ...(input.expected_metadata.requires === undefined
+      ? {}
+      : { requires: snapshot.required?.map((member) => property(member.metadata).page_id).sort() }),
   }
   if (
     evidence.snapshot_id !== snapshot.snapshot_id ||

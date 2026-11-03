@@ -5,15 +5,12 @@ This is a bounded observation, not an authorization or an atomic tree snapshot.
 The retained snapshot references are materialized text, never original wire data.
 """
 
-import argparse
 import importlib.util
 import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
-import subprocess
 import sys
-import time
 
 
 _helper_path = Path(__file__).with_name("collect-migration-router-metadata.py")
@@ -117,41 +114,6 @@ def prepare(snapshots):
     return inputs, targets
 
 
-class NativeReader(evidence.NtnReader):
-    """One shell-free GET attempt for each member of the frozen 51-path set."""
-
-    def __init__(self, paths, executable="ntn", timeout=45):
-        super().__init__(executable, API_VERSION, timeout, 0.4)
-        self.paths, self.attempted, self.last_completion = frozenset(paths), set(), None
-        require(len(self.paths) == 51 and all(re.fullmatch("v1/pages/" + evidence.UUID_PATTERN + "/markdown", path)
-                                            for path in self.paths), "READ_SCOPE_INVALID", "Freeze the exact 51 default Markdown paths.")
-
-    def __call__(self, path):
-        require(path in self.paths and path not in self.attempted, "READ_PATH_INVALID",
-                "Only one attempt for each exact frozen default Markdown GET is allowed.")
-        self.attempted.add(path)
-        time.sleep(max(0.0, self.next_request - time.monotonic()))
-        self.next_request = time.monotonic() + self.interval
-        started = time.monotonic()
-        self.last_completion = {"exit_code": None, "timed_out": False}
-        try:
-            result = subprocess.run([self.executable, "api", path, "--notion-version", API_VERSION, "-X", "GET"],
-                                    stdin=subprocess.DEVNULL, capture_output=True, timeout=self.timeout, check=False)
-        except subprocess.TimeoutExpired as error:
-            self.last_completion.update(timed_out=True, stderr_sha256=digest(error.stderr or b""),
-                                        stderr_bytes=len(error.stderr or b""))
-            raise EvidenceError("READ_TIMEOUT", "The exact native GET timed out; no retry is permitted.", error.stdout or b"") from None
-        except OSError:
-            raise EvidenceError("NTN_UNAVAILABLE", "The configured official ntn could not be run.") from None
-        finally:
-            self.last_completion["duration_ms"] = (time.monotonic() - started) * 1000
-        self.last_completion.update(exit_code=result.returncode, stderr_sha256=digest(result.stderr), stderr_bytes=len(result.stderr))
-        if len(result.stdout) > 16 * 1024 * 1024:
-            raise EvidenceError("RESPONSE_TOO_LARGE", "The native response exceeded 16 MiB.", result.stdout)
-        if result.returncode != 0:
-            raise EvidenceError("NATIVE_GET_FAILED", "The exact native GET failed; no retry is permitted.", result.stdout)
-        return result.stdout
-
 
 def observed(target, value, raw, response, output):
     try:
@@ -179,7 +141,7 @@ def observed(target, value, raw, response, output):
                            "equality_does_not_establish_historical_wire_or_ownership": True}}
 
 
-def collect(*, snapshots, output_path, reader=None, executable="ntn", check_only=False):
+def collect(*, snapshots, output_path, reader=None, check_only=False):
     inputs, targets = prepare(snapshots)
     output = Path(output_path)
     require(not output.exists() and not output.is_symlink(), "OUTPUT_EXISTS", "Use a new evidence directory; never resume or overwrite a run.")
@@ -187,7 +149,7 @@ def collect(*, snapshots, output_path, reader=None, executable="ntn", check_only
         return {"ok": True, "mode": "config_only", "native_pages": 51, "snapshot_reference_counts": [item["references"] for item in inputs],
                 "api_version": API_VERSION, "markdown_version": "default", "network_requests": 0, "output_created": False}
     if reader is None:
-        reader = NativeReader([target["request_path"] for target in targets], executable)
+        raise EvidenceError("COLLECTOR_RETIRED", evidence.RETIRED_MESSAGE)
     output.mkdir(mode=0o700)
     sync_directory(output.parent)
     for name in ("raw", "requests", "inputs", "preimages"):
@@ -252,20 +214,7 @@ def collect(*, snapshots, output_path, reader=None, executable="ntn", check_only
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", nargs=2, action="append", required=True, metavar=("PATH", "SHA256"))
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--notion-bin", default="ntn")
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args()
-    try:
-        result = collect(snapshots=args.snapshot, output_path=args.output, executable=args.notion_bin, check_only=args.check)
-        print(encoded(result).decode("utf-8"), end="")
-        return 0
-    except (EvidenceError, OSError, ValueError, UnicodeError) as error:
-        print(encoded({"ok": False, "error": {"code": error.code if isinstance(error, EvidenceError) else "EVIDENCE_INVALID",
-                                               "message": str(error)}}).decode("utf-8"), end="")
-        return 1
+    return evidence.retired_entrypoint()
 
 
 if __name__ == "__main__":

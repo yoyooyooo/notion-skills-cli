@@ -9,6 +9,61 @@ import {
 } from "../src/request-metrics.ts"
 
 describe("request metrics", () => {
+  test("opt-in attempt traces retain actual safe HTTP observations without request data", () => {
+    let time = 10
+    const metrics = createRequestMetrics({ now: () => time, traceLimit: 3 })
+    metrics.wait(350, "queue")
+    const finish = metrics.begin({ path: "v1/pages/private-page", method: "GET", requestBytes: 0 })
+    time = 15
+    finish({
+      outcome: "failure",
+      responseBytes: 75,
+      httpStatus: 429,
+      requestId: "request-123",
+      rateLimitReason: "public_api_space_request_rate_limit",
+      retryAfterSeconds: 120,
+    })
+    metrics.wait(120_000, "retry")
+    metrics.begin({ path: "v1/users/me", method: "GET" })({ httpStatus: 200 })
+    const snapshot = metrics.snapshot()
+    expect(snapshot.trace_enabled).toBe(true)
+    expect(snapshot.trace_dropped).toBe(1)
+    expect(snapshot.trace).toHaveLength(3)
+    expect(snapshot.trace[1]).toMatchObject({
+      event: "attempt",
+      attempt: 1,
+      duration_ms: 5,
+      http_status: 429,
+      request_id: "request-123",
+      retry_after_seconds: 120,
+      request_bytes: 0,
+      response_bytes: 75,
+    })
+    expect(JSON.stringify(snapshot.trace)).not.toContain("private-page")
+    expect(snapshot.total_requests).toBe(2)
+  })
+
+  test("default traces are disabled and malformed diagnostic labels are excluded", () => {
+    const ordinary = createRequestMetrics()
+    ordinary.begin({ path: "v1/users/me", method: "GET" })({ httpStatus: 200 })
+    expect(ordinary.snapshot().trace_enabled).toBe(false)
+    expect(ordinary.snapshot().trace).toEqual([])
+    const observed = createRequestMetrics({ traceLimit: 1 })
+    observed.begin({ path: "v1/users/me", method: "GET" })({
+      httpStatus: 999,
+      requestId: "Authorization: Bearer secret",
+      rateLimitReason: "contains private prose",
+      retryAfterSeconds: Number.NaN,
+    })
+    expect(observed.snapshot().trace[0]).toMatchObject({
+      http_status: null,
+      request_id: null,
+      rate_limit_reason: null,
+      retry_after_seconds: null,
+    })
+    expect(() => createRequestMetrics({ traceLimit: 10_001 })).toThrow(TypeError)
+  })
+
   test("classifies queries as metadata and conservatively counts unknown reads as body", () => {
     expect(classifyRequest({ path: "/v1/data_sources/files/query", method: "POST" })).toBe(
       "notion_metadata",

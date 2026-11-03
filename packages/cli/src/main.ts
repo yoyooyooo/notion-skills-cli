@@ -10,6 +10,7 @@ import packageManifest from "../package.json" with { type: "json" }
 const { version } = packageManifest
 import { root } from "./command-registration.ts"
 import { selectCommand } from "../../core/src/command-schema.ts"
+import { commandMetrics, CommandMetricsLive } from "./command-metrics.ts"
 const args = process.argv.length > 2 ? process.argv.slice(2) : ["--help"]
 const helpArgv = () => {
   const path: string[] = []
@@ -51,10 +52,12 @@ const program = Command.runWith(root, { version, renderErrors: false })(args).pi
           ? error.details
           : parseErrors.map((e) => ({ code: e._tag, message: e.message }))
       const stdio = yield* Stdio.Stdio
+      const metrics = yield* commandMetrics
       yield* Stream.make(
         JSON.stringify({
           ok: false,
           error: { code, message, ...(details === undefined ? {} : { details }) },
+          ...(metrics === undefined ? {} : { request_metrics: metrics }),
           ...(CliError.isCliError(error)
             ? {
                 next: {
@@ -68,6 +71,6 @@ const program = Command.runWith(root, { version, renderErrors: false })(args).pi
       process.exitCode = code === "INVALID_ARGUMENT" ? 2 : 1
     }),
   ),
-  Effect.provide(Layer.mergeAll(NodeServices.layer, cliConfiguration)),
+  Effect.provide(Layer.mergeAll(NodeServices.layer, cliConfiguration, CommandMetricsLive)),
 )
 NodeRuntime.runMain(program)

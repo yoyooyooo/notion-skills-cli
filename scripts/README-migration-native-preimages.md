@@ -1,5 +1,7 @@
 # Native Markdown preimages for the two retained migration Skills
 
+> Historical AH498 collector, retired during AH561. The executable now returns `COLLECTOR_RETIRED` before argument processing, subprocesses, network access or evidence creation. Its former transport implementation has been removed; the frozen 44+7-page evidence and offline parsing tests remain intact. Current `ntn-skills ctl api/read/files` observations must use new evidence files and must not be substituted for retained raw preimages. All invocation instructions below describe the disabled historical procedure.
+
 This collector makes one default Markdown GET for each of the 44 plus 7 native
 page identities already recorded in two frozen snapshots. The Source ZIP in each
 snapshot has no corresponding native page and is excluded. It does not discover

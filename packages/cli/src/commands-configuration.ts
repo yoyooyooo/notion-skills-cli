@@ -31,7 +31,7 @@ export const configShow = defineCommand("show", {}, () =>
 ).pipe(
   Command.withShortDescription("Show local configuration with token presence only"),
   Command.withDescription(
-    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN > existing ntn login. The default database affects create only; cache policy controls current reads and catalog observations.",
+    "Read local configuration and effective cache policy offline. Token values are omitted; token_configured reports a non-empty configured token. Authentication priority: config.token > NOTION_API_TOKEN. The default database affects create only; cache policy controls current reads and catalog observations.",
   ),
 )
 export const configurationKeys =
@@ -151,7 +151,7 @@ export const configSetToken = defineCommand(
 ).pipe(
   Command.withShortDescription("Store the token from standard input in local configuration"),
   Command.withDescription(
-    "Read one token from piped stdin with --stdin; trim surrounding whitespace and reject empty/multiple values. Store config.token with private file permissions while preserving sources/default_database. Works offline; no Notion request or credential validation. Output only reports token_configured. Config token takes priority over NOTION_API_TOKEN and existing ntn login.",
+    "Read one token from piped stdin with --stdin; trim surrounding whitespace and reject empty/multiple values. Store config.token with private file permissions while preserving sources/default_database. Works offline; no Notion request or credential validation. Output only reports token_configured. Config token takes priority over NOTION_API_TOKEN.",
   ),
   Command.withExamples([
     {
@@ -166,9 +166,9 @@ export const configClearToken = defineCommand("clear-token", {}, () =>
     yield* emit({ config: yield* setToken() })
   }),
 ).pipe(
-  Command.withShortDescription("Remove config.token and use environment/ntn login fallback"),
+  Command.withShortDescription("Remove config.token and use NOTION_API_TOKEN"),
   Command.withDescription(
-    "Remove only the configured token offline, preserving sources/default_database. Future online requests use NOTION_API_TOKEN or existing ntn login. Output never includes a token.",
+    "Remove only the configured token offline, preserving sources/default_database. Future online requests require NOTION_API_TOKEN. Output never includes a token.",
   ),
   Command.withExamples([
     {

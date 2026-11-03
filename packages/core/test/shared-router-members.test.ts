@@ -6,6 +6,7 @@ import { sharedRecordFromPage, sharedSkillId } from "../src/shared-content.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import {
   querySharedRouterMembers,
+  querySharedSkillRelation,
   renderSharedRouterMembers,
 } from "../src/shared-router-members.ts"
 
@@ -226,6 +227,98 @@ function assertMetadataOnly(f: ReturnType<typeof fixture>) {
 }
 
 describe("shared Router members", () => {
+  test("ordinary Skills use the same complete native Members engine with no target body requests", async () => {
+    const f = fixture(101)
+    property(f.rawRouter.properties)["Renamed kind"] = {
+      id: "kind",
+      type: "select",
+      select: { name: "skill" },
+    }
+    const record = sharedRecordFromPage(f.rawRouter, source, library.skills.data_source_id)
+    const result = await f.run(
+      querySharedSkillRelation(library, { record, rawPage: f.rawRouter, field: "Members" }),
+    )
+    expect(result).toHaveLength(101)
+    expect(result.every((target) => target.kind === "skill" && target.metadata.enabled)).toBe(true)
+    assertMetadataOnly(f)
+  })
+
+  test("Requires uses stable renamed property IDs, complete pagination and optional complete metadata inventory", async () => {
+    const f = fixture(101)
+    const registered = {
+      ...library,
+      skills: {
+        ...library.skills,
+        property_ids: {
+          ...library.skills.property_ids,
+          Members: "unread-members",
+          Requires: membersProperty,
+        },
+      },
+    }
+    property(f.rawRouter.properties)["Renamed kind"] = {
+      id: "kind",
+      type: "select",
+      select: { name: "skill" },
+    }
+    const selectedSource = { ...source, shared_library: registered }
+    const record = sharedRecordFromPage(f.rawRouter, selectedSource, library.skills.data_source_id)
+    const result = await f.run(
+      querySharedSkillRelation(registered, {
+        record,
+        rawPage: f.rawRouter,
+        field: "Requires",
+        inventory: {
+          data_source_id: registered.skills.data_source_id,
+          complete: true,
+          pages: [f.rawRouter, ...f.members],
+        },
+      }),
+    )
+    expect(result).toHaveLength(101)
+    expect(f.calls).toHaveLength(2)
+    expect(f.calls.every((call) => call.path.includes("/properties/"))).toBe(true)
+    assertMetadataOnly(f)
+  })
+
+  test("Requires rejects disabled, Prompt, nested Router and duplicate stable identities in the complete inventory", async () => {
+    for (const issue of ["disabled", "prompt", "router", "duplicate"] as const) {
+      const f = fixture(2)
+      const registered = {
+        ...library,
+        skills: {
+          ...library.skills,
+          property_ids: {
+            ...library.skills.property_ids,
+            Members: "unread-members",
+            Requires: membersProperty,
+          },
+        },
+      }
+      const first = f.members[0]
+      const second = f.members[1]
+      if (!first || !second) throw new Error("Fixture needs two targets")
+      if (issue === "disabled")
+        property(property(first.properties)["Renamed enabled"]).checkbox = false
+      else if (issue === "duplicate")
+        property(second.properties)["Renamed identity"] = rich("skill_id", "member-000")
+      else
+        property(first.properties)["Renamed kind"] = {
+          id: "kind",
+          type: "select",
+          select: { name: issue },
+        }
+      const result = await f.run(
+        querySharedSkillRelation(registered, {
+          record: f.router,
+          rawPage: f.rawRouter,
+          field: "Requires",
+        }).pipe(Effect.result),
+      )
+      expect(result._tag).toBe("Failure")
+      assertMetadataOnly(f)
+    }
+  })
   test("uses registered property IDs and one metadata batch, preserving false Default Context members", async () => {
     const f = fixture()
     f.inventory([f.members[1], f.rawRouter, f.members[0]])

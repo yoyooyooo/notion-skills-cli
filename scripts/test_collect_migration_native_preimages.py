@@ -3,7 +3,6 @@
 import importlib.util
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -203,35 +202,6 @@ class NativePreimageTests(unittest.TestCase):
         stopped = json.loads((fixture.output / "stopped.json").read_bytes())
         self.assertEqual((stopped["get_requests"], stopped["native_pages_observed"]), (1, 0))
 
-    def test_native_transport_only_permits_one_default_get_to_a_frozen_path(self):
-        fixture = Fixture()
-        paths = list(fixture.responses)
-        reader = collector.NativeReader(paths, executable="/synthetic/official-ntn")
-        result = subprocess.CompletedProcess([], 0, fixture.responses[paths[0]], b"diagnostic not retained")
-        with patch.object(collector.subprocess, "run", return_value=result) as run, patch.object(collector.time, "sleep"):
-            self.assertEqual(reader(paths[0]), result.stdout)
-            for invalid in (paths[0], paths[1] + "?markdown_version=v2", "v1/search", "v1/pages/" + uid(999) + "/markdown"):
-                with self.assertRaises(collector.EvidenceError):
-                    reader(invalid)
-        self.assertEqual(run.call_count, 1)
-        self.assertEqual(run.call_args.args[0], ["/synthetic/official-ntn", "api", paths[0], "--notion-version", "2026-03-11", "-X", "GET"])
-        self.assertNotIn("env", run.call_args.kwargs)
-        self.assertEqual(reader.last_completion["exit_code"], 0)
-
-    def test_native_transport_timeout_retains_stdout_without_retry(self):
-        fixture = Fixture()
-        path = next(iter(fixture.responses))
-        reader = collector.NativeReader(fixture.responses, executable="/synthetic/official-ntn")
-        timeout = subprocess.TimeoutExpired("ntn", 45, output=b"partial raw", stderr=b"private diagnostic")
-        with patch.object(collector.subprocess, "run", side_effect=timeout) as run, patch.object(collector.time, "sleep"):
-            with self.assertRaises(collector.EvidenceError) as caught:
-                reader(path)
-            self.assertEqual(caught.exception.raw, b"partial raw")
-            with self.assertRaises(collector.EvidenceError):
-                reader(path)
-        self.assertEqual(run.call_count, 1)
-        self.assertTrue(reader.last_completion["timed_out"])
-        self.assertEqual(reader.last_completion["stderr_sha256"], collector.digest(b"private diagnostic"))
 
 
 if __name__ == "__main__":

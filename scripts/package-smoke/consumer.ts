@@ -37,7 +37,7 @@ export async function prepareConsumer() {
     PATH: `${dirname(runtime)}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
     NOTION_API_TOKEN: "",
     NOTION_WORKSPACE_ID: "",
-    NOTION_API_BASE_URL: "https://api.notion.com", // Match authScope and localIdentity defaults.
+    NOTION_API_BASE_URL: "http://127.0.0.1:9", // Controlled unavailable HTTP origin; seeded identities use this same origin.
     HOME: join(scratch, "home"),
     NTN_SKILLS_DATA_HOME: "",
     XDG_DATA_HOME: join(scratch, "xdg", "data"),
@@ -47,7 +47,6 @@ export async function prepareConsumer() {
     XDG_CONFIG_HOME: join(scratch, "xdg", "config"),
     XDG_STATE_HOME: join(scratch, "xdg", "state"),
     XDG_CACHE_HOME: join(scratch, "xdg", "cache"),
-    NTN_SKILLS_NTN_BIN: join(scratch, "missing-ntn"),
   }
   let executable: string | undefined
   let operatorExecutable: string | undefined

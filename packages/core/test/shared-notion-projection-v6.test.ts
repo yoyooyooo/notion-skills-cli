@@ -10,7 +10,7 @@ test("v6 freezes paragraph and simple-list text breaks before dispatch", () => {
     "# Guide\n\nFirst line\nwith **bold**.\n\n- Check this\n  continuation.\n- Another item."
   const expected =
     "# Guide\n\nFirst line<br />with <b>bold</b>.\n\n- Check this<br />continuation.\n- Another item."
-  const current = projectSharedNotionMarkdown(source, { purpose: "data_source_create" })
+  const current = projectSharedNotionMarkdown(source, { version: 6, purpose: "data_source_create" })
   expect(current.version).toBe(6)
   expect(current.markdown).toBe(expected)
   const previous = projectSharedNotionMarkdown(source, {

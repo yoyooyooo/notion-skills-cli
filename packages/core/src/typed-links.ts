@@ -10,6 +10,7 @@ import type { SkillsError } from "./model.ts"
 import { fail, property } from "./model.ts"
 import type { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { referenceProse } from "./shared-file-references.ts"
 
 type Block = Record<string, unknown>
 type Link = { block: Block; field: string; cell?: number; indexes: number[]; url: string }
@@ -17,35 +18,28 @@ type Link = { block: Block; field: string; cell?: number; indexes: number[]; url
 // The ordinal is the authored destination's document position, never its label.
 // Code examples must not participate in either side of this correspondence.
 export function mapMarkdownLinks(markdown: string, change: (url: string) => string) {
-  let fence: { marker: string; length: number } | undefined
-  return markdown
-    .split("\n")
-    .map((line) => {
-      const marker = /^\s*(`{3,}|~{3,})/.exec(line)
-      if (fence) {
-        if (marker && marker[1]![0] === fence.marker && marker[1]!.length >= fence.length)
-          fence = undefined
-        return line
-      }
-      if (marker) {
-        fence = { marker: marker[1]![0]!, length: marker[1]!.length }
-        return line
-      }
-      if (/^\s*<page\b[^>]*>[\s\S]*<\/page>\s*$/.test(line)) return line
-      return line
-        .split(/(`+[^`]*`+)/g)
-        .map((part, index) => {
-          if (index % 2) return part
-          // One pass prevents a replacement destination from being visited twice.
-          return part.replace(
-            /(\]\(\s*<?)([^\s)>]+)(>?)(?=\s|\))|(^\s*\[[^\]]+\]:\s*<?)([^\s>]+)(>?)|((?:https?:\/\/)[^\s<>\)\]"']+)/g,
-            (_all, a, b, c, d, e, f, bare) =>
-              a ? `${a}${change(b)}${c}` : d ? `${d}${change(e)}${f}` : change(bare),
-          )
-        })
-        .join("")
-    })
-    .join("\n")
+  // Mask code/comments using the same boundary as local resource validation.
+  // Offsets stay in the original source; labels and whitespace remain byte exact.
+  const visible = referenceProse(markdown)
+  const edits: { start: number; end: number; text: string }[] = []
+  const pattern =
+    /(\]\(\s*<?)([^\s)>]+)(>?)(?=\s|\))|(^[ \t]*\[[^\]\n]+\]:[ \t]*<?)([^\s>]+)(>?)|((?:https?:\/\/)[^\s<>\)\]"']+)/gm
+  for (const match of visible.matchAll(pattern)) {
+    const href = match[2] ?? match[5] ?? match[7]
+    if (href === undefined) continue
+    const offset = match.index + (match[1]?.length ?? match[4]?.length ?? 0)
+    // Native entity tags are handled separately; URL attributes are not prose.
+    const before = visible.slice(0, offset)
+    const tag = before.lastIndexOf("<") > before.lastIndexOf(">")
+    if (tag && !(before.endsWith("<") && !/[A-Za-z]/u.test(visible[offset - 2] ?? ""))) continue
+    if (match[7] !== undefined && /["'=]/u.test(visible[offset - 1] ?? "")) continue
+    const text = change(markdown.slice(offset, offset + href.length))
+    if (text !== href) edits.push({ start: offset, end: offset + href.length, text })
+  }
+  let result = markdown
+  for (const edit of edits.reverse())
+    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end)
+  return result
 }
 
 export function hasTypedLinks(markdown: string) {

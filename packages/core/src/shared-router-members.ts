@@ -15,9 +15,10 @@ import {
   sharedSkillProperty,
   validateSharedRecordIdentity,
 } from "./shared-content.ts"
-import type { SharedLibrary } from "./shared-library-model.ts"
+import type { SharedLibrary, SharedSkillRelationField } from "./shared-library-model.ts"
+export type { SharedSkillRelationField } from "./shared-library-model.ts"
 
-export interface SharedRouterMember {
+export interface SharedSkillRelationTarget {
   readonly id: string
   readonly ref: string
   readonly kind: "skill"
@@ -36,6 +37,9 @@ export interface SharedRouterMember {
     readonly description: string
   }
 }
+
+/** Historical Router callers use the same native relation engine. */
+export type SharedRouterMember = SharedSkillRelationTarget
 
 const InventoryPageSchema = listSchema(Schema.Unknown)
 const RelationPageSchema = listSchema(
@@ -103,18 +107,24 @@ function sourceFor(library: SharedLibrary): Source {
   }
 }
 
-function relationBinding(library: SharedLibrary, router: SharedSkillRecord, rawPage: unknown) {
-  const id = library.skills.property_ids.Members
+function relationBinding(
+  library: SharedLibrary,
+  router: SharedSkillRecord,
+  rawPage: unknown,
+  field: SharedSkillRelationField,
+  allowDisabled: boolean,
+) {
+  const id = library.skills.property_ids[field]
   // Notion returns URL-encoded property IDs. Keep this path segment as returned;
   // encoding it again would address a different property (for example %3A -> %253A).
   if (typeof id !== "string" || !/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(id))
     throw fail(
       "SHARED_ROUTER_MEMBERS_UNAVAILABLE",
-      "This shared library has no registered native Members property; explicitly upgrade its descriptor before reading a Router.",
+      `This shared library has no registered native ${field} property; explicitly upgrade its relation schema.`,
     )
   if (
     Object.entries(library.skills.property_ids).some(
-      ([name, value]) => name !== "Members" && value === id,
+      ([name, value]) => name !== field && value === id,
     )
   )
     throw fail(
@@ -124,10 +134,10 @@ function relationBinding(library: SharedLibrary, router: SharedSkillRecord, rawP
   validateSharedRecordIdentity(router)
   const current = sharedRecordFromPage(rawPage, sourceFor(library), library.skills.data_source_id)
   if (
-    router.kind !== "router" ||
-    current.kind !== "router" ||
-    router.enabled !== true ||
-    current.enabled !== true ||
+    (router.kind !== "router" && router.kind !== "skill") ||
+    current.kind !== router.kind ||
+    (!allowDisabled && (router.enabled !== true || current.enabled !== true)) ||
+    router.enabled !== current.enabled ||
     router.id !== current.id ||
     router.locator.page_id !== current.locator.page_id ||
     router.locator.library_id !== library.library_id ||
@@ -136,9 +146,9 @@ function relationBinding(library: SharedLibrary, router: SharedSkillRecord, rawP
   )
     throw fail(
       "INVALID_MEMBERS",
-      "Members require the current enabled Router in this exact shared library.",
+      `${field} require the current enabled Skill or Router in this exact shared library.`,
     )
-  const relation = sharedSkillProperty(rawPage, library, "Members")
+  const relation = sharedSkillProperty(rawPage, library, field)
   if (
     relation.type !== "relation" ||
     !Array.isArray(relation.relation) ||
@@ -157,13 +167,17 @@ function relationBinding(library: SharedLibrary, router: SharedSkillRecord, rawP
   return { id, inline, has_more: relation.has_more }
 }
 
-export function completeSharedRouterMemberIds(
+export function completeSharedSkillRelationIds(
   library: SharedLibrary,
   router: SharedSkillRecord,
   rawPage: unknown,
+  field: SharedSkillRelationField,
+  options: { readonly allowDisabled?: boolean } = {},
 ) {
   return Effect.gen(function* () {
-    const relation = yield* checked(() => relationBinding(library, router, rawPage))
+    const relation = yield* checked(() =>
+      relationBinding(library, router, rawPage, field, options.allowDisabled === true),
+    )
     if (!relation.has_more) return relation.inline
     const api = yield* Notion
     const ids = new Set<string>()
@@ -243,17 +257,31 @@ function inventoryPath(library: SharedLibrary): string {
 }
 
 /** Complete relation + one paginated metadata inventory; never reads member bodies. */
-export function querySharedRouterMembers(
+export function querySharedSkillRelation(
   library: SharedLibrary,
   input: {
-    readonly router: SharedSkillRecord
+    readonly record: SharedSkillRecord
     readonly rawPage: unknown
+    readonly field: SharedSkillRelationField
+    /** The caller has exhausted this exact data source's inventory, including disabled rows. */
+    readonly inventory?: {
+      readonly data_source_id: string
+      readonly complete: true
+      readonly pages: readonly unknown[]
+    }
   },
-): Effect.Effect<readonly SharedRouterMember[], SkillsError, Notion> {
+): Effect.Effect<readonly SharedSkillRelationTarget[], SkillsError, Notion> {
   return Effect.gen(function* () {
     const wanted = new Set(
-      yield* completeSharedRouterMemberIds(library, input.router, input.rawPage),
+      yield* completeSharedSkillRelationIds(library, input.record, input.rawPage, input.field),
     )
+    if (
+      input.inventory !== undefined &&
+      input.inventory.data_source_id !== library.skills.data_source_id
+    )
+      return yield* Effect.fail(
+        fail("INVALID_MEMBERS", "The complete metadata inventory belongs to another data source."),
+      )
     if (wanted.size === 0) return []
     const source = sourceFor(library)
     const api = yield* Notion
@@ -264,10 +292,13 @@ export function querySharedRouterMembers(
     const cursors = new Set<string>()
     let cursor: string | undefined
     do {
-      const raw = yield* api.request(path, {
-        page_size: 100,
-        ...(cursor === undefined ? {} : { start_cursor: cursor }),
-      })
+      const raw =
+        input.inventory === undefined
+          ? yield* api.request(path, {
+              page_size: 100,
+              ...(cursor === undefined ? {} : { start_cursor: cursor }),
+            })
+          : { object: "list", results: input.inventory.pages, has_more: false, next_cursor: null }
       const page = yield* checked(() => {
         if (property(raw).object !== "list")
           throw fail(
@@ -305,7 +336,7 @@ export function querySharedRouterMembers(
       cursor = yield* checked(() => nextCursor(page, cursors))
     } while (cursor !== undefined)
 
-    const members: SharedRouterMember[] = []
+    const members: SharedSkillRelationTarget[] = []
     for (const pageIdentity of wanted) {
       const record = records.get(pageIdentity)
       if (record === undefined)
@@ -328,8 +359,8 @@ export function querySharedRouterMembers(
         return yield* Effect.fail(
           fail(
             "INVALID_MEMBERS",
-            "Shared Router members must be Skills; nested Routers and Prompts are unsupported.",
-            { page_id: pageIdentity, kind: record.kind },
+            `${input.field} targets must be Skills; nested Routers and Prompts are unsupported.`,
+            { field: input.field, page_id: pageIdentity, kind: record.kind },
           ),
         )
       if (!record.enabled)
@@ -360,6 +391,25 @@ export function querySharedRouterMembers(
       })
     }
     return members.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+  })
+}
+
+export function completeSharedRouterMemberIds(
+  library: SharedLibrary,
+  router: SharedSkillRecord,
+  rawPage: unknown,
+) {
+  return completeSharedSkillRelationIds(library, router, rawPage, "Members")
+}
+
+export function querySharedRouterMembers(
+  library: SharedLibrary,
+  input: { readonly router: SharedSkillRecord; readonly rawPage: unknown },
+) {
+  return querySharedSkillRelation(library, {
+    record: input.router,
+    rawPage: input.rawPage,
+    field: "Members",
   })
 }
 

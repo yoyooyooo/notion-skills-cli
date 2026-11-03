@@ -327,7 +327,6 @@ async function run(mode: "run" | "doctor") {
       await fs.mkdir(path.join(scratch, "exports"), { mode: 0o700 })
       const noBin = path.join(scratch, "empty-bin")
       await fs.mkdir(noBin, { mode: 0o700 })
-      const missingNtn = path.join(noBin, "missing-ntn")
       const environment = (label: string): NodeJS.ProcessEnv => {
         const isolated = path.join(scratch, "environments", label)
         return {
@@ -335,7 +334,6 @@ async function run(mode: "run" | "doctor") {
           HOME: path.join(isolated, "home"),
           PATH: noBin,
           NOTION_API_TOKEN: "",
-          NTN_SKILLS_NTN_BIN: missingNtn,
           NTN_SKILLS_CONFIG_HOME: path.join(isolated, "config"),
           NTN_SKILLS_HOME: path.join(isolated, "state"),
           NTN_SKILLS_CACHE_HOME: path.join(isolated, "cache"),
@@ -350,8 +348,6 @@ async function run(mode: "run" | "doctor") {
       const env = environment("upgrade")
       manifest.offline_environment = {
         NOTION_API_TOKEN: "",
-        NTN_SKILLS_NTN_BIN: missingNtn,
-        ntn_exists: await exists(missingNtn),
         PATH: noBin,
         HOME: env.HOME,
         NTN_SKILLS_DATA_HOME: env.NTN_SKILLS_DATA_HOME,
@@ -363,7 +359,7 @@ async function run(mode: "run" | "doctor") {
         XDG_STATE_HOME: env.XDG_STATE_HOME,
         XDG_CACHE_HOME: env.XDG_CACHE_HOME,
       }
-      check(!(await exists(missingNtn)), "Offline ntn path unexpectedly exists.")
+      check((await fs.readdir(noBin)).length === 0, "Offline subprocess PATH must be empty.")
       const artifactPaths: Record<string, string> = {}
       const fixtureFiles: Record<string, { path: string; content: string }[]> = {}
       for (const variant of ["A", "B"] as const) {

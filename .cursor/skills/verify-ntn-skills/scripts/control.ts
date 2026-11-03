@@ -29,6 +29,8 @@ import {
   importFiles,
 } from "../../../../packages/core/src/import.ts"
 import { BUNDLE, MANIFEST, readPortable } from "../../../../packages/core/src/portable.ts"
+import { pageId } from "../../../../packages/core/src/ref.ts"
+import { validateSharedRecordIdentity } from "../../../../packages/core/src/shared-content.ts"
 
 const consumptionFreshness = Schema.Struct({
   policy: Schema.String,
@@ -116,7 +118,7 @@ const { values, positionals } = parseArgs({
   strict: true,
 })
 const usage =
-  "Usage: bun .cursor/skills/verify-ntn-skills/scripts/control.ts MODE --run ABSOLUTE_DIRECTORY [--live] [--plan ABSOLUTE_JSON] [-- CLI_ARGS]\nModes: init, doctor, cli, package, consumption, prepare, import, verify, reuse, cleanup\nDoctor is offline by default; --live explicitly runs the official Notion doctor. Help never initializes a run or starts a child."
+  "Usage: bun .cursor/skills/verify-ntn-skills/scripts/control.ts MODE --run ABSOLUTE_DIRECTORY [--live] [--plan ABSOLUTE_JSON] [-- CLI_ARGS]\nModes: init, doctor, cli, package, consumption, prepare, import, verify, reuse, cleanup\nDoctor is offline by default; --live explicitly runs the project direct-HTTP doctor. Help never initializes a run or starts a child."
 if (values.help || positionals[0] === "help") {
   console.log(usage)
   process.exit(0)
@@ -168,8 +170,7 @@ const env: Record<string, string | undefined> & {
   XDG_CACHE_HOME: join(scratch, "xdg", "cache"),
   XDG_DATA_HOME: join(scratch, "xdg", "data"),
 }
-// Use the official transport; personal configuration and temporary transports are excluded.
-delete env.NTN_SKILLS_NTN_BIN
+// The project's direct HTTP engine consumes inherited token configuration in place.
 async function command(args: string[], cwd = repo, childEnv = env) {
   if (args.includes("set-token") || args.some((arg) => /^(?:Bearer |secret_|ntn_)/.test(arg)))
     throw new Error("Do not pass credentials to the verification harness.")
@@ -274,19 +275,8 @@ async function command(args: string[], cwd = repo, childEnv = env) {
       timeout,
       ...(cliProcessTiming === undefined ? {} : { cli_process_timing: cliProcessTiming }),
       output:
-        args[0] === "ntn" && output && typeof output === "object"
-          ? {
-              ...output,
-              ...("results" in output && Array.isArray(output.results)
-                ? {
-                    results: output.results.map((row: any) => ({
-                      id: row.id,
-                      type: row.type,
-                      ...(row.child_page ? { child_page: row.child_page } : {}),
-                    })),
-                  }
-                : {}),
-            }
+        sourceCli && args[sourceLaunch.length] === "ctl" && args[sourceLaunch.length + 1] === "api"
+          ? apiInventoryOutput(output)
           : output,
       stderr: {
         bytes: Buffer.byteLength(stderr),
@@ -298,6 +288,31 @@ async function command(args: string[], cwd = repo, childEnv = env) {
   } finally {
     clearTimeout(timer)
     clearTimeout(escalation)
+  }
+}
+function apiInventoryOutput(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !("response" in value)) return value
+  const response = value.response
+  if (
+    !response ||
+    typeof response !== "object" ||
+    !("results" in response) ||
+    !Array.isArray(response.results)
+  )
+    return value
+  return {
+    ...value,
+    response: {
+      ...response,
+      results: response.results.map((raw: unknown) => {
+        if (!raw || typeof raw !== "object") return {}
+        return {
+          ...("id" in raw ? { id: raw.id } : {}),
+          ...("type" in raw ? { type: raw.type } : {}),
+          ...("child_page" in raw ? { child_page: raw.child_page } : {}),
+        }
+      }),
+    },
   }
 }
 async function cli(args: string[]) {
@@ -404,26 +419,18 @@ async function children(id: string) {
   let cursor: string | undefined
   do {
     const path = `v1/blocks/${id}/children?page_size=100${cursor ? `&start_cursor=${encodeURIComponent(cursor)}` : ""}`
-    const result = await command([
-      "ntn",
-      "api",
-      path,
-      "--notion-version",
-      "2026-03-11",
-      "-X",
-      "GET",
-    ])
+    const result = await cli(["ctl", "api", path])
     check(
-      result.exit === 0 && Array.isArray(result.output.results),
-      `Child-page inspection failed: ${result.record}`,
+      Array.isArray(result.response?.results),
+      "Child-page inspection returned no complete API response",
     )
-    output.push(...result.output.results)
-    if (!result.output.has_more) break
+    output.push(...result.response.results)
+    if (!result.response.has_more) break
     check(
-      typeof result.output.next_cursor === "string" && !seen.has(result.output.next_cursor),
+      typeof result.response.next_cursor === "string" && !seen.has(result.response.next_cursor),
       "Invalid child-page pagination",
     )
-    cursor = result.output.next_cursor
+    cursor = result.response.next_cursor
     seen.add(cursor!)
   } while (cursor)
   return output
@@ -504,7 +511,7 @@ async function main() {
     const result = {
       ready: true,
       mode: values.live ? "live" : "offline",
-      authentication: values.live ? "probed by official Notion doctor" : "not probed",
+      authentication: values.live ? "probed by the project direct-HTTP doctor" : "not probed",
       entry: { path: entry, sha256: digest(await readFile(entry)) },
       source: {
         path: join(repo, "packages/cli/src/main.ts"),
@@ -517,7 +524,15 @@ async function main() {
         cache: env.NTN_SKILLS_CACHE_HOME,
         data: env.NTN_SKILLS_DATA_HOME,
       },
-      ...(values.live ? { live: await cli(["ctl", "doctor"]) } : {}),
+      ...(values.live
+        ? {
+            live: await cli([
+              "ctl",
+              "doctor",
+              ...(values.database ? ["--database", values.database] : []),
+            ]),
+          }
+        : {}),
     }
     await save(join(evidence, "doctor.json"), result)
     return result
@@ -525,7 +540,7 @@ async function main() {
   if (mode === "cli") {
     check(split >= 0 && process.argv.length > split + 1, "cli requires -- CLI_ARGS")
     const cliArgs = process.argv.slice(split + 1)
-    // Offline builtin commands isolate native Skill roots; publish retains HOME for official ntn login.
+    // Offline builtin commands isolate native Skill roots; online commands inherit the project token.
     // Both paths always use the scratch application and XDG data roots above.
     const childEnv =
       cliArgs[0] === "ctl" &&
@@ -634,12 +649,26 @@ async function main() {
         catalog.count === catalog.records.length,
       "Discovery must retain scope, freshness and complete explicit-database coverage",
     )
-    for (const row of catalog.records)
+    for (const row of catalog.records) {
+      validateSharedRecordIdentity(row)
       check(
         row.id &&
           ((row.locator.type === "notion_page" &&
             row.locator.page_id &&
             row.id === `notion_page:${row.locator.page_id}`) ||
+            (row.locator.type === "shared_skill" &&
+              catalog.databases.some((source) => {
+                const library = source.shared_library
+                const locator = row.locator
+                return (
+                  locator.type === "shared_skill" &&
+                  library?.library_id === locator.library_id &&
+                  library.skills.database_id === locator.database_id &&
+                  library.skills.data_source_id === locator.data_source_id &&
+                  source.database_id === locator.database_id &&
+                  source.data_source_ids.includes(locator.data_source_id)
+                )
+              })) ||
             (row.locator.type === "notion_subscription" &&
               row.kind === "router" &&
               row.entrypoint === "ROUTER.md" &&
@@ -654,24 +683,35 @@ async function main() {
           !("files" in row) &&
           !("snapshot_id" in row) &&
           !("manifest" in row),
-        "Catalog must expose Notion page or subscription Router identities without activation content",
+        "Catalog must expose exact page, shared Library/Skill, or subscription identities without activation content",
       )
+    }
     const skills = catalog.records.map((row) => Schema.decodeUnknownSync(ContentRecordSchema)(row))
-    const selected = values.target
-      ? skills.find(
+    const matches = values.target
+      ? skills.filter(
           (row) =>
             row.id === values.target ||
             row.ref === values.target ||
-            (row.locator.type === "notion_page" && row.locator.page_id === values.target),
+            ((row.locator.type === "notion_page" || row.locator.type === "shared_skill") &&
+              row.locator.page_id === pageId(values.target!)),
         )
-      : skills[0]
-    check(selected, "No selected page ID in scoped catalog; supply an accessible database/--target")
+      : skills.slice(0, 1)
+    check(
+      matches.length === 1,
+      "Select one exact record ID, ref, or page ID from the scoped catalog",
+    )
+    const selected = matches[0]!
+    const sameIdentity = (record: typeof selected) =>
+      record.id === selected.id &&
+      record.kind === selected.kind &&
+      record.entrypoint === selected.entrypoint &&
+      JSON.stringify(record.locator) === JSON.stringify(selected.locator)
     const activation = Schema.decodeUnknownSync(consumptionRead)(
       await drive(["read", selected.ref, "--database", values.database, "--refresh"]),
     )
     check(
       activation.scope === catalog.scope &&
-        activation.record.id === selected.id &&
+        sameIdentity(activation.record) &&
         activation.content.length > 0 &&
         activation.source === "notion" &&
         activation.freshness &&
@@ -682,6 +722,10 @@ async function main() {
     )
     const files = Schema.decodeUnknownSync(consumptionFiles)(
       await drive(["files", activation.snapshot_id, "--offline"]),
+    )
+    check(
+      sameIdentity(files.record) && files.scope === catalog.scope,
+      "Pinned file inventory must retain the selected locator and credential scope",
     )
     const output = join(evidence, `consumption-${label}-directory`)
     const args = [
@@ -713,7 +757,7 @@ async function main() {
         exported.source === "local_snapshot" &&
         exported.freshness.policy === "pinned" &&
         exported.scope === activation.scope &&
-        exported.record.id === selected.id &&
+        sameIdentity(exported.record) &&
         exported.snapshot_id === activation.snapshot_id &&
         exported.version_id === activation.version_id &&
         manifest.format === "ntn-skills" &&
@@ -795,7 +839,9 @@ async function main() {
       await drive(["read", activation.ref, "--offline"]),
     )
     check(
-      pinned.content === activation.content &&
+      sameIdentity(pinned.record) &&
+        pinned.scope === catalog.scope &&
+        pinned.content === activation.content &&
         pinned.source === "local_snapshot" &&
         pinned.snapshot_id === activation.snapshot_id &&
         pinned.freshness.policy === "pinned",
@@ -1114,7 +1160,7 @@ async function main() {
       verified,
       repeated_imports: repeated,
       transport:
-        "canonical scripts/dev.ts fresh build followed by Node.js CLI with default official ntn; isolated config and state",
+        "canonical scripts/dev.ts fresh build followed by Node.js CLI with the project direct HTTP engine; isolated config and state",
     }
     await save(join(evidence, "summary.json"), summary)
     return summary

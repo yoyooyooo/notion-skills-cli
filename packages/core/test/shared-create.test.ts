@@ -25,7 +25,11 @@ import {
   sharedNotionMarkdownWire,
 } from "../src/shared-notion-projection.ts"
 import { querySharedSkillIndex } from "../src/shared-skill-index.ts"
-import { createLibrary, sharedCreateFixture } from "./shared-create-fixture.ts"
+import {
+  createLibrary,
+  createRelationsLibrary,
+  sharedCreateFixture,
+} from "./shared-create-fixture.ts"
 import { digest, encode, id, skillPage } from "./shared-snapshot-fixture.ts"
 
 function portable(
@@ -87,7 +91,7 @@ describe("native shared creation", () => {
     })
     const plan = await f.run(prepareSharedCreate(createLibrary, { portable: input }))
     for (const file of plan.files) {
-      expect(file.projection.version).toBe(6)
+      expect(file.projection.version).toBe(8)
       const expected = responses.get(sharedNotionMarkdownWire(file.projection))
       if (expected === undefined) throw new Error("Missing independent native readback")
       expect(file.projection.markdown).toBe(expected)
@@ -587,31 +591,38 @@ describe("native shared creation", () => {
     ).toBe("SHARED_CREATE_UNRESOLVED")
   })
 
-  test("Router creation freezes exact enabled Skill members and keeps Prompt metadata distinct", async () => {
-    const f = sharedCreateFixture(),
-      plan = await f.run(
-        prepareSharedCreate(createLibrary, {
-          portable: portable({ kind: "router" }),
-          members: [skillPage],
-        }),
-      )
-    expect(plan.members).toEqual([skillPage])
-    const created = await f.run(executeSharedCreate(createLibrary, { plan, mode: "create" }))
-    expect(created.record.kind).toBe("router")
-    expect(created.entrypoint).toBe("ROUTER.md")
-    const prompt = id(81)
-    f.seedSkill(prompt, "prompt-member", "Prompt member", "prompt")
-    expect(
-      (
-        await f.run(
-          Effect.flip(
-            prepareSharedCreate(createLibrary, {
-              portable: portable({ kind: "router", name: "Other router" }),
-              members: [prompt],
-            }),
-          ),
+  test.each(["skill", "router"] as const)(
+    "%s creation freezes exact enabled Members/Requires and keeps Prompt metadata distinct",
+    async (kind) => {
+      const f = sharedCreateFixture({ relations: true }),
+        plan = await f.run(
+          prepareSharedCreate(createRelationsLibrary, {
+            portable: portable({ kind }),
+            members: [skillPage],
+            requires: [skillPage],
+          }),
         )
-      ).code,
-    ).toBe("INVALID_MEMBERS")
-  })
+      expect(plan.members).toEqual([skillPage])
+      expect(plan.requires).toEqual([skillPage])
+      const created = await f.run(
+        executeSharedCreate(createRelationsLibrary, { plan, mode: "create" }),
+      )
+      expect(created.record.kind).toBe(kind)
+      expect(created.entrypoint).toBe(kind === "router" ? "ROUTER.md" : "SKILL.md")
+      const prompt = id(81)
+      f.seedSkill(prompt, "prompt-member", "Prompt member", "prompt")
+      expect(
+        (
+          await f.run(
+            Effect.flip(
+              prepareSharedCreate(createRelationsLibrary, {
+                portable: portable({ kind: "router", name: "Other router" }),
+                members: [prompt],
+              }),
+            ),
+          )
+        ).code,
+      ).toBe("INVALID_MEMBERS")
+    },
+  )
 })

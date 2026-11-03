@@ -1,4 +1,5 @@
-import { beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { createHttpProbe } from "./http-probe.ts"
 import {
   access,
   chmod,
@@ -13,6 +14,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
+const http = createHttpProbe()
+afterAll(() => http.close())
 beforeAll(async () => {
   const build = Bun.spawn(["bun", "run", "build"], {
     cwd: new URL("../../../", import.meta.url).pathname,
@@ -57,12 +60,7 @@ async function invoke(
   } = {},
 ) {
   const root = options.root ?? (await mkdtemp(join(tmpdir(), "ntn-skills-cli-test-")))
-  const marker = join(root, "online-called")
-  const provider = join(root, "ntn-probe")
-  if (options.traceOnline) {
-    await writeFile(provider, `#!/bin/sh\nprintf called >> '${marker}'\nexit 97\n`)
-    await chmod(provider, 0o700)
-  }
+  const requestsBefore = http.calls()
   const selectedRoot = options.inaccessible ? "/nonexistent/ntn-skills-cli-help" : root
   const child = Bun.spawn([options.runtime ?? node, options.entrypoint ?? main, ...args], {
     stdout: "pipe",
@@ -70,13 +68,12 @@ async function invoke(
     stdin: "ignore",
     env: {
       ...process.env,
-      NOTION_API_TOKEN: "",
+      NOTION_API_TOKEN: options.traceOnline ? "controlled-offline-probe-token" : "",
       NOTION_WORKSPACE_ID: "",
-      NOTION_API_BASE_URL: "",
+      NOTION_API_BASE_URL: http.origin,
       HOME: join(root, "home"),
       NTN_SKILLS_DATA_HOME: "",
       XDG_DATA_HOME: join(root, "xdg-data"),
-      NTN_SKILLS_NTN_BIN: options.traceOnline ? provider : join(root, "missing-ntn"),
       NTN_SKILLS_HOME: join(selectedRoot, "state"),
       NTN_SKILLS_CONFIG_HOME: join(selectedRoot, "config"),
       NTN_SKILLS_CACHE_HOME: join(selectedRoot, "cache"),
@@ -90,10 +87,7 @@ async function invoke(
     new Response(child.stderr).text(),
     child.exited,
   ])
-  const onlineCalled = await access(marker).then(
-    () => true,
-    () => false,
-  )
+  const onlineCalled = http.calls() !== requestsBefore
   return { stdout, stderr, exit, onlineCalled }
 }
 function jsonFailure(result: InvocationResult, code: string, exit = 2) {
@@ -372,6 +366,44 @@ test("Router member flags expose repeatable exact selection and exclusive cleari
   }
 }, 60000)
 
+test("native Requires flags and explicit relation schema commands are discoverable offline", async () => {
+  const target = "00000000-0000-4000-8000-000000000001"
+  for (const command of ["create", "update"]) {
+    const result = await invoke(["schema", command], { inaccessible: true, traceOnline: true })
+    expect(result.exit).toBe(0)
+    expect(result.onlineCalled).toBe(false)
+    const schema = JSON.parse(result.stdout).schema
+    expect(schema.parameters).toContainEqual(
+      expect.objectContaining({ name: "require", type: "string", max_occurrences: null }),
+    )
+    expect(schema.parameters).toContainEqual(
+      expect.objectContaining({ name: "clear-requires", type: "boolean", max_occurrences: 1 }),
+    )
+    expect(schema.constraints).toContainEqual({
+      kind: "mutually_exclusive",
+      flags: ["require", "clear-requires"],
+    })
+    await invalid([
+      command,
+      command === "create" ? "missing.md" : target,
+      "--require",
+      target,
+      "--clear-requires",
+    ])
+  }
+  for (const command of ["plan", "apply", "reconcile"]) {
+    const result = await invoke(["schema", "ctl", "library", "relations", command], {
+      inaccessible: true,
+      traceOnline: true,
+    })
+    expect(result.exit).toBe(0)
+    expect(result.onlineCalled).toBe(false)
+    expect(JSON.parse(result.stdout).schema.parameters).toContainEqual(
+      expect.objectContaining({ name: command === "plan" ? "entry" : "input", required: true }),
+    )
+  }
+}, 60000)
+
 test("machine constraints and handler rejection share the command contract", async () => {
   for (const [path, expected] of [
     [["read"], { kind: "mutually_exclusive", flags: ["raw", "output"] }],
@@ -402,7 +434,7 @@ test("update Default Context accepts explicit true and false and rejects repetit
     ["--default-context=false"],
   ]) {
     const result = await invoke(["update", target, ...flags, "--dry-run"])
-    jsonFailure(result, "NTN_UNAVAILABLE", 1)
+    jsonFailure(result, "AUTH_REQUIRED", 1)
   }
   await invalid(["update", target, "--default-context", "--default-context"])
   await invalid(["update", target, "--default-context=true", "--default-context=false"])
@@ -444,7 +476,7 @@ test("name reads, refresh policies and valid duration overrides reach online val
       ["--refresh"],
       ...["0", "0s", "1s", "2m", "3h", "4d"].map((duration) => ["--max-age", duration]),
     ]) {
-      jsonFailure(await invoke([...command, ...flags]), "NTN_UNAVAILABLE", 1)
+      jsonFailure(await invoke([...command, ...flags]), "AUTH_REQUIRED", 1)
     }
   }
   jsonFailure(await invoke(["read", "skill://sample/%2e%2e/secret"]), "INVALID_PATH", 1)
@@ -547,7 +579,7 @@ test("valid sync selections and explicit replacement targets reach their actual 
     ],
     ["replace", "missing.md", "--target", "11111111-1111-4111-8111-111111111111", "--dry-run"],
   ])
-    jsonFailure(await invoke(args), "NTN_UNAVAILABLE", 1)
+    jsonFailure(await invoke(args), "AUTH_REQUIRED", 1)
   for (const source of ["local", "notion"]) {
     const result = await invoke(
       ["sync", "local", "plan", "missing-binding", "--from", source, "--output", "plan.json"],
@@ -1051,7 +1083,7 @@ test("built-ins are explicit offline package identities and cannot capture remot
       "INVALID_PATH",
       1,
     )
-    jsonFailure(await invoke(["read", name]), "NTN_UNAVAILABLE", 1)
+    jsonFailure(await invoke(["read", name]), "AUTH_REQUIRED", 1)
   }
   await invalid(["ctl", "builtin", "publish", ids[1]!, "--target", "Ntn Skills Maintain"])
   await invalid(["ctl", "builtin", "publish", ids[1]!, "--database", "a", "--database", "b"])

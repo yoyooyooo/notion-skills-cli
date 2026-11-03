@@ -50,7 +50,7 @@ ntn-skills read 'Release Review'
 
 ## 安装
 
-安装 [Node.js](https://nodejs.org) **22.x 分支的 22.22.3+，或 24.20.0+**，其中包含 npm。在线操作还需要支持 `api --notion-version` 的[官方 Notion CLI](https://developers.notion.com/cli) **`ntn`**；本项目已使用 `ntn` 0.22.12 验证。
+安装 [Node.js](https://nodejs.org) **22.x 分支的 22.22.3+，或 24.20.0+**，其中包含 npm。安装包通过项目自己的 Effect HTTP 引擎直接连接 Notion API。
 
 从官方 npm registry 安装已发布版本：
 
@@ -68,7 +68,7 @@ ntn-skills --help
 
 ### 1. 连接 Notion
 
-按[官方认证指南](https://developers.notion.com/cli/get-started/authentication) 配置 `ntn`。连接需要 Read content 权限，并能访问具备 `Description` 和 `References` 两个富文本属性的数据库。`References` 保存 Notion 页面提及或页面链接，CLI 将这些页面转成 `references/` 下的 Markdown。已有原生 Skills 数据库及其导出模式也可继续使用。
+使用已有 Notion connection 的 `NOTION_API_TOKEN`，或通过可信秘密输入管道执行 `ntn-skills ctl config set-token --stdin`。连接需要所选库的 Read content 权限。References 数据库使用 `Description` 和 `References` 两个富文本属性；每个引用页会成为 `references/` 下的 Markdown。共享的 Skills / Files / Sources / Records 四表库及已有原生 Skills 库也可使用。
 
 数据库中至少需要一个有效 Skill。Notion Name 和作者填写的 frontmatter `name` 是人类可读的名称，按原值保留；允许 Unicode、数字、空格和连字符，名称必须非空且不含控制字符。例如，`Tty7` 保持为 `Tty7`，调用别名为 `tty7`。别名按 NFC 规范化并转为小写，去掉首尾空白，将连续空白替换为 `-`，对 Unicode 字母、组合标记、数字、`_` 和 `-` 以外的字符做百分号编码。别名只用于选择，不是身份；冲突时须使用精确页面 ID 或引用。`--name` 显式覆盖人类标题，不改变页面身份。[命名与数据库要求](docs/protocol.md#identity-and-references)。
 
@@ -88,7 +88,7 @@ ntn-skills --help
 
 Skill 与 Router 的 `Default Context` 复选框各自独立，缺失或未勾选均为 false。Prompt 始终排除默认发现、后台预取和原生 Skill 安装；下一轮再次选择会重新加入本轮要求。初始化会创建该复选框，但不会自动勾选。
 
-认证优先级为：已保存的 `config.token` → 非空 `NOTION_API_TOKEN` → 已有 `ntn login` 登录态。保存的 token 以明文存入私有配置文件；`ctl config show` 只显示是否已配置。[设置与移除 token](docs/usage.md#authentication)。
+认证优先级为：已保存的 `config.token` → 非空 `NOTION_API_TOKEN`；缺少凭据返回 `AUTH_REQUIRED`。保存的 token 以明文存入私有配置文件；`ctl config show` 只显示是否已配置。[设置与移除 token](docs/usage.md#authentication)。
 
 ### 2. 检查访问权限，选择工作流
 
@@ -247,7 +247,7 @@ ntn-skills ctl builtin update notion/ntn-skills
 - 历史本地验证覆盖 macOS arm64 的 Node.js 24.20.0 和 Linux arm64 的 Node.js 22.19.0 上的 npm 安装与预置快照离线行为；后者现已不受支持。真实 Notion 读取使用 macOS 和 `ntn` 0.22.12 验证。CI 配置为 Ubuntu、macOS 15 上的 Node.js 22.22.3 和 24.20.0；工作流配置不代表新变更已运行成功。Windows 未验证。
 - 内容写入、`ctl builtin publish` 和同步的 `connect/run/apply` 可能修改内容。旧 Publication 流程支持 `--progress` 输出 stderr 阶段与耗时，并保留冻结输入和回执；中断后按返回指引用 `operation resume OPERATION_ID` 在原发布上继续。共享库使用[各自的恢复入口](docs/shared-authoring.md#handle-an-interrupted-operation)，无法确认的写入仍明确报错。本地同步检查原有回执，未确认收敛时返回原 operation 和下一步指引。客户端版本检查不等于原子提交。[发布恢复](docs/usage.md#creating-importing-exporting-and-updating-skills)。
 - 配置默认位于 `~/.config/ntn-skills/config.json`；快照、上传暂存和同步恢复状态位于 `~/.local/state/ntn-skills`；可丢弃观察缓存位于 `~/.cache/ntn-skills`。受管 builtin 位于 `~/.local/share/ntn-skills`，可用 `NTN_SKILLS_DATA_HOME` 或 XDG 数据根覆盖。正文默认五分钟、目录元数据默认 60 秒；[缓存策略与清理](docs/usage.md#cache-policy-and-cleanup)说明配置及系统废纸篓保留。
-- 在线操作通过 `ntn` 和 Notion 的签名下载 URL 完成。未固定版本的离线查找必须能安全确定本地身份范围；官方登录身份可能仍需在线检查。缓存观察不能证明当前权限。CLI 自身不发送遥测请求；`ntn` 有自己的政策。导入的脚本不会自动执行。
+- 在线操作通过项目自己的 HTTP 引擎和 Notion 签名下载 URL 完成。未固定版本的离线查找必须能安全确定本地凭据范围；缓存观察不能证明当前权限。CLI 不发送遥测请求，导入的脚本不会自动执行。
 
 详见[配置与存储](docs/protocol.md#environment-and-local-storage)、[错误恢复](docs/protocol.md#errors) 和[安全与隐私](SECURITY.md)。
 

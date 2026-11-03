@@ -36,6 +36,7 @@ import {
   portableZip,
   portableFiles,
   readPortable,
+  portableRelationSelection,
 } from "./portable.ts"
 import type { PortableSkill } from "./portable.ts"
 import { PortableSourceDecoder, portableSourceDecoder } from "./portable-source.ts"
@@ -476,6 +477,7 @@ export interface ApplyOptions extends Omit<WriteOptions, "input" | "path"> {
   readonly description?: string
   readonly defaultContext?: boolean
   readonly members?: readonly string[]
+  readonly requires?: readonly string[]
 }
 
 interface MutationOutcomeFields {
@@ -593,7 +595,8 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
           options.name === undefined &&
           options.description === undefined &&
           options.defaultContext === undefined &&
-          options.members === undefined
+          options.members === undefined &&
+          options.requires === undefined
         )
           throw fail(
             "INVALID_ARGUMENT",
@@ -649,7 +652,7 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
           fail("WRITE_CONFLICT", "The exact shared apply target changed after the pinned read."),
         )
       const loaded = options.input === undefined ? undefined : yield* loadImport(options.input)
-      const files = yield* Effect.try({
+      const imported = yield* Effect.try({
         try: () => {
           const packaged = loaded?.files.some((file) => file.path === MANIFEST)
             ? readPortable(loaded.files)
@@ -664,7 +667,14 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
               "INVALID_CONTENT_SOURCE",
               "A shared apply package must preserve the canonical kind/main path and cannot supply hidden legacy projection authority.",
             )
-          return packaged?.files ?? loaded?.files ?? []
+          return {
+            files: packaged?.files ?? loaded?.files ?? [],
+            ...(packaged?.relations === undefined ? {} : { portableRelations: packaged.relations }),
+            ...portableRelationSelection(packaged?.relations, shared.library_id, {
+              ...(options.members === undefined ? {} : { members: options.members }),
+              ...(options.requires === undefined ? {} : { requires: options.requires }),
+            }),
+          }
         },
         catch: (error) =>
           error instanceof SkillsError
@@ -674,12 +684,11 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
       return yield* sharedApplyResult(
         current,
         {
-          files,
+          ...imported,
           remove: options.remove,
           name: options.name,
           description: options.description,
           defaultContext: options.defaultContext,
-          members: options.members,
           dryRun: options.dryRun,
         },
         "apply",
@@ -708,6 +717,11 @@ export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
           ? readPortable(loaded.files)
           : undefined
         const authored = packaged ? authoredPortable(packaged) : undefined
+        if (authored?.relations !== undefined || options.requires !== undefined)
+          throw fail(
+            "PORTABLE_RELATION_SCOPE",
+            "Shared relation selections require their original shared library.",
+          )
         if (authored && (authored.kind !== portable.kind || authored.main !== portable.main))
           throw fail(
             "INVALID_CONTENT_SOURCE",
@@ -790,6 +804,7 @@ export interface CreateOptions extends ImportMetadataOptions, PublicationOptions
   readonly dryRun?: boolean
   readonly storage?: "markdown_files" | "notion_blocks"
   readonly members?: readonly string[]
+  readonly requires?: readonly string[]
   /** Internal receipt policy. Public create never sets this. */
   readonly allowSameName?: boolean
   /** Change only the exact target page checkbox when explicitly requested. */
@@ -876,6 +891,7 @@ function saveInput(
         })
         return {
           ...(portable?.projection ? { projection: portable.projection } : {}),
+          ...(portable?.relations === undefined ? {} : { relations: portable.relations }),
           kind: portable?.kind ?? "skill",
           name: doc.name,
           description: doc.description,
@@ -1005,10 +1021,18 @@ function saveDocument(
         {
           files,
           remove: removed,
+          ...(portable.relations === undefined ? {} : { portableRelations: portable.relations }),
           name: options.name ?? portable.name,
           description: options.description ?? portable.description,
           defaultContext: options.defaultContext,
-          members: options.members,
+          ...(yield* Effect.try({
+            try: () =>
+              portableRelationSelection(portable.relations, locator.library_id, {
+                ...(options.members === undefined ? {} : { members: options.members }),
+                ...(options.requires === undefined ? {} : { requires: options.requires }),
+              }),
+            catch: (error) => error as SkillsError,
+          })),
           dryRun: options.dryRun,
         },
         operation === "create" ? "replace" : operation,
@@ -1035,10 +1059,18 @@ function saveDocument(
             "A shared library uses its registered native Skills and Files pages; choose native storage.",
           ),
         )
+      const relations = yield* Effect.try({
+        try: () =>
+          portableRelationSelection(portable.relations, selectedSource.shared_library!.library_id, {
+            ...(options.members === undefined ? {} : { members: options.members }),
+            ...(options.requires === undefined ? {} : { requires: options.requires }),
+          }),
+        catch: (error) => error as SkillsError,
+      })
       const result = yield* createSharedNative(selectedSource.shared_library, {
         portable,
         ...(options.defaultContext === undefined ? {} : { defaultContext: options.defaultContext }),
-        ...(options.members === undefined ? {} : { members: options.members }),
+        ...relations,
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
       })
       if (result.status === "planned")
@@ -1050,6 +1082,13 @@ function saveDocument(
         })
       return mutationOutcome(yield* consumeSharedCreation(selectedSource.shared_library, result))
     }
+    if (options.requires !== undefined || portable.relations !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "Requires needs a shared library with registered native relation identities.",
+        ),
+      )
     if (
       portable.main !== entrypointFor(portable.kind) &&
       portable.files.some(

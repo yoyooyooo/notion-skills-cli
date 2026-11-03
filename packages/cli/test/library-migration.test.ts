@@ -1,4 +1,5 @@
-import { beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { createHttpProbe } from "./http-probe.ts"
 import { access, chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
@@ -17,6 +18,8 @@ import {
 } from "../src/commands-library-migration-input.ts"
 
 const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
+const http = createHttpProbe()
+afterAll(() => http.close())
 const node = (() => {
   const executable = Bun.which("node")
   if (!executable) throw new Error("Production migration-command tests require Node.js.")
@@ -40,13 +43,7 @@ beforeAll(async () => {
 // Retain each controlled filesystem root for review; no permanent cleanup.
 const directory = () => mkdtemp(join(tmpdir(), "ntn-library-migration-cli-"))
 async function invoke(root: string, args: string[]) {
-  const marker = join(root, "unexpected-online"),
-    blocked = join(root, "blocked-ntn")
-  await writeFile(
-    blocked,
-    `#!${node}\nrequire('node:fs').appendFileSync(${JSON.stringify(marker)}, 'called\\n'); process.exitCode=97;\n`,
-  )
-  await chmod(blocked, 0o700)
+  const requestsBefore = http.calls()
   const child = Bun.spawn([node, main, "ctl", "library", "migration", ...args], {
     cwd: root,
     stdout: "pipe",
@@ -54,12 +51,11 @@ async function invoke(root: string, args: string[]) {
     stdin: "ignore",
     env: {
       ...process.env,
-      NOTION_API_TOKEN: "",
+      NOTION_API_TOKEN: "controlled-offline-probe-token",
       NOTION_WORKSPACE_ID: "",
-      NOTION_API_BASE_URL: "",
+      NOTION_API_BASE_URL: http.origin,
       HOME: join(root, "home"),
       NTN_SKILLS_DATA_HOME: "",
-      NTN_SKILLS_NTN_BIN: blocked,
       NTN_SKILLS_HOME: join(root, "state"),
       NTN_SKILLS_CONFIG_HOME: join(root, "config"),
       NTN_SKILLS_CACHE_HOME: join(root, "cache"),
@@ -74,10 +70,7 @@ async function invoke(root: string, args: string[]) {
     new Response(child.stderr).text(),
     child.exited,
   ])
-  const online = await access(marker).then(
-    () => true,
-    () => false,
-  )
+  const online = http.calls() !== requestsBefore
   return { stdout, stderr, exit, online }
 }
 function failed(result: Awaited<ReturnType<typeof invoke>>, code: string) {

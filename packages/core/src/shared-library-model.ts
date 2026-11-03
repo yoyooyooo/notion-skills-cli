@@ -1,4 +1,6 @@
 import { Schema } from "effect"
+export const SharedSkillRelationFieldSchema = Schema.Literals(["Members", "Requires"])
+export type SharedSkillRelationField = typeof SharedSkillRelationFieldSchema.Type
 
 /** Pure descriptor schemas. This module must not import model or a Notion service. */
 export const LIBRARY_MARKER = "ntn-skills-library:v1 "

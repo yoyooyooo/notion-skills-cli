@@ -13,11 +13,13 @@ function unsupported(): never {
 /** Forward serialization of text blocks, not a comparison normalizer. Code
  * bytes and explicit link destinations must never be rewritten to fit a reply.
  */
-function inline(raw: string): string {
+function inline(raw: string, literalUnderscores = false): string {
   const parts = splitNativeInlineCode(raw)
   if (parts === undefined) return unsupported()
   if (parts.some((part) => part.code))
-    return parts.map((part) => (part.code ? part.raw : inline(part.raw))).join("")
+    return parts
+      .map((part) => (part.code ? part.raw : inline(part.raw, literalUnderscores)))
+      .join("")
   const tokens = SourceLexer.lexInline(raw)
   if (tokens.map((token) => token.raw).join("") !== raw) return unsupported()
   const output: string[] = []
@@ -49,6 +51,10 @@ function inline(raw: string): string {
           return token.raw
         }
         if (token.type === "codespan" || token.type === "image") return token.raw
+        // This forward policy changes only parsed literal text, never code,
+        // native tag attributes, existing escapes or a link destination.
+        if (literalUnderscores && token.type === "text")
+          return token.raw.replace(/(?<!\\)_/gu, "\\_").replace(/\n/gu, "<br />")
         return token.raw.replace(/\n/gu, "<br />")
       })(),
     )
@@ -56,7 +62,7 @@ function inline(raw: string): string {
   return output.join("")
 }
 
-function item(token: Tokens.ListItem): string {
+function item(token: Tokens.ListItem, literalUnderscores = false): string {
   if (token.tokens.length !== 1 || !["paragraph", "text"].includes(token.tokens[0]!.type))
     return token.raw
   const text = token.text.replace(/\n+$/u, "")
@@ -77,29 +83,36 @@ function item(token: Tokens.ListItem): string {
     if (at === 0) firstPrefix = prefix
   }
   if (lines.slice(content.length).some((line) => line !== "")) return unsupported()
-  return firstPrefix + inline(text) + (/\n*$/u.exec(token.raw)?.[0] ?? "")
+  return firstPrefix + inline(text, literalUnderscores) + (/\n*$/u.exec(token.raw)?.[0] ?? "")
 }
 
-function block(token: Token): string {
+function block(token: Token, literalUnderscores = false): string {
   if (token.type === "paragraph" || token.type === "text") {
     if (typeof token.text !== "string") return unsupported()
     const at = token.raw.indexOf(token.text)
     if (at < 0) return unsupported()
-    return token.raw.slice(0, at) + inline(token.text) + token.raw.slice(at + token.text.length)
+    return (
+      token.raw.slice(0, at) +
+      inline(token.text, literalUnderscores) +
+      token.raw.slice(at + token.text.length)
+    )
   }
   if (token.type === "list") {
     if (!Array.isArray(token.items)) return unsupported()
     if (token.items.map((entry: Tokens.ListItem) => entry.raw).join("") !== token.raw)
       return unsupported()
-    return token.items.map(item).join("")
+    return token.items.map((entry: Tokens.ListItem) => item(entry, literalUnderscores)).join("")
   }
   // Fenced code, native XML, headings, tables and nested quote structures keep
   // their previous policy bytes; an unproven transform still fails readback.
   return token.raw
 }
 
-export function projectNativeTextBreaks(markdown: string): string {
+export function projectNativeTextBreaks(
+  markdown: string,
+  options: { readonly literalUnderscores?: boolean } = {},
+): string {
   const tokens = SourceLexer.lex(markdown)
   if (tokens.map((token) => token.raw).join("") !== markdown) return unsupported()
-  return tokens.map(block).join("")
+  return tokens.map((token) => block(token, options.literalUnderscores)).join("")
 }

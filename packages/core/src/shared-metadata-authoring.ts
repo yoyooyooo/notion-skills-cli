@@ -15,11 +15,16 @@ export type SharedMetadataUpdateOptions = {
   readonly description?: string
   readonly defaultContext?: boolean
   readonly members?: readonly string[]
+  readonly requires?: readonly string[]
   readonly dryRun?: boolean
 }
 
 /** Exact native page IDs and same-library stable entrypoint refs; never names or bodies. */
-export function resolveSharedMetadataMembers(library: SharedLibrary, members: readonly string[]) {
+export function resolveSharedMetadataMembers(
+  library: SharedLibrary,
+  members: readonly string[],
+  field: "Members" | "Requires" = "Members",
+) {
   return Effect.gen(function* () {
     const selected = yield* Effect.try({
       try: () =>
@@ -28,7 +33,7 @@ export function resolveSharedMetadataMembers(library: SharedLibrary, members: re
           if (target.snapshot || (target.path && target.path !== "SKILL.md"))
             throw fail(
               "INVALID_MEMBERS",
-              "Members require current exact Skill page IDs or unpinned main refs.",
+              `${field} require current exact Skill page IDs or unpinned main refs.`,
             )
           const page = pageId(target.selector)
           if (page !== null && page !== undefined) return { page }
@@ -109,6 +114,7 @@ export function updateSharedSkillMetadata(current: Snapshot, options: SharedMeta
     const changes: SharedMetadataChange[] = []
     const before: SharedMetadataChange[] = []
     let members: readonly string[] | undefined
+    let required: readonly string[] | undefined
     if (options.name !== undefined) {
       changes.push({ field: "Name", value: options.name })
       before.push({ field: "Name", value: current.record.name })
@@ -121,13 +127,20 @@ export function updateSharedSkillMetadata(current: Snapshot, options: SharedMeta
       changes.push({ field: "Default Context", value: options.defaultContext })
       before.push({ field: "Default Context", value: current.record.default_context })
     }
-    if (options.members !== undefined) {
-      if (current.record.kind !== "router" || current.router_members === undefined)
+    for (const field of ["Members", "Requires"] as const) {
+      const requested = field === "Members" ? options.members : options.requires
+      if (requested === undefined) continue
+      const frozen =
+        field === "Members" ? (current.members ?? current.router_members) : current.required
+      if (current.record.kind === "prompt" || frozen === undefined)
         return yield* Effect.fail(
-          fail("INVALID_MEMBERS", "Native Members changes require a fresh complete shared Router."),
+          fail(
+            "INVALID_MEMBERS",
+            `Native ${field} changes require a fresh complete shared Skill or Router with a registered relation.`,
+          ),
         )
       const previous: string[] = []
-      for (const member of current.router_members) {
+      for (const member of frozen) {
         const id = property(member.metadata).page_id
         if (typeof id !== "string" || pageId(id) !== id)
           return yield* Effect.fail(
@@ -138,9 +151,11 @@ export function updateSharedSkillMetadata(current: Snapshot, options: SharedMeta
           )
         previous.push(id)
       }
-      before.push({ field: "Members", value: previous.sort() })
-      members = yield* resolveSharedMetadataMembers(library, options.members)
-      changes.push({ field: "Members", value: members })
+      before.push({ field, value: previous.sort() })
+      const selected = yield* resolveSharedMetadataMembers(library, requested, field)
+      if (field === "Members") members = selected
+      else required = selected
+      changes.push({ field, value: selected })
     }
     if (changes.length === 0)
       return yield* Effect.fail(
@@ -163,6 +178,7 @@ export function updateSharedSkillMetadata(current: Snapshot, options: SharedMeta
       metadata_operation_id: plan.operation_id,
       changed_fields: plan.changes.map((change) => change.field),
       ...(members === undefined ? {} : { requested_members: members }),
+      ...(required === undefined ? {} : { requested_required: required }),
     }
   })
 }

@@ -3,6 +3,32 @@ export type RequestKind = "notion_metadata" | "notion_body" | "notion_write" | "
 export type BodyRequestKind = "current_body" | "retained_body" | "unclassified_body"
 export type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE" | "HEAD"
 export type RequestOutcome = "success" | "failure" | "cancelled"
+export type RequestResponseObservation = {
+  readonly outcome?: RequestOutcome
+  readonly responseBytes?: number
+  readonly httpStatus?: number
+  readonly requestId?: string
+  readonly rateLimitReason?: string
+  readonly retryAfterSeconds?: number
+}
+export type RequestTraceEvent =
+  | {
+      readonly event: "attempt"
+      readonly attempt: number
+      readonly kind: RequestKind
+      readonly body_kind: BodyRequestKind | null
+      readonly method: RequestMethod
+      readonly started_ms: number
+      readonly duration_ms: number
+      readonly outcome: RequestOutcome
+      readonly request_bytes: number | null
+      readonly response_bytes: number | null
+      readonly http_status: number | null
+      readonly request_id: string | null
+      readonly rate_limit_reason: string | null
+      readonly retry_after_seconds: number | null
+    }
+  | { readonly event: "wait"; readonly kind: "queue" | "retry"; readonly milliseconds: number }
 export type RequestObservation = {
   readonly path: string
   readonly method: RequestMethod
@@ -93,10 +119,29 @@ export type RequestMetricsSnapshot = {
   readonly outcomes: Readonly<Record<RequestOutcome, number>>
   readonly request_duration: DurationSummary
   readonly operation_duration: DurationSummary
+  /** Opt-in, bounded diagnostics. Never contains request paths, bodies or headers. */
+  readonly trace: readonly RequestTraceEvent[]
+  readonly trace_enabled: boolean
+  readonly trace_dropped: number
 }
 
-export function createRequestMetrics(options: { readonly now?: () => number } = {}) {
+export function createRequestMetrics(
+  options: { readonly now?: () => number; readonly traceLimit?: number } = {},
+) {
   const now = options.now ?? (() => performance.now())
+  const traceLimit = options.traceLimit ?? 0
+  if (!Number.isSafeInteger(traceLimit) || traceLimit < 0 || traceLimit > 10_000)
+    throw new TypeError("traceLimit must be an integer from 0 to 10000.")
+  const trace: RequestTraceEvent[] = []
+  let traceDropped = 0
+  let attempts = 0
+  const retain = (entry: RequestTraceEvent) => {
+    if (traceLimit === 0) return
+    if (trace.length < traceLimit) trace.push(entry)
+    else traceDropped += 1
+  }
+  const safeLabel = (value: string | undefined) =>
+    value !== undefined && /^[A-Za-z0-9_.:/-]{1,160}$/u.test(value) ? value : null
   const requests: Record<RequestKind, number> = {
     notion_metadata: 0,
     notion_body: 0,
@@ -128,6 +173,7 @@ export function createRequestMetrics(options: { readonly now?: () => number } = 
   return {
     begin(request: RequestObservation) {
       const sentAt = now()
+      const attempt = ++attempts
       const kind = classifyRequest(request)
       const provider = request.provider ?? "notion"
       if (request.requestBytes !== undefined) nonNegative(request.requestBytes, "requestBytes")
@@ -146,9 +192,7 @@ export function createRequestMetrics(options: { readonly now?: () => number } = 
       inFlight += 1
       peak = Math.max(peak, inFlight)
       let finished = false
-      return (
-        result: { readonly outcome?: RequestOutcome; readonly responseBytes?: number } = {},
-      ) => {
+      return (result: RequestResponseObservation = {}) => {
         if (finished) return
         if (result.responseBytes !== undefined) nonNegative(result.responseBytes, "responseBytes")
         const elapsed = nonNegative(now() - sentAt, "elapsed")
@@ -158,6 +202,33 @@ export function createRequestMetrics(options: { readonly now?: () => number } = 
         if (result.responseBytes === undefined) unknownResponseBytes += 1
         else responseBytes += result.responseBytes
         requestDurations.push(elapsed)
+        retain({
+          event: "attempt",
+          attempt,
+          kind,
+          body_kind: bodyKind ?? null,
+          method: request.method,
+          started_ms: sentAt,
+          duration_ms: elapsed,
+          outcome: result.outcome ?? "success",
+          request_bytes: request.requestBytes ?? null,
+          response_bytes: result.responseBytes ?? null,
+          http_status:
+            result.httpStatus !== undefined &&
+            Number.isInteger(result.httpStatus) &&
+            result.httpStatus >= 100 &&
+            result.httpStatus <= 599
+              ? result.httpStatus
+              : null,
+          request_id: safeLabel(result.requestId),
+          rate_limit_reason: safeLabel(result.rateLimitReason),
+          retry_after_seconds:
+            result.retryAfterSeconds !== undefined &&
+            Number.isFinite(result.retryAfterSeconds) &&
+            result.retryAfterSeconds >= 0
+              ? result.retryAfterSeconds
+              : null,
+        })
       }
     },
     coalesced() {
@@ -167,6 +238,7 @@ export function createRequestMetrics(options: { readonly now?: () => number } = 
       nonNegative(milliseconds, "wait")
       if (kind === "queue") queueWait += milliseconds
       else retryWait += milliseconds
+      retain({ event: "wait", kind, milliseconds })
     },
     /** Record one real end-to-end operation, not one request or an invented matrix sample. */
     operation(milliseconds: number) {
@@ -192,6 +264,9 @@ export function createRequestMetrics(options: { readonly now?: () => number } = 
         outcomes: { ...outcomes },
         request_duration: durations(requestDurations),
         operation_duration: durations(operationDurations),
+        trace: [...trace],
+        trace_enabled: traceLimit > 0,
+        trace_dropped: traceDropped,
       }
     },
   }

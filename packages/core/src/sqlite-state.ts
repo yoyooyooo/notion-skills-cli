@@ -146,6 +146,24 @@ const sharedLocalDomains: readonly {
     address: /^operations\/shared-native-create\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/shared-native-create-owned",
+    category: "dispatch",
+    address:
+      /^operations\/shared-native-create-owned\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-relation-schema",
+    category: "dispatch",
+    address:
+      /^operations\/shared-relation-schema\/[a-f0-9]{64}\/relations-schema-[a-f0-9]{64}-(?:schema|descriptor)\.json$/u,
+  },
+  {
+    prefix: "operations/owned-page-archive",
+    category: "dispatch",
+    address:
+      /^operations\/owned-page-archive\/[a-f0-9]{64}\/(?:p_[A-Za-z0-9-]{1,100}|skill-create-[a-f0-9]{64})\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[0-9]{20}\.json$/u,
+  },
+  {
     prefix: "operations/shared-native-recovery",
     category: "dispatch",
     address: /^operations\/shared-native-recovery\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,

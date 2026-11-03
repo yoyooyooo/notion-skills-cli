@@ -59,13 +59,15 @@ function withoutNativeCode(text: string): string {
 }
 
 /** Preserve line positions while removing fenced code, inline code and comments. */
-function prose(markdown: string, policy: SharedNotionMarkdownVersion): string {
+export function referenceProse(markdown: string, policy: SharedNotionMarkdownVersion = 2): string {
   let fence: { marker: string; length: number } | undefined
   const lines = markdown
-    .replace(/\r\n/gu, "\n")
+    .replace(/\r/gu, " ")
     .split("\n")
     .map((line) => {
-      const found = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line)
+      const found = /^(?:[ \t]*>[ \t]*)*[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})(.*)$/u.exec(
+        line,
+      )
       if (fence !== undefined) {
         if (
           found !== null &&
@@ -84,7 +86,7 @@ function prose(markdown: string, policy: SharedNotionMarkdownVersion): string {
     })
   const raw = lines
     .join("\n")
-    .replace(/^---\n[\s\S]*?\n(?:---|\.\.\.)(?:\n|$)/u, (frontmatter) =>
+    .replace(/^---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
       frontmatter.replace(/[^\n]/gu, " "),
     )
     .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => comment.replace(/[^\n]/gu, " "))
@@ -108,7 +110,12 @@ function prose(markdown: string, policy: SharedNotionMarkdownVersion): string {
     for (let at = start; at < end + width; at += 1) if (text[at] !== "\n") output[at] = " "
     start = end + width - 1
   }
-  return output.join("")
+  const masked = output.join("")
+  return masked.replace(
+    /<(script|style|pre)\b[^>]*>[\s\S]*?<\/\1\s*>/giu,
+    (literal: string, _tag: string, offset: number) =>
+      escaped(masked, offset) ? literal : literal.replace(/[^\n]/gu, " "),
+  )
 }
 function closingBracket(text: string, start: number): number {
   let depth = 1
@@ -201,7 +208,7 @@ export function sharedMarkdownReferences(
   markdown: string,
   policy: SharedNotionMarkdownVersion = 5,
 ): readonly SharedFileReference[] {
-  const text = prose(markdown, policy)
+  const text = referenceProse(markdown, policy)
   const definitions = new Map<string, string>()
   const definitionRanges: Array<readonly [number, number]> = []
   const definitionPattern = /^ {0,3}\[([^\]\n]+)\]:[ \t]*/gmu

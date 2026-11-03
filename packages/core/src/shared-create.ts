@@ -25,6 +25,10 @@ import { loadSharedLibrary, type SharedLibrary } from "./shared-library.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import { appendSharedRecord, canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
+import {
+  completeSharedSkillRelationIds,
+  type SharedSkillRelationField,
+} from "./shared-router-members.ts"
 import { sha256, Store } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
 import {
@@ -35,6 +39,7 @@ import {
   type SharedCreateBinding as Binding,
 } from "./shared-create-outcome.ts"
 import { completedSharedCreateRecovery } from "./shared-create-recovery-completion.ts"
+import { saveSharedCreateOwnership } from "./shared-create-ownership.ts"
 import {
   validateRetainedMigrationConversion,
   validateSharedMigrationConversion,
@@ -263,13 +268,15 @@ function resolveMembers(
   portable: PortableSkill,
   selectors: readonly string[] | undefined,
   records: Inventory,
+  field: SharedSkillRelationField = "Members",
 ) {
   if (selectors === undefined) return [] as readonly string[]
-  if (portable.kind !== "router") throw fail("INVALID_MEMBERS", "Only Routers may specify Members.")
-  if (library.skills.property_ids.Members === undefined)
+  if (portable.kind === "prompt")
+    throw fail("INVALID_MEMBERS", "Only Skills and Routers may specify native relations.")
+  if (library.skills.property_ids[field] === undefined)
     throw fail(
       "SHARED_ROUTER_MEMBERS_UNAVAILABLE",
-      "The selected library has no registered native Members relation.",
+      `The selected library has no registered native ${field} relation.`,
     )
   const result = new Set<string>()
   for (const selector of selectors) {
@@ -306,6 +313,8 @@ function resolveMembers(
         "SHARED_SKILL_ID_CONFLICT",
         "A selected member's stable identity has multiple native pages.",
       )
+    if (result.has(record.locator.page_id))
+      throw fail("INVALID_MEMBERS", `${field} repeats an exact shared Skill identity.`)
     result.add(record.locator.page_id)
   }
   return [...result].sort()
@@ -329,7 +338,7 @@ function checkInventory(plan: SharedCreatePlan, records: Inventory) {
       "The selected shared library already contains another Skill with this name or alias.",
       { name: plan.name },
     )
-  for (const member of plan.members) {
+  for (const member of [...new Set([...plan.members, ...(plan.requires ?? [])])]) {
     const matches = records.filter(({ record }) => record.locator.page_id === member),
       selected = matches[0]?.record
     if (
@@ -343,7 +352,7 @@ function checkInventory(plan: SharedCreatePlan, records: Inventory) {
         "A frozen member is no longer one enabled same-library Skill.",
         { page_id: member },
       )
-    if (plan.version === 2) {
+    if (plan.version === 2 && plan.members.includes(member)) {
       const binding = plan.origin.member_bindings.find((item) => item.page_id === member)
       if (
         !binding ||
@@ -365,6 +374,7 @@ export function prepareSharedCreate(
     readonly portable: PortableSkill
     readonly defaultContext?: boolean
     readonly members?: readonly string[]
+    readonly requires?: readonly string[]
   },
 ) {
   return Effect.gen(function* () {
@@ -374,10 +384,17 @@ export function prepareSharedCreate(
     const members = yield* createChecked(() =>
       resolveMembers(library, input.portable, input.members, records),
     )
+    const required =
+      input.requires === undefined
+        ? undefined
+        : yield* createChecked(() =>
+            resolveMembers(library, input.portable, input.requires, records, "Requires"),
+          )
     const plan = yield* makeSharedCreatePlan(library, {
       portable: input.portable,
       ...(input.defaultContext === undefined ? {} : { defaultContext: input.defaultContext }),
-      ...(input.portable.kind === "router" ? { members } : {}),
+      ...(input.portable.kind === "router" || input.members !== undefined ? { members } : {}),
+      ...(required === undefined ? {} : { requires: required }),
     })
     yield* guardOriginalCreate(scope, plan)
     yield* createChecked(() => checkInventory(plan, records))
@@ -465,9 +482,12 @@ function recordProperties(plan: SharedCreatePlan) {
     [ids.Projection!]: rich(createProjectionBaseline(main)),
     [ids.Source!]: rich(plan.version === 2 ? (plan.origin.candidate.source?.source_id ?? "") : ""),
     [ids.References!]: rich(""),
-    ...(plan.content_kind === "router"
+    ...(plan.content_kind === "router" || plan.members.length > 0
       ? { [ids.Members!]: { relation: plan.members.map((id) => ({ id })) } }
       : {}),
+    ...(plan.requires === undefined
+      ? {}
+      : { [ids.Requires!]: { relation: plan.requires.map((id) => ({ id })) } }),
   }
 }
 function spans(value: string) {
@@ -690,112 +710,43 @@ function verifyIndex(
           )
       }
     }
-    if (plan.content_kind === "router") {
-      const members = yield* sharedCreateMemberIds(library, page)
-      if (canonicalSharedJson(members) !== canonicalSharedJson(plan.members))
+    for (const [field, expected] of [
+      [
+        "Members",
+        plan.content_kind === "router" || plan.members.length > 0 ? plan.members : undefined,
+      ],
+      ["Requires", plan.requires],
+    ] as const) {
+      if (expected === undefined) continue
+      const members = yield* sharedCreateMemberIds(library, page, field)
+      if (canonicalSharedJson(members) !== canonicalSharedJson(expected))
         return yield* Effect.fail(
           fail(
             "SHARED_CREATE_REVIEW_REQUIRED",
-            "The complete native Members relation differs from the frozen current member identities.",
+            `The complete native ${field} relation differs from the frozen current target identities.`,
           ),
         )
     }
     return index
   })
 }
-export function sharedCreateMemberIds(library: SharedLibrary, page: string) {
+export function sharedCreateMemberIds(
+  library: SharedLibrary,
+  page: string,
+  field: SharedSkillRelationField = "Members",
+) {
   return Effect.gen(function* () {
-    const api = yield* Notion,
-      raw = yield* api.request(`v1/pages/${page}`)
-    const inline = yield* createChecked(() => {
-      const relation = sharedSkillProperty(raw, library, "Members")
-      if (
-        relation.type !== "relation" ||
-        !Array.isArray(relation.relation) ||
-        typeof relation.has_more !== "boolean"
-      )
-        throw fail("SHARED_CREATE_INCOMPLETE", "The native Members relation is incomplete.")
-      const ids = relation.relation.map((item) => property(item).id)
-      if (
-        ids.some((id) => typeof id !== "string" || pageId(id) !== id) ||
-        new Set(ids).size !== ids.length
-      )
-        throw fail(
-          "SHARED_CREATE_INCOMPLETE",
-          "The native Members relation contains invalid or repeated identities.",
-        )
-      return {
-        ids: ids.filter((id): id is string => typeof id === "string"),
-        more: relation.has_more,
-      }
-    })
-    if (!inline.more) return [...inline.ids].sort()
-    const ids = new Set<string>(),
-      cursors = new Set<string>(),
-      fieldId = library.skills.property_ids.Members!
-    let cursor: string | undefined
-    do {
-      const query = new URLSearchParams({
-        page_size: "100",
-        ...(cursor === undefined ? {} : { start_cursor: cursor }),
-      })
-      const response = yield* api.request(`v1/pages/${page}/properties/${fieldId}?${query}`)
-      const list = yield* createChecked(() => {
-        const raw = property(response),
-          metadata = property(raw.property_item)
-        if (
-          raw.object !== "list" ||
-          raw.type !== "property_item" ||
-          metadata.id !== fieldId ||
-          metadata.type !== "relation"
-        )
-          throw fail("SHARED_CREATE_INCOMPLETE", "Members pagination belongs to another property.")
-        const list = decode(InventorySchema, response)
-        if (
-          list.has_more
-            ? typeof metadata.next_url !== "string" || metadata.next_url === ""
-            : metadata.next_url !== null
-        )
-          throw fail("SHARED_CREATE_INCOMPLETE", "Members pagination metadata is incomplete.")
-        for (const value of list.results) {
-          const item = property(value),
-            id = property(item.relation).id
-          if (
-            item.object !== "property_item" ||
-            item.id !== fieldId ||
-            item.type !== "relation" ||
-            typeof id !== "string" ||
-            pageId(id) !== id ||
-            ids.has(id)
-          )
-            throw fail(
-              "SHARED_CREATE_INCOMPLETE",
-              "Members pagination contains a foreign or repeated relation.",
-            )
-          ids.add(id)
-        }
-        return list
-      })
-      if (!list.has_more) {
-        if (list.next_cursor !== null)
-          return yield* Effect.fail(
-            fail("SHARED_CREATE_INCOMPLETE", "Final Members page has an unexpected cursor."),
-          )
-        cursor = undefined
-      } else {
-        if (!list.next_cursor || cursors.has(list.next_cursor))
-          return yield* Effect.fail(
-            fail("SHARED_CREATE_INCOMPLETE", "Members pagination did not advance."),
-          )
-        cursors.add(list.next_cursor)
-        cursor = list.next_cursor
-      }
-    } while (cursor !== undefined)
-    if (ids.size <= inline.ids.length || inline.ids.some((id) => !ids.has(id)))
+    const raw = yield* (yield* Notion).request(`v1/pages/${page}`)
+    const record = yield* createChecked(() =>
+      sharedRecordFromPage(raw, sourceFor(library), library.skills.data_source_id),
+    )
+    if (record.locator.page_id !== page)
       return yield* Effect.fail(
-        fail("SHARED_CREATE_INCOMPLETE", "Members changed during complete relation observation."),
+        fail("SHARED_CREATE_INCOMPLETE", "Creation relation read returned another page identity."),
       )
-    return [...ids].sort()
+    return (yield* completeSharedSkillRelationIds(library, record, raw, field, {
+      allowDisabled: true,
+    })).sort()
   })
 }
 function verifyFacts(library: SharedLibrary, plan: SharedCreatePlan, page: string) {
@@ -850,13 +801,28 @@ function verifyFacts(library: SharedLibrary, plan: SharedCreatePlan, page: strin
     }
   })
 }
-function retire(plan: SharedCreatePlan, scope: string) {
+function retire(plan: SharedCreatePlan, scope: string, bindings: readonly Binding[]) {
   return Effect.gen(function* () {
+    const store = yield* Store
+    const key = yield* sharedCreateJournalKey(scope, plan.library.library_id, plan.operation_id)
+    const journal = yield* store.readJson(key, SharedCreateJournalSchema)
+    if (journal?.ownership_receipt_version === 1) {
+      if (
+        journal.scope !== scope ||
+        journal.library_id !== plan.library.library_id ||
+        canonicalSharedJson(journal.plan) !== canonicalSharedJson(plan)
+      )
+        return yield* Effect.fail(
+          fail(
+            "STATE_CONFLICT",
+            "Ownership evidence differs from the original local creation dispatch.",
+          ),
+        )
+      yield* saveSharedCreateOwnership(scope, plan, bindings)
+    }
     yield* invalidateSubscriptionCatalog(scope, plan.library.skills.database_id)
     yield* invalidateSnapshotCache(sharedSkillId(plan.library.library_id, plan.skill_id), scope)
-    yield* (yield* Store).retireKeys([
-      yield* sharedCreateJournalKey(scope, plan.library.library_id, plan.operation_id),
-    ])
+    yield* store.retireKeys([key])
   })
 }
 
@@ -989,7 +955,10 @@ export function loadSharedCreatePlan(
             : { projection: manifest.input_projection }),
         },
         defaultContext: manifest.default_context,
-        ...(manifest.content_kind === "router" ? { members: manifest.members } : {}),
+        ...(manifest.content_kind === "router" || manifest.members.length > 0
+          ? { members: manifest.members }
+          : {}),
+        ...(manifest.requires === undefined ? {} : { requires: manifest.requires }),
       },
       projectionVersion,
     )
@@ -1117,7 +1086,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       })
     // The completed operation is historical. Later user edits/renames are not
     // replaced, rebound to its original bytes or published as a latest snapshot.
-    yield* retire(plan, scope)
+    yield* retire(plan, scope, outcome.bindings)
     return {
       status: "created" as const,
       operation: "create" as const,
@@ -1183,7 +1152,13 @@ export function executeSharedCreate(
     const records = yield* inventory(library)
     if (yield* createChecked(() => checkInventory(plan, records)))
       return yield* reconcileSharedCreate(library, plan)
-    yield* store.writeJson(key, { version: 1, scope, library_id: library.library_id, plan })
+    yield* store.writeJson(key, {
+      version: 1,
+      scope,
+      library_id: library.library_id,
+      plan,
+      ownership_receipt_version: 1,
+    })
     yield* invalidateSubscriptionCatalog(scope, library.skills.database_id)
     const api = yield* Notion,
       main = plan.files.find((file) => file.path === plan.entrypoint)!
@@ -1305,7 +1280,7 @@ export function executeSharedCreate(
         "EXACT_NATIVE_TREE_AND_EVENTS_VERIFIED",
         bindings,
       )
-      yield* retire(plan, scope)
+      yield* retire(plan, scope, bindings)
       const current = yield* api.request(`v1/pages/${skillPage}`)
       const record = yield* createChecked(() =>
         sharedRecordFromPage(current, sourceFor(library), library.skills.data_source_id),
@@ -1473,6 +1448,7 @@ export function createSharedNative(
     readonly portable: PortableSkill
     readonly defaultContext?: boolean
     readonly members?: readonly string[]
+    readonly requires?: readonly string[]
     readonly dryRun?: boolean
   },
 ) {

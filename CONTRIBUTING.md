@@ -12,7 +12,7 @@ bun run dev --help
 bun run check && bun run package:check
 ```
 
-Use `bun run dev <command>` to build the current sources and execute the freshly built CLI with Node.js. Successful builds stay silent; failed builds report diagnostics on stderr and stop the command. Argv and exit status pass through to the same production entrypoint used by the package. It uses the default official `ntn` transport. The official SQLite driver uses `node:sqlite`; running the product through Bun is unsupported.
+Use `bun run dev <command>` to build the current sources and execute the freshly built CLI with Node.js. Successful builds stay silent; failed builds report diagnostics on stderr and stop the command. Argv and exit status pass through to the same production entrypoint used by the package. It uses the project's Effect HTTP engine and credential provider. The official SQLite driver uses `node:sqlite`; running the product through Bun is unsupported.
 
 A developer-owned global `ntn-skills` shim can use `exec bun run --silent "/absolute/checkout/scripts/dev.ts" "$@"`. Configure consumer hosts with `command: [ntn-skills]` and launch them in a neutral workspace outside the source checkout. The shim owns the implementation path; consumer prompts need only the public command and selected refs. See the [host integration contract](docs/host-integration.md).
 
@@ -63,4 +63,4 @@ The private core is bundled into the CLI distribution. Before release, verify th
 
 ## Reporting bugs and vulnerabilities
 
-Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for bugs and usage questions. Include the command, sanitized response, runtime and `ntn` versions, expected behavior and a minimal reproduction. Never include credentials, signed URLs, private Skill contents or personal database identifiers in public reports. Report vulnerabilities through [the private channel in SECURITY.md](SECURITY.md#reporting-a-vulnerability).
+Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for bugs and usage questions. Include the command, sanitized response, Node and package versions, expected behavior and a minimal reproduction. Never include credentials, signed URLs, private Skill contents or personal database identifiers in public reports. Report vulnerabilities through [the private channel in SECURITY.md](SECURITY.md#reporting-a-vulnerability).

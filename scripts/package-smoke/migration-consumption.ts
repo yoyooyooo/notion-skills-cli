@@ -193,12 +193,12 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
   ])
   await rejected(
     ["replace", localPath, "--target", pageId, "--name", "Renamed Consumer", "--dry-run"],
-    "NTN_UNAVAILABLE",
+    "NOTION_UNAVAILABLE",
     1,
   )
   await rejected(
     ["sync", "local", "bind", pageId, "--path", localPath, "--as", "candidate", "--dry-run"],
-    "NTN_UNAVAILABLE",
+    "NOTION_UNAVAILABLE",
     1,
   )
   await rejected(
@@ -544,13 +544,13 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
     ["export", pageId, "--output", join(scratch, "warm.zip")],
     ["list", "--database", "smoke"],
   ])
-    await rejected([...command, "--max-age", "2h"], "NTN_UNAVAILABLE", 1)
+    await rejected([...command, "--max-age", "2h"], "NOTION_UNAVAILABLE", 1)
   evidence.migrated_cache_policy = {
     max_age_ms: 7200000,
     observations: "dropped; online validation required",
   }
-  await rejected(["read", pageId, "--refresh"], "NTN_UNAVAILABLE", 1)
-  await rejected(["files", pageId, "--max-age", "0"], "NTN_UNAVAILABLE", 1)
+  await rejected(["read", pageId, "--refresh"], "NOTION_UNAVAILABLE", 1)
+  await rejected(["files", pageId, "--max-age", "0"], "NOTION_UNAVAILABLE", 1)
   await rejected(["read", pageId, "--offline"], "CACHE_SCOPE_UNAVAILABLE", 1)
   const status = await cli(["sync", "local", "status", binding.label])
   const edge = status.bindings[0]
@@ -577,7 +577,7 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
     "Historical plans lost explicit reapproval boundary.",
   )
   evidence.historical_review = migrationReview
-  await rejected(["sync", "local", "status", binding.label, "--refresh"], "NTN_UNAVAILABLE", 1)
+  await rejected(["sync", "local", "status", binding.label, "--refresh"], "NOTION_UNAVAILABLE", 1)
   const dryUnbind = await cli(["sync", "local", "unbind", binding.label, "--dry-run"])
   check(dryUnbind.dry_run && !dryUnbind.deactivated, "Dry-run unbind reported a deactivation.")
   await preservedConfig()

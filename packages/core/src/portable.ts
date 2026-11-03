@@ -12,12 +12,137 @@ import {
   SkillsError,
   type ContentKind,
 } from "./model.ts"
-import { normalizePath } from "./ref.ts"
+import { fileRef, normalizePath, parseTarget } from "./ref.ts"
 
 export const MANIFEST = ".ntn-skills.json"
 export const BUNDLE = "ntn-skills-source.zip"
 const encoder = new TextEncoder()
 const decoder = new TextDecoder("utf-8", { fatal: true })
+const PortableRelationsSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  ownership: Schema.Literal("notion"),
+  library_id: Schema.String,
+  members: Schema.optional(Schema.Array(Schema.String)),
+  requires: Schema.optional(Schema.Array(Schema.String)),
+})
+export type PortableRelations = typeof PortableRelationsSchema.Type
+
+/** Strip only the generated index declared by this explicit portable selection.
+ * This is used to compare authored bytes, never to rewrite an arbitrary body. */
+export function withoutPortableMemberIndex(
+  file: ImportFile,
+  kind: ContentKind,
+  members: readonly string[] | undefined,
+): ImportFile {
+  if (members === undefined || (kind === "skill" && members.length === 0)) return file
+  const markdown = decoder.decode(file.bytes)
+  if (members.length === 0) {
+    const empty = /\n\n## Members\n?$/u.exec(markdown)
+    if (!empty)
+      throw fail(
+        "PORTABLE_MEMBER_PROJECTION_INVALID",
+        "The portable generated Members index is missing.",
+      )
+    return { ...file, bytes: encoder.encode(markdown.slice(0, empty.index).trimEnd() + "\n") }
+  }
+  const marker = "\n\n## Members\n\n",
+    at = markdown.lastIndexOf(marker)
+  const lines =
+    at < 0
+      ? []
+      : markdown
+          .slice(at + marker.length)
+          .trimEnd()
+          .split("\n")
+  if (
+    at < 0 ||
+    lines.length !== members.length ||
+    lines.some(
+      (line, index) =>
+        !line.startsWith("- [") || !line.includes(`](${fileRef(members[index]!, "SKILL.md")}) — `),
+    )
+  )
+    throw fail(
+      "PORTABLE_MEMBER_PROJECTION_INVALID",
+      "The portable generated Members index differs from its exact selected identities.",
+    )
+  return { ...file, bytes: encoder.encode(markdown.slice(0, at).trimEnd() + "\n") }
+}
+
+/** Complete author-selected sets, including an intentional empty set. Provider
+ * acquisition never treats these portable fields as source-refresh authority. */
+export function validatePortableRelations(input: unknown): PortableRelations {
+  const value = Schema.decodeUnknownSync(PortableRelationsSchema)(input, {
+    onExcessProperty: "error",
+  })
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value.library_id))
+    throw fail(
+      "PORTABLE_RELATION_SCOPE",
+      "Portable relations require a stable shared library identity.",
+    )
+  for (const refs of [value.members, value.requires]) {
+    if (refs === undefined) continue
+    if (new Set(refs).size !== refs.length)
+      throw fail(
+        "PORTABLE_RELATION_INVALID",
+        "Portable relations must select each logical Skill once.",
+      )
+    for (const ref of refs) {
+      const target = parseTarget(ref)
+      const expectedPrefix = `shared_skill:${encodeURIComponent(value.library_id)}:`
+      const skillId = decodeURIComponent(ref.slice(expectedPrefix.length))
+      if (
+        !ref.startsWith(expectedPrefix) ||
+        ref !== expectedPrefix + encodeURIComponent(skillId) ||
+        target.selector !== ref ||
+        target.path ||
+        target.snapshot ||
+        target.file_id ||
+        !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(skillId)
+      )
+        throw fail(
+          "PORTABLE_RELATION_SCOPE",
+          "Portable relations require unpinned logical Skills in their exact library.",
+          { ref },
+        )
+    }
+  }
+  return value
+}
+
+export function portableRelationSelection(
+  relations: PortableRelations | undefined,
+  libraryId: string,
+  explicit: { readonly members?: readonly string[]; readonly requires?: readonly string[] } = {},
+) {
+  if (relations === undefined) return explicit
+  const retained = validatePortableRelations(relations)
+  if (retained.library_id !== libraryId)
+    throw fail(
+      "PORTABLE_RELATION_SCOPE",
+      "Import these relations into their original shared library; targets are never matched by name.",
+    )
+  for (const field of ["members", "requires"] as const) {
+    if (
+      explicit[field] !== undefined &&
+      retained[field] !== undefined &&
+      JSON.stringify([...explicit[field]].sort()) !== JSON.stringify([...retained[field]].sort())
+    )
+      throw fail(
+        "PORTABLE_RELATION_CONFLICT",
+        "Explicit relation flags differ from the portable selection; review one intended set.",
+        { field },
+      )
+  }
+  return {
+    ...((explicit.members ?? retained.members) === undefined
+      ? {}
+      : { members: explicit.members ?? retained.members }),
+    ...((explicit.requires ?? retained.requires) === undefined
+      ? {}
+      : { requires: explicit.requires ?? retained.requires }),
+  }
+}
 const PortableManifestSchema = Schema.Struct({
   format: Schema.Literal("ntn-skills"),
   version: Schema.Literal(2),
@@ -26,6 +151,7 @@ const PortableManifestSchema = Schema.Struct({
   description: Schema.String,
   main: Schema.String,
   projection: Schema.optional(Schema.Unknown),
+  relations: Schema.optional(PortableRelationsSchema),
 })
 export interface PortableSkill {
   readonly kind: ContentKind
@@ -33,6 +159,7 @@ export interface PortableSkill {
   readonly description: string
   readonly main: string
   readonly files: readonly ImportFile[]
+  readonly relations?: PortableRelations
   readonly projection?: {
     readonly name: string
     readonly description: string
@@ -129,6 +256,9 @@ export function portableFiles(
     name: skill.name,
     description: skill.description,
     main: skill.main,
+    ...(skill.relations === undefined
+      ? {}
+      : { relations: validatePortableRelations(skill.relations) }),
     ...((projection || skill.projection?.materialization) && skill.projection
       ? { projection: skill.projection }
       : {}),
@@ -216,6 +346,9 @@ export function readPortable(input: readonly ImportFile[]): PortableSkill | unde
       description: manifest.description,
       main: manifest.main,
       files,
+      ...(manifest.relations === undefined
+        ? {}
+        : { relations: validatePortableRelations(raw.relations) }),
       ...(rawProjection === undefined
         ? {}
         : { projection: projection as NonNullable<PortableSkill["projection"]> }),
@@ -231,14 +364,16 @@ export function canonicalMain(
   description: string,
   body: string,
   previous: ImportFile,
+  fallback?: ImportFile,
 ): ImportFile {
   let extra: Record<string, unknown> = {}
-  if (previous) {
-    const text = decoder.decode(previous.bytes)
+  for (const file of [fallback, previous]) {
+    if (!file) continue
+    const text = decoder.decode(file.bytes)
     const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text)
     if (match) {
       const metadata = property(parse(match[1]!))
-      if ("name" in metadata || "description" in metadata) extra = metadata
+      extra = { ...extra, ...metadata }
     }
   }
   const metadata = { ...extra, name: validateDisplayName(name), description }

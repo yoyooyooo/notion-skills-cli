@@ -1,9 +1,9 @@
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { validateSnapshot } from "./cache.ts"
-import { fail, property, type Snapshot } from "./model.ts"
+import { fail, property, snapshotMembers, type Snapshot } from "./model.ts"
 import { normalizePath } from "./ref.ts"
-import { BUNDLE, MANIFEST } from "./portable.ts"
+import { BUNDLE, MANIFEST, withoutPortableMemberIndex, type PortableRelations } from "./portable.ts"
 import type { ImportFile } from "./import.ts"
 import {
   sharedAuthoringMarkdown,
@@ -36,6 +36,8 @@ import { sha256, Store } from "./store.ts"
 export type SharedApplyInput = SharedMetadataUpdateOptions & {
   readonly files: readonly ImportFile[]
   readonly remove?: readonly string[]
+  /** Present only for an explicitly imported portable manifest, never a source refresh. */
+  readonly portableRelations?: PortableRelations
 }
 
 /** All requested bytes and paths are checked before any original operation is dispatched. */
@@ -133,7 +135,8 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
       input.name !== undefined ||
       input.description !== undefined ||
       input.defaultContext !== undefined ||
-      input.members !== undefined
+      input.members !== undefined ||
+      input.requires !== undefined
     if (additions.length !== 0 || requested.removed.length !== 0) {
       if (
         additions.length + requested.removed.length !== 1 ||
@@ -207,8 +210,35 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
         protection: fileManagementProtection,
       }
     }
+    const store = yield* Store
+    const changedFiles = yield* Effect.filter(requested.files, (file) =>
+      Effect.gen(function* () {
+        const current = snapshot.files.find((entry) => entry.path === file.path)
+        if (current === undefined) return true
+        if (current.bytes === file.bytes.length && current.sha256 === (yield* sha256(file.bytes)))
+          return false
+        if (file.path !== snapshot.entrypoint || input.portableRelations?.members === undefined)
+          return true
+        const currentBytes = yield* store.readBytes(`objects/${current.sha256}`)
+        const authored = yield* applyChecked(() => ({
+          before: withoutPortableMemberIndex(
+            { path: current.path, bytes: currentBytes },
+            snapshot.record.kind,
+            snapshotMembers(snapshot)?.map((member) => member.id),
+          ),
+          after: withoutPortableMemberIndex(
+            file,
+            snapshot.record.kind,
+            input.portableRelations!.members,
+          ),
+        }))
+        return (yield* sha256(authored.before.bytes)) !== (yield* sha256(authored.after.bytes))
+      }),
+    )
+    // An unchanged exported tree may contain provider-only resources and extra
+    // frontmatter. It does not request a native body write or new ownership.
     const inputs = yield* applyChecked(() =>
-      requested.files.map((file) => {
+      changedFiles.map((file) => {
         const bindings = evidence.files.filter((entry) => entry.path === file.path)
         if (bindings.length !== 1 || bindings[0] === undefined)
           throw fail(
@@ -226,7 +256,6 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
     // Verify references against the final complete proposed tree, retaining all
     // omitted files. The immutable snapshot objects remain the pinned originals.
     yield* validateSnapshot(snapshot)
-    const store = yield* Store
     const tree = yield* Effect.forEach(snapshot.files, (file) => {
       const proposed = inputs.find((entry) => entry.file.path === file.path)
       return proposed === undefined
@@ -245,6 +274,7 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
           description: input.description,
           defaultContext: input.defaultContext,
           members: input.members,
+          requires: input.requires,
           dryRun: true,
         })
       : undefined
@@ -357,8 +387,12 @@ export function verifySharedAppliedSnapshot(snapshot: Snapshot, plan: SharedSkil
           : change.field === "Default Context"
             ? snapshot.record.default_context
             : change.field === "Members"
-              ? snapshot.router_members?.map((member) => property(member.metadata).page_id).sort()
-              : undefined
+              ? (snapshot.members ?? snapshot.router_members)
+                  ?.map((member) => property(member.metadata).page_id)
+                  .sort()
+              : change.field === "Requires"
+                ? snapshot.required?.map((member) => property(member.metadata).page_id).sort()
+                : undefined
     if (canonicalSharedJson(actual) !== canonicalSharedJson(change.after))
       throw fail(
         "WRITE_VERIFICATION_FAILED",

@@ -416,6 +416,7 @@ export function updateSkill(
     readonly description?: string
     readonly defaultContext?: boolean
     readonly members?: readonly string[]
+    readonly requires?: readonly string[]
     readonly database?: string
     readonly dryRun?: boolean
   },
@@ -425,10 +426,14 @@ export function updateSkill(
       options.name === undefined &&
       options.description === undefined &&
       options.defaultContext === undefined &&
-      options.members === undefined
+      options.members === undefined &&
+      options.requires === undefined
     )
       return yield* Effect.fail(
-        fail("INVALID_ARGUMENT", "Provide --name, --description, --default-context or Members."),
+        fail(
+          "INVALID_ARGUMENT",
+          "Provide --name, --description, --default-context, Members or Requires.",
+        ),
       )
     if (options.name !== undefined)
       yield* Effect.try({ try: () => aliasFor(options.name!), catch: (e) => e as SkillsError })
@@ -514,8 +519,14 @@ export function updateSkill(
           saved.record.default_context !== options.defaultContext) ||
         (result.requested_members !== undefined &&
           JSON.stringify(
-            saved.router_members?.map((member) => property(member.metadata).page_id).sort(),
-          ) !== JSON.stringify(result.requested_members))
+            (saved.members ?? saved.router_members)
+              ?.map((member) => property(member.metadata).page_id)
+              .sort(),
+          ) !== JSON.stringify(result.requested_members)) ||
+        (result.requested_required !== undefined &&
+          JSON.stringify(
+            saved.required?.map((member) => property(member.metadata).page_id).sort(),
+          ) !== JSON.stringify(result.requested_required))
       )
         return yield* Effect.fail(
           fail(
@@ -532,6 +543,13 @@ export function updateSkill(
         previous_version_id: current.version_id,
       }
     }
+    if (options.requires !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "Requires needs a shared library with registered native relation identities.",
+        ),
+      )
     const api = yield* Notion
     const observations: Record<string, unknown> = {}
     observations[`v1/pages/${notionPage(baseline.record).locator.page_id}/markdown`] =

@@ -2,6 +2,10 @@ import { SourceResourceConfigurationSchema } from "./shared-source-config-model.
 import { Data, Effect, Schema } from "effect"
 import { SourceProjectionSchema } from "./upstream-member-model.ts"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
+import {
+  NativeFileBindingSchema,
+  NativeReferenceIndexSchema,
+} from "./shared-native-reference-model.ts"
 
 export class SkillsError extends Data.TaggedError("SkillsError")<{
   readonly code: string
@@ -240,9 +244,21 @@ export const SnapshotSchema = Schema.Struct({
   version_id: Schema.String,
   created_at: Schema.Number,
   files: Schema.Array(FileEntrySchema),
+  file_bindings: Schema.optional(Schema.Array(NativeFileBindingSchema)),
+  native_references: Schema.optional(NativeReferenceIndexSchema),
   source_files: Schema.optional(Schema.Array(FileEntrySchema)),
   source_projection: Schema.optional(SourceProjectionSchema),
   markdown_files: Schema.optional(Schema.Struct({ main: Schema.String })),
+  members: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ id: Schema.String, ref: Schema.String, metadata: Schema.Unknown }),
+    ),
+  ),
+  required: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ id: Schema.String, ref: Schema.String, metadata: Schema.Unknown }),
+    ),
+  ),
   router_members: Schema.optional(
     Schema.Array(
       Schema.Struct({ id: Schema.String, ref: Schema.String, metadata: Schema.Unknown }),
@@ -260,6 +276,10 @@ export const SnapshotSchema = Schema.Struct({
   ),
 })
 export type Snapshot = typeof SnapshotSchema.Type
+/** Old Router pins keep their original serialized field and version. */
+export function snapshotMembers(snapshot: Pick<Snapshot, "members" | "router_members">) {
+  return snapshot.members ?? snapshot.router_members
+}
 /** Machine preference contains identities only; the shared Profile owns its rules. */
 export const SharedProfileBindingSchema = Schema.Struct({
   library_entry: Schema.String.check(

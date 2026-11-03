@@ -559,7 +559,10 @@ function expectations(
       kind: plan.content_kind,
       enabled: true as const,
       default_context: plan.default_context,
-      ...(plan.content_kind === "router" ? { members: plan.members } : {}),
+      ...(plan.content_kind === "router" || plan.members.length > 0
+        ? { members: plan.members }
+        : {}),
+      ...(plan.requires === undefined ? {} : { requires: plan.requires }),
     },
   }
 }

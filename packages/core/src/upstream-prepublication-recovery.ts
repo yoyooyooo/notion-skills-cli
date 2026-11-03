@@ -17,7 +17,7 @@ import { getSubscription, upstreamOperationScope } from "./upstream-subscription
 
 /** Classifies failures only; preparedCreate must still prove no mutation began. */
 export function isPrepublicationReadFailure(code: string | undefined) {
-  return code === "RATE_LIMITED" || code === "CATALOG_INCOMPLETE" || code === "NTN_UNAVAILABLE"
+  return code === "RATE_LIMITED" || code === "CATALOG_INCOMPLETE" || code === "NOTION_UNAVAILABLE"
 }
 
 /** Read the original create request; absence of any proof leaves the child fenced. */

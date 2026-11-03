@@ -44,6 +44,12 @@ import {
 
 export const authScope = Effect.gen(function* () {
   const api = yield* Notion
+  if (api.connectionIdentity !== undefined) {
+    const identity = yield* api.connectionIdentity
+    return yield* sha256(
+      JSON.stringify([identity.principal, "", identity.api_origin, identity.credential]),
+    )
+  }
   const value = yield* api.request("v1/users/me")
   const user = yield* Effect.try({
     try: () => decode(UserSchema, value),
@@ -51,14 +57,7 @@ export const authScope = Effect.gen(function* () {
   })
   const credential = yield* api.credentialIdentity
   // Only the selected credential digest enters cached authentication scopes.
-  const scope = yield* sha256(
-    JSON.stringify([
-      user.id,
-      process.env.NOTION_WORKSPACE_ID ?? "",
-      process.env.NOTION_API_BASE_URL ?? "https://api.notion.com",
-      credential,
-    ]),
-  )
+  const scope = yield* sha256(JSON.stringify([user.id, "", "https://api.notion.com", credential]))
   return scope
 })
 

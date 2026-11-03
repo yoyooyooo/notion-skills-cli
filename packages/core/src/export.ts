@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Path } from "effect"
 import { importDocument, readImportZip } from "./import.ts"
 import type { ImportFile } from "./import.ts"
-import { fail, SkillsError } from "./model.ts"
+import { fail, SkillsError, snapshotMembers } from "./model.ts"
 import type { Snapshot } from "./model.ts"
 import {
   BUNDLE,
@@ -116,11 +116,32 @@ function recoveredBodyMatches(
 }
 
 export function snapshotPortable(snapshot: Snapshot) {
-  return materializeSnapshotPortable(snapshot, true)
+  return materializeSnapshotPortable(snapshot, true).pipe(
+    Effect.map((portable) => snapshotRelations(snapshot, portable)),
+  )
 }
 
 export function snapshotAuthoredPortable(snapshot: Snapshot) {
-  return materializeSnapshotPortable(snapshot, false)
+  return materializeSnapshotPortable(snapshot, false).pipe(
+    Effect.map((portable) => snapshotRelations(snapshot, portable)),
+  )
+}
+
+function snapshotRelations(snapshot: Snapshot, portable: PortableSkill): PortableSkill {
+  if (snapshot.record.locator.type !== "shared_skill") return portable
+  const members = snapshotMembers(snapshot),
+    required = snapshot.required
+  if (members === undefined && required === undefined) return portable
+  return {
+    ...portable,
+    relations: {
+      version: 1,
+      ownership: "notion",
+      library_id: snapshot.record.locator.library_id,
+      ...(members === undefined ? {} : { members: members.map((target) => target.id) }),
+      ...(required === undefined ? {} : { requires: required.map((target) => target.id) }),
+    },
+  }
 }
 
 function materializeSnapshotPortable(snapshot: Snapshot, generated: boolean) {

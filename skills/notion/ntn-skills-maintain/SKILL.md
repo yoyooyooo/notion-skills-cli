@@ -1,7 +1,7 @@
 ---
 name: ntn-skills-maintain
 description: Create and edit Notion Skills, Prompts and Routers through ntn-skills. Use for native shared content, a pinned body/resources/metadata change, a supporting-file add/delete/move, explicit restore-follow, exact replacement or portable transfer. Preserve the original operation after interruption and use its matching recovery path. Route fixed-source selection, Profiles and existing synchronization bindings to ntn-skills-sync.
-compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, official Notion CLI ntn with api --notion-version support, and an existing Notion connection with Read, Insert and Update content access.
+compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token with Read, Insert and Update content access. Notion requests use the project's direct HTTP engine.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain

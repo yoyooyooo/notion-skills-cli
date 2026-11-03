@@ -515,52 +515,100 @@ describe("shared explicit native metadata writes", () => {
     expect(f.writeCount()).toBe(0)
   })
 
-  test("Members validate current same-library enabled Skill metadata without reading member bodies", async () => {
+  test.each(["skill", "router"])(
+    "%s Members and Requires validate current same-library targets without target body reads",
+    async (kind) => {
+      const f = sharedSnapshotFixture()
+      const registered = {
+        ...library,
+        skills: {
+          ...library.skills,
+          property_ids: {
+            ...library.skills.property_ids,
+            Members: "members",
+            Requires: "requires",
+          },
+        },
+      }
+      property(f.main.properties).kind = { id: "kind", type: "select", select: { name: kind } }
+      property(f.main.properties).members = {
+        id: "members",
+        type: "relation",
+        relation: [],
+        has_more: false,
+      }
+      property(f.main.properties).requires = {
+        id: "requires",
+        type: "relation",
+        relation: [],
+        has_more: false,
+      }
+      const member = structuredClone(f.main)
+      member.id = id(90)
+      property(member.properties).kind = { id: "kind", type: "select", select: { name: "skill" } }
+      property(member.properties).title = {
+        id: "title",
+        type: "title",
+        title: [{ plain_text: "Member" }],
+      }
+      property(member.properties).skill_id = rich("skill_id", "member-skill")
+      property(member.properties).main_file_id = rich("main_file_id", "member-main")
+      const plan = await f.run(
+        withWriter(
+          f,
+          prepareSharedMetadataWrite({
+            library: registered,
+            skillPageId: skillPage,
+            changes: [
+              { field: "Members", value: [id(90)] },
+              { field: "Requires", value: [id(90)] },
+            ],
+          }),
+          { members: [member] },
+        ),
+      )
+      const result = await f.run(
+        withWriter(f, executeSharedMetadataWrite(registered, { plan, mode: "create" }), {
+          members: [member],
+        }),
+      )
+      expect(result.status).toBe("applied")
+      expect(property(property(patches(f)[0]?.body).properties).members).toEqual({
+        relation: [{ id: id(90) }],
+      })
+      expect(property(property(patches(f)[0]?.body).properties).requires).toEqual({
+        relation: [{ id: id(90) }],
+      })
+      expect(f.readBodyCount()).toBe(0)
+    },
+  )
+
+  test("a complete relation over 100 targets is rejected before any write instead of destructive chunked replacement", async () => {
     const f = sharedSnapshotFixture()
     const registered = {
       ...library,
       skills: {
         ...library.skills,
-        property_ids: { ...library.skills.property_ids, Members: "members" },
+        property_ids: { ...library.skills.property_ids, Requires: "requires" },
       },
     }
-    property(f.main.properties).kind = { id: "kind", type: "select", select: { name: "router" } }
-    property(f.main.properties).members = {
-      id: "members",
+    property(f.main.properties).requires = {
+      id: "requires",
       type: "relation",
       relation: [],
       has_more: false,
     }
-    const member = structuredClone(f.main)
-    member.id = id(90)
-    property(member.properties).kind = { id: "kind", type: "select", select: { name: "skill" } }
-    property(member.properties).title = {
-      id: "title",
-      type: "title",
-      title: [{ plain_text: "Member" }],
-    }
-    property(member.properties).skill_id = rich("skill_id", "member-skill")
-    property(member.properties).main_file_id = rich("main_file_id", "member-main")
-    const plan = await f.run(
-      withWriter(
-        f,
-        prepareSharedMetadataWrite({
-          library: registered,
-          skillPageId: skillPage,
-          changes: [{ field: "Members", value: [id(90)] }],
-        }),
-        { members: [member] },
-      ),
-    )
     const result = await f.run(
-      withWriter(f, executeSharedMetadataWrite(registered, { plan, mode: "create" }), {
-        members: [member],
-      }),
+      prepareSharedMetadataWrite({
+        library: registered,
+        skillPageId: skillPage,
+        changes: [
+          { field: "Requires", value: Array.from({ length: 101 }, (_, index) => id(1000 + index)) },
+        ],
+      }).pipe(Effect.result),
     )
-    expect(result.status).toBe("applied")
-    expect(property(property(patches(f)[0]?.body).properties).members).toEqual({
-      relation: [{ id: id(90) }],
-    })
-    expect(f.readBodyCount()).toBe(0)
+    expect(failure(result).code).toBe("RELATION_WRITE_LIMIT")
+    expect(patches(f)).toHaveLength(0)
+    expect(f.writeCount()).toBe(0)
   })
 })
