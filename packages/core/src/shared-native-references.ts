@@ -23,6 +23,12 @@ import type { SharedBodyBinding } from "./shared-skill-index.ts"
 import { fileRecord, type FileRecord } from "./skill-file-index.ts"
 import { sha256 } from "./store.ts"
 import { mapMarkdownLinks, readLinkBlocks } from "./typed-links.ts"
+import { referenceProse } from "./shared-file-references.ts"
+import {
+  nativeAliasTargets,
+  validateNativeBodyCompletion,
+  type NativeBodyCompletion,
+} from "./shared-native-body-completion.ts"
 
 export interface NativeReferenceSource {
   readonly path: string
@@ -30,13 +36,20 @@ export interface NativeReferenceSource {
   /** Exact native observation, before consumer projection. */
   readonly body_sha256: string
   readonly page_id?: string
+  readonly native_body_completion?: NativeBodyCompletion
 }
 export interface NativeMetadataInventory {
   readonly data_source_id: string
   readonly complete: true
   readonly pages: readonly unknown[]
 }
-type Candidate = { from: string; href: string; page_id: string }
+type Candidate = {
+  from: string
+  href: string
+  page_id: string
+  block_id?: string
+  source_form?: "link_to_page"
+}
 const List = listSchema(Schema.Unknown)
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
@@ -169,6 +182,9 @@ function target(
     page_id: file?.page_id ?? owner.locator.page_id,
     ...(file === undefined ? {} : { file_id: file.file_id }),
     path,
+    ...(candidate.block_id === undefined
+      ? {}
+      : { block_id: candidate.block_id, source_form: candidate.source_form }),
   }
 }
 
@@ -188,13 +204,60 @@ export function compileSharedNativeReferences(input: {
   return Effect.gen(function* () {
     const candidates = new Map<string, Candidate>()
     const linkedPages = new Map<string, ReadonlySet<string>>()
+    const completions = new Map<string, NativeBodyCompletion>()
     const api = yield* Notion
     for (const source of input.files) {
       const tags = yield* checked(() => nativeReferenceTags(source.markdown))
       const pages = new Set<string>()
+      if (
+        source.native_body_completion === undefined &&
+        /<unknown(?:\s|\/?>)/iu.test(referenceProse(source.markdown))
+      )
+        return yield* Effect.fail(
+          fail(
+            "BODY_INCOMPLETE",
+            "An unknown native export node has no retained completion proof.",
+          ),
+        )
+      if (source.native_body_completion !== undefined) {
+        const completion = source.native_body_completion
+        if (source.page_id !== completion.page_id)
+          return yield* Effect.fail(
+            fail("SHARED_REFERENCE_INVALID", "Native alias evidence requires its exact body page."),
+          )
+        yield* checked(() =>
+          validateNativeBodyCompletion(source.markdown, completion, {
+            page_id: source.page_id,
+            body_sha256: source.body_sha256,
+          }),
+        )
+        if ((yield* sha256(source.markdown)) !== completion.body_sha256)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_REFERENCE_INVALID",
+              "Native alias evidence does not match the exact authored body.",
+            ),
+          )
+        completions.set(source.path, completion)
+        for (const block of completion.inventory)
+          if (block.type === "link_to_page" && block.target_page_id !== undefined)
+            pages.add(block.target_page_id)
+        for (const alias of yield* checked(() => nativeAliasTargets(source.markdown, completion)))
+          candidates.set(JSON.stringify([source.path, alias.href]), {
+            from: source.path,
+            href: alias.href,
+            page_id: alias.page_id,
+            block_id: alias.block_id,
+            source_form: "link_to_page",
+          })
+      }
       // Native <page> is normally a child page. Only ambiguous actual tags
       // justify a block read, and child page bodies remain outside this walk.
-      if (source.page_id !== undefined && tags.some((tag) => tag.kind === "page")) {
+      if (
+        source.native_body_completion === undefined &&
+        source.page_id !== undefined &&
+        tags.some((tag) => tag.kind === "page")
+      ) {
         const blocks = yield* readLinkBlocks(source.page_id, api, { structureEvidence: true })
         for (const block of blocks) {
           if (block.type !== "link_to_page") continue
@@ -227,7 +290,7 @@ export function compileSharedNativeReferences(input: {
         if (tag.kind === "mention" || pages.has(nativeNotionPageId(tag.href)!)) remember(tag.href)
     }
     if (candidates.size === 0)
-      return { linkedPages, links: [] as readonly SharedFileLink[], index: undefined }
+      return { linkedPages, completions, links: [] as readonly SharedFileLink[], index: undefined }
     const ownFiles = new Map(input.bindings.map((file) => [file.page_id, file]))
     const external = [...candidates.values()].filter(
       (value) => value.page_id !== input.record.locator.page_id && !ownFiles.has(value.page_id),
@@ -355,12 +418,19 @@ export function compileSharedNativeReferences(input: {
             path: source.path,
             body_sha256: source.body_sha256,
             input_sha256: yield* sha256(source.markdown),
+            ...(source.native_body_completion === undefined
+              ? {}
+              : {
+                  completion_sha256: yield* sha256(
+                    canonicalSharedJson(source.native_body_completion),
+                  ),
+                }),
           }
         }),
     )
     const identity = {
       version: 1 as const,
-      parser_version: 1 as const,
+      parser_version: (completions.size > 0 ? 2 : 1) as NativeReferenceIndex["parser_version"],
       parent_id: input.record.id,
       source_files: sources,
       relations_sha256: yield* sha256(canonicalSharedJson(input.relations)),
@@ -378,6 +448,6 @@ export function compileSharedNativeReferences(input: {
         (entry) => entry.skill_page_id !== input.record.locator.page_id || entry.kind === "skill",
       )
       .map((entry) => ({ from: entry.from, href: entry.href, target: entry.ref }))
-    return { linkedPages, links, index }
+    return { linkedPages, completions, links, index }
   })
 }

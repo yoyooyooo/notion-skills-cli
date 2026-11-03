@@ -4,6 +4,10 @@ import { pageId, parseRef, normalizePath } from "./ref.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import { fail } from "./model.ts"
 import { referenceProse } from "./shared-file-references.ts"
+import {
+  materializeNativeAliases,
+  type NativeBodyCompletion,
+} from "./shared-native-body-completion.ts"
 
 export type SharedFileLink = {
   readonly from: string
@@ -175,6 +179,7 @@ export function materializeSharedNativeFile(
   files: readonly { readonly page_id: string; readonly path: string }[],
   links: readonly SharedFileLink[] = [],
   linkedPages: ReadonlySet<string> = new Set(),
+  completion?: NativeBodyCompletion,
 ): string {
   const byId = new Map(files.map((file) => [file.page_id, file.path]))
   const resolve = (href: string) => {
@@ -193,8 +198,15 @@ export function materializeSharedNativeFile(
         .join("/") + suffix
     )
   }
+  const projected =
+    completion === undefined
+      ? markdown
+      : materializeNativeAliases(markdown, completion, (href, page) => {
+          const explicit = links.find((link) => link.from === path && link.href === href)
+          return explicit?.target ?? resolve(`https://www.notion.so/${page.replaceAll("-", "")}`)
+        })
   const authored = sharedNativeAuthoredBody(
-    materializeNativeReferenceTags(markdown, resolve, linkedPages),
+    materializeNativeReferenceTags(projected, resolve, linkedPages),
     linkedPages,
   )
   return mapMarkdownLinks(authored, resolve)

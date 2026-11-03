@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -49,7 +49,7 @@ afterAll(async () => {
     for (const root of temporary) await Effect.runPromise(trashPath(root))
 })
 
-async function fixture() {
+async function fixture(options: { main?: string } = {}) {
   const root = await mkdtemp(join(evidence ?? tmpdir(), "ntn-prepare-consumer-"))
   temporary.push(root)
   const env = {
@@ -65,9 +65,13 @@ async function fixture() {
     XDG_CONFIG_HOME: join(root, "xdg-config"),
     XDG_CACHE_HOME: join(root, "xdg-cache"),
   }
+  const instruction = (name: string) =>
+    name === "a" && options.main !== undefined
+      ? options.main
+      : `# ${name}\nExact prepared instruction ${name}.\n`
   const snapshots: Snapshot[] = ["a", "b", "optional", "broken"].map((name, index) => {
     const id = `shared_skill:prepare-library:${name}`
-    const body = `# ${name}\nExact prepared instruction ${name}.\n`
+    const body = instruction(name)
     const version = hash(body)
     return {
       scope,
@@ -124,11 +128,12 @@ import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/plat
 import {Effect,Layer} from ${JSON.stringify(import.meta.resolve("effect"))};
 import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
 const snapshots=${JSON.stringify(snapshots)};
+const bodies=${JSON.stringify(Object.fromEntries(snapshots.map((snapshot) => [snapshot.record.name, instruction(snapshot.record.name)])))};
 await Effect.runPromise(Effect.scoped(Effect.gen(function*(){
   const store=yield* Store;
   yield* store.writeJson(${JSON.stringify(`cache/identities/${hash(JSON.stringify([hash(token), "", http.origin]))}.json`)},{scope:${JSON.stringify(scope)}});
   for(const snapshot of snapshots){
-    const body='# '+snapshot.record.name+'\\nExact prepared instruction '+snapshot.record.name+'.\\n';
+    const body=bodies[snapshot.record.name];
     yield* store.writeBytes('objects/'+snapshot.files[0].sha256,new TextEncoder().encode(body));
     yield* store.writeJson('snapshots/'+snapshot.snapshot_id+'.json',snapshot);
   }
@@ -251,4 +256,35 @@ test("Node CLI reports a missing required pin or context exhaustion as nonready 
     expect("graph_lock" in preparation).toBe(false)
     expect("session_bindings" in preparation).toBe(false)
   }
+})
+
+test("public prepare, read and snapshot export preserve the same BOM and CRLF bytes", async () => {
+  const body = "\uFEFF# a\r\nPreserve UTF-8 BOM, CRLF and 雪 exactly.\r\n"
+  const f = await fixture({ main: body })
+  const prepared = await f.invoke(["prepare", f.ref(0), "--purpose", "inspect", "--offline"])
+  expect(prepared.exit).toBe(0)
+  const ready = decode(PrepareReadySchema, JSON.parse(prepared.stdout))
+  const node = ready.nodes.find((node) => node.state === "prepared")
+  expect(node?.state).toBe("prepared")
+  if (node?.state !== "prepared") throw new Error("Expected the full prepared root")
+  const read = await f.invoke(["read", node.ref, "--offline"])
+  expect(read.exit).toBe(0)
+  const exported = await f.invoke([
+    "export",
+    node.binding.snapshot_id,
+    "--projection",
+    "snapshot",
+    "--format",
+    "directory",
+    "--output",
+    join(f.root, "snapshot-export"),
+  ])
+  expect(exported.exit).toBe(0)
+  const output = JSON.parse(exported.stdout)
+  const bytes = await readFile(join(output.output, output.main_path))
+  expect(node.content).toBe(body)
+  expect(JSON.parse(read.stdout).content).toBe(body)
+  expect(bytes.equals(Buffer.from(body))).toBe(true)
+  expect(node.body_sha256).toBe(hash(body))
+  expect(node.bytes).toBe(bytes.byteLength)
 })

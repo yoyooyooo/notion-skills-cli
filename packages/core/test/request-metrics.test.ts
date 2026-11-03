@@ -4,11 +4,81 @@ import {
   classifyBodyRequest,
   classifyRequest,
   createRequestMetrics,
+  notionRequestTarget,
   RequestBudgetError,
   SHARED_ADOPTION_REQUEST_COST,
 } from "../src/request-metrics.ts"
 
 describe("request metrics", () => {
+  test("safe targets normalize only Notion UUID routes and bounded exact Entity filters", () => {
+    const id = "11111111-2222-4333-8444-555555555555"
+    expect(
+      notionRequestTarget({
+        path: `v1/pages/${id.replaceAll("-", "").toUpperCase()}/markdown?private=query`,
+        method: "GET",
+      }),
+    ).toEqual({ page_id: id })
+    expect(
+      notionRequestTarget({ path: `v1/blocks/${id}/children?start_cursor=private`, method: "GET" }),
+    ).toEqual({ block_id: id })
+    for (const path of [
+      "https://private.example/v1/pages/" + id,
+      "v1/pages/private-name",
+      `v1/pages/${id}/unknown`,
+      `v1/pages/${id}#private`,
+    ])
+      expect(notionRequestTarget({ path, method: "GET" })).toBeNull()
+    expect(
+      notionRequestTarget({ path: `v1/pages/${id}`, method: "GET", provider: "other" }),
+    ).toBeNull()
+    const query = {
+      path: `v1/data_sources/${id}/query`,
+      method: "POST" as const,
+      entityPropertyId: "encoded-entity",
+    }
+    const exact = (entity: string) => ({
+      property: "encoded-entity",
+      rich_text: { equals: entity },
+    })
+    const other = { property: "other", rich_text: { equals: "private-prose" } }
+    expect(
+      notionRequestTarget({
+        ...query,
+        body: {
+          filter: { and: [other, { or: [exact("file-b"), exact("file-a"), exact("file-a")] }] },
+        },
+      }),
+    ).toEqual({ data_source_id: id, entity_ids: ["file-a", "file-b"] })
+    expect(
+      notionRequestTarget({
+        ...query,
+        body: { filter: { and: [{ or: [exact("file-a"), exact("file-b")] }, exact("file-b")] } },
+      }),
+    ).toEqual({ data_source_id: id, entity_ids: ["file-b"] })
+    for (const filter of [
+      other,
+      { or: [exact("file-a"), other] },
+      { property: "encoded-entity", rich_text: { contains: "file" } },
+      exact("https://private.example/?token=secret"),
+      { or: Array.from({ length: 101 }, (_, index) => exact(`file-${index}`)) },
+    ])
+      expect(notionRequestTarget({ ...query, body: { filter } })).toEqual({ data_source_id: id })
+    expect(
+      notionRequestTarget({
+        ...query,
+        body: { filter: exact("owned_secret_value") },
+        redactedValue: "owned_secret_value",
+      }),
+    ).toEqual({ data_source_id: id })
+    expect(
+      notionRequestTarget({
+        ...query,
+        entityPropertyId: undefined,
+        body: { filter: exact("file-a") },
+      }),
+    ).toEqual({ data_source_id: id })
+  })
+
   test("opt-in attempt traces retain actual safe HTTP observations without request data", () => {
     let time = 10
     const metrics = createRequestMetrics({ now: () => time, traceLimit: 3 })

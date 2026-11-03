@@ -1,3 +1,5 @@
+import type { NativeBodyCompletion } from "./shared-native-body-completion.ts"
+
 export type FileMetadataInput = {
   readonly file_id: string
   readonly page_id: string
@@ -10,6 +12,7 @@ export type LocalFileObservation = FileMetadataInput & {
   readonly body_sha256: string
   readonly body_verified_at: number
   readonly metadata_validated_at: number
+  readonly native_body_completion?: NativeBodyCompletion
 }
 
 export type BodyReadReason =

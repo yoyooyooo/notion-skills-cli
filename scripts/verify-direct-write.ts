@@ -466,7 +466,7 @@ try {
     await mkdir(join(directory, "assets"), { recursive: true, mode: 0o700 })
     await writeFile(
       join(directory, "SKILL.md"),
-      `# Owned attachment verification\n\n<code>${marker}_LEGACY</code>\n`,
+      `# Owned attachment verification\n\n${marker.replaceAll("_", "-")}-LEGACY\n`,
       { flag: "wx", mode: 0o600 },
     )
     const bytes = Buffer.concat([

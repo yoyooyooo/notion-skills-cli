@@ -34,6 +34,7 @@ import { emit, singleton, requiredSingleton, switchFlag } from "./command-option
 import { libraryMigrationCommand } from "./commands-library-migration.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { libraryRelationsCommand } from "./commands-library-relations.ts"
+import { libraryGraphCommand } from "./commands-library-graph.ts"
 
 const initialize = defineCommand(
   "init",
@@ -396,6 +397,7 @@ export const libraryCommand = defineCommand("library").pipe(
     libraryMigrationCommand,
     libraryProfilesCommand,
     libraryRelationsCommand,
+    libraryGraphCommand,
     libraryFilesCommand,
   ]),
 )

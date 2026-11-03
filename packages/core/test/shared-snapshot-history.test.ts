@@ -312,7 +312,9 @@ describe("shared snapshot history primitives", () => {
     expect(restored.files.map((file) => file.path)).toEqual(snapshot.files.map((file) => file.path))
     for (const file of restored.files)
       expect(file.bytes).toEqual(required(expected.get(file.path), file.path))
-    expect(f.calls).toHaveLength(plan.objects.length + 1)
+    expect(f.calls).toHaveLength(2)
+    for (const object of plan.objects)
+      expect(JSON.stringify(f.calls[1]?.body)).toContain(object.object_id)
     expect(
       f.calls.every((call) =>
         call.path.includes(`/data_sources/${library.records.data_source_id}/query`),
@@ -322,7 +324,7 @@ describe("shared snapshot history primitives", () => {
     expect(f.writeCount()).toBe(0)
     expect(f.objects.size).toBe(0)
     expect(f.json.size).toBe(0)
-    expect(f.requestMetrics().requests.notion_body).toBe(plan.objects.length)
+    expect(f.requestMetrics().requests.notion_body).toBe(1)
   })
 
   test("a distinct frozen version reuses exact existing chunks and only creates its new manifest", async () => {

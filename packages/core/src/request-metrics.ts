@@ -3,6 +3,101 @@ export type RequestKind = "notion_metadata" | "notion_body" | "notion_write" | "
 export type BodyRequestKind = "current_body" | "retained_body" | "unclassified_body"
 export type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE" | "HEAD"
 export type RequestOutcome = "success" | "failure" | "cancelled"
+export type NotionRequestTarget =
+  | { readonly page_id: string }
+  | { readonly block_id: string }
+  | { readonly data_source_id: string; readonly entity_ids?: readonly string[] }
+
+/** Diagnostic identities come from the sent path and exact Entity filters, never a work plan. */
+export function notionRequestTarget(request: {
+  readonly path: string
+  readonly method: RequestMethod
+  readonly provider?: string
+  readonly body?: unknown
+  readonly entityPropertyId?: string
+  readonly redactedValue?: string
+}): NotionRequestTarget | null {
+  if (request.provider !== undefined && request.provider !== "notion") return null
+  const path = (request.path.split("?")[0] ?? "").replace(/^\//u, "")
+  const uuid = (value: string | undefined) => {
+    if (
+      value === undefined ||
+      !/^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu.test(value)
+    )
+      return undefined
+    const hex = value.replaceAll("-", "").toLowerCase()
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+  const page = /^v1\/pages\/([^/]+)(?:\/markdown|\/properties\/[^/]+)?$/u.exec(path)
+  const pageId = uuid(page?.[1])
+  if (pageId !== undefined) return { page_id: pageId }
+  const block = /^v1\/blocks\/([^/]+)(?:\/children)?$/u.exec(path)
+  const blockId = uuid(block?.[1])
+  if (blockId !== undefined) return { block_id: blockId }
+  const query = /^v1\/data_sources\/([^/]+)\/query$/u.exec(path)
+  const dataSourceId = request.method === "POST" ? uuid(query?.[1]) : undefined
+  if (dataSourceId === undefined) return null
+  const target = { data_source_id: dataSourceId }
+  const field = request.entityPropertyId
+  if (field === undefined || field.length === 0) return target
+  const object = (value: unknown): Record<string, unknown> | undefined =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value))
+      : undefined
+  const body = object(request.body)
+  let remaining = 256
+  const select = (value: unknown, depth: number): ReadonlySet<string> | undefined => {
+    if (--remaining < 0 || depth > 4) throw new Error("Unbounded diagnostic filter")
+    const filter = object(value)
+    if (filter === undefined) return undefined
+    if (Object.keys(filter).length === 1 && Array.isArray(filter.and) && filter.and.length > 0) {
+      let result: ReadonlySet<string> | undefined
+      for (const child of filter.and) {
+        const selected = select(child, depth + 1)
+        if (selected !== undefined)
+          result =
+            result === undefined ? selected : new Set([...result].filter((id) => selected.has(id)))
+      }
+      return result
+    }
+    if (Object.keys(filter).length === 1 && Array.isArray(filter.or) && filter.or.length > 0) {
+      const result = new Set<string>()
+      for (const child of filter.or) {
+        const selected = select(child, depth + 1)
+        if (selected === undefined) return undefined
+        for (const id of selected) result.add(id)
+        if (result.size > 100) return undefined
+      }
+      return result
+    }
+    if (
+      filter.property !== field ||
+      Object.keys(filter).some((key) => !["property", "rich_text"].includes(key))
+    )
+      return undefined
+    const condition = object(filter.rich_text)
+    const id = condition?.equals
+    if (
+      condition === undefined ||
+      Object.keys(condition).length !== 1 ||
+      typeof id !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(id) ||
+      (request.redactedValue !== undefined &&
+        request.redactedValue.length > 0 &&
+        id.includes(request.redactedValue))
+    )
+      return undefined
+    return new Set([id])
+  }
+  try {
+    const ids = select(body?.filter, 0)
+    return ids !== undefined && ids.size > 0 && ids.size <= 100
+      ? { ...target, entity_ids: [...ids].sort() }
+      : target
+  } catch {
+    return target
+  }
+}
 export type RequestResponseObservation = {
   readonly outcome?: RequestOutcome
   readonly responseBytes?: number
@@ -17,6 +112,7 @@ export type RequestTraceEvent =
       readonly attempt: number
       readonly kind: RequestKind
       readonly body_kind: BodyRequestKind | null
+      readonly target: NotionRequestTarget | null
       readonly method: RequestMethod
       readonly started_ms: number
       readonly duration_ms: number
@@ -36,6 +132,8 @@ export type RequestObservation = {
   /** Opaque, credential-scoped identity including query/body identity. Never a signed URL. */
   readonly key?: string
   readonly requestBytes?: number
+  /** Already derived from the serialized HTTP request at the transport boundary. */
+  readonly target?: NotionRequestTarget | null
   /** A metadata-shaped endpoint may carry retained body bytes. Never hide them as metadata. */
   readonly content?: "body" | "current_body" | "retained_body"
 }
@@ -119,7 +217,7 @@ export type RequestMetricsSnapshot = {
   readonly outcomes: Readonly<Record<RequestOutcome, number>>
   readonly request_duration: DurationSummary
   readonly operation_duration: DurationSummary
-  /** Opt-in, bounded diagnostics. Never contains request paths, bodies or headers. */
+  /** Opt-in, bounded diagnostics. Never contains raw request paths, bodies or headers. */
   readonly trace: readonly RequestTraceEvent[]
   readonly trace_enabled: boolean
   readonly trace_dropped: number
@@ -175,6 +273,7 @@ export function createRequestMetrics(
       const sentAt = now()
       const attempt = ++attempts
       const kind = classifyRequest(request)
+      const target = kind === "provider" ? null : (request.target ?? notionRequestTarget(request))
       const provider = request.provider ?? "notion"
       if (request.requestBytes !== undefined) nonNegative(request.requestBytes, "requestBytes")
       requests[kind] += 1
@@ -207,6 +306,7 @@ export function createRequestMetrics(
           attempt,
           kind,
           body_kind: bodyKind ?? null,
+          target,
           method: request.method,
           started_ms: sentAt,
           duration_ms: elapsed,

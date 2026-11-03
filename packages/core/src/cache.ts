@@ -134,6 +134,12 @@ export interface ObservedSnapshot extends Snapshot {
   readonly shared_body_valid_until?: number
   readonly source?: "notion" | "local_cache" | "local_snapshot"
   readonly freshness?: Freshness
+  readonly materialization?: {
+    readonly manifest_complete: true
+    readonly local_files_ready: boolean
+    readonly materialized_paths: readonly string[]
+    readonly loaded: false
+  }
 }
 export function freshness(
   options: ReadPolicyOptions,
@@ -716,8 +722,14 @@ export function garbageCollectCache(
           absent.add(snapshot.snapshot_id)
       }
     }
-    const referencedSnapshots = new Set<string>()
+    const protectedSnapshots = new Set<string>()
     const referencedObjects = new Set<string>()
+    // Original dispatches and explicit graph pins outlive current catalog membership.
+    for (const key of yield* store.listKeys("operations")) {
+      const value = yield* store.readJson(key, Schema.Unknown)
+      if (value !== undefined) collectRefs(value, protectedSnapshots, referencedObjects)
+    }
+    const referencedSnapshots = new Set(protectedSnapshots)
     for (const prefix of [
       "snapshots",
       "cache",
@@ -728,11 +740,15 @@ export function garbageCollectCache(
     ]) {
       for (const key of yield* store.listKeys(prefix)) {
         const value = yield* store.readJson(key, Schema.Unknown)
-        if (value !== undefined && !absent.has(String(property(value).snapshot_id ?? "")))
+        if (
+          value !== undefined &&
+          (!absent.has(String(property(value).snapshot_id ?? "")) ||
+            protectedSnapshots.has(String(property(value).snapshot_id ?? "")))
+        )
           collectRefs(value, referencedSnapshots, referencedObjects)
       }
     }
-    for (const id of absent) referencedSnapshots.delete(id)
+    for (const id of absent) if (!protectedSnapshots.has(id)) referencedSnapshots.delete(id)
     const unreachable: Array<{ snapshot_id: string; record_id: string; bytes: number }> = []
     for (const key of yield* store.listKeys("snapshots")) {
       const snapshot = yield* store.readJson(key, SnapshotSchema)

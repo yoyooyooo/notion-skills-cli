@@ -178,3 +178,66 @@ NTN_NG07_EVIDENCE_DIR="$RUN/evidence" bun test packages/cli/test/library-source-
 导出包含可选 `relations` 的原有 portable 清单，ZIP 备份后读取，再通过公开 apply 在同库恢复显式空集合。核对原文件/资源 hash、custom 归属和 source pin，确认未改变的导出文件不触发 native body PATCH。跨库或与显式参数冲突必须在写入前失败；旧无该字段的包与原 v1/v2 refresh 计划保持原语义，未知原操作仍阻止重发。不要新增手工维护的第二份关系 JSON 或推测旧持续管理基线。
 
 保留外部证据与原未知操作。NG-SG-09 对生产 Pstack 的关系校准与只读核对另行记录；本节受控通过不代替生产数据或 UI 点击验收。
+
+## NG-SG-08 真实 Link to page 完整性接缝
+
+Notion UI 的真实 page mention 和 Link to page 必须分别验证。2026-11-03 owned 页面实测：mention 导出为 `<mention url="…"/>`；Link to page 导出为 owner/block 定位的 `<unknown … alt="alias" />`，同时返回 `truncated:true` 与该 block 的 `unknown_block_ids`。原失败 public read 及原始 API 回执必须保留，不能通过改写测试 Markdown 冒充原生节点。
+
+[官方 Markdown 读取合同](https://developers.notion.com/reference/retrieve-page-markdown) 将 unknown 分为截断、权限与不支持类型，且 affected IDs 不区分原因。只有实际 unknown 占位符触发完整物理 block 目录读取；完整分页必须明确结束，父链、唯一 block ID、有界数量与所有非页面子树均验证。每个 unknown 必须一一对应实际无子树的 `link_to_page.page_id`。其他未知类型、缺失节点、未读子树、重复 ID、错误 owner、分页不完整及无解释的截断一律 `BODY_INCOMPLETE`，不能以 metadata 代替缺失正文。
+
+~~~bash
+bun test packages/core/test/shared-page-body.test.ts packages/core/test/shared-file-observer.test.ts packages/core/test/shared-native-references.test.ts packages/core/test/shared-native-reference-consumption.test.ts packages/core/test/shared-native-file-content.test.ts packages/core/test/shared-snapshot.test.ts
+NTN_ALIAS_EVIDENCE="$RUN/ng08" node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-native-alias.node.test.ts
+~~~
+
+第二条用真实 Node 与 StoreLive/SQLite 执行公开 `readSkill` / `exportSkill`，Notion 传输受控；不等同于安装 CLI 或实际 Notion UI 验收。证据包括完整公开回执、导出 ZIP、SQLite 与原始对象。断言 raw Markdown 只进行既有 CRLF 规范化，其 `body_sha256` 不替换为补全正文 hash；独立 `native_body_completion` 保存物理证明，`native_references.source_files[].completion_sha256` 参与 parser v2 索引。公开 link entry 必须有 `source_form:"link_to_page"`、原始 placeholder href、block ID、准确 owner / File ID。普通引用仍为 parser v1，不新增旧字段或改变旧 pin 字节。
+
+保留原 alias block，改变其目标而保持 Markdown raw 字节完全相同，验证新索引 / snapshot 改变、raw SHA 相同、旧固定 pin 仍返回原目标和原正文且零网络。缓存重开与 retained raw 恢复必须携带原证明；无证明的 unknown 不能被当成完整正文。正常页面不得为此多读全树，已完成证明不能由 compiler 再扫描一次。
+
+真实验收继续用已冻结安装包对 owned 页面公开 read / export，逐项比对原 API `unknown_block_ids` 与实际 block target；这些 current read 可能按既有机制保留观察 Records，只由任务授权的 root 执行。UI 点击验证与 API / Node / SQLite 证据分栏，受控成功不替代实际 UI 或自主模型 Gate。
+
+## NG-SG-17 明确选择图的跨机器历史
+
+先读 [graph releases](../../../../docs/graph-releases.md)。复用 Records 的 per-node snapshot/chunk 与 library archive record，不建新 Notion 表。`observed_version_vector` 继续表示各节点观察版本；显式 graph release 才保证已选节点的完整历史清单和保留对象。默认只有明确根与 Requires；`--include-members` 是有独立 count/depth/完整字节预算的显式选择，普通引用不扩展。
+
+~~~bash
+bun test packages/core/test/shared-graph-release.test.ts packages/core/test/shared-snapshot-history.test.ts packages/core/test/shared-history-workflow.test.ts packages/core/test/graph-prepare.test.ts packages/core/test/export.test.ts --timeout 30000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-sqlite.node.test.ts
+bun test packages/cli/test/library-graph.test.ts --timeout 120000
+~~~
+
+受控图必须包含 root Requires prerequisite、root Members optional，明确选 root + optional 才冻结三节点。验证原始向量和输入 checksum、完整 Required 闭包、同库准确身份、单节点多个版本冲突、全 Members 预算、缺失/坏对象和当前权限撤销。既有单节点 manifest 不能用本机缓存伪装远端对象仍可取。final graph ack 丢失后只读取原 Record；对象阶段未知且完整图不存在时保留原 journal 并明确 unresolved，不生成替代操作。
+
+真实双机流程使用本 run 的 owned 普通 Skills，每个节点有 A 主文与 UTF-8 资源。Pro 公开 prepare / plan / save，记录每个 node 的准确 page/Skill/File ID、snapshot、version、主文及全部文件 hash。只修改这些 owned 页面到 B；不修改生产 Pstack 或任一上游源。Mini 使用自己的认证和空配置、state、cache、export 根，只传 graph ID 与准确库入口，禁止传 SQLite、凭据、对象缓存或 Pro 导出目录。
+
+~~~bash
+node "$CLI_BIN" prepare "$ROOT_REF" "$OPTIONAL_REF" --database "$LIBRARY_ENTRY" --purpose use --metrics > "$RUN/evidence/prepare-a.json"
+node "$CLI_BIN" ctl library graph plan --input "$RUN/evidence/prepare-a.json" --entry "$LIBRARY_ENTRY" > "$RUN/evidence/graph-plan.json"
+node "$CLI_BIN" ctl library graph save --input "$RUN/evidence/graph-plan.json" --entry "$LIBRARY_ENTRY" > "$RUN/evidence/graph-save.json"
+node "$CLI_BIN" ctl library graph inspect "$GRAPH_ID" --entry "$LIBRARY_ENTRY"
+node "$CLI_BIN" ctl library graph restore "$GRAPH_ID" --entry "$LIBRARY_ENTRY" > "$RUN/evidence/graph-restored.json"
+~~~
+
+Mini 对所有返回 pin 执行 read 与完整 snapshot export，逐字节对照 A；current B 只作独立反证，恢复路径 current Markdown/上游对象请求为零。相同 scope 的本机 pins 相同；另一个当前获授权 scope 返回明确的新本机向量，原生产者向量与文件版本保留。显式 producer-scope pinned Requires 无法在另一 scope 静默重绑，必须失败。错误 scope 的 save、越库、缺对象与坏 hash 用受控环境验证，不在生产删除历史对象制造故障。
+
+真正的两个物理机器、安装包 SHA、独立认证与空根证据是 NG-SG-17 Gate 必需项；两个本机临时 state 根只证明受控公开 CLI/SQLite，不能代替此项。
+
+## NG-SG-18 完整清单与按需文件
+
+沿 NG-SG-17 同一 release，另用全空消费根执行 `restore --materialize manifest`，再单独执行 `files`、主文 read / prepare、一个资源 read、完整 export。`--materialize entrypoints` 只增加所有所选主文下载；默认 `all` 仍逐一验证全部历史对象。
+
+~~~bash
+node "$CLI_BIN" ctl library graph restore "$GRAPH_ID" --entry "$LIBRARY_ENTRY" --materialize manifest
+node "$CLI_BIN" files "$EXACT_NODE_ROOT_PIN"
+node "$CLI_BIN" read "$EXACT_MAIN_PIN"
+node "$CLI_BIN" read "$EXACT_RESOURCE_PIN" --output "$RUN/evidence/resource.bin"
+node "$CLI_BIN" export "$EXACT_MAIN_PIN" --projection snapshot --output "$RUN/evidence/complete-export"
+~~~
+
+记录 `manifest_complete`、每节点 `local_files_ready`、`materialized_paths` 和 `loaded:false`。目录要完整保留 File ID、path、hash/ref；主文与资源实际消费仍核对 bytes/hash。按真实 HTTP query 的 Entity ID 集合断言主文请求不含未选资源块，后续资源只请求其缺失 chunk，全部通过 hash 后才进入本地 cache。大二进制、多块、CRLF、空文件、断点已验证块复用、离线缺块和已缓存对象损坏用受控夹具覆盖。
+
+部分下载不写 `snapshots/` 完成态。缺任何必需对象的完整 export 必须失败且不产生完整导出目录；旧 full-ready receipt 不能接受 partial 目录。当前原生正文不能只凭 metadata 宣称有完整 manifest：现有 v1 自然观察计划超过 64 KiB envelope 时必须明确 `SHARED_RECORD_TOO_LARGE` / not_ready，不能偷偷转为可用。历史精确块支持更大文件，不等于此旧观察协议已扩容。
+
+真实 Node/SQLite 测试覆盖 graph plan/complete 派发域、retained-manifest 索引、cache clear 与原对象 GC 保护。当前单文件部分缺失重启可复用已验证块；没有 exact retained 索引的旧 missing pin 保持本地 `SNAPSHOT_MISSING`、零网络。
+
+Broker 若仍为主文注入调用完整 export，必须记录实际全量资源获取，不能宣称已按需。宿主需独立 entry-ready receipt、基于公开准备文件清单的精确资源获取与实际 provider loaded proof。CLI/core、真实 Notion、Broker 安装宿主分别给证据；库级批量与派生缓存统计在 NG-SG-16 追加，不用此处的功能通过代替性能结论。

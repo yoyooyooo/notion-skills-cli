@@ -1,6 +1,7 @@
 import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
+import { openRetainedSnapshot } from "./shared-history-materialization.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
@@ -778,6 +779,7 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
     })),
     ...(snapshot.source ? { source: snapshot.source } : {}),
     ...(snapshot.freshness ? { freshness: snapshot.freshness } : {}),
+    ...(snapshot.materialization ? { materialization: snapshot.materialization } : {}),
     ...(snapshot.source_projection ? { source_projection: snapshot.source_projection } : {}),
     ...snapshotReferences(snapshot),
   }
@@ -787,6 +789,7 @@ export function targetSnapshot(
   target: SkillTarget,
   options: CatalogOptions = {},
   view: SnapshotView = "generated",
+  access: "all" | "manifest" | "entrypoint" | "target" = "all",
 ) {
   return Effect.gen(function* () {
     yield* Effect.try({
@@ -794,13 +797,31 @@ export function targetSnapshot(
       catch: (error) => error as SkillsError,
     })
     let snapshot: ObservedSnapshot
-    if (target.snapshot)
-      snapshot = {
-        ...(yield* loadSnapshot(target.snapshot)),
-        source: "local_snapshot",
-        freshness: { policy: "pinned" },
+    if (target.snapshot) {
+      const complete = yield* loadSnapshot(target.snapshot).pipe(Effect.result)
+      if (complete._tag === "Success")
+        snapshot = {
+          ...complete.success,
+          source: "local_snapshot",
+          freshness: { policy: "pinned" },
+        }
+      else {
+        if (complete.failure.code !== "SNAPSHOT_MISSING")
+          return yield* Effect.fail(complete.failure)
+        const retained = yield* openRetainedSnapshot(
+          target.snapshot,
+          (manifest) => {
+            if (access === "all") return manifest.files.map((file) => file.path)
+            if (access === "manifest") return []
+            if (access === "entrypoint") return [manifest.entrypoint]
+            return [boundSnapshotPath(manifest, target) || manifest.entrypoint]
+          },
+          options,
+        )
+        if (retained === undefined) return yield* Effect.fail(complete.failure)
+        snapshot = retained
       }
-    else {
+    } else {
       const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).read_max_age_ms
       const scopeResult = yield* locallySelectedScope(Boolean(options.offline)).pipe(Effect.result)
       if (scopeResult._tag === "Failure" && options.offline)
@@ -990,7 +1011,7 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       catch: (error) => error as SkillsError,
     })
     if (base.file_id !== undefined) {
-      const containing = yield* targetSnapshot(base, options)
+      const containing = yield* targetSnapshot(base, options, "generated", "manifest")
       const path = yield* Effect.try({
         try: () => boundSnapshotPath(containing, base),
         catch: (error) => error as SkillsError,
@@ -1011,7 +1032,7 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       local.failure.message !== "The path escapes the skill root."
     )
       return yield* Effect.fail(local.failure)
-    const containing = yield* targetSnapshot(base, options)
+    const containing = yield* targetSnapshot(base, options, "generated", "manifest")
     return yield* resolveUpstreamMemberRelative(
       containing,
       base.path || containing.entrypoint,
@@ -1049,7 +1070,7 @@ export function readSkill(input: string, options: ReadOptions = {}) {
         },
         catch: (error) => error as SkillsError,
       })
-      const containing = yield* targetSnapshot(base, options)
+      const containing = yield* targetSnapshot(base, options, "generated", "manifest")
       const basePath = yield* Effect.try({
         try: () => boundSnapshotPath(containing, base),
         catch: (error) => error as SkillsError,
@@ -1065,15 +1086,16 @@ export function readSkill(input: string, options: ReadOptions = {}) {
       })
       snapshot =
         target.snapshot === containing.snapshot_id &&
-        target.selector === parseTarget(fileRef(containing.record.id, "")).selector
+        target.selector === parseTarget(fileRef(containing.record.id, "")).selector &&
+        containing.materialization === undefined
           ? containing
-          : yield* targetSnapshot(target, options)
+          : yield* targetSnapshot(target, options, "generated", "target")
     } else {
       target = yield* Effect.try({
         try: () => parseTarget(input, options.path),
         catch: (error) => error as SkillsError,
       })
-      snapshot = yield* targetSnapshot(target, options)
+      snapshot = yield* targetSnapshot(target, options, "generated", "target")
     }
     const path =
       (yield* Effect.try({
@@ -1104,6 +1126,7 @@ export function readSkill(input: string, options: ReadOptions = {}) {
       ref: snapshotFileRef(snapshot, path),
       source: snapshot.source,
       freshness: snapshot.freshness,
+      ...(snapshot.materialization ? { materialization: snapshot.materialization } : {}),
       ...(snapshot.source_projection ? { source_projection: snapshot.source_projection } : {}),
       ...snapshotReferences(snapshot),
     }
@@ -1117,7 +1140,7 @@ export function readSkill(input: string, options: ReadOptions = {}) {
     const content = yield* Effect.try({
       try: () => {
         if (bytes.includes(0)) throw new Error("binary")
-        return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+        return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
       },
       catch: () =>
         fail("BINARY_FILE", "Use --output <new-path> to retrieve this binary file.", { path }),
@@ -1166,7 +1189,7 @@ export function listSkill(
       try: () => parseTarget(input, options.path),
       catch: (e) => e as SkillsError,
     })
-    const snapshot = yield* targetSnapshot(target, options)
+    const snapshot = yield* targetSnapshot(target, options, "generated", "manifest")
     const path =
       (yield* Effect.try({
         try: () => boundSnapshotPath(snapshot, target),

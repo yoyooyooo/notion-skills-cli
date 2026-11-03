@@ -35,6 +35,7 @@ import {
 import { sha256 } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
 import { completedSharedBodyWriteReview } from "./shared-body-write-review.ts"
+import { completedSharedBodyCurrentAcceptance } from "./shared-body-current-acceptance.ts"
 
 export {
   SharedBodyWritePlanSchema,
@@ -558,6 +559,10 @@ export function reconcileSharedBodyWrite(library: SharedLibrary, input: SharedBo
           requires_fresh_read: true as const,
         }
     }
+    if (outcome === undefined) {
+      const accepted = yield* completedSharedBodyCurrentAcceptance(library, plan)
+      if (accepted !== undefined) return accepted
+    }
     const facts = yield* querySharedRecords(library, {
       skillPageId: plan.skill_page_id,
       kind: "file_event",
@@ -938,6 +943,13 @@ export function loadPendingSharedBodyWrites(
           events: input.events,
         })
         if (review !== undefined) continue
+      }
+      if (outcome === undefined) {
+        const accepted = yield* completedSharedBodyCurrentAcceptance(library, plan, {
+          headers,
+          events: input.events,
+        })
+        if (accepted !== undefined) continue
       }
       plans.push(plan)
     }

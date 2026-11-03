@@ -1,6 +1,7 @@
 import { expect, test } from "@effect/vitest"
 import { Effect } from "effect"
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { once } from "node:events"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -13,8 +14,12 @@ const keys = {
   observations: `cache/shared-file-observations/${"b".repeat(64)}/00000000000000000001.json`,
   page: `cache/shared-page-identities/${scope}/00000000-0000-4000-8000-000000000001.json`,
   github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
+  retainedManifest: `cache/shared-history-manifests/${scope}/s_${"c".repeat(64)}.json`,
   observationPending: `operations/shared-observation-pending/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
+  graphPending: `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/plan.json`,
+  graphComplete: `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/complete.json`,
+  bodyCurrentAcceptance: `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/plan.json`,
   sourceReceipt: `operations/shared-sources/${scope}/source-receipt-${"b".repeat(64)}.json`,
   sourceSelection: `operations/shared-sources/${scope}/source-selection-${"c".repeat(64)}.json`,
   sourceDefinition: `operations/shared-sources/${scope}/source-op-${"a".repeat(64)}.json`,
@@ -161,10 +166,13 @@ test("shared cache and typed dispatch addresses persist across real Node restart
     expect(reader.exit, reader.stderr).toBe(0)
     expect(JSON.parse(reader.stdout)).toEqual({
       values: entries.map((entry) => entry.payload),
-      cache: [keys.observations, keys.page, keys.github].sort(),
+      cache: [keys.observations, keys.page, keys.github, keys.retainedManifest].sort(),
       dispatch: [
         keys.observationPending,
         keys.historyPending,
+        keys.graphPending,
+        keys.graphComplete,
+        keys.bodyCurrentAcceptance,
         keys.profilePending,
         keys.sourceDefinition,
         keys.sourceReceipt,
@@ -189,8 +197,8 @@ test("shared cache and typed dispatch addresses persist across real Node restart
     )
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
-      { category: "cache", retired: 0, count: 3 },
-      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 3 },
+      { category: "cache", retired: 0, count: 4 },
+      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 4 },
     ])
   })
 }, 30_000)
@@ -379,12 +387,17 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
     const cleared = await runProgram(program)
     expect(cleared.exit, cleared.stderr).toBe(0)
     const result = JSON.parse(cleared.stdout)
-    expect(result.entries.sort()).toEqual([keys.observations, keys.page, keys.github].sort())
+    expect(result.entries.sort()).toEqual(
+      [keys.observations, keys.page, keys.github, keys.retainedManifest].sort(),
+    )
     expect(result.cache).toEqual([])
     expect(result.dispatch).toEqual(
       [
         keys.observationPending,
         keys.historyPending,
+        keys.graphPending,
+        keys.graphComplete,
+        keys.bodyCurrentAcceptance,
         keys.profilePending,
         keys.sourceDefinition,
         keys.sourceReceipt,
@@ -418,6 +431,50 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
   })
 }, 30_000)
 
+test("real SQLite acceptance dispatch preserves nested original before/candidate objects across restart and GC", async () => {
+  await isolated(async (root) => {
+    const files = ["before evidence", "candidate evidence", "unreferenced bytes"].map((value) => ({
+      sha256: createHash("sha256").update(value).digest("hex"),
+      bytes: [...new TextEncoder().encode(value)],
+    }))
+    const payload = {
+      version: 1,
+      scope,
+      original: {
+        before: { body_sha256: files[0]?.sha256 },
+        candidate: { body_sha256: files[1]?.sha256 },
+      },
+      decision: {
+        kind: "body_write_current_acceptance",
+        original_write_outcome: "unknown",
+        decision: "accepted_current",
+      },
+    }
+    const program = (
+      write: boolean,
+    ) => `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
+import {ConfigProvider,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
+import {garbageCollectCache} from ${JSON.stringify(core + "cache.ts")};
+process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
+process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
+process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
+Effect.runPromise(Effect.gen(function*(){const store=yield* Store;
+${write ? `for(const file of ${JSON.stringify(files)})yield* store.writeBytes('objects/'+file.sha256,new Uint8Array(file.bytes));yield* store.writeJson(${JSON.stringify(keys.bodyCurrentAcceptance)},${JSON.stringify(payload)});` : ""}
+console.log(JSON.stringify({dispatch:yield* store.readJson(${JSON.stringify(keys.bodyCurrentAcceptance)},Schema.Unknown),gc:yield* garbageCollectCache({dryRun:true})}));
+}).pipe(Effect.provide(StoreLive.pipe(Layer.provideMerge(NodeServices.layer))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+    // Every invocation opens its own SQLite connection with the same durable evidence.
+    for (const write of [true, false]) {
+      const result = await runProgram(program(write))
+      expect(result.exit, result.stderr).toBe(0)
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        dispatch: payload,
+        gc: { unreachable_snapshots: [], unreachable_objects: [files[2]?.sha256] },
+      })
+    }
+  })
+}, 30_000)
+
 test("unregistered shared namespaces, traversal and malformed known keys cannot become generic SQLite records", async () => {
   await isolated(async (root) => {
     const invalid = [
@@ -425,6 +482,9 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `operations/shared-anything/${scope}.json`,
       `operations/shared-observation-pending/${scope}/../other.json`,
       `operations/shared-snapshot-history/${scope}/latest.json`,
+      `cache/shared-history-manifests/${scope}/latest.json`,
+      `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/replacement.json`,
+      `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/complete.json`,
       `cache/shared-page-identities/${scope}/page.json`,
       `cache/shared-github-blobs/${"c".repeat(40)}`,
       `cache/shared-file-observations/${scope}/1.json`,

@@ -20,6 +20,7 @@ import { Notion } from "./notion.ts"
 import { canonicalMain } from "./portable.ts"
 import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
 import { compileSharedNativeReferences } from "./shared-native-references.ts"
+import { NativeBodyCompletionSchema } from "./shared-native-body-completion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
 import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
@@ -100,6 +101,7 @@ const LocalFileObservationSchema = Schema.Struct({
   body_sha256: Schema.String,
   body_verified_at: Schema.Number,
   metadata_validated_at: Schema.Number,
+  native_body_completion: Schema.optional(NativeBodyCompletionSchema),
 })
 const SharedObservationCacheSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -834,6 +836,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           body_sha256: observed.body.fingerprint.sha256,
           body_verified_at: observed.body.downloaded_at,
           metadata_validated_at: metadataObservedAt,
+          ...(observed.body.native_body_completion === undefined
+            ? {}
+            : { native_body_completion: observed.body.native_body_completion }),
         }
       } else {
         const observed = previousById.get(binding.file_id)
@@ -961,6 +966,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             markdown: source.markdown,
             body_sha256: source.observation?.body_sha256 ?? (yield* sha256(source.markdown)),
             ...(source.page_id === undefined ? {} : { page_id: source.page_id }),
+            ...(source.observation?.native_body_completion === undefined
+              ? {}
+              : { native_body_completion: source.observation.native_body_completion }),
           }
         }),
       ),
@@ -988,6 +996,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
                     activeBindings,
                     resolvedLinks,
                     native.linkedPages.get(file.path),
+                    native.completions.get(file.path),
                   ),
                 ),
               }
@@ -1003,6 +1012,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             activeBindings,
             resolvedLinks,
             native.linkedPages.get(file.path),
+            native.completions.get(file.path),
           ) +
           (routerMembers === undefined || (record.kind === "skill" && routerMembers.length === 0)
             ? ""
@@ -1147,6 +1157,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
               last_edited_time: binding.last_edited_time,
               metadata_validated_at: observation.metadata_validated_at,
               body_verified_at: observation.body_verified_at,
+              ...(observation.native_body_completion === undefined
+                ? {}
+                : { native_body_completion: observation.native_body_completion }),
             }
           }),
         }) satisfies SharedAuthoringEvidence,

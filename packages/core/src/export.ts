@@ -169,7 +169,10 @@ function materializeSnapshotPortable(snapshot: Snapshot, generated: boolean) {
             main: snapshot.markdown_files.main,
             files,
           } satisfies PortableSkill
-        if (generated && snapshot.source_projection)
+        if (
+          generated &&
+          (snapshot.source_projection || snapshot.record.locator.type === "shared_skill")
+        )
           return {
             kind: snapshot.record.kind,
             name: snapshot.record.name,

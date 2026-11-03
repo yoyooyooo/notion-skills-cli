@@ -4,7 +4,6 @@ import { pageId as notionPageId } from "./ref.ts"
 import {
   BodyFingerprintSchema,
   FileEventSchema,
-  normalizeObservedBody,
   RetainedContentSchema,
   type FileEvent,
 } from "./shared-file-state.ts"
@@ -17,6 +16,12 @@ import {
 } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
+import {
+  NativeBodyCompletionSchema,
+  nativeObservedObjectIdentity,
+  normalizeCompletedNativeBody,
+  validateNativeBodyCompletion,
+} from "./shared-native-body-completion.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 const OperationId = Schema.String.check(Schema.isPattern(/^observe-[a-f0-9]{64}\.[a-f0-9]{64}$/u))
@@ -33,6 +38,7 @@ export const FrozenObservationBodySchema = Schema.Struct({
   fingerprint: BodyFingerprintSchema,
   bytes: Schema.Number,
   downloaded_at: Schema.Number,
+  native_body_completion: Schema.optional(NativeBodyCompletionSchema),
 })
 export type FrozenObservationBody = typeof FrozenObservationBodySchema.Type
 
@@ -119,20 +125,32 @@ export function validateSharedObservationPlan(input: unknown) {
           "SHARED_OBSERVATION_INVALID",
           "The original parent frontier must be sorted, unique and non-self-referential.",
         )
-      if (normalizeObservedBody(plan.body.markdown) !== plan.body.markdown)
+      if (
+        normalizeCompletedNativeBody(plan.body.markdown, plan.body.native_body_completion) !==
+        plan.body.markdown
+      )
         throw fail(
           "SHARED_OBSERVATION_INVALID",
           "The frozen body must use its declared Markdown normalization.",
         )
+      if (plan.body.native_body_completion !== undefined)
+        validateNativeBodyCompletion(plan.body.markdown, plan.body.native_body_completion, {
+          page_id: plan.page_id,
+          body_sha256: plan.body.fingerprint.sha256,
+        })
     })
     const bytes = new TextEncoder().encode(plan.body.markdown)
     const bodyHash = yield* sha256(bytes)
     const eventHash = yield* sha256(canonicalSharedJson(eventDescription(plan.event)))
     const planHash = yield* sha256(canonicalSharedJson(planDescription(plan)))
+    const retainedIdentity = yield* nativeObservedObjectIdentity(
+      bodyHash,
+      plan.body.native_body_completion,
+    )
     if (
       bodyHash !== plan.body.fingerprint.sha256 ||
       bytes.byteLength !== plan.body.bytes ||
-      plan.event.content.object_id !== `body-${bodyHash}` ||
+      plan.event.content.object_id !== retainedIdentity.object_id ||
       plan.event.event_id !== `adopt-${eventHash}` ||
       plan.operation_id !== `observe-${eventHash}.${planHash}`
     )
@@ -145,16 +163,31 @@ export function validateSharedObservationPlan(input: unknown) {
     // All deterministic failures happen before a local dispatch receipt exists.
     yield* checked(() => {
       validateSharedRecordEnvelope(plan.operation_id, plan)
-      validateSharedRecordEnvelope(`retain-${bodyHash}`, {
-        version: 1,
-        kind: "normalized_markdown",
-        normalization_version: 1,
-        markdown: plan.body.markdown,
-      })
+      validateSharedRecordEnvelope(
+        retainedIdentity.operation_id,
+        retainedObservationBody(plan.body),
+      )
       validateSharedRecordEnvelope(plan.event.event_id, plan.event)
     })
     return plan
   })
+}
+
+function retainedObservationBody(body: FrozenObservationBody) {
+  return body.native_body_completion === undefined
+    ? {
+        version: 1 as const,
+        kind: "normalized_markdown" as const,
+        normalization_version: 1 as const,
+        markdown: body.markdown,
+      }
+    : {
+        version: 3 as const,
+        kind: "native_completed_markdown" as const,
+        normalization_version: 1 as const,
+        markdown: body.markdown,
+        native_body_completion: body.native_body_completion,
+      }
 }
 
 /** The original download time is part of the plan, never replaced by a recovery clock. */
@@ -230,19 +263,18 @@ export function commitSharedObservationPlan(
       payloadContainsBody: true,
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "plan")))
     const content = plan.event.content
+    const retainedIdentity = yield* nativeObservedObjectIdentity(
+      content.sha256,
+      plan.body.native_body_completion,
+    )
     yield* appendSharedRecord(library, {
       mode: input.mode,
       recordId: content.object_id,
-      operationId: `retain-${content.sha256}`,
+      operationId: retainedIdentity.operation_id,
       skillPageId: plan.skill_page_id,
       kind: "object",
       entityId: content.object_id,
-      payload: {
-        version: 1,
-        kind: "normalized_markdown",
-        normalization_version: 1,
-        markdown: plan.body.markdown,
-      },
+      payload: retainedObservationBody(plan.body),
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "object")))
     yield* appendSharedRecord(library, {
       mode: input.mode,

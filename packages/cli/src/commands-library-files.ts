@@ -17,6 +17,7 @@ import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryFileRestoreCommand } from "./commands-library-file-restore.ts"
 import { libraryFileReviewCommand } from "./commands-library-file-review.ts"
+import { libraryFileAcceptCurrentCommand } from "./commands-library-file-accept-current.ts"
 
 const entry = requiredSingleton("entry", "Exact shared library entry ID, URL or registered alias")
 const target = Argument.String("target").pipe(
@@ -251,5 +252,6 @@ export const libraryFilesCommand = defineCommand("file").pipe(
     reconcile,
     libraryFileRestoreCommand,
     libraryFileReviewCommand,
+    libraryFileAcceptCurrentCommand,
   ]),
 )

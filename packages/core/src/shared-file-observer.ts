@@ -4,7 +4,6 @@ import type { SharedLibrary } from "./shared-library.ts"
 import {
   decideObservedBody,
   FileEventSchema,
-  normalizeObservedBody,
   resolveFileState,
   RetainedContentSchema,
   type BodyFingerprint,
@@ -30,6 +29,12 @@ import {
 } from "./shared-body-write.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
 import { loadSharedRetainedByteFile } from "./shared-snapshot-history.ts"
+import {
+  NativeBodyCompletionSchema,
+  nativeObservedObjectIdentity,
+  normalizeCompletedNativeBody,
+  validateNativeBodyCompletion,
+} from "./shared-native-body-completion.ts"
 
 type EffectValue<T> = T extends Effect.Effect<infer A, infer _E, infer _R> ? A : never
 type ObservedBody = EffectValue<ReturnType<typeof observeSharedBody>>
@@ -80,6 +85,13 @@ const ChunkedRetainedMarkdownSchema = Schema.Struct({
 const RetainedMarkdownSchema = Schema.Union([
   InlineRetainedMarkdownSchema,
   ChunkedRetainedMarkdownSchema,
+  Schema.Struct({
+    version: Schema.Literal(3),
+    kind: Schema.Literal("native_completed_markdown"),
+    normalization_version: Schema.Literal(1),
+    markdown: Schema.String,
+    native_body_completion: NativeBodyCompletionSchema,
+  }),
 ])
 
 function checked<A>(action: () => A): Effect.Effect<A, SkillsError> {
@@ -204,8 +216,12 @@ export function observeSharedFile<R = never>(input: ObserveSharedFileInput<R>) {
         ),
       )
 
+    const retainedIdentity = yield* nativeObservedObjectIdentity(
+      body.fingerprint.sha256,
+      body.native_body_completion,
+    )
     const content: RetainedContent = {
-      object_id: `body-${body.fingerprint.sha256}`,
+      object_id: retainedIdentity.object_id,
       sha256: body.fingerprint.sha256,
       bytes: body.bytes,
     }
@@ -279,7 +295,7 @@ export function loadRetainedBody(
       )
     const payload = yield* checked(() => decode(RetainedMarkdownSchema, record.payload))
     const retainedMarkdown =
-      payload.version === 1
+      payload.version !== 2
         ? payload.markdown
         : yield* Effect.gen(function* () {
             if (payload.sha256 !== content.sha256 || payload.bytes !== content.bytes)
@@ -297,9 +313,14 @@ export function loadRetainedBody(
             })
             return yield* checked(() => new TextDecoder("utf-8", { fatal: true }).decode(bytes))
           })
+    const completion = payload.version === 3 ? payload.native_body_completion : undefined
     const markdown = yield* checked(() =>
-      normalizeObservedBody(retainedMarkdown, payload.normalization_version),
+      normalizeCompletedNativeBody(retainedMarkdown, completion),
     )
+    if (completion !== undefined)
+      yield* checked(() =>
+        validateNativeBodyCompletion(markdown, completion, { body_sha256: content.sha256 }),
+      )
     if (markdown !== retainedMarkdown)
       return yield* Effect.fail(
         fail(
@@ -322,7 +343,11 @@ export function loadRetainedBody(
           },
         ),
       )
-    if (content.object_id !== `body-${hash}` || record.operation_id !== `retain-${hash}`)
+    const retainedIdentity = yield* nativeObservedObjectIdentity(hash, completion)
+    if (
+      content.object_id !== retainedIdentity.object_id ||
+      record.operation_id !== retainedIdentity.operation_id
+    )
       return yield* Effect.fail(
         fail("RETAINED_BODY_INVALID", "Retained body identity does not match its content hash.", {
           object_id: content.object_id,
@@ -334,6 +359,7 @@ export function loadRetainedBody(
       fingerprint,
       bytes: encoded.byteLength,
       content,
+      ...(completion === undefined ? {} : { native_body_completion: completion }),
     }
   })
 }

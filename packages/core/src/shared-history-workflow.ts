@@ -52,7 +52,7 @@ function checked<A>(action: () => A): Effect.Effect<A, SkillsError> {
   })
 }
 
-function assertSharedIdentity(current: ContentRecord, frozen: ContentRecord): void {
+export function assertSharedHistoryIdentity(current: ContentRecord, frozen: ContentRecord): void {
   validateSharedRecordIdentity(frozen)
   if (
     current.locator.type !== "shared_skill" ||
@@ -66,7 +66,7 @@ function assertSharedIdentity(current: ContentRecord, frozen: ContentRecord): vo
     )
 }
 
-function currentSharedSkill(library: SharedLibrary, skillPageId: string) {
+export function currentSharedHistorySkill(library: SharedLibrary, skillPageId: string) {
   return Effect.gen(function* () {
     if (pageId(skillPageId) !== skillPageId)
       return yield* Effect.fail(
@@ -102,7 +102,7 @@ function currentSharedSkill(library: SharedLibrary, skillPageId: string) {
   })
 }
 
-function frozenTree(value: Snapshot | SharedSnapshotManifest) {
+export function sharedSnapshotFrozenTree(value: Snapshot | SharedSnapshotManifest) {
   return canonicalSharedJson({
     record: value.record,
     entrypoint: value.entrypoint,
@@ -143,7 +143,7 @@ function originalPendingHistory(library: SharedLibrary, snapshot: Snapshot) {
       if (
         entry.library_id !== library.library_id ||
         entry.skill_page_id !== plan.manifest.skill_page_id ||
-        frozenTree(snapshot) !== frozenTree(plan.manifest)
+        sharedSnapshotFrozenTree(snapshot) !== sharedSnapshotFrozenTree(plan.manifest)
       )
         return yield* Effect.fail(
           fail(
@@ -221,8 +221,8 @@ export function archiveSharedHistory(
           "Archive requires a complete shared snapshot belonging to the currently authenticated scope.",
         ),
       )
-    const current = yield* currentSharedSkill(library, locator.page_id)
-    yield* checked(() => assertSharedIdentity(current, snapshot.record))
+    const current = yield* currentSharedHistorySkill(library, locator.page_id)
+    yield* checked(() => assertSharedHistoryIdentity(current, snapshot.record))
     const store = yield* Store
     const pending = yield* originalPendingHistory(library, snapshot)
     if (pending !== undefined) {
@@ -306,64 +306,32 @@ export function restoreSharedHistory(
         fail("INVALID_ARGUMENT", "Restore requires an exact Skill page and complete shared pin."),
       )
     const scope = yield* authScope
-    const current = yield* currentSharedSkill(library, selected.skillPageId)
+    const current = yield* currentSharedHistorySkill(library, selected.skillPageId)
     const restored = yield* restoreSharedSnapshotHistory(library, {
       ...selected,
       expectedSkillId: current.locator.skill_id,
     })
-    yield* checked(() => assertSharedIdentity(current, restored.manifest.record))
-    const snapshotId = `s_${yield* sha256(JSON.stringify([scope, restored.manifest.record.id, restored.manifest.version_id]))}`
+    yield* checked(() => assertSharedHistoryIdentity(current, restored.manifest.record))
+    const snapshot = yield* cacheSharedHistoricalSnapshot(scope, restored)
+    return {
+      ...snapshotInfo({ ...snapshot, source: "local_snapshot", freshness: { policy: "pinned" } }),
+      shared_pin: restored.pin_id,
+    }
+  })
+}
+
+/** Publish only a completely verified fixed tree. Access and remote manifest validation belong
+ * to the history or graph restore caller; this never creates a current observation. */
+export function cacheSharedHistoricalSnapshot(
+  scope: string,
+  restored: {
+    readonly manifest: SharedSnapshotManifest
+    readonly files: readonly { readonly path: string; readonly bytes: Uint8Array }[]
+  },
+) {
+  return Effect.gen(function* () {
+    const { snapshot, exists } = yield* historicalSnapshotManifest(scope, restored.manifest)
     const store = yield* Store
-    const key = `snapshots/${snapshotId}.json`
-    const saved = yield* store.readJson(key, SnapshotSchema)
-    if (
-      saved !== undefined &&
-      (saved.snapshot_id !== snapshotId ||
-        saved.scope !== scope ||
-        saved.historical_snapshot_id !== undefined ||
-        !Number.isFinite(saved.created_at) ||
-        saved.created_at < 0 ||
-        frozenTree(saved) !== frozenTree(restored.manifest))
-    )
-      return yield* Effect.fail(
-        fail(
-          "STATE_CORRUPT",
-          "An existing immutable snapshot disagrees with the exact shared pin.",
-        ),
-      )
-    const createdAt = saved?.created_at ?? (yield* Clock.currentTimeMillis)
-    const snapshot =
-      saved ??
-      (yield* checked(() =>
-        decode(SnapshotSchema, {
-          snapshot_id: snapshotId,
-          scope,
-          record: restored.manifest.record,
-          entrypoint: restored.manifest.entrypoint,
-          version_id: restored.manifest.version_id,
-          ...(restored.manifest.file_bindings === undefined
-            ? {}
-            : { file_bindings: restored.manifest.file_bindings }),
-          ...(restored.manifest.native_references === undefined
-            ? {}
-            : { native_references: restored.manifest.native_references }),
-          ...(restored.manifest.members === undefined
-            ? {}
-            : { members: restored.manifest.members }),
-          ...(restored.manifest.required === undefined
-            ? {}
-            : { required: restored.manifest.required }),
-          ...(restored.manifest.router_members === undefined
-            ? {}
-            : { router_members: restored.manifest.router_members }),
-          created_at: createdAt,
-          files: restored.manifest.files.map((file) => ({
-            path: file.path,
-            sha256: file.sha256,
-            bytes: file.bytes,
-          })),
-        }),
-      ))
     const files = new Map(restored.files.map((file) => [file.path, file.bytes]))
     for (const file of snapshot.files) {
       const bytes = files.get(file.path)
@@ -381,10 +349,66 @@ export function restoreSharedHistory(
       yield* store.writeBytes(`objects/${file.sha256}`, bytes)
     }
     yield* validateSnapshot(snapshot)
-    if (saved === undefined) yield* store.writeJson(key, snapshot)
-    return {
-      ...snapshotInfo({ ...snapshot, source: "local_snapshot", freshness: { policy: "pinned" } }),
-      shared_pin: restored.pin_id,
-    }
+    if (!exists) yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
+    return snapshot
+  })
+}
+
+/** Complete immutable file metadata only. This helper never declares local bytes ready. */
+export function sharedHistoricalSnapshotManifest(scope: string, manifest: SharedSnapshotManifest) {
+  return historicalSnapshotManifest(scope, manifest).pipe(Effect.map((value) => value.snapshot))
+}
+
+function historicalSnapshotManifest(scope: string, manifest: SharedSnapshotManifest) {
+  return Effect.gen(function* () {
+    const snapshotId = `s_${yield* sha256(JSON.stringify([scope, manifest.record.id, manifest.version_id]))}`
+    const store = yield* Store
+    const key = `snapshots/${snapshotId}.json`
+    const saved = yield* store.readJson(key, SnapshotSchema)
+    if (
+      saved !== undefined &&
+      (saved.snapshot_id !== snapshotId ||
+        saved.scope !== scope ||
+        saved.historical_snapshot_id !== undefined ||
+        !Number.isFinite(saved.created_at) ||
+        saved.created_at < 0 ||
+        sharedSnapshotFrozenTree(saved) !== sharedSnapshotFrozenTree(manifest))
+    )
+      return yield* Effect.fail(
+        fail(
+          "STATE_CORRUPT",
+          "An existing immutable snapshot disagrees with the exact shared pin.",
+        ),
+      )
+    const createdAt = saved?.created_at ?? (yield* Clock.currentTimeMillis)
+    const snapshot =
+      saved ??
+      (yield* checked(() =>
+        decode(SnapshotSchema, {
+          snapshot_id: snapshotId,
+          scope,
+          record: manifest.record,
+          entrypoint: manifest.entrypoint,
+          version_id: manifest.version_id,
+          ...(manifest.file_bindings === undefined
+            ? {}
+            : { file_bindings: manifest.file_bindings }),
+          ...(manifest.native_references === undefined
+            ? {}
+            : { native_references: manifest.native_references }),
+          ...(manifest.members === undefined ? {} : { members: manifest.members }),
+          ...(manifest.required === undefined ? {} : { required: manifest.required }),
+          ...(manifest.router_members === undefined
+            ? {}
+            : { router_members: manifest.router_members }),
+          created_at: createdAt,
+          files: manifest.files.map((file) => ({
+            path: file.path,
+            sha256: file.sha256,
+            bytes: file.bytes,
+          })),
+        }),
+      ))
+    return { snapshot, exists: saved !== undefined }
   })
 }

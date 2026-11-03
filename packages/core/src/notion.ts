@@ -58,6 +58,8 @@ type NotionRequestOptions = {
   readonly content?: "body"
   readonly priority?: RequestPriority
   readonly queueBudgetMs?: number
+  /** Records schema property ID; the transport derives identities from sent JSON only. */
+  readonly entityPropertyId?: string
 }
 
 export class Notion extends Context.Service<
@@ -184,6 +186,7 @@ export const NotionTransport = Layer.effect(
           credential,
           body,
           file: options?.file,
+          entityPropertyId: options?.entityPropertyId,
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fs),
           Effect.provideService(Path.Path, paths),
@@ -226,6 +229,7 @@ export const NotionTransport = Layer.effect(
                 key: requestKey,
                 ...(options?.content ? { content: options.content } : {}),
                 requestBytes: prepared.requestBytes,
+                target: prepared.target,
               })
               let responseBytes: number | undefined
               let observed: ReturnType<typeof notionResponseDetails> | undefined

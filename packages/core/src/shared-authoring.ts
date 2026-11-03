@@ -29,6 +29,10 @@ import {
 } from "./shared-pending-file-operations.ts"
 import { sha256, Store } from "./store.ts"
 import { projectSharedNotionMarkdown } from "./shared-notion-projection.ts"
+import {
+  NativeBodyCompletionSchema,
+  type NativeBodyCompletion,
+} from "./shared-native-body-completion.ts"
 
 /** Fresh-read evidence only; never serialized into a fixed snapshot or used as shared ownership. */
 export type SharedAuthoringEvidence = {
@@ -50,6 +54,7 @@ export type SharedAuthoringEvidence = {
     readonly last_edited_time: string
     readonly metadata_validated_at: number
     readonly body_verified_at: number
+    readonly native_body_completion?: NativeBodyCompletion
   }[]
 }
 export const SharedAuthoringEvidenceSchema = Schema.Struct({
@@ -72,6 +77,7 @@ export const SharedAuthoringEvidenceSchema = Schema.Struct({
       last_edited_time: Schema.String,
       metadata_validated_at: Schema.Number,
       body_verified_at: Schema.Number,
+      native_body_completion: Schema.optional(NativeBodyCompletionSchema),
     }),
   ),
 })

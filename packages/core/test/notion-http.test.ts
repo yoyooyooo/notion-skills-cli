@@ -4,6 +4,101 @@ import { Notion } from "../src/notion.ts"
 import { NOTION_API_VERSION, NOTION_RESPONSE_LIMIT } from "../src/notion-http.ts"
 import { fixtureToken, json, localServer, runtime } from "./notion-http-fixture.ts"
 
+test("real HTTP trace attributes actual serialized Entity filters without URLs, credentials or body text", async () => {
+  const pageId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+  const dataSourceId = "11111111-2222-4333-8444-555555555555"
+  const entityPropertyId = "private-encoded-property"
+  const filter = {
+    and: [
+      { property: "private-kind-property", select: { equals: "object" } },
+      {
+        or: [
+          { property: entityPropertyId, rich_text: { equals: "file-b" } },
+          { property: entityPropertyId, rich_text: { equals: "file-a" } },
+        ],
+      },
+    ],
+  }
+  const sent: Array<{ url: string; body: unknown }> = []
+  await localServer(
+    (request, response) => {
+      let body = ""
+      request.setEncoding("utf8")
+      request.on("data", (chunk) => {
+        body += chunk
+      })
+      request.on("end", () => {
+        sent.push({ url: request.url ?? "", body: body.length > 0 ? JSON.parse(body) : null })
+        json(response, 200, { object: "list", results: [], has_more: false, next_cursor: null })
+      })
+    },
+    async (origin) => {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const api = yield* Notion
+            yield* api.request(
+              `v1/pages/${pageId.replaceAll("-", "").toUpperCase()}/markdown?private=secret-query`,
+            )
+            yield* api.request(`v1/blocks/${pageId}/children`)
+            yield* api.request(
+              `v1/data_sources/${dataSourceId}/query?filter_properties=private-payload-property`,
+              {
+                filter: {
+                  property: entityPropertyId,
+                  rich_text: { equals: "private-original-value" },
+                },
+                toJSON: () => ({ page_size: 100, filter }),
+              },
+              { method: "POST", content: "body", entityPropertyId },
+            )
+            yield* api.request(
+              `v1/data_sources/${dataSourceId}/query`,
+              { filter },
+              { content: "body" },
+            )
+            yield* api.request(
+              `v1/data_sources/${dataSourceId}/query`,
+              { filter: { property: entityPropertyId, rich_text: { equals: fixtureToken } } },
+              { content: "body", entityPropertyId },
+            )
+            const metrics = api.requestMetrics?.()
+            const attempts = metrics?.trace.filter((event) => event.event === "attempt")
+            expect(attempts?.map((event) => event.target)).toEqual([
+              { page_id: pageId },
+              { block_id: pageId },
+              { data_source_id: dataSourceId, entity_ids: ["file-a", "file-b"] },
+              { data_source_id: dataSourceId },
+              { data_source_id: dataSourceId },
+            ])
+            expect(metrics?.total_requests).toBe(5)
+            const trace = JSON.stringify(metrics?.trace)
+            for (const privateValue of [
+              fixtureToken,
+              "secret-query",
+              "private-original-value",
+              entityPropertyId,
+              "private-payload-property",
+              origin,
+              "Authorization",
+              "Bearer",
+            ])
+              expect(trace).not.toContain(privateValue)
+          }),
+        ).pipe(
+          Effect.provide(
+            runtime(origin, { intervalMs: 1, config: { NTN_SKILLS_REQUEST_TRACE_LIMIT: "100" } }),
+          ),
+        ),
+      )
+    },
+  )
+  expect(sent[0]?.url).toBe(
+    `/v1/pages/${pageId.replaceAll("-", "").toUpperCase()}/markdown?private=secret-query`,
+  )
+  expect(sent[2]?.body).toEqual({ page_size: 100, filter })
+})
+
 test("real HTTP read and query send explicit version and preserve complete streamed JSON", async () => {
   const observed: Array<{
     url?: string

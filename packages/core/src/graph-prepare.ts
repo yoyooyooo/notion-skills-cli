@@ -352,10 +352,15 @@ function prepareSelected(
               }),
             )
           attempted.add(key)
-          snapshot = yield* targetSnapshot(selected, {
-            ...options,
-            ...(selected.snapshot === undefined ? policy : { offline: policy.offline }),
-          })
+          snapshot = yield* targetSnapshot(
+            selected,
+            {
+              ...options,
+              ...(selected.snapshot === undefined ? policy : { offline: policy.offline }),
+            },
+            "generated",
+            "entrypoint",
+          )
           id = snapshot.record.id
           yield* checked(() => register(snapshot!.record, snapshot!.snapshot_id))
           attempted.delete(key)

@@ -559,6 +559,7 @@ function queryRecordRows(
         path: `v1/data_sources/${dataSourceId}/query?${parameters.toString()}`,
         filter: filters.length === 1 ? filters[0] : { and: filters },
         payloadPropertyId: ids.Payload,
+        entityPropertyId: ids["Entity ID"],
       }
     })
     const records = new Map<string, RecordHeader>()
@@ -574,7 +575,11 @@ function queryRecordRows(
           filter: query.filter,
           ...(cursor === undefined ? {} : { start_cursor: cursor }),
         },
-        { method: "POST", ...(content ? { content } : {}) },
+        {
+          method: "POST",
+          entityPropertyId: query.entityPropertyId,
+          ...(content ? { content } : {}),
+        },
       )
       const page = yield* checked(() => {
         const raw = object(value, "Records query response")

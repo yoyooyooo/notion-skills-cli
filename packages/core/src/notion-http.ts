@@ -2,6 +2,7 @@ import { Config, Effect, FileSystem, Path, Redacted, Schema, Stream } from "effe
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { fail, property, SkillsError } from "./model.ts"
 import type { NotionCredential } from "./notion-credential.ts"
+import { notionRequestTarget } from "./request-metrics.ts"
 
 // https://developers.notion.com/reference/versioning, verified 2026-11-03.
 export const NOTION_API_VERSION = "2026-03-11"
@@ -54,6 +55,7 @@ export const prepareNotionRequest = Effect.fnUntraced(function* (input: {
   readonly credential: NotionCredential
   readonly body?: unknown
   readonly file?: string
+  readonly entityPropertyId?: string
 }) {
   const url = yield* Effect.try({
     try: () => {
@@ -130,7 +132,20 @@ export const prepareNotionRequest = Effect.fnUntraced(function* (input: {
     )
     if (request.body._tag === "Uint8Array") requestBytes = request.body.body.byteLength
   }
-  return { request, requestBytes }
+  // Read the serialized bytes that will be sent, including any toJSON transform.
+  // Only an explicit schema-resolved Entity property can contribute identities.
+  const body: unknown =
+    input.file === undefined && request.body._tag === "Uint8Array"
+      ? JSON.parse(new TextDecoder().decode(request.body.body))
+      : undefined
+  const target = notionRequestTarget({
+    path: new URL(request.url).pathname,
+    method: input.method,
+    body,
+    entityPropertyId: input.entityPropertyId,
+    redactedValue: Redacted.value(input.credential.token),
+  })
+  return { request, requestBytes, target }
 })
 
 /** One HTTP attempt only. Scheduling and retry policy remain in Notion. */

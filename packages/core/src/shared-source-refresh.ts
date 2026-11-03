@@ -346,6 +346,9 @@ function projectCandidate(
               ),
               body_sha256: observed?.body_sha256 ?? (yield* sha256(file.bytes)),
               ...(binding === undefined ? {} : { page_id: binding.page_id }),
+              ...(observed?.native_body_completion === undefined
+                ? {}
+                : { native_body_completion: observed.native_body_completion }),
             }
           }),
       ),
@@ -369,6 +372,7 @@ function projectCandidate(
                     activeBindings,
                     resolvedLinks,
                     native.linkedPages.get(file.path),
+                    native.completions.get(file.path),
                   ),
                 ),
               }
@@ -386,6 +390,7 @@ function projectCandidate(
             activeBindings,
             resolvedLinks,
             native.linkedPages.get(file.path),
+            native.completions.get(file.path),
           ) +
             (members === undefined || members.length === 0
               ? ""

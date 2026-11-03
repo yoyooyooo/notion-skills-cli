@@ -56,7 +56,7 @@ export function hasTypedLinks(markdown: string) {
 export function readLinkBlocks(
   page: string,
   api: Notion["Service"],
-  options?: { readonly structureEvidence?: boolean },
+  options?: { readonly structureEvidence?: boolean; readonly completeBodyEvidence?: boolean },
 ) {
   return Effect.gen(function* () {
     const blocks: Block[] = []
@@ -83,6 +83,16 @@ export function readLinkBlocks(
           )
           if (!Array.isArray(result.results) || typeof result.has_more !== "boolean")
             return yield* Effect.fail(fail("INVALID_RESPONSE", "Invalid link block inventory."))
+          if (
+            options?.completeBodyEvidence &&
+            (result.object !== "list" || (!result.has_more && result.next_cursor !== null))
+          )
+            return yield* Effect.fail(
+              fail(
+                "INVALID_RESPONSE",
+                "Body completion requires an explicit complete block inventory.",
+              ),
+            )
           for (const raw of result.results) {
             const block = property(raw)
             if (typeof block.id !== "string" || typeof block.type !== "string")

@@ -27,17 +27,20 @@ export const NativeReferenceSchema = Schema.Struct({
   page_id: Page,
   file_id: Schema.optional(NativeFileIdSchema),
   path: Schema.String,
+  block_id: Schema.optional(Page),
+  source_form: Schema.optional(Schema.Literal("link_to_page")),
 })
 export type NativeReference = typeof NativeReferenceSchema.Type
 export const NativeReferenceIndexSchema = Schema.Struct({
   version: Schema.Literal(1),
-  parser_version: Schema.Literal(1),
+  parser_version: Schema.Literals([1, 2]),
   parent_id: Schema.String,
   source_files: Schema.Array(
     Schema.Struct({
       path: Schema.String,
       body_sha256: Sha,
       input_sha256: Sha,
+      completion_sha256: Schema.optional(Sha),
     }),
   ),
   relations_sha256: Sha,
@@ -49,6 +52,8 @@ export const NativeReferenceIndexSchema = Schema.Struct({
       href: Schema.String,
       page_id: Page,
       availability: Schema.Literal("unmanaged_or_unavailable"),
+      block_id: Schema.optional(Page),
+      source_form: Schema.optional(Schema.Literal("link_to_page")),
     }),
   ),
 })

@@ -113,6 +113,11 @@ const sharedLocalDomains: readonly {
     address: /^cache\/shared-record-payloads\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "cache/shared-history-manifests",
+    category: "cache",
+    address: /^cache\/shared-history-manifests\/[a-f0-9]{64}\/s_[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-observation-pending",
     category: "dispatch",
     address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
@@ -121,6 +126,18 @@ const sharedLocalDomains: readonly {
     prefix: "operations/shared-snapshot-history",
     category: "dispatch",
     address: /^operations\/shared-snapshot-history\/[a-f0-9]{64}\/snapshot-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-graph-history",
+    category: "dispatch",
+    address:
+      /^operations\/shared-graph-history\/[a-f0-9]{64}\/graph-[a-f0-9]{64}\/(?:plan|complete)\.json$/u,
+  },
+  {
+    prefix: "operations/shared-body-current-acceptance",
+    category: "dispatch",
+    address:
+      /^operations\/shared-body-current-acceptance\/[a-f0-9]{64}\/accept-current-[a-f0-9]{64}\/plan\.json$/u,
   },
   {
     prefix: "operations/shared-profile-pending",

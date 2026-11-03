@@ -3,7 +3,11 @@ import { decode, fail, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sha256 } from "./store.ts"
-import { normalizeObservedBody, type BodyFingerprint } from "./shared-file-state.ts"
+import type { BodyFingerprint } from "./shared-file-state.ts"
+import {
+  completeNativeAliasBody,
+  normalizeCompletedNativeBody,
+} from "./shared-native-body-completion.ts"
 
 const MarkdownBodySchema = Schema.Struct({
   id: Schema.String,
@@ -17,12 +21,13 @@ export function observeSharedBody(page: string) {
     const id = pageId(page)
     if (!id)
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "Observe an exact Notion body page."))
-    const raw = yield* (yield* Notion).request(`v1/pages/${id}/markdown?markdown_version=v2`)
+    const api = yield* Notion
+    const raw = yield* api.request(`v1/pages/${id}/markdown?markdown_version=v2`)
     const body = yield* Effect.try({
       try: () => decode(MarkdownBodySchema, raw),
       catch: () => fail("BODY_INCOMPLETE", "Notion did not return a complete Markdown response."),
     })
-    if (pageId(body.id) !== id || body.truncated || body.unknown_block_ids.length)
+    if (pageId(body.id) !== id)
       return yield* Effect.fail(
         fail(
           "BODY_INCOMPLETE",
@@ -30,8 +35,12 @@ export function observeSharedBody(page: string) {
           { page_id: id, truncated: body.truncated, unknown_block_ids: body.unknown_block_ids },
         ),
       )
+    const completion =
+      body.truncated || body.unknown_block_ids.length
+        ? yield* completeNativeAliasBody(id, body, api)
+        : undefined
     const markdown = yield* Effect.try({
-      try: () => normalizeObservedBody(body.markdown),
+      try: () => normalizeCompletedNativeBody(body.markdown, completion),
       catch: (error) =>
         error instanceof SkillsError
           ? error
@@ -45,6 +54,7 @@ export function observeSharedBody(page: string) {
       fingerprint,
       bytes: bytes.length,
       downloaded_at: yield* Clock.currentTimeMillis,
+      ...(completion === undefined ? {} : { native_body_completion: completion }),
     }
   })
 }

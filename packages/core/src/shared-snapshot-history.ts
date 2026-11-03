@@ -212,7 +212,7 @@ function manifestStructure(
   return chunks
 }
 
-function verifiedManifest(
+export function validateSharedSnapshotManifest(
   library: SharedLibrary,
   input: unknown,
   pinId: string,
@@ -277,7 +277,11 @@ export function validateSharedSnapshotHistoryPlan(library: SharedLibrary, input:
         onExcessProperty: "error",
       }),
     )
-    const { manifest, chunks } = yield* verifiedManifest(library, plan.manifest, plan.pin_id)
+    const { manifest, chunks } = yield* validateSharedSnapshotManifest(
+      library,
+      plan.manifest,
+      plan.pin_id,
+    )
     const seen = new Set<string>()
     const objects: PlannedObject[] = []
     for (const object of plan.objects) {
@@ -588,7 +592,7 @@ export function inspectSharedSnapshotHistory(
       entityId: input.pinId,
     })
     const record = yield* checked(() => exactRecord(records, input.pinId))
-    const verified = yield* verifiedManifest(
+    const verified = yield* validateSharedSnapshotManifest(
       library,
       record.payload,
       input.pinId,
@@ -676,17 +680,43 @@ export function materializeSharedSnapshotSource(
     readonly manifest: SharedSnapshotManifest
   },
 ) {
+  return materializeSharedSnapshotFiles(library, input)
+}
+
+/** Fetch only explicitly requested files from a complete validated manifest. Each chunk and
+ * assembled file enters the common object cache only after exact byte verification. */
+export function materializeSharedSnapshotFiles(
+  library: SharedLibrary,
+  input: {
+    readonly skillPageId: string
+    readonly pinId: string
+    readonly manifest: SharedSnapshotManifest
+    readonly paths?: readonly string[]
+    readonly offline?: boolean
+  },
+) {
   return Effect.gen(function* () {
-    const { manifest, chunks } = yield* verifiedManifest(
+    const { manifest, chunks } = yield* validateSharedSnapshotManifest(
       library,
       input.manifest,
       input.pinId,
       input.skillPageId,
     )
+    const selected =
+      input.paths === undefined
+        ? manifest.files
+        : manifest.files.filter((file) => input.paths?.includes(file.path))
+    if (
+      input.paths !== undefined &&
+      (new Set(input.paths).size !== input.paths.length || selected.length !== input.paths.length)
+    )
+      return yield* Effect.fail(
+        fail("FILE_NOT_FOUND", "Requested files must exist exactly once in the fixed manifest."),
+      )
     const store = yield* Store
     const available = new Map<string, Uint8Array>()
     const missing: SharedSnapshotManifest["files"][number][] = []
-    for (const file of manifest.files) {
+    for (const file of selected) {
       const cached = yield* store.readBytes(`objects/${file.sha256}`).pipe(Effect.result)
       if (cached._tag === "Failure") {
         if (cached.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(cached.failure)
@@ -701,20 +731,47 @@ export function materializeSharedSnapshotSource(
       const requiredIds = [
         ...new Set(missing.flatMap((file) => file.chunks.map((chunk) => chunk.object_id))),
       ]
+      const loaded = new Map<string, Uint8Array>()
+      const absentIds: string[] = []
+      for (const id of requiredIds) {
+        const chunk = chunks.get(id)
+        if (chunk === undefined)
+          return yield* Effect.fail(invalid("A selected chunk has no complete manifest binding."))
+        const cached = yield* store.readBytes(`objects/${chunk.sha256}`).pipe(Effect.result)
+        if (cached._tag === "Failure") {
+          if (cached.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(cached.failure)
+          absentIds.push(id)
+        } else {
+          if (
+            cached.success.length !== chunk.bytes ||
+            (yield* sha256(cached.success)) !== chunk.sha256
+          )
+            return yield* Effect.fail(invalid("A cached historical chunk failed its checksum."))
+          loaded.set(id, cached.success)
+        }
+      }
+      if (input.offline === true && absentIds.length > 0)
+        return yield* Effect.fail(
+          fail(
+            "SNAPSHOT_NOT_MATERIALIZED",
+            "The requested fixed files are not available offline.",
+            { paths: missing.map((file) => file.path), missing_chunks: absentIds.length },
+          ),
+        )
       const records: SharedRecord[] = []
-      for (let at = 0; at < requiredIds.length; at += 80)
+      for (let at = 0; at < absentIds.length; at += 80)
         records.push(
           ...(yield* querySharedRecords(library, {
             skillPageId: input.skillPageId,
             kind: "object",
-            entityIds: requiredIds.slice(at, at + 80),
+            entityIds: absentIds.slice(at, at + 80),
             payloadContainsBody: true,
           })),
         )
-      const loaded = new Map<string, Uint8Array>()
-      for (const chunk of chunks.values()) {
-        if (!missing.some((file) => file.chunks.some((item) => item.object_id === chunk.object_id)))
-          continue
+      for (const id of absentIds) {
+        const chunk = chunks.get(id)
+        if (chunk === undefined)
+          return yield* Effect.fail(invalid("A selected chunk has no complete manifest binding."))
         const record = yield* checked(() =>
           exactRecord(
             records.filter((item) => item.record_id === chunk.object_id),
@@ -723,6 +780,7 @@ export function materializeSharedSnapshotSource(
         )
         const verified = yield* verifiedObject(record.payload, chunk)
         loaded.set(chunk.object_id, verified.bytes)
+        yield* store.writeBytes(`objects/${chunk.sha256}`, verified.bytes)
       }
       const files = yield* assembleFiles({ ...manifest, files: missing }, loaded)
       for (const file of files) {
@@ -730,7 +788,13 @@ export function materializeSharedSnapshotSource(
         yield* store.writeBytes(`objects/${yield* sha256(file.bytes)}`, file.bytes)
       }
     }
-    return manifest.files.map((file) => ({ path: file.path, bytes: available.get(file.path)! }))
+    return yield* checked(() =>
+      selected.map((file) => {
+        const bytes = available.get(file.path)
+        if (bytes === undefined) throw invalid("A selected file was not completely materialized.")
+        return { path: file.path, bytes }
+      }),
+    )
   })
 }
 
@@ -769,7 +833,7 @@ export function restoreSharedSnapshotHistory(
       entityId: input.pinId,
     })
     const record = yield* checked(() => exactRecord(records, input.pinId))
-    const { manifest, chunks } = yield* verifiedManifest(
+    const { manifest, chunks } = yield* validateSharedSnapshotManifest(
       library,
       record.payload,
       input.pinId,
@@ -787,16 +851,27 @@ export function restoreSharedSnapshotHistory(
         ),
       )
     }
+    const objectRecords: SharedRecord[] = []
+    const ids = [...chunks.keys()]
+    for (let at = 0; at < ids.length; at += 80)
+      objectRecords.push(
+        ...(yield* querySharedRecords(library, {
+          skillPageId: input.skillPageId,
+          kind: "object",
+          entityIds: ids.slice(at, at + 80),
+          payloadContainsBody: true,
+        })),
+      )
     const loaded = yield* Effect.forEach(
       [...chunks.values()],
       (chunk) =>
         Effect.gen(function* () {
-          const records = yield* querySharedRecords(library, {
-            skillPageId: input.skillPageId,
-            kind: "object",
-            entityId: chunk.object_id,
-          })
-          const record = yield* checked(() => exactRecord(records, chunk.object_id))
+          const record = yield* checked(() =>
+            exactRecord(
+              objectRecords.filter((item) => item.record_id === chunk.object_id),
+              chunk.object_id,
+            ),
+          )
           const verified = yield* verifiedObject(record.payload, chunk)
           return { object_id: chunk.object_id, bytes: verified.bytes }
         }),
