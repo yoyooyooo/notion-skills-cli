@@ -1,23 +1,25 @@
 # AH-561 直连引擎与 Skill 依赖图验收记录
 
 任务：[AH-561](https://linear.app/yoyooyooo/issue/AH-561)，共 21 个子任务、33 个用户故事。
-日期：2026-11-03。范围：notion-skills-cli、pi-context-broker、既有 Notion 四表库中的 Pstack，以及日用 Pi。
+日期：2026-11-03—2026-11-04（UTC+8）。范围：notion-skills-cli、pi-context-broker、既有 Notion 四表库中的 Pstack，以及日用 Pi。
 
 ## 当前收口状态
 
-直连引擎、依赖图、Pstack 生产治理、历史恢复与独立安装已完成下列验证。当前候选产品为 CLI9/Broker8，21 张子票中 16 张按独立功能范围完成；AH-566 已完成六份当前 Notion 文档发布和独立读回并转为 Done。H7 通过 96 项回归、两组实际安装 SDK 的分层核对与独立审查，产品实现和验收修复已线性推送两仓 main；最终报告与 33 条故事证据账本由独立文档提交交付。
+最终产品为 CLI9 / Broker10。用户明确授权本轮使用 magpie/group/worker 继续原验收后，Gate A（只选 Pstack Router，H11）与 Gate B（只选普通 Skill，H12）均完成 5/5 samples、3/3 runs，notRun=[]。两条路线分别有 13 次实际 provider HTTP 200 与 canonical/wire 匹配，读取到同一稳定身份的 Pstack 叶子及要求的资源，provider 输入中的完整正文最多保留 1 份。
 
-A 的最新 H6 样本在纠正观察标签后仍缺资源与完整 Skill；B 的 H7 样本在观察完整、服务可用的情况下仍未完成任务。单 Skill 的 17 项要求由 H6 初始 10 个成功病例、H7 targeted 1 个成功病例与 H7 updated 6 个成功病例分别覆盖，原 H6 10/1 结果不变。六份 Notion 文档的原发布已全部独立核验：5 页与最终候选逐字相同，05 页接受单独审阅的 3 处 Markdown 转义，原严格比较失败仍保留。其后 05 页一次资源要求措辞勘误因网络中断留下 WRITE_OUTCOME_UNKNOWN；独立读回仍为原发布正文，勘误未证实，操作未重放。准确资源要求已在本报告写明，A 的失败结论不变。生产 census、owned 页/View 和本批 18 个临时目录清理已完成，各自证据与范围如下。
+A 的最终 warm 样本保留完整 7 文件 / 1 Skill；B 的最终完整产物为 4 文件 / 1 Skill。A 另有 Broker9/H9 冷样本原文生成的 HTTP helper，在新的 owned 项目实际执行并完成 404→创建 201→查询 200 的字段验证。没有把 H11 的 npm test 候选或 B 的生成规程写成已运行。原单 Skill 的 17 项要求继续由 H6 初始 10 个成功病例、H7 targeted 1 个成功病例与 H7 updated 6 个成功病例分别覆盖。
 
-AH-572、AH-573、AH-576、AH-581、AH-582 与父 AH-561 继续 In Progress。当前 flash-free 服务可用而任务未达标，不满足规格规定的 worker fallback 条件；没有另换模型或重复采样隐藏失败。日用配置未激活候选，实际切换仍以全部必要 Gate 通过为前提，此文件不表示 AH-561 已全部通过。
+日用 settings 与 ntn-skills shim 已切换到最终独立安装包。正常 HOME/PATH、原有 21 项插件配置下的新 Pi 会话自动加载 Broker10；62 个 Broker 发布文件与 30 个 CLI 发布文件均与冻结归档逐项一致。实际 find 精确识别 pstack@notion；消费者 33 次 HTTP 全部为 200，其中 32 次 metadata、1 次显式 doctor 正文探测，启动/find 正文读取、模型调用、tool 调用和 Notion 写入均为 0。其他插件的 7 次 HTTP 独立保留。两个既有本地 catalog 仍有 25 条指向旧数据库的成员不可用诊断，Namespace: failed 原样报告；它们不属于本批 Pstack 交付范围，未被改写成可用或擅自改库。
 
-失败结果与修正后结果独立保留。HTTP 200、编译成功、固定 provider、直接调用投影函数或旧版通过，均不代替相应的真实入口验收。
+六份 Notion 原发布保留各自历史回读结论。05 页的完整新结果修订已经应用；其严格字节检查出现格式差异后，另以已知当前正文为基线纠正了一个段落的两处文件名格式。最终日用 CLI 独立回读的 51092 B 正文与最终候选逐字一致，父页、属性及 AH-560 历史保持。旧的一句措辞勘误仍为 WRITE_OUTCOME_UNKNOWN，既未重放，也未被本次新修订改判。
+
+本轮剩余 45 个指定临时路径已按所有权清理，证据原件保留。33 个原故事映射与 E01–E63 历史证据保持，当前账本扩展至 E89。两仓原有暂存与脏文件按冻结基线及恢复工作时的 Tern 索引分别保护，未纳入本批提交。下文保留各阶段失败、观察器问题、未运行样本与旧包身份；最终结论集中在“2026-11-04 续验与最终交付”，不将跨阶段覆盖写成一次全绿运行。
 
 ## 产品行为
 
 正式 Notion 请求复用项目的 Effect 4.0.5 HTTP 引擎与请求 scheduler，认证来自项目配置或 NOTION_API_TOKEN。正式链不调用官方 ntn，不尝试其登录、Keychain 或旧协议 fallback。未知写入按原 operation 保留与核对；独立 accept-current 决定可以确认当前内容，但不会把原 unknown 改写为 applied。
 
-普通 Skill 与 Router 都支持人类可读的 Members、Requires 和原生 Notion 链接。CLI 将链接编译为包含稳定 owner、File ID、scope 和 snapshot 的精确引用。文件身份的边界是 (scope, owner Skill ID, File ID)，不同 owner 可以使用相同 File ID，同一 owner 的冲突必须拒绝。
+普通 Skill 与 Router 都支持人类可读的 Members、Requires 和原生 Notion 链接。CLI 将链接编译为包含稳定 owner、File ID、scope 和 snapshot 的精确引用。具有 File ID 的文件以 (scope, owner Skill ID, File ID) 区分，不同 owner 可以使用相同 File ID，同一 owner 的冲突必须拒绝。Broker10 对 entry manifest 中确实没有 File ID 的附属资源，使用同一 scope、owner、snapshot 内经过 manifest 与正文 hash 验证的精确 path 身份；不伪造 File ID，也不放宽显式 File ID 冲突、非法路径或不完整读取。两类身份使用不同标记，成功资源读取只参与 provider 正文去重，不冒充主文 loaded 或会话版本绑定。
 
 prepare use 准备明确选择的根及递归 Requires，inspect 只观察根。Members 和普通引用保持候选目录语义，不自动变成 Required。Pi 的原生 read、美元选择、原生 Skill 命令使用同一选择、准备、投递与取消合同。原生 skill_search 只发现 metadata，skill_prepare 根据精确引用准备完整必要闭包。
 
@@ -25,7 +27,9 @@ prepare use 准备明确选择的根及递归 Requires，inspect 只观察根。
 
 预算预取默认 0，复用同一准备与调度器，不能自动注入、派发 provider、改变会话版本或执行内容中的操作。
 
-## 冻结产物
+## 2026-11-03 冻结产物（历史阶段）
+
+本节起至后文的“2026-11-04 续验与最终交付”之前均为 2026-11-03 的阶段记录；其中“当前”“最终”“尚未完成”描述当时状态。后续实测结论在新章节按各自包、harness 和 cohort 追加，历史失败、未知写入和未运行项不改写。
 
 | 产物 | 路径或身份 |
 | --- | --- |
@@ -41,7 +45,7 @@ prepare use 准备明确选择的根及递归 Requires，inspect 只观察根。
 | H4 历史模型验收脚本集合 SHA-256 | a58708b78cb9c4f4029f9c22b81478eccfd0a506828d4a24b9bbc181d4915ddd |
 | H5 历史模型验收脚本集合 SHA-256 | 83576bdd32d0e1c3419da8665adf035a0e3b456091dd6e21c46f268ff3532f19 |
 | H6 历史模型验收脚本集合 SHA-256 | 293c5d2718f326b43143e68a9623413d31386eae7413546e4713fcabd491726d |
-| H7 当前模型验收脚本集合 SHA-256 | b43eeaef8f76b5bf5c97eab4fd10de3367321d1fa5282dde423119e1958910f2 |
+| H7 历史模型验收脚本集合 SHA-256 | b43eeaef8f76b5bf5c97eab4fd10de3367321d1fa5282dde423119e1958910f2 |
 
 CLI8 相对 CLI7 只有 docs/usage.md 变化，JS 字节相同；CLI9 相对 CLI8 的 30 个包文件只有 dist/ntn-skills.js 变化，修正目录发现对共享管理表的误分类。Broker5→6 的 62 个包文件只有 src/host-skills.ts 变化，修正树外路径别名；Broker6→7 只有 dist/ntn-skills.mjs 变化，带入 CLI9；Broker7→8 只有 src/index.ts 与 src/view-prompt.ts 变化，统一原生读取的目录与指导。旧包证据保留自己的身份，不能把历史 Mini8 或旧 TUI 记录改称在最终包上重跑。H3 仅调整观察和验收脚本，未改变产品包。
 
@@ -304,7 +308,7 @@ CLI 原有 1615 个暂存路径的索引和内容逐项保护，恢复连接后�
 
 不为凑第二套生产数据而全量改造 Matt。已有更名、全部 ID 改写、异构 Required 反例和非 Pstack owned 图验证无 Pstack 名字硬编码；最终覆盖决定依这些证据登记。OMP/Tern 的业务产品验收不在本次 Pi 主线完成声明内。
 
-### 尚未完成的验收
+### 2026-11-03 遗留条件（原阶段记录）
 
 | Issue | 已有交付与剩余条件 |
 | --- | --- |
@@ -314,7 +318,150 @@ CLI 原有 1615 个暂存路径的索引和内容逐项保护，恢复连接后�
 | AH-581 | 单 Skill 17 项要求已分别覆盖，图/缓存/故障证据已登记；A/B 各 cold 失败，后续各 4 个样本未运行，完整矩阵未通过。 |
 | AH-582 | 包、六页原发布、生产复查、owned 清理与双仓交付已完成；05 页后续限定勘误结果未知，全部门禁与正常日用激活后的新会话仍未完成。 |
 
-原规格只在 magpie/group/flash-free 当前实测不可用时允许改用 magpie/group/worker。A、B 最新样本各有 9 次 provider HTTP 200 和成功 final，availabilityFailure=false；任务未达标不满足该条件。若要在服务可用的情况下用 worker 继续相同验收，需要用户明确调整这一限制，TASK、私有 oracle、工具边界、内容完整性与失败保留规则均不随之放宽。
+原规格只在 magpie/group/flash-free 当前实测不可用时允许改用 magpie/group/worker。该阶段 A、B 样本各有 9 次 provider HTTP 200 和成功 final，availabilityFailure=false；任务未达标不满足原 fallback 条件。随后用户已对明确提出的 worker 授权问题回复“继续”，当前执行以该新增授权及原有其余合同为准，原阶段结果不改判。
 
 AH-498 与既有历史 Issue 不随本批次自动关闭。Notion 原 AH-558/AH-560 文档内容以明确历史存档保留，当前使用说明与本轮结果另列。
+
+## 2026-11-04 续验与最终交付
+
+两条自然任务链已经在同一 CLI9/Broker10 产品上独立通过：A 从 Pstack Router 出发，采用 H11；B 从普通 Skill 出发，采用 H12。两路各完成 1 个冷首次、2 个暖新进程和 2 个续接样本，均为 5/5 样本、3/3 实际 runs 通过，notRun 为空。日用 Broker 包入口和 CLI shim 已切换，正常新会话也已通过本批交付范围的实际验证；现有旧库 catalog 的 25 条诊断继续保留。
+
+本轮在用户明确授权后使用 magpie/group/worker。模型授权以文件路径和 SHA 绑定到实际模型、入口与冻结 prompt；工具、任务、资源及副作用授权范围保持。两路固定 prompt 使用 600000 ms 的显式预算，历史 300000 ms 场次的超时仍保留原结果。
+
+任务的资源要求始终是完整目标主文、必读 README，以及 create-note.md / search.md 示例二选一。两条最终路线实际都读了两个示例，这没有改变原来二选一的验收门槛。
+
+### 实际交付版本
+
+| 项目 | 实际身份与验证结果 |
+|---|---|
+| CLI9 | source `dd801c17026d9a289c4359c7bfbbf3286cf1ae9d`；archive `19168be88a6c62b14a48710030cfd940ba241614a53971593d258be7815cc73f`；独立 CLI JS `8c034f9d0808b7d09a014ed8affdfbe89946d7de498f143a13ab5eacac65f869` |
+| Broker10 | source `f468bd638263fc37fba25262192052e5707b2d74`；archive `41150cbaf9b05b1ad4e3223b511833ea96e8be3dd4c309918320ac4aabfb1e50`，931572 B |
+| 两处安装 | consumer 与实际日用安装的 62 个发布成员逐项一致；48 个 runtime 文件 aggregate `8b3859857288fb5b672f5642229604f02c3eee4b70228ca42f804aedfc909246` |
+| 最终 A | H11 aggregate `c356aab81d1673a513f2dbfcefe993583eed8355aa48840afbfc449f574f2114`；5/5 样本、3/3 runs 通过；matrix SHA `a8a5f2d585227b76969c980ff1573d1a291b8eb6bd51d3c654638333b99b7276` |
+| 最终 B | H12 aggregate `3252ef8c9a32daed761573b3c595dd8b65ae0ab15dbf20832c46849ef179459b`；5/5 样本、3/3 runs 通过；matrix SHA `e44eb51c72a4c1b38302dd8e72e071ddfce371d51c6d75f0dfb2c3dd7721ea05` |
+
+产品包 source、验证器 source 和后续文档提交分别记账。A 的真实 H11 结果保持原身份；H12 只修正 B 实际遇到的观察问题，不要求 A 为版本号一致而重采。原 17 项旧能力继续引用 H6/H7 分层证据，本轮没有把它们改记为一次新的 Broker10 17/17。
+
+### 本轮修复及验证
+
+Broker9 修复完整资源在 provider 上下文中的重复正文：只有 scope、owner、固定 snapshot、文件身份和内容 hash 都精确一致时才去重。资源读取仍不建立主文 loaded、会话 pin 或额外入口绑定，存储历史中的实际读取记录继续保留。直接回归 21/21、相邻回归 5/5 和类型检查通过；原真实工具结果的离线对照从两份重复 README 正文变为一份。
+
+Broker10 将同一精确合同补齐到合法但没有 FileID 的资源。仅当 proof 和解析引用都确实缺少 FileID 时采用带标签的 path 身份；null、畸形、冲突或不完整证明仍被拒绝。实际 hook 离线对照为 provider 两份完整正文变一份，存储历史仍有两条，mainLoaded 为 false、pin 为 null。直接回归 26/26；合入后的包检查为 99 pass、5 个既有 skip、0 fail，并通过类型检查。较 Broker9，发布包只改变 `src/session-source-snapshot.ts`，completion 文件字节未变。
+
+H11 修复两处合法读取的观察接缝：主文明确的 `File: <code>relative/path</code>` 资源引用，以及实际 provider 的 developer 指令中广告的官方 Pi 帮助文档。同时要求五个样本和三个实际 runs 都通过才判定矩阵通过。106/106 组合回归和真实保留源的离线回放通过；原失败场次保持不变。
+
+H12 修正成功局部读取的记录。模型在已完整读取 README 后合法请求 `offset=1, limit=20`，原 H11 因结果不是完整文件而误记为 error。H12 以实际源行与已安装 SDK 的分页尾注逐字核对，保留成功的 partial 观察；它不把 partial 升级成完整证明，也不消除真正的 native 错误。42/42 直接回归、110/110 组合回归通过，真实源离线回放保留原 67 个证据文件和原失败结论。产品包及图合同未改变。
+
+生成文件提取也补齐两种真实输出格式：语言标记之后的 `path:`，以及代码块正文第一行的精确路径。提取保留原正文 bytes 和 sourceSpan，继续拒绝越界、冲突定义、未闭合代码块、同宽嵌套歧义及不完整 Skill。H9、H10 的组合回归分别为 84/84、94/94。对历史输出的纯提取不改写原 artifact/result。
+
+### 完整产物与实际规程驱动
+
+最终 Broker10/H11 A 的第一暖样本保留完整 7 个文件，其中 1 个 Skill；该 Skill SHA 为 `8fc3ca802130aa3631afe5d5de0502b8e3ae19e66fcbbbfd656cfe2b7c96f175`。A 的 cold 和最后一个 run 原产物仍记为 plan-only。最终 B/H12 的第三个 run 保留完整 4 文件/1 Skill，分类为 complete-skill-files-retained，cold 与第一暖 run 保持 plan-only。各场次的原产物分类继续单独保存。
+
+实际执行证据来自同一任务较早的 Broker9/H9 A 原文生成 helper。5 个应用文件和 5 个生成文件按原字节复制到独立 owned 项目，通过 PORT 入口执行 launch、doctor、查询和创建：缺失查询返回 404，创建返回 201，独立 GET 返回 200，id、subject 和 priority 一致，并记录 ready、health、监听端口与 PID 所属。只停止该自有 PID 53855，将三个精确自有临时路径移入 Trash，证据保留。
+
+这次实驱覆盖明确的 PORT 入口、缺失查询、显式 high 优先级创建、输入 trim 与已存内容查询；默认 npm start、默认优先级、非法输入、重启丢失和多实例隔离没有据此宣称通过。npm test 没有被当成该 Skill 的实驱。验收要求的一条实际生成规程已有独立证据，不为每个样本或 B 另增一套执行配额。
+
+### 每轮原结果
+
+| 场次 | A | B |
+|---|---|---|
+| CLI9/Broker8/H8 | 3 pass、2 DUPLICATE_BODY fail | cold 失败并超时，4 notRun；不把重复正文推断为超时原因 |
+| CLI9/Broker9/H9 | 3 graph pass、1 续接 timeout、1 未运行 | 3 graph pass、1 续接 timeout、1 未运行 |
+| CLI9/Broker9/H10 | 5/5 samples、3/3 runs 通过 | 两个 graph samples 通过，但 warm run 因两条合法 read 被 observer 拦截而失败，3 notRun |
+| CLI9/Broker10/H11 | 5/5 samples、3/3 runs 通过 | cold 因成功局部 read 被 observer 误标 error 而失败，4 notRun |
+| CLI9/Broker10/H12 | 保留上行真实 H11 A 通过结果 | 新独立矩阵 5/5 samples、3/3 runs 通过 |
+
+H9 原 notRun 空数组漏记最后未运行样本的问题另有独立说明，原结果文件未被修正。旧 observer 失败、collector 歧义、timeout 和离线回放都不重分类为原场次通过。
+
+### 实测成本
+
+最终 A 有 13 次 provider 请求完成，最大完整正文副本为 1，无 blocked tool 或 observer error。consumer 有 83 次 HTTP：73 metadata、10 body、0 write，请求 6878 B、响应 9047719 B；另记 retained 9 次 metadata，请求 1742 B、响应 23664 B。token total 为 277467，其中 input 110897、output 28842、cacheRead 137728、cacheWrite 0；reasoning 16866 已有独立字段，不能再次加进 total。账单金额未知。
+
+| 模式 | A task final | B task final |
+|---|---|---|
+| 冷首次，n=1 | 107149 ms | 143981 ms |
+| 暖新进程，n=2 | 138793、88248 ms；中位 113520.5 ms | 141421、169994 ms；中位 155707.5 ms |
+| 续接，n=2 | 90979、120340 ms；中位 105659.5 ms | 256560、131858 ms；中位 194209 ms |
+
+最终 B 有 13 次 provider 请求，全部 HTTP 200，canonical 与 wire hash 匹配。15 次完整资源 read 和 1 次合法 partial 读取均保留，每次 provider 最多一份完整资源正文，read error、blocked call 与选择前成员正文读取均为 0。consumer 有 146 次 HTTP（112 metadata、34 body、0 write），请求 29716 B、响应 12907814 B；retained 有 41 次 metadata，请求 38330 B、响应 122627 B，body/provider/write 均为 0，字节未知项为 0。SDK 原始 usage 为 input 208053、output 32522、cacheRead 418688、cacheWrite 0、reasoning 39245、totalTokens 659263；cost 字段 0 不代表已独立核对账单。终局 wall time 为 890370 ms，234 个原证据文件冻结保全，166 个记录的自有 PID 均不存在。
+
+每种模式只有 1–2 个样本，因此不估计 p95，不将不同产品或历史场次拼成一次性能矩阵。root/Required readiness 取首次实际 provider 边界的可观察时点，是上界，不能反推更早的逐节点事件。
+
+### 日用加载与范围边界
+
+日用设置只替换 package index 1 为 Broker10，并更新独立 CLI9 shim；其余 20 个包条目和 source 配置保持。激活回执 SHA 为 `76b84077b92b00ab50cf8e1aed063f0c109c0dd0f21ee7aa924085d47da3f021`。随后正常 Pi 新会话实际自动加载该安装的 `src/index.ts`（SHA `1e7f46453945f0a80b3a5b0d8e70de6760cf20e6f280274b0a37c366e1eab5c5`），未由验证器注入目标扩展或覆盖 source 命令；62 个 Broker 发布成员和 30 个 CLI 发布成员共 92 个文件均与各自 archive 匹配。
+
+实际 find 精确定位 `pstack@notion`：kind 为 router、source 为 notion、page 为 `3fd5636c-236e-817c-ac59-c7ecfced24e7`。默认 source 实际使用包内 `dist/ntn-skills.mjs`（SHA `86beaec4c379c299517b451388d28ef09e014b0b4fc5c45db804d09450683c18`）；其 doctor 返回 direct_http、API 2026-03-11、authentication available，且 skill_read.checked / available 均为 true。
+
+最终正常会话 `daily-pi-um6pwu` 的实际结果为 passed，SHA `edd6426eb6c18794024251271db1aadeaebb0d35296643cfce09f94d5752ddf8`。按实际进程谱系区分的计数如下：
+
+| 观察范围 | 实际结果 |
+|---|---|
+| 默认随包 CLI 的 Notion 请求 | 33 次，全部 HTTP 200：32 次 metadata，加 1 次显式 doctor 正文探测 |
+| 启动及 find | Notion 正文读取 0 |
+| 显式 doctor | PID 52110 成功探测 1 个当前 Skill；此正文读取单列，未伪报全程零正文 |
+| RPC 与写入 | provider_invocations 0、tool_invocations 0、Notion remote_mutations 0；初末 messageCount 均为 0 |
+| 其他既有插件 | 7 次 HTTP 独立保留；6 次有响应，Remnote 的 1 次没有终响应观察，不计为 Broker 请求或虚构成功 |
+| 配置与安装 | settings、source、Broker、shim、已审核外部 catalog 均保持；21 个 package 条目保留 |
+
+全局诊断仍明确显示 `Config diagnostics: ok`、`Namespace: failed`。25 条未匹配引用来自现有 agent-kit 的 open-source-bundle 和 matt-engineering-suite 两条本地 Router，仍声明旧数据库 `757d3e81-5a57-476d-b8d1-57b25d49a2ff` 与 data source `b817f726-0d83-47dd-aec6-868d72fbdd09`；当前 Notion source 是 `0b976d0d-9335-4e6c-b9f9-4d8c8ca8c158`。产品按完整 locator 正确拒绝这些旧库成员。本批没有全量改造 Matt 或其他目录/配置，也不将这些成员写成可用或把全局 Namespace 改记为 ok。
+
+日用验证器只接受逐条相同的已审核 25 条诊断，并绑定 catalog SHA `2e6f2be190d667af8c5fd47873be3920e9d8253a0fd14834e9b3e24dc667bc4a`；新增、变更、重复诊断，目标 Pstack 身份错误，配置或当前 source 错误仍阻断。默认 CLI 及后代的 HTTP 必须为 Notion 只读且严格 2xx；host 或无法归属的 HTTP 仍拒绝。正文例外仅允许显式 doctor 启动的唯一 PID，在其实际成功回执确认 skill_read.checked / available 后接受限定 GET 探测。最终 10 项边界回归通过，验证器 source commit 为 `a9fc807e9d28e885f916f15d14dacd53abfe2dec`；产品包及 A/B 图验证器身份未变。
+
+| 原日用场次 | 保留的原结果与原因 |
+|---|---|
+| s4xiOg、GcDyLU | failed；最初验证器把上述旧库 Namespace 诊断纳入本批阻断 |
+| NmLyI0 | failed；原全局 HTTP 观察把其他既有插件的启动网络活动计作 Broker 请求 |
+| qA3yKI | failed；显式 doctor 按公开行为探测一个当前 Skill，被原全程零正文假设拦截 |
+| um6pwu | 新正常会话实际 passed；按上表精确区分目标、doctor 和其他插件活动 |
+
+前三项修正均有原数据只读回放，回放不改判任何旧失败，也不算新的 Pi 或模型运行。独立复核观察到 Pi 51815 的 process_exit code 0、8 个随包 CLI 的 child_close code 0，并确认记录的 28 个 PID 当前均不存在。外层启动 sessionID/exit 未取得，没有补写成功码；messageCount 为 0 时声明的 session 文件未落盘，原始 RPC 帧也未单独保存，零模型/tool 事件依据绑定 SHA 的结果与已审验证器，未冒称独立解析了不存在的 session。
+
+### 证据保全与清理
+
+| 精确清理批次 | 实际行动 | 保全证据 |
+|---|---|---|
+| A：22 个路径 | 6 个主 scratch 公共 cleanup；16 个空 doctor 目录 Trash | 587 个原冻结文件、12 份归档原件 SHA 保持 |
+| 较早 B：14 个路径 | 3 个主 scratch 公共 cleanup；11 个空 doctor 目录 Trash | 457 个原冻结文件、26 份归档原件 SHA 保持 |
+| 最终 B/H12：4 个路径 | 3 个主 scratch 公共 cleanup；1 个空 doctor 目录 Trash | 234 个原冻结文件、20 份 session/manifest/ownership 保全文件 SHA 保持 |
+| selection：5 个路径 | 按精确清单公共 cleanup | 65 个原件 SHA 保持 |
+
+45 个指定路径均已不存在，各清理命令退出 0，清理进程均闭合。上述原件数按各批独立记录，不相加冒称互不重叠的全局数量。公共 cleanup 新增各自 cleanup.json，原 result/freeze 和终局中“当时尚未清理”的记录没有改写。两个后来被复用的历史 PID 数字如实保留，没有冒报其不存在，没有向历史或系统 PID 发信号，也未扩大到其他目录。
+
+### 文档与未决历史
+
+本页记录已实测的产品、模型和日用结果。00–04 的一般用法未改变，保留原发布内容；03 中 2026-11-03 的“最终 CLI9/Broker8”属于当日阶段。下文 2026-11-03 的失败结论仍为历史截点，后续成功没有改写原场次。
+
+原 05 单句勘误 operation `ah561-doc-resource-erratum-9379695c85bfee27bbdadce8708d5b23862122eb102ddaaead9b758f1445ea40` 只发出过一次 PATCH，结局仍是 WRITE_OUTCOME_UNKNOWN。后续 GET 观察到 f5 原正文只证明该观察时点的内容，不能据此判定未知操作未派发或未应用。本次完整结果修订与原 unknown 独立登记，不重放、复用或改判旧 operation；实际发布及独立回读回执由两仓最终报告与 Linear 引用。AH560 历史后缀 7292 B、SHA `ce1979985249ee384de19ee268da655b9b85ac0366064c5815cc3b605de211be` 保持逐字不变。
+
+### 关键证据
+
+- A 终局：`worker-A-b10-h11-uiJQ0u/matrix-terminal-xZq1CH/terminal-summary.json`；SHA `8f2d841c80eae963752091169fc0fa78ce150e17a701d986c464f6437d6a0ea5`。
+- B 矩阵：`worker-B10-H12-600s-E0yytF/runs/graph-matrix-B-2GU6gv/result.json`；SHA `e44eb51c72a4c1b38302dd8e72e071ddfce371d51c6d75f0dfb2c3dd7721ea05`。正式终局 SHA 为 `e8971af1faed6ab05154062d6530d5b27f6fe1be2022a4ec42fc8f9bbc584be9`。
+- H12 组合：`h12-direct-combined-kichbo/result.json`；SHA `27ce0e77fa1d59f0e6a2bf4916b7855e751af4463ddee0d91ef8bd0609534e41`；source `a5718e50190d44ec292e105d6449aaa6e6d6d6c4`。
+- 实际生成规程：`A-generated-procedure-lDJY9y/result.json`；SHA `44a7e81aa28e3a056521ff6104a1aef5448ac233562545b026ef13a317e08d0c`。
+- 产品包：`broker-v10-qaAKab/result.json`；SHA `536f8b9d7245f4a9885390a4cd6fe05a275f302948dff88e4a64b22f0b72f5c8`。
+
+上述模型与产品的相对证据路径均位于 `/Users/yoyo/Library/Logs/pi-context-broker/AH-561-20261104/ng14/`；日用回执位于 `/Users/yoyo/Library/Logs/ntn-skills/AH-561-20261104/ng21/daily-b10-v2-preparation-TJpiTk/`。
+
+日用正式结果：`daily-scope-review-gJl1xc/validation/daily-pi-um6pwu/result.json`，SHA `edd6426eb6c18794024251271db1aadeaebb0d35296643cfce09f94d5752ddf8`；独立复核：`daily-scope-review-gJl1xc/independent-daily-review-A-1G2vZ4/root-review.json`，SHA `a364bda372d8989ac702d010dc16a5b2c06f5a71db1ef78fb476f3209bbb2a48`。两者相对于上述日用回执目录。日用验证器源码交付回执：`/Users/yoyo/Library/Logs/ntn-skills/AH-561-20261104/ng21/daily-validator-git-Yq1qvN/result.json`，SHA `a49117ebfe021c5f1f722313a1b14e7f72c5f02fabd4184bc30b11c3a71ab445`。
+
+### 最终 Notion 发布与独立回读（E89）
+
+05 页的完整新结果修订已应用。原完整修订 operation 为 `ah561-doc-worker-results-6dab352e5ae42b9b466e3a56dda1ee313d7f7853d13e1177a4e7871ca1d65df7`，PATCH 响应为 Success；随后严格字节断言失败，因为 Notion 把两个裸示例文件名自动转成网址，并在两行表格中加入四个下划线转义。原失败回执和第一次实际读回的 51111 B 正文（SHA `0bb0c0f5c805def141db5ea683bc974406f15e640e798f29b463641ca4f6f8da`）均保留，未改判为逐字通过。
+
+根据这一已知当前正文，另建格式纠正 operation `ah561-doc-resource-code-format-bb06155c496ade987801533ca63107f566b6b114a3e4eeaea8dbb86f6415b385`，只修改一个现存段落，将两个自动网址改为文件名代码文本。该操作只派发一次，保留服务端实际表格转义和全部实质内容。它不是重放旧完整修订，也未重放 E63 的未知勘误。
+
+最终正文为 **51092 B**，SHA-256 `9cf8086675bc3e8f363efaf4d43814d747091d4b6c74a51b6a95c6fc0df4ce92`。格式纠正后的公开 HTTP 回读与独立日用 CLI9 回读都与最终候选逐字相同；父页、属性、33875 B 历史存档及 AH-560 的 7292 B 后缀保持。两次 publisher 均保留各自真实终态：完整修订的 strict verifier 退出 1，单段落格式纠正退出 0；独立 CLI 回读退出 0。原 E63 operation 仍为 WRITE_OUTCOME_UNKNOWN，未重分类。
+
+| 最终证据 | SHA-256 |
+| --- | --- |
+| 已知成功应用与三处格式差异审阅 | `ac07da4ef9a51c8c74c2a71c88bd3854648c391f254ea38c7c13d425d9981db2` |
+| 单段落格式纠正与严格回读 | `41c62954541acb917d47a8dc1c8be5b3cffaa5be43347e76ce3b412a356febba` |
+| 独立日用 CLI9 回读 | `e2e983274fb94e36f3ecbbc06f033d38582814ce51629be61aad7ecf30438b4d` |
+
+独立回读使用最终已安装 CLI9，实际为 2 次 GET（1 metadata、1 body），0 write、0 provider，请求 0 B、响应 52567 B；子进程均退出并不存在。最终回执目录为 `/Users/yoyo/Library/Logs/ntn-skills/AH-561-20261104/ng21/publication-resource-code-format-xVKzQG/`，独立回读位于其中 `independent-cli9-readback-AjF3P8/result.json`。完整新修订的原回执仍位于同级 `publication-worker-results-v3-xytaO4/`。
+
+[Notion 最终验收页](https://www.notion.so/40d5636c236e813b8b22cb63e2f7d0b5) 已具备本批实测产品、模型、日用和清理结果。00–04 的原阶段文档保持；两仓最终提交/推送及 Linear 关闭记录由外部交付回执引用，避免本文件引用包含自身的未来提交。
 
