@@ -6,6 +6,9 @@ AH-498 shared-library work has its own partial checkpoint. Shared layout, owners
 
 ## Sub-features
 
+- [直连请求引擎](./request-engine.md)：NG-VC-01、NG-RE-02～05/21，离线失败基线、自有认证、真实 HTTP 尝试、多 scope 调度、未知写入与无官方 ntn 交付。
+- [Skill 依赖图](./skill-dependency-graph.md)：NG-SG-06～20，两条独立根选择、Members/Requires、引用与准备、会话固定图、批量/历史/按需物化/预取。图专项不得沿用 AH-560 单 Skill 的 pass。
+
 - [Discovery, configuration, authentication and doctor](./discovery-config-auth-doctor.md): help, database/catalog discovery, local preferences and connection diagnostics.
 - [Snapshots, reading, files and relative resolution](./snapshot-read-open-files-resolve.md): current online content, immutable local versions and exact file output.
 - [Shared Notion SSOT](./shared-ssot.md): `ctl library`, flat Files metadata, whole-file adoption, fixed Git/manifest registration, shared archive/restore, read-only migration review, Router member indexes, original unknown operations and request budgets. Source-built CLI, installed package, independent machines and UI/model evidence remain separate.

@@ -5,6 +5,10 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
+AH-561 直连请求与跨 Skill 图使用新增 [request-engine](features/request-engine.md) 和 [skill-dependency-graph](features/skill-dependency-graph.md)。先执行 NG-VC-01 离线契约与原生 CLI fail-before，保存两条根选择提示和独立 oracle 合同；后续按 NG-RE/NG-SG feature ID 逐项复验。以下既有 live 规程中的官方 ntn 认证、子进程和回收步骤属于待迁移路径，在 NG-RE-05 清除依赖并取得新证据前禁止执行。保留历史回执，不把旧单 Skill pass 用作图验收。
+
+图专项由 Broker 仓库的 `scripts/verify-skill-graph-contract.mjs` 共用一个离线检查入口；不新增第三个总验收 Skill。它只驱动当前 Node CLI 的离线 version/schema，绝不读取业务正文、请求生产 API 或调用官方 ntn。`contract-valid` 只说明证据合同成立，不能代替真实 Notion、Pi、模型、UI 或安装包验收。
+
 The primary surface is the JSON CLI. Use the repository's TypeScript dev entrypoint for live Notion operations and its existing npm consumer smoke for the built Node.js package. Read [the feature map](features/README.md) first; a passing convenient path does not prove the other mapped entrypoints.
 
 For AH-498 shared-library work, follow [shared SSOT verification](features/shared-ssot.md), cases SS01–SS13. Drive `ctl library` and root `list/read/files` through helper `cli`; the existing References import/consumption harness does not prove the shared layout. Include fixed `--manifest` registration, read-only migration review and Router Members when those paths change. Record current-body, retained-body, metadata, write and provider costs separately. Keep unfinished original-operation state until reconciliation; a recipe or selected test count is not epic completion.
