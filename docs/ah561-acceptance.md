@@ -7,7 +7,7 @@
 
 直连引擎、依赖图、Pstack 生产治理、历史恢复与独立安装已完成下列验证。当前候选产品为 CLI9/Broker8，21 张子票中 16 张按独立功能范围完成；AH-566 已完成六份当前 Notion 文档发布和独立读回并转为 Done。H7 通过 96 项回归、两组实际安装 SDK 的分层核对与独立审查，产品实现和验收修复已线性推送两仓 main；最终报告与 33 条故事证据账本由独立文档提交交付。
 
-A 的最新 H6 样本在纠正观察标签后仍缺资源与完整 Skill；B 的 H7 样本在观察完整、服务可用的情况下仍未完成任务。单 Skill 的 17 项要求由 H6 初始 10 个成功病例、H7 targeted 1 个成功病例与 H7 updated 6 个成功病例分别覆盖，原 H6 10/1 结果不变。六份 Notion 文档已全部独立核验：5 页与最终候选逐字相同，05 页接受单独审阅的 3 处 Markdown 转义，原严格比较失败仍保留。生产 census、owned 页/View 和本批 18 个临时目录清理已完成，各自证据与范围如下。
+A 的最新 H6 样本在纠正观察标签后仍缺资源与完整 Skill；B 的 H7 样本在观察完整、服务可用的情况下仍未完成任务。单 Skill 的 17 项要求由 H6 初始 10 个成功病例、H7 targeted 1 个成功病例与 H7 updated 6 个成功病例分别覆盖，原 H6 10/1 结果不变。六份 Notion 文档的原发布已全部独立核验：5 页与最终候选逐字相同，05 页接受单独审阅的 3 处 Markdown 转义，原严格比较失败仍保留。其后 05 页一次资源要求措辞勘误因网络中断留下 WRITE_OUTCOME_UNKNOWN；独立读回仍为原发布正文，勘误未证实，操作未重放。准确资源要求已在本报告写明，A 的失败结论不变。生产 census、owned 页/View 和本批 18 个临时目录清理已完成，各自证据与范围如下。
 
 AH-572、AH-573、AH-576、AH-581、AH-582 与父 AH-561 继续 In Progress。当前 flash-free 服务可用而任务未达标，不满足规格规定的 worker fallback 条件；没有另换模型或重复采样隐藏失败。日用配置未激活候选，实际切换仍以全部必要 Gate 通过为前提，此文件不表示 AH-561 已全部通过。
 
@@ -120,7 +120,7 @@ H6 只调整观察器的已发现引用匹配。无 FileID 的资源必须解析
 
 H6 真实运行保持 CLI9/Broker8、TASK、oracle、owned 项目、flash-free 与预算不变，每个 utility 用 caffeinate -i 防空闲睡眠。原启动信息另存 ng14/final-h6-config-a7VrBa/launch.json（SHA-256 6e0df95d98cab1d7336af57278fc68ba306fbc875c7187a53278498331e19f47）。A graph-model-A-NFvEez 原报 EAGER_MEMBERS，B graph-model-B-xoGFQs 原报 READ_MISSING，矩阵各余四项未运行；单 Skill pi-cache-evidence-HEjb03 初始 10/11 通过，仅 cold-native-command 因已公布的原生主文路径被 observer 拒绝而失败。原结果、独立诊断与修正后的必要验证分别登记，不将观察标签纠正等同于实际资源消费或完整规程生成。
 
-H6 A 的独立因果链复核位于 ng20/h6-a-eager-review-JuV3Ra。11 次原 EAGER 计数分别来自 target 5 次、technical-writing 2 次、maintain-verification-skill 2 次和 recall 2 次；每项均有同 callID、模型原参数、scoped prepare/read、HTTP 与 retained proof 的完整链。Pi 在 source 请求前已经收到模型的真实读取调用，但 Broker 的 prepareRead 先运行，后注册的 observer 才记录 admission。独立派生仅将这 11 个 beforeSelection 与合计改为 0，其余 trace 不变，原 evaluator 仍报 READ_MISSING。目标主文有 1 次 native read、6 次 provider 上下文，三份所需资源均为 0。9 次 provider transport 全部 200，成功 stop final 为 22,070 B，运行窗没有新的 Sleep/Wake/DarkWake；availabilityFailure=false。原文本确有 4 个文件标题以及 verify.mjs/run.sh 代码，原 collector 记录 files=0、plan-only，没有 SKILL.md，部分 Markdown 围栏有同长度嵌套歧义，不能将其称为完整 Skill 或已执行规程。52 项原文件与目录成员不变；diagnosis SHA-256 为 00d1f71e0f71eb2e14a06695190db4cd886a742f7096ab62c5812205d007f90b，派生 trace 为 ad787a08cf4c29ac420eb0fc6c0d1ef57e1301d8951b1213852ae69423bd544f。
+H6 A 的独立因果链复核位于 ng20/h6-a-eager-review-JuV3Ra。11 次原 EAGER 计数分别来自 target 5 次、technical-writing 2 次、maintain-verification-skill 2 次和 recall 2 次；每项均有同 callID、模型原参数、scoped prepare/read、HTTP 与 retained proof 的完整链。Pi 在 source 请求前已经收到模型的真实读取调用，但 Broker 的 prepareRead 先运行，后注册的 observer 才记录 admission。独立派生仅将这 11 个 beforeSelection 与合计改为 0，其余 trace 不变，原 evaluator 仍报 READ_MISSING。目标主文有 1 次 native read、6 次 provider 上下文，必读 README 与两个候选示例均未读取；验收要求 README 加示例二选一，三份资源的 native/provider 计数实际均为 0。9 次 provider transport 全部 200，成功 stop final 为 22,070 B，运行窗没有新的 Sleep/Wake/DarkWake；availabilityFailure=false。原文本确有 4 个文件标题以及 verify.mjs/run.sh 代码，原 collector 记录 files=0、plan-only，没有 SKILL.md，部分 Markdown 围栏有同长度嵌套歧义，不能将其称为完整 Skill 或已执行规程。52 项原文件与目录成员不变；diagnosis SHA-256 为 00d1f71e0f71eb2e14a06695190db4cd886a742f7096ab62c5812205d007f90b，派生 trace 为 ad787a08cf4c29ac420eb0fc6c0d1ef57e1301d8951b1213852ae69423bd544f。
 
 H6 B 唯一 blocked 调用是对已发现 poteto/unslop 的裸 owner URI 执行 skill_prepare。产品的 parseNativeReference 与 nativeResourcePath 正式支持省略主路径，旧 observer 却另用更窄语法而误拦；H6 native-command 的失败则来自真实 Pi `<skill location="...">` 主文路径没有登记。两个接缝的独立交叉核对位于 ng20/h6-gate-diagnosis/b-and-native-location.json，SHA-256 为 4d5e3e9d1e0d672eb1473f25dea6caafb6d3264d07ba70a50227b3bc501b6e7e。B 当时有 22,213 B 成功 final、8 组文件标题，但没有目标与资源消费或 SKILL.md；原失败不改判。
 
@@ -230,13 +230,23 @@ architect 一次正文 PATCH 的原 operation 为 unknown。公开 accept-curren
 
 05 首次派发前同样只对 8 个当前说明中的文件名增加 code 标记，历史段不变。其 PATCH 明确成功，独立读回相对该候选仅多 3 个 Markdown 转义反斜线，分别在表格 EAGER_MEMBERS、snapshot/file_id 与段落 ~/；没有新增链接、命令或可见文字变化。另存 accept-current serialization 决定，精确应用这三处变换后必须与完整读回正文逐字相同；没有再发 PATCH，也没有将 byteExact=false 或原严格比较失败改成 true。最终结论为 5 页 candidate-byte-exact，加 1 页已审序列化差异通过，不声称六页都与原候选相同。
 
-六页共有 7 个明确 Success 的逻辑页面更新操作，包含 02 的一次独立格式修正；未决页面派发为 0。首轮 publisher 的总 HTTP metrics 未在抛错前保存，因此总请求成本未知，不以逻辑更新数补造 HTTP 总数。最后两页 publisher 保留 10 次 HTTP（4 metadata、4 body、2 write），请求 52,344 B、响应 96,193 B。最终独立读回另用 12 条公开 CLI9 命令，全部 exit 0，共 12 次 HTTP（6 metadata、6 body、0 write/provider），请求 0 B、响应 69,128 B。
+原六页发布截点共有 7 个明确 Success 的逻辑页面更新操作，包含 02 的一次独立格式修正；该截点未决页面派发为 0。首轮 publisher 的总 HTTP metrics 未在抛错前保存，因此总请求成本未知，不以逻辑更新数补造 HTTP 总数。最后两页 publisher 保留 10 次 HTTP（4 metadata、4 body、2 write），请求 52,344 B、响应 96,193 B。六页独立读回另用 12 条公开 CLI9 命令，全部 exit 0，共 12 次 HTTP（6 metadata、6 body、0 write/provider），请求 0 B、响应 69,128 B。之后的限定勘误单独记录如下，不能沿用此前零未决描述最新状态。
 
 最终证据均位于 /Users/yoyo/Library/Logs/ntn-skills/AH-561-20261103/ng21：
 
 - publication/accepted-current-serialization-1793717247785.json，SHA-256 3dfc6a08236b0c0af789944da8b6bab6a4126b1230aa7721a8a493b86d2a3628。
 - publication/independent-cli9-readback-VEUfV9/result.json，SHA-256 354cb080c95dee3953bbed9e548eeb8c5d89826357034e32f2532ca0846f8fa5。
 - publication-complete-TCdBv3/result.json，SHA-256 0b6b59f9e980ec677f30c52679862331b13103b1afcee9413ab278a601ad84bf。
+
+### 发布后的资源要求勘误
+
+最后文字复核发现 05 页 H6 A 段的“三份所需资源均为 0”容易被理解为三份都必须读取。原 oracle/诊断的合同是 README 必读、create-note.md 与 search.md 同组二选一；实际三份读取和 provider 计数均为 0，A 仍失败。本报告已准确写明该合同，未改验收断言。
+
+05 页的新计划只把这一个句子改为“目标主文有 1 次 native read、6 次 provider 上下文，必读 README 与示例二选一组的实际读取和 provider 内容均为 0。”既有 33,445 B / f5f3a297…162eb 正文是精确基线，其余字节及 AH-560 历史 suffix 不变。新候选 33,496 B，SHA-256 为 143e20437fd0dee788a2ff2e4ce44673d352328d2e0b791654b693b2b67ba977；计划 SHA-256 为 5a117e49c3ab075d9d86fe5ff3fb6f92957eab61fbc8ecffd39ae0e18f3d8ed3。
+
+新 operation ah561-doc-resource-erratum-9379695c85bfee27bbdadce8708d5b23862122eb102ddaaead9b758f1445ea40 只派发一次 PATCH，因 NOTION_UNAVAILABLE/network 返回 WRITE_OUTCOME_UNKNOWN。随后独立公开 CLI9 两条 GET 均 exit 0，实际仍匹配原发布正文 f5f3a297…162eb；parent、properties、完整历史均相同。这只证明该次观察的当前内容，不证明原写入没有派发或最终未应用。没有重放、accept-current 或把原 unknown 改写为 applied/not-applied；远端勘误尚未证实，新增未决派发为 1。
+
+勘误 publisher 实际 3 attempts（1 metadata、1 body、1 write），2 success 与 1 network unknown，请求 67,517 B、已知响应 34,780 B，另有 1 次响应字节未知；实际模型请求为 0。独立 reader 另有 2 次成功 HTTP（1 metadata、1 body），请求 0 B、响应 34,780 B，write/provider 为 0。终结回执 publication-resource-erratum-JnpptS/terminal-receipt.json 的 SHA-256 为 dd5a569e87867666ec84c947bc769f237e1f8fecac6d9c601df82e50943d8d87；独立读回 independent-cli9-readback-SlZ4gH/result.json 为 61e00375830e8f8b8e8307b39d65b14a4e8a15edd679eb241f744b98263f3c93。原六页发布的计划、成功与严格失败记录保持。
 
 ## 历史恢复与清理
 
@@ -299,10 +309,10 @@ CLI 原有 1615 个暂存路径的索引和内容逐项保护，恢复连接后�
 | Issue | 已有交付与剩余条件 |
 | --- | --- |
 | AH-572 | 原生发现、准备和精确读取实现及 SDK 证明已完成；原验收同时要求 NG11/NG14 自主真实模型通过，当前缺口不能由受控 provider 替代。 |
-| AH-573 | Gate A 最新 H6 有完整目标主文，三份所需资源未消费、未产出完整 Skill；独立修正观察标签后仍 READ_MISSING。 |
+| AH-573 | Gate A 最新 H6 有完整目标主文，必读 README 与示例二选一组均未消费、未产出完整 Skill；独立修正观察标签后仍 READ_MISSING。 |
 | AH-576 | Gate B 最新 H7 服务可用、观察完整；模型路径输入错误后未取得目标/资源，也未产出完整 Skill，READ_MISSING。 |
 | AH-581 | 单 Skill 17 项要求已分别覆盖，图/缓存/故障证据已登记；A/B 各 cold 失败，后续各 4 个样本未运行，完整矩阵未通过。 |
-| AH-582 | 包、文档、生产复查、owned 清理与双仓交付已收口；全部门禁与正常日用激活后的新会话仍未完成。 |
+| AH-582 | 包、六页原发布、生产复查、owned 清理与双仓交付已完成；05 页后续限定勘误结果未知，全部门禁与正常日用激活后的新会话仍未完成。 |
 
 原规格只在 magpie/group/flash-free 当前实测不可用时允许改用 magpie/group/worker。A、B 最新样本各有 9 次 provider HTTP 200 和成功 final，availabilityFailure=false；任务未达标不满足该条件。若要在服务可用的情况下用 worker 继续相同验收，需要用户明确调整这一限制，TASK、私有 oracle、工具边界、内容完整性与失败保留规则均不随之放宽。
 
