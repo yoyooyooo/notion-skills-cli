@@ -94,6 +94,6 @@ ntn-skills export "$NODE_MAIN_PIN_REF" --projection snapshot --output ./complete
 
 graph retention 使用既有精确字节块，不依赖 ZIP 的随机访问。其他仍以整包 ZIP 提供字节的来源不会因为这个功能就变为随机获取；其实际传输成本须单独记录。
 
-核心和公开 CLI 的按需行为不等于 Broker 已采用部分目录。仍调用完整 snapshot export 的宿主会取得全部资源；宿主需要独立的 entry-ready receipt、精确文件读取与实际 loaded proof，不能复用完整导出凭证来降低校验。
+Pi 的图准备路径使用独立的 entry-ready receipt：先物化并核对根与 Requires 的完整主文，保留完整资源目录，再由原生 read 按准确 File ID 物化所选文件。host index 只证明主文及别名的归属，保持 `loaded: false`；实际投递回执才证明 loaded。未选择的大资源不因目录存在而提前下载。原有 Prompt 或直接完整 export 路径仍要求所有文件齐备；部分目录不能复用完整导出凭证。其他宿主的产品切换与验收不由 Pi 的结果推断。
 
-复验入口见 [Skill 依赖图 feature map](../.cursor/skills/verify-ntn-skills/features/skill-dependency-graph.md)。受控 HTTPS、真实 Node/SQLite 与真实双机 Notion 验证分别留证，不互相替代。
+复验入口见 [Skill 依赖图 feature map](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/skill-dependency-graph.md)。受控 HTTPS、真实 Node/SQLite 与真实双机 Notion 验证分别留证，不互相替代。

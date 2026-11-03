@@ -217,10 +217,20 @@ function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
 export const querySkillFiles = (
   input: QuerySkillFilesInput,
 ): Effect.Effect<readonly FileRecord[], SkillsError, Notion> =>
+  querySkillFilesForSkills({ ...input, skillPageIds: [input.skillPageId] }).pipe(
+    Effect.map((records) => records.get(notionId(input.skillPageId, "Skill ID")) ?? []),
+  )
+
+/** Complete selected-owner metadata, sliced below Notion's compound-filter limit. */
+export const querySkillFilesForSkills = (
+  input: Omit<QuerySkillFilesInput, "skillPageId"> & { readonly skillPageIds: readonly string[] },
+): Effect.Effect<ReadonlyMap<string, readonly FileRecord[]>, SkillsError, Notion> =>
   Effect.gen(function* () {
     const api = yield* Notion
-    const { skillId, dataSourceId, endpoint, skillProperty } = yield* checked(() => {
-      const skillId = notionId(input.skillPageId, "Skill ID")
+    const { skillIds, dataSourceId, endpoint, skillProperty } = yield* checked(() => {
+      const skillIds = input.skillPageIds.map((id) => notionId(id, "Skill ID"))
+      if (skillIds.length === 0 || new Set(skillIds).size !== skillIds.length)
+        throw invalid("Select distinct nonempty Skill page identities")
       const dataSourceId = notionId(input.dataSourceId, "Files data source ID")
       const references = fields.map((field) =>
         identifier(input.propertyIds?.[field] ?? field, `${field} property reference`),
@@ -230,56 +240,82 @@ export const querySkillFiles = (
       const query = new URLSearchParams()
       for (const reference of references) query.append("filter_properties", reference)
       return {
-        skillId,
+        skillIds,
         dataSourceId,
         endpoint: `v1/data_sources/${dataSourceId}/query?${query.toString()}`,
         skillProperty: input.propertyIds?.Skill ?? "Skill",
       }
     })
-    const records: FileRecord[] = []
+    const records = new Map(skillIds.map((id) => [id, [] as FileRecord[]]))
     const pageIds = new Set<string>()
     const fileIds = new Set<string>()
     const paths = new Set<string>()
-    const cursors = new Set<string>()
-    let cursor: string | undefined
-    for (;;) {
-      const response = yield* api.request(
-        endpoint,
-        {
-          page_size: 100,
-          filter: { property: skillProperty, relation: { contains: skillId } },
-          ...(cursor === undefined ? {} : { start_cursor: cursor }),
-        },
-        { method: "POST" },
-      )
-      const page = yield* checked(() => {
-        const raw = object(response, "Files query response")
-        if (raw.request_status !== undefined) {
-          const status = object(raw.request_status, "Files query request_status")
-          if (status.type !== "complete") throw invalid("Files query is incomplete")
-        }
-        const result = decode(listSchema(Schema.Unknown), raw)
-        for (const value of result.results) {
-          const record = fileRecord(value, skillId, dataSourceId, input.propertyIds)
-          if (pageIds.has(record.page_id))
-            throw invalid("Files query repeated a page", { page_id: record.page_id })
-          if (fileIds.has(record.file_id))
-            throw invalid("Files query repeated a File ID", { file_id: record.file_id })
-          if (paths.has(record.path))
-            throw invalid("Files query repeated a normalized Path", { path: record.path })
-          pageIds.add(record.page_id)
-          fileIds.add(record.file_id)
-          paths.add(record.path)
-          records.push(record)
-        }
-        if (result.has_more) {
-          const nextCursor = identifier(result.next_cursor, "next_cursor", 2048)
-          if (cursors.has(nextCursor)) throw invalid("Files query repeated a pagination cursor")
-          cursors.add(nextCursor)
-        }
-        return result
-      })
-      if (!page.has_more) return records
-      cursor = yield* checked(() => identifier(page.next_cursor, "next_cursor", 2048))
+    for (let offset = 0; offset < skillIds.length; offset += 80) {
+      const selected = skillIds.slice(offset, offset + 80)
+      const filters = selected.map((skillId) => ({
+        property: skillProperty,
+        relation: { contains: skillId },
+      }))
+      const cursors = new Set<string>()
+      let cursor: string | undefined
+      for (;;) {
+        const response = yield* api.request(
+          endpoint,
+          {
+            page_size: 100,
+            filter: filters.length === 1 ? filters[0] : { or: filters },
+            ...(cursor === undefined ? {} : { start_cursor: cursor }),
+          },
+          { method: "POST" },
+        )
+        const page = yield* checked(() => {
+          const raw = object(response, "Files query response")
+          if (raw.request_status !== undefined) {
+            const status = object(raw.request_status, "Files query request_status")
+            if (status.type !== "complete") throw invalid("Files query is incomplete")
+          }
+          const result = decode(listSchema(Schema.Unknown), raw)
+          for (const value of result.results) {
+            const properties = object(object(value, "File page").properties, "File properties")
+            const relation = fieldValue(properties, "Skill", input.propertyIds)
+            if (
+              relation.type !== "relation" ||
+              !Array.isArray(relation.relation) ||
+              relation.relation.length !== 1 ||
+              (relation.has_more !== undefined && relation.has_more !== false)
+            )
+              throw invalid("Every File must have exactly one complete Skill relation")
+            const owner = notionId(
+              object(relation.relation[0], "Skill relation").id,
+              "Related Skill ID",
+            )
+            if (!selected.includes(owner)) throw invalid("Files query returned an unselected Skill")
+            const record = fileRecord(value, owner, dataSourceId, input.propertyIds)
+            if (pageIds.has(record.page_id))
+              throw invalid("Files query repeated a page", { page_id: record.page_id })
+            const ownedFileId = JSON.stringify([owner, record.file_id])
+            if (fileIds.has(ownedFileId))
+              throw invalid("Files query repeated a File ID", { file_id: record.file_id })
+            const ownedPath = JSON.stringify([owner, record.path])
+            if (paths.has(ownedPath))
+              throw invalid("Files query repeated a normalized Path", { path: record.path })
+            pageIds.add(record.page_id)
+            fileIds.add(ownedFileId)
+            paths.add(ownedPath)
+            records.get(owner)!.push(record)
+          }
+          if (result.has_more) {
+            const nextCursor = identifier(result.next_cursor, "next_cursor", 2048)
+            if (cursors.has(nextCursor)) throw invalid("Files query repeated a pagination cursor")
+            cursors.add(nextCursor)
+          }
+          if (!result.has_more && result.next_cursor !== null)
+            throw invalid("Completed Files query retains an unexpected cursor")
+          return result
+        })
+        if (!page.has_more) break
+        cursor = yield* checked(() => identifier(page.next_cursor, "next_cursor", 2048))
+      }
     }
+    return records
   })

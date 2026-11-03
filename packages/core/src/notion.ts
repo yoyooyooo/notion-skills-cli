@@ -58,6 +58,7 @@ type NotionRequestOptions = {
   readonly content?: "body"
   readonly priority?: RequestPriority
   readonly queueBudgetMs?: number
+  readonly rateShare?: number
   /** Records schema property ID; the transport derives identities from sent JSON only. */
   readonly entityPropertyId?: string
 }
@@ -178,6 +179,13 @@ export const NotionTransport = Layer.effect(
         const identity = credential.identity
         const mutating =
           method !== "GET" && !isCoalescibleNotionRead({ key: identity, path, method })
+        if (options?.priority === "prefetch" && mutating)
+          return yield* Effect.fail(
+            fail("NOTION_PREFETCH_WRITE_FORBIDDEN", "Prefetch cannot mutate Notion.", {
+              phase: "input_rejected",
+              reason: "prefetch_read_only",
+            }),
+          )
         // Serialization and file validation occur before admission or an HTTP attempt.
         const prepared = yield* prepareNotionRequest({
           origin,
@@ -192,7 +200,17 @@ export const NotionTransport = Layer.effect(
           Effect.provideService(Path.Path, paths),
         )
         const requestKey = yield* hash(
-          JSON.stringify([origin, identity, method, path, body, options?.file]),
+          JSON.stringify([
+            origin,
+            identity,
+            method,
+            path,
+            body,
+            options?.file,
+            ...(options?.priority === "prefetch"
+              ? ["prefetch", options.rateShare ?? 0.1, options.queueBudgetMs]
+              : []),
+          ]),
         )
         const deadline =
           (yield* Clock.monotonicTimeNanos) + BigInt(NOTION_ADMISSION_BUDGET_MS) * 1_000_000n
@@ -202,6 +220,7 @@ export const NotionTransport = Layer.effect(
           endpoint: notionEndpoint(path, method),
           priority: options?.priority,
           queueBudgetMs: options?.queueBudgetMs,
+          rateShare: options?.rateShare,
         })
         let retryNotBefore: bigint | undefined
         const once = Effect.scoped(
@@ -379,6 +398,14 @@ export const NotionTransport = Layer.effect(
                   }),
                 )
             }
+            if (options?.priority === "prefetch" && (limited || details.http_status === 529))
+              return yield* Effect.fail(
+                fail(error.code, error.message, {
+                  ...details,
+                  deferred: true,
+                  reason: "prefetch_service_pressure",
+                }),
+              )
             if (!retryable || attempt >= 3) return yield* Effect.fail(error)
           }
         })

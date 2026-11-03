@@ -643,6 +643,10 @@ export function clearCache(
       )
     const store = yield* Store
     const selected = options.all ? undefined : yield* cachedTarget(target!, options.database)
+    const derivedPrefix =
+      selected === undefined
+        ? undefined
+        : `cache/shared-derived-graphs/${selected.scope}/${yield* sha256(selected.page)}/`
     const keys: string[] = []
     for (const key of yield* store.listKeys("cache")) {
       if (!selected) {
@@ -650,6 +654,7 @@ export function clearCache(
         continue
       }
       if (key.startsWith(`cache/latest/${selected.scope}/${selected.page}/`)) keys.push(key)
+      else if (derivedPrefix !== undefined && key.startsWith(derivedPrefix)) keys.push(key)
       else if (key.startsWith(`cache/views/${selected.scope}/`)) keys.push(key)
       else if (key.startsWith(`cache/catalogs/${selected.scope}/`) && key.endsWith(".json")) {
         const value = yield* store.readJson(key, CatalogSchema)

@@ -3,6 +3,8 @@ import { Argument, Command, Flag } from "effect/cli"
 import { decode, fail, SkillsError } from "../../core/src/model.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
 import { prepareGraph } from "../../core/src/graph-prepare.ts"
+import { normalizePrepareExecution } from "../../core/src/preparation-execution.ts"
+import { Notion } from "../../core/src/notion.ts"
 import {
   PrepareSessionBindingsSchema,
   type PrepareInput,
@@ -81,6 +83,25 @@ export const prepareCommand = defineCommand(
       "max-context-bytes",
       "Maximum bytes in successful preparation JSON, including directories and graph lock, excluding optional request telemetry (default 262144)",
     ),
+    priority: Flag.Literals("priority", ["required", "prefetch"]).pipe(
+      Flag.atMost(1),
+      Flag.map((values) => values[0] ?? "required"),
+      Flag.withDescription(
+        "required is foreground preparation; prefetch uses a bounded low-priority read-only execution policy",
+      ),
+    ),
+    queueBudgetMs: singleton(
+      "queue-budget-ms",
+      "Maximum admission wait per request in milliseconds; prefetch defaults to 1000",
+    ),
+    timeBudgetMs: singleton(
+      "time-budget-ms",
+      "Maximum lifetime of this preparation owner in milliseconds; prefetch defaults to 5000",
+    ),
+    rateShare: singleton(
+      "rate-share",
+      "Prefetch's maximum share of the existing Notion admission rate, greater than 0 and at most 1 (default 0.1)",
+    ),
     metrics: switchFlag("metrics", "Include measured Notion request metrics"),
   },
   (config) =>
@@ -102,6 +123,27 @@ export const prepareCommand = defineCommand(
             : fail("INVALID_ARGUMENT", "Invalid preparation budget."),
       })
       const bindingPath = Option.getOrUndefined(config.sessionBindings)
+      const execution = yield* Effect.try({
+        try: () => {
+          const share = Option.getOrUndefined(config.rateShare)
+          return normalizePrepareExecution({
+            priority: config.priority,
+            queueBudgetMs: integer(config.queueBudgetMs, "--queue-budget-ms"),
+            timeBudgetMs: integer(config.timeBudgetMs, "--time-budget-ms"),
+            ...(share === undefined
+              ? {}
+              : {
+                  rateShare: /^(?:0(?:\.[0-9]+)?|1(?:\.0+)?)$/u.test(share)
+                    ? Number(share)
+                    : Number.NaN,
+                }),
+          })
+        },
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("INVALID_ARGUMENT", "Invalid preparation execution policy."),
+      })
       const freshness: PrepareInput["freshness"] = policy.offline
         ? { policy: "offline" }
         : policy.refresh
@@ -119,9 +161,12 @@ export const prepareCommand = defineCommand(
             ? {}
             : { sessionBindings: yield* readBindings(bindingPath) }),
         },
-        { database: Option.getOrUndefined(config.database) },
+        { database: Option.getOrUndefined(config.database), execution, metrics: config.metrics },
       )
-      yield* emit(prepared)
+      yield* emit({
+        ...prepared,
+        ...(config.metrics ? { request_metrics: (yield* Notion).requestMetrics?.() } : {}),
+      })
     }),
 ).pipe(
   withConstraints([readPolicyConstraint]),

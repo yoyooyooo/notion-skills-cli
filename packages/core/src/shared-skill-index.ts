@@ -53,6 +53,7 @@ export function querySharedSkillIndex(
   library: SharedLibrary,
   target: string,
   suppliedPage?: unknown,
+  suppliedFiles?: readonly FileRecord[],
 ) {
   return Effect.gen(function* () {
     const id = pageId(target)
@@ -135,11 +136,13 @@ export function querySharedSkillIndex(
           ? error
           : fail("SHARED_METADATA_INVALID", "The Skill metadata could not be decoded."),
     })
-    const files = yield* querySkillFiles({
-      dataSourceId: library.files.data_source_id,
-      skillPageId: id,
-      propertyIds: library.files.property_ids,
-    })
+    const files =
+      suppliedFiles ??
+      (yield* querySkillFiles({
+        dataSourceId: library.files.data_source_id,
+        skillPageId: id,
+        propertyIds: library.files.property_ids,
+      }))
     if (
       files.some(
         (file) =>

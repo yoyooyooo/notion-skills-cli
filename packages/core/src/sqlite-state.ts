@@ -118,6 +118,11 @@ const sharedLocalDomains: readonly {
     address: /^cache\/shared-history-manifests\/[a-f0-9]{64}\/s_[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "cache/shared-derived-graphs",
+    category: "cache",
+    address: /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-observation-pending",
     category: "dispatch",
     address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,

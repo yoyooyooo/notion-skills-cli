@@ -15,6 +15,7 @@ const keys = {
   page: `cache/shared-page-identities/${scope}/00000000-0000-4000-8000-000000000001.json`,
   github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
   retainedManifest: `cache/shared-history-manifests/${scope}/s_${"c".repeat(64)}.json`,
+  derivedGraph: `cache/shared-derived-graphs/${scope}/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   observationPending: `operations/shared-observation-pending/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
   graphPending: `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/plan.json`,
@@ -166,7 +167,13 @@ test("shared cache and typed dispatch addresses persist across real Node restart
     expect(reader.exit, reader.stderr).toBe(0)
     expect(JSON.parse(reader.stdout)).toEqual({
       values: entries.map((entry) => entry.payload),
-      cache: [keys.observations, keys.page, keys.github, keys.retainedManifest].sort(),
+      cache: [
+        keys.observations,
+        keys.page,
+        keys.github,
+        keys.retainedManifest,
+        keys.derivedGraph,
+      ].sort(),
       dispatch: [
         keys.observationPending,
         keys.historyPending,
@@ -197,8 +204,8 @@ test("shared cache and typed dispatch addresses persist across real Node restart
     )
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
-      { category: "cache", retired: 0, count: 4 },
-      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 4 },
+      { category: "cache", retired: 0, count: 5 },
+      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 5 },
     ])
   })
 }, 30_000)
@@ -388,7 +395,7 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
     expect(cleared.exit, cleared.stderr).toBe(0)
     const result = JSON.parse(cleared.stdout)
     expect(result.entries.sort()).toEqual(
-      [keys.observations, keys.page, keys.github, keys.retainedManifest].sort(),
+      [keys.observations, keys.page, keys.github, keys.retainedManifest, keys.derivedGraph].sort(),
     )
     expect(result.cache).toEqual([])
     expect(result.dispatch).toEqual(
@@ -483,6 +490,7 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `operations/shared-observation-pending/${scope}/../other.json`,
       `operations/shared-snapshot-history/${scope}/latest.json`,
       `cache/shared-history-manifests/${scope}/latest.json`,
+      `cache/shared-derived-graphs/${scope}/${"d".repeat(64)}/latest.json`,
       `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/replacement.json`,
       `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/complete.json`,
       `cache/shared-page-identities/${scope}/page.json`,

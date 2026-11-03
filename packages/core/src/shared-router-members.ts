@@ -404,12 +404,21 @@ export function completeSharedRouterMemberIds(
 
 export function querySharedRouterMembers(
   library: SharedLibrary,
-  input: { readonly router: SharedSkillRecord; readonly rawPage: unknown },
+  input: {
+    readonly router: SharedSkillRecord
+    readonly rawPage: unknown
+    readonly inventory?: {
+      readonly data_source_id: string
+      readonly complete: true
+      readonly pages: readonly unknown[]
+    }
+  },
 ) {
   return querySharedSkillRelation(library, {
     record: input.router,
     rawPage: input.rawPage,
     field: "Members",
+    inventory: input.inventory,
   })
 }
 

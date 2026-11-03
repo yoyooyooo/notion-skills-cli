@@ -11,6 +11,7 @@ import {
   Latch,
   Layer,
   Queue,
+  Random,
   Stream,
 } from "effect"
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http"
@@ -101,6 +102,66 @@ test("filtered metadata POST queries retain read-only failure semantics", async 
         }),
     ),
   )
+})
+
+test("prefetch refuses mutations before HTTP but accepts read-only metadata POSTs", async () => {
+  await Effect.runPromise(
+    withClockedNotion(
+      () => ({ text: JSON.stringify({ results: [] }) }),
+      ({ api, starts }) =>
+        Effect.gen(function* () {
+          const denied = yield* api
+            .request("v1/pages", { parent: {} }, { priority: "prefetch" })
+            .pipe(Effect.result)
+          expect(denied._tag === "Failure" && denied.failure.code).toBe(
+            "NOTION_PREFETCH_WRITE_FORBIDDEN",
+          )
+          expect(starts).toHaveLength(0)
+          yield* api.request(
+            "v1/data_sources/00000000-0000-4000-8000-000000000001/query",
+            {},
+            { priority: "prefetch" },
+          )
+          expect(starts).toHaveLength(1)
+        }),
+    ),
+  )
+})
+
+test("prefetch exits after one 429 or 529 and preserves the shared server cooldown", async () => {
+  for (const status of [429, 529])
+    await Effect.runPromise(
+      withClockedNotion(
+        () => ({
+          status,
+          headers: { "retry-after": "2" },
+          text: JSON.stringify({
+            object: "error",
+            status,
+            code: "rate_limited",
+            message: "Controlled service pressure",
+          }),
+        }),
+        ({ api, starts }) =>
+          Effect.gen(function* () {
+            const result = yield* api
+              .request("v1/pages/pressure", undefined, { priority: "prefetch" })
+              .pipe(Effect.result)
+            expect(result._tag === "Failure" && result.failure.details).toMatchObject({
+              deferred: true,
+              reason: "prefetch_service_pressure",
+              http_status: status,
+              retry_after_seconds: 2,
+            })
+            expect(starts).toHaveLength(1)
+            const foreground = yield* api
+              .request("v1/pages/later", undefined, { queueBudgetMs: 100 })
+              .pipe(Effect.result)
+            expect(foreground._tag === "Failure" && foreground.failure.code).toBe("RATE_LIMITED")
+            expect(starts).toHaveLength(1)
+          }),
+      ),
+    )
 })
 
 test("a structured public_api_request_blocked response is never retried", async () => {
@@ -224,7 +285,13 @@ function withClockedNotion<A>(
         const api = yield* Effect.provide(Notion, layer)
         const peer = yield* Effect.provide(Notion, layer)
         return yield* use({ api, peer, clock, starts, started, sleeps })
-      }).pipe(Effect.provideService(Clock.Clock, observedClock), Effect.provide(NodeServices.layer))
+      }).pipe(
+        Effect.provideService(Clock.Clock, observedClock),
+        // Retry boundaries below advance the TestClock by exact values. Select
+        // the zero-jitter boundary through the public Random service as well.
+        Effect.provideService(Random.Random, { nextIntUnsafe: () => 0, nextDoubleUnsafe: () => 0 }),
+        Effect.provide(NodeServices.layer),
+      )
     }),
   )
 }
@@ -373,15 +440,17 @@ test("transport read retries pass through the same admission gate after backoff"
               expect((yield* Queue.take(started)).millis).toBe(0)
               yield* Effect.yieldNow
               yield* clock.adjust(900)
-              yield* api.request("v1/pages/competing")
-              expect((yield* Queue.take(started)).millis).toBe(900)
-              yield* clock.adjust(100)
-              yield* Effect.yieldNow
-              yield* clock.adjust(249)
-              expect(starts.map((start) => start.millis)).toEqual([0, 900])
+              const competing = yield* Effect.forkChild(api.request("v1/pages/competing"), {
+                startImmediately: true,
+              })
+              yield* clock.adjust(99)
+              expect(starts.map((start) => start.millis)).toEqual([0])
               yield* clock.adjust(1)
-              expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_250 })
+              expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_000 })
               expect(yield* Fiber.join(read)).toEqual({ object: "page", id: path })
+              yield* clock.adjust(350)
+              expect((yield* Queue.take(started)).millis).toBe(1350)
+              yield* Fiber.join(competing)
             }),
         ),
       )
@@ -411,30 +480,23 @@ test("separate clients share the credential admission schedule", async () => {
   )
 })
 
-test("a definitive write rate limit records a full shared window without replaying the write", async () => {
+test("a definitive write rate limit retries the same request only after the full shared window", async () => {
   await Effect.runPromise(
     withClockedNotion(
-      ({ path }) =>
-        path === "v1/pages/write"
+      ({ path, attempt }) =>
+        path === "v1/pages/write" && attempt === 1
           ? {
               text: JSON.stringify({ object: "error", code: "rate_limited", status: 429 }),
             }
           : {},
       ({ api, peer, clock, started, starts, sleeps }) =>
         Effect.gen(function* () {
-          const rejection = yield* api
-            .request("v1/pages/write", {}, { method: "PATCH" })
-            .pipe(Effect.result)
-          expect(rejection._tag).toBe("Failure")
-          if (rejection._tag !== "Failure") throw new Error("Expected rate limit")
-          expect(rejection.failure.code).toBe("RATE_LIMITED")
-          expect(rejection.failure.details).toMatchObject({
-            phase: "definitive_rejection",
-            retry_after_seconds: 60,
-            retry_after_source: "fallback",
-          })
-          expect(JSON.stringify(rejection)).not.toContain("secret")
+          const writing = yield* Effect.forkChild(
+            api.request("v1/pages/write", {}, { method: "PATCH" }),
+            { startImmediately: true },
+          )
           yield* Queue.take(started)
+          yield* Queue.take(sleeps)
           const following = yield* Effect.forkChild(peer.request("v1/pages/following"), {
             startImmediately: true,
           })
@@ -443,8 +505,11 @@ test("a definitive write rate limit records a full shared window without replayi
           expect(starts).toHaveLength(1)
           yield* clock.adjust(1)
           expect((yield* Queue.take(started)).millis).toBe(60_000)
+          expect(yield* Fiber.join(writing)).toEqual({ object: "page", id: "v1/pages/write" })
+          yield* clock.adjust(350)
+          expect((yield* Queue.take(started)).millis).toBe(60_350)
           yield* Fiber.join(following)
-          expect(starts.filter((start) => start.path === "v1/pages/write")).toHaveLength(1)
+          expect(starts.filter((start) => start.path === "v1/pages/write")).toHaveLength(2)
         }),
     ),
   )
@@ -581,7 +646,7 @@ test("cooldowns beyond the request budget persist and reject later writes before
   )
 })
 
-test("structured rate limit diagnostics retain only safe delays and never replay server-error writes", async () => {
+test("structured diagnostics retain only safe delays and never replay contradictory or server-error writes", async () => {
   for (const [status, code, hint, expectedDelay] of [
     [429, "rate_limited", "75", 75],
     [429, "rate_limited", 1e308, 1e308],
@@ -600,7 +665,11 @@ test("structured rate limit diagnostics retain only safe delays and never replay
             status,
             code,
             message: "private-token",
-            additional_data: { retry_after: hint, body: "private-token" },
+            additional_data: {
+              retry_after: hint,
+              body: "private-token",
+              ...(status === 429 ? { retry_guidance: ["Do not repeat the write."] } : {}),
+            },
           }),
         }),
         ({ api, starts }) =>
@@ -610,9 +679,7 @@ test("structured rate limit diagnostics retain only safe delays and never replay
               .pipe(Effect.result)
             expect(result._tag).toBe("Failure")
             if (result._tag !== "Failure") throw new Error("Expected API rejection")
-            expect(result.failure.code).toBe(
-              status === 429 ? "RATE_LIMITED" : "WRITE_OUTCOME_UNKNOWN",
-            )
+            expect(result.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
             expect(result.failure.details).toMatchObject({ http_status: status })
             const details = result.failure.details as { retry_after_seconds?: number }
             expect(details.retry_after_seconds).toBe(expectedDelay)
@@ -949,17 +1016,23 @@ test("formal Notion Layer holds no concurrency permit during read retry backoff"
         Effect.gen(function* () {
           const request = yield* Effect.forkChild(api.request(path), { startImmediately: true })
           expect((yield* Queue.take(started)).millis).toBe(0)
-          yield* Effect.yieldNow
+          yield* Queue.take(sleeps)
+          expect(api.requestMetrics?.().in_flight).toBe(0)
           yield* clock.adjust(350)
-          expect(yield* api.request("v1/pages/bounded-between-attempts")).toEqual({
-            object: "page",
-            id: "v1/pages/bounded-between-attempts",
-          })
-          expect((yield* Queue.take(started)).millis).toBe(350)
+          const following = yield* Effect.forkChild(
+            api.request("v1/pages/bounded-between-attempts"),
+            { startImmediately: true },
+          )
           yield* clock.adjust(650)
           expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_000 })
           expect(yield* Fiber.join(request)).toEqual({ object: "page", id: path })
-          expect(starts.map((start) => start.millis)).toEqual([0, 350, 1_000])
+          yield* clock.adjust(350)
+          expect((yield* Queue.take(started)).millis).toBe(1350)
+          expect(yield* Fiber.join(following)).toEqual({
+            object: "page",
+            id: "v1/pages/bounded-between-attempts",
+          })
+          expect(starts.map((start) => start.millis)).toEqual([0, 1_000, 1_350])
           expect(api.requestMetrics?.()).toMatchObject({
             total_requests: 3,
             peak_concurrency: 1,
@@ -1215,18 +1288,19 @@ test("formal Notion Layer shares the complete retry chain and re-admits only its
             outcomes: { failure: 1 },
           })
           yield* clock.adjust(900)
-          yield* api.request("v1/pages/competing-with-shared-retry")
-          expect((yield* Queue.take(started)).millis).toBe(900)
+          const competing = yield* Effect.forkChild(
+            api.request("v1/pages/competing-with-shared-retry"),
+            { startImmediately: true },
+          )
           yield* clock.adjust(100)
-          yield* Effect.yieldNow
-          yield* clock.adjust(249)
-          expect(starts.map((start) => start.millis)).toEqual([0, 900])
-          yield* clock.adjust(1)
-          expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_250 })
+          expect(yield* Queue.take(started)).toEqual({ path, attempt: 2, millis: 1_000 })
           expect(yield* Fiber.joinAll([first, second])).toEqual([
             { object: "page", id: path },
             { object: "page", id: path },
           ])
+          yield* clock.adjust(350)
+          expect((yield* Queue.take(started)).millis).toBe(1350)
+          yield* Fiber.join(competing)
           expect(probe.snapshot()).toMatchObject({
             total_requests: 3,
             coalesced_requests: 1,

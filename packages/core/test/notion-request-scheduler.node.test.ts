@@ -198,15 +198,13 @@ test("queue budget expires while every network permit is occupied and creates no
   )
 })
 
-test("old prefetch requests age into the foreground queue and cannot starve", async () => {
+test("old prefetch requests defer when a foreground owner arrives in another process queue", async () => {
   await Effect.runPromise(
     withSchedulers(({ first, second, clock, sleeps }) =>
       Effect.gen(function* () {
         yield* first.cooldown(credential, 31_000)
         const prefetch = yield* Effect.forkChild(
-          first
-            .acquire(credential, yield* deadline, { priority: "prefetch" })
-            .pipe(Effect.andThen(Clock.currentTimeMillis)),
+          first.acquire(credential, yield* deadline, { priority: "prefetch" }).pipe(Effect.result),
           { startImmediately: true },
         )
         yield* Queue.take(sleeps)
@@ -220,10 +218,38 @@ test("old prefetch requests age into the foreground queue and cannot starve", as
         )
         yield* Queue.take(sleeps)
         yield* clock.adjust(1_000)
-        expect(yield* Fiber.join(prefetch)).toBe(31_000)
-        expect(foreground.pollUnsafe()).toBeUndefined()
+        const result = yield* Fiber.join(prefetch)
+        expect(result._tag === "Failure" && result.failure.code).toBe("NOTION_PREFETCH_DEFERRED")
+        if (foreground.pollUnsafe() === undefined) yield* clock.adjust(25)
+        expect(yield* Fiber.join(foreground)).toBeLessThanOrEqual(31_025)
+      }),
+    ),
+  )
+})
+
+test("prefetch rate share adds no reservation or slower interval to foreground traffic", async () => {
+  await Effect.runPromise(
+    withSchedulers(({ first, second, clock, sleeps }) =>
+      Effect.gen(function* () {
+        yield* first.acquire(credential, yield* deadline, { priority: "prefetch", rateShare: 0.1 })
+        const foreground = yield* Effect.forkChild(
+          second.acquire(credential, yield* deadline, { priority: "foreground" }),
+          { startImmediately: true },
+        )
+        expect(yield* Queue.take(sleeps)).toBe(350)
         yield* clock.adjust(350)
-        expect(yield* Fiber.join(foreground)).toBe(31_350)
+        yield* Fiber.join(foreground)
+        const limited = yield* second
+          .acquire(credential, yield* deadline, {
+            priority: "prefetch",
+            rateShare: 0.1,
+            queueBudgetMs: 100,
+          })
+          .pipe(Effect.result)
+        expect(limited._tag === "Failure" && limited.failure.code).toBe("RATE_LIMITED")
+        yield* clock.adjust(3150)
+        yield* second.acquire(credential, yield* deadline, { priority: "prefetch", rateShare: 0.1 })
+        expect(yield* Clock.currentTimeMillis).toBe(3500)
       }),
     ),
   )

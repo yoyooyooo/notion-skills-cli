@@ -1,4 +1,4 @@
-import { Crypto, Effect, FileSystem, Path, Schema } from "effect"
+import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { HttpClient } from "effect/http"
 import { authScope } from "./catalog.ts"
 import { locallySelectedScope, type ObservedSnapshot, type ReadPolicyOptions } from "./cache.ts"
@@ -14,7 +14,15 @@ import { Notion } from "./notion.ts"
 import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { targetSnapshot } from "./snapshot.ts"
+import { withSharedGraphReads, withSharedGraphReadDepth } from "./shared-graph-read-context.ts"
+import { derivedGraphDirectory, relationDirectory } from "./graph-derived-directory.ts"
 import { sha256, Store } from "./store.ts"
+import {
+  normalizePrepareExecution,
+  prepareRequestPolicy,
+  withPrepareExecution,
+  type PrepareExecutionOptions,
+} from "./preparation-execution.ts"
 import {
   PREPARE_DEFAULT_BUDGET,
   PrepareInputSchema,
@@ -83,20 +91,6 @@ const failure = (error: SkillsError) => ({
   message: error.message,
   ...(error.details === undefined ? {} : { details: error.details }),
 })
-const relationDirectory = (relations: Snapshot["required"]): readonly PrepareDirectoryEntry[] =>
-  (relations ?? [])
-    .map((entry) => {
-      const meta = property(entry.metadata)
-      return {
-        id: entry.id,
-        ref: entry.ref,
-        kind: meta.kind === "router" || meta.kind === "prompt" ? meta.kind : "skill",
-        name: typeof meta.name === "string" ? meta.name : entry.id,
-        description: typeof meta.description === "string" ? meta.description : "",
-        availability: meta.enabled === false ? "disabled" : "available",
-      } satisfies PrepareDirectoryEntry
-    })
-    .sort((a, b) => compare(a.id, b.id) || compare(a.ref, b.ref))
 
 function readPolicy(input: PrepareInput): ReadPolicyOptions {
   switch (input.freshness?.policy) {
@@ -116,9 +110,16 @@ function readPolicy(input: PrepareInput): ReadPolicyOptions {
  */
 export function prepareGraph(
   inputValue: PrepareInput,
-  options: { readonly database?: string } = {},
+  options: {
+    readonly database?: string
+    readonly execution?: PrepareExecutionOptions
+    readonly metrics?: boolean
+  } = {},
 ) {
   return Effect.gen(function* () {
+    const startedAt = yield* Clock.currentTimeMillis
+    const execution = yield* checked(() => normalizePrepareExecution(options.execution))
+    const requestPolicy = prepareRequestPolicy(execution)
     const input = yield* Effect.try({
       try: () => Schema.decodeUnknownSync(PrepareInputSchema)(inputValue),
       catch: () =>
@@ -141,7 +142,7 @@ export function prepareGraph(
       api.connectionIdentity === undefined
         ? undefined
         : yield* Effect.cached(api.connectionIdentity)
-    const currentUser = yield* Effect.cached(api.request("v1/users/me"))
+    const currentUser = yield* Effect.cached(api.request("v1/users/me", undefined, requestPolicy))
     // Cache identity only within this operation; all content I/O retains the same Service/scheduler.
     const selectedApi: Notion["Service"] = {
       ...api,
@@ -150,10 +151,16 @@ export function prepareGraph(
       request: (path, body, requestOptions) =>
         path === "v1/users/me" && body === undefined
           ? currentUser
-          : api.request(path, body, { ...requestOptions, priority: "required" }),
+          : api.request(path, body, { ...requestOptions, ...requestPolicy }),
     }
-    return yield* prepareSelected(input, targets, budget, options).pipe(
-      Effect.provideService(Notion, selectedApi),
+    return yield* withPrepareExecution(
+      prepareSelected(input, targets, budget, {
+        database: options.database,
+        sharedReadOnly: execution.priority === "prefetch",
+        metrics: options.metrics,
+        startedAt,
+      }).pipe(Effect.provideService(Notion, selectedApi)),
+      execution,
     )
   })
 }
@@ -162,7 +169,12 @@ function prepareSelected(
   input: PrepareInput,
   targets: readonly string[],
   budget: PrepareReady["budget"],
-  options: { readonly database?: string },
+  options: {
+    readonly database?: string
+    readonly sharedReadOnly?: boolean
+    readonly metrics?: boolean
+    readonly startedAt: number
+  },
 ): Effect.Effect<PrepareReady, SkillsError, Services> {
   return Effect.gen(function* () {
     const policy = readPolicy(input)
@@ -171,7 +183,50 @@ function prepareSelected(
       return yield* Effect.fail(
         fail("CACHE_SCOPE_UNAVAILABLE", "Preparation requires the selected account scope."),
       )
+    const fixedSelectors = new Set(
+      (input.sessionBindings ?? [])
+        .flatMap((binding) => recordSelectors(binding.record))
+        .map(selectorKey),
+    )
+    const currentRoots = targets
+      .map(exactTarget)
+      .filter(
+        (target) =>
+          target.snapshot === undefined && !fixedSelectors.has(selectorKey(target.selector)),
+      )
+      .map((target) => target.selector)
+    return yield* withSharedGraphReads(
+      prepareSelectedInScope(input, targets, budget, options, scope),
+      {
+        scope,
+        currentRoots,
+        purpose: input.purpose,
+        maxNodes: budget.maxNodes,
+        maxDepth: budget.maxDepth,
+      },
+    )
+  })
+}
+
+function prepareSelectedInScope(
+  input: PrepareInput,
+  targets: readonly string[],
+  budget: PrepareReady["budget"],
+  options: {
+    readonly database?: string
+    readonly sharedReadOnly?: boolean
+    readonly metrics?: boolean
+    readonly startedAt: number
+  },
+  scope: string,
+): Effect.Effect<PrepareReady, SkillsError, Services> {
+  return Effect.gen(function* () {
+    const policy = readPolicy(input)
     const store = yield* Store
+    const startedAt = options.startedAt
+    let rootReadyMs: number | undefined
+    let derivedCacheHits = 0,
+      derivedCacheMisses = 0
     const aliases = new Map<string, string>()
     const pins = new Map<string, string>()
     const session = new Map<string, PrepareBinding>()
@@ -352,14 +407,17 @@ function prepareSelected(
               }),
             )
           attempted.add(key)
-          snapshot = yield* targetSnapshot(
-            selected,
-            {
-              ...options,
-              ...(selected.snapshot === undefined ? policy : { offline: policy.offline }),
-            },
-            "generated",
-            "entrypoint",
+          snapshot = yield* withSharedGraphReadDepth(
+            targetSnapshot(
+              selected,
+              {
+                ...options,
+                ...(selected.snapshot === undefined ? policy : { offline: policy.offline }),
+              },
+              "generated",
+              "entrypoint",
+            ),
+            depth,
           )
           id = snapshot.record.id
           yield* checked(() => register(snapshot!.record, snapshot!.snapshot_id))
@@ -476,6 +534,9 @@ function prepareSelected(
                 { id, snapshot_id: snapshot.snapshot_id },
               ),
             )
+          const derived = yield* derivedGraphDirectory(snapshot, main.sha256)
+          if (derived.hit) derivedCacheHits++
+          else derivedCacheMisses++
           const node: PreparedNode = {
             id,
             ref,
@@ -488,23 +549,19 @@ function prepareSelected(
             content,
             bytes: main.bytes,
             body_sha256: main.sha256,
-            files: snapshot.files.map((file) => ({
-              ...file,
-              ref: fileRef(
-                id,
-                file.path,
-                snapshot!.snapshot_id,
-                snapshot!.file_bindings?.find((binding) => binding.path === file.path)?.file_id,
-              ),
-            })),
-            required: relationDirectory(snapshot.required),
-            candidates: relationDirectory(snapshotMembers(snapshot)),
-            references: snapshot.native_references?.entries ?? [],
-            unresolved_references: snapshot.native_references?.unresolved ?? [],
+            ...derived.directory,
             ...(snapshot.source === undefined ? {} : { source: snapshot.source }),
             ...(snapshot.freshness === undefined ? {} : { freshness: snapshot.freshness }),
           }
           nodes.set(id, node)
+          if (
+            rootReadyMs === undefined &&
+            targets.every((target) => {
+              const rootId = selectedId(parseTarget(target))
+              return rootId !== undefined && nodes.get(rootId)?.state === "prepared"
+            })
+          )
+            rootReadyMs = Math.max(0, (yield* Clock.currentTimeMillis) - startedAt)
           for (const child of node.required) {
             addKnown(child, "required")
             required.set(canonicalSharedJson([id, child.id, child.ref]), {
@@ -601,6 +658,7 @@ function prepareSelected(
       session_bindings: vector.bindings,
       graph_lock: { ...vector, sha256: yield* sha256(canonicalSharedJson(vector)) },
     }
+    const requiredReadyMs = Math.max(0, (yield* Clock.currentTimeMillis) - startedAt)
     // Count the successful CLI JSON envelope, including directories and locks, before optional telemetry.
     // The self-reported decimal length reaches a fixed point in at most a few iterations.
     let contextBytes = 0
@@ -647,6 +705,21 @@ function prepareSelected(
         }),
       )
     }
-    return { ...ready, usage: { ...ready.usage, context_bytes: contextBytes } }
+    return {
+      ...ready,
+      usage: { ...ready.usage, context_bytes: contextBytes },
+      ...(options.metrics
+        ? {
+            preparation_metrics: {
+              version: 1 as const,
+              root_ready_ms: rootReadyMs ?? requiredReadyMs,
+              required_ready_ms: requiredReadyMs,
+              elapsed_ms: Math.max(0, (yield* Clock.currentTimeMillis) - startedAt),
+              derived_cache_hits: derivedCacheHits,
+              derived_cache_misses: derivedCacheMisses,
+            },
+          }
+        : {}),
+    }
   })
 }

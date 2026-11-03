@@ -291,7 +291,23 @@ export function compileSharedNativeReferences(input: {
     }
     if (candidates.size === 0)
       return { linkedPages, completions, links: [] as readonly SharedFileLink[], index: undefined }
-    const ownFiles = new Map(input.bindings.map((file) => [file.page_id, file]))
+    const ownFiles = new Map<string, SharedBodyBinding>()
+    const ownLogicalFiles = new Set<string>()
+    for (const file of input.bindings) {
+      if (file.skill_page_id !== input.record.locator.page_id)
+        return yield* Effect.fail(
+          fail("SHARED_REFERENCE_SCOPE", "A current File binding belongs to another owner."),
+        )
+      if (ownFiles.has(file.page_id) || ownLogicalFiles.has(file.file_id))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_FILE_ID_CONFLICT",
+            "One owner repeats a logical File or physical page binding.",
+          ),
+        )
+      ownFiles.set(file.page_id, file)
+      ownLogicalFiles.add(file.file_id)
+    }
     const external = [...candidates.values()].filter(
       (value) => value.page_id !== input.record.locator.page_id && !ownFiles.has(value.page_id),
     )
@@ -301,6 +317,10 @@ export function compileSharedNativeReferences(input: {
     const skillClaims = new Map<string, Set<string>>()
     const files = new Map<string, FileRecord>()
     const fileClaims = new Map<string, Set<string>>()
+    // File identity is scoped to its exact owner in this authorized library.
+    // Duplicate logical Skill claims are checked separately before a target is emitted.
+    const fileIdentity = (file: Pick<FileRecord, "skill_page_id" | "file_id">) =>
+      canonicalSharedJson([file.skill_page_id, file.file_id])
     if (external.length > 0) {
       const source: Source = {
         alias: input.library.library_id,
@@ -358,15 +378,29 @@ export function compileSharedNativeReferences(input: {
             }
           })
           if (file === undefined) continue
+          const own = ownFiles.get(file.page_id)
+          if (
+            own !== undefined &&
+            (own.skill_page_id !== file.skill_page_id ||
+              own.file_id !== file.file_id ||
+              own.path !== file.path)
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_FILE_ID_CONFLICT",
+                "A current physical File page has incompatible owner or binding metadata.",
+              ),
+            )
           if (seenFilePages.has(file.page_id))
             return yield* Effect.fail(
               fail("SHARED_REFERENCE_INCOMPLETE", "Reference inventory repeats a File page."),
             )
           seenFilePages.add(file.page_id)
           files.set(file.page_id, file)
-          const claims = fileClaims.get(file.file_id) ?? new Set<string>()
+          const identity = fileIdentity(file)
+          const claims = fileClaims.get(identity) ?? new Set<string>()
           claims.add(file.page_id)
-          fileClaims.set(file.file_id, claims)
+          fileClaims.set(identity, claims)
         }
       }
     }
@@ -391,11 +425,12 @@ export function compileSharedNativeReferences(input: {
             page_ids: [...skillClaims.get(owner.id)!].sort(),
           }),
         )
-      if (file !== undefined && (fileClaims.get(file.file_id)?.size ?? 0) > 1)
+      if (file !== undefined && (fileClaims.get(fileIdentity(file))?.size ?? 0) > 1)
         return yield* Effect.fail(
-          fail("SHARED_FILE_ID_CONFLICT", "Several pages claim a referenced File ID.", {
+          fail("SHARED_FILE_ID_CONFLICT", "Several pages claim a referenced owner's File ID.", {
             file_id: file.file_id,
-            page_ids: [...fileClaims.get(file.file_id)!].sort(),
+            owner_skill_id: owner.id,
+            page_ids: [...fileClaims.get(fileIdentity(file))!].sort(),
           }),
         )
       // A link to the main native page names the Skill, not an inferred File.

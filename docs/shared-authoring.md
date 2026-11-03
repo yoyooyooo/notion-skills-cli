@@ -417,10 +417,25 @@ Completion returns `reviewed` with `decision: accepted_observed`. The original o
 
 If review is interrupted, retain its original receipt and repeat the exact review with `--reconcile`. Reconciliation only verifies the original review facts and never fills missing facts by repeating unknown writes. `--dry-run` and `--reconcile` are mutually exclusive.
 
+## Accepting the current version after an unknown write
+
+An original body write can have no retained outcome even when its exact adoption event is later visible. The explicit `accept-current` command records an independent decision to accept the current version. It requires that existing exact event, a complete fresh body equal to the original candidate, and unchanged file identity, Source and parent frontier. It preserves the original outcome as `unknown`.
+
+Use the `body_write_operation_id` returned by the actual failed dispatch. A preceding dry-run may have a different observation identity. Hash the exact current `response.markdown` UTF-8 bytes, and preview the decision with the containing Skill page, including when the changed file is a resource:
+
+```bash
+ntn-skills ctl library file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+  --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --dry-run
+```
+
+After reviewing that exact candidate and event, execute the same command without `--dry-run`. A successful result is `reviewed` with `decision: accepted_current` and `original_write_outcome: unknown`. This creates only the independent immutable decision. It does not replay the body PATCH, invent an adoption event or manufacture an `applied` outcome for the original operation.
+
+An uncertain decision write retains its dispatch. Use the same command with `--reconcile` for read-only verification. After verified acceptance, a fresh `read` may return `SHARED_BODY_WRITE_RECONCILED` with `read_again: true`; read again to obtain the current snapshot. Original failures, preimages, candidates and historical pins remain available.
+
 ## Current limits
 
 Shared authoring currently requires existing editable bindings for changed files. Native binary creation, mixed or multiple layout changes in one `apply`, and arbitrary lossless Markdown rendering are not implemented. New plans reject Setext headings and YAML frontmatter in supporting files before any Notion write because native readback does not preserve their original structure. Ordinary native main-file authoring is limited to supported name and description fields; unknown fields are rejected. A validated following-source migration preserves extra main frontmatter in the immutable Source, and the normal consumer retains it through canonicalMain; this does not authorize unsupported native write metadata. Excessive operation-envelope size fails before dispatch. HTTP/local composition still requires a reviewed fixed plan. These limits do not change old pins or authorize omission of input files.
 
 New authoring plans use Markdown projection policy 8. It retains the earlier rich-text, spacing and text-break rules, predicts literal text underscore escaping, and predicts the observed canonicalization of bare `https://www.notion.so/COMPACT_PAGE_ID` links to `https://app.notion.com/p/COMPACT_PAGE_ID`. Code literals, external links and URL forms outside that exact rule remain unchanged. The original input, wire request and expected readback stay separately frozen; normalization of observed bodies remains CRLF-to-LF only. Existing policies 1–7 keep their original bytes and meaning. Unverified table alignment, unaccounted spans or unsupported nested link styling are rejected or fail exact readback rather than being silently normalized away.
 
-Inline code containing a literal backtick remains rejected because the observed native conversion can merge adjacent paragraphs. This applies to both Markdown code spans and native `<code>` content, including visible nested text. Fenced code may contain literal backticks. The CLI leaves the input unchanged; it does not silently convert inline code into a fence. Retained policy 1–5 plans continue to validate against their original renderer, expected bytes and operation identity. Migration reconstruction carries the exact policy recorded by every saved file; a new policy requires a new candidate and review digest. A policy 4 operation that stopped for a body mismatch remains bound to policy 4; installing the new renderer does not authorize replay or mark that operation successful.
+Inline code containing a literal backtick remains rejected because the observed native conversion can merge adjacent paragraphs. This applies to both Markdown code spans and native `<code>` content, including visible nested text. Fenced code may contain literal backticks. The CLI leaves the input unchanged; it does not silently convert inline code into a fence. Retained policy 1–7 plans continue to validate against their original renderer, expected bytes and operation identity. Migration reconstruction carries the exact policy recorded by every saved file; a new policy requires a new candidate and review digest. A policy 4 operation that stopped for a body mismatch remains bound to policy 4; installing the new renderer does not authorize replay or mark that operation successful.

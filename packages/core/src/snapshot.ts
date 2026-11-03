@@ -3,6 +3,7 @@ import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
 import { openRetainedSnapshot } from "./shared-history-materialization.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
+import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
 import { hasPendingSharedCreate } from "./shared-create.ts"
@@ -219,11 +220,21 @@ function openSnapshot(
     if (selector.startsWith("upstream:") || selector.startsWith("notion_subscription:"))
       return yield* openSubscription(selector.slice(selector.indexOf(":") + 1), options)
     const id = pageId(selector)
+    const selectedDatabase =
+      options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
+    const graphTarget = yield* sharedGraphTarget(selector, selectedDatabase)
+    if (graphTarget !== undefined && view === "generated")
+      return yield* openSharedConsumer({
+        ...graphTarget,
+        target: String(property(graphTarget.rawPage).id),
+        scope: yield* authScope,
+        startedAt,
+        forceFull: Boolean(options.refresh) || options.maxAge === 0,
+        readOnly: options.sharedReadOnly,
+      })
     let skill: NotionPageRecord
     let scope: string
     if (id) {
-      const selectedDatabase =
-        options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
       scope = yield* authScope
       rawPage = yield* api.request(`v1/pages/${id}`)
       const row = yield* Effect.try({
@@ -296,6 +307,7 @@ function openSnapshot(
         return yield* openSharedConsumer({
           library,
           target: resolved.locator.page_id,
+          rawPage: (yield* sharedGraphTarget(resolved.id, library.skills.database_id))?.rawPage,
           scope,
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
@@ -787,7 +799,7 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
 
 export function targetSnapshot(
   target: SkillTarget,
-  options: CatalogOptions = {},
+  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
   view: SnapshotView = "generated",
   access: "all" | "manifest" | "entrypoint" | "target" = "all",
 ) {

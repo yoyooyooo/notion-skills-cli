@@ -27,6 +27,7 @@ import { fileRef } from "./ref.ts"
 import { libraryFromDatabase } from "./shared-library.ts"
 import { LIBRARY_MARKER } from "./shared-library-model.ts"
 import { sharedRecordFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
+import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import {
   publishedSubscriptionFromPage,
   validatePublishedMember,
@@ -612,7 +613,17 @@ export function catalog(options: CatalogOptions = {}, selection: "all" | "conten
               ? error
               : fail("LIBRARY_INVALID", "Could not construct shared metadata query."),
         })
-        const result = yield* paginate(queryPath, InventoryPageSchema, {}).pipe(Effect.result)
+        const result = yield* Effect.gen(function* () {
+          const shared =
+            db.shared_library === undefined
+              ? undefined
+              : yield* sharedGraphInventory(db.shared_library)
+          if (shared === undefined) return yield* paginate(queryPath, InventoryPageSchema, {})
+          return yield* Effect.try({
+            try: () => shared.pages.map((row) => decode(InventoryPageSchema, row)),
+            catch: () => fail("INVALID_RESPONSE", "Invalid shared metadata inventory."),
+          })
+        }).pipe(Effect.result)
         if (result._tag === "Failure") {
           failures.push({
             id,

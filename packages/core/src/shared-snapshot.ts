@@ -87,6 +87,7 @@ import {
 } from "./shared-router-members.ts"
 import { sha256, Store } from "./store.ts"
 import type { SharedAuthoringEvidence } from "./shared-authoring.ts"
+import { sharedGraphInventory, sharedGraphMetadata } from "./shared-graph-read-context.ts"
 
 export const SHARED_FULL_BODY_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const MAX_OBJECT_BYTES = 64 * 1024 * 1024
@@ -265,12 +266,17 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       return yield* Effect.fail(
         fail("CONTENT_DISABLED", "The selected Skill is disabled in Notion.", { id: record.id }),
       )
+    const graphInventory = yield* sharedGraphInventory(input.library)
     const routerMembers =
       record.kind === "router" ||
       (record.kind === "skill" && input.library.skills.property_ids.Members !== undefined)
         ? (input.relations?.members ??
           input.routerMembers ??
-          (yield* querySharedRouterMembers(input.library, { router: record, rawPage: raw })))
+          (yield* querySharedRouterMembers(input.library, {
+            router: record,
+            rawPage: raw,
+            inventory: graphInventory,
+          })))
         : undefined
     const frozenMembers = routerMembers?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
     const required =
@@ -280,11 +286,18 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             record,
             rawPage: raw,
             field: "Requires",
+            inventory: graphInventory,
           })))
         : undefined
     const frozenRequired = required?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
     const generation = yield* store.reserveCacheGeneration(input.scope, record.id)
-    const index = yield* querySharedSkillIndex(input.library, selected, raw)
+    const graphMetadata = yield* sharedGraphMetadata(
+      input.library,
+      record,
+      required ?? [],
+      input.scope,
+    )
+    const index = yield* querySharedSkillIndex(input.library, selected, raw, graphMetadata?.files)
     const fileLinks = yield* checked(() =>
       parseSharedFileLinks(index.file_links, input.library.library_id),
     )
@@ -353,10 +366,12 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       skill_id: index.skill_id,
       skill_page_id: selected,
     }
-    const facts = yield* querySharedRecords(input.library, {
-      skillPageId: selected,
-      kind: "file_event",
-    })
+    const facts =
+      graphMetadata?.facts ??
+      (yield* querySharedRecords(input.library, {
+        skillPageId: selected,
+        kind: "file_event",
+      }))
     const eventsByFile = new Map<string, FileEvent[]>()
     for (const fact of facts) {
       const event = yield* checked(() => decode(FileEventSchema, fact.payload))
@@ -383,7 +398,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const eventById = new Map(allEvents.map((event) => [event.event_id, event]))
     const plans = new Map<string, SharedObservationPlan>()
     const localPending = yield* pendingFileOperations(pendingScope)
-    const operationHeaders = yield* querySharedOperationIndex(input.library, selected)
+    const operationHeaders =
+      graphMetadata?.operations ?? (yield* querySharedOperationIndex(input.library, selected))
     const creates = new Map<string, SharedCreatePlan>()
     for (const plan of yield* pendingSharedCreatePlans(
       input.scope,
@@ -958,6 +974,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const native = yield* compileSharedNativeReferences({
       library: input.library,
       record,
+      inventory: graphInventory === undefined ? undefined : { skills: graphInventory },
       bindings: activeBindings,
       files: yield* Effect.forEach(nativeSources, (source) =>
         Effect.gen(function* () {

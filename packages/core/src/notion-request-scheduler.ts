@@ -50,6 +50,8 @@ export type RequestScheduleOptions = {
   readonly endpoint?: string
   readonly priority?: RequestPriority
   readonly queueBudgetMs?: number
+  /** Additional prefetch-only rate lane. Foreground requests do not wait on this lane. */
+  readonly rateShare?: number
   /** Actual sleep intervals only; includes partial waits interrupted by cancellation. */
   readonly onWait?: (started: bigint, ended: bigint) => void
 }
@@ -65,7 +67,9 @@ type ClaimContext = {
   readonly scopes: readonly ScopeBudget[]
   readonly pending: PendingRequest
 }
-type Admission = { readonly admitted: true } | { readonly admitted: false; readonly at: number }
+type Admission =
+  | { readonly admitted: true }
+  | { readonly admitted: false; readonly at: number; readonly deferred?: "foreground_pending" }
 
 export interface RequestScheduleState {
   /** Claim only a slot which is due now; never reserve a future send. */
@@ -132,6 +136,11 @@ function scopesFor(credential: string, interval: number, options: RequestSchedul
       key: JSON.stringify(["endpoint", origin, options.connection ?? credential, options.endpoint]),
       interval: options.endpoint === "POST data-source-query" ? interval : 0,
     })
+  if (options.priority === "prefetch")
+    scopes.push({
+      key: JSON.stringify(["prefetch", origin, options.connection ?? credential]),
+      interval: Math.ceil(interval / (options.rateShare ?? 0.1)),
+    })
   return scopes
 }
 
@@ -164,6 +173,13 @@ const queueFull = (limit: number) =>
     queue_limit: limit,
   })
 
+const prefetchDeferred = () =>
+  fail("NOTION_PREFETCH_DEFERRED", "Prefetch stopped because a foreground request is waiting.", {
+    phase: "input_rejected",
+    deferred: true,
+    reason: "foreground_pending",
+  })
+
 /** A short local priority queue plus the driver's cross-process queue. No worker,
  * timer or permit survives its owner. The SQL driver leases only queue positions.
  */
@@ -194,6 +210,19 @@ export const makeRequestScheduler = (
     ): Effect.Effect<A, E | SkillsError, R> {
       return Effect.suspend(() =>
         Effect.gen(function* () {
+          if (
+            options.rateShare !== undefined &&
+            (options.priority !== "prefetch" ||
+              !Number.isFinite(options.rateShare) ||
+              options.rateShare <= 0 ||
+              options.rateShare > 1)
+          )
+            return yield* Effect.fail(
+              fail(
+                "CONFIG_ERROR",
+                "Prefetch rate share must be greater than zero and at most one.",
+              ),
+            )
           const scopes = scopesFor(credential, interval, options)
           const lane = JSON.stringify([options.apiOrigin ?? "", options.connection ?? credential])
           const queueBudget = options.queueBudgetMs ?? NOTION_ADMISSION_BUDGET_MS
@@ -250,6 +279,14 @@ export const makeRequestScheduler = (
                   }
                   const take = Effect.gen(function* () {
                     const current = yield* Clock.currentTimeMillis
+                    if (
+                      ticket.priority > 0 &&
+                      [...pending.values()].some(
+                        (entry) =>
+                          entry.lane === lane && entry.id !== ticket.id && entry.priority === 0,
+                      )
+                    )
+                      return yield* Effect.fail(prefetchDeferred())
                     if (networkBlocked.delete(ticket.id) && state.blocked)
                       yield* state.blocked(ticket.id, false)
                     if (first(lane, current) !== ticket.id)
@@ -261,7 +298,11 @@ export const makeRequestScheduler = (
                       scopes,
                       pending: ticket,
                     })
-                    if (!decision.admitted) return { kind: "wait", at: decision.at } as const
+                    if (!decision.admitted) {
+                      if (decision.deferred === "foreground_pending")
+                        return yield* Effect.fail(prefetchDeferred())
+                      return { kind: "wait", at: decision.at } as const
+                    }
                     // A shared driver removes the queue row in the same admission
                     // transaction. Do not run another SQL operation before sending.
                     pending.delete(ticket.id)
@@ -439,6 +480,17 @@ export const makeSqliteRequestScheduler = (
                 const scopes = claim?.scopes ?? [{ key: credential, interval }]
                 if (claim) {
                   yield* enqueue(claim.pending, current)
+                  if (claim.pending.priority > 0) {
+                    const foreground = yield* sql<{ id: string }>`SELECT id FROM request_waiters
+                      WHERE lane=${claim.pending.lane} AND lease_until_ms>${current}
+                      AND priority=0 AND id!=${claim.pending.id} LIMIT 1`
+                    if (foreground.length > 0)
+                      return {
+                        admitted: false,
+                        at: current,
+                        deferred: "foreground_pending",
+                      } as const
+                  }
                   const next = yield* sql<{
                     id: string
                   }>`SELECT id FROM request_waiters WHERE lane=${claim.pending.lane} AND lease_until_ms>${current} AND network_blocked=0

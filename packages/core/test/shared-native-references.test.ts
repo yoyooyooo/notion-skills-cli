@@ -263,6 +263,62 @@ test("duplicate logical Skill IDs and File IDs fail instead of selecting a same-
   })
 })
 
+test("the same File ID in distinct owners resolves each real page to its exact owner-scoped ref", async () => {
+  const f = fixture()
+  f.file.properties.file_id = rich("file_id", f.ownFile.file_id)
+  const result = await f.compile(`[own](${url(f.ownFile.page_id)})\n[other](${url(id(22))})`)
+  expect(result.index?.entries).toHaveLength(2)
+  const own = result.index!.entries.find((entry) => entry.page_id === f.ownFile.page_id)!
+  const other = result.index!.entries.find((entry) => entry.page_id === id(22))!
+  expect(own.file_id).toBe(other.file_id)
+  expect(own.skill_page_id).toBe(skillPage)
+  expect(other.skill_page_id).toBe(id(21))
+  expect(parseRef(own.ref)).toMatchObject({ selector: f.record.id, file_id: f.ownFile.file_id })
+  expect(parseRef(other.ref)).toMatchObject({
+    selector: "shared_skill:library-snapshot:stable-other",
+    file_id: f.ownFile.file_id,
+  })
+  expect(own.id).not.toBe(other.id)
+  expect(f.calls).toEqual([])
+  f.files.push({ ...structuredClone(f.file), id: id(43) })
+  await expect(f.compile(`[other](${url(id(22))})`)).rejects.toMatchObject({
+    code: "SHARED_FILE_ID_CONFLICT",
+  })
+})
+
+test("a physical File page cannot change owner behind an existing current binding", async () => {
+  const f = fixture()
+  const original = property(f.files[0])
+  f.files[0] = {
+    ...original,
+    properties: {
+      ...property(original.properties),
+      skill: { id: "skill", type: "relation", relation: [{ id: id(21) }], has_more: false },
+    },
+  }
+  await expect(
+    f.compile(`[own](${url(f.ownFile.page_id)})\n[external](${url(id(22))})`),
+  ).rejects.toMatchObject({ code: "SHARED_FILE_ID_CONFLICT" })
+  const duplicate = fixture()
+  await expect(
+    duplicate.base.run(
+      compileSharedNativeReferences({
+        library,
+        record: duplicate.record,
+        files: [
+          {
+            path: "SKILL.md",
+            markdown: `[own](${url(duplicate.ownFile.page_id)})`,
+            body_sha256: digest("raw"),
+          },
+        ],
+        bindings: [duplicate.ownFile, { ...duplicate.ownFile, file_id: "second-binding" }],
+        relations: [],
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "SHARED_FILE_ID_CONFLICT" })
+})
+
 test("ambiguous owners and a foreign complete inventory are rejected at the boundary", async () => {
   const f = fixture()
   f.file.properties.skill.relation.push({ id: skillPage })

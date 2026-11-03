@@ -326,7 +326,10 @@ function richText(field: Record<string, unknown>, label: string) {
   return text(field.rich_text)
 }
 
-type SkillRecordSelection = QuerySharedRecordsInput & { readonly libraryProfile?: false }
+type SkillRecordSelection = (
+  | QuerySharedRecordsInput
+  | (Omit<QuerySharedRecordsInput, "skillPageId"> & { readonly skillPageIds: readonly string[] })
+) & { readonly libraryProfile?: false }
 type SelectedRecords = SkillRecordSelection | LibraryProfileSelection | LibraryArchiveSelection
 
 type RecordHeader = Omit<AnySharedRecord, "operation_id" | "payload"> & {
@@ -385,7 +388,9 @@ function decodeHeader(
     if (relation.relation.length !== 1)
       throw invalid("Record must have exactly one complete Skill relation.")
     skillPageId = notionId(object(relation.relation[0], "Skill relation").id, "Related Skill ID")
-    if (skillPageId !== notionId(selected.skillPageId, "Selected Skill ID"))
+    const selectedOwners =
+      "skillPageIds" in selected ? selected.skillPageIds : [selected.skillPageId]
+    if (!selectedOwners.some((id) => skillPageId === notionId(id, "Selected Skill ID")))
       throw invalid("Record belongs to another Skill.", { page_id: pageId })
   }
   const recordId = identifier(
@@ -509,15 +514,25 @@ function queryRecordRows(
       const dataSourceId = notionId(library.records.data_source_id, "Records data source ID")
       notionId(library.records.database_id, "Records database ID")
       const ids = fieldIds(library)
+      const owners =
+        selected.libraryProfile === true
+          ? []
+          : ("skillPageIds" in selected ? selected.skillPageIds : [selected.skillPageId]).map(
+              (id) => notionId(id, "Skill page ID"),
+            )
+      if (
+        selected.libraryProfile !== true &&
+        (owners.length === 0 || owners.length > 80 || new Set(owners).size !== owners.length)
+      )
+        throw invalid("Select between one and 80 distinct exact Skill page IDs.")
+      const ownerFilters = owners.map((owner) => ({
+        property: ids.Skill,
+        relation: { contains: owner },
+      }))
       const filters: unknown[] =
         selected.libraryProfile === true
           ? [{ property: ids.Skill, relation: { is_empty: true } }]
-          : [
-              {
-                property: ids.Skill,
-                relation: { contains: notionId(selected.skillPageId, "Skill page ID") },
-              },
-            ]
+          : [ownerFilters.length === 1 ? ownerFilters[0] : { or: ownerFilters }]
       if (selected.kind !== undefined)
         filters.push({
           property: ids.Kind,
@@ -617,7 +632,8 @@ function queryRecordRows(
             invalid("Records query repeated a page.", { page_id: header.page_id }),
           )
         pages.add(header.page_id)
-        const previous = records.get(header.record_id)
+        const identity = canonicalSharedJson([header.skill_page_id, header.record_id])
+        const previous = records.get(identity)
         if (previous !== undefined && !sameHeaderFact(previous, header))
           return yield* Effect.fail(
             fail("SHARED_RECORD_CONFLICT", "The same Record ID names incompatible shared facts.", {
@@ -626,7 +642,7 @@ function queryRecordRows(
             }),
           )
         if (previous === undefined || header.page_id < previous.page_id)
-          records.set(header.record_id, header)
+          records.set(identity, header)
         rows.push({ header, ...(record === undefined ? {} : { record }) })
       }
       if (!page.has_more) return rows
@@ -640,11 +656,11 @@ function uniqueRecords(rows: readonly RecordRow[]) {
   for (const row of rows) {
     const record = row.record
     if (record === undefined) throw invalid("A retained Record payload has not been verified.")
-    const previous = records.get(record.record_id)
+    const identity = canonicalSharedJson([record.skill_page_id, record.record_id])
+    const previous = records.get(identity)
     if (previous !== undefined && !sameFact(previous, record))
       throw fail("SHARED_RECORD_CONFLICT", "The same Record ID names incompatible shared facts.")
-    if (previous === undefined || record.page_id < previous.page_id)
-      records.set(record.record_id, record)
+    if (previous === undefined || record.page_id < previous.page_id) records.set(identity, record)
   }
   return [...records.values()].sort((a, b) =>
     a.record_id < b.record_id ? -1 : a.record_id > b.record_id ? 1 : 0,
@@ -670,6 +686,7 @@ function queryCachedRecordPayloads(
   library: SharedLibrary,
   selected: SkillRecordSelection,
   cache: SharedRecordPayloadCache["Service"],
+  content?: "body",
 ) {
   return Effect.gen(function* () {
     const api = yield* Notion
@@ -717,20 +734,37 @@ function queryCachedRecordPayloads(
       cached.push({ header: row.header, record: parsed.record })
     }
     if (cached.length === metadata.length) return yield* checked(() => uniqueRecords(cached))
-    const loaded = yield* queryRecordRows(library, selected, "body")
+    const cachedPages = new Set(cached.map((row) => row.header.page_id))
+    const missingEntities = [
+      ...new Set(
+        metadata
+          .filter((row) => !cachedPages.has(row.header.page_id))
+          .map((row) => row.header.entity_id),
+      ),
+    ].sort()
+    const loaded: RecordRow[] = []
     const headers = (rows: readonly RecordRow[]) =>
       canonicalSharedJson(
         rows
           .map((row) => row.header)
           .sort((a, b) => (a.page_id < b.page_id ? -1 : a.page_id > b.page_id ? 1 : 0)),
       )
-    if (headers(loaded) !== headers(metadata))
-      return yield* Effect.fail(
-        fail(
-          "SHARED_RECORD_CONFLICT",
-          "Retained Record metadata changed while its payload was read.",
-        ),
+    for (let offset = 0; offset < missingEntities.length; offset += 80) {
+      const entityIds = missingEntities.slice(offset, offset + 80)
+      const { entityId: _entityId, entityIds: _entityIds, ...base } = selected
+      const rows = yield* queryRecordRows(library, { ...base, entityIds }, content)
+      if (
+        headers(rows) !==
+        headers(metadata.filter((row) => entityIds.includes(row.header.entity_id)))
       )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_RECORD_CONFLICT",
+            "Retained Record metadata changed while its payload was read.",
+          ),
+        )
+      loaded.push(...rows)
+    }
     for (const row of loaded) {
       if (row.header.last_edited_time === null) continue
       const record = row.record
@@ -747,7 +781,12 @@ function queryCachedRecordPayloads(
       const address = yield* payloadCacheAddress(context, row.header)
       yield* cache.store.writeJson(address.key, address.receipt)
     }
-    return yield* checked(() => uniqueRecords(loaded))
+    return yield* checked(() =>
+      uniqueRecords([
+        ...cached.filter((row) => !missingEntities.includes(row.header.entity_id)),
+        ...loaded,
+      ]),
+    )
   })
 }
 
@@ -784,7 +823,7 @@ function queryRecords(
       selected.recordId !== undefined &&
       Option.isSome(cache)
     )
-      return yield* queryCachedRecordPayloads(library, selected, cache.value)
+      return yield* queryCachedRecordPayloads(library, selected, cache.value, "body")
     const rows = yield* queryRecordRows(library, selected, content)
     return yield* checked(() => uniqueRecords(rows))
   })
@@ -806,6 +845,46 @@ export function querySharedRecords(library: SharedLibrary, input: QuerySharedRec
     { ...input, libraryProfile: false, kind: input.kind ?? "file_event" },
     input.kind === "object" || input.payloadContainsBody === true ? "body" : undefined,
   )
+}
+
+/**
+ * Prepare's initial ownership observation. Discover every fact for selected owners before
+ * fetching exact Entity payload sets, so orphan file events remain visible to validation.
+ * Explicit writers and reconciliation never use this request-scoped observation.
+ */
+export function querySharedFileFactsForSkills(
+  library: SharedLibrary,
+  skillPageIds: readonly string[],
+  scope: string,
+) {
+  return Effect.gen(function* () {
+    const owners = yield* checked(() => {
+      const values = skillPageIds.map((id) => notionId(id, "Skill page ID"))
+      if (!scope || values.length === 0 || new Set(values).size !== values.length)
+        throw invalid("Shared fact batches require a scope and distinct selected owners.")
+      return values
+    })
+    const store = yield* Store
+    const result = new Map(owners.map((id) => [id, [] as SharedRecord[]]))
+    for (let offset = 0; offset < owners.length; offset += 80) {
+      const records = yield* queryCachedRecordPayloads(
+        library,
+        {
+          libraryProfile: false,
+          skillPageIds: owners.slice(offset, offset + 80),
+          kind: "file_event",
+        },
+        { scope, store },
+        undefined,
+      )
+      for (const record of records) {
+        if (record.skill_page_id === null || !result.has(record.skill_page_id))
+          return yield* Effect.fail(invalid("Shared fact batch returned an unselected owner."))
+        result.get(record.skill_page_id)!.push({ ...record, skill_page_id: record.skill_page_id })
+      }
+    }
+    return result satisfies ReadonlyMap<string, readonly SharedRecord[]>
+  })
 }
 
 /** One paginated metadata query for library Profiles, with no Skill or object body reads. */

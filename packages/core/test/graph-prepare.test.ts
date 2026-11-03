@@ -18,6 +18,7 @@ import {
   type Snapshot,
 } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
+import { nativeGraphFixture as nativeFixture } from "./graph-prepare-live-fixture.ts"
 import { fileRef } from "../src/ref.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { Store } from "../src/store.ts"
@@ -450,97 +451,17 @@ describe("graph prepare", () => {
   })
 })
 
-function nativeFixture() {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
-  const names = ["a", "b", "c", "d", "optional"]
-  const pageIds = [skillPage, id(900), id(901), id(902), id(903)]
-  const dependencies = [[1, 2], [3], [3], [], []]
-  const descriptor = {
-    ...library,
-    skills: {
-      ...library.skills,
-      property_ids: { ...library.skills.property_ids, Members: "members", Requires: "requires" },
-    },
-  }
-  const pages = names.map((name, index) => {
-    const page = structuredClone(f.main)
-    page.id = pageIds[index]!
-    const fields = property(page.properties)
-    fields.title = {
-      id: "title",
-      type: "title",
-      title: [{ plain_text: name, type: "text", text: { content: name } }],
-    }
-    fields.skill_id = rich("skill_id", name)
-    fields.main_file_id = rich("main_file_id", `main-${name}`)
-    fields.requires = {
-      id: "requires",
-      type: "relation",
-      relation: dependencies[index]!.map((child) => ({ id: pageIds[child]! })),
-      has_more: false,
-    }
-    fields.members = {
-      id: "members",
-      type: "relation",
-      relation: index === 0 ? [{ id: pageIds[4] }] : [],
-      has_more: false,
-    }
-    f.bodies.set(pageIds[index]!, `# ${name} instruction\n`)
-    return page
-  })
-  const run = <A, E>(
-    effect: Effect.Effect<
-      A,
-      E,
-      Notion | Store | Crypto.Crypto | HttpClient.HttpClient | FileSystem.FileSystem | Path.Path
-    >,
-  ) =>
-    f.run(
-      Effect.gen(function* () {
-        const api = yield* Notion
-        return yield* effect.pipe(
-          Effect.provideService(Notion, {
-            ...api,
-            request: (path, body, options) => {
-              const endpoint = path.split("?", 1)[0]
-              if (endpoint === `v1/databases/${library.skills.database_id}`)
-                return api.request(path, body, options).pipe(
-                  Effect.map((raw) => ({
-                    ...property(raw),
-                    description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(descriptor) }],
-                  })),
-                )
-              const page = pages.find((page) => endpoint === `v1/pages/${page.id}`)
-              if (
-                page !== undefined ||
-                endpoint === `v1/data_sources/${library.skills.data_source_id}/query`
-              ) {
-                f.calls.push({
-                  path,
-                  body,
-                  method: options?.method ?? (body === undefined ? "GET" : "POST"),
-                })
-                return Effect.succeed(
-                  page === undefined
-                    ? {
-                        object: "list",
-                        results: structuredClone(pages),
-                        has_more: false,
-                        next_cursor: null,
-                      }
-                    : structuredClone(page),
-                )
-              }
-              return api.request(path, body, options)
-            },
-          }),
-        )
-      }),
-    )
-  return { ...f, run, pages, pageIds }
-}
-
 describe("prepare through current shared snapshot transport", () => {
+  test("warm logical IDs with shared prefixes retain their own complete observation", async () => {
+    const f = nativeFixture({ width: 12 })
+    const input = { roots: [skillPage], purpose: "use" as const }
+    const cold = await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    f.clearCalls()
+    const warm = await f.run(prepareGraph(input, { database: library.skills.database_id }))
+    expect(warm.graph_lock).toEqual(cold.graph_lock)
+    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+  })
+
   test("a live multi-root diamond reads each required main once and leaves the Member body unread", async () => {
     const f = nativeFixture()
     const result = await f.run(

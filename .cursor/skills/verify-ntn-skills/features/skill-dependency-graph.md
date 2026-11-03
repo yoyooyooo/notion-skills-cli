@@ -89,7 +89,7 @@ bun test packages/core/test/shared-native-references.test.ts packages/core/test/
 
 目录 `native_references` 包含 `parent_id`、`parser_version`、每个源文件的原始 `body_sha256` 与投影输入 `input_sha256`、关系摘要 `relations_sha256` 和完整目录 `index_sha256`。已编译条目包含准确 library/Skill/page 身份；File 条目另含 owner 和稳定 `file_id`，公开 ref 使用 `?file_id=…`。跨 owner 资源只确认 metadata，标为 `metadata_only`；实际读取仍验证目标完整 snapshot，不能把 Files 的 Status 展示列当成权威 ownership。
 
-验证 fenced/native inline code、嵌套代码围栏、script 字符串、转义 mention、裸名和 `../<name>` 模板不会形成引用。重复 Skill ID/File ID、多个 owner、错误 data source 必须明确失败。未受管或不可见 Notion 目标列为 `unmanaged_or_unavailable` 并保留原链接，普通外链不抓取、不注册。引用目录不新增 Requires、不激活目标、不下载目标正文。
+验证 fenced/native inline code、嵌套代码围栏、script 字符串、转义 mention、裸名和 `../<name>` 模板不会形成引用。重复 Skill ID、同一 owner 内重复 File ID、同一物理 File 页面多个 owner/绑定、错误 data source 必须明确失败。资源身份是 `(scope, owner Skill ID, file_id)`；跨 owner 的相同 File ID、不同物理页面必须分别解析为准确 owner ref，批量读取不能扩大唯一性域。未受管或不可见 Notion 目标列为 `unmanaged_or_unavailable` 并保留原链接，普通外链不抓取、不注册。引用目录不新增 Requires、不激活目标、不下载目标正文。
 
 ### 实际 Notion 与公开命令
 
@@ -241,3 +241,21 @@ node "$CLI_BIN" export "$EXACT_MAIN_PIN" --projection snapshot --output "$RUN/ev
 真实 Node/SQLite 测试覆盖 graph plan/complete 派发域、retained-manifest 索引、cache clear 与原对象 GC 保护。当前单文件部分缺失重启可复用已验证块；没有 exact retained 索引的旧 missing pin 保持本地 `SNAPSHOT_MISSING`、零网络。
 
 Broker 若仍为主文注入调用完整 export，必须记录实际全量资源获取，不能宣称已按需。宿主需独立 entry-ready receipt、基于公开准备文件清单的精确资源获取与实际 provider loaded proof。CLI/core、真实 Notion、Broker 安装宿主分别给证据；库级批量与派生缓存统计在 NG-SG-16 追加，不用此处的功能通过代替性能结论。
+
+## NG-SG-16 库级批量与节点派生缓存
+
+沿 `docs/graph-preparation-performance.md` 的固定口径，先在修改前保存 baseline，再以同一拓扑与预设样本数执行优化版本：菱形多根、101 节点，每个 cold/warm/metadata-revalidate 各 3 次。保留每次完整 calls、graph lock、阶段耗时与计数；不要将小样本汇总成 p95。
+
+~~~bash
+NTN_NG16_EVIDENCE_DIR="$RUN/evidence" NTN_NG16_PHASE=baseline bun scripts/measure-graph-prepare.ts
+NTN_NG16_EVIDENCE_DIR="$RUN/evidence" NTN_NG16_PHASE=optimized bun scripts/measure-graph-prepare.ts
+NTN_NG16_EVIDENCE_DIR="$RUN/evidence" bun test packages/cli/test/prepare-batching.test.ts --timeout 120000
+bun test packages/core/test/shared-graph-batching.test.ts packages/core/test/shared-read-coalescing.test.ts packages/core/test/shared-record-payload-cache.test.ts
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/shared-sqlite.node.test.ts
+~~~
+
+单次 graph 同库只做一次必要完整 Skills inventory，101 行应为两个分页请求，不是两个独立 inventory。Files owner OR、Records 实际缺失 Entity OR 每批不超过 80，分别覆盖 25 inline relation、100 API page、101+ owner/entity/file 的边界；headers 的 owner 完整事实目录不能省略 orphan state。`inspect` 不加入 Requires Files；预算失败不预取超额 owner。
+
+单父正文/关系变化只新增父节点派生键；无关正文变更不读全库正文；旧 session binding/graph lock 不受当前刷新替换。跨 owner 重复 File ID 的正例、同 owner 副本/同 page 改 owner 的负例沿 NG-SG-08 同一身份合同。缓存损坏、失败后重试、取消 inventory producer、一个等待者取消但其他等待者继续、最后等待者取消释放 transport 都必须有受控证据。SQLite 验证新派生域的真实重启与 cache clear，不只测试 memory Store。
+
+公开 `prepare --metrics` 核对真实 HTTPS attempts 和请求/响应 bytes、source/provider/current/retained 分类、进程数、coalesced、queue/retry 等；新增 root-ready/required-ready/elapsed 阶段与派生 hit/miss 不属于 loaded proof，不计入内容预算。生产只复用本 run 的已完成 owned 小图做只读低负载复验，不压测、不新建额外对象；真实 Notion 与受控比较分别标证据等级。

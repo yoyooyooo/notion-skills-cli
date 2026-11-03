@@ -124,10 +124,22 @@ function header(
 
 /** One paginated metadata query shared by observation and explicit-write discovery. */
 export function querySharedOperationIndex(library: SharedLibrary, skillPageId: string) {
+  return querySharedOperationIndexes(library, [skillPageId]).pipe(
+    Effect.map((result) => result.get(skillPageId) ?? []),
+  )
+}
+
+/** Complete operation headers for selected owners; payloads remain separately verified. */
+export function querySharedOperationIndexes(
+  library: SharedLibrary,
+  skillPageIds: readonly string[],
+) {
   return Effect.gen(function* () {
     const prepared = yield* checked(() => {
       if (
-        pageId(skillPageId) !== skillPageId ||
+        skillPageIds.length === 0 ||
+        new Set(skillPageIds).size !== skillPageIds.length ||
+        skillPageIds.some((id) => pageId(id) !== id) ||
         pageId(library.records.data_source_id) !== library.records.data_source_id
       )
         throw invalid("Operation index requires canonical Notion identities.")
@@ -140,67 +152,87 @@ export function querySharedOperationIndex(library: SharedLibrary, skillPageId: s
       }
     })
     const api = yield* Notion
-    const headers = new Map<string, SharedOperationHeader>(),
-      pages = new Set<string>(),
-      cursors = new Set<string>()
-    let cursor: string | undefined
-    for (;;) {
-      const raw = yield* api.request(
-        prepared.path,
-        {
-          page_size: 100,
-          filter: {
-            and: [
-              { property: prepared.properties.Skill, relation: { contains: skillPageId } },
-              { property: prepared.properties.Kind, select: { equals: "operation" } },
-            ],
+    const result = new Map(skillPageIds.map((id) => [id, new Map<string, SharedOperationHeader>()]))
+    const pages = new Set<string>()
+    for (let offset = 0; offset < skillPageIds.length; offset += 80) {
+      const owners = skillPageIds.slice(offset, offset + 80)
+      const ownerFilters = owners.map((id) => ({
+        property: prepared.properties.Skill,
+        relation: { contains: id },
+      }))
+      const cursors = new Set<string>()
+      let cursor: string | undefined
+      for (;;) {
+        const raw = yield* api.request(
+          prepared.path,
+          {
+            page_size: 100,
+            filter: {
+              and: [
+                ownerFilters.length === 1 ? ownerFilters[0] : { or: ownerFilters },
+                { property: prepared.properties.Kind, select: { equals: "operation" } },
+              ],
+            },
+            ...(cursor === undefined ? {} : { start_cursor: cursor }),
           },
-          ...(cursor === undefined ? {} : { start_cursor: cursor }),
-        },
-        { method: "POST" },
-      )
-      const list = yield* checked(() => {
-        const value = property(raw)
-        if (
-          value.object !== "list" ||
-          (value.request_status !== undefined && property(value.request_status).type !== "complete")
+          { method: "POST" },
         )
-          throw invalid("Operation index did not return a complete list.")
-        const decoded = decode(listSchema(Schema.Unknown), value)
-        if (!decoded.has_more && decoded.next_cursor !== null)
-          throw invalid("A complete operation index retains an unexpected cursor.")
-        if (
-          decoded.has_more &&
-          (typeof decoded.next_cursor !== "string" ||
-            decoded.next_cursor === "" ||
-            cursors.has(decoded.next_cursor))
-        )
-          throw invalid("Operation index pagination failed to advance.")
-        return decoded
-      })
-      for (const rawRow of list.results) {
-        const entry = yield* checked(() =>
-          header(rawRow, library, skillPageId, prepared.properties),
-        )
-        if (pages.has(entry.page_id))
-          return yield* Effect.fail(invalid("Operation index repeated a page."))
-        pages.add(entry.page_id)
-        const previous = headers.get(entry.record_id)
-        if (previous && (previous.hash !== entry.hash || previous.entity_id !== entry.entity_id))
-          return yield* Effect.fail(
-            fail("SHARED_RECORD_CONFLICT", "One operation identity has incompatible metadata.", {
-              operation_id: entry.record_id,
-            }),
+        const list = yield* checked(() => {
+          const value = property(raw)
+          if (
+            value.object !== "list" ||
+            (value.request_status !== undefined &&
+              property(value.request_status).type !== "complete")
           )
-        if (previous === undefined || entry.page_id < previous.page_id)
-          headers.set(entry.record_id, entry)
+            throw invalid("Operation index did not return a complete list.")
+          const decoded = decode(listSchema(Schema.Unknown), value)
+          if (!decoded.has_more && decoded.next_cursor !== null)
+            throw invalid("A complete operation index retains an unexpected cursor.")
+          if (
+            decoded.has_more &&
+            (typeof decoded.next_cursor !== "string" ||
+              decoded.next_cursor === "" ||
+              cursors.has(decoded.next_cursor))
+          )
+            throw invalid("Operation index pagination failed to advance.")
+          return decoded
+        })
+        for (const rawRow of list.results) {
+          const { entry, owner } = yield* checked(() => {
+            const relation = field(property(rawRow), prepared.properties.Skill)
+            const owner = Array.isArray(relation.relation)
+              ? property(relation.relation[0]).id
+              : undefined
+            if (typeof owner !== "string" || !owners.includes(owner))
+              throw invalid("Operation batch returned an unselected owner.")
+            return { owner, entry: header(rawRow, library, owner, prepared.properties) }
+          })
+          if (pages.has(entry.page_id))
+            return yield* Effect.fail(invalid("Operation index repeated a page."))
+          pages.add(entry.page_id)
+          const headers = result.get(owner)!
+          const previous = headers.get(entry.record_id)
+          if (previous && (previous.hash !== entry.hash || previous.entity_id !== entry.entity_id))
+            return yield* Effect.fail(
+              fail("SHARED_RECORD_CONFLICT", "One operation identity has incompatible metadata.", {
+                operation_id: entry.record_id,
+              }),
+            )
+          if (previous === undefined || entry.page_id < previous.page_id)
+            headers.set(entry.record_id, entry)
+        }
+        if (!list.has_more) break
+        cursor = list.next_cursor ?? undefined
+        if (cursor !== undefined) cursors.add(cursor)
       }
-      if (!list.has_more)
-        return [...headers.values()].sort((left, right) =>
-          left.record_id < right.record_id ? -1 : left.record_id > right.record_id ? 1 : 0,
-        )
-      cursor = list.next_cursor ?? undefined
-      if (cursor !== undefined) cursors.add(cursor)
     }
+    return new Map(
+      [...result].map(([owner, headers]) => [
+        owner,
+        [...headers.values()].sort((left, right) =>
+          left.record_id < right.record_id ? -1 : left.record_id > right.record_id ? 1 : 0,
+        ),
+      ]),
+    )
   })
 }

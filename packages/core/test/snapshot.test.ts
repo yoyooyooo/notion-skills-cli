@@ -223,7 +223,7 @@ test("pinned reads keep old content after updates and remote revocation; new onl
   const pinned = await run(
     readSkill(`skill://${page}/references/guide.md?snapshot=${first.snapshot_id}`),
   )
-  expect("content" in pinned && pinned.content).toBe("第一行\n第二行\n第三行")
+  expect("content" in pinned && pinned.content).toBe("\ufeff第一行\n第二行\n第三行")
   const denied = await run(openSkill(page).pipe(Effect.result))
   expect(denied._tag === "Failure" && denied.failure.code).toBe("ACCESS_DENIED")
 })

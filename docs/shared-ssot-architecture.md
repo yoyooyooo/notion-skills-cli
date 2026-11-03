@@ -284,7 +284,7 @@ Skills database ID 是库入口。数据库 description 中保存版本化 descr
 
 ### 身份
 
-Skill ID 和 File ID 是创建后不随名称、逻辑路径、页面位置或主机变化的身份。Notion page ID 是正文位置绑定，不等同于业务身份。文件重命名保留 File ID；路径碰撞、一个 File ID 对应多个当前位置、多个 File ID 占用同一路径都必须明确拒绝。
+Skill ID 和 File ID 是创建后不随名称、逻辑路径、页面位置或主机变化的身份。资源身份为 `(scope, owner Skill ID, file_id)`；不同 owner 可以使用相同的 File ID，各自的公开 ref 与真实页面绑定必须准确。Notion page ID 是正文位置绑定，不等同于业务身份。文件重命名保留 File ID；同一 owner 内的路径碰撞、一个 File ID 对应多个当前位置、多个 File ID 占用同一路径都必须明确拒绝。同一个物理 File 页面不能同时归属多个 owner，或与当前读取的绑定发生 owner、File ID、路径冲突。
 
 Revision ID 由版本化规范化规则、实际内容摘要及必要 Metadata 确定。固定对象以字节 SHA-256 和长度标识；短期签名 URL 只是下载地址。Snapshot ID 固定文件清单、各文件版本、来源选择、管理代次和转换版本。
 

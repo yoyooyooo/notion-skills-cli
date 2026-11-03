@@ -155,6 +155,17 @@ export const PrepareReadySchema = Schema.Struct({
   status: Schema.Literal("ready"),
   session_bindings: PrepareSessionBindingsSchema,
   graph_lock: PrepareGraphLockSchema,
+  /** Optional diagnostic telemetry, excluded from the model-context byte budget. */
+  preparation_metrics: Schema.optional(
+    Schema.Struct({
+      version: Schema.Literal(1),
+      root_ready_ms: Natural,
+      required_ready_ms: Natural,
+      elapsed_ms: Natural,
+      derived_cache_hits: Natural,
+      derived_cache_misses: Natural,
+    }),
+  ),
 })
 export type PrepareReady = typeof PrepareReadySchema.Type
 export const PrepareIncompleteSchema = Schema.Struct({

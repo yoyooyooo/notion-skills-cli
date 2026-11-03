@@ -203,7 +203,9 @@ export function sharedSnapshotFixture(
     backup: () => Effect.die(new Error("Unexpected backup")),
     reserveCacheGeneration: () => Effect.sync(() => ++generation),
     listKeys: (prefix) =>
-      Effect.sync(() => [...json.keys()].filter((key) => key.startsWith(prefix))),
+      Effect.sync(() =>
+        [...json.keys()].filter((key) => key.startsWith(prefix.replace(/\/$/u, "") + "/")),
+      ),
     retireKeys: (keys) =>
       Effect.sync(() =>
         keys.map((key) => {
