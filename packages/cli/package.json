@@ -30,8 +30,19 @@
   "bin": {
     "ntn-skills": "dist/ntn-skills.js"
   },
+  "exports": {
+    "./sdk": {
+      "types": "./dist/types/cli/src/sdk.d.ts",
+      "import": "./dist/sdk.js",
+      "default": "./dist/sdk.js"
+    },
+    "./package.json": "./package.json",
+    "./dist/ntn-skills.js": "./dist/ntn-skills.js"
+  },
   "files": [
     "dist/ntn-skills.js",
+    "dist/sdk.js",
+    "dist/types",
     "skills",
     "docs/README.md",
     "docs/usage.md",
@@ -42,6 +53,7 @@
     "docs/shared-ssot-architecture.md",
     "docs/graph-releases.md",
     "docs/graph-preparation-performance.md",
+    "docs/consumer-contract.md",
     "docs/historical-operations.md",
     "docs/host-integration.md",
     "docs/releasing.md",

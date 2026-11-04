@@ -302,30 +302,41 @@ export function decodeConsumeResult(value: unknown, expected?: ConsumeInput) {
   })
 }
 
+/** Shared preflight: adapters can reject unsupported input before acquiring local state. */
+export function decodeConsumeInput(inputValue: unknown): ConsumeInput {
+  let input: ConsumeInput
+  try {
+    input = Schema.decodeUnknownSync(ConsumeInputSchema, { onExcessProperty: "error" })(inputValue)
+  } catch {
+    throw fail("INVALID_ARGUMENT", "Consume input must match contract version 1.")
+  }
+  if (
+    (input.requestedFiles?.length ?? 0) > 0 ||
+    (input.projection !== undefined && input.projection.compiler !== SOURCE_IDENTITY_COMPILER)
+  )
+    throw fail(
+      "CONSUME_UNSUPPORTED",
+      "Requested files and non-identity model projections are not implemented by this consumer.",
+      {
+        requested_files: (input.requestedFiles?.length ?? 0) > 0,
+        projection_compiler: input.projection?.compiler ?? SOURCE_IDENTITY_COMPILER,
+      },
+    )
+  return input
+}
+
 function consumeReady(
   inputValue: unknown,
   options: Parameters<typeof prepareGraphWithSnapshots>[1],
 ) {
   return Effect.gen(function* () {
     const input = yield* Effect.try({
-      try: () =>
-        Schema.decodeUnknownSync(ConsumeInputSchema, { onExcessProperty: "error" })(inputValue),
-      catch: () => fail("INVALID_ARGUMENT", "Consume input must match contract version 1."),
+      try: () => decodeConsumeInput(inputValue),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("INVALID_ARGUMENT", "Consume input must match contract version 1."),
     })
-    if (
-      (input.requestedFiles?.length ?? 0) > 0 ||
-      (input.projection !== undefined && input.projection.compiler !== SOURCE_IDENTITY_COMPILER)
-    )
-      return yield* Effect.fail(
-        fail(
-          "CONSUME_UNSUPPORTED",
-          "Requested files and non-identity model projections are not implemented by this consumer.",
-          {
-            requested_files: (input.requestedFiles?.length ?? 0) > 0,
-            projection_compiler: input.projection?.compiler ?? SOURCE_IDENTITY_COMPILER,
-          },
-        ),
-      )
     const { preparation, snapshots } = yield* prepareGraphWithSnapshots(
       {
         roots: input.targets,

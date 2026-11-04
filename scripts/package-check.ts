@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile } from "node:fs/promises"
+import { mkdtemp, readFile, readdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, join, relative as relativePath } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -60,6 +60,13 @@ if (
   !entries.includes("package/dist/ntn-skills.js")
 )
   throw new Error("Packed CLI entrypoint is missing.")
+if (
+  manifest.exports?.["./sdk"]?.import !== "./dist/sdk.js" ||
+  manifest.exports?.["./sdk"]?.default !== "./dist/sdk.js" ||
+  manifest.exports?.["./sdk"]?.types !== "./dist/types/cli/src/sdk.d.ts" ||
+  !entries.includes("package/dist/sdk.js")
+)
+  throw new Error("Packed SDK export or generated declarations are missing.")
 if (manifest.engines?.node !== "^22.22.3 || >=24.20.0" || manifest.engines?.bun)
   throw new Error(
     "Packed consumer runtime must be Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+.",
@@ -89,6 +96,7 @@ const publicFiles = [
   "docs/host-integration.md",
   "docs/graph-releases.md",
   "docs/graph-preparation-performance.md",
+  "docs/consumer-contract.md",
   "docs/releasing.md",
   "docs/portable-converter.md",
   "docs/remote-proof-converter.md",
@@ -100,9 +108,25 @@ const publicFiles = [
   "skills/notion/ntn-skills-sync/SKILL.md",
   "skills/notion/ntn-skills-sync/references/synchronization.md",
 ]
+const declarations = (await readdir(join(root, "packages/cli/dist/types"), { recursive: true }))
+  .filter((file) => file.endsWith(".d.ts"))
+  .map((file) => `dist/types/${file}`)
+if (!declarations.includes("dist/types/cli/src/sdk.d.ts"))
+  throw new Error("Public SDK declaration entrypoint is missing.")
+for (const file of declarations) {
+  const declaration = await readFile(join(root, "packages/cli", file), "utf8")
+  const packedDeclaration = await run(["tar", "-xOf", archive, `package/${file}`])
+  if (
+    declaration !== packedDeclaration ||
+    /@notion-skills-cli\/|\/Users\/|\/home\/[^/\s]+\//u.test(declaration)
+  )
+    throw new Error(`SDK declaration is stale or refers to a private checkout: ${file}`)
+}
 const expected = new Set([
   "package/package.json",
   "package/dist/ntn-skills.js",
+  "package/dist/sdk.js",
+  ...declarations.map((file) => `package/${file}`),
   ...publicFiles.map((file) => `package/${file}`),
 ])
 if (entries.length !== expected.size || entries.some((entry) => !expected.has(entry)))

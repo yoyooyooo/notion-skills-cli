@@ -3,7 +3,9 @@
 SC03 / AH-620 freezes the executable core boundary for `consume`. The implementation is
 `packages/core/src/consumer.ts`; its runtime schemas are composed from the existing
 prepare, snapshot and native File schemas in `consumer-model.ts`. The engine and the
-decoder use those same schemas. This is not an installed npm SDK acceptance result.
+decoder use those same schemas. SC10 adds the packaged Promise adapter at
+`ntn-skills/sdk`, using the same engine and runtime services. A locally packed artifact
+is an installable candidate, not evidence that its version has been published.
 
 ## Entry point and supported work
 
@@ -29,10 +31,10 @@ const operation = consume(input, { signal: abortController.signal })
 // Run operation in the existing scoped runtime; inspect the result.status union.
 ```
 
-The sample relative import is for this repository. SC10 will compile and distribute
-the approved SDK surface and connect Broker to it. The current private core package
-exports TypeScript source; another repository must not depend on a developer checkout
-or pretend this is already the released `ntn-skills` SDK. No new CLI command is added.
+The sample relative import is for this repository. Other repositories use the public
+`ntn-skills/sdk` package export shown below. The private core package still exports
+TypeScript source and is not a cross-repository distribution boundary. No new CLI
+command is added.
 
 | Input | Contract |
 | --- | --- |
@@ -41,12 +43,81 @@ or pretend this is already the released `ntn-skills` SDK. No new CLI command is 
 | `purpose` | `use` prepares every required Skill in the full closure; `inspect` reads only selected roots and returns related directory metadata. |
 | `sessionBindings` | Existing immutable `PrepareBinding` records. Scope, identity, version and body hashes must agree; failed refresh cannot replace an old binding. |
 | `freshness`, `budget` | The existing prepare schemas and semantics, without a second freshness owner. |
-| `requestedFiles` | Reserved exact pinned file references. Absent or empty is supported. A nonempty list returns `CONSUME_UNSUPPORTED` before I/O until the SC10 read plan is implemented. |
+| `requestedFiles` | Reserved exact pinned file references. Absent or empty is supported. A nonempty list returns `CONSUME_UNSUPPORTED` before I/O; the separate read-plan capability is not implemented by SDK v1. Use the fixed-file `readSkill` operation for an individual resource. |
 | `projection.compiler` | Absent or `source-identity/v1`. Every other compiler returns `CONSUME_UNSUPPORTED` before I/O. |
 
 Options derive the existing prepare options (`database`, `execution`, `metrics`) and
 add an optional `AbortSignal`. There is no daemon, new scheduler, retry owner or separate
 credential store.
+
+## Installed Node SDK
+
+```ts
+import {
+  SDK_VERSION, PACKAGE_VERSION, CONSUMER_CONTRACT_VERSION,
+  consume, readSkill, decodeConsumeResult, parseDuration,
+  type ConsumeInput,
+} from "ntn-skills/sdk"
+
+if (SDK_VERSION !== 1 || CONSUMER_CONTRACT_VERSION !== 1)
+  throw new Error("Unsupported ntn-skills SDK contract")
+
+const input = {
+  version: 1,
+  targets: ["shared_skill:library-id:skill-id"],
+  purpose: "use",
+  freshness: { policy: "max_age", max_age_ms: parseDuration("5m") },
+} satisfies ConsumeInput
+const controller = new AbortController()
+const result = await consume(input, {
+  cwd: "/absolute/consumer/workspace",
+  env: capturedEnvironment,
+  signal: controller.signal,
+})
+// consume already validates its complete result with decodeConsumeResult.
+// Use the public decoder separately when accepting a retained/transmitted receipt.
+if (result.status === "ready") await decodeConsumeResult(result, input)
+```
+
+`PACKAGE_VERSION` comes from the same package manifest that supplies the CLI binary.
+An integrating host must select and pin one package artifact for both entrypoints;
+it must reject a missing/incompatible SDK instead of silently selecting another CLI.
+The declarations are emitted from the actual core schemas and their reachable type
+dependencies. They do not import private workspace packages or checkout source paths.
+
+`consume` returns `Promise<ConsumeResult>`. `readSkill` returns the existing core read
+object, without the CLI `ok` wrapper. It accepts the same `database`, `path`, `from`,
+`lines`, `output`, `refresh`, `offline` and millisecond `maxAge` options. A fixed main
+or resource File ref uses the existing snapshot/read checks. Binary resources require
+`output`; the result's output path and bytes have the existing Store contract.
+`readSkill` and `decodeConsumeResult` reject with the exported `SkillsError` for typed
+domain failures, preserving `_tag`, `code`, `message` and optional `details`.
+Unexpected implementation defects remain rejected promises.
+
+Each operation captures a complete `env` map at invocation. Omitting `env` captures
+the current process environment; supplying it replaces that source rather than merging
+with it. Each operation also captures `cwd` (defaulting to the invoking directory).
+Its Path service resolves relative configuration roots and output paths against that
+directory. Neither `process.env` nor `process.cwd()` is changed. A fresh scoped runtime
+per call preserves credential rotation and keeps concurrent calls in separate domains.
+The caller does not create or close a persistent SDK client.
+
+The optional `execution` object reuses prepare's `priority` (`required` or `prefetch`),
+`queueBudgetMs`, `timeBudgetMs` and `rateShare` policy. `parseDuration` is the CLI's
+existing parser: `0` or an integer followed by `s`, `m`, `h` or `d`, returning milliseconds.
+`metrics: true` enables the existing safe bounded request trace with a default limit
+of 10000; an explicit `NTN_SKILLS_REQUEST_TRACE_LIMIT` retains its existing validation.
+Without this opt-in or an explicit environment trace setting, tracing stays off.
+`onRequestMetrics(snapshot)` runs once after the operation's scope closes, including
+failures and cancellation. It receives `null` when the Notion service was never
+acquired; this is unknown work, not a zero-request claim. Callbacks should not throw.
+Counters and trace contain no raw credentials, request paths or full bodies. Hosts
+must count SDK calls separately from those HTTP measurements and retain truncation.
+
+An already aborted signal does no acquisition. Aborting initialization, headers or
+body work interrupts the operation and waits for its scope cleanup before settlement.
+`consume` returns `status: cancelled`; `readSkill` rejects with `SkillsError` code
+`CANCELLED`. A host must not publish a late result after its own cancellation boundary.
 
 ## Module responsibilities and transport choice
 
@@ -64,13 +135,13 @@ flowchart TD
 The source engine owns authentication, freshness, retained pins and materialization.
 The consumer owns the versioned result and consistency checks. The host owns session
 selection, publication to safe local paths, assembled model input and activation.
-The future packaged SDK connects these existing owners; it does not create another
+The packaged SDK connects these existing owners; it does not create another
 cache, scheduler or permission authority.
 
 | Transport | Current boundary and decision |
 | --- | --- |
 | Per-command CLI subprocess | Works with configured public/custom commands and the existing JSON/error/exit contract. Broker currently pays one prepare process plus a fixed read for each prepared node. Keep this compatibility route until its callers migrate. |
-| Shared packaged SDK | Approved direction. One caller-owned scoped runtime executes `consume` and obtains the graph plus the proofs from the same observations. SC10 must prove installed artifact/version compatibility and Broker adoption. This ticket adds the core contract only. |
+| Shared packaged SDK | `ntn-skills/sdk` owns one scoped runtime per Promise operation. `consume` obtains graph and proofs from the same observations. Installed artifact/version compatibility and host adoption require their own verification. |
 | Session subprocess RPC | Would add process lifetime, message framing, request cancellation and version negotiation to maintain. It is not the selected architecture and is not introduced to avoid packaging the shared SDK. |
 
 These are code boundary comparisons, not measured speedup claims. SC02 records
@@ -91,7 +162,8 @@ checks remain necessary when data crosses a future SDK/CLI transport boundary.
 
 This does not promise one HTTP request, lazy materialization for every source adapter,
 or zero remote work. Existing source acquisition and snapshot validation still apply.
-Broker still uses its existing prepare + fixed-read path until SC10 migrates it.
+Hosts adopting the SDK remove their per-node fixed-read loop only after validating
+the selected source and preserving their local publication boundary.
 
 ## Result states and evidence ownership
 
@@ -209,7 +281,7 @@ unsuccessful refresh.
 | Broker `requestPreparedGraph` / `loadPreparedEntry` | SC10 adopts the installed consumer result and removes the per-node process only after equivalence. Preserve selected-source checks and safe local publication. |
 | Broker explicit selection, native read and `skill_prepare` | Adopt a successful complete result before committing bindings. Failed/cancelled consumption must not publish partial instructions. |
 | Broker prefetch | No session binding, delivery or activation claim; its source work remains on the cost ledger. |
-| Broker `loadNotionResource` | Move to the requested-file plan once implemented. A manifest alone does not prove resource bytes are ready. |
+| Broker `loadNotionResource` | Use SDK `readSkill` with the fixed File ref and output path. Keep resource hash/byte/path verification; a manifest alone does not prove resource bytes are ready. |
 | Broker `loadNotionSkill` and custom source commands | Preserve the full-export compatibility route and explicitly configured command behavior until migration is complete. |
 | Snapshot history, management writes and recovery | Keep existing operation identities and unknown-write recovery. They are outside partial instruction consumption. |
 
@@ -220,15 +292,15 @@ strict source matching, host path/symlink protection, local receipt/file publica
 resource output verification, session commit, actual provider delivery and activation.
 Those checks must not disappear with the additional read.
 
-Prefetch continues to inspect without a session lock or delivery. `loadNotionResource`
-will migrate when the requested-file read plan is implemented. The legacy
+Prefetch continues to inspect without a session lock or delivery. Individual resources
+can use `readSkill`; the combined requested-file read plan remains unsupported. The legacy
 `loadNotionSkill` full-export route and custom source-command transports need explicit
 migration; SDK adoption must not silently bypass their configured behavior.
 
 Management writes, history retention, snapshot export and publication recovery remain
 their existing operations. This change does not move them into partial consumption.
-Formal package installation, SDK/CLI artifact negotiation, production Broker adoption,
-new model projection and real model acceptance remain subsequent tasks.
+Published-version release, production Broker adoption, new model projection and real
+model acceptance remain separate from the offline package/runtime checks.
 
 ## Regression entry points
 
@@ -236,6 +308,11 @@ new model projection and real model acceptance remain subsequent tasks.
 bun test packages/core/test/consumer.test.ts packages/core/test/graph-prepare.test.ts --timeout 30000
 bun test packages/cli/test/prepare.test.ts --timeout 30000
 bun run typecheck
+# Build without replacing checkout products, then pack/install the candidate separately.
+bun packages/cli/build.ts --outdir /new/absolute/package-directory
+npm pack /new/absolute/package-directory --pack-destination /absolute/artifacts --ignore-scripts
+node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory
+node scripts/sdk-package-smoke.mjs --archive /absolute/artifacts/ntn-skills-0.1.0.tgz --fixture /new/absolute/fixture-directory/fixture.json --outdir /new/absolute/consumer-directory
 ```
 
 Core tests exercise the actual consumer and decoder, identical read counts versus
@@ -244,4 +321,9 @@ File binding, truncated/ranged/hash-corrupt proof, unknown schemas, missing requ
 pins, version conflicts, real retained partial materialization, unsupported capabilities,
 and both cancellation paths. The existing packaged Node CLI fixture covers actual
 SQLite pins, complete/inspect boundaries, error envelopes and BOM/CRLF raw/export bytes.
-These are contract/runtime checks, not formal published-SDK or provider-delivery proof.
+The SDK package smoke test independently installs the actual tarball, imports it with
+real Node, checks generated declarations, compares one/two/three roots sharing a
+Required dependency against the packaged CLI, and checks fixed binary resources,
+proof negatives, cancellation and concurrent environment/cwd isolation. All network
+fixtures are loopback only. These are package/contract/runtime checks, not published
+release status or provider-delivery proof.
