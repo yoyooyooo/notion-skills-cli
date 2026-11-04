@@ -178,11 +178,7 @@ export function materializeRetainedSnapshot(
 
 /** A lazy pin is usable only in its selected authenticated scope. Remote byte acquisition
  * revalidates current access, then uses the exact immutable pin; current bodies are never read. */
-export function openRetainedSnapshot(
-  snapshotId: string,
-  select: (snapshot: Snapshot) => readonly string[],
-  options: { readonly offline?: boolean } = {},
-) {
+function resolveRetainedSnapshot(snapshotId: string, options: { readonly offline?: boolean } = {}) {
   return Effect.gen(function* () {
     const store = yield* Store
     const keys = yield* store.listKeys("cache/shared-history-manifests")
@@ -208,10 +204,44 @@ export function openRetainedSnapshot(
       const current = yield* currentSharedHistorySkill(library, retained.manifest.skill_page_id)
       yield* checked(() => assertSharedHistoryIdentity(current, retained.manifest.record))
     }
-    const paths = yield* checked(() => select(retained.snapshot))
-    return yield* materializeRetainedSnapshot(retained, paths, {
+    return { retained, library }
+  })
+}
+
+export function openRetainedSnapshot(
+  snapshotId: string,
+  select: (snapshot: Snapshot) => readonly string[],
+  options: { readonly offline?: boolean } = {},
+) {
+  return Effect.gen(function* () {
+    const opened = yield* resolveRetainedSnapshot(snapshotId, options)
+    if (opened === undefined) return undefined
+    const paths = yield* checked(() => select(opened.retained.snapshot))
+    return yield* materializeRetainedSnapshot(opened.retained, paths, {
       offline: options.offline,
-      library,
+      library: opened.library,
     })
+  })
+}
+
+/** One admitted immutable owner and one selected object set. Unselected objects are not read. */
+export function openRetainedSnapshotFiles(
+  snapshotId: string,
+  select: (snapshot: Snapshot) => readonly string[],
+  options: { readonly offline?: boolean } = {},
+) {
+  return Effect.gen(function* () {
+    const opened = yield* resolveRetainedSnapshot(snapshotId, options)
+    if (opened === undefined) return undefined
+    const { retained, library } = opened
+    const paths = yield* checked(() => select(retained.snapshot))
+    const files = yield* materializeSharedSnapshotFiles(library, {
+      skillPageId: retained.manifest.skill_page_id,
+      pinId: retained.pin_id,
+      manifest: retained.manifest,
+      paths,
+      offline: options.offline,
+    })
+    return { snapshot: retained.snapshot, files }
   })
 }

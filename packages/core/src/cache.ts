@@ -194,7 +194,8 @@ export function locallySelectedScope(offline = false) {
     return value?.scope
   })
 }
-export function validateSnapshot(snapshot: Snapshot) {
+/** Immutable manifest checks without acquiring any file objects. */
+export function validateSnapshotManifest(snapshot: Snapshot) {
   return Effect.gen(function* () {
     const alias = yield* Effect.try({
       try: () => aliasFor(snapshot.record.name),
@@ -211,7 +212,6 @@ export function validateSnapshot(snapshot: Snapshot) {
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "Snapshot identity or complete file manifest is invalid."),
       )
-    const store = yield* Store
     for (const file of snapshot.files) {
       yield* Effect.try({
         try: () => {
@@ -225,13 +225,6 @@ export function validateSnapshot(snapshot: Snapshot) {
         },
         catch: () => fail("STATE_CORRUPT", "Snapshot file manifest is invalid."),
       })
-      const bytes = yield* store.readBytes(`objects/${file.sha256}`)
-      if (bytes.length !== file.bytes || (yield* sha256(bytes)) !== file.sha256)
-        return yield* Effect.fail(
-          fail("STATE_CORRUPT", "A snapshot object failed its content checksum.", {
-            path: file.path,
-          }),
-        )
     }
     return snapshot
   }).pipe(
@@ -241,6 +234,22 @@ export function validateSnapshot(snapshot: Snapshot) {
         : fail("STATE_CORRUPT", "Snapshot manifest failed validation."),
     ),
   )
+}
+export function validateSnapshot(snapshot: Snapshot) {
+  return Effect.gen(function* () {
+    yield* validateSnapshotManifest(snapshot)
+    const store = yield* Store
+    for (const file of snapshot.files) {
+      const bytes = yield* store.readBytes(`objects/${file.sha256}`)
+      if (bytes.length !== file.bytes || (yield* sha256(bytes)) !== file.sha256)
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "A snapshot object failed its content checksum.", {
+            path: file.path,
+          }),
+        )
+    }
+    return snapshot
+  })
 }
 export function publishSnapshotObservation(
   snapshot: Snapshot,

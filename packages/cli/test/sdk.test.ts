@@ -1,9 +1,24 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Path } from "effect"
-import { consume, decodeConsumeResult, parseDuration, readSkill, SkillsError } from "../src/sdk.ts"
+import {
+  consume,
+  decodeConsumeResult,
+  decodeResourceReadResult,
+  parseDuration,
+  readResources,
+  readSkill,
+  SkillsError,
+  SDK_VERSION,
+  CONSUMER_CONTRACT_VERSION,
+  RESOURCE_READ_CONTRACT_VERSION,
+} from "../src/sdk.ts"
 import { nodeRuntime } from "../src/runtime.ts"
 
 const input = { version: 1, targets: ["00000000-0000-4000-8000-000000000001"], purpose: "use" }
+const resourceRef =
+  "skill://shared_skill%3Alibrary%3Askill/references/a.txt?snapshot=s_" +
+  "a".repeat(64) +
+  "&file_id=file-a"
 
 describe("Promise SDK boundary", () => {
   test("unknown input and unsupported capability fail before runtime acquisition", async () => {
@@ -21,6 +36,10 @@ describe("Promise SDK boundary", () => {
       { env: {} },
     )
     expect(unsupported).toMatchObject({ status: "failed", error: { code: "CONSUME_UNSUPPORTED" } })
+    expect(await consume({ ...input, requestedFiles: [resourceRef] }, { env: {} })).toMatchObject({
+      status: "failed",
+      error: { code: "CONSUME_UNSUPPORTED" },
+    })
     expect(reports).toEqual([null])
   })
 
@@ -77,5 +96,43 @@ describe("Promise SDK boundary", () => {
     expect(parseDuration("5m")).toBe(300000)
     expect(() => parseDuration("5ms")).toThrow(SkillsError)
     expect(() => parseDuration("1.5s")).toThrow(SkillsError)
+  })
+
+  test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {
+    expect([SDK_VERSION, CONSUMER_CONTRACT_VERSION, RESOURCE_READ_CONTRACT_VERSION]).toEqual([
+      1, 1, 1,
+    ])
+    const reports: unknown[] = []
+    for (const input of [
+      { version: 2, refs: [resourceRef] },
+      { version: 1, refs: [] },
+      { version: 1, refs: [resourceRef, resourceRef] },
+      { version: 1, refs: [resourceRef], budget: { timeBudgetMs: 120_001 } },
+    ])
+      expect(
+        await readResources(input, { env: {}, onRequestMetrics: (value) => reports.push(value) }),
+      ).toMatchObject({ status: "failed", error: { code: "INVALID_ARGUMENT" } })
+    expect(reports).toEqual([null, null, null, null])
+  })
+
+  test("resource pre-abort and the pure resource decoder need no source runtime", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const reports: unknown[] = []
+    expect(
+      await readResources(
+        { version: 1, refs: [resourceRef] },
+        {
+          env: {},
+          signal: controller.signal,
+          onRequestMetrics: (value) => reports.push(value),
+        },
+      ),
+    ).toEqual({ version: 1, status: "cancelled", reason: "interrupted" })
+    expect(reports).toEqual([null])
+    await expect(decodeResourceReadResult({ version: 42 })).rejects.toBeInstanceOf(SkillsError)
+    await expect(decodeResourceReadResult({ version: 42 })).rejects.toMatchObject({
+      code: "RESOURCE_INVALID_PROOF",
+    })
   })
 })

@@ -11,6 +11,7 @@
 | SC-VERIFY-01 | 从入口和功能地图找到本次场景、前置、驱动、证据及失败状态 | 本页连接现有 `control.ts`、[Broker 消费](broker-consumption.md)、[共享 SSOT](shared-ssot.md) 与 Broker 主地图；不把某个方便入口当成全矩阵 |
 | SC-VERIFY-02 | 证据判据拒绝假成功 | 沿用 [图合同](skill-dependency-graph.md) 的 oracle、scope、hash 和完整正文反例；消费链扩展由 Broker `scripts/skill-consumption-contract.mjs` 驱动，按主地图的实际命令执行 |
 | SC-VERIFY-03 | 下一位 Agent 独立完成 Launch → Doctor → Drive → Evidence → Cleanup，清理后证据不变 | 本页给出实际 CLI 消费路径；真实 Pi 路径、独立新会话和最终模型验收各保留自己的结果 |
+| SC-TOOLS-04 | 同一固定 owner/pin 的资源集合一次获取，源字节与投递证明分开 | [资源合同](../../../../docs/resource-read-contract.md)、Core 定向测试、现有独立 SDK smoke；实际 Pi 从 Broker 主地图 `resource-batch` 进入 |
 
 ### 证明对象
 
@@ -114,6 +115,30 @@ PY
 ```
 
 Cleanup 只回收本 run 的 scratch 和可确认归属的 package scratch，走系统 Trash，保留 evidence。未知原操作依赖 scratch 时先保留并解决原操作，不为收尾销毁恢复状态。成功回收和 hash 未变只证明证据保留，不能把功能 `failed` 改成 `passed`。未找到系统回收能力时保留 scratch 并记录清理阻塞。
+
+### 独立 SDK 固定资源批读
+
+`readResources` 是独立 `RESOURCE_READ_CONTRACT_VERSION = 1` 能力；consumer v1 的非空 `requestedFiles` 仍拒绝。不要用逐个 `readSkill` 或重新 prepare 主文模拟批读。完整合同与默认/硬预算见 `docs/resource-read-contract.md`。
+
+从 CLI 根目录选择新的仓外绝对目录，先执行安全的定向回归，不运行包含永久删除的聚合 `test/check`：
+
+```bash
+bun test packages/core/test/resource-read.test.ts packages/core/test/consumer.test.ts packages/core/test/shared-snapshot-history.test.ts packages/core/test/shared-native-reference-consumption.test.ts packages/cli/test/sdk.test.ts --timeout 30000
+bun packages/cli/build.ts --outdir "$RESOURCE_CLI_PACKAGE"
+bun scripts/sdk-fixture.ts --outdir "$RESOURCE_FIXTURE_ROOT" --catalog
+```
+
+在 `RESOURCE_CLI_PACKAGE` 内运行 `npm pack --ignore-scripts --pack-destination "$RESOURCE_PACK_ROOT"`，保存本次实际 tarball 路径为 `RESOURCE_ARCHIVE`。随后执行：
+
+```bash
+node scripts/sdk-package-smoke.mjs --archive "$RESOURCE_ARCHIVE" --fixture "$RESOURCE_FIXTURE_ROOT/fixture.json" --outdir "$RESOURCE_CONSUMER"
+```
+
+这些既有入口生成独立安装包、实际 Node SDK 导出与声明校验、CLI/SDK 字节等价、纯 decoder 反例、整体预算和 headers/body abort 证据。输入错误在 runtime 前失败；byte 预算在 metadata/owner 判定之后、对象下载前失败；全部 ready/failed/cancelled，不接受部分成功。BOM、CRLF、空文本按原始 bytes/hash 复核，binary base64只属于机器层；File ID 旧 path hint按固定绑定纠正。
+
+fixture 明确为全 warm，`resources` 是独立新增 Skill，不能把它的零请求称作冷下载。Core tests 用实际请求集合证明只拉所选对象、共享 chunk一次、未选主文/文件零读取，并覆盖81 chunks跨查询分批。原 `a` 单资源 fixture保留。所有失败日志、包hash、source metrics和取消连接close保存到本次证据目录；SDK产物不冒充Pi/provider已投递。
+
+把**本次独立安装**的 `RESOURCE_CONSUMER/node_modules/ntn-skills/dist/ntn-skills.js` 交给 Broker `NTN_SKILLS_BUILD_ENTRY`，沿 Broker 主地图的 Launch → Doctor → resource-batch → Evidence → Cleanup 完成真实宿主验证。SDK smoke不创建生产远端数据，包与证据保留；只在确认进程全部结束后回收本次自有临时目录，走系统 Trash。Skill规程的可用性仍需独立新会话实际完成路径，不能由文档新增推断通过。
 
 ## Gotchas
 

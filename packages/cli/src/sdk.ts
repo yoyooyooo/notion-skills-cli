@@ -16,6 +16,17 @@ import { fail, SkillsError } from "../../core/src/model.ts"
 import { Notion } from "../../core/src/notion.ts"
 import type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"
 import { readSkill as coreReadSkill, type ReadOptions } from "../../core/src/snapshot.ts"
+import {
+  readResources as coreReadResources,
+  decodeResourceReadInput,
+  decodeResourceReadResult as coreDecodeResourceReadResult,
+  type ResourceReadOptions as CoreResourceReadOptions,
+} from "../../core/src/resource-read.ts"
+import {
+  RESOURCE_READ_CONTRACT_VERSION,
+  type ResourceReadInput,
+  type ResourceReadResult,
+} from "../../core/src/resource-read-model.ts"
 import { localRuntime, live, nodeRuntime } from "./runtime.ts"
 
 export const SDK_VERSION = 1
@@ -34,6 +45,17 @@ export type {
 export { SkillsError } from "../../core/src/model.ts"
 export { parseDuration } from "../../core/src/cache.ts"
 export type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"
+export {
+  RESOURCE_READ_CONTRACT_VERSION,
+  RESOURCE_READ_DEFAULT_BUDGET,
+  RESOURCE_READ_MAX_BUDGET,
+} from "../../core/src/resource-read-model.ts"
+export type {
+  ResourceReadInput,
+  ResourceReadResult,
+  ResourceReadReady,
+  ResourceReadFile,
+} from "../../core/src/resource-read-model.ts"
 
 export interface SdkOptions {
   /** Complete environment for this operation; omission captures process.env at invocation. */
@@ -50,6 +72,7 @@ export interface SdkOptions {
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal">
 export type ReadSkillOptions = SdkOptions & ReadOptions
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
+export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal">
 
 const cancelled = () => fail("CANCELLED", "The SDK operation was cancelled.")
 
@@ -123,6 +146,48 @@ export async function decodeConsumeResult(
 ): Promise<ConsumeResult> {
   const result = await Effect.runPromiseExit(
     coreDecodeConsumeResult(value, expected).pipe(Effect.provide(localRuntime)),
+  )
+  if (Exit.isSuccess(result)) return result.value
+  throw Option.getOrUndefined(Cause.findErrorOption(result.cause)) ?? Cause.squash(result.cause)
+}
+
+/** A fixed resource set shares one runtime, owner admission and selected object acquisition. */
+export async function readResources(
+  input: unknown,
+  options: ResourceReadOptions = {},
+): Promise<ResourceReadResult> {
+  try {
+    return await runOperation(
+      () =>
+        coreReadResources(decodeResourceReadInput(input), {
+          database: options.database,
+          offline: options.offline,
+        }),
+      options,
+    )
+  } catch (error) {
+    if (!(error instanceof SkillsError)) throw error
+    if (error.code === "CANCELLED")
+      return { version: RESOURCE_READ_CONTRACT_VERSION, status: "cancelled", reason: "interrupted" }
+    return {
+      version: RESOURCE_READ_CONTRACT_VERSION,
+      status: "failed",
+      error: {
+        code: error.code,
+        message: error.message,
+        ...(error.details === undefined ? {} : { details: error.details }),
+      },
+    }
+  }
+}
+
+/** Pure resource proof validation; no Store or HTTP service is acquired. */
+export async function decodeResourceReadResult(
+  value: unknown,
+  expected?: ResourceReadInput,
+): Promise<ResourceReadResult> {
+  const result = await Effect.runPromiseExit(
+    coreDecodeResourceReadResult(value, expected).pipe(Effect.provide(localRuntime)),
   )
   if (Exit.isSuccess(result)) return result.value
   throw Option.getOrUndefined(Cause.findErrorOption(result.cause)) ?? Cause.squash(result.cause)

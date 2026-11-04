@@ -43,7 +43,7 @@ command is added.
 | `purpose` | `use` prepares every required Skill in the full closure; `inspect` reads only selected roots and returns related directory metadata. |
 | `sessionBindings` | Existing immutable `PrepareBinding` records. Scope, identity, version and body hashes must agree; failed refresh cannot replace an old binding. |
 | `freshness`, `budget` | The existing prepare schemas and semantics, without a second freshness owner. |
-| `requestedFiles` | Reserved exact pinned file references. Absent or empty is supported. A nonempty list returns `CONSUME_UNSUPPORTED` before I/O; the separate read-plan capability is not implemented by SDK v1. Use the fixed-file `readSkill` operation for an individual resource. |
+| `requestedFiles` | Reserved exact pinned file references. Absent or empty is supported. A nonempty list returns `CONSUME_UNSUPPORTED` before I/O. Use `readSkill` for one file or the independent [resource read contract](resource-read-contract.md) for a fixed resource batch; neither silently changes consume v1. |
 | `projection.compiler` | Absent or `source-identity/v1`. Every other compiler returns `CONSUME_UNSUPPORTED` before I/O. |
 
 Options derive the existing prepare options (`database`, `execution`, `metrics`) and

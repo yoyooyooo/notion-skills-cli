@@ -3,7 +3,7 @@ import { createHash } from "node:crypto"
 import { channel } from "node:diagnostics_channel"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { cp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { createRequire } from "node:module"
 import { isAbsolute, join } from "node:path"
@@ -124,6 +124,7 @@ const withoutMetrics = (value) => {
 await test("installed SDK versions and generated declaration closure", async () => {
   assert.equal(sdk.SDK_VERSION, 1)
   assert.equal(sdk.CONSUMER_CONTRACT_VERSION, 1)
+  assert.equal(sdk.RESOURCE_READ_CONTRACT_VERSION, 1)
   assert.equal(sdk.PACKAGE_VERSION, manifest.version)
   assert.equal(sdk.parseDuration("2m"), 120000)
   assert.throws(
@@ -132,12 +133,15 @@ await test("installed SDK versions and generated declaration closure", async () 
   )
   await writeFile(
     join(root, "consumer.ts"),
-    `import { consume, readSkill, decodeConsumeResult, SDK_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type RequestMetricsSnapshot } from "ntn-skills/sdk";
+    `import { consume, readSkill, readResources, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot } from "ntn-skills/sdk";
 const input = { version: 1, targets: ["page"], purpose: "use" } satisfies ConsumeInput;
 const version: 1 = SDK_VERSION;
 const received: Promise<ConsumeResult> = consume(input, { cwd: ".", env: {}, signal: new AbortController().signal, metrics: true, execution: { priority: "prefetch", queueBudgetMs: 100, timeBudgetMs: 200, rateShare: .1 }, onRequestMetrics: (snapshot: RequestMetricsSnapshot | null) => void snapshot });
 const read: Promise<ReadSkillResult> = readSkill("file", { offline: true, metrics: true, maxAge: parseDuration("1s") });
-void [received, read, decodeConsumeResult({}, input), version];
+const resources = { version: 1, refs: ["fixed-file"], budget: { maxFiles: 16, maxBytes: 1048576, timeBudgetMs: 30000 } } satisfies ResourceReadInput;
+const resourceVersion: 1 = RESOURCE_READ_CONTRACT_VERSION;
+const batch: Promise<ResourceReadResult> = readResources(resources, { cwd: ".", env: {}, offline: true, metrics: true, signal: new AbortController().signal });
+void [received, read, batch, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion];
 // @ts-expect-error purpose is a closed protocol domain
 const wrong: ConsumeInput = { version: 1, targets: [], purpose: "activate" };
 void wrong;
@@ -159,6 +163,7 @@ void wrong;
   assert.equal(checked.code, 0, checked.stdout + checked.stderr)
   return {
     sdk_version: sdk.SDK_VERSION,
+    resource_read_contract_version: sdk.RESOURCE_READ_CONTRACT_VERSION,
     package_version: sdk.PACKAGE_VERSION,
     sdk_sha256: hash(await readFile(sdkPath)),
   }
@@ -235,6 +240,182 @@ await test("fixed binary resource output preserves Core shape and exact bytes", 
   )
   assert.equal(reports.length, 1)
   assert.equal(reports[0].total_requests, 0)
+})
+
+const resourceInput = { version: 1, refs: fixture.resourceBatch.refs }
+let resourcesReady
+await test("one resource batch preserves UTF-8, BOM, CRLF, empty and binary source bytes", async () => {
+  const expected = fixture.resourceBatch
+  const reports = []
+  const result = await sdk.readResources(resourceInput, {
+    ...options,
+    offline: true,
+    onRequestMetrics: (value) => reports.push(value),
+  })
+  assert.equal(result.status, "ready", JSON.stringify(result))
+  const owner = fixture.snapshots.find((snapshot) => snapshot.record.name === expected.name)
+  assert.deepEqual(result.selection, {
+    scope: owner.scope,
+    owner: owner.record.id,
+    snapshot_id: owner.snapshot_id,
+    version_id: owner.version_id,
+  })
+  assert.deepEqual(result.budget, { maxFiles: 16, maxBytes: 1048576, timeBudgetMs: 30000 })
+  assert.equal(
+    result.manifest.files.length,
+    owner.files.length,
+    "The complete manifest still includes the main and unselected resource",
+  )
+  assert.deepEqual(result.materialization, {
+    status: "selected_files_ready",
+    paths: expected.files.map((file) => file.path),
+  })
+  assert.deepEqual(result.delivery, { status: "not_observed" })
+  assert.deepEqual(result.totals, {
+    files: expected.files.length,
+    bytes: expected.files.reduce((sum, file) => sum + file.bytes, 0),
+  })
+  assert.deepEqual(
+    result.files,
+    expected.files.map((file) => ({ requested_ref: file.ref, ...file })),
+  )
+  for (const file of result.files) {
+    const bytes = Buffer.from(file.content, file.encoding === "base64" ? "base64" : "utf8")
+    assert.equal(bytes.length, file.bytes)
+    assert.equal(hash(bytes), file.sha256)
+  }
+  assert.equal(result.files.find((file) => file.path.endsWith("empty.txt")).content, "")
+  assert.deepEqual(
+    reports.map((report) => ({
+      requests: report.total_requests,
+      in_flight: report.in_flight,
+      trace: report.trace_enabled,
+    })),
+    [{ requests: 0, in_flight: 0, trace: true }],
+  )
+  assert.deepEqual(await sdk.decodeResourceReadResult(result, resourceInput), result)
+  resourcesReady = result
+  await writeFile(join(root, "resource-batch-ready.json"), JSON.stringify(result, null, 2) + "\n", {
+    mode: 0o600,
+  })
+  return {
+    files: result.totals.files,
+    bytes: result.totals.bytes,
+    source_http: 0,
+    source_cache: "warm",
+    sdk_calls: 1,
+    delivery: "not_observed",
+  }
+})
+
+await test("warm resource batch, exact aggregate budgets and stable File aliases preserve the selection", async () => {
+  assert.equal(resourcesReady?.status, "ready")
+  const reports = []
+  const repeated = await sdk.readResources(resourceInput, {
+    ...options,
+    offline: true,
+    onRequestMetrics: (value) => reports.push(value),
+  })
+  assert.deepEqual(repeated, resourcesReady)
+  assert.equal(reports.length, 1)
+  assert.equal(reports[0].total_requests, 0)
+  assert.equal(reports[0].in_flight, 0)
+  const exact = {
+    ...resourceInput,
+    budget: { maxFiles: resourcesReady.totals.files, maxBytes: resourcesReady.totals.bytes },
+  }
+  assert.equal((await sdk.readResources(exact, { ...options, offline: true })).status, "ready")
+  for (const [budget, code] of [
+    [{ maxFiles: resourcesReady.totals.files - 1 }, "RESOURCE_FILE_BUDGET"],
+    [{ maxBytes: resourcesReady.totals.bytes - 1 }, "RESOURCE_BYTE_BUDGET"],
+  ]) {
+    const denied = await sdk.readResources(
+      { ...resourceInput, budget },
+      { ...options, offline: true },
+    )
+    assert.equal(denied.status, "failed")
+    assert.equal(denied.error.code, code)
+  }
+  const alias = new URL(resourceInput.refs[0])
+  alias.pathname = "/old-resource-name.md"
+  const aliased = { version: 1, refs: [String(alias)] }
+  const corrected = await sdk.readResources(aliased, { ...options, offline: true })
+  assert.equal(corrected.status, "ready", JSON.stringify(corrected))
+  assert.equal(corrected.files[0].requested_ref, String(alias))
+  assert.equal(corrected.files[0].ref, resourceInput.refs[0])
+  assert.equal(corrected.files[0].content, fixture.resourceBatch.files[0].content)
+  assert.deepEqual(await sdk.decodeResourceReadResult(corrected, aliased), corrected)
+  for (const [refs, code] of [
+    [[resourceInput.refs[0], String(alias)], "RESOURCE_SELECTION_CONFLICT"],
+    [[resourceInput.refs[0], resourceInput.refs[0]], "INVALID_ARGUMENT"],
+    [[fixture.resourceBatch.owner_ref], "RESOURCE_MAIN_NOT_ALLOWED"],
+    [[resourceInput.refs[0], fixture.resource.ref], "RESOURCE_SELECTION_CONFLICT"],
+  ]) {
+    const denied = await sdk.readResources({ version: 1, refs }, { ...options, offline: true })
+    assert.equal(denied.status, "failed", JSON.stringify(denied))
+    assert.equal(denied.error.code, code)
+  }
+  return {
+    warm_http: reports[0].total_requests,
+    aggregate_budget_checked: true,
+    stable_file_alias_corrected: true,
+  }
+})
+
+await test("resource decoder rejects incomplete, mismatched and fabricated batch evidence", async () => {
+  assert.equal(resourcesReady?.status, "ready")
+  for (const mutate of [
+    (result) => {
+      result.files.pop()
+    },
+    (result) => {
+      result.files.reverse()
+    },
+    (result) => {
+      result.files[0].content += "truncated"
+    },
+    (result) => {
+      result.files[0].sha256 = "0".repeat(64)
+    },
+    (result) => {
+      result.files[0].file_id = "foreign"
+    },
+    (result) => {
+      result.selection.owner = "shared_skill:sdk-library:foreign"
+    },
+    (result) => {
+      result.selection.scope = "0".repeat(64)
+    },
+    (result) => {
+      result.manifest.files.pop()
+    },
+    (result) => {
+      result.totals.bytes++
+    },
+    (result) => {
+      result.materialization.paths.pop()
+    },
+    (result) => {
+      result.delivery.status = "delivered"
+    },
+  ]) {
+    const changed = structuredClone(resourcesReady)
+    mutate(changed)
+    await assert.rejects(
+      sdk.decodeResourceReadResult(changed, resourceInput),
+      (error) => error instanceof sdk.SkillsError && error.code === "RESOURCE_INVALID_PROOF",
+    )
+  }
+  const controller = new AbortController()
+  controller.abort()
+  const reports = []
+  const cancelled = await sdk.readResources(resourceInput, {
+    env: {},
+    signal: controller.signal,
+    onRequestMetrics: (value) => reports.push(value),
+  })
+  assert.deepEqual(cancelled, { version: 1, status: "cancelled", reason: "interrupted" })
+  assert.deepEqual(reports, [null])
 })
 
 await test("Required failure and unknown versions stay typed and nonready", async () => {
@@ -335,70 +516,80 @@ const bounded = (promise) =>
       },
     )
   })
-for (const phase of ["headers", "body"])
-  await test(`consume abort during ${phase} waits for owned HTTP cleanup`, async () => {
-    const controller = new AbortController()
-    let requested
-    const requestSeen = new Promise((resolve) => {
-      requested = resolve
-    })
-    let closed
-    const connectionClosed = new Promise((resolve) => {
-      closed = resolve
-    })
-    const server = createServer((_request, response) => {
-      response.on("close", closed)
-      if (phase === "body") {
-        response.writeHead(200, { "content-type": "application/json" })
-        response.write('{"object":"user","id":"partial')
+for (const operation of ["consume", "readResources"])
+  for (const phase of ["headers", "body"])
+    await test(`${operation} abort during ${phase} waits for owned HTTP cleanup`, async () => {
+      const controller = new AbortController()
+      let requested
+      const requestSeen = new Promise((resolve) => {
+        requested = resolve
+      })
+      let closed
+      const connectionClosed = new Promise((resolve) => {
+        closed = resolve
+      })
+      const server = createServer((_request, response) => {
+        response.on("close", closed)
+        if (phase === "body") {
+          response.writeHead(200, { "content-type": "application/json" })
+          response.write('{"object":"user","id":"partial')
+        }
+        requested()
+      })
+      server.listen(0, "127.0.0.1")
+      await once(server, "listening")
+      const state = join(root, `abort-${operation}-${phase}`)
+      if (operation === "readResources") {
+        assert.ok(isAbsolute(fixture.resourceBatch.retained_fixture))
+        await cp(fixture.resourceBatch.retained_fixture, state, {
+          recursive: true,
+          errorOnExist: true,
+          force: false,
+        })
+      } else await mkdir(state)
+      const reports = []
+      let receivedHeaders
+      const headersSeen = new Promise((resolve) => {
+        receivedHeaders = resolve
+      })
+      const headersChannel = channel("undici:request:headers")
+      const onHeaders = () => receivedHeaders()
+      if (phase === "body") headersChannel.subscribe(onHeaders)
+      try {
+        const pending = sdk[operation](
+          operation === "consume"
+            ? { ...input(fixture.roots), freshness: { policy: "default" } }
+            : resourceInput,
+          {
+            ...options,
+            cwd: state,
+            env: { ...env, NOTION_API_BASE_URL: `http://127.0.0.1:${server.address().port}` },
+            signal: controller.signal,
+            onRequestMetrics: (value) => reports.push(value),
+          },
+        )
+        await bounded(phase === "body" ? headersSeen : requestSeen)
+        controller.abort()
+        const result = await bounded(pending)
+        assert.equal(result.status, "cancelled")
+        await bounded(connectionClosed)
+        assert.equal(reports.length, 1)
+        assert.equal(reports[0].in_flight, 0)
+        assert.equal(reports[0].total_requests, 1)
+        assert.equal(reports[0].outcomes.cancelled, 1)
+        return {
+          scope_closed: true,
+          response_closed: true,
+          requests: reports[0].total_requests,
+          phase,
+        }
+      } finally {
+        controller.abort()
+        if (phase === "body") headersChannel.unsubscribe(onHeaders)
+        server.closeAllConnections()
+        await new Promise((resolve) => server.close(resolve))
       }
-      requested()
     })
-    server.listen(0, "127.0.0.1")
-    await once(server, "listening")
-    const state = join(root, `abort-${phase}`)
-    await mkdir(state)
-    const reports = []
-    let receivedHeaders
-    const headersSeen = new Promise((resolve) => {
-      receivedHeaders = resolve
-    })
-    const headersChannel = channel("undici:request:headers")
-    const onHeaders = () => receivedHeaders()
-    if (phase === "body") headersChannel.subscribe(onHeaders)
-    try {
-      const pending = sdk.consume(
-        { ...input(fixture.roots), freshness: { policy: "default" } },
-        {
-          ...options,
-          cwd: state,
-          env: { ...env, NOTION_API_BASE_URL: `http://127.0.0.1:${server.address().port}` },
-          signal: controller.signal,
-          onRequestMetrics: (value) => reports.push(value),
-        },
-      )
-      await bounded(phase === "body" ? headersSeen : requestSeen)
-      controller.abort()
-      const result = await bounded(pending)
-      assert.equal(result.status, "cancelled")
-      await bounded(connectionClosed)
-      assert.equal(reports.length, 1)
-      assert.equal(reports[0].in_flight, 0)
-      assert.equal(reports[0].total_requests, 1)
-      assert.equal(reports[0].outcomes.cancelled, 1)
-      return {
-        scope_closed: true,
-        response_closed: true,
-        requests: reports[0].total_requests,
-        phase,
-      }
-    } finally {
-      controller.abort()
-      if (phase === "body") headersChannel.unsubscribe(onHeaders)
-      server.closeAllConnections()
-      await new Promise((resolve) => server.close(resolve))
-    }
-  })
 
 await test("concurrent cwd/env isolation and credential rotation remain operation scoped", async () => {
   const headers = []

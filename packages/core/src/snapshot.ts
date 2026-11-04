@@ -53,6 +53,7 @@ import {
   publishSnapshotObservation,
   validateReadPolicy,
   validateSnapshot,
+  validateSnapshotManifest,
   type ObservedSnapshot,
   type ReadPolicyOptions,
 } from "./cache.ts"
@@ -64,7 +65,7 @@ import {
 
 type SnapshotView = "generated" | "authored"
 
-export function loadSnapshot(id: string) {
+function readSnapshotManifest(id: string) {
   return Effect.gen(function* () {
     if (!/^s_[a-f0-9]{64}$/.test(id))
       return yield* Effect.fail(fail("INVALID_SNAPSHOT", "Invalid snapshot ID."))
@@ -78,8 +79,17 @@ export function loadSnapshot(id: string) {
       )
     if (snapshot.snapshot_id !== id || snapshot.files.some((f) => !/^[a-f0-9]{64}$/.test(f.sha256)))
       return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot manifest is invalid."))
-    return yield* validateSnapshot(snapshot)
+    return snapshot
   })
+}
+
+/** Read the fixed complete directory without implying every object is local. */
+export function loadSnapshotManifest(id: string) {
+  return readSnapshotManifest(id).pipe(Effect.flatMap(validateSnapshotManifest))
+}
+
+export function loadSnapshot(id: string) {
+  return readSnapshotManifest(id).pipe(Effect.flatMap(validateSnapshot))
 }
 
 function openSubscription(id: string, options: CatalogOptions) {
@@ -741,7 +751,7 @@ function snapshotFileRef(snapshot: Snapshot, path: string) {
     snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
   )
 }
-function boundSnapshotPath(snapshot: Snapshot, target: SkillTarget): string | undefined {
+export function boundSnapshotPath(snapshot: Snapshot, target: SkillTarget): string | undefined {
   if (target.file_id === undefined) return target.path
   if (snapshot.record.locator.type !== "shared_skill" || target.selector !== snapshot.record.id)
     throw fail(
