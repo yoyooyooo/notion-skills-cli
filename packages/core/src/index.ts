@@ -6,7 +6,8 @@ export * from "./catalog.ts"
 export * from "./views.ts"
 export * from "./snapshot.ts"
 export * from "./graph-prepare-model.ts"
-export * from "./graph-prepare.ts"
+export { prepareGraph } from "./graph-prepare.ts"
+export * from "./consumer.ts"
 export {
   GRAPH_RELEASE_DEFAULT_BUDGET,
   GraphReleaseBudgetSchema,

@@ -110,6 +110,16 @@ function readPolicy(input: PrepareInput): ReadPolicyOptions {
  */
 export function prepareGraph(
   inputValue: PrepareInput,
+  options: Parameters<typeof prepareGraphWithSnapshots>[1] = {},
+) {
+  return prepareGraphWithSnapshots(inputValue, options).pipe(
+    Effect.map(({ preparation }) => preparation),
+  )
+}
+
+/** Internal same-operation artifacts for the consumer. No second snapshot read is needed. */
+export function prepareGraphWithSnapshots(
+  inputValue: PrepareInput,
   options: {
     readonly database?: string
     readonly execution?: PrepareExecutionOptions
@@ -165,6 +175,11 @@ export function prepareGraph(
   })
 }
 
+type PreparedGraphArtifacts = {
+  readonly preparation: PrepareReady
+  readonly snapshots: ReadonlyMap<string, ObservedSnapshot>
+}
+
 function prepareSelected(
   input: PrepareInput,
   targets: readonly string[],
@@ -175,7 +190,7 @@ function prepareSelected(
     readonly metrics?: boolean
     readonly startedAt: number
   },
-): Effect.Effect<PrepareReady, SkillsError, Services> {
+): Effect.Effect<PreparedGraphArtifacts, SkillsError, Services> {
   return Effect.gen(function* () {
     const policy = readPolicy(input)
     const scope = policy.offline ? yield* locallySelectedScope(true) : yield* authScope
@@ -219,7 +234,7 @@ function prepareSelectedInScope(
     readonly startedAt: number
   },
   scope: string,
-): Effect.Effect<PrepareReady, SkillsError, Services> {
+): Effect.Effect<PreparedGraphArtifacts, SkillsError, Services> {
   return Effect.gen(function* () {
     const policy = readPolicy(input)
     const store = yield* Store
@@ -706,20 +721,23 @@ function prepareSelectedInScope(
       )
     }
     return {
-      ...ready,
-      usage: { ...ready.usage, context_bytes: contextBytes },
-      ...(options.metrics
-        ? {
-            preparation_metrics: {
-              version: 1 as const,
-              root_ready_ms: rootReadyMs ?? requiredReadyMs,
-              required_ready_ms: requiredReadyMs,
-              elapsed_ms: Math.max(0, (yield* Clock.currentTimeMillis) - startedAt),
-              derived_cache_hits: derivedCacheHits,
-              derived_cache_misses: derivedCacheMisses,
-            },
-          }
-        : {}),
+      preparation: {
+        ...ready,
+        usage: { ...ready.usage, context_bytes: contextBytes },
+        ...(options.metrics
+          ? {
+              preparation_metrics: {
+                version: 1 as const,
+                root_ready_ms: rootReadyMs ?? requiredReadyMs,
+                required_ready_ms: requiredReadyMs,
+                elapsed_ms: Math.max(0, (yield* Clock.currentTimeMillis) - startedAt),
+                derived_cache_hits: derivedCacheHits,
+                derived_cache_misses: derivedCacheMisses,
+              },
+            }
+          : {}),
+      },
+      snapshots,
     }
   })
 }
