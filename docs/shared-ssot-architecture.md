@@ -4,6 +4,26 @@
 
 ## 状态与证据
 
+### 2026-11-04 当前 Pi 主线：直连请求与依赖图已交付
+
+[AH-561](https://linear.app/yoyooyooo/issue/AH-561) 及其 21 个子任务已完成。当前交付证据见 [AH-561 验收报告](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/ah561-acceptance.md) 与 [逐故事账本](https://github.com/yoyooyooo/pi-context-broker/blob/main/scripts/notion-skill-graph-story-ledger.md)。下方 Sources、三表迁移和更早试点各自保留原场次与范围，不能将历史的“未切换日用”或模型许可失败当作当前主线结论。
+
+该批最终产品为 CLI9/Broker10。Pstack Router 路线 A 使用 H11，普通 Skill 路线 B 使用 H12，两路各为 5/5 样本、3/3 实际运行通过，未运行样本为空；实际执行过 A 生成规程中的独立服务检查。pro 日用 CLI shim 与 Pi 包已切换，正常新会话实际自动加载及 92 个安装文件核对通过。最终 Notion 结果页完成独立逐字读回。这些结果不改写先前失败、超时、未知写入或旧 17 项能力的分层证据。
+
+AH-498 在 2026-11-03 明确将下列目标交由 AH-561 承接。承接按原验收条件分别核对，不以子任务 Done 自动关闭历史父票：
+
+| 原执行入口 | 已承接的实际结果 | 保留边界 |
+| --- | --- | --- |
+| AH-503 请求调度 | Notion 直连、同机多进程准入、取消、限流和未知写入由 AH-563/564/565 承接；成本与按需准备由 AH-575 验证；Linear 主动来源的官方 Effect HTTP 与可观察成本另有 37 项定向测试及真实 Node 读取 | Linear 后续修订与安装产物单独记账，不能从 Notion 专项推导所有 Provider 路径通过；不宣称 generic Git 的请求账本或全仓历史 Promise 适配已清零 |
+| AH-509 固定历史 | AH-578 的真实物理 Mini 使用自身认证与空状态，从 Notion 恢复 A 图的 3 个节点、6 个文件；当时实际为 CLI8，当前 B 不替代旧 A，所有文件和生产者版本向量精确匹配 | 未把本场次写成 Git 所选版本同时推进、旧 mixed fixture 回滚或真实过期签名 URL 的完整验收；原票保持未覆盖条件 |
+| AH-259 Router 消费 | AH-573 的 Pstack 根选择由模型自主找到叶子和资源；目录按需消费、固定关系及 Pi 会话行为由对应图切片取证 | 当前验收只覆盖批准的 Pi 主线；OMP、历史 Bundle 全部转换和旧故事的未覆盖条件仍分别保留 |
+
+全局诊断仍有 25 条旧库成员不可用，来自 Agent Kit 人工 catalog 的 open-source-bundle 和 matt-engineering-suite。它们的旧 locator 与当前共享库不一致，Broker 保留不可用成员并继续提供正常 Notion 记录。AH-561 的 Pstack 日用结果不表示全局 Namespace 已通过；修复这些定义与 AK 的配置生成权威属于 AH-516 的独立范围。
+
+AH-498 仍保留原完整 N/k 性能矩阵、共享写入未覆盖边界、AK 移交、全部旧调用者退役和发行总验收。OMP/Tern 继续延期。当前主线完成不把这些目标自动标为通过，也不授权全来源定时同步。
+
+AH-503 后续改动通过现有运行环境提供的官方 Effect HTTP 服务读取 Linear，沿用四并发、整个请求 45 秒、流式原始响应 8 MiB 和凭据脱敏边界。`check/fetch/prepare` 共用既有 opt-in 请求账本。源码、真实服务、安装及日用证据各自绑定实际版本，见 [AH-503 请求引擎补充验收](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/ah503-request-engine-acceptance.md)。
+
 ### 2026-11-03 当前交付：Sources 四表与主动来源管理
 
 用户在完整内容迁移后明确要求恢复活跃上游管理，并扩展到GitLab、Linear等提供内容的来源。本轮最终正式模型为 **Skills / Files / Sources / Records** 四张独立全页面数据库；没有恢复旧Upstream/Content双轨。Sources保存可变配置，Selected Version继续指向Records中已冻结的完整内容。以下为当前交付，后面的“唯一三表”是先前内容迁移的历史检查点。

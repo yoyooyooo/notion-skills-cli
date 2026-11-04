@@ -1,5 +1,6 @@
-import { Config, Effect, Schema } from "effect"
-import { fail, property } from "./model.ts"
+import { Cause, Config, Crypto, Effect, Exit, Schema, Stream } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "effect/http"
+import { fail, property, SkillsError } from "./model.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { importDocument } from "./import.ts"
 import { portableIdentity } from "./export.ts"
@@ -10,6 +11,7 @@ import { discoverSource, type DiscoverSourceInput, type SourceSnapshot } from ".
 import { SourcePatchSchema } from "./upstream-source-model.ts"
 import { sourceChecked, sourceConfiguration } from "./shared-source-definitions.ts"
 import type { SourceDefinitionInput } from "./shared-sources-model.ts"
+import type { createRequestMetrics } from "./request-metrics.ts"
 
 export const sourceAdapterCapabilities = [
   {
@@ -112,74 +114,114 @@ export function sourceDiscoveryInput(input: SourceDefinitionInput): DiscoverSour
 export type LinearSourceTransport = (
   query: string,
   variables: { id: string },
-) => Effect.Effect<unknown, import("./model.ts").SkillsError>
-const linearTransport: LinearSourceTransport = (query, variables) =>
-  Effect.gen(function* () {
-    const token = yield* Config.String("LINEAR_API_KEY").pipe(
-      Config.withDefault(""),
-      Effect.mapError(() =>
-        fail("SOURCE_AUTH_REQUIRED", "Linear source credential is unavailable."),
-      ),
-    )
-    if (!token)
-      return yield* Effect.fail(
-        fail(
-          "SOURCE_AUTH_REQUIRED",
-          "Linear sources require this machine's LINEAR_API_KEY; credentials never enter shared configuration.",
+) => Effect.Effect<unknown, SkillsError, Crypto.Crypto | HttpClient.HttpClient>
+const linearTransport =
+  (metrics?: ReturnType<typeof createRequestMetrics>): LinearSourceTransport =>
+  (query, variables) =>
+    Effect.gen(function* () {
+      const token = yield* Config.String("LINEAR_API_KEY").pipe(
+        Config.withDefault(""),
+        Effect.mapError(() =>
+          fail("SOURCE_AUTH_REQUIRED", "Linear source credential is unavailable."),
         ),
       )
-    return yield* Effect.tryPromise({
-      try: async (signal) => {
-        const response = await fetch("https://api.linear.app/graphql", {
-          method: "POST",
-          redirect: "error",
-          signal,
-          headers: { "Content-Type": "application/json", Authorization: token },
-          body: JSON.stringify({ query, variables }),
-        })
-        if (!response.ok)
-          throw fail("SOURCE_PROVIDER_FAILED", "Linear rejected the read-only request.", {
-            status: response.status,
+      if (!token)
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_AUTH_REQUIRED",
+            "Linear sources require this machine's LINEAR_API_KEY; credentials never enter shared configuration.",
+          ),
+        )
+      const client = yield* HttpClient.HttpClient
+      const request = yield* HttpClientRequest.bodyJson(
+        HttpClientRequest.post("https://api.linear.app/graphql").pipe(
+          HttpClientRequest.setHeader("Authorization", token),
+          HttpClientRequest.acceptJson,
+        ),
+        { query, variables },
+      ).pipe(
+        Effect.mapError(() =>
+          fail("SOURCE_PROVIDER_INVALID", "Linear request could not be encoded."),
+        ),
+      )
+      const key = yield* sha256(canonicalSharedJson(["linear", token, query, variables]))
+      let finish: ReturnType<ReturnType<typeof createRequestMetrics>["begin"]> | undefined
+      let received: number | undefined
+      let status: number | undefined
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          finish = metrics?.begin({
+            path: "/graphql",
+            method: "POST",
+            provider: "linear",
+            key,
+            ...(request.body._tag === "Uint8Array"
+              ? { requestBytes: request.body.body.byteLength }
+              : {}),
           })
-        const reader = response.body?.getReader()
-        if (!reader) throw fail("SOURCE_PROVIDER_INVALID", "Linear returned no response body.")
-        let bytes = 0
-        const chunks: Uint8Array[] = []
-        try {
-          for (;;) {
-            const item = await reader.read()
-            if (item.done) break
-            bytes += item.value.length
-            if (bytes > 8 * 1024 * 1024)
-              throw fail("SOURCE_PROVIDER_LIMIT", "Linear response exceeds 8 MiB.")
-            chunks.push(item.value)
-          }
-        } finally {
-          await reader.cancel().catch(() => undefined)
-          reader.releaseLock()
-        }
-        return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown
-      },
-      catch: (error) =>
-        error instanceof Error && "_tag" in error && error._tag === "SkillsError"
-          ? (error as import("./model.ts").SkillsError)
-          : fail(
-              "SOURCE_PROVIDER_FAILED",
-              "Linear read failed; no response, credential or request headers were retained.",
+          const response = yield* HttpClient.withScope(client).execute(request)
+          status = response.status
+          if (status < 200 || status >= 300)
+            return yield* Effect.fail(
+              fail("SOURCE_PROVIDER_FAILED", "Linear rejected the read-only request.", { status }),
+            )
+          let bytes = 0
+          received = bytes
+          const text = yield* response.stream.pipe(
+            Stream.mapEffect((chunk) => {
+              bytes += chunk.byteLength
+              received = bytes
+              return bytes > 8 * 1024 * 1024
+                ? Effect.fail(fail("SOURCE_PROVIDER_LIMIT", "Linear response exceeds 8 MiB."))
+                : Effect.succeed(chunk)
+            }),
+            Stream.decodeText(),
+            Stream.runFold(
+              () => "",
+              (text, chunk) => text + chunk,
             ),
-    }).pipe(
-      Effect.timeout("45 seconds"),
-      Effect.mapError((error) =>
-        "code" in error
-          ? error
-          : fail("SOURCE_PROVIDER_TIMEOUT", "Linear source read exceeded its bounded deadline."),
-      ),
-    )
-  })
+          )
+          return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(text)
+        }),
+      ).pipe(
+        Effect.provideService(FetchHttpClient.RequestInit, {
+          redirect: "error",
+          credentials: "omit",
+        }),
+        Effect.timeout("45 seconds"),
+        Effect.mapError((error) => {
+          if (error instanceof SkillsError) return error
+          if (Cause.isTimeoutError(error))
+            return fail(
+              "SOURCE_PROVIDER_TIMEOUT",
+              "Linear source read exceeded its bounded deadline.",
+            )
+          if (HttpClientError.isHttpClientError(error) && error.reason._tag === "EmptyBodyError")
+            return fail("SOURCE_PROVIDER_INVALID", "Linear returned no response body.")
+          return fail(
+            "SOURCE_PROVIDER_FAILED",
+            "Linear read failed; no response, credential or request headers were retained.",
+          )
+        }),
+        Effect.onExit((exit) =>
+          Effect.sync(() =>
+            finish?.({
+              outcome: Exit.isSuccess(exit)
+                ? "success"
+                : Exit.hasInterrupts(exit)
+                  ? "cancelled"
+                  : "failure",
+              ...(received === undefined ? {} : { responseBytes: received }),
+              ...(status === undefined ? {} : { httpStatus: status }),
+            }),
+          ),
+        ),
+      )
+    })
 
 export function discoverLinearSource(
   input: SourceDefinitionInput,
-  transport: LinearSourceTransport = linearTransport,
+  transport: LinearSourceTransport = linearTransport(),
 ) {
   return Effect.gen(function* () {
     const definition = yield* sourceChecked(() => sourceConfiguration(input))
@@ -297,7 +339,10 @@ export function discoverLinearSource(
     return snapshot
   })
 }
-export function discoverSourceDefinition(input: SourceDefinitionInput) {
+export function discoverSourceDefinition(
+  input: SourceDefinitionInput,
+  options: { readonly metrics?: ReturnType<typeof createRequestMetrics> } = {},
+) {
   return Effect.gen(function* () {
     const definition = yield* sourceChecked(() => sourceConfiguration(input))
     if (!definition.enabled)
@@ -307,7 +352,8 @@ export function discoverSourceDefinition(input: SourceDefinitionInput) {
           "This source is disabled; current fixed content remains available.",
         ),
       )
-    if (definition.adapter.type === "linear") return yield* discoverLinearSource(definition)
+    if (definition.adapter.type === "linear")
+      return yield* discoverLinearSource(definition, linearTransport(options.metrics))
     const snapshot = yield* discoverSource(
       yield* sourceChecked(() => sourceDiscoveryInput(definition)),
     )

@@ -431,7 +431,7 @@ export function prepareSourceRefresh(
         ),
       )
     const selected = yield* binding(library, definition.page_id, target)
-    const acquired = yield* acquire(definition)
+    const acquired = yield* acquire(definition, { metrics: (yield* Notion).metrics })
     const memberReview = yield* reviewSourceMembers(library, definition.page_id, acquired)
     const matches = acquired.members.filter((item) => item.member_key === selected.member)
     if (matches.length !== 1)

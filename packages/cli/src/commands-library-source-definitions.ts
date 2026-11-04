@@ -30,6 +30,7 @@ import { exportPortable } from "../../core/src/export.ts"
 import { assertSharedFileReferences } from "../../core/src/shared-file-references.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { Store } from "../../core/src/store.ts"
+import { Notion } from "../../core/src/notion.ts"
 const entry = requiredSingleton("entry", "Exact shared Skills database with Sources attached")
 function input(path: string) {
   return Effect.gen(function* () {
@@ -140,7 +141,9 @@ const check = defineCommand(
     Effect.gen(function* () {
       const library = yield* loadSharedLibrary(entry)
       const definition = yield* readSourceDefinition(library, source)
-      const snapshot = yield* discoverSourceDefinition(definition)
+      const snapshot = yield* discoverSourceDefinition(definition, {
+        metrics: (yield* Notion).metrics,
+      })
       yield* emit({
         definition,
         revision: snapshot.revision,
@@ -175,7 +178,9 @@ const fetch = defineCommand(
   ({ source, entry, member, output }) =>
     Effect.gen(function* () {
       const definition = yield* readSourceDefinition(yield* loadSharedLibrary(entry), source),
-        snapshot = yield* discoverSourceDefinition(definition),
+        snapshot = yield* discoverSourceDefinition(definition, {
+          metrics: (yield* Notion).metrics,
+        }),
         key = Option.getOrUndefined(member)
       const selected =
         key === undefined && snapshot.members.length === 1
