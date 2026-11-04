@@ -5,6 +5,8 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
+AH-617 消费链重构先读 [Skill 消费链](features/skill-consumption.md)。SC-VERIFY-01～03 将本 CLI 的真实消费、成本证据与清理边界接到 Broker 的 SC01–SC24 统一地图；新架构、模型投影和日用安装分别取证。未执行的规程仍为 draft，不沿用 AH-561 的历史 pass。
+
 AH-561 直连请求与跨 Skill 图使用 [request-engine](features/request-engine.md) 和 [skill-dependency-graph](features/skill-dependency-graph.md)。先执行 NG-VC-01 离线契约与原生 CLI fail-before，保存两条根选择提示和独立 oracle 合同；后续按 NG-RE/NG-SG feature ID 逐项复验。当前 helper 使用项目 HTTP 引擎、项目凭据和 owned 归档入口。每轮交付需重新取得服务与安装证据；保留历史回执，不把旧单 Skill pass 用作图验收。
 
 图专项由 Broker 仓库的 `scripts/verify-skill-graph-contract.mjs` 共用一个离线检查入口；不新增第三个总验收 Skill。它只驱动当前 Node CLI 的离线 version/schema，绝不读取业务正文、请求生产 API 或调用官方 ntn。`contract-valid` 只说明证据合同成立，不能代替真实 Notion、Pi、模型、UI 或安装包验收。

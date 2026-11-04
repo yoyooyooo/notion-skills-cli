@@ -6,6 +6,7 @@ AH-498 shared-library work has its own partial checkpoint. Shared layout, owners
 
 ## Sub-features
 
+- [Skill 消费链](./skill-consumption.md)：AH-617 的 SC-VERIFY-01～03，CLI 入口、源/投影/会话状态证明、反例与清理后证据；SC01–SC24 和完整场景矩阵统一维护在链接的 Broker 主地图。
 - [直连请求引擎](./request-engine.md)：NG-VC-01、NG-RE-02～05/21，离线失败基线、自有认证、真实 HTTP 尝试、多 scope 调度、未知写入与无官方 ntn 交付。
 - [Skill 依赖图](./skill-dependency-graph.md)：NG-SG-06～20，两条独立根选择、Members/Requires、引用与准备、会话固定图、批量/历史/按需物化/预取。图专项不得沿用 AH-560 单 Skill 的 pass。
 
@@ -27,6 +28,7 @@ Command/parameter semantics belong to the [protocol](../../../../docs/protocol.m
 
 | Entry or boundary | Cases | Required proof |
 | --- | --- | --- |
+| AH-617 consumption contract and CLI evidence | SC-VERIFY-01–03 | [Consumption recipe](skill-consumption.md): exact user entry, separate source/projection/session evidence, rejected false positives, real drive and unchanged evidence hashes after Cleanup; CLI proof does not establish Pi/model/installed behavior |
 | `ctl library init/inspect/files/state` and shared catalog/View identity | SS01–SS03, SS10 | [Shared recipe](shared-ssot.md): exact descriptor/property IDs, default new-library Members self-relation, read-only original-init recovery, complete flat metadata and native View membership; no body/provider work for metadata commands |
 | Shared current `read`, `files`, whole-file adoption and `--metrics` | SS03–SS06 | Complete snapshot, persistent custom ownership, unchanged-body zero writes, bounded full verification, original-plan reconciliation and explicit open first-write boundary |
 | Notion in-flight reads, attempt concurrency and admission | SS05–SS06 | Service-local coalescing and cancellation, unset/empty default 4, integer cap 1–64, permit plus SQL wait under the original five-minute deadline, independent network timeout and no mutation coalescing/retry |
@@ -104,5 +106,5 @@ Cleanup moves run scratch state and recorded successful package scratch to syste
 - `WRITE_PARTIAL` and `WRITE_OUTCOME_UNKNOWN` require readback before deciding on another write. Do not automatically retry mutations or infer failure from a timeout.
 - Fixture snapshots used by package smoke prove offline package consumption only; they cannot prove a live Notion mutation.
 - No imported or downloaded script is automatically executed. Reading or exporting a script proves its bytes, not runtime behavior.
-- Default helper Doctor is offline: real source version/help, entry hash and isolated roots. `doctor --run "$RUN" --live` explicitly probes official Notion discovery and may cache one Skill outside the selected database; it has no `--database` flag. Database-scoped acceptance still needs explicit selection and coverage inspection.
+- Default helper Doctor is offline: real source version/help, entry hash and isolated roots. `doctor --run "$RUN" --live --database "$DATABASE"` explicitly forwards that scope to the project's direct-HTTP doctor and may populate owned caches. Without `--database`, it is an unscoped diagnostic. Neither route substitutes for explicit consumption and coverage inspection.
 - Current-target reads use bounded cache policy. Use `--refresh` for fresh Notion readback; a fast or TTL-cached response records a prior observation. Pinned refs intentionally retain their fixed versions.
