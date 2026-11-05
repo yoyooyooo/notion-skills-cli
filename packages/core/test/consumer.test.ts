@@ -7,6 +7,7 @@ import { prepareGraph } from "../src/graph-prepare.ts"
 import { aliasFor, property, type Snapshot } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
+import { sharedSkillId } from "../src/shared-content.ts"
 import { registerRetainedSnapshot } from "../src/shared-history-materialization.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import {
@@ -34,7 +35,7 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
   const readBytes = new Map<string, number>()
   for (const [index, [key, definition]] of Object.entries(definitions).entries()) {
     const libraryId = definition.library ?? library.library_id
-    const identity = `shared_skill:${libraryId}:${key}`
+    const identity = sharedSkillId(libraryId, key)
     const name = definition.name ?? key
     const content = definition.content ?? `# ${key}\nComplete instructions.\n`
     const bytes = encode(content)
@@ -86,9 +87,9 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
       const snapshot = snapshots.get(child)
       return snapshot === undefined
         ? {
-            id: `shared_skill:${library.library_id}:${child}`,
+            id: sharedSkillId(library.library_id, child),
             ref: fileRef(
-              `shared_skill:${library.library_id}:${child}`,
+              sharedSkillId(library.library_id, child),
               "SKILL.md",
               `s_${"a".repeat(64)}`,
             ),
@@ -132,15 +133,61 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
       }),
     )
   const input = (targets: readonly string[]) => ({
-    version: 1,
+    version: 1 as const,
     targets,
-    purpose: "use",
-    freshness: { policy: "offline" },
+    purpose: "use" as const,
+    freshness: { policy: "offline" as const },
   })
   return { ...f, get, ref, run, input, opened, readBytes }
 }
 
 describe("once consume contract", () => {
+  test("a matching frozen main File ID takes precedence over an obsolete path hint", async () => {
+    const f = await fixture({ a: {}, b: {} })
+    const snapshot = f.get("a")
+    const ref = fileRef(snapshot.record.id, "old-main.md", snapshot.snapshot_id, "main-a")
+    const input = f.input([ref])
+    const result = await f.run(consume(input))
+    expect(result.status).toBe("ready")
+    if (result.status !== "ready") throw new Error(JSON.stringify(result))
+    const node = result.preparation.nodes[0]
+    if (node?.state !== "prepared") throw new Error("Expected prepared entry")
+    expect(node.path).toBe(snapshot.entrypoint)
+    expect(result.entries[0]?.source_body.ref).toBe(f.ref("a"))
+    expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
+    for (const [target, code] of [
+      [
+        fileRef(snapshot.record.id, "old-main.md", snapshot.snapshot_id, "main-b"),
+        "SHARED_FILE_BINDING_UNAVAILABLE",
+      ],
+      [
+        fileRef(f.get("b").record.id, "old-main.md", snapshot.snapshot_id, "main-a"),
+        "SNAPSHOT_CONFLICT",
+      ],
+      [
+        fileRef(snapshot.record.id, "old-main.md", `s_${"f".repeat(64)}`, "main-a"),
+        "SNAPSHOT_MISSING",
+      ],
+    ] as const) {
+      const rejected = await f.run(consume(f.input([target])))
+      expect(rejected.status).toBe("failed")
+      if (rejected.status !== "failed") throw new Error("Expected identity rejection")
+      expect(rejected.error.code).toBe(code)
+    }
+    expect(f.calls).toHaveLength(0)
+  })
+
+  test("encoded stable shared identities remain valid through fixed consume and its decoder", async () => {
+    const f = await fixture({ "guide:v1": { library: "org:team" } })
+    const input = f.input([f.ref("guide:v1")])
+    const result = await f.run(consume(input))
+    expect(result.status).toBe("ready")
+    if (result.status !== "ready") throw new Error(JSON.stringify(result))
+    expect(result.entries[0]?.manifest.record.id).toBe(sharedSkillId("org:team", "guide:v1"))
+    expect(await f.run(decodeConsumeResult(result, input))).toEqual(result)
+    expect(f.calls).toHaveLength(0)
+  })
+
   test("returns the same prepared graph and verified entry proofs without another snapshot or object read", async () => {
     const definitions = {
       a: { requires: ["b"], content: "\uFEFF# Exact\r\nKeep all bytes.\r\n" },

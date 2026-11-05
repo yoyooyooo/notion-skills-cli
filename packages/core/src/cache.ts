@@ -16,6 +16,8 @@ import { pageId, parseTarget, normalizePath } from "./ref.ts"
 import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 import { currentMaterializationVersion } from "./materialization.ts"
 import { catalog } from "./catalog.ts"
+import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 
 export interface ReadPolicyOptions {
   readonly refresh?: boolean
@@ -235,9 +237,11 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
     ),
   )
 }
-export function validateSnapshot(snapshot: Snapshot) {
+function validateSnapshotObjects(
+  snapshot: Snapshot,
+  files?: Array<{ readonly path: string; readonly bytes: Uint8Array }>,
+) {
   return Effect.gen(function* () {
-    yield* validateSnapshotManifest(snapshot)
     const store = yield* Store
     for (const file of snapshot.files) {
       const bytes = yield* store.readBytes(`objects/${file.sha256}`)
@@ -247,9 +251,74 @@ export function validateSnapshot(snapshot: Snapshot) {
             path: file.path,
           }),
         )
+      files?.push({ path: file.path, bytes })
     }
     return snapshot
   })
+}
+export function validateSnapshot(snapshot: Snapshot) {
+  return Effect.gen(function* () {
+    yield* validateSnapshotManifest(snapshot)
+    return yield* validateSnapshotObjects(snapshot)
+  })
+}
+
+const SharedCurrentTreeValidationSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  scope: Schema.String,
+  record_identity: Schema.String,
+  snapshot_id: Schema.String,
+  version_id: Schema.String,
+  materialization_version: Schema.String,
+  manifest_sha256: Schema.String,
+})
+
+/** Content proof only: this never renews a current observation or its body deadline. */
+function validateSharedCurrentTree(snapshot: Snapshot, reuseReceipt = false) {
+  return Effect.gen(function* () {
+    yield* validateSnapshotManifest(snapshot)
+    const store = yield* Store
+    const manifest = yield* Effect.try({
+      // Bind every persisted manifest field, excluding runtime freshness/materialization fields.
+      try: () => canonicalSharedJson(Schema.decodeUnknownSync(SnapshotSchema)(snapshot)),
+      catch: () => fail("STATE_CORRUPT", "Shared snapshot manifest could not be fingerprinted."),
+    })
+    const receipt = {
+      version: 1 as const,
+      scope: snapshot.scope,
+      record_identity: snapshot.record.id,
+      snapshot_id: snapshot.snapshot_id,
+      version_id: snapshot.version_id,
+      materialization_version: currentMaterializationVersion(snapshot.record.id),
+      manifest_sha256: yield* sha256(manifest),
+    }
+    const key = `cache/shared-current-tree-validation/${snapshot.scope}/${snapshot.snapshot_id}.json`
+    if (reuseReceipt) {
+      const previous = yield* store
+        .readJson(key, SharedCurrentTreeValidationSchema)
+        .pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (previous && canonicalSharedJson(previous) === canonicalSharedJson(receipt))
+        return snapshot
+    }
+    const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
+    yield* validateSnapshotObjects(snapshot, files)
+    yield* Effect.try({
+      try: () => assertSharedFileReferences(files),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
+    })
+    // A receipt can only be issued after the actual full bytes/hash and reference gates succeed.
+    yield* store.writeJson(key, receipt)
+    return snapshot
+  })
+}
+/** Verify a selected current candidate only after its caller has checked cache eligibility. */
+export function validateCachedSharedCurrentTree(snapshot: Snapshot) {
+  return snapshot.record.locator.type === "shared_skill"
+    ? validateSharedCurrentTree(snapshot, true)
+    : validateSnapshot(snapshot)
 }
 export function publishSnapshotObservation(
   snapshot: Snapshot,
@@ -262,7 +331,8 @@ export function publishSnapshotObservation(
   } = {},
 ) {
   return Effect.gen(function* () {
-    yield* validateSnapshot(snapshot)
+    if (snapshot.record.locator.type === "shared_skill") yield* validateSharedCurrentTree(snapshot)
+    else yield* validateSnapshot(snapshot)
     const store = yield* Store
     const validatedAt = yield* Clock.currentTimeMillis
     if (snapshot.record.locator.type === "shared_skill") {
@@ -364,7 +434,11 @@ function cachedRecordIdentity(selector: string, scope: string) {
     return { identity: saved?.record_identity ?? `notion_page:${id}`, page: id }
   })
 }
-export function cachedRemoteObservation(page: string, scope: string) {
+export function cachedRemoteObservation(
+  page: string,
+  scope: string,
+  options: { readonly access?: "all" | "manifest" | "metadata" } = {},
+) {
   return Effect.gen(function* () {
     const selected = yield* cachedRecordIdentity(page, scope)
     page = selected.identity
@@ -408,7 +482,11 @@ export function cachedRemoteObservation(page: string, scope: string) {
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "Latest observation points to a missing or foreign snapshot."),
       )
-    yield* validateSnapshot(snapshot)
+    const sharedSelective =
+      snapshot.record.locator.type === "shared_skill" &&
+      (options.access === "manifest" || options.access === "metadata")
+    // Existing callers still perform the original full-object validation in its original order.
+    if (!sharedSelective) yield* validateSnapshot(snapshot)
     if (
       selected.page &&
       ((snapshot.record.locator.type !== "shared_skill" &&
@@ -428,6 +506,11 @@ export function cachedRemoteObservation(page: string, scope: string) {
           "Shared content needs a complete body validation observation.",
         ),
       )
+    if (sharedSelective) {
+      // Metadata is only a freshness candidate; unlike manifest access, it carries no tree proof.
+      if (options.access === "metadata") yield* validateSnapshotManifest(snapshot)
+      else yield* validateCachedSharedCurrentTree(snapshot)
+    }
     return {
       snapshot:
         latest.default_context === undefined
@@ -436,6 +519,8 @@ export function cachedRemoteObservation(page: string, scope: string) {
               ...snapshot,
               record: { ...snapshot.record, default_context: latest.default_context },
             },
+      // Verification and same-pin recovery must use the immutable manifest, not current preferences.
+      ...(options.access === "metadata" ? { stored_snapshot: snapshot } : {}),
       validated_at: latest.validated_at,
       bundle_checkpoint: latest.bundle_checkpoint,
       metadata_only: latest.metadata_only,

@@ -97,6 +97,8 @@ const publicFiles = [
   "docs/graph-releases.md",
   "docs/graph-preparation-performance.md",
   "docs/consumer-contract.md",
+  "docs/resource-read-contract.md",
+  "docs/selected-snapshot-consumption.md",
   "docs/releasing.md",
   "docs/portable-converter.md",
   "docs/remote-proof-converter.md",

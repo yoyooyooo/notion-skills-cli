@@ -120,26 +120,25 @@ export function registerRetainedSnapshot(
   })
 }
 
-/** Missing objects are normal partial readiness; corrupt objects remain explicit failures. */
-function availableFiles(snapshot: Snapshot) {
+function materializeRetainedFiles(
+  retained: RetainedManifest,
+  paths: readonly string[],
+  options: { readonly offline?: boolean; readonly library?: SharedLibrary } = {},
+) {
   return Effect.gen(function* () {
-    const store = yield* Store
-    const files: { path: string; bytes: Uint8Array }[] = []
-    for (const file of snapshot.files) {
-      const value = yield* store.readBytes(`objects/${file.sha256}`).pipe(Effect.result)
-      if (value._tag === "Failure") {
-        if (value.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(value.failure)
-        continue
-      }
-      if (value.success.length !== file.bytes || (yield* sha256(value.success)) !== file.sha256)
-        return yield* Effect.fail(
-          fail("STATE_CORRUPT", "A materialized historical file failed its exact checksum.", {
-            path: file.path,
-          }),
-        )
-      files.push({ path: file.path, bytes: value.success })
-    }
-    return files
+    yield* validateRetained(retained, retained.scope, retained.snapshot.snapshot_id)
+    const files = yield* materializeSharedSnapshotFiles(options.library ?? retained.library, {
+      skillPageId: retained.manifest.skill_page_id,
+      pinId: retained.pin_id,
+      manifest: retained.manifest,
+      paths,
+      offline: options.offline,
+    })
+    const complete = files.length === retained.snapshot.files.length
+    const snapshot = complete
+      ? yield* cacheSharedHistoricalSnapshot(retained.scope, { manifest: retained.manifest, files })
+      : retained.snapshot
+    return { snapshot, files }
   })
 }
 
@@ -149,26 +148,14 @@ export function materializeRetainedSnapshot(
   options: { readonly offline?: boolean; readonly library?: SharedLibrary } = {},
 ) {
   return Effect.gen(function* () {
-    yield* validateRetained(retained, retained.scope, retained.snapshot.snapshot_id)
-    yield* materializeSharedSnapshotFiles(options.library ?? retained.library, {
-      skillPageId: retained.manifest.skill_page_id,
-      pinId: retained.pin_id,
-      manifest: retained.manifest,
-      paths,
-      offline: options.offline,
-    })
-    const files = yield* availableFiles(retained.snapshot)
-    const complete = files.length === retained.snapshot.files.length
-    const snapshot = complete
-      ? yield* cacheSharedHistoricalSnapshot(retained.scope, { manifest: retained.manifest, files })
-      : retained.snapshot
+    const { snapshot, files } = yield* materializeRetainedFiles(retained, paths, options)
     return {
       ...snapshot,
       source: "local_snapshot" as const,
       freshness: { policy: "pinned" as const },
       materialization: {
         manifest_complete: true as const,
-        local_files_ready: complete,
+        local_files_ready: files.length === snapshot.files.length,
         materialized_paths: files.map((file) => file.path),
         loaded: false as const,
       },
@@ -235,13 +222,9 @@ export function openRetainedSnapshotFiles(
     if (opened === undefined) return undefined
     const { retained, library } = opened
     const paths = yield* checked(() => select(retained.snapshot))
-    const files = yield* materializeSharedSnapshotFiles(library, {
-      skillPageId: retained.manifest.skill_page_id,
-      pinId: retained.pin_id,
-      manifest: retained.manifest,
-      paths,
+    return yield* materializeRetainedFiles(retained, paths, {
+      library,
       offline: options.offline,
     })
-    return { snapshot: retained.snapshot, files }
   })
 }

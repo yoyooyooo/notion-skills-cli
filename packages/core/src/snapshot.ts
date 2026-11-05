@@ -2,6 +2,7 @@ import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
 import { openRetainedSnapshot } from "./shared-history-materialization.ts"
+import { loadSnapshot, openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
 import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
@@ -20,7 +21,6 @@ import { portableSourceDecoder, PortableSourceDecoder } from "./portable-source.
 import {
   ExportSchema,
   PageSchema,
-  SnapshotSchema,
   decode,
   fail,
   notionPage,
@@ -52,8 +52,8 @@ import {
   locallySelectedScope,
   publishSnapshotObservation,
   validateReadPolicy,
+  validateCachedSharedCurrentTree,
   validateSnapshot,
-  validateSnapshotManifest,
   type ObservedSnapshot,
   type ReadPolicyOptions,
 } from "./cache.ts"
@@ -65,32 +65,7 @@ import {
 
 type SnapshotView = "generated" | "authored"
 
-function readSnapshotManifest(id: string) {
-  return Effect.gen(function* () {
-    if (!/^s_[a-f0-9]{64}$/.test(id))
-      return yield* Effect.fail(fail("INVALID_SNAPSHOT", "Invalid snapshot ID."))
-    const store = yield* Store
-    const snapshot = yield* store.readJson(`snapshots/${id}.json`, SnapshotSchema)
-    if (!snapshot)
-      return yield* Effect.fail(
-        fail("SNAPSHOT_MISSING", "This snapshot has not been cached on this machine.", {
-          snapshot_id: id,
-        }),
-      )
-    if (snapshot.snapshot_id !== id || snapshot.files.some((f) => !/^[a-f0-9]{64}$/.test(f.sha256)))
-      return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot manifest is invalid."))
-    return snapshot
-  })
-}
-
-/** Read the fixed complete directory without implying every object is local. */
-export function loadSnapshotManifest(id: string) {
-  return readSnapshotManifest(id).pipe(Effect.flatMap(validateSnapshotManifest))
-}
-
-export function loadSnapshot(id: string) {
-  return readSnapshotManifest(id).pipe(Effect.flatMap(validateSnapshot))
-}
+export { loadSnapshot, loadSnapshotManifest } from "./fixed-snapshot-files.ts"
 
 function openSubscription(id: string, options: CatalogOptions) {
   return Effect.gen(function* () {
@@ -807,6 +782,64 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
   }
 }
 
+function assertSnapshotTarget(
+  snapshot: Snapshot,
+  target: SkillTarget,
+  view: SnapshotView,
+  database?: string,
+) {
+  if (
+    target.snapshot &&
+    target.selector &&
+    ![
+      snapshot.record.id,
+      snapshot.record.name,
+      snapshot.record.alias,
+      snapshot.record.locator.type === "notion_page" ||
+      snapshot.record.locator.type === "shared_skill"
+        ? snapshot.record.locator.page_id
+        : snapshot.record.locator.type === "notion_subscription"
+          ? `upstream:${snapshot.record.locator.subscription_id}`
+          : snapshot.record.locator.id,
+    ].includes(pageId(target.selector) ?? target.selector)
+  )
+    throw fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another Skill.")
+  if (
+    target.snapshot &&
+    database !== undefined &&
+    (snapshot.record.locator.type === "notion_subscription"
+      ? snapshot.record.locator.target_database_id
+      : snapshot.record.locator.type === "local"
+        ? undefined
+        : snapshot.record.locator.database_id) !== database
+  )
+    throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
+  if (view === "authored" && snapshot.record.locator.type === "shared_skill")
+    throw fail(
+      "CONTENT_NOT_MUTABLE",
+      "The legacy authored projection does not support shared Skills; export the fixed snapshot projection explicitly.",
+    )
+  if (
+    snapshot.record.locator.type === "shared_skill" &&
+    snapshot.record.kind === "router" &&
+    snapshot.router_members === undefined &&
+    snapshot.members === undefined
+  )
+    throw fail(
+      "SHARED_ROUTER_SNAPSHOT_INCOMPLETE",
+      "This older shared Router snapshot has no frozen Members index. Refresh its current page online before consuming it as a complete Router.",
+    )
+}
+
+function selectedMaterialization(snapshot: Snapshot, files: readonly { readonly path: string }[]) {
+  return {
+    manifest_complete: true as const,
+    local_files_ready: files.length === snapshot.files.length,
+    materialized_paths: files.map((file) => file.path),
+    loaded: false as const,
+  }
+}
+
 export function targetSnapshot(
   target: SkillTarget,
   options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
@@ -818,30 +851,56 @@ export function targetSnapshot(
       try: () => validateReadPolicy(options, Boolean(target.snapshot)),
       catch: (error) => error as SkillsError,
     })
+    const pinnedDatabase =
+      target.snapshot && options.database !== undefined
+        ? yield* resolveDatabaseId(options.database)
+        : undefined
+    const select = (manifest: Snapshot) => {
+      assertSnapshotTarget(manifest, target, view, pinnedDatabase)
+      const selectedPath = boundSnapshotPath(manifest, target)
+      if (access === "all") return manifest.files.map((file) => file.path)
+      if (access === "manifest") return []
+      if (access === "entrypoint") {
+        if (selectedPath && selectedPath !== manifest.entrypoint)
+          throw fail(
+            "PREPARE_ROOT_NOT_MAIN",
+            "Prepare selects a content main file; supporting resources remain references.",
+            { id: manifest.record.id, path: selectedPath },
+          )
+        return [manifest.entrypoint]
+      }
+      const path = selectedPath || manifest.entrypoint
+      if (!manifest.files.some((file) => file.path === path))
+        throw fail("FILE_NOT_FOUND", "The fixed snapshot does not contain the selected file.", {
+          path,
+        })
+      return [path]
+    }
     let snapshot: ObservedSnapshot
     if (target.snapshot) {
-      const complete = yield* loadSnapshot(target.snapshot).pipe(Effect.result)
-      if (complete._tag === "Success")
+      if (access !== "all") {
+        const selected = yield* openFixedSnapshotFiles(target.snapshot, select, options)
         snapshot = {
-          ...complete.success,
+          ...selected.snapshot,
           source: "local_snapshot",
           freshness: { policy: "pinned" },
+          materialization: selectedMaterialization(selected.snapshot, selected.files),
         }
-      else {
-        if (complete.failure.code !== "SNAPSHOT_MISSING")
-          return yield* Effect.fail(complete.failure)
-        const retained = yield* openRetainedSnapshot(
-          target.snapshot,
-          (manifest) => {
-            if (access === "all") return manifest.files.map((file) => file.path)
-            if (access === "manifest") return []
-            if (access === "entrypoint") return [manifest.entrypoint]
-            return [boundSnapshotPath(manifest, target) || manifest.entrypoint]
-          },
-          options,
-        )
-        if (retained === undefined) return yield* Effect.fail(complete.failure)
-        snapshot = retained
+      } else {
+        const complete = yield* loadSnapshot(target.snapshot).pipe(Effect.result)
+        if (complete._tag === "Success")
+          snapshot = {
+            ...complete.success,
+            source: "local_snapshot",
+            freshness: { policy: "pinned" },
+          }
+        else {
+          if (complete.failure.code !== "SNAPSHOT_MISSING")
+            return yield* Effect.fail(complete.failure)
+          const retained = yield* openRetainedSnapshot(target.snapshot, select, options)
+          if (retained === undefined) return yield* Effect.fail(complete.failure)
+          snapshot = retained
+        }
       }
     } else {
       const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).read_max_age_ms
@@ -872,7 +931,11 @@ export function targetSnapshot(
       }
       const observedResult =
         scope && selected && !options.refresh
-          ? yield* cachedRemoteObservation(selected, scope).pipe(Effect.result)
+          ? yield* cachedRemoteObservation(
+              selected,
+              scope,
+              access === "all" ? undefined : { access: "metadata" },
+            ).pipe(Effect.result)
           : undefined
       if (observedResult?._tag === "Failure" && options.offline)
         return yield* Effect.fail(observedResult.failure)
@@ -893,11 +956,12 @@ export function targetSnapshot(
             `${yield* sharedPendingObservationPrefix(scope, locator.library_id, locator.skill_id)}/`,
           )).some((key) => key.endsWith(".json")) ||
           (yield* hasPendingSharedCreate(scope, locator.library_id, locator.skill_id))
-      if (
-        observed &&
+      let useObserved =
+        observed !== undefined &&
         (options.offline ||
           (Number.isFinite(age) && age >= 0 && age < maxAge && bodyFresh && !pending))
-      ) {
+      let materialization: ObservedSnapshot["materialization"]
+      if (observed && useObserved) {
         if (
           options.database !== undefined &&
           (observed.snapshot.record.locator.type === "notion_subscription"
@@ -910,10 +974,32 @@ export function targetSnapshot(
           return yield* Effect.fail(
             fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
           )
-        if (observed.snapshot.record.locator.type === "shared_skill") {
-          // cachedRemoteObservation already verifies every object hash. A prior
-          // unchecked current result is not an exemption from the reference gate;
-          // the explicit historical-pin branch above keeps its original bytes.
+        if (access !== "all") {
+          const selected = yield* Effect.gen(function* () {
+            const fixed = observed.stored_snapshot ?? observed.snapshot
+            const paths = yield* Effect.try({
+              try: () => select(observed.snapshot),
+              catch: (error) => error as SkillsError,
+            })
+            if (observed.snapshot.record.locator.type === "shared_skill")
+              yield* validateCachedSharedCurrentTree(fixed)
+            return yield* openFixedSnapshotFiles(fixed, () => paths, options)
+          }).pipe(Effect.result)
+          if (selected._tag === "Failure") {
+            if (!options.offline && selected.failure.code === "SNAPSHOT_MISSING")
+              useObserved = false
+            else return yield* Effect.fail(selected.failure)
+          } else
+            materialization = selectedMaterialization(
+              selected.success.snapshot,
+              selected.success.files,
+            )
+        }
+      }
+      if (observed && useObserved) {
+        if (access === "all" && observed.snapshot.record.locator.type === "shared_skill") {
+          // The full-cache path still checks current references. Selective cache
+          // access already required a receipt for this complete immutable tree.
           const store = yield* Store
           const files = yield* Effect.forEach(observed.snapshot.files, (file) =>
             store
@@ -933,6 +1019,7 @@ export function targetSnapshot(
         }
         snapshot = {
           ...observed.snapshot,
+          ...(materialization === undefined ? {} : { materialization }),
           ...(observed.shared_body_valid_until === undefined
             ? {}
             : { shared_body_valid_until: observed.shared_body_valid_until }),
@@ -974,53 +1061,10 @@ export function targetSnapshot(
         }
       }
     }
-    if (
-      target.snapshot &&
-      target.selector &&
-      ![
-        snapshot.record.id,
-        snapshot.record.name,
-        snapshot.record.alias,
-        snapshot.record.locator.type === "notion_page" ||
-        snapshot.record.locator.type === "shared_skill"
-          ? snapshot.record.locator.page_id
-          : snapshot.record.locator.type === "notion_subscription"
-            ? `upstream:${snapshot.record.locator.subscription_id}`
-            : snapshot.record.locator.id,
-      ].includes(pageId(target.selector) ?? target.selector)
-    )
-      return yield* Effect.fail(fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another Skill."))
-    if (
-      target.snapshot &&
-      options.database !== undefined &&
-      (snapshot.record.locator.type === "notion_subscription"
-        ? snapshot.record.locator.target_database_id
-        : snapshot.record.locator.type === "local"
-          ? undefined
-          : snapshot.record.locator.database_id) !== (yield* resolveDatabaseId(options.database))
-    )
-      return yield* Effect.fail(
-        fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
-      )
-    if (view === "authored" && snapshot.record.locator.type === "shared_skill")
-      return yield* Effect.fail(
-        fail(
-          "CONTENT_NOT_MUTABLE",
-          "The legacy authored projection does not support shared Skills; export the fixed snapshot projection explicitly.",
-        ),
-      )
-    if (
-      snapshot.record.locator.type === "shared_skill" &&
-      snapshot.record.kind === "router" &&
-      snapshot.router_members === undefined &&
-      snapshot.members === undefined
-    )
-      return yield* Effect.fail(
-        fail(
-          "SHARED_ROUTER_SNAPSHOT_INCOMPLETE",
-          "This older shared Router snapshot has no frozen Members index. Refresh its current page online before consuming it as a complete Router.",
-        ),
-      )
+    yield* Effect.try({
+      try: () => assertSnapshotTarget(snapshot, target, view, pinnedDatabase),
+      catch: (error) => error as SkillsError,
+    })
     return snapshot
   })
 }

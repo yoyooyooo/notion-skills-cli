@@ -4,12 +4,11 @@ import { validateSnapshotManifest } from "./cache.ts"
 import type { VerifiedManifest } from "./consumer-model.ts"
 import { aliasFor, entrypointFor, fail, SkillsError, type Snapshot } from "./model.ts"
 import { fileRef, normalizePath, pageId, parseRef } from "./ref.ts"
-import { openRetainedSnapshotFiles } from "./shared-history-materialization.ts"
-import { sharedSnapshotFrozenTree } from "./shared-history-workflow.ts"
+import { openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
 import { validateSharedRecordIdentity } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { boundSnapshotPath, loadSnapshotManifest } from "./snapshot.ts"
-import { sha256, Store } from "./store.ts"
+import { boundSnapshotPath } from "./snapshot.ts"
+import { sha256 } from "./store.ts"
 import {
   RESOURCE_READ_CONTRACT_VERSION,
   RESOURCE_READ_DEFAULT_BUDGET,
@@ -361,91 +360,17 @@ function readReady(input: ResourceReadInput, options: ResourceReadOptions) {
     const target = parseRef(input.refs[0]!)
     const database =
       options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
-    const complete = yield* loadSnapshotManifest(target.snapshot!).pipe(Effect.result)
-    let snapshot: Snapshot
     let selected: ReturnType<typeof selectFiles> | undefined
-    const bytesByPath = new Map<string, Uint8Array>()
-    if (complete._tag === "Success") {
-      snapshot = complete.success
-      selected = yield* checked(() => selectFiles(snapshot, input, database))
-      const store = yield* Store
-      const objects = new Map<string, Uint8Array>()
-      const missingObjects = new Set<string>()
-      const missing: string[] = []
-      let missingError: SkillsError | undefined
-      for (const file of selected) {
-        if (missingObjects.has(file.sha256)) {
-          missing.push(file.path)
-          continue
-        }
-        let bytes = objects.get(file.sha256)
-        if (bytes === undefined) {
-          const cached = yield* store.readBytes("objects/" + file.sha256).pipe(Effect.result)
-          if (cached._tag === "Failure") {
-            if (cached.failure.code !== "SNAPSHOT_MISSING")
-              return yield* Effect.fail(cached.failure)
-            missingError ??= cached.failure
-            missingObjects.add(file.sha256)
-            missing.push(file.path)
-            continue
-          }
-          bytes = cached.success
-          if ((yield* sha256(bytes)) !== file.sha256)
-            return yield* Effect.fail(
-              fail("STATE_CORRUPT", "A selected resource failed its checksum.", {
-                path: file.path,
-              }),
-            )
-          objects.set(file.sha256, bytes)
-        }
-        if (bytes.length !== file.bytes)
-          return yield* Effect.fail(
-            fail("STATE_CORRUPT", "A selected resource has an incorrect byte length.", {
-              path: file.path,
-            }),
-          )
-        bytesByPath.set(file.path, bytes)
-      }
-      if (missing.length) {
-        const fixed = snapshot
-        const retained = yield* openRetainedSnapshotFiles(
-          fixed.snapshot_id,
-          (manifest) => {
-            if (
-              manifest.scope !== fixed.scope ||
-              manifest.snapshot_id !== fixed.snapshot_id ||
-              manifest.historical_snapshot_id !== fixed.historical_snapshot_id ||
-              sharedSnapshotFrozenTree(manifest) !== sharedSnapshotFrozenTree(fixed)
-            )
-              throw fail(
-                "STATE_CORRUPT",
-                "The retained manifest conflicts with the immutable local snapshot.",
-              )
-            return missing
-          },
-          { offline: options.offline },
-        )
-        if (retained === undefined)
-          return yield* Effect.fail(
-            missingError ??
-              fail("SNAPSHOT_MISSING", "Selected fixed resource bytes are unavailable."),
-          )
-        for (const file of retained.files) bytesByPath.set(file.path, file.bytes)
-      }
-    } else {
-      if (complete.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(complete.failure)
-      const retained = yield* openRetainedSnapshotFiles(
-        target.snapshot!,
-        (manifest) => {
-          selected = selectFiles(manifest, input, database)
-          return selected.map((file) => file.path)
-        },
-        { offline: options.offline },
-      )
-      if (retained === undefined) return yield* Effect.fail(complete.failure)
-      snapshot = retained.snapshot
-      for (const file of retained.files) bytesByPath.set(file.path, file.bytes)
-    }
+    const opened = yield* openFixedSnapshotFiles(
+      target.snapshot!,
+      (snapshot) => {
+        selected = selectFiles(snapshot, input, database)
+        return selected.map((file) => file.path)
+      },
+      options,
+    )
+    const snapshot = opened.snapshot
+    const bytesByPath = new Map(opened.files.map((file) => [file.path, file.bytes]))
     if (selected === undefined)
       return yield* Effect.fail(fail("STATE_CORRUPT", "The resource selection was not admitted."))
     const admitted = selected

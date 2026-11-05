@@ -54,6 +54,8 @@
     "docs/graph-releases.md",
     "docs/graph-preparation-performance.md",
     "docs/consumer-contract.md",
+    "docs/resource-read-contract.md",
+    "docs/selected-snapshot-consumption.md",
     "docs/historical-operations.md",
     "docs/host-integration.md",
     "docs/releasing.md",

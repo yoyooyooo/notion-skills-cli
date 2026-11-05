@@ -50,17 +50,21 @@ describe("standard targetSnapshot shared-library integration", () => {
     const observations = structuredClone(latestEntries(f))
     f.clearCalls()
     for (const policy of [options, { ...options, offline: true }]) {
-      const error = await f.run(Effect.flip(targetSnapshot(parseTarget(stableRef), policy)))
-      expect(error.code).toBe("SHARED_REFERENCE_BROKEN")
-      expect(property(error.details).references).toEqual([
-        {
-          from: "mounted/README.md",
-          target: "mounted/missing.md",
-          href: "./missing.md",
-          line: 1,
-          kind: "link",
-        },
-      ])
+      for (const access of ["all", "manifest", "entrypoint", "target"] as const) {
+        const error = await f.run(
+          Effect.flip(targetSnapshot(parseTarget(stableRef), policy, "generated", access)),
+        )
+        expect(error.code).toBe("SHARED_REFERENCE_BROKEN")
+        expect(property(error.details).references).toEqual([
+          {
+            from: "mounted/README.md",
+            target: "mounted/missing.md",
+            href: "./missing.md",
+            line: 1,
+            kind: "link",
+          },
+        ])
+      }
     }
     expect(f.calls).toHaveLength(0)
     expect(latestEntries(f)).toEqual(observations)

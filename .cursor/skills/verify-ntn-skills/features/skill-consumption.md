@@ -12,6 +12,7 @@
 | SC-VERIFY-02 | 证据判据拒绝假成功 | 沿用 [图合同](skill-dependency-graph.md) 的 oracle、scope、hash 和完整正文反例；消费链扩展由 Broker `scripts/skill-consumption-contract.mjs` 驱动，按主地图的实际命令执行 |
 | SC-VERIFY-03 | 下一位 Agent 独立完成 Launch → Doctor → Drive → Evidence → Cleanup，清理后证据不变 | 本页给出实际 CLI 消费路径；真实 Pi 路径、独立新会话和最终模型验收各保留自己的结果 |
 | SC-TOOLS-04 | 同一固定 owner/pin 的资源集合一次获取，源字节与投递证明分开 | [资源合同](../../../../docs/resource-read-contract.md)、Core 定向测试、现有独立 SDK smoke；实际 Pi 从 Broker 主地图 `resource-batch` 进入 |
+| SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象，完整目录与完整导出各自保真 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、下方既有 SDK smoke 的 partial-cache case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
 
 ### 证明对象
 
@@ -125,7 +126,7 @@ Cleanup 只回收本 run 的 scratch 和可确认归属的 package scratch，走
 ```bash
 bun test packages/core/test/resource-read.test.ts packages/core/test/consumer.test.ts packages/core/test/shared-snapshot-history.test.ts packages/core/test/shared-native-reference-consumption.test.ts packages/cli/test/sdk.test.ts --timeout 30000
 bun packages/cli/build.ts --outdir "$RESOURCE_CLI_PACKAGE"
-bun scripts/sdk-fixture.ts --outdir "$RESOURCE_FIXTURE_ROOT" --catalog
+node scripts/sdk-fixture.ts --outdir "$RESOURCE_FIXTURE_ROOT" --catalog
 ```
 
 在 `RESOURCE_CLI_PACKAGE` 内运行 `npm pack --ignore-scripts --pack-destination "$RESOURCE_PACK_ROOT"`，保存本次实际 tarball 路径为 `RESOURCE_ARCHIVE`。随后执行：
@@ -136,9 +137,23 @@ node scripts/sdk-package-smoke.mjs --archive "$RESOURCE_ARCHIVE" --fixture "$RES
 
 这些既有入口生成独立安装包、实际 Node SDK 导出与声明校验、CLI/SDK 字节等价、纯 decoder 反例、整体预算和 headers/body abort 证据。输入错误在 runtime 前失败；byte 预算在 metadata/owner 判定之后、对象下载前失败；全部 ready/failed/cancelled，不接受部分成功。BOM、CRLF、空文本按原始 bytes/hash 复核，binary base64只属于机器层；File ID 旧 path hint按固定绑定纠正。
 
-fixture 明确为全 warm，`resources` 是独立新增 Skill，不能把它的零请求称作冷下载。Core tests 用实际请求集合证明只拉所选对象、共享 chunk一次、未选主文/文件零读取，并覆盖81 chunks跨查询分批。原 `a` 单资源 fixture保留。所有失败日志、包hash、source metrics和取消连接close保存到本次证据目录；SDK产物不冒充Pi/provider已投递。
+fixture 必须使用符合 CLI runtime 要求的实际 Node 运行；它会经过 SQLite Store 和完整 current 发布检查，Bun 不可代替。fixture 明确为全 warm，`resources` 是独立新增 Skill，不能把它的零请求称作冷下载。Core tests 用实际请求集合证明只拉所选对象、共享 chunk一次、未选主文/文件零读取，并覆盖81 chunks跨查询分批。原 `a` 单资源 fixture保留。所有失败日志、包hash、source metrics和取消连接close保存到本次证据目录；SDK产物不冒充Pi/provider已投递。
 
 把**本次独立安装**的 `RESOURCE_CONSUMER/node_modules/ntn-skills/dist/ntn-skills.js` 交给 Broker `NTN_SKILLS_BUILD_ENTRY`，沿 Broker 主地图的 Launch → Doctor → resource-batch → Evidence → Cleanup 完成真实宿主验证。SDK smoke不创建生产远端数据，包与证据保留；只在确认进程全部结束后回收本次自有临时目录，走系统 Trash。Skill规程的可用性仍需独立新会话实际完成路径，不能由文档新增推断通过。
+
+### 固定主文与当前缓存的按需读取
+
+SC13 继续使用上面的 `sdk-fixture.ts --catalog` 与 `sdk-package-smoke.mjs`，不增加验收专用产品入口。新增的独立 `entrypoint` Skill 保留完整主文、小资源和两份约 2 MiB 的未选对象；原 `a` 与 `resources` 场景不变。先跑安全的相关回归：
+
+```bash
+bun test packages/core/test/fixed-snapshot-files.test.ts packages/core/test/shared-current-observation.test.ts packages/core/test/shared-target-snapshot.test.ts packages/core/test/cache.test.ts packages/core/test/shared-graph-release.test.ts --timeout 30000
+```
+
+SDK smoke 在本次自有 clone 中先通过公开 current consume 真正完成整树验证，再把一个大对象移出缓存、损坏另一个。核对 `entrypoint-object-reads.jsonl` 与 `entrypoint-partial-evidence.json`：实际主文读取必须有 bytes/hash 正控制；固定主文、有效 current 主文和独立小资源读取时，未选大对象的读取数为零；完整文件目录仍在。缺失大文件、坏 hash 大文件被选中时分别失败，partial export 不能留下成功结果；另一个完整 clone 的 export 须逐文件匹配原始 bytes/hash。
+
+完整引用验证记录只能来自真实整树字节/hash 和共享引用检查，且绑定完整清单。legacy 或不匹配记录须重验；不得延长原观察时间、正文期限或绕过 pending/失效状态。固定历史读取与 current 的引用检查各保留原语义。文件目录成功不等于每个对象在本地；`materialized_paths` 只表示本次实际验证的选择。
+
+这是明确的受控 warm/partial-cache 场景，不称作真实冷源下载。Core 的 retained-object 请求集合另证明同 pin 缺失文件恢复与未选对象零获取；当前可变远端树的首次完整观察、source ownership 和旧 ZIP 成本仍单列。把本次已安装 CLI 交给 Broker 构建后，按主地图 `partial-entrypoint` 的 Doctor → Drive → Evidence → Cleanup 完成真实 Pi 路径，并由独立新会话再实际执行。
 
 ## Gotchas
 

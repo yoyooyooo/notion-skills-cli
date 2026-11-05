@@ -15,6 +15,7 @@ const keys = {
   page: `cache/shared-page-identities/${scope}/00000000-0000-4000-8000-000000000001.json`,
   github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
   retainedManifest: `cache/shared-history-manifests/${scope}/s_${"c".repeat(64)}.json`,
+  currentTree: `cache/shared-current-tree-validation/${scope}/s_${"d".repeat(64)}.json`,
   derivedGraph: `cache/shared-derived-graphs/${scope}/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   observationPending: `operations/shared-observation-pending/${"d".repeat(64)}/${"e".repeat(64)}.json`,
   historyPending: `operations/shared-snapshot-history/${scope}/snapshot-${"f".repeat(64)}.json`,
@@ -148,6 +149,76 @@ async function isolated(action: (root: string) => Promise<void>) {
   }
 }
 
+function currentTreeProgram(root: string, publish: boolean) {
+  const files = [
+    { path: "SKILL.md", text: "# Receipt\n[Guide](references/guide.md)\n" },
+    { path: "references/guide.md", text: "Guide\n" },
+  ]
+  return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
+import {ConfigProvider,Effect,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
+import {Notion} from ${JSON.stringify(core + "notion.ts")};
+import {SnapshotSchema} from ${JSON.stringify(core + "model.ts")};
+import {cachedRemoteObservation,clearCache,publishSnapshotObservation,validateCachedSharedCurrentTree} from ${JSON.stringify(core + "cache.ts")};
+process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
+process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
+process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
+const api=Layer.succeed(Notion,{version:Effect.succeed('controlled'),credentialIdentity:Effect.succeed('receipt-test'),request:()=>Effect.die(new Error('Unexpected network'))});
+Effect.runPromise(Effect.gen(function*(){
+  const store=yield* Store,scope=${JSON.stringify(scope)},record={id:'shared_skill:receipt-library:receipt-skill',kind:'skill',locator:{type:'shared_skill',page_id:'00000000-0000-4000-8000-000000000001',database_id:'00000000-0000-4000-8000-000000000002',data_source_id:'00000000-0000-4000-8000-000000000003',library_id:'receipt-library',skill_id:'receipt-skill'},name:'Receipt Skill',alias:'receipt-skill',description:'Controlled complete tree',default_context:false,enabled:true,entrypoint:'SKILL.md',ref:'skill://shared_skill%3Areceipt-library%3Areceipt-skill/SKILL.md'};
+  const version=yield* sha256('current-tree-receipt-sqlite'),id='s_'+(yield* sha256(JSON.stringify([scope,record.id,version]))),key='cache/shared-current-tree-validation/'+scope+'/'+id+'.json';
+  let reads=[];
+  const tracked={...store,readBytes:key=>Effect.suspend(()=>{reads.push(key);return store.readBytes(key);})};
+  if(${publish}) {
+    const files=[];for(const file of ${JSON.stringify(files)}){const bytes=new TextEncoder().encode(file.text),hash=yield* sha256(bytes);yield* store.writeBytes('objects/'+hash,bytes);files.push({path:file.path,sha256:hash,bytes:bytes.length});}
+    const snapshot={snapshot_id:id,scope,record,entrypoint:'SKILL.md',version_id:version,created_at:123,files};
+    yield* store.writeJson('snapshots/'+id+'.json',snapshot);
+    const generation=yield* store.reserveCacheGeneration(scope,record.id);
+    yield* publishSnapshotObservation(snapshot,123,generation,{sharedBodyValidUntil:Date.now()+3_600_000}).pipe(Effect.provideService(Store,tracked));
+    console.log(JSON.stringify({receipt:yield* store.readJson(key,Schema.Unknown),reads:reads.length}));
+    return;
+  }
+  const receipt=yield* store.readJson(key,Schema.Unknown),snapshot=yield* store.readJson('snapshots/'+id+'.json',SnapshotSchema),latest=yield* store.listKeys('cache/latest/'+scope+'/'+record.id),before=yield* Effect.forEach(latest,key=>store.readJson(key,Schema.Unknown));
+  const read=()=>cachedRemoteObservation(record.id,scope,{access:'manifest'}).pipe(Effect.provideService(Store,tracked));
+  yield* read();const warmReads=reads.length;reads=[];
+  yield* store.writeJson(key,{...receipt,materialization_version:'old-reference-checker'});
+  yield* read();const mismatchReads=reads.length;reads=[];
+  const repaired=yield* store.readJson(key,Schema.Unknown);
+  yield* store.retireKeys([key]);const retired=(yield* store.readJson(key,Schema.Unknown))??null;
+  yield* read();const retiredReads=reads.length;reads=[];
+  const after=yield* Effect.forEach(latest,key=>store.readJson(key,Schema.Unknown)),rebuilt=yield* store.readJson(key,Schema.Unknown);
+  const cleared=yield* clearCache(undefined,{all:true});
+  yield* validateCachedSharedCurrentTree(snapshot);
+  const fenced=yield* publishSnapshotObservation(snapshot,123,before[0].generation,{sharedBodyValidUntil:before[0].shared_body_valid_until}).pipe(Effect.result);
+  console.log(JSON.stringify({warmReads,mismatchReads,retiredReads,retired,repaired,rebuilt,before,after,clearIncluded:cleared.entries.includes(key),fenced:fenced._tag==='Failure'?fenced.failure.code:null,currentAfterClear:(yield* read())??null}));
+}).pipe(Effect.provide(Layer.mergeAll(api,StoreLive.pipe(Layer.provideMerge(NodeServices.layer)))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+}
+
+test("real Store publishes, repairs and retires current-tree proofs without renewing observations", async () => {
+  await isolated(async (root) => {
+    const published = await runProgram(currentTreeProgram(root, true))
+    expect(published.exit, published.stderr).toBe(0)
+    const initial = JSON.parse(published.stdout)
+    expect(initial.reads).toBe(2)
+    expect(initial.receipt).toMatchObject({ version: 1, scope })
+    const reopened = await runProgram(currentTreeProgram(root, false))
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    const result = JSON.parse(reopened.stdout)
+    expect(result).toMatchObject({
+      warmReads: 0,
+      mismatchReads: 2,
+      retiredReads: 2,
+      retired: null,
+      repaired: initial.receipt,
+      rebuilt: initial.receipt,
+      clearIncluded: true,
+      fenced: "CACHE_INVALIDATED",
+      currentAfterClear: null,
+    })
+    expect(result.after).toEqual(result.before)
+  })
+}, 30_000)
+
 test("shared cache and typed dispatch addresses persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({
@@ -172,6 +243,7 @@ test("shared cache and typed dispatch addresses persist across real Node restart
         keys.page,
         keys.github,
         keys.retainedManifest,
+        keys.currentTree,
         keys.derivedGraph,
       ].sort(),
       dispatch: [
@@ -204,8 +276,8 @@ test("shared cache and typed dispatch addresses persist across real Node restart
     )
     expect(schema.exit, schema.stderr).toBe(0)
     expect(JSON.parse(schema.stdout)).toEqual([
-      { category: "cache", retired: 0, count: 5 },
-      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 5 },
+      { category: "cache", retired: 0, count: 6 },
+      { category: "dispatch", retired: 0, count: Object.keys(keys).length - 6 },
     ])
   })
 }, 30_000)
@@ -395,7 +467,14 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
     expect(cleared.exit, cleared.stderr).toBe(0)
     const result = JSON.parse(cleared.stdout)
     expect(result.entries.sort()).toEqual(
-      [keys.observations, keys.page, keys.github, keys.retainedManifest, keys.derivedGraph].sort(),
+      [
+        keys.observations,
+        keys.page,
+        keys.github,
+        keys.retainedManifest,
+        keys.currentTree,
+        keys.derivedGraph,
+      ].sort(),
     )
     expect(result.cache).toEqual([])
     expect(result.dispatch).toEqual(
@@ -490,6 +569,9 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `operations/shared-observation-pending/${scope}/../other.json`,
       `operations/shared-snapshot-history/${scope}/latest.json`,
       `cache/shared-history-manifests/${scope}/latest.json`,
+      `cache/shared-current-tree-validation/${scope}/latest.json`,
+      `cache/shared-current-tree-validation/${scope}/../s_${"d".repeat(64)}.json`,
+      `cache/shared-current-tree-validation/foreign/s_${"d".repeat(64)}.json`,
       `cache/shared-derived-graphs/${scope}/${"d".repeat(64)}/latest.json`,
       `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/replacement.json`,
       `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/complete.json`,

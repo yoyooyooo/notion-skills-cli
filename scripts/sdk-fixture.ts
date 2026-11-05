@@ -35,8 +35,30 @@ const env = {
 }
 const scope = hash(JSON.stringify(["sdk-fixture", "", origin, hash(token)]))
 const bodies = new Map<string, Uint8Array>()
-const names = ["a", "b", "c", "base", "broken", "foreign", "resources"]
+const names = ["a", "b", "c", "base", "broken", "foreign", "resources", "entrypoint"]
 const binary = Uint8Array.from([0, 255, 1, 2, 128, 13, 10])
+// Keep the source complete. Independent consumers create their own partial-cache
+// copies after a real public current observation has validated this whole tree.
+const entrypointFiles = [
+  {
+    path: "references/selected.txt",
+    file_id: "entrypoint-selected",
+    bytes: new TextEncoder().encode("Selected entrypoint resource: 按需逐字节读取.\n"),
+    role: "selected" as const,
+  },
+  {
+    path: "assets/missing.bin",
+    file_id: "entrypoint-missing",
+    bytes: new Uint8Array(2 * 1024 * 1024).fill(0x81),
+    role: "missing" as const,
+  },
+  {
+    path: "assets/corrupt.bin",
+    file_id: "entrypoint-corrupt",
+    bytes: new Uint8Array(2 * 1024 * 1024).fill(0x82),
+    role: "corrupt" as const,
+  },
+]
 const resourceFiles = [
   {
     path: "references/guide.md",
@@ -120,6 +142,13 @@ const snapshots: Snapshot[] = names.map((name, index) => {
             sha256: hash(file.bytes),
           }))
         : []),
+      ...(name === "entrypoint"
+        ? entrypointFiles.map((file) => ({
+            path: file.path,
+            bytes: file.bytes.byteLength,
+            sha256: hash(file.bytes),
+          }))
+        : []),
     ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
     file_bindings: [
       { file_id: `main-${name}`, page_id: page, path: "SKILL.md" },
@@ -139,6 +168,13 @@ const snapshots: Snapshot[] = names.map((name, index) => {
             path: file.path,
           }))
         : []),
+      ...(name === "entrypoint"
+        ? entrypointFiles.map((file, index) => ({
+            file_id: file.file_id,
+            page_id: `00000000-0000-4000-8000-${String(index + 201).padStart(12, "0")}`,
+            path: file.path,
+          }))
+        : []),
     ],
     required: [],
     members: [],
@@ -146,7 +182,9 @@ const snapshots: Snapshot[] = names.map((name, index) => {
 })
 bodies.set(hash(binary), binary)
 for (const file of resourceFiles) bodies.set(hash(file.bytes), file.bytes)
+for (const file of entrypointFiles) bodies.set(hash(file.bytes), file.bytes)
 const resourceSnapshot = snapshots.find((snapshot) => snapshot.record.name === "resources")!
+const entrypointSnapshot = snapshots.find((snapshot) => snapshot.record.name === "entrypoint")!
 const ref = (snapshot: Snapshot) =>
   fileRef(
     snapshot.record.id,
@@ -222,23 +260,25 @@ const resourcePlan = await Effect.runPromise(
       for (const [sha, bytes] of bodies) yield* store.writeBytes(`objects/${sha}`, bytes)
       for (const snapshot of snapshots)
         yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
+      const source: Source = {
+        alias: "sdk-library",
+        database_id: "00000000-0000-4000-8000-000000000010",
+        title: "Controlled SDK fixture library",
+        data_source_ids: ["00000000-0000-4000-8000-000000000011"],
+        role: "content",
+        shared_library: library,
+      }
+      yield* store.writeJson("config.json", { sources: [source] })
+      const now = Date.now()
+      // The new current-validation sample is available to the SDK-only fixture
+      // too; catalog publication for the existing Pi cases stays opt-in.
+      for (const snapshot of withCatalog ? catalogSnapshots : [entrypointSnapshot]) {
+        const generation = yield* store.reserveCacheGeneration(scope, snapshot.record.id)
+        yield* publishSnapshotObservation(snapshot, now, generation, {
+          sharedBodyValidUntil: now + 300000,
+        })
+      }
       if (withCatalog) {
-        const source: Source = {
-          alias: "sdk-library",
-          database_id: "00000000-0000-4000-8000-000000000010",
-          title: "Controlled SDK fixture library",
-          data_source_ids: ["00000000-0000-4000-8000-000000000011"],
-          role: "content",
-          shared_library: library,
-        }
-        yield* store.writeJson("config.json", { sources: [source] })
-        const now = Date.now()
-        for (const snapshot of catalogSnapshots) {
-          const generation = yield* store.reserveCacheGeneration(scope, snapshot.record.id)
-          yield* publishSnapshotObservation(snapshot, now, generation, {
-            sharedBodyValidUntil: now + 300000,
-          })
-        }
         for (const database of ["auto", source.database_id])
           for (const selection of ["all", "content"]) {
             const key = [
@@ -316,6 +356,28 @@ const metadata = {
     ),
     sha256: hash(binary),
     bytes: binary.byteLength,
+  },
+  entrypoint: {
+    name: entrypointSnapshot.record.name,
+    ref: ref(entrypointSnapshot),
+    current_ref: entrypointSnapshot.record.ref,
+    source_cache: "controlled-complete-before-owned-partial-copy",
+    files: entrypointFiles.map((file) => ({
+      ref: fileRef(
+        entrypointSnapshot.record.id,
+        file.path,
+        entrypointSnapshot.snapshot_id,
+        file.file_id,
+      ),
+      path: file.path,
+      file_id: file.file_id,
+      bytes: file.bytes.byteLength,
+      sha256: hash(file.bytes),
+      role: file.role,
+      ...(file.role === "selected"
+        ? { content: new TextDecoder("utf8", { fatal: true, ignoreBOM: true }).decode(file.bytes) }
+        : {}),
+    })),
   },
   resourceBatch: {
     retained_fixture: retainedFixture,

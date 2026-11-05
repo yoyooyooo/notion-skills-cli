@@ -173,7 +173,7 @@ the selected source and preserving their local publication boundary.
 | `preparation` | Existing selected bindings, roots, required closure, full main text, directories, freshness, budgets and observed-version graph lock. Text is present exactly once here. |
 | `entries[].manifest` | Complete immutable file metadata, canonical owner, scope/version/pin, optional stable File bindings and upstream source provenance. `manifest_sha256` binds the complete receipt. |
 | `entries[].source_body` | The full selected effective snapshot entry, with matching ref/path/UTF-8 byte count/hash, inclusive line range and `has_more: false`. |
-| `materialization.status: entry_ready` | The entry is local and verified; other manifest files may be absent. `paths` lists available files. |
+| `materialization.status: entry_ready` | The entry is local and verified; other manifest files may be absent. `paths` lists the files verified for this operation, without scanning unrequested objects. |
 | `materialization.status: all_files_ready` | Every file in this selected manifest is locally available under the snapshot reader's checksum contract. |
 | `projection.status: identity` | The only supported model projection retains the exact source entry bytes. Source and projection hashes happen to be equal under this compiler; they remain separate fields. |
 | `export.status: not_requested` | No complete filesystem/ZIP export artifact was created or certified by this operation. |
@@ -186,6 +186,11 @@ The graph lock remains `observed_version_vector`. It records the versions actual
 observed; it is not an atomic Notion transaction across pages. Members and ordinary
 references remain candidate metadata. The `use` closure never silently promotes them
 to required or active instructions.
+
+Fixed and eligible current-cache entry reads use the [selected snapshot consumption](selected-snapshot-consumption.md)
+contract. Complete manifests and prior complete-reference validation do not imply
+that every object is currently local. A full export still verifies every file;
+current TTL, full-body deadlines, pending work and credential scope remain separate gates.
 
 The existing `preparation.usage.context_bytes` still measures the old successful
 prepare envelope. It does not measure this additional machine receipt or actual model

@@ -86,6 +86,7 @@ const migrations = {
 }
 
 type SharedLocalCategory = "cache" | "dispatch"
+const sharedCurrentTreeValidationPrefix = "cache/shared-current-tree-validation"
 const sharedLocalDomains: readonly {
   readonly prefix: string
   readonly category: SharedLocalCategory
@@ -116,6 +117,11 @@ const sharedLocalDomains: readonly {
     prefix: "cache/shared-history-manifests",
     category: "cache",
     address: /^cache\/shared-history-manifests\/[a-f0-9]{64}\/s_[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: sharedCurrentTreeValidationPrefix,
+    category: "cache",
+    address: /^cache\/shared-current-tree-validation\/[a-f0-9]{64}\/s_[a-f0-9]{64}\.json$/u,
   },
   {
     prefix: "cache/shared-derived-graphs",
@@ -627,8 +633,13 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                           { key },
                         ),
                 })
-                // Insert before checking: the unique key and transaction also cover competing processes.
-                yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO NOTHING`
+                // Content proofs are rebuilt only after complete verification. Replacing one cannot
+                // renew or recreate a current observation; its independent fence remains authoritative.
+                if (key.startsWith(`${sharedCurrentTreeValidationPrefix}/`))
+                  yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload,retired=0 WHERE shared_local_records.category='cache' AND excluded.category='cache'`
+                // All other shared lookups and dispatch evidence retain their frozen payloads.
+                else
+                  yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO NOTHING`
                 const stored = yield* sql<{
                   category: string
                   payload: string

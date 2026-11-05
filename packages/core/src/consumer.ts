@@ -3,6 +3,7 @@ import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
 import { type PreparedNode } from "./graph-prepare-model.ts"
 import { aliasFor, entrypointFor, fail, SkillsError } from "./model.ts"
 import { fileRef, normalizePath, pageId, parseRef, parseTarget } from "./ref.ts"
+import { validateSharedRecordIdentity } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import {
@@ -46,7 +47,7 @@ function validateSelection(targetText: string, node: PreparedNode) {
   if (
     !selected ||
     (target.snapshot !== undefined && target.snapshot !== node.binding.snapshot_id) ||
-    (target.path && target.path !== node.path) ||
+    (target.file_id === undefined && target.path && target.path !== node.path) ||
     (target.file_id !== undefined && target.file_id !== parseRef(node.ref).file_id)
   )
     throw invalid()
@@ -76,10 +77,10 @@ function validateManifest(entry: ConsumeEntry, node: PreparedNode, scope: string
     node.body_sha256 !== node.binding.body_sha256
   )
     throw invalid()
+  validateSharedRecordIdentity(record)
   if (
     locator.type === "shared_skill" &&
-    (record.id !== `shared_skill:${locator.library_id}:${locator.skill_id}` ||
-      pageId(locator.page_id) !== locator.page_id ||
+    (pageId(locator.page_id) !== locator.page_id ||
       pageId(locator.database_id) !== locator.database_id ||
       pageId(locator.data_source_id) !== locator.data_source_id)
   )

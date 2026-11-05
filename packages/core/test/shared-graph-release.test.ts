@@ -683,10 +683,13 @@ describe("explicit retained graph releases", () => {
     ).toBe("SNAPSHOT_NOT_MATERIALIZED")
     f.records.set(row[0], row[1])
     f.clearCalls()
-    await f.run(
+    const resumed = await f.run(
       readSkill(fileRef(node.record.id, file.path, node.snapshot_id), { output: "resumed.bin" }),
     )
     expect(f.outputs.get("resumed.bin")).toEqual(binary)
+    expect(resumed.materialization?.local_files_ready).toBe(false)
+    expect(resumed.materialization?.materialized_paths).toEqual([file.path])
+    expect(f.json.has(`snapshots/${node.snapshot_id}.json`)).toBe(false)
     const queried = f.calls.filter((call) =>
       JSON.stringify(call.body)?.includes('"equals":"object"'),
     )
@@ -694,6 +697,15 @@ describe("explicit retained graph releases", () => {
     expect(JSON.stringify(queried[0]?.body)).toContain(last.object_id)
     for (const chunk of file.chunks.slice(0, -1))
       expect(JSON.stringify(queried[0]?.body)).not.toContain(chunk.object_id)
+    const complete = await f.run(
+      exportSkill(node.ref, {
+        output: join(f.root, "resumed-complete"),
+        projection: "snapshot",
+        format: "directory",
+        offline: true,
+      }),
+    )
+    expect(complete.materialization?.local_files_ready).toBe(true)
     expect((await f.run(loadSnapshot(node.snapshot_id))).files).toHaveLength(2)
     expect(f.readBodyCount()).toBe(0)
     expect(f.writeCount()).toBe(0)

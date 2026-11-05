@@ -426,13 +426,23 @@ test("C9 current name selection uses complete scoped catalogs and refresh expose
   expect((await f.run(readSkill(page, { refresh: true }))).record.id).toBe(`notion_page:${page}`)
 })
 
-test("C10 complete checksum checks protect files/open and repair corrupted objects online", async () => {
+test("C10 files lists the fixed manifest while selected reads and full exports reject corrupted objects", async () => {
   const f = fixture()
   const snapshot = await f.run(openSkill(page))
   const ref = snapshot.files.find((file) => file.path === "references/guide.md")!
   f.objects.set(`objects/${ref.sha256}`, new TextEncoder().encode("corrupt"))
-  const pinned = await f.run(listSkill(snapshot.snapshot_id).pipe(Effect.result))
-  expect(pinned._tag === "Failure" && pinned.failure.code).toBe("STATE_CORRUPT")
+  const before = f.requests.length
+  const pinned = await f.run(listSkill(snapshot.snapshot_id))
+  expect(pinned.files.map((file) => file.path)).toEqual(snapshot.files.map((file) => file.path))
+  const selected = await f.run(
+    readSkill(snapshot.snapshot_id, { path: ref.path }).pipe(Effect.result),
+  )
+  expect(selected._tag === "Failure" && selected.failure.code).toBe("STATE_CORRUPT")
+  const complete = await f.run(cachedRemoteObservation(page, snapshot.scope).pipe(Effect.result))
+  expect(complete._tag === "Failure" && complete.failure.code).toBe("STATE_CORRUPT")
+  const exported = await f.run(snapshotPortable(snapshot).pipe(Effect.result))
+  expect(exported._tag === "Failure" && exported.failure.code).toBe("STATE_CORRUPT")
+  expect(f.requests.length).toBe(before)
   const rebuilt = await f.run(readSkill(page))
   expect(rebuilt.source).toBe("notion")
   const portable = await f.run(snapshotPortable(await f.run(openSkill(page))))

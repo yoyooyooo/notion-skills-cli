@@ -80,7 +80,7 @@ ntn-skills export "$NODE_MAIN_PIN_REF" --projection snapshot --output ./complete
 | `local_files_ready: true` | 该节点所有文件已经在本机逐一通过大小和 hash 校验 | 主文已送进模型上下文 |
 | `loaded: false` | CLI 没有声称模型投递或会话激活 | 任何 Broker loaded proof |
 
-`manifest` 只读取图与节点清单；`entrypoints` 再取各节点主文。`files` 返回完整目录和稳定 File ID 绑定。`read` 只物化指定文件，`prepare` 只物化主文；未选资源保持目录状态。返回的 `materialization.materialized_paths` 是已验证本地文件集合。
+`manifest` 只读取图与节点清单；`entrypoints` 再取各节点主文。`files` 返回完整目录和稳定 File ID 绑定。`read` 只物化指定文件，`prepare` 只物化主文；未选资源保持目录状态。返回的 `materialization.materialized_paths` 是本次需求实际校验的文件集合，不为推断其他文件是否齐备而扫描全部对象。只有已校验集合覆盖完整清单时才报告 `local_files_ready: true`；具体边界见[按需快照消费](selected-snapshot-consumption.md)。
 
 缺文件时按相同 Skill 下的精确 chunk Entity IDs 查询，每批最多 80 项，正常处理分页。块和组装后文件分别校验 SHA-256。每个通过校验的块才能进入共用对象缓存；中断后可复用这些块，缺失或损坏仍明确失败。不会按文件名、当前 URL 或相似内容补齐。
 

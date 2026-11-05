@@ -3,10 +3,12 @@ import { createHash } from "node:crypto"
 import { channel } from "node:diagnostics_channel"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
-import { cp, mkdir, readFile, writeFile } from "node:fs/promises"
+import fs from "node:fs"
+import fsPromises, { cp, lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
-import { createRequire } from "node:module"
+import { createRequire, syncBuiltinESMExports } from "node:module"
 import { isAbsolute, join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { pathToFileURL } from "node:url"
 
 const args = process.argv.slice(2)
@@ -27,7 +29,172 @@ const fixture = JSON.parse(await readFile(fixturePath, "utf8"))
 const env = JSON.parse(await readFile(fixture.env, "utf8"))
 const originalCwd = process.cwd()
 const originalToken = process.env.NOTION_API_TOKEN
+// Setup only, against the owned clone. This is the existing disposable-cache
+// retirement operation; the signed payload is preserved and never rewritten.
+function fixtureCurrentReceipt(database, key, retirePayload) {
+  const db = new DatabaseSync(database, { readOnly: retirePayload === undefined })
+  try {
+    const query = db.prepare(
+      "SELECT category,payload,retired FROM shared_local_records WHERE key=?",
+    )
+    let row = query.get(key)
+    assert.ok(row)
+    assert.equal(row.category, "cache")
+    if (retirePayload !== undefined) {
+      assert.equal(row.retired, 0)
+      assert.equal(row.payload, retirePayload)
+      const update = db
+        .prepare(
+          "UPDATE shared_local_records SET retired=1 WHERE key=? AND category='cache' AND retired=0 AND payload=?",
+        )
+        .run(key, retirePayload)
+      assert.equal(update.changes, 1)
+      row = query.get(key)
+      assert.equal(row.retired, 1)
+      assert.equal(row.payload, retirePayload)
+    }
+    return { key, ...row, receipt: JSON.parse(row.payload) }
+  } finally {
+    db.close()
+  }
+}
 const cases = []
+// Observe the actual Node FileSystem boundary used by Store.readBytes. The
+// positive control below must hit node:fs.readFile; other readFile variants are
+// recorded too, never assumed absent from a zero HTTP count. Results and errors
+// pass through unchanged, and only owned-clone object paths enter this ledger.
+let activeObjectProbe
+let objectReadSequence = 0
+const objectReadEvents = []
+const objectEvent = (probe, fields) => {
+  const event = { version: 1, sequence: ++objectReadSequence, label: probe.label, ...fields }
+  objectReadEvents.push(event)
+  fs.appendFileSync(join(root, "entrypoint-object-reads.jsonl"), JSON.stringify(event) + "\n", {
+    mode: 0o600,
+  })
+  return event
+}
+function observeObjectRead(api, path) {
+  const probe = activeObjectProbe
+  if (!probe || typeof path !== "string" || !path.startsWith(probe.objects + "/")) return
+  const sha256 = path.slice(probe.objects.length + 1)
+  if (!/^[a-f0-9]{64}$/u.test(sha256)) throw new Error("Unexpected owned object path")
+  const start = objectEvent(probe, { event: "start", api, sha256 })
+  probe.pending++
+  return (error, bytes) => {
+    probe.pending--
+    const value = bytes === undefined ? undefined : Buffer.from(bytes)
+    objectEvent(probe, {
+      event: "end",
+      read_id: start.sequence,
+      api,
+      sha256,
+      code: error?.code ?? null,
+      bytes: value?.length ?? null,
+      content_sha256: value ? hash(value) : null,
+    })
+  }
+}
+const originalReadFile = fs.readFile
+fs.readFile = function (...args) {
+  const end = observeObjectRead("node:fs.readFile", args[0])
+  if (!end) return originalReadFile.apply(this, args)
+  const callback = args.at(-1)
+  args[args.length - 1] = function (error, bytes) {
+    end(error, bytes)
+    return callback.apply(this, arguments)
+  }
+  try {
+    return originalReadFile.apply(this, args)
+  } catch (error) {
+    end(error)
+    throw error
+  }
+}
+const originalReadFileSync = fs.readFileSync
+fs.readFileSync = function (...args) {
+  const end = observeObjectRead("node:fs.readFileSync", args[0])
+  try {
+    const bytes = originalReadFileSync.apply(this, args)
+    end?.(null, bytes)
+    return bytes
+  } catch (error) {
+    end?.(error)
+    throw error
+  }
+}
+const originalPromiseReadFile = fsPromises.readFile
+fsPromises.readFile = function (...args) {
+  const end = observeObjectRead("node:fs/promises.readFile", args[0])
+  const result = originalPromiseReadFile.apply(this, args)
+  return !end
+    ? result
+    : result.then(
+        (bytes) => {
+          end(null, bytes)
+          return bytes
+        },
+        (error) => {
+          end(error)
+          throw error
+        },
+      )
+}
+syncBuiltinESMExports()
+async function traceObjectReads(label, objects, run) {
+  assert.equal(activeObjectProbe, undefined, "Object read observations must not overlap")
+  const probe = { label, objects, pending: 0 }
+  activeObjectProbe = probe
+  objectEvent(probe, {
+    event: "phase_start",
+    coverage: ["node:fs.readFile", "node:fs.readFileSync", "node:fs/promises.readFile"],
+  })
+  try {
+    return await run()
+  } finally {
+    activeObjectProbe = undefined
+    objectEvent(probe, { event: "phase_end", pending_reads: probe.pending })
+    assert.equal(probe.pending, 0, "Object reads must settle before the observation closes")
+  }
+}
+function objectReadProof(label, selected, forbidden = []) {
+  const events = objectReadEvents.filter((event) => event.label === label)
+  const starts = events.filter((event) => event.event === "start")
+  const ends = events.filter((event) => event.event === "end")
+  assert.equal(events[0]?.event, "phase_start")
+  assert.equal(events.at(-1)?.event, "phase_end")
+  assert.equal(events.at(-1)?.pending_reads, 0)
+  assert.equal(ends.length, starts.length)
+  for (const start of starts)
+    assert.equal(ends.filter((end) => end.read_id === start.sequence).length, 1)
+  for (const file of selected)
+    assert.ok(
+      ends.some(
+        (event) =>
+          event.api === "node:fs.readFile" &&
+          event.sha256 === file.sha256 &&
+          event.code === null &&
+          event.bytes === file.bytes &&
+          event.content_sha256 === file.sha256,
+      ),
+      file.path + ": actual Store.readBytes positive control",
+    )
+  for (const file of forbidden)
+    assert.equal(
+      starts.filter((event) => event.sha256 === file.sha256).length,
+      0,
+      file.path + ": unselected object was read",
+    )
+  return {
+    label,
+    reads: starts.length,
+    object_sha256s: [...new Set(starts.map((event) => event.sha256))],
+    verified_source_objects: selected.map((file) => file.sha256),
+    forbidden_object_reads: 0,
+    coverage:
+      "owned Store.readBytes through Node readFile APIs; selected objects are positive controls",
+  }
+}
 let commandNumber = 0
 async function command(argv, options = {}) {
   const started = performance.now()
@@ -96,9 +263,9 @@ const input = (targets, purpose = "use") => ({
   purpose,
   freshness: { policy: "offline" },
 })
-const invokeCli = async (argv) => {
+const invokeCli = async (argv, cwd = fixture.cwd) => {
   const result = await command([process.execPath, cli, ...argv], {
-    cwd: fixture.cwd,
+    cwd,
     env: { ...env, PATH: process.env.PATH },
   })
   return { ...result, value: JSON.parse(result.stdout) }
@@ -240,6 +407,234 @@ await test("fixed binary resource output preserves Core shape and exact bytes", 
   )
   assert.equal(reports.length, 1)
   assert.equal(reports[0].total_requests, 0)
+})
+
+await test("partial cache keeps fixed and validated-current entrypoints usable without reading unselected objects", async () => {
+  const sample = fixture.entrypoint
+  assert.ok(sample, "Generate the complete entrypoint fixture with this checkout")
+  const snapshot = fixture.snapshots.find((value) => value.record.name === sample.name)
+  assert.ok(snapshot)
+  const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
+  const selected = sample.files.find((file) => file.role === "selected")
+  const missing = sample.files.find((file) => file.role === "missing")
+  const corrupt = sample.files.find((file) => file.role === "corrupt")
+  assert.ok(main && selected && missing && corrupt)
+  assert.ok(missing.bytes >= 2 * 1024 * 1024 && corrupt.bytes >= 2 * 1024 * 1024)
+  const complete = join(root, "entrypoint-complete-source"),
+    partial = join(root, "entrypoint-partial-source")
+  await cp(fixture.cwd, complete, { recursive: true, errorOnExist: true, force: false })
+  await cp(fixture.cwd, partial, { recursive: true, errorOnExist: true, force: false })
+  const state = join(partial, env.NTN_SKILLS_HOME),
+    objects = join(state, "objects")
+  const preserved = join(root, "entrypoint-preserved")
+  await mkdir(preserved, { mode: 0o700 })
+  const mainBytes = await readFile(join(objects, main.sha256))
+  assert.equal(hash(mainBytes), main.sha256)
+  const currentOptions = { ...options, cwd: partial }
+  const consumeEntry = (result) => {
+    assert.equal(result.status, "ready", JSON.stringify(result))
+    assert.equal(result.entries.length, 1)
+    const entry = result.entries[0]
+    assert.equal(entry.manifest.complete, true)
+    assert.equal(entry.manifest.snapshot_id, snapshot.snapshot_id)
+    assert.equal(entry.manifest.version_id, snapshot.version_id)
+    assert.deepEqual(entry.manifest.files, snapshot.files)
+    assert.deepEqual(entry.materialization, { status: "entry_ready", paths: [snapshot.entrypoint] })
+    assert.equal(entry.source_body.sha256, main.sha256)
+    assert.equal(entry.source_body.bytes, main.bytes)
+    assert.equal(
+      result.preparation.nodes[0].content,
+      new TextDecoder("utf8", { fatal: true, ignoreBOM: true }).decode(mainBytes),
+    )
+    return entry
+  }
+  const exportComplete = async (label) => {
+    const output = join(root, "entrypoint-export-" + label)
+    const result = await invokeCli(
+      ["export", sample.ref, "--offline", "--projection", "snapshot", "--output", output],
+      complete,
+    )
+    assert.equal(result.code, 0, result.stdout + result.stderr)
+    const files = []
+    for (const file of snapshot.files) {
+      const bytes = await readFile(join(output, file.path))
+      assert.equal(bytes.length, file.bytes)
+      assert.equal(hash(bytes), file.sha256)
+      files.push({ path: file.path, bytes: bytes.length, sha256: hash(bytes) })
+    }
+    return { output, files }
+  }
+  const before = await exportComplete("before")
+  // The fixture publisher already performed real validation. Preserve its
+  // receipt, then force a legacy-cache upgrade through this installed public SDK
+  // so the independent observation also proves every source byte was checked.
+  const receiptKey = `cache/shared-current-tree-validation/${snapshot.scope}/${snapshot.snapshot_id}.json`
+  const database = join(state, "state.sqlite")
+  const publishedReceipt = fixtureCurrentReceipt(database, receiptKey)
+  assert.equal(publishedReceipt.retired, 0)
+  assert.equal(publishedReceipt.receipt.scope, snapshot.scope)
+  assert.equal(publishedReceipt.receipt.snapshot_id, snapshot.snapshot_id)
+  await writeFile(
+    join(preserved, "published-current-receipt.json"),
+    JSON.stringify(publishedReceipt, null, 2) + "\n",
+    { mode: 0o600, flag: "wx" },
+  )
+  const retirement = fixtureCurrentReceipt(database, receiptKey, publishedReceipt.payload)
+  await writeFile(
+    join(preserved, "current-receipt-retirement.json"),
+    JSON.stringify(retirement, null, 2) + "\n",
+    { mode: 0o600, flag: "wx" },
+  )
+  const warm = await traceObjectReads("full-current-validation", objects, () =>
+    sdk.consume(input([sample.current_ref], "inspect"), currentOptions),
+  )
+  consumeEntry(warm)
+  const warmProof = objectReadProof("full-current-validation", snapshot.files)
+  const revalidated = fixtureCurrentReceipt(database, receiptKey)
+  assert.equal(revalidated.retired, 0)
+  assert.equal(revalidated.payload, publishedReceipt.payload)
+  const receipt = revalidated.receipt
+  assert.equal(receipt.scope, snapshot.scope)
+  assert.equal(receipt.snapshot_id, snapshot.snapshot_id)
+  assert.equal(receipt.version_id, snapshot.version_id)
+  await writeFile(
+    join(root, "entrypoint-validated-current.json"),
+    JSON.stringify(
+      {
+        result: warm,
+        receipt,
+        receipt_storage: "SQLite shared_local_records",
+        retirement_preserved_payload: true,
+        object_reads: warmProof,
+      },
+      null,
+      2,
+    ) + "\n",
+    { mode: 0o600 },
+  )
+  await rename(join(objects, missing.sha256), join(preserved, "missing-source.bin"))
+  await rename(join(objects, corrupt.sha256), join(preserved, "corrupt-source.bin"))
+  const badBytes = Buffer.alloc(corrupt.bytes, 0xff),
+    badHash = hash(badBytes)
+  assert.notEqual(badHash, corrupt.sha256)
+  await writeFile(join(objects, corrupt.sha256), badBytes, { mode: 0o600, flag: "wx" })
+  const partialState = async () => {
+    await assert.rejects(lstat(join(objects, missing.sha256)), { code: "ENOENT" })
+    const bad = await readFile(join(objects, corrupt.sha256))
+    assert.equal(bad.length, corrupt.bytes)
+    assert.equal(hash(bad), badHash)
+    return {
+      missing_sha256: missing.sha256,
+      corrupt_expected_sha256: corrupt.sha256,
+      corrupt_actual_sha256: badHash,
+      corrupt_bytes: bad.length,
+    }
+  }
+  const damagedBefore = await partialState()
+  const proofs = []
+  for (const [label, target] of [
+    ["fixed-entrypoint", sample.ref],
+    ["validated-current-entrypoint", sample.current_ref],
+  ]) {
+    const result = await traceObjectReads(label, objects, () =>
+      sdk.consume(input([target], "inspect"), currentOptions),
+    )
+    consumeEntry(result)
+    const proof = objectReadProof(label, [main], [selected, missing, corrupt])
+    assert.deepEqual(proof.object_sha256s, [main.sha256])
+    proofs.push(proof)
+    await writeFile(
+      join(root, "entrypoint-" + label + ".json"),
+      JSON.stringify(result, null, 2) + "\n",
+      { mode: 0o600 },
+    )
+  }
+  const read = await traceObjectReads("fixed-main-read", objects, () =>
+    sdk.readSkill(sample.ref, { ...currentOptions, offline: true }),
+  )
+  assert.equal(
+    read.content,
+    new TextDecoder("utf8", { fatal: true, ignoreBOM: true }).decode(mainBytes),
+  )
+  proofs.push(objectReadProof("fixed-main-read", [main], [selected, missing, corrupt]))
+  const directory = await invokeCli(["files", snapshot.snapshot_id, "--offline"], partial)
+  assert.equal(directory.code, 0, directory.stdout + directory.stderr)
+  assert.deepEqual(
+    directory.value.files.map((file) => ({ path: file.path, bytes: file.bytes })),
+    snapshot.files.map(({ path, bytes }) => ({ path, bytes })),
+  )
+  const resource = await traceObjectReads("selected-small-resource", objects, () =>
+    sdk.readResources({ version: 1, refs: [selected.ref] }, { ...currentOptions, offline: true }),
+  )
+  assert.equal(resource.status, "ready", JSON.stringify(resource))
+  assert.deepEqual(resource.materialization, {
+    status: "selected_files_ready",
+    paths: [selected.path],
+  })
+  assert.equal(resource.files[0].content, selected.content)
+  assert.equal(resource.manifest.files.length, snapshot.files.length)
+  proofs.push(objectReadProof("selected-small-resource", [selected], [main, missing, corrupt]))
+  const failures = []
+  for (const [file, code] of [
+    [missing, "SNAPSHOT_MISSING"],
+    [corrupt, "STATE_CORRUPT"],
+  ]) {
+    await assert.rejects(
+      () =>
+        sdk.readSkill(file.ref, {
+          ...currentOptions,
+          offline: true,
+          output: join(root, "entrypoint-rejected-" + file.role + ".bin"),
+        }),
+      (error) => error instanceof sdk.SkillsError && error.code === code,
+    )
+    failures.push({ path: file.path, code })
+  }
+  const rejectedExport = await invokeCli(
+    [
+      "export",
+      sample.ref,
+      "--offline",
+      "--projection",
+      "snapshot",
+      "--output",
+      join(root, "entrypoint-partial-export"),
+    ],
+    partial,
+  )
+  assert.notEqual(rejectedExport.code, 0)
+  assert.equal(
+    rejectedExport.value.error?.code,
+    "STATE_CORRUPT",
+    JSON.stringify(rejectedExport.value),
+  )
+  assert.deepEqual(
+    await partialState(),
+    damagedBefore,
+    "Entry reads and failed selection/export must not repair or overwrite damaged objects",
+  )
+  const after = await exportComplete("after")
+  assert.deepEqual(after.files, before.files)
+  const evidence = {
+    source_state:
+      "controlled current validated in full, then owned partial cache; not a cold source",
+    snapshot_id: snapshot.snapshot_id,
+    main_sha256: main.sha256,
+    directory_files: directory.value.files.length,
+    warm_validation: warmProof,
+    selected_reads: proofs,
+    partial_state: damagedBefore,
+    failures,
+    partial_export: { status: "rejected", code: rejectedExport.value.error.code },
+    complete_export_before: before,
+    complete_export_after: after,
+  }
+  await writeFile(
+    join(root, "entrypoint-partial-evidence.json"),
+    JSON.stringify(evidence, null, 2) + "\n",
+    { mode: 0o600 },
+  )
+  return evidence
 })
 
 const resourceInput = { version: 1, refs: fixture.resourceBatch.refs }
