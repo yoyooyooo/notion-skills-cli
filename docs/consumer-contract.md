@@ -90,6 +90,13 @@ object, without the CLI `ok` wrapper. It accepts the same `database`, `path`, `f
 `lines`, `output`, `refresh`, `offline` and millisecond `maxAge` options. A fixed main
 or resource File ref uses the existing snapshot/read checks. Binary resources require
 `output`; the result's output path and bytes have the existing Store contract.
+`READ_OUTPUT_PROOF_VERSION === 1` additionally identifies output-mode `sha256`
+(the verified selected bytes) and `entrypoint_sha256` (the entrypoint commitment
+from the validated fixed manifest). Reading a resource does not acquire its main
+object to supply that commitment. A host can compare a persisted owner binding
+and verify the output file without preparing a Skill body or accepting the
+resource batch's size budget. These machine fields are absent from ordinary
+text/line reads and do not establish model delivery or instruction activation.
 `readSkill` and `decodeConsumeResult` reject with the exported `SkillsError` for typed
 domain failures, preserving `_tag`, `code`, `message` and optional `details`.
 Unexpected implementation defects remain rejected promises.

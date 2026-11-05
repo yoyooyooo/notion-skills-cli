@@ -14,6 +14,7 @@
 | SC-TOOLS-04 | 同一固定 owner/pin 的资源集合一次获取，源字节与投递证明分开 | [资源合同](../../../../docs/resource-read-contract.md)、Core 定向测试、现有独立 SDK smoke；实际 Pi 从 Broker 主地图 `resource-batch` 进入 |
 | SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象；current 先判定完整来源归属，再获取必需字节 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、既有 SDK smoke 的 partial-cache 与 cold ownership case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
 | SC-METADATA-01 | 单次 scalar current 读取内，逻辑选择与原生引用编译复用完整六属性目录 | [目录复用合同](../../../../docs/shared-metadata-consumption.md)、下方 scalar inventory 回归和独立 SDK/CLI smoke；完整 SC11 投影/批次矩阵仍单列 |
+| SC-TOOLS-14 | 固定单资源 output 直接返回文件与 owner 主文承诺，不获取主文对象 | [消费合同](../../../../docs/consumer-contract.md)、fixed-snapshot-files 的 output 回归与独立 SDK/CLI smoke；实际 Pi 从 Broker 主地图 `resource-scalar` / `resource-scalar-short-refs` 进入 |
 
 ### 证明对象
 
@@ -143,6 +144,8 @@ fixture 必须使用符合 CLI runtime 要求的实际 Node 运行；它会经�
 把**本次独立安装**的 `RESOURCE_CONSUMER/node_modules/ntn-skills/dist/ntn-skills.js` 交给 Broker `NTN_SKILLS_BUILD_ENTRY`，沿 Broker 主地图的 Launch → Doctor → resource-batch → Evidence → Cleanup 完成真实宿主验证。SDK smoke不创建生产远端数据，包与证据保留；只在确认进程全部结束后回收本次自有临时目录，走系统 Trash。Skill规程的可用性仍需独立新会话实际完成路径，不能由文档新增推断通过。
 
 ### 固定主文与当前缓存的按需读取
+
+固定资源的 `readSkill(ref, { output })` 通过 `READ_OUTPUT_PROOF_VERSION = 1` 暴露所选文件 `sha256` 与独立 manifest 的 `entrypoint_sha256`。普通 text/lines 输出不携带这两个机器字段。`fixed-snapshot-files.test.ts` 在主文对象缺失时验证完整输出、空文件、binary 与超过 batch 16 MiB 上限的 scalar 对象；`sdk-package-smoke.mjs` 验证实际声明导出、安装包 SDK/CLI output 等价和 owner hash。不要用资源 batch 的预算替换原 scalar 能力，也不要将短引用自身的 owner hash 当作 SDK 的独立证明。Pi 主文对象、物化、会话 loaded 与 provider 投递各由 Broker 的两个 scalar 场景取证。
 
 SC13 继续使用上面的 `sdk-fixture.ts --catalog` 与 `sdk-package-smoke.mjs`，不增加验收专用产品入口。新增的独立 `entrypoint` Skill 保留完整主文、小资源和两份约 2 MiB 的未选对象；原 `a` 与 `resources` 场景不变。先跑安全的相关回归：
 

@@ -11,6 +11,7 @@ import {
   SDK_VERSION,
   CONSUMER_CONTRACT_VERSION,
   RESOURCE_READ_CONTRACT_VERSION,
+  READ_OUTPUT_PROOF_VERSION,
 } from "../src/sdk.ts"
 import { nodeRuntime } from "../src/runtime.ts"
 
@@ -99,9 +100,12 @@ describe("Promise SDK boundary", () => {
   })
 
   test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {
-    expect([SDK_VERSION, CONSUMER_CONTRACT_VERSION, RESOURCE_READ_CONTRACT_VERSION]).toEqual([
-      1, 1, 1,
-    ])
+    expect([
+      SDK_VERSION,
+      CONSUMER_CONTRACT_VERSION,
+      RESOURCE_READ_CONTRACT_VERSION,
+      READ_OUTPUT_PROOF_VERSION,
+    ]).toEqual([1, 1, 1, 1])
     const reports: unknown[] = []
     for (const input of [
       { version: 2, refs: [resourceRef] },

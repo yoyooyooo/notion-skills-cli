@@ -1119,6 +1119,9 @@ export interface ReadOptions extends ReadPolicyOptions {
   readonly output?: string
 }
 
+/** Output-only file and owner commitments; text reads retain their existing shape. */
+export const READ_OUTPUT_PROOF_VERSION = 1
+
 export function readSkill(input: string, options: ReadOptions = {}) {
   return Effect.gen(function* () {
     if (options.from && options.path !== undefined)
@@ -1201,10 +1204,15 @@ export function readSkill(input: string, options: ReadOptions = {}) {
       ...snapshotReferences(snapshot),
     }
     if (options.output) {
+      const entrypoint = snapshot.files.find((entry) => entry.path === snapshot.entrypoint)
+      if (!entrypoint)
+        return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot has no entrypoint file."))
       return {
         ...metadata,
         ...(yield* store.output(options.output, bytes)),
         bytes: bytes.length,
+        sha256: file.sha256,
+        entrypoint_sha256: entrypoint.sha256,
       }
     }
     const content = yield* Effect.try({

@@ -397,7 +397,7 @@ The read-output example below preserves the authored `Tty7` spelling while expos
 
 The catalog database map includes `role` alongside database_id/title/alias/data_source_ids. Consumers preserve both source roles, require page locators in content sources and subscription locators in upstream sources, and check exact DB/DS containment plus successful-query coverage before registration. The role does not authorize reading arbitrary external records. Discovery retains metadata only; exact activation still validates the record, selected source and authentication scope.
 
-`files` returns fixed snapshot metadata and file paths, sizes and pinned refs without bodies. `read --output` reuses exact bytes and rejects differing output. Inclusive 1-based `--lines` and `--raw` reject output mode.
+`files` returns fixed snapshot metadata and file paths, sizes and pinned refs without bodies. `read --output` reuses exact bytes and rejects differing output. Its result includes `bytes` and `sha256` for the selected file, plus `entrypoint_sha256` from the validated snapshot manifest; a resource read does not read the main object to obtain this owner commitment. Ordinary text reads retain their existing shape. Inclusive 1-based `--lines` and `--raw` reject output mode.
 
 Local discovery registrations are stored in `~/.config/ntn-skills/config.json`, with directory precedence `NTN_SKILLS_CONFIG_HOME` > `$XDG_CONFIG_HOME/ntn-skills` > `~/.config/ntn-skills`. Shared library source manifests and selections remain in Notion, independently of those local aliases/preferences. `NTN_SKILLS_HOME` controls SQLite and immutable state. Old state-directory configuration is imported only by the explicit migration tool; ordinary reads never relocate it.
 

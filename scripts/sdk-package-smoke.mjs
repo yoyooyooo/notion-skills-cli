@@ -395,6 +395,7 @@ try {
     assert.equal(sdk.SDK_VERSION, 1)
     assert.equal(sdk.CONSUMER_CONTRACT_VERSION, 1)
     assert.equal(sdk.RESOURCE_READ_CONTRACT_VERSION, 1)
+    assert.equal(sdk.READ_OUTPUT_PROOF_VERSION, 1)
     assert.equal(sdk.PACKAGE_VERSION, manifest.version)
     assert.equal(sdk.parseDuration("2m"), 120000)
     assert.throws(
@@ -403,15 +404,17 @@ try {
     )
     await writeFile(
       join(root, "consumer.ts"),
-      `import { consume, readSkill, readResources, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot } from "ntn-skills/sdk";
+      `import { consume, readSkill, readResources, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot } from "ntn-skills/sdk";
   const input = { version: 1, targets: ["page"], purpose: "use" } satisfies ConsumeInput;
   const version: 1 = SDK_VERSION;
   const received: Promise<ConsumeResult> = consume(input, { cwd: ".", env: {}, signal: new AbortController().signal, metrics: true, execution: { priority: "prefetch", queueBudgetMs: 100, timeBudgetMs: 200, rateShare: .1 }, onRequestMetrics: (snapshot: RequestMetricsSnapshot | null) => void snapshot });
   const read: Promise<ReadSkillResult> = readSkill("file", { offline: true, metrics: true, maxAge: parseDuration("1s") });
   const resources = { version: 1, refs: ["fixed-file"], budget: { maxFiles: 16, maxBytes: 1048576, timeBudgetMs: 30000 } } satisfies ResourceReadInput;
   const resourceVersion: 1 = RESOURCE_READ_CONTRACT_VERSION;
+  const outputProofVersion: 1 = READ_OUTPUT_PROOF_VERSION;
+  const outputProof = (result: ReadSkillResult) => "output" in result ? [result.sha256, result.entrypoint_sha256] : [];
   const batch: Promise<ResourceReadResult> = readResources(resources, { cwd: ".", env: {}, offline: true, metrics: true, signal: new AbortController().signal });
-  void [received, read, batch, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion];
+  void [received, read, batch, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
   // @ts-expect-error purpose is a closed protocol domain
   const wrong: ConsumeInput = { version: 1, targets: [], purpose: "activate" };
   void wrong;
@@ -495,6 +498,13 @@ try {
     assert.equal("ok" in result, false)
     assert.equal(result.output, join(fixture.cwd, "sdk-resource.bin"))
     assert.equal(hash(await readFile(result.output)), fixture.resource.sha256)
+    assert.equal(result.sha256, fixture.resource.sha256)
+    const snapshotId = new URL(fixture.resource.ref).searchParams.get("snapshot")
+    const snapshot = fixture.snapshots.find((value) => value.snapshot_id === snapshotId)
+    assert.ok(snapshot)
+    const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
+    assert.ok(main)
+    assert.equal(result.entrypoint_sha256, main.sha256)
     const legacy = await invokeCli([
       "read",
       fixture.resource.ref,

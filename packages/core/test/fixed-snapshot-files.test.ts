@@ -24,9 +24,9 @@ import {
   skillPage,
 } from "./shared-snapshot-fixture.ts"
 
-async function fixture(retain = false, fileCount = 3) {
+async function fixture(retain = false, fileCount = 3, selectedBody?: string) {
   const f = sharedSnapshotFixture({ fileCount })
-  if (fileCount > 1) f.bodies.set(id(11), "\uFEFFSelected resource\r\n完整字节\r\n")
+  if (fileCount > 1) f.bodies.set(id(11), selectedBody ?? "\uFEFFSelected resource\r\n完整字节\r\n")
   if (fileCount > 2) f.bodies.set(id(12), "Large unselected resource.\n".repeat(1_000))
   const snapshot = await f.target(parseTarget(skillPage), { database: library.skills.database_id })
   const plan = retain ? await f.run(prepareSharedSnapshotHistory(library, snapshot)) : undefined
@@ -38,6 +38,7 @@ async function fixture(retain = false, fileCount = 3) {
       : await f.run(registerRetainedSnapshot(snapshot.scope, library, plan.pin_id, plan.manifest))
   const objectReads = new Map<string, number>()
   const jsonReads = new Map<string, number>()
+  const outputs = new Map<string, Uint8Array>()
   const run = <A, E>(
     effect: Effect.Effect<
       A,
@@ -59,6 +60,11 @@ async function fixture(retain = false, fileCount = 3) {
               objectReads.set(key, (objectReads.get(key) ?? 0) + 1)
               return store.readBytes(key)
             },
+            output: (path, bytes) =>
+              Effect.sync(() => {
+                outputs.set(path, bytes)
+                return { output: path, reused: false }
+              }),
           }),
         )
       }),
@@ -76,7 +82,7 @@ async function fixture(retain = false, fileCount = 3) {
       snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
     )
   f.clearCalls()
-  return { ...f, run, snapshot, retained, plan, file, ref, objectReads, jsonReads }
+  return { ...f, run, snapshot, retained, plan, file, ref, objectReads, jsonReads, outputs }
 }
 
 describe("fixed snapshot selected files", () => {
@@ -174,6 +180,90 @@ describe("fixed snapshot selected files", () => {
     expect([...new TextEncoder().encode(result.content)]).toEqual([...expected])
     expect(result.materialization?.materialized_paths).toEqual([selected.path])
     expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+    expect(f.calls).toHaveLength(0)
+    expect(result).not.toHaveProperty("sha256")
+    expect(result).not.toHaveProperty("entrypoint_sha256")
+  })
+
+  test("fixed output proves the selected bytes and independent owner without acquiring the main", async () => {
+    const f = await fixture()
+    const selected = f.file("references/1.md")
+    const main = f.file(f.snapshot.entrypoint)
+    const expected = f.objects.get("objects/" + selected.sha256)
+    f.objects.delete("objects/" + main.sha256)
+    f.objects.delete("objects/" + f.file("references/2.md").sha256)
+    const result = await f.run(
+      readSkill(f.ref(selected.path), { offline: true, output: "/memory/selected.bin" }),
+    )
+    expect(result).toMatchObject({
+      path: selected.path,
+      bytes: selected.bytes,
+      sha256: selected.sha256,
+      entrypoint_sha256: main.sha256,
+      output: "/memory/selected.bin",
+      reused: false,
+    })
+    expect(result).not.toHaveProperty("content")
+    expect(f.outputs.get("/memory/selected.bin")).toEqual(expected)
+    expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+    expect(f.calls).toHaveLength(0)
+  })
+
+  for (const [name, body] of [
+    ["empty", ""],
+    ["binary", "\u0000\u0001\u0002"],
+  ]) {
+    test(`fixed output preserves ${name} scalar files`, async () => {
+      const f = await fixture(false, 2, body)
+      const selected = f.file("references/1.md")
+      const main = f.file(f.snapshot.entrypoint)
+      f.objects.delete("objects/" + main.sha256)
+      const result = await f.run(
+        readSkill(f.ref(selected.path), { offline: true, output: "/memory/resource.bin" }),
+      )
+      expect(result).toMatchObject({
+        bytes: selected.bytes,
+        sha256: selected.sha256,
+        entrypoint_sha256: main.sha256,
+      })
+      const output = f.outputs.get("/memory/resource.bin")
+      if (output === undefined) throw new Error("Expected scalar output")
+      expect(output.byteLength).toBe(selected.bytes)
+      expect(digest(output)).toBe(selected.sha256)
+      expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+      expect(f.calls).toHaveLength(0)
+    })
+  }
+
+  test("fixed output preserves scalar objects larger than the resource batch ceiling", async () => {
+    const f = await fixture()
+    const original = f.file("references/1.md")
+    const bytes = new Uint8Array(17 * 1024 * 1024).fill(65)
+    const selected = { ...original, bytes: bytes.byteLength, sha256: digest(bytes) }
+    const version = digest(JSON.stringify(["large-scalar-object", selected]))
+    const snapshotId = `s_${digest(JSON.stringify([f.snapshot.scope, f.snapshot.record.id, version]))}`
+    const snapshot = decode(SnapshotSchema, {
+      ...f.snapshot,
+      files: f.snapshot.files.map((file) => (file.path === selected.path ? selected : file)),
+      version_id: version,
+      snapshot_id: snapshotId,
+    })
+    f.json.set(`snapshots/${snapshotId}.json`, snapshot)
+    f.objects.set(`objects/${selected.sha256}`, bytes)
+    const main = f.file(f.snapshot.entrypoint)
+    f.objects.delete(`objects/${main.sha256}`)
+    const ref = fileRef(snapshot.record.id, selected.path, snapshotId, "file-1")
+    const result = await f.run(readSkill(ref, { offline: true, output: "/memory/large.bin" }))
+    expect(result).toMatchObject({
+      bytes: selected.bytes,
+      sha256: selected.sha256,
+      entrypoint_sha256: main.sha256,
+    })
+    const output = f.outputs.get("/memory/large.bin")
+    if (output === undefined) throw new Error("Expected large scalar output")
+    expect(output.byteLength).toBe(selected.bytes)
+    expect(digest(output)).toBe(selected.sha256)
+    expect([...f.objectReads.keys()]).toEqual([`objects/${selected.sha256}`])
     expect(f.calls).toHaveLength(0)
   })
 
