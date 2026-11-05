@@ -181,6 +181,7 @@ export function reconcilePublication(operationId: string) {
             next: {
               argv: [
                 "ntn-skills",
+                "ctl",
                 "operation",
                 result.outcome === "needs_safe_resume" ? "resume" : "reconcile",
                 operationId,
@@ -211,7 +212,7 @@ export function reconcilePublication(operationId: string) {
                   "The recorded empty-preimage correction remains current; its original exact successor still must be sent.",
               },
             ],
-            next: { argv: ["ntn-skills", "operation", "resume", operationId] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "resume", operationId] },
           }
         }
         const creationDiscovery: unknown[] = []
@@ -307,7 +308,7 @@ export function reconcilePublication(operationId: string) {
             ],
             verified: false,
             unresolved: true,
-            next: { argv: ["ntn-skills", "operation", "reconcile", operationId] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "reconcile", operationId] },
           }
         }
         const retainedUploads = retainedUploadReplacementCandidates(receipt)
@@ -1118,7 +1119,7 @@ export function reconcilePublication(operationId: string) {
             observations,
             verified: false,
             unresolved: true,
-            next: { argv: ["ntn-skills", "operation", "resume", operationId] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "resume", operationId] },
           }
         }
         if (fenced && originalObservedMarkdownCorrectionCandidate(fenced)) {
@@ -1173,7 +1174,7 @@ export function reconcilePublication(operationId: string) {
                     "The original empty preimage is fully proved. The old derived observation and fence remain in history; a new exact original-body request is required.",
                 },
               ],
-              next: { argv: ["ntn-skills", "operation", "resume", operationId] },
+              next: { argv: ["ntn-skills", "ctl", "operation", "resume", operationId] },
             }
           }
           observations.push({
@@ -1274,7 +1275,7 @@ export function reconcilePublication(operationId: string) {
                     }
                   : item,
               ),
-              next: { argv: ["ntn-skills", "operation", "resume", operationId] },
+              next: { argv: ["ntn-skills", "ctl", "operation", "resume", operationId] },
             }
           }
           observations.push({
@@ -1374,7 +1375,7 @@ export function reconcilePublication(operationId: string) {
                     }
                   : item,
               ),
-              next: { argv: ["ntn-skills", "operation", "resume", operationId] },
+              next: { argv: ["ntn-skills", "ctl", "operation", "resume", operationId] },
             }
           }
           observations.push({
@@ -1475,7 +1476,7 @@ export function reconcilePublication(operationId: string) {
               ),
               verified: false as const,
               unresolved: false,
-              next: { argv: ["ntn-skills", "operation", "resume", operationId] },
+              next: { argv: ["ntn-skills", "ctl", "operation", "resume", operationId] },
             }
           }
         }
@@ -1627,10 +1628,13 @@ export function reconcilePublication(operationId: string) {
                     item.reason ===
                     "Original unknown retained as a remote orphan; replacement is a separate suboperation.",
                 )
-              ? { argv: ["ntn-skills", "operation", "resume", operationId, "--new-artifact"] }
+              ? {
+                  argv: ["ntn-skills", "ctl", "operation", "resume", operationId, "--new-artifact"],
+                }
               : {
                   argv: [
                     "ntn-skills",
+                    "ctl",
                     "operation",
                     outcome === "unknown" &&
                     !observations.some((item) => item.reason === "PUBLICATION_BLOCK_RETRY_REQUIRED")

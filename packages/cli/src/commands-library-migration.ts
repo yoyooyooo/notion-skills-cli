@@ -220,7 +220,7 @@ const reconcile = defineCommand(
 ).pipe(
   Command.withShortDescription("Read the exact original migration outcome without replay"),
   Command.withDescription(
-    "Use the same local original journal. On another machine, add --target to reconstruct the exact shared manifest and retained origin. This reads original facts only: it never repeats POST/PATCH, re-inspects a provider, adopts a current body or resumes a partial tree. A successful result verifies the historical create outcome, not a latest snapshot; requires_fresh_read remains true. Missing original outcomes, partial archives and unavailable first-create pages remain unresolved. Do not use generic operation resume for this migration family.",
+    "Use the same local original journal. On another machine, add --target to reconstruct the exact shared manifest and retained origin. This reads original facts only: it never repeats POST/PATCH, re-inspects a provider, adopts a current body or resumes a partial tree. A successful result verifies the historical create outcome, not a latest snapshot; requires_fresh_read remains true. Missing original outcomes, partial archives and unavailable first-create pages remain unresolved. Do not use generic ctl operation resume for this migration family.",
   ),
   Command.withExamples([
     {

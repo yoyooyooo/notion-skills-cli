@@ -118,6 +118,7 @@ test("public Node prepare batches real HTTPS metadata, persists derived director
         [
           Bun.which("node")!,
           main,
+          "ctl",
           "prepare",
           f.pageIds[0]!,
           f.pageIds[2]!,

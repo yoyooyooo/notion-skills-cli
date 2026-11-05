@@ -57,7 +57,7 @@ export function upstreamOperatorCommand<E, R>(emit: (value: unknown) => Effect.E
     )
   return defineCommand("upstream").pipe(
     Command.withDescription(
-      "One-off migration and recovery of retained upstream publications. These commands preserve their existing identities, reviewed plans and guards. Daily subscription maintenance uses ntn-skills sync upstream.",
+      "One-off migration and recovery of retained upstream publications. These commands preserve their existing identities, reviewed plans and guards. Daily subscription maintenance uses ntn-skills ctl sync upstream.",
     ),
     Command.withSubcommands([
       defineCommand(

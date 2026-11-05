@@ -209,7 +209,7 @@ Advanced HTTP and local mounts use `ctl library source composition inspect PLAN_
 ## Choose a Profile and View
 
 ```bash
-ntn-skills views --database LIBRARY_ENTRY
+ntn-skills ctl views --database LIBRARY_ENTRY
 ntn-skills ctl library profile list --entry LIBRARY_ENTRY
 ntn-skills ctl library profile show daily --entry LIBRARY_ENTRY
 ntn-skills list --profile daily --database LIBRARY_ENTRY
@@ -305,7 +305,7 @@ ntn-skills ctl library migration reconcile \
   --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID
 ```
 
-On a machine without the original local journal, add `--target EXACT_NEW_PAGE_ID` from an existing receipt. Reconciliation reads the retained original intent/outcome only: it makes no Notion POST/PATCH, resumes no partial tree and never adopts today's body. A successful result says `verification: "original_create_outcome"`, `current_snapshot_verified: false` and `requires_fresh_read: true`; it does not supply a current pin. A later explicit current read is a separate action and follows ordinary whole-file adoption rules. Missing original facts or an invisible first create remain unresolved. Preserve them and do not use the legacy `operation resume` command for this migration family.
+On a machine without the original local journal, add `--target EXACT_NEW_PAGE_ID` from an existing receipt. Reconciliation reads the retained original intent/outcome only: it makes no Notion POST/PATCH, resumes no partial tree and never adopts today's body. A successful result says `verification: "original_create_outcome"`, `current_snapshot_verified: false` and `requires_fresh_read: true`; it does not supply a current pin. A later explicit current read is a separate action and follows ordinary whole-file adoption rules. Missing original facts or an invisible first create remain unresolved. Preserve them and do not use the legacy `ctl operation resume` command for this migration family.
 
 ### Recover a known partial migration create
 
@@ -363,7 +363,7 @@ Apply creates only the proven unattempted remaining files. It preserves all acce
 
 ## Manage an active origin
 
-Use `ctl library sources list --entry ENTRY`, `show SOURCE --entry ENTRY`, and `members SOURCE --entry ENTRY` for complete metadata/configuration and the forward relation inventory. Sources is independent from the `Selected Version` field: editing its ref, roots or options does not mutate a running Skill snapshot. `check` and `fetch` are provider reads only; `prepare SOURCE --target SKILL_PAGE --entry ENTRY --output PLAN` freezes one exact member and validates its current ownership. `apply PLAN --entry ENTRY --dry-run` rechecks it, and explicit `apply` retains its full bytes before selecting the new pin. Old custom files and old snapshots remain intact.
+Use `ctl library sources list --entry ENTRY`, `show SOURCE --entry ENTRY`, and `members SOURCE --entry ENTRY` for complete metadata/configuration and the forward relation inventory. Sources is independent from the `Selected Version` field: editing its ref, roots or options does not mutate a running Skill snapshot. `check` and `fetch` are provider reads only; `ctl prepare SOURCE --target SKILL_PAGE --entry ENTRY --output PLAN` freezes one exact member and validates its current ownership. `apply PLAN --entry ENTRY --dry-run` rechecks it, and explicit `apply` retains its full bytes before selecting the new pin. Old custom files and old snapshots remain intact.
 
 `put --input DEFINITION_JSON --expect FINGERPRINT` uses the last `show` fingerprint; use `absent` only for a new stable Source ID. `bind SOURCE --target SKILL_PAGE --member MEMBER --expect-origin PAGE_OR_NONE` changes only Origin/member, not content. Sources may represent generic Git/GitLab or exact Linear content without a GitHub-specific database schema. Read the [source management guide](sources-management.md) before choosing providers, creating native content from fetched files, or proceeding after an unknown operation. `sources reconcile PLAN --entry ENTRY` observes the exact original selection without retrying its write.
 
@@ -393,7 +393,7 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 | Profile revision | Repeat the original complete `profile set` arguments with `--reconcile`. |
 | Shared snapshot archive | Repeat `ctl library snapshot save ORIGINAL_SNAPSHOT_ID --entry LIBRARY_ENTRY --reconcile`. |
 
-These shared IDs are distinct from older Publication IDs. Do not pass them to the legacy `operation resume` workflow. An empty independent machine may be unable to distinguish an invisible first request from one never sent; preserve the original machine's pending operation instead of recreating it elsewhere.
+These shared IDs are distinct from older Publication IDs. Do not pass them to the legacy `ctl operation resume` workflow. An empty independent machine may be unable to distinguish an invisible first request from one never sent; preserve the original machine's pending operation instead of recreating it elsewhere.
 
 ### Review a retained body mismatch
 

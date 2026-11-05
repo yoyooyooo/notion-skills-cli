@@ -13,7 +13,7 @@ Identify the selected library and record first. A `shared_skill` locator uses sh
 
 ## Manage an active Source definition
 
-For the four-table shared library, use `ctl library sources`, not the retired library's `sync upstream` subscription path. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
+For the four-table shared library, use `ctl library sources`, not the retired library's `ctl sync upstream` subscription path. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
 
 ```bash
 ntn-skills ctl library sources list --entry LIBRARY_ENTRY
@@ -54,7 +54,7 @@ To share an exact complete local snapshot containing restricted local bytes, use
 ## Choose shared Profile and View defaults
 
 ```bash
-ntn-skills views --database LIBRARY_ENTRY
+ntn-skills ctl views --database LIBRARY_ENTRY
 ntn-skills ctl library profile show PROFILE_ID --entry LIBRARY_ENTRY
 ntn-skills list --profile PROFILE_ID --database LIBRARY_ENTRY
 ntn-skills ctl library profile bind PROFILE_ID --entry LIBRARY_ENTRY
@@ -70,17 +70,17 @@ Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence. Withou
 For an existing legacy upstream library, connect and run within the requested scope:
 
 ```bash
-ntn-skills sync upstream connect SOURCE --database DATABASE --root skills --name 'Team Skills'
-ntn-skills sync upstream run --target SUBSCRIPTION_ID
+ntn-skills ctl sync upstream connect SOURCE --database DATABASE --root skills --name 'Team Skills'
+ntn-skills ctl sync upstream run --target SUBSCRIPTION_ID
 ```
 
-Use supported `--ref`, `--include` and `--exclude` to preserve the chosen source range. Retain the returned subscription ID; repeat `--target` for a selected batch. `--all` requires every enabled subscription to be in scope. Run checks original pending work first. Legacy tracked body/resources/Name/Description follow upstream; explicit `sync upstream fork` preserves a personal member. An inaccessible page is not proof of deletion.
+Use supported `--ref`, `--include` and `--exclude` to preserve the chosen source range. Retain the returned subscription ID; repeat `--target` for a selected batch. `--all` requires every enabled subscription to be in scope. Run checks original pending work first. Legacy tracked body/resources/Name/Description follow upstream; explicit `ctl sync upstream fork` preserves a personal member. An inaccessible page is not proof of deletion.
 
 For an existing local synchronization relationship:
 
 ```bash
-ntn-skills sync local connect CURRENT_PAGE_ID --path /absolute/skill-directory --as release-review
-ntn-skills sync local run release-review
+ntn-skills ctl sync local connect CURRENT_PAGE_ID --path /absolute/skill-directory --as release-review
+ntn-skills ctl sync local run release-review
 ```
 
 A missing directory initializes from Notion; equal content establishes the baseline. For differing existing work, use only the user's chosen `--from notion` or `--from local` direction. Run preserves each binding's common baseline, checks pending work and stops on competing edits. Do not infer direction from timestamps or remove unrelated files. Generated snapshot directories remain consumption output unless the user explicitly submits selected files through normal authoring.
@@ -89,6 +89,6 @@ A missing directory initializes from Notion; equal content establishes the basel
 
 Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID`; source selection uses `source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY`. For a Profile revision, repeat its complete original `profile set` arguments with `--reconcile`. These paths inspect retained original facts without replaying unknown mutations. Current property equality is insufficient proof.
 
-Legacy `sync upstream/local status` inspects existing state and `check` obtains a current observation. Neither proves a successful run. Repeat the ordinary run to use its guarded original-operation recovery; advanced saved-plan review remains available when needed. Preserve exact results, operation IDs, receipts and current content. An invisible first request on another machine can remain unresolved; do not recreate it to force progress.
+Legacy `ctl sync upstream/local status` inspects existing state and `check` obtains a current observation. Neither proves a successful run. Repeat the ordinary run to use its guarded original-operation recovery; advanced saved-plan review remains available when needed. Preserve exact results, operation IDs, receipts and current content. An invisible first request on another machine can remain unresolved; do not recreate it to force progress.
 
 Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details; do not treat old bindings as already retired or a source-built test as a completed migration.

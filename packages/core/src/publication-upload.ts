@@ -240,7 +240,7 @@ export function recoverUploadIntents(receipt: Receipt, options: PublicationOptio
             "Could not observe the known upload before recovery.",
             {
               path,
-              next: { argv: ["ntn-skills", "operation", "reconcile", receipt.operation_id] },
+              next: { argv: ["ntn-skills", "ctl", "operation", "reconcile", receipt.operation_id] },
             },
           ),
         )
@@ -259,7 +259,14 @@ export function recoverUploadIntents(receipt: Receipt, options: PublicationOptio
             {
               path: intent.path,
               next: {
-                argv: ["ntn-skills", "operation", "resume", receipt.operation_id, "--new-artifact"],
+                argv: [
+                  "ntn-skills",
+                  "ctl",
+                  "operation",
+                  "resume",
+                  receipt.operation_id,
+                  "--new-artifact",
+                ],
               },
             },
           ),
@@ -280,7 +287,9 @@ export function recoverUploadIntents(receipt: Receipt, options: PublicationOptio
               "An attached or possibly referenced upload cannot be abandoned.",
               {
                 upload_id: id,
-                next: { argv: ["ntn-skills", "operation", "reconcile", receipt.operation_id] },
+                next: {
+                  argv: ["ntn-skills", "ctl", "operation", "reconcile", receipt.operation_id],
+                },
               },
             ),
           )
@@ -389,7 +398,14 @@ export function publicationUpload(
             {
               upload_id: id,
               next: {
-                argv: ["ntn-skills", "operation", "resume", receipt.operation_id, "--new-artifact"],
+                argv: [
+                  "ntn-skills",
+                  "ctl",
+                  "operation",
+                  "resume",
+                  receipt.operation_id,
+                  "--new-artifact",
+                ],
               },
             },
           ),
@@ -413,7 +429,9 @@ export function publicationUpload(
           fail(
             "PUBLICATION_UNRESOLVED",
             "A retained allocation has no frozen artifact identity; automatic replacement is forbidden.",
-            { next: { argv: ["ntn-skills", "operation", "reconcile", receipt.operation_id] } },
+            {
+              next: { argv: ["ntn-skills", "ctl", "operation", "reconcile", receipt.operation_id] },
+            },
           ),
         )
       if (
@@ -455,7 +473,14 @@ export function publicationUpload(
         return yield* Effect.fail(
           fail("WRITE_OUTCOME_UNKNOWN", "File allocation returned no identity.", {
             next: {
-              argv: ["ntn-skills", "operation", "resume", receipt.operation_id, "--new-artifact"],
+              argv: [
+                "ntn-skills",
+                "ctl",
+                "operation",
+                "resume",
+                receipt.operation_id,
+                "--new-artifact",
+              ],
             },
           }),
         )
@@ -473,7 +498,7 @@ export function publicationUpload(
         return yield* Effect.fail(
           fail("PUBLICATION_UPLOAD_RECOVERY_REQUIRED", "The upload has not completed.", {
             upload_id: id,
-            next: { argv: ["ntn-skills", "operation", "reconcile", receipt.operation_id] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "reconcile", receipt.operation_id] },
           }),
         )
     }

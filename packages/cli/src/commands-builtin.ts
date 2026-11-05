@@ -142,7 +142,7 @@ export const builtinPublishCommand = defineCommand(
     "Publish one optional built-in; name collisions fail unless an exact update target is selected",
   ),
   Command.withDescription(
-    "First publication uses create semantics: --database > config.builtin_database > config.default_database > sole discovered database. Same-name pages fail with CREATE_CONFLICT. --target replaces one exact existing page using version checks; page identity owns the destination. Writes Source Type=builtin and the exact Builtin ID through the guarded publication; initialize missing fields with ctl database init. Identical content with missing or different origin receives only the journaled metadata update, and a fully matching repeat performs no remote writes. Publisher metadata describes package input. Preview with --dry-run, use --progress for stage/timing JSONL, and operation resume OPERATION_ID for guarded continuation of retained input.",
+    "First publication uses create semantics: --database > config.builtin_database > config.default_database > sole discovered database. Same-name pages fail with CREATE_CONFLICT. --target replaces one exact existing page using version checks; page identity owns the destination. Writes Source Type=builtin and the exact Builtin ID through the guarded publication; initialize missing fields with ctl database init. Identical content with missing or different origin receives only the journaled metadata update, and a fully matching repeat performs no remote writes. Publisher metadata describes package input. Preview with --dry-run, use --progress for stage/timing JSONL, and ctl operation resume OPERATION_ID for guarded continuation of retained input.",
   ),
 )
 export const builtinCommand = defineCommand("builtin").pipe(

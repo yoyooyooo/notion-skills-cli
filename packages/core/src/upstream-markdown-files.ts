@@ -277,7 +277,7 @@ export function publishUpstreamMarkdownFiles(
           operation_id: operationId,
           original_plan_id: planId,
           member_key: member,
-          next: ["ntn-skills", "sync", "upstream", "apply", planId, "--member", member],
+          next: ["ntn-skills", "ctl", "sync", "upstream", "apply", planId, "--member", member],
         }
       }),
     )

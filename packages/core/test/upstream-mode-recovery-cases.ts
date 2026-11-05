@@ -392,7 +392,7 @@ export function registerUpstreamRecoveryTests(
             verified: false,
             outcome: "needs_safe_resume",
             resume_supported: true,
-            next: { argv: ["ntn-skills", "operation", "resume", interrupted.operation] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "resume", interrupted.operation] },
           },
         })
         const unchanged = await modeEvidence(f, interrupted.operation, interrupted.child)
@@ -471,7 +471,7 @@ export function registerUpstreamRecoveryTests(
           outcome: applied ? "needs_safe_resume" : "unknown",
           verified: false,
           resume_supported: true,
-          next: { argv: ["ntn-skills", "operation", "resume", interrupted.operation] },
+          next: { argv: ["ntn-skills", "ctl", "operation", "resume", interrupted.operation] },
         })
         expect(f.writes).toHaveLength(writes)
         expect(f.requests.slice(start).every(({ method }) => method === "GET")).toBe(true)

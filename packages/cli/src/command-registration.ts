@@ -47,9 +47,35 @@ import { archiveCommand } from "./commands-archive.ts"
 import { prepareCommand } from "./commands-prepare.ts"
 import { useCommand } from "./commands-use.ts"
 import { live, upstreamLive } from "./command-runtime.ts"
+const syncCommand = defineCommand("sync").pipe(
+  Command.withDescription(
+    "Use upstream for source subscriptions and local for page-directory bindings. Connect establishes the relationship and performs its first run. Status and check inspect the selected scope; run applies the next synchronization workflow. Recover an interruption using its exact original operation ID.",
+  ),
+  Command.withSubcommands([
+    withRuntime(syncLocalCommand, live),
+    withRuntime(
+      upstreamCommand((value) => emit(value as object)),
+      upstreamLive,
+    ),
+  ]),
+)
+// Root compatibility paths and canonical ctl paths share these exact runtime
+// commands. unlisted changes discovery only, never their parser or handlers.
+function advanced<Name extends string, Input, ContextInput, E, R>(
+  command: Command.Command<Name, Input, ContextInput, E, R>,
+) {
+  return { command, compatibility: command.pipe(Command.unlisted) }
+}
+const advancedCommands = [
+  advanced(withRuntime(viewsCommand.pipe(withConstraints([readPolicyConstraint])), live)),
+  advanced(withRuntime(prepareCommand, live)),
+  advanced(withRuntime(resolveCommand, live)),
+  advanced(withRuntime(operationCommand, upstreamLive)),
+  advanced(syncCommand),
+]
 const ctlCommand = defineCommand("ctl").pipe(
   Command.withDescription(
-    "Inspect local setup with status, diagnose access with doctor, and manage configuration, registered databases, cache and bundled Skills. Status reports local configuration and recorded operations; it does not establish current remote content health.",
+    "Manage setup, libraries, sources, Views, synchronization and original-operation recovery. Prepare exposes advanced graph/session/budget controls; resolve inspects relative references. Status reports recorded local state, not current remote health. Use ctl COMMAND --help or schema ctl COMMAND for exact parameters.",
   ),
   Command.withSubcommands([
     withRuntime(libraryCommand, live),
@@ -62,6 +88,7 @@ const ctlCommand = defineCommand("ctl").pipe(
     withRuntime(apiCommand, live),
     withRuntime(archiveCommand, live),
     withRuntime(backupCommand, upstreamLive),
+    ...advancedCommands.map(({ command }) => command),
   ]),
 )
 const schemaCommand = defineCommand(
@@ -74,20 +101,20 @@ const schemaCommand = defineCommand(
           format: "effect-cli-schema",
           version: 1,
           command: path,
-          schema: commandSchema(selected),
+          schema: commandSchema(selected, path.length === 0 ? { depth: 1 } : {}),
         })
       : Effect.fail(fail("INVALID_ARGUMENT", "Unknown command path.", { command: path }))
   },
 ).pipe(
   Command.withDescription(
-    "Emit command types, occurrence bounds and defaults from the same official parameter AST used by the parser.",
+    "Emit command types, occurrence bounds and defaults from the same parser AST. Without a path, show the daily surface; has_subcommands marks on-demand trees. Supply an exact command path for its complete schema, including unlisted author and compatibility paths.",
   ),
 )
 
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Discover Notion Skills with list --query, inspect original text or an exact resource with read, and load one root plus its complete Requires with use. Keep returned canonical refs for later resource reads. Files and export provide optional file inventories and packages. Use the bundled maintenance Skill for authoring and ctl for setup and diagnostics. Existing author, prepare, sync and operation commands remain available during caller migration; retain an interrupted operation's exact next.argv. Help and schema work offline; loading instructions does not execute them or attest model delivery.",
+      "Discover Notion Skills with list --query, inspect original text or an exact resource with read, and load one root plus its complete Requires with use. Keep returned canonical refs for later resource reads. Files and export provide optional inventories and packages. Authoring is available on demand through create/write/update and pinned apply/replace; use COMMAND --help or the bundled maintenance Skill. Manage libraries, sources, Views, preparation, synchronization and original operations with ctl. Help/schema work offline. Loading instructions does not execute them or attest delivery; preserve an interrupted operation's exact next.argv.",
     ),
     Command.withExamples([
       {
@@ -111,24 +138,8 @@ const rootDefinition = () =>
         description: "Read the bundled maintenance workflow without connecting to Notion",
       },
       {
-        command: "ntn-skills apply PINNED_MAIN_REF --input ./changed-files",
-        description: "Publish one file/metadata change against the version returned by read",
-      },
-      {
-        command: "ntn-skills sync upstream connect SOURCE --database LIBRARY",
-        description: "Register or reuse a Git subscription and synchronize its selected members",
-      },
-      {
-        command: "ntn-skills sync local connect PAGE_ID --path ./local-skill",
-        description: "Connect an existing page to a local directory and synchronize it",
-      },
-      {
-        command: "ntn-skills operation show OPERATION_ID",
-        description: "Inspect the original result and its exact next action before recovery",
-      },
-      {
-        command: "ntn-skills schema sync upstream run",
-        description: "Inspect accepted parameters offline before running a subscription",
+        command: "ntn-skills ctl --help",
+        description: "Discover management and original-operation recovery",
       },
     ]),
     Command.withSubcommands([
@@ -136,32 +147,17 @@ const rootDefinition = () =>
         listCommand.pipe(withConstraints([readPolicyConstraint, viewSelectionConstraint])),
         live,
       ),
-      withRuntime(viewsCommand.pipe(withConstraints([readPolicyConstraint])), live),
       ctlCommand,
       withRuntime(readCommand.pipe(withConstraints(readConstraints)), live),
       withRuntime(useCommand, live),
-      withRuntime(prepareCommand, live),
       withRuntime(filesCommand.pipe(withConstraints(filesConstraints)), live),
-      withRuntime(createCommand, live),
-      withRuntime(applyCommand, live),
-      withRuntime(replaceCommand, live),
+      withRuntime(createCommand, live).pipe(Command.unlisted),
+      withRuntime(applyCommand, live).pipe(Command.unlisted),
+      withRuntime(replaceCommand, live).pipe(Command.unlisted),
       withRuntime(exportCommand.pipe(withConstraints(exportConstraints)), live),
-      withRuntime(writeCommand, live),
-      withRuntime(updateCommand, live),
-      withRuntime(operationCommand, upstreamLive),
-      defineCommand("sync").pipe(
-        Command.withDescription(
-          "Use upstream for source subscriptions and local for page-directory bindings. Connect establishes the relationship and performs its first run. Status and check inspect the selected scope; run applies the next synchronization workflow. Use the exact returned operation ID to recover an interrupted result instead of starting another write.",
-        ),
-        Command.withSubcommands([
-          withRuntime(syncLocalCommand, live),
-          withRuntime(
-            upstreamCommand((value) => emit(value as object)),
-            upstreamLive,
-          ),
-        ]),
-      ),
-      withRuntime(resolveCommand, live),
+      withRuntime(writeCommand, live).pipe(Command.unlisted),
+      withRuntime(updateCommand, live).pipe(Command.unlisted),
+      ...advancedCommands.map(({ compatibility }) => compatibility),
       schemaCommand,
     ]),
   )

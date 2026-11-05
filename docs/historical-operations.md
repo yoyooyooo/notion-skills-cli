@@ -1,6 +1,6 @@
 # Historical operator commands
 
-Ordinary maintenance uses `ntn-skills apply`, `sync local run`, `sync upstream run` and the original `operation list/show/reconcile/resume`. Historical one-off actions are available only in the independent `ntn-skills-state-migration` artifact. They are not prerequisites for creating, reading, editing or synchronizing current content.
+Ordinary maintenance uses `ntn-skills apply`, `ctl sync local run`, `ctl sync upstream run` and the original `ctl operation list/show/reconcile/resume`. Historical one-off actions are available only in the independent `ntn-skills-state-migration` artifact. They are not prerequisites for creating, reading, editing or synchronizing current content.
 
 The artifact contains two executables:
 
@@ -17,7 +17,7 @@ ntn-skills-operator upstream --help
 ntn-skills-operator operation --help
 ```
 
-Keep the original state/configuration roots and operation identities. Moving a command to this artifact does not change its original guards or authorize another request after an unknown outcome. Follow the `next.argv` returned by the retained operation. When that selects ordinary `ntn-skills operation resume`, continue through the ordinary CLI.
+Keep the original state/configuration roots and operation identities. Moving a command to this artifact does not change its original guards or authorize another request after an unknown outcome. Follow the `next.argv` returned by the retained operation. When that selects ordinary `ntn-skills ctl operation resume`, continue through the ordinary CLI.
 
 ## Available historical actions
 
@@ -55,6 +55,6 @@ An old uncertain add without identity proof retains its original audit. `ntn-ski
 
 ## Frozen editable-file publication
 
-`ntn-skills-operator upstream publish-files PLAN MEMBER --operation NEW` publishes the exact frozen candidate and moves its original parent pointer only after committed live verification; run its returned selected `ntn-skills sync upstream apply` to accept the member and publish the subscription map. If that file publication has an unknown terminal append on its own known page, `--supersede OLD_OPERATION` explicitly creates a distinct page with a new operation. The old page/receipt/request remain untouched and unresolved; the new command checks the original owner, frozen bytes and writing marker, and cannot replace an accepted target. A timeout or repeated absent read is never proof that the old write failed.
+`ntn-skills-operator upstream publish-files PLAN MEMBER --operation NEW` publishes the exact frozen candidate and moves its original parent pointer only after committed live verification; run its returned selected `ntn-skills ctl sync upstream apply` to accept the member and publish the subscription map. If that file publication has an unknown terminal append on its own known page, `--supersede OLD_OPERATION` explicitly creates a distinct page with a new operation. The old page/receipt/request remain untouched and unresolved; the new command checks the original owner, frozen bytes and writing marker, and cannot replace an accepted target. A timeout or repeated absent read is never proof that the old write failed.
 
 For exact flags, use the selected operator command's `--help`. The [public protocol](protocol.md) owns ordinary result/recovery semantics and [local-state upgrade](protocol.md#local-sqlite-authority-and-explicit-upgrade).

@@ -569,7 +569,13 @@ try {
       assert.equal(reports[0].in_flight, 0)
       assert.equal(reports[0].trace_enabled, true)
       assert.equal(result.entries.length, count + 1)
-      const legacy = await invokeCli(["prepare", ...request.targets, "--offline", "--metrics"])
+      const legacy = await invokeCli([
+        "ctl",
+        "prepare",
+        ...request.targets,
+        "--offline",
+        "--metrics",
+      ])
       assert.equal(legacy.code, 0, legacy.stderr)
       assert.equal(legacy.value.request_metrics.total_requests, 0)
       assert.deepEqual(withoutMetrics(result.preparation), withoutMetrics(legacy.value))
@@ -1755,7 +1761,7 @@ try {
 
   await test("Required failure and unknown versions stay typed and nonready", async () => {
     const result = await sdk.consume(input([fixture.broken]), options)
-    const legacy = await invokeCli(["prepare", fixture.broken, "--offline"])
+    const legacy = await invokeCli(["ctl", "prepare", fixture.broken, "--offline"])
     assert.equal(result.status, "failed")
     assert.equal(legacy.code, 1)
     assert.deepEqual(result.error, legacy.value.error)

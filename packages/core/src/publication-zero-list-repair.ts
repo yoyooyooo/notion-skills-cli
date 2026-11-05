@@ -671,7 +671,7 @@ export function resumePublicationZeroListRepair(operationId: string) {
                   verified: false as const,
                   repair_applied: true,
                   next: {
-                    argv: ["ntn-skills", "operation", "reconcile", operationId],
+                    argv: ["ntn-skills", "ctl", "operation", "reconcile", operationId],
                     reason:
                       "Visible zero is physically verified; reassess the complete original publication before releasing its fence.",
                   },

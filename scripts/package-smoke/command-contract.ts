@@ -35,7 +35,7 @@ export async function checkCommandContract(context: SmokeContext) {
     ["replace"],
     ["export"],
     ["write"],
-    ["operation"],
+    ["ctl", "operation"],
     ["ctl", "config"],
     ["ctl", "config", "show"],
     ["ctl", "config", "set"],
@@ -52,24 +52,24 @@ export async function checkCommandContract(context: SmokeContext) {
     ["ctl", "builtin", "publish"],
     ["ctl", "database", "register"],
     ["ctl", "database", "unregister"],
-    ["sync"],
-    ["sync", "local", "connect"],
-    ["sync", "local", "bind"],
-    ["sync", "local", "status"],
-    ["sync", "local", "run"],
-    ["sync", "local", "plan"],
-    ["sync", "local", "apply"],
-    ["sync", "upstream", "connect"],
-    ["sync", "upstream", "run"],
-    ["sync", "upstream", "status"],
-    ["sync", "upstream", "check"],
-    ["operation", "resume"],
-    ["operation", "reconcile"],
-    ["sync", "local", "unbind"],
+    ["ctl", "sync"],
+    ["ctl", "sync", "local", "connect"],
+    ["ctl", "sync", "local", "bind"],
+    ["ctl", "sync", "local", "status"],
+    ["ctl", "sync", "local", "run"],
+    ["ctl", "sync", "local", "plan"],
+    ["ctl", "sync", "local", "apply"],
+    ["ctl", "sync", "upstream", "connect"],
+    ["ctl", "sync", "upstream", "run"],
+    ["ctl", "sync", "upstream", "status"],
+    ["ctl", "sync", "upstream", "check"],
+    ["ctl", "operation", "resume"],
+    ["ctl", "operation", "reconcile"],
+    ["ctl", "sync", "local", "unbind"],
     ["ctl", "cache"],
     ["ctl", "cache", "status"],
     ["ctl", "cache", "clear"],
-    ["resolve"],
+    ["ctl", "resolve"],
     ["ctl", "doctor"],
     ["schema"],
   ]
@@ -84,16 +84,52 @@ export async function checkCommandContract(context: SmokeContext) {
     rootSchema.format === "effect-cli-schema" && Array.isArray(rootSchema.schema?.commands),
     "Root schema omitted its command AST.",
   )
-  for (const name of ["apply", "ctl", "operation", "replace", "schema", "sync"])
+  for (const name of ["list", "read", "use", "files", "export", "ctl", "schema"])
     check(
       rootSchema.schema.commands.some((command: { name: string }) => command.name === name),
       `Root schema omitted ${name}.`,
     )
+  for (const name of [
+    "views",
+    "prepare",
+    "operation",
+    "sync",
+    "resolve",
+    "create",
+    "write",
+    "update",
+    "apply",
+    "replace",
+  ])
+    check(
+      !rootSchema.schema.commands.some((command: { name: string }) => command.name === name),
+      `Default schema exposed on-demand ${name}.`,
+    )
+  const ctl = rootSchema.schema.commands.find((command: { name: string }) => command.name === "ctl")
+  check(
+    ctl?.has_subcommands === true && ctl.commands.length === 0,
+    "Default schema expanded the entire management tree.",
+  )
+  for (const path of [
+    ["views"],
+    ["prepare"],
+    ["resolve"],
+    ["operation", "resume"],
+    ["sync", "local", "run"],
+    ["sync", "upstream", "run"],
+  ]) {
+    const canonical = await cli(["schema", "ctl", ...path])
+    const historical = await cli(["schema", ...path])
+    check(
+      JSON.stringify(canonical.schema) === JSON.stringify(historical.schema),
+      `Historical ${path.join(" ")} differs from ctl.`,
+    )
+  }
   check(
     !rootSchema.schema.commands.some((command: { name: string }) => command.name === "upstream"),
     "Root schema retained the obsolete upstream alias.",
   )
-  const upstreamCommands = (await cli(["schema", "sync", "upstream"])).schema.commands.map(
+  const upstreamCommands = (await cli(["schema", "ctl", "sync", "upstream"])).schema.commands.map(
     (command: { name: string }) => command.name,
   )
   for (const historical of [
@@ -122,7 +158,7 @@ export async function checkCommandContract(context: SmokeContext) {
     "restore-deleted",
   ])
     check(!upstreamCommands.includes(historical), `Daily upstream schema retained ${historical}.`)
-  const operationCommands = (await cli(["schema", "operation"])).schema.commands.map(
+  const operationCommands = (await cli(["schema", "ctl", "operation"])).schema.commands.map(
     (command: { name: string }) => command.name,
   )
   check(
@@ -158,10 +194,10 @@ export async function checkCommandContract(context: SmokeContext) {
     normal_operation_commands: operationCommands,
     invalid_command: operatorInvalid,
   }
-  const upstreamSchema = await cli(["schema", "sync", "upstream", "run"])
+  const upstreamSchema = await cli(["schema", "ctl", "sync", "upstream", "run"])
   evidence.upstream_schema = upstreamSchema
   check(
-    JSON.stringify(upstreamSchema.command) === JSON.stringify(["sync", "upstream", "run"]),
+    JSON.stringify(upstreamSchema.command) === JSON.stringify(["ctl", "sync", "upstream", "run"]),
     "Installed upstream schema is not bound to the official sync subtree.",
   )
   for (const command of ["apply", "create", "replace", "update"]) {
@@ -181,7 +217,7 @@ export async function checkCommandContract(context: SmokeContext) {
     "Export omitted its explicit projection contract.",
   )
   evidence.export_schema = exportSchema
-  const resumeSchema = await cli(["schema", "operation", "resume"])
+  const resumeSchema = await cli(["schema", "ctl", "operation", "resume"])
   check(
     resumeSchema.schema.parameters.some(
       (parameter: { name: string }) => parameter.name === "new-artifact",
@@ -247,14 +283,14 @@ export async function checkCommandContract(context: SmokeContext) {
     ["list", "--max-age", "9007199254740992d"],
     ["list", "--max-age", "0", "--max-age=1s"],
     ["replace", "missing.md", "--target", "a", "--target=b"],
-    ["operation", "resume", "p_fixture", "--progress", "--progress"],
+    ["ctl", "operation", "resume", "p_fixture", "--progress", "--progress"],
     ["create", "missing.md", "--progress", "--progress"],
     ["ctl", "builtin", "publish", "notion/ntn-skills-maintain", "--progress", "--progress"],
-    ["sync", "local", "plan"],
-    ["sync", "local", "plan", "binding", "--all"],
-    ["sync", "local", "plan", "--all", "--from", "local"],
-    ["sync", "local", "apply"],
-    ["sync", "local", "apply", "--plan", "p_invalid", "--from", "local"],
+    ["ctl", "sync", "local", "plan"],
+    ["ctl", "sync", "local", "plan", "binding", "--all"],
+    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
+    ["ctl", "sync", "local", "apply"],
+    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--from", "local"],
     ["ctl", "cache", "clear"],
     ["ctl", "cache", "clear", "sample", "--all"],
     ["ctl", "cache", "clear", "--all", "--database", "smoke"],

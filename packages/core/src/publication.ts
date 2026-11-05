@@ -1015,6 +1015,7 @@ export function publicationSession(receipt: Receipt, options: PublicationOptions
                 next: {
                   argv: [
                     "ntn-skills",
+                    "ctl",
                     "operation",
                     "resume",
                     receipt.operation_id,

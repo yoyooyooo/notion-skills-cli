@@ -53,6 +53,7 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
     migrationInputBytes,
   } = fixture
   const resolved = await cli([
+    "ctl",
     "resolve",
     "../assets/template.md",
     "--from",
@@ -197,17 +198,17 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
     1,
   )
   await rejected(
-    ["sync", "local", "bind", pageId, "--path", localPath, "--as", "candidate", "--dry-run"],
+    ["ctl", "sync", "local", "bind", pageId, "--path", localPath, "--as", "candidate", "--dry-run"],
     "NOTION_UNAVAILABLE",
     1,
   )
   await rejected(
-    ["sync", "local", "apply", "--plan", `p_${"c".repeat(64)}`],
+    ["ctl", "sync", "local", "apply", "--plan", `p_${"c".repeat(64)}`],
     "SYNC_PLAN_MISSING",
     1,
   )
   await rejected(
-    ["sync", "local", "apply", "--plan", join(scratch, "missing-plan.json")],
+    ["ctl", "sync", "local", "apply", "--plan", join(scratch, "missing-plan.json")],
     "SYNC_PLAN_MISSING",
     1,
   )
@@ -552,7 +553,7 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
   await rejected(["read", pageId, "--refresh"], "NOTION_UNAVAILABLE", 1)
   await rejected(["files", pageId, "--max-age", "0"], "NOTION_UNAVAILABLE", 1)
   await rejected(["read", pageId, "--offline"], "CACHE_SCOPE_UNAVAILABLE", 1)
-  const status = await cli(["sync", "local", "status", binding.label])
+  const status = await cli(["ctl", "sync", "local", "status", binding.label])
   const edge = status.bindings[0]
   check(
     status.bindings.length === 1 &&
@@ -577,8 +578,12 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
     "Historical plans lost explicit reapproval boundary.",
   )
   evidence.historical_review = migrationReview
-  await rejected(["sync", "local", "status", binding.label, "--refresh"], "NOTION_UNAVAILABLE", 1)
-  const dryUnbind = await cli(["sync", "local", "unbind", binding.label, "--dry-run"])
+  await rejected(
+    ["ctl", "sync", "local", "status", binding.label, "--refresh"],
+    "NOTION_UNAVAILABLE",
+    1,
+  )
+  const dryUnbind = await cli(["ctl", "sync", "local", "unbind", binding.label, "--dry-run"])
   check(dryUnbind.dry_run && !dryUnbind.deactivated, "Dry-run unbind reported a deactivation.")
   await preservedConfig()
   // Migration deliberately dropped identities above. Seed only this synthetic credential
@@ -632,7 +637,7 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
       (await readFile(path)).equals(migrationInputBytes[index]!),
       "Clear changed retained migration evidence.",
     )
-  const afterClearStatus = await cli(["sync", "local", "status", binding.label])
+  const afterClearStatus = await cli(["ctl", "sync", "local", "status", binding.label])
   check(
     afterClearStatus.bindings[0].remote_freshness === "unknown" &&
       afterClearStatus.bindings[0].baseline_generation === 0 &&
@@ -664,13 +669,13 @@ export async function checkMigrationConsumption(context: SmokeContext, fixture: 
       ),
       "Offline reads/cache clear changed immutable objects.",
     )
-  const unbound = await cli(["sync", "local", "unbind", binding.label])
+  const unbound = await cli(["ctl", "sync", "local", "unbind", binding.label])
   check(
     unbound.deactivated && !unbound.binding.active && unbound.binding.revision === 2,
     "Unbind did not persist deactivation/revision.",
   )
   check(
-    (await cli(["sync", "local", "status"])).bindings.length === 0,
+    (await cli(["ctl", "sync", "local", "status"])).bindings.length === 0,
     "New process still lists a deactivated binding.",
   )
   await preservedConfig()

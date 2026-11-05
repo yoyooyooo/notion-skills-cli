@@ -252,7 +252,7 @@ Broker 新增 `build:broker`、`check:broker`、`pack --target broker` 和 integ
 
 独立文件入口为 `ctl library file add/delete/move/restore-follow`。新增创建稳定 File 身份；移动保留身份、正文绑定和原来源路径；删除保留 tombstone 与正文页。restore-follow 从 Notion 当前选择的固定来源取得精确内容，先保留自定义版本。Git 来源选择由 `source select prepare` 生成计划，`select apply` 只改原生 Source；HTTP/local composition 仍消费显式固定计划。Profile 通过 `profile list/show/set/bind/unbind` 管理，机器只绑定库入口与 Profile ID，显式 View 优先。
 
-共享 create/body/metadata/apply/restore 的原操作由 current read 核对；add/delete/move 另有 `file reconcile`。unknown 不续发，`verified:true` 的 `not_applied/partial` 仅证明结论，不等于用户编辑完成。共享 ID 不传给 legacy `operation resume`。源码接线和公开帮助不替代真实服务、双机、宿主或迁移验收；具体命令见[共享库创作指南](shared-authoring.md)，结果字段见[协议](protocol.md#shared-authoring)。
+共享 create/body/metadata/apply/restore 的原操作由 current read 核对；add/delete/move 另有 `file reconcile`。unknown 不续发，`verified:true` 的 `not_applied/partial` 仅证明结论，不等于用户编辑完成。共享 ID 不传给 legacy `ctl operation resume`。源码接线和公开帮助不替代真实服务、双机、宿主或迁移验收；具体命令见[共享库创作指南](shared-authoring.md)，结果字段见[协议](protocol.md#shared-authoring)。
 
 ## 用户行为
 

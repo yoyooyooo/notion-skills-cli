@@ -31,7 +31,7 @@ Files 的逻辑身份为 `(scope, owner Skill ID, file_id)`。不同 owner 可�
 ## 公开度量
 
 ```sh
-ntn-skills prepare ROOT_ID OTHER_ROOT_ID --database LIBRARY_ENTRY --purpose use --metrics
+ntn-skills ctl prepare ROOT_ID OTHER_ROOT_ID --database LIBRARY_ENTRY --purpose use --metrics
 ```
 
 `--metrics` 返回原有 `request_metrics`，即使未开启详细 trace 也返回真实计数。`NTN_SKILLS_REQUEST_TRACE_LIMIT` 可启用有界诊断；Entity IDs 来自实际已序列化查询中的精确过滤条件，不取自计划或预期闭包。

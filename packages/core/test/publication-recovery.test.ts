@@ -74,7 +74,7 @@ for (const response of ["before", "after", "interrupt"] as const) {
     if (response === "after") {
       const settled = await f.run(resumeOperation(id))
       expect(settled.verified).toBe(false)
-      expect(settled.next.argv).toEqual(["ntn-skills", "operation", "reconcile", id])
+      expect(settled.next.argv).toEqual(["ntn-skills", "ctl", "operation", "reconcile", id])
       expect(receipt().intents).toHaveLength(original.intents.length)
       expect(receipt().intents.slice(0, -1)).toEqual(original.intents.slice(0, -1))
       const first = original.intents.at(-1)!

@@ -1174,6 +1174,7 @@ for (const { scenario, name, timeout = 60_000 } of upstreamUseCases)
                 expect(blocked?.resume_supported).toBe(false)
                 expect(blocked?.next.argv).toEqual([
                   "ntn-skills",
+                  "ctl",
                   "operation",
                   "reconcile",
                   "ua_unknown",

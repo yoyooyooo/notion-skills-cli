@@ -1178,7 +1178,7 @@ export function reconcileContentAdoption(receipt: Receipt) {
                   "All four original ACKs, the exact root revision, full content graph and independently downloaded source bytes are unchanged. The former download failure is retained in history.",
               },
             ],
-            next: { argv: ["ntn-skills", "operation", "resume", receipt.operation_id] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "resume", receipt.operation_id] },
           }
         }
         refusal = checked.failure
@@ -1294,7 +1294,7 @@ export function reconcileContentAdoption(receipt: Receipt) {
                   "The original marker ACK, its exact root revision and complete source proof are unchanged. Its automatic edit-time comparison failure is retained in history.",
               },
             ],
-            next: { argv: ["ntn-skills", "operation", "resume", receipt.operation_id] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "resume", receipt.operation_id] },
           }
         }
         refusal = checked.failure
@@ -1349,7 +1349,7 @@ export function reconcileContentAdoption(receipt: Receipt) {
         ],
         verified: false as const,
         unresolved: true,
-        next: { argv: ["ntn-skills", "operation", "reconcile", receipt.operation_id] },
+        next: { argv: ["ntn-skills", "ctl", "operation", "reconcile", receipt.operation_id] },
       }
     }
     const progress = result.success
@@ -1380,7 +1380,7 @@ export function reconcileContentAdoption(receipt: Receipt) {
       ],
       verified: progress.completed === contentAdoptionCommittedCount(progress.plan),
       unresolved: false,
-      next: { argv: ["ntn-skills", "operation", "resume", receipt.operation_id] },
+      next: { argv: ["ntn-skills", "ctl", "operation", "resume", receipt.operation_id] },
     }
   })
 }
@@ -1709,6 +1709,7 @@ function linkCompletedAdoption(plan: ContentAdoptionPlan) {
       next: {
         argv: [
           "ntn-skills",
+          "ctl",
           "sync",
           "upstream",
           "apply",

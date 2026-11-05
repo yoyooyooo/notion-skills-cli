@@ -79,6 +79,7 @@ type TestServices =
 /** Native completed receipts and committed markers here are synthetic test seeds. */
 async function withFixture(
   work: (fixture: Fixture) => Effect.Effect<unknown, unknown, TestServices>,
+  commandPrefix: readonly string[] = [],
 ) {
   const root = await mkdtemp(join(tmpdir(), "ntn-map-adoption-"))
   vi.stubEnv("NTN_SKILLS_HOME", join(root, "state"))
@@ -412,6 +413,7 @@ async function withFixture(
               argv: [
                 "node",
                 "packages/cli/dist/ntn-skills.js",
+                ...commandPrefix,
                 "sync",
                 "upstream",
                 "apply",
@@ -495,6 +497,21 @@ function noCommit(fixture: Fixture, planId: string) {
     expect(fixture.writeAttempts).toEqual([])
   })
 }
+
+test("canonical ctl capture is admitted without rewriting the frozen original command", async () => {
+  await withFixture(
+    (fixture) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const before = yield* fs.readFileString(fixture.input.success_capture.command)
+        const planned = yield* planMapCheckpointAdoption(fixture.input)
+        expect(planned.member_count).toBe(2)
+        expect(yield* fs.readFileString(fixture.input.success_capture.command)).toBe(before)
+        expect(fixture.writeAttempts).toEqual([])
+      }),
+    ["ctl"],
+  )
+})
 
 test("plan/apply adopts the complete historical map without changing original identities or remote pages", {
   timeout: 120_000,

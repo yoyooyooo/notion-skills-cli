@@ -142,7 +142,8 @@ function validatePreparation(evidence: SubscriptionPreparationEvidence, original
         const receipt = property(JSON.parse(decoder.decode(receiptBytes)))
         const output = property(receipt.output)
         const error = property(output.error)
-        const argv = receipt.argv
+        const rawArgv = receipt.argv
+        const argv = Array.isArray(rawArgv) && rawArgv[0] === "ctl" ? rawArgv.slice(1) : rawArgv
         if (
           !Array.isArray(argv) ||
           !argv.every((arg) => typeof arg === "string") ||

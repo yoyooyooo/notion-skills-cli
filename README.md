@@ -39,14 +39,14 @@ Shared libraries batch native Files metadata and retained ownership facts, with 
 | Read instructions and supporting files from one version | `read`, then `files` |
 | Move a complete Skill between local files and Notion | `create`, `replace`, `export` |
 | Apply file and metadata changes to one pinned page | `apply` |
-| Subscribe Git Skills into Notion and keep them current | `sync upstream connect`, `sync upstream run` |
-| Keep an existing page and local Skill directory in sync | `sync local connect`, `sync local run` |
+| Subscribe Git Skills into Notion and keep them current | `ctl sync upstream connect`, `ctl sync upstream run` |
+| Keep an existing page and local Skill directory in sync | `ctl sync local connect`, `ctl sync local run` |
 
 ## Shared library sources
 
 The current shared model uses **Skills / Files / Sources / Records**. Sources owns editable provider/location/ref/selection settings and exact content relationships; Records owns fixed resource bytes, ownership and history. Ordinary discovery/read never polls upstream. Use `ctl library sources list/show/members/check/fetch/prepare/apply` for explicit provider acquisition and guarded version changes. Generic Git supports GitHub, GitLab and self-hosted repositories; Linear supports exact issue/document-to-file mappings. See [source management](docs/sources-management.md) for input shapes, recovery and scope boundaries.
 
-New `ctl library init --parent PAGE_ID` creates four full-page tables. An existing three-table library is upgraded explicitly using `ctl library sources init --entry ENTRY`. Earlier two-table `sync upstream` examples below describe only unmigrated legacy libraries; they are not the Sources management path.
+New `ctl library init --parent PAGE_ID` creates four full-page tables. An existing three-table library is upgraded explicitly using `ctl library sources init --entry ENTRY`. Earlier two-table `ctl sync upstream` examples below describe only unmigrated legacy libraries; they are not the Sources management path.
 
 ## Installation
 
@@ -76,7 +76,7 @@ That database needs at least one valid Skill. Notion Name and authored frontmatt
 
 Content origin uses `Source Type` (`builtin`, `upstream`, `manual`) and exact rich-text `Builtin ID`, independently of Kind and Sync Mode. Explicit init upgrades existing tables, including repeated published attaches, without backfilling legacy rows. Ordinary create supports tables missing these fields; replace/write preserve provenance. Deliberate builtin/upstream publication requires the upgraded schema. Equal content with changed provenance is a metadata-only update; complete equality is mutation-free reuse. [Origin and frozen recovery](docs/protocol.md).
 
-Use `ntn-skills sync upstream connect SOURCE --database DATABASE` to register a Git source and synchronize its Skills. Repeating the same connection reuses its subscription. Later, `sync upstream run` takes either repeatable `--target SUBSCRIPTION_ID` or `--all`. Each run records status, attempt/success times and a summary; failed or partial batches continue other targets and exit nonzero. Advanced registration and plan/apply remain available under `sync upstream`. [Recurring synchronization and table setup](docs/usage.md#recurring-upstream-synchronization).
+Use `ntn-skills ctl sync upstream connect SOURCE --database DATABASE` to register a Git source and synchronize its Skills. Repeating the same connection reuses its subscription. Later, `ctl sync upstream run` takes either repeatable `--target SUBSCRIPTION_ID` or `--all`. Each run records status, attempt/success times and a summary; failed or partial batches continue other targets and exit nonzero. Advanced registration and plan/apply remain available under `ctl sync upstream`. [Recurring synchronization and table setup](docs/usage.md#recurring-upstream-synchronization).
 
 Ordinary `run` checks retained work before planning new changes and restores an owned tracked member whose original page is confirmed readable in Notion Trash. The old page stays in Trash; a verified replacement updates that member's mapping. Missing or inaccessible pages are explicit failures. Historical rebuild, adoption and targeted repair commands belong to the separate [operator artifact](docs/historical-operations.md).
 
@@ -154,7 +154,7 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 ntn-skills write 'PINNED_FILE_REF' --database 'ENTRY_DATABASE_ID' --input ./edited-file.md
 ```
 
-An ordinary Skill folder needs no hand-authored manifest. Shared creation accepts UTF-8 native files and enables the Skill only after the complete file set verifies. Apply combines existing bound files and explicitly nominated metadata in a frozen sequential batch; it is not atomic. One isolated add/delete is supported, while mixed or multiple layout changes fail before writing. `ctl library file add/delete/move/restore-follow` provides explicit file maintenance. Native binary creation is not implemented; fixed sources can supply binary resources. The [shared authoring guide](docs/shared-authoring.md) covers exact commands, metadata, file identity, source selection, Profiles and original-operation recovery. Shared operation IDs use that recovery path, not legacy `operation resume`.
+An ordinary Skill folder needs no hand-authored manifest. Shared creation accepts UTF-8 native files and enables the Skill only after the complete file set verifies. Apply combines existing bound files and explicitly nominated metadata in a frozen sequential batch; it is not atomic. One isolated add/delete is supported, while mixed or multiple layout changes fail before writing. `ctl library file add/delete/move/restore-follow` provides explicit file maintenance. Native binary creation is not implemented; fixed sources can supply binary resources. The [shared authoring guide](docs/shared-authoring.md) covers exact commands, metadata, file identity, source selection, Profiles and original-operation recovery. Shared operation IDs use that recovery path, not legacy `ctl operation resume`.
 
 Fixed public GitHub source inspection takes an exact commit and root:
 
@@ -240,9 +240,9 @@ The goal is complete instructions, code, links and resources across upstream →
 Replace `PAGE_ID` with an actual selected page ID. The binding label is local configuration, separate from the Skill's invocation alias.
 
 ```bash
-ntn-skills sync local connect PAGE_ID --path ~/.agents/skills/release-review --as release-review-global
-ntn-skills sync local run release-review-global
-ntn-skills sync local status release-review-global
+ntn-skills ctl sync local connect PAGE_ID --path ~/.agents/skills/release-review --as release-review-global
+ntn-skills ctl sync local run release-review-global
+ntn-skills ctl sync local status release-review-global
 ```
 
 A missing directory initializes from Notion. Existing differing contents require an explicit `--from local|notion`; later runs compare both sides with the confirmed common baseline and preserve conflicts. Repeating the same connection reuses its binding. Retained receipts settle only when observations confirm convergence; unresolved outcomes keep their original operation IDs and next action.
@@ -293,7 +293,7 @@ Inspecting or maintaining a Skill does not activate its instructions. Hosts acti
 ## Boundaries and local data
 
 - Historical local verification covered npm installation and seeded offline behavior on macOS arm64 with Node.js 24.20.0 and Linux arm64 with Node.js 22.19.0; the latter is now unsupported. Real Notion reads were verified on macOS with `ntn` 0.22.12. CI is configured for Node.js 22.22.3 and 24.20.0 on Ubuntu and macOS 15; configured jobs do not establish successful runs for a new change. Windows is unverified.
-- Content mutations, `ctl builtin publish` and sync `connect/run/apply` can change content. Publications support `--progress` on stderr and retain frozen input/receipts; use `operation resume OPERATION_ID` for guarded publication continuation. Unresolved writes remain explicit. Local sync checks retained receipts and reports the original operation and next action when convergence remains unresolved. Client version checks are not atomic commits. [Publication recovery](docs/usage.md#creating-importing-exporting-and-updating-skills).
+- Content mutations, `ctl builtin publish` and sync `connect/run/apply` can change content. Publications support `--progress` on stderr and retain frozen input/receipts; use `ctl operation resume OPERATION_ID` for guarded publication continuation. Unresolved writes remain explicit. Local sync checks retained receipts and reports the original operation and next action when convergence remains unresolved. Client version checks are not atomic commits. [Publication recovery](docs/usage.md#creating-importing-exporting-and-updating-skills).
 - Configuration defaults to `~/.config/ntn-skills/config.json`; retained snapshots, uploads and sync recovery state to `~/.local/state/ntn-skills`; disposable observations to `~/.cache/ntn-skills`. Managed builtins use `~/.local/share/ntn-skills`, overridden by `NTN_SKILLS_DATA_HOME` or the XDG data base. Freshness defaults are five minutes for content and 60 seconds for catalogs. [Cache policy and cleanup](docs/usage.md#cache-policy-and-cleanup) explain overrides and system Trash retention.
 - Online operations use the project's direct HTTP engine and Notion's signed download URLs. Safe local credential identity is required for unpinned offline lookup. A cached observation does not prove present access. The CLI sends no telemetry requests. Imported scripts are never executed automatically.
 

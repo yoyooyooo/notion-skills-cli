@@ -11,10 +11,10 @@ Choose the task, then retain the returned identities for subsequent commands:
 | Use a stored workflow | `list`, then `read` and pinned supporting-file reads |
 | Create content | `create INPUT --database LIBRARY` |
 | Change files and properties together | `read CURRENT --refresh`, then `apply PINNED_MAIN_REF --input CHANGED_FILES` |
-| Maintain an existing upstream subscription | `sync upstream connect SOURCE --database LIBRARY`, then `sync upstream run --target SUBSCRIPTION_ID` |
-| Keep a Notion page and local directory synchronized | `sync local connect PAGE_ID --path DIRECTORY`, then `sync local run BINDING` |
+| Maintain an existing upstream subscription | `ctl sync upstream connect SOURCE --database LIBRARY`, then `ctl sync upstream run --target SUBSCRIPTION_ID` |
+| Keep a Notion page and local directory synchronized | `ctl sync local connect PAGE_ID --path DIRECTORY`, then `ctl sync local run BINDING` |
 | Select a fixed shared source or Profile | [Shared source selection and defaults](shared-authoring.md#select-a-fixed-source-and-restore-following) |
-| Inspect an interrupted operation | Use the [matching shared recovery path](shared-authoring.md#handle-an-interrupted-operation), or `operation show OPERATION_ID` for an earlier Publication/sync result |
+| Inspect an interrupted operation | Use the [matching shared recovery path](shared-authoring.md#handle-an-interrupted-operation), or `ctl operation show OPERATION_ID` for an earlier Publication/sync result |
 
 In Context Broker, select `$ntn-skills-maintain@builtin` for content changes or `$ntn-skills-sync@builtin` for fixed sources, Profile defaults and existing synchronization relationships. These package Skills are available through ordinary `$` discovery with their supporting files, without publishing a copy to Notion. The host supplies the executable argv and source/database scope; use those values when there are multiple configured sources.
 
@@ -49,14 +49,14 @@ The subscription table's native URL property `Source URL` is a clickable display
 Connect a Git repository and synchronize its selected Skills in one command:
 
 ```bash
-ntn-skills sync upstream connect GIT_SOURCE_URL --database LIBRARY --name 'Team Skills'
-ntn-skills sync upstream list
-ntn-skills sync upstream run --target SUBSCRIPTION_ID_FROM_CONNECT
+ntn-skills ctl sync upstream connect GIT_SOURCE_URL --database LIBRARY --name 'Team Skills'
+ntn-skills ctl sync upstream list
+ntn-skills ctl sync upstream run --target SUBSCRIPTION_ID_FROM_CONNECT
 ```
 
 Omit `--name` and `--description` to derive them from the source. The default Git ref is `HEAD`, the default root is `.`, and discovery finds member directories containing `SKILL.md`. A GitHub tree URL selects its ref and directory; use explicit `--ref` when the branch name contains slashes. Repeat `--root`, `--include` or `--exclude` to narrow discovery. Include/exclude patterns match member directory paths, such as `skills/alpha` or `skills/**`.
 
-The target database follows ordinary creation selection: explicit `--database`, configured default, then a sole discovered library. A matching connection reuses the existing subscription and its original creation identity without replacing its saved configuration. The result contains `subscription`, `reused` and the run outcome. Retain its exact subscription ID. `sync upstream list` returns entries in `items`.
+The target database follows ordinary creation selection: explicit `--database`, configured default, then a sole discovered library. A matching connection reuses the existing subscription and its original creation identity without replacing its saved configuration. The result contains `subscription`, `reused` and the run outcome. Retain its exact subscription ID. `ctl sync upstream list` returns entries in `items`.
 
 Use `status SUBSCRIPTION_ID` for local observations and `check SUBSCRIPTION_ID` for current remote metadata. When a separate review is needed, `plan SUBSCRIPTION_ID` and `apply PLAN_ID` retain the exact reviewed candidate. Recurring work uses `run`, with repeatable `--target SUBSCRIPTION_ID` or `--all`, exclusively.
 
@@ -72,13 +72,13 @@ Member selectors accept current page IDs/URLs, `notion_page:<UUID>` or `skill://
 
 ### Recurring upstream synchronization
 
-Use `sync upstream run` as the command invoked by your scheduler. It first continues any retained publication against its original frozen plan, then fetches the source and applies a fresh plan for each selected subscription. Unknown original effects stop that subscription without creating a new intent. Choose explicit subscriptions or all enabled subscriptions:
+Use `ctl sync upstream run` as the command invoked by your scheduler. It first continues any retained publication against its original frozen plan, then fetches the source and applies a fresh plan for each selected subscription. Unknown original effects stop that subscription without creating a new intent. Choose explicit subscriptions or all enabled subscriptions:
 
 ```bash
-ntn-skills sync upstream run --target SUBSCRIPTION_ID
-ntn-skills sync upstream run --target FIRST_SUBSCRIPTION_ID --target SECOND_SUBSCRIPTION_ID
+ntn-skills ctl sync upstream run --target SUBSCRIPTION_ID
+ntn-skills ctl sync upstream run --target FIRST_SUBSCRIPTION_ID --target SECOND_SUBSCRIPTION_ID
 # Alternatively, select every enabled, non-removed subscription:
-ntn-skills sync upstream run --all
+ntn-skills ctl sync upstream run --all
 ```
 
 The Upstream table records `Sync Status`, `Last Sync Attempt`, `Last Synced` and `Sync Summary`. Status moves from `running` to `succeeded`, `partial` or `failed`. Every successful run refreshes `Last Synced`, including a run with no source changes; failed or partial runs retain the previous successful time. Notion dates use its native minute precision. The existing `Status` field continues to describe published membership.
@@ -97,7 +97,7 @@ When a run stops, inspect `status`/`check` or its returned operation identity an
 
 ### Advanced subscription configuration
 
-For a registry/marketplace source or complete explicit source configuration, create a subscription with `sync upstream add --input CONFIG.json --operation OPERATION_ID`; replace its complete configuration with `sync upstream update SUBSCRIPTION_ID --input CONFIG.json --if-version OBSERVED_VERSION`. Both require strict JSON with every field below; unknown fields are rejected and update is not a partial patch.
+For a registry/marketplace source or complete explicit source configuration, create a subscription with `ctl sync upstream add --input CONFIG.json --operation OPERATION_ID`; replace its complete configuration with `ctl sync upstream update SUBSCRIPTION_ID --input CONFIG.json --if-version OBSERVED_VERSION`. Both require strict JSON with every field below; unknown fields are rejected and update is not a partial patch.
 
 | Required field | JSON type |
 | --- | --- |
@@ -298,7 +298,7 @@ Create/replace render every supporting Markdown document as a child page, preser
 
 ## Creating, importing, exporting and updating skills
 
-Shared targets use the [native shared authoring contract](shared-authoring.md); the References/source-ZIP storage and Publication recovery described below apply to earlier libraries. Shared operations return their own exact operation IDs and must not be sent to legacy `operation resume`.
+Shared targets use the [native shared authoring contract](shared-authoring.md); the References/source-ZIP storage and Publication recovery described below apply to earlier libraries. Shared operations return their own exact operation IDs and must not be sent to legacy `ctl operation resume`.
 
 Select a database explicitly, save a creation default, or let the CLI use the sole discovered skill database. The order is `--database` → `config.default_database` → sole fresh discovery. Multiple databases, failed registered sources or an inaccessible configured default require a valid selection. `ctl config unset default_database` removes the preference offline; it does not change read scope.
 
@@ -384,7 +384,7 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --descripti
 ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --description 'Updated purpose'
 ```
 
-Shared targets freeze the existing body and metadata operations in one sequential batch; earlier targets retain one guarded replacement Publication. `--remove PATH` explicitly requests removal, but a shared batch currently permits only one isolated add/delete and rejects mixed/multiple layout changes. The main entrypoint cannot be deleted. A stale baseline stops before writing; reread and review the intended changes before retrying. Success returns `changes.files` and `changes.removed` with the verified snapshot. Shared success has `status: "applied"` and `apply_operation_id`; its interrupted work is reconciled by an exact current read. Use legacy `operation resume` only for a returned Publication ID. `replace` deliberately represents the complete input tree and keeps the same shared limits.
+Shared targets freeze the existing body and metadata operations in one sequential batch; earlier targets retain one guarded replacement Publication. `--remove PATH` explicitly requests removal, but a shared batch currently permits only one isolated add/delete and rejects mixed/multiple layout changes. The main entrypoint cannot be deleted. A stale baseline stops before writing; reread and review the intended changes before retrying. Success returns `changes.files` and `changes.removed` with the verified snapshot. Shared success has `status: "applied"` and `apply_operation_id`; its interrupted work is reconciled by an exact current read. Use legacy `ctl operation resume` only for a returned Publication ID. `replace` deliberately represents the complete input tree and keeps the same shared limits.
 
 `create` rejects an existing invocation name with `CREATE_CONFLICT`. `replace INPUT --target EXACT` requires an exact existing page identity and preserves its page ID. Names cannot select a replacement and absence never creates a page. `--dry-run` performs online preflight and reports create/reuse/update without uploading or mutating.
 
@@ -418,14 +418,14 @@ The CLI writes CommonMark/GFM through Notion's v2 parser and restores v1 readbac
 After an earlier Publication interruption, use its returned operation ID and recovery action. Shared IDs use the [shared recovery table](shared-authoring.md#handle-an-interrupted-operation).
 
 ```bash
-ntn-skills operation resume OPERATION_ID --progress
+ntn-skills ctl operation resume OPERATION_ID --progress
 ```
 
-For a retained editable-file publication whose only unresolved effect is its original ownership or commit-property assignment, explicit `operation resume OPERATION_ID --retry-metadata` revalidates the whole live source and retained guards before a separately journalled identical property PATCH. The old unknown request remains recorded. This opt-in cannot resend page creation, file appends, uploads, arbitrary properties or another page, and cannot combine with `--new-artifact`. Ordinary resume does not repeat an absent unknown write.
+For a retained editable-file publication whose only unresolved effect is its original ownership or commit-property assignment, explicit `ctl operation resume OPERATION_ID --retry-metadata` revalidates the whole live source and retained guards before a separately journalled identical property PATCH. The old unknown request remains recorded. This opt-in cannot resend page creation, file appends, uploads, arbitrary properties or another page, and cannot combine with `--new-artifact`. Ordinary resume does not repeat an absent unknown write.
 
-Recovery checks authentication, database/data-source membership and recorded remote observations, then continues frozen content on the same page IDs. `operation list/show/reconcile/resume` uses one envelope with `domain`, `operation_id`, `state`, `verified`, a safe domain-specific `result`, `next: { argv, reason }` and `resume_supported`. A completed publication returns its summary inside this envelope. Reconcile reads remote state without committing a publication marker or advancing a local sync baseline. A matching property update with an unfinished marker returns `result.outcome: "needs_safe_commit"`; explicit resume rechecks the guards and commits that marker without replaying the property change. External changes return `WRITE_CONFLICT`; unresolved creation without a proven response or an unverifiable pending mutation returns `PUBLICATION_UNRESOLVED` without replay. Preserve the receipt and inspect the exact target before choosing a new change. Duplicate child paths fail with `REFERENCE_PATH_CONFLICT`. Body, properties and uploads remain separate requests; client checks cannot guarantee a remote transaction or name uniqueness. For transport failures, inspect the structured HTTP status, error code, request ID and outcome phase in `details` or nested `cause_details`; credentials and response bodies are excluded from diagnostics. [Mutation contract](protocol.md#mutation-contract) and [error recovery](protocol.md#errors).
+Recovery checks authentication, database/data-source membership and recorded remote observations, then continues frozen content on the same page IDs. `ctl operation list/show/reconcile/resume` uses one envelope with `domain`, `operation_id`, `state`, `verified`, a safe domain-specific `result`, `next: { argv, reason }` and `resume_supported`. A completed publication returns its summary inside this envelope. Reconcile reads remote state without committing a publication marker or advancing a local sync baseline. A matching property update with an unfinished marker returns `result.outcome: "needs_safe_commit"`; explicit resume rechecks the guards and commits that marker without replaying the property change. External changes return `WRITE_CONFLICT`; unresolved creation without a proven response or an unverifiable pending mutation returns `PUBLICATION_UNRESOLVED` without replay. Preserve the receipt and inspect the exact target before choosing a new change. Duplicate child paths fail with `REFERENCE_PATH_CONFLICT`. Body, properties and uploads remain separate requests; client checks cannot guarantee a remote transaction or name uniqueness. For transport failures, inspect the structured HTTP status, error code, request ID and outcome phase in `details` or nested `cause_details`; credentials and response bodies are excluded from diagnostics. [Mutation contract](protocol.md#mutation-contract) and [error recovery](protocol.md#errors).
 
-For an upload interruption, inspect `operation show OPERATION_ID` and `result.upload_recovery`, then follow `next.argv`. A known uploaded artifact resumes with its original upload ID. An allocation with no response ID, or an uncertain send still observed as pending, returns `PUBLICATION_UPLOAD_RECOVERY_REQUIRED`: `ntn-skills operation resume OPERATION_ID --new-artifact` explicitly authorizes a distinct artifact from the frozen bytes within that original operation. Recovery requires unchanged original pages and proof that the abandoned artifact was not attached; the original unknown request stays recorded as a remote orphan. It never recreates pages, guesses an upload by filename, repeats the uncertain send or deletes the abandoned upload. A lost attachment response is checked against the exact frozen bytes before continuation.
+For an upload interruption, inspect `ctl operation show OPERATION_ID` and `result.upload_recovery`, then follow `next.argv`. A known uploaded artifact resumes with its original upload ID. An allocation with no response ID, or an uncertain send still observed as pending, returns `PUBLICATION_UPLOAD_RECOVERY_REQUIRED`: `ntn-skills ctl operation resume OPERATION_ID --new-artifact` explicitly authorizes a distinct artifact from the frozen bytes within that original operation. Recovery requires unchanged original pages and proof that the abandoned artifact was not attached; the original unknown request stays recorded as a remote orphan. It never recreates pages, guesses an upload by filename, repeats the uncertain send or deletes the abandoned upload. A lost attachment response is checked against the exact frozen bytes before continuation.
 
 If the CLI exits during version checks or final readback, recovery still compares against its last accepted observations. An edit read during an unfinished check does not become permission to overwrite it. A completed `write` resume returns the operation summary; read the exact target again to obtain its current pinned file ref before continuing work on a reference or attachment.
 
@@ -436,11 +436,11 @@ Connect one existing Notion page to one logical local directory, then run the sa
 Replace placeholders with the exact page and returned binding ID or label:
 
 ```bash
-ntn-skills sync local connect PAGE_ID --path ~/.agents/skills/release-review --as release-review-global
-ntn-skills sync local run release-review-global
-ntn-skills sync local status release-review-global
-ntn-skills sync local check release-review-global
-ntn-skills sync local run --all
+ntn-skills ctl sync local connect PAGE_ID --path ~/.agents/skills/release-review --as release-review-global
+ntn-skills ctl sync local run release-review-global
+ntn-skills ctl sync local status release-review-global
+ntn-skills ctl sync local check release-review-global
+ntn-skills ctl sync local run --all
 ```
 
 `run` checks retained receipts before a fresh plan. Confirmed convergence may settle locally; unknown effects or differing content stop the affected target with its original operation ID. It does not replay an uncertain content write. Successful runs return `verified: true`; failures retain per-target outcomes.
@@ -448,17 +448,17 @@ ntn-skills sync local run --all
 Use an explicit source to resolve a reviewed conflict, or retain a separate plan when a review artifact is needed:
 
 ```bash
-ntn-skills sync local run release-review-global --from notion
-ntn-skills sync local plan release-review-global --output ./reviewed-sync-plan.json
-ntn-skills sync local apply --plan ./reviewed-sync-plan.json
-ntn-skills sync local unbind release-review-global
+ntn-skills ctl sync local run release-review-global --from notion
+ntn-skills ctl sync local plan release-review-global --output ./reviewed-sync-plan.json
+ntn-skills ctl sync local apply --plan ./reviewed-sync-plan.json
+ntn-skills ctl sync local unbind release-review-global
 ```
 
 Status without refresh inspects local content, common baseline and last remote observation only; its comparison is provisional. Refresh updates the observation without advancing a baseline. Plan always reads strongly, persists a state artifact and changes no Skill content/baseline. Exactly one binding or `--all` is required; `--from local|notion` is single-binding only. One-sided changes choose direction from the confirmed baseline; differing two-sided changes stop until an explicit source-selection plan is reviewed. Batch plans reject competing contents for one page and can fan out one accepted update to independent unchanged copies with separate baselines.
 
 Apply accepts the returned plan ID or an identical reviewable JSON copy. It rechecks schema/digest, current registered bindings, scope, baseline generation, remote expected version, local hashes, logical/resolved path and link proof before effects. Editing a copied plan or moving it to another machine does not authorize execution. Only readback-confirmed convergence advances a baseline. There is no global transaction: a later failure can leave earlier verified bindings complete, recorded independently in the receipt. Retain unfinished receipts; they fence affected resources. Public operation reconcile observes actual local/remote results without replaying writes or advancing a baseline. Its safe observations support a newly reviewed sync plan; a pending receipt remains unverified. Inspect unfinished operations before changing a binding; deleting a receipt or rebinding never authorizes recovery. [Recovery contract](protocol.md#synchronization).
 
-Saved-plan apply checks retained receipt fences before requesting remote content: a pending operation returns `SYNC_PENDING`, and inconsistent receipt participants return `STATE_CORRUPT`. Neither authorizes another write. A push interrupted after its Publication marker becomes `writing` returns `PUBLICATION_INCOMPLETE` when sync tries to read that page; the error's `operation_id` identifies the originating publication (also retained under the apply error's `cause_details`). Inspect it with `operation reconcile PUBLICATION_ID`, then explicitly `operation resume PUBLICATION_ID` under the returned guards before retrying synchronization. Sync never accepts an uncommitted publication merely because local and remote bytes appear equal.
+Saved-plan apply checks retained receipt fences before requesting remote content: a pending operation returns `SYNC_PENDING`, and inconsistent receipt participants return `STATE_CORRUPT`. Neither authorizes another write. A push interrupted after its Publication marker becomes `writing` returns `PUBLICATION_INCOMPLETE` when sync tries to read that page; the error's `operation_id` identifies the originating publication (also retained under the apply error's `cause_details`). Inspect it with `ctl operation reconcile PUBLICATION_ID`, then explicitly `ctl operation resume PUBLICATION_ID` under the returned guards before retrying synchronization. Sync never accepts an uncommitted publication merely because local and remote bytes appear equal.
 
 A stable edit made directly in Notion after a committed publication is available through `read CURRENT_PAGE_ID --refresh`, including updated instructions and supporting files. It creates a current snapshot without changing earlier pinned snapshots or accepting that edit as an interrupted publication's intended result. Local and upstream synchronization still check their own baseline and ownership; conflicting changes require an explicit choice. An incomplete publication still returns its original operation for recovery.
 
@@ -490,7 +490,7 @@ ntn-skills ctl cache gc --online --database ops
 
 ## Commands and output
 
-Run `ntn-skills --help` or `ntn-skills <command> --help` for flags and examples. Help is offline and an explicit `--help` takes precedence without running the command. Normal output is JSON, including errors; help/version are text. Exit status is 0 for success, 1 for operation failure and 2 for invalid arguments. `read --raw` affects successful content only. `schema [command path...]` returns the installed parser's parameter types, cardinality, defaults and constraints. Parse errors include a runnable `next.argv` for offline help. Bare collection results such as `sync upstream list` use `items`; named arrays such as catalog `records` keep their existing fields.
+Run `ntn-skills --help` or `ntn-skills <command> --help` for flags and examples. Help is offline and an explicit `--help` takes precedence without running the command. Normal output is JSON, including errors; help/version are text. Exit status is 0 for success, 1 for operation failure and 2 for invalid arguments. `read --raw` affects successful content only. `schema [command path...]` returns the installed parser's parameter types, cardinality, defaults and constraints. Parse errors include a runnable `next.argv` for offline help. Bare collection results such as `ctl sync upstream list` use `items`; named arrays such as catalog `records` keep their existing fields.
 
 The [bootstrap command reference](../skills/ntn-skills/references/commands.md) lists commands and errors. The [protocol](protocol.md) defines exact selectors and result semantics.
 
@@ -529,7 +529,7 @@ Uninstalling retains configuration, state, cache, builtin data and distribution 
 ## Discover through a Notion View
 
 ```bash
-ntn-skills views --database library
+ntn-skills ctl views --database library
 ntn-skills list --default-view --database library
 ntn-skills list --view 'VIEW_ID_OR_NOTION_URL' --database library
 ```

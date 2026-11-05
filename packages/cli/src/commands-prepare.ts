@@ -175,15 +175,15 @@ export const prepareCommand = defineCommand(
   ),
   Command.withExamples([
     {
-      command: "ntn-skills prepare PAGE_ID --purpose use",
+      command: "ntn-skills ctl prepare PAGE_ID --purpose use",
       description: "Prepare one root and its complete unconditional Requires closure",
     },
     {
-      command: "ntn-skills prepare PAGE_ID --purpose inspect",
+      command: "ntn-skills ctl prepare PAGE_ID --purpose inspect",
       description: "Read the root and discover optional relationships without preparing candidates",
     },
     {
-      command: "ntn-skills prepare PINNED_MAIN_REF --session-bindings ./bindings.json",
+      command: "ntn-skills ctl prepare PINNED_MAIN_REF --session-bindings ./bindings.json",
       description: "Extend preparation while preserving the supplied session's selected versions",
     },
   ]),

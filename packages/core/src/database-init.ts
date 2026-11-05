@@ -711,7 +711,13 @@ function databaseInitOperation(
     operation_id: state.operation_id,
     ...status,
     next: {
-      argv: ["ntn-skills", "operation", complete ? "reconcile" : "resume", state.operation_id],
+      argv: [
+        "ntn-skills",
+        "ctl",
+        "operation",
+        complete ? "reconcile" : "resume",
+        state.operation_id,
+      ],
       reason: complete
         ? "Inspect the confirmed database identities without replaying writes."
         : "Continue the recorded initialization, reconciling any pending creation before writing.",

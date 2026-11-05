@@ -282,6 +282,7 @@ function publicationOperation(
           : {
               argv: [
                 "ntn-skills",
+                "ctl",
                 "operation",
                 resume ? "resume" : "reconcile",
                 receipt.operation_id,
@@ -317,7 +318,7 @@ function syncOperation(receipt: typeof ReceiptSchema.Type): typeof SyncLocalOper
       ...(receipt.failure ? { failure_code: receipt.failure.code } : {}),
     },
     next: {
-      argv: ["ntn-skills", "operation", "reconcile", receipt.operation_id],
+      argv: ["ntn-skills", "ctl", "operation", "reconcile", receipt.operation_id],
       reason:
         "Observe both sides without advancing a baseline; authorize changes with a new reviewed sync plan.",
     },
@@ -334,7 +335,7 @@ function reviewOperation(
     resume_supported: false,
     result: { reason: review.reason, provenance: review.provenance, refs: review.refs },
     next: {
-      argv: ["ntn-skills", "operation", "show", review.operation_id],
+      argv: ["ntn-skills", "ctl", "operation", "show", review.operation_id],
       reason: `Inspect retained migration evidence at ${review.provenance.audit_ref}; it cannot authorize replay.`,
     },
   }
@@ -762,7 +763,7 @@ export function showOperation(id: string) {
             publication_operation_id: storedId,
             parent_operation_id: child[1]!,
             next: {
-              argv: ["ntn-skills", "operation", "show", child[1]!],
+              argv: ["ntn-skills", "ctl", "operation", "show", child[1]!],
               reason:
                 "A child can be recorded before its publication binds. Preserve the original upstream plan and outcome.",
             },
@@ -868,7 +869,7 @@ export function reconcileOperation(inputId: string) {
               verified: false,
               resume_supported: true,
               next: {
-                argv: ["ntn-skills", "operation", "resume", id],
+                argv: ["ntn-skills", "ctl", "operation", "resume", id],
                 reason:
                   "Continue the original operation with its proven visible-zero representation; retain its fence for strict reassessment.",
               },
@@ -898,7 +899,7 @@ export function reconcileOperation(inputId: string) {
               verified: false,
               resume_supported: true,
               next: {
-                argv: ["ntn-skills", "operation", "resume", id],
+                argv: ["ntn-skills", "ctl", "operation", "resume", id],
                 reason:
                   "Resume only the original derived list-start correction; the publication fence remains until strict reassessment.",
               },

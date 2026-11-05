@@ -27,7 +27,7 @@ import { applyUpstream } from "./upstream-apply.ts"
 import { observeModeChild, resumeModeCommand } from "./upstream-mode-recovery.ts"
 import { reconcilePublication } from "./publication-reconcile.ts"
 const operationNext = (id: string, reason: string, action = "reconcile") => ({
-  argv: ["ntn-skills", "operation", action, id],
+  argv: ["ntn-skills", "ctl", "operation", action, id],
   reason,
 })
 function publicRun(operation: UpstreamOperation): UpstreamPublicOperation {
@@ -66,7 +66,7 @@ function publicRun(operation: UpstreamOperation): UpstreamPublicOperation {
       ? operationNext(operation.operation_id, "The saved upstream run is verified.", "show")
       : blocked
         ? {
-            argv: ["ntn-skills", "sync", "upstream", "plan", operation.subscription_id],
+            argv: ["ntn-skills", "ctl", "sync", "upstream", "plan", operation.subscription_id],
             reason: "Resolve conflicts and review a new upstream plan.",
           }
         : operationNext(

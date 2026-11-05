@@ -117,8 +117,8 @@ test("retired root commands and name-based replacement are rejected offline", as
     ["source", "list"],
     ["doctor"],
     ["resume", "operation-id"],
-    ["sync", "status"],
-    ["sync", "reconcile", "binding"],
+    ["ctl", "sync", "status"],
+    ["ctl", "sync", "reconcile", "binding"],
     ["replace", "missing.md"],
     ["replace", "missing.md", "--target", "Sample Skill"],
   ])
@@ -185,7 +185,7 @@ test("database init schema exposes exact table attachment and durable resume off
 })
 
 test("operation resume schema exposes explicit new artifact opt-in offline", async () => {
-  const result = await invoke(["schema", "operation", "resume"], {
+  const result = await invoke(["schema", "ctl", "operation", "resume"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -210,7 +210,7 @@ test("upstream schema projects its official parameters and exclusive selection o
     ["update", ["subscription-id", "input", "if-version"]],
     ["remove", ["subscription-id", "if-version"]],
   ] as const) {
-    const result = await invoke(["schema", "sync", "upstream", leaf], {
+    const result = await invoke(["schema", "ctl", "sync", "upstream", leaf], {
       inaccessible: true,
       traceOnline: true,
     })
@@ -222,7 +222,7 @@ test("upstream schema projects its official parameters and exclusive selection o
         expect.objectContaining({ name, required: true, min_occurrences: 1, max_occurrences: 1 }),
       )
   }
-  const result = await invoke(["schema", "sync", "upstream", "run"], {
+  const result = await invoke(["schema", "ctl", "sync", "upstream", "run"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -248,11 +248,12 @@ test("upstream schema projects its official parameters and exclusive selection o
   )
   expect(schema.constraints).toContainEqual({ kind: "exactly_one", flags: ["target", "all"] })
   for (const args of [
-    ["sync", "upstream", "run"],
-    ["sync", "upstream", "run", "--target", "11111111-1111-4111-8111-111111111111", "--all"],
-    ["sync", "upstream", "run", "--all", "--all"],
-    ["sync", "upstream", "add", "--input", "missing.json"],
+    ["ctl", "sync", "upstream", "run"],
+    ["ctl", "sync", "upstream", "run", "--target", "11111111-1111-4111-8111-111111111111", "--all"],
+    ["ctl", "sync", "upstream", "run", "--all", "--all"],
+    ["ctl", "sync", "upstream", "add", "--input", "missing.json"],
     [
+      "ctl",
       "sync",
       "upstream",
       "update",
@@ -266,8 +267,8 @@ test("upstream schema projects its official parameters and exclusive selection o
 
 test("sync exposes local and upstream paths without a root upstream alias", async () => {
   for (const path of [
-    ["sync", "local"],
-    ["sync", "upstream"],
+    ["ctl", "sync", "local"],
+    ["ctl", "sync", "upstream"],
   ]) {
     const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
     expect(result.exit).toBe(0)
@@ -407,7 +408,7 @@ test("native Requires flags and explicit relation schema commands are discoverab
 test("machine constraints and handler rejection share the command contract", async () => {
   for (const [path, expected] of [
     [["read"], { kind: "mutually_exclusive", flags: ["raw", "output"] }],
-    [["sync", "local", "plan"], { kind: "exactly_one", flags: ["binding", "all"] }],
+    [["ctl", "sync", "local", "plan"], { kind: "exactly_one", flags: ["binding", "all"] }],
     [["ctl", "cache", "clear"], { kind: "requires_absent", flag: "all", absent: ["database"] }],
   ] as const) {
     const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
@@ -418,9 +419,9 @@ test("machine constraints and handler rejection share the command contract", asy
   for (const args of [
     ["read", "sample", "--raw", "--output", "out.md"],
     ["read", "sample", "--lines", "1-2", "--output", "out.md"],
-    ["sync", "local", "plan"],
-    ["sync", "local", "plan", "binding", "--all"],
-    ["sync", "local", "plan", "--all", "--from", "local"],
+    ["ctl", "sync", "local", "plan"],
+    ["ctl", "sync", "local", "plan", "binding", "--all"],
+    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
     ["ctl", "cache", "clear", "--all", "--database", "db"],
   ])
     await invalid(args)
@@ -534,20 +535,20 @@ test("pinned and relative pinned reads allow offline but reject refresh and age 
 
 test("sync and cache require unambiguous selections before online work", async () => {
   for (const args of [
-    ["sync", "local", "bind", "sample"],
-    ["sync", "local", "bind", pinned, "--path", "local"],
-    ["sync", "local", "plan"],
-    ["sync", "local", "plan", "binding", "--all"],
-    ["sync", "local", "plan", "--all", "--from", "local"],
-    ["sync", "local", "plan", "--all", "--from", "notion"],
-    ["sync", "local", "plan", "binding", "--from", "remote"],
-    ["sync", "local", "plan", "binding", "--dry-run"],
-    ["sync", "local", "apply"],
-    ["sync", "local", "apply", "--plan", "p_invalid", "--all"],
-    ["sync", "local", "apply", "--plan", "p_invalid", "--from", "local"],
-    ["operation", "reconcile", "operation-id", "--force"],
-    ["sync", "local", "status", "--offline"],
-    ["sync", "local", "unbind"],
+    ["ctl", "sync", "local", "bind", "sample"],
+    ["ctl", "sync", "local", "bind", pinned, "--path", "local"],
+    ["ctl", "sync", "local", "plan"],
+    ["ctl", "sync", "local", "plan", "binding", "--all"],
+    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
+    ["ctl", "sync", "local", "plan", "--all", "--from", "notion"],
+    ["ctl", "sync", "local", "plan", "binding", "--from", "remote"],
+    ["ctl", "sync", "local", "plan", "binding", "--dry-run"],
+    ["ctl", "sync", "local", "apply"],
+    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--all"],
+    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--from", "local"],
+    ["ctl", "operation", "reconcile", "operation-id", "--force"],
+    ["ctl", "sync", "local", "status", "--offline"],
+    ["ctl", "sync", "local", "unbind"],
     ["ctl", "cache", "clear"],
     ["ctl", "cache", "clear", "sample", "--all"],
     ["ctl", "cache", "clear", "--all", "--database", "sample"],
@@ -559,8 +560,20 @@ test("sync and cache require unambiguous selections before online work", async (
 
 test("valid sync selections and explicit replacement targets reach their actual operational prerequisites", async () => {
   for (const args of [
-    ["sync", "local", "bind", "sample", "--path", "local", "--as", "local-copy", "--dry-run"],
     [
+      "ctl",
+      "sync",
+      "local",
+      "bind",
+      "sample",
+      "--path",
+      "local",
+      "--as",
+      "local-copy",
+      "--dry-run",
+    ],
+    [
+      "ctl",
       "sync",
       "local",
       "connect",
@@ -570,6 +583,7 @@ test("valid sync selections and explicit replacement targets reach their actual 
       "--dry-run",
     ],
     [
+      "ctl",
       "sync",
       "upstream",
       "connect",
@@ -582,13 +596,23 @@ test("valid sync selections and explicit replacement targets reach their actual 
     jsonFailure(await invoke(args), "AUTH_REQUIRED", 1)
   for (const source of ["local", "notion"]) {
     const result = await invoke(
-      ["sync", "local", "plan", "missing-binding", "--from", source, "--output", "plan.json"],
+      [
+        "ctl",
+        "sync",
+        "local",
+        "plan",
+        "missing-binding",
+        "--from",
+        source,
+        "--output",
+        "plan.json",
+      ],
       { traceOnline: true },
     )
     jsonFailure(result, "SYNC_BINDING_MISSING", 1)
     expect(result.onlineCalled).toBe(false)
   }
-  const empty = await invoke(["sync", "local", "status"])
+  const empty = await invoke(["ctl", "sync", "local", "status"])
   expect(empty.exit).toBe(0)
   expect(JSON.parse(empty.stdout)).toEqual({ ok: true, bindings: [] })
 }, 30000)
@@ -596,13 +620,13 @@ test("valid sync selections and explicit replacement targets reach their actual 
 const helpCommands = [
   [],
   ["apply"],
-  ["sync", "local", "connect"],
-  ["sync", "local", "run"],
-  ["sync", "local", "check"],
-  ["sync", "upstream"],
-  ["sync", "upstream", "connect"],
-  ["sync", "upstream", "run"],
-  ["sync", "upstream", "list"],
+  ["ctl", "sync", "local", "connect"],
+  ["ctl", "sync", "local", "run"],
+  ["ctl", "sync", "local", "check"],
+  ["ctl", "sync", "upstream"],
+  ["ctl", "sync", "upstream", "connect"],
+  ["ctl", "sync", "upstream", "run"],
+  ["ctl", "sync", "upstream", "list"],
   ["list"],
   ["ctl", "database"],
   ["ctl", "database", "list"],
@@ -616,10 +640,10 @@ const helpCommands = [
   ["ctl"],
   ["ctl", "status"],
   ["ctl", "backup"],
-  ["operation"],
-  ["operation", "list"],
-  ["operation", "show"],
-  ["sync", "local"],
+  ["ctl", "operation"],
+  ["ctl", "operation", "list"],
+  ["ctl", "operation", "show"],
+  ["ctl", "sync", "local"],
   ["export"],
   ["write"],
   ["ctl", "config"],
@@ -631,19 +655,19 @@ const helpCommands = [
   ["ctl", "database"],
   ["ctl", "database", "register"],
   ["ctl", "database", "unregister"],
-  ["sync"],
-  ["sync", "local", "bind"],
-  ["sync", "local", "status"],
-  ["sync", "local", "plan"],
-  ["sync", "local", "apply"],
-  ["operation", "reconcile"],
-  ["sync", "local", "unbind"],
+  ["ctl", "sync"],
+  ["ctl", "sync", "local", "bind"],
+  ["ctl", "sync", "local", "status"],
+  ["ctl", "sync", "local", "plan"],
+  ["ctl", "sync", "local", "apply"],
+  ["ctl", "operation", "reconcile"],
+  ["ctl", "sync", "local", "unbind"],
   ["ctl", "cache"],
   ["ctl", "cache", "status"],
   ["ctl", "cache", "clear"],
-  ["resolve"],
+  ["ctl", "resolve"],
   ["ctl", "doctor"],
-  ["operation", "resume"],
+  ["ctl", "operation", "resume"],
 ]
 for (const command of helpCommands) {
   test(`${command.join(" ") || "root"} help requires no provider or accessible application roots`, async () => {
@@ -657,8 +681,8 @@ for (const command of helpCommands) {
 test("daily recovery guidance names executable command paths offline", async () => {
   for (const [path, instruction] of [
     [["create"], "operation resume OPERATION_ID"],
-    [["sync", "local", "bind"], "sync local run BINDING --from local|notion"],
-    [["operation"], "operation"],
+    [["ctl", "sync", "local", "bind"], "sync local run BINDING --from local|notion"],
+    [["ctl", "operation"], "operation"],
   ] as const) {
     const help = await invoke([...path, "--help"], { inaccessible: true, traceOnline: true })
     expect(help.exit).toBe(0)
@@ -675,8 +699,8 @@ test("parser errors return the relevant offline help command", async () => {
   for (const [args, next] of [
     [["read"], ["ntn-skills", "read", "--help"]],
     [
-      ["sync", "local", "plan", "--unknown-option"],
-      ["ntn-skills", "sync", "local", "plan", "--help"],
+      ["ctl", "sync", "local", "plan", "--unknown-option"],
+      ["ntn-skills", "ctl", "sync", "local", "plan", "--help"],
     ],
     [["unknown-command"], ["ntn-skills", "--help"]],
   ] satisfies Array<[string[], string[]]>) {
@@ -719,7 +743,7 @@ test("apply exposes sparse changes and enforces metadata selection before access
 }, 30000)
 
 test("upstream connect exposes Git source and member directory selection offline", async () => {
-  const result = await invoke(["schema", "sync", "upstream", "connect"], {
+  const result = await invoke(["schema", "ctl", "sync", "upstream", "connect"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -739,7 +763,7 @@ test("upstream connect exposes Git source and member directory selection offline
       expect.objectContaining({ name, kind: "flag", min_occurrences: 0, max_occurrences: null }),
     )
   expect(parameters.some((parameter: { name: string }) => parameter.name === "input")).toBe(false)
-  const help = await invoke(["sync", "upstream", "connect", "--help"], {
+  const help = await invoke(["ctl", "sync", "upstream", "connect", "--help"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -747,8 +771,9 @@ test("upstream connect exposes Git source and member directory selection offline
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout).toContain("HEAD")
   expect(help.stdout.replace(/\s+/g, " ")).toContain("member directory")
-  await invalid(["sync", "upstream", "connect"])
+  await invalid(["ctl", "sync", "upstream", "connect"])
   await invalid([
+    "ctl",
     "sync",
     "upstream",
     "connect",
@@ -761,7 +786,7 @@ test("upstream connect exposes Git source and member directory selection offline
 })
 
 test("local connect exposes one initial direction and validates it before access", async () => {
-  const schema = await invoke(["schema", "sync", "local", "connect"], {
+  const schema = await invoke(["schema", "ctl", "sync", "local", "connect"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -780,7 +805,7 @@ test("local connect exposes one initial direction and validates it before access
     flag: "from",
     values: ["local", "notion"],
   })
-  const help = await invoke(["sync", "local", "connect", "--help"], {
+  const help = await invoke(["ctl", "sync", "local", "connect", "--help"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -788,6 +813,7 @@ test("local connect exposes one initial direction and validates it before access
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout.replace(/\s+/g, " ")).toContain("missing directory")
   await invalid([
+    "ctl",
     "sync",
     "local",
     "connect",
@@ -797,11 +823,11 @@ test("local connect exposes one initial direction and validates it before access
     "--from",
     "unknown",
   ])
-  await invalid(["sync", "local", "connect", "11111111-1111-4111-8111-111111111111"])
+  await invalid(["ctl", "sync", "local", "connect", "11111111-1111-4111-8111-111111111111"])
 })
 
 test("daily management schema excludes historical operator commands offline", async () => {
-  const upstream = await invoke(["schema", "sync", "upstream"], {
+  const upstream = await invoke(["schema", "ctl", "sync", "upstream"], {
     inaccessible: true,
     traceOnline: true,
   })
@@ -851,7 +877,10 @@ test("daily management schema excludes historical operator commands offline", as
     "restore-deleted",
   ])
     expect(upstreamCommands).not.toContain(name)
-  const operation = await invoke(["schema", "operation"], { inaccessible: true, traceOnline: true })
+  const operation = await invoke(["schema", "ctl", "operation"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(operation.exit).toBe(0)
   expect(operation.onlineCalled).toBe(false)
   expect(
@@ -859,9 +888,9 @@ test("daily management schema excludes historical operator commands offline", as
       .schema.commands.map((command: { name: string }) => command.name)
       .sort(),
   ).toEqual(["list", "reconcile", "resume", "show"])
-  await invalid(["sync", "upstream", "content-adopt-plan", "--input", "missing.json"])
-  await invalid(["sync", "upstream", "adopt-plan", "--evidence", "missing.json"])
-  await invalid(["operation", "body-completion-plan", "p_fixture"])
+  await invalid(["ctl", "sync", "upstream", "content-adopt-plan", "--input", "missing.json"])
+  await invalid(["ctl", "sync", "upstream", "adopt-plan", "--evidence", "missing.json"])
+  await invalid(["ctl", "operation", "body-completion-plan", "p_fixture"])
 }, 30000)
 
 test("implicit root help works offline", async () => {
@@ -870,6 +899,58 @@ test("implicit root help works offline", async () => {
   expect(result.stderr).toBe("")
   expect(result.onlineCalled).toBe(false)
 })
+
+test("SC25 C3 daily help/schema stay small while ctl and historical exact paths share one parser", async () => {
+  const root = await invoke(["schema"], { inaccessible: true, traceOnline: true })
+  expect(root.exit).toBe(0)
+  expect(root.onlineCalled).toBe(false)
+  const tree = JSON.parse(root.stdout).schema
+  expect(tree.commands.map((command: { name: string }) => command.name).sort()).toEqual([
+    "ctl",
+    "export",
+    "files",
+    "list",
+    "read",
+    "schema",
+    "use",
+  ])
+  const ctl = tree.commands.find((command: { name: string }) => command.name === "ctl")
+  expect(ctl.commands).toEqual([])
+  expect(ctl.has_subcommands).toBe(true)
+  const help = await invoke(["--help"], { inaccessible: true, traceOnline: true })
+  expect(help.exit).toBe(0)
+  expect(help.onlineCalled).toBe(false)
+  expect(help.stdout).not.toContain("--session-bindings")
+  for (const path of [
+    ["views"],
+    ["prepare"],
+    ["resolve"],
+    ["operation", "resume"],
+    ["sync", "local", "run"],
+    ["sync", "upstream", "run"],
+  ]) {
+    const canonical = await invoke(["schema", "ctl", ...path], {
+      inaccessible: true,
+      traceOnline: true,
+    })
+    const historical = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
+    expect(canonical.exit).toBe(0)
+    expect(historical.exit).toBe(0)
+    expect(canonical.onlineCalled || historical.onlineCalled).toBe(false)
+    expect(JSON.parse(canonical.stdout).schema).toEqual(JSON.parse(historical.stdout).schema)
+    const commandHelp = await invoke(["ctl", ...path, "--help"], {
+      inaccessible: true,
+      traceOnline: true,
+    })
+    expect(commandHelp.exit).toBe(0)
+    expect(commandHelp.onlineCalled).toBe(false)
+  }
+  for (const author of ["create", "write", "update", "apply", "replace"]) {
+    const schema = await invoke(["schema", author], { inaccessible: true, traceOnline: true })
+    expect(schema.exit).toBe(0)
+    expect(JSON.parse(schema.stdout).schema.name).toBe(author)
+  }
+}, 30000)
 
 for (const command of [
   ["list"],
@@ -882,7 +963,7 @@ for (const command of [
   ["export", "sample", "--output", "output.zip"],
   ["write", "sample", "--input", "missing.md"],
   ["ctl", "database", "register", "personal"],
-  ["sync", "local", "bind", "sample", "--path", "local"],
+  ["ctl", "sync", "local", "bind", "sample", "--path", "local"],
   ["ctl", "cache", "status", "sample"],
   ["ctl", "cache", "clear", "sample"],
 ]) {
@@ -933,18 +1014,18 @@ test("new and existing singleton strings and Booleans reject repetition", async 
       "--dry-run",
       "--dry-run",
     ],
-    ["sync", "local", "bind", "sample", "--path", "a", "--path=a"],
-    ["sync", "local", "bind", "sample", "--path", "a", "--as", "b", "--as=b"],
-    ["sync", "local", "plan", "--all", "--all"],
-    ["sync", "local", "plan", "b", "--from", "local", "--from=local"],
-    ["sync", "local", "plan", "b", "--output", "a.json", "--output=a.json"],
-    ["sync", "local", "apply", "--plan", "p_a", "--plan=p_a"],
-    ["sync", "local", "status", "--refresh", "--refresh"],
-    ["sync", "local", "unbind", "b", "--dry-run", "--dry-run"],
+    ["ctl", "sync", "local", "bind", "sample", "--path", "a", "--path=a"],
+    ["ctl", "sync", "local", "bind", "sample", "--path", "a", "--as", "b", "--as=b"],
+    ["ctl", "sync", "local", "plan", "--all", "--all"],
+    ["ctl", "sync", "local", "plan", "b", "--from", "local", "--from=local"],
+    ["ctl", "sync", "local", "plan", "b", "--output", "a.json", "--output=a.json"],
+    ["ctl", "sync", "local", "apply", "--plan", "p_a", "--plan=p_a"],
+    ["ctl", "sync", "local", "status", "--refresh", "--refresh"],
+    ["ctl", "sync", "local", "unbind", "b", "--dry-run", "--dry-run"],
     ["ctl", "cache", "clear", "--all", "--all"],
     ["ctl", "cache", "clear", "--all", "--dry-run", "--dry-run"],
     ["ctl", "config", "set-token", "--stdin", "--stdin"],
-    ["operation", "resume", "p_fixture", "--progress", "--progress"],
+    ["ctl", "operation", "resume", "p_fixture", "--progress", "--progress"],
     ["create", "missing.md", "--progress", "--progress"],
     [
       "replace",
@@ -1045,6 +1126,7 @@ test("consumer catalog identity follows remote scope without local configuration
 test("relative resolution preserves snapshot without consulting Notion", async () => {
   const result = await invoke(
     [
+      "ctl",
       "resolve",
       "../assets/guide.md",
       "--from",

@@ -108,7 +108,10 @@ function captureSuccess(input: MapCheckpointAdoptionInput) {
         : executable(argv[0], "ntn-skills")
           ? 1
           : -1
-    const tail = prefix < 0 ? [] : argv.slice(prefix)
+    const commandPath = prefix < 0 ? [] : argv.slice(prefix)
+    // Retained captures keep their original bytes; both public spellings use
+    // the same selected-member apply implementation.
+    const tail = commandPath[0] === "ctl" ? commandPath.slice(1) : commandPath
     if (
       tail.length !== 6 ||
       tail[0] !== "sync" ||

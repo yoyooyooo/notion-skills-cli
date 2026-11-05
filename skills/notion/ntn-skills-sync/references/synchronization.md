@@ -5,8 +5,8 @@
 | Relationship | Start once | Continue |
 | --- | --- | --- |
 | Active shared Source | `ctl library sources put` and exact `bind` | `sources prepare`, reviewed `apply`; `reconcile` original plan |
-| Existing legacy Git subscription | `sync upstream connect SOURCE --database LIBRARY` | `sync upstream run --target SUBSCRIPTION_ID` |
-| Existing legacy local relationship | `sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL` | `sync local run LABEL` |
+| Existing legacy Git subscription | `ctl sync upstream connect SOURCE --database LIBRARY` | `ctl sync upstream run --target SUBSCRIPTION_ID` |
+| Existing legacy local relationship | `ctl sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL` | `ctl sync local run LABEL` |
 | All authorized active legacy relationships | Register each relationship | The relevant `run --all` |
 | One-time import/export/edit | Use `ntn-skills-maintain` | No recurring binding is established |
 
@@ -18,7 +18,7 @@ The current four-table model separates mutable Sources from immutable selected c
 
 `put` takes a complete version-1 definition with `source_id`, name, description, enabled, policy, adapter, selection and options. Read the installed `sources put --help` and the [Source management guide](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/sources-management.md) for exact Git and Linear JSON examples. Copy the last observed fingerprint into `--expect`; edits do not change current Skill pins. `bind` requires exact target/member and expected current Origin. Old multi-publisher settings remain provenance; a single-origin refresh deliberately rejects shared_target_set.
 
-`check` resolves a complete provider candidate. `fetch` writes one exact member's portable files to a new/identical directory. `prepare SOURCE --entry ENTRY --target PAGE --output PLAN` combines exact provider bytes with the current native custom/following/tombstone state and verifies the effective file tree without remote writes. `apply PLAN --entry ENTRY` checks the original configuration, target, resources and current expectations, stores content chunks and the bundle, then uses the common guarded selection journal. It verifies the result and records the last successful revision; no automatic cron, whole-library sync or native-body overwrite is implied.
+`check` resolves a complete provider candidate. `fetch` writes one exact member's portable files to a new/identical directory. `ctl prepare SOURCE --entry ENTRY --target PAGE --output PLAN` combines exact provider bytes with the current native custom/following/tombstone state and verifies the effective file tree without remote writes. `apply PLAN --entry ENTRY` checks the original configuration, target, resources and current expectations, stores content chunks and the bundle, then uses the common guarded selection journal. It verifies the result and records the last successful revision; no automatic cron, whole-library sync or native-body overwrite is implied.
 
 Linear uses a machine-only `LINEAR_API_KEY` and the fixed official GraphQL endpoint. Select explicit issue/document IDs and file paths including SKILL.md. An observation hash binds the returned bytes and updatedAt, not an invented historical API commit. Git uses host authentication and exact resolved commits. Shared definitions never contain credentials, arbitrary headers or executable commands. Do not copy credentials to test another machine.
 
@@ -65,7 +65,7 @@ Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_E
 | Source selection | `ctl library source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` |
 | Profile revision | Repeat the exact complete `profile set` intent with `--reconcile` |
 
-Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. Do not send these shared IDs to legacy `operation resume`. A verified recovery proves its reported status, not necessarily completion of the intended change.
+Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. Do not send these shared IDs to legacy `ctl operation resume`. A verified recovery proves its reported status, not necessarily completion of the intended change.
 
 ## Existing legacy upstream connection and run
 
@@ -75,7 +75,7 @@ A run resolves original pending writes first. It reuses their frozen input and o
 
 When an original tracked page is explicitly in Notion Trash, run can publish the current selected source into a new page and advance that member's map. It preserves the old page, other members, Tags and Default Context. Source exclusion/removal does not recreate the member; a fork preserves local ownership. Missing access or an unavailable response cannot establish deletion. Report the new exact page ID after restoration because an old live ref does not acquire a new identity.
 
-Tracked content changes belong to the upstream source. Ordinary local edits to body, files, Name or Description require `sync upstream fork SUBSCRIPTION_ID MEMBER_KEY`. Fork/track uses the existing accepted baseline; do not overwrite a conflict or alter ownership metadata manually. A direct Notion edit remains readable while synchronization preserves it as a conflict. Default Context is independently editable and does not accept a content revision.
+Tracked content changes belong to the upstream source. Ordinary local edits to body, files, Name or Description require `ctl sync upstream fork SUBSCRIPTION_ID MEMBER_KEY`. Fork/track uses the existing accepted baseline; do not overwrite a conflict or alter ownership metadata manually. A direct Notion edit remains readable while synchronization preserves it as a conflict. Default Context is independently editable and does not accept a content revision.
 
 Notion's Upstream row reports Sync Status, Last Sync Attempt, Last Synced and Sync Summary. Only successful completion advances Last Synced. CLI member results distinguish created/updated/unchanged/retained/forked/restored/conflicted/unresolved outcomes. A status-write failure can coexist with successful member effects; inspect the returned original operation before deciding what remains.
 
@@ -86,8 +86,8 @@ A local connection follows an existing current page ID and a logical local path.
 If local and remote contents initially agree, connect verifies the common baseline. If a local directory already contains different content, choose the initial winner from the task's explicit intent:
 
 ```bash
-ntn-skills sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL --from notion
-ntn-skills sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL --from local
+ntn-skills ctl sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL --from notion
+ntn-skills ctl sync local connect PAGE_ID --path ABSOLUTE_PATH --as LABEL --from local
 ```
 
 Use one of these, not both. If the task has not chosen between distinct work, show the relevant difference and obtain that content decision. Once initialized, ordinary run uses the common baseline: one-sided edits propagate, equal new content converges, and different two-sided edits conflict.
@@ -99,8 +99,8 @@ A tracked upstream item can be pulled locally, but local changes cannot be pushe
 When a task needs a frozen preview before mutation:
 
 ```bash
-ntn-skills sync local plan LABEL --output ./sync-plan.json
-ntn-skills sync local apply --plan ./sync-plan.json
+ntn-skills ctl sync local plan LABEL --output ./sync-plan.json
+ntn-skills ctl sync local apply --plan ./sync-plan.json
 ```
 
 Review applicability, conflicts, target page/path, direction and file additions/removals. Apply the saved plan unchanged. A changed source, baseline, credential scope or link target makes it stale; reread and replan rather than editing hashes or preconditions. `--from` is a deliberate single-binding initialization/conflict decision and does not bypass freshness checks.
@@ -112,9 +112,9 @@ For multiple copies of one page, inconsistent local candidates conflict before w
 Use ordinary run first for an authorized retry. It checks original unfinished work before creating new plans. Retain the returned operation ID if the result remains partial or unknown:
 
 ```bash
-ntn-skills operation show OPERATION_ID
-ntn-skills operation reconcile OPERATION_ID
-ntn-skills operation resume OPERATION_ID
+ntn-skills ctl operation show OPERATION_ID
+ntn-skills ctl operation reconcile OPERATION_ID
+ntn-skills ctl operation resume OPERATION_ID
 ```
 
 Use the next action reported for that operation. Reconcile reads actual effects; resume continues only supported original work. Never assume a failed response means no effect. Unknown creation, changed content or changed ownership remains unresolved rather than producing another artifact.
@@ -137,4 +137,4 @@ Upstream `status` is an offline scoped view; `check` reads current subscription/
 
 Local `status` can be provisional; `check` or refreshed status observes current sides without advancing a baseline. Only verified synchronization establishes convergence. After local content changes, use the consuming host's documented reload/restart path.
 
-`sync local unbind LABEL` deactivates the relationship while retaining both contents and recovery state. Upstream removal likewise acts on the selected registration; do not delete unrelated content or state as a recovery shortcut.
+`ctl sync local unbind LABEL` deactivates the relationship while retaining both contents and recovery state. Upstream removal likewise acts on the selected registration; do not delete unrelated content or state as a recovery shortcut.

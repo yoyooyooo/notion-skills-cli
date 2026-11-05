@@ -124,7 +124,7 @@ test("R2/P8 lost response fences page until explicit publication resume; sync re
   expect(stableSyncJson(f.bases())).toBe(base)
   expect(f.mutations()).toBe(mutations)
   const publication = await f.run(reconcilePublication(publicationId))
-  expect(publication.next.argv).toEqual(["ntn-skills", "operation", "resume", publicationId])
+  expect(publication.next.argv).toEqual(["ntn-skills", "ctl", "operation", "resume", publicationId])
   expect(publication.verified).toBe(false)
   expect(stableSyncJson(f.bases())).toBe(base)
   expect(f.mutations()).toBe(mutations)

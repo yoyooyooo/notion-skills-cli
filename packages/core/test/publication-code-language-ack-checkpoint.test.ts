@@ -512,7 +512,7 @@ test("the original language ACK advances only its missing owner checkpoint, with
     unresolved: false,
     state: "running",
   })
-  expect(result.next.argv).toEqual(["ntn-skills", "operation", "resume", operationId])
+  expect(result.next.argv).toEqual(["ntn-skills", "ctl", "operation", "resume", operationId])
   expect(f.requests.every((request) => request.method === "GET")).toBe(true)
   expect(f.mutations()).toBe(mutations)
   expect(f.receiptWrites() - writes).toBe(1)

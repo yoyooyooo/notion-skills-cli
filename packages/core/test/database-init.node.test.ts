@@ -602,7 +602,7 @@ test(
           verified: true,
           resume_supported: true,
           result: { content: { database_id: content }, upstream: { database_id: upstream } },
-          next: { argv: ["ntn-skills", "operation", "reconcile", input.operation] },
+          next: { argv: ["ntn-skills", "ctl", "operation", "reconcile", input.operation] },
         })
         expect(shown).not.toHaveProperty("scope")
         expect(shown).not.toHaveProperty("event_index")

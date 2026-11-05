@@ -241,21 +241,21 @@ test("SC25 list exposes bounded metadata pagination and explicit JSON in the off
 
 test("prepare help/schema are offline and expose actual parser defaults and bounds", async () => {
   const f = await fixture()
-  const help = await f.invoke(["prepare", "--help"])
+  const help = await f.invoke(["ctl", "prepare", "--help"])
   expect(help.exit).toBe(0)
   expect(help.stdout).toContain("--session-bindings")
   expect(help.stdout).toContain("--max-context-bytes")
-  const schema = await f.invoke(["schema", "prepare"])
+  const schema = await f.invoke(["schema", "ctl", "prepare"])
   expect(schema.exit).toBe(0)
   const parameters: Array<{ name: string; min_occurrences: number; default?: unknown }> =
     JSON.parse(schema.stdout).schema.parameters
   expect(parameters.find((parameter) => parameter.name === "root")?.min_occurrences).toBe(1)
   expect(parameters.find((parameter) => parameter.name === "purpose")?.default).toBe("use")
   for (const args of [
-    ["prepare"],
-    ["prepare", f.ref(0), "--purpose", "unknown"],
-    ["prepare", f.ref(0), "--max-nodes", "0"],
-    ["prepare", f.ref(0), "--refresh", "--offline"],
+    ["ctl", "prepare"],
+    ["ctl", "prepare", f.ref(0), "--purpose", "unknown"],
+    ["ctl", "prepare", f.ref(0), "--max-nodes", "0"],
+    ["ctl", "prepare", f.ref(0), "--refresh", "--offline"],
   ]) {
     const invalid = await f.invoke(args)
     expect(invalid.exit).toBe(2)
@@ -265,7 +265,7 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
 
 test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect boundary and stable session bindings", async () => {
   const f = await fixture()
-  const used = await f.invoke(["prepare", f.ref(0), "--offline"])
+  const used = await f.invoke(["ctl", "prepare", f.ref(0), "--offline"])
   expect(used.exit).toBe(0)
   const ready = decode(PrepareReadySchema, JSON.parse(used.stdout))
   expect(ready.status).toBe("ready")
@@ -277,7 +277,19 @@ test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect bo
   ).toEqual(["# a\nExact prepared instruction a.\n", "# b\nExact prepared instruction b.\n"])
   expect(ready.nodes.find((node) => node.id === f.snapshots[2]!.record.id)?.state).toBe("known")
   expect(ready.usage.context_bytes).toBe(Buffer.byteLength(used.stdout.trimEnd()))
-  const inspected = await f.invoke(["prepare", f.ref(0), "--purpose", "inspect", "--offline"])
+  const historical = await f.invoke(["prepare", f.ref(0), "--offline"])
+  expect(historical.exit).toBe(0)
+  expect(decode(PrepareReadySchema, JSON.parse(historical.stdout)).graph_lock).toEqual(
+    ready.graph_lock,
+  )
+  const inspected = await f.invoke([
+    "ctl",
+    "prepare",
+    f.ref(0),
+    "--purpose",
+    "inspect",
+    "--offline",
+  ])
   const inspection = decode(PrepareReadySchema, JSON.parse(inspected.stdout))
   expect(inspection.usage.prepared_nodes).toBe(1)
   expect(inspection.required_closure).toEqual([])
@@ -285,6 +297,7 @@ test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect bo
   const bindings = join(f.root, "session-bindings.json")
   await writeFile(bindings, JSON.stringify(ready.session_bindings))
   const extended = await f.invoke([
+    "ctl",
     "prepare",
     f.snapshots[0]!.record.id,
     "--session-bindings",
@@ -299,11 +312,11 @@ test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect bo
 
 test("Node CLI reports a missing required pin or context exhaustion as nonready without a graph lock", async () => {
   const f = await fixture()
-  const inspect = await f.invoke(["prepare", f.ref(3), "--purpose", "inspect", "--offline"])
+  const inspect = await f.invoke(["ctl", "prepare", f.ref(3), "--purpose", "inspect", "--offline"])
   expect(inspect.exit).toBe(0)
   for (const args of [
-    ["prepare", f.ref(3), "--offline"],
-    ["prepare", f.ref(0), "--offline", "--max-context-bytes", "100"],
+    ["ctl", "prepare", f.ref(3), "--offline"],
+    ["ctl", "prepare", f.ref(0), "--offline", "--max-context-bytes", "100"],
   ]) {
     const result = await f.invoke(args)
     expect(result.exit).toBe(1)
@@ -320,7 +333,7 @@ test("Node CLI reports a missing required pin or context exhaustion as nonready 
 test("public prepare, read and snapshot export preserve the same BOM and CRLF bytes", async () => {
   const body = "\uFEFF# a\r\nPreserve UTF-8 BOM, CRLF and 雪 exactly.\r\n"
   const f = await fixture({ main: body })
-  const prepared = await f.invoke(["prepare", f.ref(0), "--purpose", "inspect", "--offline"])
+  const prepared = await f.invoke(["ctl", "prepare", f.ref(0), "--purpose", "inspect", "--offline"])
   expect(prepared.exit).toBe(0)
   const ready = decode(PrepareReadySchema, JSON.parse(prepared.stdout))
   const node = ready.nodes.find((node) => node.state === "prepared")

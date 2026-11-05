@@ -1451,7 +1451,7 @@ export function resumePublicationListRepair(operationId: string, options: Public
                   verified: false,
                   repair_applied: true,
                   next: {
-                    argv: ["ntn-skills", "operation", "reconcile", operationId],
+                    argv: ["ntn-skills", "ctl", "operation", "reconcile", operationId],
                     reason:
                       "The original list field is repaired; a strict read-only reassessment must validate the retained publication.",
                   },

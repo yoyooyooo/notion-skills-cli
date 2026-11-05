@@ -88,7 +88,7 @@ export const syncBindCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("Bind an existing page to one logical local directory"),
   Command.withDescription(
-    "Registration validates both sides online. Equal contents initialize a confirmed common baseline; differences require an explicit direction with sync local run BINDING --from local|notion. Bind never copies content or creates a page. Historical targets and dangling links fail; --dry-run saves no binding or baseline.",
+    "Registration validates both sides online. Equal contents initialize a confirmed common baseline; differences require an explicit direction with ctl sync local run BINDING --from local|notion. Bind never copies content or creates a page. Historical targets and dangling links fail; --dry-run saves no binding or baseline.",
   ),
 )
 export const syncStatusCommand = defineCommand(

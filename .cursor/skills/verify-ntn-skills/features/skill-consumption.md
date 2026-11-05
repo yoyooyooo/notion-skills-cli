@@ -4,6 +4,12 @@
 
 ## SC25：日常命令与目录 SDK
 
+C3/SC23 的全部 16 个原顶层路径与子树去向维护在 [消费合同的命令 disposition](../../../../docs/consumer-contract.md#cli-command-disposition-and-compatibility)。默认 help/schema 只展示日常消费和 ctl 入口，作者命令按任务发现；`schema ctl ...` 完整展开所选管理树。旧五个 root 管理路径精确调用仍与 ctl 使用同一 parser/handler，不能从默认目录不可见推断能力被删除。
+
+沿原 `cli.test.ts` 的 SC25 C3 场景保留 fail-before/pass-after，覆盖离线默认树、显式作者发现、canonical/历史 schema 相等与 ctl help；`prepare.test.ts` 比较真实 canonical/历史入口的完整 graph lock。原 package command-contract smoke 逐项重复安装后的检查。publication/upstream 恢复断言必须期望新的 ctl next.argv；旧 capture 与 canonical capture 都保留原 bytes/hash，preflight/map-checkpoint 原有 Node tests 验证这一点。不得执行真实未结操作来证明改名。
+
+默认上下文比较使用同一 Node、不可访问的应用根和带正控制的受控 HTTP origin，保存旧/新安装包的 help/schema 原始 stdout、UTF-8 字节、完整入口 hash 和实际请求。输出字节不换算为 provider tokens。日常 builtin 的历史迁移正文按需转到已有 maintain reference；原 package builtin lifecycle 继续验证整套主文、参考文件、安装和导出字节，迁移段原文必须完整保留。最终候选的包内文档逐项对照源码；若只更新文档而复用此前二进制验证，必须证明安装后的 CLI/SDK hash 完全相同并重新运行受影响的 builtin gate。
+
 紧凑 use 也必须保留原生引用的 canonical ref、来源文件和 availability，不能把 disabled/metadata-only 引用显示为可消费正文。既有 SDK smoke 的 scalar fixture 同时验证 JSON 与紧凑入口，并断言固定 use 不新增远端引用正文请求；旧安装包的缺失输出应先失败，再对新归档通过。
 
 合同 `agent-cli-ref-20261105`：`list --query/--limit/--cursor` 发现有界元数据，`read REF --json` 查看单文件，`use REF` 一次加载根和完整 Requires；`use --json` 保留机器证据，紧凑默认正文只出现一次。`list/read` 的旧 JSON 默认在 SC23 调用者迁移前保留。完整默认目录用 SDK `listCatalog`，有界发现用 `listSkills`；两者共享 core catalog 和凭据 scope，不派生 CLI 子进程或第二份身份缓存。
@@ -50,7 +56,7 @@ Default View 正例只增加完整 View metadata observation；原 consumer fixt
 
 ## How to get to it (user POV)
 
-用户在 CLI 选择一个可访问的 Skill，查看主文与文件，读取固定版本并导出；Pi 用户通过 `$`、`/skill:` 或模型工具选择同一能力。本 CLI 的公开入口是现有 `list`、`read`、`files`、`export` 和 `prepare`，没有新的验收专用产品命令。
+用户在 CLI 选择一个可访问的 Skill，查看主文与文件，读取固定版本并导出；Pi 用户通过 `$`、`/skill:` 或模型工具选择同一能力。本 CLI 的日常入口是 `list`、`read`、`use`；`files`、`export` 按需辅助，`ctl prepare` 保留完整图、预算与会话控制，没有新的验收专用产品命令。
 
 本页的 `consumption` 先刷新指定目录，再对已选记录完成主文、固定文件清单、完整导出、重复导出、输出冲突保护和旧 pin 离线重读。它包含验证所需额外请求，不能拿整条验收流程的成本充当单次普通消费。SC02 的正式请求、字节、模型轮次和延迟基线在 Broker 主地图单独冻结。
 

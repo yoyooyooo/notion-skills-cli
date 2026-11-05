@@ -129,7 +129,14 @@ export const defineCommand: typeof Command.make = ((...args: unknown[]) => {
   return command.pipe(Command.annotate(Parameters, parameters))
 }) as typeof Command.make
 
-export function commandSchema(command: Command.Command.Any): object {
+export function commandSchema(
+  command: Command.Command.Any,
+  options: { readonly depth?: number } = {},
+): object {
+  const children = command.subcommands
+    .flatMap((group) => group.commands)
+    .filter((child) => !child.unlisted)
+  const depth = options.depth ?? Number.POSITIVE_INFINITY
   return {
     name: command.name,
     description: command.description,
@@ -137,7 +144,9 @@ export function commandSchema(command: Command.Command.Any): object {
     constraints: Context.getOption(command.annotations, Constraints).pipe(
       Option.getOrElse(() => []),
     ),
-    commands: command.subcommands.flatMap((group) => group.commands.map(commandSchema)),
+    commands:
+      depth === 0 ? [] : children.map((child) => commandSchema(child, { depth: depth - 1 })),
+    ...(depth === 0 && children.length ? { has_subcommands: true } : {}),
   }
 }
 export function selectCommand(

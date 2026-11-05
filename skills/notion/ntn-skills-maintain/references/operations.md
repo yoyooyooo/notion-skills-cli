@@ -76,11 +76,11 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | Shared body/metadata write, apply or restore-follow is unknown | Read the exact current Skill; obey `read_again` after original facts settle, and retain missing original facts as unresolved |
 | Shared create is unknown | Keep the same complete input and original intent; its retry reconciles original creation identities without blindly repeating POSTs |
 | Shared add/delete/move is unknown | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
-| Partial or unknown legacy Publication | Follow its returned `operation show`/`reconcile`/`resume` action on the original Publication ID |
+| Partial or unknown legacy Publication | Follow its returned `ctl operation show`/`reconcile`/`resume` action on the original Publication ID |
 | Missing access, invalid paths or unsupported content | Fix the actual input/access issue before retrying |
 | Output path conflict | Choose a new destination or review the owned previous output |
 
-Shared operation IDs are not accepted by legacy `operation resume`. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. Historical migration/repair commands live in the separate operator tool and are for an explicitly diagnosed maintenance task.
+Shared operation IDs are not accepted by legacy `ctl operation resume`. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. Historical migration/repair commands live in the separate operator tool and are for an explicitly diagnosed maintenance task.
 
 ## Builtin management
 
@@ -95,3 +95,27 @@ ntn-skills ctl builtin publish notion/ntn-skills-maintain --database library
 ```
 
 Local install/update distributes one managed central copy. Preserve modified or foreign targets if the CLI reports a conflict. Package publication creates a remote copy; updating an existing copy requires an exact pinned target. Builtin origin describes the installed package ID, not editable publisher text. After changing local distribution, use the consuming host's documented reload path.
+
+## Review a legacy migration
+
+Keep the complete frozen input, retained managed files, exact native response JSON and selected fixed Source bytes. Use `ctl library migration plan --input FROZEN_JSON` for the offline inventory, then prepare the concrete target without changing approvals:
+
+```bash
+ntn-skills ctl library migration review --input FROZEN_JSON \
+  --legacy-id LEGACY_ID --entry LIBRARY_ENTRY --files RETAINED_FILES \
+  --preimages RAW_RESPONSES
+```
+
+Add `--source-files EXACT_SOURCE_DIR_OR_ZIP` when the frozen target selects a Source. Save the complete JSON and inspect its `review_id`, content, ownership, Source, target and member bindings. Review can read target metadata; it performs no Notion writes and does not approve migration. For absent `Enabled`, use complete original row/schema evidence with `legacy_catalog_active_page_v1`, or explicitly select `legacy_catalog_active_page_v2` and API `2026-03-11`. V1 requires `archived:false` and `in_trash:false`; v2 requires `in_trash:false` and rejects contradictory archive flags when present. Retain `original_enabled: absent`; never invent an `Enabled` or missing `archived` value or reclassify ownership from activity. Consult each subcommand's `--help` for its exact retained-input contract.
+
+New reviews bind `origin.candidate.execution_policy` into the digest. Ordinary targets use `copy_to_new_native_v1`, which requires the target's exact bytes, ownership, same-page aliases, Router members, Source and relevant operation evidence. A validated versioned retained-publication descriptor selects `copy_to_new_native_v2` for a copy of one exact retained observation. V2 rechecks the original committed publication, fixed member, authored export and native response bytes; the derived native files are its `--files` input. It retains `retained_operations` and `retained_catalog_coverage` in the review digest, including unresolved history and incomplete enumeration. Both policies create new native pages without source cutover or legacy retirement. A policy name, approval or receipt boolean cannot replace the selected target's actual evidence.
+
+After explicit approval, keep a separate frozen input with the reviewed identity in `approved_legacy_ids`. Preserve all other review-bound facts and the independent approved digest. Run `ctl library migration apply --input APPROVED_JSON --review REVIEW_JSON --review-id MIGRATION_REVIEW_ID --dry-run`; execute the same command without `--dry-run` only for that approved result. Require `status: created`, `verified: true` and a verified current pin before reporting migration success.
+
+For either explicit copy policy, apply/dry-run and direct create execution require the approved target and complete dependency evidence; independent unapproved entries may remain blocked. Empty approval permits no creation. Saved unmarked and v1 candidates keep their original gates and cannot inherit v2 by relabelling. Unresolved dependencies return `SHARED_MIGRATION_CREATE_BLOCKED`; unmarked/v1 reliance on unread impact/isolation receipts returns `SHARED_MIGRATION_RECEIPT_UNVERIFIED`. V2 verifies the retained publication instead, without settling old operations or completing enumeration. Preserve the full input and exact review-bound history through apply.
+
+Keep an unknown operation unchanged and use `ctl library migration reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID`; add the exact new `--target PAGE_ID` from a receipt when the original journal is unavailable on another machine. Reconciliation verifies only the original create outcome and does not replay writes or prove a current pin. `WRITE_VERIFICATION_FAILED` with `native_create_completed: true` also needs this distinction: native creation finished, but the final current-snapshot check failed without adopting user edits. Preserve the error and original operation; never switch to generic `ctl operation resume` or issue a replacement intent. Ordinary later current reads have their own adoption behavior.
+
+For a known disabled partial migration with `SHARED_CREATE_BODY_MISMATCH`, inspect `ctl library migration recovery review --help`. Its bounded v4-to-v5 decision keeps original input/wire bytes, page identities and failure evidence. Save and inspect the separate review before `recovery apply` with the original approved input; existing page bodies remain untouched. A current observation is labeled `post_failure_current_read`. Recovery interruption uses `recovery reconcile` with the original operation and existing target, without replay. See the authoring guide's partial migration recovery workflow; this path cannot recover an unknown original create or silently accept changed current content.
+
+If that recovery itself reports an unknown page create, inspect `ctl library migration recovery continuation review --help`. A separate continuation requires the terminal retained by the actual serial dispatch, exact successful responses and matching current allocations. Save and inspect its digest before `continuation apply` with the complete original approved input. It skips accepted pages and creates only the proven unattempted suffix; the original POST stays unknown. Missing terminal or input, an invisible or changed page, and a second interruption remain blocked. Current GETs and retrospective summaries cannot replace execution evidence. Completion v2 is checked independently through `recovery reconcile`; do not fabricate an old terminal or downgrade the completion.

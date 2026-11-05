@@ -7,7 +7,7 @@
 以下根和库入口必须来自当前任务的准确身份。把可选成员列为第二个根，就能保存它和其 Requires；仅在目录中出现的 Members、原生链接目标和未选择资源 owner 不会自动成为冻结节点。
 
 ```bash
-ntn-skills prepare "$ROOT_REF" "$OPTIONAL_REF" --database "$LIBRARY_ENTRY" --purpose use --metrics > prepare.json
+ntn-skills ctl prepare "$ROOT_REF" "$OPTIONAL_REF" --database "$LIBRARY_ENTRY" --purpose use --metrics > prepare.json
 ntn-skills ctl library graph plan --input prepare.json --entry "$LIBRARY_ENTRY" > graph-plan.json
 ntn-skills ctl library graph save --input graph-plan.json --entry "$LIBRARY_ENTRY" > graph-save.json
 ```

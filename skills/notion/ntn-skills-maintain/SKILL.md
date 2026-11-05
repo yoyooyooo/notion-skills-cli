@@ -66,4 +66,8 @@ Require exit 0, `ok: true`, `verified: true`, no `dry_run: true`, and an applied
 
 Preserve `create_operation_id`, `body_write_operation_id`, `metadata_operation_id`, `apply_operation_id`, or the original error's recovery plan. For shared writes/apply/restore-follow, read the exact current Skill to reconcile retained operations; repeat the read only when it reports `read_again`. For an interrupted native create, retain the same input and intent. Use `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` for add/delete/move. Missing original facts remain unresolved; current equality never proves an unknown request succeeded.
 
-Use `operation resume OPERATION_ID --progress` only when the result identifies the earlier Publication workflow and returns that recovery action. Shared IDs do not use legacy resume. Do not create a replacement, change a name, clear pending state or discard unrelated files to bypass an unresolved result. Consult [operations and recovery](references/operations.md) for the matching path.
+Use `ctl operation resume OPERATION_ID --progress` only when the result identifies the earlier Publication workflow and returns that recovery action. Shared IDs do not use legacy resume. Do not create a replacement, change a name, clear pending state or discard unrelated files to bypass an unresolved result. Consult [operations and recovery](references/operations.md) for the matching path.
+
+## Review a legacy migration
+
+For an explicitly requested migration into a shared library, load [the retained-evidence workflow](references/operations.md#review-a-legacy-migration). It covers frozen input, review and approval, exact copy policies, and original-operation reconciliation or continuation. Ordinary content edits use the commands above.

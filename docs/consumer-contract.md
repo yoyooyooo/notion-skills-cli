@@ -84,6 +84,59 @@ Options derive the existing prepare options (`database`, `execution`, `metrics`)
 add an optional `AbortSignal`. There is no daemon, new scheduler, retry owner or separate
 credential store.
 
+## CLI command disposition and compatibility
+
+The `agent-cli-ref-20261105` candidate keeps one parser/handler definition per
+capability. Official `Command.unlisted` marks authoring and historical root paths as
+on demand. Root help/completions omit them, and root `schema` returns one level of the
+daily tree. A container with `has_subcommands:true` is expanded with an explicit
+`schema ctl ...` request. Explicit schema/help for an unlisted command remains offline
+and uses the same definition as execution.
+
+| Previous root | Current path | Disposition |
+| --- | --- | --- |
+| `list` | `list` | Daily metadata discovery; `--view` remains a consumer filter |
+| `views` | `ctl views` | View inspection; root path is compatibility only |
+| `ctl` | `ctl` | Existing configuration, diagnostics, library/source/cache/builtin tree retained |
+| `read` | `read` | Daily original-text and exact-resource inspection |
+| `prepare` | `ctl prepare` | Advanced graph, session bindings, budgets and scheduler controls; root compatibility only |
+| `files` | `files` | Optional resource inventory |
+| `create` | `create` | Explicit authoring, discovered through its help or maintenance Skill |
+| `apply` | `apply` | Explicit pinned change submission, discovered on demand |
+| `replace` | `replace` | Explicit whole-content replacement, discovered on demand |
+| `export` | `export` | Optional complete package export |
+| `write` | `write` | Explicit whole-file authoring, discovered on demand |
+| `update` | `update` | Explicit metadata authoring, discovered on demand |
+| `operation` | `ctl operation` | Original-operation show/reconcile/resume; root compatibility only |
+| `sync` | `ctl sync` | Complete local/upstream orchestration subtrees; root compatibility only |
+| `resolve` | `ctl resolve` | Relative-ref diagnostic/helper; root compatibility only |
+| `schema` | `schema` | Daily summary by default, complete explicit command schema on demand |
+
+`use` is the added daily consumer. Authoring remains separate from management and
+never runs as a use side effect. Dry-run, exact target/version constraints, conflict
+handling and original-operation recovery are unchanged.
+
+In-repository drivers, package Skills and newly generated `next.argv` use canonical
+`ctl` paths. External command configurations and retained historical `next.argv` may
+still use the old five root paths; these aliases select the same runtime commands,
+not another implementation. Historical capture validators accept an optional `ctl`
+segment while validating the original captured bytes and hashes unchanged.
+
+Compatibility is supported by the 0.1.0 candidate carrying this contract. Removal is
+eligible only in an explicitly declared breaking release after SC23 has inventoried
+and migrated external commands, all actionable old recovery paths have settled or
+have a verified read-time migration, and SC22 has passed independent installation and
+two-machine restoration with the proposed removal. Archived receipts and pins are not
+rewritten to satisfy that gate. List/read retain their JSON default until the separate
+output-format caller migration is complete.
+
+Rollback retains the prior CLI/SDK archive and its hashes with unchanged state,
+credentials, pins and original operations. A pre-ctl CLI does not parse new ctl argv:
+after selecting that prior package, inspect the original operation ID through its
+supported `operation show` and use the freshly returned next action. Do not edit an old
+receipt, start a replacement write or infer that a failed command never ran. SC22 must
+exercise this rollback route before daily cutover; documenting it is not acceptance.
+
 ## Installed Node SDK
 
 ```ts

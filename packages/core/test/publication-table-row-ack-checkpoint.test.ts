@@ -545,7 +545,7 @@ test("the original terminal row ACK advances exactly three checkpoints and prese
     unresolved: false,
     state: "running",
   })
-  expect(result.next.argv).toEqual(["ntn-skills", "operation", "resume", operationId])
+  expect(result.next.argv).toEqual(["ntn-skills", "ctl", "operation", "resume", operationId])
   const after = f.receipt(),
     history = after.conflict_history!.at(-1)!,
     certificate = history.completed_table_row_checkpoint!

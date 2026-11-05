@@ -497,7 +497,7 @@ test("reconcile catches up only the final ACK checkpoint and retains the complet
   expect(result.outcome).toBe("needs_safe_resume")
   expect(result.verified).toBe(false)
   expect(result.state).toBe("running")
-  expect(result.next.argv).toEqual(["ntn-skills", "operation", "resume", operationId])
+  expect(result.next.argv).toEqual(["ntn-skills", "ctl", "operation", "resume", operationId])
   expect(f.mutations()).toBe(mutations)
   expect(f.receiptWrites() - writes).toBe(1)
   expect(f.requests.every((request) => request.method === "GET")).toBe(true)

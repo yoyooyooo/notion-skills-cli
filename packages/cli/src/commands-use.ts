@@ -160,7 +160,7 @@ export const useCommand = defineCommand(
   withConstraints(filesConstraints),
   Command.withShortDescription("Load one Skill and its complete Requires instructions"),
   Command.withDescription(
-    "Use one entrypoint ref to load the root and complete Requires closure in one consumption. Member bodies stay lazy. Prepared content does not attest model delivery or activation. Copy returned canonical refs for supporting files; use read for an introduction or exact resource, files for file metadata, and export for a package. Compact text is the default; --json retains complete structured evidence. Cache and fixed-version policies are shared with read. Advanced graph, session and budget controls remain available through prepare during migration.",
+    "Use one entrypoint ref to load the root and complete Requires closure in one consumption. Member bodies stay lazy. Prepared content does not attest model delivery or activation. Copy returned canonical refs for supporting files; use read for an introduction or exact resource, files for file metadata, and export for a package. Compact text is the default; --json retains complete structured evidence. Cache and fixed-version policies are shared with read. Advanced graph, session and budget controls are available through ctl prepare.",
   ),
   Command.withExamples([
     {

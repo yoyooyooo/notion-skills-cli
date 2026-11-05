@@ -40,7 +40,7 @@ const sourceLines = [
   "}",
 ]
 
-test("explicit frozen GET evidence prepares only the original SQLite add and preserves its audit", async () => {
+async function originalPreflightRecovery(canonical: boolean) {
   const root = await mkdtemp(join(tmpdir(), "ntn-preflight-recovery-"))
   vi.stubEnv("NTN_SKILLS_HOME", join(root, "state"))
   vi.stubEnv("NTN_SKILLS_CONFIG_HOME", join(root, "config"))
@@ -102,6 +102,7 @@ test("explicit frozen GET evidence prepares only the original SQLite add and pre
             yield* state.saveCommand(operationId, original)
             const receipt = {
               argv: [
+                ...(canonical ? ["ctl"] : []),
                 "sync",
                 "upstream",
                 "add",
@@ -234,4 +235,9 @@ test("explicit frozen GET evidence prepares only the original SQLite add and pre
     vi.unstubAllEnvs()
     await rm(root, { recursive: true, force: true })
   }
-})
+}
+
+test.each([false, true])(
+  "explicit frozen GET evidence preserves the original SQLite add (ctl=%s)",
+  originalPreflightRecovery,
+)

@@ -709,7 +709,7 @@ function summary(plan: BodyCompletionPlan, journal: BodyCompletionJournal, reuse
     next: {
       argv:
         journal.phase === "verified"
-          ? ["ntn-skills", "operation", "resume", plan.operation_id]
+          ? ["ntn-skills", "ctl", "operation", "resume", plan.operation_id]
           : ["ntn-skills-operator", "operation", "body-completion-reconcile", plan.plan_id],
       reason:
         journal.phase === "verified"

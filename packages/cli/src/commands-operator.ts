@@ -19,7 +19,7 @@ import { requiredSingleton, emit } from "./command-options.ts"
 const operationId = Argument.String("operation-id")
 export const operatorOperationCommand = defineCommand("operation").pipe(
   Command.withDescription(
-    "One-off inspection and recovery of retained historical publications. Normal content changes continue through ntn-skills operation show/reconcile/resume with the original operation ID.",
+    "One-off inspection and recovery of retained historical publications. Normal content changes continue through ntn-skills ctl operation show/reconcile/resume with the original operation ID.",
   ),
   Command.withSubcommands([
     defineCommand("body-completion-plan", { id: operationId }, ({ id }) =>

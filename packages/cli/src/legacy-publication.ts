@@ -79,7 +79,7 @@ export function convertLegacyPublication(raw: unknown, wireHash: string) {
               action:
                 "Inspect retained wire and exact root creation response/guard; do not replay or match by name.",
             }
-          : { argv: ["ntn-skills", "operation", "show", legacy.operation_id] },
+          : { argv: ["ntn-skills", "ctl", "operation", "show", legacy.operation_id] },
     },
   }
 }

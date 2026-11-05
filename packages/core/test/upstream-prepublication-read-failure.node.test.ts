@@ -1029,14 +1029,14 @@ for (const scenario of [
     query: false,
   },
   {
-    title: "NTN_UNAVAILABLE GET",
-    raised: "NTN_UNAVAILABLE",
-    retained: "NTN_UNAVAILABLE",
+    title: "NOTION_UNAVAILABLE GET",
+    raised: "NOTION_UNAVAILABLE",
+    retained: "NOTION_UNAVAILABLE",
     query: false,
   },
   {
     title: "catalog query read failure",
-    raised: "NTN_UNAVAILABLE",
+    raised: "NOTION_UNAVAILABLE",
     retained: "CATALOG_INCOMPLETE",
     query: true,
   },
@@ -1070,7 +1070,7 @@ for (const scenario of [
             operation_id: original.alias,
             publication_operation_id: original.publicationId,
             parent_operation_id: original.operationId,
-            next: { argv: ["ntn-skills", "operation", "show", original.operationId] },
+            next: { argv: ["ntn-skills", "ctl", "operation", "show", original.operationId] },
           },
         },
       })
@@ -1192,7 +1192,7 @@ test("an actual same-name CREATE_CONFLICT is neither adopted nor replayed by rea
   }
 }, 60000)
 
-test("NTN_UNAVAILABLE recovery repeats current configuration proof inside the publication lock", async () => {
+test("NOTION_UNAVAILABLE recovery repeats current configuration proof inside the publication lock", async () => {
   const f = await fixture(true)
   try {
     const original = await originalReadFailurePlan(f)
@@ -1200,12 +1200,12 @@ test("NTN_UNAVAILABLE recovery repeats current configuration proof inside the pu
     f.beforeRequest(({ path, method }) => {
       if (!rejected && method === "GET" && path === `v1/data_sources/${dataSource}`) {
         rejected = true
-        throw fail("NTN_UNAVAILABLE", "Original pre-bind read failure")
+        throw fail("NOTION_UNAVAILABLE", "Original pre-bind read failure")
       }
     })
     await f.run(applyUpstream(original.plan.plan_id, [selectedMember]))
     const before = await readFailureEvidence(f, original)
-    assertUnboundReadFailure(original, before, "NTN_UNAVAILABLE")
+    assertUnboundReadFailure(original, before, "NOTION_UNAVAILABLE")
     let scopes = 0
     f.beforeRequest(({ path }) => {
       if (path === "v1/users/me" && ++scopes === 3)

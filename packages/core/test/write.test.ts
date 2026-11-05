@@ -865,7 +865,7 @@ for (const external of [false, true]) {
     expect(f.propertyWrites).toHaveLength(1)
     expect(f.requests.slice(beforeRequests).every((request) => request.method === "GET")).toBe(true)
     if (!external) {
-      expect(reconciled.next.argv).toEqual(["ntn-skills", "operation", "resume", id])
+      expect(reconciled.next.argv).toEqual(["ntn-skills", "ctl", "operation", "resume", id])
       const resumed = await f.run(resumeOperation(id))
       expect(resumed).toMatchObject({
         domain: "publication",
@@ -1201,7 +1201,7 @@ for (const failure of ["allocate", "send_pending", "send_uploaded", "attach"] as
       )
       if (refused._tag === "Failure")
         expect(property(refused.failure.details).next).toEqual({
-          argv: ["ntn-skills", "operation", "resume", id, "--new-artifact"],
+          argv: ["ntn-skills", "ctl", "operation", "resume", id, "--new-artifact"],
         })
       expect(f.requests.slice(before).every((item) => item.method === "GET")).toBe(true)
     }
