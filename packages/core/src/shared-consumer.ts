@@ -3,7 +3,7 @@ import { fail, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage, sharedSkillProperty } from "./shared-content.ts"
-import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
+import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "./shared-snapshot.ts"
 
@@ -58,7 +58,7 @@ export function openSharedConsumer(
           : fail("INVALID_SHARED_SKILL", "Invalid shared source selection."),
     })
     if (!sourceId) return yield* openSharedSnapshot({ ...snapshotInput, rawPage })
-    const fixedSource = yield* resolveSelectedSharedSource(
+    const fixedSource = yield* planSelectedSharedSource(
       input.library,
       selected,
       sourceId,

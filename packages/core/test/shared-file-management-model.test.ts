@@ -4,8 +4,12 @@ import {
   assertSharedFileReferences,
   sharedMarkdownReferences,
 } from "../src/shared-file-references.ts"
-import { composeSharedFiles } from "../src/shared-composition.ts"
-import { composeSharedFilePlacements, sharedFileSourcePath } from "../src/shared-file-placement.ts"
+import { composeSharedFiles, type CompositionOverride } from "../src/shared-composition.ts"
+import {
+  composeSharedFilePlacements,
+  planSharedFilePlacements,
+  sharedFileSourcePath,
+} from "../src/shared-file-placement.ts"
 
 const encode = (value: string) => new TextEncoder().encode(value)
 const hash = "a".repeat(64)
@@ -227,6 +231,191 @@ describe("shared file placement events", () => {
         entrypoint: "SKILL.md",
       }),
     ).toThrow()
+  })
+})
+
+describe("shared file placement without unused source bytes", () => {
+  for (const kind of ["custom", "tombstone"] as const)
+    test(`${kind} leaves a large source object unneeded while preserving the complete effective tree`, () => {
+      const state = resolveFileState(
+        "file-a",
+        kind === "custom"
+          ? [native]
+          : [
+              native,
+              {
+                kind: "deleted",
+                file_id: "file-a",
+                event_id: "delete-a",
+                parents: ["initial"],
+                retained: content,
+              },
+            ],
+      )
+      const fullSource = [
+        { path: "SKILL.md", bytes: encode("# Main\n") },
+        { path: "references/a.md", bytes: new Uint8Array(2 * 1024 * 1024).fill(65) },
+        { path: "keep.bin", bytes: new Uint8Array([0, 255, 13, 10]) },
+      ]
+      const manifest = fullSource.map(({ path }) => ({ path }))
+      const override: CompositionOverride =
+        kind === "custom"
+          ? { kind, file_id: "file-a", path: "references/a.md", bytes: encode("Whole custom\n") }
+          : { kind, file_id: "file-a", path: "references/a.md" }
+      const input = {
+        overrides: [override],
+        bindings: [{ file_id: "file-a", path: "references/a.md", state }],
+        entrypoint: "SKILL.md",
+      }
+      const planned = planSharedFilePlacements({ ...input, source: manifest })
+      expect(planned.source_paths).toEqual(["SKILL.md", "keep.bin"])
+      const partial = composeSharedFilePlacements({
+        ...input,
+        manifest,
+        source: fullSource.filter((file) => file.path !== "references/a.md"),
+      })
+      const full = composeSharedFilePlacements({ ...input, source: fullSource })
+      expect(partial.files).toEqual(full.files)
+      expect([...partial.provenance]).toEqual([...full.provenance])
+      expect(partial.files.map((file) => file.path)).toEqual([...planned.paths])
+      if (kind === "custom")
+        expect(partial.provenance.get("references/a.md")).toEqual({
+          kind: "custom",
+          file_id: "file-a",
+          replaces: { kind: "base", source_path: "references/a.md" },
+        })
+      else expect(partial.files.some((file) => file.path === "references/a.md")).toBe(false)
+    })
+
+  test("repeated following moves acquire the original source path and omit suppressed source bytes", () => {
+    const second: FileEvent = {
+      kind: "moved",
+      file_id: "file-a",
+      event_id: "move-b",
+      parents: ["move-a"],
+      retained: content,
+      from_path: "notes/a.md",
+      to_path: "guides/a.md",
+      source_path: "references/a.md",
+      suppressed_paths: ["notes/a.md", "references/a.md"],
+    }
+    const state = resolveFileState("file-a", [
+      projected,
+      move(["initial"], "references/a.md"),
+      second,
+    ])
+    const manifest = [{ path: "SKILL.md" }, { path: "references/a.md" }, { path: "notes/a.md" }]
+    const source = [
+      { path: "SKILL.md", bytes: encode("# Main\n") },
+      { path: "references/a.md", bytes: new Uint8Array([239, 187, 191, 65, 13, 10]) },
+    ]
+    const input = {
+      overrides: [],
+      bindings: [{ file_id: "file-a", path: "guides/a.md", state }],
+      entrypoint: "SKILL.md",
+    }
+    const planned = planSharedFilePlacements({ ...input, source: manifest })
+    expect(planned.source_paths).toEqual(["SKILL.md", "references/a.md"])
+    expect(planned.paths).toEqual(["SKILL.md", "guides/a.md"])
+    const composed = composeSharedFilePlacements({ ...input, manifest, source })
+    expect(composed.files.find((file) => file.path === "guides/a.md")?.bytes).toEqual(
+      source[1]?.bytes,
+    )
+    expect(composed.provenance.get("guides/a.md")).toEqual({
+      kind: "base",
+      source_path: "references/a.md",
+    })
+  })
+
+  test("a moved custom file retains original provenance without obtaining that source body", () => {
+    const state = resolveFileState("file-a", [
+      projected,
+      { ...native, event_id: "custom", parents: ["initial"] },
+      move(["custom"], "references/a.md"),
+    ])
+    const input = {
+      manifest: [{ path: "SKILL.md" }, { path: "references/a.md" }],
+      source: [{ path: "SKILL.md", bytes: encode("Main") }],
+      overrides: [
+        { kind: "custom" as const, file_id: "file-a", path: "notes/a.md", bytes: encode("User") },
+      ],
+      bindings: [{ file_id: "file-a", path: "notes/a.md", state }],
+      entrypoint: "SKILL.md",
+    }
+    expect(planSharedFilePlacements({ ...input, source: input.manifest }).source_paths).toEqual([
+      "SKILL.md",
+    ])
+    const composed = composeSharedFilePlacements(input)
+    expect(composed.provenance.get("notes/a.md")).toEqual({
+      kind: "custom",
+      file_id: "file-a",
+      replaces: { kind: "base", source_path: "references/a.md" },
+    })
+    expect(composed.files.find((file) => file.path === "notes/a.md")?.bytes).toEqual(encode("User"))
+  })
+
+  test("omitting required moved bytes fails instead of creating an empty effective file", () => {
+    const state = resolveFileState("file-a", [projected, move(["initial"], "references/a.md")])
+    expect(() =>
+      composeSharedFilePlacements({
+        manifest: [{ path: "SKILL.md" }, { path: "references/a.md" }],
+        source: [{ path: "SKILL.md", bytes: encode("Main") }],
+        overrides: [],
+        bindings: [{ file_id: "file-a", path: "notes/a.md", state }],
+        entrypoint: "SKILL.md",
+      }),
+    ).toThrow("Required fixed source bytes are unavailable")
+  })
+
+  test("partial assembly cannot conceal a source directory collision behind a custom body", () => {
+    const state = resolveFileState("file-a", [native])
+    expect(() =>
+      composeSharedFilePlacements({
+        manifest: [
+          { path: "SKILL.md" },
+          { path: "references/a.md" },
+          { path: "references/a.md/hidden.md" },
+        ],
+        source: [{ path: "SKILL.md", bytes: encode("Main") }],
+        overrides: [
+          { kind: "custom", file_id: "file-a", path: "references/a.md", bytes: encode("User") },
+        ],
+        bindings: [{ file_id: "file-a", path: "references/a.md", state }],
+        entrypoint: "SKILL.md",
+      }),
+    ).toThrow("A file occupies a required directory path")
+  })
+
+  test("provided source bytes must be unique members of the complete manifest", () => {
+    const main = { path: "SKILL.md", bytes: encode("Main") }
+    const input = {
+      manifest: [{ path: "SKILL.md" }],
+      overrides: [],
+      bindings: [],
+      entrypoint: "SKILL.md",
+    }
+    expect(() => composeSharedFilePlacements({ ...input, source: [main, main] })).toThrow(
+      "Fixed source byte paths must be unique",
+    )
+    expect(() =>
+      composeSharedFilePlacements({
+        ...input,
+        source: [main, { path: "extra.bin", bytes: new Uint8Array([42]) }],
+      }),
+    ).toThrow("Supplied source bytes are absent from the complete manifest")
+  })
+
+  test("custom main placement excludes separate caller-owned frontmatter dependencies", () => {
+    const overrides: CompositionOverride[] = [
+      { kind: "custom", file_id: "main", path: "SKILL.md", bytes: encode("Custom main") },
+    ]
+    const manifest = [{ path: "SKILL.md" }]
+    const input = { overrides, bindings: [], entrypoint: "SKILL.md" }
+    const plan = planSharedFilePlacements({ ...input, source: manifest })
+    expect(plan.source_paths).toEqual([])
+    expect(composeSharedFilePlacements({ ...input, manifest, source: [] }).files).toEqual([
+      { path: "SKILL.md", bytes: encode("Custom main") },
+    ])
   })
 })
 

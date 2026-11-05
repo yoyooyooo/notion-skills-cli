@@ -12,7 +12,7 @@
 | SC-VERIFY-02 | 证据判据拒绝假成功 | 沿用 [图合同](skill-dependency-graph.md) 的 oracle、scope、hash 和完整正文反例；消费链扩展由 Broker `scripts/skill-consumption-contract.mjs` 驱动，按主地图的实际命令执行 |
 | SC-VERIFY-03 | 下一位 Agent 独立完成 Launch → Doctor → Drive → Evidence → Cleanup，清理后证据不变 | 本页给出实际 CLI 消费路径；真实 Pi 路径、独立新会话和最终模型验收各保留自己的结果 |
 | SC-TOOLS-04 | 同一固定 owner/pin 的资源集合一次获取，源字节与投递证明分开 | [资源合同](../../../../docs/resource-read-contract.md)、Core 定向测试、现有独立 SDK smoke；实际 Pi 从 Broker 主地图 `resource-batch` 进入 |
-| SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象，完整目录与完整导出各自保真 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、下方既有 SDK smoke 的 partial-cache case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
+| SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象；current 先判定完整来源归属，再获取必需字节 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、既有 SDK smoke 的 partial-cache 与 cold ownership case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
 
 ### 证明对象
 
@@ -153,7 +153,21 @@ SDK smoke 在本次自有 clone 中先通过公开 current consume 真正完成�
 
 完整引用验证记录只能来自真实整树字节/hash 和共享引用检查，且绑定完整清单。legacy 或不匹配记录须重验；不得延长原观察时间、正文期限或绕过 pending/失效状态。固定历史读取与 current 的引用检查各保留原语义。文件目录成功不等于每个对象在本地；`materialized_paths` 只表示本次实际验证的选择。
 
-这是明确的受控 warm/partial-cache 场景，不称作真实冷源下载。Core 的 retained-object 请求集合另证明同 pin 缺失文件恢复与未选对象零获取；当前可变远端树的首次完整观察、source ownership 和旧 ZIP 成本仍单列。把本次已安装 CLI 交给 Broker 构建后，按主地图 `partial-entrypoint` 的 Doctor → Drive → Evidence → Cleanup 完成真实 Pi 路径，并由独立新会话再实际执行。
+这是明确的受控 warm/partial-cache 场景，不称作真实冷源下载。Core 的 retained-object 请求集合另证明同 pin 缺失文件恢复与未选对象零获取；当前可变远端树的首次完整观察与旧 ZIP 成本仍单列。把本次已安装 CLI 交给 Broker 构建后，按主地图 `partial-entrypoint` 的 Doctor → Drive → Evidence → Cleanup 完成真实 Pi 路径，并由独立新会话再实际执行。
+
+### Current 来源先判归属再取字节
+
+继续使用上面的 Node `sdk-fixture.ts --catalog` 与 `sdk-package-smoke.mjs`。`ownership` 场景保存由完整真实来源字节生成的有效目录 oracle；安装包消费使用独立空 Store，只初始化自有配置和 HTTP origin policy，不复制 oracle 的 snapshot、对象或 current validation receipt。
+
+安装包通过 page ID 的 current consume + refresh 进入所有权路径。受控 Notion 服务保留实际 shared membership、retained ownership facts 和正文；HTTP source transport 只响应声明的精确 HTTPS fixture URL，其他远端请求拒绝。检查 `ownership-current-evidence.json`、`ownership-source-requests.jsonl`、`ownership-notion-requests.jsonl` 和 `ownership-object-reads.jsonl`：
+
+- cold 与 metadata-refresh 两个阶段分别保留真实请求和 Node Store 对象读取。已有 custom 与 tombstone 对应的两份约 2 MiB 来源文件均不得读取或下载；source main 的 YAML 与仍生效的小文件必须有实际获取正控制。
+- 使用 SDK 返回的 fixed ref，通过同一安装包 CLI 做 offline snapshot export；完整 path/length/SHA 必须逐项等于 full-byte oracle。Name/Description 更新后，主文元数据准确变化，非主文内容保持。
+- current 的完整引用检查、pending/孤儿事件屏障、provider 失败前零新 adoption、following move 的原始 source path、source main 额外 YAML 与本地内容限制由对应 Core 用例复验。Git custom 的 SHA 隐私分类回退成本明确保留。
+
+Core 的 `shared-retained-source.test.ts` 还检查空 selection、selected corrupt 不修复、未选对象零读取及缺失 selected 的完整 ZIP 验证。旧 bundle 必须记录 `whole_archive_cost: true`、全部 chunk 请求和完整 archive bytes/hash；只发布所选对象不等于只下载所选文件。
+
+这是受控 cold current 来源获取与真实安装包/Node Store/export 证据，不能称真实远端 wire 成本或模型投递。首次 current 完整正文观察、本次新发生的 following→custom 转换、Git 隐私回退与旧 ZIP 仍可能需要额外字节。Pi 的 partial-cache 回归单独按上节执行，不把其 warm fixture当成cold ownership验证。
 
 ## Gotchas
 

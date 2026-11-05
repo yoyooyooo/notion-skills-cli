@@ -4,7 +4,7 @@ import { markLocalContentRestriction } from "./content-restrictions.ts"
 import { fail, SkillsError } from "./model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
-import { composeSharedFiles } from "./shared-composition.ts"
+import { planSharedFiles } from "./shared-composition.ts"
 import { sha256, Store } from "./store.ts"
 
 export type FixedFile = {
@@ -70,7 +70,6 @@ const maximumFiles = 10_000
 const defaultOrigins = ["https://raw.githubusercontent.com"]
 const hashPattern = /^[a-f0-9]{64}$/u
 const controls = /[\u0000-\u001f\u007f-\u009f]/u
-const emptyBytes = new Uint8Array()
 const compareFiles = (a: FixedFile, b: FixedFile) =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0
 
@@ -151,8 +150,8 @@ export function validateFixedFileManifest(input: unknown): FixedFileManifest {
   }
   const first = decoded.files[0]
   if (first !== undefined) {
-    composeSharedFiles({
-      base: decoded.files.map((file) => ({ path: file.path, bytes: emptyBytes })),
+    planSharedFiles({
+      base: decoded.files,
       mounts: [],
       overrides: [],
       entrypoint: first.path,
@@ -174,6 +173,22 @@ export function fixedFileManifestId(
     const manifest = yield* checked(() => validateFixedFileManifest(input))
     return `files-${yield* sha256(JSON.stringify(manifest))}`
   })
+}
+
+/** Select only after validating the complete fixed directory and its source admission. */
+export function selectFixedResourceFiles<File extends { readonly path: string }>(
+  files: readonly File[],
+  paths: readonly string[] | undefined,
+): readonly File[] {
+  if (paths === undefined) return files
+  const requested = new Set(paths)
+  const selected = files.filter((file) => requested.has(file.path))
+  if (requested.size !== paths.length || selected.length !== paths.length)
+    throw fail(
+      "FILE_NOT_FOUND",
+      "Requested source files must exist exactly once in the complete fixed directory.",
+    )
+  return selected
 }
 
 function verifyBytes(entry: FixedFile, bytes: Uint8Array, cached: boolean) {
@@ -203,12 +218,14 @@ function materialize<R>(
   manifest: FixedFileManifest,
   read: (entry: FixedFile) => Effect.Effect<Uint8Array, SkillsError, R>,
   localResource = false,
+  paths?: readonly string[],
+  localContentHashes?: ReadonlySet<string>,
 ): Effect.Effect<readonly MaterializedFixedFile[], SkillsError, Store | Crypto.Crypto | R> {
   return Effect.gen(function* () {
+    const selected = yield* checked(() => selectFixedResourceFiles(manifest.files, paths))
     const store = yield* Store
     const unique = new Map<string, FixedFile>()
-    for (const entry of manifest.files)
-      if (!unique.has(entry.sha256)) unique.set(entry.sha256, entry)
+    for (const entry of selected) if (!unique.has(entry.sha256)) unique.set(entry.sha256, entry)
     const objects = yield* Effect.forEach(
       [...unique.values()],
       (entry) =>
@@ -222,13 +239,15 @@ function materialize<R>(
           )
           if (cached !== undefined) {
             const bytes = yield* verifyBytes(entry, cached, true)
-            if (localResource) yield* markLocalContentRestriction(entry.sha256)
+            if (localResource || localContentHashes?.has(entry.sha256))
+              yield* markLocalContentRestriction(entry.sha256)
             return { sha256: entry.sha256, bytes }
           }
           const bytes = yield* verifyBytes(entry, yield* read(entry), false)
           // Persist the restriction before publishing new local bytes. Cancellation can leave a
           // conservative marker, but must not expose a newly cached private object without one.
-          if (localResource) yield* markLocalContentRestriction(entry.sha256)
+          if (localResource || localContentHashes?.has(entry.sha256))
+            yield* markLocalContentRestriction(entry.sha256)
           // The immutable object is published only after the complete body passes both checks.
           yield* store.writeBytes(key, bytes)
           return { sha256: entry.sha256, bytes }
@@ -237,12 +256,12 @@ function materialize<R>(
     )
     const byHash = new Map(objects.map((object) => [object.sha256, object.bytes]))
     return yield* checked(() =>
-      manifest.files.map((entry) => {
+      selected.map((entry) => {
         const bytes = byHash.get(entry.sha256)
         if (bytes === undefined)
           throw fail(
             "FIXED_RESOURCE_INCOMPLETE",
-            "The complete fixed resource could not be materialized.",
+            "A requested fixed resource could not be materialized.",
           )
         return { path: entry.path, sha256: entry.sha256, bytes }
       }),
@@ -472,7 +491,11 @@ function httpBytes(
  */
 export function materializeFixedHttpFiles(
   input: FixedHttpFilesInput,
-  options: HttpResourceOptions = {},
+  options: HttpResourceOptions & {
+    /** Internal classification from a complete admitted source plan; never serialized. */
+    readonly localContentHashes?: ReadonlySet<string>
+  } = {},
+  paths?: readonly string[],
 ): Effect.Effect<
   readonly MaterializedFixedFile[],
   SkillsError,
@@ -481,15 +504,20 @@ export function materializeFixedHttpFiles(
   return Effect.gen(function* () {
     const manifest = yield* checked(() => validateFixedFileManifest(input.manifest))
     const locations = yield* checked(() => httpLocations(input.locations, manifest, options))
-    return yield* materialize(manifest, (entry) =>
-      Effect.gen(function* () {
-        const url = locations.get(entry.sha256)
-        if (url === undefined)
-          return yield* Effect.fail(
-            fail("INVALID_HTTP_RESOURCE_LOCATIONS", "A fixed retrieval location is missing."),
-          )
-        return yield* httpBytes(entry, url, options.metrics)
-      }),
+    return yield* materialize(
+      manifest,
+      (entry) =>
+        Effect.gen(function* () {
+          const url = locations.get(entry.sha256)
+          if (url === undefined)
+            return yield* Effect.fail(
+              fail("INVALID_HTTP_RESOURCE_LOCATIONS", "A fixed retrieval location is missing."),
+            )
+          return yield* httpBytes(entry, url, options.metrics)
+        }),
+      false,
+      paths,
+      options.localContentHashes,
     )
   })
 }
@@ -720,17 +748,14 @@ function localBytes(
   })
 }
 
-/**
- * Scope and binding checks precede even cache reads. Misses use noFollow and a fixed descriptor.
- * This is a normal workspace boundary, not an openat sandbox against a same-UID adversary replacing directories concurrently.
- */
-export function materializeFixedLocalFiles(
+/** Complete scope, binding, root syntax, and manifest admission without object or local-file reads. */
+export function validateFixedLocalResourceBinding(
   input: FixedLocalResource,
   options: LocalResourceOptions,
 ): Effect.Effect<
-  readonly MaterializedFixedFile[],
+  { readonly manifest: FixedFileManifest; readonly absoluteRoot: string },
   SkillsError,
-  Store | Crypto.Crypto | FileSystem.FileSystem | Path.Path
+  Path.Path
 > {
   return Effect.gen(function* () {
     const selected = yield* checked(() => localConfiguration(input, options))
@@ -746,10 +771,30 @@ export function materializeFixedLocalFiles(
         ),
       )
     }
+    return selected
+  })
+}
+
+/**
+ * Scope and binding admission precede selection and all object/local-file reads.
+ * Misses use noFollow and a fixed descriptor, not an openat sandbox against a same-UID adversary.
+ */
+export function materializeFixedLocalFiles(
+  input: FixedLocalResource,
+  options: LocalResourceOptions,
+  paths?: readonly string[],
+): Effect.Effect<
+  readonly MaterializedFixedFile[],
+  SkillsError,
+  Store | Crypto.Crypto | FileSystem.FileSystem | Path.Path
+> {
+  return Effect.gen(function* () {
+    const selected = yield* validateFixedLocalResourceBinding(input, options)
     return yield* materialize(
       selected.manifest,
       (entry) => localBytes(entry, selected.absoluteRoot),
       true,
+      paths,
     )
   })
 }

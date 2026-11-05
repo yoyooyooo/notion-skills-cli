@@ -63,6 +63,7 @@ function fixture(responses: readonly Response[] = []) {
   const objects = new Map<string, Uint8Array>()
   const json = new Map<string, unknown>()
   const writes: string[] = []
+  const objectReads: string[] = []
   const requests: { url: string; headers: Readonly<Record<string, string>> }[] = []
   const unexpected = () => Effect.die(new Error("Unexpected Store operation."))
   const store: Store["Service"] = {
@@ -90,6 +91,7 @@ function fixture(responses: readonly Response[] = []) {
       }),
     readBytes: (key) =>
       Effect.gen(function* () {
+        objectReads.push(key)
         const bytes = objects.get(key)
         return bytes === undefined
           ? yield* Effect.fail(fail("SNAPSHOT_MISSING", "Controlled missing object."))
@@ -127,8 +129,145 @@ function fixture(responses: readonly Response[] = []) {
       ),
     )
   }
-  return { objects, json, writes, requests, store, client, metrics, run }
+  return { objects, json, writes, objectReads, requests, store, client, metrics, run }
 }
+
+describe("selective fixed resources", () => {
+  test("acquires requested HTTP hashes once and never reads excluded corrupt objects", async () => {
+    const bytes = encode("requested\n"),
+      unused = encode("excluded\n")
+    const first = file("one.bin", bytes),
+      alias = file("two.bin", bytes),
+      excluded = file("unused.bin", unused)
+    const input = {
+      manifest: manifest(first, alias, excluded),
+      locations: [
+        { sha256: first.sha256, url: publicUrl },
+        { sha256: excluded.sha256, url: `${publicUrl}-unused` },
+      ],
+    }
+    const f = fixture([new Response(bytes.slice())])
+    f.objects.set(`objects/${excluded.sha256}`, new Uint8Array(unused.length))
+    const paths = [alias.path, first.path]
+    const files = await f.run(materializeFixedHttpFiles(input, {}, paths))
+    expect(files.map((entry) => entry.path)).toEqual([first.path, alias.path])
+    expect(files.every((entry) => digest(entry.bytes) === first.sha256)).toBe(true)
+    expect(f.objectReads).toEqual([`objects/${first.sha256}`])
+    expect(f.requests.map((request) => request.url)).toEqual([publicUrl])
+    f.objectReads.length = 0
+    expect(await f.run(materializeFixedHttpFiles(input, {}, paths))).toEqual(files)
+    expect(f.objectReads).toEqual([`objects/${first.sha256}`])
+    expect(f.requests).toHaveLength(1)
+    f.objects.set(`objects/${first.sha256}`, new Uint8Array(bytes.length))
+    expect(
+      (await f.run(Effect.flip(materializeFixedHttpFiles(input, {}, [first.path])))).code,
+    ).toBe("FIXED_RESOURCE_CACHE_CORRUPT")
+    expect(f.requests).toHaveLength(1)
+  })
+
+  test("checks all HTTP locations, origins, manifest metadata, and requested membership before object access", async () => {
+    const first = file("one.bin", encode("one")),
+      unused = file("unused.bin", encode("unused"))
+    const fixed = manifest(first, unused)
+    const good = [
+      { sha256: first.sha256, url: publicUrl },
+      { sha256: unused.sha256, url: `${publicUrl}-unused` },
+    ]
+    const f = fixture()
+    for (const locations of [
+      [good[0]!],
+      [good[0]!, { sha256: unused.sha256, url: "https://unauthorized.example.com/asset" }],
+    ]) {
+      expect(
+        (
+          await f.run(
+            materializeFixedHttpFiles({ manifest: fixed, locations }, {}, []).pipe(Effect.result),
+          )
+        )._tag,
+      ).toBe("Failure")
+    }
+    expect(
+      (
+        await f.run(
+          materializeFixedHttpFiles(
+            {
+              manifest: manifest(first, { ...unused, path: "../hidden" }),
+              locations: good,
+            },
+            {},
+            [first.path],
+          ).pipe(Effect.result),
+        )
+      )._tag,
+    ).toBe("Failure")
+    for (const paths of [["missing"], [first.path, first.path]])
+      expect(
+        (
+          await f.run(
+            Effect.flip(materializeFixedHttpFiles({ manifest: fixed, locations: good }, {}, paths)),
+          )
+        ).code,
+      ).toBe("FILE_NOT_FOUND")
+    expect(
+      await f.run(materializeFixedHttpFiles({ manifest: fixed, locations: good }, {}, [])),
+    ).toEqual([])
+    expect(f.objectReads).toEqual([])
+    expect(f.requests).toEqual([])
+    expect(f.writes).toEqual([])
+  })
+
+  test("selects local cached bytes after complete binding admission and marks only acquired hashes", async () => {
+    const bytes = encode("private requested"),
+      unused = encode("private excluded")
+    const first = file("one.bin", bytes),
+      excluded = file("missing.bin", unused)
+    const source = localSource(manifest(first, excluded))
+    const options = { scope, bindings: [localBinding("/controlled/private")] }
+    const f = fixture()
+    f.objects.set(`objects/${first.sha256}`, bytes)
+    const files = await f.run(materializeFixedLocalFiles(source, options, [first.path]))
+    expect(files).toEqual([{ path: first.path, sha256: first.sha256, bytes }])
+    expect(f.objectReads).toEqual([`objects/${first.sha256}`])
+    expect(f.json.has(`content-restrictions/local/${first.sha256}.json`)).toBe(true)
+    expect(f.json.has(`content-restrictions/local/${excluded.sha256}.json`)).toBe(false)
+    f.objectReads.length = 0
+    expect(await f.run(materializeFixedLocalFiles(source, options, []))).toEqual([])
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            materializeFixedLocalFiles(
+              source,
+              {
+                ...options,
+                scope: { ...scope, machine_scope: "another-machine" },
+              },
+              [],
+            ),
+          ),
+        )
+      ).code,
+    ).toBe("LOCAL_RESOURCE_SCOPE_MISMATCH")
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            materializeFixedLocalFiles(
+              source,
+              {
+                scope,
+                bindings: [localBinding("relative-root")],
+              },
+              [first.path],
+            ),
+          ),
+        )
+      ).code,
+    ).toBe("INVALID_LOCAL_RESOURCE_BINDING")
+    expect(f.objectReads).toEqual([])
+    expect(f.requests).toEqual([])
+  })
+})
 
 async function withDirectory<A>(use: (root: string) => Promise<A>): Promise<A> {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "ntn-fixed-resource-"))

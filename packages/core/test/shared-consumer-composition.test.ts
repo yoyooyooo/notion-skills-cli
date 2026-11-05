@@ -4,9 +4,13 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
-import { property, text } from "../src/model.ts"
+import { markLocalContentRestriction } from "../src/content-restrictions.ts"
+import { decode, property, text } from "../src/model.ts"
+import { openSharedConsumer } from "../src/shared-consumer.ts"
+import { FileEventSchema } from "../src/shared-file-state.ts"
 import { assertSharedFileReferences } from "../src/shared-file-references.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
+import { parseYaml } from "../src/yaml.ts"
 import { bindSharedLocalResource, configureSharedHttpOrigins } from "../src/shared-source-config.ts"
 import { registerSourcePlanBinding } from "../src/shared-source-plan-binding.ts"
 import type { SharedSourcePlan } from "../src/shared-source-plan.ts"
@@ -217,6 +221,8 @@ test("an incomplete fixed provider read prevents the standard consumer from publ
   )
   const f = sharedSnapshotFixture({ httpClient: client })
   await f.run(configureSharedHttpOrigins([origin]))
+  await f.target({ selector: skillPage })
+  const snapshots = [...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))
   const registration = await f.run(
     registerSourcePlanBinding(library, {
       skillPageId: skillPage,
@@ -225,12 +231,14 @@ test("an incomplete fixed provider read prevents the standard consumer from publ
     }),
   )
   property(f.main.properties).source = rich("source", registration.binding.source_plan_id)
+  f.bodies.set(skillPage, "# A new user edit awaiting observation\n")
+  f.main.last_edited_time = new Date(Date.parse(String(f.main.last_edited_time)) + 1).toISOString()
   f.clearCalls()
-  await expect(f.target({ selector: skillPage })).rejects.toThrow()
+  await expect(f.target({ selector: skillPage }, { refresh: true })).rejects.toThrow()
   expect(attempts).toBe(1)
   expect(f.readBodyCount()).toBe(0)
   expect(f.writeCount()).toBe(0)
-  expect([...f.json.keys()].some((key) => key.startsWith("snapshots/"))).toBe(false)
+  expect([...f.json.entries()].filter(([key]) => key.startsWith("snapshots/"))).toEqual(snapshots)
 })
 
 // Matches the real N07 failure shape without retaining any private source bytes.
@@ -264,7 +272,7 @@ async function referenceCompositionFixture() {
   )
   const f = sharedSnapshotFixture({ httpClient: client })
   await f.run(configureSharedHttpOrigins([origin]))
-  await f.target({ selector: skillPage })
+  const initial = await f.target({ selector: skillPage })
   const select = async (
     files: readonly { readonly path: string; readonly bytes: Uint8Array }[],
     mountPath: string | null,
@@ -300,7 +308,7 @@ async function referenceCompositionFixture() {
     ).toISOString()
     return registered.binding.source_plan_id
   }
-  return { f, requests, select }
+  return { f, requests, select, initial }
 }
 
 test("seven inherited HTTP Markdown targets prevent publishing a current complete snapshot", async () => {
@@ -392,4 +400,212 @@ test("a fixed upstream path change cannot publish a custom main with a now-missi
   )
   expect(pin.files).toEqual(before.files)
   expect(f.calls).toHaveLength(0)
+})
+
+function initialFileEvent(f: ReturnType<typeof sharedSnapshotFixture>, fileId: string) {
+  const row = [...f.records.values()].find(
+    (candidate) =>
+      text(property(property(candidate.properties).entity).rich_text) === fileId &&
+      property(property(property(candidate.properties).kind).select).name === "file_event",
+  )
+  if (row === undefined) throw new Error("Missing actual initial file event")
+  return decode(
+    FileEventSchema,
+    property(JSON.parse(text(property(property(row.properties).payload).rich_text))).payload,
+  )
+}
+
+test("known custom resources skip large source bytes while main YAML, privacy and metadata refresh remain complete", async () => {
+  const { f, requests, select } = await referenceCompositionFixture()
+  const overridden = new Uint8Array(2 * 1024 * 1024).fill(97)
+  const absent = new Uint8Array(2 * 1024 * 1024).fill(98)
+  const excludedHashes = [digest(overridden), digest(absent)]
+  const mainSource = encode(
+    "---\nname: Original\ndescription: Original\nlicense: MIT\nx-source: retained\n---\n\n# Unused source body\n",
+  )
+  await select(
+    [
+      { path: "SKILL.md", bytes: mainSource },
+      { path: "references/1.md", bytes: overridden },
+      { path: "references/2.md", bytes: absent },
+      { path: "assets/selected.bin", bytes: binary },
+    ],
+    null,
+  )
+  const corruptBytes = encode("corrupt unselected source")
+  f.objects.set(`objects/${digest(overridden)}`, corruptBytes)
+  f.objects.set(`objects/${digest(binary)}`, binary)
+  await f.run(markLocalContentRestriction(digest(overridden)))
+  f.clearCalls()
+  requests.length = 0
+  const snapshot = await f.target({ selector: skillPage }, { refresh: true })
+  expect(requests).toEqual([`${origin}/fixed/${digest(mainSource)}`])
+  expect(snapshot.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "assets/selected.bin",
+    "references/1.md",
+    "references/2.md",
+  ])
+  const main = snapshot.files.find((file) => file.path === "SKILL.md")!
+  const rendered = new TextDecoder().decode(f.objects.get(`objects/${main.sha256}`))
+  const frontmatter = property(parseYaml(/^---\n([\s\S]*?)\n---/u.exec(rendered)![1]!))
+  expect(frontmatter.license).toBe("MIT")
+  expect(frontmatter["x-source"]).toBe("retained")
+  expect(rendered).toContain("# Native main")
+  expect(rendered).not.toContain("Unused source body")
+  expect(snapshot.files.find((file) => file.path === "references/1.md")?.sha256).toBe(
+    digest("Reference one\n"),
+  )
+  expect(f.json.get(`content-restrictions/local/${digest("Reference one\n")}.json`)).toEqual({
+    version: 1,
+    sha256: digest("Reference one\n"),
+    reason: "local_resource",
+  })
+  expect(
+    f.objectReads.filter((read) => excludedHashes.some((hash) => read.key === `objects/${hash}`)),
+  ).toEqual([])
+  expect(
+    f.objectReads.some(
+      (read) =>
+        read.key === `objects/${digest(binary)}` &&
+        read.bytes === binary.byteLength &&
+        read.sha256 === digest(binary),
+    ),
+  ).toBe(true)
+  expect(f.objects.get(`objects/${digest(overridden)}`)).toEqual(corruptBytes)
+  expect(f.objects.has(`objects/${digest(absent)}`)).toBe(false)
+  expect(f.writeCount()).toBe(0)
+
+  property(f.main.properties).description = rich("description", "Updated managed description")
+  f.main.last_edited_time = new Date(Date.parse(String(f.main.last_edited_time)) + 1).toISOString()
+  f.clearCalls()
+  requests.length = 0
+  const refreshed = await f.run(
+    openSharedConsumer({
+      library,
+      target: skillPage,
+      scope: snapshot.scope,
+      startedAt: Date.now(),
+    }),
+  )
+  const refreshedMain = refreshed.files.find((file) => file.path === "SKILL.md")!
+  const refreshedText = new TextDecoder().decode(f.objects.get(`objects/${refreshedMain.sha256}`))
+  expect(property(parseYaml(/^---\n([\s\S]*?)\n---/u.exec(refreshedText)![1]!)).description).toBe(
+    "Updated managed description",
+  )
+  expect(requests).toEqual([])
+  expect(f.readBodyCount()).toBe(1)
+  expect(f.writeCount()).toBe(0)
+  expect(
+    f.objectReads.filter((read) => excludedHashes.some((hash) => read.key === `objects/${hash}`)),
+  ).toEqual([])
+})
+
+test("known custom moves and tombstones suppress source acquisition without losing the old fixed snapshot", async () => {
+  const { f, requests, select, initial } = await referenceCompositionFixture()
+  const first = initialFileEvent(f, "file-1"),
+    second = initialFileEvent(f, "file-2")
+  if (first.kind !== "adopted" || second.kind !== "adopted")
+    throw new Error("Expected actual native adoption")
+  f.seedFact(
+    {
+      kind: "moved",
+      event_id: "move-custom",
+      file_id: "file-1",
+      parents: [first.event_id],
+      retained: first.content,
+      from_path: "references/1.md",
+      to_path: "notes/moved.md",
+      source_path: "references/1.md",
+      suppressed_paths: ["references/1.md"],
+    },
+    "file_event",
+    "file-1",
+    "move-custom",
+  )
+  property(f.files[0]!.properties).path = rich("path", "notes/moved.md")
+  f.seedFact(
+    {
+      kind: "deleted",
+      event_id: "delete-resource",
+      file_id: "file-2",
+      parents: [second.event_id],
+      retained: second.content,
+    },
+    "file_event",
+    "file-2",
+    "delete-resource",
+  )
+  const movedSource = new Uint8Array(2 * 1024 * 1024).fill(99)
+  const deletedSource = new Uint8Array(2 * 1024 * 1024).fill(100)
+  await select(
+    [
+      { path: "references/1.md", bytes: movedSource },
+      { path: "references/2.md", bytes: deletedSource },
+      { path: "assets/selected.bin", bytes: binary },
+    ],
+    null,
+  )
+  f.clearCalls()
+  requests.length = 0
+  const current = await f.target({ selector: skillPage }, { refresh: true })
+  expect(requests).toEqual([`${origin}/fixed/${digest(binary)}`])
+  expect(current.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "assets/selected.bin",
+    "notes/moved.md",
+  ])
+  expect(current.file_bindings?.find((file) => file.file_id === "file-1")?.path).toBe(
+    "notes/moved.md",
+  )
+  expect(current.files.find((file) => file.path === "notes/moved.md")?.sha256).toBe(
+    first.content.sha256,
+  )
+  expect(
+    f.calls.some(
+      (call) => call.path.includes(String(f.files[1]!.id)) && call.path.includes("/markdown"),
+    ),
+  ).toBe(false)
+  expect(
+    f.objectReads.filter((read) =>
+      [digest(movedSource), digest(deletedSource)].some((hash) => read.key === `objects/${hash}`),
+    ),
+  ).toEqual([])
+  expect(f.objects.has(`objects/${digest(movedSource)}`)).toBe(false)
+  expect(f.objects.has(`objects/${digest(deletedSource)}`)).toBe(false)
+  expect(f.writeCount()).toBe(0)
+  f.clearCalls()
+  const old = await f.target(
+    { selector: skillPage, snapshot: initial.snapshot_id },
+    { offline: true },
+  )
+  expect(old.files).toEqual(initial.files)
+  expect(f.calls).toEqual([])
+})
+
+test("an orphan ownership fact rejects source consumption before any provider or object acquisition", async () => {
+  const { f, requests, select } = await referenceCompositionFixture()
+  await select([{ path: "assets/required.bin", bytes: binary }], null)
+  const initial = initialFileEvent(f, "file-main")
+  if (initial.kind !== "adopted") throw new Error("Expected native main adoption")
+  f.seedFact(
+    {
+      kind: "adopted",
+      event_id: "orphan-event",
+      file_id: "unbound",
+      parents: [],
+      content: initial.content,
+    },
+    "file_event",
+    "unbound",
+    "orphan-event",
+  )
+  f.clearCalls()
+  requests.length = 0
+  const error = await f.run(Effect.flip(targetSnapshot({ selector: skillPage }, { refresh: true })))
+  expect(error.code).toBe("UNBOUND_FILE_STATE")
+  expect(requests).toEqual([])
+  expect(f.objectReads).toEqual([])
+  expect(f.readBodyCount()).toBe(0)
+  expect(f.writeCount()).toBe(0)
 })

@@ -78,19 +78,90 @@ work. Current selection still checks credential scope, database, TTL, full-body
 deadline, invalidation and pending/unknown work. Cache clearing cannot revive an
 old observation through this receipt.
 
+## Effective current source ownership
+
+An uncached current read first plans the complete selected immutable source.
+`planSelectedSharedSource` retains the validated source binding and returns the
+full path/length/content-identity directory plus an exact-path materializer.
+Git descriptors retain their Git blob OID identity; SHA-256 based manifests keep
+their existing identity. Reading a derived cache does not change either identity.
+The full-byte resolver remains available to authoring and explicit source refresh.
+
+Current consumption then follows these boundaries:
+
+1. Admit the complete source directory, including every Base/Mount collision,
+   path alias, declared size, HTTP location/origin and local machine/workspace
+   binding. An excluded resource cannot conceal an invalid declaration.
+2. Read complete shared membership and ownership facts, reconcile original
+   operations under the existing rules, and reject unresolved, orphaned or
+   conflicting state. Plan logical placement against the full source directory.
+3. Acquire only source inputs needed by that ownership state. Existing custom
+   files, tombstones and suppressed move paths do not require their original
+   SHA-256 source bytes. A following move reads its original source path and
+   renders it at the final logical path.
+4. Observe current native bodies, compose the complete effective tree, validate
+   its references and publish the normal immutable snapshot. Complete exports
+   still verify every effective file against that snapshot.
+
+The placement planner is shared by metadata planning and full-byte composition.
+Omitted source files are neither empty files nor a replacement full manifest.
+Missing required bytes fail explicitly. Source provenance, stable File IDs and
+the source replaced by a custom move remain available after composition.
+
+Two dependencies deliberately keep source reads:
+
+- A source main can supply additional YAML fields even when its body is custom.
+  Canonical managed name/description and the custom body retain their existing
+  precedence, so the source main remains a required input.
+- An overridden Git original may carry a durable SHA-256 local-content
+  restriction. A Git OID alone, or a disposable OID-to-hash cache record, cannot
+  establish that restriction. Its verified original bytes remain required for
+  classification. This does not introduce a Git identity migration.
+
+Complete declared local SHA identities conservatively restrict matching source
+aliases, including an effective HTTP path whose local alias is excluded. Only
+selected, actually verified bytes can establish a new durable restriction through
+materialization. An acquired alias is marked before its object or derived Git
+index is published, so a later required-source failure cannot leave that object
+unrestricted in the cache. Verified cache hits are classified before returning.
+Existing markers continue to propagate through replacement and logical moves.
+Skipping source bytes never grants archive permission.
+
+Required source acquisition precedes the observer's adoption side effects. If a
+required provider fails, the invocation cannot first retain a new user edit as
+an adopted fact or publish a successful snapshot. Consequently, a following file
+that becomes custom during this very read may still incur its original source
+read. Eliminating that cost would require separating pure observation from its
+commit, which this change does not do.
+
+## Retained-source selection and archive cost
+
+Retained-source materialization validates the complete immutable manifest before
+selecting objects, including equal-hash length consistency. It reads each
+selected content object once. An empty selection performs no object or archive
+acquisition after validation. A corrupt selected cached object remains an
+integrity failure; an unselected corrupt or missing object is untouched.
+
+If a selected object is missing from a legacy retained bundle, recovery still
+downloads and validates the entire ZIP and all its members. Only the missing
+selected objects are published after that whole-archive check. This saves
+unnecessary local publication but does not provide remote random access. Report
+the complete archive payload and requests even when the final read is small.
+
 ## Scope of the improvement
 
 This separates complete-manifest and complete-reference evidence from repeated
 local object acquisition. It improves fixed/partial-cache reads and eligible
-current cache hits. It does not turn an unobserved mutable current tree into a
+current cache hits, and avoids source acquisition for already established
+ownership overrides. It does not turn an unobserved mutable current tree into a
 verified immutable snapshot.
 
 A genuinely cold, unfixed current selection may still need all existing body
 observations to establish its complete version, native references and ownership
-state. Source ownership planning, Git content-identity conversion and legacy
-whole-archive retrieval keep their existing semantics. Any remaining full-source
-or ZIP cost must be reported; it is not random access merely because the final
-read returns one file.
+state. Git privacy classification, source main metadata, a newly observed
+ownership transition and legacy whole-archive retrieval can still require
+additional source bytes. Report those costs separately; returning one file does
+not establish that only one file was acquired.
 
 Verification uses actual object-read counts, complete output/hash comparison,
 partial-cache failures, unchanged freshness and independent package/Pi paths.

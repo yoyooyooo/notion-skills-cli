@@ -90,6 +90,8 @@ function fixture(bodies: ReadonlyMap<string, Uint8Array> = new Map(), delay = fa
   const json = new Map<string, unknown>()
   const requests: string[] = []
   const writes: string[] = []
+  const objectReads: string[] = []
+  const jsonReads: string[] = []
   const unexpected = () => Effect.die(new Error("Unexpected Store operation."))
   const store: Store["Service"] = {
     root: "/controlled",
@@ -106,7 +108,10 @@ function fixture(bodies: ReadonlyMap<string, Uint8Array> = new Map(), delay = fa
     output: unexpected,
     readJson: (key, schema) =>
       Effect.try({
-        try: () => (json.has(key) ? Schema.decodeUnknownSync(schema)(json.get(key)) : undefined),
+        try: () => {
+          jsonReads.push(key)
+          return json.has(key) ? Schema.decodeUnknownSync(schema)(json.get(key)) : undefined
+        },
         catch: () => fail("STATE_CORRUPT", "Controlled derived cache corruption."),
       }),
     writeJson: (key, value) =>
@@ -116,6 +121,7 @@ function fixture(bodies: ReadonlyMap<string, Uint8Array> = new Map(), delay = fa
       }),
     readBytes: (key) =>
       Effect.gen(function* () {
+        objectReads.push(key)
         const bytes = objects.get(key)
         return bytes === undefined
           ? yield* Effect.fail(fail("SNAPSHOT_MISSING", "Controlled missing object."))
@@ -152,8 +158,552 @@ function fixture(bodies: ReadonlyMap<string, Uint8Array> = new Map(), delay = fa
       ),
     )
   }
-  return { objects, json, requests, writes, metrics, run }
+  return { objects, json, requests, writes, objectReads, jsonReads, metrics, run, store }
 }
+
+function guardLocalReads<A, E>(effect: Effect.Effect<A, E, Requirements>, reads: string[]) {
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const refused = (operation: string, path: string) => {
+      reads.push(`${operation}:${path}`)
+      return Effect.die(new Error("Excluded local content must not be read."))
+    }
+    return yield* effect.pipe(
+      Effect.provideService(FileSystem.FileSystem, {
+        ...fs,
+        realPath: (path) => refused("realPath", path),
+        stat: (path) => refused("stat", path),
+        open: (path) => refused("open", path),
+      }),
+    )
+  })
+}
+
+describe("privacy publication", () => {
+  for (const kind of ["http", "git"] as const) {
+    const resource = (
+      files: readonly { readonly path: string; readonly bytes: Uint8Array }[],
+    ): SourcePlanResource => {
+      if (kind === "git") {
+        const source = gitSource(files[0]!.path, files[0]!.bytes)
+        return {
+          kind,
+          source: {
+            ...source,
+            files: files.map((file) => gitSource(file.path, file.bytes).files[0]!),
+          },
+        }
+      }
+      return {
+        kind,
+        manifest: fixedManifest(...files.map((file) => fixedFile(file.path, file.bytes))),
+        locations: files.map((file) => ({
+          sha256: digest(file.bytes),
+          url: `${httpUrl}/${file.path}`,
+        })),
+      }
+    }
+    const urlFor = (path: string) =>
+      kind === "http"
+        ? `${httpUrl}/${path}`
+        : gitUrl(gitSource(path, encode("identity not used for URL")), `fixed/${path}`)
+    const options = { local: localOptions("/controlled/missing-local-root") }
+
+    test(`${kind} preserves a published local alias when a concurrent required object fails`, async () => {
+      const bytes = encode("verified private alias\n"),
+        required = encode("unavailable required body\n")
+      const hash = digest(bytes),
+        object = `objects/${hash}`
+      const marker = `content-restrictions/local/${hash}.json`
+      const published = Latch.makeUnsafe(),
+        calls: string[] = [],
+        localReads: string[] = []
+      const f = fixture()
+      const client = HttpClient.make((request, url) =>
+        Effect.gen(function* () {
+          calls.push(url.toString())
+          if (url.toString() === urlFor("public.txt"))
+            return HttpClientResponse.fromWeb(
+              request,
+              new Response(bytes.slice(), {
+                headers: { "content-length": String(bytes.length) },
+              }),
+            )
+          expect(url.toString()).toBe(urlFor("required.txt"))
+          yield* published.await
+          return HttpClientResponse.fromWeb(request, new Response(null, { status: 404 }))
+        }),
+      )
+      const plan = sourcePlan(
+        resource([
+          { path: "public.txt", bytes },
+          { path: "required.txt", bytes: required },
+        ]),
+        [{ mount_path: "private", resource: localResource("excluded.txt", bytes) }],
+      )
+      const effect = materializeSharedSourcePlan(plan, options, [
+        "public.txt",
+        "required.txt",
+      ]).pipe(
+        Effect.provideService(Store, {
+          ...f.store,
+          writeBytes: (key, value) =>
+            f.store.writeBytes(key, value).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  if (key === object) published.openUnsafe()
+                }),
+              ),
+            ),
+        }),
+      )
+      const error = await f.run(Effect.flip(guardLocalReads(effect, localReads)), client)
+      expect(error.code).toBe(
+        kind === "http" ? "HTTP_RESOURCE_UNAVAILABLE" : "GITHUB_PUBLIC_SOURCE_UNAVAILABLE",
+      )
+      expect(f.objects.get(object)).toEqual(bytes)
+      expect(calls.sort()).toEqual([urlFor("public.txt"), urlFor("required.txt")].sort())
+      expect(localReads).toEqual([])
+      expect(f.json.get(marker)).toEqual({ version: 1, sha256: hash, reason: "local_resource" })
+      expect(f.writes.indexOf(marker)).toBeLessThan(f.writes.indexOf(object))
+      const mapping = f.writes.indexOf(`cache/shared-github-blobs/${gitOid(bytes)}.json`)
+      if (mapping !== -1) expect(f.writes.indexOf(marker)).toBeLessThan(mapping)
+      const reused = await f.run(
+        materializeSharedSourcePlan(sourcePlan(httpResource("reused.txt", bytes))),
+      )
+      expect(reused.local_paths).toEqual(["reused.txt"])
+      expect(f.requests).toEqual([])
+      expect(f.json.has(`content-restrictions/local/${digest(required)}.json`)).toBe(false)
+    })
+
+    test(`${kind} classifies a verified cached alias before a later required resource fails`, async () => {
+      const bytes = encode("previously public cached bytes\n"),
+        required = encode("required\n")
+      const base = resource([{ path: "public.txt", bytes }])
+      const f = fixture(new Map([[urlFor("public.txt"), bytes]])),
+        localReads: string[] = []
+      await f.run(materializeSharedSourcePlan(sourcePlan(base)))
+      const marker = `content-restrictions/local/${digest(bytes)}.json`
+      expect(f.json.has(marker)).toBe(false)
+      const plan = sourcePlan(base, [
+        { mount_path: "private", resource: localResource("excluded.txt", bytes) },
+        {
+          mount_path: "required",
+          resource: httpResource("missing.txt", required, `${httpUrl}/missing`),
+        },
+      ])
+      const error = await f.run(
+        Effect.flip(
+          guardLocalReads(
+            materializeSharedSourcePlan(plan, options, ["public.txt", "required/missing.txt"]),
+            localReads,
+          ),
+        ),
+      )
+      expect(error.code).toBe("HTTP_RESOURCE_UNAVAILABLE")
+      expect(localReads).toEqual([])
+      expect(f.json.get(marker)).toEqual({
+        version: 1,
+        sha256: digest(bytes),
+        reason: "local_resource",
+      })
+      const requests = [...f.requests]
+      expect(requests).toEqual([urlFor("public.txt"), `${httpUrl}/missing`])
+      const reused = await f.run(
+        materializeSharedSourcePlan(sourcePlan(httpResource("reused.txt", bytes))),
+      )
+      expect(reused.local_paths).toEqual(["reused.txt"])
+      expect(f.requests).toEqual(requests)
+    })
+
+    test(`${kind} refuses object publication and cached return when the local alias marker cannot persist`, async () => {
+      for (const cached of [false, true]) {
+        const bytes = encode("private alias requiring durable classification\n")
+        const base = resource([{ path: "public.txt", bytes }])
+        const f = fixture(new Map([[urlFor("public.txt"), bytes]])),
+          localReads: string[] = []
+        if (cached) await f.run(materializeSharedSourcePlan(sourcePlan(base)))
+        const beforeObjects = new Map(f.objects),
+          beforeJson = new Map(f.json)
+        const plan = sourcePlan(base, [
+          { mount_path: "private", resource: localResource("excluded.txt", bytes) },
+        ])
+        const effect = materializeSharedSourcePlan(plan, options, ["public.txt"]).pipe(
+          Effect.provideService(Store, {
+            ...f.store,
+            writeJson: (key, value) =>
+              key.startsWith("content-restrictions/local/")
+                ? Effect.fail(fail("STORAGE_ERROR", "Controlled restriction persistence failure."))
+                : f.store.writeJson(key, value),
+          }),
+        )
+        expect((await f.run(Effect.flip(guardLocalReads(effect, localReads)))).code).toBe(
+          "STORAGE_ERROR",
+        )
+        expect(f.objects).toEqual(beforeObjects)
+        expect(f.json).toEqual(beforeJson)
+        expect(localReads).toEqual([])
+      }
+    })
+
+    test(`${kind} leaves empty selections and corrupt alias bytes without a local marker`, async () => {
+      const bytes = encode("private bytes require complete validation\n")
+      const damaged = bytes.slice()
+      damaged[0] = damaged[0]! ^ 1
+      const base = resource([{ path: "public.txt", bytes }])
+      const bodies = new Map([[urlFor("public.txt"), damaged]])
+      const f = fixture(bodies),
+        localReads: string[] = []
+      const plan = sourcePlan(base, [
+        { mount_path: "private", resource: localResource("excluded.txt", bytes) },
+      ])
+      const empty = await f.run(
+        guardLocalReads(materializeSharedSourcePlan(plan, options, []), localReads),
+      )
+      expect(empty.files).toEqual([])
+      expect(empty.local_paths).toEqual([])
+      expect(f.requests).toEqual([])
+      expect(f.writes).toEqual([])
+      expect(
+        (
+          await f.run(
+            Effect.flip(
+              guardLocalReads(
+                materializeSharedSourcePlan(plan, options, ["public.txt"]),
+                localReads,
+              ),
+            ),
+          )
+        ).code,
+      ).toBe(kind === "http" ? "FIXED_RESOURCE_HASH_MISMATCH" : "GITHUB_BLOB_MISMATCH")
+      expect(f.objects.size).toBe(0)
+      expect(f.json.size).toBe(0)
+      bodies.set(urlFor("public.txt"), bytes)
+      await f.run(materializeSharedSourcePlan(sourcePlan(base)))
+      f.objects.set(`objects/${digest(bytes)}`, damaged)
+      const requests = [...f.requests]
+      expect(
+        (
+          await f.run(
+            Effect.flip(
+              guardLocalReads(
+                materializeSharedSourcePlan(plan, options, ["public.txt"]),
+                localReads,
+              ),
+            ),
+          )
+        ).code,
+      ).toBe(kind === "http" ? "FIXED_RESOURCE_CACHE_CORRUPT" : "SOURCE_CACHE_CORRUPT")
+      expect(f.requests).toEqual(requests)
+      expect(f.json.has(`content-restrictions/local/${digest(bytes)}.json`)).toBe(false)
+      expect(localReads).toEqual([])
+    })
+  }
+})
+
+describe("selective source plan", () => {
+  test("restricts a verified HTTP alias of excluded local content without reading local bytes", async () => {
+    const bytes = encode("same declared local content\n"),
+      unrelated = encode("unselected private content\n")
+    const local = {
+      ...localResource("missing.bin", bytes),
+      manifest: fixedManifest(
+        fixedFile("missing.bin", bytes),
+        fixedFile("unrelated.bin", unrelated),
+      ),
+    }
+    const plan = sourcePlan(httpResource("public.txt", bytes), [
+      { mount_path: "private", resource: local },
+    ])
+    const options = { local: localOptions("/controlled/missing-local-root") }
+    const f = fixture(new Map([[httpUrl, bytes]])),
+      localReads: string[] = []
+    const run = (source: SharedSourcePlan, paths: readonly string[]) =>
+      f.run(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const controlled: FileSystem.FileSystem = {
+            ...fs,
+            realPath: (path) => {
+              localReads.push(`realPath:${path}`)
+              return Effect.die(new Error("Excluded local content must not be read."))
+            },
+            open: (path) => {
+              localReads.push(`open:${path}`)
+              return Effect.die(new Error("Excluded local content must not be opened."))
+            },
+          }
+          return yield* materializeSharedSourcePlan(source, options, paths).pipe(
+            Effect.provideService(FileSystem.FileSystem, controlled),
+          )
+        }),
+      )
+    expect(inspectSharedSourcePlan(plan).local_paths).toEqual([
+      "private/missing.bin",
+      "private/unrelated.bin",
+      "public.txt",
+    ])
+    expect(f.json.size).toBe(0)
+    expect((await run(plan, [])).local_paths).toEqual([])
+    expect(f.writes).toEqual([])
+    expect(f.objectReads).toEqual([])
+    const selected = await run(plan, ["public.txt"])
+    expect(selected.files).toEqual([{ path: "public.txt", bytes }])
+    expect(selected.local_paths).toEqual(["public.txt"])
+    expect(f.requests).toEqual([httpUrl])
+    expect(f.objectReads).toEqual([`objects/${digest(bytes)}`])
+    expect(localReads).toEqual([])
+    const restriction = `content-restrictions/local/${digest(bytes)}.json`
+    expect(f.json.get(restriction)).toEqual({
+      version: 1,
+      sha256: digest(bytes),
+      reason: "local_resource",
+    })
+    expect(f.json.has(`content-restrictions/local/${digest(unrelated)}.json`)).toBe(false)
+    const publicOnly = sourcePlan(httpResource("renamed.txt", bytes))
+    expect((await run(publicOnly, ["renamed.txt"])).local_paths).toEqual(["renamed.txt"])
+    expect(f.requests).toHaveLength(1)
+    f.objects.clear()
+    expect((await run(publicOnly, ["renamed.txt"])).local_paths).toEqual(["renamed.txt"])
+    expect(f.requests).toEqual([httpUrl, httpUrl])
+    expect(f.writes.filter((key) => key === restriction)).toHaveLength(1)
+    expect(localReads).toEqual([])
+  })
+
+  test("never persists a local alias restriction from metadata or unverified selected HTTP bytes", async () => {
+    const bytes = encode("fixed local content\n")
+    const plan = sourcePlan(httpResource("public.txt", bytes), [
+      { mount_path: "private", resource: localResource("missing.bin", bytes) },
+    ])
+    const f = fixture(new Map([[httpUrl, new Uint8Array(bytes.length)]]))
+    expect(inspectSharedSourcePlan(plan).local_paths).toEqual(["private/missing.bin", "public.txt"])
+    const error = await f.run(
+      Effect.flip(
+        materializeSharedSourcePlan(
+          plan,
+          { local: localOptions("/controlled/missing-local-root") },
+          ["public.txt"],
+        ),
+      ),
+    )
+    expect(error.code).toBe("FIXED_RESOURCE_HASH_MISMATCH")
+    expect(f.json.size).toBe(0)
+    expect(f.objects.size).toBe(0)
+    expect(f.writes).toEqual([])
+  })
+
+  test("rejects conflicting identities across excluded resources before any bytes", async () => {
+    const bytes = encode("fixed\n"),
+      git = gitSource("SKILL.md", bytes)
+    const first = git.files[0]!
+    const gitConflict = sourcePlan({ kind: "git", source: git }, [
+      {
+        mount_path: "unused",
+        resource: {
+          kind: "git",
+          source: {
+            ...git,
+            files: [{ ...first, bytes: first.bytes + 1 }],
+          },
+        },
+      },
+    ])
+    const http = httpResource("SKILL.md", bytes)
+    const httpConflict = sourcePlan(http, [
+      {
+        mount_path: "unused",
+        resource: {
+          ...http,
+          manifest: fixedManifest({ ...http.manifest.files[0]!, bytes: bytes.length + 1 }),
+        },
+      },
+    ])
+    for (const plan of [gitConflict, httpConflict]) {
+      const f = fixture()
+      expect(
+        (await f.run(Effect.flip(materializeSharedSourcePlan(plan, {}, ["SKILL.md"])))).code,
+      ).toBe("INVALID_SOURCE_PLAN")
+      expect(f.objectReads).toEqual([])
+      expect(f.jsonReads).toEqual([])
+      expect(f.requests).toEqual([])
+    }
+  })
+
+  test("keeps full identities and runtime manifest lookup while acquiring only effective mounted paths", async () => {
+    const main = encode("# Fixed main\n"),
+      unusedGit = encode("excluded git\n")
+    const icon = new Uint8Array([0, 255, 13, 10]),
+      unusedHttp = encode("excluded http\n")
+    const local = encode("excluded local\n")
+    const git = gitSource("SKILL.md", main)
+    const excludedGit = gitSource("unused.txt", unusedGit).files[0]!
+    const source = { ...git, files: [...git.files, excludedGit] }
+    const http: Extract<SourcePlanResource, { kind: "http" }> = {
+      kind: "http",
+      manifest: fixedManifest(fixedFile("icon.bin", icon), fixedFile("unused.bin", unusedHttp)),
+      locations: [
+        { sha256: digest(icon), url: `${httpUrl}/icon` },
+        { sha256: digest(unusedHttp), url: `${httpUrl}/unused` },
+      ],
+    }
+    const plan = sourcePlan({ kind: "git", source }, [
+      { mount_path: "assets", resource: http },
+      { mount_path: "private", resource: localResource("missing.bin", local) },
+    ])
+    const signed = `${httpUrl}/runtime?signature=machine-only`
+    const f = fixture(
+      new Map([
+        [gitUrl(source, "fixed/SKILL.md"), main],
+        [signed, icon],
+      ]),
+    )
+    const id = await f.run(fixedFileManifestId(http.manifest))
+    const options: SharedSourcePlanOptions = {
+      http: {
+        locationsByManifest: {
+          [id]: [
+            { sha256: digest(icon), url: signed },
+            { sha256: digest(unusedHttp), url: `${httpUrl}/unused-runtime` },
+          ],
+        },
+      },
+      local: localOptions("/controlled/private"),
+    }
+    const inspection = inspectSharedSourcePlan(plan)
+    expect(inspection.paths).toEqual([
+      "SKILL.md",
+      "assets/icon.bin",
+      "assets/unused.bin",
+      "private/missing.bin",
+      "unused.txt",
+    ])
+    expect(inspection.local_paths).toEqual(["private/missing.bin"])
+    expect(inspection.manifest.find((file) => file.path === "SKILL.md")).toEqual({
+      path: "SKILL.md",
+      bytes: main.length,
+      identity: { kind: "git", git_oid: gitOid(main) },
+    })
+    expect(inspection.manifest.find((file) => file.path === "private/missing.bin")).toEqual({
+      path: "private/missing.bin",
+      bytes: local.length,
+      identity: { kind: "sha256", sha256: digest(local) },
+    })
+    f.json.set(`cache/shared-github-blobs/${gitOid(unusedGit)}.json`, { version: "corrupt unused" })
+    f.objects.set(`objects/${digest(unusedHttp)}`, new Uint8Array(unusedHttp.length))
+    const selected = ["assets/icon.bin", "SKILL.md"]
+    const cold = await f.run(materializeSharedSourcePlan(plan, options, selected))
+    expect(cold.source_plan_id).toBe(await f.run(sharedSourcePlanId(plan)))
+    expect(cold.paths).toEqual(inspection.paths)
+    expect(cold.files).toEqual([
+      { path: "SKILL.md", bytes: main },
+      { path: "assets/icon.bin", bytes: icon },
+    ])
+    expect(cold.local_paths).toEqual([])
+    expect(f.requests).toEqual([gitUrl(source, "fixed/SKILL.md"), signed])
+    expect(f.objectReads).toEqual([`objects/${digest(icon)}`])
+    expect(f.jsonReads).not.toContain(`cache/shared-github-blobs/${gitOid(unusedGit)}.json`)
+    expect(await f.run(materializeSharedSourcePlan(plan, options, selected))).toEqual(cold)
+    expect(f.requests).toHaveLength(2)
+    expect(inspectSharedSourcePlan(plan).manifest).toEqual(inspection.manifest)
+    f.objectReads.length = 0
+    f.jsonReads.length = 0
+    const empty = await f.run(materializeSharedSourcePlan(plan, options, []))
+    expect(empty).toEqual({
+      source_plan_id: cold.source_plan_id,
+      paths: inspection.paths,
+      files: [],
+      local_paths: [],
+    })
+    expect(f.objectReads).toEqual([])
+    expect(f.jsonReads).toEqual([])
+    expect(f.requests).toHaveLength(2)
+  })
+
+  test("admits excluded HTTP and local resources before reading any selected base object", async () => {
+    const main = encode("# main\n"),
+      unused = encode("unused\n")
+    const source = gitSource("SKILL.md", main)
+    const base = { kind: "git" as const, source }
+    const http = httpResource("unused.bin", unused, "https://untrusted.example.com/asset")
+    const local = localResource("unused.bin", unused)
+    const cases = [
+      {
+        plan: sourcePlan(base, [{ mount_path: "http", resource: http }]),
+        options: {},
+        code: "HTTP_RESOURCE_ORIGIN_NOT_ALLOWED",
+      },
+      {
+        plan: sourcePlan(base, [{ mount_path: "local", resource: local }]),
+        options: {},
+        code: "SOURCE_PLAN_LOCAL_BINDING_REQUIRED",
+      },
+      {
+        plan: sourcePlan(base, [{ mount_path: "local", resource: local }]),
+        options: {
+          local: {
+            ...localOptions("/controlled/private"),
+            scope: { ...localScope, machine_scope: "different" },
+          },
+        },
+        code: "LOCAL_RESOURCE_SCOPE_MISMATCH",
+      },
+    ]
+    for (const scenario of cases) {
+      const f = fixture(new Map([[gitUrl(source, "fixed/SKILL.md"), main]]))
+      const result = await f.run(
+        Effect.flip(materializeSharedSourcePlan(scenario.plan, scenario.options, ["SKILL.md"])),
+      )
+      expect(result.code).toBe(scenario.code)
+      expect(f.requests).toEqual([])
+      expect(f.objectReads).toEqual([])
+      expect(f.jsonReads).toEqual([])
+      expect(f.writes).toEqual([])
+    }
+  })
+
+  test("refuses excluded invalid metadata and incomplete full-manifest runtime locations", async () => {
+    const first = encode("one"),
+      unused = encode("unused")
+    const resource: Extract<SourcePlanResource, { kind: "http" }> = {
+      kind: "http",
+      manifest: fixedManifest(fixedFile("one.bin", first), fixedFile("unused.bin", unused)),
+      locations: [
+        { sha256: digest(first), url: httpUrl },
+        { sha256: digest(unused), url: `${httpUrl}/unused` },
+      ],
+    }
+    const plan = sourcePlan(resource),
+      f = fixture()
+    const id = await f.run(fixedFileManifestId(resource.manifest))
+    expect(
+      (
+        await f.run(
+          materializeSharedSourcePlan(
+            plan,
+            {
+              http: { locationsByManifest: { [id]: [resource.locations[0]!] } },
+            },
+            ["one.bin"],
+          ).pipe(Effect.result),
+        )
+      )._tag,
+    ).toBe("Failure")
+    const invalid = sourcePlan({
+      ...resource,
+      manifest: fixedManifest(fixedFile("one.bin", first), fixedFile("../hidden", unused)),
+    })
+    expect(
+      (await f.run(materializeSharedSourcePlan(invalid, {}, ["one.bin"]).pipe(Effect.result)))._tag,
+    ).toBe("Failure")
+    for (const paths of [["absent"], ["one.bin", "one.bin"]])
+      expect((await f.run(Effect.flip(materializeSharedSourcePlan(plan, {}, paths)))).code).toBe(
+        "FILE_NOT_FOUND",
+      )
+    expect(f.requests).toEqual([])
+    expect(f.objectReads).toEqual([])
+    expect(f.writes).toEqual([])
+  })
+})
 
 async function withDirectory<A>(use: (root: string) => Promise<A>): Promise<A> {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "ntn-source-plan-"))

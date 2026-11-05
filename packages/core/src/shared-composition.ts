@@ -21,6 +21,13 @@ export type CompositionOverride =
     }
   | { readonly kind: "tombstone"; readonly file_id: string; readonly path: string }
 
+export type CompositionPath = { readonly path: string }
+export type CompositionOverrideMetadata = {
+  readonly kind: CompositionOverride["kind"]
+  readonly file_id: string
+  readonly path: string
+}
+
 export type SourceProvenance =
   | { readonly kind: "base"; readonly source_path: string }
   | { readonly kind: "mount"; readonly mount_path: string; readonly source_path: string }
@@ -40,14 +47,30 @@ export type ComposeSharedFilesInput = {
   readonly entrypoint: string
 }
 
+export type PlanSharedFilesInput = {
+  readonly base: readonly CompositionPath[]
+  readonly mounts: readonly {
+    readonly mount_path: string
+    readonly files: readonly CompositionPath[]
+  }[]
+  readonly overrides: readonly CompositionOverrideMetadata[]
+  readonly entrypoint: string
+}
+
+export type SharedCompositionPlan = {
+  readonly paths: readonly string[]
+  /** Complete effective provenance, including sources replaced without reading their bytes. */
+  readonly provenance: ReadonlyMap<string, FileProvenance>
+}
+
 export type SharedComposition = {
   readonly files: readonly CompositionFile[]
   /** Effective files only, in the same deterministic path order as files. */
   readonly provenance: ReadonlyMap<string, FileProvenance>
 }
 
-type SourcedFile = { readonly file: CompositionFile; readonly provenance: SourceProvenance }
-type EffectiveFile = { readonly file: CompositionFile; readonly provenance: FileProvenance }
+type SourcedFile = { readonly path: string; readonly provenance: SourceProvenance }
+type EffectiveFile = { readonly path: string; readonly provenance: FileProvenance }
 const controlCharacters = /[\u0000-\u001f\u007f-\u009f]/u
 
 // Conservative equality for destinations with case or Unicode normalization.
@@ -93,7 +116,7 @@ function canonicalPath(value: string, label: string): string {
   return path
 }
 
-function fileBytes(value: Uint8Array, path: string): Uint8Array {
+function fileBytes(value: unknown, path: string): Uint8Array {
   if (!(value instanceof Uint8Array))
     throw fail("INVALID_COMPOSITION_BYTES", "Resolved file content must be Uint8Array", { path })
   return value
@@ -132,7 +155,7 @@ function registerSpelling(spellings: Map<string, string>, path: string): void {
   }
 }
 
-function validateTree(files: Iterable<CompositionFile>): void {
+function validateTree(files: Iterable<CompositionPath>): void {
   const paths = new Map<string, string>()
   for (const file of files) paths.set(portableKey(file.path), file.path)
   for (const [key, path] of paths) {
@@ -148,14 +171,14 @@ function validateTree(files: Iterable<CompositionFile>): void {
   }
 }
 
-/** Compose resolved bytes. This function performs no I/O or content conversion. */
-export function composeSharedFiles(input: ComposeSharedFilesInput): SharedComposition {
+/** Plan the complete directory before acquiring content. Overrides cannot hide invalid sources. */
+export function planSharedFiles(input: PlanSharedFilesInput): SharedCompositionPlan {
   const entrypoint = canonicalPath(input.entrypoint, "Main entrypoint")
   const spellings = new Map<string, string>()
   registerSpelling(spellings, entrypoint)
   const sources = new Map<string, SourcedFile>()
 
-  const addSource = (path: string, bytes: Uint8Array, provenance: SourceProvenance): void => {
+  const addSource = (path: string, provenance: SourceProvenance): void => {
     registerSpelling(spellings, path)
     if (sources.has(path)) {
       throw fail(
@@ -164,12 +187,12 @@ export function composeSharedFiles(input: ComposeSharedFilesInput): SharedCompos
         { path },
       )
     }
-    sources.set(path, { file: { path, bytes: fileBytes(bytes, path) }, provenance })
+    sources.set(path, { path, provenance })
   }
 
   for (const file of input.base) {
     const path = canonicalPath(file.path, "Base path")
-    addSource(path, file.bytes, { kind: "base", source_path: path })
+    addSource(path, { kind: "base", source_path: path })
   }
   for (const mount of input.mounts) {
     const mountPath = mount.mount_path === "" ? "" : canonicalPath(mount.mount_path, "Mount path")
@@ -179,11 +202,11 @@ export function composeSharedFiles(input: ComposeSharedFilesInput): SharedCompos
         mountPath === "" ? sourcePath : `${mountPath}/${sourcePath}`,
         "Mounted output path",
       )
-      addSource(path, file.bytes, { kind: "mount", mount_path: mountPath, source_path: sourcePath })
+      addSource(path, { kind: "mount", mount_path: mountPath, source_path: sourcePath })
     }
   }
   // An override must not conceal conflicting upstream providers.
-  validateTree(Array.from(sources.values(), ({ file }) => file))
+  validateTree(sources.values())
 
   const effective = new Map<string, EffectiveFile>(sources)
   const overrideIds = new Set<string>()
@@ -211,7 +234,7 @@ export function composeSharedFiles(input: ComposeSharedFilesInput): SharedCompos
       case "custom": {
         const source = sources.get(path)
         effective.set(path, {
-          file: { path, bytes: fileBytes(override.bytes, path) },
+          path,
           provenance: {
             kind: "custom",
             file_id: fileId,
@@ -221,7 +244,7 @@ export function composeSharedFiles(input: ComposeSharedFilesInput): SharedCompos
         break
       }
       default: {
-        const exhaustive: never = override
+        const exhaustive: never = override.kind
         throw fail(
           "INVALID_COMPOSITION_OVERRIDE",
           `Unsupported override variant: ${String(exhaustive)}`,
@@ -229,7 +252,7 @@ export function composeSharedFiles(input: ComposeSharedFilesInput): SharedCompos
       }
     }
   }
-  validateTree(Array.from(effective.values(), ({ file }) => file))
+  validateTree(effective.values())
   if (!effective.has(entrypoint)) {
     throw fail(
       "COMPOSITION_MISSING_ENTRYPOINT",
@@ -238,12 +261,32 @@ export function composeSharedFiles(input: ComposeSharedFilesInput): SharedCompos
     )
   }
   const entries = [...effective.values()].sort((a, b) =>
-    a.file.path < b.file.path ? -1 : a.file.path > b.file.path ? 1 : 0,
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
   )
   return {
-    files: entries.map(({ file }) => file),
+    paths: entries.map(({ path }) => path),
     provenance: new Map<string, FileProvenance>(
-      entries.map(({ file, provenance }) => [file.path, provenance]),
+      entries.map(({ path, provenance }) => [path, provenance]),
     ),
+  }
+}
+
+/** Compose resolved bytes using the same complete directory rules as lazy consumers. */
+export function composeSharedFiles(input: ComposeSharedFilesInput): SharedComposition {
+  const plan = planSharedFiles(input)
+  const bytes = new Map<string, Uint8Array>()
+  // This full-byte API continues validating every supplied source, including overridden ones.
+  for (const file of input.base) bytes.set(file.path, fileBytes(file.bytes, file.path))
+  for (const mount of input.mounts)
+    for (const file of mount.files) {
+      const path = mount.mount_path === "" ? file.path : `${mount.mount_path}/${file.path}`
+      bytes.set(path, fileBytes(file.bytes, path))
+    }
+  for (const override of input.overrides)
+    if (override.kind === "custom")
+      bytes.set(override.path, fileBytes(override.bytes, override.path))
+  return {
+    files: plan.paths.map((path) => ({ path, bytes: fileBytes(bytes.get(path), path) })),
+    provenance: plan.provenance,
   }
 }

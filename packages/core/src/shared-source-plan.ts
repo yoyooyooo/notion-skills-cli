@@ -4,9 +4,9 @@ import { localContentRestrictedHashes } from "./content-restrictions.ts"
 import { fail, FileEntrySchema, SkillsError } from "./model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
 import {
-  composeSharedFiles,
+  planSharedFiles,
   type CompositionFile,
-  type CompositionMount,
+  type CompositionPath,
 } from "./shared-composition.ts"
 import {
   fixedFileManifestId,
@@ -14,14 +14,20 @@ import {
   materializeFixedLocalFiles,
   MAX_FIXED_RESOURCE_FILE_BYTES,
   MAX_FIXED_RESOURCE_TOTAL_BYTES,
+  selectFixedResourceFiles,
   validateFixedFileManifest,
+  validateFixedHttpLocations,
+  validateFixedLocalResourceBinding,
   type FixedFileManifest,
   type FixedHttpLocation,
   type FixedLocalResource,
   type LocalResourceOptions,
 } from "./shared-fixed-resources.ts"
-import { validateFixedGithubSource, type FixedGithubSource } from "./shared-github-source.ts"
-import { materializeFixedGithubSource } from "./shared-source-materialization.ts"
+import type { FixedGithubSource } from "./shared-github-source.ts"
+import {
+  materializeFixedGithubSource,
+  validateFixedGithubMaterializationSource,
+} from "./shared-source-materialization.ts"
 import { sha256, Store } from "./store.ts"
 
 export type SourcePlanResource =
@@ -40,11 +46,21 @@ export type SharedSourcePlan = {
   readonly mounts: readonly { readonly mount_path: string; readonly resource: SourcePlanResource }[]
 }
 
+export type SourcePlanFile = {
+  readonly path: string
+  readonly bytes: number
+  readonly identity:
+    | { readonly kind: "sha256"; readonly sha256: string }
+    | { readonly kind: "git"; readonly git_oid: string }
+}
+
 export type SourcePlanInspection = {
   readonly plan: SharedSourcePlan
   /** Complete deterministic source paths, before Notion main/whole-file overrides. */
   readonly paths: readonly string[]
-  /** Declared local paths. Materialization also includes existing restrictions from other plans. */
+  /** Complete immutable file identities; Git identities never depend on a derived cache. */
+  readonly manifest: readonly SourcePlanFile[]
+  /** Declared local paths and every known SHA-256 alias in the complete source directory. */
   readonly local_paths: readonly string[]
 }
 
@@ -62,8 +78,11 @@ export type SharedSourcePlanOptions = {
 
 export type MaterializedSourcePlan = {
   readonly source_plan_id: string
+  /** Complete admitted directory, including paths whose bytes were not requested. */
   readonly paths: readonly string[]
+  /** Requested files only; omitting the selection still returns the complete tree. */
   readonly files: readonly CompositionFile[]
+  /** Verified selected content matching local declarations or existing durable restrictions. */
   readonly local_paths: readonly string[]
 }
 
@@ -108,7 +127,6 @@ export const SharedSourcePlanSchema = Schema.Struct({
   mounts: Schema.Array(Schema.Struct({ mount_path: Schema.String, resource: ResourceSchema })),
 })
 
-const emptyBytes = new Uint8Array()
 const controls = /[\u0000-\u001f\u007f-\u009f]/u
 const compare = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0)
 const mountedPath = (mountPath: string, path: string) =>
@@ -183,7 +201,7 @@ function initialLocations(
 function normalizedResource(resource: SourcePlanResource): SourcePlanResource {
   switch (resource.kind) {
     case "git":
-      return { kind: "git", source: validateFixedGithubSource(resource.source) }
+      return { kind: "git", source: validateFixedGithubMaterializationSource(resource.source) }
     case "http": {
       const manifest = validateFixedFileManifest(resource.manifest)
       return { kind: "http", manifest, locations: initialLocations(resource.locations, manifest) }
@@ -214,17 +232,17 @@ function normalizedResource(resource: SourcePlanResource): SourcePlanResource {
   }
 }
 
-function sourceTree(
-  base: readonly CompositionFile[],
-  mounts: readonly CompositionMount[],
-): readonly CompositionFile[] {
+function sourceTree<File extends CompositionPath>(
+  base: readonly File[],
+  mounts: readonly { readonly mount_path: string; readonly files: readonly File[] }[],
+): readonly File[] {
   let entrypoint = base[0]?.path
   for (const mount of mounts) {
     // Even an empty fixed resource must not conceal an unsafe mount prefix.
     const probe = "source-plan-path-probe"
-    composeSharedFiles({
+    planSharedFiles({
       base: [],
-      mounts: [{ mount_path: mount.mount_path, files: [{ path: probe, bytes: emptyBytes }] }],
+      mounts: [{ mount_path: mount.mount_path, files: [{ path: probe }] }],
       overrides: [],
       entrypoint: mountedPath(mount.mount_path, probe),
     })
@@ -232,7 +250,46 @@ function sourceTree(
       entrypoint = mountedPath(mount.mount_path, mount.files[0].path)
   }
   if (entrypoint === undefined) return []
-  return composeSharedFiles({ base, mounts, overrides: [], entrypoint }).files
+  const layout = planSharedFiles({ base, mounts, overrides: [], entrypoint })
+  const files = new Map(base.map((file) => [file.path, file]))
+  for (const mount of mounts) {
+    for (const file of mount.files) {
+      const path = mountedPath(mount.mount_path, file.path)
+      files.set(path, { ...file, path })
+    }
+  }
+  return layout.paths.map((path) => {
+    const file = files.get(path)
+    if (file === undefined)
+      throw fail("SOURCE_PLAN_INCOMPLETE", "A fixed source path has no declared file.")
+    return file
+  })
+}
+
+function resourceManifest(resource: SourcePlanResource): readonly SourcePlanFile[] {
+  return resource.kind === "git"
+    ? resource.source.files.map((file) => ({
+        path: file.path,
+        bytes: file.bytes,
+        identity: { kind: "git", git_oid: file.git_oid },
+      }))
+    : resource.manifest.files.map((file) => ({
+        path: file.path,
+        bytes: file.bytes,
+        identity: { kind: "sha256", sha256: file.sha256 },
+      }))
+}
+
+function declaredLocalHashes(plan: SharedSourcePlan): ReadonlySet<string> {
+  const resources = [
+    ...(plan.base === null ? [] : [plan.base]),
+    ...plan.mounts.map((mount) => mount.resource),
+  ]
+  return new Set(
+    resources.flatMap((resource) =>
+      resource.kind === "local" ? resource.manifest.files.map((file) => file.sha256) : [],
+    ),
+  )
 }
 
 /** Pure complete-layout preflight. No source discovery, provider request, or machine configuration read. */
@@ -267,8 +324,20 @@ export function inspectSharedSourcePlan(input: unknown): SourcePlanInspection {
   ]
   let count = 0
   let total = 0
+  const identitySizes = new Map<string, number>()
   for (const resource of resources) {
-    for (const file of declaredFiles(resource)) {
+    for (const file of resourceManifest(resource)) {
+      const identity =
+        file.identity.kind === "git"
+          ? `git:${file.identity.git_oid}`
+          : `sha256:${file.identity.sha256}`
+      const previous = identitySizes.get(identity)
+      if (previous !== undefined && previous !== file.bytes)
+        throw fail(
+          "INVALID_SOURCE_PLAN",
+          "One immutable content identity has conflicting byte lengths across source resources.",
+        )
+      identitySizes.set(identity, file.bytes)
       count++
       total += file.bytes
       if (
@@ -283,25 +352,23 @@ export function inspectSharedSourcePlan(input: unknown): SourcePlanInspection {
       }
     }
   }
-  const placeholderFiles = (resource: SourcePlanResource) =>
-    declaredFiles(resource).map((file) => ({ path: file.path, bytes: emptyBytes }))
-  const files = sourceTree(
-    plan.base === null ? [] : placeholderFiles(plan.base),
+  const manifest = sourceTree(
+    plan.base === null ? [] : resourceManifest(plan.base),
     plan.mounts.map((mount) => ({
       mount_path: mount.mount_path,
-      files: placeholderFiles(mount.resource),
+      files: resourceManifest(mount.resource),
     })),
   )
-  const localPaths: string[] = []
-  if (plan.base?.kind === "local")
-    localPaths.push(...plan.base.manifest.files.map((file) => file.path))
-  for (const mount of plan.mounts) {
-    if (mount.resource.kind === "local")
-      localPaths.push(
-        ...mount.resource.manifest.files.map((file) => mountedPath(mount.mount_path, file.path)),
-      )
+  const localHashes = declaredLocalHashes(plan)
+  const localPaths = manifest
+    .filter((file) => file.identity.kind === "sha256" && localHashes.has(file.identity.sha256))
+    .map((file) => file.path)
+  return {
+    plan,
+    paths: manifest.map((file) => file.path),
+    manifest,
+    local_paths: localPaths.sort(compare),
   }
-  return { plan, paths: files.map((file) => file.path), local_paths: localPaths.sort(compare) }
 }
 
 export function validateSharedSourcePlan(input: unknown): SharedSourcePlan {
@@ -326,14 +393,57 @@ type Requirements =
   | Path.Path
 type ResolvedSourceFile = CompositionFile & { readonly sha256: string }
 
+/** Admit every resource before selection can trigger any object or provider read. */
+export function admitSharedSourcePlan(
+  input: SharedSourcePlan,
+  options: SharedSourcePlanOptions = {},
+): Effect.Effect<SourcePlanInspection, SkillsError, Crypto.Crypto | Path.Path> {
+  return Effect.gen(function* () {
+    const inspection = yield* checked(() => inspectSharedSourcePlan(input))
+    const resources = [
+      ...(inspection.plan.base === null ? [] : [inspection.plan.base]),
+      ...inspection.plan.mounts.map((mount) => mount.resource),
+    ]
+    for (const resource of resources) {
+      if (resource.kind === "http") {
+        const identity = yield* fixedFileManifestId(resource.manifest)
+        yield* checked(() =>
+          validateFixedHttpLocations(
+            options.http?.locationsByManifest?.[identity] ?? resource.locations,
+            resource.manifest,
+            { allowedOrigins: options.http?.allowedOrigins },
+          ),
+        )
+      } else if (resource.kind === "local") {
+        if (options.local === undefined)
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_PLAN_LOCAL_BINDING_REQUIRED",
+              "This source plan requires explicit machine/workspace local bindings.",
+            ),
+          )
+        const { kind: _kind, ...source } = resource
+        yield* validateFixedLocalResourceBinding(source, options.local)
+      }
+    }
+    return inspection
+  })
+}
+
 function resourceFiles(
   resource: SourcePlanResource,
   options: SharedSourcePlanOptions,
+  paths: readonly string[],
+  localContentHashes: ReadonlySet<string>,
 ): Effect.Effect<readonly ResolvedSourceFile[], SkillsError, Requirements> {
   return Effect.gen(function* () {
     switch (resource.kind) {
       case "git":
-        return yield* materializeFixedGithubSource(resource.source, { metrics: options.metrics })
+        return yield* materializeFixedGithubSource(
+          resource.source,
+          { metrics: options.metrics, localContentHashes },
+          paths,
+        )
       case "http": {
         const identity = yield* fixedFileManifestId(resource.manifest)
         return yield* materializeFixedHttpFiles(
@@ -341,7 +451,12 @@ function resourceFiles(
             manifest: resource.manifest,
             locations: options.http?.locationsByManifest?.[identity] ?? resource.locations,
           },
-          { allowedOrigins: options.http?.allowedOrigins, metrics: options.metrics },
+          {
+            allowedOrigins: options.http?.allowedOrigins,
+            metrics: options.metrics,
+            localContentHashes,
+          },
+          paths,
         )
       }
       case "local": {
@@ -353,36 +468,36 @@ function resourceFiles(
             ),
           )
         const { kind: _kind, ...source } = resource
-        return yield* materializeFixedLocalFiles(source, options.local)
+        return yield* materializeFixedLocalFiles(source, options.local, paths)
       }
     }
   })
 }
 
 /**
- * Materialize a complete fixed source tree only. Notion main/whole-file overrides, snapshot publication,
+ * Admit the complete fixed source tree, then materialize requested paths only. Notion overrides, publication,
  * archive permission, and execution permission belong to their existing separate workflows.
  */
 export function materializeSharedSourcePlan(
   input: SharedSourcePlan,
   options: SharedSourcePlanOptions = {},
+  paths?: readonly string[],
 ): Effect.Effect<MaterializedSourcePlan, SkillsError, Requirements> {
   return Effect.gen(function* () {
-    const inspection = yield* checked(() => inspectSharedSourcePlan(input))
+    const inspection = yield* admitSharedSourcePlan(input, options)
     const plan = inspection.plan
-    if (
-      options.local === undefined &&
-      (plan.base?.kind === "local" || plan.mounts.some((mount) => mount.resource.kind === "local"))
-    ) {
-      return yield* Effect.fail(
-        fail(
-          "SOURCE_PLAN_LOCAL_BINDING_REQUIRED",
-          "This source plan requires explicit machine/workspace local bindings.",
-        ),
-      )
-    }
+    const localContentHashes = declaredLocalHashes(plan)
+    const selected = yield* checked(() => selectFixedResourceFiles(inspection.manifest, paths))
+    const requested = new Set(selected.map((file) => file.path))
+    const resourcePaths = (resource: SourcePlanResource, mountPath = "") =>
+      declaredFiles(resource)
+        .filter((file) => requested.has(mountedPath(mountPath, file.path)))
+        .map((file) => file.path)
     const id = `source-plan-${yield* sha256(JSON.stringify(plan))}`
-    const base = plan.base === null ? [] : yield* resourceFiles(plan.base, options)
+    const base =
+      plan.base === null
+        ? []
+        : yield* resourceFiles(plan.base, options, resourcePaths(plan.base), localContentHashes)
     // Each resource already bounds body I/O at four. Serial resources preserve that total bound
     // and make later resources reuse completed immutable objects from earlier resources.
     const mounts = yield* Effect.forEach(
@@ -391,20 +506,30 @@ export function materializeSharedSourcePlan(
         Effect.gen(function* () {
           return {
             mount_path: mount.mount_path,
-            files: yield* resourceFiles(mount.resource, options),
+            files: yield* resourceFiles(
+              mount.resource,
+              options,
+              resourcePaths(mount.resource, mount.mount_path),
+              localContentHashes,
+            ),
           }
         }),
       { concurrency: 1 },
     )
-    const files = yield* checked(() => sourceTree(base, mounts))
+    const files = yield* checked(() =>
+      sourceTree(base, mounts).map((file) => ({
+        path: file.path,
+        bytes: new Uint8Array(file.bytes),
+      })),
+    )
     if (
-      files.length !== inspection.paths.length ||
-      files.some((file, index) => file.path !== inspection.paths[index])
+      files.length !== selected.length ||
+      files.some((file, index) => file.path !== selected[index]?.path)
     ) {
       return yield* Effect.fail(
         fail(
           "SOURCE_PLAN_INCOMPLETE",
-          "The materialized source paths differ from the complete fixed plan.",
+          "The materialized source paths differ from the requested fixed plan paths.",
         ),
       )
     }
@@ -427,7 +552,7 @@ export function materializeSharedSourcePlan(
     const restricted = new Set(
       yield* localContentRestrictedHashes(actual.map((file) => file.sha256)),
     )
-    const localPaths = new Set(inspection.local_paths)
+    const localPaths = new Set(inspection.local_paths.filter((path) => requested.has(path)))
     for (const file of actual) if (restricted.has(file.sha256)) localPaths.add(file.path)
     return {
       source_plan_id: id,

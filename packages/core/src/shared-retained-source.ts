@@ -59,6 +59,7 @@ export function validateRetainedSource(
       throw fail("RETAINED_SOURCE_SCOPE", "A retained source belongs to another library or Skill.")
     let previous = "",
       total = 0
+    const objectSizes = new Map<string, number>()
     for (const file of source.files) {
       if (
         !file.path ||
@@ -73,6 +74,13 @@ export function validateRetainedSource(
           "RETAINED_SOURCE_INVALID",
           "A retained source has invalid or repeated file identities.",
         )
+      const existingBytes = objectSizes.get(file.sha256)
+      if (existingBytes !== undefined && existingBytes !== file.bytes)
+        throw fail(
+          "RETAINED_SOURCE_INVALID",
+          "One retained source object has conflicting declared byte lengths.",
+        )
+      objectSizes.set(file.sha256, file.bytes)
       previous = file.path
       total += file.bytes
     }
@@ -148,15 +156,19 @@ export function inspectRetainedSource(
   })
 }
 
+/** Read only the selected local objects. A missing selected file still requires
+ * the complete legacy ZIP, whose members are all verified before selected writes. */
 export function materializeRetainedSource(
   library: SharedLibrary,
   input: {
     readonly skillPageId: string
     readonly sourceId: string
     readonly source: RetainedSource
+    readonly paths?: readonly string[]
   },
 ) {
   return Effect.gen(function* () {
+    const paths = input.paths === undefined ? undefined : [...input.paths]
     const source = yield* validateRetainedSource(library, input.source, input.skillPageId)
     if (`bundle-${yield* sha256(canonicalSharedJson(source))}` !== input.sourceId)
       return yield* Effect.fail(
@@ -165,9 +177,24 @@ export function materializeRetainedSource(
           "Retained source bytes belong to another immutable selection.",
         ),
       )
+    const requested = paths === undefined ? undefined : new Set(paths)
+    const selected =
+      requested === undefined
+        ? source.files
+        : source.files.filter((file) => requested.has(file.path))
+    if (
+      paths !== undefined &&
+      requested !== undefined &&
+      (requested.size !== paths.length || selected.length !== paths.length)
+    )
+      return yield* Effect.fail(
+        fail("FILE_NOT_FOUND", "Requested files must exist exactly once in the fixed manifest."),
+      )
+    if (selected.length === 0) return []
     const store = yield* Store
-    const files = new Map<string, Uint8Array>()
-    for (const file of source.files) {
+    const unique = new Map(selected.map((file) => [file.sha256, file]))
+    const available = new Map<string, Uint8Array>()
+    for (const file of unique.values()) {
       const cached = yield* store.readBytes(`objects/${file.sha256}`).pipe(Effect.result)
       if (cached._tag === "Failure") {
         if (cached.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(cached.failure)
@@ -176,10 +203,10 @@ export function materializeRetainedSource(
           return yield* Effect.fail(
             fail("RETAINED_SOURCE_INVALID", "Cached source bytes failed their checksum."),
           )
-        files.set(file.path, cached.success)
+        available.set(file.sha256, cached.success)
       }
     }
-    if (files.size !== source.files.length) {
+    if (available.size !== unique.size) {
       const archive = yield* loadSharedRetainedByteFile(library, {
         skillPageId: input.skillPageId,
         ...source.archive,
@@ -195,8 +222,9 @@ export function materializeRetainedSource(
             "The complete archive file set differs from its selected manifest.",
           ),
         )
+      const expectedByPath = new Map(source.files.map((file) => [file.path, file]))
       for (const file of decoded) {
-        const expected = source.files.find((item) => item.path === file.path)
+        const expected = expectedByPath.get(file.path)
         if (
           !expected ||
           file.bytes.length !== expected.bytes ||
@@ -209,13 +237,16 @@ export function materializeRetainedSource(
             ),
           )
       }
-      // Publish no partial cache until the complete archive has been verified.
-      for (const file of decoded) {
-        const expected = source.files.find((item) => item.path === file.path)!
-        yield* store.writeBytes(`objects/${expected.sha256}`, file.bytes)
-        files.set(file.path, file.bytes)
+      // The ZIP cost is whole-archive even for one file. Verify every member first,
+      // then publish only selected bytes without reading or repairing other objects.
+      const decodedByPath = new Map(decoded.map((file) => [file.path, file.bytes]))
+      for (const file of unique.values()) {
+        if (available.has(file.sha256)) continue
+        const bytes = decodedByPath.get(file.path)!
+        yield* store.writeBytes(`objects/${file.sha256}`, bytes)
+        available.set(file.sha256, bytes)
       }
     }
-    return source.files.map((file) => ({ path: file.path, bytes: files.get(file.path)! }))
+    return selected.map((file) => ({ path: file.path, bytes: available.get(file.sha256)! }))
   })
 }

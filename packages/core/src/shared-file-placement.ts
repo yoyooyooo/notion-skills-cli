@@ -1,27 +1,47 @@
 import { fail } from "./model.ts"
 import {
-  composeSharedFiles,
+  planSharedFiles,
   type CompositionFile,
   type CompositionOverride,
+  type CompositionOverrideMetadata,
+  type CompositionPath,
   type FileProvenance,
+  type SharedComposition,
+  type SharedCompositionPlan,
+  type SourceProvenance,
 } from "./shared-composition.ts"
 import type { ResolvedFileState } from "./shared-file-state.ts"
 
-/** Apply explicit immutable placement to the already resolved Base/Mount source tree. */
-export function composeSharedFilePlacements(input: {
-  readonly source: readonly CompositionFile[]
-  readonly overrides: readonly CompositionOverride[]
+export type PlanSharedFilePlacementsInput = {
+  readonly source: readonly CompositionPath[]
+  readonly overrides: readonly CompositionOverrideMetadata[]
   readonly bindings: readonly {
     readonly file_id: string
     readonly path: string
     readonly state: ResolvedFileState
   }[]
   readonly entrypoint: string
-}) {
+}
+
+export type SharedFilePlacementPlan = SharedCompositionPlan & {
+  /** Original source paths needed by effective source outputs; excludes extra synthesis inputs. */
+  readonly source_paths: readonly string[]
+}
+
+function sourcePath(provenance: SourceProvenance): string {
+  return provenance.kind === "base" || provenance.mount_path === ""
+    ? provenance.source_path
+    : `${provenance.mount_path}/${provenance.source_path}`
+}
+
+/** Resolve ownership and placement from the complete source directory without content I/O. */
+export function planSharedFilePlacements(
+  input: PlanSharedFilePlacementsInput,
+): SharedFilePlacementPlan {
   // Validate the complete original provider tree even when an old path will be
   // suppressed. A real native main override supplies the entrypoint if needed.
   const main = input.overrides.find((override) => override.path === input.entrypoint)
-  composeSharedFiles({
+  planSharedFiles({
     base: input.source,
     mounts: [],
     overrides: main === undefined ? [] : [main],
@@ -32,7 +52,6 @@ export function composeSharedFilePlacements(input: {
   const following: Array<{
     readonly path: string
     readonly source_path: string
-    readonly bytes: Uint8Array
   }> = []
   const customOrigins = new Map<string, string>()
   for (const binding of input.bindings) {
@@ -68,7 +87,6 @@ export function composeSharedFilePlacements(input: {
         following.push({
           path: placement.path,
           source_path: placement.source_path,
-          bytes: original.bytes,
         })
       }
     } else if (binding.state.ownership.kind === "custom") {
@@ -78,9 +96,9 @@ export function composeSharedFilePlacements(input: {
   }
   const base = [
     ...input.source.filter((file) => !suppressed.has(file.path)),
-    ...following.map(({ path, bytes }) => ({ path, bytes })),
+    ...following.map(({ path }) => ({ path })),
   ]
-  const result = composeSharedFiles({
+  const result = planSharedFiles({
     base,
     mounts: [],
     overrides: input.overrides,
@@ -99,7 +117,74 @@ export function composeSharedFilePlacements(input: {
       })
     else provenance.set(path, original)
   }
-  return { files: result.files, provenance }
+  const sourcePaths = new Set<string>()
+  for (const origin of provenance.values())
+    if (origin.kind !== "custom") sourcePaths.add(sourcePath(origin))
+  return { paths: result.paths, provenance, source_paths: [...sourcePaths].sort() }
+}
+
+/** Assemble real bytes from the same placement plan; an omitted source is never an empty file. */
+export function composeSharedFilePlacements(
+  input: Omit<PlanSharedFilePlacementsInput, "source" | "overrides"> & {
+    readonly source: readonly CompositionFile[]
+    readonly overrides: readonly CompositionOverride[]
+    /** Complete immutable directory when source contains only the requested real bytes. */
+    readonly manifest?: readonly CompositionPath[]
+  },
+): SharedComposition {
+  const manifest = input.manifest ?? input.source
+  const plan = planSharedFilePlacements({ ...input, source: manifest })
+  const sourcePaths = new Set(manifest.map((file) => file.path))
+  const sources = new Map<string, CompositionFile>()
+  for (const file of input.source) {
+    if (!sourcePaths.has(file.path))
+      throw fail("INVALID_SOURCE", "Supplied source bytes are absent from the complete manifest.", {
+        path: file.path,
+      })
+    if (sources.has(file.path))
+      throw fail("COMPOSITION_SOURCE_COLLISION", "Fixed source byte paths must be unique.", {
+        path: file.path,
+      })
+    if (!(file.bytes instanceof Uint8Array))
+      throw fail("INVALID_COMPOSITION_BYTES", "Resolved file content must be Uint8Array", {
+        path: file.path,
+      })
+    sources.set(file.path, file)
+  }
+  const custom = new Map<string, { readonly path: string; readonly bytes: Uint8Array }>()
+  for (const override of input.overrides)
+    if (override.kind === "custom") {
+      if (!(override.bytes instanceof Uint8Array))
+        throw fail("INVALID_COMPOSITION_BYTES", "Resolved file content must be Uint8Array", {
+          path: override.path,
+        })
+      custom.set(override.file_id, override)
+    }
+  return {
+    files: plan.paths.map((path) => {
+      const origin = plan.provenance.get(path)
+      if (origin === undefined)
+        throw fail("INVALID_SOURCE", "An effective file has no planned provenance.", { path })
+      if (origin.kind === "custom") {
+        const file = custom.get(origin.file_id)
+        if (file === undefined || file.path !== path)
+          throw fail("INVALID_COMPOSITION_OVERRIDE", "A planned custom file has no exact bytes.", {
+            file_id: origin.file_id,
+            path,
+          })
+        return { path, bytes: file.bytes }
+      }
+      const originalPath = sourcePath(origin)
+      const file = sources.get(originalPath)
+      if (file === undefined)
+        throw fail("SHARED_SOURCE_FILE_MISSING", "Required fixed source bytes are unavailable.", {
+          path,
+          source_path: originalPath,
+        })
+      return { path, bytes: file.bytes }
+    }),
+    provenance: plan.provenance,
+  }
 }
 
 export function sharedFileSourcePath(path: string, state: ResolvedFileState): string {

@@ -171,6 +171,7 @@ export function sharedSnapshotFixture(
   const calls: Array<{ path: string; method: string; body: unknown }> = []
   const json = new Map<string, unknown>()
   const objects = new Map<string, Uint8Array>()
+  const objectReads: Array<{ key: string; bytes: number | null; sha256: string | null }> = []
   let generation = 0
   let nextPage = 10_000 + fileCount
   let metrics = createRequestMetrics()
@@ -239,6 +240,11 @@ export function sharedSnapshotFixture(
     readBytes: (key) =>
       Effect.suspend(() => {
         const value = objects.get(key)
+        objectReads.push({
+          key,
+          bytes: value?.byteLength ?? null,
+          sha256: value === undefined ? null : digest(value),
+        })
         return value === undefined
           ? Effect.fail(fail("SNAPSHOT_MISSING", "Missing fixture object"))
           : Effect.succeed(new Uint8Array(value))
@@ -446,6 +452,7 @@ export function sharedSnapshotFixture(
     calls,
     json,
     objects,
+    objectReads,
     open,
     target,
     run,
@@ -462,6 +469,7 @@ export function sharedSnapshotFixture(
       calls.filter((call) => call.path === "v1/pages" && call.method === "POST").length,
     clearCalls: () => {
       calls.length = 0
+      objectReads.length = 0
       metrics = createRequestMetrics()
     },
   }

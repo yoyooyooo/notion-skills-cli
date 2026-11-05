@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import { SkillsError } from "../src/model.ts"
-import { composeSharedFiles, type ComposeSharedFilesInput } from "../src/shared-composition.ts"
+import {
+  composeSharedFiles,
+  planSharedFiles,
+  type ComposeSharedFilesInput,
+} from "../src/shared-composition.ts"
 
 const bytes = (value: string) => new TextEncoder().encode(value)
 const file = (path: string, value = path) => ({ path, bytes: bytes(value) })
@@ -14,6 +18,49 @@ const compose = (input: Partial<ComposeSharedFilesInput> = {}) =>
   })
 
 describe("shared effective file composition", () => {
+  test("plans a complete effective directory and original provenance without source bytes", () => {
+    const planned = planSharedFiles({
+      base: [{ path: "SKILL.md" }, { path: "deleted.bin" }],
+      mounts: [{ mount_path: "references", files: [{ path: "manual.md" }] }],
+      overrides: [
+        { kind: "custom", file_id: "manual", path: "references/manual.md" },
+        { kind: "tombstone", file_id: "deleted", path: "deleted.bin" },
+      ],
+      entrypoint: "SKILL.md",
+    })
+    expect(planned.paths).toEqual(["SKILL.md", "references/manual.md"])
+    expect([...planned.provenance]).toEqual([
+      ["SKILL.md", { kind: "base", source_path: "SKILL.md" }],
+      [
+        "references/manual.md",
+        {
+          kind: "custom",
+          file_id: "manual",
+          replaces: { kind: "mount", mount_path: "references", source_path: "manual.md" },
+        },
+      ],
+    ])
+  })
+
+  test("metadata planning still rejects a provider collision hidden by an override", () => {
+    expect(() =>
+      planSharedFiles({
+        base: [{ path: "SKILL.md" }, { path: "assets/same.txt" }],
+        mounts: [{ mount_path: "assets", files: [{ path: "same.txt" }] }],
+        overrides: [{ kind: "custom", file_id: "same", path: "assets/same.txt" }],
+        entrypoint: "SKILL.md",
+      }),
+    ).toThrow("Base and Mount outputs must have distinct paths")
+    expect(() =>
+      planSharedFiles({
+        base: [{ path: "SKILL.md" }],
+        mounts: [{ mount_path: "../unsafe", files: [] }],
+        overrides: [],
+        entrypoint: "SKILL.md",
+      }),
+    ).toThrow()
+  })
+
   test("combines Git files, resolved HTTP and local mounts, and a Notion whole-file override", () => {
     const script = bytes('#!/bin/sh\r\nprintf "original"\r\n')
     const custom = bytes('#!/bin/sh\r\nprintf "custom"\r\n')

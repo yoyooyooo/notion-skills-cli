@@ -25,7 +25,13 @@ import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
 import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
 import { loadRetainedBody, observeSharedFile } from "./shared-file-observer.ts"
-import { composeSharedFilePlacements, sharedFileSourcePath } from "./shared-file-placement.ts"
+import {
+  composeSharedFilePlacements,
+  planSharedFilePlacements,
+  sharedFileSourcePath,
+} from "./shared-file-placement.ts"
+import { gitBlobOid } from "./shared-github-source.ts"
+import type { PlannedSharedSource, PlannedSharedSourceFile } from "./shared-selected-source.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
 import {
@@ -129,7 +135,7 @@ export type OpenSharedSnapshotInput = {
   readonly scope: string
   readonly startedAt: number
   readonly forceFull?: boolean
-  readonly fixedSource?: FixedSharedSource
+  readonly fixedSource?: FixedSharedSource | PlannedSharedSource
   readonly routerMembers?: readonly SharedRouterMember[]
   readonly relations?: {
     readonly members?: readonly SharedRouterMember[]
@@ -200,9 +206,8 @@ function fileRevision(
   binding: SharedBodyBinding,
   events: readonly FileEvent[],
   source:
-    | {
-        readonly path_hash: string
-      }
+    | { readonly path_hash: string }
+    | { readonly git_oid: string; readonly bytes: number }
     | undefined,
 ) {
   return sha256(
@@ -214,7 +219,7 @@ function fileRevision(
       events: [...events].sort((a, b) =>
         a.event_id < b.event_id ? -1 : a.event_id > b.event_id ? 1 : 0,
       ),
-      source: source === undefined ? null : { path_hash: source.path_hash },
+      source: source ?? null,
     }),
   )
 }
@@ -237,14 +242,39 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         )
       return id
     })
-    // Copy caller-owned source buffers before any asynchronous use.
-    const sourceFiles = yield* checked(() =>
-      (input.fixedSource?.files ?? []).map((file) => {
+    const plannedSource =
+      input.fixedSource !== undefined && "manifest" in input.fixedSource
+        ? input.fixedSource
+        : undefined
+    // Eager authoring callers still supply complete resolved bytes. Current consumption
+    // supplies a complete immutable directory and acquires bytes after the shared barriers.
+    let sourceFiles = yield* checked(() =>
+      (input.fixedSource !== undefined && "files" in input.fixedSource
+        ? input.fixedSource.files
+        : []
+      ).map((file) => {
         if (!(file.bytes instanceof Uint8Array))
           throw fail("INVALID_SOURCE", "A fixed source must contain resolved bytes.")
         return { path: file.path, bytes: new Uint8Array(file.bytes) }
       }),
     )
+    const sourceManifest: readonly PlannedSharedSourceFile[] =
+      plannedSource === undefined
+        ? yield* Effect.forEach(sourceFiles, (file) =>
+            Effect.gen(function* () {
+              return {
+                path: file.path,
+                bytes: file.bytes.byteLength,
+                identity: { kind: "sha256" as const, sha256: yield* sha256(file.bytes) },
+              }
+            }),
+          )
+        : yield* checked(() =>
+            plannedSource.manifest.map((file) => ({
+              ...file,
+              identity: { ...file.identity },
+            })),
+          )
     const raw =
       input.rawPage === undefined ? yield* api.request(`v1/pages/${selected}`) : input.rawPage
     const source: Source = {
@@ -324,9 +354,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
     const bindings: readonly SharedBodyBinding[] = [index.main, ...index.files]
     const bindingById = new Map(bindings.map((file) => [file.file_id, file]))
-    const sourceByPath = new Map<string, CompositionFile>()
+    const sourceByPath = new Map<string, PlannedSharedSourceFile>()
     const sourceHashes = new Map<string, string>()
-    for (const file of sourceFiles) {
+    for (const file of sourceManifest) {
       if (sourceByPath.has(file.path))
         return yield* Effect.fail(
           fail("COMPOSITION_SOURCE_COLLISION", "Fixed source paths must be unique.", {
@@ -334,7 +364,17 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           }),
         )
       sourceByPath.set(file.path, file)
-      sourceHashes.set(file.path, yield* sha256(file.bytes))
+      if (
+        !Number.isSafeInteger(file.bytes) ||
+        file.bytes < 0 ||
+        (file.identity.kind === "sha256"
+          ? !/^[a-f0-9]{64}$/u.test(file.identity.sha256)
+          : !/^[a-f0-9]{40}$/u.test(file.identity.git_oid))
+      )
+        return yield* Effect.fail(
+          fail("INVALID_SOURCE", "The complete fixed source has an invalid file identity."),
+        )
+      if (file.identity.kind === "sha256") sourceHashes.set(file.path, file.identity.sha256)
     }
     const localSourcePaths = new Set(input.fixedSource?.local_paths ?? [])
     for (const path of localSourcePaths) {
@@ -701,7 +741,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         return yield* Effect.fail(
           fail(
             "SHARED_SOURCE_FILE_MISSING",
-            "A following file has no bytes in the exact selected source.",
+            "A following file is absent from the exact selected source directory.",
             { file_id: binding.file_id, path: binding.path },
           ),
         )
@@ -731,6 +771,87 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           },
         ),
       )
+    if (plannedSource !== undefined) {
+      // Shared membership, every event graph and original-operation barriers precede
+      // provider acquisition. Obtain required bytes before observing a new user edit:
+      // a failed required provider must not first publish an adoption side effect.
+      const placement = yield* checked(() =>
+        planSharedFilePlacements({
+          source: sourceManifest,
+          overrides: bindings.flatMap((binding) => {
+            const state = states.get(binding.file_id)
+            if (state === undefined)
+              throw fail("BASELINE_MISSING", "The complete source plan lacks a file state.")
+            return state.ownership.kind === "following"
+              ? []
+              : [{ kind: state.ownership.kind, file_id: binding.file_id, path: binding.path }]
+          }),
+          bindings: bindings.map((binding) => ({
+            file_id: binding.file_id,
+            path: binding.path,
+            state: states.get(binding.file_id)!,
+          })),
+          entrypoint: record.entrypoint,
+        }),
+      )
+      const requested = new Set(placement.source_paths)
+      // Native custom main pages omit the fixed source's additional YAML fields.
+      if (sourceByPath.has(record.entrypoint)) requested.add(record.entrypoint)
+      // Durable privacy markers use SHA-256. A Git-only identity cannot prove that
+      // an overridden original is unrestricted, so retain its classification read.
+      for (const provenance of placement.provenance.values()) {
+        if (provenance.kind !== "custom" || provenance.replaces === undefined) continue
+        const path = provenance.replaces.source_path
+        if (sourceByPath.get(path)?.identity.kind === "git") requested.add(path)
+      }
+      const materialized = yield* plannedSource.materialize([...requested].sort())
+      sourceFiles = yield* checked(() => {
+        const paths = new Set<string>()
+        const files = materialized.files.map((file) => {
+          if (!requested.has(file.path) || paths.has(file.path))
+            throw fail(
+              "SOURCE_MATERIALIZATION_INCOMPLETE",
+              "Source bytes differ from the selected paths.",
+            )
+          paths.add(file.path)
+          if (!(file.bytes instanceof Uint8Array))
+            throw fail("INVALID_SOURCE", "Selected source content must contain actual bytes.")
+          return { path: file.path, bytes: new Uint8Array(file.bytes) }
+        })
+        if (paths.size !== requested.size)
+          throw fail("SOURCE_MATERIALIZATION_INCOMPLETE", "Selected source bytes are missing.")
+        return files
+      })
+      for (const file of sourceFiles) {
+        const expected = sourceByPath.get(file.path)!
+        const hash = yield* sha256(file.bytes)
+        if (
+          file.bytes.byteLength !== expected.bytes ||
+          (expected.identity.kind === "sha256"
+            ? hash !== expected.identity.sha256
+            : (yield* gitBlobOid(file.bytes)) !== expected.identity.git_oid)
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_SOURCE_CONFLICT",
+              "Selected source bytes differ from their immutable identity.",
+            ),
+          )
+        sourceHashes.set(file.path, hash)
+      }
+      for (const path of materialized.local_paths) {
+        if (!sourceByPath.has(path))
+          return yield* Effect.fail(
+            fail(
+              "INVALID_SOURCE",
+              "A restricted path is absent from the complete source directory.",
+            ),
+          )
+        localSourcePaths.add(path)
+      }
+      const restricted = new Set(yield* localContentRestrictedHashes([...sourceHashes.values()]))
+      for (const [path, hash] of sourceHashes) if (restricted.has(hash)) localSourcePaths.add(path)
+    }
     const activeBindings = bindings.filter(
       (file) => states.get(file.file_id)?.ownership.kind !== "tombstone",
     )
@@ -767,8 +888,12 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
         return undefined
       const state = states.get(binding.file_id)!
-      const pathHash = sourceHashes.get(sharedFileSourcePath(binding.path, state))
-      return pathHash === undefined ? undefined : { path_hash: pathHash }
+      const file = sourceByPath.get(sharedFileSourcePath(binding.path, state))
+      if (file === undefined) return undefined
+      // Keep the same identity before/after materialization and on later reads.
+      return file.identity.kind === "sha256"
+        ? { path_hash: file.identity.sha256 }
+        : { git_oid: file.identity.git_oid, bytes: file.bytes }
     }
     for (const binding of activeBindings)
       metadata.push({
@@ -941,6 +1066,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const composed = yield* checked(() =>
       composeSharedFilePlacements({
         source: sourceFiles,
+        manifest: sourceManifest,
         overrides,
         bindings: bindings.map((binding) => {
           const state = states.get(binding.file_id)

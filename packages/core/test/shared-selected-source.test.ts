@@ -14,6 +14,7 @@ import {
 import { registerSourcePlanBinding } from "../src/shared-source-plan-binding.ts"
 import { reconcileSharedSourceRegistration } from "../src/shared-source-registration-reconcile.ts"
 import {
+  planSelectedSharedSource,
   resolveSelectedSharedSource,
   resolveSelectedSharedSourceReference,
 } from "../src/shared-selected-source.ts"
@@ -92,6 +93,158 @@ test("metadata-only selected source resolves exact effective paths with no provi
   expect(p.requests).toHaveLength(0)
   expect(p.f.readBodyCount()).toBe(0)
   expect(p.f.objects.size).toBe(0)
+})
+
+test("planned selected source keeps complete identities and local declarations without rebinding selected acquisition", async () => {
+  const p = fixture(),
+    needed = encode("needed\n"),
+    excluded = encode("excluded\n"),
+    privateBytes = encode("private\n")
+  const plan: SharedSourcePlan = {
+    version: 1,
+    kind: "composition",
+    base: {
+      kind: "http",
+      manifest: {
+        version: 1,
+        files: [
+          { path: "needed.bin", sha256: digest(needed), bytes: needed.length },
+          { path: "unused.bin", sha256: digest(excluded), bytes: excluded.length },
+        ],
+      },
+      locations: [
+        { sha256: digest(needed), url: `${origin}/needed` },
+        { sha256: digest(excluded), url: `${origin}/unused` },
+      ],
+    },
+    mounts: [
+      {
+        mount_path: "private",
+        resource: {
+          kind: "local",
+          binding_key: "private-files",
+          machine_scope: "machine-a",
+          workspace_scope: "workspace-a",
+          manifest: {
+            version: 1,
+            files: [
+              { path: "missing.bin", sha256: digest(privateBytes), bytes: privateBytes.length },
+            ],
+          },
+        },
+      },
+    ],
+  }
+  const registered = await p.f.run(
+    registerSourcePlanBinding(library, { skillPageId: skillPage, mode: "create", plan }),
+  )
+  p.f.clearCalls()
+  const planned = await p.f.run(
+    planSelectedSharedSource(library, skillPage, registered.binding.source_plan_id, {
+      http: { allowedOrigins: [origin] },
+      local: {
+        scope: { machine_scope: "machine-a", workspace_scope: "workspace-a" },
+        bindings: [
+          {
+            binding_key: "private-files",
+            machine_scope: "machine-a",
+            workspace_scope: "workspace-a",
+            absolute_root: "/controlled/private",
+          },
+        ],
+      },
+    }),
+  )
+  expect(planned.manifest).toEqual([
+    {
+      path: "needed.bin",
+      bytes: needed.length,
+      identity: { kind: "sha256", sha256: digest(needed) },
+    },
+    {
+      path: "private/missing.bin",
+      bytes: privateBytes.length,
+      identity: { kind: "sha256", sha256: digest(privateBytes) },
+    },
+    {
+      path: "unused.bin",
+      bytes: excluded.length,
+      identity: { kind: "sha256", sha256: digest(excluded) },
+    },
+  ])
+  expect(planned.local_paths).toEqual(["private/missing.bin"])
+  expect(p.f.calls).toHaveLength(1)
+  expect(p.requests).toEqual([])
+  expect(p.f.objects.size).toBe(0)
+  p.f.clearCalls()
+  p.bodies.set(`${origin}/needed`, needed)
+  const selected = await p.f.run(planned.materialize(["needed.bin"]))
+  expect(selected).toEqual({ files: [{ path: "needed.bin", bytes: needed }], local_paths: [] })
+  expect(p.requests).toEqual([`${origin}/needed`])
+  expect(p.f.calls).toEqual([])
+  expect(p.f.readBodyCount()).toBe(0)
+  expect(p.f.objects.size).toBe(1)
+  expect(planned.local_paths).toEqual(["private/missing.bin"])
+})
+
+test("planned Git identities stay OID based across cold and warm acquisition without consulting excluded cache mappings", async () => {
+  const p = fixture(),
+    bytes = encode("needed\n"),
+    unused = encode("excluded\n")
+  const source = {
+    url: "https://github.com/example/resources",
+    commit: "5".repeat(40),
+    tree: "2".repeat(40),
+    root: "",
+    files: [
+      { path: "SKILL.md", source_path: "SKILL.md", git_oid: gitOid(bytes), bytes: bytes.length },
+      {
+        path: "unused.bin",
+        source_path: "unused.bin",
+        git_oid: gitOid(unused),
+        bytes: unused.length,
+      },
+    ],
+  }
+  const registered = await p.f.run(
+    registerSourceBinding(library, { skillPageId: skillPage, mode: "create", fixedSource: source }),
+  )
+  p.f.json.set(`cache/shared-github-blobs/${gitOid(unused)}.json`, { version: "corrupt unused" })
+  p.f.json.set(`content-restrictions/local/${digest(bytes)}.json`, {
+    version: 1,
+    sha256: digest(bytes),
+    reason: "local_resource",
+  })
+  const planned = await p.f.run(
+    planSelectedSharedSource(library, skillPage, registered.binding.source_id),
+  )
+  expect(planned.manifest).toEqual(
+    source.files.map((file) => ({
+      path: file.path,
+      bytes: file.bytes,
+      identity: { kind: "git", git_oid: file.git_oid },
+    })),
+  )
+  expect(p.requests).toEqual([])
+  expect(p.f.objects.size).toBe(0)
+  const before = structuredClone(planned.manifest)
+  p.f.clearCalls()
+  p.bodies.set(
+    `https://raw.githubusercontent.com/example/resources/${source.commit}/SKILL.md`,
+    bytes,
+  )
+  const selected = await p.f.run(planned.materialize(["SKILL.md"]))
+  expect(selected).toEqual({ files: [{ path: "SKILL.md", bytes }], local_paths: ["SKILL.md"] })
+  expect(p.f.calls).toEqual([])
+  expect(p.requests).toHaveLength(1)
+  expect(await p.f.run(planned.materialize(["SKILL.md"]))).toEqual(selected)
+  expect(p.requests).toHaveLength(1)
+  const warm = await p.f.run(
+    planSelectedSharedSource(library, skillPage, registered.binding.source_id),
+  )
+  expect(warm.manifest).toEqual(before)
+  expect(warm.revision).toBe(source.commit)
+  expect(planned.manifest).toEqual(before)
 })
 
 test("composition uses configured HTTP origins and a runtime address override without changing its fixed identity", async () => {

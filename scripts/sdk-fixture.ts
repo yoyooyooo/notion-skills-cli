@@ -3,12 +3,30 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join } from "node:path"
 import { ConfigProvider, Effect } from "effect"
 import { nodeRuntime } from "../packages/cli/src/runtime.ts"
-import { type Snapshot, type Source, type Catalog } from "../packages/core/src/model.ts"
+import {
+  decode,
+  property,
+  text,
+  type Snapshot,
+  type Source,
+  type Catalog,
+} from "../packages/core/src/model.ts"
 import { publishSnapshotObservation } from "../packages/core/src/cache.ts"
 import { fileRef } from "../packages/core/src/ref.ts"
 import { Store } from "../packages/core/src/store.ts"
 import { prepareSharedSnapshotHistory } from "../packages/core/src/shared-snapshot-history.ts"
 import { registerRetainedSnapshot } from "../packages/core/src/shared-history-materialization.ts"
+import { configureSharedHttpOrigins } from "../packages/core/src/shared-source-config.ts"
+import { registerSourcePlanBinding } from "../packages/core/src/shared-source-plan-binding.ts"
+import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
+import { FileEventSchema } from "../packages/core/src/shared-file-state.ts"
+import { portableFiles } from "../packages/core/src/portable.ts"
+import {
+  library as ownershipLibrary,
+  rich,
+  sharedSnapshotFixture,
+  skillPage as ownershipPage,
+} from "../packages/core/test/shared-snapshot-fixture.ts"
 
 const args = process.argv.slice(2)
 if (
@@ -336,6 +354,206 @@ await Effect.runPromise(
     ),
   ),
 )
+// Build the ownership oracle through the retained full-byte composition API.
+// Only serialized controlled Notion data and configuration reach the installed SDK;
+// no in-memory Store, current receipt, snapshot or object is copied into its cwd.
+const ownership = await (async () => {
+  const f = sharedSnapshotFixture()
+  await f.target({ selector: ownershipPage })
+  const deleted = [...f.records.values()]
+    .filter(
+      (row) =>
+        property(property(property(row.properties).kind).select).name === "file_event" &&
+        text(property(property(row.properties).entity).rich_text) === "file-2",
+    )
+    .map((row) =>
+      decode(
+        FileEventSchema,
+        property(JSON.parse(text(property(property(row.properties).payload).rich_text))).payload,
+      ),
+    )
+    .find((event) => event.kind === "adopted")
+  if (deleted?.kind !== "adopted") throw new Error("Expected actual retained native adoption")
+  f.seedFact(
+    {
+      event_id: "sdk-delete-reference-two",
+      file_id: "file-2",
+      parents: [deleted.event_id],
+      kind: "deleted",
+      retained: deleted.content,
+    },
+    "file_event",
+    "file-2",
+    "sdk-delete-reference-two",
+  )
+  const providerOrigin = "https://ownership.resources.example.com"
+  const mainMarker = "ownership-source-main-yaml-required"
+  const completeSource = [
+    {
+      path: "SKILL.md",
+      bytes: new TextEncoder().encode(
+        `---\nname: Upstream name\ndescription: Upstream description\nlicense: Apache-2.0\nsource_marker: ${mainMarker}\n---\n\n# Upstream body replaced by native ownership\n`,
+      ),
+      role: "required" as const,
+    },
+    {
+      path: "references/1.md",
+      bytes: new Uint8Array(2 * 1024 * 1024).fill(0x61),
+      role: "excluded" as const,
+    },
+    {
+      path: "references/2.md",
+      bytes: new Uint8Array(2 * 1024 * 1024).fill(0x62),
+      role: "excluded" as const,
+    },
+    {
+      path: "assets/following.bin",
+      bytes: Uint8Array.from([0, 255, 128, 13, 10, 1, 2, 3]),
+      role: "required" as const,
+    },
+  ]
+  const providerRoot = join(root, "ownership-provider-bytes")
+  await mkdir(providerRoot, { mode: 0o700 })
+  const sourceFiles = await Promise.all(
+    completeSource.map(async (file) => {
+      const sha256 = hash(file.bytes)
+      const sourceFile = join(providerRoot, sha256)
+      await writeFile(sourceFile, file.bytes, { mode: 0o600, flag: "wx" })
+      return {
+        path: file.path,
+        bytes: file.bytes.byteLength,
+        sha256,
+        role: file.role,
+        url: `${providerOrigin}/fixed/${sha256}`,
+        source_file: sourceFile,
+      }
+    }),
+  )
+  const registration = await f.run(
+    registerSourcePlanBinding(ownershipLibrary, {
+      skillPageId: ownershipPage,
+      mode: "create",
+      plan: {
+        version: 1,
+        kind: "composition",
+        base: {
+          kind: "http",
+          manifest: {
+            version: 1,
+            files: sourceFiles.map(({ path, bytes, sha256 }) => ({ path, bytes, sha256 })),
+          },
+          locations: sourceFiles.map(({ sha256, url }) => ({ sha256, url })),
+        },
+        mounts: [],
+      },
+    }),
+  )
+  const sourceId = registration.binding.source_plan_id
+  property(f.main.properties).source = rich("source", sourceId)
+  const fixedSource = { source_id: sourceId, revision: sourceId, files: completeSource }
+  const oracle = (snapshot: Snapshot) => {
+    for (const file of snapshot.files) {
+      const bytes = f.objects.get(`objects/${file.sha256}`)
+      if (bytes === undefined || bytes.byteLength !== file.bytes || hash(bytes) !== file.sha256)
+        throw new Error("The full-byte ownership oracle is incomplete")
+    }
+    const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
+    if (main === undefined) throw new Error("The full-byte oracle has no main file")
+    return {
+      files: snapshot.files,
+      export_files: portableFiles(
+        {
+          kind: snapshot.record.kind,
+          name: snapshot.record.name,
+          description: snapshot.record.description,
+          main: snapshot.entrypoint,
+          files: snapshot.files.map((file) => ({
+            path: file.path,
+            bytes: f.objects.get(`objects/${file.sha256}`)!,
+          })),
+        },
+        false,
+        true,
+      ).map((file) => ({
+        path: file.path,
+        bytes: file.bytes.byteLength,
+        sha256: hash(file.bytes),
+      })),
+      main: new TextDecoder("utf8", { fatal: true, ignoreBOM: true }).decode(
+        f.objects.get(`objects/${main.sha256}`)!,
+      ),
+    }
+  }
+  const cold = oracle(await f.open({ fixedSource }))
+  const initialMain = structuredClone(f.main)
+  property(f.main.properties).title = {
+    id: "title",
+    type: "title",
+    title: [{ plain_text: "Ownership metadata refreshed" }],
+  }
+  property(f.main.properties).description = rich("description", "Updated ownership description")
+  f.main.last_edited_time = new Date(
+    Date.parse(String(f.main.last_edited_time)) + 1000,
+  ).toISOString()
+  const metadataOnly = oracle(await f.open({ fixedSource }))
+  const seed = join(root, "ownership-current-source")
+  await mkdir(seed, { mode: 0o700 })
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* (yield* Store).writeJson("config.json", {
+          sources: [
+            {
+              alias: ownershipLibrary.library_id,
+              database_id: ownershipLibrary.skills.database_id,
+              title: "Controlled ownership library",
+              data_source_ids: [ownershipLibrary.skills.data_source_id],
+              role: "content",
+              shared_library: ownershipLibrary,
+            },
+          ],
+        })
+        yield* configureSharedHttpOrigins([providerOrigin])
+      }),
+    ).pipe(
+      Effect.provide(nodeRuntime(seed).live),
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromUnknown({
+            ...env,
+            NTN_SKILLS_HOME: join(seed, "state"),
+            NTN_SKILLS_CONFIG_HOME: join(seed, "config"),
+            NTN_SKILLS_CACHE_HOME: join(seed, "cache"),
+          }),
+        ),
+      ),
+    ),
+  )
+  return {
+    seed,
+    source_cache: "cold-current-without-source-objects-or-snapshots",
+    source_id: sourceId,
+    source_main_marker: mainMarker,
+    source_files: sourceFiles,
+    oracle: { cold, metadata: metadataOnly },
+    notion: {
+      library: ownershipLibrary,
+      database: {
+        object: "database",
+        id: ownershipLibrary.skills.database_id,
+        database_type: null,
+        title: [{ plain_text: "Controlled ownership library" }],
+        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(ownershipLibrary) }],
+        data_sources: [{ id: ownershipLibrary.skills.data_source_id, name: "Skills" }],
+      },
+      main: initialMain,
+      metadata_main: structuredClone(f.main),
+      files: structuredClone(f.files),
+      records: structuredClone([...f.records.values()]),
+      bodies: Object.fromEntries(f.bodies),
+    },
+  }
+})()
 const metadata = {
   version: 1,
   cwd: root,
@@ -344,6 +562,7 @@ const metadata = {
   catalog: withCatalog,
   database: "00000000-0000-4000-8000-000000000010",
   catalog_records: catalogSnapshots.map((snapshot) => snapshot.record.id),
+  ownership,
   roots: snapshots.slice(0, 3).map(ref),
   broken: ref(snapshots[4]!),
   foreign: ref(snapshots[5]!),

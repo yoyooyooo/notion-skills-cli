@@ -1,7 +1,9 @@
 import { Crypto, Effect, Schema } from "effect"
 import type { HttpClient } from "effect/http"
+import { markLocalContentRestriction } from "./content-restrictions.ts"
 import { fail, SkillsError } from "./model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
+import { selectFixedResourceFiles } from "./shared-fixed-resources.ts"
 import {
   fetchFixedGithubFile,
   gitBlobOid,
@@ -29,6 +31,12 @@ export type MaterializedSourceFile = MaterializedBlob & {
   readonly source_path: string
 }
 
+type MaterializationOptions = {
+  readonly metrics?: ReturnType<typeof createRequestMetrics>
+  /** Internal classification from a complete admitted source plan; never serialized. */
+  readonly localContentHashes?: ReadonlySet<string>
+}
+
 const cacheKey = (gitOid: string) => `cache/shared-github-blobs/${gitOid}.json`
 const corrupt = () =>
   fail(
@@ -39,7 +47,7 @@ const corrupt = () =>
 function materializeBlob(
   source: FixedGithubSource,
   entry: FixedGithubFile,
-  options: { readonly metrics?: ReturnType<typeof createRequestMetrics> },
+  options: MaterializationOptions,
 ): Effect.Effect<MaterializedBlob, SkillsError, Store | Crypto.Crypto | HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const store = yield* Store
@@ -70,10 +78,14 @@ function materializeBlob(
       ) {
         return yield* Effect.fail(corrupt())
       }
+      if (options.localContentHashes?.has(cached.sha256))
+        yield* markLocalContentRestriction(cached.sha256)
       return { git_oid: entry.git_oid, sha256: cached.sha256, bytes }
     }
     const bytes = yield* fetchFixedGithubFile(source, entry, options)
     const hash = yield* sha256(bytes)
+    // Classify verified bytes before either shared object or derived lookup can expose them.
+    if (options.localContentHashes?.has(hash)) yield* markLocalContentRestriction(hash)
     // Publish the immutable object before its derived lookup; interruption leaves only a reusable orphan.
     yield* store.writeBytes(`objects/${hash}`, bytes)
     yield* store.writeJson(cacheKey(entry.git_oid), {
@@ -86,10 +98,27 @@ function materializeBlob(
   })
 }
 
-/** Materialize an already selected complete source. No branch, commit, tree, or registry discovery occurs. */
+/** Validate the complete directory, including aliases sharing one immutable blob identity. */
+export function validateFixedGithubMaterializationSource(input: unknown): FixedGithubSource {
+  const source = validateFixedGithubSource(input)
+  const sizes = new Map<string, number>()
+  for (const entry of source.files) {
+    const previous = sizes.get(entry.git_oid)
+    if (previous !== undefined && previous !== entry.bytes)
+      throw fail(
+        "INVALID_GITHUB_SOURCE",
+        "The same fixed Git blob has conflicting declared byte lengths.",
+      )
+    sizes.set(entry.git_oid, entry.bytes)
+  }
+  return source
+}
+
+/** Validate the complete source, then acquire requested files without branch or tree discovery. */
 export function materializeFixedGithubSource(
   input: FixedGithubSource,
-  options: { readonly metrics?: ReturnType<typeof createRequestMetrics> } = {},
+  options: MaterializationOptions = {},
+  paths?: readonly string[],
 ): Effect.Effect<
   readonly MaterializedSourceFile[],
   SkillsError,
@@ -97,25 +126,21 @@ export function materializeFixedGithubSource(
 > {
   return Effect.gen(function* () {
     const source = yield* Effect.try({
-      try: () => validateFixedGithubSource(input),
+      try: () => validateFixedGithubMaterializationSource(input),
       catch: (error) =>
         error instanceof SkillsError
           ? error
           : fail("INVALID_GITHUB_SOURCE", "The fixed GitHub source descriptor is invalid."),
     })
+    const selected = yield* Effect.try({
+      try: () => selectFixedResourceFiles(source.files, paths),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("FILE_NOT_FOUND", "The fixed source selection is invalid."),
+    })
     const unique = new Map<string, FixedGithubFile>()
-    for (const entry of source.files) {
-      const previous = unique.get(entry.git_oid)
-      if (previous !== undefined && previous.bytes !== entry.bytes) {
-        return yield* Effect.fail(
-          fail(
-            "INVALID_GITHUB_SOURCE",
-            "The same fixed Git blob has conflicting declared byte lengths.",
-          ),
-        )
-      }
-      if (previous === undefined) unique.set(entry.git_oid, entry)
-    }
+    for (const entry of selected) if (!unique.has(entry.git_oid)) unique.set(entry.git_oid, entry)
     const blobs = yield* Effect.forEach(
       [...unique.values()],
       (entry) => materializeBlob(source, entry, options),
@@ -124,12 +149,12 @@ export function materializeFixedGithubSource(
     const byOid = new Map(blobs.map((blob) => [blob.git_oid, blob]))
     return yield* Effect.try({
       try: () =>
-        source.files.map((entry): MaterializedSourceFile => {
+        selected.map((entry): MaterializedSourceFile => {
           const blob = byOid.get(entry.git_oid)
           if (blob === undefined)
             throw fail(
               "SOURCE_MATERIALIZATION_INCOMPLETE",
-              "The complete fixed source could not be materialized.",
+              "A requested fixed source file could not be materialized.",
             )
           return {
             path: entry.path,
@@ -144,7 +169,7 @@ export function materializeFixedGithubSource(
           ? error
           : fail(
               "SOURCE_MATERIALIZATION_INCOMPLETE",
-              "The complete fixed source could not be materialized.",
+              "A requested fixed source file could not be materialized.",
             ),
     })
   })

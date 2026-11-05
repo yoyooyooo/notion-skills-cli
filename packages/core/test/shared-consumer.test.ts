@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
+import { markLocalContentRestriction } from "../src/content-restrictions.ts"
 import { property, type Snapshot } from "../src/model.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
 import type { FixedGithubSource } from "../src/shared-github-source.ts"
@@ -289,7 +290,12 @@ describe("standard shared source consumer", () => {
     advancedBytes.set("references/1.md", encode("Upstream changed the same whole file.\n"))
     advancedBytes.set("references/2.md", encode("Untouched file follows Git version B.\n"))
     const advanced = await p.register(commitB, advancedBytes)
+    await p.f.run(
+      markLocalContentRestriction(digest(requiredBytes(advancedBytes, "references/1.md"))),
+    )
     p.select(advanced.source_id)
+    p.requests.length = 0
+    p.f.clearCalls()
     const next = await p.open(first.scope)
     expect(outputBytes(p.f, next, "references/1.md")).toEqual(userBytes)
     expect(outputBytes(p.f, next, "references/2.md")).toEqual(
@@ -298,5 +304,15 @@ describe("standard shared source consumer", () => {
     expect(outputBytes(p.f, next, "assets/icon.bin")).toEqual(
       requiredBytes(p.sourceBytes, "assets/icon.bin"),
     )
+    expect(p.requests.sort()).toEqual([
+      `https://raw.githubusercontent.com/example/skills/${commitB}/${sourceRoot}/references/1.md`,
+      `https://raw.githubusercontent.com/example/skills/${commitB}/${sourceRoot}/references/2.md`,
+    ])
+    expect(p.f.json.get(`content-restrictions/local/${digest(userBytes)}.json`)).toEqual({
+      version: 1,
+      sha256: digest(userBytes),
+      reason: "local_resource",
+    })
+    expect(p.f.writeCount()).toBe(0)
   })
 })

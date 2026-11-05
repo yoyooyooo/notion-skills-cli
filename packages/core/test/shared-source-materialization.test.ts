@@ -34,6 +34,8 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
   const json = new Map<string, unknown>()
   const objects = new Map<string, Uint8Array>()
   const writes: string[] = []
+  const objectReads: string[] = []
+  const cacheReads: string[] = []
   const requests: string[] = []
   let active = 0
   let peak = 0
@@ -54,6 +56,7 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
     readJson: (key, schema) =>
       Effect.try({
         try: () => {
+          cacheReads.push(key)
           const value = json.get(key)
           return value === undefined ? undefined : Schema.decodeUnknownSync(schema)(value)
         },
@@ -67,6 +70,7 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
     readBytes: (key) =>
       Effect.try({
         try: () => {
+          objectReads.push(key)
           const value = objects.get(key)
           if (value === undefined) throw fail("SNAPSHOT_MISSING", "Controlled missing object.")
           return value.slice()
@@ -121,26 +125,85 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
     }),
   )
   const metrics = createRequestMetrics()
-  const materialize = (source: FixedGithubSource) =>
+  const materialize = (source: FixedGithubSource, paths?: readonly string[]) =>
     Effect.runPromise(
-      materializeFixedGithubSource(source, { metrics }).pipe(
+      materializeFixedGithubSource(source, { metrics }, paths).pipe(
         Effect.provideService(Store, store),
         Effect.provideService(HttpClient.HttpClient, client),
         Effect.provide(NodeServices.layer),
       ),
     )
-  const rejected = (source: FixedGithubSource) =>
+  const rejected = (source: FixedGithubSource, paths?: readonly string[]) =>
     Effect.runPromise(
-      Effect.flip(materializeFixedGithubSource(source, { metrics })).pipe(
+      Effect.flip(materializeFixedGithubSource(source, { metrics }, paths)).pipe(
         Effect.provideService(Store, store),
         Effect.provideService(HttpClient.HttpClient, client),
         Effect.provide(NodeServices.layer),
       ),
     )
-  return { json, objects, writes, requests, metrics, materialize, rejected, peak: () => peak }
+  return {
+    json,
+    objects,
+    writes,
+    objectReads,
+    cacheReads,
+    requests,
+    metrics,
+    materialize,
+    rejected,
+    peak: () => peak,
+  }
 }
 
 describe("fixed GitHub source materialization", () => {
+  test("selective Git acquisition reads only requested blob identities and preserves corruption checks", async () => {
+    const selected = encode("requested\n"),
+      unused = encode("not requested\n")
+    const one = entry("copy.md", selected),
+      two = entry("nested/copy.md", selected)
+    const excluded = entry("unused.bin", unused)
+    const source = makeSource([one, two, excluded])
+    const f = fixture(new Map([[one.source_path, selected]]))
+    f.json.set(key(excluded.git_oid), { version: "corrupt unused mapping" })
+    const files = await f.materialize(source, [two.path, one.path])
+    expect(files.map((file) => file.path)).toEqual([one.path, two.path])
+    expect(files.every((file) => file.sha256 === digest(selected))).toBe(true)
+    expect(f.requests).toEqual([
+      `https://raw.githubusercontent.com/example/skills/${source.commit}/${one.source_path}`,
+    ])
+    expect(f.cacheReads).toEqual([key(one.git_oid)])
+    expect(f.objectReads).toEqual([])
+    expect(f.objects.size).toBe(1)
+    f.cacheReads.length = 0
+    expect(await f.materialize(source, [two.path, one.path])).toEqual(files)
+    expect(f.cacheReads).toEqual([key(one.git_oid)])
+    expect(f.objectReads).toEqual([`objects/${digest(selected)}`])
+    expect(f.requests).toHaveLength(1)
+    f.objects.set(`objects/${digest(selected)}`, new Uint8Array(selected.length))
+    expect((await f.rejected(source, [one.path])).code).toBe("SOURCE_CACHE_CORRUPT")
+    expect(f.requests).toHaveLength(1)
+  })
+
+  test("selective Git admission still validates excluded metadata and exact requested membership", async () => {
+    const bytes = encode("fixed\n"),
+      first = entry("SKILL.md", bytes)
+    const f = fixture(new Map([[first.source_path, bytes]]))
+    const invalid = makeSource([
+      first,
+      { ...first, path: "unused.md", source_path: `${root}/unused.md`, bytes: bytes.length + 1 },
+    ])
+    for (const paths of [[], [first.path]])
+      expect((await f.rejected(invalid, paths)).code).toBe("INVALID_GITHUB_SOURCE")
+    const source = makeSource([first])
+    for (const paths of [["absent.md"], [first.path, first.path]])
+      expect((await f.rejected(source, paths)).code).toBe("FILE_NOT_FOUND")
+    expect(await f.materialize(source, [])).toEqual([])
+    expect(f.cacheReads).toEqual([])
+    expect(f.objectReads).toEqual([])
+    expect(f.requests).toEqual([])
+    expect(f.writes).toEqual([])
+  })
+
   test("copies the complete selected scope, deduplicates blobs, and keeps a warm run provider-free", async () => {
     const main = encode("# Fixed source\r\n")
     const script = encode("#!/bin/sh\r\nexit 91\r\n")

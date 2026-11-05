@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Crypto, Effect } from "effect"
+import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { authScope } from "../src/catalog.ts"
 import { decode, fail, property, SkillsError, SnapshotSchema, text } from "../src/model.ts"
@@ -50,7 +50,11 @@ function fixture(fixtureOptions: { readonly readback?: (wire: string) => string 
   let onFileCreate: ((row: Record<string, unknown>) => void) | undefined
   let fixedSource: FixedSharedSource | undefined
   const run = <A, E>(
-    effect: Effect.Effect<A, E, Store | Notion | Crypto.Crypto | HttpClient.HttpClient>,
+    effect: Effect.Effect<
+      A,
+      E,
+      Store | Notion | Crypto.Crypto | HttpClient.HttpClient | FileSystem.FileSystem | Path.Path
+    >,
   ) =>
     base.run(
       Effect.gen(function* () {
