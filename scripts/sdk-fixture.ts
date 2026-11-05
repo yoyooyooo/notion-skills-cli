@@ -21,7 +21,10 @@ import { registerSourcePlanBinding } from "../packages/core/src/shared-source-pl
 import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
 import { FileEventSchema } from "../packages/core/src/shared-file-state.ts"
 import { portableFiles } from "../packages/core/src/portable.ts"
+import { Notion } from "../packages/core/src/notion.ts"
+import { targetSnapshot } from "../packages/core/src/snapshot.ts"
 import {
+  id as fixtureId,
   library as ownershipLibrary,
   rich,
   sharedSnapshotFixture,
@@ -554,6 +557,181 @@ const ownership = await (async () => {
     },
   }
 })()
+// A separate scalar fixture forces complete metadata pagination and an external
+// disabled target. Its full-page oracle never uses the logical selector path.
+const scalarInventory = await (async () => {
+  const f = sharedSnapshotFixture()
+  property(f.main.properties).title = {
+    id: "title",
+    type: "title",
+    title: [{ plain_text: "Scalar inventory root" }],
+  }
+  property(f.main.properties).description = rich("description", "Scalar current description")
+  const skills = [
+    f.main,
+    ...Array.from({ length: 100 }, (_, index) => {
+      const row: Record<string, unknown> = {
+        ...structuredClone(f.main),
+        id: fixtureId(1000 + index),
+      }
+      const fields = property(row.properties)
+      fields.title = {
+        id: "title",
+        type: "title",
+        title: [{ plain_text: `Inventory target ${index + 1}` }],
+      }
+      fields.skill_id = rich("skill_id", `inventory-${index + 1}`)
+      fields.main_file_id = rich("main_file_id", `inventory-main-${index + 1}`)
+      fields.references = rich("references", "UNSELECTED_METADATA_" + "x".repeat(4096))
+      return row
+    }),
+  ]
+  const available = skills[1]!
+  const disabled = skills[100]!
+  property(disabled.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+  const nativeUrl = (page: Record<string, unknown>) =>
+    "https://www.notion.so/" + String(page.id).replaceAll("-", "")
+  f.bodies.set(
+    ownershipPage,
+    `# Scalar inventory body\n\nKeep the complete authored body and both native links.\n\n[Available target](${nativeUrl(available)})\n\n[Disabled target](${nativeUrl(disabled)})\n`,
+  )
+  const observeFull = () =>
+    f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* targetSnapshot({ selector: ownershipPage }, { refresh: true }).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) => {
+              const url = new URL(path, "https://api.notion.com/")
+              if (
+                url.pathname !== `/v1/data_sources/${ownershipLibrary.skills.data_source_id}/query`
+              )
+                return api.request(path, body, options)
+              const cursor = property(body).start_cursor
+              const offset = cursor === undefined ? 0 : Number(String(cursor).slice(7))
+              const end = Math.min(skills.length, offset + 100)
+              return Effect.succeed({
+                object: "list",
+                results: structuredClone(skills.slice(offset, end)),
+                has_more: end < skills.length,
+                next_cursor: end < skills.length ? `offset-${end}` : null,
+              })
+            },
+          }),
+        )
+      }),
+    )
+  const oracle = (snapshot: Snapshot) => {
+    const files = snapshot.files.map((file) => {
+      const bytes = f.objects.get(`objects/${file.sha256}`)
+      if (bytes === undefined || bytes.byteLength !== file.bytes || hash(bytes) !== file.sha256)
+        throw new Error("The scalar full-page oracle is incomplete")
+      return { path: file.path, bytes }
+    })
+    return {
+      root_ref: snapshot.record.ref,
+      files: snapshot.files,
+      contents: Object.fromEntries(
+        files.map((file) => [
+          file.path,
+          new TextDecoder("utf8", { fatal: true, ignoreBOM: true }).decode(file.bytes),
+        ]),
+      ),
+      native_references: snapshot.native_references,
+      export_files: portableFiles(
+        {
+          kind: snapshot.record.kind,
+          name: snapshot.record.name,
+          description: snapshot.record.description,
+          main: snapshot.entrypoint,
+          files,
+        },
+        false,
+        true,
+      ).map((file) => ({
+        path: file.path,
+        bytes: file.bytes.byteLength,
+        sha256: hash(file.bytes),
+      })),
+    }
+  }
+  const cold = oracle(await observeFull())
+  const initialSkills = structuredClone(skills)
+  property(f.main.properties).title = {
+    id: "title",
+    type: "title",
+    title: [{ plain_text: "Scalar inventory refreshed" }],
+  }
+  property(f.main.properties).description = rich("description", "Refreshed scalar description")
+  f.main.last_edited_time = new Date(
+    Date.parse(String(f.main.last_edited_time)) + 1000,
+  ).toISOString()
+  property(disabled.properties).description = rich("description", "Refreshed disabled metadata")
+  const refreshed = oracle(await observeFull())
+  const seed = join(root, "scalar-inventory-source")
+  await mkdir(seed, { mode: 0o700 })
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        yield* (yield* Store).writeJson("config.json", {
+          sources: [
+            {
+              alias: ownershipLibrary.library_id,
+              database_id: ownershipLibrary.skills.database_id,
+              title: "Controlled scalar inventory library",
+              data_source_ids: [ownershipLibrary.skills.data_source_id],
+              role: "content",
+              shared_library: ownershipLibrary,
+            },
+          ],
+        })
+      }),
+    ).pipe(
+      Effect.provide(nodeRuntime(seed).live),
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromUnknown({
+            ...env,
+            NTN_SKILLS_HOME: join(seed, "state"),
+            NTN_SKILLS_CONFIG_HOME: join(seed, "config"),
+            NTN_SKILLS_CACHE_HOME: join(seed, "cache"),
+          }),
+        ),
+      ),
+    ),
+  )
+  return {
+    seed,
+    source_cache: "cold-current-without-objects-snapshots-or-catalogs",
+    row_count: skills.length,
+    root_ref: cold.root_ref,
+    resource_path: "references/1.md",
+    projection: ["Name", "Description", "Kind", "Skill ID", "Enabled", "Default Context"].map(
+      (name) => ownershipLibrary.skills.property_ids[name],
+    ),
+    external: { available: available.id, disabled: disabled.id },
+    oracle: { cold, refreshed },
+    notion: {
+      library: ownershipLibrary,
+      database: {
+        object: "database",
+        id: ownershipLibrary.skills.database_id,
+        database_type: null,
+        title: [{ plain_text: "Controlled scalar inventory library" }],
+        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(ownershipLibrary) }],
+        data_sources: [{ id: ownershipLibrary.skills.data_source_id, name: "Skills" }],
+      },
+      main: initialSkills[0],
+      skills: initialSkills,
+      refreshed_main: structuredClone(f.main),
+      refreshed_skills: structuredClone(skills),
+      files: structuredClone(f.files),
+      records: structuredClone([...f.records.values()]),
+      bodies: Object.fromEntries(f.bodies),
+    },
+  }
+})()
 const metadata = {
   version: 1,
   cwd: root,
@@ -563,6 +741,7 @@ const metadata = {
   database: "00000000-0000-4000-8000-000000000010",
   catalog_records: catalogSnapshots.map((snapshot) => snapshot.record.id),
   ownership,
+  scalarInventory,
   roots: snapshots.slice(0, 3).map(ref),
   broken: ref(snapshots[4]!),
   foreign: ref(snapshots[5]!),

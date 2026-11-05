@@ -13,6 +13,7 @@
 | SC-VERIFY-03 | 下一位 Agent 独立完成 Launch → Doctor → Drive → Evidence → Cleanup，清理后证据不变 | 本页给出实际 CLI 消费路径；真实 Pi 路径、独立新会话和最终模型验收各保留自己的结果 |
 | SC-TOOLS-04 | 同一固定 owner/pin 的资源集合一次获取，源字节与投递证明分开 | [资源合同](../../../../docs/resource-read-contract.md)、Core 定向测试、现有独立 SDK smoke；实际 Pi 从 Broker 主地图 `resource-batch` 进入 |
 | SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象；current 先判定完整来源归属，再获取必需字节 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、既有 SDK smoke 的 partial-cache 与 cold ownership case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
+| SC-METADATA-01 | 单次 scalar current 读取内，逻辑选择与原生引用编译复用完整六属性目录 | [目录复用合同](../../../../docs/shared-metadata-consumption.md)、下方 scalar inventory 回归和独立 SDK/CLI smoke；完整 SC11 投影/批次矩阵仍单列 |
 
 ### 证明对象
 
@@ -168,6 +169,27 @@ SDK smoke 在本次自有 clone 中先通过公开 current consume 真正完成�
 Core 的 `shared-retained-source.test.ts` 还检查空 selection、selected corrupt 不修复、未选对象零读取及缺失 selected 的完整 ZIP 验证。旧 bundle 必须记录 `whole_archive_cost: true`、全部 chunk 请求和完整 archive bytes/hash；只发布所选对象不等于只下载所选文件。
 
 这是受控 cold current 来源获取与真实安装包/Node Store/export 证据，不能称真实远端 wire 成本或模型投递。首次 current 完整正文观察、本次新发生的 following→custom 转换、Git 隐私回退与旧 ZIP 仍可能需要额外字节。Pi 的 partial-cache 回归单独按上节执行，不把其 warm fixture当成cold ownership验证。
+
+### 单次 current 读取复用完整目录
+
+先运行对应公开入口和既有目录/引用回归。设置 `NTN_SKILLS_SC11_EVIDENCE=1` 时，五档 N case 在断言通过后输出 `SC11_METADATA_COST` JSON；保留日志中的实际字段、cursor、行数和解码 JSON 字节，不从请求数推算响应量：
+
+```bash
+NTN_SKILLS_SC11_EVIDENCE=1 bun test packages/core/test/shared-metadata-consumption.test.ts packages/core/test/shared-catalog.test.ts packages/core/test/shared-native-references.test.ts packages/core/test/shared-native-reference-consumption.test.ts --timeout 30000
+```
+
+沿本页已有的 Node fixture → 独立 build/pack → `sdk-package-smoke.mjs` 路线，给每次安装新的自有目录。`sdk-fixture.ts --catalog` 的 `scalarInventory` 是独立 101 行 fixture，包含最后一页的 disabled 外部目标；它不替换原有 `ownership` case。可将一次冻结 fixture 分别交给旧包和候选包，保留两次实际结果及包身份。
+
+审阅 `scalar-inventory-evidence.json`、`scalar-inventory-notion-requests.jsonl`、三次 read result 和实际 snapshot export：
+
+- SDK 冷 logical ref、同 scope 显式 refresh、另一个空 Store 的 installed CLI `read RESOURCE --from LOGICAL_REF` 分别计量。每次只完成一轮 100 + 1 行的 Skills 查询；每页恰好六个已注册 property ID，无行过滤，没有第二轮 cursor 序列。
+- 完整当前根页仍单独 GET；目录中没有 Source/Files 等字段时不能将其当完整页面。Available / disabled 外部引用均保留准确身份和元数据，目标页与正文不得被获取。
+- refresh 必须重新观察变更后的根与 disabled 目标元数据。公开输出和持久 catalog 不包含 raw inventory；名称/描述变化使用当前根，逻辑 Skill ID 漂移在正文读取前失败。
+- 完整正文、目录及离线 snapshot export 的每个 path/length/SHA，与独立 page-ID/full-inventory oracle 匹配。检查每条真实 HTTP trace 完整、失败/取消/未知字节与该阶段的实际结果一致；没有台账的量不得写零。
+
+该回归与 smoke 使用受控 Notion 服务和真实安装包，不是生产延迟证明。真实成本另用 Broker 的 `scripts/skill-consumption-source-baseline.mjs`：保留先前授权的 database/root/resource、单次 resource-only cold 场景与预算，只替换 installed CLI 和新的 evidenceRoot；按 Doctor → Plan → Run → Evidence → Trash Cleanup → Evidence 执行。比较实际 metadata/current-body/retained-body、请求字节、解码响应字节、耗时和内容 hash，完整 trace 缺失时不能宣称移除了请求。单样本耗时仅报告该样本，不外推稳定收益。
+
+本次复用不扩至 graph 全属性观察、Members/Requires 或跨请求缓存。权限、完整分页、禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证；尚未执行的 SC11 字段投影/批次范围继续保留。
 
 ## Gotchas
 

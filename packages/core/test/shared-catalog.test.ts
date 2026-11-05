@@ -226,6 +226,7 @@ function fixture(
             }
           })
           return Effect.succeed({
+            object: "list",
             results: result,
             has_more: next !== null,
             next_cursor: next,

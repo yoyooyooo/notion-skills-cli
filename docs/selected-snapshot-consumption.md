@@ -54,6 +54,12 @@ proof grants new source access.
 
 ## Current cache and complete reference validation
 
+Logical current reads can carry one complete scoped Skills metadata observation
+from selector resolution to native-reference compilation, as defined in the
+[metadata consumption contract](shared-metadata-consumption.md). The current page
+and its body remain independent observations; the handoff does not renew any
+cache lifetime or substitute directory fields for source/ownership facts.
+
 Current shared content has an additional complete-reference gate. An older
 cached snapshot with valid object hashes may still contain an unresolved or
 invalid shared reference. Merely having a snapshot ID or the current generator

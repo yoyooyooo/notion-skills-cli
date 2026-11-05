@@ -29,6 +29,10 @@ import { LIBRARY_MARKER } from "./shared-library-model.ts"
 import { sharedRecordFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import {
+  querySharedMetadataInventory,
+  type SharedSkillMetadataObservation,
+} from "./shared-metadata-inventory.ts"
+import {
   publishedSubscriptionFromPage,
   validatePublishedMember,
   SUBSCRIPTION_ROUTER_MIN_MEMBERS,
@@ -438,6 +442,23 @@ export interface CatalogOptions extends ReadPolicyOptions {
   readonly database?: string
 }
 export function catalog(options: CatalogOptions = {}, selection: "all" | "content" = "all") {
+  return readCatalog(options, selection)
+}
+
+/** Internal scalar-read handoff; raw inventories never enter the public catalog or its cache. */
+export function freshCatalogForRead(options: Pick<CatalogOptions, "database"> = {}) {
+  return Effect.gen(function* () {
+    const sharedSkills = new Map<string, SharedSkillMetadataObservation>()
+    const directory = yield* readCatalog({ ...options, refresh: true }, "all", sharedSkills)
+    return { catalog: directory, sharedSkills }
+  })
+}
+
+function readCatalog(
+  options: CatalogOptions,
+  selection: "all" | "content",
+  observations?: Map<string, SharedSkillMetadataObservation>,
+) {
   return Effect.gen(function* () {
     yield* Effect.try({
       try: () => validateReadPolicy(options),
@@ -614,42 +635,22 @@ export function catalog(options: CatalogOptions = {}, selection: "all" | "conten
         sharedLibraries.set(db.shared_library.library_id, db.database_id)
       }
       for (const id of new Set(db.data_source_ids)) {
-        const queryPath = yield* Effect.try({
-          try: () => {
-            if (db.shared_library === undefined) return `v1/data_sources/${id}/query`
-            const parameters = new URLSearchParams()
-            for (const name of [
-              "Name",
-              "Description",
-              "Kind",
-              "Skill ID",
-              "Enabled",
-              "Default Context",
-            ]) {
-              const propertyId = db.shared_library.skills.property_ids[name]
-              if (propertyId === undefined)
-                throw fail("LIBRARY_INVALID", "Shared catalog property binding is unavailable.", {
-                  property: name,
-                })
-              parameters.append("filter_properties", propertyId)
-            }
-            return `v1/data_sources/${id}/query?${parameters.toString()}`
-          },
-          catch: (error) =>
-            error instanceof SkillsError
-              ? error
-              : fail("LIBRARY_INVALID", "Could not construct shared metadata query."),
-        })
         const result = yield* Effect.gen(function* () {
+          if (db.shared_library === undefined)
+            return yield* paginate(`v1/data_sources/${id}/query`, InventoryPageSchema, {})
           const shared =
-            db.shared_library === undefined
-              ? undefined
-              : yield* sharedGraphInventory(db.shared_library)
-          if (shared === undefined) return yield* paginate(queryPath, InventoryPageSchema, {})
-          return yield* Effect.try({
+            (yield* sharedGraphInventory(db.shared_library)) ??
+            (yield* querySharedMetadataInventory(db.shared_library, "skills", "catalog"))
+          const rows = yield* Effect.try({
             try: () => shared.pages.map((row) => decode(InventoryPageSchema, row)),
             catch: () => fail("INVALID_RESPONSE", "Invalid shared metadata inventory."),
           })
+          observations?.set(id, {
+            scope: validatedScope,
+            library: structuredClone(db.shared_library),
+            inventory: shared,
+          })
+          return rows
         }).pipe(Effect.result)
         if (result._tag === "Failure") {
           failures.push({

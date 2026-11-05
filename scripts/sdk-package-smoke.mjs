@@ -1023,6 +1023,393 @@ try {
     }
   })
 
+  await test("scalar logical reads share one complete projected inventory within each refresh", async () => {
+    const sample = fixture.scalarInventory
+    assert.ok(sample, "Generate the scalar inventory fixture with this checkout")
+    assert.equal(sample.row_count, 101)
+    const sdkCwd = join(root, "scalar-inventory-sdk"),
+      cliCwd = join(root, "scalar-inventory-cli")
+    for (const cwd of [sdkCwd, cliCwd]) {
+      await cp(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
+      const state = join(cwd, env.NTN_SKILLS_HOME)
+      const database = new DatabaseSync(join(state, "state.sqlite"), { readOnly: true })
+      try {
+        assert.equal(
+          database.prepare("SELECT count(*) AS count FROM shared_local_records").get().count,
+          0,
+        )
+      } finally {
+        database.close()
+      }
+      const objects = await readdir(join(state, "objects")).catch((error) => {
+        if (error.code === "ENOENT") return []
+        throw error
+      })
+      assert.deepEqual(objects, [])
+    }
+    const notion = structuredClone(sample.notion)
+    const requests = [],
+      unexpected = []
+    let phase = "setup"
+    const richText = (parts) =>
+      (parts ?? []).map((part) => part.plain_text ?? part.text?.content ?? "").join("")
+    const matches = (row, filter) => {
+      if (!filter) return true
+      if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item))
+      if (Array.isArray(filter.or)) return filter.or.some((item) => matches(row, item))
+      const field = row.properties[filter.property]
+      if (!field) return false
+      if (filter.relation?.is_empty === true) return field.relation?.length === 0
+      if (filter.relation)
+        return field.relation?.some((item) => item.id === filter.relation.contains) ?? false
+      if (filter.select) return field.select?.name === filter.select.equals
+      if (filter.rich_text) return richText(field.rich_text) === filter.rich_text.equals
+      if (filter.checkbox) return field.checkbox === filter.checkbox.equals
+      throw new Error("Unsupported controlled inventory filter")
+    }
+    const project = (rows, fields) =>
+      rows.map((row) => ({
+        ...row,
+        properties:
+          fields.length === 0
+            ? row.properties
+            : Object.fromEntries(
+                Object.entries(row.properties).filter(([key, field]) =>
+                  fields.includes(field.id ?? key),
+                ),
+              ),
+      }))
+    const page = (rows, body) => {
+      const cursor = body?.start_cursor
+      assert.ok(cursor === undefined || /^offset-[0-9]+$/u.test(cursor))
+      const offset = cursor === undefined ? 0 : Number(cursor.slice(7))
+      const end = Math.min(rows.length, offset + Math.min(100, body?.page_size ?? 100))
+      return {
+        object: "list",
+        results: rows.slice(offset, end),
+        has_more: end < rows.length,
+        next_cursor: end < rows.length ? `offset-${end}` : null,
+      }
+    }
+    const server = createServer(async (request, response) => {
+      const url = new URL(request.url, "http://127.0.0.1")
+      const fields = url.searchParams.getAll("filter_properties")
+      const call = {
+        phase,
+        sequence: requests.length + 1,
+        method: request.method,
+        path: url.pathname,
+        filter_properties: fields,
+      }
+      requests.push(call)
+      let value,
+        status = 200
+      try {
+        const chunks = []
+        for await (const chunk of request) chunks.push(chunk)
+        const bytes = Buffer.concat(chunks)
+        const body = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
+        Object.assign(call, { request_bytes: bytes.length, body: body ?? null })
+        const { library } = notion
+        if (request.method === "GET" && url.pathname === "/v1/users/me")
+          value = { object: "user", id: "00000000-0000-4000-8000-000000000099" }
+        else if (
+          request.method === "GET" &&
+          url.pathname === `/v1/databases/${library.skills.database_id}`
+        )
+          value = notion.database
+        else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
+          value = notion.main
+        else if (
+          request.method === "GET" &&
+          notion.files.some((file) => url.pathname === `/v1/pages/${file.id}`)
+        )
+          value = notion.files.find((file) => url.pathname === `/v1/pages/${file.id}`)
+        else if (request.method === "GET" && /^\/v1\/pages\/[^/]+\/markdown$/u.test(url.pathname)) {
+          const id = url.pathname.split("/")[3]
+          assert.equal(
+            typeof notion.bodies[id],
+            "string",
+            "An unselected target body was requested",
+          )
+          value = { id, markdown: notion.bodies[id], truncated: false, unknown_block_ids: [] }
+        } else if (request.method === "POST" && url.pathname.endsWith("/query")) {
+          const rows =
+            url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`
+              ? notion.skills
+              : url.pathname === `/v1/data_sources/${library.files.data_source_id}/query`
+                ? notion.files
+                : url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
+                  ? notion.records
+                  : undefined
+          assert.ok(rows, "An unexpected data source was queried")
+          value = page(
+            project(
+              rows.filter((row) => matches(row, body?.filter)),
+              fields,
+            ),
+            body,
+          )
+          Object.assign(call, {
+            page_ids: value.results.map((row) => row.id),
+            returned_properties: [
+              ...new Set(
+                value.results.flatMap((row) =>
+                  Object.values(row.properties).map((field) => field.id),
+                ),
+              ),
+            ].sort(),
+            has_more: value.has_more,
+            next_cursor: value.next_cursor,
+          })
+        } else throw new Error("Unexpected controlled inventory request")
+      } catch (error) {
+        unexpected.push({ ...call, error: String(error) })
+        status = 400
+        value = {
+          object: "error",
+          status,
+          code: "validation_error",
+          message: "Unexpected controlled inventory request",
+        }
+      }
+      const bytes = Buffer.from(JSON.stringify(value))
+      Object.assign(call, {
+        status,
+        decoded_response_bytes: bytes.length,
+        response_sha256: hash(bytes),
+      })
+      fs.appendFileSync(
+        join(root, "scalar-inventory-notion-requests.jsonl"),
+        JSON.stringify(call) + "\n",
+        { mode: 0o600 },
+      )
+      response.writeHead(status, {
+        "content-type": "application/json",
+        "content-length": String(bytes.length),
+      })
+      response.end(bytes)
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const currentEnv = {
+      ...env,
+      NOTION_API_BASE_URL: `http://127.0.0.1:${server.address().port}`,
+      NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
+    }
+    const evidence = {
+      version: 1,
+      status: "running",
+      source_state: sample.source_cache,
+      transport: "loopback Notion; independently installed Node SDK and CLI",
+      row_count: sample.row_count,
+      projection: sample.projection,
+      external: sample.external,
+      phases: [],
+    }
+    try {
+      for (const [label, kind, cwd, expected] of [
+        ["scalar-cold", "sdk", sdkCwd, sample.oracle.cold],
+        ["scalar-refresh", "sdk", sdkCwd, sample.oracle.refreshed],
+        ["scalar-cli-cold", "cli-from", cliCwd, sample.oracle.cold],
+      ]) {
+        phase = label
+        const refreshed = label === "scalar-refresh"
+        notion.main = structuredClone(refreshed ? sample.notion.refreshed_main : sample.notion.main)
+        notion.skills = structuredClone(
+          refreshed ? sample.notion.refreshed_skills : sample.notion.skills,
+        )
+        const reports = []
+        let result
+        if (kind === "sdk") {
+          result = await sdk.readSkill(sample.root_ref, {
+            ...options,
+            cwd,
+            env: currentEnv,
+            database: notion.library.skills.database_id,
+            refresh: true,
+            onRequestMetrics: (report) => reports.push(report),
+          })
+        } else {
+          const invocation = await invokeCli(
+            [
+              "read",
+              sample.resource_path,
+              "--from",
+              sample.root_ref,
+              "--database",
+              notion.library.skills.database_id,
+              "--refresh",
+              "--metrics",
+            ],
+            cwd,
+            currentEnv,
+          )
+          assert.equal(invocation.code, 0, invocation.stdout + invocation.stderr)
+          reports.push(invocation.value.request_metrics)
+          result = withoutMetrics(invocation.value)
+        }
+        await writeFile(join(root, label + ".json"), JSON.stringify(result, null, 2) + "\n", {
+          mode: 0o600,
+          flag: "wx",
+        })
+        assert.equal(result.has_more, false)
+        assert.equal(result.path, kind === "sdk" ? "SKILL.md" : sample.resource_path)
+        assert.equal(result.content, expected.contents[result.path])
+        assert.deepEqual(result.native_references, expected.native_references)
+        const disabled = result.native_references.entries.find(
+          (entry) => entry.page_id === sample.external.disabled,
+        )
+        assert.equal(disabled?.availability, "disabled")
+        assert.equal(result.native_references.unresolved.length, 0)
+        assert.equal(reports.length, 1)
+        const metrics = reports[0]
+        assert.equal(metrics.in_flight, 0)
+        assert.equal(metrics.trace_enabled, true)
+        assert.equal(metrics.trace_dropped, 0)
+        assert.equal(metrics.requests.notion_write, 0)
+        assert.equal(metrics.requests.provider, 0)
+        assert.equal(metrics.unknown_request_bytes, 0)
+        assert.equal(metrics.unknown_response_bytes, 0)
+        assert.equal(metrics.outcomes.failure, 0)
+        assert.equal(metrics.outcomes.cancelled, 0)
+        const calls = requests.filter((call) => call.phase === label)
+        assert.equal(metrics.total_requests, calls.length)
+        assert.equal(
+          metrics.trace.filter((event) => event.event === "attempt").length,
+          calls.length,
+        )
+        assert.equal(
+          metrics.response_bytes,
+          calls.reduce((total, call) => total + call.decoded_response_bytes, 0),
+        )
+        assert.deepEqual(unexpected, [])
+        const externalReads = calls.filter((call) =>
+          Object.values(sample.external).some((id) => call.path.startsWith(`/v1/pages/${id}`)),
+        )
+        assert.equal(externalReads.length, 0)
+        const fullPageReads = calls.filter(
+          (call) => call.method === "GET" && call.path === `/v1/pages/${notion.main.id}`,
+        )
+        assert.ok(
+          fullPageReads.length > 0,
+          "Six projected fields must not replace the full current page",
+        )
+        const queries = calls.filter(
+          (call) =>
+            call.method === "POST" &&
+            call.path === `/v1/data_sources/${notion.library.skills.data_source_id}/query`,
+        )
+        for (const query of queries) {
+          assert.deepEqual([...query.filter_properties].sort(), [...sample.projection].sort())
+          assert.deepEqual(query.returned_properties, [...sample.projection].sort())
+          assert.equal(query.body.filter, undefined)
+          assert.equal(query.body.page_size, 100)
+        }
+        await writeFile(
+          join(root, label + "-metrics.json"),
+          JSON.stringify(metrics, null, 2) + "\n",
+          { mode: 0o600, flag: "wx" },
+        )
+        const beforeExport = requests.length
+        const output = join(root, label + "-export")
+        const exported = await invokeCli(
+          [
+            "export",
+            result.snapshot_id,
+            "--offline",
+            "--projection",
+            "snapshot",
+            "--output",
+            output,
+          ],
+          cwd,
+          currentEnv,
+        )
+        assert.equal(exported.code, 0, exported.stdout + exported.stderr)
+        assert.equal(requests.length, beforeExport)
+        const inventory = []
+        for (const path of (await readdir(output, { recursive: true })).sort()) {
+          const info = await lstat(join(output, path))
+          if (info.isDirectory()) continue
+          assert.equal(info.isFile(), true)
+          const bytes = await readFile(join(output, path))
+          inventory.push({ path, bytes: bytes.length, sha256: hash(bytes) })
+        }
+        assert.deepEqual(inventory, expected.export_files)
+        evidence.phases.push({
+          label,
+          kind,
+          content_bytes: Buffer.byteLength(result.content),
+          content_sha256: hash(result.content),
+          native_references: result.native_references,
+          skills_queries: queries,
+          skills_response_bytes: queries.reduce(
+            (total, call) => total + call.decoded_response_bytes,
+            0,
+          ),
+          notion_requests: calls.length,
+          notion_response_bytes: metrics.response_bytes,
+          notion_writes: 0,
+          external_target_reads: externalReads.length,
+          full_current_page_reads: fullPageReads.length,
+          full_export: { output, files: inventory, matches_full_page_oracle: true },
+        })
+      }
+      assert.notEqual(
+        sample.oracle.cold.contents["SKILL.md"],
+        sample.oracle.refreshed.contents["SKILL.md"],
+      )
+      const disabledDescriptions = evidence.phases.map(
+        (entry) =>
+          entry.native_references.entries.find((ref) => ref.page_id === sample.external.disabled)
+            .description,
+      )
+      assert.notEqual(disabledDescriptions[0], disabledDescriptions[1])
+      for (const observed of evidence.phases) {
+        assert.equal(
+          observed.skills_queries.length,
+          2,
+          observed.label + ": exactly one complete 101-row inventory per scalar invocation",
+        )
+        assert.deepEqual(
+          observed.skills_queries.map((query) => query.body.start_cursor ?? null),
+          [null, "offset-100"],
+        )
+        assert.deepEqual(
+          observed.skills_queries.map((query) => query.page_ids.length),
+          [100, 1],
+        )
+        assert.deepEqual(
+          observed.skills_queries.map((query) => [query.has_more, query.next_cursor]),
+          [
+            [true, "offset-100"],
+            [false, null],
+          ],
+        )
+        assert.deepEqual(
+          observed.skills_queries.flatMap((query) => query.page_ids),
+          sample.notion.skills.map((row) => row.id),
+        )
+      }
+      evidence.status = "passed"
+      return evidence
+    } catch (error) {
+      evidence.status = "failed"
+      evidence.error = String(error)
+      evidence.unexpected_notion_requests = unexpected
+      throw error
+    } finally {
+      server.closeAllConnections()
+      await new Promise((resolve) => server.close(resolve))
+      await writeFile(
+        join(root, "scalar-inventory-evidence.json"),
+        JSON.stringify(evidence, null, 2) + "\n",
+        { mode: 0o600, flag: "wx" },
+      )
+    }
+  })
+
   const resourceInput = { version: 1, refs: fixture.resourceBatch.refs }
   let resourcesReady
   await test("one resource batch preserves UTF-8, BOM, CRLF, empty and binary source bytes", async () => {

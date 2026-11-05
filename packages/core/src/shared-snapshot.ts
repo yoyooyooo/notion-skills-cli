@@ -94,6 +94,10 @@ import {
 import { sha256, Store } from "./store.ts"
 import type { SharedAuthoringEvidence } from "./shared-authoring.ts"
 import { sharedGraphInventory, sharedGraphMetadata } from "./shared-graph-read-context.ts"
+import {
+  sharedSkillMetadataFor,
+  type SharedSkillMetadataObservation,
+} from "./shared-metadata-inventory.ts"
 
 export const SHARED_FULL_BODY_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const MAX_OBJECT_BYTES = 64 * 1024 * 1024
@@ -131,8 +135,10 @@ export type FixedSharedSource = {
 export type OpenSharedSnapshotInput = {
   readonly library: SharedLibrary
   readonly target: string
+  readonly expectedSkillId?: string
   readonly rawPage?: unknown
   readonly scope: string
+  readonly skillsMetadata?: SharedSkillMetadataObservation
   readonly startedAt: number
   readonly forceFull?: boolean
   readonly fixedSource?: FixedSharedSource | PlannedSharedSource
@@ -231,6 +237,11 @@ function fileRevision(
  */
 export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
   const consume = Effect.gen(function* () {
+    const skillsMetadata = input.skillsMetadata
+    const skillsInventory =
+      skillsMetadata === undefined
+        ? undefined
+        : yield* checked(() => sharedSkillMetadataFor(skillsMetadata, input.library, input.scope))
     const store = yield* Store
     const api = yield* Notion
     const selected = yield* checked(() => {
@@ -291,6 +302,13 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     if (record.locator.page_id !== selected)
       return yield* Effect.fail(
         fail("SHARED_FILE_SCOPE", "The supplied Skill page differs from the selected target."),
+      )
+    if (input.expectedSkillId !== undefined && record.locator.skill_id !== input.expectedSkillId)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_SKILL_ID_CONFLICT",
+          "The selected Skill identity changed after directory resolution.",
+        ),
       )
     if (!record.enabled)
       return yield* Effect.fail(
@@ -1100,7 +1118,10 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const native = yield* compileSharedNativeReferences({
       library: input.library,
       record,
-      inventory: graphInventory === undefined ? undefined : { skills: graphInventory },
+      inventory:
+        graphInventory === undefined && skillsInventory === undefined
+          ? undefined
+          : { skills: graphInventory ?? skillsInventory },
       bindings: activeBindings,
       files: yield* Effect.forEach(nativeSources, (source) =>
         Effect.gen(function* () {

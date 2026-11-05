@@ -6,6 +6,7 @@ import { sharedRecordFromPage, sharedSkillProperty } from "./shared-content.ts"
 import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "./shared-snapshot.ts"
+import { sharedSkillMetadataFor } from "./shared-metadata-inventory.ts"
 
 /** Resolve only the immutable source explicitly selected in the current Skills row. */
 export function openSharedConsumer(
@@ -15,6 +16,12 @@ export function openSharedConsumer(
 ) {
   return Effect.gen(function* () {
     const { sourceOptions, ...snapshotInput } = input
+    const skillsMetadata = input.skillsMetadata
+    if (skillsMetadata !== undefined)
+      yield* Effect.try({
+        try: () => sharedSkillMetadataFor(skillsMetadata, input.library, input.scope),
+        catch: (error) => error as SkillsError,
+      })
     const api = yield* Notion
     const selected = pageId(input.target)
     if (!selected)
@@ -38,6 +45,14 @@ export function openSharedConsumer(
         )
         if (record.locator.page_id !== selected)
           throw fail("SHARED_FILE_SCOPE", "The selected page differs from its returned identity.")
+        if (
+          input.expectedSkillId !== undefined &&
+          record.locator.skill_id !== input.expectedSkillId
+        )
+          throw fail(
+            "SHARED_SKILL_ID_CONFLICT",
+            "The selected Skill identity changed after directory resolution.",
+          )
         if (!record.enabled)
           throw fail("CONTENT_DISABLED", "The selected Skill is disabled in Notion.")
         const field = sharedSkillProperty(rawPage, input.library, "Source")

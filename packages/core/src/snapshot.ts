@@ -11,6 +11,7 @@ import { hasPendingSharedCreate } from "./shared-create.ts"
 import {
   authScope,
   catalog,
+  freshCatalogForRead,
   databaseId as resolveDatabaseId,
   explicitSource,
   type CatalogOptions,
@@ -265,7 +266,8 @@ function openSnapshot(
         catch: (e) => e as SkillsError,
       })
     } else {
-      const directory = yield* catalog({ database: options.database, refresh: true })
+      const observation = yield* freshCatalogForRead({ database: options.database })
+      const directory = observation.catalog
       scope = directory.scope
       const resolved = yield* Effect.try({
         try: () => resolveRecord(selector, directory),
@@ -292,6 +294,8 @@ function openSnapshot(
         return yield* openSharedConsumer({
           library,
           target: resolved.locator.page_id,
+          expectedSkillId: resolved.locator.skill_id,
+          skillsMetadata: observation.sharedSkills.get(library.skills.data_source_id),
           rawPage: (yield* sharedGraphTarget(resolved.id, library.skills.database_id))?.rawPage,
           scope,
           startedAt,

@@ -1,17 +1,13 @@
-import { Effect, Schema } from "effect"
-import {
-  decode,
-  fail,
-  listSchema,
-  property,
-  SkillsError,
-  type SharedSkillRecord,
-  type Source,
-} from "./model.ts"
+import { Effect } from "effect"
+import { fail, property, SkillsError, type SharedSkillRecord, type Source } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { fileRef, pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
+import {
+  querySharedMetadataInventory,
+  type CompleteSharedMetadataInventory,
+} from "./shared-metadata-inventory.ts"
 import {
   nativeNotionPageId,
   nativeReferenceTags,
@@ -38,11 +34,7 @@ export interface NativeReferenceSource {
   readonly page_id?: string
   readonly native_body_completion?: NativeBodyCompletion
 }
-export interface NativeMetadataInventory {
-  readonly data_source_id: string
-  readonly complete: true
-  readonly pages: readonly unknown[]
-}
+export type NativeMetadataInventory = CompleteSharedMetadataInventory
 type Candidate = {
   from: string
   href: string
@@ -50,7 +42,6 @@ type Candidate = {
   block_id?: string
   source_form?: "link_to_page"
 }
-const List = listSchema(Schema.Unknown)
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
   return Effect.try({
@@ -76,55 +67,7 @@ function inventory(
         )
       return supplied.pages
     }
-    const fields =
-      kind === "skills"
-        ? ["Name", "Description", "Kind", "Skill ID", "Enabled", "Default Context"]
-        : ["File ID", "Skill", "Path", "Projection", "Status"]
-    const query = new URLSearchParams()
-    for (const name of fields) {
-      const id = source.property_ids[name]
-      if (!id)
-        return yield* Effect.fail(
-          fail("LIBRARY_INVALID", "A registered native reference metadata property is missing.", {
-            kind,
-            property: name,
-          }),
-        )
-      query.append("filter_properties", id)
-    }
-    const api = yield* Notion
-    const pages: unknown[] = []
-    const cursors = new Set<string>()
-    let cursor: string | undefined
-    do {
-      const raw = yield* api.request(`v1/data_sources/${source.data_source_id}/query?${query}`, {
-        page_size: 100,
-        ...(cursor === undefined ? {} : { start_cursor: cursor }),
-      })
-      const result = yield* checked(() => {
-        if (property(raw).object !== "list")
-          throw fail(
-            "SHARED_REFERENCE_INCOMPLETE",
-            "Native reference metadata is not a complete list.",
-          )
-        return decode(List, raw)
-      })
-      pages.push(...result.results)
-      if (!result.has_more) {
-        if (result.next_cursor !== null)
-          return yield* Effect.fail(
-            fail("SHARED_REFERENCE_INCOMPLETE", "A terminal reference inventory retains a cursor."),
-          )
-        break
-      }
-      if (!result.next_cursor || cursors.has(result.next_cursor) || cursors.size >= 1000)
-        return yield* Effect.fail(
-          fail("SHARED_REFERENCE_INCOMPLETE", "Reference inventory pagination did not advance."),
-        )
-      cursor = result.next_cursor
-      cursors.add(cursor)
-    } while (cursor !== undefined)
-    return pages
+    return (yield* querySharedMetadataInventory(library, kind)).pages
   })
 }
 
@@ -314,7 +257,9 @@ export function compileSharedNativeReferences(input: {
     const skills = new Map<string, SharedSkillRecord>([
       [input.record.locator.page_id, input.record],
     ])
-    const skillClaims = new Map<string, Set<string>>()
+    const skillClaims = new Map<string, Set<string>>([
+      [input.record.id, new Set([input.record.locator.page_id])],
+    ])
     const files = new Map<string, FileRecord>()
     const fileClaims = new Map<string, Set<string>>()
     // File identity is scoped to its exact owner in this authorized library.
@@ -338,7 +283,11 @@ export function compileSharedNativeReferences(input: {
           typeof property(raw).id === "string" ? pageId(String(property(raw).id)) : undefined
         const record = yield* checked(() => {
           try {
-            return sharedRecordFromPage(raw, source, input.library.skills.data_source_id)
+            const observed = sharedRecordFromPage(raw, source, input.library.skills.data_source_id)
+            // A current selected-page read is newer than its directory observation.
+            return observed.locator.page_id === input.record.locator.page_id
+              ? input.record
+              : observed
           } catch (error) {
             if ((!id || !wanted.has(id)) && error instanceof SkillsError) return undefined
             throw error

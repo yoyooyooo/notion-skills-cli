@@ -2,7 +2,17 @@ export * from "./model.ts"
 export * from "./ref.ts"
 export * from "./notion.ts"
 export * from "./store.ts"
-export * from "./catalog.ts"
+export {
+  authScope,
+  databaseId,
+  explicitSource,
+  discoverDatabases,
+  creationSource,
+  setDefaultDatabase,
+  catalog,
+  addSource,
+  type CatalogOptions,
+} from "./catalog.ts"
 export * from "./views.ts"
 export * from "./snapshot.ts"
 export * from "./graph-prepare-model.ts"
