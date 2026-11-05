@@ -23,6 +23,23 @@ const resourceRef =
   "a".repeat(64) +
   "&file_id=file-a"
 
+function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
+  expect(reports).toHaveLength(count)
+  for (const report of reports)
+    expect(report).toMatchObject({
+      total_requests: 0,
+      requests: { notion_metadata: 0, notion_body: 0, notion_write: 0, provider: 0 },
+      request_bytes: 0,
+      response_bytes: 0,
+      unknown_request_bytes: 0,
+      unknown_response_bytes: 0,
+      in_flight: 0,
+      outcomes: { success: 0, failure: 0, cancelled: 0 },
+      trace: [],
+      trace_dropped: 0,
+    })
+}
+
 describe("Promise SDK boundary", () => {
   test("catalog/list cancellation and invalid pagination fail before runtime acquisition", async () => {
     const controller = new AbortController()
@@ -45,7 +62,7 @@ describe("Promise SDK boundary", () => {
       await expect(
         listSkills({ ...selection, env: {}, onRequestMetrics: (value) => reports.push(value) }),
       ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
-    expect(reports).toEqual([null, null, null, null, null, null])
+    expectUnstartedMetrics(reports, 6)
   })
   test("unknown input and unsupported capability fail before runtime acquisition", async () => {
     const reports: unknown[] = []
@@ -66,10 +83,10 @@ describe("Promise SDK boundary", () => {
       status: "failed",
       error: { code: "CONSUME_UNSUPPORTED" },
     })
-    expect(reports).toEqual([null])
+    expectUnstartedMetrics(reports, 1)
   })
 
-  test("an already aborted signal has no acquired metrics and read uses the exported typed error", async () => {
+  test("an already aborted signal proves no transport and read uses the exported typed error", async () => {
     const controller = new AbortController()
     controller.abort()
     const reports: unknown[] = []
@@ -86,7 +103,7 @@ describe("Promise SDK boundary", () => {
     await expect(
       readSkill(input.targets[0]!, { env: {}, signal: controller.signal }),
     ).rejects.toMatchObject({ code: "CANCELLED" })
-    expect(reports).toEqual([null])
+    expectUnstartedMetrics(reports, 1)
   })
 
   test("public decoder preserves typed proof rejection without a configured Store", async () => {
@@ -94,6 +111,22 @@ describe("Promise SDK boundary", () => {
     await expect(decodeConsumeResult({ version: 42 })).rejects.toMatchObject({
       code: "CONSUME_INVALID_PROOF",
     })
+  })
+
+  test("unstarted metrics preserve explicit trace selection without acquiring a runtime", async () => {
+    const signal = AbortSignal.abort()
+    for (const [options, enabled] of [
+      [{ metrics: true, env: {} }, true],
+      [{ metrics: true, env: { NTN_SKILLS_REQUEST_TRACE_LIMIT: "0" } }, false],
+      [{ env: { NTN_SKILLS_REQUEST_TRACE_LIMIT: "1" } }, true],
+    ] as const) {
+      const reports: unknown[] = []
+      await expect(
+        listCatalog({ ...options, signal, onRequestMetrics: (value) => reports.push(value) }),
+      ).rejects.toMatchObject({ code: "CANCELLED" })
+      expectUnstartedMetrics(reports, 1)
+      expect(reports[0]).toMatchObject({ trace_enabled: enabled })
+    }
   })
 
   test("concurrent Path services own relative resolution without chdir", async () => {
@@ -141,7 +174,7 @@ describe("Promise SDK boundary", () => {
       expect(
         await readResources(input, { env: {}, onRequestMetrics: (value) => reports.push(value) }),
       ).toMatchObject({ status: "failed", error: { code: "INVALID_ARGUMENT" } })
-    expect(reports).toEqual([null, null, null, null])
+    expectUnstartedMetrics(reports, 4)
   })
 
   test("resource pre-abort and the pure resource decoder need no source runtime", async () => {
@@ -158,7 +191,7 @@ describe("Promise SDK boundary", () => {
         },
       ),
     ).toEqual({ version: 1, status: "cancelled", reason: "interrupted" })
-    expect(reports).toEqual([null])
+    expectUnstartedMetrics(reports, 1)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toBeInstanceOf(SkillsError)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toMatchObject({
       code: "RESOURCE_INVALID_PROOF",

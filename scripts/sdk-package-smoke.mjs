@@ -33,6 +33,30 @@ if (
 const [archive, fixturePath, root] = [args[1], args[3], args[5]]
 await mkdir(root, { mode: 0o700 })
 const hash = (value) => createHash("sha256").update(value).digest("hex")
+function assertNoTransport(reports, traceEnabled) {
+  assert.equal(reports.length, 1)
+  const metrics = reports[0]
+  assert.ok(metrics, "A closed transport boundary must report its zero-attempt ledger")
+  assert.equal(metrics.total_requests, 0)
+  assert.deepEqual(metrics.requests, {
+    notion_metadata: 0,
+    notion_body: 0,
+    notion_write: 0,
+    provider: 0,
+  })
+  for (const key of [
+    "request_bytes",
+    "response_bytes",
+    "unknown_request_bytes",
+    "unknown_response_bytes",
+    "in_flight",
+    "trace_dropped",
+  ])
+    assert.equal(metrics[key], 0, key)
+  assert.deepEqual(metrics.outcomes, { success: 0, failure: 0, cancelled: 0 })
+  assert.deepEqual(metrics.trace, [])
+  assert.equal(metrics.trace_enabled, traceEnabled)
+}
 const fixture = JSON.parse(await readFile(fixturePath, "utf8"))
 const env = JSON.parse(await readFile(fixture.env, "utf8"))
 const originalCwd = process.cwd()
@@ -72,6 +96,7 @@ const cases = []
 // recorded too, never assumed absent from a zero HTTP count. Results and errors
 // pass through unchanged, and only owned-clone object paths enter this ledger.
 let activeObjectProbe
+let activeInitializationProbe
 let objectReadSequence = 0
 const objectReadEvents = []
 const objectEvent = (probe, fields) => {
@@ -108,6 +133,17 @@ function observeObjectRead(api, path) {
 }
 const originalReadFile = fs.readFile
 fs.readFile = function (...args) {
+  const initialization = activeInitializationProbe
+  if (initialization && initialization.configPath === args[0]) {
+    const callback = args.at(-1)
+    args[args.length - 1] = function () {
+      initialization.config_reads++
+      // Store construction is paused before receiving its config bytes. Notion
+      // cannot be acquired, and no operation Effect can start at this cutpoint.
+      initialization.controller.abort()
+      return callback.apply(this, arguments)
+    }
+  }
   const end = observeObjectRead("node:fs.readFile", args[0])
   if (!end) return originalReadFile.apply(this, args)
   const callback = args.at(-1)
@@ -219,6 +255,7 @@ function sourceTransportEvent(probe, fields) {
   })
 }
 async function controlledSourceFetch(input, init) {
+  if (activeInitializationProbe) activeInitializationProbe.fetch_calls++
   const probe = activeSourceProbe
   if (!probe) return originalFetch(input, init)
   const url = new URL(input instanceof Request ? input.url : String(input))
@@ -2097,7 +2134,7 @@ try {
       onRequestMetrics: (value) => reports.push(value),
     })
     assert.deepEqual(cancelled, { version: 1, status: "cancelled", reason: "interrupted" })
-    assert.deepEqual(reports, [null])
+    assertNoTransport(reports, false)
   })
 
   await test("Required failure and unknown versions stay typed and nonready", async () => {
@@ -2116,7 +2153,7 @@ try {
     const unknown = await sdk.consume({ ...input(fixture.roots), version: 2 }, { env: {} })
     assert.equal(unknown.status, "failed")
     assert.equal(unknown.error.code, "INVALID_ARGUMENT")
-    assert.deepEqual(reports, [null])
+    assertNoTransport(reports, false)
     await assert.rejects(
       sdk.decodeConsumeResult({ ...ready, version: 2 }),
       (error) => error instanceof sdk.SkillsError && error.code === "CONSUME_INVALID_PROOF",
@@ -2156,7 +2193,7 @@ try {
     )
   })
 
-  await test("pre-abort and initialization failure report unknown metrics without late delivery", async () => {
+  await test("pre-abort and initialization failure prove zero transport without late delivery", async () => {
     const controller = new AbortController()
     controller.abort()
     const reports = []
@@ -2170,7 +2207,7 @@ try {
       sdk.readSkill(fixture.resource.ref, { env: {}, signal: controller.signal }),
       (error) => error instanceof sdk.SkillsError && error.code === "CANCELLED",
     )
-    assert.deepEqual(reports, [null])
+    assertNoTransport(reports, false)
     const failedReports = []
     const failed = await sdk.consume(input(fixture.roots), {
       env: {},
@@ -2178,7 +2215,110 @@ try {
     })
     assert.equal(failed.status, "failed")
     assert.equal(failed.error.code, "CONFIG_ERROR")
-    assert.deepEqual(failedReports, [null])
+    assertNoTransport(failedReports, false)
+  })
+
+  await test("pre-abort and paused runtime initialization retain complete zero-attempt metrics", async () => {
+    const requests = []
+    const server = createServer((request, response) => {
+      requests.push({ method: request.method, url: request.url })
+      response.writeHead(401, { "content-type": "application/json" })
+      response.end(JSON.stringify({ object: "error", code: "unauthorized", message: "controlled" }))
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const observations = []
+    try {
+      for (const phase of ["pre-abort", "configuration-read"])
+        for (const operation of [
+          "listCatalog",
+          "listSkills",
+          "consume",
+          "readSkill",
+          "readResources",
+        ]) {
+          const state = join(root, `initialization-${phase}-${operation}`)
+          const configPath = join(state, "config", "config.json")
+          await mkdir(join(state, "config"), { recursive: true })
+          await writeFile(configPath, "{}\n")
+          const controller = new AbortController()
+          if (phase === "pre-abort") controller.abort()
+          const probe = {
+            controller,
+            configPath: phase === "configuration-read" ? configPath : undefined,
+            config_reads: 0,
+            fetch_calls: 0,
+          }
+          const reports = []
+          const operationOptions = {
+            ...options,
+            cwd: state,
+            env: {
+              ...env,
+              NTN_SKILLS_HOME: join(state, "state"),
+              NTN_SKILLS_CONFIG_HOME: join(state, "config"),
+              NTN_SKILLS_CACHE_HOME: join(state, "cache"),
+              NOTION_API_BASE_URL: `http://127.0.0.1:${server.address().port}`,
+            },
+            signal: controller.signal,
+            onRequestMetrics: (value) => reports.push(value),
+          }
+          let result
+          let error
+          activeInitializationProbe = probe
+          try {
+            result = await (operation === "listCatalog" || operation === "listSkills"
+              ? sdk[operation](operationOptions)
+              : sdk[operation](
+                  operation === "consume"
+                    ? input(fixture.roots)
+                    : operation === "readSkill"
+                      ? fixture.resource.ref
+                      : resourceInput,
+                  operationOptions,
+                ))
+          } catch (caught) {
+            error = { code: caught?.code, typed: caught instanceof sdk.SkillsError }
+          } finally {
+            activeInitializationProbe = undefined
+          }
+          observations.push({
+            phase,
+            operation,
+            config_reads: probe.config_reads,
+            fetch_calls: probe.fetch_calls,
+            signal_aborted: controller.signal.aborted,
+            reports,
+            result,
+            error,
+          })
+        }
+      const evidence = { observations, actual_http: requests }
+      await writeFile(
+        join(root, "initialization-cancellation.json"),
+        JSON.stringify(evidence, null, 2) + "\n",
+        { mode: 0o600 },
+      )
+      assert.deepEqual(requests, [])
+      for (const observation of observations) {
+        assert.equal(observation.config_reads, observation.phase === "configuration-read" ? 1 : 0)
+        assert.equal(observation.fetch_calls, 0)
+        assert.equal(observation.signal_aborted, true)
+        if (observation.operation === "consume" || observation.operation === "readResources")
+          assert.deepEqual(observation.result, {
+            version: 1,
+            status: "cancelled",
+            reason: "interrupted",
+          })
+        else assert.deepEqual(observation.error, { code: "CANCELLED", typed: true })
+        assertNoTransport(observation.reports, true)
+      }
+      return evidence
+    } finally {
+      activeInitializationProbe = undefined
+      server.closeAllConnections()
+      await new Promise((resolve) => server.close(resolve))
+    }
   })
 
   const bounded = (promise) =>
@@ -2237,6 +2377,8 @@ try {
         const headersChannel = channel("undici:request:headers")
         const onHeaders = () => receivedHeaders()
         if (phase === "body") headersChannel.subscribe(onHeaders)
+        const transportProbe = { fetch_calls: 0 }
+        activeInitializationProbe = transportProbe
         try {
           const pending = sdk[operation](
             operation === "consume"
@@ -2259,13 +2401,24 @@ try {
           assert.equal(reports[0].in_flight, 0)
           assert.equal(reports[0].total_requests, 1)
           assert.equal(reports[0].outcomes.cancelled, 1)
+          assert.equal(transportProbe.fetch_calls, 1)
+          const attempts = reports[0].trace.filter((event) => event.event === "attempt")
+          assert.equal(attempts.length, 1)
+          assert.equal(
+            reports[0].unknown_response_bytes,
+            attempts[0].response_bytes === null ? 1 : 0,
+          )
+          if (phase === "headers") assert.equal(reports[0].unknown_response_bytes, 1)
           return {
             scope_closed: true,
             response_closed: true,
             requests: reports[0].total_requests,
+            fetch_calls: transportProbe.fetch_calls,
+            request_metrics: reports[0],
             phase,
           }
         } finally {
+          activeInitializationProbe = undefined
           controller.abort()
           if (phase === "body") headersChannel.unsubscribe(onHeaders)
           server.closeAllConnections()

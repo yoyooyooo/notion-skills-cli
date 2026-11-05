@@ -169,6 +169,8 @@ node scripts/sdk-package-smoke.mjs --archive "$RESOURCE_ARCHIVE" --fixture "$RES
 
 fixture 必须使用符合 CLI runtime 要求的实际 Node 运行；它会经过 SQLite Store 和完整 current 发布检查，Bun 不可代替。fixture 明确为全 warm，`resources` 是独立新增 Skill，不能把它的零请求称作冷下载。Core tests 用实际请求集合证明只拉所选对象、共享 chunk一次、未选主文/文件零读取，并覆盖81 chunks跨查询分批。原 `a` 单资源 fixture保留。所有失败日志、包hash、source metrics和取消连接close保存到本次证据目录；SDK产物不冒充Pi/provider已投递。
 
+SDK 初始化取消沿同一个 `sdk-package-smoke.mjs` 验证：分别对 list/catalog、consume、readSkill、readResources 在 pre-abort 和 owned config.json 读取回调尚未交付给 Store 的切点取消，保留原返回状态、实际 fetch/HTTP 观察及一次完整 metrics 回调。Notion 尚未取得时所有可执行 HTTP Effect 都在获取门之后，故应为 0 attempts / 0 unknown bytes；取得服务后缺账本仍为 null，不能一概补零。既有 headers/body 中途取消继续要求实际 1 attempt、连接关闭、in_flight=0，未知响应字节不得抹去。先保留旧包 null 账本失败，再用新独立安装包复跑同入口；真实 Pi 会话切换验收由跨仓原 driver 接续。
+
 把**本次独立安装**的 `RESOURCE_CONSUMER/node_modules/ntn-skills/dist/ntn-skills.js` 交给 Broker `NTN_SKILLS_BUILD_ENTRY`，沿 Broker 主地图的 Launch → Doctor → resource-batch → Evidence → Cleanup 完成真实宿主验证。SDK smoke不创建生产远端数据，包与证据保留；只在确认进程全部结束后回收本次自有临时目录，走系统 Trash。Skill规程的可用性仍需独立新会话实际完成路径，不能由文档新增推断通过。
 
 ### 固定主文与当前缓存的按需读取

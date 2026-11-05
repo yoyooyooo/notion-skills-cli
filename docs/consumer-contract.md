@@ -213,15 +213,22 @@ existing parser: `0` or an integer followed by `s`, `m`, `h` or `d`, returning m
 of 10000; an explicit `NTN_SKILLS_REQUEST_TRACE_LIMIT` retains its existing validation.
 Without this opt-in or an explicit environment trace setting, tracing stays off.
 `onRequestMetrics(snapshot)` runs once after the operation's scope closes, including
-failures and cancellation. It receives `null` when the Notion service was never
-acquired; this is unknown work, not a zero-request claim. Callbacks should not throw.
+failures and cancellation. Before the SDK acquires the Notion service, runtime
+construction only builds services and local Store state; no HTTP-capable operation
+can execute. Input rejection, pre-abort and cancellation during that initialization
+therefore report a complete zero-attempt ledger from the existing metrics factory.
+After acquisition the callback uses the transport's actual counters; unavailable
+acquired-service metrics remain `null` and cannot prove zero work. A zero ledger does
+not change a failed or cancelled operation into success. Callbacks should not throw.
 Counters and trace contain no raw credentials, request paths or full bodies. Hosts
 must count SDK calls separately from those HTTP measurements and retain truncation.
 
 An already aborted signal does no acquisition. Aborting initialization, headers or
 body work interrupts the operation and waits for its scope cleanup before settlement.
-`consume` returns `status: cancelled`; `readSkill` rejects with `SkillsError` code
-`CANCELLED`. A host must not publish a late result after its own cancellation boundary.
+`consume` and `readResources` return `status: cancelled`; `readSkill`, `listCatalog`
+and `listSkills` reject with `SkillsError` code `CANCELLED`. Header/body cancellation
+retains actual attempts and unknown response-byte counters after scope cleanup.
+A host must not publish a late result after its own cancellation boundary.
 
 ## Module responsibilities and transport choice
 
