@@ -81,3 +81,52 @@ It does not remove the first complete directory observation, change graph field
 projections, implement selected-ID metadata batching, or eliminate first-current
 body observation and retained-source costs. SC11's wider projection and batching
 matrix remains independently tracked.
+
+## Single-current inspect experiment was not adopted
+
+The 2026-11-05 AH-628 candidate used a complete six-property identity inventory
+and one full selected-page GET for a single current `inspect` root. It preserved
+the existing `use`, multiple-root, and fixed-resource paths. Controlled tests and
+independently installed SDK and CLI runs verified the complete body, files,
+identity, permissions, pagination, and cancellation boundaries.
+
+The frozen live comparison used C6 and the candidate in three ordered pairs, each
+with an empty owned state. Every sample used the same authorized production root
+and one public `ctl prepare --purpose inspect` call. The original body, all 46
+files, scope, version, pin, and relation directories matched in all six samples.
+
+| Pair and order | C6 elapsed / root-ready ms | Candidate elapsed / root-ready ms | Candidate minus C6 ms |
+| --- | ---: | ---: | ---: |
+| 1, C6 then candidate | 9875.752 / 9572 | 9007.326 / 8626 | -868.425 / -946 |
+| 2, candidate then C6 | 8302.505 / 7993 | 8683.400 / 8384 | +380.895 / +391 |
+| 3, C6 then candidate | 8588.354 / 8280 | 10698.151 / 10401 | +2109.797 / +2121 |
+
+Each candidate call added one selected-page metadata GET, for 16 HTTP attempts
+instead of 15. Total decoded response bytes fell from 1,971,679 to between
+1,182,292 and 1,182,316. All four body attempts and their 395,627 response bytes
+stayed equal. The complete ledger observed no writes or provider calls in this
+window. That observation does not remove normal retention or adoption behavior.
+
+The frozen adoption gate required both complete-call and root-ready medians to
+avoid regression. Complete-call medians were 8588.354 ms for C6 and 9007.326 ms for
+the candidate. Root-ready medians were 8280 ms and 8626 ms. The medians of the
+paired differences were +380.895 ms and +391 ms. Functional acceptance passed;
+the adoption gate failed. The prototype runtime changes and their added smoke
+test assertions were withdrawn. Graph preparation retains its complete inventory.
+The scalar-read reuse described above remains unchanged.
+
+The controlled N=1 case also increased total response bytes by 864. The live
+window covers one root and one library, with three pairs. It does not establish
+p95 latency, compressed wire bytes, or complete Agent task costs. No replacement
+samples, scale thresholds, or adaptive cache rules were added.
+
+[AH-628](https://linear.app/yoyooyooo/issue/AH-628) tracks the remaining work. The
+original packages, patches, red cases, six receipts, offline source attribution,
+and Evidence → Cleanup → Evidence records remain under
+`/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc11-single-inspect-iyw1oxit`.
+`live-pair-plan/real-pair-result.json` has SHA-256
+`515544b7210df7847f77bbaf05454f50309af5c5936b651dbc435a26008d7700`.
+A future proposal needs a concrete mechanism that changes the measured tradeoff,
+such as avoiding the extra selected-page request while preserving authority, or
+an explicitly revised task-cost budget. It must freeze a new comparison and
+retain this result.

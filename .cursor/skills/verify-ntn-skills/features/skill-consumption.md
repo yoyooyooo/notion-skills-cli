@@ -224,7 +224,27 @@ NTN_SKILLS_SC11_EVIDENCE=1 bun test packages/core/test/shared-metadata-consumpti
 
 该回归与 smoke 使用受控 Notion 服务和真实安装包，不是生产延迟证明。真实成本另用 Broker 的 `scripts/skill-consumption-source-baseline.mjs`：保留先前授权的 database/root/resource、单次 resource-only cold 场景与预算，只替换 installed CLI 和新的 evidenceRoot；按 Doctor → Plan → Run → Evidence → Trash Cleanup → Evidence 执行。比较实际 metadata/current-body/retained-body、请求字节、解码响应字节、耗时和内容 hash，完整 trace 缺失时不能宣称移除了请求。单样本耗时仅报告该样本，不外推稳定收益。
 
-本次复用不扩至 graph 全属性观察、Members/Requires 或跨请求缓存。权限、完整分页、禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证；尚未执行的 SC11 字段投影/批次范围继续保留。
+scalar 复用不改变 Members/Requires 或跨请求缓存。权限、完整分页、禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证。
+
+### 单 current inspect 投影实验未采用
+
+2026-11-05 的候选只对单 current `inspect` 使用完整六字段身份目录和一次选中完整页 GET。原有 scalar read 复用不变。候选通过受控 N=1/10/100/101/300、权限、分页、身份、取消、混合根边界和独立安装 SDK/CLI 检查，但真实首读延迟未达到预先冻结的采用门槛。运行时代码、候选专用 core 断言及 `inspect_phases` smoke 断言已撤回；当前 graph prepare 仍使用原完整 inventory，当前 smoke 不承诺该投影。
+
+证据根为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc11-single-inspect-iyw1oxit`。保留 `controlled-comparison.json`、`installed-comparison.json`、两份独立包、原 fail-before，以及 `withdrawal/candidate-all-nine.patch`。旧候选的 `SC11_INSPECT_COST` 和安装 `inspect_phases` 只能从这些冻结原件复查，不能把它们当作当前 main 的成功断言。
+
+真实配对沿 Broker 原 `skill-consumption-source-baseline.mjs` 的 `inspect-current` 入口，每次只执行一个公开 `ctl prepare ROOT --purpose inspect --database DATABASE --metrics`。六个 consumer 均从自己的空 state 开始，不复制 oracle 正文或缓存。完整正文、46 文件逐项 bytes/hash、scope/version/pin、Requires/Members 目录均与独立原件一致。每次四个 body 请求的目标和 395,627 响应字节相同；既有离线 source proof 证明未读取 Requires 或未选 Members 正文。原 `unclassified_body` 分类保留，归属证明单列。
+
+| 配对顺序 | C6 elapsed / rootReady ms | 候选 elapsed / rootReady ms | 候选减 C6 ms |
+| --- | ---: | ---: | ---: |
+| C6 → 候选 | 9875.752 / 9572 | 9007.326 / 8626 | -868.425 / -946 |
+| 候选 → C6 | 8302.505 / 7993 | 8683.400 / 8384 | +380.895 / +391 |
+| C6 → 候选 | 8588.354 / 8280 | 10698.151 / 10401 | +2109.797 / +2121 |
+
+每次来源请求从 15 增至 16，唯一新增项为选中根 metadata GET。总 decoded response 从 1,971,679 B 降至 1,182,292–1,182,316 B，约减少 40.035%。各臂 elapsed 中位数为 8588.354 / 9007.326 ms，rootReady 为 8280 / 8626 ms；paired delta 中位数分别为 +380.895 / +391 ms。`functional_acceptance=true`，`adoption_gate_passed=false`。两条延迟预算均回退，不能以目录或总字节改善覆盖它们。
+
+`live-pair-plan/real-pair-result.json` SHA-256 为 `515544b7210df7847f77bbaf05454f50309af5c5936b651dbc435a26008d7700`。六次共 93 HTTP、9,461,957 decoded response B，实际 write/provider 均为零，无缺失 metrics、未知来源或补跑。这个窗口的零写入不改变 current 消费可能 retention/adoption 的合同。六份原 E→C→E 全部通过，`cleanup-result.json` SHA-256 为 `407a69beb93eec0ba7a4288e5cc000748a8465d488461d7498d81afbb164c6ad`；只移走各自 owned working，原证据和日用配置保持原字节。
+
+受控 N=1 的 +864 B 回退继续保留。余代价仍包括全库身份分页、选中页、首次 current 正文和 retained source。只有新的具体机制能改变上述取舍，或任务成本预算被明确调整时，才提出新的冻结比较；不增加规模阈值、不延长 TTL、不补同输入样本追绿。三个 pair 不外推 p95、全 Agent 任务或其他库规模的收益。
 
 ## Gotchas
 
