@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Clock, Crypto, Effect } from "effect"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { ObservationSchema, ScopeSchema } from "../src/cache.ts"
 import { decode, fail } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
@@ -40,6 +41,10 @@ interface MetadataBoundary {
   readonly writes: readonly string[]
   readonly observationWrites: readonly string[]
   readonly bodyAccesses: readonly string[]
+  readonly authorizationWrites: ReadonlyArray<{
+    key: string
+    observation: typeof ObservationSchema.Type
+  }>
 }
 
 function memberRow(member: typeof alpha, state: "committed" | "writing") {
@@ -87,7 +92,14 @@ function fixture(active: PublishedMembers["members"] = [alpha], status = "partia
   const json = new Map<string, unknown>([["config.json", { upstream_database: database }]])
   const writes: string[] = [],
     observationWrites: string[] = [],
-    bodyAccesses: string[] = []
+    bodyAccesses: string[] = [],
+    authEvents: string[] = []
+  const knownScopes = new Set<string>()
+  const generations = new Map<string, number>()
+  const authorizationWrites: Array<{
+    key: string
+    observation: typeof ObservationSchema.Type
+  }> = []
   const rows = [memberRow(alpha, "committed"), memberRow(beta, "writing")]
   const repository = upstreamRepositoryFixture()
   const unexpected = (action: string) =>
@@ -111,7 +123,15 @@ function fixture(active: PublishedMembers["members"] = [alpha], status = "partia
     cacheRoot: "/cache",
     upstream,
     integrity: integrityRepositoryFixture(),
-    reserveCacheGeneration: () => unexpected("cache generation"),
+    reserveCacheGeneration: (scope, identity) =>
+      Effect.gen(function* () {
+        if (!knownScopes.has(scope) || identity !== "access:scope")
+          return yield* unexpected(`cache generation ${scope}/${identity}`)
+        const generation = (generations.get(scope) ?? 0) + 1
+        generations.set(scope, generation)
+        authEvents.push(`reserve:${scope}:${generation}`)
+        return generation
+      }),
     listKeys: (prefix) =>
       Effect.sync(() => [...json.keys()].filter((key) => key.startsWith(prefix + "/"))),
     retireKeys: () => unexpected("cache retirement"),
@@ -122,8 +142,25 @@ function fixture(active: PublishedMembers["members"] = [alpha], status = "partia
       }),
     writeJson: (key, value) =>
       Effect.gen(function* () {
-        writes.push(key)
-        if (!key.startsWith("cache/identities/")) return yield* unexpected(`JSON write ${key}`)
+        if (key.startsWith("cache/identities/")) {
+          writes.push(key)
+          knownScopes.add(decode(ScopeSchema, value).scope)
+        } else if (/^cache\/latest\/[^/]+\/access:scope\/[^/]+\.json$/.test(key)) {
+          const observation = decode(ObservationSchema, value)
+          if (
+            !knownScopes.has(observation.scope) ||
+            observation.record_identity !== "access:scope" ||
+            !key.startsWith(`cache/latest/${observation.scope}/access:scope/`) ||
+            observation.generation !== generations.get(observation.scope) ||
+            !observation.invalidated ||
+            observation.snapshot_id !== undefined
+          )
+            return yield* unexpected(`authorization journal ${key}`)
+          authorizationWrites.push({ key, observation })
+          authEvents.push(
+            `record:${observation.generation}:${observation.access_denied ?? "grant"}`,
+          )
+        } else return yield* unexpected(`JSON write ${key}`)
         json.set(key, structuredClone(value))
       }),
     readBytes: (key) =>
@@ -148,6 +185,7 @@ function fixture(active: PublishedMembers["members"] = [alpha], status = "partia
       Effect.gen(function* () {
         const method = options?.method ?? (body === undefined ? "GET" : "POST")
         requests.push({ path, method, body })
+        if (path === "v1/users/me") authEvents.push(`request:${path}`)
         if (
           method !== "GET" &&
           !(method === "POST" && path === `v1/data_sources/${targetSource}/query`)
@@ -237,6 +275,8 @@ function fixture(active: PublishedMembers["members"] = [alpha], status = "partia
     observationWrites,
     rows,
     bodyAccesses,
+    authorizationWrites,
+    authEvents,
     deny: (value: Denial) => {
       denied = value
     },
@@ -271,6 +311,15 @@ function expectMetadataOnly(f: MetadataBoundary) {
     ),
   ).toBe(true)
   expect(f.writes.every((key) => key.startsWith("cache/identities/"))).toBe(true)
+  expect(
+    f.authorizationWrites.every(
+      ({ key, observation }) =>
+        key.startsWith(`cache/latest/${observation.scope}/access:scope/`) &&
+        observation.record_identity === "access:scope" &&
+        observation.invalidated &&
+        observation.snapshot_id === undefined,
+    ),
+  ).toBe(true)
   expect(
     f.observationWrites.every(
       (key) => key.startsWith("upstream-observation:") && key.endsWith(`:${subscription}`),
@@ -478,8 +527,13 @@ test("authentication, exact subscription and target denial fail explicitly inste
   expect(prior.state.router.availability).toBe("ready")
   const writes = [...f.writes]
   const observationWrites = [...f.observationWrites]
-  for (const denial of ["auth", "subscription", "target"] as const) {
+  const scope = decode(
+    ScopeSchema,
+    [...f.json].find(([key]) => key.startsWith("cache/identities/"))?.[1],
+  ).scope
+  for (const [index, denial] of (["auth", "subscription", "target"] as const).entries()) {
     f.requests.length = 0
+    f.authEvents.length = 0
     f.deny(denial)
     const denied = await f.run(checkUpstreamObservation(subscription).pipe(Effect.result))
     expect(denied).toMatchObject({
@@ -505,7 +559,35 @@ test("authentication, exact subscription and target denial fail explicitly inste
     expect(f.writes).toEqual(writes)
     expect(f.observationWrites).toEqual(observationWrites)
     expect(f.requests.some(({ path }) => path.endsWith("/query"))).toBe(false)
+    expect(f.authEvents).toEqual([
+      `reserve:${scope}:${index + 1}`,
+      "request:v1/users/me",
+      ...(denial === "auth"
+        ? ["record:1:ACCESS_DENIED"]
+        : denial === "subscription"
+          ? ["record:2:grant"]
+          : []),
+    ])
   }
+  expect(f.authorizationWrites.map(({ observation }) => observation)).toEqual([
+    {
+      record_identity: "access:scope",
+      scope,
+      started_at: 1_000_000,
+      validated_at: 1_000_000,
+      generation: 1,
+      invalidated: true,
+      access_denied: "ACCESS_DENIED",
+    },
+    {
+      record_identity: "access:scope",
+      scope,
+      started_at: 1_000_000,
+      validated_at: 1_000_000,
+      generation: 2,
+      invalidated: true,
+    },
+  ])
   expectMetadataOnly(f)
 })
 
