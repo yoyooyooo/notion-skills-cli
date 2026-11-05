@@ -6,6 +6,8 @@ Stable manual edits to a committed Notion page are visible through `read PAGE_ID
 
 Single-file write, exact-target whole-Skill replacement and sync all use strong mutation preconditions independent of read TTL. `write` changes file content only; `update` changes page properties. [Command map](README.md#accepted-design-coverage), [recovery matrix](sync-cache-verification-plan.md#interruption-and-unknown-outcomes) and [protocol](../../../../docs/protocol.md#mutation-contract) own detailed contracts. Refresh current-page live readbacks; keep pinned reads immutable. This recipe is not proof until exercised by the main verifier.
 
+The [independent installed author lifecycle](import-create-recovery-dry-run.md#independent-installed-author-lifecycle) connects these shared-native entries to the existing package gate. It proves exact canonical readback, body/metadata separation, sparse apply versus one-layout-change replace, immutable old pins and original-outcome recovery with a real installed Node CLI and an owned controlled service. Native main frontmatter that conflicts with Name/Description is rejected before writing; it is not an implicit metadata update. Native canonical Markdown and submitted source bytes remain separate expectations.
+
 ## Sub-features
 
 - `reference-read`: complete inclusion, nested paths and relative links in snapshots.
@@ -63,7 +65,7 @@ Preconditions:
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- write "$CURRENT_SNAPSHOT" --path "$REFERENCE_PATH" --input "$INPUT_FILE" --database "$DATABASE"
   ```
 
-- **Main and new reference entries.** Run each only with approved inputs. Main replacement changes only file content; frontmatter name/description never update Name/Description properties, and Default Context remains unchanged. Capture those properties before/after, including when approved frontmatter differs. Property-only changes use `update EXACT --name TITLE --description DESCRIPTION --default-context true|false` with only the requested flags and a fresh pinned baseline; retain separate readback and stale-baseline rejection evidence. New reference replacement allocates a child page, adds its labeled path to References and restores page links; read/files must show it while retaining other files. For a Files-backed asset, use an actual selected asset path/input with the same separate-path invocation and prove exact bytes.
+- **Main and new reference entries.** Run each only with approved inputs. Main replacement changes only file content; frontmatter name/description never update Name/Description properties, and Default Context remains unchanged. Capture those properties before/after. Shared native main input that disagrees with current metadata must fail with `SHARED_METADATA_CONFLICT` and zero writes; keep that boundary separate from legacy body-only frontmatter handling. Property-only changes use `update EXACT --name TITLE --description DESCRIPTION --default-context true|false` with only the requested flags and a fresh pinned baseline; retain separate readback and stale-baseline rejection evidence. The legacy new-reference route allocates a child page, adds its labeled path to References and restores page links; read/files must show it while retaining other files. Shared layout changes use their isolated native file-management boundary. For a Files-backed asset, use an actual selected asset path/input with the same separate-path invocation and prove exact bytes.
 
   ```bash
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- write "$PAGE_ID" --input "$MAIN_INPUT" --database "$DATABASE"
@@ -88,19 +90,19 @@ Preconditions:
 - **Advanced saved-plan local synchronization.** Use a dedicated authorized Skill and logical scratch directory, including actual relative/multi-hop parent/root and per-file links for link claims. Record links, real destinations, complete hashes, baseline/plan/receipt evidence and an unrelated sentinel through product outputs/backup. Mutable bindings, bases and operations belong to the SQL product boundary; inspect operations with `ctl operation show`. Bind never copies content; equal contents can initialize, otherwise explicitly select the initialization source. Set BINDING to a unique scratch label for --as, then retain the returned binding ID/label. Bind SYNC_PLAN_ID/FILE to product results, not helper IMPORT_PLAN, and SYNC_OPERATION_ID to the actual apply operation ID.
 
   ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local bind "$PAGE_ID" --path "$LOCAL_DIR" --as "$BINDING" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local bind "$PAGE_ID" --path "$LOCAL_DIR" --as "$BINDING" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local plan "$BINDING" --from notion
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local apply --plan "$SYNC_PLAN_ID"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local status "$BINDING"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local status "$BINDING" --refresh
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local plan "$BINDING" --output "$SYNC_PLAN_FILE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local apply --plan "$SYNC_PLAN_FILE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local plan --all
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local bind "$PAGE_ID" --path "$LOCAL_DIR" --as "$BINDING" --database "$DATABASE" --dry-run
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local bind "$PAGE_ID" --path "$LOCAL_DIR" --as "$BINDING" --database "$DATABASE"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local plan "$BINDING" --from notion
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local apply --plan "$SYNC_PLAN_ID"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local status "$BINDING"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local status "$BINDING" --refresh
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local plan "$BINDING" --output "$SYNC_PLAN_FILE"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local apply --plan "$SYNC_PLAN_FILE"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local plan --all
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read "$PAGE_ID" --database "$DATABASE" --refresh
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- operation reconcile "$SYNC_OPERATION_ID"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local unbind "$BINDING" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- sync local unbind "$BINDING"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl operation reconcile "$SYNC_OPERATION_ID"
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local unbind "$BINDING" --dry-run
+  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl sync local unbind "$BINDING"
   ```
 
   Initialization uses --from notion only when that authorized source is intended. Subsequently edit an approved local reference for push, independently edit a Notion reference for pull, and inspect fresh complete readback/local hashes after each apply. Two-sided differing edits conflict; choose --from local or notion only under authorization for a reviewed resolution plan. Batch proof needs actual independent copies/candidates. Plans and status cannot move bases; only verified convergence can. Copied plans retain resource/scope/version/base/hash/link checks; retarget a link only in a disposable fixture and verify stale rejection. Capture system Trash paths for removed/replaced bytes and prove links/unrelated content survive. Filesystem commit guards do not establish atomic protection from external retargeting. Naturally interrupted sync retains receipts and fences affected resources; reconcile reads outcomes without replay before new apply. Deterministic R/L cases need their own recorded evidence. Unbind retains contents/bases/plans/receipts and invalidates old plans.

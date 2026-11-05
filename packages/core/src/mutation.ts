@@ -66,6 +66,8 @@ import {
 import { writeSharedSkillFile, verifySharedAuthoredSnapshot } from "./shared-authoring.ts"
 import { createSharedNative } from "./shared-create.ts"
 import { consumeSharedCreation } from "./shared-create-consumption.ts"
+import { updateSharedSkillMetadata } from "./shared-metadata-authoring.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import {
   applySharedSkillChanges,
   verifySharedAppliedSnapshot,
@@ -1016,23 +1018,61 @@ function saveDocument(
       const removed = current.files
         .filter((file) => !files.some((input) => input.path === file.path))
         .map((file) => file.path)
+      const metadata = {
+        name: options.name ?? portable.name,
+        description: options.description ?? portable.description,
+        defaultContext: options.defaultContext,
+        ...(yield* Effect.try({
+          try: () =>
+            portableRelationSelection(portable.relations, locator.library_id, {
+              ...(options.members === undefined ? {} : { members: options.members }),
+              ...(options.requires === undefined ? {} : { requires: options.requires }),
+            }),
+          catch: (error) => error as SkillsError,
+        })),
+      }
+      const changesLayout =
+        removed.length !== 0 ||
+        files.some((file) => !current.files.some((existing) => existing.path === file.path))
+      // A complete replacement repeats retained files and metadata. Validate the
+      // full input before omitting exact no-ops; otherwise duplicate unchanged
+      // paths could disappear before the shared apply boundary sees them.
+      if (changesLayout)
+        yield* Effect.try({
+          try: () => portableFiles({ ...portable, main: current.entrypoint, files }),
+          catch: (error) => error as SkillsError,
+        })
+      const changedFiles = changesLayout
+        ? yield* Effect.filter(files, (file) =>
+            Effect.gen(function* () {
+              const existing = current.files.find((entry) => entry.path === file.path)
+              return (
+                existing === undefined ||
+                existing.bytes !== file.bytes.length ||
+                existing.sha256 !== (yield* sha256(file.bytes))
+              )
+            }),
+          )
+        : files
+      const metadataPreview = changesLayout
+        ? yield* updateSharedSkillMetadata(current, { ...metadata, dryRun: true })
+        : undefined
+      if (metadataPreview !== undefined && metadataPreview.status !== "planned")
+        return yield* Effect.fail(
+          fail("SHARED_APPLY_INVALID", "Replacement metadata did not return a read-only plan."),
+        )
+      const changesMetadata =
+        metadataPreview === undefined ||
+        metadataPreview.plan.changes.some(
+          (change) => canonicalSharedJson(change.before) !== canonicalSharedJson(change.after),
+        )
       return yield* sharedApplyResult(
         current,
         {
-          files,
+          files: changedFiles,
           remove: removed,
           ...(portable.relations === undefined ? {} : { portableRelations: portable.relations }),
-          name: options.name ?? portable.name,
-          description: options.description ?? portable.description,
-          defaultContext: options.defaultContext,
-          ...(yield* Effect.try({
-            try: () =>
-              portableRelationSelection(portable.relations, locator.library_id, {
-                ...(options.members === undefined ? {} : { members: options.members }),
-                ...(options.requires === undefined ? {} : { requires: options.requires }),
-              }),
-            catch: (error) => error as SkillsError,
-          })),
+          ...(changesMetadata ? metadata : {}),
           dryRun: options.dryRun,
         },
         operation === "create" ? "replace" : operation,

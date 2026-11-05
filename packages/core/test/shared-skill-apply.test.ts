@@ -117,11 +117,13 @@ function withWriter<A, E>(
               ? Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "The original child response was lost."))
               : Effect.succeed({ id: page, markdown, truncated: false, unknown_block_ids: [] })
           }
-          if (path !== `v1/pages/${skillPage}`)
+          const page = /^v1\/pages\/([^/]+)$/u.exec(path)?.[1]
+          const row = page === skillPage ? f.main : f.files.find((file) => file.id === page)
+          if (row === undefined)
             return Effect.fail(
               fail("TEST_UNEXPECTED_PATCH", "An unrelated native page was patched."),
             )
-          const properties = property(f.main.properties)
+          const properties = property(row.properties)
           for (const [propertyId, value] of Object.entries(property(property(body).properties))) {
             const key = Object.entries(properties).find(
               ([key, raw]) => key === propertyId || property(raw).id === propertyId,
@@ -132,8 +134,8 @@ function withWriter<A, E>(
               )
             properties[key] = { ...property(properties[key]), ...property(value) }
           }
-          f.main.last_edited_time = new Date().toISOString()
-          return Effect.succeed(structuredClone(f.main))
+          row.last_edited_time = new Date().toISOString()
+          return Effect.succeed(structuredClone(row))
         })
       },
     }
@@ -479,6 +481,96 @@ describe("frozen sequential shared apply", () => {
 })
 
 describe("public shared apply and replace routing", () => {
+  async function replacement(f: Fixture, snapshot: Snapshot) {
+    const files = await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* Effect.forEach(snapshot.files, (file) =>
+          store
+            .readBytes(`objects/${file.sha256}`)
+            .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
+        )
+      }),
+    )
+    return {
+      kind: snapshot.record.kind,
+      name: snapshot.record.name,
+      description: snapshot.record.description,
+      main: snapshot.entrypoint,
+      files,
+    }
+  }
+
+  test("public shared replace removes one omitted resource with equal retained files and metadata", async () => {
+    const f = sharedSnapshotFixture(),
+      baseline = await fresh(f)
+    const complete = await replacement(f, baseline)
+    const input = {
+      ...complete,
+      files: complete.files.filter((file) => file.path !== "references/2.md"),
+    }
+    const options = { target: baseline, defaultContext: baseline.record.default_context }
+    f.clearCalls()
+    const preview = await f.run(withWriter(f, replaceSkill(input, { ...options, dryRun: true })))
+    expect(preview.operation).toBe("replace")
+    expect(property(preview).changes).toEqual({ files: [], removed: ["references/2.md"] })
+    expect(f.writeCount()).toBe(0)
+    const result = await f.run(withWriter(f, replaceSkill(input, options)))
+    expect(result.operation).toBe("replace")
+    expect(property(result).status).toBe("applied")
+    expect(property(result).changes).toEqual({ files: [], removed: ["references/2.md"] })
+    expect(f.calls.some((call) => call.method === "PATCH" && call.path.endsWith("/markdown"))).toBe(
+      false,
+    )
+    const current = await fresh(f)
+    expect(current.files.map((file) => file.path)).toEqual(
+      baseline.files.filter((file) => file.path !== "references/2.md").map((file) => file.path),
+    )
+    expect(current.record.name).toBe(baseline.record.name)
+    expect(current.record.description).toBe(baseline.record.description)
+    expect(current.record.default_context).toBe(baseline.record.default_context)
+  })
+
+  for (const variant of ["body", "metadata", "multiple", "duplicate"] as const) {
+    test(`public shared replace rejects ${variant} combined with omission before writes`, async () => {
+      const f = sharedSnapshotFixture(),
+        baseline = await fresh(f)
+      const complete = await replacement(f, baseline)
+      let files = complete.files.filter((file) => file.path !== "references/2.md")
+      if (variant === "body")
+        files = files.map((file) =>
+          file.path === baseline.entrypoint
+            ? {
+                ...file,
+                bytes: encode(new TextDecoder().decode(file.bytes) + "\nA real body edit.\n"),
+              }
+            : file,
+        )
+      if (variant === "multiple") files = files.filter((file) => file.path === baseline.entrypoint)
+      if (variant === "duplicate") files = [...files, files[0]!]
+      f.clearCalls()
+      const error = failure(
+        await f.run(
+          withWriter(
+            f,
+            replaceSkill(
+              { ...complete, files },
+              {
+                target: baseline,
+                ...(variant === "metadata" ? { description: "A real metadata edit" } : {}),
+              },
+            ),
+          ).pipe(Effect.result),
+        ),
+      )
+      expect(error.code).toBe(
+        variant === "duplicate" ? "INVALID_ARCHIVE" : "SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED",
+      )
+      expect(f.writeCount()).toBe(0)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    })
+  }
+
   test("one public pinned apply maintains main, resource and metadata despite an unrelated broken source", async () => {
     const f = sharedSnapshotFixture(),
       baseline = await fresh(f)

@@ -31,9 +31,27 @@ Select the affected entry points and retain their outcomes separately:
 - `create` and `replace --target` for each accepted folder/ZIP/Markdown input shape being claimed, including `--name`/`--description` overrides.
 - Each command's `--dry-run` path.
 - Explicit `--database`, configured creation default, and sole fresh discovery when actually available.
-- Create-new and `CREATE_CONFLICT`; exact-target replace-reuse and replace-update.
+- Create-new, shared original-intent reuse and `NAME_CONFLICT`, and legacy `CREATE_CONFLICT`; exact-target replace-reuse and replace-update.
 - `ctl operation resume OPERATION_ID` after a naturally observed partial/uncertain live outcome; record controlled fault scenarios separately from live evidence.
 - `replace --target` with current and pinned main baselines; metadata rename retaining page ID, missing/inaccessible/stale target and reference-file rejection.
+
+## Independent installed author lifecycle
+
+The existing package gate exercises successful public author commands in fresh Node processes against an owned loopback Notion service:
+
+```bash
+bun scripts/package-smoke.ts --archive "$CLI_TGZ" --migration-archive "$MIGRATION_TGZ" --runtime "$NODE"
+```
+
+`scripts/package-smoke/authoring.ts` reuses the existing shared-create fixture and its durable-before-create assertion, plus the strict body/property request boundary used by the shared-apply fixture. The service observes the original dispatch retained by the installed consumer; it never seeds or edits that consumer's SQLite state, receipts or snapshots. Every command uses the independently installed Node bin. The fixture service is verification code, not a consumer source fallback.
+
+The owned lifecycle creates one main file and two resources, reads their canonical native projection through returned refs, and retains all three original pins. It then verifies body-only `write`, explicit sparse `update`, `apply` preserving omitted files, and `replace` removing one omitted resource. Shared replacement supports one isolated layout change; this gate does not pretend that a multi-file deletion is supported. Main frontmatter that disagrees with native metadata is a `SHARED_METADATA_CONFLICT` with no writes. A verified repeat of the exact original shared creation reuses its original operation; a different creation intent with the same name is `NAME_CONFLICT`. Legacy `CREATE_CONFLICT` recipes retain their separate boundary.
+
+Each dry-run, unchanged apply, stale-pin refusal and name/frontmatter conflict must send zero source mutations. The service loses one response only after storing the original body-write outcome. A fresh current read must return `SHARED_BODY_WRITE_RECONCILED` with that exact operation and `read_again: true`; the next read must deliver the complete new body without another body PATCH or a duplicate outcome. This is native shared recovery, not the legacy `ctl operation resume` protocol. `ctl views` and its historical alias must return the same metadata, and `ctl status` must not write. The existing migration-consumption part of this same package gate continues to cover installed `ctl sync local status`, refresh rejection and retained unbind behavior.
+
+The shared replace regression first validates the complete input, then removes exact unchanged file bytes and metadata proven unchanged by the existing read-only metadata plan before selecting the supported single layout operation. Keep the public regression for an isolated deletion alongside zero-write rejection of real body/metadata changes plus deletion, multiple deletions, and duplicate unchanged input paths. The shared apply layout restriction remains the final dispatch gate.
+
+Retain the complete command JSON, installed executable hash, original pin hashes, service method/path/byte ledger, original dispatch hashes and cleanup result in the printed consumer scratch directory's `controlled-authoring/evidence.json`. Public read/files metrics are reconciled with the actual received requests; author commands without a metrics flag use the independent service ledger. Request observations and source mutations must remain distinct. The service closes in `finally`; cleanup never touches production Notion or the user's configuration. This controlled gate does not establish real Notion author permission, alternate input formats or arbitrary legacy operation recovery.
 
 ## Driving it with control-ntn-skills
 
@@ -62,7 +80,7 @@ Preconditions:
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- replace "$MARKDOWN_INPUT" --target "$PAGE_ID" --database "$DATABASE" --name "$TITLE" --description "$DESCRIPTION" --dry-run
   ```
 
-- **Create/new and conflict.** For an approved absent name, create once, retain the returned page ID and pinned snapshot, then read the returned current page ID online. Repeating create with the same input returns `CREATE_CONFLICT` before mutation; compare remote state afterward.
+- **Create/new and conflict.** For an approved absent name, create once, retain the returned page ID and pinned snapshot, then read the returned current page ID online. In a shared library, repeating the exact original intent reuses its verified original operation without new writes; a different intent with the same name returns `NAME_CONFLICT`. Legacy creation retains its `CREATE_CONFLICT` behavior. Select and record the actual branch, and compare remote state afterward.
 
   ```bash
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- create "$INPUT" --database "$DATABASE"
