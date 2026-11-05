@@ -2,9 +2,10 @@ import { Clock, Effect, Option, Stdio, Stream } from "effect"
 import { Argument, Command } from "effect/cli"
 import { consume } from "../../core/src/consumer.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
-import { fail, resolveRecord, SkillsError } from "../../core/src/model.ts"
+import { fail, SkillsError } from "../../core/src/model.ts"
 import { catalog } from "../../core/src/catalog.ts"
-import { fileRef, pageId, parseTarget } from "../../core/src/ref.ts"
+import { isCurrentNameTarget, resolveCatalogReference } from "../../core/src/catalog-reference.ts"
+import { parseTarget } from "../../core/src/ref.ts"
 import { Notion } from "../../core/src/notion.ts"
 import {
   databaseFlag,
@@ -42,37 +43,19 @@ export const useCommand = defineCommand(
       let selected = config.selector
       // Canonical and fixed refs are direct. Only human names need a metadata
       // lookup, and it must establish uniqueness before loading any body.
-      if (
-        !target.snapshot &&
-        !pageId(target.selector) &&
-        !/^(shared_skill:[^:]+:.+|(?:notion_subscription|upstream):[a-f0-9-]+)$/u.test(
-          target.selector,
-        )
-      ) {
+      if (isCurrentNameTarget(target)) {
         const directory = yield* catalog({
           ...policy,
           database: Option.getOrUndefined(config.database),
         })
-        const record = yield* Effect.try({
-          try: () => resolveRecord(target.selector, directory),
+        const selection = yield* Effect.try({
+          try: () => resolveCatalogReference(config.selector, directory),
           catch: (error) =>
             error instanceof SkillsError
               ? error
               : fail("INVALID_ARGUMENT", "Invalid Skill selection."),
         })
-        if (!directory.coverage.exhaustive)
-          return yield* Effect.fail(
-            fail(
-              "CATALOG_INCOMPLETE",
-              "Name uniqueness requires complete discovery; select an exact returned ref or specify --database.",
-              {
-                selector: target.selector,
-                coverage: directory.coverage,
-                candidates: [record],
-              },
-            ),
-          )
-        selected = fileRef(record.id, target.path || record.entrypoint)
+        selected = selection.ref
       }
       const freshness = policy.offline
         ? { policy: "offline" as const }

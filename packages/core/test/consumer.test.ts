@@ -14,7 +14,7 @@ import {
   prepareSharedSnapshotHistory,
   retainSharedSnapshotHistory,
 } from "../src/shared-snapshot-history.ts"
-import { readSkill } from "../src/snapshot.ts"
+import { listSkill, readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import { digest, encode, id, library, sharedSnapshotFixture } from "./shared-snapshot-fixture.ts"
 
@@ -142,6 +142,31 @@ async function fixture(definitions: Readonly<Record<string, Definition>>) {
 }
 
 describe("once consume contract", () => {
+  test("fixed historical names list the manifest without reading body objects or current metadata", async () => {
+    const f = await fixture({ a: { name: "Historical Name" } })
+    const snapshot = f.get("a")
+    f.objects.clear()
+    for (const name of [snapshot.record.name, snapshot.record.alias]) {
+      const listed = await f.run(
+        listSkill(fileRef(name, "", snapshot.snapshot_id), { offline: true }),
+      )
+      expect(listed.record).toEqual(snapshot.record)
+      expect(listed.scope).toBe(snapshot.scope)
+      expect(listed.snapshot_id).toBe(snapshot.snapshot_id)
+      expect(listed.files).toEqual(
+        snapshot.files.map(({ path, bytes }) => ({ path, bytes, ref: f.ref("a") })),
+      )
+    }
+    const wrong = await f.run(
+      listSkill(fileRef("current-replacement", "", snapshot.snapshot_id), { offline: true }).pipe(
+        Effect.result,
+      ),
+    )
+    expect(wrong._tag === "Failure" && wrong.failure.code).toBe("SNAPSHOT_CONFLICT")
+    expect(f.readBytes.size).toBe(0)
+    expect(f.calls).toHaveLength(0)
+  })
+
   test("a matching frozen main File ID takes precedence over an obsolete path hint", async () => {
     const f = await fixture({ a: {}, b: {} })
     const snapshot = f.get("a")

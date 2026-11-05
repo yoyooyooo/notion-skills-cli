@@ -70,6 +70,33 @@ freshness, databases, coverage and applicable View/Profile metadata, without a C
 envelope. Both use core catalog cache eligibility directly. They spawn no process
 and need no separate cache-identity request or host-derived catalog cache.
 
+`resolveCatalogReference(ref, directory)` is a synchronous, pure selection helper.
+It returns `{ record, scope, ref }`, with the selected path carried into a canonical
+identity ref. Supply the complete ordinary `listCatalog` result for the declared
+source, without a View, Profile, search query or pagination projection. This ordinary
+directory contains enabled consumable records; disabled stable-ID conflicts and
+exact disabled-target admission retain their existing Core checks. Names and aliases
+match exactly. Full coverage with no match returns `SKILL_NOT_FOUND`; two matches
+return `SKILL_AMBIGUOUS`. Incomplete coverage, a failed source, a repeated identity or
+a projected directory returns `CATALOG_INCOMPLETE`, even for zero or one match.
+
+CLI `read` and `use` share this selection rule. The two normal snapshot name lookup
+paths require complete evidence; the best-effort lookup used only to invalidate a
+failed current observation does not grant consumption authority. `consume` itself
+continues to require exact machine targets. A host resolves a human name first, then
+passes the returned canonical ref unchanged to `consume` and its result decoder.
+Known canonical IDs and session short refs retain their direct identity paths.
+
+The SDK also exports `listSkill(ref, options): Promise<ListSkillResult>`, the existing
+`files` operation. For a fixed ref it validates the historical manifest, name/alias,
+scope, database constraint and known permission denials without preparing the main
+or reading body objects. A locally complete manifest can be listed while every body
+object is absent. A missing manifest may use the existing retained-pin lookup;
+absence remains `SNAPSHOT_MISSING`, and a wrong historical name remains
+`SNAPSHOT_CONFLICT`. Copy the returned canonical file ref for `readSkill` or
+`readResources`. Current `listSkill` retains the existing current acquisition rules;
+it is not a new metadata-only catalog operation.
+
 | Input | Contract |
 | --- | --- |
 | `version` | Exactly `1`; unknown versions and extra input fields fail validation. |
@@ -168,6 +195,26 @@ const result = await consume(input, {
 if (result.status === "ready") await decodeConsumeResult(result, input)
 ```
 
+For a current human selector, use the same installed SDK for metadata selection and
+consumption. This is two SDK operations within the caller's tool, with one graph
+preparation and no CLI subprocess per node:
+
+```ts
+import { listCatalog, resolveCatalogReference, listSkill, consume, readResources } from "ntn-skills/sdk"
+
+const source = { ...options, database: declaredDatabase }
+const directory = await listCatalog(source)
+const selected = resolveCatalogReference("skill://review-skill/SKILL.md", directory)
+const consumed = await consume({ version: 1, targets: [selected.ref], purpose: "use" }, source)
+
+// fixedRef comes from an earlier system response. Its historical name is checked
+// against that pin; current discovery cannot rebind it to another owner.
+const files = await listSkill(fixedRef, source)
+const resource = files.files.find((file) => file.path === requestedPath)
+if (!resource) throw new Error("The selected snapshot has no requested resource")
+const bytes = await readResources({ version: 1, refs: [resource.ref] }, source)
+```
+
 `PACKAGE_VERSION` comes from the same package manifest that supplies the CLI binary.
 An integrating host must select and pin one package artifact for both entrypoints;
 it must reject a missing/incompatible SDK instead of silently selecting another CLI.
@@ -225,8 +272,8 @@ must count SDK calls separately from those HTTP measurements and retain truncati
 
 An already aborted signal does no acquisition. Aborting initialization, headers or
 body work interrupts the operation and waits for its scope cleanup before settlement.
-`consume` and `readResources` return `status: cancelled`; `readSkill`, `listCatalog`
-and `listSkills` reject with `SkillsError` code `CANCELLED`. Header/body cancellation
+`consume` and `readResources` return `status: cancelled`; `readSkill`, `listSkill`,
+`listCatalog` and `listSkills` reject with `SkillsError` code `CANCELLED`. Header/body cancellation
 retains actual attempts and unknown response-byte counters after scope cleanup.
 A host must not publish a late result after its own cancellation boundary.
 
@@ -471,3 +518,10 @@ Required dependency against the packaged CLI, and checks fixed binary resources,
 proof negatives, cancellation and concurrent environment/cwd isolation. All network
 fixtures are loopback only. These are package/contract/runtime checks, not published
 release status or provider-delivery proof.
+
+The same installed smoke exercises exact display-name and alias selection, rejects
+View/query/page/incomplete uniqueness evidence, and passes the canonical selection
+unchanged into the consumer decoder. A fixed-name resource case removes all objects
+from an owned copy, lists only the real manifest, restores those objects, then reads
+only the returned resource while observing zero main-object reads. Its HTTP and
+object-read ledgers remain separate from actual Pi provider delivery.

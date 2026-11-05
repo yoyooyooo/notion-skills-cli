@@ -5,8 +5,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Schema } from "effect"
 import { HttpClient } from "effect/http"
 import { Notion } from "../src/notion.ts"
+import { catalog } from "../src/catalog.ts"
 import { Store, sha256 } from "../src/store.ts"
-import { decode, fail, type Snapshot } from "../src/model.ts"
+import { CatalogSchema, decode, fail, type Snapshot } from "../src/model.ts"
 import { publicationGuard, publicationManifest } from "../src/publication-integrity.ts"
 import { canonical } from "../src/publication-observation.ts"
 import { makeSkillRefresh, openSkill, readSkill } from "../src/snapshot.ts"
@@ -41,6 +42,7 @@ let credential = "fixture-credential"
 let user = "user"
 let downloads = 0
 let extraProperties: Record<string, unknown> = {}
+let searchContainsSource = false
 const requests: string[] = []
 
 const json = new Map<string, unknown>()
@@ -91,6 +93,14 @@ const api = Layer.succeed(Notion, {
     requests.push(path)
     if (!authorized) return Effect.fail(fail("ACCESS_DENIED", "revoked"))
     if (path === "v1/users/me") return Effect.succeed({ id: user, object: "user" })
+    if (path === "v1/search")
+      return Effect.succeed({
+        results: searchContainsSource
+          ? [{ id: "ds", parent: { database_id: database }, database_type: "skills", title: [] }]
+          : [],
+        has_more: false,
+        next_cursor: null,
+      })
     if (path === `v1/pages/${page}`)
       return Effect.succeed({
         id: returnedPageId,
@@ -198,7 +208,43 @@ beforeEach(() => {
   downloads = 0
   requests.length = 0
   extraProperties = {}
+  searchContainsSource = false
 })
+
+for (const matches of [0, 1])
+  for (const offline of [false, true])
+    test(`current name rejects a cached incomplete catalog with ${matches} matches, offline=${offline}`, async () => {
+      await run(readSkill(page, { database }))
+      await run(catalog({ database, refresh: true }))
+      const key = [...json.keys()].find((value) => value.startsWith("cache/catalogs/"))
+      if (key === undefined) throw new Error("Expected a real catalog observation")
+      const observed = decode(CatalogSchema, json.get(key))
+      json.set(key, {
+        ...observed,
+        records: observed.records.slice(0, matches),
+        coverage: { ...observed.coverage, exhaustive: false, search_index_limited: true },
+      })
+      requests.length = 0
+      const beforeDownloads = downloads
+      const result = await run(
+        readSkill("skill://sample-skill/SKILL.md", { database, offline }).pipe(Effect.result),
+      )
+      expect(result._tag === "Failure" && result.failure.code).toBe("CATALOG_INCOMPLETE")
+      expect(requests).toEqual([])
+      expect(downloads).toBe(beforeDownloads)
+    })
+
+for (const matches of [0, 1])
+  test(`current name rejects fresh non-exhaustive discovery with ${matches} matches before body reads`, async () => {
+    searchContainsSource = matches === 1
+    const result = await run(
+      readSkill("skill://sample-skill/SKILL.md", { refresh: true }).pipe(Effect.result),
+    )
+    expect(result._tag === "Failure" && result.failure.code).toBe("CATALOG_INCOMPLETE")
+    expect(requests).not.toContain(`v1/pages/${page}`)
+    expect(requests).not.toContain(`v1/ai/skills/${page}`)
+    expect(downloads).toBe(0)
+  })
 
 test("pinned reads keep old content after updates and remote revocation; new online reads require access", async () => {
   const first = await run(openSkill(page))

@@ -26,6 +26,22 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 
 Default View 正例只增加完整 View metadata observation；原 consumer fixture 的正文状态单独标记。`--catalog --default-view-cache missing|incomplete` 各生成新 owned fixture，实际 SDK/正常 Pi 默认目录必须拒绝缺失或不完整观察。不能只验证预期错误就把正例算通过。跨仓 driver 使用 fixture 的 `default_view.records` 和 `catalog_records` 独立核对，真实 Notion 和真实模型仍各自取证。
 
+### SC25 C2：名称选择与固定 manifest
+
+CLI `read/use` 与 SDK `resolveCatalogReference` 共享完整普通目录的精确名称/alias 选择。普通目录仍是 enabled 可消费集合，不改 catalog/cache 格式；disabled 的稳定 ID 冲突和精确目标拒绝仍由原 Core 层守住。View、Profile、query、分页片、source failure 和 incomplete 的零/单匹配均不能证明唯一性。两条正常 snapshot 名称路径必须同样拒绝；失败后的 best-effort cache 失效定位保留其原职责，不被当成新的消费授权。
+
+原 `consumer` 的 exact-target 输入、`root.target` 与 decoder 的 expected targets 不放宽。SDK 调用者先 `listCatalog({database})`，再同步 `resolveCatalogReference`，最后把返回 canonical ref 原样传给 `consume/read`；canonical 和会话短引用不额外走名称目录。固定名称走 SDK `listSkill` / CLI `files` 的原 manifest 校验，不通过 current 目录重新绑定。复制返回的 canonical resource ref，再按需读取；不为固定资源准备主文。
+
+```bash
+bun test packages/core/test/catalog-consumption.test.ts packages/core/test/snapshot.test.ts packages/core/test/consumer.test.ts packages/cli/test/sdk.test.ts --timeout 30000
+node scripts/sdk-fixture.ts --outdir "$RUN/scratch/sdk-names" --catalog --distinct-names
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/sdk-names/fixture.json" --outdir "$RUN/evidence/sdk-names-installed"
+```
+
+`--distinct-names` 只在新 owned fixture 生成前把 a 的 display name 设为 `A`，alias 按原 `aliasFor` 得到 `a`，随后统一生成 manifest、current receipts 和 catalog；不能手改已生成 receipt。该 fixture 供名称场景使用，原 Pi all14 的默认 fixture 和既有名字断言保持不变。
+
+保留旧版 incomplete 零匹配 `SKILL_NOT_FOUND` / 单匹配错误成功的原红例，以及同入口新 `CATALOG_INCOMPLETE` 的无正文/无源请求证明。安装 smoke 同时验证真实 SDK export、生成声明、公共 CLI 名称 read/use 与完整 canonical consume/decoder 一致。固定资源场景先将 owned copy 的全部 objects 移出，实际 `listSkill` 仍成功且零 object reads；wrong historical name 和 absent pin 保留原错误。归还原对象后只读返回 resource，主文零读，HTTP/trace 账本完整。以上不能代替真实 Pi 名称工具调用和下一次 provider 正文证明；后者复用 Broker 原 SDK-Pi 场景。
+
 既有 `control.ts consumption/prepare/import/reuse` 现在沿全部 list cursor 收集目录，首批 refresh、后续 offline 复用同次观察，并核对 scope、fetched_at、总数与重复 ID；不能把默认 50 条当全库。所有当前 read 的 adoption/retention/Records 写入仍进入 request_metrics。Cleanup 只移动本次 owned fixture/安装目录，保留归档、hash、失败原件和证据。
 
 导航：[Sub-features](#sub-features) · [用户入口](#how-to-get-to-it-user-pov) · [驱动与清理](#driving-it-with-control-ntn-skills) · [Gotchas](#gotchas)。

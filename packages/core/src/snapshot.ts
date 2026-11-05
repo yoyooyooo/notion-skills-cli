@@ -39,6 +39,7 @@ import {
   type Snapshot,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
+import { isCurrentNameTarget, resolveCatalogReference } from "./catalog-reference.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
 import { fileRef, pageId, parseRef, parseTarget, resolveRef, type SkillTarget } from "./ref.ts"
 import { Store, sha256 } from "./store.ts"
@@ -277,7 +278,10 @@ function openSnapshot(
       const directory = observation.catalog
       scope = directory.scope
       const resolved = yield* Effect.try({
-        try: () => resolveRecord(selector, directory),
+        try: () =>
+          isCurrentNameTarget({ selector })
+            ? resolveCatalogReference(selector, directory).record
+            : resolveRecord(selector, directory),
         catch: (error) => error as SkillsError,
       })
       if (resolved.locator.type === "notion_subscription")
@@ -953,7 +957,7 @@ function acquireTargetSnapshot(
         const directoryResult = yield* catalog(options).pipe(Effect.result)
         if (directoryResult._tag === "Failure") return yield* Effect.fail(directoryResult.failure)
         selected = yield* Effect.try({
-          try: () => resolveRecord(target.selector, directoryResult.success).id,
+          try: () => resolveCatalogReference(target.selector, directoryResult.success).record.id,
           catch: (error) => error as SkillsError,
         })
       }

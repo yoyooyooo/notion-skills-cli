@@ -9,6 +9,8 @@ import {
   readSkill,
   listCatalog,
   listSkills,
+  listSkill,
+  resolveCatalogReference,
   SkillsError,
   SDK_VERSION,
   CONSUMER_CONTRACT_VERSION,
@@ -41,6 +43,35 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
+  test("name resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
+    expect(() =>
+      resolveCatalogReference("skill://missing/SKILL.md", {
+        scope: "a".repeat(64),
+        fetched_at: 1000,
+        databases: [],
+        records: [],
+        coverage: {
+          method: "search_and_registered",
+          exhaustive: false,
+          queried_data_sources: [],
+          failed_sources: [],
+          search_index_limited: true,
+        },
+      }),
+    ).toThrow(expect.objectContaining({ code: "CATALOG_INCOMPLETE" }))
+    const controller = new AbortController()
+    controller.abort()
+    const reports: unknown[] = []
+    await expect(
+      listSkill(resourceRef, {
+        env: {},
+        signal: controller.signal,
+        onRequestMetrics: (value) => reports.push(value),
+      }),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    expectUnstartedMetrics(reports, 1)
+  })
+
   test("catalog/list cancellation and invalid pagination fail before runtime acquisition", async () => {
     const controller = new AbortController()
     controller.abort()

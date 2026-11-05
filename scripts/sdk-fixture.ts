@@ -7,6 +7,7 @@ import {
   decode,
   property,
   text,
+  aliasFor,
   type Snapshot,
   type Source,
   type Catalog,
@@ -32,6 +33,8 @@ import {
 } from "../packages/core/test/shared-snapshot-fixture.ts"
 
 const args = process.argv.slice(2)
+const distinctNames = args.at(-1) === "--distinct-names"
+if (distinctNames) args.pop()
 const defaultViewCache = args[4] ?? "complete"
 if (
   (args.length !== 2 &&
@@ -42,7 +45,7 @@ if (
   !isAbsolute(args[1]!)
 )
   throw new Error(
-    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog [--default-view-cache complete|missing|incomplete]]",
+    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog [--default-view-cache complete|missing|incomplete]] [--distinct-names]",
   )
 const withCatalog = args[2] === "--catalog"
 const root = args[1]!
@@ -123,6 +126,9 @@ const resourceFiles = [
 ]
 const snapshots: Snapshot[] = names.map((name, index) => {
   const library = name === "foreign" ? "sdk-foreign-library" : "sdk-library"
+  // Derive both selectors before publishing the original manifest and current
+  // receipts. Consumers never rewrite an alias inside signed fixture state.
+  const displayName = name === "foreign" ? "a" : distinctNames && name === "a" ? "A" : name
   const id = `shared_skill:${library}:${name}`
   const content =
     name === "a" ? "\uFEFF# a\r\n完整正文 α\r\n" : `# ${name}\nFull instruction ${name}.\n`
@@ -138,8 +144,8 @@ const snapshots: Snapshot[] = names.map((name, index) => {
     record: {
       id,
       kind: "skill",
-      name: name === "foreign" ? "a" : name,
-      alias: name === "foreign" ? "a" : name,
+      name: displayName,
+      alias: aliasFor(displayName),
       description: `Controlled SDK fixture ${name}`,
       enabled: true,
       default_context: false,
@@ -794,6 +800,7 @@ const metadata = {
   scope,
   env: join(root, "env.json"),
   catalog: withCatalog,
+  distinct_names: distinctNames,
   database: "00000000-0000-4000-8000-000000000010",
   catalog_records: catalogSnapshots.map((snapshot) => snapshot.record.id),
   default_view: withCatalog

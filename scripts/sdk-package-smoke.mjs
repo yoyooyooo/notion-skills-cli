@@ -475,7 +475,20 @@ try {
           const unscoped = await sdk.listSkills({ ...options, offline: true })
           assert.equal(unscoped.has_more, false)
           assert.equal(unscoped.coverage.exhaustive, false)
-          return { complete, first, view }
+          const record = fixture.snapshots[0].record
+          const namedRef = `skill://${encodeURIComponent(record.name)}/SKILL.md`
+          const aliasRef = `skill://${encodeURIComponent(record.alias)}/SKILL.md`
+          const selected = sdk.resolveCatalogReference(namedRef, complete)
+          assert.deepEqual(selected, { record, scope: fixture.scope, ref: record.ref })
+          assert.deepEqual(sdk.resolveCatalogReference(aliasRef, complete), selected)
+          for (const projected of [view, first, query, unscoped])
+            assert.throws(() => sdk.resolveCatalogReference(namedRef, projected), {
+              code: "CATALOG_INCOMPLETE",
+            })
+          assert.throws(() => sdk.resolveCatalogReference("missing-name", complete), {
+            code: "SKILL_NOT_FOUND",
+          })
+          return { complete, first, view, selected, namedRef, aliasRef }
         },
       )
       const objectProof = objectReadProof("metadata-directory", [])
@@ -516,23 +529,56 @@ try {
         used.preparation.nodes.find((node) => node.id === fixture.snapshots[0].record.id).content,
         inspect.value.content,
       )
-      const named = await invokeCli([
-        "use",
-        "skill://a/SKILL.md",
-        "--database",
-        fixture.database,
-        "--offline",
-        "--json",
-      ])
-      assert.equal(named.code, 0)
-      assert.deepEqual(named.value.preparation.required_closure, used.preparation.required_closure)
-      const partial = await invokeCli(["use", "skill://a/SKILL.md", "--offline", "--json"])
-      assert.equal(partial.code, 1)
-      assert.equal(partial.value.error.code, "CATALOG_INCOMPLETE")
+      const selectedInput = input([observed.selected.ref])
+      const selected = await sdk.consume(selectedInput, options)
+      await sdk.decodeConsumeResult(selected, selectedInput)
+      assert.equal(selected.status, "ready")
+      assert.equal(selected.preparation.roots[0].target, observed.selected.ref)
+      assert.deepEqual(selected.preparation.required_closure, used.preparation.required_closure)
+      assert.deepEqual(selected.entries, used.entries)
+      for (const ref of [observed.namedRef, observed.aliasRef]) {
+        const direct = await sdk.consume(input([ref]), { ...options, database: fixture.database })
+        assert.equal(direct.status, "failed", "Machine consume remains an exact-target contract")
+        assert.equal(direct.error.code, "EXACT_TARGET_REQUIRED")
+        const named = await invokeCli([
+          "use",
+          ref,
+          "--database",
+          fixture.database,
+          "--offline",
+          "--json",
+        ])
+        assert.equal(named.code, 0)
+        assert.equal(named.value.preparation.roots[0].target, observed.selected.ref)
+        assert.deepEqual(
+          named.value.preparation.required_closure,
+          used.preparation.required_closure,
+        )
+        const read = await invokeCli([
+          "read",
+          ref,
+          "--database",
+          fixture.database,
+          "--offline",
+          "--json",
+        ])
+        assert.equal(read.code, 0)
+        assert.equal(read.value.content, inspect.value.content)
+        for (const command of ["read", "use"]) {
+          const partial = await invokeCli([command, ref, "--offline", "--json"])
+          assert.equal(partial.code, 1)
+          assert.equal(partial.value.error.code, "CATALOG_INCOMPLETE")
+        }
+      }
       return {
         catalog_count: observed.complete.count,
         default_view_count: observed.view.count,
         pagination_count: observed.first.count,
+        name_selection: {
+          input: observed.namedRef,
+          alias: observed.aliasRef,
+          canonical: observed.selected.ref,
+        },
         object_reads: objectProof,
         request_metrics: reports,
       }
@@ -551,7 +597,7 @@ try {
     )
     await writeFile(
       join(root, "consumer.ts"),
-      `import { consume, readSkill, readResources, listCatalog, listSkills, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot, type ListCatalogResult, type ListSkillsResult } from "ntn-skills/sdk";
+      `import { consume, readSkill, readResources, listCatalog, listSkills, listSkill, resolveCatalogReference, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot, type ListCatalogResult, type ListSkillsResult, type ListSkillResult } from "ntn-skills/sdk";
   const input = { version: 1, targets: ["page"], purpose: "use" } satisfies ConsumeInput;
   const version: 1 = SDK_VERSION;
   const received: Promise<ConsumeResult> = consume(input, { cwd: ".", env: {}, signal: new AbortController().signal, metrics: true, execution: { priority: "prefetch", queueBudgetMs: 100, timeBudgetMs: 200, rateShare: .1 }, onRequestMetrics: (snapshot: RequestMetricsSnapshot | null) => void snapshot });
@@ -559,11 +605,13 @@ try {
   const resources = { version: 1, refs: ["fixed-file"], budget: { maxFiles: 16, maxBytes: 1048576, timeBudgetMs: 30000 } } satisfies ResourceReadInput;
   const catalog: Promise<ListCatalogResult> = listCatalog({ cwd: ".", env: {}, defaultView: true, offline: true });
   const page: Promise<ListSkillsResult> = listSkills({ cwd: ".", env: {}, query: "review", limit: 20, cursor: "returned-cursor" });
+  const files: Promise<ListSkillResult> = listSkill("skill://name/?snapshot=returned-pin", { cwd: ".", env: {}, offline: true, metrics: true });
+  const selection = (directory: ListCatalogResult) => resolveCatalogReference("skill://name/SKILL.md", directory);
   const resourceVersion: 1 = RESOURCE_READ_CONTRACT_VERSION;
   const outputProofVersion: 1 = READ_OUTPUT_PROOF_VERSION;
   const outputProof = (result: ReadSkillResult) => "output" in result ? [result.sha256, result.entrypoint_sha256] : [];
   const batch: Promise<ResourceReadResult> = readResources(resources, { cwd: ".", env: {}, offline: true, metrics: true, signal: new AbortController().signal });
-  void [received, read, batch, catalog, page, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
+  void [received, read, batch, catalog, page, files, selection, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
   // @ts-expect-error purpose is a closed protocol domain
   const wrong: ConsumeInput = { version: 1, targets: [], purpose: "activate" };
   void wrong;
@@ -641,6 +689,73 @@ try {
         sdk_calls: 1,
       }
     })
+
+  await test("fixed names list only their manifest and returned resources do not prepare the main", async () => {
+    const snapshot = fixture.snapshots[0]
+    const resource = snapshot.files.find((file) => file.sha256 === fixture.resource.sha256)
+    const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
+    assert.ok(resource && main)
+    const cwd = join(root, "fixed-name-manifest")
+    await cp(fixture.cwd, cwd, { recursive: true, errorOnExist: true, force: false })
+    const objects = join(cwd, env.NTN_SKILLS_HOME, "objects")
+    const preservedObjects = join(root, "fixed-name-preserved-objects")
+    await rename(objects, preservedObjects)
+    const reports = []
+    const fixedOptions = {
+      ...options,
+      cwd,
+      database: fixture.database,
+      offline: true,
+      onRequestMetrics: (value) => reports.push(value),
+    }
+    const named = (name) =>
+      `skill://${encodeURIComponent(name)}/${resource.path}?snapshot=${snapshot.snapshot_id}`
+    const listed = await traceObjectReads("fixed-name-manifest", objects, async () => {
+      const value = await sdk.listSkill(named(snapshot.record.name), fixedOptions)
+      assert.equal(value.snapshot_id, snapshot.snapshot_id)
+      assert.equal(value.version_id, snapshot.version_id)
+      assert.equal(value.scope, fixture.scope)
+      assert.equal(value.record.id, snapshot.record.id)
+      assert.deepEqual(value.files, [
+        { path: resource.path, bytes: resource.bytes, ref: fixture.resource.ref },
+      ])
+      for (const ref of [named(snapshot.record.alias), fixture.resource.ref])
+        assert.deepEqual((await sdk.listSkill(ref, fixedOptions)).files, value.files)
+      await assert.rejects(sdk.listSkill(named("wrong-historical-name"), fixedOptions), {
+        code: "SNAPSHOT_CONFLICT",
+      })
+      await assert.rejects(
+        sdk.listSkill(`skill://missing/?snapshot=s_${"e".repeat(64)}`, fixedOptions),
+        {
+          code: "SNAPSHOT_MISSING",
+        },
+      )
+      return value
+    })
+    const manifestProof = objectReadProof("fixed-name-manifest", [])
+    assert.equal(manifestProof.reads, 0, "Manifest-only name selection cannot open a body object")
+    await rename(preservedObjects, objects)
+    const read = await traceObjectReads("fixed-name-selected-resource", objects, () =>
+      sdk.readResources({ version: 1, refs: [listed.files[0].ref] }, fixedOptions),
+    )
+    assert.equal(read.status, "ready", JSON.stringify(read))
+    assert.equal(read.files.length, 1)
+    assert.equal(read.files[0].sha256, resource.sha256)
+    const resourceProof = objectReadProof("fixed-name-selected-resource", [resource], [main])
+    for (const report of reports) {
+      assert.ok(report)
+      assert.equal(report.total_requests, 0)
+      assert.equal(report.trace_dropped, 0)
+      assert.equal(report.in_flight, 0)
+    }
+    return {
+      name: snapshot.record.name,
+      alias: snapshot.record.alias,
+      manifest: manifestProof,
+      resource: resourceProof,
+      request_metrics: reports,
+    }
+  })
 
   await test("fixed binary resource output preserves Core shape and exact bytes", async () => {
     const reports = []

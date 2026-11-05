@@ -14,6 +14,7 @@ export {
   type CatalogOptions,
 } from "./catalog.ts"
 export * from "./views.ts"
+export { resolveCatalogReference } from "./catalog-reference.ts"
 export * from "./snapshot.ts"
 export * from "./graph-prepare-model.ts"
 export { prepareGraph } from "./graph-prepare.ts"

@@ -18,7 +18,11 @@ import {
   createRequestMetrics,
   type RequestMetricsSnapshot,
 } from "../../core/src/request-metrics.ts"
-import { readSkill as coreReadSkill, type ReadOptions } from "../../core/src/snapshot.ts"
+import {
+  readSkill as coreReadSkill,
+  listSkill as coreListSkill,
+  type ReadOptions,
+} from "../../core/src/snapshot.ts"
 import {
   readResources as coreReadResources,
   decodeResourceReadInput,
@@ -56,6 +60,7 @@ export type {
 } from "../../core/src/consumer-model.ts"
 export { SkillsError } from "../../core/src/model.ts"
 export { parseDuration } from "../../core/src/cache.ts"
+export { resolveCatalogReference } from "../../core/src/catalog-reference.ts"
 export { READ_OUTPUT_PROOF_VERSION } from "../../core/src/snapshot.ts"
 export type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"
 export {
@@ -85,6 +90,8 @@ export interface SdkOptions {
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal">
 export type ReadSkillOptions = SdkOptions & ReadOptions
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
+export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreListSkill>[1]>
+export type ListSkillResult = Effect.Success<ReturnType<typeof coreListSkill>>
 export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal">
 export type ListCatalogOptions = SdkOptions & CoreListCatalogOptions
 export type ListSkillsOptions = SdkOptions & CoreListSkillsOptions
@@ -150,7 +157,7 @@ async function runOperation<A>(
   }
 }
 
-/** One preparation and one verified receipt; this never loops over readSkill. */
+/** Exact targets only. Resolve current names from listCatalog before this single preparation. */
 export async function consume(
   input: unknown,
   options: ConsumeOptions = {},
@@ -248,6 +255,24 @@ export function readSkill(
         from: options.from,
         lines: options.lines,
         output: options.output,
+        refresh: options.refresh,
+        offline: options.offline,
+        maxAge: options.maxAge,
+      }),
+    options,
+  )
+}
+
+/** Core files shape. Fixed refs read the verified manifest without acquiring file objects. */
+export function listSkill(
+  target: string,
+  options: ListSkillOptions = {},
+): Promise<ListSkillResult> {
+  return runOperation(
+    () =>
+      coreListSkill(target, {
+        database: options.database,
+        path: options.path,
         refresh: options.refresh,
         offline: options.offline,
         maxAge: options.maxAge,
