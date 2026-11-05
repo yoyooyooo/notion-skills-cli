@@ -86,6 +86,91 @@ async function fixture(retain = false, fileCount = 3, selectedBody?: string) {
 }
 
 describe("fixed snapshot selected files", () => {
+  test("targetSnapshot keeps its public metadata shape without selected byte payloads", async () => {
+    const f = await fixture()
+    const selected = f.file("references/1.md")
+    const expected = decode(SnapshotSchema, f.json.get(`snapshots/${f.snapshot.snapshot_id}.json`))
+    const result = await f.run(
+      targetSnapshot(parseTarget(f.ref(selected.path)), { offline: true }, "generated", "target"),
+    )
+    expect(result).toEqual({
+      ...expected,
+      source: "local_snapshot",
+      freshness: { policy: "pinned" },
+      materialization: {
+        manifest_complete: true,
+        local_files_ready: false,
+        materialized_paths: [selected.path],
+        loaded: false,
+      },
+    })
+    expect(f.objectReads.get(`objects/${selected.sha256}`)).toBe(1)
+  })
+
+  test("fixed scalar main text and output each read only their one selected object", async () => {
+    for (const output of [undefined, "/memory/main.md"]) {
+      const f = await fixture()
+      const main = f.file(f.snapshot.entrypoint)
+      const expected = f.objects.get(`objects/${main.sha256}`)
+      if (expected === undefined) throw new Error("Expected main fixture bytes")
+      f.objects.delete(`objects/${f.file("references/1.md").sha256}`)
+      const result = await f.run(readSkill(f.ref(), { offline: true, output }))
+      expect(result.path).toBe(main.path)
+      if ("content" in result) expect([...encode(result.content)]).toEqual([...expected])
+      else {
+        expect(f.outputs.get(result.output)).toEqual(expected)
+        expect(result.sha256).toBe(main.sha256)
+        expect(result.entrypoint_sha256).toBe(main.sha256)
+      }
+      expect([...f.objectReads]).toEqual([[`objects/${main.sha256}`, 1]])
+      expect(f.calls).toHaveLength(0)
+    }
+  })
+
+  test("each fixed scalar call rereads the object and rejects damage after an earlier success", async () => {
+    const f = await fixture()
+    const selected = f.file("references/1.md"),
+      key = `objects/${selected.sha256}`
+    for (const output of ["/memory/first", "/memory/second"])
+      await f.run(readSkill(f.ref(selected.path), { offline: true, output }))
+    expect([...f.objectReads]).toEqual([[key, 2]])
+    expect(f.outputs.get("/memory/second")).toEqual(f.outputs.get("/memory/first"))
+    f.objects.set(key, encode("corrupt after the successful reads"))
+    const error = await f.run(
+      Effect.flip(readSkill(f.ref(selected.path), { offline: true, output: "/memory/rejected" })),
+    )
+    expect(error.code).toBe("STATE_CORRUPT")
+    expect([...f.objectReads]).toEqual([[key, 3]])
+    expect(f.outputs.has("/memory/rejected")).toBe(false)
+    expect(f.calls).toHaveLength(0)
+  })
+
+  test("fixed relative and retained reads reuse only the selected file from their acquisition", async () => {
+    const relative = await fixture()
+    const file = relative.file("references/1.md")
+    const result = await relative.run(
+      readSkill(file.path, { from: relative.ref(), offline: true, output: "/memory/relative" }),
+    )
+    expect(result.path).toBe(file.path)
+    expect(relative.outputs.get("/memory/relative")).toEqual(
+      relative.objects.get(`objects/${file.sha256}`),
+    )
+    expect([...relative.objectReads]).toEqual([[`objects/${file.sha256}`, 1]])
+    const retained = await fixture(true)
+    const selected = retained.file(file.path)
+    retained.json.delete(`snapshots/${retained.snapshot.snapshot_id}.json`)
+    const recovered = await retained.run(
+      readSkill(retained.ref(selected.path), { offline: true, output: "/memory/retained" }),
+    )
+    expect(recovered.path).toBe(selected.path)
+    expect(retained.outputs.get("/memory/retained")).toEqual(
+      retained.objects.get(`objects/${selected.sha256}`),
+    )
+    expect([...retained.objectReads]).toEqual([[`objects/${selected.sha256}`, 1]])
+    expect(relative.calls).toHaveLength(0)
+    expect(retained.calls).toHaveLength(0)
+  })
+
   test("an expired current cache with old broken references refreshes before the selective reference gate", async () => {
     const f = await fixture()
     const bytes = encode("[Old unresolved resource](./missing.md)\n")
@@ -180,6 +265,7 @@ describe("fixed snapshot selected files", () => {
     expect([...new TextEncoder().encode(result.content)]).toEqual([...expected])
     expect(result.materialization?.materialized_paths).toEqual([selected.path])
     expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+    expect(f.objectReads.get("objects/" + selected.sha256)).toBe(1)
     expect(f.calls).toHaveLength(0)
     expect(result).not.toHaveProperty("sha256")
     expect(result).not.toHaveProperty("entrypoint_sha256")
@@ -206,6 +292,7 @@ describe("fixed snapshot selected files", () => {
     expect(result).not.toHaveProperty("content")
     expect(f.outputs.get("/memory/selected.bin")).toEqual(expected)
     expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+    expect(f.objectReads.get("objects/" + selected.sha256)).toBe(1)
     expect(f.calls).toHaveLength(0)
   })
 
@@ -231,6 +318,7 @@ describe("fixed snapshot selected files", () => {
       expect(output.byteLength).toBe(selected.bytes)
       expect(digest(output)).toBe(selected.sha256)
       expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+      expect(f.objectReads.get("objects/" + selected.sha256)).toBe(1)
       expect(f.calls).toHaveLength(0)
     })
   }
@@ -264,6 +352,7 @@ describe("fixed snapshot selected files", () => {
     expect(output.byteLength).toBe(selected.bytes)
     expect(digest(output)).toBe(selected.sha256)
     expect([...f.objectReads.keys()]).toEqual([`objects/${selected.sha256}`])
+    expect(f.objectReads.get(`objects/${selected.sha256}`)).toBe(1)
     expect(f.calls).toHaveLength(0)
   })
 
@@ -380,6 +469,7 @@ describe("fixed snapshot selected files", () => {
     expect(result.path).toBe(selected.path)
     expect(result.materialization?.materialized_paths).toEqual([selected.path])
     expect([...f.objectReads.keys()]).toEqual(["objects/" + selected.sha256])
+    expect(f.objectReads.get("objects/" + selected.sha256)).toBe(1)
     expect(f.calls).toHaveLength(0)
   })
 

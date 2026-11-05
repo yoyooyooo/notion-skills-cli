@@ -97,6 +97,14 @@ object to supply that commitment. A host can compare a persisted owner binding
 and verify the output file without preparing a Skill body or accepting the
 resource batch's size budget. These machine fields are absent from ordinary
 text/line reads and do not establish model delivery or instruction activation.
+
+A fixed single-file read carries the selected, verified bytes from acquisition to
+its output step within that invocation. A fully cached target needs one object
+read instead of being read again after its manifest was selected. The final
+file byte/hash check remains in place; the bytes are not added to the public
+snapshot or SDK result, retained across calls, or used to extend current-state
+freshness. Missing-object recovery and its persistence costs remain separate.
+
 `readSkill` and `decodeConsumeResult` reject with the exported `SkillsError` for typed
 domain failures, preserving `_tag`, `code`, `message` and optional `details`.
 Unexpected implementation defects remain rejected promises.

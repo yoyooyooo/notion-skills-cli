@@ -844,7 +844,7 @@ function selectedMaterialization(snapshot: Snapshot, files: readonly { readonly 
   }
 }
 
-export function targetSnapshot(
+function acquireTargetSnapshot(
   target: SkillTarget,
   options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
   view: SnapshotView = "generated",
@@ -881,6 +881,7 @@ export function targetSnapshot(
       return [path]
     }
     let snapshot: ObservedSnapshot
+    let files: readonly { readonly path: string; readonly bytes: Uint8Array }[] | undefined
     if (target.snapshot) {
       if (access !== "all") {
         const selected = yield* openFixedSnapshotFiles(target.snapshot, select, options)
@@ -890,6 +891,7 @@ export function targetSnapshot(
           freshness: { policy: "pinned" },
           materialization: selectedMaterialization(selected.snapshot, selected.files),
         }
+        files = selected.files
       } else {
         const complete = yield* loadSnapshot(target.snapshot).pipe(Effect.result)
         if (complete._tag === "Success")
@@ -1069,8 +1071,20 @@ export function targetSnapshot(
       try: () => assertSnapshotTarget(snapshot, target, view, pinnedDatabase),
       catch: (error) => error as SkillsError,
     })
-    return snapshot
+    return { snapshot, files }
   })
+}
+
+/** Keep selected bytes private to the operation that consumes them. */
+export function targetSnapshot(
+  target: SkillTarget,
+  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
+  view: SnapshotView = "generated",
+  access: "all" | "manifest" | "entrypoint" | "target" = "all",
+) {
+  return acquireTargetSnapshot(target, options, view, access).pipe(
+    Effect.map(({ snapshot }) => snapshot),
+  )
 }
 
 /** Local refs remain pure; a source-root crossing uses the same exact map as read --from. */
@@ -1131,7 +1145,7 @@ export function readSkill(input: string, options: ReadOptions = {}) {
         fail("INVALID_ARGUMENT", "--output and --lines cannot be combined."),
       )
     let target: SkillTarget
-    let snapshot: ObservedSnapshot
+    let acquired: Effect.Success<ReturnType<typeof acquireTargetSnapshot>>
     if (options.from) {
       const base = yield* Effect.try({
         try: () => {
@@ -1157,19 +1171,20 @@ export function readSkill(input: string, options: ReadOptions = {}) {
         try: () => parseTarget(resolved),
         catch: (error) => error as SkillsError,
       })
-      snapshot =
+      acquired =
         target.snapshot === containing.snapshot_id &&
         target.selector === parseTarget(fileRef(containing.record.id, "")).selector &&
         containing.materialization === undefined
-          ? containing
-          : yield* targetSnapshot(target, options, "generated", "target")
+          ? { snapshot: containing, files: undefined }
+          : yield* acquireTargetSnapshot(target, options, "generated", "target")
     } else {
       target = yield* Effect.try({
         try: () => parseTarget(input, options.path),
         catch: (error) => error as SkillsError,
       })
-      snapshot = yield* targetSnapshot(target, options, "generated", "target")
+      acquired = yield* acquireTargetSnapshot(target, options, "generated", "target")
     }
+    const { snapshot, files } = acquired
     const path =
       (yield* Effect.try({
         try: () => boundSnapshotPath(snapshot, target),
@@ -1184,7 +1199,9 @@ export function readSkill(input: string, options: ReadOptions = {}) {
         }),
       )
     const store = yield* Store
-    const bytes = yield* store.readBytes(`objects/${file.sha256}`)
+    const bytes =
+      files?.find((selected) => selected.path === path)?.bytes ??
+      (yield* store.readBytes(`objects/${file.sha256}`))
     if (bytes.length !== file.bytes || (yield* sha256(bytes)) !== file.sha256)
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "The cached file failed its content checksum."),

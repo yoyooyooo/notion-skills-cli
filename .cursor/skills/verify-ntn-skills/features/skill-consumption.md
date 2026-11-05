@@ -147,6 +147,8 @@ fixture 必须使用符合 CLI runtime 要求的实际 Node 运行；它会经�
 
 固定资源的 `readSkill(ref, { output })` 通过 `READ_OUTPUT_PROOF_VERSION = 1` 暴露所选文件 `sha256` 与独立 manifest 的 `entrypoint_sha256`。普通 text/lines 输出不携带这两个机器字段。`fixed-snapshot-files.test.ts` 在主文对象缺失时验证完整输出、空文件、binary 与超过 batch 16 MiB 上限的 scalar 对象；`sdk-package-smoke.mjs` 验证实际声明导出、安装包 SDK/CLI output 等价和 owner hash。不要用资源 batch 的预算替换原 scalar 能力，也不要将短引用自身的 owner hash 当作 SDK 的独立证明。Pi 主文对象、物化、会话 loaded 与 provider 投递各由 Broker 的两个 scalar 场景取证。
 
+固定单文件 acquisition 的已验目标 bytes 只在本次 `readSkill` 内传到输出，最终 bytes/hash 校验仍保留；公共 `targetSnapshot`、text/lines/output 形状不增加字节缓存。定向测试核对暖目标每次调用只读一个对象、第二次调用仍重新读取、坏对象拒绝，以及 main/resource、relative/File ID 的选择。当前观察分支不据此宣称更少读取或更长 freshness；缺失恢复的失败尝试与持久化读回另计。实际 Pi 对照须按每个 SDK read 的 start/end 区间核目标对象正控制，不能以总数平均值或进程缓存冒充单次复用。
+
 SC13 继续使用上面的 `sdk-fixture.ts --catalog` 与 `sdk-package-smoke.mjs`，不增加验收专用产品入口。新增的独立 `entrypoint` Skill 保留完整主文、小资源和两份约 2 MiB 的未选对象；原 `a` 与 `resources` 场景不变。先跑安全的相关回归：
 
 ```bash
