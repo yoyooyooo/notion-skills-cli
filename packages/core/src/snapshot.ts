@@ -2,7 +2,11 @@ import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
 import { readArchive } from "./archive.ts"
 import { openRetainedSnapshot } from "./shared-history-materialization.ts"
-import { loadSnapshot, openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
+import {
+  loadSnapshot,
+  loadSnapshotManifest,
+  openFixedSnapshotFiles,
+} from "./fixed-snapshot-files.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
 import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
@@ -48,8 +52,11 @@ import {
 import { canonicalMain } from "./portable.ts"
 import {
   cachedRemoteObservation,
+  assertKnownSnapshotAccess,
   effectiveCachePolicy,
   freshness,
+  invalidateSnapshotCache,
+  invalidateScopeCache,
   locallySelectedScope,
   publishSnapshotObservation,
   validateReadPolicy,
@@ -888,17 +895,32 @@ function acquireTargetSnapshot(
         snapshot = {
           ...selected.snapshot,
           source: "local_snapshot",
-          freshness: { policy: "pinned" },
+          freshness: {
+            policy: "pinned",
+            ...(selected.access_denied === undefined ? {} : { stale: true }),
+          },
           materialization: selectedMaterialization(selected.snapshot, selected.files),
         }
         files = selected.files
       } else {
-        const complete = yield* loadSnapshot(target.snapshot).pipe(Effect.result)
+        const complete = yield* loadSnapshotManifest(target.snapshot).pipe(
+          Effect.flatMap((manifest) =>
+            Effect.gen(function* () {
+              const accessDenied = yield* assertKnownSnapshotAccess(manifest, options.offline)
+              yield* validateSnapshot(manifest)
+              return { manifest, accessDenied }
+            }),
+          ),
+          Effect.result,
+        )
         if (complete._tag === "Success")
           snapshot = {
-            ...complete.success,
+            ...complete.success.manifest,
             source: "local_snapshot",
-            freshness: { policy: "pinned" },
+            freshness: {
+              policy: "pinned",
+              ...(complete.success.accessDenied === undefined ? {} : { stale: true }),
+            },
           }
         else {
           if (complete.failure.code !== "SNAPSHOT_MISSING")
@@ -937,11 +959,10 @@ function acquireTargetSnapshot(
       }
       const observedResult =
         scope && selected && !options.refresh
-          ? yield* cachedRemoteObservation(
-              selected,
-              scope,
-              access === "all" ? undefined : { access: "metadata" },
-            ).pipe(Effect.result)
+          ? yield* cachedRemoteObservation(selected, scope, {
+              ...(access === "all" ? {} : { access: "metadata" as const }),
+              offline: options.offline,
+            }).pipe(Effect.result)
           : undefined
       if (observedResult?._tag === "Failure" && options.offline)
         return yield* Effect.fail(observedResult.failure)
@@ -1030,7 +1051,10 @@ function acquireTargetSnapshot(
             ? {}
             : { shared_body_valid_until: observed.shared_body_valid_until }),
           source: "local_cache",
-          freshness: freshness(options, observed.validated_at, now, maxAge, observed.metadata_only),
+          freshness: {
+            ...freshness(options, observed.validated_at, now, maxAge, observed.metadata_only),
+            ...(observed.invalidated ? { stale: true } : {}),
+          },
         }
       } else {
         if (options.offline)
@@ -1050,6 +1074,39 @@ function acquireTargetSnapshot(
           options,
           view,
           !options.refresh && options.maxAge !== 0,
+        ).pipe(
+          Effect.tapError((error) =>
+            Effect.gen(function* () {
+              if (!scope) return
+              if (error.code === "AUTH_REQUIRED") return yield* invalidateScopeCache(scope)
+              if (
+                error.code !== "ACCESS_DENIED" &&
+                error.code !== "NOT_FOUND" &&
+                error.code !== "CONTENT_DISABLED"
+              )
+                return
+              // A refresh by name still has a known local binding when its
+              // online lookup is denied. Resolve only existing metadata here.
+              if (!selected) {
+                const cached = yield* catalog({
+                  database: options.database,
+                  offline: true,
+                }).pipe(Effect.result)
+                if (cached._tag === "Success") {
+                  const resolved = yield* Effect.try({
+                    try: () => resolveRecord(target.selector, cached.success).id,
+                    catch: (cause) => cause as SkillsError,
+                  }).pipe(Effect.result)
+                  if (resolved._tag === "Success") selected = resolved.success
+                }
+              }
+              if (selected)
+                yield* invalidateSnapshotCache(selected, scope, {
+                  retainForOffline: true,
+                  ...(error.code === "ACCESS_DENIED" ? { accessDenied: error.code } : {}),
+                })
+            }),
+          ),
         )
         const validatedAt = online.freshness?.validated_at
           ? Date.parse(online.freshness.validated_at)

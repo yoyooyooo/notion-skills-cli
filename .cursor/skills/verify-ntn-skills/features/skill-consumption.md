@@ -38,6 +38,8 @@ Default View 正例只增加完整 View metadata observation；原 consumer fixt
 | SC-VERIFY-02 | 证据判据拒绝假成功 | 沿用 [图合同](skill-dependency-graph.md) 的 oracle、scope、hash 和完整正文反例；消费链扩展由 Broker `scripts/skill-consumption-contract.mjs` 驱动，按主地图的实际命令执行 |
 | SC-VERIFY-03 | 下一位 Agent 独立完成 Launch → Doctor → Drive → Evidence → Cleanup，清理后证据不变 | 本页给出实际 CLI 消费路径；真实 Pi 路径、独立新会话和最终模型验收各保留自己的结果 |
 | SC-TOOLS-04 | 同一固定 owner/pin 的资源集合一次获取，源字节与投递证明分开 | [资源合同](../../../../docs/resource-read-contract.md)、Core 定向测试、现有独立 SDK smoke；实际 Pi 从 Broker 主地图 `resource-batch` 进入 |
+| SC-CACHE-12 | 权限否定后不能借旧 TTL 成功；已知 401 scope / 403 target 拒绝默认 fixed 读取，清理和旧 publisher 不解封；explicit offline 保留旧事实并标 stale；404/disabled 不撤销历史 pin 权威；跨进程暖读取零 HTTP | [缓存验证计划](sync-cache-verification-plan.md#sc12-consumption-qualification-and-installed-proof)、`cache.test.ts`、真实 SQLite 及既有 SDK smoke 的 `cache-*` 阶段；Pi resume/fork/rewind 仍走 Broker 主地图 |
+| SC-REQUEST-15 | 不同队列预算不合并；相同有效预算继续共享；取消与 unknown write 不被隐藏 | [请求引擎](request-engine.md#sc15-消费请求共享与预算)、既有 Notion/coalescer/Node scheduler 及 SDK AbortSignal 驱动；真实 Pi Stop 独立验收 |
 | SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象；current 先判定完整来源归属，再获取必需字节 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、既有 SDK smoke 的 partial-cache 与 cold ownership case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
 | SC-METADATA-01 | 单次 scalar current 读取内，逻辑选择与原生引用编译复用完整六属性目录 | [目录复用合同](../../../../docs/shared-metadata-consumption.md)、下方 scalar inventory 回归和独立 SDK/CLI smoke；完整 SC11 投影/批次矩阵仍单列 |
 | SC-TOOLS-14 | 固定单资源 output 直接返回文件与 owner 主文承诺，不获取主文对象 | [消费合同](../../../../docs/consumer-contract.md)、fixed-snapshot-files 的 output 回归与独立 SDK/CLI smoke；实际 Pi 从 Broker 主地图 `resource-scalar` / `resource-scalar-short-refs` 进入 |

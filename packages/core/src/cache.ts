@@ -101,6 +101,11 @@ export const clearCachePolicy = Effect.gen(function* () {
 })
 
 export const ScopeSchema = Schema.Struct({ scope: Schema.String })
+/** Directory invalidation is cache state; public catalogs expose freshness instead. */
+export const CatalogObservationSchema = Schema.Struct({
+  ...CatalogSchema.fields,
+  invalidated: Schema.optional(Schema.Boolean),
+})
 export const SourceBundleCheckpointSchema = Schema.Struct({
   version: Schema.Literal(1),
   snapshot_id: Schema.String,
@@ -123,7 +128,10 @@ export const ObservationSchema = Schema.Struct({
   bundle_checkpoint: Schema.optional(SourceBundleCheckpointSchema),
   metadata_only: Schema.optional(Schema.Literal(true)),
   shared_body_valid_until: Schema.optional(Schema.Number),
+  access_denied: Schema.optional(Schema.Literals(["AUTH_REQUIRED", "ACCESS_DENIED"])),
 })
+export type AccessDenial = "AUTH_REQUIRED" | "ACCESS_DENIED"
+const scopeAccessIdentity = "access:scope"
 export interface Freshness {
   readonly policy: "default" | "refresh" | "offline" | "max_age" | "pinned"
   readonly validated_at?: string
@@ -434,14 +442,8 @@ function cachedRecordIdentity(selector: string, scope: string) {
     return { identity: saved?.record_identity ?? `notion_page:${id}`, page: id }
   })
 }
-export function cachedRemoteObservation(
-  page: string,
-  scope: string,
-  options: { readonly access?: "all" | "manifest" | "metadata" } = {},
-) {
+function latestObservation(page: string, scope: string) {
   return Effect.gen(function* () {
-    const selected = yield* cachedRecordIdentity(page, scope)
-    page = selected.identity
     const store = yield* Store
     const keys = yield* store.listKeys(`cache/latest/${scope}/${page}`)
     const entries: Array<typeof ObservationSchema.Type> = []
@@ -464,8 +466,68 @@ export function cachedRemoteObservation(
       }
     }
     entries.sort((a, b) => b.generation - a.generation)
-    const latest = entries[0]
-    if (!latest || latest.invalidated) return undefined
+    return entries[0]
+  })
+}
+/** Reserve before authentication so an older response cannot erase a newer denial. */
+export function reserveScopeAccess(scope: string) {
+  return Effect.flatMap(Store, (store) => store.reserveCacheGeneration(scope, scopeAccessIdentity))
+}
+export function recordScopeAccess(scope: string, generation: number, denied?: AccessDenial) {
+  return Effect.gen(function* () {
+    const previous = yield* latestObservation(scopeAccessIdentity, scope)
+    if (denied === undefined && previous?.access_denied === undefined) return
+    const now = yield* Clock.currentTimeMillis
+    const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
+    yield* (yield* Store).writeJson(`cache/latest/${scope}/${scopeAccessIdentity}/${id}.json`, {
+      record_identity: scopeAccessIdentity,
+      scope,
+      started_at: now,
+      validated_at: now,
+      generation,
+      invalidated: true,
+      ...(denied === undefined ? {} : { access_denied: denied }),
+    })
+  }).pipe(
+    Effect.mapError((error) =>
+      error instanceof SkillsError
+        ? error
+        : fail("CRYPTO_ERROR", "Could not publish the authorization observation."),
+    ),
+  )
+}
+/** This checks known denials only. Hashes never become a new permission grant. */
+export function assertKnownSnapshotAccess(snapshot: Snapshot, offline = false) {
+  return Effect.gen(function* () {
+    const scope = yield* latestObservation(scopeAccessIdentity, snapshot.scope)
+    const target = yield* latestObservation(snapshot.record.id, snapshot.scope)
+    const denied = scope?.access_denied ?? target?.access_denied
+    if (denied !== undefined && !offline)
+      return yield* Effect.fail(
+        fail(
+          denied,
+          "Known access rejection prevents an online fixed read; revalidate the selected authority or explicitly read historical bytes offline.",
+          { record_id: snapshot.record.id, snapshot_id: snapshot.snapshot_id },
+        ),
+      )
+    return denied
+  })
+}
+export function cachedRemoteObservation(
+  page: string,
+  scope: string,
+  options: {
+    readonly access?: "all" | "manifest" | "metadata"
+    readonly offline?: boolean
+  } = {},
+) {
+  return Effect.gen(function* () {
+    const selected = yield* cachedRecordIdentity(page, scope)
+    page = selected.identity
+    const store = yield* Store
+    const latest = yield* latestObservation(page, scope)
+    if (!latest || (latest.invalidated && (!options.offline || !latest.snapshot_id)))
+      return undefined
     if (latest.materialization_version !== currentMaterializationVersion(page))
       return yield* Effect.fail(
         fail(
@@ -525,6 +587,7 @@ export function cachedRemoteObservation(
       bundle_checkpoint: latest.bundle_checkpoint,
       metadata_only: latest.metadata_only,
       shared_body_valid_until: latest.shared_body_valid_until,
+      invalidated: latest.invalidated,
     }
   })
 }
@@ -558,7 +621,11 @@ export function invalidateSubscriptionCatalog(scope: string, targetDatabase: str
   })
 }
 
-export function invalidateSnapshotCache(page: string, scope?: string) {
+export function invalidateSnapshotCache(
+  page: string,
+  scope?: string,
+  options: { readonly retainForOffline?: boolean; readonly accessDenied?: AccessDenial } = {},
+) {
   if (pageId(page)) page = `notion_page:${pageId(page)}`
   return Effect.gen(function* () {
     const store = yield* Store
@@ -576,14 +643,22 @@ export function invalidateSnapshotCache(page: string, scope?: string) {
       if (viewKeys.size) yield* store.retireKeys([...viewKeys])
       const identity = (yield* cachedRecordIdentity(page, selected)).identity
       const generation = yield* store.reserveCacheGeneration(selected, identity)
+      const last = yield* latestObservation(identity, selected)
+      const previous = options.retainForOffline ? last : undefined
       const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
       yield* store.writeJson(`cache/latest/${selected}/${identity}/${id}.json`, {
+        ...previous,
         record_identity: identity,
         scope: selected,
         started_at: now,
-        validated_at: now,
+        // A rejected refresh retires current eligibility, not the last successful
+        // observation or its immutable pin. Offline reads retain its actual age.
+        validated_at: previous?.validated_at ?? now,
         generation,
         invalidated: true,
+        ...((options.accessDenied ?? last?.access_denied)
+          ? { access_denied: options.accessDenied ?? last?.access_denied }
+          : {}),
       })
     }
   }).pipe(
@@ -593,6 +668,53 @@ export function invalidateSnapshotCache(page: string, scope?: string) {
         : fail("CRYPTO_ERROR", "Could not invalidate the observation identity."),
     ),
   )
+}
+
+/** Authentication rejection invalidates every known current binding in that scope. */
+export function invalidateScopeCache(
+  scope: string,
+  denied: AccessDenial = "AUTH_REQUIRED",
+  generation?: number,
+) {
+  return Effect.gen(function* () {
+    const store = yield* Store
+    yield* recordScopeAccess(scope, generation ?? (yield* reserveScopeAccess(scope)), denied)
+    const records = new Set(
+      (yield* store.listKeys(`cache/latest/${scope}`)).map((key) => key.split("/")[3]!),
+    )
+    const catalogs = new Set(yield* store.listKeys(`cache/catalogs/${scope}`))
+    const views = new Set(yield* store.listKeys(`cache/views/${scope}`))
+    // Include work that reserved a generation but has not published a result.
+    for (const key of yield* store.listKeys(`cache-generations/${scope}`)) {
+      const identity = key.split("/")[2]!.replace(/\.json$/, "")
+      if (identity.startsWith("catalog-"))
+        catalogs.add(`cache/catalogs/${scope}/${identity.slice(8)}.json`)
+      else if (identity.startsWith("views-"))
+        views.add(`cache/views/${scope}/${identity.slice(6)}.json`)
+      else if (identity !== scopeAccessIdentity) records.add(identity)
+    }
+    if (views.size) yield* store.retireKeys([...views])
+    for (const record of records)
+      if (record !== scopeAccessIdentity)
+        yield* invalidateSnapshotCache(record, scope, { retainForOffline: true })
+    for (const key of catalogs) {
+      const previous = yield* store.readJson(key, CatalogObservationSchema)
+      if (!previous) {
+        yield* store.retireKeys([key])
+        continue
+      }
+      if (previous.scope !== scope)
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "Cached catalog scope differs from its key."),
+        )
+      const identity = `catalog-${key
+        .split("/")
+        .at(-1)!
+        .replace(/\.json$/, "")}`
+      const generation = yield* store.reserveCacheGeneration(scope, identity)
+      yield* store.writeJson(key, { ...previous, invalidated: true, generation })
+    }
+  })
 }
 
 function cachedTarget(target: string, database?: string) {

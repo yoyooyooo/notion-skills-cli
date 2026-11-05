@@ -39,7 +39,7 @@ node scripts/verify-skill-graph-contract.mjs doctor --cli "$CLI_ENTRY"
 node scripts/verify-skill-graph-contract.mjs baseline --cli "$CLI_ENTRY" --cli-root "$CLI_CHECKOUT" --evidence-root "$EVIDENCE_ROOT"
 ```
 
-`CLI_CHECKOUT` 为本 CLI 仓库，`EVIDENCE_ROOT` 为外部持久证据目录。runner 新建 owned scratch，以白名单环境清除继承认证，在真实候选 CLI 上执行 `--version`、`schema prepare`、`schema update`。不存在的 prepare 或 Requires 保留 fail-before；schema 出现仅记 `schema-present-unverified`。源码扫描和提交基线只表明是否观察到旧路径，不能证明新 HTTP 行为。每次重新运行分配新目录，保留先前失败。
+`CLI_CHECKOUT` 为本 CLI 仓库，`EVIDENCE_ROOT` 为外部持久证据目录。runner 新建 owned scratch，以白名单环境清除继承认证，在真实候选 CLI 上执行 `--version`、`schema ctl prepare`、`schema update`。不存在的 prepare 或 Requires 保留 fail-before；schema 出现仅记 `schema-present-unverified`。源码扫描和提交基线只表明是否观察到旧路径，不能证明新 HTTP 行为。每次重新运行分配新目录，保留先前失败。
 
 NG-RE-02～04 的 live/故障验证随对应实现切片接入既有 control/CLI；运行前用真实 schema 检查公开入口。生产只读验证使用明确授权凭据；429、request_blocked、超时/断连和未知写入在受控 HTTP fixture 注入，不故意撞生产限流。HTTP账本需记录每次 attempt 的 status、request ID、Retry-After、安全 additional_data、scope、queue/attempt/operation 耗时和结果，不能以 CLI 次数代替请求数。Retry-After 是最小等待；未知写必须保留原 operation 和证据。
 
@@ -108,3 +108,16 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 完整空账本需要同时看到 `trace_enabled:true`、`total_requests:0`、空 trace 和 `trace_dropped:0`。service 尚未创建或失败回执没有账本时不能推断零请求。真实入口成功与失败的统一输出由 NG-RE-05 验收；retry 策略接入后还须在唯一传输循环核对 `retry_wait_ms` 的实际归因，不能添加第二次 sleep 来满足数字。
 
 `notionRetryDelay` 只计算带 Effect Random jitter 的等待策略，服务端 Retry-After 始终是下限。实际循环、HTTP attempt timeout、operation deadline、明确拒绝恢复和未知写保护仍由同一传输/原 operation 拥有；单独通过策略测试不代表这些集成已通过。
+
+## SC15 消费请求共享与预算
+
+用户从 `read`、`use`、SDK 消费进入同一 Notion 请求服务。共享键包括凭据/API origin、方法、完整路径/查询/body、文件方式、有效 queueBudgetMs，以及适用的 prefetch class/rate share。显式默认队列预算与省略值属于同一资格；不同预算必须各自排队，不能继承先到者的超时或 deferred 结果。普通读取和安全 metadata query 可以共享 pending producer，完成后不作为结果缓存；写入与可能 retention/adoption 的整次 consume 不合并。
+
+```bash
+bun test packages/core/test/notion.test.ts packages/core/test/shared-read-coalescing.test.ts packages/core/test/notion-http.test.ts packages/core/test/request-metrics.test.ts --timeout 30000
+NG04_EVIDENCE="$NG04_EVIDENCE" node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-request-scheduler.node.test.ts packages/core/test/notion-scheduler-multiprocess.node.test.ts --reporter=json --outputFile="$NG04_EVIDENCE/scheduler.json"
+```
+
+保留短预算先到、长预算先到、同一有效预算共享三个观察，以及单 waiter/最后 waiter 取消、429/503、Retry-After、队列满载、未知写和崩溃恢复原例。NG04_EVIDENCE 必须为新 owned 外部目录；`cross-process-spacing.json` 在断言前保存每个 worker 的派发、server arrival 与完成时间。派发间隔仍至少325ms、六次派发跨度仍至少1650ms；逐请求需满足派发≤到达≤完成。服务器实际到达间隔原样记录，不能宣称它等于配置的发送间隔。调度器保证准入/派发预算，不保证操作系统与 HTTP 客户端首次初始化后的服务器匀速到达。
+
+默认消费不启动预取。可选 prefetch 仍限只读叶子并遵守既有预算，不能预取具有 adoption/retention 副作用的整个 current consume。当前 pending 请求共享、机器级 SQLite 准入和已有重试 owner 保持；没有同条件全任务收益证据时，不新增跨进程内容共享服务、后台 daemon 或另一层 retry。独立安装的 AbortSignal 门禁与真实 Pi Stop 各自验收，不能用内部 producer 取消代替 Agent 已停止或模型已收到正文。

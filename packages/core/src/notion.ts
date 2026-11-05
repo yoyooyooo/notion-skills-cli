@@ -207,9 +207,10 @@ export const NotionTransport = Layer.effect(
             path,
             body,
             options?.file,
-            ...(options?.priority === "prefetch"
-              ? ["prefetch", options.rateShare ?? 0.1, options.queueBudgetMs]
-              : []),
+            // A shared producer owns admission; incompatible queue budgets
+            // cannot inherit the first waiter's timeout or deferred outcome.
+            options?.queueBudgetMs ?? NOTION_ADMISSION_BUDGET_MS,
+            ...(options?.priority === "prefetch" ? ["prefetch", options.rateShare ?? 0.1] : []),
           ]),
         )
         const deadline =

@@ -1,6 +1,6 @@
 import { spawn, execFileSync } from "node:child_process"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, realpath, stat, symlink } from "node:fs/promises"
+import { mkdir, mkdtemp, realpath, stat, symlink, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
@@ -173,33 +173,60 @@ test("three real Node processes with distinct content roots share the machine se
     expect(run.arrivals.length).toBe(6)
     const times = run.arrivals.map((arrival) => arrival.time).sort((a, b) => a - b)
     const gaps = times.slice(1).map((time, index) => time - times[index]!)
-    const dispatched = receipts
-      .flatMap((receipt) => {
-        if (!Array.isArray(receipt.result.value))
-          throw new Error("Missing worker dispatch observations")
-        return receipt.result.value.map((value) => {
-          if (typeof value !== "object" || value === null || typeof value.dispatched !== "number")
-            throw new Error("Invalid worker dispatch observation")
-          return value.dispatched
-        })
+    const sent = receipts.flatMap((receipt, index) => {
+      if (!Array.isArray(receipt.result.value))
+        throw new Error("Missing worker dispatch observations")
+      return receipt.result.value.map((value: unknown) => {
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          !("dispatched" in value) ||
+          typeof value.dispatched !== "number" ||
+          !("received" in value) ||
+          typeof value.received !== "number" ||
+          !("item" in value) ||
+          typeof value.item !== "number"
+        )
+          throw new Error("Invalid worker dispatch observation")
+        return {
+          path: `/worker-${index}/${value.item}`,
+          dispatched: value.dispatched,
+          received: value.received,
+        }
       })
-      .sort((a, b) => a - b)
+    })
+    const dispatched = sent.map((entry) => entry.dispatched).sort((a, b) => a - b)
     const dispatchGaps = dispatched.slice(1).map((time, index) => time - dispatched[index]!)
+    const timeline = {
+      case: "cross-process-spacing",
+      processes: receipts.length,
+      requests: times.length,
+      minimum_dispatch_gap_ms: Math.min(...dispatchGaps),
+      dispatch_span_ms: dispatched.at(-1)! - dispatched[0]!,
+      minimum_arrival_gap_ms: Math.min(...gaps),
+      arrival_span_ms: times.at(-1)! - times[0]!,
+      receipts,
+      arrivals: run.arrivals,
+    }
+    console.log(JSON.stringify(timeline))
+    if (process.env.NG04_EVIDENCE !== undefined)
+      await writeFile(
+        join(process.env.NG04_EVIDENCE, "cross-process-spacing.json"),
+        JSON.stringify(timeline, null, 2) + "\n",
+        { flag: "wx", mode: 0o600 },
+      )
     expect(Math.min(...dispatchGaps)).toBeGreaterThanOrEqual(325)
     // Socket arrival is independently observed. Cold fetch initialization and
     // OS delivery may compress arrival gaps after correctly spaced dispatches.
-    expect(times.at(-1)! - times[0]!).toBeGreaterThanOrEqual(1_650)
+    expect(dispatched.at(-1)! - dispatched[0]!).toBeGreaterThanOrEqual(1_650)
+    for (const entry of sent) {
+      const arrival = run.arrivals.filter((item) => item.path === entry.path)
+      expect(arrival).toHaveLength(1)
+      expect(arrival[0]!.time).toBeGreaterThanOrEqual(entry.dispatched)
+      expect(entry.received).toBeGreaterThanOrEqual(arrival[0]!.time)
+    }
     expect((await stat(run.directory)).mode & 0o777).toBe(0o700)
     expect((await stat(join(run.directory, "notion-requests.sqlite"))).mode & 0o777).toBe(0o600)
-    console.log(
-      JSON.stringify({
-        case: "cross-process-spacing",
-        processes: receipts.length,
-        requests: times.length,
-        minimum_dispatch_gap_ms: Math.min(...dispatchGaps),
-        minimum_arrival_gap_ms: Math.min(...gaps),
-      }),
-    )
   } finally {
     await run.close()
   }

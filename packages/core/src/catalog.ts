@@ -1,6 +1,5 @@
 import { Clock, Effect, Schema } from "effect"
 import {
-  CatalogSchema,
   DatabaseSchema,
   DataSourceSchema,
   UserSchema,
@@ -39,31 +38,52 @@ import {
 } from "./upstream-router.ts"
 import type { ContentRecord } from "./model.ts"
 import {
+  CatalogObservationSchema,
   effectiveCachePolicy,
   freshness,
   locallySelectedScope,
+  invalidateScopeCache,
+  reserveScopeAccess,
+  recordScopeAccess,
   recordScope,
   validateReadPolicy,
   type ReadPolicyOptions,
 } from "./cache.ts"
 
 export const authScope = Effect.gen(function* () {
-  const api = yield* Notion
-  if (api.connectionIdentity !== undefined) {
-    const identity = yield* api.connectionIdentity
-    return yield* sha256(
-      JSON.stringify([identity.principal, "", identity.api_origin, identity.credential]),
+  const local = yield* locallySelectedScope().pipe(Effect.result)
+  const previous = local._tag === "Success" ? local.success : undefined
+  const generation = previous === undefined ? undefined : yield* reserveScopeAccess(previous)
+  const authenticated = yield* Effect.gen(function* () {
+    const api = yield* Notion
+    if (api.connectionIdentity !== undefined) {
+      const identity = yield* api.connectionIdentity
+      return yield* sha256(
+        JSON.stringify([identity.principal, "", identity.api_origin, identity.credential]),
+      )
+    }
+    const value = yield* api.request("v1/users/me")
+    const user = yield* Effect.try({
+      try: () => decode(UserSchema, value),
+      catch: () => fail("INVALID_RESPONSE", "Invalid authenticated user response."),
+    })
+    const credential = yield* api.credentialIdentity
+    // Only the selected credential digest enters cached authentication scopes.
+    const scope = yield* sha256(JSON.stringify([user.id, "", "https://api.notion.com", credential]))
+    return scope
+  }).pipe(Effect.result)
+  if (authenticated._tag === "Failure") {
+    const error = authenticated.failure
+    if (
+      previous !== undefined &&
+      (error.code === "AUTH_REQUIRED" || error.code === "ACCESS_DENIED")
     )
+      yield* invalidateScopeCache(previous, error.code, generation)
+    return yield* Effect.fail(error)
   }
-  const value = yield* api.request("v1/users/me")
-  const user = yield* Effect.try({
-    try: () => decode(UserSchema, value),
-    catch: () => fail("INVALID_RESPONSE", "Invalid authenticated user response."),
-  })
-  const credential = yield* api.credentialIdentity
-  // Only the selected credential digest enters cached authentication scopes.
-  const scope = yield* sha256(JSON.stringify([user.id, "", "https://api.notion.com", credential]))
-  return scope
+  if (authenticated.success === previous && generation !== undefined)
+    yield* recordScopeAccess(authenticated.success, generation)
+  return authenticated.success
 })
 
 function paginate<S extends Schema.ConstraintDecoder<unknown>>(
@@ -480,7 +500,7 @@ function readCatalog(
     const now = yield* Clock.currentTimeMillis
     const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).catalog_max_age_ms
     if (!options.refresh) {
-      const result = yield* store.readJson(key, CatalogSchema).pipe(Effect.result)
+      const result = yield* store.readJson(key, CatalogObservationSchema).pipe(Effect.result)
       if (result._tag === "Failure" && options.offline) return yield* Effect.fail(result.failure)
       const cached = result._tag === "Success" ? result.success : undefined
       const age = cached ? now - cached.fetched_at : NaN
@@ -488,7 +508,8 @@ function readCatalog(
         cached &&
         cached.scope === scope &&
         !cached.coverage.failed_sources.length &&
-        (options.offline || (Number.isFinite(age) && age >= 0 && age < maxAge))
+        (options.offline ||
+          (!cached.invalidated && Number.isFinite(age) && age >= 0 && age < maxAge))
       ) {
         const records: ContentRecord[] = []
         const failed: SourceFailure[] = []
@@ -564,8 +585,9 @@ function readCatalog(
             })
           else return yield* Effect.fail(checked.failure)
         }
+        const { invalidated, ...retained } = cached
         return {
-          ...cached,
+          ...retained,
           records,
           coverage: {
             ...cached.coverage,
@@ -573,7 +595,10 @@ function readCatalog(
             failed_sources: failed,
           },
           source: "local_cache" as const,
-          freshness: freshness(options, cached.fetched_at, now, maxAge),
+          freshness: {
+            ...freshness(options, cached.fetched_at, now, maxAge),
+            ...(invalidated ? { stale: true } : {}),
+          },
         }
       }
       if (options.offline)

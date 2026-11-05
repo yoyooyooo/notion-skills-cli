@@ -107,7 +107,7 @@ The designed default is TTL = 300,000 ms. Test exact boundaries with a controlle
 | C4 | Explicit refresh during TTL; ordinary read after an independent remote reference edit | Refresh sees the change immediately. Ordinary reads may show the bounded old version during TTL but must reveal the new complete content after validation |
 | C5 | Remote version unchanged during refresh | Keep immutable snapshot/content objects stable, update validation observation only; do not claim a new content version |
 | C6 | Expired cache with network/rate-limit failure, then explicit `--offline` selection | Default online read fails; offline reads report age/source and fail on missing or unsafe-scope selection. Failure does not reset `validated_at`; no stale-on-error flag is required |
-| C7 | Online validation returns denied/missing/unauthorized | No automatic stale fallback. Content checksums and old cache do not prove current permission |
+| C7 | Online validation returns denied/missing/unauthorized, including a failed explicit refresh within the old TTL | ACCESS_DENIED/NOT_FOUND retires the known target's current eligibility. AUTH_REQUIRED or identity-endpoint denial retires all known current bindings and directories in that credential scope. Explicit offline retains old content/timestamps with stale=true; fixed pins stay unchanged. Network errors and cancellation are not permission denials. Checksums do not prove current permission |
 | C8 | Change token, workspace, API endpoint or official-login identity | No automatic reuse across identity scopes. Zero-network eligibility is claimed only when local identity can be distinguished safely; an undetectable official-login change must retain online identity checking |
 | C9 | Rename a Skill or introduce alias ambiguity; read using page ID and scoped alias | Cache keys preserve identity/database scope; strong refresh discovers ambiguity or rename instead of selecting an arbitrary cached page |
 | C10 | Corrupt/remove the latest index or a referenced object | No corrupted successful read. Online mode rebuilds disposable indexes safely or reports corruption; pinned reads retain integrity errors |
@@ -217,3 +217,29 @@ Completion for the affected behavior requires:
 - The installed Node.js consumer exercises affected entry points and XDG separation, including central data storage and shared links when explicit installation changes. Historical migration/operator cases need separate evidence only when their behavior changes; they are not daily setup steps. Run `bun run check` and `bun run package:check` after integration.
 - Public behavior documentation and recipes are updated together: protocol, usage, both READMEs, host/Bootstrap Skill guidance and affected verification entries. Document edits do not count as runtime evidence.
 - Review verifies baseline has one convergence writer, cache freshness cannot authorize mutations, and local commits preserve/fence real destinations. Report the provider's non-atomic commit limitation and any unresolved filesystem race accurately.
+
+## SC12 consumption qualification and installed proof
+
+These are logical authorities and eligibility rules, not a requirement to create separate physical caches.
+
+| Observation | Authority and qualification | Invalidation and reconstruction |
+| --- | --- | --- |
+| Directory / Default View | Credential/account scope, selected database or library, complete inventory/filter/profile observation | Failed source or incomplete pagination cannot become a complete catalog. Authentication rejection fences scoped directory generations; explicit offline keeps the original fetched_at and reports stale. View metadata follows its existing generation/retirement path. |
+| Current snapshot | Scoped canonical record, immutable version, materialization contract, original validated_at | Target-level 403/404 or confirmed CONTENT_DISABLED fences that binding; identity rejection also fences other bindings in that scope. Ordinary current reads must revalidate. Last successful snapshot and timestamp remain available only as explicit offline observation or a fixed pin. |
+| Complete current body proof | Manifest/files/references and independent full-body deadline | Metadata refresh does not move the body deadline. Missing, corrupt, foreign or changed objects cannot be promoted by a metadata-only hit. |
+| Fixed pin / exact file | Scope + snapshot/version + owner/path/File ID and hashes | Known 401 scope / 403 target denies default online reads before local objects or retained materialization, including history without a current observation. Explicit offline preserves bytes and scalar stale provenance. Clear retains the latest denial and necessary scope association; late publishers cannot grant access. Successful later scope/target validation supersedes its exact denial. 404/disabled/version change does not revoke historical/archive authority. |
+| Pending mutation / shared operation | Original operation and confirmed outcome | A cache hit cannot bypass an unknown mutation or replay it. Retention/adoption writes remain in the request ledger; only a stable unchanged observation asserts zero routine writes. |
+
+Launch/Doctor reuse the existing built package and SDK smoke prerequisites. Drive from the CLI checkout with fresh owned evidence directories outside both repos:
+
+```bash
+SC12_EVIDENCE="$SC12_EVIDENCE" bun test packages/core/test/cache.test.ts packages/core/test/shared-target-snapshot.test.ts packages/core/test/shared-snapshot-costs.test.ts --timeout 30000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$SDK_FIXTURE" --outdir "$SDK_RUN"
+```
+
+The controlled clock covers the default 299999/300000/300001ms boundary, rollback, within-TTL permission rejection, scope isolation, historical pins without current observations, transient failure, cancellation and recovery. Real SQLite processes exercise clear, retained denial, late grant rejection, and a later validated grant followed by clear without resurrecting an old denial. The cost fixture writes immutable N=1/10/100/101/300, k=1/min(3,N) ledgers when SC12_EVIDENCE is set; these are synthetic Notion-service observations, not live HTTP or provider-token measurements. Its unchanged online phase is an online metadata-validation case, not a warmed public TTL hit.
+
+The existing scalar-inventory installed case records every `cache-*` phase with the exact SDK/CLI result, serialized request/decoded-response bytes and actual loopback HTTP attempts. It proves same-cache SDK and separate-process CLI warm reads, explicit maxAge=1 expiry with unchanged body/write counts zero, target 403, catalog 401, subsequent current/catalog/fixed scalar/resource-batch rejection, target/all clear, explicit offline old pins, then online recovery and zero-HTTP fixed reads. maxAge=1 does not establish the default five-minute wall-clock boundary. The full default bound remains separately controlled by Effect Clock.
+
+Evidence must retain failed runs, package SHA/installed entry, source HEAD/diff, all phase ledgers and request traces. Cleanup uses each existing harness's owned process/server/scratch handling; evidence and archives remain. Real Notion, real Pi restoration and provider input remain separate cells in the Broker map. Warm zero HTTP and batched unchanged metadata provide no evidence for enabling prefetch, adding five physical caches or moving objects; those changes need measured full-task benefit before adoption.

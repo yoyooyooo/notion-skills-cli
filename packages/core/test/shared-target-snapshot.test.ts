@@ -252,7 +252,7 @@ describe("standard targetSnapshot shared-library integration", () => {
 
   test("an explicitly refreshed disabled Skill fails before fetching or writing its body", async () => {
     const f = sharedSnapshotFixture()
-    await f.target(parseTarget(skillPage), options)
+    const first = await f.target(parseTarget(skillPage), options)
     property(f.main.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
     f.clearCalls()
     await expect(f.target(parseTarget(skillPage), { ...options, refresh: true })).rejects.toThrow(
@@ -260,6 +260,18 @@ describe("standard targetSnapshot shared-library integration", () => {
     )
     expect(f.readBodyCount()).toBe(0)
     expect(f.writeCount()).toBe(0)
+    f.clearCalls()
+    await expect(f.target(parseTarget(skillPage), options)).rejects.toThrow("disabled")
+    expect(f.readBodyCount()).toBe(0)
+    expect(f.writeCount()).toBe(0)
+    f.clearCalls()
+    const offline = await f.target(parseTarget(skillPage), { ...options, offline: true })
+    expect(offline.snapshot_id).toBe(first.snapshot_id)
+    expect(offline.freshness?.validated_at).toBe(first.freshness?.validated_at)
+    expect(offline.freshness?.stale).toBe(true)
+    expect(f.calls).toHaveLength(0)
+    property(f.main.properties).enabled = { id: "enabled", type: "checkbox", checkbox: true }
+    expect((await f.target(parseTarget(skillPage), options)).source).toBe("notion")
   })
 
   test("metadata-only Description changes affect the generated frontmatter without taking ownership", async () => {

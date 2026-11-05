@@ -76,7 +76,7 @@ test("verified quota identity preserves the legacy default authorization scope a
       request: () => Effect.die(new Error("Validated identity already owns the handshake")),
     })
     const actual = await Effect.runPromise(
-      authScope.pipe(Effect.provide(api), Effect.provide(NodeServices.layer)),
+      authScope.pipe(Effect.provide(Layer.mergeAll(api, memoryStore, NodeServices.layer))),
     )
     expect(actual).toBe(expected)
   }
@@ -87,7 +87,7 @@ test("verified quota identity preserves the legacy default authorization scope a
   })
   expect(
     await Effect.runPromise(
-      authScope.pipe(Effect.provide(legacy), Effect.provide(NodeServices.layer)),
+      authScope.pipe(Effect.provide(Layer.mergeAll(legacy, memoryStore, NodeServices.layer))),
     ),
   ).toBe(expected)
 })

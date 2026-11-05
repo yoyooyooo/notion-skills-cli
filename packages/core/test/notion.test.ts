@@ -844,7 +844,10 @@ test("formal Notion Layer coalesces concurrent equal metadata queries before adm
       ({ api, clock, starts, started }) =>
         Effect.gen(function* () {
           const probe = observeTransportCoalescing(api)
-          const first = yield* Effect.forkChild(api.request(path, body), { startImmediately: true })
+          const first = yield* Effect.forkChild(
+            api.request(path, body, { queueBudgetMs: NOTION_ADMISSION_BUDGET_MS }),
+            { startImmediately: true },
+          )
           expect((yield* Queue.take(started)).millis).toBe(0)
           const second = yield* Effect.forkChild(api.request(path, structuredClone(body)), {
             startImmediately: true,
@@ -1121,6 +1124,74 @@ test("formal Notion Layer bounds permit acquisition by admission deadline withou
     ),
   )
 })
+
+test.each(["short", "long"] as const)(
+  "SC15 incompatible queue budgets remain independent when the %s waiter arrives first",
+  async (firstBudget) => {
+    const releaseOwner = Latch.makeUnsafe()
+    const ownerPath = "v1/pages/queue-budget-owner"
+    const targetPath = "v1/pages/queue-budget-selection"
+    await Effect.runPromise(
+      withClockedNotion(
+        ({ path }) => (path === ownerPath ? { wait: releaseOwner.await } : {}),
+        ({ api, clock, starts, started, sleeps }) =>
+          Effect.gen(function* () {
+            const probe = observeTransportCoalescing(api)
+            const owner = yield* Effect.forkChild(api.request(ownerPath), {
+              startImmediately: true,
+            })
+            yield* Queue.take(started)
+            const request = (budget: "short" | "long") =>
+              api.request(targetPath, undefined, {
+                priority: "required",
+                queueBudgetMs: budget === "short" ? 100 : 1_000,
+              })
+            const first = yield* Effect.forkChild(request(firstBudget).pipe(Effect.result), {
+              startImmediately: true,
+            })
+            yield* Queue.take(sleeps)
+            const second = yield* Effect.forkChild(
+              request(firstBudget === "short" ? "long" : "short").pipe(Effect.result),
+              { startImmediately: true },
+            )
+            // Observe either an independent admission wait or the old wrong join.
+            yield* Effect.race(Queue.take(sleeps), probe.joined)
+            const short = firstBudget === "short" ? first : second
+            const long = firstBudget === "long" ? first : second
+            yield* clock.adjust(100)
+            yield* releaseOwner.open
+            yield* Fiber.join(owner)
+            expect(short.pollUnsafe()).not.toBeUndefined()
+            expect(long.pollUnsafe()).toBeUndefined()
+            const expired = yield* Fiber.join(short)
+            expect(expired._tag).toBe("Failure")
+            if (expired._tag !== "Failure")
+              throw new Error("Expected the short queue budget to expire")
+            expect(expired.failure.code).toBe("RATE_LIMITED")
+            expect(expired.failure.details).toMatchObject({
+              reason: "admission_wait_exhausted",
+              budget: "queue",
+            })
+            expect(starts.map(({ path }) => path)).toEqual([ownerPath])
+            yield* clock.adjust(250)
+            expect(yield* Fiber.join(long)).toMatchObject({
+              _tag: "Success",
+              success: { object: "page", id: targetPath },
+            })
+            expect(starts.map(({ path }) => path)).toEqual([ownerPath, targetPath])
+            expect(api.requestMetrics?.()).toMatchObject({
+              total_requests: 2,
+              coalesced_requests: 0,
+              in_flight: 0,
+              outcomes: { success: 2, failure: 0, cancelled: 0 },
+            })
+          }),
+        60_000,
+        "1",
+      ),
+    )
+  },
+)
 
 test.each(["creator", "joiner"] as const)(
   "formal Notion Layer cancellation of the %s preserves the other shared waiter",

@@ -70,7 +70,7 @@ directory. This is an observation within one call, not a remote snapshot transac
 
 ## Verification and remaining costs
 
-The [CLI verification recipe](../.cursor/skills/verify-ntn-skills/features/skill-consumption.md)
+The [CLI verification recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/skill-consumption.md)
 connects public-read regression, independently installed SDK/CLI consumption and
 the existing live-source cost driver. Controlled fixtures record exact property
 IDs, cursors, row counts and decoded JSON bytes. Live request metrics remain a

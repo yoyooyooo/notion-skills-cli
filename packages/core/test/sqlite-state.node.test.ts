@@ -203,6 +203,72 @@ test("killing a process during the official SQL transaction leaves the prior bas
   }
 })
 
+test("cache retirement retains only the latest explicit access denial and fences a late grant", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-access-"))
+  const root = join(directory, "state")
+  try {
+    for (const [identity, code] of [
+      ["page", "ACCESS_DENIED"],
+      ["access:scope", "AUTH_REQUIRED"],
+    ]) {
+      const key = `cache/latest/scope/${identity}/denied.json`
+      const seeded = await child(
+        root,
+        `
+        const older=yield* state.reserve('scope',${JSON.stringify(identity)});
+        const generation=yield* state.reserve('scope',${JSON.stringify(identity)});
+        yield* state.write(${JSON.stringify(key)},{record_identity:${JSON.stringify(identity)},scope:'scope',generation,started_at:10,validated_at:1,invalidated:true,access_denied:${JSON.stringify(code)}});
+        yield* state.write('cache/identities/credential.json',{scope:'scope'});
+        console.log(JSON.stringify({older,generation}));
+      `,
+      )
+      expect(seeded.exit).toBe(0)
+      const generations = JSON.parse(seeded.stdout)
+      expect((await child(root, `yield* state.retire([${JSON.stringify(key)}])`)).exit).toBe(0)
+      const retained = await child(
+        root,
+        `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+      )
+      expect(retained.exit).toBe(0)
+      expect(JSON.parse(retained.stdout)).toMatchObject({ access_denied: code, validated_at: 1 })
+      const association = await child(
+        root,
+        `yield* state.retire(['cache/identities/credential.json']);console.log(JSON.stringify((yield* state.read('cache/identities/credential.json'))??null))`,
+      )
+      expect(association.exit).toBe(0)
+      expect(JSON.parse(association.stdout)).toEqual(
+        identity === "access:scope" ? { scope: "scope" } : null,
+      )
+      const late = await child(
+        root,
+        `yield* state.write('cache/latest/scope/${identity}/late.json',{generation:${generations.older},validated_at:2,invalidated:false})`,
+      )
+      expect(late.exit).not.toBe(0)
+      expect(late.stderr).toContain("retired before publication")
+      const cleared = await child(
+        root,
+        `
+        const generation=yield* state.reserve('scope',${JSON.stringify(identity)});
+        yield* state.write('cache/latest/scope/${identity}/allowed.json',{record_identity:${JSON.stringify(identity)},scope:'scope',generation,started_at:20,validated_at:20,invalidated:false});
+        yield* state.retire(['cache/latest/scope/${identity}/.fence']);
+        yield* state.retire(['cache/identities/credential.json']);
+        console.log(JSON.stringify(yield* state.list('cache/latest/scope/${identity}')));
+        console.log(JSON.stringify((yield* state.read('cache/identities/credential.json'))??null));
+      `,
+      )
+      expect(cleared.exit).toBe(0)
+      expect(
+        cleared.stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line)),
+      ).toEqual([[], null])
+    }
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+  }
+})
+
 test("missing objects never produce visible snapshot pointers and standalone backup restores referenced bytes", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-content-"))
   const original = Object.fromEntries(

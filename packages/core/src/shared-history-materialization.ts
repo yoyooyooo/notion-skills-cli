@@ -1,6 +1,11 @@
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
-import { locallySelectedScope, recordScope, type ObservedSnapshot } from "./cache.ts"
+import {
+  assertKnownSnapshotAccess,
+  locallySelectedScope,
+  recordScope,
+  type ObservedSnapshot,
+} from "./cache.ts"
 import { fail, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
@@ -127,6 +132,7 @@ function materializeRetainedFiles(
 ) {
   return Effect.gen(function* () {
     yield* validateRetained(retained, retained.scope, retained.snapshot.snapshot_id)
+    const accessDenied = yield* assertKnownSnapshotAccess(retained.snapshot, options.offline)
     const files = yield* materializeSharedSnapshotFiles(options.library ?? retained.library, {
       skillPageId: retained.manifest.skill_page_id,
       pinId: retained.pin_id,
@@ -138,7 +144,7 @@ function materializeRetainedFiles(
     const snapshot = complete
       ? yield* cacheSharedHistoricalSnapshot(retained.scope, { manifest: retained.manifest, files })
       : retained.snapshot
-    return { snapshot, files }
+    return { snapshot, files, access_denied: accessDenied }
   })
 }
 
@@ -148,11 +154,18 @@ export function materializeRetainedSnapshot(
   options: { readonly offline?: boolean; readonly library?: SharedLibrary } = {},
 ) {
   return Effect.gen(function* () {
-    const { snapshot, files } = yield* materializeRetainedFiles(retained, paths, options)
+    const { snapshot, files, access_denied } = yield* materializeRetainedFiles(
+      retained,
+      paths,
+      options,
+    )
     return {
       ...snapshot,
       source: "local_snapshot" as const,
-      freshness: { policy: "pinned" as const },
+      freshness: {
+        policy: "pinned" as const,
+        ...(access_denied === undefined ? {} : { stale: true }),
+      },
       materialization: {
         manifest_complete: true as const,
         local_files_ready: files.length === snapshot.files.length,

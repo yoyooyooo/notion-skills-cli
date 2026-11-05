@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { validateSnapshot, validateSnapshotManifest } from "./cache.ts"
+import { assertKnownSnapshotAccess, validateSnapshot, validateSnapshotManifest } from "./cache.ts"
 import { fail, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
 import { openRetainedSnapshotFiles } from "./shared-history-materialization.ts"
 import { sharedSnapshotFrozenTree } from "./shared-history-workflow.ts"
@@ -81,10 +81,11 @@ export function openFixedSnapshotFiles(
           return { path, bytes }
         }),
       )
-      return { snapshot: retained.snapshot, files }
+      return { snapshot: retained.snapshot, files, access_denied: retained.access_denied }
     }
 
     const snapshot = complete.success
+    const accessDenied = yield* assertKnownSnapshotAccess(snapshot, options.offline)
     const paths = yield* checked(() => selectedPaths(snapshot, select))
     const store = yield* Store
     const objects = new Map<string, Uint8Array>()
@@ -153,6 +154,6 @@ export function openFixedSnapshotFiles(
         return { path, bytes }
       }),
     )
-    return { snapshot, files }
+    return { snapshot, files, access_denied: accessDenied }
   })
 }

@@ -1179,6 +1179,8 @@ try {
     const requests = [],
       unexpected = []
     let phase = "setup"
+    let denyCurrent = false
+    let denyAuthentication = false
     const richText = (parts) =>
       (parts ?? []).map((part) => part.plain_text ?? part.text?.content ?? "").join("")
     const matches = (row, filter) => {
@@ -1239,7 +1241,27 @@ try {
         const body = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
         Object.assign(call, { request_bytes: bytes.length, body: body ?? null })
         const { library } = notion
-        if (request.method === "GET" && url.pathname === "/v1/users/me")
+        if (denyAuthentication && request.method === "GET" && url.pathname === "/v1/users/me") {
+          status = 401
+          value = {
+            object: "error",
+            status,
+            code: "unauthorized",
+            message: "Controlled credential rejection",
+          }
+        } else if (
+          denyCurrent &&
+          request.method === "GET" &&
+          url.pathname === `/v1/pages/${notion.main.id}`
+        ) {
+          status = 403
+          value = {
+            object: "error",
+            status,
+            code: "restricted_resource",
+            message: "Controlled current permission denial",
+          }
+        } else if (request.method === "GET" && url.pathname === "/v1/users/me")
           value = { object: "user", id: "00000000-0000-4000-8000-000000000099" }
         else if (
           request.method === "GET" &&
@@ -1334,6 +1356,7 @@ try {
       projection: sample.projection,
       external: sample.external,
       phases: [],
+      cache_lifecycle: [],
     }
     try {
       for (const [label, kind, cwd, expected] of [
@@ -1506,9 +1529,25 @@ try {
           inventory.push({ path, bytes: bytes.length, sha256: hash(bytes) })
         }
         assert.deepEqual(inventory, expected.export_files)
+        let resourceRef
+        if (label === "scalar-cold") {
+          const directory = await invokeCli(
+            ["files", result.snapshot_id, "--offline", "--metrics"],
+            cwd,
+            currentEnv,
+          )
+          assert.equal(directory.code, 0, directory.stdout + directory.stderr)
+          assert.equal(directory.value.request_metrics.total_requests, 0)
+          resourceRef = directory.value.files.find((file) => file.path !== result.entrypoint)?.ref
+          assert.equal(typeof resourceRef, "string")
+          assert.equal(requests.length, beforeExport)
+        }
         evidence.phases.push({
           label,
           kind,
+          ref: result.ref,
+          snapshot_id: result.snapshot_id,
+          resource_ref: resourceRef,
           content_bytes: Buffer.byteLength(result.content),
           content_sha256: hash(result.content),
           native_references: result.native_references,
@@ -1561,6 +1600,308 @@ try {
           sample.notion.skills.map((row) => row.id),
         )
       }
+      // Reuse the same installed package, loopback source and cache. The second
+      // entry is a separate CLI process; neither path may renew a warm TTL.
+      notion.main = structuredClone(sample.notion.refreshed_main)
+      notion.skills = structuredClone(sample.notion.refreshed_skills)
+      const readCurrent = async (
+        label,
+        {
+          ref = sample.root_ref,
+          policy = {},
+          cliProcess = false,
+          catalog = false,
+          resources = false,
+          error,
+        } = {},
+      ) => {
+        phase = label
+        const reports = []
+        let result, failure
+        if (cliProcess) {
+          const argv = [
+            "read",
+            ref,
+            "--database",
+            notion.library.skills.database_id,
+            "--json",
+            "--metrics",
+          ]
+          if (policy.offline) argv.push("--offline")
+          if (policy.refresh) argv.push("--refresh")
+          const invocation = await invokeCli(argv, sdkCwd, currentEnv)
+          reports.push(invocation.value.request_metrics)
+          if (invocation.code === 0) result = withoutMetrics(invocation.value)
+          else failure = invocation.value.error?.code
+        } else {
+          try {
+            const operationOptions = {
+              ...options,
+              cwd: sdkCwd,
+              env: currentEnv,
+              database: notion.library.skills.database_id,
+              ...policy,
+              onRequestMetrics: (report) => reports.push(report),
+            }
+            result = catalog
+              ? await sdk.listCatalog(operationOptions)
+              : resources
+                ? await sdk.readResources({ version: 1, refs: [ref] }, operationOptions)
+                : await sdk.readSkill(ref, operationOptions)
+            if (resources && result.status === "failed") failure = result.error.code
+          } catch (cause) {
+            assert.ok(cause instanceof sdk.SkillsError)
+            failure = cause.code
+          }
+        }
+        assert.equal(reports.length, 1)
+        const metrics = reports[0]
+        const calls = requests.filter((call) => call.phase === label)
+        const observed = {
+          label,
+          entry: cliProcess
+            ? "installed-cli"
+            : catalog
+              ? "installed-sdk-catalog"
+              : resources
+                ? "installed-sdk-resources"
+                : "installed-sdk",
+          policy,
+          ref,
+          result,
+          error: failure,
+          request_metrics: metrics,
+          calls,
+        }
+        evidence.cache_lifecycle.push(observed)
+        await writeFile(join(root, label + ".json"), JSON.stringify(observed, null, 2) + "\n", {
+          mode: 0o600,
+          flag: "wx",
+        })
+        assert.equal(failure, error)
+        assert.equal(metrics.in_flight, 0)
+        assert.equal(metrics.trace_enabled, true)
+        assert.equal(metrics.trace_dropped, 0)
+        assert.equal(metrics.unknown_request_bytes, 0)
+        assert.equal(metrics.unknown_response_bytes, 0)
+        assert.equal(metrics.requests.notion_write, 0)
+        assert.equal(metrics.requests.provider, 0)
+        assert.equal(metrics.total_requests, calls.length)
+        assert.equal(
+          metrics.request_bytes,
+          calls.reduce((total, call) => total + call.request_bytes, 0),
+        )
+        assert.equal(
+          metrics.response_bytes,
+          calls.reduce((total, call) => total + call.decoded_response_bytes, 0),
+        )
+        assert.equal(
+          metrics.trace.filter((event) => event.event === "attempt").length,
+          calls.length,
+        )
+        assert.deepEqual(unexpected, [])
+        assert.equal(
+          calls.filter((call) =>
+            Object.values(sample.external).some((id) => call.path.startsWith(`/v1/pages/${id}`)),
+          ).length,
+          0,
+        )
+        return observed
+      }
+      const clearObservations = async (label, all = false) => {
+        phase = label
+        const invocation = await invokeCli(
+          [
+            "ctl",
+            "cache",
+            "clear",
+            ...(all
+              ? ["--all"]
+              : [sample.root_ref, "--database", notion.library.skills.database_id]),
+          ],
+          sdkCwd,
+          currentEnv,
+        )
+        const calls = requests.filter((call) => call.phase === label)
+        const observed = { label, entry: "installed-cli", result: invocation.value, calls }
+        evidence.cache_lifecycle.push(observed)
+        await writeFile(join(root, label + ".json"), JSON.stringify(observed, null, 2) + "\n", {
+          mode: 0o600,
+          flag: "wx",
+        })
+        assert.equal(invocation.code, 0, JSON.stringify(invocation.value))
+        assert.equal(invocation.value.operation, "cache_clear")
+        assert.equal(calls.length, 0)
+      }
+      const warm = await readCurrent("cache-warm-sdk")
+      assert.equal(warm.request_metrics.total_requests, 0)
+      assert.equal(warm.result.content, sample.oracle.refreshed.contents["SKILL.md"])
+      const cliWarm = await readCurrent("cache-warm-cli", { cliProcess: true })
+      assert.equal(cliWarm.request_metrics.total_requests, 0)
+      assert.equal(cliWarm.result.freshness.validated_at, warm.result.freshness.validated_at)
+      // The unit harness owns the 300000ms default-clock boundary. This installed
+      // run exercises the explicit max-age expiry policy without a five-minute sleep.
+      const expired = await readCurrent("cache-expired-unchanged", { policy: { maxAge: 1 } })
+      assert.equal(expired.result.source, "notion")
+      assert.equal(expired.result.freshness.policy, "max_age")
+      assert.equal(expired.result.freshness.max_age_ms, 1)
+      assert.ok(expired.request_metrics.total_requests > 0)
+      assert.equal(expired.request_metrics.requests.notion_body, 0)
+      assert.equal(expired.result.snapshot_id, warm.result.snapshot_id)
+      assert.equal(expired.result.content, warm.result.content)
+      denyCurrent = true
+      const denied = await readCurrent("cache-denied-refresh", {
+        policy: { refresh: true },
+        error: "ACCESS_DENIED",
+      })
+      assert.ok(denied.calls.some((call) => call.status === 403))
+      await readCurrent("cache-denied-current-sdk", { error: "ACCESS_DENIED" })
+      await readCurrent("cache-denied-current-cli", { cliProcess: true, error: "ACCESS_DENIED" })
+      const offline = await readCurrent("cache-denied-offline", { policy: { offline: true } })
+      assert.equal(offline.request_metrics.total_requests, 0)
+      assert.equal(offline.result.snapshot_id, expired.result.snapshot_id)
+      assert.equal(offline.result.content, expired.result.content)
+      assert.equal(offline.result.freshness.validated_at, expired.result.freshness.validated_at)
+      assert.equal(offline.result.freshness.stale, true)
+      const old = evidence.phases.find((entry) => entry.label === "scalar-cold")
+      for (const [label, extra] of [
+        ["cache-denied-default-pin", {}],
+        ["cache-denied-fixed-resource", { resources: true }],
+      ]) {
+        const blocked = await readCurrent(label, {
+          ref: extra.resources ? old.resource_ref : old.ref,
+          error: "ACCESS_DENIED",
+          ...extra,
+        })
+        assert.equal(blocked.request_metrics.total_requests, 0)
+      }
+      await clearObservations("cache-denied-clear-target")
+      const stillDenied = await readCurrent("cache-denied-pin-after-clear", {
+        ref: old.ref,
+        error: "ACCESS_DENIED",
+        cliProcess: true,
+      })
+      assert.equal(stillDenied.request_metrics.total_requests, 0)
+      const pinned = await readCurrent("cache-denied-old-pin", {
+        ref: old.ref,
+        policy: { offline: true },
+        cliProcess: true,
+      })
+      assert.equal(pinned.request_metrics.total_requests, 0)
+      assert.equal(pinned.result.snapshot_id, old.snapshot_id)
+      assert.equal(pinned.result.content, sample.oracle.cold.contents["SKILL.md"])
+      assert.equal(pinned.result.freshness.policy, "pinned")
+      assert.equal(pinned.result.freshness.stale, true)
+      denyCurrent = false
+      const recovered = await readCurrent("cache-permission-recovered")
+      assert.equal(recovered.result.source, "notion")
+      assert.ok(recovered.request_metrics.total_requests > 0)
+      assert.equal(recovered.result.snapshot_id, expired.result.snapshot_id)
+      assert.equal(recovered.result.content, expired.result.content)
+      const recoveredPin = await readCurrent("cache-recovered-default-pin", { ref: old.ref })
+      assert.equal(recoveredPin.request_metrics.total_requests, 0)
+      assert.equal(recoveredPin.result.content, sample.oracle.cold.contents["SKILL.md"])
+      const recoveredResource = await readCurrent("cache-recovered-fixed-resource", {
+        ref: old.resource_ref,
+        resources: true,
+      })
+      assert.equal(recoveredResource.request_metrics.total_requests, 0)
+      assert.equal(recoveredResource.result.status, "ready")
+      assert.equal(
+        recoveredResource.result.files[0].content,
+        sample.oracle.cold.contents[recoveredResource.result.files[0].path],
+      )
+      const recoveredWarm = await readCurrent("cache-recovered-cli-warm", { cliProcess: true })
+      assert.equal(recoveredWarm.request_metrics.total_requests, 0)
+      assert.equal(
+        recoveredWarm.result.freshness.validated_at,
+        recovered.result.freshness.validated_at,
+      )
+      const directory = await readCurrent("cache-directory-established", {
+        catalog: true,
+        policy: { refresh: true },
+      })
+      denyAuthentication = true
+      const revoked = await readCurrent("cache-auth-denied-directory-refresh", {
+        catalog: true,
+        policy: { refresh: true },
+        error: "AUTH_REQUIRED",
+      })
+      assert.ok(revoked.calls.some((call) => call.status === 401))
+      await readCurrent("cache-auth-denied-current-sdk", { error: "AUTH_REQUIRED" })
+      await readCurrent("cache-auth-denied-current-cli", {
+        cliProcess: true,
+        error: "AUTH_REQUIRED",
+      })
+      await readCurrent("cache-auth-denied-directory", { catalog: true, error: "AUTH_REQUIRED" })
+      const retainedDirectory = await readCurrent("cache-auth-offline-directory", {
+        catalog: true,
+        policy: { offline: true },
+      })
+      assert.equal(retainedDirectory.request_metrics.total_requests, 0)
+      assert.equal(retainedDirectory.result.freshness.stale, true)
+      assert.equal(retainedDirectory.result.fetched_at, directory.result.fetched_at)
+      assert.deepEqual(retainedDirectory.result.records, directory.result.records)
+      assert.equal(Object.hasOwn(retainedDirectory.result, "invalidated"), false)
+      const retainedCurrent = await readCurrent("cache-auth-offline-current", {
+        policy: { offline: true },
+      })
+      assert.equal(retainedCurrent.request_metrics.total_requests, 0)
+      assert.equal(retainedCurrent.result.freshness.stale, true)
+      assert.equal(
+        retainedCurrent.result.freshness.validated_at,
+        recovered.result.freshness.validated_at,
+      )
+      assert.equal(retainedCurrent.result.content, recovered.result.content)
+      const authPin = await readCurrent("cache-auth-old-pin", {
+        ref: old.ref,
+        policy: { offline: true },
+        cliProcess: true,
+      })
+      assert.equal(authPin.request_metrics.total_requests, 0)
+      assert.equal(authPin.result.content, sample.oracle.cold.contents["SKILL.md"])
+      assert.equal(authPin.result.freshness.policy, "pinned")
+      assert.equal(authPin.result.freshness.stale, true)
+      for (const [label, extra] of [
+        ["cache-auth-denied-default-pin", { cliProcess: true }],
+        ["cache-auth-denied-fixed-resource", { resources: true }],
+      ]) {
+        const blocked = await readCurrent(label, {
+          ref: extra.resources ? old.resource_ref : old.ref,
+          error: "AUTH_REQUIRED",
+          ...extra,
+        })
+        assert.equal(blocked.request_metrics.total_requests, 0)
+      }
+      await clearObservations("cache-auth-denied-clear-all", true)
+      const authStillDenied = await readCurrent("cache-auth-pin-after-clear", {
+        ref: old.ref,
+        error: "AUTH_REQUIRED",
+      })
+      assert.equal(authStillDenied.request_metrics.total_requests, 0)
+      const authOfflineAfterClear = await readCurrent("cache-auth-offline-pin-after-clear", {
+        ref: old.ref,
+        policy: { offline: true },
+      })
+      assert.equal(authOfflineAfterClear.request_metrics.total_requests, 0)
+      assert.equal(authOfflineAfterClear.result.content, sample.oracle.cold.contents["SKILL.md"])
+      assert.equal(authOfflineAfterClear.result.freshness.stale, true)
+      denyAuthentication = false
+      const authRecovered = await readCurrent("cache-auth-recovered")
+      assert.equal(authRecovered.result.source, "notion")
+      assert.equal(authRecovered.result.content, recovered.result.content)
+      assert.ok(authRecovered.request_metrics.total_requests > 0)
+      const authRecoveredPin = await readCurrent("cache-auth-recovered-default-pin", {
+        ref: old.ref,
+      })
+      assert.equal(authRecoveredPin.request_metrics.total_requests, 0)
+      assert.equal(authRecoveredPin.result.content, sample.oracle.cold.contents["SKILL.md"])
+      assert.notEqual(authRecoveredPin.result.freshness.stale, true)
+      const catalogRecovered = await readCurrent("cache-auth-recovered-directory", {
+        catalog: true,
+      })
+      assert.equal(catalogRecovered.request_metrics.total_requests, 0)
+      assert.equal(catalogRecovered.result.freshness.stale, false)
       evidence.status = "passed"
       return evidence
     } catch (error) {

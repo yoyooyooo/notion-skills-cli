@@ -3,7 +3,7 @@
 SC03 / AH-620 freezes the executable core boundary for `consume`. The implementation is
 `packages/core/src/consumer.ts`; its runtime schemas are composed from the existing
 prepare, snapshot and native File schemas in `consumer-model.ts`. The engine and the
-decoder use those same schemas. SC10 adds the packaged Promise adapter at
+decoder use those same schemas. The packaged Promise adapter is exported at
 `ntn-skills/sdk`, using the same engine and runtime services. A locally packed artifact
 is an installable candidate, not evidence that its version has been published.
 
@@ -112,9 +112,11 @@ and uses the same definition as execution.
 | `resolve` | `ctl resolve` | Relative-ref diagnostic/helper; root compatibility only |
 | `schema` | `schema` | Daily summary by default, complete explicit command schema on demand |
 
-`use` is the added daily consumer. Authoring remains separate from management and
-never runs as a use side effect. Dry-run, exact target/version constraints, conflict
-handling and original-operation recovery are unchanged.
+`use` is the added daily consumer. It does not execute authoring commands such as
+create, apply, replace, write or update. Normal consume retention and adoption of
+newly observed author edits remain unchanged and can write Records; those writes
+and their permissions stay in the actual request ledger. Dry-run, exact target/version
+constraints, conflict handling and original-operation recovery are unchanged.
 
 In-repository drivers, package Skills and newly generated `next.argv` use canonical
 `ctl` paths. External command configurations and retained historical `next.argv` may
@@ -242,8 +244,8 @@ cache, scheduler or permission authority.
 
 | Transport | Current boundary and decision |
 | --- | --- |
-| Per-command CLI subprocess | Works with configured public/custom commands and the existing JSON/error/exit contract. Broker currently pays one prepare process plus a fixed read for each prepared node. Keep this compatibility route until its callers migrate. |
-| Shared packaged SDK | `ntn-skills/sdk` owns one scoped runtime per Promise operation. `consume` obtains graph and proofs from the same observations. Installed artifact/version compatibility and host adoption require their own verification. |
+| Per-command CLI subprocess | Explicit custom source commands retain their configured transport and existing JSON/error/exit contract. Full-export and historical management callers retain their exact operation semantics. They do not define the default Pi consumption path. |
+| Shared packaged SDK | `ntn-skills/sdk` owns one scoped runtime per Promise operation. Broker's default directory uses `listCatalog`; its graph preparation uses `consume` without a per-node subprocess loop, and fixed scalar resources use `readSkill`. Installed artifact identity and actual provider delivery remain separately verified. |
 | Session subprocess RPC | Would add process lifetime, message framing, request cancellation and version negotiation to maintain. It is not the selected architecture and is not introduced to avoid packaging the shared SDK. |
 
 These are code boundary comparisons, not measured speedup claims. SC02 records
@@ -264,8 +266,8 @@ checks remain necessary when data crosses a future SDK/CLI transport boundary.
 
 This does not promise one HTTP request, lazy materialization for every source adapter,
 or zero remote work. Existing source acquisition and snapshot validation still apply.
-Hosts adopting the SDK remove their per-node fixed-read loop only after validating
-the selected source and preserving their local publication boundary.
+Broker's default SDK path validates the selected source and retains its local
+publication boundary when accepting the complete result.
 
 ## Result states and evidence ownership
 
@@ -347,15 +349,44 @@ targets and selected source before adopting it.
 
 ### Preserve the existing access boundary
 
-A complete local immutable pin can be read under the existing locally selected scope
-without requesting fresh access to its former remote page. If a retained pin lacks
+A complete local immutable pin carries its manifest-bound historical scope. Scalar
+reads retain the existing local-history capability across credential changes; that
+does not prove current access under the newly selected credential. Current reads and
+`use` separately enforce the selected credential scope. Default fixed reads need no
+fresh request to the former remote page, but reject an explicitly known authentication
+or access denial attached to the manifest's scope/target. If a retained pin lacks
 bytes and must acquire them online, `openRetainedSnapshot` revalidates the current
 library/Records identity and current Skill access before fetching exact old-pin
-bytes. It never substitutes the current body. Neither behavior changes here.
+bytes. It never substitutes the current body.
 
 `--refresh` and `--max-age 0` currently force a full current observation. Ordinary
 positive TTL expiration can revalidate metadata while the separate body deadline is
 still valid. The contract preserves the distinction and the reported freshness data.
+
+A denied, hidden or disabled current target (`ACCESS_DENIED` / `NOT_FOUND` /
+`CONTENT_DISABLED`) loses its old TTL
+eligibility. An authentication rejection fences every known current binding and
+directory in that credential scope. A subsequent ordinary read/list revalidates
+online; it cannot turn the failed refresh into a fresh cache success. Explicit
+offline retains the last complete snapshot or directory with its original timestamp
+and `stale: true`. Other credential scopes remain independent, and network errors or
+interruption do not become permission denials. Successful online revalidation restores
+normal warm-cache eligibility.
+
+Confirmed `AUTH_REQUIRED` fences online fixed reads for the credential scope, including
+historical pins with no current observation. `ACCESS_DENIED` fences the exact target;
+the same check applies before local object reads and retained-byte materialization.
+This uses existing local observations and adds no authentication request per file.
+Explicit offline can read retained historical bytes and reports pinned freshness as
+stale when a denial is known. Fixed resource-batch proof remains proof of selected
+bytes, not a grant of current authorization. `NOT_FOUND`, `CONTENT_DISABLED`, a version
+change or cache clear does not revoke historical/archive authority or delete old pins.
+
+Cache clearing preserves the latest explicit denial and its necessary scope association
+within the existing retirement transaction. It fences earlier in-flight publishers.
+A successful later scope authentication can clear the scope fact; successful current
+target validation clears that target's fact. A directory metadata observation alone
+does not clear a target denial. Neutral invalidations and clear cannot grant access.
 
 ## Errors, cancellation and CLI equivalence
 
@@ -381,33 +412,32 @@ unsuccessful refresh.
 
 ## Caller migration and remaining boundaries
 
-| Existing caller | Migration and retained obligation |
+| Caller | Current disposition and retained obligation |
 | --- | --- |
-| CLI `commands-prepare.ts` | Continue to expose the existing `prepareGraph` JSON, errors and exit codes. Future public consume output must negotiate the contract version explicitly. |
-| CLI `commands-content.ts` read/files/export | Keep exact source/read/export semantics and immutable pins. Do not replace raw/export output with model projection. |
-| Broker `requestPreparedGraph` / `loadPreparedEntry` | SC10 adopts the installed consumer result and removes the per-node process only after equivalence. Preserve selected-source checks and safe local publication. |
-| Broker explicit selection, native read and `skill_prepare` | Adopt a successful complete result before committing bindings. Failed/cancelled consumption must not publish partial instructions. |
-| Broker prefetch | No session binding, delivery or activation claim; its source work remains on the cost ledger. |
-| Broker `loadNotionResource` | Use SDK `readSkill` with the fixed File ref and output path. Keep resource hash/byte/path verification; a manifest alone does not prove resource bytes are ready. |
-| Broker `loadNotionSkill` and custom source commands | Preserve the full-export compatibility route and explicitly configured command behavior until migration is complete. |
-| Snapshot history, management writes and recovery | Keep existing operation identities and unknown-write recovery. They are outside partial instruction consumption. |
+| CLI `list/read/use` | Thin daily adapters use the same catalog, scalar reader and consume/prepare core. `list/read` retain default JSON and explicit `--json`; `use --json` carries the negotiated consumer v1 result. |
+| CLI `ctl prepare`, legacy root aliases, author commands | The same command AST/handlers preserve historical arguments, JSON, errors and exit codes. Help/schema expose management under `ctl`; author commands remain discoverable on demand. No wrapper changes old operation semantics. |
+| CLI `read/files/export` | Exact source/read/export semantics and immutable pins remain. Raw/export output is not replaced with a model projection. |
+| Broker default directory and exact lookup | `listCatalog` uses core metadata/cache qualification directly. The default source does not spawn `list` plus `ctl cache identity` or maintain a second derived catalog cache. |
+| Broker `requestPreparedGraph` / `loadPreparedEntry` | The installed SDK `consume` result supplies roots, complete Requires, manifests and full entry bodies. No per-node CLI reader remains in this default path. Strict selected-source checks and safe local publication remain required. |
+| Pi `notion_list`, native `read`, `notion_use`, `notion_ctl` | Discovery, inspection, complete use and explicit management retain separate intent. Broker commits bindings only from complete accepted results, and proves actual model delivery separately. Failed/cancelled operations cannot publish partial instructions. |
+| Broker `loadNotionResource` | SDK `readSkill` reads the fixed File ref and output path; resource batches use `readResources`. Host hash/byte/path checks remain, since a manifest alone does not prove selected bytes were delivered. |
+| OMP / `loadNotionSkill` full export | The compatibility caller retains a complete installed export and its existing adapter semantics. It is not evidence that Pi's SDK path needs a per-node process or that OMP provider delivery passed. |
+| Explicit custom source commands | Preserve the user's configured command transport and its declared directory/selection boundaries. SDK defaulting cannot silently bypass explicit commands; paged results must be completed or rejected as incomplete. |
+| Prefetch | No session binding, delivery or activation claim. It stays off by default pending full-task evidence; any selected prefetch work remains on the cost ledger. |
+| Snapshot history, management writes and recovery | Keep exact fixed versions, original operation identities and unknown-write reconciliation. These operations are not moved into partial instruction consumption. |
 
-SC10 should connect Broker's `requestPreparedGraph`/`loadPreparedEntry` owner to the
-released consumer and remove per-node subprocess reads only after fixture equivalence.
-`decodePreparedGraph` can then use this authoritative decoder/types. Broker still owns
-strict source matching, host path/symlink protection, local receipt/file publication,
-resource output verification, session commit, actual provider delivery and activation.
-Those checks must not disappear with the additional read.
+Broker retains strict source matching, host path/symlink protection, local receipt/file
+publication, resource output verification, session commit, actual provider delivery
+and activation. The SDK result does not replace those responsibilities.
 
-Prefetch continues to inspect without a session lock or delivery. Individual resources
-can use `readSkill`; the combined requested-file read plan remains unsupported. The legacy
-`loadNotionSkill` full-export route and custom source-command transports need explicit
-migration; SDK adoption must not silently bypass their configured behavior.
+`consume` v1 still rejects a nonempty `requestedFiles` option. The separate `readResources`
+API already supports a fixed owner/pin resource batch; this does not change the consume
+input contract. Individual fixed resources also remain available through `readSkill`.
 
 Management writes, history retention, snapshot export and publication recovery remain
 their existing operations. This change does not move them into partial consumption.
-Published-version release, production Broker adoption, new model projection and real
-model acceptance remain separate from the offline package/runtime checks.
+Npm publication, a frozen production installation, new model projection and real model
+acceptance remain separate from package/runtime checks and source caller migration.
 
 ## Regression entry points
 

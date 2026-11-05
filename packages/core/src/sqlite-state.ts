@@ -527,7 +527,7 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
               yield* sql`SELECT json_object('generation',generation,'retired_through',retired_through) AS payload FROM cache_fences WHERE scope=${parts[1]} AND identity=${parts[2]!.replace(/\.json$/, "")}`
           else if (parts[0] === "cache" && parts[1] === "latest")
             rows =
-              yield* sql`SELECT o.payload FROM observations o LEFT JOIN cache_fences f ON f.scope=o.scope AND f.identity=o.record_identity WHERE o.id=${key} AND o.generation>COALESCE(f.retired_through,0)`
+              yield* sql`SELECT o.payload FROM observations o LEFT JOIN cache_fences f ON f.scope=o.scope AND f.identity=o.record_identity WHERE o.id=${key} AND (o.generation>COALESCE(f.retired_through,0) OR json_extract(o.payload,'$.access_denied') IN ('AUTH_REQUIRED','ACCESS_DENIED'))`
           else if (parts[0] === "cache" && parts[1] === "catalogs")
             rows =
               yield* sql`SELECT c.payload FROM catalogs c LEFT JOIN cache_fences f ON f.scope=c.scope AND f.identity='catalog-'||c.selection WHERE c.scope=${parts[2]} AND c.selection=${parts[3]!.replace(/\.json$/, "")} AND c.generation>COALESCE(f.retired_through,0)`
@@ -830,14 +830,27 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                         ? `views-${p[3]!.replace(/\.json$/, "")}`
                         : p[3]!
                   yield* sql`UPDATE cache_fences SET retired_through=generation WHERE scope=${p[2]} AND identity=${identity}`
-                  if (p[1] === "latest")
-                    yield* sql`DELETE FROM observations WHERE scope=${p[2]} AND record_identity=${identity}`
-                  else if (p[1] === "views")
+                  if (p[1] === "latest") {
+                    // Clearing disposable content eligibility cannot grant access.
+                    // Keep only a latest explicit denial, inside the same fence
+                    // transaction; older publishers still fail retired_through.
+                    const denial = yield* sql<{
+                      id: string
+                    }>`SELECT id FROM observations WHERE scope=${p[2]} AND record_identity=${identity} AND json_extract(payload,'$.access_denied') IN ('AUTH_REQUIRED','ACCESS_DENIED') AND generation=(SELECT MAX(generation) FROM observations WHERE scope=${p[2]} AND record_identity=${identity}) LIMIT 1`
+                    if (denial[0])
+                      yield* sql`DELETE FROM observations WHERE scope=${p[2]} AND record_identity=${identity} AND id<>${denial[0].id}`
+                    else
+                      yield* sql`DELETE FROM observations WHERE scope=${p[2]} AND record_identity=${identity}`
+                  } else if (p[1] === "views")
                     yield* sql`DELETE FROM view_observations WHERE scope=${p[2]} AND selection=${p[3]!.replace(/\.json$/, "")}`
                   else
                     yield* sql`DELETE FROM catalogs WHERE scope=${p[2]} AND selection=${p[3]!.replace(/\.json$/, "")}`
-                } else if (p[1] === "identities")
-                  yield* sql`DELETE FROM identities WHERE id=${p[2]!.replace(/\.json$/, "")}`
+                } else if (p[1] === "identities") {
+                  // Keep the credential-to-scope association while its latest
+                  // authorization fact is a denial. The next real auth request
+                  // must reserve before dispatch so a late success cannot erase it.
+                  yield* sql`DELETE FROM identities WHERE id=${p[2]!.replace(/\.json$/, "")} AND NOT EXISTS(SELECT 1 FROM observations o WHERE o.scope=identities.scope AND o.record_identity='access:scope' AND json_extract(o.payload,'$.access_denied') IN ('AUTH_REQUIRED','ACCESS_DENIED') AND o.generation=(SELECT MAX(generation) FROM observations WHERE scope=o.scope AND record_identity=o.record_identity))`
+                }
               }
               return keys.map((key) => ({
                 key,

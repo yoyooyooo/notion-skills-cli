@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { Effect } from "effect"
 import { Notion } from "../src/notion.ts"
 import { assertRequestBudget, RequestBudgetError } from "../src/request-metrics.ts"
@@ -12,8 +14,10 @@ describe("shared snapshot controlled transport budgets", () => {
       test(`N=${fileCount}, k=${changedFiles}: batched unchanged validation and only changed bodies`, async () => {
         const f = sharedSnapshotFixture({ fileCount })
         const first = await f.open()
+        const cold = f.requestMetrics()
         f.clearCalls()
         const unchanged = await f.open()
+        const unchangedMetrics = f.requestMetrics()
         // Main metadata is the one fixed request. Files, events and operations
         // each paginate independently; no allowance is inferred from the trace.
         const metadataPages = pages(fileCount - 1) + 2 * pages(fileCount)
@@ -41,6 +45,29 @@ describe("shared snapshot controlled transport budgets", () => {
         f.clearCalls()
         const changed = await f.open()
         const trace = f.requestMetrics()
+        if (process.env.SC12_EVIDENCE !== undefined)
+          writeFileSync(
+            join(process.env.SC12_EVIDENCE, `shared-cost-N${fileCount}-k${changedFiles}.json`),
+            JSON.stringify(
+              {
+                version: 1,
+                environment: "controlled Notion service fixture; not a live HTTP measurement",
+                file_count: fileCount,
+                changed_files: changedFiles,
+                phases: {
+                  cold: { snapshot_id: first.snapshot_id, metrics: cold },
+                  unchanged_online: {
+                    snapshot_id: unchanged.snapshot_id,
+                    metrics: unchangedMetrics,
+                  },
+                  changed_online: { snapshot_id: changed.snapshot_id, metrics: trace },
+                },
+              },
+              null,
+              2,
+            ) + "\n",
+            { flag: "wx", mode: 0o600 },
+          )
         expect(() =>
           assertRequestBudget(trace, { ...baselineBudget, scenario: "body_changed", changedFiles }),
         ).not.toThrow()

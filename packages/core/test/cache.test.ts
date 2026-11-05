@@ -1,7 +1,7 @@
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Clock, Effect, Layer } from "effect"
+import { Clock, Effect, Fiber, Layer } from "effect"
 import { decode, fail, type SkillsError, type Snapshot } from "../src/model.ts"
 import { Store, sha256, configuration, setToken } from "../src/store.ts"
 import { catalog } from "../src/catalog.ts"
@@ -18,18 +18,28 @@ import {
   invalidateSnapshotCache,
   parseDuration,
   publishSnapshotObservation,
+  reserveScopeAccess,
+  recordScopeAccess,
 } from "../src/cache.ts"
 
 const page = "11111111-1111-4111-8111-111111111111"
 const database = "44444444-4444-4444-8444-444444444444"
 const guide = "22222222-2222-4222-8222-222222222222"
+const other = "33333333-3333-4333-8333-333333333333"
 function fixture() {
   let now = 1_000_000
   let credential = "credential-one"
-  let denied = false
+  let denied:
+    | {
+        readonly code: "ACCESS_DENIED" | "AUTH_REQUIRED" | "NOT_FOUND" | "NOTION_UNAVAILABLE"
+        readonly path?: string
+      }
+    | undefined
+  let paused: { readonly path: string; readonly started: () => void } | undefined
   let body = "Original reference."
   let name = "Sample Skill"
   let decoy = false
+  let additional = false
   let failReference = false
   let defaultContext = false
   const requests: string[] = []
@@ -37,8 +47,8 @@ function fixture() {
   const objects = new Map<string, Uint8Array>()
   const generations = new Map<string, number>()
   const retired: string[] = []
-  const properties = () => ({
-    Name: { id: "title", type: "title", title: [{ plain_text: name }] },
+  const properties = (recordName = name) => ({
+    Name: { id: "title", type: "title", title: [{ plain_text: recordName }] },
     Description: { type: "rich_text", rich_text: [{ plain_text: "Use when testing cache." }] },
     References: { id: "references", type: "rich_text", rich_text: [] },
     "Default Context": { type: "checkbox", checkbox: defaultContext },
@@ -103,7 +113,12 @@ function fixture() {
     request: (path) =>
       Effect.gen(function* () {
         requests.push(path)
-        if (denied) return yield* Effect.fail(fail("ACCESS_DENIED", "Denied."))
+        if (paused?.path === path) {
+          paused.started()
+          yield* Effect.never
+        }
+        if (denied && (denied.path === undefined || denied.path === path))
+          return yield* Effect.fail(fail(denied.code, "Denied."))
         if (path === "v1/users/me") return { id: "user", object: "user" }
         if (path === `v1/databases/${database}`)
           return {
@@ -131,6 +146,7 @@ function fixture() {
           return {
             results: [
               { id: page, properties: properties() },
+              ...(additional ? [{ id: other, properties: properties("Other Skill") }] : []),
               ...(decoy
                 ? [{ id: "33333333-3333-4333-8333-333333333333", properties: properties() }]
                 : []),
@@ -143,6 +159,12 @@ function fixture() {
             id: page,
             parent: { database_id: database, data_source_id: "ds" },
             properties: properties(),
+          }
+        if (additional && path === `v1/pages/${other}`)
+          return {
+            id: other,
+            parent: { database_id: database, data_source_id: "ds" },
+            properties: properties("Other Skill"),
           }
         if (path === `v1/pages/${guide}`)
           return {
@@ -167,10 +189,14 @@ function fixture() {
           }
         if (
           path === `v1/blocks/${page}/children?page_size=100` ||
-          path === `v1/blocks/${guide}/children?page_size=100`
+          path === `v1/blocks/${guide}/children?page_size=100` ||
+          (additional && path === `v1/blocks/${other}/children?page_size=100`)
         )
           return { object: "list", results: [], has_more: false, next_cursor: null }
-        if (path === `v1/pages/${page}/markdown`)
+        if (
+          path === `v1/pages/${page}/markdown` ||
+          (additional && path === `v1/pages/${other}/markdown`)
+        )
           return {
             object: "page_markdown",
             markdown: "Main body.",
@@ -211,9 +237,26 @@ function fixture() {
     time: (value: number) => {
       now = value
     },
-    deny: () => {
-      denied = true
+    deny: (
+      code:
+        | "ACCESS_DENIED"
+        | "AUTH_REQUIRED"
+        | "NOT_FOUND"
+        | "NOTION_UNAVAILABLE" = "ACCESS_DENIED",
+      path?: string,
+    ) => {
+      denied = { code, path }
     },
+    allow: () => {
+      denied = undefined
+    },
+    addOther: () => {
+      additional = true
+    },
+    pause: (path: string) =>
+      new Promise<void>((started) => {
+        paused = { path, started }
+      }),
     change: (value: string) => {
       body = value
     },
@@ -410,6 +453,176 @@ test("C8 credential scopes isolate cache and a new credential requires online va
   expect(f.requests.length).toBeGreaterThan(requests)
 })
 
+for (const target of [page, "sample-skill"])
+  for (const code of ["ACCESS_DENIED", "AUTH_REQUIRED", "NOT_FOUND"] as const)
+    test(`SC12 ${code} during refresh fences current ${target} without changing old pins`, async () => {
+      const f = fixture()
+      const first = await f.run(readSkill(target, { database }))
+      const manifest = f.json.get(`snapshots/${first.snapshot_id}.json`)
+      f.time(1_000_100)
+      f.deny(code, code === "AUTH_REQUIRED" ? "v1/users/me" : `v1/pages/${page}/markdown`)
+      const refresh = await f.run(
+        readSkill(target, { database, refresh: true }).pipe(Effect.result),
+      )
+      expect(refresh._tag === "Failure" && refresh.failure.code).toBe(code)
+      const current = await f.run(readSkill(target, { database }).pipe(Effect.result))
+      expect(current._tag === "Failure" && current.failure.code).toBe(code)
+      if (code === "ACCESS_DENIED" || code === "AUTH_REQUIRED") {
+        const fixed = await f.run(readSkill(first.ref).pipe(Effect.result))
+        expect(fixed._tag === "Failure" && fixed.failure.code).toBe(code)
+        const resource = await f.run(
+          readSkill("references/guide.md", { from: first.ref }).pipe(Effect.result),
+        )
+        expect(resource._tag === "Failure" && resource.failure.code).toBe(code)
+      }
+      const before = f.requests.length
+      const offline = await f.run(readSkill(target, { database, offline: true }))
+      expect(offline.snapshot_id).toBe(first.snapshot_id)
+      expect(offline.freshness).toMatchObject({
+        policy: "offline",
+        stale: true,
+        age_ms: 100,
+        validated_at: first.freshness?.validated_at,
+      })
+      const pinned = await f.run(readSkill(first.ref, { offline: true }))
+      expect(pinned.snapshot_id).toBe(first.snapshot_id)
+      expect(pinned.freshness?.policy).toBe("pinned")
+      if (code !== "NOT_FOUND") expect(pinned.freshness?.stale).toBe(true)
+      expect(f.requests.length).toBe(before)
+      expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(manifest)
+      f.allow()
+      const recovered = await f.run(readSkill(target, { database }))
+      expect(recovered.source).toBe("notion")
+      expect(recovered.freshness).toMatchObject({ stale: false, age_ms: 0 })
+      const after = f.requests.length
+      expect(after).toBeGreaterThan(before)
+      expect((await f.run(readSkill(target, { database }))).source).toBe("local_cache")
+      expect(f.requests.length).toBe(after)
+    })
+
+for (const entry of ["current", "catalog", "current-body"] as const)
+  test(`SC12 authentication rejection from ${entry} fences another current binding and directory in the same scope`, async () => {
+    const f = fixture()
+    f.addOther()
+    const first = await f.run(readSkill(page, { database }))
+    const second = await f.run(readSkill(other, { database }))
+    const directory = await f.run(catalog({ database }))
+    f.credential("credential-two")
+    const otherCredential = await f.run(readSkill(other, { database }))
+    f.credential("credential-one")
+    f.time(1_000_100)
+    f.deny("AUTH_REQUIRED", entry === "current-body" ? `v1/pages/${page}/markdown` : "v1/users/me")
+    const denied = await f.run(
+      (entry === "catalog"
+        ? catalog({ database, refresh: true }).pipe(Effect.asVoid)
+        : readSkill(page, { database, refresh: true }).pipe(Effect.asVoid)
+      ).pipe(Effect.result),
+    )
+    expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
+    if (entry === "current-body") f.deny("AUTH_REQUIRED", "v1/users/me")
+    const unrelated = await f.run(readSkill(other, { database }).pipe(Effect.result))
+    expect(unrelated._tag === "Failure" && unrelated.failure.code).toBe("AUTH_REQUIRED")
+    const listed = await f.run(catalog({ database }).pipe(Effect.result))
+    expect(listed._tag === "Failure" && listed.failure.code).toBe("AUTH_REQUIRED")
+    const before = f.requests.length
+    const offline = await f.run(readSkill("other-skill", { database, offline: true }))
+    expect(offline.snapshot_id).toBe(second.snapshot_id)
+    expect(offline.freshness).toMatchObject({
+      validated_at: second.freshness?.validated_at,
+      age_ms: 100,
+      stale: true,
+    })
+    const oldDirectory = await f.run(catalog({ database, offline: true }))
+    expect(oldDirectory.fetched_at).toBe(directory.fetched_at)
+    expect(oldDirectory.freshness.stale).toBe(true)
+    expect((await f.run(readSkill(first.ref, { offline: true }))).snapshot_id).toBe(
+      first.snapshot_id,
+    )
+    expect(f.requests.length).toBe(before)
+    f.credential("credential-two")
+    expect((await f.run(readSkill(other, { database }))).snapshot_id).toBe(
+      otherCredential.snapshot_id,
+    )
+    expect(f.requests.length).toBe(before)
+    f.credential("credential-one")
+    f.allow()
+    expect((await f.run(readSkill(other, { database }))).source).toBe("notion")
+    expect((await f.run(readSkill(page, { database }))).source).toBe("notion")
+  })
+
+for (const code of ["ACCESS_DENIED", "NOT_FOUND"] as const)
+  test(`SC12 page ${code} does not revoke a different fresh binding`, async () => {
+    const f = fixture()
+    f.addOther()
+    await f.run(readSkill(page, { database }))
+    const second = await f.run(readSkill(other, { database }))
+    f.deny(code, `v1/pages/${page}/markdown`)
+    const denied = await f.run(readSkill(page, { database, refresh: true }).pipe(Effect.result))
+    expect(denied._tag === "Failure" && denied.failure.code).toBe(code)
+    const before = f.requests.length
+    const unaffected = await f.run(readSkill(other, { database }))
+    expect(unaffected.source).toBe("local_cache")
+    expect(unaffected.snapshot_id).toBe(second.snapshot_id)
+    expect(f.requests.length).toBe(before)
+  })
+
+test("SC12 scope rejection reaches an old pin with no current observation", async () => {
+  const f = fixture()
+  f.addOther()
+  await f.run(readSkill(page, { database }))
+  const old = await f.run(readSkill(other, { database }))
+  for (const key of f.json.keys()) if (key.includes(`/notion_page:${other}/`)) f.json.delete(key)
+  f.deny("AUTH_REQUIRED", "v1/users/me")
+  await f.run(readSkill(page, { database, refresh: true }).pipe(Effect.result))
+  const denied = await f.run(readSkill(old.ref).pipe(Effect.result))
+  expect(denied._tag === "Failure" && denied.failure.code).toBe("AUTH_REQUIRED")
+  const before = f.requests.length
+  const offline = await f.run(readSkill(old.ref, { offline: true }))
+  expect(offline.snapshot_id).toBe(old.snapshot_id)
+  expect(offline.freshness).toMatchObject({ policy: "pinned", stale: true })
+  expect(f.requests.length).toBe(before)
+  f.allow()
+  await f.run(readSkill(page, { database, refresh: true }))
+  const validated = f.requests.length
+  expect((await f.run(readSkill(old.ref))).snapshot_id).toBe(old.snapshot_id)
+  expect(f.requests.length).toBe(validated)
+})
+
+test("SC12 transient network failure does not manufacture a permission rejection or a newer validation", async () => {
+  const f = fixture()
+  const first = await f.run(readSkill(page))
+  f.time(1_000_100)
+  f.deny("NOTION_UNAVAILABLE", "v1/users/me")
+  const failure = await f.run(readSkill(page, { refresh: true }).pipe(Effect.result))
+  expect(failure._tag === "Failure" && failure.failure.code).toBe("NOTION_UNAVAILABLE")
+  const before = f.requests.length
+  const warm = await f.run(readSkill(page))
+  expect(warm.source).toBe("local_cache")
+  expect(warm.freshness).toMatchObject({ validated_at: first.freshness?.validated_at, age_ms: 100 })
+  expect(f.requests.length).toBe(before)
+})
+
+test("SC12 cancelling an in-flight refresh neither publishes nor marks the old observation denied", async () => {
+  const f = fixture()
+  const first = await f.run(readSkill(page))
+  const before = [...f.json].filter(([key]) => key.startsWith("cache/latest/"))
+  const started = f.pause(`v1/pages/${page}/markdown`)
+  await f.run(
+    Effect.gen(function* () {
+      const reading = yield* readSkill(page, { refresh: true }).pipe(Effect.forkChild)
+      yield* Effect.promise(() => started)
+      yield* Fiber.interrupt(reading)
+    }).pipe(Effect.scoped),
+  )
+  const requests = f.requests.length
+  const warm = await f.run(readSkill(page))
+  expect(warm.source).toBe("local_cache")
+  expect(warm.snapshot_id).toBe(first.snapshot_id)
+  expect(warm.freshness?.validated_at).toBe(first.freshness?.validated_at)
+  expect([...f.json].filter(([key]) => key.startsWith("cache/latest/"))).toEqual(before)
+  expect(f.requests.length).toBe(requests)
+})
+
 test("C9 current name selection uses complete scoped catalogs and refresh exposes ambiguity", async () => {
   const f = fixture()
   await f.run(readSkill("sample-skill", { database }))
@@ -495,6 +708,21 @@ test("C14 causal generations prevent delayed older publication from regressing c
   await f.run(invalidateSnapshotCache(page, old.scope))
   await f.run(publishSnapshotObservation(newer, 1_000_000, reserved + 1))
   expect(await f.run(cachedRemoteObservation(page, old.scope))).toBeUndefined()
+  await f.run(
+    invalidateSnapshotCache(page, old.scope, {
+      retainForOffline: true,
+      accessDenied: "ACCESS_DENIED",
+    }),
+  )
+  await f.run(publishSnapshotObservation(old, 1_000_000, reserved))
+  const fixed = await f.run(readSkill(old.snapshot_id).pipe(Effect.result))
+  expect(fixed._tag === "Failure" && fixed.failure.code).toBe("ACCESS_DENIED")
+  const before = await f.run(reserveScopeAccess(old.scope))
+  const after = await f.run(reserveScopeAccess(old.scope))
+  await f.run(recordScopeAccess(old.scope, after, "AUTH_REQUIRED"))
+  await f.run(recordScopeAccess(old.scope, before))
+  const scoped = await f.run(readSkill(old.snapshot_id).pipe(Effect.result))
+  expect(scoped._tag === "Failure" && scoped.failure.code).toBe("AUTH_REQUIRED")
 })
 
 test("C15/P1 every read entry carries policy and pinned relative flags fail before provider work", async () => {
@@ -616,9 +844,11 @@ test("incomplete reference read never publishes a shortened successful observati
   f.incomplete()
   const failure = await f.run(readSkill(page, { refresh: true }).pipe(Effect.result))
   expect(failure._tag).toBe("Failure")
-  expect((await f.run(cachedRemoteObservation(page, old.scope)))?.snapshot.snapshot_id).toBe(
-    old.snapshot_id,
-  )
+  expect(await f.run(cachedRemoteObservation(page, old.scope))).toBeUndefined()
+  const retained = await f.run(cachedRemoteObservation(page, old.scope, { offline: true }))
+  expect(retained?.snapshot.snapshot_id).toBe(old.snapshot_id)
+  expect(retained?.snapshot.files).toEqual(old.files)
+  expect(retained?.invalidated).toBe(true)
 })
 
 test("catalog independent expiry/offline metadata preserves coverage without upgrading discovery", async () => {

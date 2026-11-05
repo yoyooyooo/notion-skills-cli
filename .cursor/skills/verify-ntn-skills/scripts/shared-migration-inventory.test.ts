@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import {
   lstatSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -21,6 +22,25 @@ import {
 
 const sha = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 const read = (path: string): any => JSON.parse(readFileSync(path, "utf8"))
+const collectorRuntime = process.versions.node.startsWith("24.")
+
+test("other Node runtimes reject the Node 24 collector before opening any input", {
+  skip: collectorRuntime,
+}, () => {
+  const root = mkdtempSync(join(tmpdir(), "shared-migration-runtime-test-"))
+  const run = join(root, "run")
+  assert.throws(
+    () =>
+      collectMigrationInventory({
+        catalog: join(root, "missing-catalog.json"),
+        backup: join(root, "missing-backup"),
+        targetLibrary: "explicit-library",
+        run,
+      }),
+    (error: unknown) => error instanceof InventoryError && error.code === "NODE_24_REQUIRED",
+  )
+  assert.equal(existsSync(run), false)
+})
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "shared-migration-inventory-test-"))
   const backup = join(root, "backup")
@@ -194,7 +214,9 @@ function fixture() {
   }
 }
 
-test("collects a private reproducible input with compact exact snapshot pointers and raw operations", () => {
+test("collects a private reproducible input with compact exact snapshot pointers and raw operations", {
+  skip: !collectorRuntime,
+}, () => {
   const f = fixture()
   const databaseHash = sha(readFileSync(f.database))
   const databaseFiles = readdirSync(f.backup).sort()
@@ -259,7 +281,9 @@ test("collects a private reproducible input with compact exact snapshot pointers
   assert.equal(repeated.input_sha256, result.input_sha256)
 })
 
-test("enumerates every durable row while keeping reviews and support out of the original selected operations", () => {
+test("enumerates every durable row while keeping reviews and support out of the original selected operations", {
+  skip: !collectorRuntime,
+}, () => {
   const f = fixture()
   const reviewPayload =
     '{\r\n  "kind": "review", "operation_id": "review-original", "state": "unknown",\r\n  "reason": "UNRESOLVED_NO_REPLAY", "refs": ["历史页面"], "extra": {"keep": false}\r\n}\n'
@@ -373,7 +397,9 @@ test("enumerates every durable row while keeping reviews and support out of the 
   assert.equal(sha(readFileSync(f.database)), databaseHash)
 })
 
-test("keeps the original SQL command filter even when duplicate JSON domain keys parse differently", () => {
+test("keeps the original SQL command filter even when duplicate JSON domain keys parse differently", {
+  skip: !collectorRuntime,
+}, () => {
   const f = fixture()
   const db = new DatabaseSync(f.database)
   db.prepare("INSERT INTO upstream_commands VALUES (?,?)").run(
@@ -405,7 +431,9 @@ test("keeps the original SQL command filter even when duplicate JSON domain keys
   assert.equal(read(result.input).preservation.operations.complete, false)
 })
 
-test("database verification never substitutes for corrupt source_files bytes", () => {
+test("database verification never substitutes for corrupt source_files bytes", {
+  skip: !collectorRuntime,
+}, () => {
   const f = fixture()
   writeFileSync(join(f.backup, "objects", f.sourceHash), "changed bytes")
   const result = collectMigrationInventory(f.args)
@@ -425,7 +453,9 @@ test("database verification never substitutes for corrupt source_files bytes", (
   )
 })
 
-test("a linked object cannot cause the collector to read outside the explicit backup", () => {
+test("a linked object cannot cause the collector to read outside the explicit backup", {
+  skip: !collectorRuntime,
+}, () => {
   const f = fixture()
   const outside = join(f.root, "outside-object")
   const outsideContent = "must not be read through a backup object link"
@@ -461,7 +491,9 @@ test("a linked object cannot cause the collector to read outside the explicit ba
   assert.equal(read(result.input).backup.verified, false)
 })
 
-test("existing runs, input overlap, relative paths and SQLite sidecars fail without overwriting evidence", () => {
+test("existing runs, input overlap, relative paths and SQLite sidecars fail without overwriting evidence", {
+  skip: !collectorRuntime,
+}, () => {
   const f = fixture()
   mkdirSync(f.args.run)
   const sentinel = join(f.args.run, "keep")

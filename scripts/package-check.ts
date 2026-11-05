@@ -99,6 +99,7 @@ const publicFiles = [
   "docs/consumer-contract.md",
   "docs/resource-read-contract.md",
   "docs/selected-snapshot-consumption.md",
+  "docs/shared-metadata-consumption.md",
   "docs/releasing.md",
   "docs/portable-converter.md",
   "docs/remote-proof-converter.md",
