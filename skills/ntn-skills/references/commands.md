@@ -1,13 +1,15 @@
 # Commands and recovery
 
-Run `ntn-skills --help` for installed capabilities and `ntn-skills COMMAND --help` for exact parameters. Help/version work offline and return text. Other commands return one JSON value; exit 0 succeeds, exit 1 is an operational failure and exit 2 is invalid input. Use `schema [command path...]` for machine-readable types, defaults, cardinality and constraints from the installed parser. Parse errors include `next.argv` for the relevant offline help. Bare collections such as `sync upstream list` return an `items` array; named arrays such as catalog `records` retain their fields. Replace example placeholders with actual returned identities.
+Run `ntn-skills --help` for installed capabilities and `ntn-skills COMMAND --help` for exact parameters. Help/version work offline and return text. `use` defaults to compact instructions; `use --json` returns full structured consumption. `list` and `read` retain JSON as their compatibility default and accept explicit `--json`; `read --raw` returns exact text. Other commands return one JSON value; exit 0 succeeds, exit 1 is an operational failure and exit 2 is invalid input. Use `schema [command path...]` for machine-readable types, defaults, cardinality and constraints from the installed parser. Parse errors include `next.argv` for the relevant offline help. Bare collections such as `sync upstream list` return an `items` array; named arrays such as catalog `records` retain their fields. Replace example placeholders with actual returned identities.
 
 ## Discovery and reads
 
 ```bash
-ntn-skills list [--query TASK_TERMS] [--database DATABASE_ID_OR_ALIAS]
+ntn-skills list [--query TASK_TERMS] [--database DATABASE_ID_OR_ALIAS] [--limit 50] [--cursor NEXT_CURSOR] --json
 ntn-skills ctl database list
-ntn-skills read 'CURRENT_REF_FROM_LIST'
+ntn-skills read 'CURRENT_REF_FROM_LIST' --json
+ntn-skills use 'CURRENT_REF_FROM_LIST'
+ntn-skills use 'CURRENT_REF_FROM_LIST' --json
 ntn-skills read 'CURRENT_PAGE_ID' --refresh
 ntn-skills files 'SNAPSHOT_ID_FROM_READ'
 ntn-skills read 'RELATIVE_PATH' --from 'PINNED_CONTAINING_FILE_REF'
@@ -15,7 +17,9 @@ ntn-skills read 'PINNED_FILE_REF' --lines 10-30
 ntn-skills read 'PINNED_BINARY_REF' --output NEW_LOCAL_PATH
 ```
 
-`list` paginates metadata without bodies or file manifests and retains coverage, database identity and freshness. `--query` filters Name/alias/Description. Database selectors accept one ID, URL or exact case-sensitive registered alias; titles are labels. Unknown/ambiguous selectors fail without fallback. Different databases may contain same-name Skills; preserve page identities and select a database or exact returned record ref. `ctl config show` inspects local aliases; `ctl database register ALIAS --database SELECTOR` validates and registers one, and `ctl database unregister ALIAS` removes only the exact local alias offline. `ctl config set default_database SELECTOR` affects create only and does not constrain discovery. `ctl config unset default_database` clears the preference offline.
+`list` paginates metadata without bodies or file manifests and retains coverage, database identity and freshness. `--query` filters Name/alias/Description across the accessible source scope unless a View is explicitly selected. The default limit is 50, maximum 500. `count` describes this page; `total_count` describes filtered records in this observation. Follow `next_cursor` while `has_more` is true, preserving query/source selection; a changed directory returns `LIST_CURSOR_STALE`. These fields do not upgrade `coverage.exhaustive`. Hosts needing a complete default directory use SDK `listCatalog`; SDK `listSkills` shares this bounded projection. Database selectors accept one ID, URL or exact case-sensitive registered alias; titles are labels. Unknown/ambiguous selectors fail without fallback. Different databases may contain same-name Skills; preserve page identities and select a database or exact returned record ref. `ctl config show` inspects local aliases; `ctl database register ALIAS --database SELECTOR` validates and registers one, and `ctl database unregister ALIAS` removes only the exact local alias offline. `ctl config set default_database SELECTOR` affects create only and does not constrain discovery. `ctl config unset default_database` clears the preference offline.
+
+`read` inspects one file without loading Requires. `use` loads one root and the complete Requires closure through the shared consumer, with each body appearing once and optional Member bodies left lazy. Copy the returned canonical refs for supporting resources. A missing required node fails the whole use result. `use --json` separates the body graph from manifests and delivery/activation evidence; preparation alone is not model receipt. Canonical IDs and fixed refs bypass catalog discovery. Name selection requires complete uniqueness evidence; incomplete discovery returns an actionable exact-ref or `--database` choice. Advanced graph/session/budget controls remain on `prepare` during caller migration.
 
 Each `list` row also carries boolean `default_context` (missing or unchecked is false); this field never filters `list` or explicit reads.
 

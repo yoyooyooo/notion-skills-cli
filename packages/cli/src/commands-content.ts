@@ -17,7 +17,7 @@ import {
 } from "@notion-skills-cli/core"
 
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
-import { catalogWithProfile } from "../../core/src/shared-profile-config.ts"
+import { listSkills } from "../../core/src/catalog-consumption.ts"
 
 import {
   filesConstraints,
@@ -73,6 +73,12 @@ export const listCommand = defineCommand(
     ...readPolicyFlags,
     metrics: requestMetricsFlag,
     query: singleton("query", "Case-insensitive filter on Name, invocation alias and Description"),
+    limit: singleton("limit", "Maximum metadata records, 1-500 (default 50)"),
+    cursor: singleton("cursor", "Copy next_cursor from the same directory and query"),
+    json: switchFlag(
+      "json",
+      "Emit the stable JSON result (currently also the compatibility default)",
+    ),
   },
   (config) =>
     Effect.gen(function* () {
@@ -88,50 +94,21 @@ export const listCommand = defineCommand(
         database: Option.getOrUndefined(config.database),
         ...(yield* readPolicy(config)),
       }
-      const result = yield* catalogWithProfile({
+      const result = yield* listSkills({
         ...options,
         view: Option.getOrUndefined(config.view),
         defaultView: config.defaultView,
         profile: Option.getOrUndefined(config.profile),
+        query: Option.getOrUndefined(config.query),
+        limit: Option.isSome(config.limit) ? Number(config.limit.value) : undefined,
+        cursor: Option.getOrUndefined(config.cursor),
       })
-      const query = Option.getOrUndefined(config.query)?.toLocaleLowerCase()
-      const skills = query
-        ? result.records.filter((s) =>
-            `${s.name}\n${s.alias}\n${s.description}`.toLocaleLowerCase().includes(query),
-          )
-        : result.records
-      yield* emit(
-        yield* measuredOutput(
-          {
-            scope: result.scope,
-            fetched_at: result.fetched_at,
-            databases: result.databases,
-            records: skills,
-            count: skills.length,
-            coverage: result.coverage,
-            source: result.source,
-            freshness: result.freshness,
-            ...("capability_directory" in result
-              ? { capability_directory: result.capability_directory }
-              : {}),
-            ...("profile" in result ? { profile: result.profile } : {}),
-            ...("view" in result
-              ? {
-                  view: result.view,
-                  view_selection: result.view_selection,
-                  view_query: result.view_query,
-                }
-              : {}),
-          },
-          config.metrics,
-          startedAt,
-        ),
-      )
+      yield* emit(yield* measuredOutput(result, config.metrics, startedAt))
     }),
 ).pipe(
   Command.withShortDescription("List available skills with names, descriptions and refs"),
   Command.withDescription(
-    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list retains complete explicit discovery, including Prompts, regardless of the machine binding. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight content metadata with role-tagged content/upstream database maps and successful-query coverage. Automatic subscription Routers require at least two verified published active Skills; individual Skill records remain independently available. Subscription Router locators belong to upstream sources; --database constrains their content target. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
+    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list discovers the accessible source scope, including Prompts, regardless of the machine binding. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit and currently also the compatibility default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight content metadata with role-tagged content/upstream database maps and successful-query coverage. Automatic subscription Routers require at least two verified published active Skills; individual Skill records remain independently available. Subscription Router locators belong to upstream sources; --database constrains their content target. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
   ),
   Command.withExamples([
     {
@@ -187,6 +164,7 @@ export const readCommand = defineCommand(
     path: singleton("path", "Skill-relative file path; target must not already contain a path"),
     database: databaseFlag,
     metrics: requestMetricsFlag,
+    json: switchFlag("json", "Emit the stable JSON result; incompatible with --raw"),
     ...readPolicyFlags,
     from: singleton(
       "from",

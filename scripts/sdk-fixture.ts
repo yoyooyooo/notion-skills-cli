@@ -32,13 +32,17 @@ import {
 } from "../packages/core/test/shared-snapshot-fixture.ts"
 
 const args = process.argv.slice(2)
+const defaultViewCache = args[4] ?? "complete"
 if (
-  (args.length !== 2 && !(args.length === 3 && args[2] === "--catalog")) ||
+  (args.length !== 2 &&
+    !(args.length === 3 && args[2] === "--catalog") &&
+    !(args.length === 5 && args[2] === "--catalog" && args[3] === "--default-view-cache")) ||
+  !["complete", "missing", "incomplete"].includes(defaultViewCache) ||
   args[0] !== "--outdir" ||
   !isAbsolute(args[1]!)
 )
   throw new Error(
-    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog]",
+    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog [--default-view-cache complete|missing|incomplete]]",
   )
 const withCatalog = args[2] === "--catalog"
 const root = args[1]!
@@ -243,6 +247,16 @@ snapshots[4] = {
 const catalogSnapshots = snapshots.filter(
   (snapshot) => snapshot !== snapshots[4] && snapshot !== snapshots[5],
 )
+const defaultView = {
+  id: "00000000-0000-4000-8000-000000000041",
+  name: "Controlled daily Skills",
+  type: "table",
+  database_id: "00000000-0000-4000-8000-000000000010",
+  data_source_id: "00000000-0000-4000-8000-000000000011",
+  url: "https://www.notion.so/00000000000040008000000000000010?v=00000000000040008000000000000041",
+}
+const defaultViewRecords = snapshots.slice(0, 2).map((snapshot) => snapshot.record)
+const defaultViewCacheKeys: string[] = []
 const seedEnv = {
   ...env,
   NTN_SKILLS_HOME: join(root, "state"),
@@ -325,6 +339,48 @@ const resourcePlan = await Effect.runPromise(
             const generation = yield* store.reserveCacheGeneration(scope, `catalog-${identity}`)
             yield* store.writeJson(`cache/catalogs/${scope}/${identity}.json`, {
               ...catalog,
+              generation,
+            })
+          }
+        // View observation is metadata only. Publishing it does not load or
+        // validate any additional entrypoint or supporting-file object.
+        for (const database of defaultViewCache === "missing" ? [] : [[source], source.database_id])
+          for (const selection of ["first", defaultView.id]) {
+            const identity = hash(
+              JSON.stringify(["notion-views-v2-shared-metadata", ["members", selection, database]]),
+            )
+            const key = `cache/views/${scope}/${identity}.json`
+            defaultViewCacheKeys.push(key)
+            const generation = yield* store.reserveCacheGeneration(scope, `views-${identity}`)
+            yield* store.writeJson(key, {
+              scope,
+              fetched_at: now,
+              databases: [source],
+              records: defaultViewRecords,
+              coverage: {
+                method: "explicit_view",
+                exhaustive: defaultViewCache === "complete",
+                queried_data_sources: source.data_source_ids,
+                failed_sources:
+                  defaultViewCache === "complete"
+                    ? []
+                    : [
+                        {
+                          id: defaultView.id,
+                          code: "VIEW_INCOMPLETE",
+                          database_id: source.database_id,
+                          data_source_id: defaultView.data_source_id,
+                        },
+                      ],
+                search_index_limited: false,
+              },
+              view: defaultView,
+              view_selection: selection === "first" ? "first" : "explicit",
+              view_query: {
+                id: "00000000-0000-4000-8000-000000000042",
+                expires_at: new Date(now + 300000).toISOString(),
+                total_count: defaultViewRecords.length,
+              },
               generation,
             })
           }
@@ -740,6 +796,15 @@ const metadata = {
   catalog: withCatalog,
   database: "00000000-0000-4000-8000-000000000010",
   catalog_records: catalogSnapshots.map((snapshot) => snapshot.record.id),
+  default_view: withCatalog
+    ? {
+        ...defaultView,
+        selection: "first",
+        source_cache: `${defaultViewCache}-metadata-only`,
+        records: defaultViewRecords.map(({ id, name, ref }) => ({ id, name, ref })),
+        cache_keys: defaultViewCacheKeys,
+      }
+    : null,
   ownership,
   scalarInventory,
   roots: snapshots.slice(0, 3).map(ref),

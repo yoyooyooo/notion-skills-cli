@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { Effect } from "effect"
 import { decode, type Snapshot } from "../../core/src/model.ts"
 import { PrepareIncompleteSchema, PrepareReadySchema } from "../../core/src/graph-prepare-model.ts"
+import { ConsumeReadySchema } from "../../core/src/consumer-model.ts"
 import { fileRef } from "../../core/src/ref.ts"
 import { trashPath } from "../../core/src/local-locks.ts"
 import { createHttpProbe } from "./http-probe.ts"
@@ -179,6 +180,64 @@ console.log(JSON.stringify({seeded:snapshots.length,scope:${JSON.stringify(scope
   }
   return { root, snapshots, invoke, ref: (index: number) => relation(snapshots[index]!).ref }
 }
+
+test("SC25 use returns one complete root/Requires closure without loading optional bodies", async () => {
+  const f = await fixture()
+  const used = await f.invoke(["use", f.ref(0), "--offline", "--json"])
+  expect(used.exit).toBe(0)
+  const ready = decode(ConsumeReadySchema, JSON.parse(used.stdout))
+  expect(ready.preparation.required_closure).toEqual(
+    f.snapshots.slice(0, 2).map((snapshot) => snapshot.record.id),
+  )
+  expect(
+    ready.preparation.nodes.filter((node) => node.state === "prepared").map((node) => node.content),
+  ).toEqual(["# a\nExact prepared instruction a.\n", "# b\nExact prepared instruction b.\n"])
+  expect(ready.preparation.nodes.find((node) => node.id === f.snapshots[2]!.record.id)?.state).toBe(
+    "known",
+  )
+  expect(ready.delivery.status).toBe("not_observed")
+  expect(ready.activation.status).toBe("not_evaluated")
+  const compact = await f.invoke(["use", f.ref(0), "--offline"])
+  expect(compact.exit).toBe(0)
+  expect(compact.stdout.match(/Exact prepared instruction a\./g)).toHaveLength(1)
+  expect(compact.stdout.match(/Exact prepared instruction b\./g)).toHaveLength(1)
+  expect(compact.stdout).not.toContain("Exact prepared instruction optional")
+  expect(compact.stdout).not.toContain("manifest_sha256")
+  const missing = await f.invoke(["use", f.ref(3), "--offline", "--json"])
+  expect(missing.exit).toBe(1)
+  expect(JSON.parse(missing.stdout).ok).toBe(false)
+  for (const args of [
+    ["use", f.ref(0), "--refresh", "--json"],
+    ["use", f.ref(0), "--lines", "1-2", "--json"],
+    ["use", f.ref(0), "--metrics"],
+  ]) {
+    const invalid = await f.invoke(args)
+    expect(invalid.exit).toBe(2)
+    expect(JSON.parse(invalid.stdout).error.code).toBe("INVALID_ARGUMENT")
+  }
+})
+
+test("SC25 read --json preserves inspect-only behavior and rejects --raw conflicts", async () => {
+  const f = await fixture()
+  const inspected = await f.invoke(["read", f.ref(3), "--offline", "--json"])
+  expect(inspected.exit).toBe(0)
+  expect(JSON.parse(inspected.stdout).content).toBe(
+    "# broken\nExact prepared instruction broken.\n",
+  )
+  const invalid = await f.invoke(["read", f.ref(0), "--json", "--raw"])
+  expect(invalid.exit).toBe(2)
+  expect(JSON.parse(invalid.stdout).error.code).toBe("INVALID_ARGUMENT")
+})
+
+test("SC25 list exposes bounded metadata pagination and explicit JSON in the offline schema", async () => {
+  const f = await fixture()
+  const schema = await f.invoke(["schema", "list"])
+  expect(schema.exit).toBe(0)
+  const names = JSON.parse(schema.stdout).schema.parameters.map(
+    (parameter: { name: string }) => parameter.name,
+  )
+  for (const name of ["query", "limit", "cursor", "json"]) expect(names).toContain(name)
+})
 
 test("prepare help/schema are offline and expose actual parser defaults and bounds", async () => {
   const f = await fixture()

@@ -45,6 +45,7 @@ import { doctorCommand } from "./commands-doctor.ts"
 import { apiCommand } from "./commands-api.ts"
 import { archiveCommand } from "./commands-archive.ts"
 import { prepareCommand } from "./commands-prepare.ts"
+import { useCommand } from "./commands-use.ts"
 import { live, upstreamLive } from "./command-runtime.ts"
 const ctlCommand = defineCommand("ctl").pipe(
   Command.withDescription(
@@ -86,7 +87,7 @@ const schemaCommand = defineCommand(
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Discover with list, then read one exact target and keep its pinned ref for supporting files. Create new content with create and submit one pinned file/metadata change with apply. Use the bundled maintenance Skill for the complete workflow. For a shared library manage active Sources with ctl library sources list/show/put/bind/check/fetch/prepare/apply; fixed content pins remain separate. Connect a page/directory with sync local connect. The legacy sync upstream workflow requires its explicitly configured legacy tables and does not manage the shared Sources catalog. If an operation stops, inspect its original ID with operation show and follow the returned next.argv; operation resume continues that same operation. Use ctl for setup and diagnostics. Help and schema work offline; reads and previews never execute Skill content.",
+      "Discover Notion Skills with list --query, inspect original text or an exact resource with read, and load one root plus its complete Requires with use. Keep returned canonical refs for later resource reads. Files and export provide optional file inventories and packages. Use the bundled maintenance Skill for authoring and ctl for setup and diagnostics. Existing author, prepare, sync and operation commands remain available during caller migration; retain an interrupted operation's exact next.argv. Help and schema work offline; loading instructions does not execute them or attest model delivery.",
     ),
     Command.withExamples([
       {
@@ -95,7 +96,11 @@ const rootDefinition = () =>
       },
       {
         command: "ntn-skills read 'skill://resource-tag-governance/SKILL.md'",
-        description: "Activate one skill and retain the returned pinned ref",
+        description: "Inspect the original text and retain the returned pinned ref",
+      },
+      {
+        command: "ntn-skills use 'skill://resource-tag-governance/SKILL.md'",
+        description: "Load one root and every Requires instruction",
       },
       {
         command: "ntn-skills read vocabulary.md --from 'PINNED_REF'",
@@ -134,6 +139,7 @@ const rootDefinition = () =>
       withRuntime(viewsCommand.pipe(withConstraints([readPolicyConstraint])), live),
       ctlCommand,
       withRuntime(readCommand.pipe(withConstraints(readConstraints)), live),
+      withRuntime(useCommand, live),
       withRuntime(prepareCommand, live),
       withRuntime(filesCommand.pipe(withConstraints(filesConstraints)), live),
       withRuntime(createCommand, live),

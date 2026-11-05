@@ -28,6 +28,15 @@ import {
   type ResourceReadResult,
 } from "../../core/src/resource-read-model.ts"
 import { localRuntime, live, nodeRuntime } from "./runtime.ts"
+import {
+  listCatalog as coreListCatalog,
+  listSkills as coreListSkills,
+  validateListPage,
+  type ListCatalogOptions as CoreListCatalogOptions,
+  type ListSkillsOptions as CoreListSkillsOptions,
+  type ListCatalogResult,
+  type ListSkillsResult,
+} from "../../core/src/catalog-consumption.ts"
 
 export const SDK_VERSION = 1
 export const PACKAGE_VERSION = version
@@ -74,6 +83,22 @@ export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal">
 export type ReadSkillOptions = SdkOptions & ReadOptions
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
 export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal">
+export type ListCatalogOptions = SdkOptions & CoreListCatalogOptions
+export type ListSkillsOptions = SdkOptions & CoreListSkillsOptions
+export type { ListCatalogResult, ListSkillsResult } from "../../core/src/catalog-consumption.ts"
+
+/** Complete metadata-only directory; no CLI subprocess or second cache identity request. */
+export function listCatalog(options: ListCatalogOptions = {}): Promise<ListCatalogResult> {
+  return runOperation(() => coreListCatalog(options), options)
+}
+
+/** Bounded explicit discovery. count/has_more never imply exhaustive source coverage. */
+export function listSkills(options: ListSkillsOptions = {}): Promise<ListSkillsResult> {
+  return runOperation(() => {
+    validateListPage(options)
+    return coreListSkills(options)
+  }, options)
+}
 
 const cancelled = () => fail("CANCELLED", "The SDK operation was cancelled.")
 

@@ -7,6 +7,8 @@ import {
   parseDuration,
   readResources,
   readSkill,
+  listCatalog,
+  listSkills,
   SkillsError,
   SDK_VERSION,
   CONSUMER_CONTRACT_VERSION,
@@ -22,6 +24,29 @@ const resourceRef =
   "&file_id=file-a"
 
 describe("Promise SDK boundary", () => {
+  test("catalog/list cancellation and invalid pagination fail before runtime acquisition", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const reports: unknown[] = []
+    for (const list of [listCatalog, listSkills])
+      await expect(
+        list({
+          env: {},
+          signal: controller.signal,
+          onRequestMetrics: (value) => reports.push(value),
+        }),
+      ).rejects.toMatchObject({ code: "CANCELLED" })
+    for (const selection of [
+      { limit: 0 },
+      { limit: 501 },
+      { limit: 1.5 },
+      { cursor: "not-a-returned-cursor" },
+    ])
+      await expect(
+        listSkills({ ...selection, env: {}, onRequestMetrics: (value) => reports.push(value) }),
+      ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
+    expect(reports).toEqual([null, null, null, null, null, null])
+  })
   test("unknown input and unsupported capability fail before runtime acquisition", async () => {
     const reports: unknown[] = []
     const invalid = await consume(

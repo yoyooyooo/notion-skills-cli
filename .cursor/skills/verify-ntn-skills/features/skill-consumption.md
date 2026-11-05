@@ -1,6 +1,26 @@
 # Skill 消费链
 
-归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC24 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](../../../../../pi-context-broker/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。这里的跨仓链接假设两个 checkout 相邻；其他布局先定位真实 Broker 根目录，再读取同一仓内路径，不创建替代地图。
+归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC26 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](../../../../../pi-context-broker/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。这里的跨仓链接假设两个 checkout 相邻；其他布局先定位真实 Broker 根目录，再读取同一仓内路径，不创建替代地图。
+
+## SC25：日常命令与目录 SDK
+
+紧凑 use 也必须保留原生引用的 canonical ref、来源文件和 availability，不能把 disabled/metadata-only 引用显示为可消费正文。既有 SDK smoke 的 scalar fixture 同时验证 JSON 与紧凑入口，并断言固定 use 不新增远端引用正文请求；旧安装包的缺失输出应先失败，再对新归档通过。
+
+合同 `agent-cli-ref-20261105`：`list --query/--limit/--cursor` 发现有界元数据，`read REF --json` 查看单文件，`use REF` 一次加载根和完整 Requires；`use --json` 保留机器证据，紧凑默认正文只出现一次。`list/read` 的旧 JSON 默认在 SC23 调用者迁移前保留。完整默认目录用 SDK `listCatalog`，有界发现用 `listSkills`；两者共享 core catalog 和凭据 scope，不派生 CLI 子进程或第二份身份缓存。
+
+沿既有入口保留 fail-before/pass-after：
+
+```bash
+NTN_SKILLS_PREPARE_EVIDENCE_DIR="$RUN/evidence/sc25" bun test packages/cli/test/prepare.test.ts packages/cli/test/sdk.test.ts --timeout 30000
+node scripts/sdk-fixture.ts --outdir "$RUN/scratch/sdk-fixture" --catalog
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/sdk-fixture/fixture.json" --outdir "$RUN/evidence/sdk-installed"
+```
+
+`prepare.test.ts` 驱动真实 built Node CLI，断言 read 只查看、use 完整闭包、未选 Member 无正文、正文不重复、missing Requires 失败、固定 ref freshness 冲突和 schema/help；SDK boundary 覆盖取消与非法分页在 runtime 获取前失败。独立安装 smoke 读取同一 fixture，验证完整 catalog、分页去重/续读、跨 query 的 stale cursor、Default View 子集、Name 唯一性和 partial coverage 拒绝，以及真实 Node object-read 与 HTTP 账本。目录的 `has_more` 与 source `coverage.exhaustive` 分别断言，不能互相替代。
+
+Default View 正例只增加完整 View metadata observation；原 consumer fixture 的正文状态单独标记。`--catalog --default-view-cache missing|incomplete` 各生成新 owned fixture，实际 SDK/正常 Pi 默认目录必须拒绝缺失或不完整观察。不能只验证预期错误就把正例算通过。跨仓 driver 使用 fixture 的 `default_view.records` 和 `catalog_records` 独立核对，真实 Notion 和真实模型仍各自取证。
+
+既有 `control.ts consumption/prepare/import/reuse` 现在沿全部 list cursor 收集目录，首批 refresh、后续 offline 复用同次观察，并核对 scope、fetched_at、总数与重复 ID；不能把默认 50 条当全库。所有当前 read 的 adoption/retention/Records 写入仍进入 request_metrics。Cleanup 只移动本次 owned fixture/安装目录，保留归档、hash、失败原件和证据。
 
 导航：[Sub-features](#sub-features) · [用户入口](#how-to-get-to-it-user-pov) · [驱动与清理](#driving-it-with-control-ntn-skills) · [Gotchas](#gotchas)。
 
@@ -34,7 +54,7 @@
 
 本页的 `consumption` 先刷新指定目录，再对已选记录完成主文、固定文件清单、完整导出、重复导出、输出冲突保护和旧 pin 离线重读。它包含验证所需额外请求，不能拿整条验收流程的成本充当单次普通消费。SC02 的正式请求、字节、模型轮次和延迟基线在 Broker 主地图单独冻结。
 
-`DATABASE` 取本次授权库的实际 selector，`PAGE_ID` 取该库的目录/fixture 回执。缺少目标时记录 `blocked`，不能随便取另一个库或叶子完成验收。`consumption` 不创建或修改远端页；未知原操作仍由原恢复流程负责。
+`DATABASE` 取本次授权库的实际 selector，`PAGE_ID` 取该库的目录/fixture 回执。缺少目标时记录 `blocked`，不能随便取另一个库或叶子完成验收。`consumption` driver 不另建 fixture 或主动编辑远端页；产品 current read 可能保留完整观察、adoption 和 Records 写入，必须计入 request_metrics。只对稳定未变化路径断言零常规写回；未知原操作仍由原恢复流程负责。
 
 ## Driving it with control-ntn-skills
 
@@ -76,7 +96,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$RUN"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts consumption --run "$RUN" --database "$DATABASE" --target "$PAGE_ID"
 ```
 
-真实网络只读消费需要已有目标库授权；它不调用模型。检查 `consumption-source.json` 与实际命令回执，核对 scope、完整覆盖、动态主入口、固定 snapshot、每个导出文件 bytes/hash、输出复用和冲突后原文件未变。安装包验证另按 [Broker 消费地图](broker-consumption.md) 用实际 `--installed-bin`；checkout 结果不能替代安装包。
+真实网络消费需要已有目标库授权；它不调用模型。检查 `consumption-source.json` 与实际命令回执，核对 scope、完整覆盖、动态主入口、固定 snapshot、每个导出文件 bytes/hash、输出复用和冲突后原文件未变。安装包验证另按 [Broker 消费地图](broker-consumption.md) 用实际 `--installed-bin`；checkout 结果不能替代安装包。
 
 Pi 的同一用户路径从 Broker 主地图进入 `verify-notion-integration.mjs --host pi`；它有独立 Launch/Doctor/Evidence/Cleanup。`deterministic` 使用真实宿主和受控 source/provider，`live` 另证明真实 Notion，`model` 另证明实际模型。模型许可和真实网络范围分别声明，不互相推断。
 

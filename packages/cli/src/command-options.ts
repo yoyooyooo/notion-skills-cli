@@ -29,6 +29,7 @@ export const filesConstraints: readonly CommandConstraint[] = [
 export const readConstraints: readonly CommandConstraint[] = [
   ...filesConstraints,
   exclusiveFlags(["raw", "output"]),
+  exclusiveFlags(["raw", "json"]),
   exclusiveFlags(["lines", "output"]),
   exclusiveFlags(["from", "path"]),
 ]

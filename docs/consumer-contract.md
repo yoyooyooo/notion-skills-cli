@@ -33,8 +33,42 @@ const operation = consume(input, { signal: abortController.signal })
 
 The sample relative import is for this repository. Other repositories use the public
 `ntn-skills/sdk` package export shown below. The private core package still exports
-TypeScript source and is not a cross-repository distribution boundary. No new CLI
-command is added.
+TypeScript source and is not a cross-repository distribution boundary. No new
+consumer transport is introduced. SC25 adds the daily `use REF` command as a thin
+adapter over this same engine; it does not loop over scalar reads.
+
+## Daily discovery, inspection and consumption
+
+`list [--query TEXT] [--limit N] [--cursor CURSOR]` returns metadata only. It searches
+the authorized source scope unless an explicit View/Profile selection narrows it.
+The default limit is 50 and the maximum is 500. `count` is the returned page length;
+`total_count` is the matched observation length. Follow `next_cursor` until `has_more`
+is false. Neither field upgrades `coverage.exhaustive`. A cursor binds scope, catalog
+observation, selection and query; a changed observation returns `LIST_CURSOR_STALE`.
+
+`read REF --json` inspects one original file without resolving Requires. `use REF`
+loads the root and complete Requires closure once, leaving unselected Member bodies
+unread. Canonical IDs and immutable refs bypass discovery. Human names resolve through
+complete metadata before consumption; incomplete uniqueness evidence returns an exact
+ref or explicit-database action. Resource-only and range reads use `read`, and package
+materialization uses `export`.
+
+`use` defaults to compact instructions and returned refs. `use --json` returns the
+consumer v1 result with the CLI `ok` envelope: full bodies occur once in
+`preparation.nodes`; `entries` carry machine evidence. Drop the CLI envelope before
+calling the pure consumer decoder. Prepared content retains `delivery:not_observed`
+and `activation:not_evaluated`. `list/read` keep their old JSON default while SC23
+callers migrate; explicit `--json` is stable. `read --raw` remains exact text and is
+incompatible with `--json`.
+
+The Promise SDK exports `listCatalog(options): Promise<ListCatalogResult>` for a full
+metadata directory, and `listSkills(options): Promise<ListSkillsResult>` for the same
+bounded query/pagination contract. Both accept normal SDK `env/cwd/signal/metrics`
+options and `database/view/defaultView/profile/refresh/offline/maxAge`; only `listSkills`
+adds `query/limit/cursor`. Full results retain scope, records, count, fetched_at,
+freshness, databases, coverage and applicable View/Profile metadata, without a CLI
+envelope. Both use core catalog cache eligibility directly. They spawn no process
+and need no separate cache-identity request or host-derived catalog cache.
 
 | Input | Contract |
 | --- | --- |

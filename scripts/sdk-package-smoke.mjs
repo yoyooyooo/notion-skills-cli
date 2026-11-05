@@ -391,6 +391,116 @@ try {
     return copy
   }
 
+  if (fixture.catalog)
+    await test("installed list/catalog SDK and CLI preserve complete metadata pagination and Default View", async () => {
+      const reports = []
+      const selection = {
+        ...options,
+        database: fixture.database,
+        offline: true,
+        onRequestMetrics: (value) => reports.push(value),
+      }
+      const observed = await traceObjectReads(
+        "metadata-directory",
+        join(fixture.cwd, "state", "objects"),
+        async () => {
+          const complete = await sdk.listCatalog(selection)
+          assert.deepEqual(
+            complete.records.map((record) => record.id),
+            fixture.catalog_records,
+          )
+          const view = await sdk.listCatalog({ ...selection, defaultView: true })
+          assert.deepEqual(
+            view.records.map((record) => record.id),
+            fixture.default_view.records.map((record) => record.id),
+          )
+          assert.equal(view.view.id, fixture.default_view.id)
+          assert.equal(view.capability_directory, true)
+          const first = await sdk.listSkills({ ...selection, limit: 2 })
+          assert.equal(first.count, 2)
+          assert.equal(first.total_count, complete.count)
+          assert.equal(first.has_more, true)
+          const records = [...first.records]
+          let page = first
+          while (page.has_more) {
+            page = await sdk.listSkills({ ...selection, limit: 2, cursor: page.next_cursor })
+            records.push(...page.records)
+          }
+          assert.equal(page.next_cursor, null)
+          assert.deepEqual(records, complete.records)
+          await assert.rejects(
+            sdk.listSkills({ ...selection, query: "different query", cursor: first.next_cursor }),
+            { code: "LIST_CURSOR_STALE" },
+          )
+          const query = await sdk.listSkills({ ...selection, query: "fixture resources" })
+          assert.equal(query.count, 1)
+          assert.equal(query.has_more, false)
+          const unscoped = await sdk.listSkills({ ...options, offline: true })
+          assert.equal(unscoped.has_more, false)
+          assert.equal(unscoped.coverage.exhaustive, false)
+          return { complete, first, view }
+        },
+      )
+      const objectProof = objectReadProof("metadata-directory", [])
+      assert.equal(objectProof.reads, 0, "Metadata discovery must not read any body object")
+      for (const report of reports) {
+        assert.ok(report)
+        assert.equal(report.total_requests, 0)
+        assert.equal(report.trace_enabled, true)
+        assert.equal(report.trace_dropped, 0)
+      }
+      const cliPage = await invokeCli([
+        "list",
+        "--database",
+        fixture.database,
+        "--offline",
+        "--json",
+        "--limit",
+        "2",
+      ])
+      assert.equal(cliPage.code, 0)
+      assert.deepEqual(cliPage.value.records, observed.first.records)
+      assert.equal(cliPage.value.next_cursor, observed.first.next_cursor)
+      const inspect = await invokeCli(["read", fixture.roots[0], "--offline", "--json"])
+      assert.equal(inspect.code, 0)
+      const use = await invokeCli(["use", fixture.roots[0], "--offline", "--json"])
+      assert.equal(use.code, 0)
+      const { ok: _ok, ...proof } = use.value
+      const used = await sdk.decodeConsumeResult(proof)
+      assert.equal(used.status, "ready")
+      assert.deepEqual(
+        used.preparation.nodes
+          .filter((node) => node.state === "prepared")
+          .map((node) => node.id)
+          .sort(),
+        [fixture.snapshots[0].record.id, fixture.snapshots[3].record.id].sort(),
+      )
+      assert.equal(
+        used.preparation.nodes.find((node) => node.id === fixture.snapshots[0].record.id).content,
+        inspect.value.content,
+      )
+      const named = await invokeCli([
+        "use",
+        "skill://a/SKILL.md",
+        "--database",
+        fixture.database,
+        "--offline",
+        "--json",
+      ])
+      assert.equal(named.code, 0)
+      assert.deepEqual(named.value.preparation.required_closure, used.preparation.required_closure)
+      const partial = await invokeCli(["use", "skill://a/SKILL.md", "--offline", "--json"])
+      assert.equal(partial.code, 1)
+      assert.equal(partial.value.error.code, "CATALOG_INCOMPLETE")
+      return {
+        catalog_count: observed.complete.count,
+        default_view_count: observed.view.count,
+        pagination_count: observed.first.count,
+        object_reads: objectProof,
+        request_metrics: reports,
+      }
+    })
+
   await test("installed SDK versions and generated declaration closure", async () => {
     assert.equal(sdk.SDK_VERSION, 1)
     assert.equal(sdk.CONSUMER_CONTRACT_VERSION, 1)
@@ -404,17 +514,19 @@ try {
     )
     await writeFile(
       join(root, "consumer.ts"),
-      `import { consume, readSkill, readResources, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot } from "ntn-skills/sdk";
+      `import { consume, readSkill, readResources, listCatalog, listSkills, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot, type ListCatalogResult, type ListSkillsResult } from "ntn-skills/sdk";
   const input = { version: 1, targets: ["page"], purpose: "use" } satisfies ConsumeInput;
   const version: 1 = SDK_VERSION;
   const received: Promise<ConsumeResult> = consume(input, { cwd: ".", env: {}, signal: new AbortController().signal, metrics: true, execution: { priority: "prefetch", queueBudgetMs: 100, timeBudgetMs: 200, rateShare: .1 }, onRequestMetrics: (snapshot: RequestMetricsSnapshot | null) => void snapshot });
   const read: Promise<ReadSkillResult> = readSkill("file", { offline: true, metrics: true, maxAge: parseDuration("1s") });
   const resources = { version: 1, refs: ["fixed-file"], budget: { maxFiles: 16, maxBytes: 1048576, timeBudgetMs: 30000 } } satisfies ResourceReadInput;
+  const catalog: Promise<ListCatalogResult> = listCatalog({ cwd: ".", env: {}, defaultView: true, offline: true });
+  const page: Promise<ListSkillsResult> = listSkills({ cwd: ".", env: {}, query: "review", limit: 20, cursor: "returned-cursor" });
   const resourceVersion: 1 = RESOURCE_READ_CONTRACT_VERSION;
   const outputProofVersion: 1 = READ_OUTPUT_PROOF_VERSION;
   const outputProof = (result: ReadSkillResult) => "output" in result ? [result.sha256, result.entrypoint_sha256] : [];
   const batch: Promise<ResourceReadResult> = readResources(resources, { cwd: ".", env: {}, offline: true, metrics: true, signal: new AbortController().signal });
-  void [received, read, batch, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
+  void [received, read, batch, catalog, page, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
   // @ts-expect-error purpose is a closed protocol domain
   const wrong: ConsumeInput = { version: 1, targets: [], purpose: "activate" };
   void wrong;
@@ -1272,6 +1384,47 @@ try {
         )
         assert.equal(disabled?.availability, "disabled")
         assert.equal(result.native_references.unresolved.length, 0)
+        if (label === "scalar-cold") {
+          const beforeUse = requests.length
+          const structured = await invokeCli(
+            ["use", result.ref, "--offline", "--json"],
+            cwd,
+            currentEnv,
+          )
+          assert.equal(structured.code, 0, structured.stdout + structured.stderr)
+          const rootNode = structured.value.preparation.nodes.find(
+            (node) => node.state === "prepared",
+          )
+          assert.deepEqual(rootNode.references, result.native_references.entries)
+          const compact = await command([process.execPath, cli, "use", result.ref, "--offline"], {
+            cwd,
+            env: { ...currentEnv, PATH: process.env.PATH },
+          })
+          assert.equal(compact.code, 0, compact.stdout + compact.stderr)
+          for (const reference of rootNode.references) {
+            assert.ok(
+              compact.stdout.includes(reference.ref),
+              "Compact use omitted a native reference entry",
+            )
+            assert.ok(
+              compact.stdout.includes(`${reference.name} [${reference.availability}]`),
+              "Compact use omitted reference availability",
+            )
+          }
+          assert.equal(
+            requests.length,
+            beforeUse,
+            "Pinned use must not reread remote linked bodies",
+          )
+          evidence.compact_use = {
+            reference_count: rootNode.references.length,
+            unavailable: rootNode.references.filter(
+              (reference) => reference.availability !== "available",
+            ).length,
+            http_requests: requests.length - beforeUse,
+            stdout_sha256: hash(compact.stdout),
+          }
+        }
         assert.equal(reports.length, 1)
         const metrics = reports[0]
         assert.equal(metrics.in_flight, 0)

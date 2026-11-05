@@ -61,7 +61,7 @@ For source consumption of a selected accessible database:
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts consumption --run "$RUN" --database "$DATABASE"
 ```
 
-`DATABASE` is the actual database ID/URL or locally registered exact alias. An optional `--target "$PAGE_ID"` selects only that real catalog page; the default selects the first metadata row. The mode refreshes metadata, validates scope, reads the selected page, enumerates pinned files, exports into evidence, inspects the actual entry/files/manifest, repeats for reuse, changes only an owned scratch copy to prove `OUTPUT_CONFLICT`, and rereads the pinned ref offline. It writes `evidence/consumption-source.json` plus exact command/exit records. It never creates or changes remote pages.
+`DATABASE` is the actual database ID/URL or locally registered exact alias. An optional `--target "$PAGE_ID"` selects only that real catalog page; the default selects the first metadata row. The mode refreshes metadata, follows every list cursor from that observation, validates scope, reads the selected page, enumerates pinned files, exports into evidence, inspects the actual entry/files/manifest, repeats for reuse, changes only an owned scratch copy to prove `OUTPUT_CONFLICT`, and rereads the pinned ref offline. It writes `evidence/consumption-source.json` plus exact command/exit records. The driver creates no additional fixture and makes no deliberate remote edits. Product current reads may retain observations, adopt content and write Records; include these in request_metrics and assert zero routine writes only for an unchanged stable path.
 
 For the package boundary and deterministic credential/entrypoint cases:
 
@@ -71,7 +71,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts package --run "$RUN"
 
 This reuses `scripts/package-check.ts` and `scripts/package-smoke.ts`: pack the built CLI, build/pack the independent migration tool, pass both through `--archive` and required `--migration-archive`, install them separately into fresh npm prefixes and drive actual installed Node.js/bin commands. The fixture is explicitly synthetic and offline, imported through the migration product boundary. It covers metadata/list-to-read-to-pinned-directory export, page/scope/version identities, `workflow.md` portable entry, complete bytes, reuse/conflict, saved token versus environment, same-user/different-token absent-scope errors and pinned survival. Inspect the recorded check names and `installed-consumer.json`; do not infer a pass from this recipe.
 
-To drive the same live read-only contract through that installed package, select its actual executable from `$RUN/evidence/package.json` (the package smoke reports its `executable`):
+To drive the same live consumption contract through that installed package, select its actual executable from `$RUN/evidence/package.json` (the package smoke reports its `executable`):
 
 ```bash
 INSTALLED_BIN="$(jq -er '.smoke.executable' "$RUN/evidence/package.json")"

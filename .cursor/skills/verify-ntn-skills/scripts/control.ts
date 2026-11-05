@@ -57,11 +57,57 @@ const consumptionCatalog = Schema.Struct({
   databases: Schema.Array(CatalogSourceSchema),
   records: Schema.Array(ContentRecordSchema),
   count: Schema.Number,
+  total_count: Schema.Number,
+  has_more: Schema.Boolean,
+  next_cursor: Schema.NullOr(Schema.String),
   source: Schema.String,
   freshness: consumptionFreshness,
   coverage: CoverageSchema,
 })
 const consumptionRead = Schema.Struct({ ...consumptionIdentity, content: Schema.String })
+
+async function completeCatalog(drive: (args: string[]) => Promise<unknown>, database: string) {
+  const first = Schema.decodeUnknownSync(consumptionCatalog)(
+    await drive(["list", "--database", database, "--refresh", "--json", "--limit", "500"]),
+  )
+  const records = [...first.records]
+  const seen = new Set<string>()
+  let page = first
+  while (page.has_more) {
+    check(
+      page.next_cursor && !seen.has(page.next_cursor),
+      "Catalog continuation is missing or repeated",
+    )
+    seen.add(page.next_cursor)
+    page = Schema.decodeUnknownSync(consumptionCatalog)(
+      await drive([
+        "list",
+        "--database",
+        database,
+        "--offline",
+        "--json",
+        "--limit",
+        "500",
+        "--cursor",
+        page.next_cursor,
+      ]),
+    )
+    check(
+      page.scope === first.scope &&
+        page.fetched_at === first.fetched_at &&
+        page.total_count === first.total_count,
+      "Catalog changed while following its continuation",
+    )
+    records.push(...page.records)
+  }
+  check(
+    page.next_cursor === null &&
+      records.length === first.total_count &&
+      new Set(records.map((record) => record.id)).size === records.length,
+    "Catalog pagination is incomplete or repeated",
+  )
+  return { ...first, records, count: records.length, has_more: false, next_cursor: null }
+}
 const consumptionFiles = Schema.Struct({
   ...consumptionIdentity,
   files: Schema.Array(
@@ -316,7 +362,11 @@ function apiInventoryOutput(value: unknown): unknown {
   }
 }
 async function cli(args: string[]) {
-  const result = await command([...sourceLaunch, ...args])
+  const json =
+    ["list", "read"].includes(args[0] ?? "") && !args.includes("--json") && !args.includes("--raw")
+      ? ["--json"]
+      : []
+  const result = await command([...sourceLaunch, ...args, ...json])
   if (result.exit || result.output?.ok !== true)
     throw new Error(`CLI failed; inspect ${result.record}`)
   return result.output
@@ -628,7 +678,13 @@ async function main() {
     const label = installed ? "installed" : "source"
     const launch = installed ? ["node", installed] : sourceLaunch
     const drive = async (args: string[], expectedExit = 0) => {
-      const result = await command([...launch, ...args])
+      const json =
+        ["list", "read"].includes(args[0] ?? "") &&
+        !args.includes("--json") &&
+        !args.includes("--raw")
+          ? ["--json"]
+          : []
+      const result = await command([...launch, ...args, ...json])
       check(result.exit === expectedExit, `Unexpected CLI exit; inspect ${result.record}`)
       check(
         result.output?.ok === (expectedExit === 0),
@@ -636,9 +692,7 @@ async function main() {
       )
       return result.output as unknown
     }
-    const catalog = Schema.decodeUnknownSync(consumptionCatalog)(
-      await drive(["list", "--database", values.database, "--refresh"]),
-    )
+    const catalog = await completeCatalog(drive, values.database)
     check(
       typeof catalog.scope === "string" &&
         catalog.scope.length > 0 &&
@@ -902,9 +956,7 @@ async function main() {
         portable ? { name: portable.name, description: portable.description } : {},
       )
       const name = aliasFor(metadata.name)
-      const catalog = Schema.decodeUnknownSync(consumptionCatalog)(
-        await cli(["list", "--database", values.database, "--refresh"]),
-      )
+      const catalog = await completeCatalog(cli, values.database)
       const existing = catalog.records
         .map((row) => Schema.decodeUnknownSync(ContentRecordSchema)(row))
         .filter((row) => row.alias === name)
@@ -934,10 +986,11 @@ async function main() {
     const imported = await receipts()
     for (const entry of selected.entries) {
       if (imported.some((row: any) => row.name === entry.name && row.result?.verified)) continue
-      const before = await cli(["list", "--database", selected.database, "--refresh"])
+      const before = await completeCatalog(cli, selected.database)
       const existing = before.records.filter((row: any) => row.alias === entry.name)
       check(existing.length <= 1, `Ambiguous import target: ${entry.name}`)
-      const baseline = existing.length ? await online(existing[0].ref) : undefined
+      const target = existing[0]
+      const baseline = target === undefined ? undefined : await online(target.ref)
       const publication = [
         ...(baseline
           ? ["replace", entry.input, "--target", notionPage(baseline.record).locator.page_id]
@@ -946,7 +999,7 @@ async function main() {
         selected.database,
       ]
       const dry = await cli([...publication, "--dry-run"])
-      const after = await cli(["list", "--database", selected.database, "--refresh"])
+      const after = await completeCatalog(cli, selected.database)
       check(
         JSON.stringify(before.records) === JSON.stringify(after.records),
         `Dry-run changed remote catalog: ${entry.name}`,
@@ -1140,7 +1193,7 @@ async function main() {
         JSON.stringify({ reused: entry.name, page_id: notionPage(result.record).locator.page_id }),
       )
     }
-    const catalog = await cli(["list", "--database", selected.database, "--refresh"])
+    const catalog = await completeCatalog(cli, selected.database)
     check(
       catalog.coverage.exhaustive && !catalog.coverage.failed_sources.length,
       "Catalog coverage incomplete",

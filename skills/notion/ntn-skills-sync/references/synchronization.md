@@ -54,7 +54,7 @@ ntn-skills ctl library profile bind PROFILE_ID --entry LIBRARY_ENTRY
 ntn-skills list --default-view
 ```
 
-Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_ENTRY --name NAME --enabled true|false --base REVISION [--default-view VIEW_ID]`. Use `--base new` only for a new Profile; otherwise copy the exact current revision from show. Omitting the optional View removes an old default. `profile unbind` removes only the machine binding. Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence; absent a configured default, use the first View in API order. Bare list remains full discovery. Rules do not grant access or activate bodies.
+Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_ENTRY --name NAME --enabled true|false --base REVISION [--default-view VIEW_ID]`. Use `--base new` only for a new Profile; otherwise copy the exact current revision from show. Omitting the optional View removes an old default. `profile unbind` removes only the machine binding. Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence; absent a configured default, use the first View in API order. Bare list discovers the accessible source scope; follow every returned cursor for the complete observation. Rules do not grant access or activate bodies.
 
 ### Shared recovery
 

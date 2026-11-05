@@ -5,7 +5,7 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
-AH-617 消费链重构先读 [Skill 消费链](features/skill-consumption.md)。SC-VERIFY-01～03 将本 CLI 的真实消费、成本证据与清理边界接到 Broker 的 SC01–SC24 统一地图；新架构、模型投影和日用安装分别取证。未执行的规程仍为 draft，不沿用 AH-561 的历史 pass。
+AH-617 消费链重构先读 [Skill 消费链](features/skill-consumption.md)。SC-VERIFY-01～03 将本 CLI 的真实消费、成本证据与清理边界接到 Broker 的 SC01–SC26 统一地图；SC25 通过 list/read/use 和 SDK 目录入口取证，SC26 负责真实 Pi 与常规 check/CI 接线。新架构、模型投影和日用安装分别取证。未执行的规程仍为 draft，不沿用 AH-561 的历史 pass。
 
 AH-561 直连请求与跨 Skill 图使用 [request-engine](features/request-engine.md) 和 [skill-dependency-graph](features/skill-dependency-graph.md)。先执行 NG-VC-01 离线契约与原生 CLI fail-before，保存两条根选择提示和独立 oracle 合同；后续按 NG-RE/NG-SG feature ID 逐项复验。当前 helper 使用项目 HTTP 引擎、项目凭据和 owned 归档入口。每轮交付需重新取得服务与安装证据；保留历史回执，不把旧单 Skill pass 用作图验收。
 

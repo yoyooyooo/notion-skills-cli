@@ -13,7 +13,7 @@ Use this entrypoint to find and consume a workflow. Keep three sources distinct:
 
 For a shared library, copy `record.id`, `record.ref` and the `shared_skill` locator exactly; encoded stable IDs are not page IDs. Name/Description, Enabled, Source, Default Context and Router Members come from native Notion properties. Existing legacy records may also carry Source Type, Builtin ID and Sync Mode. Editable remote properties never establish trusted installed-package identity.
 
-## Select and read
+## Discover, inspect and use
 
 1. If the host already provides remote Skill metadata, select the relevant entry from it. Otherwise discover names, descriptions, refs and coverage without loading bodies:
 
@@ -21,15 +21,15 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
    ntn-skills list --query 'TASK_TERMS'
    ```
 
-   Replace placeholders with actual task terms and returned identities. Broaden the query when needed. Search can miss databases; use `list --database DATABASE_ID_OR_ALIAS` for a known library. Incomplete coverage cannot prove absence or uniqueness. Same-name pages require a database selector or an exact returned record ref.
-2. Read the selected workflow through the host's registered Skill interface when available. Otherwise use the CLI:
+   Replace placeholders with actual task terms and returned identities. Results default to 50 records. If `has_more` is true, copy `next_cursor` into `--cursor` with the same query and source selection. `count` is the page size; `total_count` is the filtered count within this observation. Neither proves complete source coverage. Broaden the query when needed. Search can miss databases; use `list --database DATABASE_ID_OR_ALIAS` for a known library. Incomplete coverage cannot prove absence or uniqueness. Same-name pages require a database selector or an exact returned record ref.
+2. To inspect or summarize original text, use `ntn-skills read 'REF_FROM_LIST' --json`. To apply a selected workflow, use the host's Notion Skill consumption tool or the CLI:
 
    ```bash
-   ntn-skills read 'REF_FROM_LIST'
+   ntn-skills use 'REF_FROM_LIST'
    ```
 
-   Require exit 0 and `ok: true`; a failed response is not instructions. Reading a Skill to inspect, summarize or edit it does not activate its workflow. Apply its instructions only when selected for the current task.
-3. Retain the returned page identity, `ref`, `snapshot_id`, `source` and `freshness`. Ordinary reads may reuse content validated within five minutes; catalog metadata defaults to 60 seconds. When the task needs current remote validation, refresh the current unpinned target. A running workflow stays on its selected version until deliberately switching.
+   Require exit 0. `use` loads the root and its complete Requires once; unselected Member bodies stay lazy. Compact text is the default; `--json` returns the complete structured result and machine evidence. Prepared content does not attest model delivery or activation. Reading a Skill to inspect, summarize or edit it does not activate its workflow. Apply instructions only when selected for the current task.
+3. Retain returned canonical refs and, with JSON, the selected page, snapshot, source and freshness. Ordinary reads may reuse content validated within five minutes; catalog metadata defaults to 60 seconds. When the task needs current remote validation, refresh the current unpinned target. A running workflow stays on its selected version until deliberately switching.
 4. Load only needed supporting files from that version:
 
    ```bash
@@ -39,11 +39,11 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
 
    Resolve links from the containing file, which may itself be a reference. Use the snapshot ID to enumerate the whole file set. Pinned refs work offline and reject `--refresh`/`--max-age`; they do not establish latest content or current permission. Never resolve a relative file by rereading the Skill name and accidentally selecting a newer version.
 
-Use JSON when version/freshness matters. `--raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
+Use `--json` when version/freshness matters. `list` and `read` retain JSON as their compatibility default while callers migrate. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
 
 Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. A complete newly observed Notion edit is retained as a whole-file customization; no field marker or manual adopt command is needed. Other files retain their own source behavior. TTL hits can make no remote requests; the independent full-body deadline bounds same-timestamp edits. Use `--refresh` or explicit `--max-age 0` for complete current validation. Existing legacy native Skills may still use their aligned-source-ZIP checkpoint. Retain `freshness.validation` in host results.
 
-Inspect native Views with `ntn-skills views --database LIBRARY_ENTRY`. Select an exact View with `list --view VIEW_ID --database LIBRARY_ENTRY`, or a shared default with `list --profile PROFILE_ID --database LIBRARY_ENTRY`. `list --default-view` consults the machine-bound Profile; without a configured default, use the first View in API order. Explicit View selection takes precedence. Bare `list` remains complete explicit discovery, including Prompts; Profile/View rules do not grant access. The host manages session selection and prompt timing; metadata alone does not activate a workflow.
+Inspect native Views with `ntn-skills views --database LIBRARY_ENTRY`. Select an exact View with `list --view VIEW_ID --database LIBRARY_ENTRY`, or a shared default with `list --profile PROFILE_ID --database LIBRARY_ENTRY`. `list --default-view` consults the machine-bound Profile; without a configured default, use the first View in API order. Explicit View selection takes precedence. Bare `list` discovers the accessible source scope, including Prompts; follow every cursor for a complete local observation; Profile/View rules do not grant access. The host manages session selection and prompt timing; metadata alone does not activate a workflow.
 
 ## Route other tasks
 
