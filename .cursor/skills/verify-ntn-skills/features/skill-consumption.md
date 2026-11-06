@@ -354,6 +354,8 @@ SC12／SC15／SC20 的 loopback 来源共用 `scripts/sdk-source-fixture.mjs`。
 
 入口 `startSdkSourceFixture(sample, ledgerPath)` 只启动一个本机 origin。沿 `setPhase` 选择已声明的 initial/refreshed current、View 观察、401 scope、403 target 和完整性状态；原 scalar/history smoke 仍拥有其来源事实。`holdNext`、`rejectNext`、`interruptNext` 只控制一个确切 route 的下一次真实 HTTP：headers 前后暂停、一次 429 或一次不完整响应断流。它们不增加 SDK 重试次数、不重跑上层调用，也不把失败变成缓存命中。切换阶段前全部原请求必须关闭；未使用的控制在切换／关闭时结清。
 
+403 target 同时拒绝所选根的 `GET /v1/pages/<root>` 与 `GET /v1/pages/<root>/markdown`。刷新可以经目录取得元数据后直接读取 markdown，不能只给未被实际调用的 page route 配置拒绝，再宣称测试了权限失败。原控制回归逐项检查两条 route 的 403／错误码，以及恢复后相同根的元数据和完整正文；其他 owner、未知 route 和未选正文的边界不变。
+
 验证链复用原入口：
 
 | 用户入口／驱动 | 正例与反例 | 直接证据边界 |
@@ -375,6 +377,8 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FIXTURE"
 每个 HTTP attempt 的账本区分已观察前缀和完整响应。`observed_response_bytes` 是服务端实际调用 write/end 的未压缩前缀；只有响应 `finish` 才填 `decoded_response_bytes`、`response_sha256` 和 `response_bytes_complete=true`，并保留明确的 server-write `response_boundary`。中途断流／abort 保持完整字节与 hash 为 `null`，不能把计划发送的 JSON 长度当成完整响应。客户端解码、SDK 全文结果及 provider 真正收到正文仍由各自账本证明。请求前缀、单调时钟 start/end/close、真实 status 和每次重试均保留；汇总失败尝试时不能补零或丢弃它们。
 
 本轮 fail-before 使用原 main handler：不完整 POST 被客户端取消、实际没有 HTTP response，旧账本却记录完整 109 B。新 helper 的同边界完整响应字节为 `null`，另留已观察前缀。原失败、控制回归与安装结果保存在 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc20-sdk-http-shared-r7m4k2vd`。先将 owned scratch 中所有原始 ledger／结果及身份存入 `RUN/evidence`，再由原 `control.ts cleanup` 移到系统 Trash，最后核对证据 hash、进程终局和日用哨兵；不清理其他会话的目录。
+
+后续实际 Pi 权限场景暴露了仅拒绝 page route 的 fixture 缺口。`cli-http-denied-body-ubd70ukm` 保留同一根 markdown 在 deny 状态返回 200 的 RED，以及修复后的原 6 项 HTTP 回归。此前 22 项安装 SDK 结果仍绑定原 helper `5f27b4bb`，不改写为新 helper 的重复验收；新的真实 Pi 403／固定资源／恢复证据由 Broker 原场景独立记录。
 
 ### 单 current inspect 投影实验未采用
 

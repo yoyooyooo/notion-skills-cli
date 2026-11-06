@@ -109,7 +109,8 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
     } else if (
       denyCurrent &&
       request.method === "GET" &&
-      url.pathname === `/v1/pages/${notion.main.id}`
+      (url.pathname === `/v1/pages/${notion.main.id}` ||
+        url.pathname === `/v1/pages/${notion.main.id}/markdown`)
     ) {
       status = 403
       value = {

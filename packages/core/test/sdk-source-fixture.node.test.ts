@@ -94,19 +94,35 @@ test("complete responses bind actual bytes, phases, View metadata and fixed 401/
     for (const [path, status] of [
       ["/v1/users/me", 401],
       ["/v1/pages/selected", 403],
+      ["/v1/pages/selected/markdown", 403],
     ] as const) {
       const denied = await fetch(origin + path)
+      const payload = await denied.json()
       expect(denied.status).toBe(status)
-      await denied.arrayBuffer()
+      expect(payload.code).toBe(status === 401 ? "unauthorized" : "restricted_resource")
     }
-    await settled(source, 4)
+    await settled(source, 5)
+    source.setPhase("recovered", { denyAuthentication: false, denyCurrent: false })
+    expect((await (await fetch(origin + "/v1/pages/selected")).json()).revision).toBe("refreshed")
+    expect((await (await fetch(origin + "/v1/pages/selected/markdown")).json()).markdown).toBe(
+      sample().notion.bodies.selected,
+    )
+    await settled(source, 7)
     expect(source.origin).toBe(origin)
     expect(source.unexpected).toEqual([])
     const rows = (await readFile(source.ledgerPath, "utf8"))
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line))
-    expect(rows.map((row) => row.phase)).toEqual(["setup", "refreshed", "denied", "denied"])
+    expect(rows.map((row) => row.phase)).toEqual([
+      "setup",
+      "refreshed",
+      "denied",
+      "denied",
+      "denied",
+      "recovered",
+      "recovered",
+    ])
     expect(rows.every((row) => row.response_bytes_complete)).toBe(true)
   })
 })
