@@ -26,6 +26,20 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 
 Default View 正例只增加完整 View metadata observation；原 consumer fixture 的正文状态单独标记。`--catalog --default-view-cache missing|incomplete` 各生成新 owned fixture，实际 SDK/正常 Pi 默认目录必须拒绝缺失或不完整观察。不能只验证预期错误就把正例算通过。跨仓 driver 使用 fixture 的 `default_view.records` 和 `catalog_records` 独立核对，真实 Notion 和真实模型仍各自取证。
 
+### SC06：实际 Pi 目录规模输入
+
+沿同一个 fixture 入口显式生成完整普通目录与 Default View 等大的受控输入：
+
+```bash
+node scripts/sdk-fixture.ts --outdir "$RUN/scratch/catalog-101" --catalog --catalog-size 101
+```
+
+`--catalog-size` 只接受 `10|100|101|300`，必须与 `--catalog` 一起使用，且与 `--default-view-cache`、`--distinct-names`、`--ambiguous-names`、`--records-history` 互斥；拒绝发生在创建输出目录之前。原默认 fixture、名称负例与历史 producer 入口保持原合同，不把新规模默默并入原 all14 或 SDK22。
+
+新模式仍输出 `fixture.json` 的 version=1、cwd/env/scope/database/catalog；新增 `catalog_size=N`，`catalog_records`、`default_view.records` 与 `snapshots` 恰为同一 N 个 owner。每个 owner 有独立主文、资源、File ID 与内容 hash，经原 Store 和完整 current observation 发布，再写入原 ordinary/View metadata 缓存；不能手改生成后的签名 receipt。名称和描述包含中文、emoji、引号及字面实体，描述、主文与资源保留末尾 LF，100/101/200/201 边界同样可逐字复核。
+
+这是完整 warm source seed，不是冷正文获取：对象可供父 observer 核对，但实际 Pi 默认目录场景必须对全部 N 个 owner 的主文和资源断言零 object reads／零正文交付。Broker 原 SDK-Pi driver 的显式 `default-view` 场景负责实际 Pi 1.5 provider 目录、完整集合、分页与字节账本；fixture 生成成功不证明 Pi 已见目录，也不代表生产 Notion 分页或实模成本。保留旧参数拒绝的 coverage fail-before、各尺度输入/文件 hash、默认输出兼容对照，以及独立安装和实际宿主的各自结果。清理复用原 control helper，仅将 owned scratch 移入系统 Trash，归档与原件继续保留。
+
 ### SC25 C2：名称选择与固定 manifest
 
 CLI `read/use` 与 SDK `resolveCatalogReference` 共享完整普通目录的精确名称/alias 选择。普通目录仍是 enabled 可消费集合，不改 catalog/cache 格式；disabled 的稳定 ID 冲突和精确目标拒绝仍由原 Core 层守住。View、Profile、query、分页片、source failure 和 incomplete 的零/单匹配均不能证明唯一性。两条正常 snapshot 名称路径必须同样拒绝；失败后的 best-effort cache 失效定位保留其原职责，不被当成新的消费授权。

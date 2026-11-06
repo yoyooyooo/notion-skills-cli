@@ -44,19 +44,26 @@ if (args.includes("--distinct-names") && args.includes("--ambiguous-names"))
 const distinctNames = args.at(-1) === "--distinct-names"
 const ambiguousNames = args.at(-1) === "--ambiguous-names"
 if (distinctNames || ambiguousNames) args.pop()
-const defaultViewCache = args[4] ?? "complete"
+const catalogSize = args[3] === "--catalog-size" ? Number(args[4]) : undefined
+const defaultViewCache = args[3] === "--default-view-cache" ? args[4] : "complete"
 if (
   (args.length !== 2 &&
     !(args.length === 3 && args[2] === "--catalog") &&
-    !(args.length === 5 && args[2] === "--catalog" && args[3] === "--default-view-cache")) ||
-  !["complete", "missing", "incomplete"].includes(defaultViewCache) ||
+    !(
+      args.length === 5 &&
+      args[2] === "--catalog" &&
+      ["--default-view-cache", "--catalog-size"].includes(args[3]!)
+    )) ||
+  !["complete", "missing", "incomplete"].includes(defaultViewCache ?? "") ||
+  (catalogSize !== undefined &&
+    (!["10", "100", "101", "300"].includes(args[4]!) || distinctNames || ambiguousNames)) ||
   (ambiguousNames && args[2] !== "--catalog") ||
   (recordsHistoryOnly && (args.length !== 2 || distinctNames || ambiguousNames)) ||
   args[0] !== "--outdir" ||
   !isAbsolute(args[1]!)
 )
   throw new Error(
-    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--records-history | --catalog [--default-view-cache complete|missing|incomplete]] [--distinct-names | --ambiguous-names (requires --catalog)]",
+    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--records-history | --catalog [--default-view-cache complete|missing|incomplete | --catalog-size 10|100|101|300]] [--distinct-names | --ambiguous-names (incompatible with --catalog-size; ambiguous requires --catalog)]",
   )
 const withCatalog = args[2] === "--catalog"
 const root = args[1]!
@@ -237,7 +244,13 @@ if (recordsHistoryOnly) {
 }
 const scope = hash(JSON.stringify(["sdk-fixture", "", origin, hash(token)]))
 const bodies = new Map<string, Uint8Array>()
-const names = ["a", "b", "c", "base", "broken", "foreign", "resources", "entrypoint"]
+const names =
+  catalogSize === undefined
+    ? ["a", "b", "c", "base", "broken", "foreign", "resources", "entrypoint"]
+    : Array.from(
+        { length: catalogSize },
+        (_, index) => `catalog-${String(index + 1).padStart(3, "0")}`,
+      )
 const binary = Uint8Array.from([0, 255, 1, 2, 128, 13, 10])
 // Keep the source complete. Independent consumers create their own partial-cache
 // copies after a real public current observation has validated this whole tree.
@@ -303,18 +316,31 @@ const snapshots: Snapshot[] = names.map((name, index) => {
   // Derive both selectors before publishing the original manifest and current
   // receipts. Consumers never rewrite an alias inside signed fixture state.
   const displayName =
-    name === "foreign"
-      ? "a"
-      : (distinctNames && name === "a") || (ambiguousNames && (name === "a" || name === "c"))
-        ? "A"
-        : name
+    catalogSize !== undefined
+      ? `${name} 中文 😀 "引号" &amp;`
+      : name === "foreign"
+        ? "a"
+        : (distinctNames && name === "a") || (ambiguousNames && (name === "a" || name === "c"))
+          ? "A"
+          : name
   const id = `shared_skill:${library}:${name}`
   const content =
-    name === "a" ? "\uFEFF# a\r\n完整正文 α\r\n" : `# ${name}\nFull instruction ${name}.\n`
+    catalogSize !== undefined
+      ? `# ${name}\n完整正文 中文 😀 "引号" &amp; &lt;literal&gt; ${name}.\n`
+      : name === "a"
+        ? "\uFEFF# a\r\n完整正文 α\r\n"
+        : `# ${name}\nFull instruction ${name}.\n`
   const bytes = new TextEncoder().encode(content)
   bodies.set(hash(bytes), bytes)
-  const version = hash(content)
-  const page = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`
+  const catalogResource =
+    catalogSize === undefined
+      ? undefined
+      : new TextEncoder().encode(`Resource ${name}: 中文 😀 "引号" &amp; &lt;literal&gt;.\n`)
+  if (catalogResource) bodies.set(hash(catalogResource), catalogResource)
+  const version = catalogResource
+    ? hash(JSON.stringify([content, hash(catalogResource)]))
+    : hash(content)
+  const page = `00000000-0000-4000-8000-${String(index + (catalogSize === undefined ? 1 : 1001)).padStart(12, "0")}`
   return {
     scope,
     snapshot_id: `s_${hash(JSON.stringify([scope, id, version]))}`,
@@ -325,7 +351,10 @@ const snapshots: Snapshot[] = names.map((name, index) => {
       kind: "skill",
       name: displayName,
       alias: aliasFor(displayName),
-      description: `Controlled SDK fixture ${name}`,
+      description:
+        catalogSize === undefined
+          ? `Controlled SDK fixture ${name}`
+          : `Controlled ${name}: 中文 😀 "引号" &amp; &lt;literal&gt;.\n`,
       enabled: true,
       default_context: false,
       entrypoint: "SKILL.md",
@@ -342,6 +371,15 @@ const snapshots: Snapshot[] = names.map((name, index) => {
     entrypoint: "SKILL.md",
     files: [
       { path: "SKILL.md", bytes: bytes.byteLength, sha256: hash(bytes) },
+      ...(catalogResource
+        ? [
+            {
+              path: `references/${name}.md`,
+              bytes: catalogResource.byteLength,
+              sha256: hash(catalogResource),
+            },
+          ]
+        : []),
       ...(name === "a"
         ? [{ path: "assets/sample.bin", bytes: binary.byteLength, sha256: hash(binary) }]
         : []),
@@ -362,6 +400,15 @@ const snapshots: Snapshot[] = names.map((name, index) => {
     ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
     file_bindings: [
       { file_id: `main-${name}`, page_id: page, path: "SKILL.md" },
+      ...(catalogResource
+        ? [
+            {
+              file_id: `resource-${name}`,
+              page_id: `00000000-0000-4000-8000-${String(index + 2001).padStart(12, "0")}`,
+              path: `references/${name}.md`,
+            },
+          ]
+        : []),
       ...(name === "a"
         ? [
             {
@@ -390,11 +437,19 @@ const snapshots: Snapshot[] = names.map((name, index) => {
     members: [],
   }
 })
-bodies.set(hash(binary), binary)
-for (const file of resourceFiles) bodies.set(hash(file.bytes), file.bytes)
-for (const file of entrypointFiles) bodies.set(hash(file.bytes), file.bytes)
-const resourceSnapshot = snapshots.find((snapshot) => snapshot.record.name === "resources")!
-const entrypointSnapshot = snapshots.find((snapshot) => snapshot.record.name === "entrypoint")!
+if (catalogSize === undefined) {
+  bodies.set(hash(binary), binary)
+  for (const file of resourceFiles) bodies.set(hash(file.bytes), file.bytes)
+  for (const file of entrypointFiles) bodies.set(hash(file.bytes), file.bytes)
+}
+const resourceSnapshot =
+  catalogSize === undefined
+    ? snapshots.find((snapshot) => snapshot.record.name === "resources")!
+    : snapshots[0]!
+const entrypointSnapshot =
+  catalogSize === undefined
+    ? snapshots.find((snapshot) => snapshot.record.name === "entrypoint")!
+    : snapshots[0]!
 const ref = (snapshot: Snapshot) =>
   fileRef(
     snapshot.record.id,
@@ -407,31 +462,34 @@ const relation = (snapshot: Snapshot) => ({
   ref: ref(snapshot),
   metadata: snapshot.record,
 })
-for (let index = 0; index < 3; index++)
-  snapshots[index] = { ...snapshots[index]!, required: [relation(snapshots[3]!)] }
-snapshots[4] = {
-  ...snapshots[4]!,
-  required: [
-    {
-      id: "shared_skill:sdk-library:missing",
-      ref: fileRef(
-        "shared_skill:sdk-library:missing",
-        "SKILL.md",
-        `s_${"f".repeat(64)}`,
-        "main-missing",
-      ),
-      metadata: {
-        kind: "skill",
-        name: "missing",
-        description: "Controlled missing Required",
-        enabled: true,
+if (catalogSize === undefined) {
+  for (let index = 0; index < 3; index++)
+    snapshots[index] = { ...snapshots[index]!, required: [relation(snapshots[3]!)] }
+  snapshots[4] = {
+    ...snapshots[4]!,
+    required: [
+      {
+        id: "shared_skill:sdk-library:missing",
+        ref: fileRef(
+          "shared_skill:sdk-library:missing",
+          "SKILL.md",
+          `s_${"f".repeat(64)}`,
+          "main-missing",
+        ),
+        metadata: {
+          kind: "skill",
+          name: "missing",
+          description: "Controlled missing Required",
+          enabled: true,
+        },
       },
-    },
-  ],
+    ],
+  }
 }
-const catalogSnapshots = snapshots.filter(
-  (snapshot) => snapshot !== snapshots[4] && snapshot !== snapshots[5],
-)
+const catalogSnapshots =
+  catalogSize === undefined
+    ? snapshots.filter((snapshot) => snapshot !== snapshots[4] && snapshot !== snapshots[5])
+    : snapshots
 const defaultView = {
   id: "00000000-0000-4000-8000-000000000041",
   name: "Controlled daily Skills",
@@ -440,7 +498,9 @@ const defaultView = {
   data_source_id: "00000000-0000-4000-8000-000000000011",
   url: "https://www.notion.so/00000000000040008000000000000010?v=00000000000040008000000000000041",
 }
-const defaultViewRecords = snapshots.slice(0, 2).map((snapshot) => snapshot.record)
+const defaultViewRecords = (catalogSize === undefined ? snapshots.slice(0, 2) : snapshots).map(
+  (snapshot) => snapshot.record,
+)
 const defaultViewCacheKeys: string[] = []
 const seedEnv = {
   ...env,
@@ -469,7 +529,7 @@ const library: NonNullable<Source["shared_library"]> = {
     property_ids: {},
   },
 }
-const resourcePlan = await Effect.runPromise(
+const fixturePlan = await Effect.runPromise(
   Effect.scoped(
     Effect.gen(function* () {
       const store = yield* Store
@@ -570,13 +630,55 @@ const resourcePlan = await Effect.runPromise(
             })
           }
       }
-      return yield* prepareSharedSnapshotHistory(library, resourceSnapshot)
+      if (catalogSize !== undefined) return { kind: "catalog" as const }
+      return {
+        kind: "resources" as const,
+        plan: yield* prepareSharedSnapshotHistory(library, resourceSnapshot),
+      }
     }),
   ).pipe(
     Effect.provide(nodeRuntime(root).live),
     Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(seedEnv))),
   ),
 )
+if (fixturePlan.kind === "catalog") {
+  await writeFile(join(root, "env.json"), JSON.stringify(env, null, 2) + "\n", { mode: 0o600 })
+  await writeFile(
+    join(root, "fixture.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        cwd: root,
+        scope,
+        env: join(root, "env.json"),
+        catalog: true,
+        catalog_size: catalogSize,
+        database: defaultView.database_id,
+        catalog_records: catalogSnapshots.map((snapshot) => snapshot.record.id),
+        default_view: {
+          ...defaultView,
+          selection: "first",
+          source_cache: "complete-metadata-only",
+          records: defaultViewRecords.map(({ id, name, ref }) => ({ id, name, ref })),
+          cache_keys: defaultViewCacheKeys,
+        },
+        snapshots,
+      },
+      null,
+      2,
+    ) + "\n",
+    { mode: 0o600, flag: "wx" },
+  )
+  console.log(
+    JSON.stringify({
+      fixture: join(root, "fixture.json"),
+      snapshots: snapshots.length,
+      network: "not-used",
+    }),
+  )
+  process.exit(0)
+}
+const resourcePlan = fixturePlan.plan
 // A separate admitted lazy pin reaches the real SDK identity/HTTP boundary.
 // It intentionally has neither a complete local snapshot nor local source objects.
 const retainedFixture = join(root, "retained-resource-source")
