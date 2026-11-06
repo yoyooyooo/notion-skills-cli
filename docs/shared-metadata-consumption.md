@@ -45,9 +45,10 @@ the observation. No global cache, TTL extension or additional persisted receipt 
 introduced. Raw inventory rows do not enter public catalog results, the catalog
 cache, CLI JSON or the SDK protocol.
 
-Only native-reference metadata resolution uses this new handoff. Graph preparation
-keeps its existing complete graph inventory and metadata batching. Members and
-Requires retain their existing relation/inventory path. Reusing a six-property
+Native-reference compilation and Members/Requires target metadata resolution use
+this handoff. The selected current page still supplies each actual relation, with
+its existing complete relation pagination and validation. Graph preparation keeps
+its complete graph inventory and metadata batching. Reusing a six-property
 observation does not authorize a consumer that requires additional fields.
 
 ## Current page and identity
@@ -81,6 +82,33 @@ It does not remove the first complete directory observation, change graph field
 projections, implement selected-ID metadata batching, or eliminate first-current
 body observation and retained-source costs. SC11's wider projection and batching
 matrix remains independently tracked.
+
+### Relation metadata reuse within one scalar read
+
+The SC14 audit of existing C7 Pro and Mini public-command traces found three
+complete six-property inventory passes inside each current logical `read`: one
+for the selector, then one each for Members and Requires targets. Both original
+receipts reported two duplicate requests. The two later passes contained six HTTP
+attempts and 1,431,764 decoded response bytes in each machine's trace. These are
+the observed duplicate work and the candidate reduction, not a new measured
+latency or whole-task saving.
+
+`openSharedSnapshot` now passes its already validated `skillsInventory` to the two
+relation readers when no graph inventory exists. Both readers retain their
+selected-target identity, kind, availability and complete-relation checks. The
+current selected-page permission check still runs; a missing or incomplete
+relation fails. A later refresh creates a new observation, and fixed snapshots
+keep their original relation metadata. Records headers, missing-Payload reads,
+pending-operation checks and source-body acquisition are unchanged.
+
+The original metadata consumption tests compare the complete public result and
+frozen snapshot against the physical-page read path, including a 101-row paged
+inventory. They also cover fresh relation metadata, an unchanged old pin, revoked
+selected-page access, missing targets and incomplete current relations. The
+original red cases and actual four ledgers are preserved under
+`/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc14-fact-read-audit-346gjnf6`.
+Installed and live-source measurements remain separate evidence layers in
+[AH-631](https://linear.app/yoyooyooo/issue/AH-631).
 
 ## Single-current inspect experiment was not adopted
 

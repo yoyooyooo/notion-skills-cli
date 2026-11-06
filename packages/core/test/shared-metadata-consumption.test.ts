@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { Effect, type Crypto, type FileSystem, type Path } from "effect"
 import type { HttpClient } from "effect/http"
 import { catalog } from "../src/catalog.ts"
-import { property } from "../src/model.ts"
+import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
+import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import {
@@ -46,8 +47,21 @@ type Query = {
 
 /** Only Skills queries are replaced. Every current-page, Files, Records and body
  * operation still follows the shared snapshot fixture's real core boundary. */
-function fixture(count = 2) {
+function fixture(count = 2, relations = false) {
   const base = sharedSnapshotFixture({ fileCount: 1 })
+  const registered = relations
+    ? {
+        ...library,
+        skills: {
+          ...library.skills,
+          property_ids: {
+            ...library.skills.property_ids,
+            Members: "members",
+            Requires: "requires",
+          },
+        },
+      }
+    : library
   const rows: Record<string, unknown>[] = [base.main]
   for (let index = 1; index < count; index++)
     rows.push({
@@ -61,6 +75,21 @@ function fixture(count = 2) {
       },
     })
   const externalPage = String(rows.at(-1)!.id)
+  if (relations) {
+    const properties = property(base.main.properties)
+    properties.members = {
+      id: "members",
+      type: "relation",
+      relation: [{ id: String(rows[1]!.id) }],
+      has_more: false,
+    }
+    properties.requires = {
+      id: "requires",
+      type: "relation",
+      relation: [{ id: externalPage }],
+      has_more: false,
+    }
+  }
   base.bodies.set(
     skillPage,
     "[Self](" +
@@ -72,6 +101,7 @@ function fixture(count = 2) {
   const queries: Query[] = []
   const controls: {
     credential: string
+    denySelectedGet?: boolean
     beforeSelectedGet?: () => void
     reply?: (input: {
       cursor: string | undefined
@@ -92,6 +122,13 @@ function fixture(count = 2) {
                 const url = new URL(path, "https://fixture.invalid/")
                 const method = requestOptions?.method ?? (body === undefined ? "GET" : "POST")
                 requests.push({ path, method, body: structuredClone(body) })
+                if (relations && url.pathname === "/v1/databases/" + library.skills.database_id)
+                  return api.request(path, body, requestOptions).pipe(
+                    Effect.map((value) => ({
+                      ...property(value),
+                      description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(registered) }],
+                    })),
+                  )
                 if (url.pathname === skillQuery) {
                   const selectedFields = url.searchParams.getAll("filter_properties")
                   const selected = new Set(selectedFields)
@@ -128,6 +165,10 @@ function fixture(count = 2) {
                   return Effect.succeed(structuredClone(response))
                 }
                 if (url.pathname === "/v1/pages/" + skillPage && method === "GET") {
+                  if (controls.denySelectedGet)
+                    return Effect.fail(
+                      fail("ACCESS_DENIED", "Selected current page is no longer authorized."),
+                    )
                   const update = controls.beforeSelectedGet
                   controls.beforeSelectedGet = undefined
                   update?.()
@@ -172,6 +213,98 @@ function privateKeys(value: unknown, at = ""): string[] {
 }
 
 describe("scalar current metadata consumption", () => {
+  for (const count of [3, 101])
+    test(
+      "a logical read shares its " + count + "-row observation with Members and Requires",
+      async () => {
+        const f = fixture(count, true)
+        const result = await f.run(readSkill(rootRef, options))
+        const logicalQueries = f.queries.length
+        const logicalBodies = bodies(f)
+        const snapshot = f.base.json.get("snapshots/" + result.snapshot_id + ".json")
+        const physical = await f.run(readSkill(skillPage, { ...options, refresh: true }))
+        expect({ ...result, freshness: undefined }).toEqual({ ...physical, freshness: undefined })
+        expect(f.base.json.get("snapshots/" + physical.snapshot_id + ".json")).toEqual(snapshot)
+        expect(result.members?.map((entry) => entry.id)).toEqual([
+          "shared_skill:library-snapshot:other-1",
+        ])
+        expect(result.required?.map((entry) => entry.id)).toEqual([
+          "shared_skill:library-snapshot:other-" + (count - 1),
+        ])
+        expect(logicalBodies).toEqual(["/v1/pages/" + skillPage + "/markdown"])
+        expect(bodies(f).every((path) => path === "/v1/pages/" + skillPage + "/markdown")).toBe(
+          true,
+        )
+        expect(rootGets(f)).toHaveLength(2)
+        expect(privateKeys(result)).toEqual([])
+        expect(
+          f.queries
+            .slice(0, logicalQueries)
+            .every((query) => JSON.stringify(query.fields) === JSON.stringify(fields)),
+        ).toBe(true)
+        expect(logicalQueries).toBe(Math.ceil(count / 100))
+        expect(f.queries.length - logicalQueries).toBe(3 * Math.ceil(count / 100))
+      },
+    )
+
+  test("relation metadata refresh is a new observation while the old fixed pin stays frozen", async () => {
+    const f = fixture(3, true)
+    const first = await f.run(readSkill(rootRef, options))
+    const before = f.queries.length
+    property(f.rows[1]!.properties).description = rich("description", "Updated Member metadata")
+    property(f.rows[2]!.properties).description = rich("description", "Updated Requires metadata")
+    const second = await f.run(readSkill(rootRef, { ...options, refresh: true }))
+    expect(second.scope).toBe(first.scope)
+    expect(second.snapshot_id).not.toBe(first.snapshot_id)
+    expect(property(second.members?.[0]?.metadata).description).toBe("Updated Member metadata")
+    expect(property(second.required?.[0]?.metadata).description).toBe("Updated Requires metadata")
+    const afterRefresh = f.requests.length
+    const fixed = await f.run(readSkill(first.ref, { ...options, offline: true }))
+    if (!("content" in first) || !("content" in fixed))
+      throw new Error("Scalar text reads must return complete content")
+    expect(fixed.content).toBe(first.content)
+    expect(fixed.members).toEqual(first.members)
+    expect(fixed.required).toEqual(first.required)
+    expect(fixed.snapshot_id).toBe(first.snapshot_id)
+    expect(f.requests).toHaveLength(afterRefresh)
+    expect(f.queries.length - before).toBe(1)
+  })
+
+  test("a fresh inventory never replaces the selected page permission check", async () => {
+    const f = fixture(3, true)
+    f.controls.denySelectedGet = true
+    const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+    expect(result._tag).toBe("Failure")
+    if (result._tag === "Failure") expect(result.failure.code).toBe("ACCESS_DENIED")
+    expect(f.queries).toHaveLength(1)
+    expect(rootGets(f)).toHaveLength(1)
+    expect(bodies(f)).toEqual([])
+    expect(f.base.writeCount()).toBe(0)
+  })
+
+  test("a relation target absent from the complete observation cannot become an empty relation", async () => {
+    const f = fixture(3, true)
+    f.rows.pop()
+    const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+    expect(result._tag).toBe("Failure")
+    if (result._tag === "Failure")
+      expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+    expect(bodies(f)).toEqual([])
+    expect(f.base.writeCount()).toBe(0)
+    expect(f.queries).toHaveLength(1)
+  })
+
+  test("incomplete current relations still fail even after a complete inventory", async () => {
+    const f = fixture(3, true)
+    property(property(f.base.main.properties).requires).has_more = true
+    const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
+    expect(result._tag).toBe("Failure")
+    expect(f.requests.some((request) => request.path.includes("/properties/requires"))).toBe(true)
+    expect(bodies(f)).toEqual([])
+    expect(f.base.writeCount()).toBe(0)
+    expect(f.queries).toHaveLength(1)
+  })
+
   for (const count of [1, 10, 100, 101, 300])
     test(
       "a cold logical read observes " + count + " Skills once with the exact six fields",

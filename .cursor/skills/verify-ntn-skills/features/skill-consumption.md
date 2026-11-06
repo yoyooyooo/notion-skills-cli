@@ -57,7 +57,7 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 | SC-CACHE-12 | 权限否定后不能借旧 TTL 成功；已知 401 scope / 403 target 拒绝默认 fixed 读取，清理和旧 publisher 不解封；explicit offline 保留旧事实并标 stale；404/disabled 不撤销历史 pin 权威；跨进程暖读取零 HTTP | [缓存验证计划](sync-cache-verification-plan.md#sc12-consumption-qualification-and-installed-proof)、`cache.test.ts`、真实 SQLite 及既有 SDK smoke 的 `cache-*` 阶段；Pi resume/fork/rewind 仍走 Broker 主地图 |
 | SC-REQUEST-15 | 不同队列预算不合并；相同有效预算继续共享；取消与 unknown write 不被隐藏 | [请求引擎](request-engine.md#sc15-消费请求共享与预算)、既有 Notion/coalescer/Node scheduler 及 SDK AbortSignal 驱动；真实 Pi Stop 独立验收 |
 | SC-TOOLS-13 | 固定主文与有效当前缓存仅校验所选对象；current 先判定完整来源归属，再获取必需字节 | [按需快照合同](../../../../docs/selected-snapshot-consumption.md)、既有 SDK smoke 的 partial-cache 与 cold ownership case；实际 Pi 从 Broker 主地图 `partial-entrypoint` 进入 |
-| SC-METADATA-01 | 单次 scalar current 读取内，逻辑选择与原生引用编译复用完整六属性目录 | [目录复用合同](../../../../docs/shared-metadata-consumption.md)、下方 scalar inventory 回归和独立 SDK/CLI smoke；完整 SC11 投影/批次矩阵仍单列 |
+| SC-METADATA-01 | 单次 scalar current 读取内，逻辑选择、原生引用编译及 Members/Requires 目标元数据复用完整六属性目录 | [目录复用合同](../../../../docs/shared-metadata-consumption.md)、下方 scalar inventory 回归和独立 SDK/CLI smoke；完整 SC11 投影/批次矩阵仍单列 |
 | SC-TOOLS-14 | 固定单资源 output 直接返回文件与 owner 主文承诺，不获取主文对象 | [消费合同](../../../../docs/consumer-contract.md)、fixed-snapshot-files 的 output 回归与独立 SDK/CLI smoke；实际 Pi 从 Broker 主地图 `resource-scalar` / `resource-scalar-short-refs` 进入 |
 
 ### 证明对象
@@ -231,16 +231,28 @@ NTN_SKILLS_SC11_EVIDENCE=1 bun test packages/core/test/shared-metadata-consumpti
 
 沿本页已有的 Node fixture → 独立 build/pack → `sdk-package-smoke.mjs` 路线，给每次安装新的自有目录。`sdk-fixture.ts --catalog` 的 `scalarInventory` 是独立 101 行 fixture，包含最后一页的 disabled 外部目标；它不替换原有 `ownership` case。可将一次冻结 fixture 分别交给旧包和候选包，保留两次实际结果及包身份。
 
-审阅 `scalar-inventory-evidence.json`、`scalar-inventory-notion-requests.jsonl`、三次 read result 和实际 snapshot export：
+审阅 `scalar-inventory-evidence.json`、`scalar-inventory-notion-requests.jsonl`、五次 read result 和实际 snapshot export：
 
 - SDK 冷 logical ref、同 scope 显式 refresh、另一个空 Store 的 installed CLI `read RESOURCE --from LOGICAL_REF` 分别计量。每次只完成一轮 100 + 1 行的 Skills 查询；每页恰好六个已注册 property ID，无行过滤，没有第二轮 cursor 序列。
 - 完整当前根页仍单独 GET；目录中没有 Source/Files 等字段时不能将其当完整页面。Available / disabled 外部引用均保留准确身份和元数据，目标页与正文不得被获取。
 - refresh 必须重新观察变更后的根与 disabled 目标元数据。公开输出和持久 catalog 不包含 raw inventory；名称/描述变化使用当前根，逻辑 Skill ID 漂移在正文读取前失败。
 - 完整正文、目录及离线 snapshot export 的每个 path/length/SHA，与独立 page-ID/full-inventory oracle 匹配。检查每条真实 HTTP trace 完整、失败/取消/未知字节与该阶段的实际结果一致；没有台账的量不得写零。
+- SC14 的 `scalar-relations` 与 `scalar-relations-physical` 使用第三个空 consumer，保持原缓存、权限和动态 View 相位的初态。原生成器只在 scalar 专属 library 声明 Members/Requires；原观察为空关系，另生成完整关系观察及 physical-page oracle，不手改已生成的 manifest 或缓存。新相位只 read，不展开 Requires 正文，也不调用 use。
+- logical ref 与 physical Page ID 两次读取除 freshness 外完整结果相等，两个实际 SQLite snapshot manifest 逐项相等；Members/Requires、完整正文和所有导出文件另与独立 oracle 对照。所有未选目标的 page/body 请求必须为零。最后才断言 logical 仅 2 页，physical 保留独立路径的 3 轮、6 页；不能把此优化泛化到所有 read。
+
+沿原选择参数可只驱动完整 scalar case，包括既有缓存/权限和动态 View 链：
+
+```bash
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/view-fixture/fixture.json" --outdir "$RUN/evidence/installed-scalar-inventory" --case scalar-inventory
+```
+
+报告必须标记 `selection=scalar-inventory`；默认 `all` 仍运行原 22 项与本 case 的全部相位。先冻结 fixture 与原 C7 独立包，保留重复目录计数的红例，再由候选的默认安装矩阵验证；各轮分别绑定生成器、fixture 和包身份，不能将新生成的 fixture 冒称同一份原始输入。每轮 logical/physical 对照使用同一冻结来源。原 C7 Pro/Mini 公开 read 账本各观察到 Members 与 Requires 额外两轮、6 attempts / 1,431,764 decoded response B；这是本次同调用复用的原成本和可移除上界，不是新候选的实测生产延迟收益。原件位于 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc14-fact-read-audit-346gjnf6`。
+
+2026-11-06 的安装 fail-before 使用原 C7 `f854faf5...`，其独立安装 68 文件与 tar 全等。原 scalar 三次读取各 2 页；新增关系 logical/physical 两次读取的完整结果、SQLite snapshot、关系、全文和导出先全部匹配，随后仅 logical 的 `6 !== 2` 计数断言失败。`verification-run/evidence/installed-c7-before/report.json` SHA `10283531c21450b30b523ebb73eb230ea70be807fdf1f7f40d431858868014e5` 保留该失败。五相位合计 63 次 loopback HTTP / 872,712 decoded response B，未选目标 page/body 为 0；原缓存和动态 View 链因失败未运行，不从此前结果补算。`implementation/installed-c7-before-ledger.json` 绑定完整请求、五次归零的 in-flight 和 10 个自然关闭的 CLI/npm 子进程；外层 Node 自然 exit 1。原 control cleanup 与系统 Trash 后，6,540 个保留文件、实际日用三哨兵和原 staged index 均未变。Core 原 5 个重复页红例、76 项定向通过、类型修正后的 28 项和 typecheck 单列；C8 默认安装矩阵与新生产成本仍待执行，不能将这份 C7 失败改写为通过。
 
 该回归与 smoke 使用受控 Notion 服务和真实安装包，不是生产延迟证明。真实成本另用 Broker 的 `scripts/skill-consumption-source-baseline.mjs`：保留先前授权的 database/root/resource、单次 resource-only cold 场景与预算，只替换 installed CLI 和新的 evidenceRoot；按 Doctor → Plan → Run → Evidence → Trash Cleanup → Evidence 执行。比较实际 metadata/current-body/retained-body、请求字节、解码响应字节、耗时和内容 hash，完整 trace 缺失时不能宣称移除了请求。单样本耗时仅报告该样本，不外推稳定收益。
 
-scalar 复用不改变 Members/Requires 或跨请求缓存。权限、完整分页、禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证。
+scalar 复用不改变 Members/Requires 语义，也不建立跨请求缓存。实际关系仍来自当前选中页并按原规则完整分页；只有同 scope、完整 library descriptor 和穷尽性已核验的本次目录观察可传给目标元数据解析。权限、缺失／禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证。后续 refresh 必须重新观察，旧 pin 的正文与关系元数据仍冻结；Records headers/Payload 分层保持不变。
 
 ### Tags / View 动态观察与正文隔离
 

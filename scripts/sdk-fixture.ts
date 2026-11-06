@@ -633,12 +633,30 @@ const ownership = await (async () => {
 // disabled target. Its full-page oracle never uses the logical selector path.
 const scalarInventory = await (async () => {
   const f = sharedSnapshotFixture()
+  const scalarLibrary = {
+    ...ownershipLibrary,
+    skills: {
+      ...ownershipLibrary.skills,
+      property_ids: {
+        ...ownershipLibrary.skills.property_ids,
+        Members: "members",
+        Requires: "requires",
+      },
+    },
+  }
   property(f.main.properties).title = {
     id: "title",
     type: "title",
     title: [{ plain_text: "Scalar inventory root" }],
   }
   property(f.main.properties).description = rich("description", "Scalar current description")
+  for (const field of ["members", "requires"])
+    property(f.main.properties)[field] = {
+      id: field,
+      type: "relation",
+      relation: [],
+      has_more: false,
+    }
   const skills = [
     f.main,
     ...Array.from({ length: 100 }, (_, index) => {
@@ -676,6 +694,13 @@ const scalarInventory = await (async () => {
             ...api,
             request: (path, body, options) => {
               const url = new URL(path, "https://api.notion.com/")
+              if (url.pathname === `/v1/databases/${scalarLibrary.skills.database_id}`)
+                return api.request(path, body, options).pipe(
+                  Effect.map((value) => ({
+                    ...property(value),
+                    description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(scalarLibrary) }],
+                  })),
+                )
               if (
                 url.pathname !== `/v1/data_sources/${ownershipLibrary.skills.data_source_id}/query`
               )
@@ -704,6 +729,8 @@ const scalarInventory = await (async () => {
     return {
       root_id: snapshot.record.id,
       root_ref: snapshot.record.ref,
+      members: snapshot.members,
+      required: snapshot.required,
       files: snapshot.files,
       contents: Object.fromEntries(
         files.map((file) => [
@@ -742,6 +769,14 @@ const scalarInventory = await (async () => {
   ).toISOString()
   property(disabled.properties).description = rich("description", "Refreshed disabled metadata")
   const refreshed = oracle(await observeFull())
+  const refreshedMain = structuredClone(f.main)
+  const refreshedSkills = structuredClone(skills)
+  property(property(f.main.properties).members).relation = [{ id: available.id }]
+  property(property(f.main.properties).requires).relation = [{ id: skills[2]!.id }]
+  f.main.last_edited_time = new Date(
+    Date.parse(String(f.main.last_edited_time)) + 1000,
+  ).toISOString()
+  const relations = oracle(await observeFull())
   const seed = join(root, "scalar-inventory-source")
   await mkdir(seed, { mode: 0o700 })
   await Effect.runPromise(
@@ -755,7 +790,7 @@ const scalarInventory = await (async () => {
               title: "Controlled scalar inventory library",
               data_source_ids: [ownershipLibrary.skills.data_source_id],
               role: "content",
-              shared_library: ownershipLibrary,
+              shared_library: scalarLibrary,
             },
           ],
         })
@@ -853,21 +888,23 @@ const scalarInventory = await (async () => {
         },
       ],
     },
-    oracle: { cold, refreshed },
+    oracle: { cold, refreshed, relations },
     notion: {
-      library: ownershipLibrary,
+      library: scalarLibrary,
       database: {
         object: "database",
         id: ownershipLibrary.skills.database_id,
         database_type: null,
         title: [{ plain_text: "Controlled scalar inventory library" }],
-        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(ownershipLibrary) }],
+        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(scalarLibrary) }],
         data_sources: [{ id: ownershipLibrary.skills.data_source_id, name: "Skills" }],
       },
       main: initialSkills[0],
       skills: initialSkills,
-      refreshed_main: structuredClone(f.main),
-      refreshed_skills: structuredClone(skills),
+      refreshed_main: refreshedMain,
+      refreshed_skills: refreshedSkills,
+      relations_main: structuredClone(f.main),
+      relations_skills: structuredClone(skills),
       files: structuredClone(f.files),
       records: structuredClone([...f.records.values()]),
       bodies: Object.fromEntries(f.bodies),

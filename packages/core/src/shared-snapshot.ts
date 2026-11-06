@@ -323,7 +323,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           (yield* querySharedRouterMembers(input.library, {
             router: record,
             rawPage: raw,
-            inventory: graphInventory,
+            inventory: graphInventory ?? skillsInventory,
           })))
         : undefined
     const frozenMembers = routerMembers?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))
@@ -334,7 +334,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             record,
             rawPage: raw,
             field: "Requires",
-            inventory: graphInventory,
+            inventory: graphInventory ?? skillsInventory,
           })))
         : undefined
     const frozenRequired = required?.map(({ id, ref, metadata }) => ({ id, ref, metadata }))

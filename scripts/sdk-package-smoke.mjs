@@ -26,13 +26,15 @@ if (
   args[2] !== "--fixture" ||
   args[4] !== "--outdir" ||
   ![args[1], args[3], args[5]].every(isAbsolute) ||
-  (args.length === 8 && (args[6] !== "--case" || args[7] !== "view-dynamics"))
+  (args.length === 8 &&
+    (args[6] !== "--case" || !["view-dynamics", "scalar-inventory"].includes(args[7])))
 )
   throw new Error(
-    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics]",
+    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory]",
   )
 const [archive, fixturePath, root] = [args[1], args[3], args[5]]
 const viewDynamicsOnly = args[7] === "view-dynamics"
+const scalarInventoryOnly = args[7] === "scalar-inventory"
 await mkdir(root, { mode: 0o700 })
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 function assertNoTransport(reports, traceEnabled) {
@@ -363,7 +365,7 @@ async function command(argv, options = {}) {
 }
 async function test(name, run) {
   if (
-    viewDynamicsOnly &&
+    (viewDynamicsOnly || scalarInventoryOnly) &&
     name !== "scalar logical reads share one complete projected inventory within each refresh"
   )
     return
@@ -1315,8 +1317,9 @@ try {
     assert.ok(sample, "Generate the scalar inventory fixture with this checkout")
     assert.equal(sample.row_count, 101)
     const sdkCwd = join(root, "scalar-inventory-sdk"),
-      cliCwd = join(root, "scalar-inventory-cli")
-    for (const cwd of [sdkCwd, cliCwd]) {
+      cliCwd = join(root, "scalar-inventory-cli"),
+      relationsCwd = join(root, "scalar-inventory-relations")
+    for (const cwd of [sdkCwd, cliCwd, ...(!viewDynamicsOnly ? [relationsCwd] : [])]) {
       await cp(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
       const state = join(cwd, env.NTN_SKILLS_HOME)
       const database = new DatabaseSync(join(state, "state.sqlite"), { readOnly: true })
@@ -1325,6 +1328,7 @@ try {
           database.prepare("SELECT count(*) AS count FROM shared_local_records").get().count,
           0,
         )
+        assert.equal(database.prepare("SELECT count(*) AS count FROM snapshots").get().count, 0)
       } finally {
         database.close()
       }
@@ -1563,6 +1567,7 @@ try {
       phases: [],
       cache_lifecycle: [],
     }
+    const relationReads = new Map()
     const viewDynamics = async () => {
       const input = sample.view_dynamics
       assert.ok(input, "Generate the Tags/View dynamics observation with this checkout")
@@ -1880,24 +1885,41 @@ try {
         ["scalar-cold", "sdk", sdkCwd, sample.oracle.cold],
         ["scalar-refresh", "sdk", sdkCwd, sample.oracle.refreshed],
         ["scalar-cli-cold", "cli-from", cliCwd, sample.oracle.cold],
+        ["scalar-relations", "sdk", relationsCwd, sample.oracle.relations],
+        ["scalar-relations-physical", "sdk", relationsCwd, sample.oracle.relations],
       ]) {
         phase = label
         const refreshed = label === "scalar-refresh"
-        notion.main = structuredClone(refreshed ? sample.notion.refreshed_main : sample.notion.main)
+        const relations = label.startsWith("scalar-relations")
+        assert.ok(expected, "Generate the scalar relation oracle with this checkout")
+        notion.main = structuredClone(
+          relations
+            ? sample.notion.relations_main
+            : refreshed
+              ? sample.notion.refreshed_main
+              : sample.notion.main,
+        )
         notion.skills = structuredClone(
-          refreshed ? sample.notion.refreshed_skills : sample.notion.skills,
+          relations
+            ? sample.notion.relations_skills
+            : refreshed
+              ? sample.notion.refreshed_skills
+              : sample.notion.skills,
         )
         const reports = []
         let result
         if (kind === "sdk") {
-          result = await sdk.readSkill(sample.root_ref, {
-            ...options,
-            cwd,
-            env: currentEnv,
-            database: notion.library.skills.database_id,
-            refresh: true,
-            onRequestMetrics: (report) => reports.push(report),
-          })
+          result = await sdk.readSkill(
+            label === "scalar-relations-physical" ? notion.main.id : sample.root_ref,
+            {
+              ...options,
+              cwd,
+              env: currentEnv,
+              database: notion.library.skills.database_id,
+              refresh: true,
+              onRequestMetrics: (report) => reports.push(report),
+            },
+          )
         } else {
           const invocation = await invokeCli(
             [
@@ -1925,6 +1947,39 @@ try {
         assert.equal(result.path, kind === "sdk" ? "SKILL.md" : sample.resource_path)
         assert.equal(result.content, expected.contents[result.path])
         assert.deepEqual(result.native_references, expected.native_references)
+        assert.deepEqual(result.members, expected.members)
+        assert.deepEqual(result.required, expected.required)
+        if (relations) {
+          assert.equal(result.record.id, sample.oracle.relations.root_id)
+          assert.equal(result.members.length, 1)
+          assert.equal(result.required.length, 1)
+          const database = new DatabaseSync(join(cwd, env.NTN_SKILLS_HOME, "state.sqlite"), {
+            readOnly: true,
+          })
+          let manifest
+          try {
+            const row = database
+              .prepare("SELECT manifest FROM snapshots WHERE id=?")
+              .get(result.snapshot_id)
+            assert.ok(row, "The complete current snapshot was not persisted")
+            manifest = JSON.parse(row.manifest)
+          } finally {
+            database.close()
+          }
+          assert.equal(manifest.scope, result.scope)
+          assert.equal(manifest.snapshot_id, result.snapshot_id)
+          assert.equal(manifest.version_id, result.version_id)
+          assert.deepEqual(manifest.record, result.record)
+          assert.deepEqual(manifest.members, result.members)
+          assert.deepEqual(manifest.required, result.required)
+          assert.deepEqual(manifest.files, expected.files)
+          await writeFile(
+            join(root, label + "-manifest.json"),
+            JSON.stringify(manifest, null, 2) + "\n",
+            { mode: 0o600, flag: "wx" },
+          )
+          relationReads.set(label, { result, manifest })
+        }
         const disabled = result.native_references.entries.find(
           (entry) => entry.page_id === sample.external.disabled,
         )
@@ -1994,7 +2049,9 @@ try {
         )
         assert.deepEqual(unexpected, [])
         const externalReads = calls.filter((call) =>
-          Object.values(sample.external).some((id) => call.path.startsWith(`/v1/pages/${id}`)),
+          notion.skills.some(
+            (row) => row.id !== notion.main.id && call.path.startsWith(`/v1/pages/${row.id}`),
+          ),
         )
         assert.equal(externalReads.length, 0)
         const fullPageReads = calls.filter(
@@ -2091,30 +2148,48 @@ try {
             .description,
       )
       assert.notEqual(disabledDescriptions[0], disabledDescriptions[1])
+      const logicalRelations = relationReads.get("scalar-relations")
+      const physicalRelations = relationReads.get("scalar-relations-physical")
+      assert.deepEqual(
+        { ...logicalRelations.result, freshness: undefined },
+        { ...physicalRelations.result, freshness: undefined },
+      )
+      assert.deepEqual(logicalRelations.manifest, physicalRelations.manifest)
+      evidence.relation_equivalence = {
+        logical: "scalar-relations",
+        physical: "scalar-relations-physical",
+        scope: logicalRelations.result.scope,
+        snapshot_id: logicalRelations.result.snapshot_id,
+        complete_result_except_freshness: true,
+        complete_manifest: true,
+        members: logicalRelations.result.members,
+        required: logicalRelations.result.required,
+      }
       for (const observed of evidence.phases) {
+        const passes = observed.label === "scalar-relations-physical" ? 3 : 1
         assert.equal(
           observed.skills_queries.length,
-          2,
-          observed.label + ": exactly one complete 101-row inventory per scalar invocation",
+          2 * passes,
+          observed.label + ": expected complete 101-row inventory passes: " + passes,
         )
         assert.deepEqual(
           observed.skills_queries.map((query) => query.body.start_cursor ?? null),
-          [null, "offset-100"],
+          Array.from({ length: passes }, () => [null, "offset-100"]).flat(),
         )
         assert.deepEqual(
           observed.skills_queries.map((query) => query.page_ids.length),
-          [100, 1],
+          Array.from({ length: passes }, () => [100, 1]).flat(),
         )
         assert.deepEqual(
           observed.skills_queries.map((query) => [query.has_more, query.next_cursor]),
-          [
+          Array.from({ length: passes }, () => [
             [true, "offset-100"],
             [false, null],
-          ],
+          ]).flat(),
         )
         assert.deepEqual(
           observed.skills_queries.flatMap((query) => query.page_ids),
-          sample.notion.skills.map((row) => row.id),
+          Array.from({ length: passes }, () => sample.notion.skills.map((row) => row.id)).flat(),
         )
       }
       // Reuse the same installed package, loopback source and cache. The second
@@ -2960,7 +3035,7 @@ try {
     installed_package: manifest.version,
     sdk_path: sdkPath,
     fixture: fixturePath,
-    selection: viewDynamicsOnly ? "view-dynamics" : "all",
+    selection: args[7] ?? "all",
     passed: cases.filter((item) => item.status === "passed").length,
     failed: cases.filter((item) => item.status === "failed").length,
     cases,
