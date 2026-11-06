@@ -1607,6 +1607,8 @@ try {
         budgets: { preparation_ms: 60000, call_ms: 30000, consumers_ms: 240000, retries: 0 },
         histories: [1, 101],
         phases: [],
+        root_comparisons: [],
+        coverage_files: [],
         counter: { status: "not_checked" },
         timing_includes_coverage: true,
         unknown: [
@@ -1624,11 +1626,21 @@ try {
         new Promise((resolve, reject) =>
           session.post(method, params, (error, value) => (error ? reject(error) : resolve(value))),
         )
-      const save = (name, value) =>
-        writeFile(join(phaseRoot, name), JSON.stringify(value, null, 2) + "\n", {
+      const save = async (name, value) => {
+        const content = JSON.stringify(value, null, 2) + "\n"
+        await writeFile(join(phaseRoot, name), content, {
           mode: 0o600,
           flag: "wx",
         })
+        // The existing CI artifact embeds this ledger, but does not upload scratch files.
+        if (name.endsWith("-coverage.json"))
+          ledger.coverage_files.push({
+            name,
+            bytes: Buffer.byteLength(content, "utf8"),
+            sha256: hash(content),
+            content,
+          })
+      }
       const coverage = async (label) => {
         const raw = await post("Profiler.takePreciseCoverage")
         const scripts = raw.result.filter((item) => item.url === pathToFileURL(sdkPath).href)
@@ -1939,7 +1951,7 @@ try {
           }
           const multi = arm[0],
             single = arm[3]
-          await save(`h${sample.history}-root-comparison.json`, {
+          const comparison = {
             multi: multi.label,
             single: single.label,
             necessary_decode_reuse: names.every(
@@ -1952,7 +1964,9 @@ try {
               multi.request_metrics[0].total_requests - single.request_metrics[0].total_requests,
             response_bytes_delta:
               multi.request_metrics[0].response_bytes - single.request_metrics[0].response_bytes,
-          })
+          }
+          ledger.root_comparisons.push(comparison)
+          await save(`h${sample.history}-root-comparison.json`, comparison)
         }
         assert.equal(ledger.phases.length, 8)
         ledger.status = "passed"

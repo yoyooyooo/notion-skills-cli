@@ -318,6 +318,14 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_F
 
 定向原报告 `verification-run/evidence/installed-records-history/report.json`（SHA `2578f8a5219be7aa42c45a5a7374a2e70cd22495fa6559b7d515eadddd1f67f5`）为selection=`records-history`的1/1，不冒充重跑完整SDK22。内层八相位原账本SHA `66e0fb569d8f42d3f231b1c1cb3e3ba34a3a05b47477292fa479cffda0d9cd45`；原完整H1/H101输入SHA `684329e1e1a2619bbe34ab9e597522e9a58830a498129d410ce0d6c087af050d`。`cleanup-result.json`（SHA `45922dbc394f5988dd697f7b96283c40e5f3c9a71d08590ddf9eb89246a53f9f`）确认原helper把owned scratch移入系统Trash，launcher cache同用系统Trash，331份原件逐字节不变；日用三哨兵及原1615暂存项保持，活动消费者0。此次未运行生产Notion或真实模型，也未重建产品。
 
+### CI 保留计数比较与原 coverage 文件
+
+原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与八相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留，不改变 Profiler 配置、SDK 调用、计数、预算或失败位置。
+
+`root_comparisons` 保存各函数的真实差值及 `necessary_decode_reuse`，false 或非零必须原样进入 artifact。ledger 的 `status: passed` 表示八相位测量与内容/请求门槛完成，不证明所有 decoder 差值为零。comparison 仍是观察结果，不通过增加消费者样本或放宽断言将差值消除。
+
+旧 `bb09afb` CI run `42186327179` 的四平台均实际 SDK22/22 与 history8/8，但原 ZIP 只有 package JSON，未上传 standalone comparison/coverage。归档在 `sc14-history-measure-e7s0yzfz/remote-ci-bb09/`：macOS24 H101 single-cold 的 `decodeHeader` 为109、多根312；其他三平台对应两臂均312，原因保持unknown。两臂 envelope/bounded、HTTP/响应字节及相同四文件闭包仍各自保留；不能把这个窄事实写成逐fact全部验证一次。CI SDK `91ca58f9…` 与原 C8 SDK `5f7ae1e9…` 身份不同，不声明字节等价。本次仅修复归档接线，旧 cohort 不重跑；新接线的远端结果按它自己的提交与原 artifact 验收。
+
 ### Tags / View 动态观察与正文隔离
 
 SC-METADATA-04 复用原 `shared-views.test.ts` 及 `scalarInventory` 的安装 HTTP fixture。Tags、View filter 和完整成员列表分别封存在 fixture 的 `view_dynamics`；返回成员是受控 Notion API 观察，不声称该 fixture 执行了生产 Notion 的 filter 引擎，也不修改真实 View/schema。
