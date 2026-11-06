@@ -11,6 +11,7 @@ import {
   type Snapshot,
   type Source,
   type Catalog,
+  SnapshotSchema,
 } from "../packages/core/src/model.ts"
 import { publishSnapshotObservation } from "../packages/core/src/cache.ts"
 import { fileRef } from "../packages/core/src/ref.ts"
@@ -25,6 +26,8 @@ import { sharedSkillId } from "../packages/core/src/shared-content.ts"
 import { portableFiles } from "../packages/core/src/portable.ts"
 import { Notion } from "../packages/core/src/notion.ts"
 import { targetSnapshot } from "../packages/core/src/snapshot.ts"
+import { prepareGraph } from "../packages/core/src/graph-prepare.ts"
+import { nativeGraphFixture } from "../packages/core/test/graph-prepare-live-fixture.ts"
 import {
   id as fixtureId,
   library as ownershipLibrary,
@@ -34,6 +37,8 @@ import {
 } from "../packages/core/test/shared-snapshot-fixture.ts"
 
 const args = process.argv.slice(2)
+const recordsHistoryOnly = args.at(-1) === "--records-history"
+if (recordsHistoryOnly) args.pop()
 if (args.includes("--distinct-names") && args.includes("--ambiguous-names"))
   throw new Error("--distinct-names and --ambiguous-names are mutually exclusive fixture modes")
 const distinctNames = args.at(-1) === "--distinct-names"
@@ -46,11 +51,12 @@ if (
     !(args.length === 5 && args[2] === "--catalog" && args[3] === "--default-view-cache")) ||
   !["complete", "missing", "incomplete"].includes(defaultViewCache) ||
   (ambiguousNames && args[2] !== "--catalog") ||
+  (recordsHistoryOnly && (args.length !== 2 || distinctNames || ambiguousNames)) ||
   args[0] !== "--outdir" ||
   !isAbsolute(args[1]!)
 )
   throw new Error(
-    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog [--default-view-cache complete|missing|incomplete]] [--distinct-names | --ambiguous-names (requires --catalog)]",
+    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--records-history | --catalog [--default-view-cache complete|missing|incomplete]] [--distinct-names | --ambiguous-names (requires --catalog)]",
   )
 const withCatalog = args[2] === "--catalog"
 const root = args[1]!
@@ -65,6 +71,169 @@ const env = {
   NTN_SKILLS_HOME: "state",
   NTN_SKILLS_CONFIG_HOME: "config",
   NTN_SKILLS_CACHE_HOME: "cache",
+}
+if (recordsHistoryOnly) {
+  // Use the existing producer, including its real parent/event/retention rules.
+  // The consumer receives only the frozen service observations and empty config.
+  const observations = []
+  const finishedAt = Date.now() - 5000
+  for (const history of [1, 101]) {
+    const f = nativeGraphFixture()
+    const [a, , c, d, optional] = f.pageIds
+    const shared = f.pages[3]
+    if (!a || !c || !d || !optional || !shared) throw new Error("History diamond is incomplete")
+    for (const page of f.pages) page.last_edited_time = new Date(finishedAt).toISOString()
+    const producer = []
+    for (let revision = 0; revision < history; revision++) {
+      shared.last_edited_time = new Date(finishedAt - (history - revision - 1) * 1000).toISOString()
+      f.bodies.set(d, revision === history - 1 ? "# d instruction\n" : `# d history ${revision}\n`)
+      f.clearCalls()
+      const prepared = await f.run(
+        prepareGraph(
+          { roots: [d], purpose: "inspect", freshness: { policy: "refresh" } },
+          { database: f.descriptor.skills.database_id, metrics: true },
+        ),
+      )
+      if (prepared.status !== "ready") throw new Error(JSON.stringify(prepared))
+      producer.push({
+        revision,
+        graph_lock: prepared.graph_lock,
+        request_metrics: f.requestMetrics(),
+        calls: structuredClone(f.calls),
+      })
+    }
+    f.clearCalls()
+    const prepared = await f.run(
+      prepareGraph(
+        { roots: [a, c], purpose: "use", freshness: { policy: "refresh" } },
+        { database: f.descriptor.skills.database_id, metrics: true },
+      ),
+    )
+    if (prepared.status !== "ready") throw new Error(JSON.stringify(prepared))
+    const oracle = prepared.nodes
+      .filter((node) => node.state === "prepared")
+      .map((node) => {
+        const snapshot = decode(
+          SnapshotSchema,
+          f.json.get(`snapshots/${node.binding.snapshot_id}.json`),
+        )
+        for (const file of snapshot.files) {
+          const bytes = f.objects.get(`objects/${file.sha256}`)
+          if (bytes === undefined || bytes.length !== file.bytes || hash(bytes) !== file.sha256)
+            throw new Error("History producer oracle is incomplete")
+        }
+        return {
+          record: snapshot.record,
+          version_id: snapshot.version_id,
+          entrypoint: snapshot.entrypoint,
+          files: snapshot.files,
+          file_bindings: snapshot.file_bindings,
+          required: node.required,
+          candidates: node.candidates,
+          references: node.references,
+          members: snapshot.members ?? [],
+          content: node.content,
+        }
+      })
+      .sort((left, right) => left.record.id.localeCompare(right.record.id))
+    if (oracle.length !== 4 || oracle.some((node) => node.files.length !== 1))
+      throw new Error("History measurement must preserve the four-file diamond")
+    const records = structuredClone([...f.records.values()])
+    const sharedEvents = records.filter((row) => {
+      const fields = property(row.properties)
+      const owners = property(fields.skill).relation
+      return (
+        property(property(fields.kind).select).name === "file_event" &&
+        Array.isArray(owners) &&
+        owners.some((owner) => property(owner).id === d)
+      )
+    })
+    if (sharedEvents.length !== history)
+      throw new Error(`Producer did not create ${history} distinct shared-file events`)
+    const seed = join(root, `history-${history}-config`)
+    await mkdir(seed, { mode: 0o700 })
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* (yield* Store).writeJson("config.json", {
+            sources: [
+              {
+                alias: f.descriptor.library_id,
+                database_id: f.descriptor.skills.database_id,
+                title: "Controlled Records history library",
+                data_source_ids: [f.descriptor.skills.data_source_id],
+                role: "content",
+                shared_library: f.descriptor,
+              },
+            ],
+          })
+        }),
+      ).pipe(
+        Effect.provide(nodeRuntime(seed).live),
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromUnknown({
+              ...env,
+              NTN_SKILLS_HOME: join(seed, "state"),
+              NTN_SKILLS_CONFIG_HOME: join(seed, "config"),
+              NTN_SKILLS_CACHE_HOME: join(seed, "cache"),
+            }),
+          ),
+        ),
+      ),
+    )
+    const rootRefs = [a, c].map((id) => {
+      const entry = oracle.find(
+        (node) => node.record.locator.type === "shared_skill" && node.record.locator.page_id === id,
+      )
+      if (entry === undefined) throw new Error("History root is absent from its full oracle")
+      return entry.record.ref
+    })
+    observations.push({
+      history,
+      seed,
+      roots: rootRefs,
+      optional_page: optional,
+      shared_page: d,
+      shared_event_count: sharedEvents.length,
+      oracle,
+      producer,
+      final_producer: {
+        graph_lock: prepared.graph_lock,
+        request_metrics: f.requestMetrics(),
+        calls: structuredClone(f.calls),
+      },
+      notion: {
+        library: f.descriptor,
+        database: {
+          object: "database",
+          id: f.descriptor.skills.database_id,
+          database_type: null,
+          title: [{ plain_text: "Controlled Records history library" }],
+          description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(f.descriptor) }],
+          data_sources: [{ id: f.descriptor.skills.data_source_id, name: "Skills" }],
+        },
+        main: structuredClone(f.pages[0]),
+        skills: structuredClone(f.pages),
+        files: structuredClone(f.files),
+        records,
+        bodies: Object.fromEntries([...f.bodies].filter(([id]) => id !== optional)),
+      },
+    })
+  }
+  await writeFile(
+    join(root, "history.json"),
+    JSON.stringify({ version: 1, observations }, null, 2) + "\n",
+    { mode: 0o600, flag: "wx" },
+  )
+  console.log(
+    JSON.stringify({
+      path: join(root, "history.json"),
+      histories: [1, 101],
+      production_network: false,
+    }),
+  )
+  process.exit(0)
 }
 const scope = hash(JSON.stringify(["sdk-fixture", "", origin, hash(token)]))
 const bodies = new Map<string, Uint8Array>()

@@ -269,6 +269,41 @@ scalar 复用不改变 Members/Requires 语义，也不建立跨请求缓存。�
 
 完整回执为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc22-final-c8-3a02z8s9/cli-physical-handoff.json`，SHA `c04515f1ef4e156063f803d0e26fb6793de0ddb0cbaa659ced03fc2b93bc323a`。两机均仅将 owned run 与 guard 移入系统 Trash；原 C7 永久删除偏差不改写。Pro 外层预建 cleanup stdout 被旧 helper 暂列为零字节原件，结束打印后仅该 observer 输出变化，`ece-outer-reconciliation.json`（SHA `3618031e0b31a22c7b21c943ffcca6022af333aa9bcd5b4d9ec9078f0b38b5bf`）明确保留原回执并核对其余 89 原件不变；Mini 输出置清单外，90 原件全部保持。两机包与日用哨兵未变，没有重跑消费者或清理。Pi 正常 SDK 交付、真实模型与日用切换继续分别验收。
 
+### SC14：固定文件集的历史量与解码账本
+
+沿原安装 smoke 的 `--case records-history` 驱动，不构建产品或新增总验证器。旧入口不接受该选择器，原报告也没有独立 decoder/history 维度；这是 coverage fail-before，不能冒称产品错误。
+
+```bash
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_FIXTURE/fixture.json" --outdir "$RUN/scratch/records-consumer" --case records-history
+```
+
+同一次独立安装先用原 scalar loopback 做一次小冷读，绑定安装 SDK 的 SHA/URL/函数范围，验证 Node precise coverage 的 `recordFromEnvelope`、`boundedEnvelope`、`decodeHeader`、`resolveFileState` 有实际非零调用，并用下一次无消费采样证明清零。计数器不可用或探针失败时保留原错误并停止，不能用缺项补0、增加产品 hook 或换平台追绿。原始函数 ranges 与阶段计数保存在 `records-history/*-coverage.json`。
+
+探针通过后，原 `sdk-fixture.ts --records-history` 在60秒内通过既有 `nativeGraphFixture`/`prepareGraph` producer 生成 H=1/H=101 的合法父事件与 retained facts。四个业务主文件、owner/File ID/最终内容及关系不变；只共享 Requires d 的历史量变化，未选 optional 不提供正文响应。两种历史的 heads 可能使 pin 不同，各自对完整 producer oracle 验证，不强行抹平版本。producer 请求、写入及 frozen source 与空 consumer config 分账，绝不把生成的对象/SQLite 缓存复制给消费者。
+
+每个 H 串行执行多根 cold/warm/expired-unchanged，再以独立冷状态执行单根 a；单根 a 的完整 Requires 已包含同四节点，因此能直接观察增加根 c 是否重复取数/解码。共八次SDK调用、每次30秒、总240秒、n=1/0重试，外层仍用原15分钟预算。对账完整HTTP journal/trace/响应字节、未选正文0、零常规写回、全文/manifest/关系/本地旧pin对象hash，并保存实际失败位置；失败后不启动后续相位。总函数次数不能冒充逐fact归属或内部Schema/DFS循环次数，带coverage耗时不能作为稳定性能收益；CPU/RSS/压缩wire bytes保持unknown。
+
+默认 `all` 保留原22个case及其反例，并在原scalar case末尾追加同一测量；`view-dynamics`/`scalar-inventory` 的定向含义保持。常规 `package:check`/CI 继续沿同一原driver执行。Evidence先保留完整相位、生成器与安装身份、所有原失败；所有进程/服务终局后通过本Skill原cleanup将明确owned scratch移入系统Trash，再核原件保持。该测量不新增SC22/SC20前置。
+
+2026-11-06 使用原 C8 archive `2c65d54aee20f0fbb30af30bd1d67b32ad00e7285f0c9a50bc9f477962aeee9f` 完成一次独立安装，68文件逐项等于归档，SDK SHA `5f7ae1e9a94fcde67a8b95c011f0164b5c1a7f7b22d7228c12ab39c5feaf76b7`。证据根为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc14-history-measure-e7s0yzfz`。首个入口155.158ms因归档fixture仍指向已Trash的旧绝对路径而退出；当时安装、probe及SDK调用均0。`input-rebinding.json`仅将9个路径指向保留的同一输入，反向深等通过，其余数据未改；该失败原件不覆盖。
+
+更正输入后的原driver自然exit0、47,818.411ms；npm安装5,742.609ms，合法H1/H101 producer 2,280.473ms。probe实际 envelope/bounded/header/replay 次数为3/3/6/6，紧接的无消费采样四项均0，函数范围绑定精确安装SDK。八个消费者相位全部通过完整内容/身份/关系/manifest/旧pin对象hash断言；两臂cold的单根与多根具有相同事实集合及以下相同计数。表中envelope与bounded两函数次数相等，header/replay为各自实际函数入口次数。
+
+| H | 状态 | HTTP attempts | decoded response B | envelope / header / replay | elapsed ms |
+|---|---|---:|---:|---:|---:|
+| 1 | cold，多根 | 15 | 24,475 | 4 / 12 / 8 | 5,085.530 |
+| 1 | warm，多根 | 1 | 61 | 0 / 0 / 0 | 258.988 |
+| 1 | expired-unchanged，多根 | 10 | 19,571 | 4 / 4 / 4 | 3,551.441 |
+| 1 | cold，单根 | 15 | 24,475 | 4 / 12 / 8 | 5,369.820 |
+| 101 | cold，多根 | 18 | 374,591 | 104 / 312 / 8 | 8,468.580 |
+| 101 | warm，多根 | 1 | 61 | 0 / 0 / 0 | 187.164 |
+| 101 | expired-unchanged，多根 | 12 | 211,715 | 104 / 104 / 4 | 4,320.646 |
+| 101 | cold，单根 | 18 | 374,591 | 104 / 312 / 8 | 8,161.035 |
+
+八相位合计90HTTP、1,029,540 decoded response B；probe另计11HTTP、102,804B，producer的受控服务调用另列。每个cold相位读取4个必要正文，warm/expired正文0；所有消费者未选正文0、write0。cold的完整payload行数和唯一record IDs分别为4/4、104/104；expired未再次传输payload，但实际重新解码本地4或104个envelope。逐fact decoder归属、内部Schema/DFS迭代、CPU/RSS、wire bytes仍unknown；n=1且开启precise coverage的elapsed不用于宣称稳定延迟收益或采用检查点。
+
+定向原报告 `verification-run/evidence/installed-records-history/report.json`（SHA `2578f8a5219be7aa42c45a5a7374a2e70cd22495fa6559b7d515eadddd1f67f5`）为selection=`records-history`的1/1，不冒充重跑完整SDK22。内层八相位原账本SHA `66e0fb569d8f42d3f231b1c1cb3e3ba34a3a05b47477292fa479cffda0d9cd45`；原完整H1/H101输入SHA `684329e1e1a2619bbe34ab9e597522e9a58830a498129d410ce0d6c087af050d`。`cleanup-result.json`（SHA `45922dbc394f5988dd697f7b96283c40e5f3c9a71d08590ddf9eb89246a53f9f`）确认原helper把owned scratch移入系统Trash，launcher cache同用系统Trash，331份原件逐字节不变；日用三哨兵及原1615暂存项保持，活动消费者0。此次未运行生产Notion或真实模型，也未重建产品。
+
 ### Tags / View 动态观察与正文隔离
 
 SC-METADATA-04 复用原 `shared-views.test.ts` 及 `scalarInventory` 的安装 HTTP fixture。Tags、View filter 和完整成员列表分别封存在 fixture 的 `view_dynamics`；返回成员是受控 Notion API 观察，不声称该 fixture 执行了生产 Notion 的 filter 引擎，也不修改真实 View/schema。

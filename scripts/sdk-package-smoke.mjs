@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { channel } from "node:diagnostics_channel"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
+import { Session } from "node:inspector"
 import fs from "node:fs"
 import fsPromises, {
   cp,
@@ -15,9 +16,9 @@ import fsPromises, {
 } from "node:fs/promises"
 import { createServer } from "node:http"
 import { createRequire, syncBuiltinESMExports } from "node:module"
-import { isAbsolute, join } from "node:path"
+import { dirname, isAbsolute, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const args = process.argv.slice(2)
 if (
@@ -27,14 +28,16 @@ if (
   args[4] !== "--outdir" ||
   ![args[1], args[3], args[5]].every(isAbsolute) ||
   (args.length === 8 &&
-    (args[6] !== "--case" || !["view-dynamics", "scalar-inventory"].includes(args[7])))
+    (args[6] !== "--case" ||
+      !["view-dynamics", "scalar-inventory", "records-history"].includes(args[7])))
 )
   throw new Error(
-    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory]",
+    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory|records-history]",
   )
 const [archive, fixturePath, root] = [args[1], args[3], args[5]]
 const viewDynamicsOnly = args[7] === "view-dynamics"
 const scalarInventoryOnly = args[7] === "scalar-inventory"
+const recordsHistoryOnly = args[7] === "records-history"
 await mkdir(root, { mode: 0o700 })
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 function assertNoTransport(reports, traceEnabled) {
@@ -365,7 +368,7 @@ async function command(argv, options = {}) {
 }
 async function test(name, run) {
   if (
-    (viewDynamicsOnly || scalarInventoryOnly) &&
+    (viewDynamicsOnly || scalarInventoryOnly || recordsHistoryOnly) &&
     name !== "scalar logical reads share one complete projected inventory within each refresh"
   )
     return
@@ -1319,7 +1322,9 @@ try {
     const sdkCwd = join(root, "scalar-inventory-sdk"),
       cliCwd = join(root, "scalar-inventory-cli"),
       relationsCwd = join(root, "scalar-inventory-relations")
-    for (const cwd of [sdkCwd, cliCwd, ...(!viewDynamicsOnly ? [relationsCwd] : [])]) {
+    for (const cwd of recordsHistoryOnly
+      ? []
+      : [sdkCwd, cliCwd, ...(!viewDynamicsOnly ? [relationsCwd] : [])]) {
       await cp(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
       const state = join(cwd, env.NTN_SKILLS_HOME)
       const database = new DatabaseSync(join(state, "state.sqlite"), { readOnly: true })
@@ -1346,6 +1351,7 @@ try {
     let denyAuthentication = false
     let viewObservation
     let incompleteViewInventory = false
+    let historyObservation = false
     const richText = (parts) =>
       (parts ?? []).map((part) => part.plain_text ?? part.text?.content ?? "").join("")
     const matches = (row, filter) => {
@@ -1469,7 +1475,13 @@ try {
             view_filter: viewObservation.filter,
             view_member_page_ids: viewObservation.member_page_ids,
           })
-        } else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
+        } else if (
+          historyObservation &&
+          request.method === "GET" &&
+          notion.skills.some((row) => url.pathname === `/v1/pages/${row.id}`)
+        )
+          value = notion.skills.find((row) => url.pathname === `/v1/pages/${row.id}`)
+        else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
           value = notion.main
         else if (
           request.method === "GET" &&
@@ -1520,6 +1532,20 @@ try {
             ].sort(),
             has_more: value.has_more,
             next_cursor: value.next_cursor,
+            ...(historyObservation &&
+            url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
+              ? {
+                  records: value.results.map((row) => ({
+                    page_id: row.id,
+                    owner: row.properties.skill?.relation?.map((owner) => owner.id) ?? [],
+                    record_id: richText(row.properties.record?.rich_text),
+                    entity_id: richText(row.properties.entity?.rich_text),
+                    kind: row.properties.kind?.select?.name,
+                    hash: richText(row.properties.hash?.rich_text),
+                    payload_included: Object.hasOwn(row.properties, "payload"),
+                  })),
+                }
+              : {}),
           })
         } else throw new Error("Unexpected controlled inventory request")
       } catch (error) {
@@ -1568,6 +1594,387 @@ try {
       cache_lifecycle: [],
     }
     const relationReads = new Map()
+    const recordsHistory = async () => {
+      const phaseRoot = join(root, "records-history")
+      await mkdir(phaseRoot, { mode: 0o700 })
+      const source = await readFile(sdkPath, "utf8")
+      const names = ["recordFromEnvelope", "boundedEnvelope", "decodeHeader", "resolveFileState"]
+      const ledger = {
+        version: 1,
+        status: "running",
+        sdk_path: sdkPath,
+        sdk_sha256: hash(source),
+        budgets: { preparation_ms: 60000, call_ms: 30000, consumers_ms: 240000, retries: 0 },
+        histories: [1, 101],
+        phases: [],
+        counter: { status: "not_checked" },
+        timing_includes_coverage: true,
+        unknown: [
+          "per_fact_decode_attribution",
+          "schema_iteration_count",
+          "replay_cpu",
+          "rss",
+          "wire_bytes",
+        ],
+      }
+      evidence.records_history = ledger
+      const session = new Session()
+      const known = new Map()
+      const post = (method, params = {}) =>
+        new Promise((resolve, reject) =>
+          session.post(method, params, (error, value) => (error ? reject(error) : resolve(value))),
+        )
+      const save = (name, value) =>
+        writeFile(join(phaseRoot, name), JSON.stringify(value, null, 2) + "\n", {
+          mode: 0o600,
+          flag: "wx",
+        })
+      const coverage = async (label) => {
+        const raw = await post("Profiler.takePreciseCoverage")
+        const scripts = raw.result.filter((item) => item.url === pathToFileURL(sdkPath).href)
+        assert.ok(scripts.length <= 1, "SDK coverage must identify one exact installed module")
+        const selected = []
+        for (const name of names) {
+          const matches = scripts
+            .flatMap((item) => item.functions)
+            .filter((item) => item.functionName === name)
+          assert.ok(matches.length <= 1, `Ambiguous decoder function ${name}`)
+          if (matches.length === 1) {
+            const fn = matches[0],
+              span = fn.ranges[0]
+            assert.ok(source.slice(span.startOffset, span.endOffset).includes(`function ${name}(`))
+            const identity = { startOffset: span.startOffset, endOffset: span.endOffset }
+            if (known.has(name)) assert.deepEqual(identity, known.get(name))
+            else known.set(name, identity)
+            selected.push(fn)
+          } else assert.ok(known.has(name), `Precise decoder counter unavailable: ${name}`)
+        }
+        const counts = Object.fromEntries(
+          names.map((name) => [
+            name,
+            selected.find((fn) => fn.functionName === name)?.ranges[0].count ?? 0,
+          ]),
+        )
+        assert.ok(Object.values(counts).every((count) => Number.isSafeInteger(count) && count >= 0))
+        await save(label + "-coverage.json", {
+          timestamp: raw.timestamp,
+          url: pathToFileURL(sdkPath).href,
+          sdk_sha256: ledger.sdk_sha256,
+          functions: selected,
+          counts,
+        })
+        return counts
+      }
+      const currentCalls = (label) => requests.filter((call) => call.phase === label)
+      const assertMetrics = (metrics, calls) => {
+        assert.ok(metrics && metrics.trace_enabled && metrics.trace_dropped === 0)
+        assert.equal(metrics.in_flight, 0)
+        assert.equal(metrics.unknown_request_bytes, 0)
+        assert.equal(metrics.unknown_response_bytes, 0)
+        assert.equal(metrics.requests.notion_write, 0)
+        assert.equal(metrics.requests.provider, 0)
+        assert.equal(metrics.total_requests, calls.length)
+        assert.equal(
+          metrics.trace.filter((event) => event.event === "attempt").length,
+          calls.length,
+        )
+        assert.equal(
+          metrics.request_bytes,
+          calls.reduce((sum, call) => sum + call.request_bytes, 0),
+        )
+        assert.equal(
+          metrics.response_bytes,
+          calls.reduce((sum, call) => sum + call.decoded_response_bytes, 0),
+        )
+        assert.deepEqual(unexpected, [])
+      }
+      const emptyConsumer = async (seed, cwd) => {
+        await cp(seed, cwd, { recursive: true, errorOnExist: true, force: false })
+        const database = new DatabaseSync(join(cwd, env.NTN_SKILLS_HOME, "state.sqlite"), {
+          readOnly: true,
+        })
+        try {
+          for (const table of ["snapshots", "shared_local_records"])
+            assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get().count, 0)
+        } finally {
+          database.close()
+        }
+        assert.deepEqual(
+          await readdir(join(cwd, env.NTN_SKILLS_HOME, "objects")).catch((error) => {
+            if (error.code === "ENOENT") return []
+            throw error
+          }),
+          [],
+        )
+      }
+      let started = false
+      try {
+        Object.assign(notion, structuredClone(sample.notion))
+        denyCurrent = false
+        denyAuthentication = false
+        viewObservation = undefined
+        incompleteViewInventory = false
+        session.connect()
+        ledger.counter.status = "checking"
+        await post("Profiler.enable")
+        await post("Profiler.startPreciseCoverage", { callCount: true, detailed: true })
+        started = true
+        ledger.counter.status = "not_checked"
+        const probeCwd = join(phaseRoot, "probe-consumer")
+        await emptyConsumer(sample.seed, probeCwd)
+        phase = "records-probe"
+        const reports = [],
+          before = performance.now()
+        const result = await sdk.readSkill(sample.root_ref, {
+          ...options,
+          cwd: probeCwd,
+          env: currentEnv,
+          database: notion.library.skills.database_id,
+          refresh: true,
+          signal: AbortSignal.timeout(30000),
+          onRequestMetrics: (value) => reports.push(value),
+        })
+        ledger.counter.status = "checking"
+        const counts = await coverage("probe")
+        ledger.counter.status = "not_checked"
+        await save("probe.json", {
+          result,
+          request_metrics: reports,
+          calls: currentCalls(phase),
+          counts,
+          elapsed_ms: performance.now() - before,
+        })
+        assert.equal(result.content, sample.oracle.cold.contents["SKILL.md"])
+        assert.equal(result.has_more, false)
+        assert.equal(reports.length, 1)
+        assertMetrics(reports[0], currentCalls(phase))
+        ledger.counter.status = "checking"
+        assert.ok(
+          Object.values(counts).every((count) => count > 0),
+          "Cold decoder positive control is required",
+        )
+        const reset = await coverage("probe-reset")
+        assert.ok(
+          Object.values(reset).every((count) => count === 0),
+          "Counters must reset at the phase boundary",
+        )
+        ledger.counter = {
+          status: "available",
+          positive: counts,
+          reset,
+          spans: Object.fromEntries(known),
+        }
+        await save("counter-ready.json", ledger.counter)
+
+        const fixtureRoot = join(phaseRoot, "source-fixture")
+        const generated = await command(
+          [
+            process.execPath,
+            join(dirname(fileURLToPath(import.meta.url)), "sdk-fixture.ts"),
+            "--outdir",
+            fixtureRoot,
+            "--records-history",
+          ],
+          { timeout: 60000 },
+        )
+        assert.equal(
+          generated.code,
+          0,
+          "Original history producer failed; preserve its command receipt",
+        )
+        const fixtureFile = join(fixtureRoot, "history.json"),
+          fixtureBytes = await readFile(fixtureFile)
+        const histories = JSON.parse(fixtureBytes).observations
+        assert.deepEqual(
+          histories.map((item) => item.history),
+          [1, 101],
+        )
+        ledger.fixture = {
+          path: fixtureFile,
+          sha256: hash(fixtureBytes),
+          bytes: fixtureBytes.length,
+        }
+        const business = (item) =>
+          item.oracle.map((node) => ({
+            id: node.record.id,
+            entrypoint: node.entrypoint,
+            files: node.files,
+            content: node.content,
+            required: node.required,
+            members: node.members,
+          }))
+        assert.deepEqual(
+          business(histories[0]),
+          business(histories[1]),
+          "History length must not change the final business input",
+        )
+        await save("frozen-input.json", {
+          fixture: ledger.fixture,
+          histories: histories.map((item) => ({
+            history: item.history,
+            roots: item.roots,
+            shared_page: item.shared_page,
+            shared_event_count: item.shared_event_count,
+            oracle: item.oracle,
+          })),
+          budgets: ledger.budgets,
+          sdk_sha256: ledger.sdk_sha256,
+        })
+        const deadline = performance.now() + 240000
+        historyObservation = true
+        for (const sample of histories) {
+          assert.equal(sample.shared_event_count, sample.history)
+          Object.assign(notion, structuredClone(sample.notion))
+          const multiCwd = join(phaseRoot, `h${sample.history}-multi`)
+          const singleCwd = join(phaseRoot, `h${sample.history}-single`)
+          await emptyConsumer(sample.seed, multiCwd)
+          await emptyConsumer(sample.seed, singleCwd)
+          const arm = [],
+            pins = new Map()
+          for (const [state, cwd, targets, freshness] of [
+            ["cold", multiCwd, sample.roots, undefined],
+            ["warm", multiCwd, sample.roots, undefined],
+            ["expired", multiCwd, sample.roots, { policy: "max_age", max_age_ms: 1 }],
+            ["single-cold", singleCwd, sample.roots.slice(0, 1), undefined],
+          ]) {
+            const remaining = deadline - performance.now()
+            assert.ok(remaining > 0, "Records history consumer budget exhausted")
+            phase = `records-h${sample.history}-${state}`
+            assert.ok(
+              Object.values(await coverage(phase + "-before")).every((count) => count === 0),
+            )
+            const reports = [],
+              before = performance.now()
+            let result, failure
+            try {
+              result = await sdk.consume(
+                { version: 1, targets, purpose: "use", ...(freshness ? { freshness } : {}) },
+                {
+                  ...options,
+                  cwd,
+                  env: currentEnv,
+                  database: notion.library.skills.database_id,
+                  signal: AbortSignal.timeout(Math.max(1, Math.floor(Math.min(30000, remaining)))),
+                  onRequestMetrics: (value) => reports.push(value),
+                },
+              )
+            } catch (error) {
+              failure = { code: error.code, message: String(error.message) }
+            }
+            const elapsed = performance.now() - before,
+              counts = await coverage(phase)
+            const calls = currentCalls(phase)
+            const observed = {
+              label: phase,
+              history: sample.history,
+              state,
+              targets,
+              cwd,
+              elapsed_ms: elapsed,
+              decoder_calls: counts,
+              result,
+              failure: failure ?? null,
+              request_metrics: reports,
+              calls,
+            }
+            ledger.phases.push(observed)
+            arm.push(observed)
+            await save(phase + ".json", observed)
+            assert.equal(failure, undefined)
+            assert.equal(reports.length, 1)
+            assertMetrics(reports[0], calls)
+            assert.ok(elapsed < 30000 && performance.now() <= deadline)
+            assert.equal(result.status, "ready", JSON.stringify(result))
+            assert.equal(result.entries.length, 4)
+            const nodes = result.preparation.nodes.filter((node) => node.state === "prepared")
+            assert.deepEqual(
+              nodes.map((node) => node.id).sort(),
+              sample.oracle.map((node) => node.record.id).sort(),
+            )
+            for (const expected of sample.oracle) {
+              const node = nodes.find((node) => node.id === expected.record.id)
+              const entry = result.entries.find((entry) => entry.id === expected.record.id)
+              assert.deepEqual(entry.manifest.record, expected.record)
+              assert.equal(entry.manifest.version_id, expected.version_id)
+              assert.deepEqual(entry.manifest.files, expected.files)
+              assert.deepEqual(entry.manifest.file_bindings, expected.file_bindings)
+              assert.equal(node.content, expected.content)
+              assert.equal(hash(node.content), node.body_sha256)
+              assert.deepEqual(node.required, expected.required)
+              assert.deepEqual(node.candidates, expected.candidates)
+              assert.deepEqual(node.references, expected.references)
+              assert.equal(entry.source_body.has_more, false)
+              assert.equal(entry.manifest.scope, result.preparation.scope)
+              if (state === "cold") pins.set(node.id, entry.manifest.snapshot_id)
+              else assert.equal(entry.manifest.snapshot_id, pins.get(node.id))
+              const database = new DatabaseSync(join(cwd, env.NTN_SKILLS_HOME, "state.sqlite"), {
+                readOnly: true,
+              })
+              try {
+                const saved = JSON.parse(
+                  database
+                    .prepare("SELECT manifest FROM snapshots WHERE id=?")
+                    .get(pins.get(node.id)).manifest,
+                )
+                assert.deepEqual(saved.files, expected.files)
+                for (const file of saved.files) {
+                  const bytes = await readFile(
+                    join(cwd, env.NTN_SKILLS_HOME, "objects", file.sha256),
+                  )
+                  assert.equal(bytes.length, file.bytes)
+                  assert.equal(hash(bytes), file.sha256)
+                }
+              } finally {
+                database.close()
+              }
+            }
+            assert.equal(
+              calls.filter((call) => call.path.startsWith(`/v1/pages/${sample.optional_page}`))
+                .length,
+              0,
+            )
+            if (state === "warm" || state === "expired")
+              assert.equal(reports[0].requests.notion_body, 0)
+            if (state === "expired") assert.ok(reports[0].total_requests > 0)
+          }
+          const multi = arm[0],
+            single = arm[3]
+          await save(`h${sample.history}-root-comparison.json`, {
+            multi: multi.label,
+            single: single.label,
+            necessary_decode_reuse: names.every(
+              (name) => multi.decoder_calls[name] === single.decoder_calls[name],
+            ),
+            decoder_delta: Object.fromEntries(
+              names.map((name) => [name, multi.decoder_calls[name] - single.decoder_calls[name]]),
+            ),
+            http_delta:
+              multi.request_metrics[0].total_requests - single.request_metrics[0].total_requests,
+            response_bytes_delta:
+              multi.request_metrics[0].response_bytes - single.request_metrics[0].response_bytes,
+          })
+        }
+        assert.equal(ledger.phases.length, 8)
+        ledger.status = "passed"
+      } catch (error) {
+        ledger.status =
+          ledger.counter.status === "checking"
+            ? "counter_unavailable"
+            : ledger.counter.status === "not_checked"
+              ? "probe_failed"
+              : "failed"
+        ledger.error = { code: error.code, message: String(error.message), phase }
+        throw error
+      } finally {
+        historyObservation = false
+        try {
+          if (started) await post("Profiler.stopPreciseCoverage")
+        } finally {
+          session.disconnect()
+          await save("report.json", ledger)
+        }
+      }
+    }
     const viewDynamics = async () => {
       const input = sample.view_dynamics
       assert.ok(input, "Generate the Tags/View dynamics observation with this checkout")
@@ -1876,6 +2283,11 @@ try {
       }
     }
     try {
+      if (recordsHistoryOnly) {
+        await recordsHistory()
+        evidence.status = "passed"
+        return evidence
+      }
       if (viewDynamicsOnly) {
         await viewDynamics()
         evidence.status = "passed"
@@ -2495,6 +2907,7 @@ try {
       assert.equal(catalogRecovered.request_metrics.total_requests, 0)
       assert.equal(catalogRecovered.result.freshness.stale, false)
       await viewDynamics()
+      if (!scalarInventoryOnly) await recordsHistory()
       evidence.status = "passed"
       return evidence
     } catch (error) {
