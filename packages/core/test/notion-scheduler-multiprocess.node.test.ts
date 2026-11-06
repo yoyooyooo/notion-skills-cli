@@ -23,22 +23,35 @@ const program = Effect.gen(function* () {
   const scheduler = yield* NotionRequestScheduler;
   const permits = yield* Semaphore.make(input.mode === "hold" ? 0 : 1);
   const options = { apiOrigin: input.origin, connection: input.connection, workspace: input.workspace, priority: input.priority, endpoint: "GET test" };
-  if (input.cooldown) yield* scheduler.cooldown(input.credential, input.cooldown, { ...options, reason: input.reason });
-  if (input.mode === "cooldown") return { cooldown: input.cooldown };
-  return yield* Effect.all(Array.from({length: input.count ?? 1}, (_, item) => Effect.gen(function* () {
-    const prepared = new Request(input.origin + "/" + input.label + "/" + item);
+  let cooldown = null;
+  if (input.cooldown) {
+    const started = Date.now();
+    yield* scheduler.cooldown(input.credential, input.cooldown, { ...options, reason: input.reason });
+    cooldown = { millis: input.cooldown, started, completed: Date.now() };
+  }
+  if (input.mode === "cooldown") return cooldown;
+  const requests = Array.from({length: input.count ?? 1}, (_, item) => ({
+    item, prepared: new Request(input.origin + "/" + input.label + "/" + item),
+  }));
+  if (input.waitForRelease) yield* Effect.promise(() => new Promise((resolve, reject) => {
+    process.once("message", message => message === "release" ? resolve() : reject(new Error("Unexpected receiver release")));
+    process.send({ type: "ready", pid: process.pid, time: Date.now() });
+  }));
+  return yield* Effect.all(requests.map(({ item, prepared }) => Effect.gen(function* () {
     const deadline = (yield* Clock.monotonicTimeNanos) + 60_000_000_000n;
+    const submitted = Date.now();
     return yield* scheduler.withAdmission(input.credential, deadline, permits, Effect.tryPromise(async () => {
       const dispatched = Date.now();
       const response = await fetch(prepared);
       await response.text();
-      return { item, status: response.status, dispatched, received: Date.now() };
+      return { item, status: response.status, submitted, dispatched, received: Date.now() };
     }), options);
   })), { concurrency: "unbounded" });
 }).pipe(Effect.provide(NotionRequestSchedulerLive), Effect.provide(NodeServices.layer), Effect.scoped, Effect.result);
 const result = await Effect.runPromise(program);
 console.log(JSON.stringify({ pid:process.pid, cache:process.env.NTN_SKILLS_CACHE_HOME,
   result: result._tag === "Success" ? { ok:true, value:result.success } : { ok:false, code:result.failure.code, details:result.failure.details } }));
+if (process.connected) process.disconnect();
 `
 
 type ChildReceipt = {
@@ -46,6 +59,7 @@ type ChildReceipt = {
   readonly cache: string
   readonly result: { readonly ok: boolean; readonly code?: string; readonly value?: unknown }
 }
+type ReadyObservation = { readonly pid: number; readonly time: number }
 type Input = {
   readonly mode?: "send" | "hold" | "cooldown"
   readonly label: string
@@ -57,6 +71,7 @@ type Input = {
   readonly priority?: "foreground" | "prefetch"
   readonly cooldown?: number
   readonly reason?: string
+  readonly waitForRelease?: boolean
 }
 
 async function fixture() {
@@ -89,7 +104,9 @@ async function fixture() {
           SCHEDULER_INPUT: JSON.stringify({ ...input, origin }),
           ...extra,
         },
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: input.waitForRelease
+          ? ["ignore", "pipe", "pipe", "ipc"]
+          : ["ignore", "pipe", "pipe"],
       },
     )
     children.push(process)
@@ -107,9 +124,45 @@ async function fixture() {
         process.on("close", (code) => resolveClose({ code, stdout, stderr }))
       },
     )
+    const ready = input.waitForRelease
+      ? new Promise<ReadyObservation>((resolveReady, rejectReady) => {
+          process.once("message", (message) => {
+            if (
+              typeof message !== "object" ||
+              message === null ||
+              !("type" in message) ||
+              message.type !== "ready" ||
+              !("pid" in message) ||
+              typeof message.pid !== "number" ||
+              !("time" in message) ||
+              typeof message.time !== "number"
+            ) {
+              rejectReady(new Error("Invalid receiver readiness observation"))
+              return
+            }
+            resolveReady({ pid: message.pid, time: message.time })
+          })
+          void closed.then(
+            () => rejectReady(new Error("Receiver closed before readiness")),
+            rejectReady,
+          )
+        })
+      : undefined
     return {
       process,
       closed,
+      ready() {
+        if (ready === undefined) throw new Error("Receiver has no readiness barrier")
+        return ready
+      },
+      release() {
+        const send = process.send?.bind(process)
+        if (!process.connected || send === undefined)
+          throw new Error("Receiver has no connected release channel")
+        return new Promise<void>((resolveRelease, rejectRelease) => {
+          send("release", (error) => (error ? rejectRelease(error) : resolveRelease()))
+        })
+      },
       async receipt(): Promise<ChildReceipt> {
         const result = await closed
         if (result.code !== 0) throw new Error(`Worker failed: ${result.stderr}`)
@@ -136,6 +189,19 @@ async function fixture() {
     child,
     arrivals,
     waiters,
+    workspaceCooldownUntil(workspace: string) {
+      const filename = join(directory, "notion-requests.sqlite")
+      if (!existsSync(filename)) return null
+      const database = new DatabaseSync(filename, { readOnly: true })
+      try {
+        const row = database
+          .prepare("SELECT cooldown_until_ms FROM request_schedule WHERE credential=?")
+          .get(JSON.stringify(["workspace", origin, workspace]))
+        return typeof row?.cooldown_until_ms === "number" ? row.cooldown_until_ms : null
+      } finally {
+        database.close()
+      }
+    },
     async close() {
       for (const process of children)
         if (process.exitCode === null && process.signalCode === null) process.kill("SIGKILL")
@@ -232,42 +298,149 @@ test("three real Node processes with distinct content roots share the machine se
   }
 }, 20_000)
 
-test("workspace cooldown crosses connections while another workspace continues", async () => {
-  const run = await fixture()
-  try {
-    const start = Date.now()
-    const cooled = await run
-      .child({
-        mode: "cooldown",
-        label: "cool",
-        credential: "a",
-        connection: "a",
-        workspace: "shared",
-        cooldown: 1_500,
-        reason: "public_api_space_request_rate_limit",
+const cooldownCases: readonly {
+  readonly name: string
+  readonly evidence: string
+  readonly sharedWorkspace: string
+  readonly otherWorkspace: string
+  readonly rejectedBy?: string
+}[] = [
+  {
+    name: "workspace cooldown crosses connections while another workspace continues",
+    evidence: "workspace-cooldown",
+    sharedWorkspace: "shared",
+    otherWorkspace: "other",
+  },
+  {
+    name: "workspace cooldown oracle rejects a receiver deliberately escaping its workspace",
+    evidence: "workspace-cooldown-early-shared",
+    sharedWorkspace: "other",
+    otherWorkspace: "other",
+    rejectedBy: "Shared workspace dispatched before its persisted cooldown",
+  },
+  {
+    name: "workspace cooldown oracle rejects an unrelated receiver deliberately sharing the cooldown",
+    evidence: "workspace-cooldown-blocked-other",
+    sharedWorkspace: "shared",
+    otherWorkspace: "shared",
+    rejectedBy: "Unrelated workspace did not dispatch during the active cooldown",
+  },
+]
+
+for (const scenario of cooldownCases) {
+  test(scenario.name, async () => {
+    const run = await fixture()
+    try {
+      const receivers = [
+        run.child({
+          label: "shared",
+          credential: "b",
+          connection: "b",
+          workspace: scenario.sharedWorkspace,
+          waitForRelease: true,
+        }),
+        run.child({
+          label: "other",
+          credential: "c",
+          connection: "c",
+          workspace: scenario.otherWorkspace,
+          waitForRelease: true,
+        }),
+      ]
+      // Both services and Requests exist before the real cooldown starts.
+      const ready = await Promise.all(receivers.map((worker) => worker.ready()))
+      const cooled = await run
+        .child({
+          mode: "cooldown",
+          label: "cool",
+          credential: "a",
+          connection: "a",
+          workspace: "shared",
+          cooldown: 1_500,
+          reason: "public_api_space_request_rate_limit",
+        })
+        .receipt()
+      const cooldownUntil = run.workspaceCooldownUntil("shared")
+      const released = Date.now()
+      await Promise.all(receivers.map((worker) => worker.release()))
+      const receipts = await Promise.all(receivers.map((worker) => worker.receipt()))
+      const timeline = {
+        case: scenario.evidence,
+        fixture_workspaces: [scenario.sharedWorkspace, scenario.otherWorkspace],
+        expected_rejection: scenario.rejectedBy ?? null,
+        requested_cooldown_ms: 1_500,
+        ready,
+        cooldown: cooled,
+        cooldown_until_ms: cooldownUntil,
+        released,
+        receipts,
+        arrivals: run.arrivals,
+      }
+      console.log(JSON.stringify(timeline))
+      if (process.env.NG04_EVIDENCE !== undefined)
+        await writeFile(
+          join(process.env.NG04_EVIDENCE, `${scenario.evidence}.json`),
+          JSON.stringify(timeline, null, 2) + "\n",
+          { flag: "wx", mode: 0o600 },
+        )
+
+      expect(cooled.result.ok).toBe(true)
+      const applied = cooled.result.value
+      if (
+        typeof applied !== "object" ||
+        applied === null ||
+        !("started" in applied) ||
+        typeof applied.started !== "number" ||
+        !("completed" in applied) ||
+        typeof applied.completed !== "number" ||
+        cooldownUntil === null
+      )
+        throw new Error("Missing actual workspace cooldown observations")
+      const cooldownStarted = applied.started
+      expect(ready.every((entry) => entry.time <= cooldownStarted)).toBe(true)
+      expect(cooldownUntil).toBeGreaterThanOrEqual(cooldownStarted + 1_500)
+      expect(cooldownUntil).toBeLessThanOrEqual(applied.completed + 1_500)
+      expect(released).toBeLessThan(cooldownUntil)
+      expect(receipts.every((receipt) => receipt.result.ok)).toBe(true)
+      expect(run.arrivals).toHaveLength(2)
+      const dispatched = receipts.map((receipt, index) => {
+        const value = receipt.result.value
+        if (!Array.isArray(value) || value.length !== 1)
+          throw new Error("Missing receiver dispatch")
+        const observation: unknown = value[0]
+        if (
+          typeof observation !== "object" ||
+          observation === null ||
+          !("dispatched" in observation) ||
+          typeof observation.dispatched !== "number" ||
+          !("received" in observation) ||
+          typeof observation.received !== "number"
+        )
+          throw new Error("Invalid receiver dispatch")
+        const path = index === 0 ? "/shared/0" : "/other/0"
+        const arrivals = run.arrivals.filter((entry) => entry.path === path)
+        expect(arrivals).toHaveLength(1)
+        expect(arrivals[0]!.time).toBeGreaterThanOrEqual(observation.dispatched)
+        expect(observation.received).toBeGreaterThanOrEqual(arrivals[0]!.time)
+        return observation.dispatched
       })
-      .receipt()
-    expect(cooled.result.ok).toBe(true)
-    const receivers = [
-      run.child({ label: "shared", credential: "b", connection: "b", workspace: "shared" }),
-      run.child({ label: "other", credential: "c", connection: "c", workspace: "other" }),
-    ]
-    expect(
-      (await Promise.all(receivers.map((worker) => worker.receipt()))).every(
-        (receipt) => receipt.result.ok,
-      ),
-    ).toBe(true)
-    const held = run.arrivals.find((entry) => entry.path.startsWith("/shared/"))!
-    const free = run.arrivals.find((entry) => entry.path.startsWith("/other/"))!
-    expect(held.time - free.time).toBeGreaterThan(600)
-    expect(held.time - start).toBeGreaterThanOrEqual(1_500)
-    console.log(
-      JSON.stringify({ case: "workspace-cooldown", independent_lead_ms: held.time - free.time }),
-    )
-  } finally {
-    await run.close()
-  }
-}, 15_000)
+      const assertBoundaries = () => {
+        expect(
+          dispatched[0],
+          "Shared workspace dispatched before its persisted cooldown",
+        ).toBeGreaterThanOrEqual(cooldownUntil)
+        expect(
+          dispatched[1],
+          "Unrelated workspace did not dispatch during the active cooldown",
+        ).toBeLessThan(cooldownUntil)
+      }
+      if (scenario.rejectedBy === undefined) assertBoundaries()
+      else expect(assertBoundaries).toThrow(scenario.rejectedBy)
+    } finally {
+      await run.close()
+    }
+  }, 15_000)
+}
 
 test("network-blocked waiters keep their leases, bound another process, and expire after a crash", async () => {
   const run = await fixture()
