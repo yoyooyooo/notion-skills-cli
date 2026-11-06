@@ -33,19 +33,23 @@ import {
 } from "../packages/core/test/shared-snapshot-fixture.ts"
 
 const args = process.argv.slice(2)
+if (args.includes("--distinct-names") && args.includes("--ambiguous-names"))
+  throw new Error("--distinct-names and --ambiguous-names are mutually exclusive fixture modes")
 const distinctNames = args.at(-1) === "--distinct-names"
-if (distinctNames) args.pop()
+const ambiguousNames = args.at(-1) === "--ambiguous-names"
+if (distinctNames || ambiguousNames) args.pop()
 const defaultViewCache = args[4] ?? "complete"
 if (
   (args.length !== 2 &&
     !(args.length === 3 && args[2] === "--catalog") &&
     !(args.length === 5 && args[2] === "--catalog" && args[3] === "--default-view-cache")) ||
   !["complete", "missing", "incomplete"].includes(defaultViewCache) ||
+  (ambiguousNames && args[2] !== "--catalog") ||
   args[0] !== "--outdir" ||
   !isAbsolute(args[1]!)
 )
   throw new Error(
-    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog [--default-view-cache complete|missing|incomplete]] [--distinct-names]",
+    "Usage: node scripts/sdk-fixture.ts --outdir /new/absolute/fixture-directory [--catalog [--default-view-cache complete|missing|incomplete]] [--distinct-names | --ambiguous-names (requires --catalog)]",
   )
 const withCatalog = args[2] === "--catalog"
 const root = args[1]!
@@ -128,7 +132,12 @@ const snapshots: Snapshot[] = names.map((name, index) => {
   const library = name === "foreign" ? "sdk-foreign-library" : "sdk-library"
   // Derive both selectors before publishing the original manifest and current
   // receipts. Consumers never rewrite an alias inside signed fixture state.
-  const displayName = name === "foreign" ? "a" : distinctNames && name === "a" ? "A" : name
+  const displayName =
+    name === "foreign"
+      ? "a"
+      : (distinctNames && name === "a") || (ambiguousNames && (name === "a" || name === "c"))
+        ? "A"
+        : name
   const id = `shared_skill:${library}:${name}`
   const content =
     name === "a" ? "\uFEFF# a\r\n完整正文 α\r\n" : `# ${name}\nFull instruction ${name}.\n`
@@ -801,6 +810,16 @@ const metadata = {
   env: join(root, "env.json"),
   catalog: withCatalog,
   distinct_names: distinctNames,
+  ...(ambiguousNames
+    ? {
+        ambiguous_names: true,
+        ambiguity: {
+          name: "A",
+          alias: "a",
+          candidate_ids: [snapshots[0]!.record.id, snapshots[2]!.record.id],
+        },
+      }
+    : {}),
   database: "00000000-0000-4000-8000-000000000010",
   catalog_records: catalogSnapshots.map((snapshot) => snapshot.record.id),
   default_view: withCatalog
