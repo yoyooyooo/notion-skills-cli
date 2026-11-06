@@ -21,6 +21,7 @@ import { configureSharedHttpOrigins } from "../packages/core/src/shared-source-c
 import { registerSourcePlanBinding } from "../packages/core/src/shared-source-plan-binding.ts"
 import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
 import { FileEventSchema } from "../packages/core/src/shared-file-state.ts"
+import { sharedSkillId } from "../packages/core/src/shared-content.ts"
 import { portableFiles } from "../packages/core/src/portable.ts"
 import { Notion } from "../packages/core/src/notion.ts"
 import { targetSnapshot } from "../packages/core/src/snapshot.ts"
@@ -701,6 +702,7 @@ const scalarInventory = await (async () => {
       return { path: file.path, bytes }
     })
     return {
+      root_id: snapshot.record.id,
       root_ref: snapshot.record.ref,
       files: snapshot.files,
       contents: Object.fromEntries(
@@ -782,6 +784,75 @@ const scalarInventory = await (async () => {
       (name) => ownershipLibrary.skills.property_ids[name],
     ),
     external: { available: available.id, disabled: disabled.id },
+    // Frozen service observations for the existing installed scalar harness.
+    // This records the Tags/filter facts and API membership separately; it does
+    // not claim to execute Notion's server-side filter implementation.
+    view_dynamics: {
+      view: {
+        id: fixtureId(2100),
+        name: "Controlled Tags View",
+        type: "table",
+        data_source_id: ownershipLibrary.skills.data_source_id,
+        parent: { type: "database_id", database_id: ownershipLibrary.skills.database_id },
+        url: `https://notion.so/${ownershipLibrary.skills.database_id}?v=${fixtureId(2100)}`,
+      },
+      tags_property_id: ownershipLibrary.skills.property_ids.Tags,
+      ordinary_record_ids: [
+        cold.root_id,
+        ...Array.from({ length: 99 }, (_, index) =>
+          sharedSkillId(ownershipLibrary.library_id, `inventory-${index + 1}`),
+        ),
+      ],
+      observations: [
+        {
+          id: "initial",
+          query_id: fixtureId(2101),
+          tags: [
+            [ownershipPage, ["featured"]],
+            [available.id, ["secondary"]],
+          ],
+          filter: {
+            property: ownershipLibrary.skills.property_ids.Tags,
+            multi_select: { contains: "featured" },
+          },
+          member_page_ids: [ownershipPage],
+          member_record_ids: [cold.root_id],
+        },
+        {
+          id: "tags-changed",
+          query_id: fixtureId(2102),
+          tags: [
+            [ownershipPage, ["secondary"]],
+            [available.id, ["featured"]],
+          ],
+          filter: {
+            property: ownershipLibrary.skills.property_ids.Tags,
+            multi_select: { contains: "featured" },
+          },
+          member_page_ids: [available.id],
+          member_record_ids: [sharedSkillId(ownershipLibrary.library_id, "inventory-1")],
+        },
+        {
+          id: "filter-changed",
+          query_id: fixtureId(2103),
+          tags: [
+            [ownershipPage, ["secondary"]],
+            [available.id, ["featured"]],
+          ],
+          filter: {
+            or: ["featured", "secondary"].map((tag) => ({
+              property: ownershipLibrary.skills.property_ids.Tags,
+              multi_select: { contains: tag },
+            })),
+          },
+          member_page_ids: [ownershipPage, available.id],
+          member_record_ids: [
+            cold.root_id,
+            sharedSkillId(ownershipLibrary.library_id, "inventory-1"),
+          ],
+        },
+      ],
+    },
     oracle: { cold, refreshed },
     notion: {
       library: ownershipLibrary,

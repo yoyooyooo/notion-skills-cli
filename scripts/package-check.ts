@@ -235,6 +235,28 @@ const smoke = JSON.parse(
     migrationArchive,
   ]),
 )
+const sdkFixture = join(destination, "sdk-fixture")
+const sdkConsumer = join(destination, "sdk-consumer")
+await run(["node", join(root, "scripts/sdk-fixture.ts"), "--outdir", sdkFixture, "--catalog"])
+let sdkFailure: unknown
+try {
+  await run([
+    "node",
+    join(root, "scripts/sdk-package-smoke.mjs"),
+    "--archive",
+    archive,
+    "--fixture",
+    join(sdkFixture, "fixture.json"),
+    "--outdir",
+    sdkConsumer,
+  ])
+} catch (error) {
+  sdkFailure = error
+}
+const sdkReport = join(sdkConsumer, "report.json")
+const sdk = await readFile(sdkReport, "utf8")
+  .then((text) => JSON.parse(text))
+  .catch(() => null)
 console.log(
   JSON.stringify({
     name: manifest.name,
@@ -250,6 +272,14 @@ console.log(
       .digest("base64")}`,
     files: entries.map((entry) => entry.slice("package/".length)),
     smoke,
+    // Inline the original report so CI and the existing cleanup receipt retain
+    // every SDK case and its metrics even after this owned scratch is retired.
+    sdk,
+    sdk_report: sdkReport,
+    sdk_error: sdkFailure === undefined ? undefined : String(sdkFailure),
     scratch: dirname(archive),
   }),
 )
+if (sdkFailure !== undefined) throw sdkFailure
+if (sdk?.selection !== "all" || sdk.failed !== 0 || sdk.passed < 22)
+  throw new Error("The independent installed SDK gate did not complete all original cases.")

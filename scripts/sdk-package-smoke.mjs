@@ -21,16 +21,18 @@ import { pathToFileURL } from "node:url"
 
 const args = process.argv.slice(2)
 if (
-  args.length !== 6 ||
+  ![6, 8].includes(args.length) ||
   args[0] !== "--archive" ||
   args[2] !== "--fixture" ||
   args[4] !== "--outdir" ||
-  ![args[1], args[3], args[5]].every(isAbsolute)
+  ![args[1], args[3], args[5]].every(isAbsolute) ||
+  (args.length === 8 && (args[6] !== "--case" || args[7] !== "view-dynamics"))
 )
   throw new Error(
-    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory",
+    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics]",
   )
 const [archive, fixturePath, root] = [args[1], args[3], args[5]]
+const viewDynamicsOnly = args[7] === "view-dynamics"
 await mkdir(root, { mode: 0o700 })
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 function assertNoTransport(reports, traceEnabled) {
@@ -360,6 +362,11 @@ async function command(argv, options = {}) {
   return result
 }
 async function test(name, run) {
+  if (
+    viewDynamicsOnly &&
+    name !== "scalar logical reads share one complete projected inventory within each refresh"
+  )
+    return
   const started = performance.now()
   try {
     const evidence = await run()
@@ -1333,6 +1340,8 @@ try {
     let phase = "setup"
     let denyCurrent = false
     let denyAuthentication = false
+    let viewObservation
+    let incompleteViewInventory = false
     const richText = (parts) =>
       (parts ?? []).map((part) => part.plain_text ?? part.text?.content ?? "").join("")
     const matches = (row, filter) => {
@@ -1420,7 +1429,43 @@ try {
           url.pathname === `/v1/databases/${library.skills.database_id}`
         )
           value = notion.database
-        else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
+        else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
+          assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
+          value = {
+            object: "list",
+            results: [{ object: "view", id: sample.view_dynamics.view.id }],
+            has_more: false,
+            next_cursor: null,
+          }
+        } else if (
+          viewObservation &&
+          request.method === "GET" &&
+          url.pathname === `/v1/views/${sample.view_dynamics.view.id}`
+        )
+          value = { ...sample.view_dynamics.view, filter: viewObservation.filter }
+        else if (
+          viewObservation &&
+          request.method === "POST" &&
+          url.pathname === `/v1/views/${sample.view_dynamics.view.id}/queries`
+        ) {
+          assert.deepEqual(body, { page_size: 100 })
+          value = {
+            object: "list",
+            id: viewObservation.query_id,
+            view_id: sample.view_dynamics.view.id,
+            expires_at: new Date(Date.now() + 900000).toISOString(),
+            total_count: viewObservation.member_page_ids.length,
+            results: viewObservation.member_page_ids.map((id) => ({ object: "page", id })),
+            has_more: false,
+            next_cursor: null,
+            request_status: { type: "complete", incomplete_reason: null },
+          }
+          Object.assign(call, {
+            view_observation: viewObservation.id,
+            view_filter: viewObservation.filter,
+            view_member_page_ids: viewObservation.member_page_ids,
+          })
+        } else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
           value = notion.main
         else if (
           request.method === "GET" &&
@@ -1452,6 +1497,14 @@ try {
             ),
             body,
           )
+          if (
+            incompleteViewInventory &&
+            url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`
+          )
+            value.request_status = {
+              type: "incomplete",
+              incomplete_reason: "query_result_limit_reached",
+            }
           Object.assign(call, {
             page_ids: value.results.map((row) => row.id),
             returned_properties: [
@@ -1510,7 +1563,319 @@ try {
       phases: [],
       cache_lifecycle: [],
     }
+    const viewDynamics = async () => {
+      const input = sample.view_dynamics
+      assert.ok(input, "Generate the Tags/View dynamics observation with this checkout")
+      assert.equal(typeof input.tags_property_id, "string")
+      assert.equal(input.observations.length, 3)
+      const phaseRoot = join(root, "view-dynamics")
+      const cwd = join(phaseRoot, "consumer")
+      await mkdir(phaseRoot, { mode: 0o700 })
+      await cp(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
+      const objectRoot = join(cwd, env.NTN_SKILLS_HOME, "objects")
+      const objectInventory = async () => {
+        const files = await readdir(objectRoot).catch((error) => {
+          if (error.code === "ENOENT") return []
+          throw error
+        })
+        return Promise.all(
+          files.sort().map(async (path) => {
+            const bytes = await readFile(join(objectRoot, path))
+            return { path, bytes: bytes.length, sha256: hash(bytes) }
+          }),
+        )
+      }
+      assert.deepEqual(await objectInventory(), [])
+      const database = new DatabaseSync(join(cwd, env.NTN_SKILLS_HOME, "state.sqlite"), {
+        readOnly: true,
+      })
+      try {
+        assert.equal(
+          database.prepare("SELECT count(*) AS count FROM shared_local_records").get().count,
+          0,
+        )
+      } finally {
+        database.close()
+      }
+      notion.main = structuredClone(sample.notion.main)
+      notion.skills = structuredClone(sample.notion.skills)
+      const selection = {
+        ...options,
+        cwd,
+        env: currentEnv,
+        database: notion.library.skills.database_id,
+      }
+      const result = {
+        source: "controlled Notion API observations; no production filter execution",
+        phases: [],
+      }
+      evidence.view_dynamics = result
+      let objects
+      const setObservation = (index) => {
+        viewObservation = input.observations[index]
+        for (const [id, names] of viewObservation.tags) {
+          const row = notion.skills.find((entry) => entry.id === id)
+          assert.ok(row)
+          const tags = {
+            id: input.tags_property_id,
+            type: "multi_select",
+            multi_select: names.map((name) => ({ id: name, name, color: "default" })),
+          }
+          row.properties.tags = tags
+          if (id === notion.main.id) notion.main.properties.tags = structuredClone(tags)
+        }
+      }
+      const observe = async (
+        label,
+        invoke,
+        { entry, metadataOnly = true, error: expectedError },
+      ) => {
+        assert.ok(entry)
+        phase = label
+        const reports = []
+        let value, error
+        try {
+          value = await invoke((metrics) => reports.push(metrics))
+        } catch (caught) {
+          error = { code: caught.code ?? null, message: String(caught) }
+        }
+        const calls = requests.filter((call) => call.phase === label)
+        const metrics = reports[0]
+        const afterObjects = await objectInventory()
+        const observed = {
+          label,
+          entry,
+          input_observation: structuredClone(viewObservation),
+          result: value,
+          error,
+          request_metrics: metrics,
+          calls,
+          object_inventory: afterObjects,
+        }
+        result.phases.push(observed)
+        await writeFile(
+          join(phaseRoot, label + ".json"),
+          JSON.stringify(observed, null, 2) + "\n",
+          { mode: 0o600, flag: "wx" },
+        )
+        assert.equal(reports.length, 1)
+        assert.ok(metrics)
+        assert.equal(metrics.in_flight, 0)
+        assert.equal(metrics.trace_enabled, true)
+        assert.equal(metrics.trace_dropped, 0)
+        assert.equal(metrics.unknown_request_bytes, 0)
+        assert.equal(metrics.unknown_response_bytes, 0)
+        assert.equal(metrics.total_requests, calls.length)
+        assert.equal(
+          metrics.trace.filter((event) => event.event === "attempt").length,
+          calls.length,
+        )
+        assert.equal(
+          metrics.response_bytes,
+          calls.reduce((sum, call) => sum + call.decoded_response_bytes, 0),
+        )
+        assert.equal(metrics.requests.notion_write, 0)
+        assert.equal(metrics.requests.provider, 0)
+        assert.deepEqual(unexpected, [])
+        assert.equal(error?.code, expectedError)
+        if (objects !== undefined) assert.deepEqual(afterObjects, objects)
+        if (metadataOnly) {
+          assert.equal(metrics.requests.notion_body, 0)
+          for (const call of calls) {
+            assert.ok(
+              call.path === "/v1/users/me" ||
+                call.path === `/v1/databases/${notion.library.skills.database_id}` ||
+                call.path === "/v1/views" ||
+                call.path === `/v1/views/${input.view.id}` ||
+                call.path === `/v1/views/${input.view.id}/queries` ||
+                call.path === `/v1/data_sources/${notion.library.skills.data_source_id}/query`,
+              "Directory work requested unrelated content: " + call.path,
+            )
+            if (call.path === `/v1/data_sources/${notion.library.skills.data_source_id}/query`) {
+              assert.deepEqual([...call.filter_properties].sort(), [...sample.projection].sort())
+              assert.deepEqual(call.returned_properties, [...sample.projection].sort())
+            }
+          }
+        }
+        return observed
+      }
+      const sdkEntry = (operation, input, policy = {}) => ({
+        surface: "installed SDK",
+        module: sdkPath,
+        operation,
+        input,
+        options: { database: selection.database, cwd, ...policy },
+      })
+      const directory = async (label, policy = {}, extra = {}) =>
+        observe(
+          label,
+          (onRequestMetrics) =>
+            sdk.listCatalog({ ...selection, defaultView: true, ...policy, onRequestMetrics }),
+          { entry: sdkEntry("listCatalog", null, { defaultView: true, ...policy }), ...extra },
+        )
+      const members = (phase, observation) => {
+        assert.deepEqual(
+          phase.result.records.map((record) => record.id),
+          observation.member_record_ids,
+        )
+        assert.equal(phase.result.view.id, input.view.id)
+        assert.equal(phase.result.view_query.total_count, observation.member_page_ids.length)
+        assert.equal(phase.result.coverage.exhaustive, true)
+        assert.deepEqual(phase.result.coverage.failed_sources, [])
+        const queries = phase.calls.filter((call) => call.view_member_page_ids)
+        if (phase.result.source === "notion") {
+          assert.equal(queries.length, 1)
+          assert.deepEqual(queries[0].view_member_page_ids, observation.member_page_ids)
+          const inventory = phase.calls.filter(
+            (call) =>
+              call.path === `/v1/data_sources/${notion.library.skills.data_source_id}/query`,
+          )
+          assert.deepEqual(
+            inventory.map((call) => call.body.start_cursor ?? null),
+            [null, "offset-100"],
+          )
+          assert.deepEqual(
+            inventory.flatMap((call) => call.page_ids),
+            sample.notion.skills.map((row) => row.id),
+          )
+        }
+      }
+      try {
+        setObservation(0)
+        const cold = await observe(
+          "view-body-baseline",
+          (onRequestMetrics) => sdk.readSkill(sample.root_ref, { ...selection, onRequestMetrics }),
+          { entry: sdkEntry("readSkill", sample.root_ref), metadataOnly: false },
+        )
+        assert.equal(cold.result.content, sample.oracle.cold.contents["SKILL.md"])
+        assert.deepEqual(cold.result.native_references, sample.oracle.cold.native_references)
+        objects = cold.object_inventory
+        assert.ok(objects.length > 0)
+        const initial = await directory("view-initial")
+        members(initial, input.observations[0])
+        setObservation(1)
+        const warm = await directory("view-tags-warm")
+        members(warm, input.observations[0])
+        assert.equal(warm.request_metrics.total_requests, 0)
+        assert.equal(warm.result.fetched_at, initial.result.fetched_at)
+        const refreshArgv = [
+          "list",
+          "--default-view",
+          "--database",
+          selection.database,
+          "--refresh",
+          "--metrics",
+          "--json",
+        ]
+        const refreshed = await observe(
+          "view-tags-refresh-cli",
+          async (report) => {
+            const invocation = await invokeCli(refreshArgv, cwd, currentEnv)
+            report(invocation.value.request_metrics)
+            assert.equal(invocation.code, 0, invocation.stdout + invocation.stderr)
+            assert.equal(invocation.value.has_more, false)
+            return withoutMetrics(invocation.value)
+          },
+          {
+            entry: { surface: "installed CLI", argv: [process.execPath, cli, ...refreshArgv], cwd },
+          },
+        )
+        members(refreshed, input.observations[1])
+        assert.equal(
+          refreshed.result.records.some((record) => record.id === cold.result.record.id),
+          false,
+        )
+        const outside = await observe(
+          "view-outside-current",
+          (onRequestMetrics) => sdk.readSkill(sample.root_ref, { ...selection, onRequestMetrics }),
+          { entry: sdkEntry("readSkill", sample.root_ref) },
+        )
+        assert.equal(outside.request_metrics.total_requests, 0)
+        assert.equal(outside.result.snapshot_id, cold.result.snapshot_id)
+        assert.equal(outside.result.content, cold.result.content)
+        setObservation(2)
+        const expired = await directory("view-filter-expired", { maxAge: 0 })
+        members(expired, input.observations[2])
+        const ordinary = await observe(
+          "view-ordinary-directory",
+          (onRequestMetrics) => sdk.listCatalog({ ...selection, refresh: true, onRequestMetrics }),
+          { entry: sdkEntry("listCatalog", null, { refresh: true }) },
+        )
+        assert.deepEqual(
+          ordinary.result.records.map((record) => record.id).sort(),
+          [...input.ordinary_record_ids].sort(),
+        )
+        assert.equal(ordinary.result.view, undefined)
+        incompleteViewInventory = true
+        try {
+          await directory(
+            "view-incomplete-refresh",
+            { refresh: true },
+            { error: "VIEW_INCOMPLETE" },
+          )
+        } finally {
+          incompleteViewInventory = false
+        }
+        const offline = await directory("view-offline-last-complete", { offline: true })
+        members(offline, input.observations[2])
+        assert.equal(offline.request_metrics.total_requests, 0)
+        assert.equal(offline.result.fetched_at, expired.result.fetched_at)
+        const listed = await observe(
+          "view-old-pin-files",
+          (onRequestMetrics) =>
+            sdk.listSkill(cold.result.snapshot_id, {
+              ...selection,
+              offline: true,
+              onRequestMetrics,
+            }),
+          { entry: sdkEntry("listSkill", cold.result.snapshot_id, { offline: true }) },
+        )
+        assert.deepEqual(
+          listed.result.files.map(({ path, bytes }) => ({ path, bytes })),
+          sample.oracle.cold.files.map(({ path, bytes }) => ({ path, bytes })),
+        )
+        assert.equal(listed.result.scope, cold.result.scope)
+        assert.equal(listed.result.record.id, cold.result.record.id)
+        assert.equal(listed.result.snapshot_id, cold.result.snapshot_id)
+        assert.equal(listed.result.version_id, cold.result.version_id)
+        for (const [index, file] of listed.result.files.entries()) {
+          const expected = sample.oracle.cold.files.find((entry) => entry.path === file.path)
+          assert.ok(expected)
+          const pinned = await observe(
+            `view-old-pin-file-${index}`,
+            (onRequestMetrics) =>
+              sdk.readSkill(file.ref, { ...selection, offline: true, onRequestMetrics }),
+            { entry: sdkEntry("readSkill", file.ref, { offline: true }) },
+          )
+          assert.equal(pinned.request_metrics.total_requests, 0)
+          assert.equal(pinned.result.snapshot_id, cold.result.snapshot_id)
+          assert.equal(pinned.result.scope, cold.result.scope)
+          assert.equal(pinned.result.record.id, cold.result.record.id)
+          assert.equal(pinned.result.path, file.path)
+          assert.equal(pinned.result.content, sample.oracle.cold.contents[file.path])
+          assert.equal(Buffer.byteLength(pinned.result.content), expected.bytes)
+          assert.equal(hash(pinned.result.content), expected.sha256)
+        }
+        result.status = "passed"
+      } catch (error) {
+        result.status = "failed"
+        result.error = String(error)
+        throw error
+      } finally {
+        incompleteViewInventory = false
+        viewObservation = undefined
+        await writeFile(join(phaseRoot, "report.json"), JSON.stringify(result, null, 2) + "\n", {
+          mode: 0o600,
+          flag: "wx",
+        })
+      }
+    }
     try {
+      if (viewDynamicsOnly) {
+        await viewDynamics()
+        evidence.status = "passed"
+        return evidence
+      }
       for (const [label, kind, cwd, expected] of [
         ["scalar-cold", "sdk", sdkCwd, sample.oracle.cold],
         ["scalar-refresh", "sdk", sdkCwd, sample.oracle.refreshed],
@@ -2054,6 +2419,7 @@ try {
       })
       assert.equal(catalogRecovered.request_metrics.total_requests, 0)
       assert.equal(catalogRecovered.result.freshness.stale, false)
+      await viewDynamics()
       evidence.status = "passed"
       return evidence
     } catch (error) {
@@ -2594,6 +2960,7 @@ try {
     installed_package: manifest.version,
     sdk_path: sdkPath,
     fixture: fixturePath,
+    selection: viewDynamicsOnly ? "view-dynamics" : "all",
     passed: cases.filter((item) => item.status === "passed").length,
     failed: cases.filter((item) => item.status === "failed").length,
     cases,

@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test"
 import { Crypto, Effect } from "effect"
 import { property, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
+import { fileRef } from "../src/ref.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sharedSkillId } from "../src/shared-content.ts"
+import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import { listViews, viewCatalog } from "../src/views.ts"
 import { sharedSnapshotFixture, library, skillPage, id, encode } from "./shared-snapshot-fixture.ts"
@@ -394,6 +396,79 @@ describe("shared library Views metadata", () => {
     expect(f.requests).toHaveLength(0)
     expect(f.base.requestMetrics().total_requests).toBe(0)
     expect([...f.base.json.keys()].some((key) => key.startsWith("cache/catalogs/"))).toBe(false)
+  })
+
+  test("Tags and View membership refresh independently of warm content and exact historical pins", async () => {
+    const f = fixture()
+    const snapshot = await f.base.open()
+    const ref = fileRef(snapshot.record.id, snapshot.entrypoint, snapshot.snapshot_id)
+    const original = await f.base.run(readSkill(ref, { offline: true }))
+    if (!("content" in original)) throw new Error("Expected the fixed main text")
+    const objects = structuredClone(f.base.objects)
+    f.rows[0] = f.base.main
+    const tags = (names: string[]) => {
+      property(f.base.main.properties).tags = {
+        id: library.skills.property_ids.Tags,
+        type: "multi_select",
+        multi_select: names.map((name) => ({ id: name, name, color: "default" })),
+      }
+    }
+    tags(["visible"])
+    // These are controlled API observations, not a reimplementation of Notion's filter engine.
+    f.members([[skillPage]])
+    f.clear()
+    const first = await f.run(viewCatalog({ database: db, view: viewA }))
+    expect(first.records.map((record) => record.id)).toEqual([snapshot.record.id])
+    assertMetadataOnly(f)
+
+    tags(["hidden"])
+    f.members([[gamma]])
+    f.clear()
+    const warm = await f.run(viewCatalog({ database: db, view: viewA }))
+    expect(warm.records).toEqual(first.records)
+    expect(warm.fetched_at).toBe(first.fetched_at)
+    expect(warm.source).toBe("local_cache")
+    expect(f.requests).toHaveLength(0)
+
+    const refreshed = await f.run(viewCatalog({ database: db, view: viewA, refresh: true }))
+    expect(refreshed.records.map((record) => record.id)).toEqual([
+      sharedSkillId(library.library_id, "gamma"),
+    ])
+    expect(refreshed.coverage.exhaustive).toBe(true)
+    expect(f.requests.some((call) => call.path.endsWith(`/views/${viewA}/queries`))).toBe(true)
+    assertMetadataOnly(f)
+
+    // A changed server View selection is observed again when the directory expires.
+    f.members([[skillPage, gamma]])
+    f.clear()
+    const expired = await f.run(viewCatalog({ database: db, view: viewA, maxAge: 0 }))
+    expect(expired.records.map((record) => record.id)).toEqual([
+      snapshot.record.id,
+      sharedSkillId(library.library_id, "gamma"),
+    ])
+    expect(expired.source).toBe("notion")
+    expect(expired.coverage.exhaustive).toBe(true)
+    assertMetadataOnly(f)
+
+    f.status({ type: "incomplete", incomplete_reason: "query_result_limit_reached" })
+    f.clear()
+    const failed = await f.run(
+      Effect.flip(viewCatalog({ database: db, view: viewA, refresh: true })),
+    )
+    expect(failed.code).toBe("VIEW_INCOMPLETE")
+    assertMetadataOnly(f)
+    f.clear()
+    const retained = await f.run(viewCatalog({ database: db, view: viewA, offline: true }))
+    expect(retained.records).toEqual(expired.records)
+    expect(retained.fetched_at).toBe(expired.fetched_at)
+    const historical = await f.base.run(readSkill(ref, { offline: true }))
+    if (!("content" in historical)) throw new Error("Expected the historical main text")
+    expect(historical.snapshot_id).toBe(snapshot.snapshot_id)
+    expect(historical.content).toBe(original.content)
+    expect(historical.native_references).toEqual(original.native_references)
+    expect(f.base.objects).toEqual(objects)
+    expect(f.requests).toHaveLength(0)
+    expect(f.base.requestMetrics().total_requests).toBe(0)
   })
 
   test("a cached stable identity conflict is rejected before returning offline members", async () => {

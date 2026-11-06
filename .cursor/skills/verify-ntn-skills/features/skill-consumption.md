@@ -242,6 +242,28 @@ NTN_SKILLS_SC11_EVIDENCE=1 bun test packages/core/test/shared-metadata-consumpti
 
 scalar 复用不改变 Members/Requires 或跨请求缓存。权限、完整分页、禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证。
 
+### Tags / View 动态观察与正文隔离
+
+SC-METADATA-04 复用原 `shared-views.test.ts` 及 `scalarInventory` 的安装 HTTP fixture。Tags、View filter 和完整成员列表分别封存在 fixture 的 `view_dynamics`；返回成员是受控 Notion API 观察，不声称该 fixture 执行了生产 Notion 的 filter 引擎，也不修改真实 View/schema。
+
+```bash
+bun test packages/core/test/shared-views.test.ts --test-name-pattern "Tags and View membership refresh" --timeout 30000
+node scripts/sdk-fixture.ts --outdir "$RUN/scratch/view-fixture" --catalog
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/view-fixture/fixture.json" --outdir "$RUN/evidence/installed-view-dynamics" --case view-dynamics
+```
+
+`--case view-dynamics` 只运行原 scalar smoke 内这一条动态链，报告 `selection=view-dynamics`；不能将其一项通过算成完整安装矩阵通过。省略该选择时，原完整 smoke 仍运行全部原 case，并在 scalar case 内追加本链。每次使用新的 owned 目录和冻结安装包；不复制正文、snapshot 或验证 receipt 预热新 consumer。
+
+常规安装门禁沿 `package:check` → `scripts/package-check.ts` → 原 `sdk-fixture.ts --catalog` 与默认 `sdk-package-smoke.mjs` 执行，复用同一次生成的 CLI archive，不另打包。四平台 CI 的 `Pack and test a fresh consumer` 和原 Skill 的 `package` mode 均走这个入口；原 22 项与动态链一起失败即阻断。完整 SDK report 内嵌在原 package JSON 的 `sdk` 字段，`sdk_report` 指向自有 scratch 原件；失败仍先输出原报告再返回非零。需要独立查看 HTTP/子进程原件时，在原 cleanup 前保留 `sdk-consumer` 的相位文件；不要只留下临时路径。Core 动态用例同时进入原 `check` 的单元测试集合。远端 CI 是否实际通过以对应提交的原 job 为准。
+
+先通过 SDK current read 合法取得根全文、完整资源及固定 pin；随后分别驱动 SDK 默认 View 冷读、Tags 变化后的暖读、公开 CLI `list --default-view --refresh`、View 外 exact current read、filter/成员变化后的 SDK `maxAge:0`、普通全目录及不完整刷新。暖读保留原观察时间，显式刷新和到期观察返回各自准确成员；View 不能影响完整普通目录或授予／撤销正文权限。不完整的 inventory 必须报 `VIEW_INCOMPLETE`，不能成为空成功；显式 offline 仍能读取上一个完整 View 事实。
+
+审阅新 `view-dynamics/` 下每相位的 installed SDK 导出函数或 CLI argv、完整成员 IDs、实际字段/cursor、错误、全部 HTTP calls 与 metrics 对账。目录相位不能读取 Files/Records、发逐页 GET 或获取正文、写入；旧 current 对象库存保持原 SHA。薄 `listSkill` 的文件条目只提供 path/bytes/ref，不把不存在的 hash 当协议要求；沿其返回 canonical refs 实际读取旧 pin 的每个文件，计算 bytes/hash 与独立 oracle 对照。源请求与本机对象读取分开，不能用零 HTTP 推断未读取本机正文。保留原报告未包含动态链的 coverage fail-before，不把它写成产品缺陷；只有实际产品行为失败才启动产品修复。证据和清理继续使用本 Skill 原入口与系统回收站，原始失败和安装包保留。
+
+2026-11-06 定向实驱使用已冻结 C7 包 `f854faf5d2e938761eaa2e57c42ffbd08f5ac695ac2ce83421d82ff89b1467ac`，没有产品修改。证据根 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc11-view-dynamics-ozgctn0b` 保留旧报告缺动态阶段的红例，以及首轮误把薄 files 条目当完整 manifest 的真实 oracle 失败；该轮旧 pin 的逐文件读为 `not_run`，不能沿用后轮结果。修正后 `verification-run/evidence/installed-view-dynamics-02/report.json` 为定向 1/1、13 相位通过；`installed-02-ledger.json` 记录 46 HTTP / 561,367 decoded response B，其中 43 metadata、3 次最初正文读取，0 write。旧 pin 三文件均沿实际返回 ref 读回并核 hash；目录变化未增加正文源请求。`core-regression-02.json` 是完整 Views 17/17，`typecheck-02.json` 为 exit 0；这些结果不替代完整 SDK 22 项或生产 View filter 验收。原 helper 将自有 scratch 移入系统 Trash，`cleanup-result.json` 核对 12,973 份保留文件字节未变。
+
+同根 `ci-wiring/` 随后通过原 `control.ts init/package/cleanup` 完成一次完整本地安装门禁：自然 exit 0、389,945.870 ms，SDK 默认 22/22，原 3 个 scalar / 32 个 cache 阶段和新增 13 个动态阶段均通过。`gate-result.json` 绑定原 report SHA `96f0a55622b4215bdeab95a04fcdf184eaa2fb2359ee5035eb48c789aa1b7a4f`；原 package JSON 的 `sdk` 与它完整相等。此轮使用纯 `1d88e02c` 导出加五个验证改动，产品来自 C7 发布文件；现有 Bun pack 只将 `package.json` 的开发依赖 `workspace:*` 规范成 `0.1.0`，其余 67 文件（含 CLI/SDK）逐字相同，不能称整个 tar 等于 f854。`packed-c7-identity.json` 保留该差异，类型检查首次缺导出环境依赖及补齐后的通过也分别保留。原系统 Trash 清理后 378 份证据字节不变，完整 phase 原件在 `verification-run/evidence/package-scratch-original/`；这是一轮本地门禁，远端四平台结果另按新提交验收。
+
 ### 单 current inspect 投影实验未采用
 
 2026-11-05 的候选只对单 current `inspect` 使用完整六字段身份目录和一次选中完整页 GET。原有 scalar read 复用不变。候选通过受控 N=1/10/100/101/300、权限、分页、身份、取消、混合根边界和独立安装 SDK/CLI 检查，但真实首读延迟未达到预先冻结的采用门槛。运行时代码、候选专用 core 断言及 `inspect_phases` smoke 断言已撤回；当前 graph prepare 仍使用原完整 inventory，当前 smoke 不承诺该投影。
