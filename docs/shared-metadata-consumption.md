@@ -110,6 +110,45 @@ original red cases and actual four ledgers are preserved under
 Installed and live-source measurements remain separate evidence layers in
 [AH-631](https://linear.app/yoyooyooo/issue/AH-631).
 
+## C8 public CLI measurements on two physical hosts
+
+The C8 archive built from `b5564ee9` passed the original package gate, including
+44 public CLI checks, all 22 SDK cases, five scalar phases, 32 cache phases and
+13 dynamic View phases. Its same-fixture logical relation read used two inventory
+pages; the physical-page control retained six. Both returned the same complete
+result, snapshot, relations and body. This local gate does not override the
+separate b556 macOS/Node22 scheduler test failure retained in its CI evidence.
+
+Each physical host then used its own credentials, an independently installed
+68-file archive and empty consumer state for the original six public commands:
+list, current read, use of the returned fixed root, files, read of the returned
+fixed resource, and offline export. Each host ran once with the original
+300-second command budget and no retry. The comparison uses the earlier C7
+six-command samples, with equal scope, pins, complete bodies and file hashes.
+
+| Host | C7 → C8 HTTP attempts | C7 → C8 decoded response bytes | Bytes removed |
+| --- | ---: | ---: | ---: |
+| Pro | 38 → 32 | 4,882,566 → 3,450,800 | 1,431,766 |
+| Mini | 38 → 32 | 4,882,554 → 3,450,780 | 1,431,774 |
+
+Current read fell from 21 to 15 attempts on each host. List retained five and
+fixed use retained twelve; files, the fixed resource and offline export needed
+no HTTP. All six body attempts remained attributable to the selected root and
+Requires. The two complete instruction bodies totalled 47,475 bytes; all 46
+business files totalled 364,634 bytes, including the 1,135-byte requested resource.
+There were no body reads for the 54 unselected Members, no Requires body read
+during inspect, no new observer requests and no source writes in either sample.
+
+The complete receipt is
+`/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc22-final-c8-3a02z8s9/cli-physical-handoff.json`,
+SHA-256 `c04515f1ef4e156063f803d0e26fb6793de0ddb0cbaa659ced03fc2b93bc323a`.
+It preserves the original C7 evidence, both current source ledgers, the isolated
+Trash cleanup and the Pro observer-output capture correction. Packages and daily
+configuration remained unchanged. Decoded bytes are not compressed wire bytes;
+the observed 21.027/33.702-second durations are single samples, not estimates of
+stable latency. Normal Pi SDK delivery and real Agent task costs remain separate
+acceptance layers.
+
 ## Single-current inspect experiment was not adopted
 
 The 2026-11-05 AH-628 candidate used a complete six-property identity inventory

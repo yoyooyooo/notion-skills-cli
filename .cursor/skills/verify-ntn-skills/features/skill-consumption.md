@@ -254,6 +254,21 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 
 scalar 复用不改变 Members/Requires 语义，也不建立跨请求缓存。实际关系仍来自当前选中页并按原规则完整分页；只有同 scope、完整 library descriptor 和穷尽性已核验的本次目录观察可传给目标元数据解析。权限、缺失／禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证。后续 refresh 必须重新观察，旧 pin 的正文与关系元数据仍冻结；Records headers/Payload 分层保持不变。
 
+### C8 安装与真实双机公共 CLI 后续证据
+
+2026-11-06，纯 `b5564ee9` 的 C8 归档 `2c65d54aee20f0fbb30af30bd1d67b32ad00e7285f0c9a50bc9f477962aeee9f` 通过原完整安装入口：公共 CLI 44 项、SDK 22 项，scalar 5、cache 32 和 View 动态 13 阶段均通过。同一轮 fixture 内，logical 关系读取使用 2 页，physical 对照仍为 6 页；完整结果、snapshot、关系与正文相等。`c8-cli-final-jugpaxrt/handoff.json` SHA `9fc19aa5a1ce112dc896ba32199f105dcbbbe0b2713d49d1bd75bf9bbe6e9aaf` 保留一次 build/pack/原 gate 与 E→Trash→E，不把本地通过替代远端 CI。b556 的 macOS/Node22 check 仍有原 scheduler 时间 oracle 失败，另外三个平台组合通过；原失败单列在 `remote-ci-b556-final/`。
+
+实际生产来源沿原 SC22 公共六命令 driver：`list` → current `read` → 系统返回 fixed ref 的 `use` → `files` → 系统返回 resource ref 的 `read` → offline `export`。Pro/Mini 各 n=1、原 300 秒/命令、零重试，使用各机自身认证与空 owned state；独立安装 68 文件均等于归档，不复制正文或缓存。下表对照原 C7 的**同六命令**样本，不能混入更早七命令账本。
+
+| 物理机 | C7 → C8 HTTP attempts | C7 → C8 decoded response B | 实际减少 B |
+| --- | ---: | ---: | ---: |
+| Pro | 38 → 32 | 4,882,566 → 3,450,800 | 1,431,766 |
+| Mini | 38 → 32 | 4,882,554 → 3,450,780 | 1,431,774 |
+
+两机 current read 均由 21 降至 15 attempts；list 5、fixed use 12 保持，后续 files/resource/export 为 0。根与完整 Requires 合计 47,475 B，46 个业务文件/364,634 B、1,135 B 固定资源、scope/version/pin 和全部文件 hash 与原冻结输入相同。每机实际正文 attempts 仍为 6，54 个未选 Member 正文为 0，inspect 不读 Requires 正文；新 observer HTTP 与来源写入均为 0。这里的字节是解码响应，单次 21.027/33.702 秒只作观察，不推导稳定延迟或模型任务收益。
+
+完整回执为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc22-final-c8-3a02z8s9/cli-physical-handoff.json`，SHA `c04515f1ef4e156063f803d0e26fb6793de0ddb0cbaa659ced03fc2b93bc323a`。两机均仅将 owned run 与 guard 移入系统 Trash；原 C7 永久删除偏差不改写。Pro 外层预建 cleanup stdout 被旧 helper 暂列为零字节原件，结束打印后仅该 observer 输出变化，`ece-outer-reconciliation.json`（SHA `3618031e0b31a22c7b21c943ffcca6022af333aa9bcd5b4d9ec9078f0b38b5bf`）明确保留原回执并核对其余 89 原件不变；Mini 输出置清单外，90 原件全部保持。两机包与日用哨兵未变，没有重跑消费者或清理。Pi 正常 SDK 交付、真实模型与日用切换继续分别验收。
+
 ### Tags / View 动态观察与正文隔离
 
 SC-METADATA-04 复用原 `shared-views.test.ts` 及 `scalarInventory` 的安装 HTTP fixture。Tags、View filter 和完整成员列表分别封存在 fixture 的 `view_dynamics`；返回成员是受控 Notion API 观察，不声称该 fixture 执行了生产 Notion 的 filter 引擎，也不修改真实 View/schema。
