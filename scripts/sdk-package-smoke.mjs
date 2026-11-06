@@ -19,6 +19,7 @@ import { createRequire, syncBuiltinESMExports } from "node:module"
 import { dirname, isAbsolute, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { startSdkSourceFixture } from "./sdk-source-fixture.mjs"
 
 const args = process.argv.slice(2)
 if (
@@ -1343,243 +1344,17 @@ try {
       })
       assert.deepEqual(objects, [])
     }
-    const notion = structuredClone(sample.notion)
-    const requests = [],
-      unexpected = []
+    const source = await startSdkSourceFixture(
+      sample,
+      join(root, "scalar-inventory-notion-requests.jsonl"),
+    )
+    const { notion, requests, unexpected } = source
     let phase = "setup"
-    let denyCurrent = false
-    let denyAuthentication = false
     let viewObservation
-    let incompleteViewInventory = false
-    let historyObservation = false
-    const richText = (parts) =>
-      (parts ?? []).map((part) => part.plain_text ?? part.text?.content ?? "").join("")
-    const matches = (row, filter) => {
-      if (!filter) return true
-      if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item))
-      if (Array.isArray(filter.or)) return filter.or.some((item) => matches(row, item))
-      const field = row.properties[filter.property]
-      if (!field) return false
-      if (filter.relation?.is_empty === true) return field.relation?.length === 0
-      if (filter.relation)
-        return field.relation?.some((item) => item.id === filter.relation.contains) ?? false
-      if (filter.select) return field.select?.name === filter.select.equals
-      if (filter.rich_text) return richText(field.rich_text) === filter.rich_text.equals
-      if (filter.checkbox) return field.checkbox === filter.checkbox.equals
-      throw new Error("Unsupported controlled inventory filter")
-    }
-    const project = (rows, fields) =>
-      rows.map((row) => ({
-        ...row,
-        properties:
-          fields.length === 0
-            ? row.properties
-            : Object.fromEntries(
-                Object.entries(row.properties).filter(([key, field]) =>
-                  fields.includes(field.id ?? key),
-                ),
-              ),
-      }))
-    const page = (rows, body) => {
-      const cursor = body?.start_cursor
-      assert.ok(cursor === undefined || /^offset-[0-9]+$/u.test(cursor))
-      const offset = cursor === undefined ? 0 : Number(cursor.slice(7))
-      const end = Math.min(rows.length, offset + Math.min(100, body?.page_size ?? 100))
-      return {
-        object: "list",
-        results: rows.slice(offset, end),
-        has_more: end < rows.length,
-        next_cursor: end < rows.length ? `offset-${end}` : null,
-      }
-    }
-    const server = createServer(async (request, response) => {
-      const url = new URL(request.url, "http://127.0.0.1")
-      const fields = url.searchParams.getAll("filter_properties")
-      const call = {
-        phase,
-        sequence: requests.length + 1,
-        method: request.method,
-        path: url.pathname,
-        filter_properties: fields,
-      }
-      requests.push(call)
-      let value,
-        status = 200
-      try {
-        const chunks = []
-        for await (const chunk of request) chunks.push(chunk)
-        const bytes = Buffer.concat(chunks)
-        const body = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
-        Object.assign(call, { request_bytes: bytes.length, body: body ?? null })
-        const { library } = notion
-        if (denyAuthentication && request.method === "GET" && url.pathname === "/v1/users/me") {
-          status = 401
-          value = {
-            object: "error",
-            status,
-            code: "unauthorized",
-            message: "Controlled credential rejection",
-          }
-        } else if (
-          denyCurrent &&
-          request.method === "GET" &&
-          url.pathname === `/v1/pages/${notion.main.id}`
-        ) {
-          status = 403
-          value = {
-            object: "error",
-            status,
-            code: "restricted_resource",
-            message: "Controlled current permission denial",
-          }
-        } else if (request.method === "GET" && url.pathname === "/v1/users/me")
-          value = { object: "user", id: "00000000-0000-4000-8000-000000000099" }
-        else if (
-          request.method === "GET" &&
-          url.pathname === `/v1/databases/${library.skills.database_id}`
-        )
-          value = notion.database
-        else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
-          assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
-          value = {
-            object: "list",
-            results: [{ object: "view", id: sample.view_dynamics.view.id }],
-            has_more: false,
-            next_cursor: null,
-          }
-        } else if (
-          viewObservation &&
-          request.method === "GET" &&
-          url.pathname === `/v1/views/${sample.view_dynamics.view.id}`
-        )
-          value = { ...sample.view_dynamics.view, filter: viewObservation.filter }
-        else if (
-          viewObservation &&
-          request.method === "POST" &&
-          url.pathname === `/v1/views/${sample.view_dynamics.view.id}/queries`
-        ) {
-          assert.deepEqual(body, { page_size: 100 })
-          value = {
-            object: "list",
-            id: viewObservation.query_id,
-            view_id: sample.view_dynamics.view.id,
-            expires_at: new Date(Date.now() + 900000).toISOString(),
-            total_count: viewObservation.member_page_ids.length,
-            results: viewObservation.member_page_ids.map((id) => ({ object: "page", id })),
-            has_more: false,
-            next_cursor: null,
-            request_status: { type: "complete", incomplete_reason: null },
-          }
-          Object.assign(call, {
-            view_observation: viewObservation.id,
-            view_filter: viewObservation.filter,
-            view_member_page_ids: viewObservation.member_page_ids,
-          })
-        } else if (
-          historyObservation &&
-          request.method === "GET" &&
-          notion.skills.some((row) => url.pathname === `/v1/pages/${row.id}`)
-        )
-          value = notion.skills.find((row) => url.pathname === `/v1/pages/${row.id}`)
-        else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
-          value = notion.main
-        else if (
-          request.method === "GET" &&
-          notion.files.some((file) => url.pathname === `/v1/pages/${file.id}`)
-        )
-          value = notion.files.find((file) => url.pathname === `/v1/pages/${file.id}`)
-        else if (request.method === "GET" && /^\/v1\/pages\/[^/]+\/markdown$/u.test(url.pathname)) {
-          const id = url.pathname.split("/")[3]
-          assert.equal(
-            typeof notion.bodies[id],
-            "string",
-            "An unselected target body was requested",
-          )
-          value = { id, markdown: notion.bodies[id], truncated: false, unknown_block_ids: [] }
-        } else if (request.method === "POST" && url.pathname.endsWith("/query")) {
-          const rows =
-            url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`
-              ? notion.skills
-              : url.pathname === `/v1/data_sources/${library.files.data_source_id}/query`
-                ? notion.files
-                : url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
-                  ? notion.records
-                  : undefined
-          assert.ok(rows, "An unexpected data source was queried")
-          value = page(
-            project(
-              rows.filter((row) => matches(row, body?.filter)),
-              fields,
-            ),
-            body,
-          )
-          if (
-            incompleteViewInventory &&
-            url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`
-          )
-            value.request_status = {
-              type: "incomplete",
-              incomplete_reason: "query_result_limit_reached",
-            }
-          Object.assign(call, {
-            page_ids: value.results.map((row) => row.id),
-            returned_properties: [
-              ...new Set(
-                value.results.flatMap((row) =>
-                  Object.values(row.properties).map((field) => field.id),
-                ),
-              ),
-            ].sort(),
-            has_more: value.has_more,
-            next_cursor: value.next_cursor,
-            ...(historyObservation &&
-            url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
-              ? {
-                  records: value.results.map((row) => ({
-                    page_id: row.id,
-                    owner: row.properties.skill?.relation?.map((owner) => owner.id) ?? [],
-                    record_id: richText(row.properties.record?.rich_text),
-                    entity_id: richText(row.properties.entity?.rich_text),
-                    kind: row.properties.kind?.select?.name,
-                    hash: richText(row.properties.hash?.rich_text),
-                    payload_included: Object.hasOwn(row.properties, "payload"),
-                  })),
-                }
-              : {}),
-          })
-        } else throw new Error("Unexpected controlled inventory request")
-      } catch (error) {
-        unexpected.push({ ...call, error: String(error) })
-        status = 400
-        value = {
-          object: "error",
-          status,
-          code: "validation_error",
-          message: "Unexpected controlled inventory request",
-        }
-      }
-      const bytes = Buffer.from(JSON.stringify(value))
-      Object.assign(call, {
-        status,
-        decoded_response_bytes: bytes.length,
-        response_sha256: hash(bytes),
-      })
-      fs.appendFileSync(
-        join(root, "scalar-inventory-notion-requests.jsonl"),
-        JSON.stringify(call) + "\n",
-        { mode: 0o600 },
-      )
-      response.writeHead(status, {
-        "content-type": "application/json",
-        "content-length": String(bytes.length),
-      })
-      response.end(bytes)
-    })
-    server.listen(0, "127.0.0.1")
-    await once(server, "listening")
+    source.setPhase(phase, { current: "initial", viewObservationId: null })
     const currentEnv = {
       ...env,
-      NOTION_API_BASE_URL: `http://127.0.0.1:${server.address().port}`,
+      NOTION_API_BASE_URL: source.origin,
       NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
     }
     const evidence = {
@@ -1597,13 +1372,13 @@ try {
     const recordsHistory = async () => {
       const phaseRoot = join(root, "records-history")
       await mkdir(phaseRoot, { mode: 0o700 })
-      const source = await readFile(sdkPath, "utf8")
+      const sdkSourceText = await readFile(sdkPath, "utf8")
       const names = ["recordFromEnvelope", "boundedEnvelope", "decodeHeader", "resolveFileState"]
       const ledger = {
         version: 1,
         status: "running",
         sdk_path: sdkPath,
-        sdk_sha256: hash(source),
+        sdk_sha256: hash(sdkSourceText),
         budgets: { preparation_ms: 60000, call_ms: 30000, consumers_ms: 240000, retries: 0 },
         histories: [1, 101],
         phases: [],
@@ -1654,7 +1429,9 @@ try {
           if (matches.length === 1) {
             const fn = matches[0],
               span = fn.ranges[0]
-            assert.ok(source.slice(span.startOffset, span.endOffset).includes(`function ${name}(`))
+            assert.ok(
+              sdkSourceText.slice(span.startOffset, span.endOffset).includes(`function ${name}(`),
+            )
             const identity = { startOffset: span.startOffset, endOffset: span.endOffset }
             if (known.has(name)) assert.deepEqual(identity, known.get(name))
             else known.set(name, identity)
@@ -1722,10 +1499,11 @@ try {
       let started = false
       try {
         Object.assign(notion, structuredClone(sample.notion))
-        denyCurrent = false
-        denyAuthentication = false
+        source.setPhase(phase, { denyCurrent: false })
+        source.setPhase(phase, { denyAuthentication: false })
         viewObservation = undefined
-        incompleteViewInventory = false
+        source.setPhase(phase, { viewObservationId: null })
+        source.setPhase(phase, { incompleteViewInventory: false })
         session.connect()
         ledger.counter.status = "checking"
         await post("Profiler.enable")
@@ -1735,6 +1513,7 @@ try {
         const probeCwd = join(phaseRoot, "probe-consumer")
         await emptyConsumer(sample.seed, probeCwd)
         phase = "records-probe"
+        source.setPhase(phase)
         const reports = [],
           before = performance.now()
         const result = await sdk.readSkill(sample.root_ref, {
@@ -1833,7 +1612,7 @@ try {
           sdk_sha256: ledger.sdk_sha256,
         })
         const deadline = performance.now() + 240000
-        historyObservation = true
+        source.setPhase(phase, { historyObservation: true })
         for (const sample of histories) {
           assert.equal(sample.shared_event_count, sample.history)
           Object.assign(notion, structuredClone(sample.notion))
@@ -1852,6 +1631,7 @@ try {
             const remaining = deadline - performance.now()
             assert.ok(remaining > 0, "Records history consumer budget exhausted")
             phase = `records-h${sample.history}-${state}`
+            source.setPhase(phase)
             assert.ok(
               Object.values(await coverage(phase + "-before")).every((count) => count === 0),
             )
@@ -1980,7 +1760,7 @@ try {
         ledger.error = { code: error.code, message: String(error.message), phase }
         throw error
       } finally {
-        historyObservation = false
+        source.setPhase(phase, { historyObservation: false })
         try {
           if (started) await post("Profiler.stopPreciseCoverage")
         } finally {
@@ -2039,17 +1819,7 @@ try {
       let objects
       const setObservation = (index) => {
         viewObservation = input.observations[index]
-        for (const [id, names] of viewObservation.tags) {
-          const row = notion.skills.find((entry) => entry.id === id)
-          assert.ok(row)
-          const tags = {
-            id: input.tags_property_id,
-            type: "multi_select",
-            multi_select: names.map((name) => ({ id: name, name, color: "default" })),
-          }
-          row.properties.tags = tags
-          if (id === notion.main.id) notion.main.properties.tags = structuredClone(tags)
-        }
+        source.setPhase(phase, { viewObservationId: viewObservation.id })
       }
       const observe = async (
         label,
@@ -2058,6 +1828,7 @@ try {
       ) => {
         assert.ok(entry)
         phase = label
+        source.setPhase(phase)
         const reports = []
         let value, error
         try {
@@ -2232,7 +2003,7 @@ try {
           [...input.ordinary_record_ids].sort(),
         )
         assert.equal(ordinary.result.view, undefined)
-        incompleteViewInventory = true
+        source.setPhase(phase, { incompleteViewInventory: true })
         try {
           await directory(
             "view-incomplete-refresh",
@@ -2240,7 +2011,7 @@ try {
             { error: "VIEW_INCOMPLETE" },
           )
         } finally {
-          incompleteViewInventory = false
+          source.setPhase(phase, { incompleteViewInventory: false })
         }
         const offline = await directory("view-offline-last-complete", { offline: true })
         members(offline, input.observations[2])
@@ -2288,8 +2059,9 @@ try {
         result.error = String(error)
         throw error
       } finally {
-        incompleteViewInventory = false
+        source.setPhase(phase, { incompleteViewInventory: false })
         viewObservation = undefined
+        source.setPhase(phase, { viewObservationId: null })
         await writeFile(join(phaseRoot, "report.json"), JSON.stringify(result, null, 2) + "\n", {
           mode: 0o600,
           flag: "wx",
@@ -2315,6 +2087,7 @@ try {
         ["scalar-relations-physical", "sdk", relationsCwd, sample.oracle.relations],
       ]) {
         phase = label
+        source.setPhase(phase)
         const refreshed = label === "scalar-refresh"
         const relations = label.startsWith("scalar-relations")
         assert.ok(expected, "Generate the scalar relation oracle with this checkout")
@@ -2634,6 +2407,7 @@ try {
         } = {},
       ) => {
         phase = label
+        source.setPhase(phase)
         const reports = []
         let result, failure
         if (cliProcess) {
@@ -2728,6 +2502,7 @@ try {
       }
       const clearObservations = async (label, all = false) => {
         phase = label
+        source.setPhase(phase)
         const invocation = await invokeCli(
           [
             "ctl",
@@ -2767,7 +2542,7 @@ try {
       assert.equal(expired.request_metrics.requests.notion_body, 0)
       assert.equal(expired.result.snapshot_id, warm.result.snapshot_id)
       assert.equal(expired.result.content, warm.result.content)
-      denyCurrent = true
+      source.setPhase(phase, { denyCurrent: true })
       const denied = await readCurrent("cache-denied-refresh", {
         policy: { refresh: true },
         error: "ACCESS_DENIED",
@@ -2810,7 +2585,7 @@ try {
       assert.equal(pinned.result.content, sample.oracle.cold.contents["SKILL.md"])
       assert.equal(pinned.result.freshness.policy, "pinned")
       assert.equal(pinned.result.freshness.stale, true)
-      denyCurrent = false
+      source.setPhase(phase, { denyCurrent: false })
       const recovered = await readCurrent("cache-permission-recovered")
       assert.equal(recovered.result.source, "notion")
       assert.ok(recovered.request_metrics.total_requests > 0)
@@ -2839,7 +2614,7 @@ try {
         catalog: true,
         policy: { refresh: true },
       })
-      denyAuthentication = true
+      source.setPhase(phase, { denyAuthentication: true })
       const revoked = await readCurrent("cache-auth-denied-directory-refresh", {
         catalog: true,
         policy: { refresh: true },
@@ -2904,7 +2679,7 @@ try {
       assert.equal(authOfflineAfterClear.request_metrics.total_requests, 0)
       assert.equal(authOfflineAfterClear.result.content, sample.oracle.cold.contents["SKILL.md"])
       assert.equal(authOfflineAfterClear.result.freshness.stale, true)
-      denyAuthentication = false
+      source.setPhase(phase, { denyAuthentication: false })
       const authRecovered = await readCurrent("cache-auth-recovered")
       assert.equal(authRecovered.result.source, "notion")
       assert.equal(authRecovered.result.content, recovered.result.content)
@@ -2930,8 +2705,7 @@ try {
       evidence.unexpected_notion_requests = unexpected
       throw error
     } finally {
-      server.closeAllConnections()
-      await new Promise((resolve) => server.close(resolve))
+      await source.close()
       await writeFile(
         join(root, "scalar-inventory-evidence.json"),
         JSON.stringify(evidence, null, 2) + "\n",

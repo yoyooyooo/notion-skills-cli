@@ -348,6 +348,34 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 
 同根 `ci-wiring/` 随后通过原 `control.ts init/package/cleanup` 完成一次完整本地安装门禁：自然 exit 0、389,945.870 ms，SDK 默认 22/22，原 3 个 scalar / 32 个 cache 阶段和新增 13 个动态阶段均通过。`gate-result.json` 绑定原 report SHA `96f0a55622b4215bdeab95a04fcdf184eaa2fb2359ee5035eb48c789aa1b7a4f`；原 package JSON 的 `sdk` 与它完整相等。此轮使用纯 `1d88e02c` 导出加五个验证改动，产品来自 C7 发布文件；现有 Bun pack 只将 `package.json` 的开发依赖 `workspace:*` 规范成 `0.1.0`，其余 67 文件（含 CLI/SDK）逐字相同，不能称整个 tar 等于 f854。`packed-c7-identity.json` 保留该差异，类型检查首次缺导出环境依赖及补齐后的通过也分别保留。原系统 Trash 清理后 378 份证据字节不变，完整 phase 原件在 `verification-run/evidence/package-scratch-original/`；这是一轮本地门禁，远端四平台结果另按新提交验收。
 
+### 共用受控 HTTP 来源与终局字节账本
+
+SC12／SC15／SC20 的 loopback 来源共用 `scripts/sdk-source-fixture.mjs`。它从原 `sdk-package-smoke.mjs` 的 scalar HTTP handler 抽出，继续读取 `sdk-fixture.ts --catalog` 生成的原 `scalarInventory`，没有新增产品入口、替代 SDK 或独立总验收平台。CLI `list/read/use` 和 Broker 的 Notion 工具仍经过实际已安装的消费内核；fixture 不向 consumer 写入 snapshot、对象或权限 receipt。
+
+入口 `startSdkSourceFixture(sample, ledgerPath)` 只启动一个本机 origin。沿 `setPhase` 选择已声明的 initial/refreshed current、View 观察、401 scope、403 target 和完整性状态；原 scalar/history smoke 仍拥有其来源事实。`holdNext`、`rejectNext`、`interruptNext` 只控制一个确切 route 的下一次真实 HTTP：headers 前后暂停、一次 429 或一次不完整响应断流。它们不增加 SDK 重试次数、不重跑上层调用，也不把失败变成缓存命中。切换阶段前全部原请求必须关闭；未使用的控制在切换／关闭时结清。
+
+验证链复用原入口：
+
+| 用户入口／驱动 | 正例与反例 | 直接证据边界 |
+| --- | --- | --- |
+| 原安装 SDK smoke，默认 `all` | 保留原 22 cases、scalar/relations、32 cache 相位及 View 动态链；旧包身份固定 | 真正独立安装 Node SDK／CLI、真实 loopback attempts、完整结果与 pin；不代替真实 Notion |
+| 原 Node test lane 中 `sdk-source-fixture.node.test.ts` | hold 必须先到达 HTTP 再 release；401/403、一次 429、断流、headers 后客户端 abort、不完整请求 abort、未知 route/未选正文拒绝 | 原 TCP 请求、终局 ledger 和 start/headers/end/close 事件；单独通过不证明 SDK 重试或 Pi Stop |
+| Broker 原 `notion-sdk-pi.mjs` 的 `http-directory`、`http-cache-recovery`、`http-interruption` | 目录 pending 不阻塞普通提示；新会话暖缓存／显式 maxAge=0／权限恢复／原会话恢复；真实 SDK 重试与 RPC abort | 由 Broker 原验证 Skill/feature map 记录实际 Pi、provider 输入及清理，不从 CLI 层推断通过 |
+
+原 `test:node` 已按 `*.node.test.ts` 收录控制回归。定向复跑时先沿本页 `control.ts init` 创建 `RUN`，将测试临时目录放在它的 owned scratch：
+
+```bash
+mkdir "$RUN/scratch/http-tests"
+TMPDIR="$RUN/scratch/http-tests" node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-source-fixture.node.test.ts
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FIXTURE" --outdir "$RUN/scratch/installed-sdk"
+```
+
+测试打印保留 ledger 的目录，不永久删除失败原件。安装 smoke 的默认选择和命令合同保持；定向 scalar／View／history 的原有意义也保持。Broker 冻结 helper 时记录文件 SHA-256、fixture SHA-256、C9／CLI 包身份；未变化的运行时不因此重新 build/pack。其目录、恢复、取消三个场景各自取证，固定包与控制服务的通过不能算正式 SC20 生产成本或 SC21 模型验收。
+
+每个 HTTP attempt 的账本区分已观察前缀和完整响应。`observed_response_bytes` 是服务端实际调用 write/end 的未压缩前缀；只有响应 `finish` 才填 `decoded_response_bytes`、`response_sha256` 和 `response_bytes_complete=true`，并保留明确的 server-write `response_boundary`。中途断流／abort 保持完整字节与 hash 为 `null`，不能把计划发送的 JSON 长度当成完整响应。客户端解码、SDK 全文结果及 provider 真正收到正文仍由各自账本证明。请求前缀、单调时钟 start/end/close、真实 status 和每次重试均保留；汇总失败尝试时不能补零或丢弃它们。
+
+本轮 fail-before 使用原 main handler：不完整 POST 被客户端取消、实际没有 HTTP response，旧账本却记录完整 109 B。新 helper 的同边界完整响应字节为 `null`，另留已观察前缀。原失败、控制回归与安装结果保存在 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc20-sdk-http-shared-r7m4k2vd`。先将 owned scratch 中所有原始 ledger／结果及身份存入 `RUN/evidence`，再由原 `control.ts cleanup` 移到系统 Trash，最后核对证据 hash、进程终局和日用哨兵；不清理其他会话的目录。
+
 ### 单 current inspect 投影实验未采用
 
 2026-11-05 的候选只对单 current `inspect` 使用完整六字段身份目录和一次选中完整页 GET。原有 scalar read 复用不变。候选通过受控 N=1/10/100/101/300、权限、分页、身份、取消、混合根边界和独立安装 SDK/CLI 检查，但真实首读延迟未达到预先冻结的采用门槛。运行时代码、候选专用 core 断言及 `inspect_phases` smoke 断言已撤回；当前 graph prepare 仍使用原完整 inventory，当前 smoke 不承诺该投影。
