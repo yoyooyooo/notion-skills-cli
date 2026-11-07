@@ -1,7 +1,5 @@
 {
   "provenance": {
-    "transport_record": "/Users/yoyo/.omp/state/orchestrate/ntn-skills-20261017/control/release-e2e/router/evidence/markdown-link-transport/transport-record.json",
-    "raw_blocks": "/Users/yoyo/.omp/state/orchestrate/ntn-skills-20261017/control/release-e2e/router/tmp/probe-blocks-read.json",
     "api_version": "2026-03-11",
     "request_id": "9652f3c8-32bd-4c6c-a9a1-60ffcb4b1b93",
     "note": "Verbatim Markdown request/readback from the first transport step and verbatim rich-text block from the raw inventory. The block control was appended later; these are separate observations, not a fabricated round trip."
