@@ -70,6 +70,28 @@ freshness, databases, coverage and applicable View/Profile metadata, without a C
 envelope. Both use core catalog cache eligibility directly. They spawn no process
 and need no separate cache-identity request or host-derived catalog cache.
 
+Hosts needing both ordinary discovery and the current default directory can call
+`listCatalog({ database, directory: {}, ...policy })` once. `directory: { view }`
+selects an explicit View; `directory: { profile }` selects a Profile and requires
+`database`. The selectors are mutually exclusive. The additive overload exports
+`CATALOG_DIRECTORY_CONTRACT_VERSION = 1` and returns `ListCatalogDirectoryResult`:
+`{ version: 1, catalog, directory }`. Each projection is either
+`{ ok: true, value: ListCatalogResult }` or `{ ok: false, error: { code, message } }`.
+A full-catalog error can therefore remain visible while an unrelated valid View
+succeeds, and a View error does not hide a valid ordinary catalog. Cancellation
+rejects the entire operation. Successful projections cannot mix credential scopes
+or conflicting descriptors for the same database.
+
+This one operation can reuse a complete raw six-property Skills inventory across
+its two projections. Disabled and unselected rows still participate in the original
+identity checks. Each projection keeps its existing permission, descriptor and
+cache checks; a cached public catalog never substitutes for raw inventory. Reuse
+requires matching scope and descriptor and an unexpired observation. `maxAge: 0`
+does not reuse it. View freshness retains the earlier inventory observation time;
+the later View query cannot reset that age. Observations end with this operation
+and do not span separate calls, `consume`, sessions or processes. The ordinary
+`listCatalog`, `listSkills` and CLI contracts remain unchanged.
+
 `resolveCatalogReference(ref, directory)` is a synchronous, pure selection helper.
 It returns `{ record, scope, ref }`, with the selected path carried into a canonical
 identity ref. Supply the complete ordinary `listCatalog` result for the declared

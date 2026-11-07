@@ -28,7 +28,7 @@ import { LIBRARY_MARKER } from "./shared-library-model.ts"
 import { sharedRecordFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import {
-  querySharedMetadataInventory,
+  directorySkillMetadata,
   type SharedSkillMetadataObservation,
 } from "./shared-metadata-inventory.ts"
 import {
@@ -665,7 +665,8 @@ function readCatalog(
             return yield* paginate(`v1/data_sources/${id}/query`, InventoryPageSchema, {})
           const shared =
             (yield* sharedGraphInventory(db.shared_library)) ??
-            (yield* querySharedMetadataInventory(db.shared_library, "skills", "catalog"))
+            (yield* directorySkillMetadata(db.shared_library, validatedScope, maxAge, "catalog"))
+              .inventory
           const rows = yield* Effect.try({
             try: () => shared.pages.map((row) => decode(InventoryPageSchema, row)),
             catch: () => fail("INVALID_RESPONSE", "Invalid shared metadata inventory."),

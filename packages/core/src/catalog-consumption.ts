@@ -1,9 +1,29 @@
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { catalogWithProfile, type ProfileCatalogOptions } from "./shared-profile-config.ts"
+import { validateReadPolicy } from "./cache.ts"
+import { withSharedDirectoryMetadata } from "./shared-metadata-inventory.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 
 export type ListCatalogOptions = ProfileCatalogOptions
+export const CATALOG_DIRECTORY_CONTRACT_VERSION = 1
+export type CatalogDirectorySelection =
+  | { readonly view: string; readonly profile?: never }
+  | { readonly profile?: string; readonly view?: never }
+export type ListCatalogDirectoryOptions = Omit<
+  ListCatalogOptions,
+  "view" | "defaultView" | "profile"
+> & {
+  readonly directory: CatalogDirectorySelection
+  readonly view?: never
+  readonly defaultView?: never
+  readonly profile?: never
+}
+const CatalogDirectorySelectionSchema = Schema.Union([
+  Schema.Struct({ view: Schema.String }),
+  Schema.Struct({ profile: Schema.optional(Schema.String) }),
+])
 export interface ListPageOptions {
   readonly query?: string
   readonly limit?: number
@@ -14,7 +34,7 @@ export const LIST_DEFAULT_LIMIT = 50
 export const LIST_MAX_LIMIT = 500
 
 /** Full metadata for default directories. It shares the catalog cache and never reads bodies. */
-export function listCatalog(options: ListCatalogOptions = {}) {
+function listSingleCatalog(options: ListCatalogOptions = {}) {
   return catalogWithProfile(options).pipe(
     Effect.map((result) => ({
       scope: result.scope,
@@ -39,7 +59,121 @@ export function listCatalog(options: ListCatalogOptions = {}) {
     })),
   )
 }
-export type ListCatalogResult = Effect.Success<ReturnType<typeof listCatalog>>
+export type ListCatalogResult = Effect.Success<ReturnType<typeof listSingleCatalog>>
+export type CatalogReadOutcome =
+  | { readonly ok: true; readonly value: ListCatalogResult }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+export interface ListCatalogDirectoryResult {
+  readonly version: typeof CATALOG_DIRECTORY_CONTRACT_VERSION
+  readonly catalog: CatalogReadOutcome
+  readonly directory: CatalogReadOutcome
+}
+
+function observeCatalog(operation: ReturnType<typeof listSingleCatalog>) {
+  return operation.pipe(
+    Effect.matchEffect({
+      onSuccess: (value) => Effect.succeed<CatalogReadOutcome>({ ok: true, value }),
+      onFailure: (error) =>
+        error.code === "CANCELLED"
+          ? Effect.fail(error)
+          : Effect.succeed<CatalogReadOutcome>({
+              ok: false,
+              error: { code: error.code, message: error.message },
+            }),
+    }),
+  )
+}
+
+function listCatalogDirectory(options: ListCatalogDirectoryOptions) {
+  return withSharedDirectoryMetadata(
+    Effect.gen(function* () {
+      const selection = yield* Effect.try({
+        try: () => {
+          validateReadPolicy(options)
+          if (
+            options.view !== undefined ||
+            options.defaultView !== undefined ||
+            options.profile !== undefined
+          )
+            throw fail("INVALID_ARGUMENT", "Select the combined directory inside directory.")
+          const selection = Schema.decodeUnknownSync(CatalogDirectorySelectionSchema)(
+            options.directory,
+            {
+              onExcessProperty: "error",
+            },
+          )
+          if (
+            "profile" in selection &&
+            selection.profile !== undefined &&
+            options.database === undefined
+          )
+            throw fail("INVALID_ARGUMENT", "A directory Profile requires an explicit database.")
+          return selection
+        },
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail(
+                "INVALID_ARGUMENT",
+                "directory accepts one View or an optional Profile selector.",
+              ),
+      })
+      const policy: ListCatalogOptions = {
+        database: options.database,
+        refresh: options.refresh,
+        offline: options.offline,
+        maxAge: options.maxAge,
+      }
+      const catalog = yield* observeCatalog(listSingleCatalog(policy))
+      const directory = yield* observeCatalog(
+        listSingleCatalog({
+          ...policy,
+          ...selection,
+          ...("view" in selection ? {} : { defaultView: true }),
+        }),
+      )
+      if (catalog.ok && directory.ok) {
+        if (catalog.value.scope !== directory.value.scope)
+          return yield* Effect.fail(
+            fail("ACCESS_DENIED", "Credential scope changed between directory projections."),
+          )
+        for (const source of directory.value.databases) {
+          const previous = catalog.value.databases.find(
+            (candidate) => candidate.database_id === source.database_id,
+          )
+          if (
+            previous !== undefined &&
+            canonicalSharedJson(
+              "shared_library" in previous ? (previous.shared_library ?? null) : null,
+            ) !==
+              canonicalSharedJson(
+                "shared_library" in source ? (source.shared_library ?? null) : null,
+              )
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_LIBRARY_ID_CONFLICT",
+                "Library descriptor changed between directory projections.",
+              ),
+            )
+        }
+      }
+      return {
+        version: CATALOG_DIRECTORY_CONTRACT_VERSION,
+        catalog,
+        directory,
+      } satisfies ListCatalogDirectoryResult
+    }),
+  )
+}
+
+export function listCatalog(
+  options: ListCatalogDirectoryOptions,
+): ReturnType<typeof listCatalogDirectory>
+export function listCatalog(options?: ListCatalogOptions): ReturnType<typeof listSingleCatalog>
+export function listCatalog(options: ListCatalogOptions | ListCatalogDirectoryOptions = {}) {
+  return "directory" in options ? listCatalogDirectory(options) : listSingleCatalog(options)
+}
 
 export function validateListPage(options: ListPageOptions = {}) {
   const limit = options.limit ?? LIST_DEFAULT_LIMIT

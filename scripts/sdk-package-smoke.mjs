@@ -19,7 +19,7 @@ import { createRequire, syncBuiltinESMExports } from "node:module"
 import { dirname, isAbsolute, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { startSdkSourceFixture } from "./sdk-source-fixture.mjs"
+import { startSdkSourceFixture, verifyCatalogDirectorySdk } from "./sdk-source-fixture.mjs"
 
 const args = process.argv.slice(2)
 if (
@@ -466,6 +466,12 @@ try {
           )
           assert.equal(view.view.id, fixture.default_view.id)
           assert.equal(view.capability_directory, true)
+          const combined = await sdk.listCatalog({ ...selection, directory: {} })
+          assert.equal(combined.version, 1)
+          assert.equal(combined.catalog.ok, true)
+          assert.equal(combined.directory.ok, true)
+          assert.deepEqual(combined.catalog.value.records, complete.records)
+          assert.deepEqual(combined.directory.value.records, view.records)
           const first = await sdk.listSkills({ ...selection, limit: 2 })
           assert.equal(first.count, 2)
           assert.equal(first.total_count, complete.count)
@@ -602,6 +608,7 @@ try {
     assert.equal(sdk.CONSUMER_CONTRACT_VERSION, 1)
     assert.equal(sdk.RESOURCE_READ_CONTRACT_VERSION, 1)
     assert.equal(sdk.READ_OUTPUT_PROOF_VERSION, 1)
+    assert.equal(sdk.CATALOG_DIRECTORY_CONTRACT_VERSION, 1)
     assert.equal(sdk.PACKAGE_VERSION, manifest.version)
     assert.equal(sdk.parseDuration("2m"), 120000)
     assert.throws(
@@ -610,13 +617,15 @@ try {
     )
     await writeFile(
       join(root, "consumer.ts"),
-      `import { consume, readSkill, readResources, listCatalog, listSkills, listSkill, resolveCatalogReference, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot, type ListCatalogResult, type ListSkillsResult, type ListSkillResult } from "ntn-skills/sdk";
+      `import { consume, readSkill, readResources, listCatalog, listSkills, listSkill, resolveCatalogReference, decodeConsumeResult, decodeResourceReadResult, SDK_VERSION, RESOURCE_READ_CONTRACT_VERSION, READ_OUTPUT_PROOF_VERSION, CATALOG_DIRECTORY_CONTRACT_VERSION, parseDuration, type ConsumeInput, type ConsumeResult, type ReadSkillResult, type ResourceReadInput, type ResourceReadResult, type RequestMetricsSnapshot, type ListCatalogResult, type ListCatalogDirectoryResult, type ListSkillsResult, type ListSkillResult } from "ntn-skills/sdk";
   const input = { version: 1, targets: ["page"], purpose: "use" } satisfies ConsumeInput;
   const version: 1 = SDK_VERSION;
   const received: Promise<ConsumeResult> = consume(input, { cwd: ".", env: {}, signal: new AbortController().signal, metrics: true, execution: { priority: "prefetch", queueBudgetMs: 100, timeBudgetMs: 200, rateShare: .1 }, onRequestMetrics: (snapshot: RequestMetricsSnapshot | null) => void snapshot });
   const read: Promise<ReadSkillResult> = readSkill("file", { offline: true, metrics: true, maxAge: parseDuration("1s") });
   const resources = { version: 1, refs: ["fixed-file"], budget: { maxFiles: 16, maxBytes: 1048576, timeBudgetMs: 30000 } } satisfies ResourceReadInput;
   const catalog: Promise<ListCatalogResult> = listCatalog({ cwd: ".", env: {}, defaultView: true, offline: true });
+  const combined: Promise<ListCatalogDirectoryResult> = listCatalog({ cwd: ".", env: {}, directory: {}, offline: true });
+  const directoryVersion: 1 = CATALOG_DIRECTORY_CONTRACT_VERSION;
   const page: Promise<ListSkillsResult> = listSkills({ cwd: ".", env: {}, query: "review", limit: 20, cursor: "returned-cursor" });
   const files: Promise<ListSkillResult> = listSkill("skill://name/?snapshot=returned-pin", { cwd: ".", env: {}, offline: true, metrics: true });
   const selection = (directory: ListCatalogResult) => resolveCatalogReference("skill://name/SKILL.md", directory);
@@ -624,7 +633,7 @@ try {
   const outputProofVersion: 1 = READ_OUTPUT_PROOF_VERSION;
   const outputProof = (result: ReadSkillResult) => "output" in result ? [result.sha256, result.entrypoint_sha256] : [];
   const batch: Promise<ResourceReadResult> = readResources(resources, { cwd: ".", env: {}, offline: true, metrics: true, signal: new AbortController().signal });
-  void [received, read, batch, catalog, page, files, selection, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
+  void [received, read, batch, catalog, combined, directoryVersion, page, files, selection, decodeConsumeResult({}, input), decodeResourceReadResult({}, resources), version, resourceVersion, outputProofVersion, outputProof];
   // @ts-expect-error purpose is a closed protocol domain
   const wrong: ConsumeInput = { version: 1, targets: [], purpose: "activate" };
   void wrong;
@@ -2074,6 +2083,12 @@ try {
         evidence.status = "passed"
         return evidence
       }
+      evidence.catalog_directory = await verifyCatalogDirectorySdk({
+        sdk,
+        sample,
+        env,
+        root: join(root, "catalog-directory"),
+      })
       if (viewDynamicsOnly) {
         await viewDynamics()
         evidence.status = "passed"

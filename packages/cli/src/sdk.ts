@@ -40,8 +40,10 @@ import {
   listSkills as coreListSkills,
   validateListPage,
   type ListCatalogOptions as CoreListCatalogOptions,
+  type ListCatalogDirectoryOptions as CoreListCatalogDirectoryOptions,
   type ListSkillsOptions as CoreListSkillsOptions,
   type ListCatalogResult,
+  type ListCatalogDirectoryResult,
   type ListSkillsResult,
 } from "../../core/src/catalog-consumption.ts"
 
@@ -94,12 +96,29 @@ export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreLi
 export type ListSkillResult = Effect.Success<ReturnType<typeof coreListSkill>>
 export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal">
 export type ListCatalogOptions = SdkOptions & CoreListCatalogOptions
+export type ListCatalogDirectoryOptions = SdkOptions & CoreListCatalogDirectoryOptions
 export type ListSkillsOptions = SdkOptions & CoreListSkillsOptions
-export type { ListCatalogResult, ListSkillsResult } from "../../core/src/catalog-consumption.ts"
+export { CATALOG_DIRECTORY_CONTRACT_VERSION } from "../../core/src/catalog-consumption.ts"
+export type {
+  CatalogDirectorySelection,
+  CatalogReadOutcome,
+  ListCatalogResult,
+  ListCatalogDirectoryResult,
+  ListSkillsResult,
+} from "../../core/src/catalog-consumption.ts"
 
 /** Complete metadata-only directory; no CLI subprocess or second cache identity request. */
-export function listCatalog(options: ListCatalogOptions = {}): Promise<ListCatalogResult> {
-  return runOperation(() => coreListCatalog(options), options)
+export function listCatalog(
+  options: ListCatalogDirectoryOptions,
+): Promise<ListCatalogDirectoryResult>
+export function listCatalog(options?: ListCatalogOptions): Promise<ListCatalogResult>
+export function listCatalog(
+  options: ListCatalogOptions | ListCatalogDirectoryOptions = {},
+): Promise<ListCatalogResult | ListCatalogDirectoryResult> {
+  // Narrow before the operation factory so each overload keeps its success type.
+  return "directory" in options
+    ? runOperation(() => coreListCatalog(options), options)
+    : runOperation(() => coreListCatalog(options), options)
 }
 
 /** Bounded explicit discovery. count/has_more never imply exhaustive source coverage. */

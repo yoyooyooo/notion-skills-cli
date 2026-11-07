@@ -3,7 +3,7 @@ import { createHash } from "node:crypto"
 import { once } from "node:events"
 import fs from "node:fs"
 import { createServer } from "node:http"
-import { isAbsolute } from "node:path"
+import { isAbsolute, join } from "node:path"
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
 const monotonic = () => process.hrtime.bigint().toString()
@@ -554,5 +554,134 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       })()
       return closing
     },
+  }
+}
+
+/** Reuse the original source fixture for built and independently installed SDK callers. */
+export async function verifyCatalogDirectorySdk({ sdk, sample, env, root }) {
+  assert.ok(isAbsolute(root))
+  fs.mkdirSync(root, { mode: 0o700 })
+  const input = sample.view_dynamics
+  assert.equal(sdk.CATALOG_DIRECTORY_CONTRACT_VERSION, 1)
+  assert.equal(input.inventory_pages, Math.ceil(sample.row_count / 100))
+  const source = await startSdkSourceFixture(sample, join(root, "requests.jsonl"))
+  const evidence = { version: 1, status: "running", transport: "owned loopback Notion", phases: [] }
+  try {
+    for (const mode of ["separate", "combined"]) {
+      const cwd = join(root, mode)
+      fs.cpSync(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
+      source.setPhase(mode, { current: "initial", viewObservationId: input.observations[0].id })
+      const reports = []
+      const options = {
+        cwd,
+        env: {
+          ...env,
+          NOTION_API_BASE_URL: source.origin,
+          NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
+        },
+        database: sample.notion.library.skills.database_id,
+        metrics: true,
+        onRequestMetrics: (value) => reports.push(value),
+      }
+      const started = performance.now()
+      const result =
+        mode === "combined"
+          ? await sdk.listCatalog({ ...options, directory: {} })
+          : {
+              version: 1,
+              catalog: { ok: true, value: await sdk.listCatalog(options) },
+              directory: {
+                ok: true,
+                value: await sdk.listCatalog({ ...options, defaultView: true }),
+              },
+            }
+      const calls = source.requests.filter((call) => call.phase === mode)
+      const inventory = calls.filter(
+        (call) =>
+          call.path ===
+          "/v1/data_sources/" + sample.notion.library.skills.data_source_id + "/query",
+      )
+      const observed = {
+        mode,
+        elapsed_ms: performance.now() - started,
+        result,
+        request_metrics: [...reports],
+        requests: calls,
+        inventory_requests: inventory.length,
+        inventory_response_bytes: inventory.reduce(
+          (sum, call) => sum + call.decoded_response_bytes,
+          0,
+        ),
+      }
+      evidence.phases.push(observed)
+      assert.equal(result.version, 1)
+      assert.equal(result.catalog.ok, true)
+      assert.equal(result.directory.ok, true)
+      assert.deepEqual(
+        result.catalog.value.records.map((record) => record.id).sort(),
+        [...input.ordinary_record_ids].sort(),
+      )
+      assert.deepEqual(
+        result.directory.value.records.map((record) => record.id),
+        input.observations[0].member_record_ids,
+      )
+      assert.equal(result.directory.value.view.id, input.view.id)
+      assert.equal(result.directory.value.capability_directory, true)
+      assert.equal(result.catalog.value.scope, result.directory.value.scope)
+      assert.equal(result.catalog.value.coverage.exhaustive, true)
+      assert.equal(result.directory.value.coverage.exhaustive, true)
+      assert.equal(inventory.length, input.inventory_pages * (mode === "combined" ? 1 : 2))
+      assert.equal(reports.length, mode === "combined" ? 1 : 2)
+      assert.equal(
+        reports.reduce((sum, report) => sum + report.total_requests, 0),
+        calls.length,
+      )
+      assert.equal(
+        reports.reduce((sum, report) => sum + report.response_bytes, 0),
+        calls.reduce((sum, call) => sum + call.decoded_response_bytes, 0),
+      )
+      for (const report of reports) {
+        assert.equal(report.trace_dropped, 0)
+        assert.equal(report.in_flight, 0)
+        assert.equal(report.unknown_response_bytes, 0)
+        assert.equal(report.requests.notion_body, 0)
+        assert.equal(report.requests.notion_write, 0)
+        assert.equal(report.requests.provider, 0)
+      }
+      for (const call of inventory) {
+        assert.deepEqual([...call.filter_properties].sort(), [...sample.projection].sort())
+        assert.deepEqual(call.returned_properties, [...sample.projection].sort())
+      }
+      assert.deepEqual(source.unexpected, [])
+      if (mode === "combined") {
+        source.setPhase("warm")
+        const warm = await sdk.listCatalog({ ...options, directory: {} })
+        assert.deepEqual(warm.catalog.value.records, result.catalog.value.records)
+        assert.deepEqual(warm.directory.value.records, result.directory.value.records)
+        assert.equal(source.requests.filter((call) => call.phase === "warm").length, 0)
+        assert.equal(reports.at(-1).total_requests, 0)
+        evidence.warm = { result: warm, request_metrics: reports.at(-1) }
+      }
+    }
+    assert.deepEqual(
+      evidence.phases[1].result.catalog.value.records,
+      evidence.phases[0].result.catalog.value.records,
+    )
+    assert.deepEqual(
+      evidence.phases[1].result.directory.value.records,
+      evidence.phases[0].result.directory.value.records,
+    )
+    evidence.status = "passed"
+    return evidence
+  } catch (error) {
+    evidence.status = "failed"
+    evidence.error = String(error)
+    throw error
+  } finally {
+    await source.close()
+    fs.writeFileSync(join(root, "report.json"), JSON.stringify(evidence, null, 2) + "\n", {
+      flag: "wx",
+      mode: 0o600,
+    })
   }
 }

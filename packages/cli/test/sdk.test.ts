@@ -16,6 +16,7 @@ import {
   CONSUMER_CONTRACT_VERSION,
   RESOURCE_READ_CONTRACT_VERSION,
   READ_OUTPUT_PROOF_VERSION,
+  CATALOG_DIRECTORY_CONTRACT_VERSION,
 } from "../src/sdk.ts"
 import { nodeRuntime } from "../src/runtime.ts"
 
@@ -94,6 +95,21 @@ describe("Promise SDK boundary", () => {
         listSkills({ ...selection, env: {}, onRequestMetrics: (value) => reports.push(value) }),
       ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
     expectUnstartedMetrics(reports, 6)
+  })
+  test("combined catalog directories keep the SDK pre-abort boundary", async () => {
+    expect(CATALOG_DIRECTORY_CONTRACT_VERSION).toBe(1)
+    const controller = new AbortController()
+    controller.abort()
+    const reports: unknown[] = []
+    await expect(
+      listCatalog({
+        directory: {},
+        env: {},
+        signal: controller.signal,
+        onRequestMetrics: (value) => reports.push(value),
+      }),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    expectUnstartedMetrics(reports, 1)
   })
   test("unknown input and unsupported capability fail before runtime acquisition", async () => {
     const reports: unknown[] = []

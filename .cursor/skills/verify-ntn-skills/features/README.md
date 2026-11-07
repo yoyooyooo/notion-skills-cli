@@ -6,7 +6,7 @@ AH-498 shared-library work has its own partial checkpoint. Shared layout, owners
 
 ## Sub-features
 
-- [Skill 消费链](./skill-consumption.md)：AH-617 的 SC-VERIFY-01～03，CLI 入口、源/投影/会话状态证明、反例与清理后证据；SC01–SC26 和完整场景矩阵统一维护在链接的 Broker 主地图。SC11 单 current inspect 投影候选经三对真实冷读后未通过延迟采用门槛，运行时代码与候选专用断言已撤回；原 scalar 目录复用不变，完整实验、字节收益和延迟回退均保留在该页。
+- [Skill 消费链](./skill-consumption.md)：AH-617 的 SC-VERIFY-01～03，CLI 入口、源/投影/会话状态证明、反例与清理后证据；SC01–SC26 和完整场景矩阵统一维护在链接的 Broker 主地图。SC11 同次 SDK full/默认目录观察沿原 shared-views 与 scalar HTTP fixture 核对原始库存复用、独立 outcome 与实际账本。单 current inspect 投影候选经三对真实冷读后未通过延迟采用门槛，运行时代码与候选专用断言已撤回；原 scalar 目录复用不变，完整实验、字节收益和延迟回退均保留在该页。
 - [直连请求引擎](./request-engine.md)：NG-VC-01、NG-RE-02～05/21，离线失败基线、自有认证、真实 HTTP 尝试、多 scope 调度、未知写入与无官方 ntn 交付。
 - [Skill 依赖图](./skill-dependency-graph.md)：NG-SG-06～20，两条独立根选择、Members/Requires、引用与准备、会话固定图、批量/历史/按需物化/预取。图专项不得沿用 AH-560 单 Skill 的 pass。
 

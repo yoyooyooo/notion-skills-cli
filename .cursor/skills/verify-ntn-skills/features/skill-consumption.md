@@ -24,7 +24,25 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 
 `prepare.test.ts` 驱动真实 built Node CLI，断言 read 只查看、use 完整闭包、未选 Member 无正文、正文不重复、missing Requires 失败、固定 ref freshness 冲突和 schema/help；SDK boundary 覆盖取消与非法分页在 runtime 获取前失败。独立安装 smoke 读取同一 fixture，验证完整 catalog、分页去重/续读、跨 query 的 stale cursor、Default View 子集、Name 唯一性和 partial coverage 拒绝，以及真实 Node object-read 与 HTTP 账本。目录的 `has_more` 与 source `coverage.exhaustive` 分别断言，不能互相替代。
 
-Default View 正例只增加完整 View metadata observation；原 consumer fixture 的正文状态单独标记。`--catalog --default-view-cache missing|incomplete` 各生成新 owned fixture，实际 SDK/正常 Pi 默认目录必须拒绝缺失或不完整观察。不能只验证预期错误就把正例算通过。跨仓 driver 使用 fixture 的 `default_view.records` 和 `catalog_records` 独立核对，真实 Notion 和真实模型仍各自取证。
+Default View 正例提供完整 View metadata observation；consumer fixture 的正文状态与下述候选目录单独标记。`--catalog --default-view-cache missing|incomplete` 各生成新 owned fixture，实际 SDK/正常 Pi 默认目录必须拒绝缺失或不完整观察。不能只验证预期错误就把正例算通过。跨仓 driver 使用 fixture 的 `default_view.records` 和 `catalog_records` 独立核对，真实 Notion 和真实模型仍各自取证。
+
+普通 `--catalog` fixture 的 a 保留 Requires base，同时包含 canonical Member b 与正文中的完整 b 目录行；该行在原正文 bytes/hash/version 生成前加入，Members 不使用固定 snapshot ref。它供原 Pi dollar 场景验证实际省去重复候选正文，未选 b 仍不得加载正文。非 catalog 与 `--catalog-size` 分支保持独立，不从 fixture 生成成功推断 provider 投影有效。
+
+### SC11：同次 SDK 目录观察
+
+用户入口仍是完整普通发现和默认/Profile/会话 View。宿主需要两者时调用原 SDK `listCatalog({database,directory:{}})`；显式 View/Profile 放在 `directory.view` 或 `directory.profile`。先检查 `CATALOG_DIRECTORY_CONTRACT_VERSION === 1`。结果的 `catalog` 与 `directory` 各自保留 `{ok:true,value}` 或 `{ok:false,error:{code,message}}`；full 的无关冲突不能毒化合法 View，View 错误也不抹掉 full。取消和两成功结果的 scope/descriptor 冲突仍整次拒绝。
+
+```bash
+bun test packages/core/test/shared-views.test.ts packages/core/test/views.test.ts packages/core/test/catalog-consumption.test.ts packages/cli/test/sdk.test.ts --timeout 30000
+node scripts/sdk-fixture.ts --outdir "$RUN/scratch/sdk-directory" --catalog
+node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/sdk-directory/fixture.json" --outdir "$RUN/evidence/sdk-directory" --case view-dynamics
+```
+
+原 `shared-views` 多页 fixture 保留两个独立 list 的每次新观察正控制，组合模式仅取一份完整六字段库存。覆盖只有一个投影 warm、两者 warm、disabled 身份冲突、未选冲突与合法 View、选中缺失、完整分页、scope/descriptor 改变、maxAge=0、观察过期和取消。View 的 `fetched_at` 必须使用 membership 与库存中较早的时间；不能用较晚的 View 查询重新计龄。完整原始行只在现有 Effect operation context 中存活，不写入新持久缓存，不跨 use/inspect 或 SDK 调用共享。
+
+原 `sdk-source-fixture.mjs` 的 `verifyCatalogDirectorySdk` 复用 scalar HTTP fixture，安装 smoke 在原 scalar/View case 内调用它。各臂使用独立 cold seed：separate 沿原两次 SDK list，combined 使用新增重载；逐项比较 full 与 View ID、完整 coverage、原六字段投影、实际 attempts 与 decoded response bytes，随后同候选 warm 必须零 HTTP。保留 `catalog-directory/report.json`、`requests.jsonl` 与请求终局 events；缺失/截断 metrics 不能记零。源构建调用同一 helper 仅证明 built SDK，不冒充独立安装、真实 Pi、生产 Notion 或模型结果。原 C10 的重复字节只是选片依据，收益只使用本次同条件账本，不与旧切片相加。
+
+Cleanup 沿原 helper，仅处理明确 owned 的 fixture/consumer scratch并保留失败、账本和归档；不修改用户配置、正文、旧 pin 或未结操作。
 
 ### SC06：实际 Pi 目录规模输入
 

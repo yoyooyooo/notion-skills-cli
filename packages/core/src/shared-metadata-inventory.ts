@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Clock, Context, Effect, Option, Schema } from "effect"
 import { decode, fail, listSchema, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
@@ -15,6 +15,78 @@ export interface SharedSkillMetadataObservation {
   readonly scope: string
   readonly library: SharedLibrary
   readonly inventory: CompleteSharedMetadataInventory
+}
+
+type DirectoryObservation = SharedSkillMetadataObservation & { readonly fetched_at: number }
+type DirectoryInventory = Effect.Effect<DirectoryObservation, SkillsError, Notion>
+class SharedDirectoryMetadata extends Context.Service<
+  SharedDirectoryMetadata,
+  {
+    readonly inventory: (
+      library: SharedLibrary,
+      scope: string,
+      maxAge: number,
+      boundary: "catalog" | "view",
+    ) => DirectoryInventory
+  }
+>()("ntn-skills/SharedDirectoryMetadata") {}
+
+/** Full and View projections share raw observations only inside one directory operation. */
+export function withSharedDirectoryMetadata<A, E, R>(effect: Effect.Effect<A, E, R>) {
+  return Effect.gen(function* () {
+    const observations = new Map<string, DirectoryObservation>()
+    return yield* effect.pipe(
+      Effect.provideService(SharedDirectoryMetadata, {
+        inventory: (library, scope, maxAge, boundary) =>
+          Effect.gen(function* () {
+            const key = `${scope}:${library.skills.data_source_id}`
+            const previous = observations.get(key)
+            const now = yield* Clock.currentTimeMillis
+            if (
+              previous !== undefined &&
+              now >= previous.fetched_at &&
+              now - previous.fetched_at < maxAge &&
+              canonicalSharedJson(previous.library) === canonicalSharedJson(library)
+            )
+              return yield* Effect.try({
+                try: () => {
+                  sharedSkillMetadataFor(previous, library, scope)
+                  return previous
+                },
+                catch: (error) =>
+                  error instanceof SkillsError
+                    ? error
+                    : fail("INVALID_RESPONSE", "Invalid directory metadata observation."),
+              })
+            const inventory = yield* querySharedMetadataInventory(library, "skills", boundary)
+            const observation = {
+              scope,
+              library: structuredClone(library),
+              inventory,
+              fetched_at: now,
+            }
+            observations.set(key, observation)
+            return observation
+          }),
+      }),
+    )
+  })
+}
+
+export function directorySkillMetadata(
+  library: SharedLibrary,
+  scope: string,
+  maxAge: number,
+  boundary: "catalog" | "view",
+) {
+  return Effect.gen(function* () {
+    const context = yield* Effect.serviceOption(SharedDirectoryMetadata)
+    if (Option.isSome(context))
+      return yield* context.value.inventory(library, scope, maxAge, boundary)
+    const fetched_at = yield* Clock.currentTimeMillis
+    const inventory = yield* querySharedMetadataInventory(library, "skills", boundary)
+    return { scope, library, inventory, fetched_at }
+  })
 }
 
 export function sharedSkillMetadataFor(
@@ -42,7 +114,7 @@ export function sharedSkillMetadataFor(
 export function querySharedMetadataInventory(
   library: SharedLibrary,
   kind: "skills" | "files",
-  boundary: "catalog" | "reference" = "reference",
+  boundary: "catalog" | "reference" | "view" = "reference",
 ) {
   return Effect.gen(function* () {
     const source = library[kind]
@@ -62,8 +134,8 @@ export function querySharedMetadataInventory(
         )
       query.append("filter_properties", id)
     }
-    const invalid = boundary === "catalog" ? "INVALID_RESPONSE" : "SHARED_REFERENCE_INVALID"
-    const incomplete = boundary === "catalog" ? "INVALID_RESPONSE" : "SHARED_REFERENCE_INCOMPLETE"
+    const invalid = boundary === "reference" ? "SHARED_REFERENCE_INVALID" : "INVALID_RESPONSE"
+    const incomplete = boundary === "reference" ? "SHARED_REFERENCE_INCOMPLETE" : "INVALID_RESPONSE"
     const api = yield* Notion
     const pages: unknown[] = []
     const cursors = new Set<string>()
@@ -77,6 +149,13 @@ export function querySharedMetadataInventory(
         try: () => {
           if (property(raw).object !== "list")
             throw fail(incomplete, "Metadata inventory is not a complete data-source list.")
+          const status = property(property(raw).request_status)
+          if (
+            boundary === "view" &&
+            property(raw).request_status !== undefined &&
+            (status.type !== "complete" || status.incomplete_reason != null)
+          )
+            throw fail("VIEW_INCOMPLETE", "Notion returned an incomplete View metadata inventory.")
           return decode(listSchema(Schema.Unknown), raw)
         },
         catch: (error) =>

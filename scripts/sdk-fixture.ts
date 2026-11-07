@@ -328,7 +328,10 @@ const snapshots: Snapshot[] = names.map((name, index) => {
     catalogSize !== undefined
       ? `# ${name}\n完整正文 中文 😀 "引号" &amp; &lt;literal&gt; ${name}.\n`
       : name === "a"
-        ? "\uFEFF# a\r\n完整正文 α\r\n"
+        ? "\uFEFF# a\r\n完整正文 α\r\n" +
+          (withCatalog
+            ? `- [b](${fileRef("shared_skill:sdk-library:b", "SKILL.md")}) — Controlled SDK fixture b\r\n`
+            : "")
         : `# ${name}\nFull instruction ${name}.\n`
   const bytes = new TextEncoder().encode(content)
   bodies.set(hash(bytes), bytes)
@@ -465,6 +468,19 @@ const relation = (snapshot: Snapshot) => ({
 if (catalogSize === undefined) {
   for (let index = 0; index < 3; index++)
     snapshots[index] = { ...snapshots[index]!, required: [relation(snapshots[3]!)] }
+  if (withCatalog) {
+    const member = snapshots[1]!
+    snapshots[0] = {
+      ...snapshots[0]!,
+      members: [
+        {
+          id: member.record.id,
+          ref: fileRef(member.record.id, "SKILL.md"),
+          metadata: member.record,
+        },
+      ],
+    }
+  }
   snapshots[4] = {
     ...snapshots[4]!,
     required: [
@@ -1094,6 +1110,7 @@ const scalarInventory = await (async () => {
     // This records the Tags/filter facts and API membership separately; it does
     // not claim to execute Notion's server-side filter implementation.
     view_dynamics: {
+      inventory_pages: Math.ceil(skills.length / 100),
       view: {
         id: fixtureId(2100),
         name: "Controlled Tags View",

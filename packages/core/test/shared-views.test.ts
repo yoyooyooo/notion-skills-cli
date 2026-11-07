@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { Crypto, Effect } from "effect"
-import { property, type Source } from "../src/model.ts"
+import { Clock, Crypto, Effect } from "effect"
+import { fail, property, type SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sharedSkillId } from "../src/shared-content.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
+import { listCatalog } from "../src/catalog-consumption.ts"
+import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
+import {
+  directorySkillMetadata,
+  withSharedDirectoryMetadata,
+} from "../src/shared-metadata-inventory.ts"
 import { listViews, viewCatalog } from "../src/views.ts"
 import { sharedSnapshotFixture, library, skillPage, id, encode } from "./shared-snapshot-fixture.ts"
 
@@ -60,7 +66,15 @@ function row(page: string, stableId: string, name: string, enabled = true, defau
   }
 }
 
-function fixture(options: { readonly unconfigured?: boolean } = {}) {
+function fixture(
+  options: {
+    readonly unconfigured?: boolean
+    readonly wrap?: (
+      path: string,
+      read: Effect.Effect<unknown, SkillsError>,
+    ) => Effect.Effect<unknown, SkillsError>
+  } = {},
+) {
   const base = sharedSnapshotFixture()
   const config = {
     sources: options.unconfigured ? [] : [configuredSource],
@@ -85,8 +99,8 @@ function fixture(options: { readonly unconfigured?: boolean } = {}) {
         const api = yield* Notion
         const controlled: Notion["Service"] = {
           ...api,
-          request: (path, body, options) =>
-            Effect.suspend(() => {
+          request: (path, body, requestOptions) => {
+            const read = Effect.suspend(() => {
               requests.push({ path, body })
               const url = new URL(path, "https://api.notion.com/")
               let response: unknown
@@ -152,12 +166,12 @@ function fixture(options: { readonly unconfigured?: boolean } = {}) {
                   request_status: status,
                 }
               }
-              if (response === undefined) return api.request(path, body, options)
-              const method = options?.method ?? (body === undefined ? "GET" : "POST")
+              if (response === undefined) return api.request(path, body, requestOptions)
+              const method = requestOptions?.method ?? (body === undefined ? "GET" : "POST")
               const finish = api.metrics?.begin({
                 path,
                 method,
-                content: options?.content,
+                content: requestOptions?.content,
                 key: canonicalSharedJson([path, body ?? null]),
                 requestBytes: body === undefined ? 0 : encode(JSON.stringify(body)).length,
               })
@@ -166,7 +180,9 @@ function fixture(options: { readonly unconfigured?: boolean } = {}) {
                 responseBytes: encode(JSON.stringify(response)).length,
               })
               return Effect.succeed(response)
-            }),
+            })
+            return options.wrap?.(path, read) ?? read
+          },
         }
         return yield* effect.pipe(Effect.provideService(Notion, controlled))
       }),
@@ -220,6 +236,255 @@ function assertMetadataOnly(f: ReturnType<typeof fixture>) {
 }
 
 describe("shared library Views metadata", () => {
+  test("SC11 paired catalog and default directory reuse one complete metadata inventory", async () => {
+    const f = fixture()
+    f.inventory([[f.rows[0]], [f.rows[1], f.rows[2]]])
+    const result = await f.run(listCatalog({ database: db, directory: {} }))
+    expect(result.version).toBe(1)
+    if (!result.catalog.ok || !result.directory.ok)
+      throw new Error("Both projections must succeed.")
+    expect(result.catalog.value.records.map((record) => record.name)).toEqual(["Alpha", "Gamma"])
+    expect(result.directory.value.records.map((record) => record.name)).toEqual(["Gamma", "Alpha"])
+    expect(
+      f.requests.filter((request) => request.path.includes(`/data_sources/${ds}/query`)),
+    ).toHaveLength(2)
+    assertMetadataOnly(f)
+  })
+
+  test("SC11 separate catalog calls retain their own fresh observations", async () => {
+    const f = fixture()
+    f.inventory([[f.rows[0]], [f.rows[1], f.rows[2]]])
+    await f.run(listCatalog({ database: db }))
+    await f.run(listCatalog({ database: db, defaultView: true }))
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(4)
+    assertMetadataOnly(f)
+  })
+
+  test.each(["catalog", "directory"])(
+    "SC11 combined directory honors a warm %s projection and then both caches",
+    async (warm) => {
+      const f = fixture()
+      f.inventory([[f.rows[0]], [f.rows[1], f.rows[2]]])
+      await f.run(
+        listCatalog({ database: db, ...(warm === "directory" ? { defaultView: true } : {}) }),
+      )
+      f.clear()
+      const result = await f.run(listCatalog({ database: db, directory: {} }))
+      if (!result.catalog.ok || !result.directory.ok)
+        throw new Error("Expected complete projections")
+      expect((warm === "catalog" ? result.catalog.value : result.directory.value).source).toBe(
+        "local_cache",
+      )
+      expect(
+        f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+      ).toHaveLength(2)
+      f.clear()
+      const cached = await f.run(listCatalog({ database: db, directory: {} }))
+      const offline = await f.run(listCatalog({ database: db, directory: {}, offline: true }))
+      expect(cached).toMatchObject({
+        catalog: { ok: true, value: { source: "local_cache" } },
+        directory: { ok: true, value: { source: "local_cache" } },
+      })
+      expect(offline).toMatchObject({ catalog: { ok: true }, directory: { ok: true } })
+      expect(f.requests).toHaveLength(0)
+    },
+  )
+
+  test("SC11 full catalog conflicts remain independent from a valid selected View", async () => {
+    const f = fixture()
+    f.members([[skillPage]])
+    f.rows[1] = row(beta, "unrelated", "Unrelated one")
+    f.rows[2] = row(gamma, "unrelated", "Unrelated two")
+    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    expect(result.catalog).toMatchObject({ ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } })
+    if (!result.directory.ok) throw new Error("The unrelated conflict must not block the View")
+    expect(result.directory.value.records.map((record) => record.name)).toEqual(["Alpha"])
+    expect(result.directory.value.coverage.exhaustive).toBe(true)
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(1)
+    assertMetadataOnly(f)
+  })
+
+  test("SC11 shared raw inventory preserves disabled identity claims and selected missing rows", async () => {
+    const f = fixture()
+    f.members([[skillPage]])
+    f.rows[1] = row(beta, "alpha", "Disabled duplicate", false)
+    const conflict = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    expect(conflict).toMatchObject({
+      catalog: { ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } },
+      directory: { ok: false, error: { code: "SHARED_SKILL_ID_CONFLICT" } },
+    })
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(1)
+    const missing = fixture()
+    missing.members([[id(9999)]])
+    const result = await missing.run(listCatalog({ database: db, directory: { view: viewA } }))
+    expect(result).toMatchObject({
+      catalog: { ok: true },
+      directory: {
+        ok: true,
+        value: {
+          records: [],
+          coverage: {
+            exhaustive: false,
+            failed_sources: [{ id: id(9999), code: "VIEW_MEMBER_UNAVAILABLE" }],
+          },
+        },
+      },
+    })
+    const offline = await missing.run(
+      listCatalog({ database: db, directory: { view: viewA }, offline: true }),
+    )
+    expect(offline.directory).toMatchObject({ ok: false, error: { code: "CACHE_MISSING" } })
+  })
+
+  test("SC11 incomplete inventory is never shared into a successful View", async () => {
+    const f = fixture()
+    f.status({ type: "incomplete", incomplete_reason: "query_result_limit_reached" })
+    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    expect(result.catalog).toMatchObject({ ok: true, value: { coverage: { exhaustive: false } } })
+    expect(result.directory).toMatchObject({ ok: false, error: { code: "VIEW_INCOMPLETE" } })
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(2)
+  })
+
+  test.each(["scope", "descriptor"])(
+    "SC11 %s changes re-read inventory and reject mixed directory projections",
+    async (change) => {
+      let identities = 0
+      let descriptors = 0
+      const f = fixture({
+        wrap: (path, read) =>
+          read.pipe(
+            Effect.map((value) => {
+              if (change === "scope" && path === "v1/users/me" && ++identities > 1)
+                return { object: "user", id: "changed-fixture-user" }
+              if (change === "descriptor" && path === "v1/databases/" + db && ++descriptors > 1)
+                return {
+                  ...property(value),
+                  description: [
+                    {
+                      plain_text:
+                        LIBRARY_MARKER +
+                        JSON.stringify({
+                          ...library,
+                          skills: {
+                            ...library.skills,
+                            property_ids: { ...library.skills.property_ids, Tags: "changed-tags" },
+                          },
+                        }),
+                    },
+                  ],
+                }
+              return value
+            }),
+          ),
+      })
+      const error = await f.run(Effect.flip(listCatalog({ database: db, directory: {} })))
+      expect(error.code).toBe(change === "scope" ? "ACCESS_DENIED" : "SHARED_LIBRARY_ID_CONFLICT")
+      expect(
+        f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+      ).toHaveLength(2)
+    },
+  )
+
+  test.each([0, 60_000])(
+    "SC11 an expired or max-age-zero inventory is not shared, maxAge=%s",
+    async (maxAge) => {
+      const f = fixture()
+      let now = 1_000
+      await f.run(
+        Effect.gen(function* () {
+          const clock = yield* Clock.Clock
+          return yield* withSharedDirectoryMetadata(
+            Effect.gen(function* () {
+              yield* directorySkillMetadata(library, "scope", maxAge, "catalog")
+              now += maxAge
+              yield* directorySkillMetadata(library, "scope", maxAge, "view")
+            }),
+          ).pipe(
+            Effect.provideService(Clock.Clock, {
+              ...clock,
+              currentTimeMillis: Effect.sync(() => now),
+              currentTimeMillisUnsafe: () => now,
+            }),
+          )
+        }),
+      )
+      expect(
+        f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+      ).toHaveLength(2)
+    },
+  )
+
+  test("SC11 View freshness retains the original shared inventory observation time", async () => {
+    let now = Date.now()
+    const original = now
+    let identities = 0
+    const f = fixture({
+      wrap: (path, read) =>
+        Effect.suspend(() => {
+          if (path === "v1/users/me" && ++identities > 1) now += 5_000
+          return read
+        }),
+    })
+    const result = await f.run(
+      Effect.gen(function* () {
+        const clock = yield* Clock.Clock
+        return yield* listCatalog({ database: db, directory: {} }).pipe(
+          Effect.provideService(Clock.Clock, {
+            ...clock,
+            currentTimeMillis: Effect.sync(() => now),
+            currentTimeMillisUnsafe: () => now,
+          }),
+        )
+      }),
+    )
+    if (!result.directory.ok) throw new Error("Expected a complete View")
+    expect(result.directory.value.fetched_at).toBe(original)
+    expect(result.directory.value.freshness.age_ms).toBe(10_000)
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(1)
+  })
+
+  test("SC11 cancellation interrupts the combined operation rather than becoming a directory outcome", async () => {
+    const f = fixture({
+      wrap: (path, read) => (path.endsWith("/queries") ? Effect.interrupt : read),
+    })
+    await expect(f.run(listCatalog({ database: db, directory: {} }))).rejects.toThrow(/interrupt/i)
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(1)
+    const retry = await f.run(
+      listCatalog({ database: db, directory: { view: viewB }, offline: true }),
+    )
+    expect(retry.directory).toMatchObject({ ok: false, error: { code: "CACHE_MISSING" } })
+  })
+
+  test("SC11 typed cancellation also rejects the entire combined operation", async () => {
+    const f = fixture({
+      wrap: (path, read) =>
+        path.endsWith("/queries")
+          ? Effect.fail(fail("CANCELLED", "Controlled cancellation"))
+          : read,
+    })
+    const error = await f.run(Effect.flip(listCatalog({ database: db, directory: {} })))
+    expect(error.code).toBe("CANCELLED")
+  })
+
+  test("SC11 a directory Profile without a database fails before source access", async () => {
+    const f = fixture()
+    const error = await f.run(Effect.flip(listCatalog({ directory: { profile: "profile" } })))
+    expect(error.code).toBe("INVALID_ARGUMENT")
+    expect(f.requests).toHaveLength(0)
+  })
+
   test("lists native View order from a registered shared library without changing the user's default", async () => {
     const f = fixture()
     const result = await f.run(listViews({ database: "shared-library" }))
