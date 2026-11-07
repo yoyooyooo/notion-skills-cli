@@ -4,7 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { listViews, viewCatalog, viewId } from "../src/views.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
-import { decode, fail, property } from "../src/model.ts"
+import { decode, fail, property, SkillsError } from "../src/model.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const db = "10000000-0000-4000-8000-000000000001"
@@ -29,6 +29,15 @@ const row = (id: string, name: string, checked: boolean) => ({
     Description: { type: "rich_text", rich_text: [{ plain_text: `${name} workflow` }] },
     "Default Context": { type: "checkbox", checkbox: checked },
   },
+})
+const view = (id: string) => ({
+  id,
+  name: id === a ? "ZZZ first" : "AAA second",
+  type: "table",
+  data_source_id: ds,
+  parent: { type: "database_id", database_id: db },
+  url: `https://notion.so/${db}?v=${id}`,
+  quick_filters: { checkbox: { equals: false } },
 })
 type Override = (path: string, body: unknown) => unknown
 function fixture(override: Override = () => undefined) {
@@ -68,6 +77,7 @@ function fixture(override: Override = () => undefined) {
       Effect.gen(function* () {
         requests.push({ path, body })
         const custom = override(path, body)
+        if (custom instanceof SkillsError) return yield* Effect.fail(custom)
         if (custom !== undefined) return custom
         if (path === "v1/users/me") return { id: "user", object: "user" }
         if (path === `v1/databases/${db}`)
@@ -79,15 +89,7 @@ function fixture(override: Override = () => undefined) {
           }
         if (path.startsWith("v1/views?")) return list([ref(a, "view"), ref(b, "view")])
         if (path === `v1/views/${a}` || path === `v1/views/${b}`)
-          return {
-            id: path.endsWith(a) ? a : b,
-            name: path.endsWith(a) ? "ZZZ first" : "AAA second",
-            type: "table",
-            data_source_id: ds,
-            parent: { type: "database_id", database_id: db },
-            url: `https://notion.so/${db}?v=${path.endsWith(a) ? a : b}`,
-            quick_filters: { checkbox: { equals: false } },
-          }
+          return view(path.endsWith(a) ? a : b)
         if (path.endsWith("/queries"))
           return {
             ...list([ref(path.includes(a) ? alpha : beta)]),
@@ -139,6 +141,148 @@ test("API order selects first View regardless of name and ignores checkbox as an
   expect(f.requests.some((x) => /blocks|export|upstream/.test(x.path))).toBe(false)
   expect(f.requests.find((x) => x.path.endsWith("/queries"))?.body).toEqual({ page_size: 100 })
 })
+
+test("default first-detail selection does not populate or overwrite the public complete View list", async () => {
+  const f = fixture()
+  const selected = await Effect.runPromise(
+    viewCatalog({ database: db }).pipe(Effect.provide(f.layer)),
+  )
+  expect(selected.view?.id).toBe(a)
+  expect(selected.records.map((record) => record.name)).toEqual(["Alpha"])
+  const details = () =>
+    f.requests.filter((request) => [a, b].some((id) => request.path === "v1/views/" + id))
+  expect(details().map((request) => request.path)).toEqual(["v1/views/" + a])
+  const calls = f.requests.length
+  const warm = await Effect.runPromise(viewCatalog({ database: db }).pipe(Effect.provide(f.layer)))
+  expect(warm.source).toBe("local_cache")
+  expect(warm.view).toEqual(selected.view)
+  expect(f.requests).toHaveLength(calls)
+  const absentList = await Effect.runPromise(
+    listViews({ database: db, offline: true }).pipe(Effect.result, Effect.provide(f.layer)),
+  )
+  expect(absentList._tag === "Failure" && absentList.failure.code).toBe("CACHE_MISSING")
+  expect(f.requests).toHaveLength(calls)
+
+  const complete = await Effect.runPromise(
+    listViews({ database: db }).pipe(Effect.provide(f.layer)),
+  )
+  expect(complete.views.map((entry) => entry.id)).toEqual([a, b])
+  expect(details().map((request) => request.path)).toEqual([
+    "v1/views/" + a,
+    "v1/views/" + a,
+    "v1/views/" + b,
+  ])
+  const savedLists = () =>
+    [...f.state]
+      .filter(([, value]) => Array.isArray(property(value).views))
+      .map(([key, value]) => [key, JSON.stringify(value)])
+  const saved = savedLists()
+  expect(saved).toHaveLength(1)
+  f.requests.length = 0
+  const refreshed = await Effect.runPromise(
+    viewCatalog({ database: db, refresh: true }).pipe(Effect.provide(f.layer)),
+  )
+  expect(refreshed.view).toEqual(selected.view)
+  expect(details().map((request) => request.path)).toEqual(["v1/views/" + a])
+  expect(savedLists()).toEqual(saved)
+  const refreshedCalls = f.requests.length
+  const offlineList = await Effect.runPromise(
+    listViews({ database: db, offline: true }).pipe(Effect.provide(f.layer)),
+  )
+  expect(offlineList.views).toEqual(complete.views)
+  expect(f.requests).toHaveLength(refreshedCalls)
+})
+
+test("default first-detail selection does not retrieve an unavailable unselected View", async () => {
+  const f = fixture((path) =>
+    path === "v1/views/" + b ? fail("ACCESS_DENIED", "Unselected View is unavailable") : undefined,
+  )
+  const selected = await Effect.runPromise(
+    viewCatalog({ database: db }).pipe(Effect.provide(f.layer)),
+  )
+  expect(selected.view?.id).toBe(a)
+  expect(f.requests.some((request) => request.path === "v1/views/" + b)).toBe(false)
+  const complete = await Effect.runPromise(
+    listViews({ database: db }).pipe(Effect.result, Effect.provide(f.layer)),
+  )
+  expect(complete._tag === "Failure" && complete.failure.code).toBe("ACCESS_DENIED")
+})
+
+for (const emptyFirstPage of [false, true])
+  test(
+    "default first-detail selection preserves full ID pagination, empty first page=" +
+      emptyFirstPage,
+    async () => {
+      const f = fixture((path) => {
+        if (!path.startsWith("v1/views?")) return undefined
+        const next = new URL("https://fixture/" + path).searchParams.has("start_cursor")
+        return next
+          ? list(emptyFirstPage ? [ref(b, "view"), ref(a, "view")] : [ref(b, "view")])
+          : list(emptyFirstPage ? [] : [ref(a, "view")], "next")
+      })
+      const selected = await Effect.runPromise(
+        viewCatalog({ database: db }).pipe(Effect.provide(f.layer)),
+      )
+      const first = emptyFirstPage ? b : a
+      expect(selected.view?.id).toBe(first)
+      expect(selected.records.map((record) => record.name)).toEqual([
+        emptyFirstPage ? "Beta" : "Alpha",
+      ])
+      const inventory = f.requests.filter((request) => request.path.startsWith("v1/views?"))
+      expect(inventory).toHaveLength(2)
+      const details = f.requests.filter((request) =>
+        [a, b].some((id) => request.path === "v1/views/" + id),
+      )
+      expect(details.map((request) => request.path)).toEqual(["v1/views/" + first])
+      expect(f.requests.indexOf(inventory[1]!)).toBeLessThan(f.requests.indexOf(details[0]!))
+    },
+  )
+
+for (const [label, nextPage, expected] of [
+  ["duplicate-id", list([ref(a, "view")]), "INVALID_RESPONSE"],
+  ["wrong-object", list([ref(b, "page")]), "INVALID_RESPONSE"],
+  [
+    "incomplete",
+    { ...list([ref(b, "view")]), request_status: { type: "incomplete" } },
+    "VIEW_INCOMPLETE",
+  ],
+  ["missing-cursor", { ...list([ref(b, "view")]), has_more: true }, "INVALID_RESPONSE"],
+  ["repeated-cursor", list([ref(b, "view")], "next"), "INVALID_RESPONSE"],
+] as const)
+  test("default first-detail selection rejects later ID inventory " + label, async () => {
+    const f = fixture((path) =>
+      path.startsWith("v1/views?")
+        ? new URL("https://fixture/" + path).searchParams.has("start_cursor")
+          ? nextPage
+          : list([ref(a, "view")], "next")
+        : undefined,
+    )
+    const result = await Effect.runPromise(
+      viewCatalog({ database: db }).pipe(Effect.result, Effect.provide(f.layer)),
+    )
+    expect(result._tag === "Failure" && result.failure.code).toBe(expected)
+    expect(f.requests.filter((request) => request.path.startsWith("v1/views?"))).toHaveLength(2)
+    expect(f.requests.some((request) => request.path.startsWith("v1/views/"))).toBe(false)
+  })
+
+for (const [label, detail, expected] of [
+  ["permission", fail("ACCESS_DENIED", "Selected View is unavailable"), "ACCESS_DENIED"],
+  ["incomplete", { ...view(a), name: undefined }, "INVALID_RESPONSE"],
+  ["foreign-source", { ...view(a), data_source_id: b }, "VIEW_SCOPE_MISMATCH"],
+] as const)
+  test("default first-detail selection fails closed on selected " + label, async () => {
+    const f = fixture((path) => (path === "v1/views/" + a ? detail : undefined))
+    const result = await Effect.runPromise(
+      viewCatalog({ database: db }).pipe(Effect.result, Effect.provide(f.layer)),
+    )
+    expect(result._tag === "Failure" && result.failure.code).toBe(expected)
+    expect(f.requests.filter((request) => request.path === "v1/views/" + a)).toHaveLength(1)
+    expect(
+      f.requests.some(
+        (request) => request.path === "v1/views/" + b || request.path.endsWith("/queries"),
+      ),
+    ).toBe(false)
+  })
 
 test("explicit View works without first-view enumeration and observations never pollute full catalogs", async () => {
   const f = fixture()

@@ -267,43 +267,64 @@ export function retrieveView(id: string, database?: string) {
   })
 }
 
+function currentViews(database: string, details: "all" | "first") {
+  return Effect.gen(function* () {
+    const source = yield* explicitSource(database, undefined, { allowShared: true })
+    const api = yield* Notion
+    const ids: string[] = []
+    const cursors = new Set<string>()
+    let cursor: string | undefined
+    do {
+      const query = new URLSearchParams({
+        database_id: database,
+        page_size: "100",
+        ...(cursor ? { start_cursor: cursor } : {}),
+      })
+      const page = yield* parse(ReferencesSchema, yield* api.request(`v1/views?${query}`))
+      yield* check(() => complete(page))
+      for (const ref of page.results) {
+        if (ref.object !== "view" || ids.includes(ref.id))
+          return yield* Effect.fail(fail("INVALID_RESPONSE", "Invalid or repeated View identity."))
+        ids.push(ref.id)
+      }
+      cursor = yield* check(() => nextCursor(page, cursors))
+    } while (cursor)
+    const views: View[] = []
+    for (const id of details === "first" ? ids.slice(0, 1) : ids) {
+      const view = yield* retrieveView(id, database)
+      if (!source.data_source_ids.includes(view.data_source_id))
+        return yield* Effect.fail(
+          fail("VIEW_SCOPE_MISMATCH", "View references another data source."),
+        )
+      views.push(view)
+    }
+    return { source, views }
+  })
+}
+
+function firstView(input?: string) {
+  return Effect.gen(function* () {
+    const database = yield* selectedDatabase(input)
+    const scope = yield* authScope
+    const current = yield* currentViews(database, "first")
+    // Only viewCatalog owns this selected observation. Never cache one detail
+    // under the public complete View-list key.
+    return { scope, database: current.source, view: current.views[0] }
+  })
+}
+
 export function listViews(options: ViewOptions = {}) {
   return Effect.gen(function* () {
     const database = yield* selectedDatabase(options.database)
     const observed = yield* observe(["list", database], ViewListSchema, options, (scope) =>
       Effect.gen(function* () {
-        const source = yield* explicitSource(database, undefined, { allowShared: true })
-        const api = yield* Notion
-        const ids: string[] = []
-        const cursors = new Set<string>()
-        let cursor: string | undefined
-        do {
-          const query = new URLSearchParams({
-            database_id: database,
-            page_size: "100",
-            ...(cursor ? { start_cursor: cursor } : {}),
-          })
-          const page = yield* parse(ReferencesSchema, yield* api.request(`v1/views?${query}`))
-          yield* check(() => complete(page))
-          for (const ref of page.results) {
-            if (ref.object !== "view" || ids.includes(ref.id))
-              return yield* Effect.fail(
-                fail("INVALID_RESPONSE", "Invalid or repeated View identity."),
-              )
-            ids.push(ref.id)
-          }
-          cursor = yield* check(() => nextCursor(page, cursors))
-        } while (cursor)
-        const views: View[] = []
-        for (const id of ids) {
-          const view = yield* retrieveView(id, database)
-          if (!source.data_source_ids.includes(view.data_source_id))
-            return yield* Effect.fail(
-              fail("VIEW_SCOPE_MISMATCH", "View references another data source."),
-            )
-          views.push(view)
+        const current = yield* currentViews(database, "all")
+        return {
+          scope,
+          fetched_at: yield* Clock.currentTimeMillis,
+          database: current.source,
+          views: current.views,
         }
-        return { scope, fetched_at: yield* Clock.currentTimeMillis, database: source, views }
       }),
     )
     return {
@@ -468,8 +489,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
       options,
       (scope) =>
         Effect.gen(function* () {
-          const listing =
-            explicit === undefined ? yield* listViews({ database, refresh: true }) : undefined
+          const listing = explicit === undefined ? yield* firstView(database) : undefined
           if (listing && listing.scope !== scope)
             return yield* Effect.fail(
               fail(
@@ -478,7 +498,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
               ),
             )
           const view =
-            explicit !== undefined ? yield* retrieveView(explicit, database) : listing?.views[0]
+            explicit !== undefined ? yield* retrieveView(explicit, database) : listing?.view
           const source =
             listing?.database ??
             (yield* explicitSource(view!.database_id, undefined, { allowShared: true }))
