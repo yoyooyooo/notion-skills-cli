@@ -10,7 +10,10 @@ Choose the task, then retain the returned identities for subsequent commands:
 | --- | --- |
 | Use a stored workflow | `list`, then `read` and pinned supporting-file reads |
 | Create content | `create INPUT --database LIBRARY` |
-| Change files and properties together | `read CURRENT --refresh`, then `apply PINNED_MAIN_REF --input CHANGED_FILES` |
+| Adopt a draft created in Notion | `adopt PAGE_ID --database LIBRARY`, then `read PAGE_ID --authoring` |
+| Change files and properties together | `read PAGE_ID --authoring`, then `apply PINNED_MAIN_REF --input CHANGED_FILES` |
+| Enable a reviewed shared Skill | `update PAGE_ID --database LIBRARY --enabled true` |
+| Add a linked reference page | `ctl library file add PAGE_ID references/NAME.md --entry LIBRARY --input FILE`, then [link it from the main body](shared-authoring.md#link-the-new-reference-from-the-original-skill) |
 | Maintain an existing upstream subscription | `ctl sync upstream connect SOURCE --database LIBRARY`, then `ctl sync upstream run --target SUBSCRIPTION_ID` |
 | Keep a Notion page and local directory synchronized | `ctl sync local connect PAGE_ID --path DIRECTORY`, then `ctl sync local run BINDING` |
 | Select a fixed shared source or Profile | [Shared source selection and defaults](shared-authoring.md#select-a-fixed-source-and-restore-following) |
@@ -20,7 +23,7 @@ In Context Broker, select `$ntn-skills-maintain@builtin` for content changes or 
 
 ## Shared libraries
 
-For a shared Skills / Files / Records entry, use the [shared authoring guide](shared-authoring.md). Ordinary `create`, `apply`, `write` and `update` select that protocol from the exact library descriptor; they do not require a hand-authored manifest for an ordinary Skill or manual adopt/proof steps. Shared apply supports existing bound UTF-8 files and nominated native metadata in a sequential, non-atomic batch. One isolated add/delete is supported; mixed or multiple layout changes fail before writes. Use the dedicated file, fixed-source and Profile commands for their respective operations and preserve their original IDs on failure.
+For a shared Skills / Files / Records entry, use the [shared authoring guide](shared-authoring.md). Ordinary `create`, `apply`, `write` and `update` select that protocol from the exact library descriptor. Creating an ordinary Skill folder needs no hand-authored manifest. An existing disabled draft created manually in Notion starts with `adopt`, which retains its original page and body; later edits need no repeated adoption. Exact `read --authoring` admits disabled registered drafts, while ordinary consumption still requires Enabled. Shared apply supports existing bound UTF-8 files and nominated native metadata in a sequential, non-atomic batch. One isolated add/delete is supported; mixed or multiple layout changes fail before writes. Use the dedicated file, fixed-source and Profile commands for their respective operations and preserve their original IDs on failure.
 
 The following two-table initialization and recurring synchronization sections describe existing legacy relationships. They remain available until their callers and content have been explicitly migrated.
 

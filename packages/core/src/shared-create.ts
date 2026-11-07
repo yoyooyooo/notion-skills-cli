@@ -14,7 +14,12 @@ import {
 import { Notion } from "./notion.ts"
 import type { PortableSkill } from "./portable.ts"
 import { pageId, parseTarget } from "./ref.ts"
-import { sharedRecordFromPage, sharedSkillId, sharedSkillProperty } from "./shared-content.ts"
+import {
+  sharedMetadataEntryFromPage,
+  sharedRecordFromPage,
+  sharedSkillId,
+  sharedSkillProperty,
+} from "./shared-content.ts"
 import {
   FileEventSchema,
   normalizeObservedBody,
@@ -208,7 +213,7 @@ function verifyLibrary(library: SharedLibrary, plan?: SharedCreatePlan) {
   })
 }
 /** One paginated metadata inventory: duplicate identity/name and members, no bodies. */
-function inventory(library: SharedLibrary) {
+function inventory(library: SharedLibrary, creatingName: string) {
   return Effect.gen(function* () {
     const api = yield* Notion,
       output: Array<Inventory[number]> = [],
@@ -232,15 +237,27 @@ function inventory(library: SharedLibrary) {
         return decode(InventorySchema, raw)
       })
       for (const row of page.results) {
-        const record = yield* createChecked(() =>
-          sharedRecordFromPage(row, sourceFor(library), library.skills.data_source_id),
+        const entry = yield* createChecked(() =>
+          sharedMetadataEntryFromPage(row, sourceFor(library), library.skills.data_source_id),
         )
-        if (pages.has(record.locator.page_id))
+        const pageId = entry.state === "registered" ? entry.record.locator.page_id : entry.page_id
+        if (pages.has(pageId))
           return yield* Effect.fail(
             fail("SHARED_CREATE_INCOMPLETE", "The metadata inventory repeated a native page."),
           )
-        pages.add(record.locator.page_id)
-        output.push({ raw: row, record })
+        pages.add(pageId)
+        if (entry.state === "unregistered") {
+          if (entry.name === creatingName || entry.alias === aliasFor(creatingName))
+            return yield* Effect.fail(
+              fail(
+                "NAME_CONFLICT",
+                "An unregistered disabled page already uses this name or alias; inspect the existing page before creating another Skill.",
+                { name: creatingName, page_id: entry.page_id, state: entry.state },
+              ),
+            )
+          continue
+        }
+        output.push({ raw: row, record: entry.record })
       }
       if (!page.has_more) {
         if (page.next_cursor !== null)
@@ -380,7 +397,7 @@ export function prepareSharedCreate(
   return Effect.gen(function* () {
     const scope = yield* authScope
     yield* verifyLibrary(library)
-    const records = yield* inventory(library)
+    const records = yield* inventory(library, input.portable.name)
     const members = yield* createChecked(() =>
       resolveMembers(library, input.portable, input.members, records),
     )
@@ -417,7 +434,7 @@ function prepareMigrationPlan(
       )
     const scope = yield* authScope
     yield* verifyLibrary(library)
-    const records = yield* inventory(library)
+    const records = yield* inventory(library, candidate.metadata.name)
     const members = yield* createChecked(() =>
       candidate.member_bindings.map((original): MigrationMemberBinding => {
         const matches = records.filter(
@@ -979,7 +996,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
     const plan = yield* validateSharedCreatePlan(input),
       scope = yield* authScope
     yield* verifyLibrary(library, plan)
-    const records = yield* inventory(library)
+    const records = yield* inventory(library, plan.name)
     const candidates = records.filter((row) => row.record.locator.skill_id === plan.skill_id),
       current = candidates[0]
     if (candidates.length !== 1 || current === undefined)
@@ -1149,7 +1166,7 @@ export function executeSharedCreate(
       return yield* reconcileSharedCreate(library, saved.plan)
     }
     yield* guardOriginalCreate(scope, plan)
-    const records = yield* inventory(library)
+    const records = yield* inventory(library, plan.name)
     if (yield* createChecked(() => checkInventory(plan, records)))
       return yield* reconcileSharedCreate(library, plan)
     yield* store.writeJson(key, {
@@ -1250,7 +1267,7 @@ export function executeSharedCreate(
         })
       stage = "complete_pre_enable"
       yield* verifyIndex(library, plan, skillPage, bindings, false)
-      const currentMembers = yield* inventory(library)
+      const currentMembers = yield* inventory(library, plan.name)
       yield* createChecked(() => checkInventory(plan, currentMembers))
       yield* verifyFacts(library, plan, skillPage)
       for (const file of plan.files)

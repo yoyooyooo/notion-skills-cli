@@ -135,6 +135,34 @@ A pinned target enforces its remote version, scope and database ownership before
 
 ## Cache inspection, cleanup and configuration
 
+### Current observation reuse
+
+Repeated online validation of one scope/record reuses its current SQLite row.
+A strictly newer causal generation updates the highest-generation row in the
+same transaction while preserving its address; an older completion cannot
+replace a newer denial or add another row. Equal-generation entries retain their
+existing tie semantics. Retirement fences still reject publishers that were
+cleared while in flight. Validation timestamps and the independent full-body
+deadline remain the values actually observed by the reader.
+
+Preserving row addresses also protects running older CLI/SDK readers that have
+already enumerated a known denial. Previously retained append-only rows remain
+readable, and older writers may still append their own rows until restarted;
+ordinary new publication does not sweep those rows. A fresh identity stays at
+one row across repeated new generations without requiring other sessions to stop.
+If explicit retirement removes a key between enumeration and reading, the reader discards
+that entire batch and retries the local lookup, up to three attempts. Continued
+churn fails with `CACHE_INVALIDATED`; it cannot become a false absence of a known
+denial or a stale earlier grant. This does not retry a remote request.
+
+These entries describe current cache eligibility, not historical content. The
+reuse does not delete immutable snapshots, objects, sync baselines, plans or
+unfinished-operation evidence. It prevents new repeated current observations from growing;
+distinct
+content versions and explicitly retained historical bytes follow their existing
+retention policy. Reusing a row does not claim that historical rows or previously
+allocated database pages have been removed.
+
 | Command | Parameters | Effect |
 | --- | --- | --- |
 | `cache status [TARGET]` | optional `--database SELECTOR` | Offline report of effective config/state/cache directories, cached scopes/observations, snapshot pointers and freshness; no remote validation |
@@ -143,9 +171,9 @@ A pinned target enforces its remote version, scope and database ownership before
 | `config set-cache-policy` | `--read-max-age DURATION`, `--catalog-max-age DURATION`; at least one | Save specified defaults offline, preserving authentication, sources and all other settings |
 | `config clear-cache-policy` | none | Restore built-in defaults; no cache/state/content removal |
 
-`cache clear` requires exactly one current target or `--all`. It never clears bindings, plans, pending receipts, common baselines, immutable snapshots or content objects. Retire catalog observations containing a selected target conservatively rather than pretending a partial catalog remains exhaustive. Cache clearing follows the verified system-trash/retention mechanism and reports a missing mechanism as a prerequisite failure; it does not silently perform permanent deletion. `--dry-run` previews selected entries without retiring them. Cache status can report multiple stored scopes without selecting any as the current account. If a targeted operation cannot disambiguate its local identity, require a page ID/scoped selection or return an error; never guess a same-name page.
+`ctl cache clear` requires exactly one current target or `--all`. It never clears bindings, plans, pending receipts, common baselines, immutable snapshots or content objects. It retires disposable SQL observations and advances their fences without filesystem deletion. Retire catalog observations containing a selected target conservatively rather than pretending a partial catalog remains exhaustive. `--dry-run` previews selected entries without retiring them. Cache status can report multiple stored scopes without selecting any as the current account. If a targeted operation cannot disambiguate its local identity, require a page ID/scoped selection or return an error; never guess a same-name page.
 
-There is no initial cache `gc`, state-reset command, automatic watch daemon, stale-on-error flag or baseline-adopt command. The explicit `--offline` policy already supplies an intentional local read; only checked convergence can promote a common baseline.
+`ctl cache gc` explicitly moves proven-unreachable historical snapshot manifests and objects to system Trash; it is separate from current-observation reuse. Its `--online --database SELECTOR` mode first requires a complete authorized refreshed catalog, while `--dry-run` changes nothing. There is no state-reset command, automatic watch daemon, stale-on-error flag or baseline-adopt command. The explicit `--offline` policy already supplies an intentional local read; only checked convergence can promote a common baseline. See the [current protocol](protocol.md#environment-and-local-storage) for the retained reference closure.
 
 Accept finite nonnegative integer durations: `0`, `Ns`, `Nm`, `Nh`, `Nd`; bare nonzero numbers, fractions, negatives and overflow are invalid. Store milliseconds, render effective milliseconds in JSON and readable durations in help. `config show` retains sanitized configuration and additionally reports the effective cache policy; no token material enters keys/output.
 

@@ -78,7 +78,7 @@ ntn-skills --help
 
 用 `ntn-skills ctl sync upstream connect SOURCE --database DATABASE` 注册 Git 来源并同步其中的 Skills；重复相同连接会复用订阅。后续 `ctl sync upstream run` 使用可重复的 `--target SUBSCRIPTION_ID` 或 `--all`，二选一。每次运行记录同步状态、尝试与成功时间及摘要；失败或部分完成时继续其他目标，并以非零退出码结束。高级注册与 plan/apply 仍位于 `ctl sync upstream`。[持续同步与两表配置](docs/usage.md#recurring-upstream-synchronization)。
 
-普通 `run` 先检查原有未完成工作，再规划新变更；原归属页可读取且确认位于 Notion Trash 时，会恢复受管的 tracked 成员。旧页仍留在 Trash，经过验证的新页替换该成员映射。找不到页面或权限错误会明确失败。历史重建、adopt 和专项修复使用独立的 [operator 工件](docs/historical-operations.md)。
+普通 `run` 先检查原有未完成工作，再规划新变更；原归属页可读取且确认位于 Notion Trash 时，会恢复受管的 tracked 成员。旧页仍留在 Trash，经过验证的新页替换该成员映射。找不到页面或权限错误会明确失败。旧发布模型的历史重建、接管和专项修复使用独立的 [operator 工件](docs/historical-operations.md)；首次登记原生共享草稿使用下文的日常 `adopt` 命令。
 
 内容表支持 `Kind=skill|router|prompt`：Skill 入口为 `SKILL.md`；Router 入口为 `ROUTER.md`，包含成员元数据与稳定引用，由 Agent 按需读取成员；Prompt 入口为 `PROMPT.md`，每次显式引用都成为本轮用户要求。`list` 返回带 kind、稳定身份、locator 和 entrypoint 的 `records`；读取与导出返回同一 `record` 与固定快照。历史缺少 Kind 的条目按 Skill 处理。
 
@@ -139,6 +139,8 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 ```
 
 新建库可用 `ctl library init --parent PARENT_PAGE_ID`；它不迁移旧内容或更改默认库。普通 Skill 文件夹不需要手写 manifest。原生创建支持 UTF-8 文件，完整文件集验证后才启用新 Skill。`apply` 可把已有绑定文件和显式属性变更冻结为一个顺序执行的批次；它不是原子事务，后项失败时前项可能已经完成。当前只支持单独的一项新增或删除，混合或多项布局变更会在写入前拒绝。文件生命周期使用 `ctl library file add/delete/move/restore-follow`。
+
+已经在 Notion 新建的草稿可保持禁用，补全 Name、Description 并将 Kind 设为 `skill` 后，用 `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` 在原页面登记稳定身份并保留完整正文。随后 `read SKILL_PAGE_ID --authoring` 返回新的编辑 pin；普通修改保留禁用状态，`update SKILL_PAGE_ID --enabled true` 才会在完整验证后启用。尚未登记的禁用草稿不进入消费目录，也不阻断其他 Skill。新增 reference 时先 `ctl library file add`，再用 fresh pin 将返回的原生页面链接写入主文；[完整步骤](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill)说明两步如何配合。
 
 三张 Database 均为独立非 inline 页面，显示名直接使用 **Skills、Files、Records**，无需 library 后缀。初始化标识与最终 descriptor 保存内部身份，改名不影响正常附着或原操作复查。批准范围的完整迁移与pro日用切换现已验收：300个内容入口、818个可编辑支持页、完整资源与历史统一到三表；两张清空的旧业务表已可恢复退役。CLI/Pi使用新入口，mini独立内容验证通过，不长期双写、不隐式回退旧模型。日常明确使用 `--database skills` 或实际库ID；裸 `list` 仍是工作区发现。此用户部署不代表npm公开发布、OMP/Tern或新真实模型任务已通过，见[最终检查点](docs/shared-ssot-architecture.md)。
 

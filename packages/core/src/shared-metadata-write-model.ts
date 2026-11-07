@@ -10,6 +10,7 @@ export const SharedMetadataFieldSchema = Schema.Literals([
   "Name",
   "Description",
   "Default Context",
+  "Enabled",
   "Members",
   "Requires",
   "Source",
@@ -76,8 +77,8 @@ export function validateMetadataValue(
         throw fail("INVALID_DESCRIPTION", "Description must use its exact validated form.")
       return value
     case "Default Context":
-      if (typeof value !== "boolean")
-        throw fail("INVALID_ARGUMENT", "Default Context must be a boolean.")
+    case "Enabled":
+      if (typeof value !== "boolean") throw fail("INVALID_ARGUMENT", `${field} must be a boolean.`)
       return value
     case "Source":
       if (

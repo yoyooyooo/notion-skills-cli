@@ -28,6 +28,7 @@ export const filesConstraints: readonly CommandConstraint[] = [
 ]
 export const readConstraints: readonly CommandConstraint[] = [
   ...filesConstraints,
+  { kind: "requires_absent", flag: "authoring", absent: ["offline", "maxAge", "from"] },
   exclusiveFlags(["raw", "output"]),
   exclusiveFlags(["raw", "json"]),
   exclusiveFlags(["lines", "output"]),

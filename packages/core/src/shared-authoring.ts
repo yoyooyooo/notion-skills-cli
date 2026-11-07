@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
 import { fail, property, SkillsError, type Snapshot } from "./model.ts"
@@ -29,6 +30,7 @@ import {
 } from "./shared-pending-file-operations.ts"
 import { sha256, Store } from "./store.ts"
 import { projectSharedNotionMarkdown } from "./shared-notion-projection.ts"
+import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 import {
   NativeBodyCompletionSchema,
   type NativeBodyCompletion,
@@ -116,7 +118,8 @@ export function sharedAuthoringMarkdown(
   if (markdown.includes("\0"))
     throw fail("INVALID_INPUT", "Shared body writes cannot contain NUL bytes.", { path })
   markdown = normalizeObservedBody(markdown)
-  if (path !== snapshot.entrypoint) return markdown
+  if (path !== snapshot.entrypoint)
+    return restoreSharedNativeFileLinks(markdown, path, snapshot.file_bindings ?? [])
   const match = /^---\n([\s\S]*?)\n---(?:\n|$)/u.exec(markdown)
   if (match) {
     let value: unknown
@@ -192,7 +195,7 @@ export function sharedAuthoringMarkdown(
       )
     markdown = trimmed.slice(0, -footer.length)
   }
-  return markdown
+  return restoreSharedNativeFileLinks(markdown, path, snapshot.file_bindings ?? [])
 }
 
 function pendingScope(scope: string, library: SharedLibrary, skillId: string, skillPageId: string) {
@@ -365,7 +368,7 @@ export function writeSharedSkillFile(input: {
       index.description !== snapshot.record.description ||
       index.kind !== snapshot.record.kind ||
       index.default_context !== snapshot.record.default_context ||
-      !index.enabled
+      (!index.enabled && !(yield* isSharedAuthoringTarget(locator.page_id)))
     )
       return yield* Effect.fail(
         fail("WRITE_CONFLICT", "The Skill metadata changed after the selected read."),
@@ -374,6 +377,7 @@ export function writeSharedSkillFile(input: {
       library,
       skillPageId: locator.page_id,
       fileId: file.file_id,
+      currentIndex: index,
       action: "write",
       candidateMarkdown: projection.markdown,
       inputProjection: projection,
@@ -392,6 +396,27 @@ export function writeSharedSkillFile(input: {
           "The file binding or selected source changed after the selected read.",
         ),
       )
+    const inspected = snapshot.files.find((entry) => entry.path === input.path)
+    if (inspected?.bytes === input.bytes.length && inspected.sha256 === inputHash)
+      return {
+        ...(input.dryRun
+          ? { status: "planned" as const, dry_run: true as const }
+          : { status: "unchanged" as const }),
+        // Exact consumer bytes plus the checked current native preimage are a
+        // no-op, even when native URL spelling differs from today's projection.
+        // No original write was dispatched, so there is no operation to recover.
+        operation_id: undefined,
+        path: plan.path,
+        page_id: plan.page_id,
+        file_id: plan.file_id,
+        before_sha256: plan.before.fingerprint.sha256,
+        candidate_sha256: plan.before.fingerprint.sha256,
+        protection: sharedBodyWriteProtection,
+        verified: true as const,
+        unchanged: true as const,
+        input_projection: undefined,
+        input_sha256: inputHash,
+      }
     return {
       ...(yield* dispatch(library, journal, plan, input.dryRun ?? false)),
       input_sha256: inputHash,

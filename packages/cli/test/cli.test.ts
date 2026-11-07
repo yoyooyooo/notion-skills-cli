@@ -159,9 +159,46 @@ test("read schema exposes official parameter types and requiredness offline", as
     }),
   )
   expect(output.schema.args).toBeUndefined()
+  expect(output.schema.parameters).toContainEqual(
+    expect.objectContaining({
+      name: "authoring",
+      kind: "flag",
+      type: "boolean",
+      required: false,
+      max_occurrences: 1,
+      default: false,
+    }),
+  )
   expect(output.schema.flags).toBeUndefined()
   expect(Array.isArray(output.schema.commands)).toBe(true)
 }, 15000)
+
+test("native draft adoption and enable schemas stay explicit and offline", async () => {
+  const adoption = await invoke(["schema", "adopt"], { inaccessible: true, traceOnline: true })
+  expect(adoption.exit).toBe(0)
+  expect(adoption.onlineCalled).toBe(false)
+  const schema = JSON.parse(adoption.stdout).schema
+  expect(schema.parameters).toContainEqual(
+    expect.objectContaining({ name: "page", kind: "argument", required: true }),
+  )
+  for (const name of ["dry-run", "reconcile"])
+    expect(schema.parameters).toContainEqual(
+      expect.objectContaining({ name, kind: "flag", type: "boolean", default: false }),
+    )
+  const update = await invoke(["schema", "update"], { inaccessible: true, traceOnline: true })
+  expect(update.exit).toBe(0)
+  expect(update.onlineCalled).toBe(false)
+  expect(JSON.parse(update.stdout).schema.parameters).toContainEqual(
+    expect.objectContaining({ name: "enabled", kind: "flag", type: "string", required: false }),
+  )
+  for (const args of [
+    ["adopt", "11111111-1111-4111-8111-111111111111", "--dry-run", "--reconcile"],
+    ["read", "11111111-1111-4111-8111-111111111111", "--authoring", "--offline"],
+    ["read", "11111111-1111-4111-8111-111111111111", "--authoring", "--max-age", "5m"],
+    ["update", "11111111-1111-4111-8111-111111111111", "--enabled", "sometimes"],
+  ])
+    await invalid(args)
+}, 20000)
 
 test("database init schema exposes exact table attachment and durable resume offline", async () => {
   const result = await invoke(["schema", "ctl", "database", "init"], {
@@ -945,7 +982,7 @@ test("SC25 C3 daily help/schema stay small while ctl and historical exact paths 
     expect(commandHelp.exit).toBe(0)
     expect(commandHelp.onlineCalled).toBe(false)
   }
-  for (const author of ["create", "write", "update", "apply", "replace"]) {
+  for (const author of ["create", "adopt", "write", "update", "apply", "replace"]) {
     const schema = await invoke(["schema", author], { inaccessible: true, traceOnline: true })
     expect(schema.exit).toBe(0)
     expect(JSON.parse(schema.stdout).schema.name).toBe(author)

@@ -69,10 +69,27 @@ complete metadata observation. Resolution never fetches the target's body. A lat
 refresh obtains another observation rather than retaining the previous invocation's
 directory. This is an observation within one call, not a remote snapshot transaction.
 
+### Unregistered disabled pages
+
+A complete metadata row with an exactly empty Skill ID and `Enabled=false` is
+unregistered. It stays in the raw inventory but outside both consumable catalog
+projections. People can leave an unfinished Notion page in the Skills table
+without making every other Skill unavailable. Its title and description may still
+be empty and its native Kind selection may be null; the property structures and
+parent identity must remain complete. This classification uses the same
+six-property query and does not read the page body, Files or Records.
+
+Directory eligibility does not prove that a page is safe for initial adoption.
+An exact authoring operation still checks its Main File ID, Source, existing
+Files/Records and pending operations. Selected managed-page reads keep the strict
+identity requirement. A new create also checks unregistered names and aliases,
+so an unfinished same-name page cannot silently become a duplicate Skill.
+
 ### Skill ID diagnostics
 
-An empty, malformed or overlong Skill ID still fails with `INVALID_SHARED_SKILL`
-and the existing message. Its optional `details` identifies the validated
+A selected managed page requires a nonempty stable Skill ID. An enabled row with
+an empty ID, or any row with a malformed or overlong nonempty ID, still fails with
+`INVALID_SHARED_SKILL` and the existing message. Its optional `details` identifies the validated
 `page_id`, `data_source_id`, canonical `property` and registered `property_id`,
 plus `reason` (`empty`, `invalid_format` or `too_long`) and `value_length` in
 UTF-16 code units. It excludes the original value, title and other row metadata.
@@ -80,8 +97,9 @@ These fields use the current parser inputs and add no requests or body reads.
 
 The combined SDK `listCatalog({database, directory: {}})` retains optional
 `SkillsError.details` for each failed projection. Full catalog failure remains a
-failure even when an independent selected View succeeds. Identity validation,
-coverage, disabled-row checks and the valid View's existing isolation are unchanged.
+failure even when an independent selected View succeeds. Registered disabled rows
+still participate in duplicate identity checks; unregistered pages make no stable
+identity claim. The valid View's existing isolation and pagination gates remain.
 
 ## Verification and remaining costs
 

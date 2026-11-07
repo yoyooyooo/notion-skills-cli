@@ -563,6 +563,55 @@ describe("explicit shared whole-body writes", () => {
     ])
   })
 
+  test("shares one preflight context and refreshes it after retained records and the body PATCH", async () => {
+    const api = client(remote())
+    const plan = await api.run(prepare())
+    api.calls.length = 0
+    const result = await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))
+    expect(result.status).toBe("applied")
+    const recordKind = (call: (typeof api.calls)[number]) =>
+      call.path === "v1/pages"
+        ? property(property(property(property(call.body).properties)[r.Kind]).select).name
+        : undefined
+    const firstRecord = api.calls.findIndex((call) => call.path === "v1/pages")
+    const lastRetainedBody = api.calls.findLastIndex((call) => recordKind(call) === "object")
+    const bodyPatch = api.calls.findIndex((call) => call.method === "PATCH")
+    const acceptedEvent = api.calls.findIndex((call) => recordKind(call) === "file_event")
+    expect(firstRecord).toBeGreaterThan(0)
+    expect(lastRetainedBody).toBeGreaterThan(firstRecord)
+    expect(bodyPatch).toBeGreaterThan(lastRetainedBody)
+    expect(acceptedEvent).toBeGreaterThan(bodyPatch)
+    const historyReads = (calls: typeof api.calls) =>
+      calls.filter((call) => {
+        const parts = property(property(call.body).filter).and
+        return (
+          call.path.startsWith(`v1/data_sources/${recordsDs}/query`) &&
+          Array.isArray(parts) &&
+          parts.some(
+            (part) =>
+              property(part).property === r.Kind &&
+              property(property(part).select).equals === "file_event",
+          ) &&
+          !parts.some((part) => property(part).property === r["Record ID"])
+        )
+      })
+    for (const [phase, calls] of Object.entries({
+      initial: api.calls.slice(0, firstRecord),
+      before_send: api.calls.slice(lastRetainedBody + 1, bodyPatch),
+      after_patch: api.calls.slice(bodyPatch + 1, acceptedEvent),
+    }))
+      expect({
+        phase,
+        skill: calls.filter((call) => call.path === `v1/pages/${skillPage}`).length,
+        files: calls.filter((call) => call.path.startsWith(`v1/data_sources/${filesDs}/query`))
+          .length,
+        events: historyReads(calls).length,
+      }).toEqual({ phase, skill: 1, files: 1, events: 1 })
+    expect(historyReads(api.calls.slice(acceptedEvent + 1))).toHaveLength(1)
+    expect(reads(api)).toHaveLength(2)
+    expect(patches(api)).toHaveLength(1)
+  })
+
   test("an identical ordinary write is read-only and keeps its ownership", async () => {
     const shared = remote(),
       api = client(shared)

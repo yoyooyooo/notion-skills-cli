@@ -14,6 +14,7 @@ export type SharedMetadataUpdateOptions = {
   readonly name?: string
   readonly description?: string
   readonly defaultContext?: boolean
+  readonly enabled?: boolean
   readonly members?: readonly string[]
   readonly requires?: readonly string[]
   readonly dryRun?: boolean
@@ -126,6 +127,14 @@ export function updateSharedSkillMetadata(current: Snapshot, options: SharedMeta
     if (options.defaultContext !== undefined) {
       changes.push({ field: "Default Context", value: options.defaultContext })
       before.push({ field: "Default Context", value: current.record.default_context })
+    }
+    if (options.enabled !== undefined) {
+      if (!("enabled" in current.record) || typeof current.record.enabled !== "boolean")
+        return yield* Effect.fail(
+          fail("CONTENT_NOT_MUTABLE", "The native enabled state is missing."),
+        )
+      changes.push({ field: "Enabled", value: options.enabled })
+      before.push({ field: "Enabled", value: current.record.enabled })
     }
     for (const field of ["Members", "Requires"] as const) {
       const requested = field === "Members" ? options.members : options.requires

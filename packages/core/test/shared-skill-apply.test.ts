@@ -178,7 +178,9 @@ describe("frozen sequential shared apply", () => {
     expect(result.status).toBe("applied")
     expect(result.protection.atomic).toBe(false)
     expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(3)
-    expect(f.bodies.get(skillPage)).toBe("# Applied main\n\n[One](references/1.md)")
+    expect(f.bodies.get(skillPage)).toBe(
+      `# Applied main\n\n[One](https://app.notion.com/p/${id(11).replaceAll("-", "")})`,
+    )
     expect(f.bodies.get(f.files[0]!.id)).toBe("# Applied support")
     expect(text(property(property(f.main.properties).title).title)).toBe(metadata.name)
     expect(f.json.get(`snapshots/${snapshot.snapshot_id}.json`)).toEqual(old)

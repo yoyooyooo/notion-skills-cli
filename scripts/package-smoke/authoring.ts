@@ -12,7 +12,7 @@ import {
   createLibrary,
   sharedCreateFixture,
 } from "../../packages/core/test/shared-create-fixture.ts"
-import { id } from "../../packages/core/test/shared-snapshot-fixture.ts"
+import { id, rich } from "../../packages/core/test/shared-snapshot-fixture.ts"
 import type { SmokeContext } from "./context.ts"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
@@ -37,6 +37,22 @@ export async function checkAuthoring(context: SmokeContext) {
   const original = sharedCreateFixture()
   const ownedPages = new Set<string>()
   original.onCreate((row) => ownedPages.add(String(row.id)))
+  // Model a page authored directly in Notion, not a CLI-created identity or
+  // a seeded consumer snapshot. Adoption must preserve this native page/body.
+  const draftPage = id(90_002)
+  const draft = structuredClone(original.base.main)
+  draft.id = draftPage
+  const draftFields = property(draft.properties)
+  draftFields.title = { id: "title", type: "title", title: [{ plain_text: "Installed draft" }] }
+  draftFields.description = rich("description", "Created directly in the native fixture")
+  draftFields.skill_id = rich("skill_id", "")
+  draftFields.main_file_id = rich("main_file_id", "")
+  draftFields.members = { id: "members", type: "relation", relation: [], has_more: false }
+  property(draftFields.enabled).checkbox = false
+  original.skills.set(draftPage, draft)
+  const originalDraftBody = "# Native draft\n\nKeep the original native page."
+  original.base.bodies.set(draftPage, originalDraftBody)
+  ownedPages.add(draftPage)
   let editedAt = Date.now()
   let loseOutcome = false
   let lostOperation: string | undefined
@@ -507,6 +523,117 @@ export async function checkAuthoring(context: SmokeContext) {
       [view],
     )
     await noWrites("ctl-status", ["ctl", "status"])
+    const draftBefore = structuredClone(draft)
+    const draftNativeCreatesBefore = original.nativeCreates().length
+    await noWrites("adopt-dry", ["adopt", draftPage, "--database", db, "--dry-run"])
+    assert.deepEqual(draft, draftBefore)
+    const adoptionStart = calls.length
+    const adopted = await invoke("adopt-native-draft", ["adopt", draftPage, "--database", db])
+    assert.equal(adopted.status, "adopted")
+    assert.equal(adopted.verified, true)
+    assert.equal(adopted.skill_page_id, draftPage)
+    assert.equal(adopted.enabled, false)
+    assert.equal(original.nativeCreates().length, draftNativeCreatesBefore)
+    assert.equal(original.base.bodies.get(draftPage), originalDraftBody)
+    assert.equal(
+      calls.slice(adoptionStart).filter((call) => call.method === "PATCH").length,
+      1,
+      "Adoption sends one identity PATCH and no body PATCH",
+    )
+    const deniedDraft = await noWrites(
+      "draft-consumer-denied",
+      ["read", draftPage, "--database", db, "--refresh", "--json"],
+      1,
+    )
+    assert.equal(deniedDraft.error.code, "CONTENT_DISABLED")
+    const draftRead = await noWrites("draft-author-read", [
+      "read",
+      draftPage,
+      "--database",
+      db,
+      "--authoring",
+      "--json",
+    ])
+    assert.equal(draftRead.record.enabled, false)
+    assert.ok(draftRead.content.includes(originalDraftBody))
+    const draftInput = join(root, "native-draft.md")
+    await writeFile(draftInput, "# Native draft\n\nEdited while disabled.\n")
+    const draftWritten = await invoke("draft-author-write", [
+      "write",
+      draftRead.ref,
+      "--input",
+      draftInput,
+    ])
+    assert.equal(draftWritten.verified, true)
+    assert.equal(property(draftFields.enabled).checkbox, false)
+    const draftEdited = await noWrites("draft-edited-author-read", [
+      "read",
+      draftPage,
+      "--database",
+      db,
+      "--authoring",
+      "--json",
+    ])
+    assert.ok(draftEdited.content.includes("Edited while disabled."))
+    const draftUpdated = await invoke("draft-author-update", [
+      "update",
+      draftEdited.ref,
+      "--description",
+      "Reviewed native draft",
+    ])
+    assert.equal(draftUpdated.verified, true)
+    assert.equal(draftUpdated.record.enabled, false)
+    const enabledDraft = await invoke("draft-enable", [
+      "update",
+      draftPage,
+      "--database",
+      db,
+      "--enabled",
+      "true",
+    ])
+    assert.equal(enabledDraft.verified, true)
+    assert.equal(enabledDraft.record.enabled, true)
+    const consumedDraft = await noWrites("enabled-draft-consumer-read", [
+      "read",
+      draftPage,
+      "--database",
+      db,
+      "--refresh",
+      "--json",
+    ])
+    assert.ok(consumedDraft.content.includes("Edited while disabled."))
+    const recoveryStart = calls.length
+    const adoptedAgain = await noWrites("adopt-original-after-edits", [
+      "adopt",
+      draftPage,
+      "--database",
+      db,
+      "--reconcile",
+    ])
+    assert.equal(adoptedAgain.status, "reconciled")
+    assert.equal(adoptedAgain.verification, "original_adoption_outcome")
+    assert.equal(adoptedAgain.adoption_operation_id, adopted.adoption_operation_id)
+    assert.equal(adoptedAgain.enabled_at_adoption, false)
+    assert.equal(adoptedAgain.enabled, undefined)
+    assert.equal(
+      calls.slice(recoveryStart).some((call) => call.path.endsWith("/markdown")),
+      false,
+      "Original adoption recovery does not substitute current body equality",
+    )
+    await invoke("draft-disable", ["update", draftPage, "--database", db, "--enabled", "false"])
+    const disabledAgain = await noWrites(
+      "disabled-draft-consumer-denied",
+      ["read", draftPage, "--database", db, "--refresh", "--json"],
+      1,
+    )
+    assert.equal(disabledAgain.error.code, "CONTENT_DISABLED")
+    const preservedDraft = await noWrites("draft-original-pin-preserved", [
+      "read",
+      draftRead.ref,
+      "--offline",
+      "--json",
+    ])
+    assert.equal(preservedDraft.content, draftRead.content)
     completed = true
     const result = {
       proof: "independent_installed_node_with_controlled_notion",
@@ -526,6 +653,14 @@ export async function checkAuthoring(context: SmokeContext) {
         ]),
       ),
       lost_original_operation: lostOperation,
+      native_draft: {
+        page_id: draftPage,
+        adoption_operation_id: adopted.adoption_operation_id,
+        original_snapshot: draftRead.snapshot_id,
+        original_pin_preserved: true,
+        disabled_authoring_verified: true,
+        enable_disable_verified: true,
+      },
       original_outcome_count: outcomes.length,
       command_count: commands.length,
       server_received_requests: calls.length,

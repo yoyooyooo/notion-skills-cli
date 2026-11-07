@@ -151,6 +151,7 @@ and uses the same definition as execution.
 | `prepare` | `ctl prepare` | Advanced graph, session bindings, budgets and scheduler controls; root compatibility only |
 | `files` | `files` | Optional resource inventory |
 | `create` | `create` | Explicit authoring, discovered through its help or maintenance Skill |
+| — | `adopt` | Explicit original-page registration for an unregistered native disabled draft; discovered on demand |
 | `apply` | `apply` | Explicit pinned change submission, discovered on demand |
 | `replace` | `replace` | Explicit whole-content replacement, discovered on demand |
 | `export` | `export` | Optional complete package export |
@@ -162,7 +163,7 @@ and uses the same definition as execution.
 | `schema` | `schema` | Daily summary by default, complete explicit command schema on demand |
 
 `use` is the added daily consumer. It does not execute authoring commands such as
-create, apply, replace, write or update. Normal consume retention and adoption of
+create, adopt, apply, replace, write or update. Normal consume retention and adoption of
 newly observed author edits remain unchanged and can write Records; those writes
 and their permissions stay in the actual request ledger. Dry-run, exact target/version
 constraints, conflict handling and original-operation recovery are unchanged.

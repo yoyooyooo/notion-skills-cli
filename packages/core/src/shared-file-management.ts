@@ -9,6 +9,7 @@ import { sharedSkillId } from "./shared-content.ts"
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import type { FrozenWriteBody } from "./shared-body-write-model.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import {
   decideObservedBody,
   FileEventSchema,
@@ -179,7 +180,7 @@ function currentContext(library: SharedLibrary, skillPageId: string) {
     const index = yield* querySharedSkillIndex(library, skillPageId)
     const events = yield* readEvents(library, skillPageId)
     const headers = yield* querySharedOperationIndex(library, skillPageId)
-    if (!index.enabled)
+    if (!index.enabled && !(yield* isSharedAuthoringTarget(skillPageId)))
       return yield* Effect.fail(
         fail("CONTENT_DISABLED", "Enable the selected shared Skill before managing its files."),
       )

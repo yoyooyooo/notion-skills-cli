@@ -25,7 +25,11 @@ import {
 } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { sharedRecordFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
+import {
+  sharedMetadataEntryFromPage,
+  sharedRecordFromPage,
+  validateSharedRecordIdentity,
+} from "./shared-content.ts"
 import { directorySkillMetadata } from "./shared-metadata-inventory.ts"
 import { Store, configuredSources, sha256 } from "./store.ts"
 
@@ -542,8 +546,10 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
             const checked = yield* check(() => {
               if (seen.has(id)) throw fail("INVALID_RESPONSE", "Repeated selected page metadata.")
               seen.add(id)
-              if (source.shared_library !== undefined)
-                return sharedRecordFromPage(raw, source, view.data_source_id)
+              if (source.shared_library !== undefined) {
+                const entry = sharedMetadataEntryFromPage(raw, source, view.data_source_id)
+                return entry.state === "registered" ? entry.record : undefined
+              }
               const row = decode(PageSchema, raw)
               const parent = property(property(raw).parent)
               if (
@@ -559,6 +565,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
             }).pipe(Effect.result)
             if (checked._tag === "Success") {
               const record = checked.success
+              if (record === undefined) continue
               if (record.locator.type === "shared_skill") {
                 rememberSharedClaim(record)
                 const previous = sharedIdentities.get(record.id)

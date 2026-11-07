@@ -722,9 +722,22 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                       "An in-flight observation was retired before publication.",
                     ),
                   )
-                if (parts[1] === "latest")
-                  yield* sql`INSERT INTO observations(id,scope,record_identity,generation,validated_at,snapshot_id,payload) VALUES(${key},${scope},${identity},${v.generation},${v.validated_at},${v.snapshot_id ?? null},${json(value)}) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE observations.payload=excluded.payload`
-                else if (parts[1] === "views")
+                if (parts[1] === "latest") {
+                  const current = yield* sql<{
+                    id: string
+                    generation: number
+                  }>`SELECT id,generation FROM observations WHERE scope=${scope} AND record_identity=${identity} ORDER BY generation DESC,id LIMIT 1`
+                  const latest = current[0]
+                  // Current observations are reusable cache slots, not immutable history.
+                  // Preserve the slot's address: older running readers may already have
+                  // enumerated it, and deleting it could hide a known access denial.
+                  if (latest !== undefined && Number(v.generation) > latest.generation)
+                    yield* sql`UPDATE observations SET generation=${v.generation},validated_at=${v.validated_at},snapshot_id=${v.snapshot_id ?? null},payload=${json(value)} WHERE id=${latest.id}`
+                  // Equal generations retain their existing tie semantics. An older
+                  // completion cannot replace the current value or grow the lookup.
+                  else if (latest === undefined || Number(v.generation) === latest.generation)
+                    yield* sql`INSERT INTO observations(id,scope,record_identity,generation,validated_at,snapshot_id,payload) VALUES(${key},${scope},${identity},${v.generation},${v.validated_at},${v.snapshot_id ?? null},${json(value)}) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE observations.payload=excluded.payload`
+                } else if (parts[1] === "views")
                   yield* sql`INSERT INTO view_observations(scope,selection,generation,payload) VALUES(${scope},${parts[3]!.replace(/\.json$/, "")},${v.generation},${json(value)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=view_observations.generation`
                 else
                   yield* sql`INSERT INTO catalogs(scope,selection,generation,payload) VALUES(${scope},${parts[3]!.replace(/\.json$/, "")},${v.generation},${json(value)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=catalogs.generation`

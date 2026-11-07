@@ -3,7 +3,7 @@ import { withoutCreationMarker } from "./publication-create-identity.ts"
 import { pageId, parseRef, normalizePath } from "./ref.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import { fail } from "./model.ts"
-import { referenceProse } from "./shared-file-references.ts"
+import { referenceProse, mapSharedMarkdownReferences } from "./shared-file-references.ts"
 import {
   materializeNativeAliases,
   type NativeBodyCompletion,
@@ -13,6 +13,39 @@ export type SharedFileLink = {
   readonly from: string
   readonly href: string
   readonly target: string
+}
+
+/** A fresh owner snapshot supplies exact native bindings for authoring. Restore
+ * consumer-relative destinations before writing them back to Notion; provider-only
+ * files, foreign refs, external URLs and code keep their original spelling. */
+export function restoreSharedNativeFileLinks(
+  markdown: string,
+  path: string,
+  files: readonly { readonly page_id: string; readonly path: string }[],
+): string {
+  if (!/\.md$/iu.test(path)) return markdown
+  return mapSharedMarkdownReferences(path, markdown, (reference) => {
+    const href = reference.href
+    if (href.startsWith("#") || href.startsWith("?")) return href
+    const matches = files.filter((file) => file.path === reference.target)
+    if (matches.length === 0) return href
+    const selected = matches[0]
+    if (
+      matches.length !== 1 ||
+      selected === undefined ||
+      pageId(selected.page_id) !== selected.page_id
+    )
+      throw fail(
+        "SHARED_REFERENCE_INVALID",
+        "A local reference must resolve to one exact native page in the selected owner snapshot.",
+        { from: path, target: reference.target },
+      )
+    const suffix = href.search(/[?#]/u)
+    return (
+      `https://app.notion.com/p/${selected.page_id.replaceAll("-", "")}` +
+      (suffix < 0 ? "" : href.slice(suffix))
+    )
+  })
 }
 
 /** Page mentions are inline entities; page tags are child pages unless the

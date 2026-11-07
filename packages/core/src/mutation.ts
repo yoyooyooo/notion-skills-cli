@@ -1,4 +1,5 @@
 import { Effect, FileSystem, Path } from "effect"
+import { withSharedAuthoringRequest } from "./shared-authoring-context.ts"
 import { parseYaml as parse } from "./yaml.ts"
 import { authScope, catalog, creationSource } from "./catalog.ts"
 import {
@@ -291,6 +292,10 @@ export interface WriteOptions
 }
 
 export function writeSkill(inputTarget: string, options: WriteOptions) {
+  return withSharedAuthoringRequest(inputTarget, writeSkillCurrent(inputTarget, options))
+}
+
+function writeSkillCurrent(inputTarget: string, options: WriteOptions) {
   return Effect.gen(function* () {
     yield* rejectPublicationSourceOverride(options as PublicationOptions)
     const target = yield* Effect.try({
@@ -583,6 +588,10 @@ function sharedApplyResult(
 
 /** A shared pin selects native operations; legacy targets retain their publication path. */
 export function applySkill(inputTarget: string, options: ApplyOptions = {}) {
+  return withSharedAuthoringRequest(inputTarget, applySkillCurrent(inputTarget, options))
+}
+
+function applySkillCurrent(inputTarget: string, options: ApplyOptions) {
   return Effect.gen(function* () {
     yield* rejectPublicationSourceOverride(options as PublicationOptions)
     const target = yield* Effect.try({
@@ -821,6 +830,11 @@ export function createSkill(input: string, options: CreateOptions = {}) {
 }
 
 export function replaceSkill(input: string | PortableSkill, options: ReplaceOptions) {
+  const operation = replaceSkillCurrent(input, options)
+  return options?.target ? withSharedAuthoringRequest(options.target, operation) : operation
+}
+
+function replaceSkillCurrent(input: string | PortableSkill, options: ReplaceOptions) {
   return Effect.gen(function* () {
     const selected = options?.target
     if (!selected)

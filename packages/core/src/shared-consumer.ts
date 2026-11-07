@@ -7,6 +7,7 @@ import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "./shared-snapshot.ts"
 import { sharedSkillMetadataFor } from "./shared-metadata-inventory.ts"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 
 /** Resolve only the immutable source explicitly selected in the current Skills row. */
 export function openSharedConsumer(
@@ -29,6 +30,7 @@ export function openSharedConsumer(
         fail("INVALID_ARGUMENT", "Shared consumption requires an exact Skill page."),
       )
     const rawPage = input.rawPage ?? (yield* api.request(`v1/pages/${selected}`))
+    const authoring = yield* isSharedAuthoringTarget(selected)
     const sourceId = yield* Effect.try({
       try: () => {
         const record = sharedRecordFromPage(
@@ -53,7 +55,7 @@ export function openSharedConsumer(
             "SHARED_SKILL_ID_CONFLICT",
             "The selected Skill identity changed after directory resolution.",
           )
-        if (!record.enabled)
+        if (!record.enabled && !authoring)
           throw fail("CONTENT_DISABLED", "The selected Skill is disabled in Notion.")
         const field = sharedSkillProperty(rawPage, input.library, "Source")
         if (

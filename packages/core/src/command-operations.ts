@@ -4,6 +4,7 @@ import {
   resumePublicationZeroListRepair,
 } from "./publication-zero-list-repair.ts"
 import { Effect, Schema } from "effect"
+import { withSharedAuthoringRequest } from "./shared-authoring-context.ts"
 import { aliasFor, fail, notionPage, property, SkillsError, validateDescription } from "./model.ts"
 import { pageId, parseTarget } from "./ref.ts"
 import { resumePublication } from "./mutation.ts"
@@ -410,30 +411,35 @@ function uniqueOperations(operations: readonly Operation[]) {
   })
 }
 
-export function updateSkill(
-  input: string,
-  options: {
-    readonly name?: string
-    readonly description?: string
-    readonly defaultContext?: boolean
-    readonly members?: readonly string[]
-    readonly requires?: readonly string[]
-    readonly database?: string
-    readonly dryRun?: boolean
-  },
-) {
+interface UpdateSkillOptions {
+  readonly name?: string
+  readonly description?: string
+  readonly defaultContext?: boolean
+  readonly enabled?: boolean
+  readonly members?: readonly string[]
+  readonly requires?: readonly string[]
+  readonly database?: string
+  readonly dryRun?: boolean
+}
+
+export function updateSkill(input: string, options: UpdateSkillOptions) {
+  return withSharedAuthoringRequest(input, updateSkillCurrent(input, options))
+}
+
+function updateSkillCurrent(input: string, options: UpdateSkillOptions) {
   return Effect.gen(function* () {
     if (
       options.name === undefined &&
       options.description === undefined &&
       options.defaultContext === undefined &&
+      options.enabled === undefined &&
       options.members === undefined &&
       options.requires === undefined
     )
       return yield* Effect.fail(
         fail(
           "INVALID_ARGUMENT",
-          "Provide --name, --description, --default-context, Members or Requires.",
+          "Provide --name, --description, --default-context, --enabled, Members or Requires.",
         ),
       )
     if (options.name !== undefined)
@@ -516,6 +522,10 @@ export function updateSkill(
       if (
         (options.name !== undefined && saved.record.name !== options.name) ||
         (options.description !== undefined && saved.record.description !== options.description) ||
+        (options.enabled !== undefined &&
+          (saved.record.locator.type !== "shared_skill" ||
+            !("enabled" in saved.record) ||
+            saved.record.enabled !== options.enabled)) ||
         (options.defaultContext !== undefined &&
           saved.record.default_context !== options.defaultContext) ||
         (result.requested_members !== undefined &&
@@ -544,6 +554,10 @@ export function updateSkill(
         previous_version_id: current.version_id,
       }
     }
+    if (options.enabled !== undefined)
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "Enabled authoring requires a native shared library."),
+      )
     if (options.requires !== undefined)
       return yield* Effect.fail(
         fail(

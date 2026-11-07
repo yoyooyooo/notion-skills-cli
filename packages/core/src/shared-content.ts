@@ -84,12 +84,7 @@ function checkbox(value: Record<string, unknown>, name: string) {
   return value.checkbox
 }
 
-/** Metadata only. No body, resource, Files, or shared Records request is involved. */
-export function sharedRecordFromPage(
-  raw: unknown,
-  source: Source,
-  dataSourceId: string,
-): SharedSkillRecord {
+function sharedPageMetadata(raw: unknown, source: Source, dataSourceId: string) {
   const library = source.shared_library
   if (library === undefined)
     throw invalid("Shared content requires a registered library descriptor.")
@@ -119,14 +114,56 @@ export function sharedRecordFromPage(
     throw invalid("The shared Skill belongs to another source.", { page_id: page })
 
   const name = readableText(sharedSkillProperty(row, library, "Name"), "title", "Name")
-  const description = validateDescription(
-    readableText(sharedSkillProperty(row, library, "Description"), "rich_text", "Description"),
+  const description = readableText(
+    sharedSkillProperty(row, library, "Description"),
+    "rich_text",
+    "Description",
   )
   const skillIdValue = readableText(
     sharedSkillProperty(row, library, "Skill ID"),
     "rich_text",
     "Skill ID",
   )
+  const kindField = sharedSkillProperty(row, library, "Kind")
+  if (kindField.type !== "select") throw invalid("Kind must be a select property.")
+  const kind =
+    kindField.select === null
+      ? undefined
+      : decode(ContentKindSchema, property(kindField.select).name)
+  const enabled = checkbox(sharedSkillProperty(row, library, "Enabled"), "Enabled")
+  const defaultContext = checkbox(
+    sharedSkillProperty(row, library, "Default Context"),
+    "Default Context",
+  )
+  return {
+    library,
+    page,
+    database,
+    dataSource,
+    name,
+    description,
+    skillIdValue,
+    kind,
+    enabled,
+    defaultContext,
+  }
+}
+
+function registeredSharedRecord(
+  metadata: ReturnType<typeof sharedPageMetadata>,
+): SharedSkillRecord {
+  const {
+    library,
+    page,
+    database,
+    dataSource,
+    name,
+    description: descriptionValue,
+    skillIdValue,
+    kind: kindValue,
+    enabled,
+    defaultContext,
+  } = metadata
   const skillId = stableIdentity(skillIdValue, "Skill ID", {
     page_id: page,
     data_source_id: dataSource,
@@ -136,14 +173,8 @@ export function sharedRecordFromPage(
       skillIdValue === "" ? "empty" : skillIdValue.length > 200 ? "too_long" : "invalid_format",
     value_length: skillIdValue.length,
   })
-  const kindField = sharedSkillProperty(row, library, "Kind")
-  if (kindField.type !== "select") throw invalid("Kind must be a select property.")
-  const kind = decode(ContentKindSchema, property(kindField.select).name)
-  const enabled = checkbox(sharedSkillProperty(row, library, "Enabled"), "Enabled")
-  const defaultContext = checkbox(
-    sharedSkillProperty(row, library, "Default Context"),
-    "Default Context",
-  )
+  const description = validateDescription(descriptionValue)
+  const kind = decode(ContentKindSchema, kindValue)
   const id = sharedSkillId(library.library_id, skillId)
   const entrypoint = entrypointFor(kind)
   return {
@@ -165,6 +196,44 @@ export function sharedRecordFromPage(
     entrypoint,
     ref: `skill://${encodeURIComponent(id)}/${entrypoint}`,
   }
+}
+
+export type SharedMetadataEntry =
+  | { readonly state: "registered"; readonly record: SharedSkillRecord }
+  | {
+      readonly state: "unregistered"
+      readonly page_id: string
+      readonly name: string
+      readonly alias: string
+      readonly kind: SharedSkillRecord["kind"] | undefined
+    }
+
+/** Directory eligibility only. Unregistered disabled pages have no consumable identity.
+ * This does not establish whether their existing body or history may be adopted. */
+export function sharedMetadataEntryFromPage(
+  raw: unknown,
+  source: Source,
+  dataSourceId: string,
+): SharedMetadataEntry {
+  const metadata = sharedPageMetadata(raw, source, dataSourceId)
+  if (metadata.skillIdValue === "" && metadata.enabled === false)
+    return {
+      state: "unregistered",
+      page_id: metadata.page,
+      name: metadata.name,
+      alias: metadata.name.trim() === "" ? "" : aliasFor(metadata.name),
+      kind: metadata.kind,
+    }
+  return { state: "registered", record: registeredSharedRecord(metadata) }
+}
+
+/** A selected managed page always requires its stable identity, including disabled pages. */
+export function sharedRecordFromPage(
+  raw: unknown,
+  source: Source,
+  dataSourceId: string,
+): SharedSkillRecord {
+  return registeredSharedRecord(sharedPageMetadata(raw, source, dataSourceId))
 }
 
 /** Validate a cached shared record without loading its body or changing its page binding. */

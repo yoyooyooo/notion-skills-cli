@@ -48,18 +48,27 @@ function escaped(text: string, index: number): boolean {
 /** Native v2 code spans can contain literal backticks and Markdown links.
  * Locate actual parsed tags first; escaped tags, fenced examples and tags
  * inside Markdown code spans must not hide surrounding real references. */
-function withoutNativeCode(text: string): string {
+function maskReferenceText(text: string, exactPositions: boolean): string {
+  return text.replace(/[^\n]/gu, (value) => (exactPositions ? " ".repeat(value.length) : " "))
+}
+function withoutNativeCode(text: string, exactPositions: boolean): string {
   const parts = splitNativeInlineCode(text)
   if (parts === undefined)
     throw fail(
       "SHARED_REFERENCE_INVALID",
       "The complete native inline text could not be checked without losing source positions.",
     )
-  return parts.map((part) => (part.code ? part.raw.replace(/[^\n]/gu, " ") : part.raw)).join("")
+  return parts
+    .map((part) => (part.code ? maskReferenceText(part.raw, exactPositions) : part.raw))
+    .join("")
 }
 
 /** Preserve line positions while removing fenced code, inline code and comments. */
-export function referenceProse(markdown: string, policy: SharedNotionMarkdownVersion = 2): string {
+export function referenceProse(
+  markdown: string,
+  policy: SharedNotionMarkdownVersion = 2,
+  exactPositions = false,
+): string {
   let fence: { marker: string; length: number } | undefined
   const lines = markdown
     .replace(/\r/gu, " ")
@@ -87,10 +96,10 @@ export function referenceProse(markdown: string, policy: SharedNotionMarkdownVer
   const raw = lines
     .join("\n")
     .replace(/^---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
-      frontmatter.replace(/[^\n]/gu, " "),
+      maskReferenceText(frontmatter, exactPositions),
     )
-    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => comment.replace(/[^\n]/gu, " "))
-  const text = policy === 1 ? raw : withoutNativeCode(raw)
+    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => maskReferenceText(comment, exactPositions))
+  const text = policy === 1 ? raw : withoutNativeCode(raw, exactPositions)
   const output = text.split("")
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "`" || escaped(text, start)) continue
@@ -114,7 +123,7 @@ export function referenceProse(markdown: string, policy: SharedNotionMarkdownVer
   return masked.replace(
     /<(script|style|pre)\b[^>]*>[\s\S]*?<\/\1\s*>/giu,
     (literal: string, _tag: string, offset: number) =>
-      escaped(masked, offset) ? literal : literal.replace(/[^\n]/gu, " "),
+      escaped(masked, offset) ? literal : maskReferenceText(literal, exactPositions),
   )
 }
 function closingBracket(text: string, start: number): number {
@@ -126,7 +135,13 @@ function closingBracket(text: string, start: number): number {
   }
   return -1
 }
-function destination(text: string, start: number): { href: string; end: number } | undefined {
+type Destination = {
+  readonly href: string
+  readonly start: number
+  readonly hrefEnd: number
+  readonly end: number
+}
+function destination(text: string, start: number): Destination | undefined {
   let at = start
   while (/\s/u.test(text[at] ?? "") && at < text.length) at += 1
   if (text[at] === "<") {
@@ -135,7 +150,9 @@ function destination(text: string, start: number): { href: string; end: number }
       if (text[at] === "\n") return undefined
       at += 1
     }
-    return text[at] === ">" ? { href: text.slice(begin, at), end: at + 1 } : undefined
+    return text[at] === ">"
+      ? { href: text.slice(begin, at), start: begin, hrefEnd: at, end: at + 1 }
+      : undefined
   }
   const begin = at
   let depth = 0
@@ -152,7 +169,9 @@ function destination(text: string, start: number): { href: string; end: number }
     } else if (/\s/u.test(char ?? "")) break
     at += 1
   }
-  return depth === 0 ? { href: text.slice(begin, at), end: at } : undefined
+  return depth === 0
+    ? { href: text.slice(begin, at), start: begin, hrefEnd: at, end: at }
+    : undefined
 }
 
 function localTarget(from: string, raw: string): string | undefined {
@@ -203,13 +222,16 @@ function localTarget(from: string, raw: string): string | undefined {
 }
 
 /** Deterministic Markdown links/images only; this does not infer script or prose dependencies. */
-export function sharedMarkdownReferences(
+function scanSharedMarkdownReferences(
   path: string,
   markdown: string,
   policy: SharedNotionMarkdownVersion = 5,
+  visit?: (reference: SharedFileReference, destination: Destination) => void,
 ): readonly SharedFileReference[] {
-  const text = referenceProse(markdown, policy)
-  const definitions = new Map<string, string>()
+  // Retained projection policies keep their historical masking. Destination
+  // edits need exact UTF-16 source positions even around astral code literals.
+  const text = referenceProse(markdown, policy, visit !== undefined)
+  const definitions = new Map<string, Destination>()
   const definitionRanges: Array<readonly [number, number]> = []
   const definitionPattern = /^ {0,3}\[([^\]\n]+)\]:[ \t]*/gmu
   for (const match of text.matchAll(definitionPattern)) {
@@ -218,22 +240,30 @@ export function sharedMarkdownReferences(
     const parsed = destination(text, start)
     if (parsed === undefined || parsed.href === "") continue
     const key = label(match[1] ?? "")
-    if (!definitions.has(key)) definitions.set(key, parsed.href)
+    if (!definitions.has(key)) definitions.set(key, parsed)
     const end = text.indexOf("\n", start)
     definitionRanges.push([match.index, end < 0 ? text.length : end])
   }
   const result: SharedFileReference[] = []
   const targetRanges: Array<readonly [number, number]> = []
-  const remember = (href: string, at: number, kind: SharedFileReference["kind"]) => {
+  const remember = (
+    href: string,
+    at: number,
+    kind: SharedFileReference["kind"],
+    destination?: Destination,
+  ) => {
     const target = localTarget(path, href)
-    if (target !== undefined)
-      result.push({
+    if (target !== undefined) {
+      const reference: SharedFileReference = {
         from: path,
         target,
         href,
         line: 1 + text.slice(0, at).split("\n").length - 1,
         kind,
-      })
+      }
+      result.push(reference)
+      if (destination !== undefined) visit?.(reference, destination)
+    }
   }
   for (let at = 0; at < text.length; at += 1) {
     if (
@@ -255,7 +285,7 @@ export function sharedMarkdownReferences(
         const end =
           /^\s*(?:(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^)\\]|\\.)*\))\s*)?\)/u.exec(tail)
         if (end !== null) {
-          remember(parsed.href, at, kind)
+          remember(parsed.href, at, kind, parsed)
           targetRanges.push([close + 1, parsed.end + end[0].length])
           continue
         }
@@ -264,14 +294,14 @@ export function sharedMarkdownReferences(
       const referenceEnd = closingBracket(text, close + 1)
       if (referenceEnd >= 0) {
         const key = label(text.slice(close + 2, referenceEnd) || text.slice(at + 1, close))
-        const href = definitions.get(key)
-        if (href !== undefined) remember(href, at, kind)
+        const destination = definitions.get(key)
+        if (destination !== undefined) remember(destination.href, at, kind, destination)
         targetRanges.push([close + 1, referenceEnd + 1])
         continue
       }
     } else {
-      const href = definitions.get(label(text.slice(at + 1, close)))
-      if (href !== undefined) remember(href, at, kind)
+      const destination = definitions.get(label(text.slice(at + 1, close)))
+      if (destination !== undefined) remember(destination.href, at, kind, destination)
     }
   }
   // Notion v2 also renders native assets as explicit src/href attributes.
@@ -283,6 +313,36 @@ export function sharedMarkdownReferences(
       match.index,
       /^<img\b/iu.test(match[0]) ? "image" : "link",
     )
+  return result
+}
+
+export function sharedMarkdownReferences(
+  path: string,
+  markdown: string,
+  policy: SharedNotionMarkdownVersion = 5,
+): readonly SharedFileReference[] {
+  return scanSharedMarkdownReferences(path, markdown, policy)
+}
+
+/** Edit only the actual parsed destination, never another literal with the same href. */
+export function mapSharedMarkdownReferences(
+  path: string,
+  markdown: string,
+  change: (reference: SharedFileReference) => string,
+): string {
+  const edits = new Map<number, { readonly end: number; readonly text: string }>()
+  scanSharedMarkdownReferences(path, markdown, 5, (reference, destination) => {
+    if (markdown.slice(destination.start, destination.hrefEnd) !== reference.href)
+      throw fail(
+        "SHARED_REFERENCE_INVALID",
+        "A parsed reference has no exact authored destination.",
+      )
+    const text = change(reference)
+    if (text !== reference.href) edits.set(destination.start, { end: destination.hrefEnd, text })
+  })
+  let result = markdown
+  for (const [start, edit] of [...edits].sort(([a], [b]) => b - a))
+    result = result.slice(0, start) + edit.text + result.slice(edit.end)
   return result
 }
 

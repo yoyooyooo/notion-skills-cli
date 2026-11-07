@@ -9,6 +9,7 @@ This guide covers the shared Skills / Files / Records model. Existing libraries 
 - [Connect and read](#connect-and-read)
 - [Use the remote Skill in Pi](#use-the-remote-skill-in-pi)
 - [Create a native Skill](#create-a-native-skill)
+- [Adopt a draft created in Notion](#adopt-a-draft-created-in-notion)
 - [Change existing files and metadata](#change-existing-files-and-metadata)
 - [Add, delete or move a file](#add-delete-or-move-a-file)
 - [Select a fixed source and restore following](#select-a-fixed-source-and-restore-following)
@@ -97,13 +98,31 @@ Success returns the exact record, a verified snapshot and `create_operation_id`.
 
 Prompt and Router input still uses the existing portable v2 kind declaration. Consult `create --help` and the [portable input contract](protocol.md#portable-input-contract) for those explicit kinds. Filenames alone do not select kind.
 
+## Adopt a draft created in Notion
+
+A manually created page can remain disabled and unregistered while you draft it. It stays outside the consumer directory and does not prevent other valid Skills from being listed. To register that existing page, complete its native Name and Description, set Kind to `skill`, and keep Enabled unchecked:
+
+```bash
+ntn-skills adopt SKILL_PAGE_ID --database LIBRARY_ENTRY --dry-run
+ntn-skills adopt SKILL_PAGE_ID --database LIBRARY_ENTRY
+ntn-skills read SKILL_PAGE_ID --database LIBRARY_ENTRY --authoring
+```
+
+Adoption preserves the original page, complete body, metadata and `Enabled=false`. It derives stable Skill and main File IDs from the library and original page, retains the body and initial adopted event in Records, and patches only Skill ID and Main File ID. The original Skills page remains `SKILL.md`; no replacement Skill, separate main File page or body PATCH is created.
+
+This entry is for an initial native Skill: Skill ID, Main File ID, Source, Projection, References and managed relations must be empty, with no existing Files or Records lifecycle. A disabled empty-ID directory entry alone does not establish those conditions. Conflicting existing bindings are preserved for their existing workflow. Name/Description/Kind must be valid before the CLI reads its files or body.
+
+Success returns `adoption_operation_id` and the next authoring-read command. Keep that original operation if interrupted. `adopt SKILL_PAGE_ID --database LIBRARY_ENTRY --reconcile` verifies the original retained outcome without repeating writes; `verification: "original_adoption_outcome"` and `enabled_at_adoption` describe that history. Take a fresh authoring read to establish current content. Do not manually fill identity fields or create a duplicate page to bypass an unresolved operation.
+
 ## Change existing files and metadata
 
 First read the current exact Skill and retain its pinned main ref:
 
 ```bash
-ntn-skills read SKILL_PAGE_ID --database LIBRARY_ENTRY --refresh
+ntn-skills read SKILL_PAGE_ID --database LIBRARY_ENTRY --authoring
 ```
+
+`--authoring` accepts an exact current page ID or URL, including a disabled registered draft, and always verifies its complete tree online. It returns a fixed snapshot without publishing disabled content as a current consumer observation. Offline/max-age/from and pinned targets are incompatible with this mode. Existing write/update/apply/replace and file add/move/delete commands enter the same exact author scope automatically. Ordinary current `read` and `use` continue to reject disabled content; historical pins remain immutable.
 
 ### Apply one set of changes
 
@@ -134,7 +153,7 @@ Submit the complete replacement file. A returned file ref already contains its l
 
 Main frontmatter may restate the current Name and Description, or values explicitly supplied to the same `apply`. Changing those fields inside `write` alone is rejected; additional unsupported main frontmatter is also rejected rather than discarded. A supplied `notion_page_id` must identify the exact selected Skill. Router bodies retain their generated Members index; change membership through the native relation or `update --member`.
 
-New native authoring plans freeze the original input, the request Markdown and the exact expected native readback separately. Projection version 2 preserves authored H1 headings by sending them as native heading tags during create and file add; body writes keep their ordinary heading syntax. It projects common inline code, bold, italic and strikethrough to the native readback form. Fenced code keeps its literal content; an omitted language is sent explicitly as plain text, whose native readback label is `txt`. CRLF becomes LF and terminal line feeds are removed before projection. Every complete response must still match the frozen candidate exactly. A mismatch keeps the original operation for review, and older version 1 plans retain their original policy and request bytes.
+New native authoring plans freeze the original input, the request Markdown and the exact expected native readback separately. The current projection preserves authored H1 headings by sending them as native heading tags during create and file add; body writes keep their ordinary heading syntax. It projects common inline code, bold, italic and strikethrough to the native readback form. Fenced code keeps its literal content; an omitted language is sent explicitly as plain text, whose native readback label is `txt`. CRLF becomes LF and terminal line feeds are removed before projection. Every complete response must still match the frozen candidate exactly. A mismatch keeps the original operation for review, and older plans retain their original policy and request bytes. The [protocol](protocol.md#shared-authoring) records the current projection version and its observed native rules.
 
 ### Update native properties
 
@@ -147,6 +166,15 @@ ntn-skills update 'PINNED_MAIN_REF' --database LIBRARY_ENTRY \
 ```
 
 Only nominated fields change. Omitted properties and file bodies remain intact. `--default-context` controls the native checkbox. For a Router, repeat `--member SKILL_PAGE_ID` with exact accessible members in the same shared library, or use `--clear-members`; omit both to preserve the relation. Metadata writes use Notion's native last-writer behavior and do not provide compare-and-swap.
+
+To make a reviewed Skill available, or disable it again:
+
+```bash
+ntn-skills update SKILL_PAGE_ID --database LIBRARY_ENTRY --enabled true
+ntn-skills update SKILL_PAGE_ID --database LIBRARY_ENTRY --enabled false
+```
+
+The CLI verifies the complete current tree and unresolved original-operation barriers before updating the nominated property. A normal edit to a disabled draft preserves its disabled state. Enabled governs current availability, not permission to inspect an accessible page.
 
 Keep generated snapshot directories as consumption output. Editing one does not silently submit it to Notion. Explicitly choose the intended files as `write` or `apply` input and read the verified result before distributing a new snapshot. Existing local sync bindings have a separate migration and recovery path; a generated directory is not an implicit replacement for them.
 
@@ -170,6 +198,16 @@ ntn-skills ctl library file delete SKILL_PAGE_ID references/obsolete.md \
 Review the dry-run, then omit `--dry-run` to execute the same intent. Each command checks the complete current tree and deterministic relative Markdown links and images. Move does not rewrite references. Remove or update obsolete references deliberately and take a new read before the next change.
 
 Add creates one new File identity and native body page. Move preserves the File ID, page and body; a following file also preserves its original fixed-source path. Delete records an explicit tombstone while retaining the page and body. A later upstream reappearance does not revive the deleted path. The main entrypoint cannot be moved or deleted through these commands. Missing permissions or a failed read are never treated as deletion intent.
+
+### Link the new reference from the original Skill
+
+Keep the add result's actual path and `page_id`. Take a new `read SKILL_PAGE_ID --database LIBRARY_ENTRY --authoring` because adding the file changed the complete tree. Append a descriptive link to the new logical path while preserving existing main content and metadata:
+
+```markdown
+Read [the new checklist](references/new-checklist.md).
+```
+
+Submit the complete edited main file with `write PINNED_MAIN_REF --input ./SKILL.md`. The writer resolves same-owner relative paths through the fresh snapshot's exact native bindings before sending the body. Existing references and the new checklist therefore remain clickable in Notion; CLI reads render those native URLs as the same resource paths, and the returned pin fixes both bodies. Explicit native Notion URLs also work. External URLs, source-only resources, foreign Skill refs and code literals are not guessed into native pages. An unchanged complete read result returns unchanged without a body PATCH or new Records publication just to canonicalize URLs. The reference is a Files-table page related to its Skill, not a physical child page to be recursively traversed. File add alone does not edit the main body.
 
 ## Select a fixed source and restore following
 

@@ -32,6 +32,11 @@ import {
   type SharedSkillApplyPlan,
 } from "./shared-skill-apply-model.ts"
 import { sha256, Store } from "./store.ts"
+import {
+  SharedNativeAdoptionPlanSchema,
+  validateSharedNativeAdoptionPlan,
+  type SharedNativeAdoptionPlan,
+} from "./shared-native-adoption-model.ts"
 
 export type SharedPendingFilePlan =
   | SharedObservationPlan
@@ -40,6 +45,7 @@ export type SharedPendingFilePlan =
   | SharedMetadataWritePlan
   | SharedFileManagementPlan
   | SharedSkillApplyPlan
+  | SharedNativeAdoptionPlan
 export type SharedPendingFileScope = {
   readonly prefix: string
   readonly scope: string
@@ -61,6 +67,7 @@ const PendingFileOperationSchema = Schema.Struct({
     SharedMetadataWritePlanSchema,
     SharedFileManagementPlanSchema,
     SharedSkillApplyPlanSchema,
+    SharedNativeAdoptionPlanSchema,
   ]),
 })
 
@@ -79,6 +86,10 @@ export function pendingFileOperationKey(prefix: string, plan: SharedPendingFileP
 
 function validatePlan(plan: SharedPendingFilePlan) {
   switch (plan.kind) {
+    case "native_adoption":
+      return validateSharedNativeAdoptionPlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
     case "body_write":
       return validateSharedBodyWritePlan(plan).pipe(
         Effect.map((value): SharedPendingFilePlan => value),

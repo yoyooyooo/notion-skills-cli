@@ -61,6 +61,38 @@ function facts(f: ReturnType<typeof sharedCreateFixture>, page: string) {
 }
 
 describe("native shared creation", () => {
+  test("an unrelated unregistered draft does not block creation or get modified", async () => {
+    const f = sharedCreateFixture()
+    const draft = f.seedSkill(id(811), "", "Work in progress", "skill", false)
+    const original = structuredClone(draft)
+    const result = await f.run(createSharedNative(createLibrary, { portable: portable() }))
+    expect(result.status).toBe("created")
+    expect(draft).toEqual(original)
+    expect(
+      f.calls.some((call) => call.method === "PATCH" && call.path === `v1/pages/${id(811)}`),
+    ).toBe(false)
+  })
+
+  test("an unregistered draft reserves its name and alias before any create write", async () => {
+    const f = sharedCreateFixture()
+    f.seedSkill(id(812), "", "Native new", "skill", false)
+    const result = await f.run(
+      prepareSharedCreate(createLibrary, { portable: portable({ name: "native-new" }) }).pipe(
+        Effect.result,
+      ),
+    )
+    expect(result._tag).toBe("Failure")
+    if (result._tag !== "Failure")
+      throw new Error("Expected the existing draft name to remain reserved")
+    expect(result.failure.code).toBe("NAME_CONFLICT")
+    expect(result.failure.details).toEqual({
+      name: "native-new",
+      page_id: id(812),
+      state: "unregistered",
+    })
+    expect(f.writes()).toHaveLength(0)
+  })
+
   test("ordinary H1 and rich Markdown use frozen native request and exact observed candidates", async () => {
     const main =
       "# Native acceptance\n\nAcceptance marker NativeCanaryAlpha20261101.\n\nRead the supporting file at `references/guide.md`."

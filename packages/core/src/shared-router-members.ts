@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import {
   decode,
   fail,
@@ -273,7 +274,9 @@ export function querySharedSkillRelation(
 ): Effect.Effect<readonly SharedSkillRelationTarget[], SkillsError, Notion> {
   return Effect.gen(function* () {
     const wanted = new Set(
-      yield* completeSharedSkillRelationIds(library, input.record, input.rawPage, input.field),
+      yield* completeSharedSkillRelationIds(library, input.record, input.rawPage, input.field, {
+        allowDisabled: yield* isSharedAuthoringTarget(input.record.locator.page_id),
+      }),
     )
     if (
       input.inventory !== undefined &&

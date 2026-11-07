@@ -28,8 +28,26 @@ Mutable state belongs to `state.sqlite`; historical JSON paths are importer inpu
 | Q4 | Reserve a generation in one process, clear in another, then attempt delayed publication. Publication fails `CACHE_INVALIDATED`; pinned snapshots, objects, plans, bases and pending operations remain readable. |
 | Q5 | Interrupt file publication before/after durable rename and before pointer commit. Registered snapshots always verify all referenced bytes; unreferenced durable files are permitted and preserved. |
 | Q6 | Back up through `ctl backup --output DIR`, restore the DB and referenced files into independent roots, and consume with a new installed process. Record SQLite version, journal mode, synchronous mode and bounded busy failure from actual Node runtimes. |
+| Q7 | Revalidate one scope/record repeatedly through real SQLite processes. Forty new causal generations reuse one row and retain its original address; the original body deadline and sync baseline remain unchanged. Publish an older success after a newer denial: the denial remains and the row count stays bounded. Existing append-only rows stay readable; publication by the updated writer reuses the current row, while running older writers may still append. Reuse Q4 and the access-denial retirement cases to verify clear fences and subsequent validated recovery. |
 
 `sqlite-state.node.test.ts` uses real competing/killed Node processes and filesystem bytes; `config.node.test.ts` covers persistent retirement/corruption. Both run through official Effect Vitest integration with `bun run test:node`; the root `bun run test` also runs the pure Bun suites. Installed package migration is driven by `package-smoke.ts`. Neither controlled boundary proof nor a local test pass establishes live Notion or host acceptance. Record each case as implemented/tested/unverified with machine evidence. SQL cache retirement no longer depends on Trash; Trash remains required when retiring actual user/installation files.
+
+Q7 concerns disposable current observations only. Compare immutable snapshots,
+objects, baselines and pending operation identities separately; their retention is
+not a leak in this current-observation index. For the Pro local loop, also repeat
+the same object through the independently installed CLI and Broker SDK, recording
+their actual shared roots/identity, second-entry HTTP attempts and filesystem
+entity counts. A source-only row-count regression does not establish that both
+installed entrypoints share the same cache.
+
+Also interleave real SQLite publication with the previous append-only reader's
+single enumeration: after it has read an older grant, forty new denials must
+preserve the already-enumerated denial row address and remain visible to that
+reader. New publication must not require a new reader retry to be safe. Separately
+exercise explicit retirement between `listKeys` and individual reads. Any missing
+key discards the entire batch; a fresh local lookup must retain the current denial.
+After three interrupted batches, require `CACHE_INVALIDATED`, not a stale grant or
+an empty success.
 
 
 ## Three evidence layers

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { Crypto, Effect, FileSystem, Path } from "effect"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { HttpClient } from "effect/http"
 import { authScope } from "../src/catalog.ts"
 import { decode, fail, property, SkillsError, SnapshotSchema, text } from "../src/model.ts"
@@ -17,6 +21,11 @@ import { validateSharedFileManagementPlan } from "../src/shared-file-management-
 import { projectSharedNotionMarkdown } from "../src/shared-notion-projection.ts"
 import { canonicalSharedJson, querySharedRecords } from "../src/shared-records.ts"
 import { Store } from "../src/store.ts"
+import { withSharedAuthoringTarget } from "../src/shared-authoring-context.ts"
+import { readSkill } from "../src/snapshot.ts"
+import { writeSkill } from "../src/mutation.ts"
+import { trashPath } from "../src/local-locks.ts"
+import { fileRef } from "../src/ref.ts"
 import {
   sharedSnapshotFixture,
   library,
@@ -35,7 +44,12 @@ function field(key: string, input: unknown) {
   if (value.select !== undefined) return { ...value, id: key, type: "select" }
   throw new Error("Unexpected lifecycle fixture field")
 }
-function fixture(fixtureOptions: { readonly readback?: (wire: string) => string } = {}) {
+function fixture(
+  fixtureOptions: {
+    readonly readback?: (wire: string) => string
+    readonly allowMainWrite?: boolean
+  } = {},
+) {
   const base = sharedSnapshotFixture()
   const files: Record<string, unknown>[] = structuredClone(base.files)
   const retired = new Map<string, unknown>()
@@ -189,6 +203,38 @@ function fixture(fixtureOptions: { readonly readback?: (wire: string) => string 
               }
               const markdown = /^\/v1\/pages\/([^/]+)\/markdown$/u.exec(url.pathname)
               if (markdown !== null && base.bodies.has(markdown[1] ?? "")) {
+                if (
+                  method === "PATCH" &&
+                  markdown[1] === skillPage &&
+                  fixtureOptions.allowMainWrite === true
+                ) {
+                  const updates = property(property(body).update_content).content_updates
+                  const update =
+                    Array.isArray(updates) && updates.length === 1 ? property(updates[0]) : {}
+                  if (
+                    update.old_str !== base.bodies.get(skillPage) ||
+                    typeof update.new_str !== "string" ||
+                    ![...base.json.entries()].some(
+                      ([key, value]) =>
+                        key.startsWith(pendingPrefix) &&
+                        property(property(value).plan).kind === "body_write",
+                    )
+                  )
+                    return Effect.fail(
+                      fail(
+                        "TEST_BODY_WRITE",
+                        "Explicit public write lost its complete original preimage or durable plan",
+                      ),
+                    )
+                  base.bodies.set(skillPage, update.new_str)
+                  base.main.last_edited_time = new Date().toISOString()
+                  return Effect.succeed({
+                    id: skillPage,
+                    markdown: update.new_str,
+                    truncated: false,
+                    unknown_block_ids: [],
+                  })
+                }
                 if (method !== "GET")
                   return Effect.fail(
                     fail(
@@ -329,6 +375,90 @@ function fixture(fixtureOptions: { readonly readback?: (wire: string) => string 
 }
 
 describe("shared file lifecycle operations", () => {
+  test("a disabled author adds a reference page and its native link becomes a pinned resource", async () => {
+    const f = fixture({ allowMainWrite: true })
+    property(property(f.base.main.properties).enabled).checkbox = false
+    const existingUrl = `https://app.notion.com/p/${id(11).replaceAll("-", "")}`
+    f.base.bodies.set(skillPage, `# Native main\n\n[Existing reference](${existingUrl})`)
+    const author = <A, E, R>(action: Effect.Effect<A, E, R>) =>
+      withSharedAuthoringTarget(skillPage, action)
+    const open = (readOnly: boolean) =>
+      f.run(
+        author(
+          Effect.gen(function* () {
+            const scope = yield* authScope
+            return yield* openSharedSnapshot({
+              library,
+              target: skillPage,
+              scope,
+              startedAt: Date.now(),
+              forceFull: true,
+              readOnly,
+            })
+          }),
+        ),
+      )
+    await open(false)
+    const snapshot = await open(true)
+    const original = f.base.bodies.get(skillPage)
+    const plan = await f.run(
+      author(
+        prepareSharedFileManagement({
+          library,
+          snapshot,
+          action: "add",
+          path: "references/guide.md",
+          markdown: "# A reference guide\n",
+        }),
+      ),
+    )
+    f.clear()
+    const result = await f.run(
+      author(executeSharedFileManagement(library, { plan, mode: "create" })),
+    )
+    expect(result.status).toBe("applied")
+    expect(result.page_id).not.toBeNull()
+    expect(f.fileCreates()).toHaveLength(1)
+    expect(f.base.bodies.get(skillPage)).toBe(original)
+    expect(property(property(f.base.main.properties).enabled).checkbox).toBe(false)
+    const afterAdd = await f.run(
+      readSkill(skillPage, { database: library.skills.database_id, authoring: true }),
+    )
+    if (!("content" in afterAdd) || result.page_id == null)
+      throw new Error("Expected the complete author pin and actual new native reference page")
+    const directory = mkdtempSync(join(tmpdir(), "shared-add-reference-"))
+    const input = join(directory, "SKILL.md")
+    writeFileSync(
+      input,
+      `${afterAdd.content.trimEnd()}\n\n[Reference guide](references/guide.md)\n`,
+    )
+    try {
+      const written = await f.run(
+        writeSkill(afterAdd.ref, { input }).pipe(Effect.provide(NodeServices.layer)),
+      )
+      expect(property(written).verified).toBe(true)
+    } finally {
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    }
+    expect(f.base.bodies.get(skillPage)).toContain(`[Existing reference](${existingUrl})`)
+    expect(f.base.bodies.get(skillPage)).toContain(
+      `[Reference guide](https://app.notion.com/p/${result.page_id.replaceAll("-", "")})`,
+    )
+    const linked = await f.run(
+      readSkill(skillPage, { database: library.skills.database_id, authoring: true }),
+    )
+    expect(property(linked).content).toContain("[Reference guide](references/guide.md)")
+    const resource = await f.run(
+      readSkill(fileRef(linked.record.id, "references/guide.md", linked.snapshot_id)),
+    )
+    expect(property(resource).content).toContain("# A reference guide")
+    const denied = await f.run(
+      readSkill(skillPage, { database: library.skills.database_id }).pipe(Effect.result),
+    )
+    expect(denied._tag).toBe("Failure")
+    if (denied._tag === "Failure") expect(property(denied.failure).code).toBe("CONTENT_DISABLED")
+  })
+
   test("add freezes the original plan before one create and preserves all existing files", async () => {
     const f = fixture(),
       snapshot = await f.baseline()

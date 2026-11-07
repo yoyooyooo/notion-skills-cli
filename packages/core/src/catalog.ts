@@ -25,7 +25,7 @@ import { pageId } from "./ref.ts"
 import { fileRef } from "./ref.ts"
 import { libraryFromDatabase } from "./shared-library.ts"
 import { LIBRARY_MARKER } from "./shared-library-model.ts"
-import { sharedRecordFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
+import { sharedMetadataEntryFromPage, validateSharedRecordIdentity } from "./shared-content.ts"
 import { sharedGraphInventory } from "./shared-graph-read-context.ts"
 import {
   directorySkillMetadata,
@@ -700,10 +700,11 @@ function readCatalog(
           inventory.set(row.id, { page: row, database_id: db.database_id, data_source_id: id })
           if (row.in_trash || row.archived || row.is_archived) continue
           const checked = yield* Effect.try({
-            try: () =>
-              db.shared_library === undefined
-                ? recordFromPage(row, db, id)
-                : sharedRecordFromPage(row, db, id),
+            try: () => {
+              if (db.shared_library === undefined) return recordFromPage(row, db, id)
+              const entry = sharedMetadataEntryFromPage(row, db, id)
+              return entry.state === "registered" ? entry.record : undefined
+            },
             catch: (error) =>
               error instanceof SkillsError
                 ? error
@@ -722,6 +723,7 @@ function readCatalog(
             continue
           }
           const record = checked.success
+          if (record === undefined) continue
           if (record.locator.type === "shared_skill") {
             const previous = sharedIdentities.get(record.id)
             if (previous !== undefined)

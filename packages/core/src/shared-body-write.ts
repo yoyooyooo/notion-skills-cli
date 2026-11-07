@@ -1,4 +1,5 @@
 import { Clock, Effect, Schema } from "effect"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { decode, fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
@@ -15,7 +16,7 @@ import {
   querySharedRecords,
   type SharedRecord,
 } from "./shared-records.ts"
-import { querySharedSkillIndex } from "./shared-skill-index.ts"
+import { querySharedSkillIndex, type SharedSkillIndex } from "./shared-skill-index.ts"
 import { resolveSelectedSharedSourceReference } from "./shared-selected-source.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import {
@@ -118,11 +119,20 @@ function fileEvents(library: SharedLibrary, skillPageId: string, fileId: string)
   })
 }
 
-function currentContext(library: SharedLibrary, skillPageId: string, fileId: string) {
+function currentContext(
+  library: SharedLibrary,
+  skillPageId: string,
+  fileId: string,
+  suppliedIndex?: SharedSkillIndex,
+) {
   return Effect.gen(function* () {
-    const index = yield* querySharedSkillIndex(library, skillPageId)
+    const index = suppliedIndex ?? (yield* querySharedSkillIndex(library, skillPageId))
     const binding = [index.main, ...index.files].find((file) => file.file_id === fileId)
-    if (!binding || !index.enabled)
+    if (
+      (suppliedIndex !== undefined && index.page_id !== skillPageId) ||
+      !binding ||
+      (!index.enabled && !(yield* isSharedAuthoringTarget(skillPageId)))
+    )
       return yield* Effect.fail(
         fail("SHARED_BODY_WRITE_SCOPE", "The selected active Skill/file binding is unavailable."),
       )
@@ -177,6 +187,8 @@ export function prepareSharedBodyWrite(input: {
   readonly library: SharedLibrary
   readonly skillPageId: string
   readonly fileId: string
+  /** Fresh metadata read in this same preparation, before any operation is dispatched. */
+  readonly currentIndex?: SharedSkillIndex
   readonly candidateMarkdown: string
   readonly action: "write" | "restore_follow"
   readonly source?: RestoreSource
@@ -185,7 +197,12 @@ export function prepareSharedBodyWrite(input: {
   readonly expected?: { readonly heads: readonly string[]; readonly body_sha256: string }
 }) {
   return Effect.gen(function* () {
-    const context = yield* currentContext(input.library, input.skillPageId, input.fileId)
+    const context = yield* currentContext(
+      input.library,
+      input.skillPageId,
+      input.fileId,
+      input.currentIndex,
+    )
     const headers = yield* querySharedOperationIndex(input.library, input.skillPageId)
     const pending = yield* loadPendingSharedBodyWrites(input.library, {
       skillPageId: input.skillPageId,
@@ -301,9 +318,15 @@ function verifyScope(library: SharedLibrary, plan: SharedBodyWritePlan) {
     )
 }
 
-function verifyCurrent(library: SharedLibrary, plan: SharedBodyWritePlan, includeBody: boolean) {
+function verifyCurrent(
+  library: SharedLibrary,
+  plan: SharedBodyWritePlan,
+  includeBody: boolean,
+  suppliedContext?: Effect.Success<ReturnType<typeof currentContext>>,
+) {
   return Effect.gen(function* () {
-    const context = yield* currentContext(library, plan.skill_page_id, plan.file_id)
+    const context =
+      suppliedContext ?? (yield* currentContext(library, plan.skill_page_id, plan.file_id))
     if (
       context.index.skill_id !== plan.skill_id ||
       context.binding.page_id !== plan.page_id ||
@@ -633,10 +656,10 @@ export function executeSharedBodyWrite<R = never>(
     const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
     if (headers.some((header) => header.record_id === plan.operation_id))
       return yield* reconcileSharedBodyWrite(library, plan)
-    const prior = yield* fileEvents(library, plan.skill_page_id, plan.file_id)
+    const preflight = yield* currentContext(library, plan.skill_page_id, plan.file_id)
     const pending = yield* loadPendingSharedBodyWrites(library, {
       skillPageId: plan.skill_page_id,
-      events: prior,
+      events: preflight.events,
       headers: headers.filter(
         (header) =>
           header.entity_id === plan.file_id || header.entity_id === bodyWriteOutcomesEntity,
@@ -653,8 +676,9 @@ export function executeSharedBodyWrite<R = never>(
           "pending",
         ),
       )
-    // Recheck before allocating any receipt; ordinary stale preflight has no effects.
-    const initial = yield* verifyCurrent(library, plan, true)
+    // Pending and current-state checks share this one read-only preflight.
+    // After retaining records below, verification always reads a new context.
+    const initial = yield* verifyCurrent(library, plan, true, preflight)
     if (plan.action === "write" && plan.before.fingerprint.sha256 === plan.candidate.content.sha256)
       return {
         status: "unchanged" as const,

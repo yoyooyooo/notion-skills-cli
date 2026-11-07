@@ -10,7 +10,7 @@ import { join } from "node:path"
 import { sqliteState } from "../src/sqlite-state.ts"
 import { Store, StoreLive, sha256 } from "../src/store.ts"
 import { BaseSchema } from "../src/sync.ts"
-import { ObservationSchema } from "../src/cache.ts"
+import { assertKnownSnapshotAccess, ObservationSchema } from "../src/cache.ts"
 import { SnapshotSchema, decode } from "../src/model.ts"
 import { trashPath } from "../src/local-locks.ts"
 
@@ -132,6 +132,264 @@ test("View observations remain outside full catalogs and obey publication and re
     if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
   }
 })
+
+test("repeated online observations reuse one causal slot and preserve durable state", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ntn-observation-reuse-"))
+  const root = join(directory, "state")
+  try {
+    const refreshed = await child(
+      root,
+      `
+      yield* state.registerBindingWithBase(${JSON.stringify(binding)},${JSON.stringify(base)});
+      for(let attempt=0;attempt<40;attempt++) {
+        const generation=yield* state.reserve('scope','page');
+        yield* state.write('cache/latest/scope/page/refresh-'+generation+'.json',{
+          scope:'scope',record_identity:'page',generation,started_at:attempt,validated_at:attempt,
+          invalidated:false,snapshot_id:'same-fixed-snapshot',shared_body_valid_until:1000
+        });
+      }
+      const keys=yield* state.list('cache/latest/scope/page');
+      console.log(JSON.stringify({keys,latest:yield* state.read(keys[0]),base:yield* state.read('sync/bases/b_process.json')}));
+      `,
+    )
+    expect(refreshed.exit).toBe(0)
+    const state = JSON.parse(refreshed.stdout)
+    expect(state.keys).toHaveLength(1)
+    expect(state.keys[0]).toBe("cache/latest/scope/page/refresh-1.json")
+    expect(state.latest).toMatchObject({
+      generation: 40,
+      validated_at: 39,
+      snapshot_id: "same-fixed-snapshot",
+      shared_body_valid_until: 1000,
+    })
+    expect(state.base).toEqual(base)
+
+    const denied = await child(
+      root,
+      `
+      const older=yield* state.reserve('scope','page');
+      const generation=yield* state.reserve('scope','page');
+      yield* state.write('cache/latest/scope/page/denied.json',{
+        scope:'scope',record_identity:'page',generation,started_at:50,validated_at:50,
+        invalidated:true,access_denied:'ACCESS_DENIED'
+      });
+      console.log(older);
+      `,
+    )
+    expect(denied.exit).toBe(0)
+    const delayed = await child(
+      root,
+      `
+      yield* state.write('cache/latest/scope/page/delayed.json',{
+        scope:'scope',record_identity:'page',generation:${Number(denied.stdout)},
+        started_at:49,validated_at:99999,invalidated:false,snapshot_id:'same-fixed-snapshot'
+      });
+      const keys=yield* state.list('cache/latest/scope/page');
+      console.log(JSON.stringify({keys,latest:yield* state.read(keys[0]),base:yield* state.read('sync/bases/b_process.json')}));
+      `,
+    )
+    expect(delayed.exit).toBe(0)
+    const retained = JSON.parse(delayed.stdout)
+    expect(retained.keys).toHaveLength(1)
+    expect(retained.keys).toEqual(state.keys)
+    expect(retained.latest).toMatchObject({
+      generation: 42,
+      validated_at: 50,
+      access_denied: "ACCESS_DENIED",
+    })
+    expect(retained.base).toEqual(base)
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+  }
+})
+
+test("observation reuse preserves legacy reader addresses across a newer denial", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ntn-observation-legacy-reader-"))
+  const root = join(directory, "state")
+  try {
+    const result = await child(
+      root,
+      `
+      const prefix='cache/latest/scope/page';
+      const older=yield* state.reserve('scope','page');
+      const denied=yield* state.reserve('scope','page');
+      const grant={scope:'scope',record_identity:'page',generation:older,started_at:1,validated_at:1,invalidated:false};
+      const denial={scope:'scope',record_identity:'page',generation:denied,started_at:2,validated_at:2,invalidated:true,access_denied:'ACCESS_DENIED'};
+      yield* state.run(Effect.gen(function*(){
+        const sql=yield* SqlClient.SqlClient;
+        for(const [key,value] of [['0-grant',grant],['1-denial',denial]]) {
+          yield* sql\`INSERT INTO observations(id,scope,record_identity,generation,validated_at,payload) VALUES(\${prefix+'/'+key+'.json'},\${'scope'},\${'page'},\${value.generation},\${value.validated_at},\${JSON.stringify(value)})\`;
+        }
+      }));
+      // The old reader enumerates once and has already read an older grant.
+      const originalKeys=(yield* state.list(prefix)).sort();
+      const entries=[yield* state.read(originalKeys[0])];
+      for(let attempt=0;attempt<40;attempt++) {
+        const generation=yield* state.reserve('scope','page');
+        yield* state.write(prefix+'/new-'+generation+'.json',{
+          ...denial,generation,validated_at:attempt+3
+        });
+      }
+      entries.push(yield* state.read(originalKeys[1]));
+      const latest=entries.filter(Boolean).sort((a,b)=>b.generation-a.generation)[0];
+      console.log(JSON.stringify({originalKeys,keys:yield* state.list(prefix),missing:entries.some(value=>value===undefined),latest}));
+      `,
+    )
+    expect(result.exit).toBe(0)
+    const observed = JSON.parse(result.stdout)
+    expect(observed.keys.sort()).toEqual(observed.originalKeys)
+    expect(observed.missing).toBe(false)
+    expect(observed.latest).toMatchObject({ generation: 42, access_denied: "ACCESS_DENIED" })
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+  }
+})
+
+it.live("explicit retirement during observation reads never returns a partial old grant", () =>
+  Effect.gen(function* () {
+    const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "ntn-observation-race-")))
+    if (process.platform === "darwin")
+      yield* Effect.addFinalizer(() => trashPath(directory).pipe(Effect.orDie))
+    for (const scenario of ["replaced-denial", "legacy-partial", "continuous"] as const) {
+      const root = join(directory, scenario)
+      yield* Effect.gen(function* () {
+        const store = yield* Store
+        const state = yield* sqliteState(join(root, "state"), yield* FileSystem.FileSystem)
+        const snapshot = decode(SnapshotSchema, {
+          snapshot_id: "s_retained",
+          scope: "scope",
+          version_id: "retained-version",
+          entrypoint: "SKILL.md",
+          created_at: 0,
+          record: {
+            id: "notion_page:page",
+            kind: "skill",
+            entrypoint: "SKILL.md",
+            locator: {
+              type: "notion_page",
+              page_id: "page",
+              database_id: "db",
+              data_source_id: "ds",
+            },
+            name: "retained",
+            alias: "retained",
+            description: "retained",
+            ref: "skill://page/SKILL.md",
+            default_context: false,
+          },
+          files: [],
+        })
+        yield* store.writeJson("snapshots/s_retained.json", snapshot)
+        const prefix = `cache/latest/scope/${snapshot.record.id}`
+        const grantKey = `${prefix}/0-grant.json`
+        const grantGeneration = yield* store.reserveCacheGeneration("scope", snapshot.record.id)
+        const grant = {
+          scope: "scope",
+          record_identity: snapshot.record.id,
+          generation: grantGeneration,
+          started_at: 1,
+          validated_at: 1,
+          invalidated: false,
+          snapshot_id: snapshot.snapshot_id,
+        }
+        yield* store.writeJson(grantKey, grant)
+        const publishDenial = () =>
+          Effect.gen(function* () {
+            const generation = yield* store.reserveCacheGeneration("scope", snapshot.record.id)
+            yield* store.writeJson(`${prefix}/denial-${generation}.json`, {
+              scope: "scope",
+              record_identity: snapshot.record.id,
+              generation,
+              started_at: generation,
+              validated_at: generation,
+              invalidated: true,
+              access_denied: "ACCESS_DENIED",
+            })
+          })
+        yield* publishDenial()
+        if (scenario === "legacy-partial") {
+          // An older database can contain a grant followed by a newer denial.
+          yield* state.run(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient
+              yield* sql`UPDATE observations SET id=${`${prefix}/1-denial.json`} WHERE id=${grantKey}`
+              yield* sql`INSERT INTO observations(id,scope,record_identity,generation,validated_at,snapshot_id,payload) VALUES(${grantKey},${"scope"},${snapshot.record.id},${grantGeneration},${1},${snapshot.snapshot_id},${JSON.stringify(grant)})`
+            }),
+          )
+        }
+        const retireAndReject = () =>
+          Effect.gen(function* () {
+            const generation = yield* store.reserveCacheGeneration("scope", snapshot.record.id)
+            yield* store.writeJson(`${prefix}/revalidated-${generation}.json`, {
+              ...grant,
+              generation,
+            })
+            yield* state.retire([`${prefix}/.fence`])
+            yield* publishDenial()
+          })
+        let enumerations = 0,
+          missingReads = 0,
+          raced = false,
+          readOldGrant = false
+        const observed: Store["Service"] = {
+          ...store,
+          listKeys: (selected) =>
+            Effect.gen(function* () {
+              const keys = yield* store.listKeys(selected)
+              if (selected === prefix) {
+                enumerations++
+                if (scenario === "continuous" || (scenario === "replaced-denial" && !raced)) {
+                  raced = true
+                  yield* retireAndReject()
+                }
+              }
+              return [...keys].sort()
+            }),
+          readJson: (key, schema) =>
+            Effect.gen(function* () {
+              const value = yield* store.readJson(key, schema)
+              if (key.startsWith(prefix + "/") && value === undefined) missingReads++
+              if (scenario === "legacy-partial" && key === grantKey && !raced) {
+                readOldGrant = value !== undefined
+                raced = true
+                yield* retireAndReject()
+              }
+              return value
+            }),
+        }
+        const gate = yield* assertKnownSnapshotAccess(snapshot).pipe(
+          Effect.provideService(Store, observed),
+          Effect.result,
+        )
+        expect(gate._tag).toBe("Failure")
+        if (gate._tag !== "Failure") throw new Error(`Known denial escaped during ${scenario}`)
+        expect(gate.failure.code).toBe(
+          scenario === "continuous" ? "CACHE_INVALIDATED" : "ACCESS_DENIED",
+        )
+        expect(enumerations).toBe(scenario === "continuous" ? 3 : 2)
+        expect(missingReads).toBe(scenario === "continuous" ? 3 : 1)
+        expect(readOldGrant).toBe(scenario === "legacy-partial")
+        const keys = yield* store.listKeys(prefix)
+        expect(keys).toHaveLength(1)
+        expect(yield* store.readJson(keys[0]!, ObservationSchema)).toMatchObject({
+          access_denied: "ACCESS_DENIED",
+        })
+        expect(yield* store.readJson("snapshots/s_retained.json", SnapshotSchema)).toEqual(snapshot)
+      }).pipe(
+        Effect.provide(StoreLive.pipe(Layer.provideMerge(NodeServices.layer))),
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromUnknown({
+              NTN_SKILLS_HOME: join(root, "state"),
+              NTN_SKILLS_CONFIG_HOME: join(root, "config"),
+              NTN_SKILLS_CACHE_HOME: join(root, "cache"),
+            }),
+          ),
+        ),
+      )
+    }
+  }).pipe(Effect.provide(NodeServices.layer)),
+)
 
 test("a separate clearing process fences an observation still held by its original publisher", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ntn-sqlite-clear-"))

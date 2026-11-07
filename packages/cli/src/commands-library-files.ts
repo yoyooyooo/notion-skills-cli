@@ -5,6 +5,7 @@ import { defineCommand } from "../../core/src/command-schema.ts"
 import { fail, property, SkillsError, type Snapshot } from "../../core/src/model.ts"
 import { pageId } from "../../core/src/ref.ts"
 import { openSharedConsumer } from "../../core/src/shared-consumer.ts"
+import { withSharedAuthoringRequest } from "../../core/src/shared-authoring-context.ts"
 import {
   executeSharedFileManagement,
   fileManagementProtection,
@@ -165,17 +166,20 @@ const add = defineCommand(
     dryRun,
   },
   (options) =>
-    Effect.gen(function* () {
-      const markdown = yield* inputMarkdown(options.input)
-      const selected = yield* fresh(options.entry, options.target)
-      const plan = yield* prepareSharedFileManagement({
-        ...selected,
-        action: "add",
-        path: options.path,
-        markdown,
-      })
-      yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
-    }),
+    withSharedAuthoringRequest(
+      options.target,
+      Effect.gen(function* () {
+        const markdown = yield* inputMarkdown(options.input)
+        const selected = yield* fresh(options.entry, options.target)
+        const plan = yield* prepareSharedFileManagement({
+          ...selected,
+          action: "add",
+          path: options.path,
+          markdown,
+        })
+        yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
+      }),
+    ),
 ).pipe(
   Command.withDescription(
     "Create one supporting File with a stable File ID and one native body page. Validates the complete fresh tree, portable paths and deterministic local Markdown links/images before dispatch. The original plan is durable before one page create; an uncertain response is never replayed. Existing file identities and tombstones cannot be overwritten. --dry-run emits the exact reviewable plan without remote writes.",
@@ -183,12 +187,15 @@ const add = defineCommand(
 )
 
 const remove = defineCommand("delete", { target, path, entry, dryRun }, (options) =>
-  Effect.gen(function* () {
-    const selected = yield* fresh(options.entry, options.target)
-    const fileId = yield* supportingFile(selected.snapshot, options.path)
-    const plan = yield* prepareSharedFileManagement({ ...selected, action: "delete", fileId })
-    yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
-  }),
+  withSharedAuthoringRequest(
+    options.target,
+    Effect.gen(function* () {
+      const selected = yield* fresh(options.entry, options.target)
+      const fileId = yield* supportingFile(selected.snapshot, options.path)
+      const plan = yield* prepareSharedFileManagement({ ...selected, action: "delete", fileId })
+      yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
+    }),
+  ),
 ).pipe(
   Command.withDescription(
     "Retain the exact original body and publish an explicit shared tombstone. The native File page and its bytes remain available; no archive or body replacement is sent. Broken local links or images in the proposed complete tree fail before dispatch. Upstream reappearance cannot silently revive the deleted logical path. The main entrypoint is protected.",
@@ -199,17 +206,20 @@ const move = defineCommand(
   "move",
   { target, path, destination: Argument.String("destination"), entry, dryRun },
   (options) =>
-    Effect.gen(function* () {
-      const selected = yield* fresh(options.entry, options.target)
-      const fileId = yield* supportingFile(selected.snapshot, options.path)
-      const plan = yield* prepareSharedFileManagement({
-        ...selected,
-        action: "move",
-        fileId,
-        destinationPath: options.destination,
-      })
-      yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
-    }),
+    withSharedAuthoringRequest(
+      options.target,
+      Effect.gen(function* () {
+        const selected = yield* fresh(options.entry, options.target)
+        const fileId = yield* supportingFile(selected.snapshot, options.path)
+        const plan = yield* prepareSharedFileManagement({
+          ...selected,
+          action: "move",
+          fileId,
+          destinationPath: options.destination,
+        })
+        yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
+      }),
+    ),
 ).pipe(
   Command.withDescription(
     "Move one logical supporting-file path while preserving File ID, native page and complete body. Following files retain their original immutable source path; all prior noncurrent paths stay explicitly suppressed. Checks incoming references and the moved file's relative links without rewriting them. Uses one Path-only property PATCH with exact postcondition verification. Notion offers no metadata compare-and-swap; uncertain or conflicting results retain the original plan for read-only reconciliation.",
@@ -220,21 +230,24 @@ const reconcile = defineCommand(
   "reconcile",
   { target, operation: Argument.String("operation-id"), entry },
   (options) =>
-    Effect.gen(function* () {
-      const selected = yield* skillPage(options.target)
-      const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
-      const plan = yield* loadSharedFileManagementPlan(library, {
-        skillPageId: selected,
-        operationId: options.operation,
-      })
-      yield* emit({
-        ...(yield* reconcileSharedFileManagement(library, plan)),
-        action: plan.action,
-        file_id: plan.file_id,
-        path: plan.destination_path ?? plan.path,
-        protection: fileManagementProtection,
-      })
-    }),
+    withSharedAuthoringRequest(
+      options.target,
+      Effect.gen(function* () {
+        const selected = yield* skillPage(options.target)
+        const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+        const plan = yield* loadSharedFileManagementPlan(library, {
+          skillPageId: selected,
+          operationId: options.operation,
+        })
+        yield* emit({
+          ...(yield* reconcileSharedFileManagement(library, plan)),
+          action: plan.action,
+          file_id: plan.file_id,
+          path: plan.destination_path ?? plan.path,
+          protection: fileManagementProtection,
+        })
+      }),
+    ),
 ).pipe(
   Command.withDescription(
     "Read the exact original local/shared lifecycle plan and its verified terminal facts. Never creates a page, PATCHes Path, rewrites a body, or infers completion from matching current content. A verified terminal retires only the derived local replay barrier and requires a fresh current read. Missing original facts remain unresolved.",

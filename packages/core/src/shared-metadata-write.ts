@@ -5,6 +5,7 @@ import { fail, property, SkillsError, text, type SharedSkillRecord } from "./mod
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage, sharedSkillProperty } from "./shared-content.ts"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
@@ -72,9 +73,9 @@ function source(library: SharedLibrary) {
   }
 }
 
-function decodePage(library: SharedLibrary, raw: unknown, selected: string) {
+function decodePage(library: SharedLibrary, raw: unknown, selected: string, authoring: boolean) {
   const record = sharedRecordFromPage(raw, source(library), library.skills.data_source_id)
-  if (record.locator.page_id !== selected || !record.enabled)
+  if (record.locator.page_id !== selected || (!record.enabled && !authoring))
     throw fail(
       "SHARED_METADATA_WRITE_SCOPE",
       "The selected enabled Skill is unavailable in this shared library.",
@@ -91,6 +92,13 @@ function decodePage(library: SharedLibrary, raw: unknown, selected: string) {
   return { record, file_id: fileId }
 }
 
+function readPage(library: SharedLibrary, raw: unknown, selected: string) {
+  return Effect.gen(function* () {
+    const authoring = yield* isSharedAuthoringTarget(selected)
+    return yield* metadataChecked(() => decodePage(library, raw, selected, authoring))
+  })
+}
+
 function readValue(
   library: SharedLibrary,
   raw: unknown,
@@ -102,12 +110,9 @@ function readValue(
     if (field === "Members" || field === "Requires")
       return (yield* completeSharedSkillRelationIds(library, record, raw, field)).sort()
     return yield* metadataChecked(() => {
-      if (field === "Default Context") {
+      if (field === "Default Context" || field === "Enabled") {
         if (value.type !== "checkbox" || typeof value.checkbox !== "boolean")
-          throw fail(
-            "SHARED_METADATA_WRITE_INVALID",
-            "Default Context is not a complete native checkbox.",
-          )
+          throw fail("SHARED_METADATA_WRITE_INVALID", `${field} is not a complete native checkbox.`)
         return value.checkbox
       }
       const kind = field === "Name" ? "title" : "rich_text"
@@ -217,7 +222,7 @@ export function prepareSharedMetadataWrite(input: {
         .sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0))
     })
     const raw = yield* (yield* Notion).request(`v1/pages/${input.skillPageId}`)
-    const current = yield* metadataChecked(() => decodePage(input.library, raw, input.skillPageId))
+    const current = yield* readPage(input.library, raw, input.skillPageId)
     if (input.expected?.record_id !== undefined && input.expected.record_id !== current.record.id)
       return yield* Effect.fail(
         fail(
@@ -302,7 +307,7 @@ function verifyScope(library: SharedLibrary, plan: SharedMetadataWritePlan) {
 function verifyBefore(library: SharedLibrary, plan: SharedMetadataWritePlan) {
   return Effect.gen(function* () {
     const raw = yield* (yield* Notion).request(`v1/pages/${plan.page_id}`)
-    const context = yield* metadataChecked(() => decodePage(library, raw, plan.page_id))
+    const context = yield* readPage(library, raw, plan.page_id)
     if (context.record.id !== plan.record_id || context.file_id !== plan.file_id)
       return yield* Effect.fail(
         fail("WRITE_CONFLICT", "The original metadata target identity changed."),
@@ -349,7 +354,8 @@ function patchProperties(plan: SharedMetadataWritePlan) {
       const native =
         (change.field === "Members" || change.field === "Requires") && Array.isArray(value)
           ? { relation: value.map((id) => ({ id })) }
-          : change.field === "Default Context" && typeof value === "boolean"
+          : (change.field === "Default Context" || change.field === "Enabled") &&
+              typeof value === "boolean"
             ? { checkbox: value }
             : typeof value === "string" && change.field === "Name"
               ? { title: spans(value) }
@@ -470,7 +476,7 @@ export function reconcileSharedMetadataWrite(
       }
     }
     const raw = yield* (yield* Notion).request(`v1/pages/${plan.page_id}`)
-    const current = yield* metadataChecked(() => decodePage(library, raw, plan.page_id))
+    const current = yield* readPage(library, raw, plan.page_id)
     const values = yield* observedValues(
       library,
       raw,
@@ -591,7 +597,7 @@ export function executeSharedMetadataWrite<R = never>(
         response.success,
         yield* (yield* Notion).request(`v1/pages/${plan.page_id}`),
       ]) {
-        const context = yield* metadataChecked(() => decodePage(library, raw, plan.page_id))
+        const context = yield* readPage(library, raw, plan.page_id)
         if (context.record.id !== plan.record_id || context.file_id !== plan.file_id)
           return yield* Effect.fail(
             fail(

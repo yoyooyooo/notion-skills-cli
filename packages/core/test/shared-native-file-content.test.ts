@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import {
   materializeSharedNativeFile,
   parseSharedFileLinks,
+  restoreSharedNativeFileLinks,
   sharedNativeAuthoredBody,
 } from "../src/shared-native-file-content.ts"
 import { fileRef } from "../src/ref.ts"
@@ -33,6 +34,65 @@ test("native local links become portable paths while external links and code rem
   expect(materializeSharedNativeFile(input, "SKILL.md", files)).toBe(
     `Read [guide](references/guide.md) and [external](https://example.com).\n\n\`[guide](${url})\``,
   )
+})
+
+test("authoring restores only exact owner paths and preserves external, source-only and literal links", () => {
+  const native = `https://app.notion.com/p/${support.replaceAll("-", "")}`
+  const unchanged = `[external](https://example.com/guide.md) [foreign](${ref}) [source](scripts/check.ts)\n\n\`[example](references/guide.md)\`\n\n\`\`\`md\n[example](references/guide.md)\n\`\`\``
+  const input = `[guide](references/guide.md#details) and [named][guide]\n\n[guide]: references/guide.md\n\n${unchanged}`
+  expect(restoreSharedNativeFileLinks(input, "SKILL.md", files)).toBe(
+    `[guide](${native}#details) and [named][guide]\n\n[guide]: ${native}\n\n${unchanged}`,
+  )
+  expect(restoreSharedNativeFileLinks(input, "scripts/example.ts", files)).toBe(input)
+})
+
+test("authoring resolves support-page parent and escaped paths without changing local fragments", () => {
+  const mainUrl = `https://app.notion.com/p/${main.replaceAll("-", "")}`
+  const supportUrl = `https://app.notion.com/p/${support.replaceAll("-", "")}`
+  expect(
+    restoreSharedNativeFileLinks(
+      "[main](../SKILL.md#start) [local](#details) [query](?view=1)",
+      "references/guide.md",
+      files,
+    ),
+  ).toBe(`[main](${mainUrl}#start) [local](#details) [query](?view=1)`)
+  expect(
+    restoreSharedNativeFileLinks("[guide](references/guide%20with%20spaces.md)", "SKILL.md", [
+      { page_id: support, path: "references/guide with spaces.md" },
+    ]),
+  ).toBe(`[guide](${supportUrl})`)
+})
+
+test("native-to-consumer-to-authoring handles balanced parentheses in an actual resource path", () => {
+  const bindings = [{ page_id: support, path: "references/guide(one).md" }]
+  const native = `[guide](https://app.notion.com/p/${support.replaceAll("-", "")})`
+  const inspected = materializeSharedNativeFile(native, "SKILL.md", bindings)
+  expect(inspected).toBe("[guide](references/guide(one).md)")
+  expect(restoreSharedNativeFileLinks(inspected, "SKILL.md", bindings)).toBe(native)
+})
+
+test("authoring edits exact parsed destinations without borrowing a real link's permission for literals", () => {
+  const native = `https://app.notion.com/p/${support.replaceAll("-", "")}`
+  const input =
+    "`😀 [code](references/guide.md)`\n\n[real](references/guide.md)\n\n\\[literal](references/guide.md)"
+  expect(restoreSharedNativeFileLinks(input, "SKILL.md", files)).toBe(
+    `\`😀 [code](references/guide.md)\`\n\n[real](${native})\n\n\\[literal](references/guide.md)`,
+  )
+})
+
+test("authoring refuses an escaping path or ambiguous native binding instead of choosing a page", () => {
+  expect(() => restoreSharedNativeFileLinks("[outside](../other.md)", "SKILL.md", files)).toThrow()
+  expect(() =>
+    restoreSharedNativeFileLinks("[guide](references/guide.md)", "SKILL.md", [
+      ...files,
+      { page_id: main, path: "references/guide.md" },
+    ]),
+  ).toThrow()
+  expect(() =>
+    restoreSharedNativeFileLinks("[guide](references/guide.md)", "SKILL.md", [
+      { page_id: "not-a-page", path: "references/guide.md" },
+    ]),
+  ).toThrow()
 })
 
 test("explicit cross-Skill links resolve only their exact from-path and destination", () => {

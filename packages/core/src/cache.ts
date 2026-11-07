@@ -374,7 +374,8 @@ export function publishSnapshotObservation(
       })
     }
     const id = yield* (yield* Crypto.Crypto).randomUUIDv4()
-    // Each publisher owns a new immutable journal entry. An older request cannot overwrite a newer pointer.
+    // The store reuses a current cache slot by causal generation, preserving its
+    // address for running readers. An older request cannot overwrite a newer decision.
     yield* store.writeJson(`cache/latest/${snapshot.scope}/${snapshot.record.id}/${id}.json`, {
       record_identity: snapshot.record.id,
       scope: snapshot.scope,
@@ -445,12 +446,19 @@ function cachedRecordIdentity(selector: string, scope: string) {
 function latestObservation(page: string, scope: string) {
   return Effect.gen(function* () {
     const store = yield* Store
-    const keys = yield* store.listKeys(`cache/latest/${scope}/${page}`)
-    const entries: Array<typeof ObservationSchema.Type> = []
-    for (const key of keys) {
-      if (!key.endsWith(".json")) continue
-      const entry = yield* store.readJson(key, ObservationSchema)
-      if (entry) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const keys = yield* store.listKeys(`cache/latest/${scope}/${page}`)
+      const entries: Array<typeof ObservationSchema.Type> = []
+      let changed = false
+      for (const key of keys) {
+        if (!key.endsWith(".json")) continue
+        const entry = yield* store.readJson(key, ObservationSchema)
+        if (entry === undefined) {
+          // Explicit retirement can remove an enumerated key. Discard every
+          // value from this batch, including any older grant already read.
+          changed = true
+          break
+        }
         if (
           entry.scope !== scope ||
           entry.record_identity !== page ||
@@ -464,9 +472,13 @@ function latestObservation(page: string, scope: string) {
           )
         entries.push(entry)
       }
+      if (changed) continue
+      entries.sort((a, b) => b.generation - a.generation)
+      return entries[0]
     }
-    entries.sort((a, b) => b.generation - a.generation)
-    return entries[0]
+    return yield* Effect.fail(
+      fail("CACHE_INVALIDATED", "The cache observation kept changing during its local read."),
+    )
   })
 }
 /** Reserve before authentication so an older response cannot erase a newer denial. */

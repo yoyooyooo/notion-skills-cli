@@ -46,6 +46,7 @@ import { apiCommand } from "./commands-api.ts"
 import { archiveCommand } from "./commands-archive.ts"
 import { prepareCommand } from "./commands-prepare.ts"
 import { useCommand } from "./commands-use.ts"
+import { adoptCommand } from "./commands-adopt.ts"
 import { live, upstreamLive } from "./command-runtime.ts"
 const syncCommand = defineCommand("sync").pipe(
   Command.withDescription(
@@ -114,7 +115,7 @@ const schemaCommand = defineCommand(
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Discover Notion Skills with list --query, inspect original text or an exact resource with read, and load one root plus its complete Requires with use. Keep returned canonical refs for later resource reads. Files and export provide optional inventories and packages. Authoring is available on demand through create/write/update and pinned apply/replace; use COMMAND --help or the bundled maintenance Skill. Manage libraries, sources, Views, preparation, synchronization and original operations with ctl. Help/schema work offline. Loading instructions does not execute them or attest delivery; preserve an interrupted operation's exact next.argv.",
+      "Discover Notion Skills with list --query, inspect original text or an exact resource with read, and load one root plus its complete Requires with use. Keep returned canonical refs for later resource reads. Files and export provide optional inventories and packages. Authoring is available on demand through create/adopt/write/update and pinned apply/replace; inspect exact disabled drafts with read --authoring and enable a verified tree with update --enabled true. Use COMMAND --help or the bundled maintenance Skill. Manage libraries, sources, Views, preparation, synchronization and original operations with ctl. Help/schema work offline. Loading instructions does not execute them or attest delivery; preserve an interrupted operation's exact next.argv.",
     ),
     Command.withExamples([
       {
@@ -152,6 +153,7 @@ const rootDefinition = () =>
       withRuntime(useCommand, live),
       withRuntime(filesCommand.pipe(withConstraints(filesConstraints)), live),
       withRuntime(createCommand, live).pipe(Command.unlisted),
+      withRuntime(adoptCommand, live).pipe(Command.unlisted),
       withRuntime(applyCommand, live).pipe(Command.unlisted),
       withRuntime(replaceCommand, live).pipe(Command.unlisted),
       withRuntime(exportCommand.pipe(withConstraints(exportConstraints)), live),

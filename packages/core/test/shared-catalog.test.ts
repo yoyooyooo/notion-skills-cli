@@ -601,6 +601,49 @@ describe("shared catalog routing", () => {
     expect(result.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
   })
 
+  test("an unregistered disabled page does not block registered Skill discovery", async () => {
+    const f = fixture({ rows: [row(), row({ n: 2, enabled: false, skillId: "" })] })
+    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    expect(result.records.map((record) => record.id)).toEqual([
+      sharedSkillId(library.library_id, "skill-1"),
+    ])
+    expect(result.coverage.exhaustive).toBe(true)
+    expect(f.calls).toHaveLength(3)
+    expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+    // Directory eligibility does not establish the page's authoring or recovery state.
+    expect(() =>
+      sharedRecordFromPage(
+        row({ n: 2, enabled: false, skillId: "" }),
+        source,
+        library.skills.data_source_id,
+      ),
+    ).toThrow("Skill ID must be a stable bounded identity.")
+  })
+
+  test("disabled pages with malformed nonempty identities remain explicit failures", async () => {
+    const f = fixture({ rows: [row(), row({ n: 2, enabled: false, skillId: "bad/id" })] })
+    const error = await f.run(
+      Effect.flip(catalog({ database: library.skills.database_id, refresh: true })),
+    )
+    expect(error.code).toBe("INVALID_SHARED_SKILL")
+    expect(error.details).toMatchObject({ page_id: id(1002), reason: "invalid_format" })
+  })
+
+  test("a newly inserted disabled Notion page can leave authoring metadata unfinished", async () => {
+    const draft = row({ n: 2, enabled: false, skillId: "" })
+    draft.properties.Name = { id: propertyIds.Name, type: "title", title: [] }
+    draft.properties.Description = { id: propertyIds.Description, type: "rich_text", rich_text: [] }
+    draft.properties.Kind = { id: propertyIds.Kind, type: "select", select: null }
+    const f = fixture({ rows: [row(), draft] })
+    const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
+    expect(result.records).toHaveLength(1)
+    expect(result.coverage.exhaustive).toBe(true)
+    expect(f.calls).toHaveLength(3)
+    expect(() => sharedRecordFromPage(draft, source, library.skills.data_source_id)).toThrow(
+      "Skill ID must be a stable bounded identity.",
+    )
+  })
+
   test("global discovery reads one descriptor and never mistakes a shared References schema for legacy", async () => {
     const f = fixture({ searchRepeated: true })
     const result = await f.run(catalog({ refresh: true }))

@@ -8,6 +8,7 @@ import {
   openFixedSnapshotFiles,
 } from "./fixed-snapshot-files.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
+import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
@@ -1192,12 +1193,31 @@ export interface ReadOptions extends ReadPolicyOptions {
   readonly from?: string
   readonly lines?: string
   readonly output?: string
+  readonly authoring?: boolean
 }
 
 /** Output-only file and owner commitments; text reads retain their existing shape. */
 export const READ_OUTPUT_PROOF_VERSION = 1
 
 export function readSkill(input: string, options: ReadOptions = {}) {
+  if (options.authoring === true) {
+    const selected = pageId(input)
+    if (!selected || options.from || options.offline || options.maxAge !== undefined)
+      return Effect.fail(
+        fail(
+          "EXACT_TARGET_REQUIRED",
+          "Authoring reads require an exact current page ID or URL; offline, max-age and relative/pinned selection are unavailable.",
+        ),
+      )
+    return withSharedAuthoringTarget(
+      selected,
+      readSkillContent(selected, { ...options, refresh: true }),
+    )
+  }
+  return readSkillContent(input, options)
+}
+
+function readSkillContent(input: string, options: ReadOptions) {
   return Effect.gen(function* () {
     if (options.from && options.path !== undefined)
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "--from and --path cannot be combined."))

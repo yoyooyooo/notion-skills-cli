@@ -311,7 +311,7 @@ describe("shared library Views metadata", () => {
   test("SC11 malformed Skill ID details survive a combined catalog with a valid View", async () => {
     const f = fixture()
     f.members([[skillPage]])
-    f.rows[1] = row(beta, "", "Private malformed row", false)
+    f.rows[1] = row(beta, "", "Private malformed row", true)
     const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
     expect(result.catalog).toEqual({
       ok: false,
@@ -371,6 +371,22 @@ describe("shared library Views metadata", () => {
       listCatalog({ database: db, directory: { view: viewA }, offline: true }),
     )
     expect(offline.directory).toMatchObject({ ok: false, error: { code: "CACHE_MISSING" } })
+  })
+
+  test("SC11 unregistered disabled pages stay outside both directory projections", async () => {
+    const f = fixture()
+    f.rows[1] = row(beta, "", "Unregistered draft", false)
+    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    if (!result.catalog.ok || !result.directory.ok)
+      throw new Error("Drafts must not block discovery")
+    expect(result.catalog.value.records.map((record) => record.name)).toEqual(["Alpha", "Gamma"])
+    expect(result.directory.value.records.map((record) => record.name)).toEqual(["Gamma", "Alpha"])
+    expect(result.catalog.value.coverage.exhaustive).toBe(true)
+    expect(result.directory.value.coverage.exhaustive).toBe(true)
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(1)
+    assertMetadataOnly(f)
   })
 
   test("SC11 incomplete inventory is never shared into a successful View", async () => {

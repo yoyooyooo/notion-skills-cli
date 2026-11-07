@@ -6,6 +6,7 @@ import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
 import { updateSkill } from "../src/command-operations.ts"
+import { readSkill } from "../src/snapshot.ts"
 import { querySharedOperationIndex } from "../src/shared-operation-index.ts"
 import {
   executeSharedMetadataWrite,
@@ -120,6 +121,81 @@ function withWriter<A, E>(
 }
 
 describe("shared explicit native metadata writes", () => {
+  test("public update edits a disabled draft and enables only its completely observed tree", async () => {
+    const f = sharedSnapshotFixture({ fileCount: 1 })
+    field(f, "enabled").checkbox = false
+    const body = f.bodies.get(skillPage)
+    const edited = await f.run(
+      withWriter(
+        f,
+        updateSkill(skillPage, {
+          database: library.skills.database_id,
+          description: "A reviewed disabled draft",
+        }),
+      ),
+    )
+    expect(property(property(edited).record).enabled).toBe(false)
+    expect(field(f, "enabled").checkbox).toBe(false)
+    expect(f.bodies.get(skillPage)).toBe(body)
+    expect(
+      patches(f).every(
+        (call) => !Object.hasOwn(property(property(call.body).properties), "enabled"),
+      ),
+    ).toBe(true)
+    f.clearCalls()
+    const enabled = await f.run(
+      withWriter(
+        f,
+        updateSkill(skillPage, {
+          database: library.skills.database_id,
+          enabled: true,
+        }),
+      ),
+    )
+    expect(property(property(enabled).record).enabled).toBe(true)
+    expect(patches(f)).toHaveLength(1)
+    expect(property(property(patches(f)[0]?.body).properties)).toEqual({
+      enabled: { checkbox: true },
+    })
+    expect(f.bodies.get(skillPage)).toBe(body)
+    expect(property(property(enabled).record).id).toBe(
+      (await f.run(readSkill(skillPage, { database: library.skills.database_id }))).record.id,
+    )
+    await f.run(
+      withWriter(
+        f,
+        updateSkill(skillPage, { database: library.skills.database_id, enabled: false }),
+      ),
+    )
+    expect(
+      failure(
+        await f.run(
+          readSkill(skillPage, { database: library.skills.database_id }).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("CONTENT_DISABLED")
+  })
+
+  test("enabling cannot hide an incomplete disabled tree or perform an early property PATCH", async () => {
+    const f = sharedSnapshotFixture()
+    field(f, "enabled").checkbox = false
+    f.bodies.delete(String(f.files[0]?.id))
+    const error = failure(
+      await f.run(
+        withWriter(
+          f,
+          updateSkill(skillPage, {
+            database: library.skills.database_id,
+            enabled: true,
+          }),
+        ).pipe(Effect.result),
+      ),
+    )
+    expect(error.code).toBe("NOT_FOUND")
+    expect(patches(f)).toHaveLength(0)
+    expect(field(f, "enabled").checkbox).toBe(false)
+  })
+
   test("public update routes a shared pin directly and regenerates the metadata projection without legacy publication", async () => {
     const f = sharedSnapshotFixture(),
       baseline = await f.target(parseTarget(skillPage), { database: library.skills.database_id })

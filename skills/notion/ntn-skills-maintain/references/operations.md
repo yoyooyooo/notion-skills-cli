@@ -5,15 +5,24 @@
 | Intent | Command | Result |
 | --- | --- | --- |
 | New item | `create INPUT --database LIBRARY` | A new page; an existing name is a conflict |
+| Existing unregistered disabled draft | `adopt PAGE_ID --database LIBRARY` | Retain the original page/body/disabled state and establish its complete initial identity and retained-body lifecycle |
+| Inspect an exact draft for editing | `read PAGE_ID --database LIBRARY --authoring` | Validate the complete tree online and return a fixed author pin without enabling current consumption |
 | One edit of existing body, resources and properties | `apply PINNED_MAIN_REF --input CHANGES --description TEXT` | Shared targets use a frozen sequential batch; earlier publication targets retain their own protocol |
 | One selected file | `write PINNED_FILE_REF --input FILE` | Preserve every other file and page property |
 | Properties only | `update PINNED_MAIN_REF --name NAME --description TEXT` | Change only the specified allowed properties |
+| Enable or disable a reviewed native Skill | `update PAGE_ID --database LIBRARY --enabled true` or `--enabled false` | Verify the complete current tree and change only nominated properties |
 | Deliberately replace the entire file set | `replace INPUT --target PINNED_MAIN_REF` | Preserve page identity and replace the included file set |
 | Portable copy | `export PINNED_MAIN_REF --output NEW_DIRECTORY_OR_ZIP` | Export the chosen fixed version without changing Notion |
 
 `apply` accepts a changes directory, ZIP or Markdown file. Paths are rooted at the Skill, including `references/` and other nested directories. A single Markdown file uses its basename. Preserve the original main path and kind when supplying a portable manifest. A path cannot be both changed and removed; the main file and reserved portability files cannot be deleted. Full replacement is a deliberate different operation: omitted supporting files leave the Skill's inclusion set.
 
 Use exact page IDs/URLs or returned refs. Names and aliases can collide; incomplete discovery does not establish uniqueness. The creation database is explicit `--database`, the configured default, or the only discovered library. An existing target keeps its database.
+
+## Initial native draft adoption
+
+Adopt requires an exact original page with complete valid Name/Description, Kind=skill and Enabled=false. Skill ID/Main File ID/Source/Projection/References and managed relations must be empty, and no Files or Records lifecycle may already belong to it. It anchors deterministic Skill and main File identities to the library and original page, retains the complete main body and initial adopted event, and changes only the two identity properties. It sends no body PATCH and creates no Skills/Files page. `--dry-run` makes no remote writes.
+
+An unregistered disabled page can remain under human construction without blocking the consumer catalog. It is not an active Skill or proof of a history-free draft. Existing bindings or Records require their original workflow, not a replacement identity. Repeat adoption only reconciles its original retained outcome; `verification=original_adoption_outcome` and `enabled_at_adoption` are historical facts. Use the returned fresh authoring read before further edits or activation.
 
 ## Shared file lifecycle
 
@@ -27,6 +36,8 @@ ntn-skills ctl library file restore-follow SKILL_PAGE_ID references/checklist.md
 ```
 
 Each supports `--dry-run`. Add creates a File identity; move keeps the File ID, native page and fixed-source path; delete retains a tombstone and the old page/body. Complete-tree relative references must remain valid, and move does not rewrite links. Main files cannot be moved or deleted. Restore-follow retains the complete custom body before restoring the exact currently selected source; a moved file uses its old source path. It never advances a commit. Local source bytes require an explicit machine/workspace binding plus `--allow-local-archive` to retain that selected body in shared records.
+
+For a reference visible from the original Notion Skill, obtain a fresh `read PAGE_ID --authoring` after add, then write the complete main file with a descriptive link to the new logical path, for example `[Checklist](references/new.md)`. Do not reuse the pre-add pin: the file inventory changed. Write restores relative destinations using only the fresh selected owner's exact native File bindings, so existing and new links stay clickable in Notion; a subsequent read renders the same fixed resource paths. The returned `page_id` also supports an explicit native URL. The file lives in the related flat Files table; this workflow does not create or enumerate physical child pages. Add alone does not edit the main body. Submitting the unchanged complete read result performs no body PATCH or new Records publication merely to normalize URL spelling.
 
 Shared `apply` supports existing bound native UTF-8 files plus explicitly nominated metadata in one non-atomic batch. Every input and the complete proposed tree are checked before dispatch. One isolated add/delete is supported; mixed or multiple layout changes fail with `SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED` before writes. A later execution failure can preserve earlier verified edits; retain the original remaining intent. `replace` uses these same shared limits and cannot change the original kind.
 
@@ -75,6 +86,7 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | `UPSTREAM_CONTENT_READ_ONLY` | Edit the source or explicitly fork the selected member |
 | Shared body/metadata write, apply or restore-follow is unknown | Read the exact current Skill; obey `read_again` after original facts settle, and retain missing original facts as unresolved |
 | Shared create is unknown | Keep the same complete input and original intent; its retry reconciles original creation identities without blindly repeating POSTs |
+| Initial draft adoption is unknown | Preserve `adoption_operation_id` and use the returned `adopt PAGE_ID --database LIBRARY --reconcile`; no current equality or absent record authorizes a replay |
 | Shared add/delete/move is unknown | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | Partial or unknown legacy Publication | Follow its returned `ctl operation show`/`reconcile`/`resume` action on the original Publication ID |
 | Missing access, invalid paths or unsupported content | Fix the actual input/access issue before retrying |

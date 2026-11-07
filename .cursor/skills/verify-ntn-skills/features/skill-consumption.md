@@ -32,7 +32,9 @@ Default View 正例提供完整 View metadata observation；consumer fixture 的
 
 用户入口仍是完整普通发现和默认/Profile/会话 View。宿主需要两者时调用原 SDK `listCatalog({database,directory:{}})`；显式 View/Profile 放在 `directory.view` 或 `directory.profile`。先检查 `CATALOG_DIRECTORY_CONTRACT_VERSION === 1`。结果的 `catalog` 与 `directory` 各自保留 `{ok:true,value}` 或 `{ok:false,error:{code,message,details?}}`，失败时透传已有可选 `SkillsError.details`；full 的无关冲突不能毒化合法 View，View 错误也不抹掉 full。取消和两成功结果的 scope/descriptor 冲突仍整次拒绝。
 
-`Skill ID` 为空、非法格式或过长时仍按原正则拒绝，错误码和 message 保持。定位 details 只含已验证的 page/data-source ID、登记的属性 ID/规范名称、reason 与 UTF-16 value_length，不包含原值或任意行 metadata。沿原 shared-catalog 反例验证精确定位、合法边界、101 行末页拒绝与请求数；原 shared-views 验证 combined 保留 details、full 失败和合法 View 成功独立成立。该诊断不跳坏行、不补造身份，不新增正文/Files/Records/逐行 GET。
+选中受管页仍要求有效 `Skill ID`；启用但空 ID、任意非法格式或过长的非空 ID 按原正则拒绝，错误码和 message 保持。定位 details 只含已验证的 page/data-source ID、登记的属性 ID/规范名称、reason 与 UTF-16 value_length，不包含原值或任意行 metadata。沿原 shared-catalog 反例验证精确定位、合法边界、101 行末页拒绝与请求数；原 shared-views 验证 combined 保留 details、full 失败和合法 View 成功独立成立。
+
+完整六字段元数据中，ID 精确为空且 `Enabled=false` 的页被明确分类为未登记，不进入 full 或 View 消费目录；它仍留在原始完整库存，不补造身份，也不新增正文/Files/Records/逐行 GET。新建页允许 title/description 暂空及 Kind 原生 null，字段结构和 parent 仍须完整。新增回归核对 full+View 只取一份库存、选中未登记页被排除、非空非法 ID 和有效身份冲突仍失败。该分类不证明原页可安全初次接纳：作者预检另核 Main File ID、Source、Files/Records 和原操作。原 create 库存必须保留未登记页的同名/alias 冲突；无关未登记页不阻塞创建且原样保留。
 
 ```bash
 bun test packages/core/test/shared-catalog.test.ts packages/core/test/shared-views.test.ts packages/core/test/views.test.ts packages/core/test/catalog-consumption.test.ts packages/cli/test/sdk.test.ts --timeout 30000

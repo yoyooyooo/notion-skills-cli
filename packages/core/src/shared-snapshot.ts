@@ -23,6 +23,11 @@ import { compileSharedNativeReferences } from "./shared-native-references.ts"
 import { NativeBodyCompletionSchema } from "./shared-native-body-completion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
+import {
+  assertSharedNativeAdoptionComplete,
+  reconcileSharedNativeAdoption,
+} from "./shared-native-adoption.ts"
 import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
 import { loadRetainedBody, observeSharedFile } from "./shared-file-observer.ts"
 import {
@@ -310,10 +315,12 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           "The selected Skill identity changed after directory resolution.",
         ),
       )
-    if (!record.enabled)
+    if (!record.enabled && !(yield* isSharedAuthoringTarget(selected)))
       return yield* Effect.fail(
         fail("CONTENT_DISABLED", "The selected Skill is disabled in Notion.", { id: record.id }),
       )
+    if (!record.enabled)
+      yield* invalidateSnapshotCache(record.id, input.scope, { retainForOffline: true })
     const graphInventory = yield* sharedGraphInventory(input.library)
     const routerMembers =
       record.kind === "router" ||
@@ -458,6 +465,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const localPending = yield* pendingFileOperations(pendingScope)
     const operationHeaders =
       graphMetadata?.operations ?? (yield* querySharedOperationIndex(input.library, selected))
+    yield* assertSharedNativeAdoptionComplete(input.library, selected, operationHeaders)
     const creates = new Map<string, SharedCreatePlan>()
     for (const plan of yield* pendingSharedCreatePlans(
       input.scope,
@@ -497,6 +505,17 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const fileManagements = new Map<string, SharedFileManagementPlan>()
     const skillApplies = new Map<string, SharedSkillApplyPlan>()
     for (const entry of localPending) {
+      if (entry.plan.kind === "native_adoption") {
+        yield* reconcileSharedNativeAdoption(entry.plan)
+        yield* store.retireKeys([entry.key])
+        return yield* Effect.fail(
+          fail(
+            "SHARED_ADOPTION_RECONCILED",
+            "The original native adoption is verified. Read the current page again before authoring.",
+            { adoption_operation_id: entry.plan.operation_id, read_again: true },
+          ),
+        )
+      }
       if (entry.plan.kind === "body_write_review") {
         bodyReviews.set(entry.plan.operation_id, entry.plan)
         continue
@@ -1283,15 +1302,22 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       return yield* Effect.fail(
         fail("SHARED_SNAPSHOT_INVALID", "A complete Skill requires a validated main body."),
       )
-    const published: ObservedSnapshot = yield* publishSnapshotObservation(
-      snapshot,
-      input.startedAt,
-      generation,
-      {
-        ...(bodyReads < activeBindings.length ? { metadataOnly: true } : {}),
-        sharedBodyValidUntil: bodyValidUntil,
-      },
-    )
+    // A disabled authoring observation may retain immutable files and history,
+    // but it must never qualify a current consumer cache entry.
+    const published: ObservedSnapshot = record.enabled
+      ? yield* publishSnapshotObservation(snapshot, input.startedAt, generation, {
+          ...(bodyReads < activeBindings.length ? { metadataOnly: true } : {}),
+          sharedBodyValidUntil: bodyValidUntil,
+        })
+      : {
+          ...snapshot,
+          source: "notion",
+          freshness: {
+            policy: "refresh",
+            validated_at: new Date(metadataObservedAt).toISOString(),
+            age_ms: 0,
+          },
+        }
     const shared_authoring = yield* checked(
       () =>
         ({

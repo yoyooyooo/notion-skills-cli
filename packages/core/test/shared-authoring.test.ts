@@ -9,7 +9,8 @@ import { fail, property, SkillsError, text, type Snapshot } from "../src/model.t
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
-import { openSkill } from "../src/snapshot.ts"
+import { openSkill, readSkill } from "../src/snapshot.ts"
+import { withSharedAuthoringTarget } from "../src/shared-authoring-context.ts"
 import { writeSkill } from "../src/mutation.ts"
 import { trashPath } from "../src/local-locks.ts"
 import {
@@ -25,6 +26,7 @@ import {
   digest,
   id,
 } from "./shared-snapshot-fixture.ts"
+import { sharedCreateFixture } from "./shared-create-fixture.ts"
 
 const options = { database: library.skills.database_id }
 const mainInput = (body: string) =>
@@ -114,6 +116,103 @@ function withBodyWriter<A, E>(
 }
 
 describe("shared authoring through the standard fresh snapshot", () => {
+  test("a disabled author reads a library with native Members and Requires without admitting disabled targets", async () => {
+    const f = sharedCreateFixture({ relations: true })
+    const owner = f.skills.get(skillPage)
+    if (owner === undefined) throw new Error("Expected the native fixture owner")
+    property(property(owner.properties).enabled).checkbox = false
+    const inspected = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+    expect(property(inspected).content).toContain("# Native main")
+    expect(inspected.record.enabled).toBe(false)
+    expect(failure(await f.run(readSkill(skillPage, options).pipe(Effect.result))).code).toBe(
+      "CONTENT_DISABLED",
+    )
+    const otherPage = id(991)
+    const member = structuredClone(owner)
+    member.id = otherPage
+    property(member.properties).skill_id = {
+      id: "skill_id",
+      type: "rich_text",
+      rich_text: [{ plain_text: "other-disabled-skill" }],
+      has_more: false,
+    }
+    f.skills.set(otherPage, member)
+    for (const field of ["members", "requires"]) {
+      property(property(owner.properties)[field]).relation = [{ id: otherPage }]
+      f.clear()
+      const rejected = failure(
+        await f.run(readSkill(skillPage, { ...options, authoring: true }).pipe(Effect.result)),
+      )
+      expect(rejected.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
+      expect(f.calls.some((call) => call.path.includes(`${otherPage}/markdown`))).toBe(false)
+      property(property(owner.properties)[field]).relation = []
+    }
+  })
+
+  test("explicit authoring reads one disabled owner without qualifying current consumption", async () => {
+    const f = sharedSnapshotFixture({ fileCount: 1 })
+    property(property(f.main.properties).enabled).checkbox = false
+    expect(
+      failure(await f.run(readSkill(skillPage, { ...options, refresh: true }).pipe(Effect.result)))
+        .code,
+    ).toBe("CONTENT_DISABLED")
+    const inspected = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+    if (!("content" in inspected)) throw new Error("Expected the inspected body")
+    expect(inspected.content).toContain("# Native main")
+    expect(property(inspected.record).enabled).toBe(false)
+    expect(
+      [...f.json.entries()].some(
+        ([key, value]) =>
+          key.startsWith("cache/latest/") &&
+          property(value).snapshot_id === inspected.snapshot_id &&
+          property(value).invalidated === false,
+      ),
+    ).toBe(false)
+    const fixed = await f.run(readSkill(inspected.ref))
+    if (!("content" in fixed)) throw new Error("Expected the fixed body")
+    expect(fixed.content).toBe(inspected.content)
+    expect(failure(await f.run(readSkill(skillPage, options).pipe(Effect.result))).code).toBe(
+      "CONTENT_DISABLED",
+    )
+    expect(
+      failure(
+        await f.run(
+          withSharedAuthoringTarget(
+            id(999),
+            openSkill(skillPage, { ...options, refresh: true }),
+          ).pipe(Effect.result),
+        ),
+      ).code,
+    ).toBe("CONTENT_DISABLED")
+  })
+
+  test("a disabled author pin supports a verified public body edit without enabling consumption", async () => {
+    const f = sharedSnapshotFixture({ fileCount: 1 })
+    property(property(f.main.properties).enabled).checkbox = false
+    const inspected = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+    const directory = mkdtempSync(join(tmpdir(), "shared-disabled-write-"))
+    const input = join(directory, "SKILL.md")
+    writeFileSync(input, mainInput("# Reviewed draft\n"))
+    try {
+      const written = await f.run(
+        withBodyWriter(f, writeSkill(inspected.ref, { input })).pipe(
+          Effect.provide(NodeServices.layer),
+        ),
+      )
+      expect(property(written).verified).toBe(true)
+      expect(property(written).action).toBe("updated")
+      expect(f.bodies.get(skillPage)).toBe("# Reviewed draft")
+      expect(property(property(f.main.properties).enabled).checkbox).toBe(false)
+      const current = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+      expect(property(current).content).toContain("# Reviewed draft")
+      expect(failure(await f.run(readSkill(skillPage, options).pipe(Effect.result))).code).toBe(
+        "CONTENT_DISABLED",
+      )
+    } finally {
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    }
+  })
+
   test("a verified shared pin scopes public write without database even when an unrelated configured source fails", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await f.target(parseTarget(skillPage), options)
@@ -157,6 +256,72 @@ describe("shared authoring through the standard fresh snapshot", () => {
     }
   })
 
+  test("editing a read-back main preserves existing and new native reference links", async () => {
+    const f = sharedSnapshotFixture()
+    const nativeLink = `https://app.notion.com/p/${id(11).replaceAll("-", "")}`
+    f.bodies.set(skillPage, `# Native main\n\n[Existing reference](${nativeLink})`)
+    const inspected = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+    if (!("content" in inspected)) throw new Error("Expected the authoring body")
+    expect(inspected.content).toContain("[Existing reference](references/1.md)")
+    const directory = mkdtempSync(join(tmpdir(), "shared-native-link-write-"))
+    const input = join(directory, "SKILL.md")
+    const newNativeLink = `https://app.notion.com/p/${id(12).replaceAll("-", "")}`
+    writeFileSync(
+      input,
+      `${inspected.content.trimEnd()}\n\nA new author instruction.\n\n[New reference](references/2.md)\n`,
+    )
+    try {
+      const written = await f.run(
+        withBodyWriter(f, writeSkill(inspected.ref, { input })).pipe(
+          Effect.provide(NodeServices.layer),
+        ),
+      )
+      expect(property(written).verified).toBe(true)
+      expect(f.bodies.get(skillPage)).toContain(`[Existing reference](${nativeLink})`)
+      expect(f.bodies.get(skillPage)).toContain(`[New reference](${newNativeLink})`)
+      expect(f.bodies.get(skillPage)).toContain("A new author instruction.")
+      const current = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+      expect(property(current).content).toContain("[Existing reference](references/1.md)")
+      expect(property(current).content).toContain("[New reference](references/2.md)")
+      const resource = await f.run(readSkill("references/2.md", { from: current.ref }))
+      expect(property(resource).content).toContain("Reference two")
+      const previous = await f.run(readSkill(inspected.ref))
+      expect(property(previous).content).toBe(inspected.content)
+    } finally {
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    }
+  })
+
+  test.each([
+    `https://www.notion.so/${id(11).replaceAll("-", "")}`,
+    `https://app.notion.com/p/${id(11)}`,
+  ])("unchanged public read/write preserves native spelling without a PATCH: %s", async (url) => {
+    const f = sharedSnapshotFixture()
+    const native = `# Native main\n\n[Reference](${url})`
+    f.bodies.set(skillPage, native)
+    const inspected = await f.run(readSkill(skillPage, { ...options, authoring: true }))
+    if (!("content" in inspected)) throw new Error("Expected the complete authoring file")
+    const directory = mkdtempSync(join(tmpdir(), "shared-unchanged-link-write-"))
+    const input = join(directory, "SKILL.md")
+    writeFileSync(input, inspected.content)
+    f.clearCalls()
+    try {
+      const written = await f.run(
+        withBodyWriter(f, writeSkill(inspected.ref, { input })).pipe(
+          Effect.provide(NodeServices.layer),
+        ),
+      )
+      expect(property(written).verified).toBe(true)
+      expect(property(written).action).toBe("unchanged")
+      expect(property(written).body_write_operation_id).toBeUndefined()
+      expect(f.bodies.get(skillPage)).toBe(native)
+      expect(f.writeCount()).toBe(0)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    } finally {
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    }
+  })
+
   test("fresh heads and body evidence stay in memory and are absent from immutable snapshots", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await f.target(parseTarget(skillPage), options)
@@ -188,6 +353,12 @@ describe("shared authoring through the standard fresh snapshot", () => {
       input_sha256: digest(mainInput("# Proposed\n")),
     })
     expect(f.bodies.get(skillPage)).toBe("# Native main\n")
+    expect(f.calls.filter((call) => call.path === `v1/pages/${skillPage}`)).toHaveLength(1)
+    expect(
+      f.calls.filter((call) =>
+        call.path.startsWith(`v1/data_sources/${library.files.data_source_id}/query`),
+      ),
+    ).toHaveLength(1)
     expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
   })
@@ -218,6 +389,7 @@ describe("shared authoring through the standard fresh snapshot", () => {
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
     expect([...f.json.values()].some((value) => property(value).invalidated === true)).toBe(true)
     const current = await f.target(parseTarget(skillPage), options)
+    if (result.status !== "applied") throw new Error("Expected the completed original body write")
     expect(() => verifySharedAuthoredSnapshot(current, result)).not.toThrow()
     expect(current.snapshot_id).not.toBe(snapshot.snapshot_id)
     expect(f.json.get(`snapshots/${snapshot.snapshot_id}.json`)).toEqual(saved)

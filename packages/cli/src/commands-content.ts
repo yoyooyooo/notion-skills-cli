@@ -165,6 +165,10 @@ export const readCommand = defineCommand(
     database: databaseFlag,
     metrics: requestMetricsFlag,
     json: switchFlag("json", "Emit the stable JSON result; incompatible with --raw"),
+    authoring: switchFlag(
+      "authoring",
+      "Inspect one exact current native page for editing, including disabled content; always validates online without qualifying disabled consumer reuse",
+    ),
     ...readPolicyFlags,
     from: singleton(
       "from",
@@ -200,6 +204,7 @@ export const readCommand = defineCommand(
         from: Option.getOrUndefined(config.from),
         lines: Option.getOrUndefined(config.lines),
         output: Option.getOrUndefined(config.output),
+        authoring: config.authoring,
         ...(yield* readPolicy(config)),
       })
       if (config.raw) {
@@ -212,7 +217,7 @@ export const readCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("Read one file with bounded cache freshness or a pinned snapshot"),
   Command.withDescription(
-    "Read one file, defaulting to the selected record's entrypoint: SKILL.md, ROUTER.md or PROMPT.md. Names/aliases/page IDs/URLs/unpinned refs reuse complete eligible observations for 5m; --refresh validates complete bodies/resources online, --offline reads local observations, --max-age overrides age (explicit 0 also requires complete validation). Shared Skills revalidate flat file metadata and immutable ownership facts; an independent 24-hour full-body deadline bounds same-timestamp edits. Notion native content is retained before whole-file custom adoption. Legacy aligned native Skills may reuse verified files after metadata checks. Both report freshness.validation=metadata when bodies were reused. Policies are mutually exclusive. Pinned targets (including relative --from pinned refs) stay immutable/offline and reject refresh/max-age. --path supplies a file only when the target has no path. Relative --from rejects --path. JSON includes source/freshness, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges. --output writes exact bytes with identical reuse and differing-output rejection; --raw emits successful text only. Missing cached versions require a new current read; arbitrary historical versions cannot be fetched.",
+    "Read one file, defaulting to the selected record's entrypoint: SKILL.md, ROUTER.md or PROMPT.md. --authoring inspects one exact native page ID/URL for editing, including disabled drafts: it always validates the complete current tree online and returns a fixed author pin without qualifying disabled content for current consumer reuse. It rejects offline/max-age/from and pinned targets; initialize an unregistered native draft with adopt first. Names/aliases/page IDs/URLs/unpinned refs otherwise reuse complete eligible observations for 5m; --refresh validates complete bodies/resources online, --offline reads local observations, --max-age overrides age (explicit 0 also requires complete validation). Shared Skills revalidate flat file metadata and immutable ownership facts; an independent 24-hour full-body deadline bounds same-timestamp edits. Notion native content is retained before whole-file custom adoption. Legacy aligned native Skills may reuse verified files after metadata checks. Both report freshness.validation=metadata when bodies were reused. Policies are mutually exclusive. Pinned targets (including relative --from pinned refs) stay immutable/offline and reject refresh/max-age. --path supplies a file only when the target has no path. Relative --from rejects --path. JSON includes source/freshness, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges. --output writes exact bytes with identical reuse and differing-output rejection; --raw emits successful text only. Missing cached versions require a new current read; arbitrary historical versions cannot be fetched.",
   ),
   Command.withExamples([
     {
@@ -605,6 +610,7 @@ export const updateCommand = defineCommand(
     target: Argument.String("target"),
     database: databaseFlag,
     name: singleton("name", "Exact new human title; preserves page identity"),
+    enabled: singleton("enabled", "Set the native shared Skill's enabled state: true or false"),
     description: singleton(
       "description",
       "New Description; nonblank, at most 2000 Unicode characters",
@@ -620,12 +626,21 @@ export const updateCommand = defineCommand(
   (config) =>
     Effect.gen(function* () {
       yield* validateConstraints([memberConstraint, requiredConstraint], config)
+      const enabled = Option.getOrUndefined(config.enabled)
+      if (enabled !== undefined && enabled !== "true" && enabled !== "false")
+        return yield* Effect.fail(
+          new SkillsError({
+            code: "INVALID_ARGUMENT",
+            message: "--enabled must be exactly true or false.",
+          }),
+        )
       yield* emit(
         yield* updateSkill(config.target, {
           database: Option.getOrUndefined(config.database),
           name: Option.getOrUndefined(config.name),
           description: Option.getOrUndefined(config.description),
           defaultContext: Option.getOrUndefined(config.defaultContext),
+          enabled: enabled === undefined ? undefined : enabled === "true",
           members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
           requires: config["clear-requires"]
             ? []
@@ -639,6 +654,6 @@ export const updateCommand = defineCommand(
 ).pipe(
   withConstraints([memberConstraint, requiredConstraint]),
   Command.withDescription(
-    "Update only nominated Name, Description, Default Context, Members or Requires on an exact target; omitted fields and native file bodies remain unchanged. Shared Skills and Routers accept --member/--clear-members and --require/--clear-requires independently. Use exact accessible enabled Skill page IDs or unpinned entrypoint refs in the same library/data source. Requires is for unconditional prerequisites. Relation reads paginate completely; explicit replacement writes above 100 targets fail before dispatch because Notion arrays do not append. Pinned snapshots enforce their version baseline. A shared library uses registered native property IDs and the common original-operation journal; metadata uses native last-writer behavior, not compare-and-swap. Shared success reports action=updated, verified=true and metadata_operation_id. Unknown results retain their original plan for read-only reconciliation. Select a shared fixed Source with ctl library source select; update does not accept a Source or ownership override. Existing legacy SyncMode conversion remains a separate workflow.",
+    "Update only nominated Name, Description, Default Context, Enabled, Members or Requires on an exact target; omitted fields and native file bodies remain unchanged. Exact native pages and retained author pins support disabled drafts without an extra flag. --enabled true|false applies only to shared native records; enabling first verifies the complete current tree and all original-operation barriers. Shared Skills and Routers accept --member/--clear-members and --require/--clear-requires independently. Relation targets must be exact accessible enabled Skill page IDs or unpinned entrypoint refs in the same library/data source. Requires is for unconditional prerequisites. Relation reads paginate completely; explicit replacement writes above 100 targets fail before dispatch because Notion arrays do not append. Pinned snapshots enforce their version baseline. A shared library uses registered native property IDs and the common original-operation journal; metadata uses native last-writer behavior, not compare-and-swap. Shared success reports action=updated, verified=true and metadata_operation_id. Unknown results retain their original plan for read-only reconciliation. Select a shared fixed Source with ctl library source select; update does not accept a Source or ownership override. Existing legacy SyncMode conversion remains a separate workflow.",
   ),
 )

@@ -31,6 +31,7 @@ export async function checkCommandContract(context: SmokeContext) {
     ["read"],
     ["files"],
     ["create"],
+    ["adopt"],
     ["apply"],
     ["replace"],
     ["export"],
@@ -96,6 +97,7 @@ export async function checkCommandContract(context: SmokeContext) {
     "sync",
     "resolve",
     "create",
+    "adopt",
     "write",
     "update",
     "apply",
@@ -207,8 +209,19 @@ export async function checkCommandContract(context: SmokeContext) {
       names.includes("member") && names.includes("clear-members"),
       `${command} omitted Members flags.`,
     )
+    if (command === "update")
+      check(names.includes("enabled"), "Update omitted explicit native availability control.")
     evidence[`${command}_schema`] = schema
   }
+  const adoptionSchema = await cli(["schema", "adopt"])
+  for (const name of ["page", "database", "dry-run", "reconcile"])
+    check(
+      adoptionSchema.schema.parameters.some(
+        (parameter: { name: string }) => parameter.name === name,
+      ),
+      `Adopt omitted ${name}.`,
+    )
+  evidence.adopt_schema = adoptionSchema
   const exportSchema = await cli(["schema", "export"])
   check(
     exportSchema.schema.parameters.some(
@@ -246,6 +259,13 @@ export async function checkCommandContract(context: SmokeContext) {
     "Read offline schema lost its optional boolean contract.",
   )
   const rootHelp = await run([runtime, executable, "--help"])
+  const authoringParameter = parameters.find((parameter) => parameter.name === "authoring")
+  check(
+    authoringParameter?.kind === "flag" &&
+      authoringParameter.type === "boolean" &&
+      authoringParameter.default === false,
+    "Read omitted the explicit authoring mode for exact disabled drafts.",
+  )
   for (const name of ["ctl", "operation", "replace", "schema"])
     check(new RegExp(`\\b${name}\\b`).test(rootHelp), `Root help omitted ${name}.`)
   for (const obsolete of [
