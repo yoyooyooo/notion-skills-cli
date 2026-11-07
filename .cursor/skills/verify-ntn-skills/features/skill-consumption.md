@@ -1,10 +1,10 @@
 # Skill 消费链
 
-归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC26 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](../../../../../pi-context-broker/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。这里的跨仓链接假设两个 checkout 相邻；其他布局先定位真实 Broker 根目录，再读取同一仓内路径，不创建替代地图。
+归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC26 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。本地开发时在实际 Broker checkout 读取同一路径，不要求两个仓库相邻，也不复制另一份地图。
 
 ## SC25：日常命令与目录 SDK
 
-C3/SC23 的全部 16 个原顶层路径与子树去向维护在 [消费合同的命令 disposition](../../../../docs/consumer-contract.md#cli-command-disposition-and-compatibility)。默认 help/schema 只展示日常消费和 ctl 入口，作者命令按任务发现；`schema ctl ...` 完整展开所选管理树。旧五个 root 管理路径精确调用仍与 ctl 使用同一 parser/handler，不能从默认目录不可见推断能力被删除。
+全部 16 个原顶层路径与子树去向维护在 [消费合同的命令 disposition](../../../../docs/consumer-contract.md#cli-command-disposition-and-compatibility)。默认 help/schema 只展示日常消费和 ctl 入口，作者命令按任务发现；`schema ctl ...` 完整展开所选管理树。旧五个 root 管理路径精确调用仍与 ctl 使用同一 parser/handler，不能从默认目录不可见推断能力被删除。
 
 沿原 `cli.test.ts` 的 SC25 C3 场景保留 fail-before/pass-after，覆盖离线默认树、显式作者发现、canonical/历史 schema 相等与 ctl help；`prepare.test.ts` 比较真实 canonical/历史入口的完整 graph lock。原 package command-contract smoke 逐项重复安装后的检查。publication/upstream 恢复断言必须期望新的 ctl next.argv；旧 capture 与 canonical capture 都保留原 bytes/hash，preflight/map-checkpoint 原有 Node tests 验证这一点。不得执行真实未结操作来证明改名。
 
@@ -44,7 +44,7 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 
 原 `shared-views` 多页 fixture 保留两个独立 list 的每次新观察正控制，组合模式仅取一份完整六字段库存。覆盖只有一个投影 warm、两者 warm、disabled 身份冲突、未选冲突与合法 View、选中缺失、完整分页、scope/descriptor 改变、maxAge=0、观察过期和取消。View 的 `fetched_at` 必须使用 membership 与库存中较早的时间；不能用较晚的 View 查询重新计龄。完整原始行只在现有 Effect operation context 中存活，不写入新持久缓存，不跨 use/inspect 或 SDK 调用共享。
 
-原 `sdk-source-fixture.mjs` 的 `verifyCatalogDirectorySdk` 复用 scalar HTTP fixture，安装 smoke 在原 scalar/View case 内调用它。各臂使用独立 cold seed：separate 沿原两次 SDK list，combined 使用新增重载；逐项比较 full 与 View ID、完整 coverage、原六字段投影、实际 attempts 与 decoded response bytes，随后同候选 warm 必须零 HTTP。保留 `catalog-directory/report.json`、`requests.jsonl` 与请求终局 events；缺失/截断 metrics 不能记零。源构建调用同一 helper 仅证明 built SDK，不冒充独立安装、真实 Pi、生产 Notion 或模型结果。原 C10 的重复字节只是选片依据，收益只使用本次同条件账本，不与旧切片相加。
+原 `sdk-source-fixture.mjs` 的 `verifyCatalogDirectorySdk` 复用 scalar HTTP fixture，安装 smoke 在原 scalar/View case 内调用它。各臂使用独立 cold seed：separate 沿原两次 SDK list，combined 使用新增重载；逐项比较 full 与 View ID、完整 coverage、原六字段投影、实际 attempts 与 decoded response bytes，随后同候选 warm 必须零 HTTP。保留 `catalog-directory/report.json`、`requests.jsonl` 与请求终局 events；缺失/截断 metrics 不能记零。源构建调用同一 helper 仅证明 built SDK，不冒充独立安装、真实 Pi、生产 Notion 或模型结果。收益只使用本次同条件账本，不与其他切片相加。
 
 Cleanup 沿原 helper，仅处理明确 owned 的 fixture/consumer scratch并保留失败、账本和归档；不修改用户配置、正文、旧 pin 或未结操作。
 
@@ -282,28 +282,11 @@ NTN_SKILLS_SC11_EVIDENCE=1 bun test packages/core/test/shared-metadata-consumpti
 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/view-fixture/fixture.json" --outdir "$RUN/evidence/installed-scalar-inventory" --case scalar-inventory
 ```
 
-报告必须标记 `selection=scalar-inventory`；默认 `all` 仍运行原 22 项与本 case 的全部相位。先冻结 fixture 与原 C7 独立包，保留重复目录计数的红例，再由候选的默认安装矩阵验证；各轮分别绑定生成器、fixture 和包身份，不能将新生成的 fixture 冒称同一份原始输入。每轮 logical/physical 对照使用同一冻结来源。原 C7 Pro/Mini 公开 read 账本各观察到 Members 与 Requires 额外两轮、6 attempts / 1,431,764 decoded response B；这是本次同调用复用的原成本和可移除上界，不是新候选的实测生产延迟收益。原件位于 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc14-fact-read-audit-346gjnf6`。
-
-2026-11-06 的安装 fail-before 使用原 C7 `f854faf5...`，其独立安装 68 文件与 tar 全等。原 scalar 三次读取各 2 页；新增关系 logical/physical 两次读取的完整结果、SQLite snapshot、关系、全文和导出先全部匹配，随后仅 logical 的 `6 !== 2` 计数断言失败。`verification-run/evidence/installed-c7-before/report.json` SHA `10283531c21450b30b523ebb73eb230ea70be807fdf1f7f40d431858868014e5` 保留该失败。五相位合计 63 次 loopback HTTP / 872,712 decoded response B，未选目标 page/body 为 0；原缓存和动态 View 链因失败未运行，不从此前结果补算。`implementation/installed-c7-before-ledger.json` 绑定完整请求、五次归零的 in-flight 和 10 个自然关闭的 CLI/npm 子进程；外层 Node 自然 exit 1。原 control cleanup 与系统 Trash 后，6,540 个保留文件、实际日用三哨兵和原 staged index 均未变。Core 原 5 个重复页红例、76 项定向通过、类型修正后的 28 项和 typecheck 单列；C8 默认安装矩阵与新生产成本仍待执行，不能将这份 C7 失败改写为通过。
+报告必须标记 `selection=scalar-inventory`；默认 `all` 仍运行原 22 项与本 case 的全部相位。先冻结 fixture 与修改前的独立基线包，保留重复目录计数的红例，再由候选的默认安装矩阵验证；各轮分别绑定生成器、fixture 和包身份，不能将新生成的 fixture 冒称同一份原始输入。每轮 logical/physical 对照使用同一冻结来源。
 
 该回归与 smoke 使用受控 Notion 服务和真实安装包，不是生产延迟证明。真实成本另用 Broker 的 `scripts/skill-consumption-source-baseline.mjs`：保留先前授权的 database/root/resource、单次 resource-only cold 场景与预算，只替换 installed CLI 和新的 evidenceRoot；按 Doctor → Plan → Run → Evidence → Trash Cleanup → Evidence 执行。比较实际 metadata/current-body/retained-body、请求字节、解码响应字节、耗时和内容 hash，完整 trace 缺失时不能宣称移除了请求。单样本耗时仅报告该样本，不外推稳定收益。
 
 scalar 复用不改变 Members/Requires 语义，也不建立跨请求缓存。实际关系仍来自当前选中页并按原规则完整分页；只有同 scope、完整 library descriptor 和穷尽性已核验的本次目录观察可传给目标元数据解析。权限、缺失／禁用目标、身份冲突、当前正文和固定 pin 仍按原边界验证。后续 refresh 必须重新观察，旧 pin 的正文与关系元数据仍冻结；Records headers/Payload 分层保持不变。
-
-### C8 安装与真实双机公共 CLI 后续证据
-
-2026-11-06，纯 `b5564ee9` 的 C8 归档 `2c65d54aee20f0fbb30af30bd1d67b32ad00e7285f0c9a50bc9f477962aeee9f` 通过原完整安装入口：公共 CLI 44 项、SDK 22 项，scalar 5、cache 32 和 View 动态 13 阶段均通过。同一轮 fixture 内，logical 关系读取使用 2 页，physical 对照仍为 6 页；完整结果、snapshot、关系与正文相等。`c8-cli-final-jugpaxrt/handoff.json` SHA `9fc19aa5a1ce112dc896ba32199f105dcbbbe0b2713d49d1bd75bf9bbe6e9aaf` 保留一次 build/pack/原 gate 与 E→Trash→E，不把本地通过替代远端 CI。b556 的 macOS/Node22 check 仍有原 scheduler 时间 oracle 失败，另外三个平台组合通过；原失败单列在 `remote-ci-b556-final/`。
-
-实际生产来源沿原 SC22 公共六命令 driver：`list` → current `read` → 系统返回 fixed ref 的 `use` → `files` → 系统返回 resource ref 的 `read` → offline `export`。Pro/Mini 各 n=1、原 300 秒/命令、零重试，使用各机自身认证与空 owned state；独立安装 68 文件均等于归档，不复制正文或缓存。下表对照原 C7 的**同六命令**样本，不能混入更早七命令账本。
-
-| 物理机 | C7 → C8 HTTP attempts | C7 → C8 decoded response B | 实际减少 B |
-| --- | ---: | ---: | ---: |
-| Pro | 38 → 32 | 4,882,566 → 3,450,800 | 1,431,766 |
-| Mini | 38 → 32 | 4,882,554 → 3,450,780 | 1,431,774 |
-
-两机 current read 均由 21 降至 15 attempts；list 5、fixed use 12 保持，后续 files/resource/export 为 0。根与完整 Requires 合计 47,475 B，46 个业务文件/364,634 B、1,135 B 固定资源、scope/version/pin 和全部文件 hash 与原冻结输入相同。每机实际正文 attempts 仍为 6，54 个未选 Member 正文为 0，inspect 不读 Requires 正文；新 observer HTTP 与来源写入均为 0。这里的字节是解码响应，单次 21.027/33.702 秒只作观察，不推导稳定延迟或模型任务收益。
-
-完整回执为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc22-final-c8-3a02z8s9/cli-physical-handoff.json`，SHA `c04515f1ef4e156063f803d0e26fb6793de0ddb0cbaa659ced03fc2b93bc323a`。两机均仅将 owned run 与 guard 移入系统 Trash；原 C7 永久删除偏差不改写。Pro 外层预建 cleanup stdout 被旧 helper 暂列为零字节原件，结束打印后仅该 observer 输出变化，`ece-outer-reconciliation.json`（SHA `3618031e0b31a22c7b21c943ffcca6022af333aa9bcd5b4d9ec9078f0b38b5bf`）明确保留原回执并核对其余 89 原件不变；Mini 输出置清单外，90 原件全部保持。两机包与日用哨兵未变，没有重跑消费者或清理。Pi 正常 SDK 交付、真实模型与日用切换继续分别验收。
 
 ### SC14：固定文件集的历史量与解码账本
 
@@ -321,80 +304,25 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_F
 
 默认 `all` 保留原22个case及其反例，并在原scalar case末尾追加同一测量；`view-dynamics`/`scalar-inventory` 的定向含义保持。常规 `package:check`/CI 继续沿同一原driver执行。Evidence先保留完整相位、生成器与安装身份、所有原失败；所有进程/服务终局后通过本Skill原cleanup将明确owned scratch移入系统Trash，再核原件保持。该测量不新增SC22/SC20前置。
 
-2026-11-06 使用原 C8 archive `2c65d54aee20f0fbb30af30bd1d67b32ad00e7285f0c9a50bc9f477962aeee9f` 完成一次独立安装，68文件逐项等于归档，SDK SHA `5f7ae1e9a94fcde67a8b95c011f0164b5c1a7f7b22d7228c12ab39c5feaf76b7`。证据根为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc14-history-measure-e7s0yzfz`。首个入口155.158ms因归档fixture仍指向已Trash的旧绝对路径而退出；当时安装、probe及SDK调用均0。`input-rebinding.json`仅将9个路径指向保留的同一输入，反向深等通过，其余数据未改；该失败原件不覆盖。
-
-更正输入后的原driver自然exit0、47,818.411ms；npm安装5,742.609ms，合法H1/H101 producer 2,280.473ms。probe实际 envelope/bounded/header/replay 次数为3/3/6/6，紧接的无消费采样四项均0，函数范围绑定精确安装SDK。八个消费者相位全部通过完整内容/身份/关系/manifest/旧pin对象hash断言；两臂cold的单根与多根具有相同事实集合及以下相同计数。表中envelope与bounded两函数次数相等，header/replay为各自实际函数入口次数。
-
-| H | 状态 | HTTP attempts | decoded response B | envelope / header / replay | elapsed ms |
-|---|---|---:|---:|---:|---:|
-| 1 | cold，多根 | 15 | 24,475 | 4 / 12 / 8 | 5,085.530 |
-| 1 | warm，多根 | 1 | 61 | 0 / 0 / 0 | 258.988 |
-| 1 | expired-unchanged，多根 | 10 | 19,571 | 4 / 4 / 4 | 3,551.441 |
-| 1 | cold，单根 | 15 | 24,475 | 4 / 12 / 8 | 5,369.820 |
-| 101 | cold，多根 | 18 | 374,591 | 104 / 312 / 8 | 8,468.580 |
-| 101 | warm，多根 | 1 | 61 | 0 / 0 / 0 | 187.164 |
-| 101 | expired-unchanged，多根 | 12 | 211,715 | 104 / 104 / 4 | 4,320.646 |
-| 101 | cold，单根 | 18 | 374,591 | 104 / 312 / 8 | 8,161.035 |
-
-八相位合计90HTTP、1,029,540 decoded response B；probe另计11HTTP、102,804B，producer的受控服务调用另列。每个cold相位读取4个必要正文，warm/expired正文0；所有消费者未选正文0、write0。cold的完整payload行数和唯一record IDs分别为4/4、104/104；expired未再次传输payload，但实际重新解码本地4或104个envelope。逐fact decoder归属、内部Schema/DFS迭代、CPU/RSS、wire bytes仍unknown；n=1且开启precise coverage的elapsed不用于宣称稳定延迟收益或采用检查点。
-
-定向原报告 `verification-run/evidence/installed-records-history/report.json`（SHA `2578f8a5219be7aa42c45a5a7374a2e70cd22495fa6559b7d515eadddd1f67f5`）为selection=`records-history`的1/1，不冒充重跑完整SDK22。内层八相位原账本SHA `66e0fb569d8f42d3f231b1c1cb3e3ba34a3a05b47477292fa479cffda0d9cd45`；原完整H1/H101输入SHA `684329e1e1a2619bbe34ab9e597522e9a58830a498129d410ce0d6c087af050d`。`cleanup-result.json`（SHA `45922dbc394f5988dd697f7b96283c40e5f3c9a71d08590ddf9eb89246a53f9f`）确认原helper把owned scratch移入系统Trash，launcher cache同用系统Trash，331份原件逐字节不变；日用三哨兵及原1615暂存项保持，活动消费者0。此次未运行生产Notion或真实模型，也未重建产品。
-
 ### SC14：作者历史查询的单相位复用（AH-631）
 
-2026-11-07 的窄改只合并同一次 fresh snapshot pending 检查中的 body outcome 与 metadata 两个完整 Records family，并让 metadata writer 的首次完整 operation index 同时判断 exact 原 operation 与 pending intent。原 operation 已存在时仍走原 reconcile；显式 reconcile、prepare/execute 之间、写后校验、正文 readback 及下一次 fresh snapshot 都不继承此次结果。没有跨调用缓存、checkpoint 或历史截断。完整分页、scope/owner/hash、同 ID 冲突，以及两个 family 原有的 plan/outcome/header 校验继续执行。
+同一次 fresh snapshot pending 检查可合并 body outcome 与 metadata 两个完整 Records family；metadata writer 首次完整 operation index 同时判断 exact 原 operation 与 pending intent。显式 reconcile、prepare/execute 之间、写后校验及下一次 fresh snapshot 不继承该结果。完整分页、scope/owner/hash、同 ID 冲突及原 plan/outcome/header 校验保持。
 
-`shared-authoring-record-costs.test.ts` 经原 writer 与 Records 边界生成合法历史，覆盖 H=0/1/50/101。H 表示 metadata plan/outcome 对数，另有一个完整 body outcome；合批的实际 Payload 页数分别为 1/1/2/3，不能把一次 SDK 查询等同一次 HTTP，也不能声称 H=50 比原两页更少。再次 fresh 仍重新读完整历史。反例保留索引存在但 body outcome、metadata plan 或 metadata outcome 缺失，以及同 ID 冲突、foreign owner、incomplete response、重复 cursor；它们均拒绝并且零来源写入。`shared-metadata-write.test.ts` 同时验证首次 preflight 只读一个 compact index，重用 exact 原 plan 时只 reconcile、无 PATCH 或 Record create。
+运行 `shared-authoring-record-costs.test.ts` 的 H=0/1/50/101 合法历史和缺失、冲突、foreign owner、incomplete response、重复 cursor 反例，并保留 `shared-metadata-write.test.ts` 的原 operation reconcile 与零重复写入要求。一次 SDK 查询可能有多页 HTTP；完整历史 Payload 仍随历史增长，不宣称常数读取。
 
-旧实现的四个成本红例完整保存在 `logs/author-cost-red.log`，不是功能失败；H=1/H=101 的 family 请求和 metadata 首查各多一次，H=50 则分页数相同但未合批。候选受影响的八个测试文件共 147/147、828 断言通过，覆盖原 unknown 恢复、写后变化、retained facts 和旧 pin；`bun run typecheck` 与外部 CLI/SDK build 通过。此次未重跑全仓或完整安装矩阵。
-
-同条件成本沿原未修改的 `scripts/package-smoke/authoring.ts` 中 `checkAuthoring` 驱动，以独立 Node 安装、各自空的 owned HOME/XDG/consumer 根运行。新证据根为 `/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/pro-local-refinement-20261107-9jv57mcm`；`evidence/author/installed-before` 与 `installed-after` 保留 input/result、49 个命令回执及完整 loopback HTTP ledger。前后 driver/adapter SHA、初始三文件 bytes/hash、命令顺序和结果状态相同；独立 loopback origin、时间及由此派生的 scope/pin 各自绑定，不声称两轮 snapshot ID 相同。
-
-| 同一 49 命令作者流程 | 原已安装 CLI v3 | 候选 CLI | 差值 |
-| --- | ---: | ---: | ---: |
-| 原语义检查通过 | 49/49 | 49/49 | 0 |
-| 实际 HTTP attempts | 834 | 809 | −25 |
-| 请求 JSON body B | 165,861 | 160,978 | −4,883 |
-| 已观察 decoded response B | 1,704,604 | 1,702,975 | −1,629 |
-| 来源写入 | 58 | 58 | 0 |
-| 模拟丢失响应、字节 unknown | 1 | 1 | 0 |
-
-全部 25 个减少的 attempts 都来自 Records Payload query endpoint：21 次同相位 family 合批和 4 次 metadata 空 exact lookup 复用。每轮故意丢失一个 outcome 响应，其未知字节保持 unknown；表格不是完整 wire bytes。原 create/adopt、disabled author read/write、enable/disable、参考资源、旧 pin 及原 operation outcome 丢失后的恢复断言均通过，58 次来源写入保持。历史 Payload 仍完整传输并随历史增长；本轮没有测 decoder/CPU/RSS 或模型任务，先前 CI 的 decoder 差异仍未解释。
-
-另以正常 Pro HOME/cache、同一 owned native page 顺序执行两次公开 `read PAGE --database skills --authoring --json`，各 n=1、300 秒预算、零重试。真实 Notion 接受双 family 合并过滤并返回 200：13 → 12 HTTP，其中 metadata 10 → 9、当前正文仍 3、write 均 0；请求 JSON body 1,570 → 1,406 B，decoded response 188,043 → 187,872 B。除 freshness 和 request metrics 外，完整公开结果逐字段相等，包含 owner/scope/snapshot/version、575 B 正文、3 个源文件 hash 与两个 available native reference；unresolved 为空。两轮 trace 与独立 HTTP observer 请求数一致、无丢弃、无在途、无未知字节。`evidence/author-records-live-before` 与 `author-records-live-after` 保留原件；fresh 观察时间分别为 `2026-11-07T10:24:29.295Z`、`2026-11-07T10:25:05.422Z`。这是顺序 fresh 观察，不能声称原子 A/B；单次 elapsed 也不能推出稳定延迟收益。
-
-`evidence/author/cost-comparison.json` 保存逐命令对照、来源及物料 hash，`inputs/author-cost-compare.py` 可由保留原件重算。候选 archive SHA 为 `127a2a5b2a6e10a8800daf1b6f9a88c6cdf538355a1b4e2ae8d07af33c92a960`，独立安装 CLI 为 `9d5d05387426d1c9e2818238ca52d374012a8173a6b8889ec50b9fa15abdf6e9`，SDK 为 `4d34aca4734bd4f60dcb7a316c9469214ce964361f961c9eee8fb09abbad1a32`；build 与 install 的 CLI/SDK 字节相等。Broker 绑定包、日用切换及真实模型验证另按各自产物与实际回执验收，不由此受控结果替代。
+安装态复用 `scripts/package-smoke/authoring.ts` 的 `checkAuthoring`，冻结相同初始内容和命令序列，对比每条实际请求及写入。保留故意丢失响应的未知字节、原 operation 恢复、旧 pin 和完整正文断言；受控结果不替代真实 Notion 或模型验收。
 
 ### SC11：完整 graph inventory 的必要属性投影
 
-2026-11-07 在 `91f45abc` 上追加的窄改只收窄 `shared-graph-read-context.ts` 的 inventory 属性投影。完整目录的每一行继续返回 Name、Description、Kind、Enabled、Default Context、Skill ID、Main File ID、Projection、References、Source 十项，并追加 descriptor 已登记的 Members／Requires。选中目标继续用该行完成 Source、正文绑定和关系校验；标准 Tags 及其他未被此读取链消费的登记属性不进入该请求。View 等其他入口的 Tags 语义不变。完整分页、foreign parent、重复物理页／稳定身份、缺失属性、incomplete response、cursor 与 scope／descriptor 校验仍在原边界执行。
+graph inventory 返回 Name、Description、Kind、Enabled、Default Context、Skill ID、Main File ID、Projection、References、Source，以及 descriptor 已登记的 Members／Requires。选中目标仍用该行校验 Source、正文绑定与关系；Tags 等此链未使用的字段不进入该请求，其他入口的 Tags 语义不变。fresh preparation、完整分页、parent、身份冲突、属性完整性、cursor、scope/descriptor 仍按原边界检查。
 
-`freshCatalogForRead` 的 `refresh:true` 和每次 preparation 的 fresh 观察保留；此次未新增长期缓存，也不跨 operation 合并库存。下文未采用的单 current inspect 六字段候选仍维持原结论。此次选中目标所需十项及已登记关系都保留，graph target 不因属性缩减新增逐页 GET。
-
-沿原 `shared-graph-batching.test.ts` 增补四组关系登记组合、102 行两页投影、十二个所选属性缺失、Source 不完整和稳定 ID 冲突，并保留分页／foreign／重复 cursor 反例；多根 diamond 断言只有第一根发生 page GET。旧实现四个投影成本红例保留在 `logs/graph-projection-red.log`。原 graph batching／prepare／router members／release 四文件 90/90、1,085 断言通过，selected-source／consumer-composition 两文件 20/20、136 断言通过。首次 typecheck 暴露的两处新增测试类型错误及原日志保留；窄修测试类型后 typecheck 通过，最终 graph 文件 36/36、794 断言重跑通过，这 36 项已包含在前述 90 项中，不重复累计。未重跑全仓或完整安装矩阵。
-
-本节证据仍位于 `/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/pro-local-refinement-20261107-9jv57mcm`。`inputs/graph-inventory-cost.mjs` 使用原 projection-respecting `nativeGraphFixture` 的相同冻结 102 行，直接经过 Core 服务并保存实际序列化响应；这是受控服务调用，不冒充网络 HTTP。两臂均为两页、请求 JSON body 62 B、正文读取和来源写入均 0；全部必要属性的规范化内容 hash 相同。
-
-| 受控 102 行输入 | 原 decoded response B | 候选 B | 减少 B |
-| --- | ---: | ---: | ---: |
-| 每行两个普通 Tags | 182,959 | 165,925 | 17,034 |
-| 同样 Tags 加合成 Auxiliary Metadata | 200,299 | 165,925 | 34,374 |
-
-合成扩展只证明未来无关登记字段不扩大此投影，不代表生产字段规模；标准 schema 没有 Snapshot 属性。`evidence/graph-inventory-projection/cost-comparison.json`（SHA `45b7899238ac18f3fc63763cf159b97081a446f6db857891fe7475937133a4d1`）绑定输入、请求／响应原件及最终 runtime。外部 build 后按原 `sdk-package-smoke.mjs --case records-history` 独立安装验证通过：选择器 1/1、H1/H101 八相位 8/8、precise coverage counter 可用且正控制／清零检查通过。`evidence/graph-installed-sdk/report.json` SHA `779f06c518024ed132f7aacce69ce645b9a5d3ce1dd49a93550b09b73bfa6355`；内层 `records-history/report.json` SHA `21bc213e9de892c4303eace9809b69b5cc31834c1b65e9bcbb5f6569031d0795`。这不代表完整 SDK22；逐 fact decoder、CPU／RSS 及压缩 wire bytes 保持未测。
-
-真实 API 对照沿原 public CLI，以相同 Node、正常 Pro HOME/cache 和同一 owned page，顺序各执行一次 `use PAGE --database skills --refresh --json --metrics`。两臂均自然 exit 0、完整 ready；只读 guard 触发 0、来源写入 0。实际 16 → 16 HTTP，其中 metadata 13、当前正文 3 保持，请求 JSON body 均为 1,753 B；Skills 四页从 1,527,238 → 1,351,765 decoded response B，减少 175,473 B（11.49%）。全次响应从 1,706,860 → 1,531,387 B，减少 10.28%；只有这四页变化，其余十二次响应字节逐项相同。实际登记投影 15 → 12 项，去掉的 Tags、Origin、Source Member 由同库本地 descriptor 直接核对；Source 与两个关系保留，未把必要 Projection／References 的字节算成节省，也未拆分各被删属性的单独收益。
-
-两份完整输出除列明的 request metrics、timing／freshness 时间字段外相等，owner／scope／snapshot／version、575 B 主文、三个文件的 bytes／hash、fixed refs、links、manifest 和 graph lock 均一致。trace 无丢弃，独立 observer 各有完整 16 对 start／end；HTTP header request_id 为 null，按串行顺序、method、path／target、status、request body bytes 对账，不宣称跨 observer 的 request-ID 配对。原件在 `evidence/graph-use-before` 和 `graph-use-after`，最终 `evidence/cache/graph-projection-ab/summary.json` SHA `fdee5ff39414b208ddf37f23d17d452ddda386cbcc5b52a12211e4e0d2ba7b0a`，`validation.json` SHA `b7939cea1b43452cb10de831cf306e6af3305de39a26c2fc61cb909cf431add9`。这是各 n=1 的顺序 fresh、带插桩只读 API 观察，不是原子 A/B、无插桩模型任务或稳定延迟结论。
-
-新候选独立保存在 `artifacts/graph-cli-after-*`，不覆盖原作者优化包。archive SHA 为 `7a8073712a61d5608938537c3fd1482a49417adf5a7cd5227e84d2de87eeb3b0`，安装 CLI 为 `51d13a906839cad64f7b7886ebe333747f4b8687bfe83f2cfdf483d4471f30e4`，SDK 为 `956243afeb4168dfc98515e74e086495e870c59d5531e922ba398f690fa0e43a`；build／install 字节相等，身份保存在 `evidence/graph-inventory-projection/package-identity.json`。本 CLI 构建及验证切片未自行切换日用安装、发版或执行 cleanup；owned fixture、安装与全部原证据仍保留，后续只沿原 Trash 流程处理自有临时材料。Broker 绑定、日用切换与正常模型结果分别验收，原 C8、撤回实验和本轮旧失败原件不改写。
+运行 `shared-graph-batching.test.ts` 的关系登记组合、102 行分页、必要属性缺失、Source 不完整、稳定 ID 冲突与多根 diamond 反例，以及 prepare、Router、release、selected-source 和 consumer-composition 回归。用相同输入核对实际序列化属性与解码字节；只改变未使用的字段，不增加逐目标 GET。安装态使用原 SDK smoke，真实来源成本独立报告。
 
 ### CI 保留计数比较与原 coverage 文件
 
 原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与八相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留，不改变 Profiler 配置、SDK 调用、计数、预算或失败位置。
 
 `root_comparisons` 保存各函数的真实差值及 `necessary_decode_reuse`，false 或非零必须原样进入 artifact。ledger 的 `status: passed` 表示八相位测量与内容/请求门槛完成，不证明所有 decoder 差值为零。comparison 仍是观察结果，不通过增加消费者样本或放宽断言将差值消除。
-
-旧 `bb09afb` CI run `42186327179` 的四平台均实际 SDK22/22 与 history8/8，但原 ZIP 只有 package JSON，未上传 standalone comparison/coverage。归档在 `sc14-history-measure-e7s0yzfz/remote-ci-bb09/`：macOS24 H101 single-cold 的 `decodeHeader` 为109、多根312；其他三平台对应两臂均312，原因保持unknown。两臂 envelope/bounded、HTTP/响应字节及相同四文件闭包仍各自保留；不能把这个窄事实写成逐fact全部验证一次。CI SDK `91ca58f9…` 与原 C8 SDK `5f7ae1e9…` 身份不同，不声明字节等价。本次仅修复归档接线，旧 cohort 不重跑；新接线的远端结果按它自己的提交与原 artifact 验收。
 
 ### Tags / View 动态观察与正文隔离
 
@@ -413,10 +341,6 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scra
 先通过 SDK current read 合法取得根全文、完整资源及固定 pin；随后分别驱动 SDK 默认 View 冷读、Tags 变化后的暖读、公开 CLI `list --default-view --refresh`、View 外 exact current read、filter/成员变化后的 SDK `maxAge:0`、普通全目录及不完整刷新。暖读保留原观察时间，显式刷新和到期观察返回各自准确成员；View 不能影响完整普通目录或授予／撤销正文权限。不完整的 inventory 必须报 `VIEW_INCOMPLETE`，不能成为空成功；显式 offline 仍能读取上一个完整 View 事实。
 
 审阅新 `view-dynamics/` 下每相位的 installed SDK 导出函数或 CLI argv、完整成员 IDs、实际字段/cursor、错误、全部 HTTP calls 与 metrics 对账。目录相位不能读取 Files/Records、发逐页 GET 或获取正文、写入；旧 current 对象库存保持原 SHA。薄 `listSkill` 的文件条目只提供 path/bytes/ref，不把不存在的 hash 当协议要求；沿其返回 canonical refs 实际读取旧 pin 的每个文件，计算 bytes/hash 与独立 oracle 对照。源请求与本机对象读取分开，不能用零 HTTP 推断未读取本机正文。保留原报告未包含动态链的 coverage fail-before，不把它写成产品缺陷；只有实际产品行为失败才启动产品修复。证据和清理继续使用本 Skill 原入口与系统回收站，原始失败和安装包保留。
-
-2026-11-06 定向实驱使用已冻结 C7 包 `f854faf5d2e938761eaa2e57c42ffbd08f5ac695ac2ce83421d82ff89b1467ac`，没有产品修改。证据根 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc11-view-dynamics-ozgctn0b` 保留旧报告缺动态阶段的红例，以及首轮误把薄 files 条目当完整 manifest 的真实 oracle 失败；该轮旧 pin 的逐文件读为 `not_run`，不能沿用后轮结果。修正后 `verification-run/evidence/installed-view-dynamics-02/report.json` 为定向 1/1、13 相位通过；`installed-02-ledger.json` 记录 46 HTTP / 561,367 decoded response B，其中 43 metadata、3 次最初正文读取，0 write。旧 pin 三文件均沿实际返回 ref 读回并核 hash；目录变化未增加正文源请求。`core-regression-02.json` 是完整 Views 17/17，`typecheck-02.json` 为 exit 0；这些结果不替代完整 SDK 22 项或生产 View filter 验收。原 helper 将自有 scratch 移入系统 Trash，`cleanup-result.json` 核对 12,973 份保留文件字节未变。
-
-同根 `ci-wiring/` 随后通过原 `control.ts init/package/cleanup` 完成一次完整本地安装门禁：自然 exit 0、389,945.870 ms，SDK 默认 22/22，原 3 个 scalar / 32 个 cache 阶段和新增 13 个动态阶段均通过。`gate-result.json` 绑定原 report SHA `96f0a55622b4215bdeab95a04fcdf184eaa2fb2359ee5035eb48c789aa1b7a4f`；原 package JSON 的 `sdk` 与它完整相等。此轮使用纯 `1d88e02c` 导出加五个验证改动，产品来自 C7 发布文件；现有 Bun pack 只将 `package.json` 的开发依赖 `workspace:*` 规范成 `0.1.0`，其余 67 文件（含 CLI/SDK）逐字相同，不能称整个 tar 等于 f854。`packed-c7-identity.json` 保留该差异，类型检查首次缺导出环境依赖及补齐后的通过也分别保留。原系统 Trash 清理后 378 份证据字节不变，完整 phase 原件在 `verification-run/evidence/package-scratch-original/`；这是一轮本地门禁，远端四平台结果另按新提交验收。
 
 ### 共用受控 HTTP 来源与终局字节账本
 
@@ -442,33 +366,15 @@ TMPDIR="$RUN/scratch/http-tests" node node_modules/vitest/vitest.mjs run --confi
 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FIXTURE" --outdir "$RUN/scratch/installed-sdk"
 ```
 
-测试打印保留 ledger 的目录，不永久删除失败原件。安装 smoke 的默认选择和命令合同保持；定向 scalar／View／history 的原有意义也保持。Broker 冻结 helper 时记录文件 SHA-256、fixture SHA-256、C9／CLI 包身份；未变化的运行时不因此重新 build/pack。其目录、恢复、取消三个场景各自取证，固定包与控制服务的通过不能算正式 SC20 生产成本或 SC21 模型验收。
+测试打印保留 ledger 的目录，不永久删除失败原件。安装 smoke 的默认选择和命令合同保持；定向 scalar／View／history 的原有意义也保持。Broker 冻结 helper 时记录文件 SHA-256、fixture SHA-256、Broker／CLI 包身份；未变化的运行时不因此重新 build/pack。其目录、恢复、取消三个场景各自取证，固定包与控制服务的通过不能算正式 SC20 生产成本或 SC21 模型验收。
 
 每个 HTTP attempt 的账本区分已观察前缀和完整响应。`observed_response_bytes` 是服务端实际调用 write/end 的未压缩前缀；只有响应 `finish` 才填 `decoded_response_bytes`、`response_sha256` 和 `response_bytes_complete=true`，并保留明确的 server-write `response_boundary`。中途断流／abort 保持完整字节与 hash 为 `null`，不能把计划发送的 JSON 长度当成完整响应。客户端解码、SDK 全文结果及 provider 真正收到正文仍由各自账本证明。请求前缀、单调时钟 start/end/close、真实 status 和每次重试均保留；汇总失败尝试时不能补零或丢弃它们。
 
-本轮 fail-before 使用原 main handler：不完整 POST 被客户端取消、实际没有 HTTP response，旧账本却记录完整 109 B。新 helper 的同边界完整响应字节为 `null`，另留已观察前缀。原失败、控制回归与安装结果保存在 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc20-sdk-http-shared-r7m4k2vd`。先将 owned scratch 中所有原始 ledger／结果及身份存入 `RUN/evidence`，再由原 `control.ts cleanup` 移到系统 Trash，最后核对证据 hash、进程终局和日用哨兵；不清理其他会话的目录。
-
-后续实际 Pi 权限场景暴露了仅拒绝 page route 的 fixture 缺口。`cli-http-denied-body-ubd70ukm` 保留同一根 markdown 在 deny 状态返回 200 的 RED，以及修复后的原 6 项 HTTP 回归。此前 22 项安装 SDK 结果仍绑定原 helper `5f27b4bb`，不改写为新 helper 的重复验收；新的真实 Pi 403／固定资源／恢复证据由 Broker 原场景独立记录。
+不完整响应被取消时，完整响应字节保持 `null`，已观察前缀另列；不能把不完整前缀记作完整 HTTP 响应。清理前将原始 ledger、结果与身份存入运行证据，由原 `control.ts cleanup` 回收 owned scratch，再核对原件 hash 和进程终局。
 
 ### 单 current inspect 投影实验未采用
 
-2026-11-05 的候选只对单 current `inspect` 使用完整六字段身份目录和一次选中完整页 GET。原有 scalar read 复用不变。候选通过受控 N=1/10/100/101/300、权限、分页、身份、取消、混合根边界和独立安装 SDK/CLI 检查，但真实首读延迟未达到预先冻结的采用门槛。运行时代码、候选专用 core 断言及 `inspect_phases` smoke 断言已撤回；当前 graph prepare 仍使用原完整 inventory，当前 smoke 不承诺该投影。
-
-证据根为 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc11-single-inspect-iyw1oxit`。保留 `controlled-comparison.json`、`installed-comparison.json`、两份独立包、原 fail-before，以及 `withdrawal/candidate-all-nine.patch`。旧候选的 `SC11_INSPECT_COST` 和安装 `inspect_phases` 只能从这些冻结原件复查，不能把它们当作当前 main 的成功断言。
-
-真实配对沿 Broker 原 `skill-consumption-source-baseline.mjs` 的 `inspect-current` 入口，每次只执行一个公开 `ctl prepare ROOT --purpose inspect --database DATABASE --metrics`。六个 consumer 均从自己的空 state 开始，不复制 oracle 正文或缓存。完整正文、46 文件逐项 bytes/hash、scope/version/pin、Requires/Members 目录均与独立原件一致。每次四个 body 请求的目标和 395,627 响应字节相同；既有离线 source proof 证明未读取 Requires 或未选 Members 正文。原 `unclassified_body` 分类保留，归属证明单列。
-
-| 配对顺序 | C6 elapsed / rootReady ms | 候选 elapsed / rootReady ms | 候选减 C6 ms |
-| --- | ---: | ---: | ---: |
-| C6 → 候选 | 9875.752 / 9572 | 9007.326 / 8626 | -868.425 / -946 |
-| 候选 → C6 | 8302.505 / 7993 | 8683.400 / 8384 | +380.895 / +391 |
-| C6 → 候选 | 8588.354 / 8280 | 10698.151 / 10401 | +2109.797 / +2121 |
-
-每次来源请求从 15 增至 16，唯一新增项为选中根 metadata GET。总 decoded response 从 1,971,679 B 降至 1,182,292–1,182,316 B，约减少 40.035%。各臂 elapsed 中位数为 8588.354 / 9007.326 ms，rootReady 为 8280 / 8626 ms；paired delta 中位数分别为 +380.895 / +391 ms。`functional_acceptance=true`，`adoption_gate_passed=false`。两条延迟预算均回退，不能以目录或总字节改善覆盖它们。
-
-`live-pair-plan/real-pair-result.json` SHA-256 为 `515544b7210df7847f77bbaf05454f50309af5c5936b651dbc435a26008d7700`。六次共 93 HTTP、9,461,957 decoded response B，实际 write/provider 均为零，无缺失 metrics、未知来源或补跑。这个窗口的零写入不改变 current 消费可能 retention/adoption 的合同。六份原 E→C→E 全部通过，`cleanup-result.json` SHA-256 为 `407a69beb93eec0ba7a4288e5cc000748a8465d488461d7498d81afbb164c6ad`；只移走各自 owned working，原证据和日用配置保持原字节。
-
-受控 N=1 的 +864 B 回退继续保留。余代价仍包括全库身份分页、选中页、首次 current 正文和 retained source。只有新的具体机制能改变上述取舍，或任务成本预算被明确调整时，才提出新的冻结比较；不增加规模阈值、不延长 TTL、不补同输入样本追绿。三个 pair 不外推 p95、全 Agent 任务或其他库规模的收益。
+当前 graph preparation 保留完整必要 inventory；六字段目录加单页 GET 的实验未通过预先冻结的延迟采用门槛。继续沿[元数据合同](../../../../docs/shared-metadata-consumption.md#optimization-decisions)核对权限、完整性和成本取舍，不把较少响应字节自动等同更优全任务成本。新方案先冻结机制、输入、预算与样本数，保留历史失败，不以重复采样改判。
 
 ## Gotchas
 

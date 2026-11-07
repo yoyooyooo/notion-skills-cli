@@ -491,6 +491,18 @@ ntn-skills ctl cache gc --online --database ops
 
 `status` inspects observations offline. `clear` retires SQL observations and generation fences; it deletes no files and does not use Trash. `gc` moves only unreachable historical snapshot manifests and objects to system Trash. Offline GC preserves every referenced snapshot. Online GC requires one complete refreshed catalog before treating a missing record as absent, and a dry run changes nothing. Broker export directories remain outside this command. [Storage contract](protocol.md#environment-and-local-storage).
 
+### Observe repeated reads
+
+`ntn-skills ctl cache status [TARGET] [--database SELECTOR]` reads local cache policy, effective roots and logical observations/catalogs without remote requests. For a selected Skill, compare its first and immediate repeat read while preserving the same source and fixed identity:
+
+```bash
+NTN_SKILLS_REQUEST_TRACE_LIMIT=10000 ntn-skills read REF --metrics --json
+```
+
+Compare scope, snapshot/version, freshness and `request_metrics`. A complete zero-request observation has tracing enabled, `total_requests=0`, `trace_dropped=0` and `in_flight=0`. The selected source label and the model provider's token cache do not establish a source-cache hit.
+
+Cache status does not expose physical object/snapshot counts or a global hit rate. Use the existing isolated inventory checks when investigating growth; immutable objects, pinned history and per-process aliases have different lifetimes. Clearing caches is an explicit maintenance action, not a routine performance step.
+
 ## Commands and output
 
 Run `ntn-skills --help` or `ntn-skills <command> --help` for flags and examples. Help is offline and an explicit `--help` takes precedence without running the command. Normal output is JSON, including errors; help/version are text. Exit status is 0 for success, 1 for operation failure and 2 for invalid arguments. `read --raw` affects successful content only. `schema [command path...]` returns the installed parser's parameter types, cardinality, defaults and constraints. Parse errors include a runnable `next.argv` for offline help. Bare collection results such as `ctl sync upstream list` use `items`; named arrays such as catalog `records` keep their existing fields.

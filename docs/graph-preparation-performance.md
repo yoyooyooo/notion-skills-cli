@@ -47,21 +47,10 @@ ntn-skills ctl prepare ROOT_ID OTHER_ROOT_ID --database LIBRARY_ENTRY --purpose 
 
 这些诊断与 `request_metrics` 一样不计入 `maxContextBytes`，也不进入 graph lock。CLI 进程启动耗时由外部调用者单独记录。HTTP attempts、请求/响应 bytes、正文类别、provider、coalesced、queue wait、retry wait 与准备阶段各自保留，不能相互替代。
 
-## 受控前后比较
+## 可复跑测量
 
-`scripts/measure-graph-prepare.ts` 固定菱形与 101 节点拓扑，每种拓扑的 cold、warm、metadata revalidate 各预设 3 个样本。先创建远程不可变事实，cold 清空该夹具的本地 JSON 与对象缓存；warm 使用普通 TTL；revalidate 在正文有效期内只过期元数据。它测量受控 Effect service 调用数量与本地执行时间，不代表真实 Notion 网络延迟。
+`scripts/measure-graph-prepare.ts` 固定菱形与 101 节点拓扑，分别测 cold、warm 与 metadata revalidation。比较前冻结拓扑、缓存状态、样本数、完整 graph lock 与预算，分别保存修改前后的原始调用、字节与结果。cold 使用该夹具的空派生缓存，warm 使用普通 TTL，revalidation 只使元数据到期。受控服务调用数和本地执行时间不等于真实 Notion 网络延迟。
 
-| 拓扑与状态 | 修改前请求数 | 修改后请求数 | 修改后 Skills inventory 页 | 修改后 Files 查询 | 修改后 Records 查询 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 菱形 cold | 32 | 16 | 1 | 2 | 6 |
-| 菱形 warm | 1 | 1 | 0 | 0 | 0 |
-| 菱形元数据复验 | 25 | 10 | 1 | 2 | 4 |
-| 101 节点 cold | 810 | 115 | 2 | 2 | 6 |
-| 101 节点 warm | 1 | 1 | 0 | 0 | 0 |
-| 101 节点元数据复验 | 509 | 12 | 2 | 2 | 4 |
+核对每次完整 graph lock、bindings、所选正文与未选对象零读取；保留全部失败和独立来源账本。小样本不报告 p95，不将不同切片的收益相加成全任务收益。公开 CLI 的实际 Node/HTTPS/SQLite 请求账本与真实 Notion 复验分别运行，不能用 fixture 计数替代。
 
-每行三次请求数一致，前后准确 graph lock/bindings 也逐样本相同。cold 的正文请求仍分别是 4 和 101；warm 与元数据复验均为 0。所有测量阶段写入为 0。样本数不足以作 p95 结论；这组数据不声称热缓存的 CPU 或生产延迟改善。
-
-最初的 memory Store 夹具按任意字符串前缀枚举，误把 `leaf-1` 与 `leaf-10` 混在一起；真实 SQLite 已按目录边界枚举。正式比较已在修改前 commit 的独立只读源码与优化源码中使用同一修正夹具，原始失真报告和失败日志保留。上表只采用修正后的结果，不将夹具修正计为生产收益。消费者继续使用既有目录查询与 scope/identity 校验，无须改变生产枚举规则。
-
-公开 CLI 另用真实 Node、HTTPS 传输、独立进程及 SQLite 重启验证 actual attempts/bytes 与回执计数相等。真实 Notion 小图只做低负载复验，与受控性能比较分开记录。源下载、历史块与大型当前原生观察的能力边界沿既有协议；本项不扩容 v1 observation 的 64 KiB envelope，也不改变按需历史文件的完整性条件。
+来源下载、历史块与大型当前原生观察的边界沿现有协议。优化不得扩容 v1 observation 的 64 KiB envelope，或放宽固定历史文件的完整性、权限与取消条件。

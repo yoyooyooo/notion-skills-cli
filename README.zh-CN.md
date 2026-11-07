@@ -142,17 +142,15 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 已经在 Notion 新建的草稿可保持禁用，补全 Name、Description 并将 Kind 设为 `skill` 后，用 `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` 在原页面登记稳定身份并保留完整正文。随后 `read SKILL_PAGE_ID --authoring` 返回新的编辑 pin；普通修改保留禁用状态，`update SKILL_PAGE_ID --enabled true` 才会在完整验证后启用。尚未登记的禁用草稿不进入消费目录，也不阻断其他 Skill。新增 reference 时先 `ctl library file add`，再用 fresh pin 将返回的原生页面链接写入主文；[完整步骤](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill)说明两步如何配合。
 
-三张 Database 均为独立非 inline 页面，显示名直接使用 **Skills、Files、Records**，无需 library 后缀。初始化标识与最终 descriptor 保存内部身份，改名不影响正常附着或原操作复查。批准范围的完整迁移与pro日用切换现已验收：300个内容入口、818个可编辑支持页、完整资源与历史统一到三表；两张清空的旧业务表已可恢复退役。CLI/Pi使用新入口，mini独立内容验证通过，不长期双写、不隐式回退旧模型。日常明确使用 `--database skills` 或实际库ID；裸 `list` 仍是工作区发现。此用户部署不代表npm公开发布、OMP/Tern或新真实模型任务已通过，见[最终检查点](docs/shared-ssot-architecture.md)。
-
-当前正式迁入检查点已累计 12 个完整 Skill、18 个业务文件，保留来源资源、原标签/默认供给和入口额外 frontmatter。跨 Skill 引用与未结清原生写入仍明确阻塞；这不是全量迁移或全局 CLI/Pi 切换完成。详见[当前迁移范围](docs/shared-ssot-architecture.md)。
+共享库使用独立的 **Skills、Files、Records、Sources** 数据库。descriptor 与属性 ID 保存内部身份，显示名变化不影响定位。Notion 管理可编辑正文、元数据与保留历史，本地缓存由这些事实派生。日常用 `--database` 明确选库；裸 `list` 仍是工作区发现。身份、固定版本与恢复边界见[共享架构](docs/shared-ssot-architecture.md)。
 
 正常 current read 完整确认 Notion 正文编辑并保留原操作事实后，将整个文件记为自定义；其他文件继续自己的来源行为。改回原文不恢复跟随，也不要求手工接管标记或旧的整 Skill fork。名称、Description、Default Context 与 Router Members 始终来自 Notion 原生属性。
 
 固定来源先用 `source inspect/register` 登记精确 commit/root，再由 `ctl library source select prepare ... --output PLAN` 生成计划并用 `source select apply PLAN --entry ENTRY` 选择。共享 Profile 可通过 `ctl library profile list/show/set/bind/unbind` 管理；`list --profile PROFILE_ID --database ENTRY` 采用共享默认 View，显式 View 优先，普通 `list` 保持完整发现。
 
-完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[架构证据检查点](docs/shared-ssot-architecture.md)。原生二进制创建、多项布局 apply、首次未知请求在空客户端不可见等边界仍保留。固定来源可供给二进制资源；共享操作 ID 不传给旧 `ctl operation resume`。现有 upstream/local 绑定在明确迁移前继续使用各自的原操作恢复流程。
+完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[共享架构](docs/shared-ssot-architecture.md)。原生二进制创建、多项布局 apply、首次未知请求在空客户端不可见等边界仍保留。固定来源可供给二进制资源；共享操作 ID 不传给旧 `ctl operation resume`。现有 upstream/local 绑定按各自原操作恢复。
 
-当前交付聚焦 **Notion → CLI → Pi**，OMP/Tern 延后。真实主文与支持页编辑、启停、固定快照及旧 pin、独立安装 Broker/CLI 的 Pi 消费、终端选择夹具，以及真实模型自主读取入口/资源并完成回答均已有本轮结果。原生正文编辑经官方 Notion API 验证，终端夹具与真实模型分别报告；不代表旧库全量迁移、正式发行、用户全局配置替换或另一物理机器验收完成。配置见[在 Pi 使用远程 Skill](docs/shared-authoring.md#use-the-remote-skill-in-pi)，范围与证据见[架构检查点](docs/shared-ssot-architecture.md)。
+Pi 使用 Broker 随包的 CLI/SDK，无需额外安装全局 CLI；终端或其他 Agent 需要命令行时再安装独立 CLI。配置见[在 Pi 使用远程 Skill](docs/shared-authoring.md#use-the-remote-skill-in-pi)。创作、检查、使用与资源读取分别有明确合同；读取成功不等于模型已应用指令。发行验证记录 Broker 内嵌 CLI/SDK 与本次测试的独立 CLI 组合、来源范围和观察结果。
 
 ## 常用场景
 
@@ -208,7 +206,6 @@ ntn-skills ctl sync local status release-review-global
 在富文本 `References` 属性中添加页面提及或链接。链接文字写成 `references/guide.md` 时固定本地路径，否则按页面标题生成文件名。正文照常使用 Notion 页面链接；CLI 读取和导出时转换为 `./references/guide.md` 等相对路径。参考文档互相引用时按所在文件目录解析，CLI 写回时恢复 Notion URL。其他网站链接和代码示例保持原样。
 
 `create`、`replace` 将 `references/**/*.md` 创建为可编辑的子页面；`write` 更新对应参考页。导入时移除某个参考文件，会让它退出新快照，原 Notion 页面保留。纯页面库可以不设 `Files`；需要保留原始字节、额外 frontmatter 或非 Markdown 资源时继续保留它。详见 [References 契约](docs/protocol.md#references-pages)。
-
 
 ## 接入 Agent
 

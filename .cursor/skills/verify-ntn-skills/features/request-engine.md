@@ -95,7 +95,7 @@ bun run typecheck
 
 workspace 冷却用例先让两个 receiver 完成服务和 Request 初始化，通过原 worker 的 ready/release 屏障，再施加原 1500ms 冷却。从同一 owned SQLite 读取实际 `cooldown_until_ms`，断言共享 workspace 的 dispatch 不早于截止时间，无关 workspace 则在冷却仍有效时 dispatch。两个 Node 冷启动后的 server arrival 差不作为隔离证明；原 15s 用例预算不变。故意将共享 receiver 配到无关 workspace 的早发对照，以及将无关 receiver 配到共享 workspace 的误阻塞对照，必须分别被对应断言拒绝，不能只因两个请求成功就通过。
 
-`workspace-cooldown.json`、`workspace-cooldown-early-shared.json`、`workspace-cooldown-blocked-other.json` 在主要断言前保存 ready、实际冷却起止与持久化截止时间、release、全部 worker dispatch/完成回执及 server arrival。原 b556 CI（run `42170406099`，macOS/Node22 job `127736634138`）的 451ms 小于旧 600ms arrival 差断言失败永久保留；旧断言之后的 1500ms 检查与日志未执行，不能据此推断产品早发或把失败改判为通过。原完整日志及有界诊断位于 `c8-cli-final-jugpaxrt/remote-ci-b556-final/`（证据根 `/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105`）。本次只修既有测试观察边界，不修改调度产品或 C8 包。
+`workspace-cooldown.json`、`workspace-cooldown-early-shared.json`、`workspace-cooldown-blocked-other.json` 在主要断言前保存 ready、实际冷却起止与持久化截止时间、release、全部 worker dispatch/完成回执及 server arrival。记录实际冷却、dispatch 与 arrival 边界，不能把不同采样时点相减后当成提前发出的证明。保留原失败，不通过改写时间或放宽产品门槛求绿。
 
 该目录下 `fixture-repair/local-01/` 保留 Node 24.20.0 原多进程组 8/8 通过和随后类型收窄失败；仅将已检查的时间戳绑定为局部常量后，`local-02/` 的格式、类型检查及 3 个冷却正反例通过（其余 5 项未重复运行）。最终正常样本的共享 dispatch 为实际截止时间 +14ms，无关 dispatch 为截止时间 −1489ms；早发与误阻塞对照分别偏移 −1484ms、+7ms，并被各自断言拒绝。完整 worker 回执与 arrival 原件均保留。此为本机受控验证，不能替代修复提交后 macOS/Node 22.22.3 的新 CI 门禁。
 

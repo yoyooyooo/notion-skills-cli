@@ -2,7 +2,7 @@
 
 These recipes describe current executable entry points and are not records of completed acceptance. Sync/cache commands, read policies and exact-target replacement are implemented. Read the matching recipe before driving a feature; preserve command/result evidence and distinguish deterministic, live and installed-consumer proof.
 
-AH-498 shared-library work has its own partial checkpoint. Shared layout, ownership, fixed manifests, exact history restoration, View metadata and Router member indexes have implemented paths, while migration review is read-only. They do not establish production migration, Profile supply, installed host/model behavior or release acceptance. Use the shared recipe and [architecture evidence table](../../../../docs/shared-ssot-architecture.md) instead of carrying forward a legacy pass.
+Shared-library verification covers the managed layout, ownership, fixed manifests, history restoration, View metadata, Router directories and authorized migration operations. Use the shared recipe and [architecture](../../../../docs/shared-ssot-architecture.md) to identify the relevant boundary. Record live, installed-host and release outcomes in the external run ledger; do not carry an older result into a changed candidate.
 
 ## Sub-features
 

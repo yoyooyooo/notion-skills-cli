@@ -49,6 +49,10 @@ Builtin installation has one writer under the XDG data root, with default shared
 
 Add behavior tests for plausible consumer-visible failures: ambiguity, pagination, partial discovery, file boundaries, version consistency and permission failure. Avoid asserting implementation text or internal call wiring. A pull request should explain the user-visible problem, resulting behavior and checks actually run. Keep unrelated changes separate.
 
+## Documentation and verification records
+
+Keep user documentation focused on supported behavior, examples and durable design decisions. Keep verification Skills as executable recipes, with negative cases and evidence requirements. Store dated run ledgers, candidate hashes, private machine paths and raw failures outside the checkout; link a public issue or CI run only when it adds needed context. Removing a superseded report from the tree does not change its historical result. Do not remove regression tests or relax acceptance criteria as part of documentation cleanup.
+
 ## Compatibility and deprecation
 
 The 0.x series is experimental. A minor release may change public commands or protocol behavior incompatibly; a patch release preserves existing semantics and provides compatible fixes. Consumers should tolerate additional JSON fields and handle unfamiliar error codes as structured failures. Additional fields or codes must not silently change the meaning of existing fields or successful operations.

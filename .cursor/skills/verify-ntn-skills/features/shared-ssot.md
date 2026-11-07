@@ -1,6 +1,6 @@
 # Shared Notion SSOT verification
 
-Verify the implemented AH-498 slice through `ctl library`, ordinary `list/read/files` and native `create/apply/write/update`. The [shared authoring guide](../../../../docs/shared-authoring.md) provides the user workflow; SS12 covers N15 migration review/execution, and SS14–SS16 below cover N07 file lifecycle, N10 fixed compositions and N13 authoring. The [protocol](../../../../docs/protocol.md#shared-notion-library) owns command semantics; the [architecture checkpoint](../../../../docs/shared-ssot-architecture.md) records observed results and open work. This recipe defines acceptance work. Its presence is not a pass, and the complete epic remains open.
+Verify shared-library behavior through `ctl library`, ordinary `list/read/files` and native `create/apply/write/update`. The [shared authoring guide](../../../../docs/shared-authoring.md) provides the user workflow; SS12 covers migration review/execution, and SS14–SS16 below cover file lifecycle, fixed composition and authoring. The [protocol](../../../../docs/protocol.md#shared-notion-library) owns command semantics; the [architecture](../../../../docs/shared-ssot-architecture.md) explains authority and recovery boundaries. This recipe defines acceptance work; store actual run outcomes separately.
 
 ## Scope and preparation
 

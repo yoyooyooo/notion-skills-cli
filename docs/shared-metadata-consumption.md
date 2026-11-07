@@ -1,6 +1,6 @@
 # Current Skill metadata consumption
 
-SC11 / AH-628 reuses one complete Skills metadata observation within a scalar
+One complete Skills metadata observation can be reused within a scalar
 current read. Successful public CLI and SDK results keep their existing shape. The
 [selected-snapshot contract](selected-snapshot-consumption.md) continues to own
 source bytes, current-tree validation and fixed-file selection.
@@ -117,115 +117,12 @@ matrix remains independently tracked.
 
 ### Relation metadata reuse within one scalar read
 
-The SC14 audit of existing C7 Pro and Mini public-command traces found three
-complete six-property inventory passes inside each current logical `read`: one
-for the selector, then one each for Members and Requires targets. Both original
-receipts reported two duplicate requests. The two later passes contained six HTTP
-attempts and 1,431,764 decoded response bytes in each machine's trace. These are
-the observed duplicate work and the candidate reduction, not a new measured
-latency or whole-task saving.
+`openSharedSnapshot` passes its validated `skillsInventory` to Members and Requires readers when no graph inventory exists. Both readers retain selected-target identity, kind, availability and complete-relation checks. The selected-page permission check still runs; missing or incomplete relations fail. A later refresh creates a new observation, while fixed snapshots keep their original relation metadata. Records headers, missing-Payload reads, pending-operation checks and source acquisition keep their own boundaries.
 
-`openSharedSnapshot` now passes its already validated `skillsInventory` to the two
-relation readers when no graph inventory exists. Both readers retain their
-selected-target identity, kind, availability and complete-relation checks. The
-current selected-page permission check still runs; a missing or incomplete
-relation fails. A later refresh creates a new observation, and fixed snapshots
-keep their original relation metadata. Records headers, missing-Payload reads,
-pending-operation checks and source-body acquisition are unchanged.
+The metadata consumption regressions compare complete public results and frozen snapshots against physical-page reads, including paged inventories, changed relation metadata, old pins, revoked selected-page access, missing targets and incomplete relations. Installed and live-source checks must use their own artifact identities and complete request ledgers.
 
-The original metadata consumption tests compare the complete public result and
-frozen snapshot against the physical-page read path, including a 101-row paged
-inventory. They also cover fresh relation metadata, an unchanged old pin, revoked
-selected-page access, missing targets and incomplete current relations. The
-original red cases and actual four ledgers are preserved under
-`/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc14-fact-read-audit-346gjnf6`.
-Installed and live-source measurements remain separate evidence layers in
-[AH-631](https://linear.app/yoyooyooo/issue/AH-631).
+## Optimization decisions
 
-## C8 public CLI measurements on two physical hosts
+A single-current inspect prototype narrowed graph metadata to six identity fields plus an extra selected-page GET. It reduced response bytes for the measured large library, but failed the frozen complete-call and root-ready latency adoption gate and increased bytes for the smallest controlled case. It was not adopted. Graph preparation retains its complete required inventory; scalar reuse above is independent of that experiment.
 
-The C8 archive built from `b5564ee9` passed the original package gate, including
-44 public CLI checks, all 22 SDK cases, five scalar phases, 32 cache phases and
-13 dynamic View phases. Its same-fixture logical relation read used two inventory
-pages; the physical-page control retained six. Both returned the same complete
-result, snapshot, relations and body. This local gate does not override the
-separate b556 macOS/Node22 scheduler test failure retained in its CI evidence.
-
-Each physical host then used its own credentials, an independently installed
-68-file archive and empty consumer state for the original six public commands:
-list, current read, use of the returned fixed root, files, read of the returned
-fixed resource, and offline export. Each host ran once with the original
-300-second command budget and no retry. The comparison uses the earlier C7
-six-command samples, with equal scope, pins, complete bodies and file hashes.
-
-| Host | C7 → C8 HTTP attempts | C7 → C8 decoded response bytes | Bytes removed |
-| --- | ---: | ---: | ---: |
-| Pro | 38 → 32 | 4,882,566 → 3,450,800 | 1,431,766 |
-| Mini | 38 → 32 | 4,882,554 → 3,450,780 | 1,431,774 |
-
-Current read fell from 21 to 15 attempts on each host. List retained five and
-fixed use retained twelve; files, the fixed resource and offline export needed
-no HTTP. All six body attempts remained attributable to the selected root and
-Requires. The two complete instruction bodies totalled 47,475 bytes; all 46
-business files totalled 364,634 bytes, including the 1,135-byte requested resource.
-There were no body reads for the 54 unselected Members, no Requires body read
-during inspect, no new observer requests and no source writes in either sample.
-
-The complete receipt is
-`/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc22-final-c8-3a02z8s9/cli-physical-handoff.json`,
-SHA-256 `c04515f1ef4e156063f803d0e26fb6793de0ddb0cbaa659ced03fc2b93bc323a`.
-It preserves the original C7 evidence, both current source ledgers, the isolated
-Trash cleanup and the Pro observer-output capture correction. Packages and daily
-configuration remained unchanged. Decoded bytes are not compressed wire bytes;
-the observed 21.027/33.702-second durations are single samples, not estimates of
-stable latency. Normal Pi SDK delivery and real Agent task costs remain separate
-acceptance layers.
-
-## Single-current inspect experiment was not adopted
-
-The 2026-11-05 AH-628 candidate used a complete six-property identity inventory
-and one full selected-page GET for a single current `inspect` root. It preserved
-the existing `use`, multiple-root, and fixed-resource paths. Controlled tests and
-independently installed SDK and CLI runs verified the complete body, files,
-identity, permissions, pagination, and cancellation boundaries.
-
-The frozen live comparison used C6 and the candidate in three ordered pairs, each
-with an empty owned state. Every sample used the same authorized production root
-and one public `ctl prepare --purpose inspect` call. The original body, all 46
-files, scope, version, pin, and relation directories matched in all six samples.
-
-| Pair and order | C6 elapsed / root-ready ms | Candidate elapsed / root-ready ms | Candidate minus C6 ms |
-| --- | ---: | ---: | ---: |
-| 1, C6 then candidate | 9875.752 / 9572 | 9007.326 / 8626 | -868.425 / -946 |
-| 2, candidate then C6 | 8302.505 / 7993 | 8683.400 / 8384 | +380.895 / +391 |
-| 3, C6 then candidate | 8588.354 / 8280 | 10698.151 / 10401 | +2109.797 / +2121 |
-
-Each candidate call added one selected-page metadata GET, for 16 HTTP attempts
-instead of 15. Total decoded response bytes fell from 1,971,679 to between
-1,182,292 and 1,182,316. All four body attempts and their 395,627 response bytes
-stayed equal. The complete ledger observed no writes or provider calls in this
-window. That observation does not remove normal retention or adoption behavior.
-
-The frozen adoption gate required both complete-call and root-ready medians to
-avoid regression. Complete-call medians were 8588.354 ms for C6 and 9007.326 ms for
-the candidate. Root-ready medians were 8280 ms and 8626 ms. The medians of the
-paired differences were +380.895 ms and +391 ms. Functional acceptance passed;
-the adoption gate failed. The prototype runtime changes and their added smoke
-test assertions were withdrawn. Graph preparation retains its complete inventory.
-The scalar-read reuse described above remains unchanged.
-
-The controlled N=1 case also increased total response bytes by 864. The live
-window covers one root and one library, with three pairs. It does not establish
-p95 latency, compressed wire bytes, or complete Agent task costs. No replacement
-samples, scale thresholds, or adaptive cache rules were added.
-
-[AH-628](https://linear.app/yoyooyooo/issue/AH-628) tracks the remaining work. The
-original packages, patches, red cases, six receipts, offline source attribution,
-and Evidence → Cleanup → Evidence records remain under
-`/Users/yoyo/Library/Logs/pi-context-broker/AH-617-20261105/sc11-single-inspect-iyw1oxit`.
-`live-pair-plan/real-pair-result.json` has SHA-256
-`515544b7210df7847f77bbaf05454f50309af5c5936b651dbc435a26008d7700`.
-A future proposal needs a concrete mechanism that changes the measured tradeoff,
-such as avoiding the extra selected-page request while preserving authority, or
-an explicitly revised task-cost budget. It must freeze a new comparison and
-retain this result.
+Likewise, do not remove independent scope/descriptor revalidation between combined catalog and directory projections, or replace a selected physical-page read with a logical selector merely to save a request. Those changes alter which identity or permission observation is made. A future optimization needs a concrete mechanism preserving those boundaries and a new comparison fixed before execution. Keep original failed runs outside the checkout; do not relabel them after a different candidate passes.

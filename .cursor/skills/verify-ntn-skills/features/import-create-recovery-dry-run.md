@@ -57,26 +57,6 @@ For the linked-reference path, the Core public regression executes add → fresh
 
 Retain the complete command JSON, installed executable hash, original pin hashes, service method/path/byte ledger, original dispatch hashes and cleanup result in the printed consumer scratch directory's `controlled-authoring/evidence.json`. Public read/files metrics are reconciled with the actual received requests; author commands without a metrics flag use the independent service ledger. Request observations and source mutations must remain distinct. The service closes in `finally`; cleanup never touches production Notion or the user's configuration. This controlled gate does not establish real Notion author permission, alternate input formats or arbitrary legacy operation recovery.
 
-### Recorded Pro candidate — 2026-11-07
-
-The evidence root is `/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/pro-local-loop-20261107-6wru9epq`. The v2/v3 labels identify local candidates, not npm releases.
-
-- Frozen v2 completed the full Bun unit lane: **3462 pass, 0 fail, 29260 assertions**, recorded in `logs/cli-frozen-v2-unit.log`. This is the baseline before the final request-reuse change.
-- The v3 change passed the two affected Core suites, `shared-authoring.test.ts` and `shared-body-write.test.ts`: **50 pass, 0 fail, 306 assertions**, with typecheck and formatting checks passing. Preparation reuses its fresh metadata index; execution's initial pending and current-state checks share one context. The regressions require new context reads after retained Records and the body PATCH, plus an independent event readback. These results are the v3 delta gate, not a second full unit run.
-- Independently installed v3 under **Node 24.20.0** passed all **49 public command expectations**, with zero strict-service errors and the service closed. In `evidence/installed-authoring/run-v3-yXfFF0/`, `result.json` and `controlled-authoring/evidence.json` bind CLI SHA-256 `6e51c257275ac100a27ecd16d451a3ca32cac23d502cf6ddbcb2194d673f8e43` to the actual requests. Native draft adoption, disabled authoring, enable/disable and the original pin all passed.
-
-The same 49-command controlled lifecycle used **834 HTTP requests and 58 source mutations**, compared with **846 HTTP requests and the same 58 mutations** in `run-v2-FJeWgX`. The v3 run's `comparison-v2-v3.json` records the changed command counts:
-
-| Command label | v2 HTTP | v3 HTTP |
-| --- | ---: | ---: |
-| `write-dry` | 20 | 18 |
-| `write` | 55 | 52 |
-| `apply` | 67 | 66 |
-| `lost-original-outcome` | 49 | 46 |
-| `draft-author-write` | 51 | 48 |
-
-All other command counts were unchanged. These totals include conflict and recovery checks; they are not a per-task production cost or a live Notion/Pi acceptance result. The earlier `run-FY3RWd` remains failed evidence for the registered-Members disabled-authoring defect; later passing runs do not relabel that attempt. The final author regression also checks a library with native Members and Requires while preserving rejection of other disabled relation targets.
-
 ## Driving it with control-ntn-skills
 
 Preconditions:
