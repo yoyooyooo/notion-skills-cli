@@ -472,11 +472,10 @@ describe("shared library Views metadata", () => {
   test("SC11 View freshness retains the original shared inventory observation time", async () => {
     let now = Date.now()
     const original = now
-    let identities = 0
     const f = fixture({
       wrap: (path, read) =>
         Effect.suspend(() => {
-          if (path === "v1/users/me" && ++identities > 1) now += 5_000
+          if (path.endsWith("/queries")) now += 10_000
           return read
         }),
     })

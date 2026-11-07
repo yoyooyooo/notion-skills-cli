@@ -302,10 +302,9 @@ function currentViews(database: string, details: "all" | "first") {
   })
 }
 
-function firstView(input?: string) {
+function firstView(scope: string, input?: string) {
   return Effect.gen(function* () {
     const database = yield* selectedDatabase(input)
-    const scope = yield* authScope
     const current = yield* currentViews(database, "first")
     // Only viewCatalog owns this selected observation. Never cache one detail
     // under the public complete View-list key.
@@ -489,7 +488,7 @@ export function viewCatalog(options: ViewCatalogOptions = {}) {
       options,
       (scope) =>
         Effect.gen(function* () {
-          const listing = explicit === undefined ? yield* firstView(database) : undefined
+          const listing = explicit === undefined ? yield* firstView(scope, database) : undefined
           if (listing && listing.scope !== scope)
             return yield* Effect.fail(
               fail(

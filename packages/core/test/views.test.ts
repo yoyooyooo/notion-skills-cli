@@ -142,6 +142,53 @@ test("API order selects first View regardless of name and ignores checkbox as an
   expect(f.requests.find((x) => x.path.endsWith("/queries"))?.body).toEqual({ page_size: 100 })
 })
 
+test("default operation identity validates once per fresh read and reuses the warm observation", async () => {
+  const f = fixture()
+  const fresh = await Effect.runPromise(
+    viewCatalog({ database: db, refresh: true }).pipe(Effect.provide(f.layer)),
+  )
+  const authCalls = () => f.requests.filter((request) => request.path === "v1/users/me")
+  expect(fresh.source).toBe("notion")
+  expect(authCalls()).toHaveLength(1)
+  const calls = f.requests.length
+  const warm = await Effect.runPromise(viewCatalog({ database: db }).pipe(Effect.provide(f.layer)))
+  expect(warm.source).toBe("local_cache")
+  expect(warm.scope).toBe(fresh.scope)
+  expect(warm.records).toEqual(fresh.records)
+  expect(warm.fetched_at).toBe(fresh.fetched_at)
+  expect(f.requests).toHaveLength(calls)
+
+  const next = await Effect.runPromise(
+    viewCatalog({ database: db, refresh: true }).pipe(Effect.provide(f.layer)),
+  )
+  expect(next.source).toBe("notion")
+  expect(next.scope).toBe(fresh.scope)
+  expect(authCalls()).toHaveLength(2)
+})
+
+for (const code of ["AUTH_REQUIRED", "ACCESS_DENIED"] as const)
+  test(
+    "default operation identity fails closed on fresh " + code + " despite a warm View",
+    async () => {
+      let denied = false
+      const f = fixture((path) =>
+        denied && path === "v1/users/me" ? fail(code, "Fresh identity is unavailable") : undefined,
+      )
+      const prior = await Effect.runPromise(
+        viewCatalog({ database: db, refresh: true }).pipe(Effect.provide(f.layer)),
+      )
+      expect(prior.source).toBe("notion")
+      expect(prior.records.map((record) => record.name)).toEqual(["Alpha"])
+      denied = true
+      f.requests.length = 0
+      const rejected = await Effect.runPromise(
+        viewCatalog({ database: db, refresh: true }).pipe(Effect.result, Effect.provide(f.layer)),
+      )
+      expect(rejected._tag === "Failure" && rejected.failure.code).toBe(code)
+      expect(f.requests.map((request) => request.path)).toEqual(["v1/users/me"])
+    },
+  )
+
 test("default first-detail selection does not populate or overwrite the public complete View list", async () => {
   const f = fixture()
   const selected = await Effect.runPromise(
