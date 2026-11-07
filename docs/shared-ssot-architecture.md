@@ -26,7 +26,7 @@ The main instructions use the Skills page body. Supporting files use their Files
 | In-flight requests and local admission state | Current process or machine | No distributed-lock claim |
 | Selected graph, context and activation | Host session | Fixed source identities and delivery receipts |
 
-The local SQLite database is derived state. It must not become a second authority for file ownership or shared management decisions.
+Shared-consumption catalogs, observations and materializations are derived state. SQLite also holds durable local operation intents, dispatch and recovery receipts, bindings and synchronization baselines; preserve them according to their own lifecycle. Shared file ownership and management decisions remain authoritative in Notion.
 
 ## Identity and file state
 
