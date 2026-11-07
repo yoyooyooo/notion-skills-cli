@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { Deferred, Effect, Fiber } from "effect"
 import { prepareGraph } from "../src/graph-prepare.ts"
-import { sharedGraphInventory, withSharedGraphReads } from "../src/shared-graph-read-context.ts"
+import {
+  sharedGraphInventory,
+  sharedGraphTarget,
+  withSharedGraphReads,
+} from "../src/shared-graph-read-context.ts"
+import { openSharedConsumer } from "../src/shared-consumer.ts"
 import { property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { querySharedOperationIndexes } from "../src/shared-operation-index.ts"
@@ -44,8 +49,165 @@ const prepare = (
   )
 const derivedKeys = (f: ReturnType<typeof nativeGraphFixture>) =>
   [...f.json.keys()].filter((key) => key.startsWith("cache/shared-derived-graphs/")).sort()
+const inventoryScope = {
+  currentRoots: [] as readonly string[],
+  purpose: "inspect" as const,
+  maxNodes: 128,
+  maxDepth: 16,
+  scope: digest("projected-inventory"),
+}
+const openInventoryTarget = (f: ReturnType<typeof nativeGraphFixture>) =>
+  withSharedGraphReads(
+    Effect.gen(function* () {
+      yield* sharedGraphInventory(f.descriptor)
+      const target = yield* sharedGraphTarget(f.pageIds[1]!, f.descriptor.skills.database_id)
+      if (target === undefined) throw new Error("Missing selected inventory target")
+      return yield* openSharedConsumer({
+        library: target.library,
+        target: f.pageIds[1]!,
+        rawPage: target.rawPage,
+        scope: inventoryScope.scope,
+        startedAt: Date.now(),
+      })
+    }),
+    inventoryScope,
+  )
 
 describe("library-scoped graph metadata batches", () => {
+  test.each([
+    { relations: [] },
+    { relations: ["Members"] },
+    { relations: ["Requires"] },
+    { relations: ["Members", "Requires"] },
+  ])(
+    "inventory retains required fields and registered relations %j without unrelated properties",
+    async ({ relations }) => {
+      const f = nativeGraphFixture({ width: 101 })
+      const registered: readonly string[] = relations
+      const propertyIds: Record<string, string> = f.descriptor.skills.property_ids
+      for (const field of ["Members", "Requires"])
+        if (!registered.includes(field)) delete propertyIds[field]
+      Object.assign(propertyIds, { "Auxiliary Metadata": "auxiliary" })
+      for (const page of f.pages) {
+        property(page.properties).tags = {
+          id: "tags",
+          type: "multi_select",
+          multi_select: [{ id: "tag-acceptance", name: "acceptance", color: "blue" }],
+        }
+        property(page.properties).auxiliary = rich("auxiliary", "Unrelated fixture metadata")
+      }
+      const observed = await f.run(
+        withSharedGraphReads(sharedGraphInventory(f.descriptor), inventoryScope),
+      )
+      expect(observed?.complete).toBe(true)
+      expect(observed?.pages).toHaveLength(102)
+      expect(f.calls.map((call) => property(call.body).start_cursor ?? null)).toEqual([
+        null,
+        "offset-100",
+      ])
+      for (const page of observed!.pages) {
+        expect(Object.keys(property(property(page).properties)).sort()).toEqual(
+          [
+            "title",
+            "description",
+            "kind",
+            "enabled",
+            "default",
+            "references",
+            "skill_id",
+            "main_file_id",
+            "projection",
+            "source",
+            ...registered.map((field) => propertyIds[field]!),
+          ].sort(),
+        )
+      }
+      expect(f.readBodyCount()).toBe(0)
+      expect(f.writeCount()).toBe(0)
+    },
+  )
+
+  test.each([
+    ["title", "INVALID_SHARED_SKILL"],
+    ["description", "INVALID_SHARED_SKILL"],
+    ["kind", "INVALID_SHARED_SKILL"],
+    ["enabled", "INVALID_SHARED_SKILL"],
+    ["default", "INVALID_SHARED_SKILL"],
+    ["skill_id", "INVALID_SHARED_SKILL"],
+    ["source", "INVALID_SHARED_SKILL"],
+    ["projection", "SHARED_METADATA_INVALID"],
+    ["references", "SHARED_METADATA_INVALID"],
+    ["main_file_id", "SHARED_METADATA_INVALID"],
+    ["members", "INVALID_SHARED_SKILL"],
+    ["requires", "INVALID_SHARED_SKILL"],
+  ])("a projected target missing %s fails before body reads or writes", async (field, code) => {
+    const f = nativeGraphFixture({ width: 1 })
+    delete property(f.pages[1]!.properties)[field!]
+    const result = await f.run(openInventoryTarget(f).pipe(Effect.result))
+    expect(result._tag).toBe("Failure")
+    if (result._tag !== "Failure") throw new Error("Expected missing graph target metadata")
+    expect(result.failure.code).toBe(code!)
+    expect(f.calls.every((call) => call.path.startsWith("v1/data_sources/"))).toBe(true)
+    expect(f.readBodyCount()).toBe(0)
+    expect(f.writeCount()).toBe(0)
+  })
+
+  test("projected inventory preserves Source completeness and stable identity conflict checks", async () => {
+    const source = nativeGraphFixture({ width: 1 })
+    property(property(source.pages[1]!.properties).source).has_more = true
+    const incomplete = await source.run(openInventoryTarget(source).pipe(Effect.result))
+    expect(incomplete._tag === "Failure" && incomplete.failure.code).toBe("INVALID_SHARED_SKILL")
+    expect(source.readBodyCount()).toBe(0)
+    expect(source.writeCount()).toBe(0)
+    const duplicate = nativeGraphFixture({ width: 1 })
+    property(duplicate.pages[1]!.properties).skill_id = rich("skill_id", "a")
+    const conflict = await duplicate.run(openInventoryTarget(duplicate).pipe(Effect.result))
+    expect(conflict._tag === "Failure" && conflict.failure.code).toBe("SHARED_SKILL_ID_CONFLICT")
+    expect(duplicate.readBodyCount()).toBe(0)
+    expect(duplicate.writeCount()).toBe(0)
+  })
+
+  test.each(["incomplete", "foreign", "cursor"])(
+    "projected inventory keeps the %s completeness guard",
+    async (problem) => {
+      const f = nativeGraphFixture({ width: 101 })
+      const result = await f.run(
+        Effect.gen(function* () {
+          const api = yield* Notion
+          return yield* withSharedGraphReads(
+            sharedGraphInventory(f.descriptor),
+            inventoryScope,
+          ).pipe(
+            Effect.provideService(Notion, {
+              ...api,
+              request: (path, body, options) =>
+                api.request(path, body, options).pipe(
+                  Effect.map((raw) => {
+                    const value = property(raw)
+                    if (problem === "incomplete")
+                      return { ...value, request_status: { type: "incomplete" } }
+                    if (problem === "cursor")
+                      return { ...value, has_more: true, next_cursor: "offset-100" }
+                    const rows = structuredClone(value.results as unknown[])
+                    property(property(rows[0]).parent).data_source_id = library.files.data_source_id
+                    return { ...value, results: rows }
+                  }),
+                ),
+            }),
+          )
+        }).pipe(Effect.result),
+      )
+      expect(result._tag === "Failure" && result.failure.code).toBe(
+        problem === "foreign"
+          ? "SHARED_GRAPH_METADATA_INVALID"
+          : "SHARED_GRAPH_METADATA_INCOMPLETE",
+      )
+      expect(f.calls).toHaveLength(problem === "cursor" ? 2 : 1)
+      expect(f.readBodyCount()).toBe(0)
+      expect(f.writeCount()).toBe(0)
+    },
+  )
+
   test("batching preserves owner-scoped File IDs while duplicate physical pages remain invalid", async () => {
     const f = nativeGraphFixture({ width: 1, filesPerSkill: 1 })
     for (const file of f.files) file.properties.file_id = rich("file_id", "same-local-file")
@@ -178,6 +340,11 @@ describe("library-scoped graph metadata batches", () => {
     const result = await prepare(f, { roots: [f.pageIds[0]!, f.pageIds[2]!] })
     expect(result.usage.prepared_nodes).toBe(4)
     expect(f.calls.filter((call) => isQuery("skills", call.path))).toHaveLength(1)
+    expect(
+      f.calls
+        .filter((call) => f.pageIds.some((id) => endpoint(call.path) === `v1/pages/${id}`))
+        .map((call) => call.path),
+    ).toEqual([`v1/pages/${f.pageIds[0]}`])
     expect(f.calls.filter((call) => isQuery("files", call.path))).toHaveLength(2)
     expect(
       f.calls

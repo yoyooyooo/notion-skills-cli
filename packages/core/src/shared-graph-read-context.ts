@@ -83,8 +83,26 @@ function queryInventory(library: SharedLibrary) {
   return Effect.gen(function* () {
     const api = yield* Notion
     const parameters = new URLSearchParams()
-    for (const id of new Set(Object.values(library.skills.property_ids)))
-      parameters.append("filter_properties", id)
+    // These rows also serve selected graph targets. Keep their body/source
+    // bindings and registered relations, without unrelated schema properties.
+    const fields = [
+      "Name",
+      "Description",
+      "Kind",
+      "Enabled",
+      "Default Context",
+      "Skill ID",
+      "Main File ID",
+      "Projection",
+      "References",
+      "Source",
+      "Members",
+      "Requires",
+    ]
+    const ids = fields
+      .map((field) => library.skills.property_ids[field])
+      .filter((id): id is string => id !== undefined)
+    for (const id of new Set(ids)) parameters.append("filter_properties", id)
     const pages: unknown[] = [],
       seen = new Set<string>(),
       cursors = new Set<string>()

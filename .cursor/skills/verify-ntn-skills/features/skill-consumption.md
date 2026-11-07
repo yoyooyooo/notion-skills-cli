@@ -365,6 +365,29 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_F
 
 `evidence/author/cost-comparison.json` 保存逐命令对照、来源及物料 hash，`inputs/author-cost-compare.py` 可由保留原件重算。候选 archive SHA 为 `127a2a5b2a6e10a8800daf1b6f9a88c6cdf538355a1b4e2ae8d07af33c92a960`，独立安装 CLI 为 `9d5d05387426d1c9e2818238ca52d374012a8173a6b8889ec50b9fa15abdf6e9`，SDK 为 `4d34aca4734bd4f60dcb7a316c9469214ce964361f961c9eee8fb09abbad1a32`；build 与 install 的 CLI/SDK 字节相等。Broker 绑定包、日用切换及真实模型验证另按各自产物与实际回执验收，不由此受控结果替代。
 
+### SC11：完整 graph inventory 的必要属性投影
+
+2026-11-07 在 `91f45abc` 上追加的窄改只收窄 `shared-graph-read-context.ts` 的 inventory 属性投影。完整目录的每一行继续返回 Name、Description、Kind、Enabled、Default Context、Skill ID、Main File ID、Projection、References、Source 十项，并追加 descriptor 已登记的 Members／Requires。选中目标继续用该行完成 Source、正文绑定和关系校验；标准 Tags 及其他未被此读取链消费的登记属性不进入该请求。View 等其他入口的 Tags 语义不变。完整分页、foreign parent、重复物理页／稳定身份、缺失属性、incomplete response、cursor 与 scope／descriptor 校验仍在原边界执行。
+
+`freshCatalogForRead` 的 `refresh:true` 和每次 preparation 的 fresh 观察保留；此次未新增长期缓存，也不跨 operation 合并库存。下文未采用的单 current inspect 六字段候选仍维持原结论。此次选中目标所需十项及已登记关系都保留，graph target 不因属性缩减新增逐页 GET。
+
+沿原 `shared-graph-batching.test.ts` 增补四组关系登记组合、102 行两页投影、十二个所选属性缺失、Source 不完整和稳定 ID 冲突，并保留分页／foreign／重复 cursor 反例；多根 diamond 断言只有第一根发生 page GET。旧实现四个投影成本红例保留在 `logs/graph-projection-red.log`。原 graph batching／prepare／router members／release 四文件 90/90、1,085 断言通过，selected-source／consumer-composition 两文件 20/20、136 断言通过。首次 typecheck 暴露的两处新增测试类型错误及原日志保留；窄修测试类型后 typecheck 通过，最终 graph 文件 36/36、794 断言重跑通过，这 36 项已包含在前述 90 项中，不重复累计。未重跑全仓或完整安装矩阵。
+
+本节证据仍位于 `/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/pro-local-refinement-20261107-9jv57mcm`。`inputs/graph-inventory-cost.mjs` 使用原 projection-respecting `nativeGraphFixture` 的相同冻结 102 行，直接经过 Core 服务并保存实际序列化响应；这是受控服务调用，不冒充网络 HTTP。两臂均为两页、请求 JSON body 62 B、正文读取和来源写入均 0；全部必要属性的规范化内容 hash 相同。
+
+| 受控 102 行输入 | 原 decoded response B | 候选 B | 减少 B |
+| --- | ---: | ---: | ---: |
+| 每行两个普通 Tags | 182,959 | 165,925 | 17,034 |
+| 同样 Tags 加合成 Auxiliary Metadata | 200,299 | 165,925 | 34,374 |
+
+合成扩展只证明未来无关登记字段不扩大此投影，不代表生产字段规模；标准 schema 没有 Snapshot 属性。`evidence/graph-inventory-projection/cost-comparison.json`（SHA `45b7899238ac18f3fc63763cf159b97081a446f6db857891fe7475937133a4d1`）绑定输入、请求／响应原件及最终 runtime。外部 build 后按原 `sdk-package-smoke.mjs --case records-history` 独立安装验证通过：选择器 1/1、H1/H101 八相位 8/8、precise coverage counter 可用且正控制／清零检查通过。`evidence/graph-installed-sdk/report.json` SHA `779f06c518024ed132f7aacce69ce645b9a5d3ce1dd49a93550b09b73bfa6355`；内层 `records-history/report.json` SHA `21bc213e9de892c4303eace9809b69b5cc31834c1b65e9bcbb5f6569031d0795`。这不代表完整 SDK22；逐 fact decoder、CPU／RSS 及压缩 wire bytes 保持未测。
+
+真实 API 对照沿原 public CLI，以相同 Node、正常 Pro HOME/cache 和同一 owned page，顺序各执行一次 `use PAGE --database skills --refresh --json --metrics`。两臂均自然 exit 0、完整 ready；只读 guard 触发 0、来源写入 0。实际 16 → 16 HTTP，其中 metadata 13、当前正文 3 保持，请求 JSON body 均为 1,753 B；Skills 四页从 1,527,238 → 1,351,765 decoded response B，减少 175,473 B（11.49%）。全次响应从 1,706,860 → 1,531,387 B，减少 10.28%；只有这四页变化，其余十二次响应字节逐项相同。实际登记投影 15 → 12 项，去掉的 Tags、Origin、Source Member 由同库本地 descriptor 直接核对；Source 与两个关系保留，未把必要 Projection／References 的字节算成节省，也未拆分各被删属性的单独收益。
+
+两份完整输出除列明的 request metrics、timing／freshness 时间字段外相等，owner／scope／snapshot／version、575 B 主文、三个文件的 bytes／hash、fixed refs、links、manifest 和 graph lock 均一致。trace 无丢弃，独立 observer 各有完整 16 对 start／end；HTTP header request_id 为 null，按串行顺序、method、path／target、status、request body bytes 对账，不宣称跨 observer 的 request-ID 配对。原件在 `evidence/graph-use-before` 和 `graph-use-after`，最终 `evidence/cache/graph-projection-ab/summary.json` SHA `fdee5ff39414b208ddf37f23d17d452ddda386cbcc5b52a12211e4e0d2ba7b0a`，`validation.json` SHA `b7939cea1b43452cb10de831cf306e6af3305de39a26c2fc61cb909cf431add9`。这是各 n=1 的顺序 fresh、带插桩只读 API 观察，不是原子 A/B、无插桩模型任务或稳定延迟结论。
+
+新候选独立保存在 `artifacts/graph-cli-after-*`，不覆盖原作者优化包。archive SHA 为 `7a8073712a61d5608938537c3fd1482a49417adf5a7cd5227e84d2de87eeb3b0`，安装 CLI 为 `51d13a906839cad64f7b7886ebe333747f4b8687bfe83f2cfdf483d4471f30e4`，SDK 为 `956243afeb4168dfc98515e74e086495e870c59d5531e922ba398f690fa0e43a`；build／install 字节相等，身份保存在 `evidence/graph-inventory-projection/package-identity.json`。本 CLI 构建及验证切片未自行切换日用安装、发版或执行 cleanup；owned fixture、安装与全部原证据仍保留，后续只沿原 Trash 流程处理自有临时材料。Broker 绑定、日用切换与正常模型结果分别验收，原 C8、撤回实验和本轮旧失败原件不改写。
+
 ### CI 保留计数比较与原 coverage 文件
 
 原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与八相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留，不改变 Profiler 配置、SDK 调用、计数、预算或失败位置。
