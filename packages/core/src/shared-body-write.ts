@@ -1,4 +1,4 @@
-import { Clock, Effect, Schema } from "effect"
+import { Clock, Crypto, Effect, Schema } from "effect"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { decode, fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
@@ -820,6 +820,12 @@ export function loadPendingSharedBodyWrites(
     readonly skillPageId: string
     readonly events: readonly FileEvent[]
     readonly headers?: readonly SharedOperationHeader[]
+    /** Complete family read shared only within this fresh pending-check phase. */
+    readonly outcomeRecords?: Effect.Effect<
+      readonly SharedRecord[],
+      SkillsError,
+      Notion | Crypto.Crypto
+    >
   },
 ) {
   return Effect.gen(function* () {
@@ -856,11 +862,12 @@ export function loadPendingSharedBodyWrites(
         header.entity_id === bodyWriteOutcomesEntity && candidateIds.has(header.record_id),
     )
     if (outcomeHeaders.length !== 0) {
-      const rows = yield* querySharedRecords(library, {
-        skillPageId: input.skillPageId,
-        kind: "operation",
-        entityId: bodyWriteOutcomesEntity,
-      })
+      const rows = yield* input.outcomeRecords ??
+        querySharedRecords(library, {
+          skillPageId: input.skillPageId,
+          kind: "operation",
+          entityId: bodyWriteOutcomesEntity,
+        })
       const byId = new Map(headers.map((header) => [header.record_id, header]))
       for (const row of rows) {
         const outcome = yield* bodyWriteChecked(() => decodeOutcome(row))

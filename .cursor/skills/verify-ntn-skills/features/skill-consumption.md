@@ -340,6 +340,31 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_F
 
 定向原报告 `verification-run/evidence/installed-records-history/report.json`（SHA `2578f8a5219be7aa42c45a5a7374a2e70cd22495fa6559b7d515eadddd1f67f5`）为selection=`records-history`的1/1，不冒充重跑完整SDK22。内层八相位原账本SHA `66e0fb569d8f42d3f231b1c1cb3e3ba34a3a05b47477292fa479cffda0d9cd45`；原完整H1/H101输入SHA `684329e1e1a2619bbe34ab9e597522e9a58830a498129d410ce0d6c087af050d`。`cleanup-result.json`（SHA `45922dbc394f5988dd697f7b96283c40e5f3c9a71d08590ddf9eb89246a53f9f`）确认原helper把owned scratch移入系统Trash，launcher cache同用系统Trash，331份原件逐字节不变；日用三哨兵及原1615暂存项保持，活动消费者0。此次未运行生产Notion或真实模型，也未重建产品。
 
+### SC14：作者历史查询的单相位复用（AH-631）
+
+2026-11-07 的窄改只合并同一次 fresh snapshot pending 检查中的 body outcome 与 metadata 两个完整 Records family，并让 metadata writer 的首次完整 operation index 同时判断 exact 原 operation 与 pending intent。原 operation 已存在时仍走原 reconcile；显式 reconcile、prepare/execute 之间、写后校验、正文 readback 及下一次 fresh snapshot 都不继承此次结果。没有跨调用缓存、checkpoint 或历史截断。完整分页、scope/owner/hash、同 ID 冲突，以及两个 family 原有的 plan/outcome/header 校验继续执行。
+
+`shared-authoring-record-costs.test.ts` 经原 writer 与 Records 边界生成合法历史，覆盖 H=0/1/50/101。H 表示 metadata plan/outcome 对数，另有一个完整 body outcome；合批的实际 Payload 页数分别为 1/1/2/3，不能把一次 SDK 查询等同一次 HTTP，也不能声称 H=50 比原两页更少。再次 fresh 仍重新读完整历史。反例保留索引存在但 body outcome、metadata plan 或 metadata outcome 缺失，以及同 ID 冲突、foreign owner、incomplete response、重复 cursor；它们均拒绝并且零来源写入。`shared-metadata-write.test.ts` 同时验证首次 preflight 只读一个 compact index，重用 exact 原 plan 时只 reconcile、无 PATCH 或 Record create。
+
+旧实现的四个成本红例完整保存在 `logs/author-cost-red.log`，不是功能失败；H=1/H=101 的 family 请求和 metadata 首查各多一次，H=50 则分页数相同但未合批。候选受影响的八个测试文件共 147/147、828 断言通过，覆盖原 unknown 恢复、写后变化、retained facts 和旧 pin；`bun run typecheck` 与外部 CLI/SDK build 通过。此次未重跑全仓或完整安装矩阵。
+
+同条件成本沿原未修改的 `scripts/package-smoke/authoring.ts` 中 `checkAuthoring` 驱动，以独立 Node 安装、各自空的 owned HOME/XDG/consumer 根运行。新证据根为 `/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/pro-local-refinement-20261107-9jv57mcm`；`evidence/author/installed-before` 与 `installed-after` 保留 input/result、49 个命令回执及完整 loopback HTTP ledger。前后 driver/adapter SHA、初始三文件 bytes/hash、命令顺序和结果状态相同；独立 loopback origin、时间及由此派生的 scope/pin 各自绑定，不声称两轮 snapshot ID 相同。
+
+| 同一 49 命令作者流程 | 原已安装 CLI v3 | 候选 CLI | 差值 |
+| --- | ---: | ---: | ---: |
+| 原语义检查通过 | 49/49 | 49/49 | 0 |
+| 实际 HTTP attempts | 834 | 809 | −25 |
+| 请求 JSON body B | 165,861 | 160,978 | −4,883 |
+| 已观察 decoded response B | 1,704,604 | 1,702,975 | −1,629 |
+| 来源写入 | 58 | 58 | 0 |
+| 模拟丢失响应、字节 unknown | 1 | 1 | 0 |
+
+全部 25 个减少的 attempts 都来自 Records Payload query endpoint：21 次同相位 family 合批和 4 次 metadata 空 exact lookup 复用。每轮故意丢失一个 outcome 响应，其未知字节保持 unknown；表格不是完整 wire bytes。原 create/adopt、disabled author read/write、enable/disable、参考资源、旧 pin 及原 operation outcome 丢失后的恢复断言均通过，58 次来源写入保持。历史 Payload 仍完整传输并随历史增长；本轮没有测 decoder/CPU/RSS 或模型任务，先前 CI 的 decoder 差异仍未解释。
+
+另以正常 Pro HOME/cache、同一 owned native page 顺序执行两次公开 `read PAGE --database skills --authoring --json`，各 n=1、300 秒预算、零重试。真实 Notion 接受双 family 合并过滤并返回 200：13 → 12 HTTP，其中 metadata 10 → 9、当前正文仍 3、write 均 0；请求 JSON body 1,570 → 1,406 B，decoded response 188,043 → 187,872 B。除 freshness 和 request metrics 外，完整公开结果逐字段相等，包含 owner/scope/snapshot/version、575 B 正文、3 个源文件 hash 与两个 available native reference；unresolved 为空。两轮 trace 与独立 HTTP observer 请求数一致、无丢弃、无在途、无未知字节。`evidence/author-records-live-before` 与 `author-records-live-after` 保留原件；fresh 观察时间分别为 `2026-11-07T10:24:29.295Z`、`2026-11-07T10:25:05.422Z`。这是顺序 fresh 观察，不能声称原子 A/B；单次 elapsed 也不能推出稳定延迟收益。
+
+`evidence/author/cost-comparison.json` 保存逐命令对照、来源及物料 hash，`inputs/author-cost-compare.py` 可由保留原件重算。候选 archive SHA 为 `127a2a5b2a6e10a8800daf1b6f9a88c6cdf538355a1b4e2ae8d07af33c92a960`，独立安装 CLI 为 `9d5d05387426d1c9e2818238ca52d374012a8173a6b8889ec50b9fa15abdf6e9`，SDK 为 `4d34aca4734bd4f60dcb7a316c9469214ce964361f961c9eee8fb09abbad1a32`；build 与 install 的 CLI/SDK 字节相等。Broker 绑定包、日用切换及真实模型验证另按各自产物与实际回执验收，不由此受控结果替代。
+
 ### CI 保留计数比较与原 coverage 文件
 
 原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与八相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留，不改变 Profiler 配置、SDK 调用、计数、预算或失败位置。

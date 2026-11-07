@@ -67,12 +67,14 @@ import {
   type SharedBodyWritePlan,
 } from "./shared-body-write.ts"
 import { reconcileSharedBodyWriteReview } from "./shared-body-write-review.ts"
+import { bodyWriteOutcomeId, bodyWriteOutcomesEntity } from "./shared-body-write-model.ts"
 import type { SharedBodyWriteReviewPlan } from "./shared-body-write-review-model.ts"
 import {
   loadPendingSharedMetadataWrites,
   reconcileSharedMetadataWrite,
   type SharedMetadataWritePlan,
 } from "./shared-metadata-write.ts"
+import { sharedMetadataEntity } from "./shared-metadata-write-model.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
 import {
   loadPendingSharedCreates,
@@ -583,10 +585,34 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         )
       plans.set(plan.operation_id, plan)
     }
+    const bodyOutcomeIds = new Set(
+      operationHeaders
+        .filter((header) => header.record_id.startsWith("body-write-"))
+        .map((header) => bodyWriteOutcomeId(header.record_id)),
+    )
+    const pendingWriteRecords =
+      operationHeaders.some((header) => header.entity_id === sharedMetadataEntity) &&
+      operationHeaders.some(
+        (header) =>
+          header.entity_id === bodyWriteOutcomesEntity && bodyOutcomeIds.has(header.record_id),
+      )
+        ? yield* Effect.cached(
+            querySharedRecords(input.library, {
+              skillPageId: selected,
+              kind: "operation",
+              entityIds: [bodyWriteOutcomesEntity, sharedMetadataEntity],
+            }),
+          )
+        : undefined
+    // One complete observation serves both existing validators. The lazy read
+    // starts only if needed and never escapes this pre-reconciliation phase.
     for (const plan of yield* loadPendingSharedBodyWrites(input.library, {
       skillPageId: selected,
       events: allEvents,
       headers: operationHeaders,
+      outcomeRecords: pendingWriteRecords?.pipe(
+        Effect.map((rows) => rows.filter((row) => row.entity_id === bodyWriteOutcomesEntity)),
+      ),
     })) {
       const existing = bodyWrites.get(plan.operation_id)
       if (existing !== undefined && canonicalSharedJson(existing) !== canonicalSharedJson(plan))
@@ -598,6 +624,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     for (const plan of yield* loadPendingSharedMetadataWrites(input.library, {
       skillPageId: selected,
       headers: operationHeaders,
+      records: pendingWriteRecords?.pipe(
+        Effect.map((rows) => rows.filter((row) => row.entity_id === sharedMetadataEntity)),
+      ),
     })) {
       const original = metadataWrites.get(plan.operation_id)
       if (original !== undefined && canonicalSharedJson(original) !== canonicalSharedJson(plan))

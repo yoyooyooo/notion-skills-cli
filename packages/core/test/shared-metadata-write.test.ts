@@ -577,6 +577,40 @@ describe("shared explicit native metadata writes", () => {
     expect(f.requestMetrics().requests.notion_body).toBe(0)
   })
 
+  test("one fresh operation index checks original metadata intent and pending history", async () => {
+    const f = sharedSnapshotFixture()
+    const plan = await f.run(prepare())
+    f.clearCalls()
+    const written = await f.run(
+      withWriter(f, executeSharedMetadataWrite(library, { plan, mode: "create" })),
+    )
+    expect(written.status).toBe("applied")
+    const beforeProperties = f.calls.findIndex(
+      (call) => call.path === `v1/pages/${skillPage}` && call.method === "GET",
+    )
+    expect(beforeProperties).toBeGreaterThan(0)
+    const queries = f.calls
+      .slice(0, beforeProperties)
+      .filter((call) =>
+        call.path.startsWith(`v1/data_sources/${library.records.data_source_id}/query`),
+      )
+    expect(queries).toHaveLength(1)
+    expect(
+      new URL(queries[0]!.path, "https://notion.test").searchParams
+        .getAll("filter_properties")
+        .includes("payload"),
+    ).toBe(false)
+
+    f.clearCalls()
+    const recovered = await f.run(
+      withWriter(f, executeSharedMetadataWrite(library, { plan, mode: "create" })),
+    )
+    expect(recovered.operation_id).toBe(plan.operation_id)
+    expect(recovered.status).toBe("applied")
+    expect(patches(f)).toHaveLength(0)
+    expect(f.writeCount()).toBe(0)
+  })
+
   test("frozen operation identities reject changed after-values, property IDs and observed time", async () => {
     const f = sharedSnapshotFixture(),
       plan = await f.run(prepare())

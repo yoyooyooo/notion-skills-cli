@@ -522,15 +522,17 @@ export function executeSharedMetadataWrite<R = never>(
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "Metadata write mode must be create or reconcile."),
       )
-    const existing = yield* querySharedRecords(library, {
-      skillPageId: plan.skill_page_id,
-      kind: "operation",
-      entityId: sharedMetadataEntity,
-      recordId: plan.operation_id,
-    })
-    if (existing.length !== 0) return yield* reconcileSharedMetadataWrite(library, plan)
+    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    if (
+      headers.some(
+        (header) =>
+          header.entity_id === sharedMetadataEntity && header.record_id === plan.operation_id,
+      )
+    )
+      return yield* reconcileSharedMetadataWrite(library, plan)
     const pending = yield* loadPendingSharedMetadataWrites(library, {
       skillPageId: plan.skill_page_id,
+      headers,
     })
     const originalPending = pending[0]
     if (originalPending !== undefined)
@@ -662,17 +664,23 @@ export function executeSharedMetadataWrite<R = never>(
 /** One small metadata-family query, reusing the consumer's common operation index. */
 export function loadPendingSharedMetadataWrites(
   library: SharedLibrary,
-  input: { readonly skillPageId: string; readonly headers?: readonly SharedOperationHeader[] },
+  input: {
+    readonly skillPageId: string
+    readonly headers?: readonly SharedOperationHeader[]
+    /** Complete family read shared only within this fresh pending-check phase. */
+    readonly records?: Effect.Effect<readonly SharedRecord[], SkillsError, Notion | Crypto.Crypto>
+  },
 ) {
   return Effect.gen(function* () {
     const headers = input.headers ?? (yield* querySharedOperationIndex(library, input.skillPageId))
     const selected = headers.filter((header) => header.entity_id === sharedMetadataEntity)
     if (selected.length === 0) return [] as readonly SharedMetadataWritePlan[]
-    const rows = yield* querySharedRecords(library, {
-      skillPageId: input.skillPageId,
-      kind: "operation",
-      entityId: sharedMetadataEntity,
-    })
+    const rows = yield* input.records ??
+      querySharedRecords(library, {
+        skillPageId: input.skillPageId,
+        kind: "operation",
+        entityId: sharedMetadataEntity,
+      })
     const byId = new Map(rows.map((row) => [row.record_id, row]))
     for (const header of selected) {
       const row = byId.get(header.record_id)
