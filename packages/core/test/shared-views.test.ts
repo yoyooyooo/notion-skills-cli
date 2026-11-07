@@ -308,6 +308,37 @@ describe("shared library Views metadata", () => {
     assertMetadataOnly(f)
   })
 
+  test("SC11 malformed Skill ID details survive a combined catalog with a valid View", async () => {
+    const f = fixture()
+    f.members([[skillPage]])
+    f.rows[1] = row(beta, "", "Private malformed row", false)
+    const result = await f.run(listCatalog({ database: db, directory: { view: viewA } }))
+    expect(result.catalog).toEqual({
+      ok: false,
+      error: {
+        code: "INVALID_SHARED_SKILL",
+        message: "Skill ID must be a stable bounded identity.",
+        details: {
+          page_id: beta,
+          data_source_id: ds,
+          property: "Skill ID",
+          property_id: library.skills.property_ids["Skill ID"],
+          reason: "empty",
+          value_length: 0,
+        },
+      },
+    })
+    expect(JSON.stringify(result.catalog)).not.toContain("Private malformed row")
+    if (!result.directory.ok) throw new Error("The unrelated invalid row must not block the View")
+    expect(result.directory.value.records.map((record) => record.name)).toEqual(["Alpha"])
+    expect(result.directory.value.coverage.exhaustive).toBe(true)
+    expect(
+      f.requests.filter((request) => request.path.includes("/data_sources/" + ds + "/query")),
+    ).toHaveLength(1)
+    expect(f.requests.some((request) => request.path.startsWith("v1/pages/"))).toBe(false)
+    assertMetadataOnly(f)
+  })
+
   test("SC11 shared raw inventory preserves disabled identity claims and selected missing rows", async () => {
     const f = fixture()
     f.members([[skillPage]])

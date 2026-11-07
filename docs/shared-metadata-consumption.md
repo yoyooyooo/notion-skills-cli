@@ -1,7 +1,7 @@
 # Current Skill metadata consumption
 
 SC11 / AH-628 reuses one complete Skills metadata observation within a scalar
-current read. Public CLI and SDK results keep their existing shape. The
+current read. Successful public CLI and SDK results keep their existing shape. The
 [selected-snapshot contract](selected-snapshot-consumption.md) continues to own
 source bytes, current-tree validation and fixed-file selection.
 
@@ -68,6 +68,20 @@ An external target remains available, disabled or unavailable according to the
 complete metadata observation. Resolution never fetches the target's body. A later
 refresh obtains another observation rather than retaining the previous invocation's
 directory. This is an observation within one call, not a remote snapshot transaction.
+
+### Skill ID diagnostics
+
+An empty, malformed or overlong Skill ID still fails with `INVALID_SHARED_SKILL`
+and the existing message. Its optional `details` identifies the validated
+`page_id`, `data_source_id`, canonical `property` and registered `property_id`,
+plus `reason` (`empty`, `invalid_format` or `too_long`) and `value_length` in
+UTF-16 code units. It excludes the original value, title and other row metadata.
+These fields use the current parser inputs and add no requests or body reads.
+
+The combined SDK `listCatalog({database, directory: {}})` retains optional
+`SkillsError.details` for each failed projection. Full catalog failure remains a
+failure even when an independent selected View succeeds. Identity validation,
+coverage, disabled-row checks and the valid View's existing isolation are unchanged.
 
 ## Verification and remaining costs
 

@@ -15,6 +15,7 @@ import {
   notionPage,
   property,
   resolveRecord,
+  SkillsError,
   type Source,
 } from "../src/model.ts"
 import { sharedRecordFromPage, sharedSkillId, sharedSkillProperty } from "../src/shared-content.ts"
@@ -292,6 +293,54 @@ describe("shared content metadata", () => {
     expect(() => notionPage(record)).toThrow("requires a Notion content page")
   })
 
+  for (const { label, value, reason, length } of [
+    { label: "empty", value: "", reason: "empty", length: 0 },
+    {
+      label: "invalid-character",
+      value: "private fixture identity/with spaces",
+      reason: "invalid_format",
+      length: 36,
+    },
+    { label: "overlong", value: "x".repeat(201), reason: "too_long", length: 201 },
+  ]) {
+    test(`rejects ${label} Skill IDs with safe row diagnostics`, () => {
+      const input = row({ skillId: value, renamed: true, name: "Private fixture title" })
+      const original = structuredClone(input)
+      let caught: unknown
+      try {
+        sharedRecordFromPage(input, source, library.skills.data_source_id)
+      } catch (error) {
+        caught = error
+      }
+      if (!(caught instanceof SkillsError)) throw new Error("Expected a rejected Skill ID")
+      expect(caught.code).toBe("INVALID_SHARED_SKILL")
+      expect(caught.message).toBe("Skill ID must be a stable bounded identity.")
+      expect(caught.details).toEqual({
+        page_id: id(1001),
+        data_source_id: library.skills.data_source_id,
+        property: "Skill ID",
+        property_id: propertyIds["Skill ID"],
+        reason,
+        value_length: length,
+      })
+      const serialized = JSON.stringify(caught)
+      if (value !== "") expect(serialized).not.toContain(value)
+      expect(serialized).not.toContain("Private fixture title")
+      expect(serialized).not.toContain("Use the selected shared content.")
+      expect(input).toEqual(original)
+    })
+  }
+
+  test("safe identity diagnostics preserve valid boundary IDs", () => {
+    for (const skillId of ["A", "A9_alpha.beta:gamma-delta", "x".repeat(200)]) {
+      const actual = sharedRecordFromPage(row({ skillId }), source, library.skills.data_source_id)
+      expect(actual.id).toBe(sharedSkillId(library.library_id, skillId))
+      expect(actual.locator.skill_id).toBe(skillId)
+      expect(decode(ContentRecordSchema, actual)).toEqual(actual)
+      expect(actual).not.toHaveProperty("details")
+    }
+  })
+
   test("rejects missing stable identity, foreign parent, and malformed property types", () => {
     const original = row()
     expect(() =>
@@ -494,6 +543,27 @@ describe("shared catalog routing", () => {
     const f = fixture({ rows })
     const result = await f.run(catalog({ database: library.skills.database_id, refresh: true }))
     expect(result.records).toHaveLength(101)
+    expect(f.calls).toHaveLength(4)
+    expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
+    expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)
+  })
+
+  test("a malformed identity on a later catalog page is rejected without extra requests", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => row({ n: index + 1 }))
+    rows[100] = row({ n: 101, skillId: "" })
+    const f = fixture({ rows })
+    const error = await f.run(
+      Effect.flip(catalog({ database: library.skills.database_id, refresh: true })),
+    )
+    expect(error.code).toBe("INVALID_SHARED_SKILL")
+    expect(error.details).toEqual({
+      page_id: id(1101),
+      data_source_id: library.skills.data_source_id,
+      property: "Skill ID",
+      property_id: propertyIds["Skill ID"],
+      reason: "empty",
+      value_length: 0,
+    })
     expect(f.calls).toHaveLength(4)
     expect(f.calls.filter((call) => call.path.includes("/query?"))).toHaveLength(2)
     expect(f.calls.some((call) => call.path.startsWith("v1/pages/"))).toBe(false)

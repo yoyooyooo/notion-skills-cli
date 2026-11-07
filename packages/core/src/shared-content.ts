@@ -29,9 +29,9 @@ function exactPage(value: unknown, label: string) {
   return id
 }
 
-function stableIdentity(value: string, label: string) {
+function stableIdentity(value: string, label: string, details?: unknown) {
   if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value))
-    throw invalid(`${label} must be a stable bounded identity.`)
+    throw invalid(`${label} must be a stable bounded identity.`, details)
   return value
 }
 
@@ -122,10 +122,20 @@ export function sharedRecordFromPage(
   const description = validateDescription(
     readableText(sharedSkillProperty(row, library, "Description"), "rich_text", "Description"),
   )
-  const skillId = stableIdentity(
-    readableText(sharedSkillProperty(row, library, "Skill ID"), "rich_text", "Skill ID"),
+  const skillIdValue = readableText(
+    sharedSkillProperty(row, library, "Skill ID"),
+    "rich_text",
     "Skill ID",
   )
+  const skillId = stableIdentity(skillIdValue, "Skill ID", {
+    page_id: page,
+    data_source_id: dataSource,
+    property: "Skill ID",
+    property_id: library.skills.property_ids["Skill ID"],
+    reason:
+      skillIdValue === "" ? "empty" : skillIdValue.length > 200 ? "too_long" : "invalid_format",
+    value_length: skillIdValue.length,
+  })
   const kindField = sharedSkillProperty(row, library, "Kind")
   if (kindField.type !== "select") throw invalid("Kind must be a select property.")
   const kind = decode(ContentKindSchema, property(kindField.select).name)

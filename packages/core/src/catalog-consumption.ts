@@ -62,7 +62,14 @@ function listSingleCatalog(options: ListCatalogOptions = {}) {
 export type ListCatalogResult = Effect.Success<ReturnType<typeof listSingleCatalog>>
 export type CatalogReadOutcome =
   | { readonly ok: true; readonly value: ListCatalogResult }
-  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+  | {
+      readonly ok: false
+      readonly error: {
+        readonly code: string
+        readonly message: string
+        readonly details?: unknown
+      }
+    }
 export interface ListCatalogDirectoryResult {
   readonly version: typeof CATALOG_DIRECTORY_CONTRACT_VERSION
   readonly catalog: CatalogReadOutcome
@@ -78,7 +85,11 @@ function observeCatalog(operation: ReturnType<typeof listSingleCatalog>) {
           ? Effect.fail(error)
           : Effect.succeed<CatalogReadOutcome>({
               ok: false,
-              error: { code: error.code, message: error.message },
+              error: {
+                code: error.code,
+                message: error.message,
+                ...(error.details === undefined ? {} : { details: error.details }),
+              },
             }),
     }),
   )

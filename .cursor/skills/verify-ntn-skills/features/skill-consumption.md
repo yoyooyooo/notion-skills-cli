@@ -30,10 +30,12 @@ Default View 正例提供完整 View metadata observation；consumer fixture 的
 
 ### SC11：同次 SDK 目录观察
 
-用户入口仍是完整普通发现和默认/Profile/会话 View。宿主需要两者时调用原 SDK `listCatalog({database,directory:{}})`；显式 View/Profile 放在 `directory.view` 或 `directory.profile`。先检查 `CATALOG_DIRECTORY_CONTRACT_VERSION === 1`。结果的 `catalog` 与 `directory` 各自保留 `{ok:true,value}` 或 `{ok:false,error:{code,message}}`；full 的无关冲突不能毒化合法 View，View 错误也不抹掉 full。取消和两成功结果的 scope/descriptor 冲突仍整次拒绝。
+用户入口仍是完整普通发现和默认/Profile/会话 View。宿主需要两者时调用原 SDK `listCatalog({database,directory:{}})`；显式 View/Profile 放在 `directory.view` 或 `directory.profile`。先检查 `CATALOG_DIRECTORY_CONTRACT_VERSION === 1`。结果的 `catalog` 与 `directory` 各自保留 `{ok:true,value}` 或 `{ok:false,error:{code,message,details?}}`，失败时透传已有可选 `SkillsError.details`；full 的无关冲突不能毒化合法 View，View 错误也不抹掉 full。取消和两成功结果的 scope/descriptor 冲突仍整次拒绝。
+
+`Skill ID` 为空、非法格式或过长时仍按原正则拒绝，错误码和 message 保持。定位 details 只含已验证的 page/data-source ID、登记的属性 ID/规范名称、reason 与 UTF-16 value_length，不包含原值或任意行 metadata。沿原 shared-catalog 反例验证精确定位、合法边界、101 行末页拒绝与请求数；原 shared-views 验证 combined 保留 details、full 失败和合法 View 成功独立成立。该诊断不跳坏行、不补造身份，不新增正文/Files/Records/逐行 GET。
 
 ```bash
-bun test packages/core/test/shared-views.test.ts packages/core/test/views.test.ts packages/core/test/catalog-consumption.test.ts packages/cli/test/sdk.test.ts --timeout 30000
+bun test packages/core/test/shared-catalog.test.ts packages/core/test/shared-views.test.ts packages/core/test/views.test.ts packages/core/test/catalog-consumption.test.ts packages/cli/test/sdk.test.ts --timeout 30000
 node scripts/sdk-fixture.ts --outdir "$RUN/scratch/sdk-directory" --catalog
 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$RUN/scratch/sdk-directory/fixture.json" --outdir "$RUN/evidence/sdk-directory" --case view-dynamics
 ```
