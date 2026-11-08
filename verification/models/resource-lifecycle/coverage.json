@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "7a5703697e120093bc0751741f5701a6c741edb7",
+  "synchronized_commit": "7a65d3032ddb3e214a69d1cd9f71dded85785476",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
@@ -57,7 +57,8 @@
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
     "packages/core/src/shared-create-recovery-acknowledgements.ts": "62469da9662d2b41747edf0aeb2f337675ecd8b421fe985fcd9d6eba317aa323",
-    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "0524c310de8f321182fb28c259aa2c23fbb307b5284fa7770ccb15cc45137a4d"
+    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "0524c310de8f321182fb28c259aa2c23fbb307b5284fa7770ccb15cc45137a4d",
+    "packages/core/src/shared-native-file-content.ts": "c0d8de5045e44bfbf12ab675eeb56ecaec1f525162334bf750c40eb7fddf2a00"
   },
   "models": {
     "ProjectionRace": {
@@ -338,7 +339,8 @@
         "packages/core/src/shared-skill-apply-authoring.ts",
         "packages/core/src/shared-file-restore.ts",
         "packages/core/src/shared-create-model.ts",
-        "packages/core/src/shared-snapshot.ts"
+        "packages/core/src/shared-snapshot.ts",
+        "packages/core/src/shared-native-file-content.ts"
       ],
       "symbols": [
         "splitNativeSupportingMarkdown",
@@ -349,9 +351,10 @@
         "writeSharedSkillFile",
         "applySharedSkillChanges",
         "restoreSharedFileFollowing",
-        "validateSharedBodyWritePlan"
+        "validateSharedBodyWritePlan",
+        "restoreSharedNativeFileLinks"
       ],
-      "scope": "Complete input and retained header serialization are outside the finite models. New file-add v2 retains the exact original supporting header and input; source creation v11 retains C1 and N1 header/mode ancestry. Explicit write/apply check fresh consumer headers against retained native ownership before dispatch. Restore-follow v11 uses the native creation projection, but an unequal body still reaches the unchanged requireSafeBodyReplacement guard. No existing-body overwrite authority, unknown-write replay or ownership transition was added. ProjectionRace retains its original assumptions; old plan identities and unprojected plans remain accepted by their original contracts.",
+      "scope": "Complete input and retained header serialization are outside the finite models. New file-add v2 retains the exact original supporting header and input; source creation v11 retains C1 and N1 header/mode ancestry. Explicit write/apply check fresh consumer headers against retained native ownership before dispatch. Restore-follow v11 uses the native creation projection, but an unequal body still reaches the unchanged requireSafeBodyReplacement guard. No existing-body overwrite authority, unknown-write replay or ownership transition was added. ProjectionRace retains its original assumptions; old plan identities and unprojected plans remain accepted by their original contracts. The consumer and authoring paths both recognize .md and .markdown, so an explicit edit restores same-owner relative references to their exact bound native pages. This byte-level round trip remains outside the finite models.",
       "tests": [
         "packages/core/test/shared-native-frontmatter.test.ts",
         "packages/core/test/shared-create-complete.test.ts",
@@ -360,7 +363,8 @@
         "packages/core/test/shared-authoring.test.ts",
         "packages/core/test/shared-skill-apply.test.ts",
         "packages/core/test/shared-body-write.test.ts",
-        "packages/core/test/shared-snapshot-history.test.ts"
+        "packages/core/test/shared-snapshot-history.test.ts",
+        "packages/core/test/shared-native-file-content.test.ts"
       ]
     },
     {
