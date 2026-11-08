@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "7a65d3032ddb3e214a69d1cd9f71dded85785476",
+  "synchronized_commit": "dd61cd67dbab89eb58500a4a65f1f3586fc2bd3e",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
@@ -18,7 +18,7 @@
     "packages/core/src/shared-audit-transport.ts": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
     "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
     "packages/core/src/shared-inventory-import.ts": "334d050a9d87a2482da9df0f29a20325d141fbc08fe0c92138082e3721b80e00",
-    "packages/core/src/shared-inventory-local.ts": "681d33adb5fec03a338dd0dd0d7137e95685b332e678f54c44fc4b7a01d2823b",
+    "packages/core/src/shared-inventory-local.ts": "b8c2f6df4c6775c1b5a55e1b9a4a83d520a266a859b6d8e6448ca20621d7d938",
     "packages/core/src/shared-create.ts": "e3b6049da03cee13022eb6e1bc4c57bc05c722b6517d6f9d2c7b88e5381edf88",
     "packages/core/src/shared-create-model.ts": "dea7ad411fbdc574c8e363500aabf346f750808e00c1c5f372e2398e1b17f5e9",
     "packages/core/src/shared-create-dispatch.ts": "0d683c2820798f273d77203697e2491d076ce45c5b537346cdcfa56a1efb7071",
@@ -227,6 +227,17 @@
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
   "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim.",
   "unmodeled_bindings": [
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "local_inventory_entrypoint_selection",
+      "files": ["packages/core/src/shared-inventory-local.ts"],
+      "symbols": ["scanLocalSkillInventory"],
+      "scope": "Local filesystem discovery and root entrypoint preference are outside the finite lifecycle models. Within an existing entity root, an exact SKILL.md takes precedence while all supporting files and fallback boundaries remain. A new observation binds the selected main in its manifest and review identity; retained reports and prepared plans keep their original main. This hash binds reviewed scanner context only and adds no model, invariant or liveness claim.",
+      "tests": [
+        "packages/core/test/shared-inventory.test.ts",
+        "packages/core/test/shared-inventory-import.test.ts"
+      ]
+    },
     {
       "kind": "hash_bound_context_not_modeled",
       "name": "fixed_manifest_storage",
