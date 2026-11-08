@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "synchronized_commit": "05ccfc762c9dc9c405915a6d3be40eec822e267e",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "files": {
+    "packages/core/src/shared-file-state.ts": "07dd346b1919a9eb06d8b1ae0f49f716cd2c408efc1589efd4769499a5ccbe00",
+    "packages/core/src/shared-file-observer.ts": "7d1671f08f5d35a453ec79b51e90fa97b46d5506f83161082406a9ffe425f931",
+    "packages/core/src/shared-source-refresh.ts": "52c3f40ef0e2892fa3ca08ca455b636992185052eedca976d7d4dddd166a7026",
+    "packages/core/src/shared-selected-source.ts": "0cb4fff97c8632e5738ac73e9c9d3ed2ecd10e39e5957929900b68c6b5a4bf9b",
+    "packages/core/src/shared-snapshot.ts": "a13fd16642dd14407222d1f89f62edf3f955c7aef9bc4e9708fb13c4462d7e25"
+  },
+  "models": {
+    "ProjectionRace": {
+      "kind": "existing_guard_and_rejected_proposal",
+      "symbols": ["requireSafeBodyReplacement", "decideObservedBody", "resolveFileState"],
+      "scope": "The existing fail-closed editable-page guard, versus the rejected future read-check-unconditional-replace design. Not a model of every current Markdown writer.",
+      "excluded": ["Provider revision-CAS", "atomic old-string matching", "enforced UI edit exclusion", "multi-page API transactions"]
+    },
+    "UpdateCommit": {
+      "kind": "proposed_coordinator_contract",
+      "symbols": ["prepareSourceRefresh", "applySourceRefresh", "retainFact", "planSelectedSharedSource"],
+      "scope": "A single already-authorized selection write, two exact resource identities, two selected revisions and one existing session. Prepare/commit ordering contract, not a refinement proof of all current mutation dispatches.",
+      "excluded": ["Multiple writers", "credential rotation", "provider permission propagation", "automatic Notion projection writes", "arbitrary Git filesystem semantics"]
+    },
+    "AuditRun": {
+      "kind": "proposed_audit_contract",
+      "symbols": ["observeSharedFile", "querySharedSkillIndex", "querySharedRecords"],
+      "scope": "Two surviving Skill roots, one orphan visible only to reverse inventory, one changed body, a one-Skill slice budget and up to two resumptions. The reverse scan abstracts paginated inventory, not its HTTP cost.",
+      "excluded": ["Arbitrary concurrent table changes", "global database snapshot", "durable scheduler availability", "automatic repair", "unknown historical data absent from every retained index"]
+    }
+  }
+}

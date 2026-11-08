@@ -206,6 +206,27 @@ function seedProjection(event: FileEvent) {
 }
 
 describe("shared file body observation", () => {
+  test("audit-style observation reports an unconfirmed edit without retaining or adopting it", async () => {
+    const shared = remote("human edit after projection\n")
+    const api = client(shared)
+    const result = await api.run(
+      observeSharedFile({ ...input([projected()]), readOnly: true }).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Failure")
+    if (result._tag !== "Failure") throw new Error("Expected observation-required result")
+    expect(result.failure.code).toBe("SHARED_OBSERVATION_REQUIRED")
+    expect(shared.records.size).toBe(0)
+    expect(
+      api.calls.every(
+        (call) =>
+          call.method === undefined ||
+          call.method === "GET" ||
+          (call.method === "POST" && /^v1\/data_sources\/[^/]+\/query(?:\?|$)/.test(call.path)),
+      ),
+    ).toBe(true)
+    expect(shared.bodies.get(bodyPageId)).toBe("human edit after projection\n")
+  })
+
   test("a standalone caller discovers an original body write before reading or adopting its candidate", async () => {
     const shared = remote("system candidate\n"),
       api = client(shared)

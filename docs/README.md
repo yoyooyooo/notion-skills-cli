@@ -20,3 +20,5 @@ Start with the repository README in [English](../README.md) or [简体中文](..
 - [Sync/cache acceptance matrix](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/sync-cache-verification-plan.md): repository-only acceptance/evidence requirements and [command coverage map](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/README.md#accepted-design-coverage). Runtime outcomes belong in each external run ledger. These maintenance files are excluded from the npm package; use the source checkout while changes are unpublished.
 
 The protocol owns command and response semantics. Host and Skill guidance follows that contract; release claims require the evidence described in the release procedure.
+
+Planning for fixed-source resource updates and read-only resumable audits is recorded in the [resource lifecycle design](resource-lifecycle-plan.md). Its [formal models](../verification/models/resource-lifecycle/README.md) and [verification Skill](../.cursor/skills/verify-notion-resource-lifecycle/SKILL.md) are repository-only planning checks, not implemented CLI or release claims.

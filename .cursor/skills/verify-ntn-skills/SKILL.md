@@ -134,6 +134,8 @@ Repeat `--input` in `prepare` for several Skill directories. An existing frozen 
 
 ## Evidence
 
+Before implementing resource ownership, automatic source updates, or resumable whole-library audit, use the [formal resource lifecycle map](features/resource-lifecycle-formal.md). Its bounded TLA+ checks supplement this Skill's product/installed/live verification; they do not establish that a proposed command is implemented.
+
 Proof survives at `$RUN/evidence/`:
 
 - `commands/*.json`: exact argv, timestamps, cwd, held child PID, observed exit/signal, timeout and CLI output. Raw child stderr is excluded; its size and SHA-256 are recorded instead.
