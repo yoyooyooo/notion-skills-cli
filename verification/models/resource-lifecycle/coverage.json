@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "synchronized_commit": "debdd1f58757cdb1c5b492c409fd6e24d5614aad",
+  "synchronized_commit": "f5b2b506a56a61cfa8203b6533690d4214f63913",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
     "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
     "packages/core/src/shared-body-write.ts": "4cd7fd54a50554ae2ea35c8655fab0a9e466678fa08fbf70d9dc222b0f8128b2",
-    "packages/core/src/shared-source-refresh.ts": "c168daedd475c9d875eeb029e87e0a873da825528c4ed9edf96d183234147421",
+    "packages/core/src/shared-source-refresh.ts": "5ebd3e4e621b4e47a5f8847925e5112f44a49d4dfac1a6eef1cba03f4d8d692d",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
     "packages/core/src/shared-snapshot.ts": "278c28eec1c905f4ec0f4d044b54f51da064108cc044c77f919f7ceacd49ec95",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
@@ -19,12 +19,21 @@
     "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
     "packages/core/src/shared-inventory-import.ts": "334d050a9d87a2482da9df0f29a20325d141fbc08fe0c92138082e3721b80e00",
     "packages/core/src/shared-inventory-local.ts": "681d33adb5fec03a338dd0dd0d7137e95685b332e678f54c44fc4b7a01d2823b",
-    "packages/core/src/shared-create.ts": "7dfc8399a1377a2eb27dbc72a9e8e63d6a64dc19e5565bf5f035695360cc99a1",
-    "packages/core/src/shared-create-model.ts": "4bfbb04786c3d05d0ec058dec15fc72d80b31877e2e761d31e476339eff82d20",
-    "packages/core/src/shared-create-dispatch.ts": "b2a6ef3634a07aa5866081caa26fdb23aca387043719f3c660a9d54937ad6560",
+    "packages/core/src/shared-create.ts": "1b18fb63f7cd059232ddafdbc87d9d6fb1f2df946cd7eb1e6f8b0b4e8c130d88",
+    "packages/core/src/shared-create-model.ts": "051940d6041cd196365761aa23b25a7c9f3c9e0de86bba811629cb5d324fd24d",
+    "packages/core/src/shared-create-dispatch.ts": "a41e411a6bcbd9b1f6609eb7da6affb066cbdfb90d5685b41a32138f42910ad1",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
-    "packages/core/src/shared-source-definitions.ts": "cebe59b6f5ecaf7015034ab1a734209022fcbff4145d5c13d8c39e1eb98f086a"
+    "packages/core/src/shared-source-definitions.ts": "9a577cb4ca2b78b74c871d36702a53b941b74a43054bd8eac718337ae6343b81",
+    "packages/core/src/shared-records.ts": "a940f79041bf892c04388a68c05fe90e17886036ca7abb8c55a51c97a295c090",
+    "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
+    "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
+    "packages/core/src/shared-notion-projection.ts": "5611f21f68f81981ee7d5be6312810a6f677c70429345788d0865a77cca205c3",
+    "packages/core/src/shared-notion-document-spacing.ts": "40d396bcb1c8b4d00d3bc2492d4cafaeddff8d09a88e31549177fd8e8e1f8970",
+    "packages/core/src/shared-create-recovery.ts": "8f326682cbcb8ececd7f5a3bd37faf5a5645bb2094c11e1344e879c4fdc2c062",
+    "packages/core/src/shared-create-recovery-prefix.ts": "6e38715551d164173865faf89457d6d9ea41cd733f5fa2ccef6ba9f83813b1de",
+    "packages/core/src/shared-create-recovery-prefix-model.ts": "0afbaeb26865390fcf862c8ee2131c55027be1afbced6056e8cd35e17355842e",
+    "packages/core/src/shared-create-recovery-prefix-completion.ts": "fc7ff816c8e19fbfdde3d406b4a052741e67caf157d97aebbfe8a424387fe0eb"
   },
   "models": {
     "ProjectionRace": {
@@ -61,7 +70,8 @@
         "provider permission propagation",
         "automatic Notion projection writes",
         "arbitrary Git filesystem semantics",
-        "Source batch and periodic-run scheduling"
+        "Source batch and periodic-run scheduling",
+        "Fixed-manifest storage codec, byte limits, canonical payload-cache behavior and immutable Record reconciliation"
       ]
     },
     "AuditRun": {
@@ -114,14 +124,16 @@
         "reconcileSharedCreate",
         "verifySharedCreatedSnapshot"
       ],
-      "scope": "One explicitly enabled original create, two complete input objects and four abstract mutable stages: root allocation, Files/resources, metadata/selection and enablement. Preparation freezes approved bytes, the first dispatch rechecks the original local input, stage confirmation requires its durable original ACK, and explicit enablement follows complete verification. Lost-response absence cannot authorize replay; an acknowledged interrupted readback can be reconciled.",
+      "scope": "One explicitly enabled original create, two complete input objects and four abstract mutable stages: root allocation, Files/resources, metadata/selection and enablement. Preparation freezes approved bytes, the first dispatch rechecks the original local input, stage confirmation requires its durable original ACK, and explicit enablement follows complete verification. Lost-response absence cannot authorize replay; an acknowledged interrupted readback can be reconciled. This remains the original create execution/reconciliation abstraction; the separately reviewed acknowledged-prefix recovery protocol is excluded.",
       "excluded": [
         "Disabled creation",
-        "Arbitrary file counts, chunking and codec normalization",
+        "Arbitrary file counts, chunking, Markdown projection versions including v9 creation spacing, Record compression and logical/wire byte limits",
         "C1/N1/C2 classification and provider/member acquisition",
         "Concurrent human editing or a filesystem transaction during dispatch",
         "Immutable content-addressed Record reconciliation",
-        "Credential rotation, distributed writers or global exactly-once delivery"
+        "Credential rotation, distributed writers or global exactly-once delivery",
+        "The v1/v8 acknowledged-main-before-manifest bootstrap, exact original journal and ACK metadata validation, and separately reviewed suffix dispatch",
+        "Versioned prefix recovery completion, pending-create suppression and cold history/read reconstruction"
       ],
       "tests": [
         "packages/core/test/shared-inventory-import.test.ts",
@@ -132,5 +144,74 @@
     }
   },
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
-  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion."
+  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim.",
+  "unmodeled_bindings": [
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "fixed_manifest_storage",
+      "files": [
+        "packages/core/src/shared-records.ts",
+        "packages/core/src/shared-record-codec.ts",
+        "packages/core/src/shared-snapshot-history.ts"
+      ],
+      "symbols": [
+        "encodeSharedRecordStorage",
+        "decodeSharedRecordStorage",
+        "canonicalSharedRecordEnvelope",
+        "recordFromCachedEnvelope",
+        "prepareSharedSnapshotHistory"
+      ],
+      "scope": "The logical envelope identity stays separate from physical storage. The 19 configurations do not model gzip/Base64, logical or wire byte limits, arbitrary manifest cardinality, rich-text transport, cache representation or immutable Record reconciliation. These hashes bind the reviewed implementation context only.",
+      "tests": [
+        "packages/core/test/shared-records.test.ts",
+        "packages/core/test/shared-record-payload-cache.test.ts",
+        "packages/core/test/shared-record-codec.node.test.ts",
+        "packages/core/test/shared-snapshot-history.test.ts",
+        "packages/core/test/shared-source-projection.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_projection_v9",
+      "files": [
+        "packages/core/src/shared-notion-projection.ts",
+        "packages/core/src/shared-notion-document-spacing.ts"
+      ],
+      "symbols": ["projectSharedNotionMarkdown", "projectNotionMarkdownV9"],
+      "scope": "Projection versions, top-level creation spacing, preserved submitted wire bytes and actual Notion rendering are outside the models. ImportCreate treats the already frozen candidate and complete readback as abstract values; ProjectionRace still concerns refusal of unsafe existing-body replacement.",
+      "tests": [
+        "packages/core/test/shared-notion-document-spacing.test.ts",
+        "packages/core/test/shared-notion-projection-v8.test.ts",
+        "packages/core/test/shared-create.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "acknowledged_create_prefix_recovery",
+      "files": [
+        "packages/core/src/shared-create-recovery.ts",
+        "packages/core/src/shared-create-recovery-prefix.ts",
+        "packages/core/src/shared-create-recovery-prefix-model.ts",
+        "packages/core/src/shared-create-recovery-prefix-completion.ts"
+      ],
+      "symbols": [
+        "reviewSharedCreateRecovery",
+        "applySharedCreateRecovery",
+        "reconcileSharedCreateRecovery",
+        "originalBootstrap",
+        "assertSharedCreateAcknowledgedMetadata",
+        "validateSharedCreatePrefixRecoveryReview",
+        "reviewSharedCreatePrefixRecovery",
+        "applySharedCreatePrefixRecovery",
+        "reconcileSharedCreatePrefixRecovery",
+        "readSharedCreatePrefixCompletion",
+        "completedSharedCreatePrefixRecovery"
+      ],
+      "scope": "The explicit original-v1/v8 main-ACK-before-manifest bootstrap, exact local journal and ACK metadata checks, separate reviewed suffix operation, original-versus-recovery histories and compact completion recognition are not transitions of ImportCreate. The original main is not replayed or body-patched; a missing original terminal is not invented. The new completion branch in loadPendingSharedCreates is reviewed context, not a modeled recovery or consumer refinement proof.",
+      "tests": [
+        "packages/core/test/shared-create-recovery-prefix.test.ts",
+        "packages/core/test/shared-create-recovery.test.ts"
+      ]
+    }
+  ]
 }

@@ -12,7 +12,7 @@ Set `PSTACK_STATECHART_ROOT` to the skill directory and `TLA2TOOLS` to that veri
 node scripts/verify-resource-lifecycle.mjs --out "$(mktemp -d /tmp/notion-formal.XXXXXX)"
 ```
 
-The runner checks tool identity and covered source hashes, copies the model inputs outside the repository, executes Pstack's original `check` and `compile` functions, and writes `summary.json`, each `report.md`, `chart.mmd`, and original TLC output. Temporary tool files are retained inside the output directory instead of permanently deleted. The adapter changes cleanup only, not checking, predicates, bounds, shortest-path selection or graph compilation.
+The runner checks tool identity and the reviewed source hashes, including explicitly unmodeled context bindings, copies the model inputs outside the repository, executes Pstack's original `check` and `compile` functions, and writes `summary.json`, each `report.md`, `chart.mmd`, and original TLC output. Temporary tool files are retained inside the output directory instead of permanently deleted. The adapter changes cleanup only, not checking, predicates, bounds, shortest-path selection or graph compilation.
 
 Broken configurations are expected to fail their named properties. The runner is successful only when all positive configurations pass and each negative configuration breaks exactly its expected rule set. It refuses unexamined rules and tool errors. A property made unreachable by a different mutation is not a successful negative control; use the isolated configurations.
 
@@ -30,6 +30,16 @@ Safety configurations exhaust their finite reachable state spaces. Liveness is c
 Only terminal states or an explicit environmental wait may stutter. No global always-enabled stutter action hides deadlocks. Views omit terminal/wait self-loops and steps that have the same visible label; original TLC reports retain the actual model trace. Combined broken UpdateCommit is useful for exploring interaction, while isolated controls establish each failure independently.
 
 ImportCreate distinguishes a lost response with no durable ACK from an acknowledged request whose readback was interrupted. Only the latter can continue by observing the original stage; the former may wait indefinitely. Its four isolated controls break repeated dispatch, early enablement, inference from current visibility, and dispatch after the pre-execution inventory review becomes stale. Input drift is modeled before the first dispatch of an invocation; it does not claim a filesystem transaction spanning all remote requests. Execution uses frozen approved bytes. A passing UpdateCommit selection model alone does not establish complete create/import recovery.
+
+## Current storage, projection and prefix-recovery correspondence
+
+The current review keeps the same four models, 19 configurations, invariants and bounds. Source-refresh changes only route complete fixed manifests through typed storage preflight. Original create dispatch compares immutable Record requests by their verified canonical logical envelopes; mutable page-request ACK authority, original dispatch ordering and the original complete-verification/enablement boundary remain unchanged. These changes do not add transitions to UpdateCommit or ImportCreate.
+
+The `files` map in `coverage.json` also binds reviewed context that is explicitly listed in `unmodeled_bindings`. Fixed-manifest gzip/Base64 storage, 1 MiB logical/180 KiB encoded limits, arbitrary path counts, transport framing and canonical cache representation require their source, Node and real-input tests. Native projection v9 predicts two creation document boundaries while preserving original submitted wire bytes; the models do not prove that prediction, actual Notion rendering or retained-policy compatibility.
+
+The three `shared-create-recovery-prefix*` modules and their routing caller are hash-bound review context only. ImportCreate has no state for an acknowledged original v1/v8 main before its manifest, the exact original local journal and ACK metadata, a separately reviewed suffix operation, two operation histories, or a versioned compact recovery completion. The new path preserves the original main and input, requires its original ACK, writes a separate recovery decision/outcome and never invents the absent original terminal. Code and installed/live tests must establish those facts; passing ImportCreate does not establish this new recovery protocol, its pending-create suppression or cold consumption. Its controlled tests are listed separately in `unmodeled_bindings`.
+
+No property was weakened, no bound was reduced and no new recovery or codec model is claimed. Public CLI/SDK acceptance and real-service recovery remain separate gates.
 
 ## Code correspondence and mutation replay
 
