@@ -7,6 +7,7 @@ import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 import {
   SourceDefinitionInputSchema,
+  SourceMutationAcknowledgementSchema,
   sourceDefinitionProperties,
   type SourceDefinitionInput,
   type SourceDefinition,
@@ -68,14 +69,6 @@ const SourceMutationReceiptSchema = Schema.Struct({
   response_hash: Schema.String,
   acknowledged_at: Schema.Number,
   verified: Schema.Literal(true),
-})
-export const SourceMutationAcknowledgementSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  operation_id: Schema.String,
-  request_hash: Schema.String,
-  response_hash: Schema.String,
-  acknowledged_at: Schema.Number,
-  response: Schema.Unknown,
 })
 function observedSourceMutation(
   operation: string,

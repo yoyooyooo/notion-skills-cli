@@ -13,6 +13,7 @@
 | NR17-fixed | 默认 auto 对完整无修改公开 GitHub 原树冻结 v4 候选，复用 source- 选择与按路径消费；--storage retained 明确选择保留副本 | 缺 Git manifest、patched/linked/portable 转换不得冒充原Git树；管理字节的Git OID/SHA256/长度均验证，LFS指针拒绝；公开传输不可达时不偷偷换HEAD |
 | NR17-git-url | 新管理输入允许公开 GitHub 克隆 URL 的 `.git` 后缀；admit 与 refresh 复用原输入解析，在构造固定绑定时得到同一个 canonical URL，保留原 Source 定义、commit、tree、路径、SHA256 与 mode | 已持久化的非 canonical `.git` 描述符仍须拒绝；不能更改原 Source 配置、重新选分支、放松旧绑定身份校验或省略原字节验证来使准备成功 |
 | NR25-create-spacing | 新 v9 创建投影前向冻结已独立观察的顶层单 LF 与 ATX heading/paragraph 分隔；原 input/wire 和旧 v1–8 均保持。已 ACK 的原 v1/v8 创建只能经同原操作的显式恢复审阅，完整原 journal/ACK、disabled owner 和精确当前正文均须可验证 | 不得 trim 返回正文、修改已派发 plan、猜测未知 ACK、重放 POST 或换页补建；code/list/quote 与未观察空白不泛化；非精确新预测的人工正文变化继续拒绝 |
+| NR25-node-startup | 原生 Node 新进程从审计入口加载共享模型并通过真实 SQLite 启动、续跑和离线报告；复用 `shared-audit-sqlite.node.test.ts`，再运行完整 prefix recovery 与 Source 定义反例 | ACK schema 不得依赖来源执行模块的初始化顺序；Bun 或打包入口通过不能代替 Node 原生 ESM 冷启动；保留实际循环初始化失败，不能用动态导入或延迟校验绕过 |
 | NR17-cold | 清空派生对象后 apply 仅按候选 commit/文件身份获取；read/files/use/export 消费同一选择，旧 bundle 与pin可恢复 | 一个必要资源取回失败或hash不符不得先选择；未知注册不重发；读取一个资源不能重新解析分支或枚举仓库 |
 | NR15-run | `sources run SOURCE --target PAGE 或 --all-bound --mode check/prepare/policy` 是有请求/字节/时间预算的单次工作；disabled/pinned/manual/auto、due 与独立文件请求分别判定 | 无新commit或未到期不得吞掉显式restore请求；editable正文无原子条件时停止自动覆写；同state-root重叠执行不重复获取provider；跨机仍声明单writer部署边界 |
 | NR15-original | `sources run-list` / `run-status ID` 离线恢复ID和原frozen plan；中断checkpoint的成本是下界，不能宣称已完成 | 失去stdout、SIGKILL、预算暂停、当前值相等不能授权重新派发未知写；Source Last Checked仅在完整成功检查后更新，与application结果分开 |

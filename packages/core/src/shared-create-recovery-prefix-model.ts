@@ -19,7 +19,8 @@ import {
   sharedNotionMarkdownWire,
 } from "./shared-notion-projection.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
-import { SourceMutationAcknowledgementSchema, sourceField } from "./shared-source-definitions.ts"
+import { sourceField } from "./shared-source-definitions.ts"
+import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
 import { sha256 } from "./store.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))

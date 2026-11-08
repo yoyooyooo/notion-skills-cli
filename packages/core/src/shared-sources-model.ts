@@ -1,5 +1,15 @@
 import { Schema } from "effect"
 
+/** The original native response is durable dispatch evidence, independent of execution. */
+export const SourceMutationAcknowledgementSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  operation_id: Schema.String,
+  request_hash: Schema.String,
+  response_hash: Schema.String,
+  acknowledged_at: Schema.Number,
+  response: Schema.Unknown,
+})
+
 /** Mutable discovery configuration is separate from an immutable file Source pin. */
 export const SourceAdapterSchema = Schema.Union([
   Schema.Struct({ type: Schema.Literal("git"), url: Schema.String, ref: Schema.String }),
