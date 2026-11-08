@@ -53,12 +53,24 @@ export function fixedProjection(plan: SharedCreatePlan) {
     throw new Error("Expected fixed Git projection in controlled fixture")
   return plan.source_projection
 }
-export function fixture() {
+export function fixture(
+  extraFiles: readonly {
+    readonly path: string
+    readonly bytes: Uint8Array
+    readonly mode: "100644" | "100755"
+  }[] = [],
+  options: {
+    readonly main?: string
+    readonly readback?: (wire: string) => string
+    readonly recovery?: boolean
+  } = {},
+) {
   const files = [
     {
       path: "SKILL.md",
       bytes: encode(
-        "---\nname: initial-source\ndescription: Initial complete member\nlicense: MIT\n---\n\n# Initial\n\n[Guide](references/a.md) [Script](scripts/run.js) ![Icon](assets/icon.png)\n",
+        options.main ??
+          "---\nname: initial-source\ndescription: Initial complete member\nlicense: MIT\n---\n\n# Initial\n\n[Guide](references/a.md) [Script](scripts/run.js) ![Icon](assets/icon.png)\n",
       ),
       mode: "100644" as const,
     },
@@ -78,7 +90,8 @@ export function fixture() {
       bytes: encode("#!/usr/bin/env node\nconsole.log('original')\n"),
       mode: "100755" as const,
     },
-  ]
+    ...extraFiles,
+  ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   const revisions = new Map<string, SourceSnapshot["members"][number]["portable"]["files"]>()
   let providerReads = 0
   const client = HttpClient.make((request, url) =>
@@ -98,7 +111,7 @@ export function fixture() {
       )
     }),
   )
-  const f = sharedCreateFixture({ httpClient: client })
+  const f = sharedCreateFixture({ httpClient: client, ...options })
   const props = sourceDefinitionPropertiesFor(library, input)
   const source: {
     object: string

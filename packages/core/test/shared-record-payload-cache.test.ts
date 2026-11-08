@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { gzipSync } from "node:zlib"
 import { Effect } from "effect"
 import { property } from "../src/model.ts"
 import {
@@ -42,6 +43,70 @@ const cached = <A, E, R>(effect: Effect.Effect<A, E, R>, selectedScope = scope) 
   withSharedRecordPayloadCache(effect, selectedScope)
 
 describe("consumer-only verified retained Record payload reuse", () => {
+  test("large compressed creation metadata caches its complete logical envelope and reuses only verified headers", async () => {
+    const f = sharedSnapshotFixture({ fileCount: 1 })
+    const fixed = {
+      version: 1,
+      kind: "git",
+      files: Array.from({ length: 407 }, (_, index) => ({
+        path: `complete/${index}/${"retained-path-".repeat(12)}`,
+        sha256: digest(`file-${index}`),
+        git_oid: digest(`blob-${index}`).slice(0, 40),
+        bytes: 42,
+        mode: "100644",
+      })),
+    }
+    const large = {
+      version: 1,
+      kind: "skill_create_manifest",
+      source_projection: { version: 1, binding: fixed, local: { baseline: fixed } },
+    }
+    const canonical = canonicalSharedJson({
+      version: 1,
+      operation_id: "large-original",
+      payload: large,
+    })
+    expect(Buffer.byteLength(canonical)).toBeGreaterThan(180 * 1024)
+    f.records.clear()
+    f.seedFact(large, "operation", "large-manifest", "large-manifest", "large-original")
+    const row = [...f.records.values()][0]!
+    property(row.properties).payload = rich(
+      "payload",
+      JSON.stringify({
+        version: 2,
+        encoding: "gzip-base64",
+        bytes: Buffer.byteLength(canonical),
+        data: gzipSync(canonical).toString("base64"),
+      }),
+    )
+    const readLarge = () =>
+      cached(
+        querySharedRecords(library, {
+          skillPageId: skillPage,
+          kind: "operation",
+          entityId: "large-manifest",
+          recordId: "large-manifest",
+          payloadContainsBody: true,
+        }),
+      )
+    const original = await f.run(readLarge())
+    expect(original[0]?.payload).toEqual(large)
+    expect(new TextDecoder().decode(f.objects.get(`objects/${digest(canonical)}`))).toBe(canonical)
+    f.clearCalls()
+    expect(await f.run(readLarge())).toEqual(original)
+    expect(f.requestMetrics().requests).toEqual({
+      notion_metadata: 1,
+      notion_body: 0,
+      notion_write: 0,
+      provider: 0,
+    })
+    expect(
+      new URL(f.calls[0]!.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
+    ).not.toContain("payload")
+    f.objects.set(`objects/${digest(canonical)}`, new TextEncoder().encode("corrupt logical bytes"))
+    await expect(f.run(readLarge())).rejects.toMatchObject({ code: "STATE_CORRUPT" })
+  })
+
   test("defaults remain full reads and cache hits still query metadata without Payload", async () => {
     const f = setup()
     await f.run(read())

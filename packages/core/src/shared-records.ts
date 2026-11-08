@@ -2,6 +2,13 @@ import { Context, Crypto, Effect, Option, Schema } from "effect"
 import { decode, fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library.ts"
+import {
+  decodeSharedRecordStorage,
+  encodeSharedRecordStorage,
+  parseSharedRecordJson,
+  SHARED_FACT_ENVELOPE_BYTES,
+  SHARED_FIXED_MANIFEST_BYTES,
+} from "./shared-record-codec.ts"
 import { sha256, Store } from "./store.ts"
 
 export const SharedRecordKindSchema = Schema.Literals([
@@ -139,7 +146,6 @@ const fields: readonly Field[] = [
   "Payload",
   "Skill",
 ]
-const maxPayloadBytes = 64 * 1024
 const controls = /[\u0000-\u001f\u007f-\u009f]/u
 const EnvelopeSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -249,7 +255,18 @@ export function canonicalSharedJson(value: unknown): string {
   return renderJson(jsonValue(value, new Set(), 0))
 }
 
-function boundedEnvelope(value: unknown) {
+/** Codec routing only; source/create/history owners validate their complete domain schemas. */
+function isFixedManifest(kind: SharedRecordKind | undefined, payload: SharedJson): boolean {
+  const value = property(payload)
+  if (value.version !== 1) return false
+  if (kind === "source") return value.kind === "git"
+  if (kind === "snapshot") return value.kind === "fixed_snapshot"
+  if (kind !== "operation" || value.kind !== "skill_create_manifest") return false
+  const projection = property(value.source_projection)
+  return projection.version === 1 && property(projection.binding).kind === "git"
+}
+
+function boundedEnvelope(value: unknown, kind?: SharedRecordKind) {
   const raw = object(value, "Record envelope")
   if (
     Object.keys(raw).length !== 3 ||
@@ -262,18 +279,26 @@ function boundedEnvelope(value: unknown) {
   const operationId = identifier(envelope.operation_id, "Operation ID")
   const payload = jsonValue(envelope.payload, new Set(), 0)
   const canonical = canonicalSharedJson({ version: 1, operation_id: operationId, payload })
+  const maxPayloadBytes = isFixedManifest(kind, payload)
+    ? SHARED_FIXED_MANIFEST_BYTES
+    : SHARED_FACT_ENVELOPE_BYTES
   if (new TextEncoder().encode(canonical).byteLength > maxPayloadBytes)
     throw fail(
       "SHARED_RECORD_TOO_LARGE",
-      "Shared record envelopes cannot exceed 64 KiB; store large objects separately.",
+      `Shared logical record envelopes cannot exceed ${maxPayloadBytes / 1024} KiB; store large objects separately.`,
       { max_bytes: maxPayloadBytes },
     )
   return { operationId, payload, canonical }
 }
 
 /** Preflight the exact envelope before callers persist a dispatch receipt or send a write. */
-export function validateSharedRecordEnvelope(operationId: string, payload: unknown): void {
-  boundedEnvelope({ version: 1, operation_id: operationId, payload })
+export function validateSharedRecordEnvelope(
+  operationId: string,
+  payload: unknown,
+  kind?: SharedRecordKind,
+): void {
+  const envelope = boundedEnvelope({ version: 1, operation_id: operationId, payload }, kind)
+  encodeSharedRecordStorage(envelope.canonical)
 }
 
 function fieldIds(library: SharedLibrary): Readonly<Record<Field, string>> {
@@ -428,16 +453,10 @@ function decodeHeader(
   }
 }
 
-function recordFromEnvelope(header: RecordHeader, encoded: string) {
-  if (new TextEncoder().encode(encoded).byteLength > maxPayloadBytes)
-    throw fail("SHARED_RECORD_TOO_LARGE", "Stored shared record payload exceeds 64 KiB.")
-  let envelope: unknown
-  try {
-    envelope = JSON.parse(encoded)
-  } catch {
-    throw invalid("Record Payload must be valid JSON.")
-  }
-  const parsed = boundedEnvelope(envelope)
+function recordFromParsedEnvelope(
+  header: RecordHeader,
+  parsed: ReturnType<typeof boundedEnvelope>,
+) {
   const common = {
     page_id: header.page_id,
     record_id: header.record_id,
@@ -452,6 +471,36 @@ function recordFromEnvelope(header: RecordHeader, encoded: string) {
       ? { ...common, kind: header.kind === "archive" ? "archive" : "profile", skill_page_id: null }
       : { ...common, skill_page_id: header.skill_page_id }
   return { canonical: parsed.canonical, record }
+}
+
+function parseStoredEnvelope(kind: SharedRecordKind, encoded: string) {
+  const stored = decodeSharedRecordStorage(
+    encoded,
+    kind === "source" || kind === "snapshot" || kind === "operation",
+  )
+  const parsed = boundedEnvelope(stored.envelope, kind)
+  if (stored.compressed && !isFixedManifest(kind, parsed.payload))
+    throw invalid("Only complete fixed manifests may use compressed storage.")
+  return parsed
+}
+
+/** Compare original immutable requests by their verified logical envelope, not codec bytes. */
+export function canonicalSharedRecordEnvelope(kind: SharedRecordKind, encoded: string): string {
+  return parseStoredEnvelope(kind, encoded).canonical
+}
+
+function recordFromEnvelope(header: RecordHeader, encoded: string) {
+  return recordFromParsedEnvelope(header, parseStoredEnvelope(header.kind, encoded))
+}
+
+/** Cached objects are already checksum-bound logical envelopes, never remote wire payloads. */
+function recordFromCachedEnvelope(header: RecordHeader, encoded: string) {
+  if (new TextEncoder().encode(encoded).length > SHARED_FIXED_MANIFEST_BYTES)
+    throw fail("SHARED_RECORD_TOO_LARGE", "Cached shared record exceeds its logical limit.")
+  return recordFromParsedEnvelope(
+    header,
+    boundedEnvelope(parseSharedRecordJson(encoded), header.kind),
+  )
 }
 
 function decodeRecord(rawValue: unknown, library: SharedLibrary, selected: SelectedRecords) {
@@ -722,7 +771,7 @@ function queryCachedRecordPayloads(
           fail("STATE_CORRUPT", "A cached Record envelope failed checksum validation."),
         )
       const parsed = yield* checked(() =>
-        recordFromEnvelope(
+        recordFromCachedEnvelope(
           row.header,
           new TextDecoder("utf-8", { fatal: true }).decode(bytes.success),
         ),
@@ -944,12 +993,12 @@ function appendRecord(
       const skillPageId =
         input.libraryProfile === true ? null : notionId(input.skillPageId, "Skill page ID")
       const kind = decode(SharedRecordKindSchema, input.kind)
-      const envelope = boundedEnvelope({
-        version: 1,
-        operation_id: input.operationId,
-        payload: input.payload,
-      })
-      return { ids, recordId, entityId, skillPageId, kind, ...envelope }
+      const envelope = boundedEnvelope(
+        { version: 1, operation_id: input.operationId, payload: input.payload },
+        kind,
+      )
+      const storage = encodeSharedRecordStorage(envelope.canonical)
+      return { ids, recordId, entityId, skillPageId, kind, storage, ...envelope }
     })
     const hash = yield* sha256(prepared.canonical)
     const expected: Omit<AnySharedRecord, "page_id"> = {
@@ -1015,7 +1064,7 @@ function appendRecord(
             [prepared.ids.Kind]: { select: { name: prepared.kind } },
             [prepared.ids["Entity ID"]]: rich(prepared.entityId),
             [prepared.ids.Hash]: rich(hash),
-            [prepared.ids.Payload]: rich(prepared.canonical),
+            [prepared.ids.Payload]: rich(prepared.storage),
             [prepared.ids.Skill]: {
               relation: prepared.skillPageId === null ? [] : [{ id: prepared.skillPageId }],
             },

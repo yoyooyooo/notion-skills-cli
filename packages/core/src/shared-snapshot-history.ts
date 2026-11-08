@@ -18,12 +18,12 @@ import {
   appendSharedRecord,
   canonicalSharedJson,
   querySharedRecords,
+  validateSharedRecordEnvelope,
   type SharedRecord,
 } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 
 export const SHARED_HISTORY_CHUNK_BYTES = 32 * 1024
-const MAX_RECORD_BYTES = 64 * 1024
 const ShaSchema = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))
 const ChunkSchema = Schema.Struct({
   object_id: Schema.String,
@@ -96,13 +96,15 @@ function checked<A>(action: () => A): Effect.Effect<A, SkillsError> {
 const compare = (left: string, right: string) => (left < right ? -1 : left > right ? 1 : 0)
 const operationId = (id: string) => `retain-${id}`
 
-function assertEnvelope(id: string, payload: unknown): void {
-  const envelope = canonicalSharedJson({ version: 1, operation_id: operationId(id), payload })
-  if (new TextEncoder().encode(envelope).byteLength > MAX_RECORD_BYTES) {
+function assertEnvelope(id: string, payload: unknown, kind: "snapshot" | "object"): void {
+  try {
+    validateSharedRecordEnvelope(operationId(id), payload, kind)
+  } catch (error) {
+    if (!(error instanceof SkillsError) || error.code !== "SHARED_RECORD_TOO_LARGE") throw error
     throw fail(
       "SHARED_HISTORY_TOO_LARGE",
       "The complete history manifest exceeds the supported shared record size; it cannot be truncated.",
-      { max_bytes: MAX_RECORD_BYTES },
+      error.details,
     )
   }
 }
@@ -233,7 +235,7 @@ export function validateSharedSnapshotManifest(
         throw fail("SHARED_HISTORY_SCOPE", "The historical manifest belongs to another Skill.")
       }
       const chunks = manifestStructure(library, manifest)
-      assertEnvelope(pinId, manifest)
+      assertEnvelope(pinId, manifest, "snapshot")
       return chunks
     })
     if (pinId !== `snapshot-${yield* sha256(canonicalSharedJson(manifest))}`) {
@@ -262,7 +264,7 @@ function verifiedObject(input: unknown, chunk: Chunk) {
           "The historical object has different content metadata from its frozen reference.",
         )
       }
-      assertEnvelope(chunk.object_id, payload)
+      assertEnvelope(chunk.object_id, payload, "object")
       return decodeBytes(payload)
     })
     if ((yield* sha256(bytes)) !== chunk.sha256)
@@ -394,7 +396,7 @@ export function prepareSharedSnapshotHistory(library: SharedLibrary, input: Snap
             return yield* Effect.fail(
               invalid("An exact-byte identity names different original bytes."),
             )
-          yield* checked(() => assertEnvelope(objectId, payload))
+          yield* checked(() => assertEnvelope(objectId, payload, "object"))
           objects.set(objectId, { object_id: objectId, payload })
           chunks.push({ object_id: objectId, sha256: hash, bytes: part.length })
         }
@@ -434,7 +436,7 @@ export function prepareSharedSnapshotHistory(library: SharedLibrary, input: Snap
     const pinId = `snapshot-${yield* sha256(canonicalSharedJson(manifest))}`
     yield* checked(() => {
       manifestStructure(library, manifest)
-      assertEnvelope(pinId, manifest)
+      assertEnvelope(pinId, manifest, "snapshot")
     })
     return {
       version: 1,

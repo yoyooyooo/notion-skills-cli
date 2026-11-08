@@ -430,7 +430,7 @@ export interface SharedCreateInput {
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: SharedNotionMarkdownVersion = 8,
+  projectionVersion: SharedNotionMarkdownVersion = 9,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable
@@ -1022,7 +1022,13 @@ export function makeSharedCreatePlan(
     }
     yield* createChecked(() => {
       Schema.decodeUnknownSync(SharedCreatePlanSchema)(plan, { onExcessProperty: "error" })
-      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan))
+      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan), "operation")
+      if (plan.source_projection?.version === 1)
+        validateSharedRecordEnvelope(
+          `register-${plan.source_projection.binding.source_id}`,
+          plan.source_projection.binding,
+          "source",
+        )
       for (const file of files) {
         validateSharedRecordEnvelope(
           `retain-input-${file.input.sha256}`,
@@ -1089,7 +1095,7 @@ export function makeSharedMigrationCreatePlan(
     const plan: SharedCreatePlan = { ...fields, operation_id: `skill-create-${digest}` }
     yield* createChecked(() => {
       Schema.decodeUnknownSync(SharedCreatePlanSchema)(plan, { onExcessProperty: "error" })
-      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan))
+      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan), "operation")
       for (const file of files) {
         validateSharedRecordEnvelope(
           `retain-input-${file.input.sha256}`,

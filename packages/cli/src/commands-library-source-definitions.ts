@@ -1,3 +1,4 @@
+import { sourceRecoveryCommand } from "./commands-library-source-recovery.ts"
 import {
   attachSourceLibrary,
   initializeSourceLibrary,
@@ -427,6 +428,7 @@ export const librarySourceDefinitionsCommand = defineCommand("sources").pipe(
     sourceAdmitCommand,
     sourceAdmitApplyCommand,
     sourceAdmitReconcileCommand,
+    sourceRecoveryCommand,
     sourceMemberPrepareCommand,
     sourceMemberApplyCommand,
     sourceMemberReconcileCommand,

@@ -145,7 +145,7 @@ describe("native shared creation", () => {
     })
     const plan = await f.run(prepareSharedCreate(createLibrary, { portable: input }))
     for (const file of plan.files) {
-      expect(file.projection.version).toBe(8)
+      expect(file.projection.version).toBe(9)
       const expected = responses.get(sharedNotionMarkdownWire(file.projection))
       if (expected === undefined) throw new Error("Missing independent native readback")
       expect(file.projection.markdown).toBe(expected)

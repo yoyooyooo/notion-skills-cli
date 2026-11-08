@@ -578,7 +578,7 @@ export function prepareSourceRefreshFromSnapshot(
       plan_id: `source-refresh-${yield* sha256(canonicalSharedJson(contents))}`,
     }
     yield* sourceChecked(() => {
-      validateSharedRecordEnvelope(`register-${fixed.source_id}`, fixed)
+      validateSharedRecordEnvelope(`register-${fixed.source_id}`, fixed, "source")
       validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
     })
     return plan
@@ -712,7 +712,7 @@ function prepareRetainedSourceRefreshFromSnapshot(
       plan_id: `source-refresh-${yield* sha256(canonicalSharedJson(contents))}`,
     } satisfies RetainedSourceRefreshPlan
     yield* sourceChecked(() => {
-      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, plan.bundle)
+      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, plan.bundle, "snapshot")
       validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
     })
     return plan
@@ -773,14 +773,14 @@ export function validateSourceRefresh(library: SharedLibrary, input: unknown) {
           ),
         )
       yield* sourceChecked(() => {
-        validateSharedRecordEnvelope(`register-${fixed.source_id}`, fixed)
+        validateSharedRecordEnvelope(`register-${fixed.source_id}`, fixed, "source")
         validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
       })
       return { kind: "git" as const, plan }
     }
     const bundle = yield* validateRetainedSource(library, plan.bundle, plan.target_page_id)
     yield* sourceChecked(() => {
-      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, bundle)
+      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, bundle, "snapshot")
       validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
     })
     const bytes = Buffer.from(plan.archive_base64, "base64")

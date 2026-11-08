@@ -162,6 +162,14 @@ The public development metadata example was `https://github.com/anthropics/skill
 
 ## SS08 — Exact shared archive and empty-state restore
 
+### Complete fixed manifests larger than one v1 envelope
+
+Exercise the full 397/407-path Git member and its C1/local-N1/C2 creation input. Keep every path, byte hash, Git blob identity, executable mode and local baseline; reducing the tree does not satisfy this case. Source-bound creation can contain both complete Git bindings, so a larger plain rich-text property alone is insufficient.
+
+For fixed Git source facts, source-bound create manifests and fixed snapshot manifests only, verify the version-2 gzip/base64 storage envelope against the unchanged canonical version-1 logical envelope. The logical envelope is bounded at 1 MiB and the encoded property at 180 KiB; each rich-text element stays within 2000 UTF-16 units and the array within 100 elements. Hashes, Record IDs, operation IDs, one original POST and read-only unknown-outcome reconciliation retain their existing meaning. Plain v1 envelopes, ordinary native creation/apply, graph releases, observation plans, byte objects and file events keep their 64 KiB bound.
+
+Require red/green cases for complete source creation and cold snapshot restore, canonical-cache reuse, original-record reconciliation, unsupported kind/version, encoded and expanded size limits, malformed Base64/gzip, truncated data and checksum mismatch. A header-only audit must never inflate or fetch Payload. Capture exact sizes from the full real input separately from controlled test results. A source test is not real Notion or installed CLI/SDK acceptance.
+
 Start with an already complete local shared snapshot and preserve its entire manifest and file hash/length inventory:
 
 ```bash

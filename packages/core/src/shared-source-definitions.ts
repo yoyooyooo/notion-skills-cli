@@ -69,7 +69,7 @@ const SourceMutationReceiptSchema = Schema.Struct({
   acknowledged_at: Schema.Number,
   verified: Schema.Literal(true),
 })
-const SourceMutationAcknowledgementSchema = Schema.Struct({
+export const SourceMutationAcknowledgementSchema = Schema.Struct({
   version: Schema.Literal(1),
   operation_id: Schema.String,
   request_hash: Schema.String,

@@ -140,6 +140,21 @@ ntn-skills ctl library sources member-reconcile ./member-decision.json --entry E
 
 `admit` 使用现有创建事务保存完整输入、建立可读 Markdown 页与资源，并验证完整目录。默认新条目保持禁用；只有准备时显式 `--enable` 才在验证后启用。已存在的相同 Source/member，包括禁用条目，不能重复创建。来源提供的 Members/Requires 不获得本库关系写权限。
 
+若旧 v1 固定 Git 接纳计划采用 v8 投影，原主页 POST 已收到持久化 ACK，却在保存创建清单前因已知的文档空白差异中断，可审阅同一原操作的有限恢复：
+
+```bash
+ntn-skills ctl library sources recovery review ./admission.json --entry ENTRY \
+  --target ORIGINAL_MAIN_PAGE_ID --output ./recovery-review.json
+ntn-skills ctl library sources recovery apply ./admission.json --entry ENTRY \
+  --review ./recovery-review.json --review-id REVIEW_ID --dry-run
+ntn-skills ctl library sources recovery apply ./admission.json --entry ENTRY \
+  --review ./recovery-review.json --review-id REVIEW_ID
+ntn-skills ctl library sources recovery reconcile ./admission.json --entry ENTRY \
+  --target ORIGINAL_MAIN_PAGE_ID
+```
+
+先检查 `review` 返回的完整决定、`review_id` 和 dry-run 写入上界，再执行原决定。首次恢复要求原凭据范围内的完整本地 journal 与匹配 ACK、原主页仍禁用、Source 与身份未变，以及完整当前正文恰好符合独立冻结的 v9 预测。恢复保留原输入、请求正文与主页，只创建原计划尚未派发的支持页，并另存恢复事实；不会修改已有正文或补造原创建结果。缺失 ACK、未知请求、人工正文变化或额外原始派发均保持待核对，不能靠换页、改计划或重试绕过。已开始的恢复再次调用只核对原结果；完成后仍须重新读取当前快照。
+
 确认上游已移除成员而要保留当前内容时，使用 `member-prepare ... --retain-removed`，与 `--member` 互斥。它只解除后续发现绑定，保留 Selected Version、自定义正文、资源、用户关系和历史 pin。明确重新绑定也不自动切换内容版本。相似名字或字节不会自动生成改名映射。
 
 完整本地 Skill 的三类导入、逐项授权与源树漂移检查见[库存审计与导入](inventory-import.md)。

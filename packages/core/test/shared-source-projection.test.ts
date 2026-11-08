@@ -10,7 +10,7 @@ import {
   reconcileSharedCreate,
   previewSharedCreate,
 } from "../src/shared-create.ts"
-import { validateSharedCreatePlan } from "../src/shared-create-model.ts"
+import { sharedCreateManifest, validateSharedCreatePlan } from "../src/shared-create-model.ts"
 import { FileEventSchema, resolveFileState } from "../src/shared-file-state.ts"
 import { canonicalSharedJson, querySharedRecords } from "../src/shared-records.ts"
 import { querySharedSkillIndex } from "../src/shared-skill-index.ts"
@@ -18,6 +18,43 @@ import { fixture, library, ids } from "./shared-source-projection-fixture.ts"
 import { id, rich } from "./shared-snapshot-fixture.ts"
 
 describe("initial fixed-source native projections", () => {
+  test("a complete 407-path source is prepared, created and reconstructed without dropping raw resources", async () => {
+    const extras = Array.from({ length: 402 }, (_, index) => ({
+      path:
+        index < 33
+          ? `references/complete-${String(index).padStart(3, "0")}.md`
+          : `scripts/complete/${String(index).padStart(3, "0")}/${"kept-path-".repeat(5)}.ts`,
+      bytes: new TextEncoder().encode(
+        index < 33
+          ? `# Complete ${index}\n\nOriginal instructions.\n`
+          : `// Complete unexecuted source resource ${index}\n`,
+      ),
+      mode: index % 2 === 0 ? ("100644" as const) : ("100755" as const),
+    }))
+    const f = fixture(extras)
+    const plan = await f.prepare()
+    expect(plan.source_projection.binding.files).toHaveLength(407)
+    expect(plan.files).toHaveLength(35)
+    expect(
+      new TextEncoder().encode(canonicalSharedJson(sharedCreateManifest(plan))).length,
+    ).toBeGreaterThan(64 * 1024)
+    expect(await f.run(validateSharedCreatePlan(plan))).toEqual(plan)
+    expect(f.writes()).toHaveLength(0)
+    const result = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    const restored = await f.run(
+      loadSharedCreatePlan(library, {
+        skillPageId: result.skill_page_id,
+        operationId: plan.operation_id,
+      }),
+    )
+    expect(restored).toEqual(plan)
+    expect(restored.source_projection?.version).toBe(1)
+    expect(f.nativeCreates()).toHaveLength(35)
+    f.clear()
+    expect((await f.run(reconcileSharedCreate(library, plan))).reused).toBe(true)
+    expect(f.writes()).toHaveLength(0)
+  })
+
   test("the complete resource manifest validates native links while only Markdown receives readable pages", async () => {
     const f = fixture(),
       plan = await f.prepare()

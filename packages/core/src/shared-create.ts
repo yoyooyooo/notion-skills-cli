@@ -61,6 +61,7 @@ import {
   type SharedCreateBinding as Binding,
 } from "./shared-create-outcome.ts"
 import { completedSharedCreateRecovery } from "./shared-create-recovery-completion.ts"
+import { completedSharedCreatePrefixRecovery } from "./shared-create-recovery-prefix-completion.ts"
 import { saveSharedCreateOwnership } from "./shared-create-ownership.ts"
 import {
   validateRetainedMigrationConversion,
@@ -1505,16 +1506,9 @@ export function executeSharedCreate(
     const api = dispatch.api,
       main = plan.files.find((file) => file.path === plan.entrypoint)!
     return yield* Effect.gen(function* () {
-      const raw = yield* api.request(
-        "v1/pages",
-        {
-          parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
-          properties: recordProperties(plan),
-          markdown: sharedNotionMarkdownWire(main.projection),
-          markdown_version: "v2",
-        },
-        { method: "POST" },
-      )
+      const raw = yield* api.request("v1/pages", sharedCreateMainRequest(library, plan), {
+        method: "POST",
+      })
       skillPage = yield* createChecked(() => pageReceipt(raw))
       const resolved = yield* resolveSharedCreateSource(plan, skillPage),
         facts = resolved.facts
@@ -1943,6 +1937,16 @@ export function loadPendingSharedCreates(
         }))
       )
         continue
+      if (
+        terminal === undefined &&
+        (yield* completedSharedCreatePrefixRecovery(library, {
+          skillPageId: input.skillPageId,
+          originalManifestHeader: header,
+          events: input.events,
+          headers,
+        }))
+      )
+        continue
       pending.push(
         yield* loadSharedCreatePlan(library, {
           skillPageId: input.skillPageId,
@@ -1952,6 +1956,41 @@ export function loadPendingSharedCreates(
     }
     return pending
   })
+}
+
+/** Recovery reuses the original schema, identity, membership and Source guards. */
+export function verifySharedCreateRecoveryScope(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  page: string,
+) {
+  return Effect.gen(function* () {
+    yield* verifyLibrary(library, plan)
+    const records = yield* inventory(library, plan.name)
+    const found = yield* createChecked(() => checkInventory(plan, records))
+    if (found?.record.locator.page_id !== page)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_RECOVERY_REQUIRED",
+          "The original stable Skill has another current allocation.",
+        ),
+      )
+    yield* assertSourceProjectionDefinition(library, plan, page)
+  })
+}
+export function sharedCreateMainRequest(library: SharedLibrary, plan: SharedCreatePlan) {
+  const main = plan.files.find((file) => file.path === plan.entrypoint)!
+  return {
+    parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
+    properties: recordProperties(plan),
+    markdown: sharedNotionMarkdownWire(main.projection),
+    markdown_version: "v2",
+  }
+}
+export {
+  manifestRecord as retainSharedCreateManifest,
+  retainInputs as retainSharedCreateInputs,
+  verifyIndex as verifySharedCreateRecoveryIndex,
 }
 
 /** Public native creation entry. Existing shared pages always use other operations. */

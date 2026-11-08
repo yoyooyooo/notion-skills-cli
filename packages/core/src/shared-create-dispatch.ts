@@ -5,6 +5,7 @@ import type { SharedLibrary } from "./shared-library-model.ts"
 import { guardedSourceMutation, sourceField } from "./shared-source-definitions.ts"
 import {
   canonicalSharedJson,
+  canonicalSharedRecordEnvelope,
   querySharedRecords,
   SharedRecordKindSchema,
 } from "./shared-records.ts"
@@ -104,7 +105,8 @@ function observeMutation(
         row.entity_id !== text(property(props[ids["Entity ID"]!]).rich_text) ||
         row.kind !== property(property(props[ids.Kind!]).select).name ||
         row.hash !== text(property(props[ids.Hash!]).rich_text) ||
-        envelope !== text(property(props[ids.Payload!]).rich_text)
+        envelope !==
+          canonicalSharedRecordEnvelope(kind, text(property(props[ids.Payload!]).rich_text))
       )
         return yield* Effect.fail(
           fail(

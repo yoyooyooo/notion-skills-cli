@@ -11,7 +11,7 @@ test("v8 predicts the independently captured native page-link URL without changi
   const observed =
     "# Owned direct HTTP verification\n\nAH564\\_83d414ee0adb40009931b792a1658aa0\\_WRITTEN\n\n[Supporting file](https://app.notion.com/p/40d5636c236e8164b3a0f4f89c798759)"
   const prior = projectSharedNotionMarkdown(input, { version: 7 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 8 })
   expect(current.version).toBe(8)
   expect(current.markdown).toBe(observed)
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(prior))
@@ -24,7 +24,7 @@ test("v8 predicts the independently captured native page-link URL without changi
 test("v8 leaves code, non-Notion links and unobserved URL forms unchanged", () => {
   const target = "https://www.notion.so/40d5636c236e8164b3a0f4f89c798759"
   const input = `\`[code](${target})\`\n\n\`\`\`md\n[code](${target})\n\`\`\`\n\n[external](https://example.com/a) [query](${target}?x=1) [fragment](${target}#section)`
-  expect(projectSharedNotionMarkdown(input).markdown).toBe(
+  expect(projectSharedNotionMarkdown(input, { version: 8 }).markdown).toBe(
     projectSharedNotionMarkdown(input, { version: 7 }).markdown,
   )
 })

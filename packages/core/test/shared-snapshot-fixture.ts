@@ -8,7 +8,7 @@ import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
-import { canonicalSharedJson } from "../src/shared-records.ts"
+import { canonicalSharedJson, type SharedRecordKind } from "../src/shared-records.ts"
 import { openSharedSnapshot, type FixedSharedSource } from "../src/shared-snapshot.ts"
 import { createRequestMetrics } from "../src/request-metrics.ts"
 
@@ -420,7 +420,7 @@ export function sharedSnapshotFixture(
     )
   const seedFact = (
     payload: Record<string, unknown>,
-    kind: "file_event" | "object",
+    kind: Exclude<SharedRecordKind, "profile" | "archive">,
     entityId: string,
     recordId: string,
     operationId = recordId,

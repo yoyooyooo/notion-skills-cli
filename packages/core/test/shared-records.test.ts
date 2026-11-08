@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
+import { gzipSync } from "node:zlib"
 import { Crypto, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { fail, property, SkillsError, text } from "../src/model.ts"
@@ -12,7 +13,10 @@ import {
   querySharedArchiveRecords,
   querySharedProfileRecords,
   querySharedRecords,
+  validateSharedRecordEnvelope,
   type AppendSharedRecordInput,
+  type SharedJson,
+  type SharedRecordKind,
 } from "../src/shared-records.ts"
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
@@ -131,6 +135,186 @@ function client(responses: readonly unknown[]) {
 }
 
 describe("append-only shared Records", () => {
+  test("large fixed manifests use one compressed record while keeping their canonical hash and original reconciliation", async () => {
+    const binding = {
+      version: 1,
+      kind: "git",
+      source_id: `source-${digest("complete tree")}`,
+      url: "https://github.com/example/complete-tree",
+      commit: "a".repeat(40),
+      root: "skills/complete",
+      tree: "b".repeat(40),
+      files: Array.from({ length: 407 }, (_, index) => ({
+        path: `scripts/${String(index).padStart(4, "0")}/${"complete-path-".repeat(7)}.ts`,
+        source_path: `skills/complete/scripts/${String(index).padStart(4, "0")}/${"complete-path-".repeat(7)}.ts`,
+        git_oid: digest(`blob-${index}`).slice(0, 40),
+        sha256: digest(`bytes-${index}`),
+        bytes: 73,
+        mode: index % 2 === 0 ? "100644" : "100755",
+      })),
+    }
+    const manifests: readonly { readonly kind: SharedRecordKind; readonly payload: SharedJson }[] =
+      [
+        { kind: "source" as const, payload: binding },
+        {
+          kind: "operation" as const,
+          payload: {
+            version: 1,
+            kind: "skill_create_manifest",
+            source_projection: {
+              version: 1,
+              binding,
+              local: { baseline: { ...binding, commit: "c".repeat(40) }, manifest: binding.files },
+            },
+          },
+        },
+        {
+          kind: "snapshot" as const,
+          payload: { version: 1, kind: "fixed_snapshot", files: binding.files },
+        },
+      ]
+    for (const { kind, payload } of manifests) {
+      const canonical = canonicalSharedJson({ version: 1, operation_id: "op-1", payload })
+      expect(Buffer.byteLength(canonical)).toBeGreaterThan(64 * 1024)
+      const encoded = JSON.stringify({
+        version: 2,
+        encoding: "gzip-base64",
+        bytes: Buffer.byteLength(canonical),
+        data: gzipSync(canonical, { level: 9 }).toString("base64"),
+      })
+      const stored = row({ kind, encoded, hash: digest(canonical) })
+      const api = client([page([]), stored, page([stored]), page([stored])])
+      const input = { ...defaultInput, kind, payload }
+      const created = await api.run(appendSharedRecord(library, input))
+      expect(created.payload).toEqual(payload)
+      expect(created.hash).toBe(digest(canonical))
+      expect(await api.run(querySharedRecords(library, { skillPageId: skillId, kind }))).toEqual([
+        created,
+      ])
+      expect(await api.run(appendSharedRecord(library, { ...input, mode: "reconcile" }))).toEqual(
+        created,
+      )
+      const writes = api.calls.filter((call) => call.path === "v1/pages")
+      expect(writes).toHaveLength(1)
+      expect(Buffer.byteLength(JSON.stringify(writes[0]?.body))).toBeLessThan(500_000)
+      const chunks = property(
+        property(property(writes[0]?.body).properties)[propertyIds.Payload],
+      ).rich_text
+      if (!Array.isArray(chunks)) throw new Error("Missing compressed payload")
+      expect(chunks.length).toBeLessThanOrEqual(100)
+      expect(
+        chunks.every((chunk) => String(property(property(chunk).text).content).length <= 2000),
+      ).toBe(true)
+      expect(Buffer.byteLength(text(chunks))).toBeLessThanOrEqual(180 * 1024)
+      expect(JSON.parse(text(chunks))).toMatchObject({ version: 2, encoding: "gzip-base64" })
+    }
+  })
+
+  test("compression cannot enlarge ordinary facts, untyped preflight or an unsupported record kind", async () => {
+    for (const payload of [
+      { version: 1, kind: "skill_create_manifest", files: [], body: "x".repeat(70_000) },
+      { version: 1, kind: "file_observation", body: "x".repeat(70_000) },
+      { version: 1, kind: "skill_apply", body: "x".repeat(70_000) },
+      { version: 1, kind: "graph_release", nodes: "x".repeat(70_000) },
+    ]) {
+      const api = client([])
+      await expect(
+        api.run(appendSharedRecord(library, { ...defaultInput, kind: "operation", payload })),
+      ).rejects.toMatchObject({ code: "SHARED_RECORD_TOO_LARGE" })
+      expect(api.calls).toHaveLength(0)
+    }
+    const payload = { version: 1, kind: "fixed_snapshot", files: "x".repeat(70_000) }
+    expect(() => validateSharedRecordEnvelope("op-1", payload)).toThrow()
+    const canonical = canonicalSharedJson({ version: 1, operation_id: "op-1", payload })
+    const encoded = JSON.stringify({
+      version: 2,
+      encoding: "gzip-base64",
+      bytes: Buffer.byteLength(canonical),
+      data: gzipSync(canonical).toString("base64"),
+    })
+    await expect(
+      client([page([row({ encoded, hash: digest(canonical), kind: "file_event" })])]).run(
+        querySharedRecords(library, { skillPageId: skillId }),
+      ),
+    ).rejects.toThrow()
+  })
+
+  test("compressed metadata rejects bad codecs, truncated bytes and expansion beyond its declared bound", async () => {
+    const canonical = canonicalSharedJson({
+      version: 1,
+      operation_id: "op-1",
+      payload: { version: 1, kind: "fixed_snapshot", files: "x".repeat(70_000) },
+    })
+    const valid = {
+      version: 2,
+      encoding: "gzip-base64",
+      bytes: Buffer.byteLength(canonical),
+      data: gzipSync(canonical).toString("base64"),
+    }
+    for (const payload of [
+      { ...valid, encoding: "unknown" },
+      { ...valid, data: valid.data.slice(0, -8) },
+      { ...valid, data: ` ${valid.data}` },
+      { ...valid, bytes: 100 },
+      { ...valid, bytes: 1024 * 1024 + 1 },
+      { ...valid, extra: true },
+    ]) {
+      const api = client([
+        page([
+          row({ kind: "snapshot", encoded: JSON.stringify(payload), hash: digest(canonical) }),
+        ]),
+      ])
+      await expect(api.run(querySharedRecords(library, { skillPageId: skillId }))).rejects.toThrow()
+      expect(api.calls).toHaveLength(1)
+    }
+    const api = client([])
+    await expect(
+      api.run(
+        appendSharedRecord(library, {
+          ...defaultInput,
+          kind: "snapshot",
+          payload: { version: 1, kind: "fixed_snapshot", files: "x".repeat(1024 * 1024) },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "SHARED_RECORD_TOO_LARGE" })
+    expect(api.calls).toHaveLength(0)
+  })
+
+  test("an incompressible fixed manifest fails its wire budget before dispatch and a lost compressed POST is never replayed", async () => {
+    const payload = {
+      version: 1,
+      kind: "fixed_snapshot",
+      files: Array.from({ length: 5000 }, (_, index) => ({
+        path: `file-${index}`,
+        sha256: digest(`unrelated-${index}`),
+      })),
+    }
+    const canonical = canonicalSharedJson({ version: 1, operation_id: "op-1", payload })
+    expect(Buffer.byteLength(canonical)).toBeLessThan(1024 * 1024)
+    const blocked = client([])
+    await expect(
+      blocked.run(appendSharedRecord(library, { ...defaultInput, kind: "snapshot", payload })),
+    ).rejects.toMatchObject({ code: "SHARED_RECORD_TOO_LARGE" })
+    expect(blocked.calls).toHaveLength(0)
+    const input = {
+      ...defaultInput,
+      kind: "snapshot" as const,
+      payload: { version: 1, kind: "fixed_snapshot", files: ["original metadata".repeat(5000)] },
+    }
+    const api = client([
+      page([]),
+      fail("WRITE_OUTCOME_UNKNOWN", "original response lost"),
+      page([]),
+    ])
+    await expect(api.run(appendSharedRecord(library, input))).rejects.toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+    })
+    await expect(
+      api.run(appendSharedRecord(library, { ...input, mode: "reconcile" })),
+    ).rejects.toMatchObject({ code: "SHARED_RECORD_UNRESOLVED" })
+    expect(api.calls.filter((call) => call.path === "v1/pages")).toHaveLength(1)
+  })
+
   test("library archives retain exact envelopes with no fake Skill and remain separate from Profiles", async () => {
     const archive = row({ kind: "archive", skillIds: [] })
     const api = client([page([]), archive, page([archive]), page([])])

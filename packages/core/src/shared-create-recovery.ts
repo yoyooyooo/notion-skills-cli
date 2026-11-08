@@ -1,3 +1,8 @@
+import {
+  reviewSharedCreatePrefixRecovery,
+  applySharedCreatePrefixRecovery,
+  reconcileSharedCreatePrefixRecovery,
+} from "./shared-create-recovery-prefix.ts"
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.ts"
@@ -373,11 +378,25 @@ function observeExisting(original: Original, files: readonly RecoveryFile[], rec
 }
 
 /** A new current observation authorizes only a separately reviewed continuation. */
-export function reviewSharedCreateRecovery(input: {
+type RecoverySelection = {
   readonly entry: string
   readonly operationId: string
   readonly target: string
-}) {
+}
+export function reviewSharedCreateRecovery(
+  input: RecoverySelection & { readonly plan: unknown },
+): ReturnType<typeof reviewSharedCreatePrefixRecovery>
+export function reviewSharedCreateRecovery(
+  input: RecoverySelection & { readonly plan?: undefined },
+): ReturnType<typeof reviewMigrationCreateRecovery>
+export function reviewSharedCreateRecovery(input: RecoverySelection & { readonly plan?: unknown }) {
+  return Effect.gen(function* () {
+    if (input.plan !== undefined)
+      return yield* reviewSharedCreatePrefixRecovery({ ...input, plan: input.plan })
+    return yield* reviewMigrationCreateRecovery(input)
+  })
+}
+function reviewMigrationCreateRecovery(input: RecoverySelection) {
   return Effect.gen(function* () {
     const original = yield* originalFacts(input.entry, input.operationId, input.target)
     const files = yield* makeSharedCreateRecoveryFiles(original.plan)
@@ -889,13 +908,25 @@ function retainRecoveryTerminal(
 
 /** An existing dispatch always reconciles. It never restarts its page writes. */
 type RecoveryApplyInput = {
+  readonly entry?: string
   readonly review: unknown
   readonly reviewId: string
-  readonly migrationInput: unknown
+  readonly migrationInput?: unknown
+  readonly plan?: unknown
   readonly dryRun?: boolean
 }
+export function applySharedCreateRecovery(
+  input: RecoveryApplyInput & { readonly plan: unknown },
+): ReturnType<typeof applySharedCreatePrefixRecovery>
+export function applySharedCreateRecovery(
+  input: RecoveryApplyInput & { readonly plan?: undefined },
+): ReturnType<typeof applyRecovery>
 export function applySharedCreateRecovery(input: RecoveryApplyInput) {
-  return applyRecovery(input, false)
+  return Effect.gen(function* () {
+    if (input.plan !== undefined)
+      return yield* applySharedCreatePrefixRecovery({ ...input, plan: input.plan })
+    return yield* applyRecovery(input, false)
+  })
 }
 
 export function applySharedCreateContinuation(input: RecoveryApplyInput) {
@@ -1278,11 +1309,22 @@ function applyRecovery(input: RecoveryApplyInput, continuing: boolean) {
 }
 
 /** Historical recovery proof only: no current body adoption and no write replay. */
-export function reconcileSharedCreateRecovery(input: {
-  readonly entry: string
-  readonly operationId: string
-  readonly target: string
-}) {
+export function reconcileSharedCreateRecovery(
+  input: RecoverySelection & { readonly plan: unknown },
+): ReturnType<typeof reconcileSharedCreatePrefixRecovery>
+export function reconcileSharedCreateRecovery(
+  input: RecoverySelection & { readonly plan?: undefined },
+): ReturnType<typeof reconcileMigrationCreateRecovery>
+export function reconcileSharedCreateRecovery(
+  input: RecoverySelection & { readonly plan?: unknown },
+) {
+  return Effect.gen(function* () {
+    if (input.plan !== undefined)
+      return yield* reconcileSharedCreatePrefixRecovery({ ...input, plan: input.plan })
+    return yield* reconcileMigrationCreateRecovery(input)
+  })
+}
+function reconcileMigrationCreateRecovery(input: RecoverySelection) {
   return Effect.gen(function* () {
     const original = yield* originalFacts(input.entry, input.operationId, input.target)
     const retained = yield* retainedRecoveryReview(original)
