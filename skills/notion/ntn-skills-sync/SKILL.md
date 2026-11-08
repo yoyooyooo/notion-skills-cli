@@ -1,7 +1,7 @@
 ---
 name: ntn-skills-sync
-description: Manage active Git/GitLab/Linear source definitions, explicitly refresh one bound Skill, and select fixed Git/HTTP/local sources or shared Profile/View defaults for a Notion Skill library, or maintain existing upstream subscriptions and local synchronization bindings. Use for source revisions, shared supply rules, local resource scopes, recurring legacy sync or interrupted operations. Keep exact identities and original plans; report each affected item.
-compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token; reads need Read content and writes need Insert/Update content. Local replacement requires supported system Trash retention.
+description: Manage Notion Skill Sources, fixed revisions and Profile/View defaults. Use for Git/GitLab/Linear definitions, refreshing a selected member, HTTP/local resource permissions or an interrupted source operation. Preserve custom Notion files, exact identities and the original operation.
+compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token; reads need Read content and writes need Insert/Update content. Local retention requires supported system Trash.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-sync
@@ -9,11 +9,11 @@ metadata:
 
 # Maintain sources and supply rules
 
-Identify the selected library and record first. A `shared_skill` locator uses shared native Source/Profile rules. Existing upstream subscriptions and local sync bindings keep their earlier workflows until explicitly migrated. One-time content edits belong to `ntn-skills-maintain`; consuming a remote workflow needs no sync binding.
+Identify the exact library and record first. Sources defines provider input; the Skill selects a fixed revision and Notion owns its metadata and custom files. Use `ntn-skills-maintain` for content edits and `ntn-skills` for consumption.
 
 ## Manage an active Source definition
 
-For the four-table shared library, use `ctl library sources`, not the retired library's `ctl sync upstream` subscription path. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
+Use `ctl library sources` to manage provider definitions. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
 
 ```bash
 ntn-skills ctl library sources list --entry LIBRARY_ENTRY
@@ -47,7 +47,7 @@ ntn-skills ctl library source select apply ./source-selection.json --entry LIBRA
 
 Current consumption uses the selected revision. Updating to a later commit requires that explicit new selection. Customized Notion files retain their whole bodies; delegate an intentional `restore-follow` to content maintenance. Name, Description, Default Context and Router Members stay native Notion metadata.
 
-Advanced HTTP/local composition accepts a fixed plan through `ctl library source composition inspect PLAN_JSON --verify` and `composition register SKILL_PAGE_ID --entry LIBRARY_ENTRY --manifest PLAN_JSON`. Consult its actual help and [source and synchronization decisions](references/synchronization.md). Local Provider bindings are explicit machine/workspace read permissions, separate from old two-way sync bindings. Machine roots and signed HTTP retrieval addresses remain machine-only. Never copy credentials or silently upload local resource bytes.
+Advanced HTTP/local composition accepts a fixed plan through `ctl library source composition inspect PLAN_JSON --verify` and `composition register SKILL_PAGE_ID --entry LIBRARY_ENTRY --manifest PLAN_JSON`. Consult its actual help and [source and synchronization decisions](references/synchronization.md). Local Provider bindings are explicit machine/workspace read permissions. Machine roots and signed HTTP retrieval addresses remain machine-only. Never copy credentials or silently upload local resource bytes.
 
 To share an exact complete local snapshot containing restricted local bytes, use `ctl library snapshot save SNAPSHOT_ID --entry LIBRARY_ENTRY --allow-local-archive` only within that archive's explicit scope. This authorizes the selected bytes once and preserves durable restrictions; restore-follow's same-named flag covers only its selected body.
 
@@ -65,30 +65,8 @@ Use `profile list` to discover IDs. When changing rules, `profile set` requires 
 
 Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence. Without a default View, use the first View in API order. Bare `list` discovers the accessible source scope; follow `next_cursor` while `has_more` is true for the complete observation. Profile/View choices do not grant access or activate workflow bodies; hosts own session selection and first-submission timing.
 
-## Maintain existing legacy bindings
-
-For an existing legacy upstream library, connect and run within the requested scope:
-
-```bash
-ntn-skills ctl sync upstream connect SOURCE --database DATABASE --root skills --name 'Team Skills'
-ntn-skills ctl sync upstream run --target SUBSCRIPTION_ID
-```
-
-Use supported `--ref`, `--include` and `--exclude` to preserve the chosen source range. Retain the returned subscription ID; repeat `--target` for a selected batch. `--all` requires every enabled subscription to be in scope. Run checks original pending work first. Legacy tracked body/resources/Name/Description follow upstream; explicit `ctl sync upstream fork` preserves a personal member. An inaccessible page is not proof of deletion.
-
-For an existing local synchronization relationship:
-
-```bash
-ntn-skills ctl sync local connect CURRENT_PAGE_ID --path /absolute/skill-directory --as release-review
-ntn-skills ctl sync local run release-review
-```
-
-A missing directory initializes from Notion; equal content establishes the baseline. For differing existing work, use only the user's chosen `--from notion` or `--from local` direction. Run preserves each binding's common baseline, checks pending work and stops on competing edits. Do not infer direction from timestamps or remove unrelated files. Generated snapshot directories remain consumption output unless the user explicitly submits selected files through normal authoring.
-
 ## Resolve the original operation
 
 Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID`; source selection uses `source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY`. For a Profile revision, repeat its complete original `profile set` arguments with `--reconcile`. These paths inspect retained original facts without replaying unknown mutations. Current property equality is insufficient proof.
 
-Legacy `ctl sync upstream/local status` inspects existing state and `check` obtains a current observation. Neither proves a successful run. Repeat the ordinary run to use its guarded original-operation recovery; advanced saved-plan review remains available when needed. Preserve exact results, operation IDs, receipts and current content. An invisible first request on another machine can remain unresolved; do not recreate it to force progress.
-
-Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details; do not treat old bindings as already retired or a source-built test as a completed migration.
+Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details.
