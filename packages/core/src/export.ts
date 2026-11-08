@@ -157,7 +157,11 @@ function materializeSnapshotPortable(snapshot: Snapshot, generated: boolean) {
             path: file.path,
           }),
         )
-      files.push({ path: file.path, bytes })
+      files.push({
+        path: file.path,
+        bytes,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
+      })
     }
     return yield* Effect.try({
       try: () => {
@@ -411,7 +415,11 @@ export function exportSkill(selectorInput: string, options: ExportOptions) {
               path: file.path,
             }),
           )
-        files.push({ path: file.path, bytes })
+        files.push({
+          path: file.path,
+          bytes,
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
+        })
       }
       skill = {
         kind: snapshot.record.kind,
@@ -484,7 +492,12 @@ export function exportPortable(
           )
         for (const file of files) {
           const old = yield* fs.readFile(path.join(destination, normalizePath(file.path)))
-          if ((yield* sha256(old)) !== (yield* sha256(file.bytes)))
+          const executable =
+            ((yield* fs.stat(path.join(destination, normalizePath(file.path)))).mode & 0o111) !== 0
+          if (
+            (yield* sha256(old)) !== (yield* sha256(file.bytes)) ||
+            (file.mode !== undefined && executable !== (file.mode === "100755"))
+          )
             return yield* Effect.fail(
               fail("OUTPUT_CONFLICT", "Existing output file differs.", {
                 path: file.path,
@@ -500,7 +513,10 @@ export function exportPortable(
             recursive: true,
             mode: 0o700,
           })
-          yield* fs.writeFile(output, file.bytes, { flag: "wx", mode: 0o600 })
+          yield* fs.writeFile(output, file.bytes, {
+            flag: "wx",
+            mode: file.mode === "100755" ? 0o700 : 0o600,
+          })
         }
       }
     }
@@ -510,6 +526,7 @@ export function exportPortable(
         path: file.path,
         bytes: file.bytes.length,
         hash: yield* sha256(file.bytes),
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
         role:
           file.path === MANIFEST
             ? "manifest"

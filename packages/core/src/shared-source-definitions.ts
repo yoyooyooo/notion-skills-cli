@@ -69,6 +69,30 @@ const SourceMutationReceiptSchema = Schema.Struct({
   acknowledged_at: Schema.Number,
   verified: Schema.Literal(true),
 })
+const SourceMutationAcknowledgementSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  operation_id: Schema.String,
+  request_hash: Schema.String,
+  response_hash: Schema.String,
+  acknowledged_at: Schema.Number,
+  response: Schema.Unknown,
+})
+function observedSourceMutation(
+  operation: string,
+  current: unknown,
+  acknowledgement?: typeof SourceMutationAcknowledgementSchema.Type,
+  completed = false,
+) {
+  return {
+    status: "observed_current" as const,
+    original_outcome: completed || acknowledgement ? ("applied" as const) : ("unknown" as const),
+    operation_id: operation,
+    result: current,
+    ...(acknowledgement === undefined
+      ? {}
+      : { response_page_id: property(acknowledgement.response).id }),
+  }
+}
 function rejectCredentials(value: unknown): void {
   if (Array.isArray(value)) {
     for (const item of value) rejectCredentials(item)
@@ -94,6 +118,19 @@ export function validateSourceDefinition(value: unknown): SourceDefinitionInput 
   if (result.description.length > 12000)
     throw fail("SOURCE_DEFINITION_TOO_LARGE", "Description exceeds 12000 characters.")
   rejectCredentials(result)
+  const interval = result.options.check_interval_ms
+  if (
+    (result.policy === "auto" && interval === undefined) ||
+    (interval !== undefined &&
+      (typeof interval !== "number" ||
+        !Number.isSafeInteger(interval) ||
+        interval < 60_000 ||
+        interval > 366 * 24 * 60 * 60 * 1000))
+  )
+    throw fail(
+      "SOURCE_INTERVAL_INVALID",
+      "Automatic checks require an explicit check_interval_ms between one minute and 366 days.",
+    )
   validateSourceSelection(result.selection)
   const adapter = result.adapter
   if (adapter.type === "git") {
@@ -160,6 +197,8 @@ export function sourceConfiguration(
     fingerprint: _fingerprint,
     status: _status,
     last_revision: _revision,
+    last_checked: _checked,
+    last_result: _result,
     ...configuration
   } = definition as SourceDefinition
   return validateSourceDefinition(configuration)
@@ -274,6 +313,8 @@ const listFields = [
   "Policy",
   "Status",
   "Last Revision",
+  "Last Checked",
+  "Last Result",
 ]
 export function listSourceDefinitions(library: SharedLibrary, sourceId?: string) {
   return Effect.gen(function* () {
@@ -293,6 +334,8 @@ export function listSourceDefinitions(library: SharedLibrary, sourceId?: string)
       policy: string
       status: string
       last_revision: string
+      last_checked: number | null
+      last_result: string
     }> = []
     const pages = new Set<string>(),
       identities = new Set<string>(),
@@ -342,6 +385,8 @@ export function listSourceDefinitions(library: SharedLibrary, sourceId?: string)
             policy: String(selected("Policy")),
             status: String(selected("Status") ?? "ready"),
             last_revision: rich("Last Revision"),
+            last_checked: sourceCheckTime(value("Last Checked")),
+            last_result: rich("Last Result"),
           }
         })
         result.push(decoded)
@@ -427,13 +472,27 @@ export function readSourceDefinition(library: SharedLibrary, selector: string) {
       last_revision: text(
         sourceField(raw, sourceTable(library).property_ids["Last Revision"]!).rich_text,
       ),
+      last_checked: yield* sourceChecked(() =>
+        sourceCheckTime(sourceField(raw, sourceTable(library).property_ids["Last Checked"]!)),
+      ),
+      last_result: text(
+        sourceField(raw, sourceTable(library).property_ids["Last Result"]!).rich_text,
+      ),
     } satisfies SourceDefinition
   })
 }
 
+function sourceCheckTime(field: Record<string, unknown>): number | null {
+  const start = property(field.date).start
+  if (start === undefined || start === null) return null
+  if (typeof start !== "string" || !Number.isFinite(Date.parse(start)))
+    throw fail("SOURCE_CHECK_TIME_INVALID", "Last Checked is not a complete timestamp.")
+  return Date.parse(start)
+}
+
 /** One local frozen dispatch per exact mutation. A repeated unknown dispatch only
  * observes current state. This is not cross-machine CAS or automatic retry. */
-export function guardedSourceMutation<R>(
+export function guardedSourceMutation<R, R2 = never>(
   library: SharedLibrary,
   input: {
     identity: string
@@ -441,6 +500,9 @@ export function guardedSourceMutation<R>(
     method: "POST" | "PATCH"
     body: unknown
     dryRun?: boolean
+    /** Original multi-stage operations may reconcile this exact mutation, never dispatch a later generation. */
+    repeat?: "never"
+    beforeDispatch?: Effect.Effect<void, SkillsError, R2>
   },
   observe: Effect.Effect<unknown | undefined, SkillsError, R>,
 ) {
@@ -464,6 +526,7 @@ export function guardedSourceMutation<R>(
     let operation = `source-op-${yield* sha256(canonicalSharedJson(request))}`
     let key = ""
     let receiptKey = ""
+    let acknowledgementKey = ""
     let frozen: { version: number; operation: string } & typeof request
     // A previously VERIFIED A->B does not forbid a later explicitly guarded
     // A->B after B->A. Unacknowledged attempts remain immutable replay barriers.
@@ -477,19 +540,61 @@ export function guardedSourceMutation<R>(
         )
       key = `${root}${operation}.json`
       receiptKey = `${root}source-receipt-${operation.slice("source-op-".length)}.json`
+      acknowledgementKey = `${root}source-ack-${operation.slice("source-op-".length)}.json`
       frozen = { version: 1, operation, ...request }
       const pending = yield* store.readJson(key, Schema.Unknown)
       const completion = yield* store.readJson(receiptKey, Schema.Unknown)
+      const acknowledged = yield* store.readJson(
+        acknowledgementKey,
+        SourceMutationAcknowledgementSchema,
+      )
       if (pending === undefined) {
-        if (completion !== undefined)
+        if (completion !== undefined || acknowledged !== undefined)
           return yield* Effect.fail(
             fail("SOURCE_OPERATION_CONFLICT", "Source completion has no original dispatch."),
           )
+        // Credential rotation cannot authorize the same frozen dispatch again.
+        // Match only its exact opaque address; other scopes' private contents
+        // and ACKs remain unreadable, so current equality is still not proof.
+        const originalAddress = new RegExp(
+          `^operations/shared-sources/[a-f0-9]{64}/${operation}\\.json$`,
+          "u",
+        )
+        if (
+          (yield* store.listKeys("operations/shared-sources/")).some(
+            (otherKey) => otherKey !== key && originalAddress.test(otherKey),
+          )
+        ) {
+          const current = yield* observe
+          if (current !== undefined) return observedSourceMutation(operation, current)
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_WRITE_UNKNOWN",
+              "This exact mutation already has an original dispatch in another local scope; observe it without repeating the request.",
+              { operation_id: operation, identity: input.identity },
+            ),
+          )
+        }
         break
       }
       if (canonicalSharedJson(pending) !== canonicalSharedJson(frozen))
         return yield* Effect.fail(
           fail("SOURCE_OPERATION_CONFLICT", "Frozen source mutation changed."),
+        )
+      if (
+        acknowledged &&
+        (acknowledged.operation_id !== operation ||
+          acknowledged.request_hash !== (yield* sha256(canonicalSharedJson(frozen))) ||
+          acknowledged.response_hash !==
+            (yield* sha256(canonicalSharedJson(acknowledged.response))) ||
+          !Number.isSafeInteger(acknowledged.acknowledged_at) ||
+          acknowledged.acknowledged_at < 0)
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_OPERATION_CONFLICT",
+            "The original acknowledged response differs from its frozen dispatch.",
+          ),
         )
       const receipt =
         completion === undefined
@@ -502,7 +607,8 @@ export function guardedSourceMutation<R>(
       if (
         receipt &&
         (receipt.operation_id !== operation ||
-          receipt.request_hash !== (yield* sha256(canonicalSharedJson(frozen))))
+          receipt.request_hash !== (yield* sha256(canonicalSharedJson(frozen))) ||
+          (acknowledged !== undefined && receipt.response_hash !== acknowledged.response_hash))
       )
         return yield* Effect.fail(
           fail(
@@ -511,14 +617,24 @@ export function guardedSourceMutation<R>(
           ),
         )
       const current = yield* observe
-      if (current !== undefined)
-        return {
-          status: "observed_current",
-          original_outcome: receipt ? "applied" : "unknown",
-          operation_id: operation,
-          result: current,
+      if (current !== undefined) {
+        // Read-only reconciliation may save local proof after the original ACK;
+        // it never invents an ACK from current equality or repeats the request.
+        if (!receipt && acknowledged) {
+          const { response: _response, ...proof } = acknowledged
+          yield* store.writeJson(receiptKey, { ...proof, verified: true })
         }
-      if (!receipt || input.method === "POST")
+        return observedSourceMutation(operation, current, acknowledged, receipt !== undefined)
+      }
+      if (!receipt && acknowledged)
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_WRITE_MISMATCH",
+            "The original request was acknowledged, but current readback differs. Preserve its response and reconcile without repeating the mutation.",
+            { operation_id: operation, identity: input.identity, acknowledged: true },
+          ),
+        )
+      if (!receipt || input.method === "POST" || input.repeat === "never")
         return yield* Effect.fail(
           fail(
             "SOURCE_WRITE_UNKNOWN",
@@ -549,6 +665,7 @@ export function guardedSourceMutation<R>(
     }
     if (input.dryRun)
       return { status: "planned", dry_run: true, operation_id: operation, request: input.body }
+    if (input.beforeDispatch !== undefined) yield* input.beforeDispatch
     yield* store.writeJson(key, frozen)
     const response = yield* api
       .request(input.path, input.body, { method: input.method })
@@ -561,6 +678,26 @@ export function guardedSourceMutation<R>(
           ),
         ),
       )
+    const acknowledgement = yield* Effect.gen(function* () {
+      const proof = {
+        version: 1 as const,
+        operation_id: operation,
+        request_hash: yield* sha256(canonicalSharedJson(frozen!)),
+        response_hash: yield* sha256(canonicalSharedJson(response)),
+        acknowledged_at: yield* Clock.currentTimeMillis,
+        response,
+      }
+      yield* store.writeJson(acknowledgementKey, proof)
+      return proof
+    }).pipe(
+      Effect.mapError((error) =>
+        fail(
+          "SOURCE_WRITE_UNKNOWN",
+          "The response could not be durably acknowledged. Preserve the original dispatch and do not repeat it.",
+          { operation_id: operation, cause_code: error.code },
+        ),
+      ),
+    )
     const current = yield* observe
     if (current === undefined)
       return yield* Effect.fail(
@@ -573,9 +710,9 @@ export function guardedSourceMutation<R>(
     yield* store.writeJson(receiptKey, {
       version: 1,
       operation_id: operation,
-      request_hash: yield* sha256(canonicalSharedJson(frozen!)),
-      response_hash: yield* sha256(canonicalSharedJson(response)),
-      acknowledged_at: yield* Clock.currentTimeMillis,
+      request_hash: acknowledgement.request_hash,
+      response_hash: acknowledgement.response_hash,
+      acknowledged_at: acknowledgement.acknowledged_at,
       verified: true,
     })
     return {

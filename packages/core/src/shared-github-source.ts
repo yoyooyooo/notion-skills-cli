@@ -13,6 +13,9 @@ export type FixedGithubFile = {
   readonly git_oid: string
   /** Uncompressed Git blob byte length declared by the complete tree. */
   readonly bytes: number
+  readonly mode?: "100644" | "100755"
+  /** Optional exact-byte identity verified during complete management acquisition. */
+  readonly sha256?: string
 }
 
 export type FixedGithubSource = {
@@ -58,6 +61,8 @@ const PersistedSourceSchema = Schema.Struct({
       source_path: Schema.String,
       git_oid: Schema.String,
       bytes: Schema.Number,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+      sha256: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
     }),
   ),
 })
@@ -205,6 +210,8 @@ export function validateFixedGithubSource(input: unknown): FixedGithubSource {
       source_path: file.source_path,
       git_oid: file.git_oid,
       bytes: file.bytes,
+      ...(file.mode === undefined ? {} : { mode: file.mode }),
+      ...(file.sha256 === undefined ? {} : { sha256: file.sha256 }),
     })
   }
   rejectFileDirectoryCollisions(files)
@@ -467,7 +474,13 @@ function selectedFiles(
         "A selected Git blob has an invalid object ID or declared size.",
       )
     }
-    files.push({ path, source_path: entry.path, git_oid: entry.sha, bytes: entry.size })
+    files.push({
+      path,
+      source_path: entry.path,
+      git_oid: entry.sha,
+      bytes: entry.size,
+      mode: entry.mode,
+    })
   }
   if (!foundRoot)
     throw fail(
@@ -588,6 +601,16 @@ export function gitBlobOid(bytes: Uint8Array): Effect.Effect<string, SkillsError
 }
 
 /** Download one inspected blob, preserve its bytes, and verify Git's SHA-1 blob identity. */
+export function assertSupportedGitBlob(bytes: Uint8Array) {
+  const prefix = new TextDecoder().decode(bytes.subarray(0, 200))
+  if (/^version https:\/\/git-lfs\.github\.com\/spec\/v1\r?\n/u.test(prefix))
+    throw fail(
+      "GITHUB_LFS_UNSUPPORTED",
+      "The fixed Git blob is an LFS pointer; its external payload is not part of this source contract.",
+    )
+}
+
+/** Download one inspected blob, preserve its bytes, and verify Git's SHA-1 blob identity. */
 export function fetchFixedGithubFile(
   source: FixedGithubSource,
   entry: FixedGithubFile,
@@ -645,6 +668,7 @@ export function fetchFixedGithubFile(
         ),
       )
     }
+    yield* checked(() => assertSupportedGitBlob(bytes))
     return bytes
   })
 }

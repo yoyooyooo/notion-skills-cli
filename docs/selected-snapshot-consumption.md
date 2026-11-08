@@ -37,9 +37,14 @@ instruction activation are not inferred from any local readiness state.
 The reader validates immutable metadata before reading selected objects.
 Existing complete snapshot JSON does not imply that all objects are still local.
 Missing selected bytes can use the existing retained manifest for the exact same
-scope, owner and pin. Restoration checks the frozen tree against the selected
-manifest and obtains only the missing requested files. Previously verified
-selected bytes can be reused.
+scope, owner and pin. New shared snapshots can also retain `shared_acquisition`:
+the original library binding, fixed source ID/revision and source path, or the
+exact retained resource manifest ID. These are retrieval locations for the one
+authoritative `Snapshot.files` directory, not a second file manifest. Acquisition
+validates current scope/library/owner access, then verifies the original selected
+hash, size and mode. It never consults the current Source selection for substitute
+bytes. Restoration obtains only missing requested files; verified selected bytes
+can be reused.
 
 Corrupt selected bytes are an integrity failure, not permission to fetch a newer
 current version or silently overwrite a bad object. Unselected objects are not
@@ -65,12 +70,16 @@ cached snapshot with valid object hashes may still contain an unresolved or
 invalid shared reference. Merely having a snapshot ID or the current generator
 marker does not establish that this gate ran.
 
-A disposable local validation receipt is recorded only after the complete tree's
-object sizes/hashes and shared references have actually passed. The receipt binds
-scope, record identity, snapshot/version and a canonical digest of the complete
-snapshot manifest, including file bindings and reference/relationship metadata.
-An explicit selective cache lookup may reuse that receipt, then verify the
-requested object bytes. Ordinary complete callers retain full object validation.
+A disposable local validation receipt binds scope, record identity,
+snapshot/version and the canonical digest of the complete snapshot manifest,
+including file bindings, frozen acquisition and reference/relationship metadata.
+It is recorded after the required object sizes/hashes and the complete logical
+reference tree pass. Optional `verified_paths` records partial byte coverage:
+all Markdown and the main file must be present, and only supporting raw files
+with frozen acquisition routes can be omitted. Absence of `verified_paths`
+preserves the old complete-byte proof. An explicit selective cache lookup may
+reuse this receipt, then verify its requested bytes. Full export and authoring
+still validate every effective object.
 
 Missing, older or mismatched receipts require the original complete check.
 A broken current reference still fails locally, including offline current reads;
@@ -89,9 +98,14 @@ old observation through this receipt.
 An uncached current read first plans the complete selected immutable source.
 `planSelectedSharedSource` retains the validated source binding and returns the
 full path/length/content-identity directory plus an exact-path materializer.
-Git descriptors retain their Git blob OID identity; SHA-256 based manifests keep
-their existing identity. Reading a derived cache does not change either identity.
-The full-byte resolver remains available to authoring and explicit source refresh.
+Git descriptors retain their Git blob OID identity. New management-verified Git
+bindings can additionally freeze SHA-256 and known `100644`/`100755` mode for each
+path; the new optional fields enter the new binding identity. Legacy absence keeps
+the original identity and requires full byte acquisition to derive a complete
+SHA-256 directory. A Git OID is never treated as SHA-256. Reading a derived cache
+does not change either identity. A known SHA-256 can reuse bytes already read from
+another transport after size, SHA-256 and Git OID all verify. The full-byte resolver
+remains the path for authoring and explicit source refresh.
 
 Current consumption then follows these boundaries:
 
@@ -101,13 +115,19 @@ Current consumption then follows these boundaries:
 2. Read complete shared membership and ownership facts, reconcile original
    operations under the existing rules, and reject unresolved, orphaned or
    conflicting state. Plan logical placement against the full source directory.
-3. Acquire only source inputs needed by that ownership state. Existing custom
+3. Acquire source inputs needed by that ownership state and the requested bytes.
+   Ordinary main reads, directory listing and graph preparation may defer
+   non-Markdown resources when every source entry has a declared SHA-256. All
+   effective Markdown still participates in current reference validation.
+   Existing custom
    files, tombstones and suppressed move paths do not require their original
    SHA-256 source bytes. A following move reads its original source path and
    renders it at the final logical path.
-4. Observe current native bodies, compose the complete effective tree, validate
-   its references and publish the normal immutable snapshot. Complete exports
-   still verify every effective file against that snapshot.
+4. Observe current native bodies, compose the complete logical directory, validate
+   its references and publish the immutable snapshot. Unselected raw entries
+   retain their declared hash/size/mode and exact retrieval locations. No empty
+   placeholder bytes stand in for unavailable data. Full export, resource
+   management and `read --authoring` verify every effective file.
 
 The placement planner is shared by metadata planning and full-byte composition.
 Omitted source files are neither empty files nor a replacement full manifest.
@@ -116,13 +136,17 @@ the source replaced by a custom move remain available after composition.
 
 Two dependencies deliberately keep source reads:
 
-- A source main can supply additional YAML fields even when its body is custom.
-  Canonical managed name/description and the custom body retain their existing
-  precedence, so the source main remains a required input.
+- A legacy custom main with unknown original frontmatter can still require the
+  source main for additional YAML fields. A custom body with retained frontmatter,
+  including known empty frontmatter, uses that baseline instead of a later Source.
+  Managed name/description retain their existing precedence. Following files use
+  selected source bytes and mode together; custom mode remains its own baseline.
 - An overridden Git original may carry a durable SHA-256 local-content
   restriction. A Git OID alone, or a disposable OID-to-hash cache record, cannot
   establish that restriction. Its verified original bytes remain required for
-  classification. This does not introduce a Git identity migration.
+  classification when its immutable binding has no SHA-256. A new binding with a
+  management-verified SHA-256 can check the existing durable restriction directly;
+  it does not have to redownload a shadowed original just to recover its hash.
 
 Complete declared local SHA identities conservatively restrict matching source
 aliases, including an effective HTTP path whose local alias is excluded. Only
@@ -139,6 +163,15 @@ an adopted fact or publish a successful snapshot. Consequently, a following file
 that becomes custom during this very read may still incur its original source
 read. Eliminating that cost would require separating pure observation from its
 commit, which this change does not do.
+
+`--refresh` and `--max-age 0` renew the current metadata/required-body observation;
+they do not implicitly request every raw resource. The independent native-body
+deadline still applies. Raw immutable identity and management-page edit time do
+not create a new native-body verification claim. The per-owner file-observation
+cache uses one generation-ordered `latest.json` slot. Older generation records
+remain readable, while repeated refreshes no longer append an entire observation
+list each time. Cache retirement fences in-flight reserved generations and leaves
+immutable snapshots, objects and original-operation evidence intact.
 
 ## Retained-source selection and archive cost
 

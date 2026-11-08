@@ -62,6 +62,7 @@ export function sourceDiscoveryInput(input: SourceDefinitionInput): DiscoverSour
     "publisher_subscription_id",
     "external_assets",
     "external_markdown",
+    "check_interval_ms",
   ])
   for (const key of Object.keys(options))
     if (!permitted.has(key))
@@ -228,7 +229,7 @@ export function discoverLinearSource(
     if (definition.adapter.type !== "linear")
       return yield* Effect.fail(fail("SOURCE_ADAPTER_INVALID", "Expected a Linear definition."))
     if (
-      Object.keys(definition.options).length ||
+      Object.keys(definition.options).some((key) => key !== "check_interval_ms") ||
       canonicalSharedJson(definition.selection) !==
         canonicalSharedJson({ roots: ["."], include: [], exclude: [], mapping: {} })
     )
@@ -356,6 +357,7 @@ export function discoverSourceDefinition(
       return yield* discoverLinearSource(definition, linearTransport(options.metrics))
     const snapshot = yield* discoverSource(
       yield* sourceChecked(() => sourceDiscoveryInput(definition)),
+      options,
     )
     if (definition.options.external_assets === true) {
       yield* sourceChecked(() => {

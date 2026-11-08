@@ -1,0 +1,113 @@
+import { afterAll, expect, test } from "bun:test"
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { createHttpProbe } from "./http-probe.ts"
+
+// Integration owns the production build; these tests consume its exact bundle.
+const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
+const probe = createHttpProbe()
+const directory = mkdtempSync(join(tmpdir(), "ntn-library-inventory-contract-"))
+afterAll(() => probe.close())
+async function invoke(args: readonly string[]) {
+  const node = Bun.which("node")
+  if (node === null) throw new Error("Node is required for the public CLI contract.")
+  const before = probe.calls()
+  const child = Bun.spawn([node, main, ...args], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      NOTION_API_TOKEN: "controlled-inventory-offline-token",
+      NOTION_API_BASE_URL: probe.origin,
+      NTN_SKILLS_HOME: join(directory, "state"),
+      NTN_SKILLS_CONFIG_HOME: join(directory, "config"),
+      NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
+      NTN_SKILLS_DATA_HOME: join(directory, "data"),
+    },
+  })
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  expect(probe.calls()).toBe(before)
+  return { stdout, stderr, exit }
+}
+
+test("inventory schemas expose explicit repeatable roots/provenance and offline review identities", async () => {
+  for (const command of ["local", "remote", "reconcile", "review"]) {
+    const result = await invoke(["schema", "ctl", "library", "inventory", command])
+    expect(result.exit, result.stdout + result.stderr).toBe(0)
+    const parameters: unknown = JSON.parse(result.stdout).schema.parameters
+    expect(parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "output", max_occurrences: 1 })]),
+    )
+    if (command === "local")
+      expect(parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "root", min_occurrences: 1, max_occurrences: null }),
+          expect.objectContaining({ name: "allow-target", max_occurrences: null }),
+          expect.objectContaining({ name: "provenance", max_occurrences: null }),
+          expect.objectContaining({ name: "max-bytes", max_occurrences: 1 }),
+        ]),
+      )
+    if (command === "remote")
+      expect(parameters).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "audit-run", required: true })]),
+      )
+  }
+}, 20000)
+
+test("public local inventory preserves exact binary bytes and executable modes without network or source writes", async () => {
+  const root = join(directory, "fixture")
+  mkdirSync(root)
+  writeFileSync(join(root, "SKILL.md"), "# Controlled\r\n")
+  const bytes = new Uint8Array([0, 255, 13, 10, 3])
+  writeFileSync(join(root, "tool.bin"), bytes)
+  chmodSync(join(root, "tool.bin"), 0o755)
+  const result = await invoke(["ctl", "library", "inventory", "local", "--root", root])
+  expect(result.exit, result.stdout + result.stderr).toBe(0)
+  const output = JSON.parse(result.stdout)
+  expect(output).toMatchObject({ ok: true, coverage: "full", remote_writes: 0, source_writes: 0 })
+  expect(output.entities).toHaveLength(1)
+  expect(output.entities[0].files).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ path: "tool.bin", bytes: 5, mode: "100755", status: "verified" }),
+    ]),
+  )
+  expect(new Uint8Array(readFileSync(join(root, "tool.bin")))).toEqual(bytes)
+  expect(readFileSync(join(root, "SKILL.md"), "utf8")).toBe("# Controlled\r\n")
+  const partial = await invoke([
+    "ctl",
+    "library",
+    "inventory",
+    "local",
+    "--root",
+    root,
+    "--max-entries",
+    "1",
+  ])
+  expect(partial.exit).toBe(4)
+  expect(JSON.parse(partial.stdout)).toMatchObject({
+    ok: true,
+    coverage: "partial",
+    remote_writes: 0,
+  })
+}, 15000)
+
+test("invalid local scopes and incomplete review selectors fail without any provider call", async () => {
+  for (const args of [
+    ["local", "--root", "relative/path"],
+    ["local", "--root", directory, "--max-bytes", "0"],
+    ["review", "inventory-" + "a".repeat(64), "--remote", "inventory-" + "b".repeat(64)],
+  ]) {
+    const result = await invoke(["ctl", "library", "inventory", ...args])
+    expect(result.exit).toBe(2)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_ARGUMENT" },
+    })
+  }
+}, 15000)

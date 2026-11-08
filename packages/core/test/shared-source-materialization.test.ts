@@ -156,6 +156,40 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
 }
 
 describe("fixed GitHub source materialization", () => {
+  test("a manager-verified SHA reuses equivalent bytes already read through another transport", async () => {
+    const bytes = encode("already observed exact native bytes\n")
+    const file = { ...entry("same.md", bytes), sha256: digest(bytes), mode: "100755" as const }
+    const source = makeSource([file])
+    const f = fixture(new Map())
+    f.objects.set(`objects/${file.sha256}`, bytes)
+    const result = await f.materialize(source)
+    expect(result[0]).toMatchObject({ sha256: file.sha256, git_oid: file.git_oid, mode: "100755" })
+    expect(result[0]?.bytes).toEqual(bytes)
+    expect(f.requests).toHaveLength(0)
+    expect(f.json.get(key(file.git_oid))).toMatchObject({
+      sha256: file.sha256,
+      bytes: bytes.length,
+    })
+    const other = encode("same SHA label cannot authorize different bytes\n")
+    const broken = fixture(new Map())
+    broken.objects.set(`objects/${file.sha256}`, other)
+    expect((await broken.rejected(source)).code).toBe("SOURCE_CACHE_CORRUPT")
+    expect(broken.requests).toHaveLength(0)
+  })
+
+  test("Git and SHA identities must agree before cache publication and across aliases", async () => {
+    const bytes = new Uint8Array([0, 255, 7])
+    const file = { ...entry("raw.bin", bytes), sha256: "0".repeat(64) }
+    const f = fixture(new Map([[file.source_path, bytes]]))
+    expect((await f.rejected(makeSource([file]))).code).toBe("GITHUB_BLOB_MISMATCH")
+    expect(f.objects.size).toBe(0)
+    expect(f.json.size).toBe(0)
+    const alias = { ...entry("copy.bin", bytes), sha256: digest(bytes) }
+    const before = f.requests.length
+    expect((await f.rejected(makeSource([file, alias]))).code).toBe("INVALID_GITHUB_SOURCE")
+    expect(f.requests.length).toBe(before)
+  })
+
   test("selective Git acquisition reads only requested blob identities and preserves corruption checks", async () => {
     const selected = encode("requested\n"),
       unused = encode("not requested\n")

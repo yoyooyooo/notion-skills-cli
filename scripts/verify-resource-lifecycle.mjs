@@ -83,6 +83,11 @@ const matrix = [
   ["AuditRun", "reset.cfg", ["CheckpointMonotone", "EventuallyReport"]],
   ["AuditRun", "limited.cfg", []],
   ["AuditRun", "liveness.cfg", []],
+  ["ImportCreate", "cfg", []],
+  ["ImportCreate", "retry.cfg", ["AtMostOneDispatch"]],
+  ["ImportCreate", "early.cfg", ["EnableRequiresComplete"]],
+  ["ImportCreate", "inference.cfg", ["ConfirmationNeedsOriginalAck"]],
+  ["ImportCreate", "stale.cfg", ["FrozenInputRequired"]],
 ]
 const summary = {
   source_commit: coverage.synchronized_commit,

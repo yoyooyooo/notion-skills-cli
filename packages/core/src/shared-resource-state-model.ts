@@ -8,10 +8,34 @@ import {
 } from "./shared-file-state.ts"
 import type { SharedBodyBinding } from "./shared-skill-index.ts"
 import type { observeSharedBody } from "./shared-page-body.ts"
+import {
+  resourceContentForOwnership,
+  isResourceFollowing,
+  type ResourceContent,
+} from "./shared-resource-content.ts"
 
-type ProjectionEvent = Extract<FileEvent, { readonly kind: "projected" | "following_restored" }>
+type ProjectionEvent = Extract<
+  FileEvent,
+  { readonly kind: "projected" | "following_restored" | "resource_followed" }
+>
+function projectionFingerprint(event: ProjectionEvent) {
+  return event.kind === "resource_followed"
+    ? {
+        kind: "resource" as const,
+        sha256: event.content.sha256,
+        bytes: event.content.bytes,
+        mode: event.content.mode,
+      }
+    : event.projection
+}
 export type ResourceBodyObservation =
   | { readonly kind: "unobserved" }
+  | {
+      readonly kind: "resource_verified"
+      readonly content: ResourceContent
+      readonly observed_at: number
+      readonly verification: "remote_verified"
+    }
   | {
       readonly kind: "observed"
       readonly body: Effect.Success<ReturnType<typeof observeSharedBody>>
@@ -35,7 +59,11 @@ function projectionAncestors(events: readonly FileEvent[], state: ResolvedFileSt
     // resolveFileState already validates the complete graph. Preserve that boundary.
     if (event === undefined)
       throw fail("SHARED_STATE_INCOMPLETE", "A projection ancestor is missing.", { event_id: id })
-    if (event.kind === "projected" || event.kind === "following_restored") {
+    if (
+      event.kind === "projected" ||
+      event.kind === "following_restored" ||
+      event.kind === "resource_followed"
+    ) {
       projections.set(event.event_id, event)
       return
     }
@@ -62,7 +90,7 @@ function recordedProjection(events: readonly FileEvent[], state: ResolvedFileSta
       candidates: ancestors.map((event) => ({
         event_id: event.event_id,
         source_revision: event.source_revision,
-        fingerprint: event.projection,
+        fingerprint: projectionFingerprint(event),
       })),
     }
   const first = ancestors[0]
@@ -71,8 +99,12 @@ function recordedProjection(events: readonly FileEvent[], state: ResolvedFileSta
   const same = ancestors.every(
     (event) =>
       event.source_revision === first.source_revision &&
-      event.projection.normalization_version === first.projection.normalization_version &&
-      event.projection.sha256 === first.projection.sha256,
+      JSON.stringify(projectionFingerprint(event)) ===
+        JSON.stringify(projectionFingerprint(first)) &&
+      (event.kind === "resource_followed" ? event.source_id : null) ===
+        (first.kind === "resource_followed" ? first.source_id : null) &&
+      (event.kind === "resource_followed" ? event.source_path : null) ===
+        (first.kind === "resource_followed" ? first.source_path : null),
   )
   if (!same)
     return {
@@ -80,7 +112,7 @@ function recordedProjection(events: readonly FileEvent[], state: ResolvedFileSta
       candidates: ancestors.map((event) => ({
         event_id: event.event_id,
         source_revision: event.source_revision,
-        fingerprint: event.projection,
+        fingerprint: projectionFingerprint(event),
       })),
     }
   return {
@@ -88,7 +120,10 @@ function recordedProjection(events: readonly FileEvent[], state: ResolvedFileSta
     evidence: "file_event_ancestry" as const,
     event_ids: ancestors.map((event) => event.event_id),
     source_revision: first.source_revision,
-    fingerprint: first.projection,
+    fingerprint: projectionFingerprint(first),
+    ...(first.kind === "resource_followed"
+      ? { source_id: first.source_id, source_path: first.source_path }
+      : {}),
   }
 }
 
@@ -105,6 +140,7 @@ export function describeSharedResourceFile(input: {
 }) {
   const { binding, events } = input
   const state = events.length === 0 ? undefined : resolveFileState(binding.file_id, events)
+  const resource = state === undefined ? undefined : resourceContentForOwnership(state.ownership)
   const recorded = recordedProjection(events, state)
   const projectionProperty =
     binding.baseline === undefined
@@ -126,7 +162,7 @@ export function describeSharedResourceFile(input: {
           fingerprint: observed.body.fingerprint,
           bytes: observed.body.bytes,
           projection_comparison:
-            recorded.kind !== "recorded"
+            recorded.kind !== "recorded" || !("normalization_version" in recorded.fingerprint)
               ? "unknown"
               : sameFingerprint(recorded.fingerprint, observed.body.fingerprint)
                 ? "matches_recorded_projection"
@@ -137,9 +173,10 @@ export function describeSharedResourceFile(input: {
               : state.ownership.kind === "tombstone"
                 ? "tombstone"
                 : (
-                      state.ownership.kind === "following"
+                      state.ownership.kind === "following" && !isResourceFollowing(state.ownership)
                         ? sameFingerprint(state.ownership.projection, observed.body.fingerprint)
-                        : state.ownership.content.sha256 === observed.body.fingerprint.sha256
+                        : state.ownership.kind === "custom" &&
+                          state.ownership.content.sha256 === observed.body.fingerprint.sha256
                     )
                   ? "matches_recorded_owner"
                   : "requires_observation_commit",
@@ -148,6 +185,15 @@ export function describeSharedResourceFile(input: {
     file_id: binding.file_id,
     path: state?.placement?.path ?? binding.path,
     page_id: binding.page_id,
+    ...(resource === undefined
+      ? {}
+      : {
+          representation: {
+            kind: "resource" as const,
+            content: resource,
+            editable_body: false as const,
+          },
+        }),
     resolution: state ?? { kind: "uninitialized" as const },
     display: {
       recorded,

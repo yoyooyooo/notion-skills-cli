@@ -26,7 +26,18 @@ const OutcomeFields = {
   ),
 }
 export const SharedCreateOutcomeSchema = Schema.Union([
-  Schema.Struct({ version: Schema.Literal(1), ...OutcomeFields }),
+  Schema.Struct({
+    version: Schema.Literal(1),
+    ...OutcomeFields,
+    source_projection: Schema.optional(
+      Schema.Struct({
+        source_id: Schema.String,
+        revision: Schema.String,
+        manifest_record_hash: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+        local_customization: Schema.optional(Schema.Literal(1)),
+      }),
+    ),
+  }),
   Schema.Struct({
     version: Schema.Literal(2),
     ...OutcomeFields,

@@ -3,7 +3,7 @@ import { expect, test } from "bun:test"
 import { Effect } from "effect"
 import { property, text } from "../src/model.ts"
 import {
-  prepareSourceRefresh,
+  prepareRetainedSourceRefresh as prepareSourceRefresh,
   applySourceRefresh,
   validateSourceRefresh,
   reconcileSourceRefresh,
@@ -30,6 +30,8 @@ test("prepare freezes a complete provider member with binary assets without writ
   expect(text(property(property(f.main.properties).source).rich_text)).toBe("")
   expect(f.acquisitions()).toBe(1)
   const validated = await f.run(validateSourceRefresh(library, plan))
+  if (validated.kind !== "retained")
+    throw new Error("Expected the explicit retained compatibility plan")
   expect(validated.files.find((x) => x.path === "assets/file.bin")?.bytes).toEqual(
     new Uint8Array([0, 255, 3, 128]),
   )
@@ -181,4 +183,44 @@ test("a rehashed proposal with a corrupted chunk identity fails before any sourc
   f.clearCalls()
   await expect(f.run(applySourceRefresh(library, changed))).rejects.toThrow("chunk identity")
   expect(f.calls).toHaveLength(0)
+})
+
+test("the same frozen refresh does not restore a later edit to its acknowledged Origin link", async () => {
+  const f = await fixture()
+  const plan = await f.run(prepareSourceRefresh(library, id(82), skillPage, f.acquire))
+  await f.run(applySourceRefresh(library, plan))
+  const linked = [...f.records.values()].find((row) => {
+    const relation = property(property(row.properties).origin).relation
+    return Array.isArray(relation) && relation.some((item) => property(item).id === id(82))
+  })
+  if (linked === undefined) throw new Error("Expected an acknowledged Origin link")
+  property(linked.properties).origin = {
+    id: "origin",
+    type: "relation",
+    relation: [],
+    has_more: false,
+  }
+  f.clearCalls()
+  await expect(f.run(applySourceRefresh(library, plan))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_UNKNOWN",
+  })
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(0)
+  expect(property(property(linked.properties).origin).relation).toEqual([])
+})
+
+test("the same frozen refresh does not replace a later edit to its acknowledged status", async () => {
+  const f = await fixture()
+  const plan = await f.run(prepareSourceRefresh(library, id(82), skillPage, f.acquire))
+  await f.run(applySourceRefresh(library, plan))
+  f.source.properties[sourceIds.Status!] = {
+    id: sourceIds.Status,
+    type: "select",
+    select: { name: "ready" },
+  }
+  f.clearCalls()
+  await expect(f.run(applySourceRefresh(library, plan))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_UNKNOWN",
+  })
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(0)
+  expect(property(f.source.properties[sourceIds.Status!]).select).toEqual({ name: "ready" })
 })

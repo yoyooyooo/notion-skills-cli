@@ -176,7 +176,10 @@ export function sharedSnapshotFixture(
   let nextPage = 10_000 + fileCount
   let metrics = createRequestMetrics()
   let unknownNextRecord:
-    | { readonly kind: "operation" | "object" | "file_event"; readonly accepted: boolean }
+    | {
+        readonly kind: "operation" | "object" | "file_event" | "source"
+        readonly accepted: boolean
+      }
     | undefined
   const list = (values: readonly unknown[], request: unknown) => {
     const input = property(request)
@@ -460,7 +463,7 @@ export function sharedSnapshotFixture(
     unknownEvent: () => {
       unknownNextRecord = { kind: "file_event", accepted: true }
     },
-    unknownRecord: (kind: "operation" | "object" | "file_event", accepted: boolean) => {
+    unknownRecord: (kind: "operation" | "object" | "file_event" | "source", accepted: boolean) => {
       unknownNextRecord = { kind, accepted }
     },
     requestMetrics: () => metrics.snapshot(),

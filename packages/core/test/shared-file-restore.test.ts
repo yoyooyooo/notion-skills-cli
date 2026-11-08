@@ -4,7 +4,10 @@ import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { decode, fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { restoreSelectedSharedFile } from "../src/shared-file-restore.ts"
+import {
+  reconcileSelectedSharedFileRestore,
+  restoreSelectedSharedFile,
+} from "../src/shared-file-restore.ts"
 import {
   FileEventSchema,
   normalizeObservedBody,
@@ -252,8 +255,9 @@ function fixture() {
 }
 
 describe("public selected-source restore-follow", () => {
-  test("restores only the exact source selected in Notion, retains custom bytes, and repeats with zero PATCH", async () => {
+  test("restores identical selected-source text without a body PATCH and repeats without new history", async () => {
     const f = fixture()
+    f.base.bodies.set(id(11), "From exact fixed revision")
     f.baseline()
     const selected = await f.register(fixedFiles(), "1".repeat(40))
     const newer = await f.register(
@@ -271,7 +275,7 @@ describe("public selected-source restore-follow", () => {
     expect(result.source_id).not.toBe(newer.source_id)
     expect(f.providerCalls.every((url) => url.includes(`/${selected.commit}/`))).toBe(true)
     expect(f.base.bodies.get(id(11))).toBe("From exact fixed revision")
-    expect(f.patches()).toHaveLength(1)
+    expect(f.patches()).toHaveLength(0)
     const first = f.plans()[0]!
     expect(property(first.before).markdown).toBe(original)
     expect(property(first.restore_source).revision).toBe(selected.commit)
@@ -288,18 +292,94 @@ describe("public selected-source restore-follow", () => {
       restoreSelectedSharedFile({ library, skillPageId: skillPage, path: "references/1.md" }),
     )
     expect(f.patches()).toHaveLength(0)
+    expect(f.writes()).toHaveLength(0)
     expect(f.providerCalls).toHaveLength(0)
+    const reconciled = await f.run(
+      reconcileSelectedSharedFileRestore({
+        library,
+        skillPageId: skillPage,
+        path: "references/1.md",
+        operationId: result.operation_id,
+      }),
+    )
+    expect(reconciled.status).toBe("applied")
+    expect(f.writes()).toHaveLength(0)
+  })
+
+  test("a different selected source remains previewable but cannot overwrite an editable custom body", async () => {
+    const f = fixture()
+    f.baseline()
+    const source = await f.register(fixedFiles())
+    const before = canonicalSharedJson([...f.base.records.values()])
+    f.clear()
+    const preview = await f.run(
+      restoreSelectedSharedFile({
+        library,
+        skillPageId: skillPage,
+        path: "references/1.md",
+        dryRun: true,
+      }),
+    )
+    expect(preview).toMatchObject({
+      source_id: source.source_id,
+      execution: { kind: "blocked", code: "BODY_REPLACEMENT_UNSAFE" },
+    })
+    const error = await f.run(
+      Effect.flip(
+        restoreSelectedSharedFile({ library, skillPageId: skillPage, path: "references/1.md" }),
+      ),
+    )
+    expect(error.code).toBe("BODY_REPLACEMENT_UNSAFE")
+    expect(f.base.bodies.get(id(11))).toBe("Reference one\n")
+    expect(f.writes()).toHaveLength(0)
+    expect(canonicalSharedJson([...f.base.records.values()])).toBe(before)
+    expect(
+      resolveFileState(
+        "file-1",
+        (await f.events()).filter((event) => event.file_id === "file-1"),
+      ).ownership.kind,
+    ).toBe("custom")
+  })
+
+  test("an unknown no-body restore keeps its original operation unresolved without replay", async () => {
+    const f = fixture()
+    f.base.bodies.set(id(11), "From exact fixed revision")
+    f.baseline()
+    await f.register(fixedFiles())
+    f.base.unknownEvent()
+    const failed = await f.run(
+      Effect.flip(
+        restoreSelectedSharedFile({ library, skillPageId: skillPage, path: "references/1.md" }),
+      ),
+    )
+    expect(failed.code).toBe("WRITE_OUTCOME_UNKNOWN")
+    const plan = f.plans()[0]!
+    f.clear()
+    const unresolved = await f.run(
+      Effect.flip(
+        reconcileSelectedSharedFileRestore({
+          library,
+          skillPageId: skillPage,
+          path: "references/1.md",
+          operationId: String(plan.operation_id),
+        }),
+      ),
+    )
+    expect(unresolved.code).toBe("SHARED_BODY_WRITE_UNRESOLVED")
+    expect(f.writes()).toHaveLength(0)
+    expect(f.base.bodies.get(id(11))).toBe("From exact fixed revision")
   })
 
   test("a moved custom file restores from its retained original source path and keeps stable page identity", async () => {
     const f = fixture()
+    f.base.bodies.set(id(11), "Reference one")
     f.seedBody("file-main", skillPage)
     f.seedBody("file-2", id(12))
-    const selected = await f.register(fixedFiles())
+    const selected = await f.register(fixedFiles("Reference one\n"))
     const content = {
-      object_id: `body-${digest("Reference one\n")}`,
-      sha256: digest("Reference one\n"),
-      bytes: encode("Reference one\n").length,
+      object_id: `body-${digest("Reference one")}`,
+      sha256: digest("Reference one"),
+      bytes: encode("Reference one").length,
     }
     f.base.seedFact(
       {
@@ -334,8 +414,7 @@ describe("public selected-source restore-follow", () => {
     )
     expect(restored.source_path).toBe("references/1.md")
     expect(restored.page_id).toBe(id(11))
-    expect(f.patches()).toHaveLength(1)
-    expect(f.patches()[0]?.path).toBe(`v1/pages/${id(11)}/markdown`)
+    expect(f.patches()).toHaveLength(0)
     const state = resolveFileState(
       "file-1",
       (await f.events()).filter((event) => event.file_id === "file-1"),
@@ -387,6 +466,7 @@ describe("public selected-source restore-follow", () => {
 
   test("main restore preserves current Notion metadata while canonical output retains source frontmatter extras", async () => {
     const f = fixture()
+    f.base.bodies.set(skillPage, "# Upstream main")
     f.baseline()
     await f.register(fixedFiles())
     const before = structuredClone(f.base.main.properties)
@@ -431,15 +511,17 @@ describe("public selected-source restore-follow", () => {
     expect(f.base.readBodyCount()).toBe(0)
     expect(f.base.bodies.get(id(11))).toBe("Reference one\n")
     const allowed = await f.run(
-      restoreSelectedSharedFile({
-        library,
-        skillPageId: skillPage,
-        path: "references/1.md",
-        allowLocalArchive: true,
-      }),
+      Effect.flip(
+        restoreSelectedSharedFile({
+          library,
+          skillPageId: skillPage,
+          path: "references/1.md",
+          allowLocalArchive: true,
+        }),
+      ),
     )
-    expect(allowed.verified).toBe(true)
-    expect(f.patches()).toHaveLength(1)
+    expect(allowed.code).toBe("BODY_REPLACEMENT_UNSAFE")
+    expect(f.writes()).toHaveLength(0)
   })
 
   test("a new accepted custom edit during source acquisition cannot replace the original expected frontier", async () => {

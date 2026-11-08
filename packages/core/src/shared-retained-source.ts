@@ -228,6 +228,7 @@ export function materializeRetainedSource(
         if (
           !expected ||
           file.bytes.length !== expected.bytes ||
+          (expected.mode !== undefined && file.mode !== expected.mode) ||
           (yield* sha256(file.bytes)) !== expected.sha256
         )
           return yield* Effect.fail(
@@ -247,6 +248,10 @@ export function materializeRetainedSource(
         available.set(file.sha256, bytes)
       }
     }
-    return selected.map((file) => ({ path: file.path, bytes: available.get(file.sha256)! }))
+    return selected.map((file) => ({
+      path: file.path,
+      bytes: available.get(file.sha256)!,
+      ...(file.mode === undefined ? {} : { mode: file.mode }),
+    }))
   })
 }

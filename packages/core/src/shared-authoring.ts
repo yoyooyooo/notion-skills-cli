@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Effect, Schema, type Crypto } from "effect"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
@@ -241,11 +241,12 @@ function reconcileLocalBeforeNewPlan(library: SharedLibrary, scope: SharedPendin
   })
 }
 
-function dispatch(
+function dispatch<R = never>(
   library: SharedLibrary,
   scope: SharedPendingFileScope,
   plan: SharedBodyWritePlan,
   dryRun: boolean,
+  beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>,
 ) {
   return Effect.gen(function* () {
     const projection =
@@ -279,10 +280,11 @@ function dispatch(
           plan.before.fingerprint.sha256 === plan.candidate.content.sha256,
         ...(projection === undefined ? {} : { input_projection: projection }),
       }
-    const result = yield* executeSharedBodyWrite(library, {
+    const result = yield* executeSharedBodyWrite<R | Store | Crypto.Crypto>(library, {
       plan,
       mode: "create",
       beforePlanWrite: (original) => retainPendingFileOperation(scope, original),
+      ...(beforeRestoreDispatch === undefined ? {} : { beforeRestoreDispatch }),
     })
     if (result.status !== "unchanged") {
       yield* invalidateSnapshotCache(sharedSkillId(library.library_id, scope.skill_id), scope.scope)
@@ -425,7 +427,7 @@ export function writeSharedSkillFile(input: {
 }
 
 /** Same authentication, original-journal and dispatch boundary for explicit restore-follow. */
-export function restoreSharedFileFollowing(input: {
+export function restoreSharedFileFollowing<R = never>(input: {
   readonly library: SharedLibrary
   readonly skillPageId: string
   readonly fileId: string
@@ -437,6 +439,7 @@ export function restoreSharedFileFollowing(input: {
     readonly body_sha256: string
   }
   readonly dryRun?: boolean
+  readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
 }) {
   return Effect.gen(function* () {
     const scope = yield* authScope
@@ -472,7 +475,13 @@ export function restoreSharedFileFollowing(input: {
           "The selected logical file path moved before restore-follow was prepared.",
         ),
       )
-    return yield* dispatch(library, journal, plan, input.dryRun ?? false)
+    return yield* dispatch(
+      library,
+      journal,
+      plan,
+      input.dryRun ?? false,
+      input.beforeRestoreDispatch,
+    )
   })
 }
 

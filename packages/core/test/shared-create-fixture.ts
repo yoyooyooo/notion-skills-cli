@@ -114,6 +114,7 @@ export function sharedCreateFixture(
           | "skill"
           | "file"
           | "enable"
+          | "source_selection"
           | "outcome"
           | "recovery_outcome"
           | "recovery_receipt"
@@ -178,6 +179,12 @@ export function sharedCreateFixture(
                 ...(options?.content === undefined ? {} : { content: options.content }),
               })
               const pathname = new URL(path, "https://api.notion.com/").pathname
+              if (method === "GET") {
+                const retained = [...base.records.values()].find(
+                  (row) => pathname === `/v1/pages/${row.id}`,
+                )
+                if (retained !== undefined) return Effect.succeed(structuredClone(retained))
+              }
               if (pathname === `/v1/databases/${createLibrary.skills.database_id}`)
                 return Effect.succeed({
                   object: "database",
@@ -303,14 +310,28 @@ export function sharedCreateFixture(
                     fixtureOptions.recovery === true &&
                     Object.keys(changes).length === 1 &&
                     Array.isArray(property(changes[projectionId]).rich_text)
-                  if (!enable && !projection)
+                  const sourceId = createLibrary.skills.property_ids.Source!
+                  const sourceSelection =
+                    skills.has(String(selected.id)) &&
+                    Object.keys(changes).length === 2 &&
+                    Array.isArray(property(changes[sourceId]).rich_text) &&
+                    Array.isArray(property(changes[projectionId]).rich_text) &&
+                    property(property(selected.properties).enabled).checkbox === false &&
+                    text(property(property(selected.properties)[sourceId]).rich_text) === "" &&
+                    text(property(property(selected.properties)[projectionId]).rich_text) === "" &&
+                    /^bundle-[a-f0-9]{64}$/u.test(text(property(changes[sourceId]).rich_text))
+                  if (!enable && !projection && !sourceSelection)
                     return Effect.fail(
                       fail(
                         "TEST_EXISTING_MUTATION",
                         "Native create attempted an existing-body or unrelated property replacement",
                       ),
                     )
-                  const uncertain = enable && unknown?.stage === "enable" ? unknown : undefined
+                  const uncertain =
+                    (enable && unknown?.stage === "enable") ||
+                    (sourceSelection && unknown?.stage === "source_selection")
+                      ? unknown
+                      : undefined
                   if (uncertain) unknown = undefined
                   if (uncertain?.visible !== false) {
                     for (const [key, value] of Object.entries(changes))
@@ -416,7 +437,14 @@ export function sharedCreateFixture(
       base.clearCalls()
     },
     unknown: (
-      stage: "skill" | "file" | "enable" | "outcome" | "recovery_outcome" | "recovery_receipt",
+      stage:
+        | "skill"
+        | "file"
+        | "enable"
+        | "source_selection"
+        | "outcome"
+        | "recovery_outcome"
+        | "recovery_receipt",
       visible: boolean,
     ) => {
       unknown = { stage, visible }

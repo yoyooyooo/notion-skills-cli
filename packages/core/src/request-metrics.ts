@@ -3,6 +3,50 @@ export type RequestKind = "notion_metadata" | "notion_body" | "notion_write" | "
 export type BodyRequestKind = "current_body" | "retained_body" | "unclassified_body"
 export type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE" | "HEAD"
 export type RequestOutcome = "success" | "failure" | "cancelled"
+/** Git fetches are subprocess acquisitions, not observable HTTP attempts. */
+export type SourceAcquisition = {
+  readonly provider: "git" | "skills.sh"
+  /** Configured endpoint scheme; host Git rewrites are not traced. */
+  readonly configured_transport: "http" | "https" | "ssh" | "file"
+}
+export type SourceAcquisitionResult = {
+  readonly outcome: RequestOutcome
+  readonly fetchMilliseconds: number
+  /** Bytes in the newly fetched bare repository's object files, including indexes. */
+  readonly repositoryObjectBytes?: number
+  /** Actual cat-file stdout bytes observed, including partial failed reads. */
+  readonly catFileBytes: number
+  readonly observationMilliseconds: number
+}
+export type SourceAcquisitionTrace = SourceAcquisition & {
+  readonly acquisition: number
+  readonly started_ms: number
+  readonly duration_ms: number
+  readonly fetch_ms: number
+  readonly observation_ms: number
+  readonly outcome: RequestOutcome
+  readonly repository_object_bytes: number | null
+  readonly cat_file_bytes: number
+  readonly wire_bytes: null
+  /** Existing credential helpers run within fetch_ms; their waiting is not isolated. */
+  readonly auth_wait_ms: null
+}
+export type SourceAcquisitionMetrics = {
+  readonly attempts: number
+  readonly providers: Readonly<Record<string, number>>
+  readonly outcomes: Readonly<Record<RequestOutcome, number>>
+  readonly in_flight: number
+  readonly duration_ms: number
+  readonly fetch_ms: number
+  readonly observation_ms: number
+  readonly repository_object_bytes: number
+  readonly unknown_repository_object_bytes: number
+  readonly cat_file_bytes: number
+  readonly wire_bytes: null
+  readonly auth_wait_ms: null
+  readonly trace: readonly SourceAcquisitionTrace[]
+  readonly trace_dropped: number
+}
 export type NotionRequestTarget =
   | { readonly page_id: string }
   | { readonly block_id: string }
@@ -221,6 +265,8 @@ export type RequestMetricsSnapshot = {
   readonly trace: readonly RequestTraceEvent[]
   readonly trace_enabled: boolean
   readonly trace_dropped: number
+  /** Separate from HTTP request/byte totals; omitted when no acquisition was dispatched. */
+  readonly source_acquisitions?: SourceAcquisitionMetrics
 }
 
 export function createRequestMetrics(
@@ -231,11 +277,13 @@ export function createRequestMetrics(
   if (!Number.isSafeInteger(traceLimit) || traceLimit < 0 || traceLimit > 10_000)
     throw new TypeError("traceLimit must be an integer from 0 to 10000.")
   const trace: RequestTraceEvent[] = []
+  const acquisitionTrace: SourceAcquisitionTrace[] = []
   let traceDropped = 0
+  let acquisitionTraceDropped = 0
   let attempts = 0
   const retain = (entry: RequestTraceEvent) => {
     if (traceLimit === 0) return
-    if (trace.length < traceLimit) trace.push(entry)
+    if (trace.length + acquisitionTrace.length < traceLimit) trace.push(entry)
     else traceDropped += 1
   }
   const safeLabel = (value: string | undefined) =>
@@ -267,8 +315,69 @@ export function createRequestMetrics(
   let coalesced = 0
   let queueWait = 0
   let retryWait = 0
+  let acquisitionAttempts = 0
+  let acquisitionInFlight = 0
+  let acquisitionDuration = 0
+  let fetchDuration = 0
+  let acquisitionObservationDuration = 0
+  let repositoryObjectBytes = 0
+  let unknownRepositoryObjectBytes = 0
+  let catFileBytes = 0
+  const acquisitionProviders = new Map<string, number>()
+  const acquisitionOutcomes: Record<RequestOutcome, number> = {
+    success: 0,
+    failure: 0,
+    cancelled: 0,
+  }
 
   return {
+    /** Call at the real fetch subprocess boundary. Never provide URL, argv or credentials. */
+    beginSourceAcquisition(source: SourceAcquisition) {
+      const started = now()
+      const acquisition = ++acquisitionAttempts
+      acquisitionInFlight += 1
+      acquisitionProviders.set(
+        source.provider,
+        (acquisitionProviders.get(source.provider) ?? 0) + 1,
+      )
+      let finished = false
+      return (result: SourceAcquisitionResult) => {
+        if (finished) return
+        const elapsed = nonNegative(now() - started, "source acquisition duration")
+        nonNegative(result.fetchMilliseconds, "fetch duration")
+        nonNegative(result.observationMilliseconds, "source observation duration")
+        nonNegative(result.catFileBytes, "cat-file bytes")
+        if (result.repositoryObjectBytes !== undefined)
+          nonNegative(result.repositoryObjectBytes, "repository object bytes")
+        finished = true
+        acquisitionInFlight -= 1
+        acquisitionOutcomes[result.outcome] += 1
+        acquisitionDuration += elapsed
+        fetchDuration += result.fetchMilliseconds
+        acquisitionObservationDuration += result.observationMilliseconds
+        catFileBytes += result.catFileBytes
+        if (result.repositoryObjectBytes === undefined) unknownRepositoryObjectBytes += 1
+        else repositoryObjectBytes += result.repositoryObjectBytes
+        if (traceLimit > 0) {
+          if (trace.length + acquisitionTrace.length < traceLimit)
+            acquisitionTrace.push({
+              provider: source.provider,
+              configured_transport: source.configured_transport,
+              acquisition,
+              started_ms: started,
+              duration_ms: elapsed,
+              fetch_ms: result.fetchMilliseconds,
+              observation_ms: result.observationMilliseconds,
+              outcome: result.outcome,
+              repository_object_bytes: result.repositoryObjectBytes ?? null,
+              cat_file_bytes: result.catFileBytes,
+              wire_bytes: null,
+              auth_wait_ms: null,
+            })
+          else acquisitionTraceDropped += 1
+        }
+      }
+    },
     begin(request: RequestObservation) {
       const sentAt = now()
       const attempt = ++attempts
@@ -367,6 +476,26 @@ export function createRequestMetrics(
         trace: [...trace],
         trace_enabled: traceLimit > 0,
         trace_dropped: traceDropped,
+        ...(acquisitionAttempts === 0
+          ? {}
+          : {
+              source_acquisitions: {
+                attempts: acquisitionAttempts,
+                providers: Object.fromEntries(acquisitionProviders),
+                outcomes: { ...acquisitionOutcomes },
+                in_flight: acquisitionInFlight,
+                duration_ms: acquisitionDuration,
+                fetch_ms: fetchDuration,
+                observation_ms: acquisitionObservationDuration,
+                repository_object_bytes: repositoryObjectBytes,
+                unknown_repository_object_bytes: unknownRepositoryObjectBytes,
+                cat_file_bytes: catFileBytes,
+                wire_bytes: null,
+                auth_wait_ms: null,
+                trace: [...acquisitionTrace],
+                trace_dropped: acquisitionTraceDropped,
+              },
+            }),
       }
     },
   }

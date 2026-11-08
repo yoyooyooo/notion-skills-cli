@@ -31,6 +31,8 @@ export function openSharedConsumer(
       )
     const rawPage = input.rawPage ?? (yield* api.request(`v1/pages/${selected}`))
     const authoring = yield* isSharedAuthoringTarget(selected)
+    const { requestedPaths: _paths, requestedFileIds: _fileIds, ...completeInput } = snapshotInput
+    const acquisitionInput = authoring ? { ...completeInput, forceFull: true } : snapshotInput
     const sourceId = yield* Effect.try({
       try: () => {
         const record = sharedRecordFromPage(
@@ -74,7 +76,7 @@ export function openSharedConsumer(
           ? error
           : fail("INVALID_SHARED_SKILL", "Invalid shared source selection."),
     })
-    if (!sourceId) return yield* openSharedSnapshot({ ...snapshotInput, rawPage })
+    if (!sourceId) return yield* openSharedSnapshot({ ...acquisitionInput, rawPage })
     const fixedSource = yield* planSelectedSharedSource(
       input.library,
       selected,
@@ -82,7 +84,7 @@ export function openSharedConsumer(
       sourceOptions,
     )
     return yield* openSharedSnapshot({
-      ...snapshotInput,
+      ...acquisitionInput,
       rawPage,
       fixedSource,
     })

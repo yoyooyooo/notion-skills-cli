@@ -9,6 +9,7 @@ import { registrationStore } from "./shared-source-registration-fixture.ts"
 import { sourceDefinitionLayout, type SourceDefinitionInput } from "../src/shared-sources-model.ts"
 import {
   bindSourceDefinition,
+  guardedSourceMutation,
   decodeSourceDefinition,
   listSourceDefinitions,
   listSourceMembers,
@@ -398,4 +399,124 @@ test("source member discovery reads all 101 forward relations without bodies or 
   expect(f.calls.some((call) => call.path.includes("/markdown") || call.method === "PATCH")).toBe(
     false,
   )
+})
+
+test("an original-only mutation exposes its durable ACK page and refuses another generation after external change", async () => {
+  const f = fixture(),
+    key = sourceIds.Description!
+  const mutation = {
+    identity: "original-create-enable",
+    path: `v1/pages/${id(100)}`,
+    method: "PATCH" as const,
+    repeat: "never" as const,
+    body: {
+      properties: { [key]: { rich_text: [{ type: "text", text: { content: "original" } }] } },
+    },
+  }
+  const observe = readSourceDefinition(library, id(100)).pipe(
+    Effect.map((current) => (current.description === "original" ? current : undefined)),
+  )
+  const first = await f.run(guardedSourceMutation(library, mutation, observe))
+  expect(first).toMatchObject({ status: "applied", response_page_id: id(100) })
+  expect(await f.run(guardedSourceMutation(library, mutation, observe))).toMatchObject({
+    status: "observed_current",
+    original_outcome: "applied",
+    response_page_id: id(100),
+  })
+  f.rows[0]!.properties[key] = rich(key, "later external intent")
+  await expect(f.run(guardedSourceMutation(library, mutation, observe))).rejects.toThrow()
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(1)
+})
+
+test("a matching current page without the original ACK never gains a response page receipt", async () => {
+  const f = fixture(),
+    key = sourceIds.Description!
+  const mutation = {
+    identity: "unknown-original-create-enable",
+    path: `v1/pages/${id(100)}`,
+    method: "PATCH" as const,
+    repeat: "never" as const,
+    body: {
+      properties: { [key]: { rich_text: [{ type: "text", text: { content: "original" } }] } },
+    },
+  }
+  const observe = readSourceDefinition(library, id(100)).pipe(
+    Effect.map((current) => (current.description === "original" ? current : undefined)),
+  )
+  f.lose("after")
+  await expect(f.run(guardedSourceMutation(library, mutation, observe))).rejects.toThrow()
+  const result = await f.run(guardedSourceMutation(library, mutation, observe))
+  expect(result).toMatchObject({ status: "observed_current", original_outcome: "unknown" })
+  expect(result).not.toHaveProperty("response_page_id")
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(1)
+})
+
+test("credential rotation observes an exact prior mutation without reading its private journal or manufacturing an ACK", async () => {
+  const f = fixture(),
+    key = sourceIds.Description!
+  const mutation = {
+    identity: "rotated-original-description",
+    path: `v1/pages/${id(100)}`,
+    method: "PATCH" as const,
+    repeat: "never" as const,
+    body: {
+      properties: { [key]: { rich_text: [{ type: "text", text: { content: "original" } }] } },
+    },
+  }
+  const observe = readSourceDefinition(library, id(100)).pipe(
+    Effect.map((current) => (current.description === "original" ? current : undefined)),
+  )
+  f.lose("after")
+  await expect(f.run(guardedSourceMutation(library, mutation, observe))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_UNKNOWN",
+  })
+  const before = structuredClone(f.local.records)
+  const reads: string[] = []
+  const result = await f.run(
+    Effect.gen(function* () {
+      const store = yield* Store
+      return yield* guardedSourceMutation(library, mutation, observe).pipe(
+        Effect.provideService(Notion, {
+          ...f.api,
+          credentialIdentity: Effect.succeed("rotated"),
+        }),
+        Effect.provideService(Store, {
+          ...store,
+          readJson: (key, schema) => {
+            reads.push(key)
+            return store.readJson(key, schema)
+          },
+        }),
+      )
+    }),
+  )
+  expect(result).toMatchObject({ status: "observed_current", original_outcome: "unknown" })
+  expect(result).not.toHaveProperty("response_page_id")
+  expect(reads.some((key) => before.has(key))).toBe(false)
+  expect(f.local.records).toEqual(before)
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(1)
+})
+
+test("an unknown exact Source create stays blocked across credentials while a distinct Source intent remains executable", async () => {
+  const f = fixture([])
+  f.lose("before")
+  await expect(f.run(putSourceDefinition(library, input, "absent"))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_UNKNOWN",
+  })
+  const rotated = { ...f.api, credentialIdentity: Effect.succeed("rotated") }
+  await expect(
+    f.run(
+      putSourceDefinition(library, input, "absent").pipe(Effect.provideService(Notion, rotated)),
+    ),
+  ).rejects.toMatchObject({ code: "SOURCE_WRITE_UNKNOWN" })
+  expect(f.calls.filter((call) => call.path === "v1/pages")).toHaveLength(1)
+  expect(
+    await f.run(
+      putSourceDefinition(library, { ...input, source_id: "independent-source" }, "absent").pipe(
+        Effect.provideService(Notion, rotated),
+      ),
+    ),
+  ).toMatchObject({ status: "applied", verified: true })
+  expect(f.calls.filter((call) => call.path === "v1/pages")).toHaveLength(2)
+  expect(f.rows).toHaveLength(1)
 })

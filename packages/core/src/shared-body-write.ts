@@ -7,7 +7,11 @@ import {
   decideObservedBody,
   FileEventSchema,
   normalizeObservedBody,
+  requireSafeBodyReplacement,
   resolveFileState,
+  resourceContentForOwnership,
+  nativeFileMetadata,
+  nativeMetadataForOwnership,
   type FileEvent,
 } from "./shared-file-state.ts"
 import {
@@ -37,6 +41,8 @@ import { sha256 } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
 import { completedSharedBodyWriteReview } from "./shared-body-write-review.ts"
 import { completedSharedBodyCurrentAcceptance } from "./shared-body-current-acceptance.ts"
+import { readSharedFileSourceContext } from "./shared-file-source-context.ts"
+import { withReadOnlyNotion } from "./notion-readonly.ts"
 
 export {
   SharedBodyWritePlanSchema,
@@ -231,6 +237,13 @@ export function prepareSharedBodyWrite(input: {
           "A deleted file requires an explicit lifecycle restoration before this body-write path.",
         ),
       )
+    if (resourceContentForOwnership(context.state.ownership) !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_BODY_WRITE_UNSUPPORTED",
+          "A raw resource's management page is not Markdown file content.",
+        ),
+      )
     if (input.action === "restore_follow" && input.source === undefined)
       return yield* Effect.fail(
         fail(
@@ -271,6 +284,17 @@ export function prepareSharedBodyWrite(input: {
       return yield* Effect.fail(
         fail("SHARED_BODY_WRITE_STALE", "The selected pinned body or event frontier is stale."),
       )
+    const sourceContext =
+      input.action === "restore_follow"
+        ? yield* readSharedFileSourceContext(input.library, input.skillPageId)
+        : undefined
+    if (
+      sourceContext !== undefined &&
+      sourceContext.selected_version !== context.index.source_reference
+    )
+      return yield* Effect.fail(
+        fail("SHARED_BODY_WRITE_STALE", "The selected source changed while preparing the restore."),
+      )
     const plan = yield* makeSharedBodyWritePlan({
       library_id: input.library.library_id,
       skill_page_id: input.skillPageId,
@@ -281,7 +305,8 @@ export function prepareSharedBodyWrite(input: {
       source_id: context.index.source_reference,
       action: input.action,
       ...(input.source === undefined ? {} : { restore_source: input.source }),
-      before,
+      ...(sourceContext === undefined ? {} : { source_context: sourceContext }),
+      before: { ...before, ...nativeMetadataForOwnership(context.state.ownership) },
       candidateMarkdown: input.candidateMarkdown,
       parents: context.state.heads,
       ...(input.inputProjection === undefined ? {} : { input_projection: input.inputProjection }),
@@ -332,7 +357,9 @@ function verifyCurrent(
       context.binding.page_id !== plan.page_id ||
       context.binding.path !== plan.path ||
       context.index.source_reference !== plan.source_id ||
-      canonicalSharedJson(context.state.heads) !== canonicalSharedJson(plan.event.parents)
+      canonicalSharedJson(context.state.heads) !== canonicalSharedJson(plan.event.parents) ||
+      canonicalSharedJson(nativeMetadataForOwnership(context.state.ownership)) !==
+        canonicalSharedJson(nativeFileMetadata(plan.before))
     )
       return yield* Effect.fail(
         fail(
@@ -349,6 +376,26 @@ function verifyCurrent(
         ? context.binding.path
         : context.state.placement.source_path,
     )
+    if (plan.action === "restore_follow") {
+      if (plan.source_context === undefined && library.sources !== undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_WRITE_STALE",
+            "This undispatched legacy restore does not freeze the live Source binding; prepare a fresh request.",
+          ),
+        )
+      if (
+        plan.source_context !== undefined &&
+        canonicalSharedJson(plan.source_context) !==
+          canonicalSharedJson(yield* readSharedFileSourceContext(library, plan.skill_page_id))
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_WRITE_STALE",
+            "The live Source definition, member or selected version changed after preparation.",
+          ),
+        )
+    }
     yield* bodyWriteChecked(() => resolveFileState(plan.file_id, [...context.events, plan.event]))
     if (includeBody) {
       const current = yield* readExactBody(plan.page_id)
@@ -645,6 +692,8 @@ export function executeSharedBodyWrite<R = never>(
     readonly plan: SharedBodyWritePlan
     readonly mode: "create" | "reconcile"
     readonly beforePlanWrite?: (plan: SharedBodyWritePlan) => Effect.Effect<void, SkillsError, R>
+    /** Optional native request revalidation; never called while reconciling an original write. */
+    readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
   },
 ) {
   return Effect.gen(function* () {
@@ -679,7 +728,17 @@ export function executeSharedBodyWrite<R = never>(
     // Pending and current-state checks share this one read-only preflight.
     // After retaining records below, verification always reads a new context.
     const initial = yield* verifyCurrent(library, plan, true, preflight)
-    if (plan.action === "write" && plan.before.fingerprint.sha256 === plan.candidate.content.sha256)
+    if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
+      yield* input.beforeRestoreDispatch.pipe(withReadOnlyNotion)
+    const sameBody = plan.before.fingerprint.sha256 === plan.candidate.content.sha256
+    if (
+      sameBody &&
+      (plan.action === "write" ||
+        (initial.state.ownership.kind === "following" &&
+          initial.state.ownership.source_revision === plan.restore_source?.revision &&
+          canonicalSharedJson(nativeMetadataForOwnership(initial.state.ownership)) ===
+            canonicalSharedJson(nativeFileMetadata(plan.candidate.content))))
+    )
       return {
         status: "unchanged" as const,
         operation_id: plan.operation_id,
@@ -687,6 +746,14 @@ export function executeSharedBodyWrite<R = never>(
         verified: true as const,
         requires_fresh_read: true as const,
       }
+    if (plan.action === "restore_follow" && !sameBody)
+      yield* bodyWriteChecked(() =>
+        requireSafeBodyReplacement({
+          existing_editable_page: true,
+          operation_id: plan.operation_id,
+          retained_candidate_id: plan.candidate.content.object_id,
+        }),
+      )
     if (input.beforePlanWrite !== undefined) yield* input.beforePlanWrite(plan)
     yield* appendSharedRecord(library, {
       mode: "create",
@@ -699,16 +766,24 @@ export function executeSharedBodyWrite<R = never>(
       payloadContainsBody: true,
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "plan")))
     yield* retainPlannedBodies(library, plan, "create")
-    const current = yield* verifyCurrent(library, plan, true).pipe(Effect.result)
+    const current = yield* Effect.gen(function* () {
+      const verified = yield* verifyCurrent(library, plan, true)
+      if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
+        yield* input.beforeRestoreDispatch.pipe(withReadOnlyNotion)
+      return verified
+    }).pipe(Effect.result)
     if (current._tag === "Failure") {
       yield* saveOutcome(library, plan, "not_sent", current.failure.code)
       return yield* Effect.fail(recoveryError(current.failure, plan, "pre_send"))
     }
     let response: unknown
-    if (plan.before.fingerprint.sha256 === plan.candidate.content.sha256) {
+    if (sameBody) {
+      const observed = yield* readExactBody(plan.page_id).pipe(
+        Effect.mapError((error) => recoveryError(error, plan, "unchanged_body_observation")),
+      )
       response = {
         id: plan.page_id,
-        markdown: plan.before.raw_markdown,
+        markdown: observed.raw_markdown,
         truncated: false,
         unknown_block_ids: [],
       }
@@ -754,7 +829,10 @@ export function executeSharedBodyWrite<R = never>(
             "The whole response differs from the exact frozen candidate; preserve all unmatched text.",
           ),
         )
-      return yield* verifyCurrent(library, plan, false)
+      const current = yield* verifyCurrent(library, plan, false)
+      if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
+        yield* input.beforeRestoreDispatch.pipe(withReadOnlyNotion)
+      return current
     }).pipe(Effect.result)
     if (exact._tag === "Failure") {
       yield* saveOutcome(library, plan, "needs_review", exact.failure.code, response)

@@ -14,6 +14,8 @@ export const SharedGitSourceBindingSchema = Schema.Struct({
       source_path: Schema.String,
       git_oid: Schema.String,
       bytes: Schema.Number,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+      sha256: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
     }),
   ),
 })

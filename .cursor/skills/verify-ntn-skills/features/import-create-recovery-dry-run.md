@@ -8,6 +8,12 @@ The product has no same-name `import` command. Helper `import` selects `create` 
 
 ## Sub-features
 
+The AH-681 complete-inventory import extends this existing author contract. Before implementation and live acceptance, freeze three input stories: unchanged exact upstream; local changes against a verified fixed upstream baseline; and a wholly owned native Skill. Use the public inventory artifact identity and the exact reviewed entity manifest, including executable modes, binary resources, original frontmatter and required relationships. A plan file records consent scope; it does not grant permission to upload a production tree.
+
+For these stories the independent oracle starts from the pre-operation complete manifest. It compares remote audit plus installed CLI/SDK read, files and export from new state. Record the original create operation, every retained object and native file identity, original source/member/selection, custom ancestry and visibility before/after. Create incomplete Skills disabled; only the original plan's explicit enabled choice may become visible after all required resources and relationships verify. Pure public Git uses its fixed source directly by default. Local custom bytes and deleted upstream paths remain explicit overrides; never create C2 text first and then overwrite it with N1.
+
+Required negative cases: wrong exact identity or same-name foreign Source; broken/redirected links and changed directory contents after inventory; missing binary chunks or required external paths; sensitive content not approved for sharing; permission loss; remote human edits; stale selection; process interruption before and after dispatch; acknowledgement loss; and repeated completed execution. Known allocated pages may continue through the original recovery protocol. An unknown POST or PATCH cannot be retried, relabeled successful by current equality, or replaced with a new plan identity. Original failures, controlled fixtures, real Notion and physical-host acceptance remain separate evidence.
+
 - `import-inputs`: folder, ZIP and single Markdown selection with metadata overrides.
 - `import-selection`: explicit database, configured default and sole-discovery creation scope.
 - `import-dry-run`: preflight decision with unchanged remote contents.

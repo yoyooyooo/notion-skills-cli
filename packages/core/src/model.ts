@@ -169,6 +169,28 @@ export const FileEntrySchema = Schema.Struct({
   path: Schema.String,
   bytes: Schema.Number,
   sha256: Schema.String,
+  mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+})
+/** Acquisition locations for the one authoritative Snapshot.files directory.
+ * These contain no credentials and never replace its byte/hash/mode identities. */
+export const SharedSnapshotAcquisitionSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  library: SharedLibrarySchema,
+  source: Schema.NullOr(Schema.Struct({ source_id: Schema.String, revision: Schema.String })),
+  files: Schema.Array(
+    Schema.Union([
+      Schema.Struct({
+        kind: Schema.Literal("source"),
+        path: Schema.String,
+        source_path: Schema.String,
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("resource"),
+        path: Schema.String,
+        object_id: Schema.String,
+      }),
+    ]),
+  ),
 })
 const NotionBlockNodeSchema = Schema.Struct({
   id: Schema.String,
@@ -244,6 +266,7 @@ export const SnapshotSchema = Schema.Struct({
   version_id: Schema.String,
   created_at: Schema.Number,
   files: Schema.Array(FileEntrySchema),
+  shared_acquisition: Schema.optional(SharedSnapshotAcquisitionSchema),
   file_bindings: Schema.optional(Schema.Array(NativeFileBindingSchema)),
   native_references: Schema.optional(NativeReferenceIndexSchema),
   source_files: Schema.optional(Schema.Array(FileEntrySchema)),

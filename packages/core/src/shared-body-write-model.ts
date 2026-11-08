@@ -6,11 +6,14 @@ import {
   FileEventSchema,
   normalizeObservedBody,
   RetainedContentSchema,
+  NativeFileMetadataFields,
+  nativeFileMetadata,
   type FileEvent,
   type RetainedContent,
 } from "./shared-file-state.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import { SharedFileSourceContextSchema } from "./shared-file-source-context-model.ts"
 import {
   SharedNotionMarkdownProjectionSchema,
   validateSharedNotionMarkdownProjection,
@@ -26,12 +29,14 @@ export const FrozenWriteBodySchema = Schema.Struct({
   fingerprint: BodyFingerprintSchema,
   bytes: Schema.Number,
   downloaded_at: Schema.Number,
+  ...NativeFileMetadataFields,
 })
 export type FrozenWriteBody = typeof FrozenWriteBodySchema.Type
 export const RestoreSourceSchema = Schema.Struct({
   source_id: Schema.String,
   revision: Identity,
   path: Schema.String,
+  ...NativeFileMetadataFields,
 })
 export type RestoreSource = typeof RestoreSourceSchema.Type
 export const SharedBodyWritePlanSchema = Schema.Struct({
@@ -49,6 +54,8 @@ export const SharedBodyWritePlanSchema = Schema.Struct({
   source_id: Schema.String,
   action: BodyWriteActionSchema,
   restore_source: Schema.optional(RestoreSourceSchema),
+  /** New restore plans bind live Source configuration; old frozen plans keep their original digest. */
+  source_context: Schema.optional(SharedFileSourceContextSchema),
   before: FrozenWriteBodySchema,
   candidate: Schema.Struct({ markdown: Schema.String, content: RetainedContentSchema }),
   /** Optional for previously frozen plans; the full preprojection body remains retained here. */
@@ -102,6 +109,7 @@ export function bodyWriteEventDescription(event: FileEvent) {
       source_revision: event.source_revision,
       projection: event.projection,
       retained: event.retained,
+      ...nativeFileMetadata(event),
     }
   throw fail(
     "SHARED_BODY_WRITE_INVALID",
@@ -127,6 +135,7 @@ function description(plan: Omit<SharedBodyWritePlan, "operation_id">) {
     source_id: plan.source_id,
     action: plan.action,
     ...(plan.restore_source === undefined ? {} : { restore_source: plan.restore_source }),
+    ...(plan.source_context === undefined ? {} : { source_context: plan.source_context }),
     before: plan.before,
     candidate: plan.candidate,
     event: plan.event,
@@ -160,6 +169,15 @@ export function validateSharedBodyWritePlan(input: unknown) {
         )
       if (normalizePath(plan.path) !== plan.path || plan.path === "" || plan.path === ".")
         throw fail("SHARED_BODY_WRITE_INVALID", "The frozen file path must be canonical.")
+      if (
+        plan.source_context !== undefined &&
+        (plan.action !== "restore_follow" ||
+          plan.source_context.selected_version !== plan.source_id)
+      )
+        throw fail(
+          "SHARED_BODY_WRITE_INVALID",
+          "The restore's frozen Source context contradicts its selected version.",
+        )
       if (plan.before.raw_markdown.length === 0)
         throw fail(
           "SHARED_BODY_WRITE_UNSUPPORTED",
@@ -248,6 +266,7 @@ export function validateSharedBodyWritePlan(input: unknown) {
       object_id: `body-${previousHash}`,
       sha256: previousHash,
       bytes: new TextEncoder().encode(plan.before.markdown).byteLength,
+      ...nativeFileMetadata(plan.before),
     }
     if (
       previousHash !== plan.before.fingerprint.sha256 ||
@@ -270,6 +289,8 @@ export function validateSharedBodyWritePlan(input: unknown) {
     } else if (plan.event.kind === "following_restored") {
       if (
         plan.event.projection.sha256 !== candidateHash ||
+        canonicalSharedJson(nativeFileMetadata(plan.event)) !==
+          canonicalSharedJson(nativeFileMetadata(plan.restore_source ?? {})) ||
         canonicalSharedJson(plan.event.retained) !== canonicalSharedJson(previous)
       )
         return yield* Effect.fail(
@@ -322,6 +343,9 @@ export function makeSharedBodyWritePlan(
       object_id: `body-${hash}`,
       sha256: hash,
       bytes: new TextEncoder().encode(markdown).byteLength,
+      ...nativeFileMetadata(
+        input.action === "restore_follow" ? (input.restore_source ?? {}) : input.before,
+      ),
     }
     const parents = [...input.parents].sort()
     const base =
@@ -333,10 +357,12 @@ export function makeSharedBodyWritePlan(
             kind: "following_restored" as const,
             source_revision: input.restore_source?.revision ?? "",
             projection: { normalization_version: 1 as const, sha256: hash },
+            ...nativeFileMetadata(input.restore_source ?? {}),
             retained: {
               object_id: `body-${input.before.fingerprint.sha256}`,
               sha256: input.before.fingerprint.sha256,
               bytes: input.before.bytes,
+              ...nativeFileMetadata(input.before),
             },
           }
     const provisional = { ...base, event_id: "pending" } satisfies FileEvent
@@ -355,6 +381,7 @@ export function makeSharedBodyWritePlan(
       source_id: input.source_id,
       action: input.action,
       ...(input.restore_source === undefined ? {} : { restore_source: input.restore_source }),
+      ...(input.source_context === undefined ? {} : { source_context: input.source_context }),
       before: input.before,
       candidate: { markdown, content },
       event,

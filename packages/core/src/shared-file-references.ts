@@ -353,8 +353,20 @@ export function mapSharedMarkdownReferences(
 export function assertSharedFileReferences(
   files: readonly CompositionFile[],
   policy: SharedNotionMarkdownVersion = 5,
+  completePaths?: readonly string[],
 ) {
-  const paths = new Set(files.map((file) => file.path))
+  const paths = new Set(completePaths ?? files.map((file) => file.path))
+  if (
+    completePaths !== undefined &&
+    (files.some((file) => !paths.has(file.path)) ||
+      completePaths.some(
+        (path) => /\.(?:md|markdown)$/iu.test(path) && !files.some((file) => file.path === path),
+      ))
+  )
+    throw fail(
+      "SHARED_REFERENCE_INVALID",
+      "Reference validation requires every Markdown body and the complete immutable path inventory.",
+    )
   const references: SharedFileReference[] = []
   let checkedFiles = 0
   for (const file of files) {

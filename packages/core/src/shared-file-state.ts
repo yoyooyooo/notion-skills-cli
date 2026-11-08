@@ -9,36 +9,125 @@ export const BodyFingerprintSchema = Schema.Struct({
   sha256: Hash,
 })
 export type BodyFingerprint = typeof BodyFingerprintSchema.Type
-export const RetainedContentSchema = Schema.Struct({
+/** Optional immutable native-file metadata. Absence preserves historical unknown values. */
+export const NativeFileMetadataFields = {
+  mode: Schema.optionalKey(Schema.Literals(["100644", "100755"])),
+  frontmatter: Schema.optionalKey(Schema.String),
+}
+export const NativeFileMetadataSchema = Schema.Struct(NativeFileMetadataFields)
+export type NativeFileMetadata = typeof NativeFileMetadataSchema.Type
+export function nativeFileMetadata(value: {
+  readonly mode?: "100644" | "100755" | null
+  readonly frontmatter?: string
+}): NativeFileMetadata {
+  return {
+    ...(value.mode === undefined || value.mode === null ? {} : { mode: value.mode }),
+    ...(value.frontmatter === undefined ? {} : { frontmatter: value.frontmatter }),
+  }
+}
+const RetainedContentFields = {
   object_id: Identity,
   sha256: Hash,
   bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+}
+export const ResourceContentSchema = Schema.Struct({
+  ...RetainedContentFields,
+  kind: Schema.Literal("resource"),
+  mode: Schema.NullOr(Schema.Literals(["100644", "100755"])),
 })
+export type ResourceContent = typeof ResourceContentSchema.Type
+export const RetainedContentSchema = Schema.Union([
+  ResourceContentSchema,
+  Schema.Struct({
+    ...RetainedContentFields,
+    kind: Schema.optionalKey(Schema.Never),
+    ...NativeFileMetadataFields,
+  }),
+])
 export type RetainedContent = typeof RetainedContentSchema.Type
+export function isResourceContent(content: RetainedContent): content is ResourceContent {
+  return content.kind === "resource"
+}
+export const ResourceFollowingOwnershipSchema = Schema.Struct({
+  kind: Schema.Literal("following"),
+  source_revision: Identity,
+  source_id: Identity,
+  source_path: Schema.String,
+  resource: ResourceContentSchema,
+  projection: Schema.optionalKey(Schema.Never),
+})
+export type ResourceFollowingOwnership = typeof ResourceFollowingOwnershipSchema.Type
 
 /** These are shared facts, not a status checkbox or a local cache observation. */
 export const FileOwnershipSchema = Schema.Union([
+  ResourceFollowingOwnershipSchema,
   Schema.Struct({
     kind: Schema.Literal("following"),
     source_revision: Identity,
     projection: BodyFingerprintSchema,
+    ...NativeFileMetadataFields,
+    resource: Schema.optionalKey(Schema.Never),
+    source_id: Schema.optionalKey(Schema.Never),
+    source_path: Schema.optionalKey(Schema.Never),
   }),
   Schema.Struct({ kind: Schema.Literal("custom"), content: RetainedContentSchema }),
   Schema.Struct({ kind: Schema.Literal("tombstone"), retained: RetainedContentSchema }),
 ])
 export type FileOwnership = typeof FileOwnershipSchema.Type
+export function nativeMetadataForOwnership(
+  ownership: FileOwnership | undefined,
+): NativeFileMetadata {
+  if (ownership === undefined || resourceContentForOwnership(ownership) !== undefined) return {}
+  if (isResourceFollowing(ownership)) return {}
+  return nativeFileMetadata(
+    ownership.kind === "following"
+      ? ownership
+      : ownership.kind === "custom"
+        ? ownership.content
+        : ownership.retained,
+  )
+}
+export function isResourceFollowing(
+  ownership: FileOwnership,
+): ownership is ResourceFollowingOwnership {
+  return ownership.kind === "following" && ownership.resource !== undefined
+}
+/** Resource classification is a shared ownership fact, never a path or page-body guess. */
+export function resourceContentForOwnership(ownership: FileOwnership): ResourceContent | undefined {
+  if (isResourceFollowing(ownership)) return ownership.resource
+  const content =
+    ownership.kind === "custom"
+      ? ownership.content
+      : ownership.kind === "tombstone"
+        ? ownership.retained
+        : undefined
+  return content !== undefined && isResourceContent(content) ? content : undefined
+}
 
 const Common = {
   event_id: Identity,
   file_id: Identity,
   parents: Schema.Array(Identity),
 }
+export const ResourceFollowingEventSchema = Schema.Struct({
+  ...Common,
+  kind: Schema.Literal("resource_followed"),
+  source_id: Identity,
+  source_revision: Identity,
+  path: Schema.String,
+  source_path: Schema.String,
+  content: ResourceContentSchema,
+  retained: Schema.NullOr(ResourceContentSchema),
+})
+export type ResourceFollowingEvent = typeof ResourceFollowingEventSchema.Type
 export const FileEventSchema = Schema.Union([
+  ResourceFollowingEventSchema,
   Schema.Struct({
     ...Common,
     kind: Schema.Literal("projected"),
     source_revision: Identity,
     projection: BodyFingerprintSchema,
+    ...NativeFileMetadataFields,
   }),
   Schema.Struct({ ...Common, kind: Schema.Literal("adopted"), content: RetainedContentSchema }),
   Schema.Struct({
@@ -47,6 +136,7 @@ export const FileEventSchema = Schema.Union([
     source_revision: Identity,
     projection: BodyFingerprintSchema,
     retained: RetainedContentSchema,
+    ...NativeFileMetadataFields,
   }),
   Schema.Struct({ ...Common, kind: Schema.Literal("deleted"), retained: RetainedContentSchema }),
   Schema.Struct({
@@ -82,12 +172,21 @@ export function normalizeObservedBody(markdown: string, version: 1 = 1): string 
 
 function stateAfter(event: FileEvent, parents: readonly FileOwnership[] = []): FileOwnership {
   switch (event.kind) {
+    case "resource_followed":
+      return {
+        kind: "following",
+        source_id: event.source_id,
+        source_revision: event.source_revision,
+        source_path: event.source_path,
+        resource: event.content,
+      }
     case "projected":
     case "following_restored":
       return {
         kind: "following",
         source_revision: event.source_revision,
         projection: event.projection,
+        ...nativeFileMetadata(event),
       }
     case "adopted":
       return { kind: "custom", content: event.content }
@@ -137,6 +236,16 @@ function placementAfter(
       "SHARED_PATH_CONFLICT",
       "The file's parent events have incompatible logical placements; a body edit cannot choose a path winner.",
     )
+  if (event.kind === "resource_followed") {
+    const path = placementPath(event.path),
+      source = placementPath(event.source_path)
+    if (previous !== undefined && previous.path !== path)
+      throw fail(
+        "SHARED_PATH_CONFLICT",
+        "Following a raw source cannot silently move its logical file.",
+      )
+    return { path, source_path: source, suppressed_paths: previous?.suppressed_paths ?? [] }
+  }
   if (event.kind !== "moved") return previous
   const from = placementPath(event.from_path),
     to = placementPath(event.to_path)
@@ -166,17 +275,42 @@ function placementAfter(
 }
 
 function contentEqual(left: RetainedContent, right: RetainedContent): boolean {
-  return left.sha256 === right.sha256 && left.bytes === right.bytes
+  if (isResourceContent(left) || isResourceContent(right))
+    return (
+      isResourceContent(left) &&
+      isResourceContent(right) &&
+      left.sha256 === right.sha256 &&
+      left.bytes === right.bytes &&
+      left.mode === right.mode &&
+      left.object_id === right.object_id
+    )
+  return (
+    left.sha256 === right.sha256 &&
+    left.bytes === right.bytes &&
+    left.mode === right.mode &&
+    left.frontmatter === right.frontmatter
+  )
 }
 function sameOwnership(left: FileOwnership, right: FileOwnership): boolean {
   if (left.kind !== right.kind) return false
   switch (left.kind) {
     case "following":
+      if (isResourceFollowing(left))
+        return (
+          isResourceFollowing(right) &&
+          left.source_id === right.source_id &&
+          left.source_revision === right.source_revision &&
+          left.source_path === right.source_path &&
+          contentEqual(left.resource, right.resource)
+        )
       return (
         right.kind === "following" &&
+        !isResourceFollowing(right) &&
         left.source_revision === right.source_revision &&
         left.projection.normalization_version === right.projection.normalization_version &&
-        left.projection.sha256 === right.projection.sha256
+        left.projection.sha256 === right.projection.sha256 &&
+        left.mode === right.mode &&
+        left.frontmatter === right.frontmatter
       )
     case "custom":
       return right.kind === "custom" && contentEqual(left.content, right.content)
@@ -240,7 +374,10 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
         throw fail("SHARED_STATE_INVALID", "A resolved parent has no ownership state.")
       return state
     })
-    if (event.kind === "projected" && parentStates.some((parent) => parent.kind !== "following"))
+    if (
+      event.kind === "projected" &&
+      parentStates.some((parent) => parent.kind !== "following" || isResourceFollowing(parent))
+    )
       throw fail(
         "OWNERSHIP_TRANSITION_INVALID",
         "A projection cannot release customization or a tombstone.",
@@ -254,6 +391,14 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
         "Restoring, deleting or moving requires shared prior state.",
       )
     if (event.kind === "following_restored") {
+      if (
+        isResourceContent(event.retained) ||
+        parentStates.some((state) => resourceContentForOwnership(state) !== undefined)
+      )
+        throw fail(
+          "SHARED_RESOURCE_FOLLOWING_UNSUPPORTED",
+          "A raw resource requires an explicit source-byte following contract; its management page is not a Markdown projection.",
+        )
       for (const state of parentStates) {
         const retained =
           state.kind === "custom"
@@ -268,6 +413,25 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
           )
       }
     }
+    if (event.kind === "resource_followed") {
+      if ((parents.length === 0) !== (event.retained === null))
+        throw fail(
+          "OWNERSHIP_TRANSITION_INVALID",
+          "Raw following must retain its prior ownership, or declare one initial source baseline.",
+        )
+      for (const state of parentStates) {
+        const content = resourceContentForOwnership(state)
+        if (
+          content === undefined ||
+          event.retained === null ||
+          !contentEqual(event.retained, content)
+        )
+          throw fail(
+            "OWNERSHIP_TRANSITION_INVALID",
+            "Following a raw source must preserve the exact prior retained resource.",
+          )
+      }
+    }
     if (event.kind === "deleted" || event.kind === "moved") {
       for (const state of parentStates) {
         const retained =
@@ -278,7 +442,12 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
               : undefined
         if (
           (retained !== undefined && !contentEqual(event.retained, retained)) ||
-          (state.kind === "following" && event.retained.sha256 !== state.projection.sha256)
+          (state.kind === "following" &&
+            (isResourceFollowing(state)
+              ? !isResourceContent(event.retained)
+              : event.retained.sha256 !== state.projection.sha256 ||
+                JSON.stringify(nativeFileMetadata(event.retained)) !==
+                  JSON.stringify(nativeFileMetadata(state))))
         )
           throw fail(
             "OWNERSHIP_TRANSITION_INVALID",
@@ -286,6 +455,17 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
           )
       }
     }
+    if (
+      event.kind === "adopted" &&
+      parentStates.some(
+        (state) =>
+          isResourceContent(event.content) !== (resourceContentForOwnership(state) !== undefined),
+      )
+    )
+      throw fail(
+        "SHARED_RESOURCE_NOT_EDITABLE",
+        "Raw resources and editable bodies cannot implicitly change representation.",
+      )
     const ownership = stateAfter(event, parentStates)
     ownershipByEvent.set(event.event_id, ownership)
     placementByEvent.set(
@@ -344,11 +524,21 @@ export type BodyDecision =
 
 /** Metadata timestamps only decide whether to observe, never who owns content. */
 export function decideObservedBody(state: FileOwnership, observed: BodyFingerprint): BodyDecision {
+  if (resourceContentForOwnership(state) !== undefined)
+    throw fail(
+      "SHARED_RESOURCE_NOT_EDITABLE",
+      "Resource ownership never observes its management page as an editable body.",
+    )
   if (state.kind === "tombstone") return { kind: "deleted" }
   if (state.kind === "custom")
     return state.content.sha256 === observed.sha256
       ? { kind: "unchanged" }
       : { kind: "adopt", previous: "custom" }
+  if (state.projection === undefined)
+    throw fail(
+      "SHARED_RESOURCE_NOT_EDITABLE",
+      "A raw following resource has no Markdown projection.",
+    )
   if (state.projection.normalization_version !== observed.normalization_version)
     throw fail(
       "BASELINE_VERSION_MISMATCH",

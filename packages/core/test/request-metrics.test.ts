@@ -10,6 +10,58 @@ import {
 } from "../src/request-metrics.ts"
 
 describe("request metrics", () => {
+  test("Git acquisition costs remain separate from HTTP and preserve unknown wire/auth costs", () => {
+    let time = 10
+    const metrics = createRequestMetrics({ now: () => time, traceLimit: 2 })
+    expect(metrics.snapshot()).not.toHaveProperty("source_acquisitions")
+    const finish = metrics.beginSourceAcquisition({ provider: "git", configured_transport: "ssh" })
+    expect(metrics.snapshot().source_acquisitions?.in_flight).toBe(1)
+    metrics.begin({ path: "/metadata", provider: "other", method: "GET", requestBytes: 0 })({
+      responseBytes: 12,
+    })
+    time = 30
+    const result = {
+      outcome: "success" as const,
+      fetchMilliseconds: 12,
+      repositoryObjectBytes: 91,
+      catFileBytes: 120,
+      observationMilliseconds: 2,
+    }
+    finish(result)
+    finish(result)
+    time = 40
+    metrics.beginSourceAcquisition({ provider: "skills.sh", configured_transport: "https" })({
+      outcome: "failure",
+      fetchMilliseconds: 0,
+      catFileBytes: 0,
+      observationMilliseconds: 0,
+    })
+    const snapshot = metrics.snapshot()
+    expect(snapshot).toMatchObject({ total_requests: 1, response_bytes: 12, in_flight: 0 })
+    expect(snapshot.source_acquisitions).toMatchObject({
+      attempts: 2,
+      providers: { git: 1, "skills.sh": 1 },
+      outcomes: { success: 1, failure: 1, cancelled: 0 },
+      in_flight: 0,
+      duration_ms: 20,
+      fetch_ms: 12,
+      observation_ms: 2,
+      repository_object_bytes: 91,
+      unknown_repository_object_bytes: 1,
+      cat_file_bytes: 120,
+      wire_bytes: null,
+      auth_wait_ms: null,
+      trace_dropped: 1,
+    })
+    expect(snapshot.trace.length + (snapshot.source_acquisitions?.trace.length ?? 0)).toBe(2)
+    expect(snapshot.source_acquisitions?.trace[0]).toMatchObject({
+      provider: "git",
+      configured_transport: "ssh",
+      wire_bytes: null,
+      auth_wait_ms: null,
+    })
+  })
+
   test("safe targets normalize only Notion UUID routes and bounded exact Entity filters", () => {
     const id = "11111111-2222-4333-8444-555555555555"
     expect(

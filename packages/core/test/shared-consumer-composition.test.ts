@@ -3,13 +3,18 @@ import { mkdtempSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
+import { Notion } from "../src/notion.ts"
+import { openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
+import { gitBlobOid } from "../src/shared-github-source.ts"
+import { registerSourceBinding } from "../src/shared-source-binding.ts"
+import { cacheVerifiedFixedGithubFiles } from "../src/shared-source-materialization.ts"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { markLocalContentRestriction } from "../src/content-restrictions.ts"
 import { decode, property, text } from "../src/model.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
 import { FileEventSchema } from "../src/shared-file-state.ts"
 import { assertSharedFileReferences } from "../src/shared-file-references.ts"
-import { targetSnapshot } from "../src/snapshot.ts"
+import { readSkill, targetSnapshot } from "../src/snapshot.ts"
 import { parseYaml } from "../src/yaml.ts"
 import { bindSharedLocalResource, configureSharedHttpOrigins } from "../src/shared-source-config.ts"
 import { registerSourcePlanBinding } from "../src/shared-source-plan-binding.ts"
@@ -82,6 +87,173 @@ function seedProjected(
     )
   }
 }
+
+function coldConsumer(f: ReturnType<typeof sharedSnapshotFixture>, client: HttpClient.HttpClient) {
+  return Effect.gen(function* () {
+    const remote = yield* Notion
+    const cold = sharedSnapshotFixture({ httpClient: client })
+    const run: typeof f.run = (effect) =>
+      cold.run(effect.pipe(Effect.provideService(Notion, remote)))
+    return { cold, run }
+  })
+}
+
+test("cold HTTP resource selection keeps one full manifest and downloads only requested bytes before full completion", async () => {
+  const requests: string[] = []
+  const large = Uint8Array.from({ length: 131_077 }, (_, index) => index % 251)
+  const data = new Map([
+    [`${origin}/a`, binary],
+    [`${origin}/b`, large],
+  ])
+  const client = HttpClient.make((request, url) =>
+    Effect.sync(() => {
+      requests.push(url.toString())
+      const bytes = data.get(url.toString())
+      return HttpClientResponse.fromWeb(
+        request,
+        bytes === undefined
+          ? new Response(null, { status: 404 })
+          : new Response(bytes.slice(), { headers: { "content-length": String(bytes.length) } }),
+      )
+    }),
+  )
+  const f = sharedSnapshotFixture({ httpClient: client })
+  await f.open()
+  const plan: SharedSourcePlan = {
+    version: 1,
+    kind: "composition",
+    base: null,
+    mounts: [
+      {
+        mount_path: "assets",
+        resource: {
+          kind: "http",
+          manifest: {
+            version: 1,
+            files: [
+              { path: "a.bin", sha256: digest(binary), bytes: binary.length, mode: "100644" },
+              { path: "b.bin", sha256: digest(large), bytes: large.length, mode: "100755" },
+            ],
+          },
+          locations: [
+            { sha256: digest(binary), url: `${origin}/a` },
+            { sha256: digest(large), url: `${origin}/b` },
+          ],
+        },
+      },
+    ],
+  }
+  const registered = await f.run(
+    registerSourcePlanBinding(library, { skillPageId: skillPage, mode: "create", plan }),
+  )
+  property(f.main.properties).source = rich("source", registered.binding.source_plan_id)
+  const { cold, run } = await f.run(coldConsumer(f, client))
+  await run(configureSharedHttpOrigins([origin]))
+  expect(cold.objects.size).toBe(0)
+  const directory = await run(
+    targetSnapshot({ selector: skillPage }, { refresh: true }, "generated", "manifest"),
+  )
+  expect(directory.files).toHaveLength(5)
+  expect(requests).toEqual([])
+  expect(cold.objects.has(`objects/${digest(binary)}`)).toBe(false)
+  expect(cold.objects.has(`objects/${digest(large)}`)).toBe(false)
+  const a = await run(
+    targetSnapshot({ selector: skillPage, path: "assets/a.bin" }, {}, "generated", "target"),
+  )
+  expect(a.snapshot_id).toBe(directory.snapshot_id)
+  expect(requests).toEqual([`${origin}/a`])
+  expect(cold.objects.get(`objects/${digest(binary)}`)).toEqual(binary)
+  expect(cold.objects.has(`objects/${digest(large)}`)).toBe(false)
+  const full = await run(targetSnapshot({ selector: skillPage }, {}, "generated", "all"))
+  expect(full.snapshot_id).toBe(directory.snapshot_id)
+  expect(requests).toEqual([`${origin}/a`, `${origin}/b`])
+  expect(cold.objects.get(`objects/${digest(large)}`)).toEqual(large)
+  expect(full.files.find((file) => file.path === "assets/b.bin")?.mode).toBe("100755")
+  await run(
+    targetSnapshot(
+      { selector: skillPage, path: "assets/a.bin" },
+      { maxAge: 0 },
+      "generated",
+      "target",
+    ),
+  )
+  expect(requests).toEqual([`${origin}/a`, `${origin}/b`])
+  const author = await f.run(coldConsumer(f, client))
+  await author.run(configureSharedHttpOrigins([origin]))
+  await author.run(readSkill(skillPage, { authoring: true }))
+  expect(requests.slice(2).sort()).toEqual([`${origin}/a`, `${origin}/b`])
+  expect(author.cold.objects.get(`objects/${digest(binary)}`)).toEqual(binary)
+  expect(author.cold.objects.get(`objects/${digest(large)}`)).toEqual(large)
+})
+
+for (const knownSha of [true, false])
+  test(`cold fixed Git admission known SHA=${knownSha} preserves the declared compatibility path`, async () => {
+    const requests: string[] = []
+    const blobs = new Map<string, Uint8Array>()
+    const client = HttpClient.make((request, url) =>
+      Effect.sync(() => {
+        expect(url.hostname).toBe("raw.githubusercontent.com")
+        requests.push(url.toString())
+        const bytes = blobs.get(url.pathname.split("/").slice(4).join("/"))
+        return HttpClientResponse.fromWeb(
+          request,
+          bytes === undefined
+            ? new Response(null, { status: 404 })
+            : new Response(bytes.slice(), { headers: { "content-length": String(bytes.length) } }),
+        )
+      }),
+    )
+    const f = sharedSnapshotFixture({ httpClient: client })
+    const projected = projectedFiles(f)
+    const inputs = [
+      ...projected.map(({ path, bytes }) => ({ path, bytes, mode: "100644" as const })),
+      { path: "assets/a.bin", bytes: binary, mode: "100644" as const },
+      { path: "scripts/b.sh", bytes: encode("#!/bin/sh\r\nexit 9\r\n"), mode: "100755" as const },
+    ]
+    for (const file of inputs) blobs.set(file.path, file.bytes)
+    const fixed = {
+      url: "https://github.com/acme/skills",
+      commit: "a".repeat(40),
+      root: "",
+      tree: "b".repeat(40),
+      files: await Promise.all(
+        inputs.map(async (file) => ({
+          path: file.path,
+          source_path: file.path,
+          git_oid: await f.run(gitBlobOid(file.bytes)),
+          bytes: file.bytes.length,
+          mode: file.mode,
+          ...(knownSha ? { sha256: digest(file.bytes) } : {}),
+        })),
+      ),
+    }
+    await f.run(cacheVerifiedFixedGithubFiles(fixed, inputs))
+    const registered = await f.run(
+      registerSourceBinding(library, {
+        skillPageId: skillPage,
+        mode: "create",
+        fixedSource: fixed,
+      }),
+    )
+    seedProjected(f, fixed.commit, projected)
+    property(f.main.properties).source = rich("source", registered.binding.source_id)
+    const { cold, run } = await f.run(coldConsumer(f, client))
+    expect(cold.objects.size).toBe(0)
+    const current = await run(
+      targetSnapshot({ selector: skillPage }, { refresh: true }, "generated", "entrypoint"),
+    )
+    expect(current.files).toHaveLength(inputs.length)
+    expect(requests.length).toBe(knownSha ? projected.length : inputs.length)
+    expect(cold.objects.has(`objects/${digest(binary)}`)).toBe(!knownSha)
+    if (knownSha) {
+      const before = requests.length
+      const selected = await run(openFixedSnapshotFiles(current, () => ["assets/a.bin"]))
+      expect(selected.files).toEqual([{ path: "assets/a.bin", bytes: binary }])
+      expect(requests.length).toBe(before + 1)
+      expect(requests.at(-1)).toContain(`/${fixed.commit}/assets/a.bin`)
+      expect(cold.objects.has(`objects/${digest(inputs.at(-1)!.bytes)}`)).toBe(false)
+    }
+  })
 
 test("the standard target consumer composes a fixed HTTP mount with native Notion files and warm cached reads", async () => {
   const requests: string[] = [],

@@ -2,6 +2,7 @@ import { Crypto, Effect, Schema } from "effect"
 import {
   aliasFor,
   ContentRecordSchema,
+  FileEntrySchema,
   fail,
   SkillsError,
   SnapshotSchema,
@@ -48,6 +49,7 @@ export const SharedSnapshotManifestSchema = Schema.Struct({
       path: Schema.String,
       sha256: ShaSchema,
       bytes: Schema.Number,
+      mode: FileEntrySchema.fields.mode,
       chunks: Schema.Array(ChunkSchema),
     }),
   ),
@@ -407,6 +409,7 @@ export function prepareSharedSnapshotHistory(library: SharedLibrary, input: Snap
         path: file.path,
         sha256: file.sha256,
         bytes: file.bytes,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
         chunks: [...cached.chunks],
       })
     }
@@ -566,7 +569,7 @@ function assembleFiles(manifest: SharedSnapshotManifest, chunks: ReadonlyMap<str
           return yield* Effect.fail(
             invalid("The assembled historical file failed its frozen checksum."),
           )
-        return { path: file.path, bytes }
+        return { path: file.path, bytes, ...(file.mode === undefined ? {} : { mode: file.mode }) }
       }),
     { concurrency: 4 },
   )
@@ -792,7 +795,7 @@ export function materializeSharedSnapshotFiles(
       selected.map((file) => {
         const bytes = available.get(file.path)
         if (bytes === undefined) throw invalid("A selected file was not completely materialized.")
-        return { path: file.path, bytes }
+        return { path: file.path, bytes, ...(file.mode === undefined ? {} : { mode: file.mode }) }
       }),
     )
   })
@@ -814,7 +817,11 @@ export function restoreSharedSnapshotHistory(
   {
     readonly pin_id: string
     readonly manifest: SharedSnapshotManifest
-    readonly files: readonly { readonly path: string; readonly bytes: Uint8Array }[]
+    readonly files: readonly {
+      readonly path: string
+      readonly bytes: Uint8Array
+      readonly mode?: "100644" | "100755"
+    }[]
   },
   SkillsError,
   Notion | Crypto.Crypto

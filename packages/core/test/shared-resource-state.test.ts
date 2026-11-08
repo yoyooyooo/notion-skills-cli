@@ -8,7 +8,7 @@ import { registerSourceBinding } from "../src/shared-source-binding.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
 import { prepareSharedMetadataWrite } from "../src/shared-metadata-write.ts"
-import { prepareSourceRefresh } from "../src/shared-source-refresh.ts"
+import { prepareRetainedSourceRefresh as prepareSourceRefresh } from "../src/shared-source-refresh.ts"
 import {
   prepareSharedSnapshotHistory,
   retainSharedSnapshotHistory,

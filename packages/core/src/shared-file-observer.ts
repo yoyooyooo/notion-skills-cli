@@ -5,6 +5,7 @@ import {
   decideObservedBody,
   FileEventSchema,
   resolveFileState,
+  nativeMetadataForOwnership,
   RetainedContentSchema,
   type BodyFingerprint,
   type FileEvent,
@@ -12,6 +13,7 @@ import {
   type RetainedContent,
 } from "./shared-file-state.ts"
 import { observeSharedBody } from "./shared-page-body.ts"
+import { isResourceContent, resourceContentForOwnership } from "./shared-resource-content.ts"
 import {
   commitSharedObservationPlan,
   makeSharedObservationPlan,
@@ -129,6 +131,13 @@ export function observeSharedFile<R = never>(input: ObserveSharedFileInput<R>) {
             )
           return undefined
         })
+    if (previous !== undefined && resourceContentForOwnership(previous.ownership) !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_RESOURCE_NOT_EDITABLE",
+          "Resource management pages are not editable file bodies; read the exact retained resource.",
+        ),
+      )
     const bodyWrites =
       input.bodyWrites ??
       (yield* loadPendingSharedBodyWrites(input.library, {
@@ -224,6 +233,7 @@ export function observeSharedFile<R = never>(input: ObserveSharedFileInput<R>) {
       object_id: retainedIdentity.object_id,
       sha256: body.fingerprint.sha256,
       bytes: body.bytes,
+      ...nativeMetadataForOwnership(previous?.ownership),
     }
     const parents = [...(previous?.heads ?? [])].sort()
     const eventDigest = yield* sha256(
@@ -270,6 +280,13 @@ export function loadRetainedBody(
 ) {
   return Effect.gen(function* () {
     const content = yield* checked(() => decode(RetainedContentSchema, input))
+    if (isResourceContent(content))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_RESOURCE_NOT_EDITABLE",
+          "A raw resource must be loaded through its exact byte manifest.",
+        ),
+      )
     const records = yield* querySharedRecords(library, {
       skillPageId,
       kind: "object",

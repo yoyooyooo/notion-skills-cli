@@ -28,8 +28,18 @@ import {
   assertSharedNativeAdoptionComplete,
   reconcileSharedNativeAdoption,
 } from "./shared-native-adoption.ts"
-import { type CompositionFile, type CompositionOverride } from "./shared-composition.ts"
+import {
+  type CompositionFile,
+  type CompositionOverride,
+  type CompositionOverrideMetadata,
+} from "./shared-composition.ts"
 import { loadRetainedBody, observeSharedFile } from "./shared-file-observer.ts"
+import {
+  isResourceFollowing,
+  resourceContentForOwnership,
+  loadSharedResourceContent,
+} from "./shared-resource-content.ts"
+import type { SharedResourceAuthoringPlan } from "./shared-resource-authoring-model.ts"
 import {
   composeSharedFilePlacements,
   planSharedFilePlacements,
@@ -47,6 +57,7 @@ import {
 } from "./shared-file-observation.ts"
 import {
   FileEventSchema,
+  nativeMetadataForOwnership,
   resolveFileState,
   type FileEvent,
   type ResolvedFileState,
@@ -156,6 +167,9 @@ export type OpenSharedSnapshotInput = {
   }
   /** Internal authoring preflight: never retain/adopt a newly observed body. */
   readonly readOnly?: boolean
+  /** An explicit subset defers immutable non-document bytes while keeping the complete directory. */
+  readonly requestedPaths?: readonly string[]
+  readonly requestedFileIds?: readonly string[]
 }
 
 function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
@@ -198,20 +212,33 @@ function loadFileObservations(
       .filter((key) => key.endsWith(".json"))
       .sort()
       .reverse()
-    const key = keys[0]
-    if (key === undefined) return [] satisfies LocalFileObservation[]
-    const saved = yield* store.readJson(key, SharedObservationCacheSchema)
-    if (saved === undefined) return [] satisfies LocalFileObservation[]
-    if (
-      saved.scope !== input.scope ||
-      saved.library_id !== input.library_id ||
-      saved.skill_id !== input.skill_id ||
-      key !== `${prefix}/${String(saved.generation).padStart(20, "0")}.json`
-    )
-      return yield* Effect.fail(
-        fail("STATE_CORRUPT", "Shared file observations have a different scope or generation."),
+    // The bounded current slot and the newest legacy generation can coexist while
+    // an older process finishes. The highest generation wins across both formats.
+    const latest = `${prefix}/latest.json`
+    const legacy = keys.find((key) => key !== latest)
+    let newest: typeof SharedObservationCacheSchema.Type | undefined
+    for (const key of [latest, ...(legacy === undefined ? [] : [legacy])]) {
+      const saved = yield* store.readJson(key, SharedObservationCacheSchema)
+      if (saved === undefined) continue
+      if (
+        saved.scope !== input.scope ||
+        saved.library_id !== input.library_id ||
+        saved.skill_id !== input.skill_id ||
+        (key !== latest && key !== `${prefix}/${String(saved.generation).padStart(20, "0")}.json`)
       )
-    return [...saved.observations]
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "Shared file observations have a different scope or generation."),
+        )
+      if (
+        newest?.generation === saved.generation &&
+        canonicalSharedJson(newest) !== canonicalSharedJson(saved)
+      )
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "One shared file observation generation has conflicting payloads."),
+        )
+      if (newest === undefined || saved.generation > newest.generation) newest = saved
+    }
+    return [...(newest?.observations ?? [])]
   })
 }
 
@@ -273,7 +300,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       ).map((file) => {
         if (!(file.bytes instanceof Uint8Array))
           throw fail("INVALID_SOURCE", "A fixed source must contain resolved bytes.")
-        return { path: file.path, bytes: new Uint8Array(file.bytes) }
+        return {
+          path: file.path,
+          bytes: new Uint8Array(file.bytes),
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
+        }
       }),
     )
     const sourceManifest: readonly PlannedSharedSourceFile[] =
@@ -283,6 +314,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
               return {
                 path: file.path,
                 bytes: file.bytes.byteLength,
+                ...(file.mode === undefined ? {} : { mode: file.mode }),
                 identity: { kind: "sha256" as const, sha256: yield* sha256(file.bytes) },
               }
             }),
@@ -396,12 +428,13 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         file.bytes < 0 ||
         (file.identity.kind === "sha256"
           ? !/^[a-f0-9]{64}$/u.test(file.identity.sha256)
-          : !/^[a-f0-9]{40}$/u.test(file.identity.git_oid))
+          : !/^[a-f0-9]{40}$/u.test(file.identity.git_oid) ||
+            (file.identity.sha256 !== undefined && !/^[a-f0-9]{64}$/u.test(file.identity.sha256)))
       )
         return yield* Effect.fail(
           fail("INVALID_SOURCE", "The complete fixed source has an invalid file identity."),
         )
-      if (file.identity.kind === "sha256") sourceHashes.set(file.path, file.identity.sha256)
+      if (file.identity.sha256 !== undefined) sourceHashes.set(file.path, file.identity.sha256)
     }
     const localSourcePaths = new Set(input.fixedSource?.local_paths ?? [])
     for (const path of localSourcePaths) {
@@ -504,7 +537,10 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const bodyWrites = new Map<string, SharedBodyWritePlan>()
     const bodyReviews = new Map<string, SharedBodyWriteReviewPlan>()
     const metadataWrites = new Map<string, SharedMetadataWritePlan>()
-    const fileManagements = new Map<string, SharedFileManagementPlan>()
+    const fileManagements = new Map<
+      string,
+      SharedFileManagementPlan | SharedResourceAuthoringPlan
+    >()
     const skillApplies = new Map<string, SharedSkillApplyPlan>()
     for (const entry of localPending) {
       if (entry.plan.kind === "native_adoption") {
@@ -534,7 +570,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         metadataWrites.set(entry.plan.operation_id, entry.plan)
         continue
       }
-      if (entry.plan.kind === "file_management") {
+      if (entry.plan.kind === "file_management" || entry.plan.kind === "resource_authoring") {
         fileManagements.set(entry.plan.operation_id, entry.plan)
         continue
       }
@@ -837,6 +873,27 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           },
         ),
       )
+    // Legacy Git directories without SHA-256 keep their full-byte admission path.
+    // A Git OID is never silently relabeled as a SHA-256 manifest identity.
+    const selective =
+      input.requestedPaths !== undefined &&
+      sourceManifest.every((file) => file.identity.sha256 !== undefined)
+    const requestedLogical = new Set(input.requestedPaths ?? [])
+    for (const fileId of input.requestedFileIds ?? []) {
+      const binding = bindingById.get(fileId)
+      if (binding === undefined || states.get(fileId)?.ownership.kind === "tombstone")
+        return yield* Effect.fail(
+          fail("FILE_NOT_FOUND", "The selected stable File ID is not active in this exact tree.", {
+            file_id: fileId,
+          }),
+        )
+      requestedLogical.add(binding.path)
+    }
+    const needsBytes = (path: string) =>
+      !selective ||
+      path === record.entrypoint ||
+      /\.(md|markdown)$/iu.test(path) ||
+      requestedLogical.has(path)
     if (plannedSource !== undefined) {
       // Shared membership, every event graph and original-operation barriers precede
       // provider acquisition. Obtain required bytes before observing a new user edit:
@@ -860,15 +917,40 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           entrypoint: record.entrypoint,
         }),
       )
-      const requested = new Set(placement.source_paths)
+      for (const path of requestedLogical)
+        if (!placement.paths.includes(path))
+          return yield* Effect.fail(
+            fail(
+              "FILE_NOT_FOUND",
+              "The selected path is absent from the complete effective tree.",
+              { path },
+            ),
+          )
+      const requested = new Set(
+        placement.paths.filter(needsBytes).flatMap((path) => {
+          const origin = placement.provenance.get(path)!
+          return origin.kind === "custom"
+            ? []
+            : [
+                origin.kind === "mount" && origin.mount_path !== ""
+                  ? `${origin.mount_path}/${origin.source_path}`
+                  : origin.source_path,
+              ]
+        }),
+      )
       // Native custom main pages omit the fixed source's additional YAML fields.
-      if (sourceByPath.has(record.entrypoint)) requested.add(record.entrypoint)
+      const mainOwner = states.get(index.main.file_id)?.ownership
+      const customHeader =
+        mainOwner?.kind === "custom" ? nativeMetadataForOwnership(mainOwner).frontmatter : undefined
+      if (sourceByPath.has(record.entrypoint) && customHeader === undefined)
+        requested.add(record.entrypoint)
       // Durable privacy markers use SHA-256. A Git-only identity cannot prove that
       // an overridden original is unrestricted, so retain its classification read.
       for (const provenance of placement.provenance.values()) {
         if (provenance.kind !== "custom" || provenance.replaces === undefined) continue
         const path = provenance.replaces.source_path
-        if (sourceByPath.get(path)?.identity.kind === "git") requested.add(path)
+        if (sourceByPath.get(path)?.identity.kind === "git" && !sourceHashes.has(path))
+          requested.add(path)
       }
       const materialized = yield* plannedSource.materialize([...requested].sort())
       sourceFiles = yield* checked(() => {
@@ -882,7 +964,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           paths.add(file.path)
           if (!(file.bytes instanceof Uint8Array))
             throw fail("INVALID_SOURCE", "Selected source content must contain actual bytes.")
-          return { path: file.path, bytes: new Uint8Array(file.bytes) }
+          return {
+            path: file.path,
+            bytes: new Uint8Array(file.bytes),
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
+          }
         })
         if (paths.size !== requested.size)
           throw fail("SOURCE_MATERIALIZATION_INCOMPLETE", "Selected source bytes are missing.")
@@ -893,6 +979,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         const hash = yield* sha256(file.bytes)
         if (
           file.bytes.byteLength !== expected.bytes ||
+          file.mode !== expected.mode ||
+          (expected.identity.sha256 !== undefined && hash !== expected.identity.sha256) ||
           (expected.identity.kind === "sha256"
             ? hash !== expected.identity.sha256
             : (yield* gitBlobOid(file.bytes)) !== expected.identity.git_oid)
@@ -925,6 +1013,13 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const observations = previous.filter((value) => activeIds.has(value.file_id))
     const cachedBodies = new Map<string, Uint8Array>()
     for (const observation of observations) {
+      const state = states.get(observation.file_id)
+      if (
+        state !== undefined &&
+        resourceContentForOwnership(state.ownership) !== undefined &&
+        !needsBytes(observation.path)
+      )
+        continue
       if (!/^[a-f0-9]{64}$/.test(observation.body_sha256))
         return yield* Effect.fail(
           fail("STATE_CORRUPT", "Cached body has an invalid checksum identity."),
@@ -1000,10 +1095,82 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       let state = states.get(binding.file_id)
       let body: Uint8Array
       let next: LocalFileObservation
+      const resource =
+        state === undefined ? undefined : resourceContentForOwnership(state.ownership)
+      if (resource !== undefined && !needsBytes(binding.path)) {
+        const hash =
+          state !== undefined && isResourceFollowing(state.ownership)
+            ? sourceHashes.get(yield* checked(() => sharedFileSourcePath(binding.path, state!)))
+            : resource.sha256
+        if (hash === undefined)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_SOURCE_CONFLICT",
+              "Deferred resource bytes require an exact frozen SHA-256.",
+            ),
+          )
+        const old = previousById.get(binding.file_id)
+        nextObservations.push({
+          ...item.file,
+          body_sha256: hash,
+          body_verified_at: old?.body_sha256 === hash ? old.body_verified_at : 0,
+          metadata_validated_at: metadataObservedAt,
+        })
+        continue
+      }
       // A following projection may not have retained Markdown. Re-observe current
       // presentation when that cache is absent; effective bytes still come from
       // the exact selected source. This is never a historical-pin recovery path.
-      if (
+      if (resource !== undefined) {
+        if (binding.file_id === index.main.file_id || /\.(md|markdown)$/iu.test(binding.path))
+          return yield* Effect.fail(
+            fail(
+              "SHARED_RESOURCE_SCOPE",
+              "Editable Markdown must not be classified as a retained raw resource.",
+            ),
+          )
+        if (state !== undefined && isResourceFollowing(state.ownership)) {
+          const path = yield* checked(() => sharedFileSourcePath(binding.path, state!))
+          const source = sourceFiles.find((file) => file.path === path)
+          if (source === undefined)
+            return yield* Effect.fail(
+              fail(
+                "SHARED_SOURCE_FILE_MISSING",
+                "The selected immutable source no longer contains this following resource.",
+                { source_path: path },
+              ),
+            )
+          body = source.bytes
+          next = {
+            ...item.file,
+            body_sha256: yield* sha256(body),
+            body_verified_at: metadataObservedAt,
+            metadata_validated_at: metadataObservedAt,
+          }
+        } else {
+          const previous = previousById.get(binding.file_id)
+          const cached =
+            input.forceFull || item.action === "recover_fixed"
+              ? undefined
+              : cachedBodies.get(resource.sha256)
+          if (cached === undefined) {
+            body = (yield* loadSharedResourceContent(input.library, {
+              skillPageId: selected,
+              content: resource,
+            })).bytes
+            yield* store.writeBytes(`objects/${resource.sha256}`, body)
+          } else body = cached
+          next = {
+            ...item.file,
+            body_sha256: resource.sha256,
+            body_verified_at:
+              cached === undefined
+                ? metadataObservedAt
+                : (previous?.body_verified_at ?? metadataObservedAt),
+            metadata_validated_at: metadataObservedAt,
+          }
+        }
+      } else if (
         item.action === "body_read" ||
         (item.action === "recover_fixed" && state?.ownership.kind === "following")
       ) {
@@ -1116,6 +1283,9 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             file_id: binding.file_id,
             path: binding.path,
             bytes: body,
+            ...(state.ownership.content.mode === undefined || state.ownership.content.mode === null
+              ? {}
+              : { mode: state.ownership.content.mode }),
           })
           break
         case "tombstone":
@@ -1129,11 +1299,38 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         !activeIds.has(binding.file_id)
       )
         overrides.push({ kind: "tombstone", file_id: binding.file_id, path: binding.path })
+    const overrideMetadata: CompositionOverrideMetadata[] = bindings.flatMap((binding) => {
+      const state = states.get(binding.file_id)!
+      return state.ownership.kind === "following"
+        ? []
+        : [{ kind: state.ownership.kind, file_id: binding.file_id, path: binding.path }]
+    })
+    const placement = yield* checked(() =>
+      planSharedFilePlacements({
+        source: sourceManifest,
+        overrides: overrideMetadata,
+        bindings: bindings.map((binding) => ({
+          file_id: binding.file_id,
+          path: binding.path,
+          state: states.get(binding.file_id)!,
+        })),
+        entrypoint: record.entrypoint,
+      }),
+    )
+    for (const path of requestedLogical)
+      if (!placement.paths.includes(path))
+        return yield* Effect.fail(
+          fail("FILE_NOT_FOUND", "The selected path is absent from the complete effective tree.", {
+            path,
+          }),
+        )
     const composed = yield* checked(() =>
       composeSharedFilePlacements({
         source: sourceFiles,
         manifest: sourceManifest,
         overrides,
+        overrideMetadata,
+        ...(selective ? { selectedPaths: placement.paths.filter(needsBytes) } : {}),
         bindings: bindings.map((binding) => {
           const state = states.get(binding.file_id)
           if (state === undefined)
@@ -1192,7 +1389,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     })
     const resolvedLinks = [...fileLinks, ...native.links]
     const fileBindings = activeBindings
-      .filter((binding) => composed.files.some((file) => file.path === binding.path))
+      .filter((binding) => composed.provenance.has(binding.path))
       .map(({ file_id, page_id, path }) => ({ file_id, page_id, path }))
       .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
     const completeFiles = yield* checked(() =>
@@ -1231,22 +1428,28 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             : renderSharedRouterMembers(routerMembers))
         // Native main pages carry their editable body, not the source's YAML
         // header. Keep extra fixed-source metadata when the body is customized.
+        const owner = states.get(index.main.file_id)?.ownership
+        const customHeader =
+          owner?.kind === "custom" ? nativeMetadataForOwnership(owner).frontmatter : undefined
         return canonicalMain(
           record.name,
           record.description,
           body,
-          file,
-          sourceFiles.find((source) => source.path === record.entrypoint),
+          customHeader === undefined ? file : { ...file, bytes: encoder.encode(customHeader) },
+          customHeader === undefined
+            ? sourceFiles.find((source) => source.path === record.entrypoint)
+            : undefined,
         )
       }),
     )
     // Only the final tree can resolve references: native custom files may repair
     // or replace provider links, while tombstones and moves may break them.
-    yield* checked(() => assertSharedFileReferences(completeFiles))
+    yield* checked(() => assertSharedFileReferences(completeFiles, undefined, placement.paths))
     const files: Snapshot["files"][number][] = []
-    for (const file of completeFiles) {
-      const hash = yield* sha256(file.bytes)
-      const provenance = composed.provenance.get(file.path)
+    const acquisitionFiles: NonNullable<Snapshot["shared_acquisition"]>["files"][number][] = []
+    for (const path of placement.paths) {
+      const file = completeFiles.find((file) => file.path === path)
+      const provenance = composed.provenance.get(path)
       const original = provenance?.kind === "custom" ? provenance.replaces : provenance
       const sourcePath =
         original === undefined
@@ -1254,14 +1457,55 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           : original.kind === "mount"
             ? (original.mount_path ? original.mount_path + "/" : "") + original.source_path
             : original.source_path
+      const customState = provenance?.kind === "custom" ? states.get(provenance.file_id) : undefined
+      const raw =
+        customState === undefined ? undefined : resourceContentForOwnership(customState.ownership)
+      const descriptor = sourcePath === undefined ? undefined : sourceByPath.get(sourcePath)
+      const hash =
+        file !== undefined
+          ? yield* sha256(file.bytes)
+          : (raw?.sha256 ?? descriptor?.identity.sha256)
+      const length = file?.bytes.length ?? raw?.bytes ?? descriptor?.bytes
+      const mode =
+        file !== undefined
+          ? file.mode
+          : raw !== undefined
+            ? (raw.mode ?? undefined)
+            : descriptor?.mode
+      if (hash === undefined || length === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_SOURCE_CONFLICT",
+            "An effective file has neither verified bytes nor its exact complete immutable identity.",
+            { path },
+          ),
+        )
       if (
-        localSourcePaths.has(file.path) ||
+        localSourcePaths.has(path) ||
         (sourcePath !== undefined && localSourcePaths.has(sourcePath))
       )
         yield* markLocalContentRestriction(hash)
-      yield* store.writeBytes(`objects/${hash}`, file.bytes)
-      files.push({ path: file.path, bytes: file.bytes.length, sha256: hash })
+      if (file !== undefined) yield* store.writeBytes(`objects/${hash}`, file.bytes)
+      files.push({ path, bytes: length, sha256: hash, ...(mode === undefined ? {} : { mode }) })
+      if (path !== record.entrypoint && !/\.(md|markdown)$/iu.test(path)) {
+        if (raw !== undefined)
+          acquisitionFiles.push({ kind: "resource", path, object_id: raw.object_id })
+        else if (provenance?.kind !== "custom" && sourcePath !== undefined)
+          acquisitionFiles.push({ kind: "source", path, source_path: sourcePath })
+      }
     }
+    const sharedAcquisition =
+      acquisitionFiles.length === 0
+        ? undefined
+        : {
+            version: 1 as const,
+            library: input.library,
+            source:
+              input.fixedSource === undefined
+                ? null
+                : { source_id: input.fixedSource.source_id, revision: input.fixedSource.revision },
+            files: acquisitionFiles,
+          }
     const version = yield* sharedSnapshotVersion({
       record,
       files,
@@ -1271,6 +1515,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       required: frozenRequired,
       file_bindings: fileBindings,
       native_references: native.index,
+      ...(sharedAcquisition === undefined ? {} : { shared_acquisition: sharedAcquisition }),
       source:
         input.fixedSource === undefined
           ? null
@@ -1295,6 +1540,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           created_at: metadataObservedAt,
           files,
           file_bindings: fileBindings,
+          ...(sharedAcquisition === undefined ? {} : { shared_acquisition: sharedAcquisition }),
           ...(native.index === undefined ? {} : { native_references: native.index }),
           ...(frozenMembers === undefined
             ? {}
@@ -1313,8 +1559,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "The immutable shared snapshot has a different identity."),
       )
-    yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
-    yield* store.writeJson(`${prefix}/${String(generation).padStart(20, "0")}.json`, {
+    if (saved === undefined) yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
+    yield* store.writeJson(`${prefix}/latest.json`, {
       version: 1,
       scope: input.scope,
       library_id: input.library.library_id,
@@ -1325,7 +1571,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       observations: nextObservations,
     })
     const bodyValidUntil = Math.min(
-      ...nextObservations.map((file) => file.body_verified_at + SHARED_FULL_BODY_MAX_AGE_MS),
+      ...nextObservations
+        .filter(
+          (file) => resourceContentForOwnership(states.get(file.file_id)!.ownership) === undefined,
+        )
+        .map((file) => file.body_verified_at + SHARED_FULL_BODY_MAX_AGE_MS),
     )
     if (!Number.isFinite(bodyValidUntil))
       return yield* Effect.fail(
@@ -1337,6 +1587,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       ? yield* publishSnapshotObservation(snapshot, input.startedAt, generation, {
           ...(bodyReads < activeBindings.length ? { metadataOnly: true } : {}),
           sharedBodyValidUntil: bodyValidUntil,
+          ...(selective ? { sharedMaterializedPaths: completeFiles.map((file) => file.path) } : {}),
         })
       : {
           ...snapshot,

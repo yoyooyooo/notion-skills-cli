@@ -5,7 +5,13 @@ import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { pageId } from "./ref.ts"
 import { sharedSkillProperty } from "./shared-content.ts"
-import { FileEventSchema, type FileEvent } from "./shared-file-state.ts"
+import { FileEventSchema, resolveFileState, type FileEvent } from "./shared-file-state.ts"
+import {
+  resourceContentForOwnership,
+  loadSharedResourceContent,
+} from "./shared-resource-content.ts"
+import { loadPendingSharedResourceAuthoring } from "./shared-resource-authoring-recovery.ts"
+import { resourceAuthoringOutcomesEntity } from "./shared-resource-authoring-model.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import { loadPendingSharedMetadataWrites } from "./shared-metadata-write.ts"
@@ -26,7 +32,12 @@ import { resolveSelectedSharedSourceReference } from "./shared-selected-source.t
 import { querySharedSkillIndex, type SharedSkillIndex } from "./shared-skill-index.ts"
 import { inspectSharedSnapshotHistory } from "./shared-snapshot-history.ts"
 import { listSourceDefinitions, readSourceDefinition } from "./shared-source-definitions.ts"
-import { validateSourceRefresh } from "./shared-source-refresh.ts"
+import {
+  validateSourceRefresh,
+  sourceRefreshPin,
+  sourceRefreshFiles,
+} from "./shared-source-refresh.ts"
+import { validateSourceRefreshBatch } from "./shared-source-batch.ts"
 
 const checked = <A>(action: () => A) =>
   Effect.try({
@@ -180,6 +191,15 @@ function observeSource(library: SharedLibrary, rawPage: unknown) {
       policy: definition.policy,
       enabled: definition.enabled,
       recorded_status: definition.status,
+      last_successful_check:
+        definition.last_checked === null
+          ? { kind: "unrecorded" as const }
+          : {
+              kind: "recorded" as const,
+              checked_at: definition.last_checked,
+              evidence: "native_display_metadata" as const,
+            },
+      check_summary: definition.last_result,
       recorded_revision:
         definition.last_revision === ""
           ? { kind: "unobserved" as const }
@@ -254,17 +274,23 @@ function inspectOperations(
           metadata_writes: summary(
             yield* loadPendingSharedMetadataWrites(library, input).pipe(Effect.result),
           ),
+          resource_authoring: summary(
+            yield* loadPendingSharedResourceAuthoring(library, input).pipe(Effect.result),
+          ),
         }
       : {
           file_observations: { kind: "unobserved" as const },
           body_writes: { kind: "unobserved" as const },
           metadata_writes: { kind: "unobserved" as const },
+          resource_authoring: { kind: "unobserved" as const },
         }
     const unclassified = headers.filter(
       (header) =>
         !header.record_id.startsWith("observe-") &&
         !header.record_id.startsWith("body-write-") &&
         !header.record_id.startsWith("outcome-body-write-") &&
+        !header.record_id.startsWith("resource-authoring-") &&
+        header.entity_id !== resourceAuthoringOutcomesEntity &&
         header.entity_id !== sharedMetadataEntity,
     )
     return {
@@ -323,7 +349,20 @@ export function inspectSharedResourceState(
       input.candidate === undefined
         ? { kind: "unobserved" as const, reason: "no_frozen_candidate_supplied" as const }
         : yield* Effect.gen(function* () {
-            const { plan } = yield* validateSourceRefresh(library, input.candidate)
+            const candidate =
+              property(input.candidate).kind === "source_refresh_batch"
+                ? (yield* validateSourceRefreshBatch(library, input.candidate)).plans.find(
+                    (plan) => plan.target_page_id === target,
+                  )
+                : input.candidate
+            if (candidate === undefined)
+              return yield* Effect.fail(
+                fail(
+                  "SOURCE_REFRESH_INVALID",
+                  "The frozen batch does not contain this exact Skill.",
+                ),
+              )
+            const { plan } = yield* validateSourceRefresh(library, candidate)
             if (plan.target_page_id !== target)
               return yield* Effect.fail(
                 fail("SOURCE_REFRESH_INVALID", "The candidate belongs to another Skill."),
@@ -335,9 +374,10 @@ export function inspectSharedResourceState(
               source_page_id: plan.source_page_id,
               source_fingerprint: plan.source_fingerprint,
               provider_revision: plan.provider_revision,
+              provider_committed_at: plan.provider_committed_at ?? null,
               member: plan.member,
               prepared_at: plan.created_at,
-              proposed_source_id: plan.bundle_id,
+              proposed_source_id: sourceRefreshPin(plan),
               based_on: plan.previous_pin,
               selection_matches: plan.previous_pin === index.source_reference,
               application_readiness: "not_checked" as const,
@@ -349,7 +389,7 @@ export function inspectSharedResourceState(
                     source.page_id === plan.source_page_id &&
                     source.member === plan.member &&
                     source.fingerprint === plan.source_fingerprint,
-              files: plan.bundle.files,
+              files: sourceRefreshFiles(plan),
             }
           })
     const sessionPin = input.sessionPin
@@ -391,17 +431,40 @@ export function inspectSharedResourceState(
       bindings,
       (binding) =>
         Effect.gen(function* () {
+          const fileEvents = events.filter((event) => event.file_id === binding.file_id)
+          const state =
+            fileEvents.length === 0
+              ? undefined
+              : yield* checked(() => resolveFileState(binding.file_id, fileEvents))
+          const content =
+            state === undefined ? undefined : resourceContentForOwnership(state.ownership)
           const observation: ResourceBodyObservation =
             input.observe === true
-              ? yield* observeSharedBody(binding.page_id).pipe(
-                  Effect.map((body): ResourceBodyObservation => ({ kind: "observed", body })),
-                  Effect.catch((error) => Effect.succeed(unavailable(error))),
-                )
+              ? content !== undefined
+                ? yield* loadSharedResourceContent(library, { skillPageId: target, content }).pipe(
+                    Effect.flatMap((resource) =>
+                      Clock.currentTimeMillis.pipe(
+                        Effect.map(
+                          (observed_at): ResourceBodyObservation => ({
+                            kind: "resource_verified",
+                            content: resource.content,
+                            observed_at,
+                            verification: resource.verification,
+                          }),
+                        ),
+                      ),
+                    ),
+                    Effect.catch((error) => Effect.succeed(unavailable(error))),
+                  )
+                : yield* observeSharedBody(binding.page_id).pipe(
+                    Effect.map((body): ResourceBodyObservation => ({ kind: "observed", body })),
+                    Effect.catch((error) => Effect.succeed(unavailable(error))),
+                  )
               : { kind: "unobserved" }
           return yield* checked(() =>
             describeSharedResourceFile({
               binding,
-              events: events.filter((event) => event.file_id === binding.file_id),
+              events: fileEvents,
               selectedRevision: selected.kind === "selected" ? selected.revision : null,
               observation,
             }),

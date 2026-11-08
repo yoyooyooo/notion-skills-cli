@@ -12,6 +12,7 @@ export function sharedSnapshotVersion(input: {
   readonly required?: Snapshot["required"]
   readonly file_bindings?: Snapshot["file_bindings"]
   readonly native_references?: Snapshot["native_references"]
+  readonly shared_acquisition?: Snapshot["shared_acquisition"]
   readonly source: { readonly source_id: string; readonly revision: string } | null
   readonly ownership: readonly {
     readonly file_id: string
@@ -31,6 +32,9 @@ export function sharedSnapshotVersion(input: {
       ...(input.native_references === undefined
         ? {}
         : { native_references: input.native_references }),
+      ...(input.shared_acquisition === undefined
+        ? {}
+        : { shared_acquisition: input.shared_acquisition }),
       source: input.source,
       ownership: [...input.ownership].sort((left, right) =>
         left.file_id < right.file_id ? -1 : left.file_id > right.file_id ? 1 : 0,

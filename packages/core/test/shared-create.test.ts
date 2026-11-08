@@ -61,6 +61,28 @@ function facts(f: ReturnType<typeof sharedCreateFixture>, page: string) {
 }
 
 describe("native shared creation", () => {
+  test("an explicit disabled native creation freezes that intent while legacy plans retain their default", async () => {
+    const f = sharedCreateFixture()
+    const legacy = await f.run(makeSharedCreatePlan(createLibrary, { portable: portable() }))
+    expect(legacy.enabled).toBeUndefined()
+    expect(sharedCreateManifest(legacy)).not.toHaveProperty("enabled")
+    const plan = await f.run(
+      prepareSharedCreate(createLibrary, { portable: portable(), enabled: false }),
+    )
+    expect(plan.enabled).toBe(false)
+    expect(plan.operation_id).not.toBe(legacy.operation_id)
+    const result = await f.run(executeSharedCreate(createLibrary, { plan, mode: "create" }))
+    expect(result.expected_metadata.enabled).toBe(false)
+    expect(f.enablePatches()).toHaveLength(0)
+    expect(
+      await f.run(
+        loadSharedCreatePlan(createLibrary, {
+          skillPageId: result.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      ),
+    ).toEqual(plan)
+  })
   test("an unrelated unregistered draft does not block creation or get modified", async () => {
     const f = sharedCreateFixture()
     const draft = f.seedSkill(id(811), "", "Work in progress", "skill", false)

@@ -32,7 +32,7 @@ export const SourceDefinitionInputSchema = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   enabled: Schema.Boolean,
-  policy: Schema.Literals(["manual", "pinned"]),
+  policy: Schema.Literals(["manual", "pinned", "auto"]),
   adapter: SourceAdapterSchema,
   selection: Schema.Struct({
     roots: Schema.Array(Schema.String),
@@ -51,6 +51,8 @@ export type SourceDefinition = SourceDefinitionInput & {
   readonly fingerprint: string
   readonly status: string
   readonly last_revision: string
+  readonly last_checked: number | null
+  readonly last_result: string
 }
 
 export const sourceDefinitionProperties = {
@@ -65,7 +67,7 @@ export const sourceDefinitionProperties = {
   Selection: { rich_text: {} },
   Options: { rich_text: {} },
   Enabled: { checkbox: {} },
-  Policy: { select: { options: ["manual", "pinned"].map((name) => ({ name })) } },
+  Policy: { select: { options: ["manual", "pinned", "auto"].map((name) => ({ name })) } },
   Status: {
     select: {
       options: ["ready", "checking", "checked", "applied", "blocked", "failed"].map((name) => ({

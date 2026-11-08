@@ -19,6 +19,15 @@ import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryFileRestoreCommand } from "./commands-library-file-restore.ts"
 import { libraryFileReviewCommand } from "./commands-library-file-review.ts"
 import { libraryFileAcceptCurrentCommand } from "./commands-library-file-accept-current.ts"
+import { libraryFileTakeoverCommand } from "./commands-library-file-takeover.ts"
+import {
+  libraryFileDisplayCommand,
+  libraryFileDisplaySchemaCommand,
+} from "./commands-library-file-display.ts"
+import {
+  libraryFileRequestCommand,
+  libraryFileRequestSchemaCommand,
+} from "./commands-library-file-request.ts"
 
 const entry = requiredSingleton("entry", "Exact shared library entry ID, URL or registered alias")
 const target = Argument.String("target").pipe(
@@ -264,6 +273,11 @@ export const libraryFilesCommand = defineCommand("file").pipe(
     move,
     reconcile,
     libraryFileRestoreCommand,
+    libraryFileTakeoverCommand,
+    libraryFileRequestSchemaCommand,
+    libraryFileRequestCommand,
+    libraryFileDisplaySchemaCommand,
+    libraryFileDisplayCommand,
     libraryFileReviewCommand,
     libraryFileAcceptCurrentCommand,
   ]),

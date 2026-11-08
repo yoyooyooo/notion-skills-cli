@@ -11,7 +11,7 @@ import {
   retainedUploadDigest,
   type RetainedUploadSequence,
 } from "./publication-retained-upload.ts"
-import { importDocument, readImportZip } from "./import.ts"
+import { importDocument, readImportZip, type ImportFile } from "./import.ts"
 import { terminalPublicationCommitCandidate } from "./publication-terminal-commit.ts"
 import { Effect } from "effect"
 import { fail, property, text, type SkillsError } from "./model.ts"
@@ -1595,12 +1595,16 @@ export function proveRetainedUploadReplacement(
       return yield* refuse(
         "The original staged upload bytes do not match their allocation identity.",
       )
-    const frozen: { path: string; bytes: Uint8Array }[] = []
+    const frozen: ImportFile[] = []
     for (const file of receipt.portable.files) {
       const content = yield* store.readBytes(`objects/${file.sha256}`)
       if ((yield* sha256(content)) !== file.sha256)
         return yield* refuse("A frozen source object changed before upload replacement.")
-      frozen.push({ path: file.path, bytes: content })
+      frozen.push({
+        path: file.path,
+        bytes: content,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
+      })
     }
     const archived = yield* Effect.try({
       try: () => readPortable(readImportZip(bytes)),
@@ -1621,6 +1625,7 @@ export function proveRetainedUploadReplacement(
         const wanted = frozen.find((item) => item.path === file.path)
         return (
           !wanted ||
+          (wanted.mode !== undefined && file.mode !== wanted.mode) ||
           file.bytes.length !== wanted.bytes.length ||
           file.bytes.some((byte, index) => byte !== wanted.bytes[index])
         )

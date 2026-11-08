@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Crypto, Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.ts"
 import {
@@ -7,11 +7,13 @@ import {
   fail,
   listSchema,
   property,
+  text,
   SkillsError,
   type SharedSkillRecord,
   type Source,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
+import { withReadOnlyNotion } from "./notion-readonly.ts"
 import type { PortableSkill } from "./portable.ts"
 import { pageId, parseTarget } from "./ref.ts"
 import {
@@ -27,6 +29,7 @@ import {
   type FileEvent,
 } from "./shared-file-state.ts"
 import { loadSharedLibrary, type SharedLibrary } from "./shared-library.ts"
+import { preservesSharedLibraryBindings } from "./shared-library-model.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import { appendSharedRecord, canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
@@ -36,6 +39,20 @@ import {
 } from "./shared-router-members.ts"
 import { sha256, Store } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
+import { projectSharedNotionMarkdown } from "./shared-notion-projection.ts"
+import {
+  retainSharedResourceContent,
+  loadSharedResourceContent,
+  prepareSharedResourceContent,
+} from "./shared-resource-content.ts"
+import { sharedCreateResourceDescription } from "./shared-create-resources.ts"
+import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
+import { resolveSharedCreateSource } from "./shared-create-source.ts"
+import {
+  loadSharedCreateRetained,
+  retainSharedCreateSource,
+  verifySharedCreateRetained,
+} from "./shared-create-retained.ts"
 import {
   decodeSharedCreateOutcome as decodeOutcome,
   sharedCreateOutcomeId as outcomeId,
@@ -56,6 +73,8 @@ import {
   type MigrationMemberBinding,
 } from "./shared-migration-create-origin.ts"
 import { registerSourceBinding, resolveSourceBinding } from "./shared-source-binding.ts"
+import { readSourceDefinition, listSourceMembers } from "./shared-source-definitions.ts"
+import { readSharedFileSourceContext } from "./shared-file-source-context.ts"
 import {
   createChecked,
   makeSharedCreatePlan,
@@ -70,8 +89,14 @@ import {
   sharedCreateProtection,
   sharedCreateProjectionVersion,
   sharedCreateExpectations,
+  sharedCreateFixedSource,
+  sharedCreateFixedSources,
+  sharedCreateEnabled,
+  sharedCreateFiles,
+  sharedCreateEvents,
   validateSharedCreatePlan,
   type SharedCreatePlan,
+  type SharedCreateInput,
 } from "./shared-create-model.ts"
 export {
   SharedCreatePlanSchema,
@@ -200,8 +225,8 @@ function verifyLibrary(library: SharedLibrary, plan?: SharedCreatePlan) {
   return Effect.gen(function* () {
     const current = yield* loadSharedLibrary(library.skills.database_id)
     if (
-      canonicalSharedJson(current) !== canonicalSharedJson(library) ||
-      (plan !== undefined && canonicalSharedJson(plan.library) !== canonicalSharedJson(library))
+      !preservesSharedLibraryBindings(library, current) ||
+      (plan !== undefined && !preservesSharedLibraryBindings(plan.library, current))
     )
       return yield* Effect.fail(
         fail(
@@ -382,18 +407,20 @@ function checkInventory(plan: SharedCreatePlan, records: Inventory) {
           { page_id: member },
         )
     }
+    const original = plan.relation_bindings?.find((binding) => binding.page_id === member)
+    if (
+      plan.relation_bindings !== undefined &&
+      (original === undefined || selected.locator.skill_id !== original.skill_id)
+    )
+      throw fail(
+        "SHARED_CREATE_RELATION_SCOPE",
+        "A frozen relation page no longer binds its exact original stable Skill.",
+        { page_id: member },
+      )
   }
   return exact[0]
 }
-export function prepareSharedCreate(
-  library: SharedLibrary,
-  input: {
-    readonly portable: PortableSkill
-    readonly defaultContext?: boolean
-    readonly members?: readonly string[]
-    readonly requires?: readonly string[]
-  },
-) {
+export function prepareSharedCreate(library: SharedLibrary, input: SharedCreateInput) {
   return Effect.gen(function* () {
     const scope = yield* authScope
     yield* verifyLibrary(library)
@@ -410,11 +437,29 @@ export function prepareSharedCreate(
     const plan = yield* makeSharedCreatePlan(library, {
       portable: input.portable,
       ...(input.defaultContext === undefined ? {} : { defaultContext: input.defaultContext }),
+      ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+      ...(input.completeResources === undefined
+        ? {}
+        : { completeResources: input.completeResources }),
       ...(input.portable.kind === "router" || input.members !== undefined ? { members } : {}),
       ...(required === undefined ? {} : { requires: required }),
+      ...((input.completeResources !== true && input.sourceProjection === undefined) ||
+      (members.length === 0 && (required?.length ?? 0) === 0)
+        ? {}
+        : {
+            relationBindings: [...new Set([...members, ...(required ?? [])])]
+              .sort()
+              .map((page) => ({
+                page_id: page,
+                skill_id: records.find(({ record }) => record.locator.page_id === page)!.record
+                  .locator.skill_id,
+              })),
+          }),
+      ...(input.sourceProjection === undefined ? {} : { sourceProjection: input.sourceProjection }),
     })
     yield* guardOriginalCreate(scope, plan)
     yield* createChecked(() => checkInventory(plan, records))
+    yield* assertSourceProjectionDefinition(library, plan)
     return plan
   })
 }
@@ -425,7 +470,7 @@ function prepareMigrationPlan(
   candidate: SharedMigrationConversionCandidate,
 ) {
   return Effect.gen(function* () {
-    if (canonicalSharedJson(candidate.library) !== canonicalSharedJson(library))
+    if (!preservesSharedLibraryBindings(candidate.library, library))
       return yield* Effect.fail(
         fail(
           "SHARED_MIGRATION_CREATE_SCOPE",
@@ -479,10 +524,48 @@ export function prepareSharedMigrationReview(library: SharedLibrary, input: unkn
     Effect.flatMap((candidate) => prepareMigrationPlan(library, candidate)),
   )
 }
-function createProjectionBaseline(file: SharedCreatePlan["files"][number]) {
+function createProjectionBaseline(file: {
+  readonly event: SharedCreatePlan["files"][number]["event"]
+}) {
   return file.event.kind === "projected"
     ? canonicalSharedJson({ ...file.event.projection, source_revision: file.event.source_revision })
     : ""
+}
+function assertSourceProjectionDefinition(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  createdPage?: string,
+) {
+  return Effect.gen(function* () {
+    const expected = plan.source_projection?.definition
+    if (expected === undefined) return
+    const current = yield* readSourceDefinition(library, expected.page_id)
+    if (
+      !current.enabled ||
+      current.source_id !== expected.source_id ||
+      current.fingerprint !== expected.fingerprint
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_SOURCE_CHANGED",
+          "The frozen live Source definition changed; preserve the original creation and do not create or enable a replacement.",
+        ),
+      )
+    const members = yield* listSourceMembers(library, expected.page_id)
+    const matching = members.items.filter((member) => member.member === expected.member)
+    if (
+      matching.some(
+        (member) => member.page_id !== createdPage || member.skill_id !== plan.skill_id,
+      ) ||
+      (createdPage !== undefined && matching.length !== 1)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_MEMBER_ALREADY_BOUND",
+          "This exact Source member already has an enabled or disabled Skill binding; use the original binding or an explicit rebind decision.",
+        ),
+      )
+  })
 }
 function recordProperties(plan: SharedCreatePlan) {
   const ids = plan.library.skills.property_ids,
@@ -497,7 +580,13 @@ function recordProperties(plan: SharedCreatePlan) {
     [ids["Skill ID"]!]: rich(plan.skill_id),
     [ids["Main File ID"]!]: rich(main.file_id),
     [ids.Projection!]: rich(createProjectionBaseline(main)),
-    [ids.Source!]: rich(plan.version === 2 ? (plan.origin.candidate.source?.source_id ?? "") : ""),
+    [ids.Source!]: rich(sharedCreateFixedSource(plan)?.source_id ?? ""),
+    ...(plan.source_projection === undefined
+      ? {}
+      : {
+          [ids.Origin!]: { relation: [{ id: plan.source_projection.definition.page_id }] },
+          [ids["Source Member"]!]: rich(plan.source_projection.definition.member),
+        }),
     [ids.References!]: rich(""),
     ...(plan.content_kind === "router" || plan.members.length > 0
       ? { [ids.Members!]: { relation: plan.members.map((id) => ({ id })) } }
@@ -601,6 +690,16 @@ function retainInputs(
         entityId: file.content.object_id,
         payload: sharedCreateBodyPayload(file.projection.markdown),
       })
+      if (file.baseline_body !== undefined)
+        yield* appendSharedRecord(library, {
+          mode,
+          recordId: file.baseline_body.content.object_id,
+          operationId: `retain-${file.baseline_body.content.sha256}`,
+          skillPageId: page,
+          kind: "object",
+          entityId: file.baseline_body.content.object_id,
+          payload: sharedCreateBodyPayload(file.baseline_body.markdown),
+        })
     }
     if (plan.version === 2) {
       const retained = yield* sharedMigrationOriginObjects(plan.origin.candidate)
@@ -622,6 +721,22 @@ function retainInputs(
           payload: sharedCreateInputPayload(object.text),
         })
     }
+    for (const file of plan.resources ?? [])
+      yield* retainSharedResourceContent(library, {
+        skillPageId: page,
+        prepared: file.prepared,
+        mode,
+      })
+    for (const file of (plan.source_projection?.version === 1
+      ? plan.source_projection.local?.baseline_inputs
+      : undefined) ?? [])
+      yield* retainSharedResourceContent(library, {
+        skillPageId: page,
+        prepared: file.prepared,
+        mode,
+      })
+    if (plan.source_projection?.version === 2)
+      yield* retainSharedCreateSource(library, page, plan.source_projection.retained, mode)
   })
 }
 function saveOutcome(
@@ -633,6 +748,7 @@ function saveOutcome(
   bindings: readonly Binding[],
 ) {
   return Effect.gen(function* () {
+    const resolved = yield* resolveSharedCreateSource(plan, page)
     const fields = {
       kind: "skill_create_outcome" as const,
       operation_id: plan.operation_id,
@@ -650,7 +766,23 @@ function saveOutcome(
             migration_candidate_id: plan.origin.candidate.candidate_id,
             manifest_record_hash: yield* createManifestRecordHash(plan),
           }
-        : { ...fields, version: 1 }
+        : {
+            ...fields,
+            version: 1,
+            ...(plan.source_projection === undefined
+              ? {}
+              : {
+                  source_projection: {
+                    source_id: resolved.selection!.source_id,
+                    revision: resolved.selection!.revision,
+                    manifest_record_hash: yield* createManifestRecordHash(plan),
+                    ...(plan.source_projection.version !== 1 ||
+                    plan.source_projection.local === undefined
+                      ? {}
+                      : { local_customization: 1 as const }),
+                  },
+                }),
+          }
     return yield* appendSharedRecord(library, {
       mode: "create",
       recordId: outcomeId(plan.operation_id),
@@ -668,8 +800,11 @@ function verifyIndex(
   page: string,
   bindings: readonly Binding[],
   enabled: boolean,
+  partial = false,
+  sourceOverride?: string,
 ) {
   return Effect.gen(function* () {
+    const source = (yield* resolveSharedCreateSource(plan, page)).selection
     const index = yield* querySharedSkillIndex(library, page)
     if (
       index.skill_id !== plan.skill_id ||
@@ -678,8 +813,7 @@ function verifyIndex(
       index.kind !== plan.content_kind ||
       index.default_context !== plan.default_context ||
       index.enabled !== enabled ||
-      index.source_reference !==
-        (plan.version === 2 ? (plan.origin.candidate.source?.source_id ?? "") : "")
+      index.source_reference !== (sourceOverride ?? source?.source_id ?? "")
     )
       return yield* Effect.fail(
         fail(
@@ -704,8 +838,10 @@ function verifyIndex(
           "The complete stable File/page/path bindings differ from the frozen creation intent.",
         ),
       )
-    if (plan.version === 2) {
-      for (const file of plan.files) {
+    if (plan.version === 2 || plan.source_projection !== undefined) {
+      for (const file of sharedCreateFiles(plan).filter(
+        (file) => !partial || bindings.some((binding) => binding.file_id === file.file_id),
+      )) {
         const binding = [index.main, ...index.files].find((item) => item.file_id === file.file_id)
         const baseline =
           file.event.kind === "projected"
@@ -717,7 +853,11 @@ function verifyIndex(
           canonicalSharedJson(binding.baseline ?? null) !== canonicalSharedJson(baseline) ||
           (supporting !== undefined &&
             supporting.display_status !==
-              (file.event.kind === "projected" ? "following" : "custom"))
+              (file.event.kind === "projected"
+                ? "following"
+                : file.event.kind === "deleted"
+                  ? "tombstone"
+                  : "custom"))
         )
           return yield* Effect.fail(
             fail(
@@ -727,6 +867,20 @@ function verifyIndex(
           )
       }
     }
+    if (
+      plan.source_projection !== undefined &&
+      canonicalSharedJson(yield* readSharedFileSourceContext(library, page)) !==
+        canonicalSharedJson({
+          selected_version: sourceOverride ?? source!.source_id,
+          definition: plan.source_projection.definition,
+        })
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_SOURCE_CHANGED",
+          "The created page's exact Source/member/configuration differs from its original projection plan.",
+        ),
+      )
     for (const [field, expected] of [
       [
         "Members",
@@ -768,8 +922,9 @@ export function sharedCreateMemberIds(
 }
 function verifyFacts(library: SharedLibrary, plan: SharedCreatePlan, page: string) {
   return Effect.gen(function* () {
-    if (plan.version === 2 && plan.origin.candidate.source !== null) {
-      const expected = plan.origin.candidate.source
+    if (plan.source_projection?.version === 2)
+      yield* verifySharedCreateRetained(library, page, plan.source_projection.retained)
+    for (const expected of sharedCreateFixedSources(plan)) {
       const actual = yield* resolveSourceBinding(library, {
         skillPageId: page,
         sourceId: expected.source_id,
@@ -795,18 +950,19 @@ function verifyFacts(library: SharedLibrary, plan: SharedCreatePlan, page: strin
         return event
       }),
     )
-    if (events.length !== plan.files.length)
+    if (events.length !== sharedCreateEvents(plan).length)
       return yield* Effect.fail(
         fail(
           "SHARED_CREATE_REVIEW_REQUIRED",
           "The complete new Skill history differs from the initial frozen event set.",
         ),
       )
-    for (const file of plan.files) {
+    for (const file of sharedCreateFiles(plan)) {
       const selected = events.filter((event) => event.file_id === file.file_id)
+      const expected = [...(file.ancestors ?? []), file.event]
       if (
-        selected.length !== 1 ||
-        canonicalSharedJson(selected[0]) !== canonicalSharedJson(file.event)
+        canonicalSharedJson([...selected].sort((a, b) => a.event_id.localeCompare(b.event_id))) !==
+        canonicalSharedJson(expected.sort((a, b) => a.event_id.localeCompare(b.event_id)))
       )
         return yield* Effect.fail(
           fail(
@@ -924,7 +1080,7 @@ export function loadSharedCreatePlan(
       manifest.operation_id !== input.operationId ||
       row.operation_id !== manifest.operation_id ||
       manifest.skill_id !== record.locator.skill_id ||
-      canonicalSharedJson(manifest.library) !== canonicalSharedJson(library)
+      !preservesSharedLibraryBindings(manifest.library, library)
     )
       return yield* Effect.fail(
         fail(
@@ -950,16 +1106,72 @@ export function loadSharedCreatePlan(
         )
       return plan
     }
-    const files = []
+    const files: PortableSkill["files"][number][] = []
     for (const file of manifest.files) {
       const text = yield* readRetainedCreateInput(library, input.skillPageId, file.input)
-      files.push({ path: file.input_path, bytes: new TextEncoder().encode(text) })
+      files.push({
+        path: file.input_path,
+        bytes: new TextEncoder().encode(text),
+        ...(file.input.mode === undefined ? {} : { mode: file.input.mode }),
+      })
     }
+    for (const file of manifest.resources ?? []) {
+      const loaded = yield* loadSharedResourceContent(library, {
+        skillPageId: input.skillPageId,
+        content: file.content,
+      })
+      files.push({
+        path: file.input_path,
+        bytes: loaded.bytes,
+        ...(file.content.mode === null ? {} : { mode: file.content.mode }),
+      })
+    }
+    const frozenProjection = manifest.source_projection
+    const sourceProjection =
+      frozenProjection === undefined
+        ? undefined
+        : frozenProjection.version === 2
+          ? {
+              ...frozenProjection,
+              retained: yield* loadSharedCreateRetained(
+                library,
+                input.skillPageId,
+                frozenProjection.retained,
+              ),
+            }
+          : yield* Effect.gen(function* () {
+              const { local, ...projection } = frozenProjection
+              return {
+                ...projection,
+                ...(local === undefined
+                  ? {}
+                  : {
+                      local: {
+                        ...local,
+                        baseline_inputs: yield* Effect.forEach(local.baseline_inputs, (file) =>
+                          Effect.gen(function* () {
+                            const loaded = yield* loadSharedResourceContent(library, {
+                              skillPageId: input.skillPageId,
+                              content: file.content,
+                            })
+                            return {
+                              path: file.path,
+                              prepared: yield* prepareSharedResourceContent(
+                                loaded.bytes,
+                                file.content.mode,
+                              ),
+                            }
+                          }),
+                        ),
+                      },
+                    }),
+              }
+            })
     const projectionVersion = yield* createChecked(() =>
       sharedCreateProjectionVersion(manifest.files),
     )
     const plan = yield* makeSharedCreatePlan(
-      library,
+      manifest.library,
       {
         portable: {
           kind: manifest.content_kind,
@@ -972,10 +1184,16 @@ export function loadSharedCreatePlan(
             : { projection: manifest.input_projection }),
         },
         defaultContext: manifest.default_context,
+        ...(manifest.enabled === undefined ? {} : { enabled: manifest.enabled }),
+        ...(manifest.complete_resources === undefined ? {} : { completeResources: true }),
         ...(manifest.content_kind === "router" || manifest.members.length > 0
           ? { members: manifest.members }
           : {}),
         ...(manifest.requires === undefined ? {} : { requires: manifest.requires }),
+        ...(manifest.relation_bindings === undefined
+          ? {}
+          : { relationBindings: manifest.relation_bindings }),
+        ...(sourceProjection === undefined ? {} : { sourceProjection }),
       },
       projectionVersion,
     )
@@ -1011,6 +1229,8 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
         ),
       )
     const page = current.record.locator.page_id
+    const resolved = yield* resolveSharedCreateSource(plan, page),
+      facts = resolved.facts
     yield* manifestRecord(library, plan, page, "reconcile").pipe(
       Effect.mapError((error) => recover(error, plan, "manifest", page)),
     )
@@ -1038,6 +1258,22 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       outcome.skill_id !== plan.skill_id ||
       outcome.skill_page_id !== page ||
       outcome.version !== plan.version ||
+      (plan.version === 1 &&
+        outcome.version === 1 &&
+        canonicalSharedJson(outcome.source_projection ?? null) !==
+          canonicalSharedJson(
+            plan.source_projection === undefined
+              ? null
+              : {
+                  source_id: resolved.selection!.source_id,
+                  revision: resolved.selection!.revision,
+                  manifest_record_hash: yield* createManifestRecordHash(plan),
+                  ...(plan.source_projection.version !== 1 ||
+                  plan.source_projection.local === undefined
+                    ? {}
+                    : { local_customization: 1 as const }),
+                },
+          )) ||
       (plan.version === 2 &&
         (outcome.version !== 2 ||
           outcome.migration_candidate_id !== plan.origin.candidate.candidate_id ||
@@ -1058,7 +1294,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
           page,
         ),
       )
-    const expected = plan.files
+    const expected = sharedCreateFiles(facts)
       .map((file) => ({ file_id: file.file_id, path: file.path, event_id: file.event.event_id }))
       .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
     const reported = outcome.bindings
@@ -1077,8 +1313,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
     yield* retainInputs(library, plan, page, "reconcile").pipe(
       Effect.mapError((error) => recover(error, plan, "retained_inputs", page)),
     )
-    if (plan.version === 2 && plan.origin.candidate.source !== null) {
-      const source = plan.origin.candidate.source
+    for (const source of sharedCreateFixedSources(plan)) {
       yield* registerSourceBinding(library, {
         skillPageId: page,
         mode: "reconcile",
@@ -1091,15 +1326,15 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
         },
       }).pipe(Effect.mapError((error) => recover(error, plan, "source_registration", page)))
     }
-    for (const file of plan.files)
+    for (const event of sharedCreateEvents(facts))
       yield* appendSharedRecord(library, {
         mode: "reconcile",
-        recordId: file.event.event_id,
-        operationId: file.event.event_id,
+        recordId: event.event_id,
+        operationId: event.event_id,
         skillPageId: page,
         kind: "file_event",
-        entityId: file.file_id,
-        payload: file.event,
+        entityId: event.file_id,
+        payload: event,
       })
     // The completed operation is historical. Later user edits/renames are not
     // replaced, rebound to its original bytes or published as a latest snapshot.
@@ -1119,9 +1354,76 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       reused: true as const,
       requires_fresh_read: true as const,
       protection: sharedCreateProtection,
-      ...(yield* createChecked(() => sharedCreateExpectations(plan, outcome.bindings))),
+      ...(yield* createChecked(() =>
+        sharedCreateExpectations(facts, outcome.bindings, resolved.selection),
+      )),
     }
   })
+}
+
+function inspectSharedCreateDispatch(library: SharedLibrary, plan: SharedCreatePlan) {
+  return Effect.gen(function* () {
+    const scope = yield* authScope,
+      store = yield* Store
+    yield* verifyLibrary(library, plan)
+    const key = yield* sharedCreateJournalKey(scope, library.library_id, plan.operation_id)
+    // A credential rotation cannot turn the same Store's unresolved original
+    // operation into a fresh first POST. Inspect only its opaque address; never
+    // read another credential's journal or expose that credential's scope.
+    const originalAddress = new RegExp(
+      `^operations/shared-native-create/[a-f0-9]{64}/${plan.operation_id}\\.json$`,
+      "u",
+    )
+    if (
+      (yield* store.listKeys("operations/shared-native-create/")).some(
+        (candidate) => candidate !== key && originalAddress.test(candidate),
+      )
+    )
+      return { scope, key, original: true as const, resumable: false }
+    const saved = yield* store.readJson(key, SharedCreateJournalSchema)
+    if (saved !== undefined) {
+      if (
+        saved.scope !== scope ||
+        saved.library_id !== library.library_id ||
+        canonicalSharedJson(saved.plan) !== canonicalSharedJson(plan)
+      )
+        return yield* Effect.fail(
+          fail("STATE_CONFLICT", "The original native create journal differs from this request."),
+        )
+      return {
+        scope,
+        key,
+        original: true as const,
+        resumable: saved.dispatch_receipt_version === 1,
+      }
+    }
+    yield* guardOriginalCreate(scope, plan)
+    const records = yield* inventory(library, plan.name)
+    if (yield* createChecked(() => checkInventory(plan, records)))
+      return { scope, key, original: true as const, resumable: false }
+    yield* assertSourceProjectionDefinition(library, plan)
+    return { scope, key, original: false as const, resumable: false }
+  })
+}
+
+/** The same first-dispatch gates, with no body read, journal write, create or original reconciliation. */
+export function previewSharedCreate(library: SharedLibrary, frozenPlan: unknown) {
+  return Effect.gen(function* () {
+    const plan = yield* validateSharedCreatePlan(frozenPlan)
+    const checked = yield* inspectSharedCreateDispatch(library, plan)
+    return {
+      status: checked.original ? ("original_operation_exists" as const) : ("planned" as const),
+      operation_id: plan.operation_id,
+      skill_id: plan.skill_id,
+      original_reconciliation_required: checked.original,
+      initial_enabled: false as const,
+      requested_enabled: sharedCreateEnabled(plan),
+      migration_input_required: plan.version === 2,
+      remote_writes: 0 as const,
+      protection: sharedCreateProtection,
+      plan,
+    }
+  }).pipe(withReadOnlyNotion)
 }
 
 export function executeSharedCreate(
@@ -1149,39 +1451,59 @@ export function executeSharedCreate(
         )
       yield* validateSharedMigrationConversion(input.migrationInput, plan.origin.candidate)
     }
-    const scope = yield* authScope,
-      store = yield* Store
-    yield* verifyLibrary(library, plan)
-    const key = yield* sharedCreateJournalKey(scope, library.library_id, plan.operation_id)
-    const saved = yield* store.readJson(key, SharedCreateJournalSchema)
-    if (saved !== undefined) {
-      if (
-        saved.scope !== scope ||
-        saved.library_id !== library.library_id ||
-        canonicalSharedJson(saved.plan) !== canonicalSharedJson(plan)
-      )
-        return yield* Effect.fail(
-          fail("STATE_CONFLICT", "The original native create journal differs from this request."),
-        )
-      return yield* reconcileSharedCreate(library, saved.plan)
-    }
-    yield* guardOriginalCreate(scope, plan)
-    const records = yield* inventory(library, plan.name)
-    if (yield* createChecked(() => checkInventory(plan, records)))
-      return yield* reconcileSharedCreate(library, plan)
-    yield* store.writeJson(key, {
-      version: 1,
-      scope,
-      library_id: library.library_id,
-      plan,
-      ownership_receipt_version: 1,
-    })
-    yield* invalidateSubscriptionCatalog(scope, library.skills.database_id)
-    const api = yield* Notion,
-      main = plan.files.find((file) => file.path === plan.entrypoint)!
+    const { scope, key, original, resumable } = yield* inspectSharedCreateDispatch(library, plan)
     let stage = "create_skill",
-      skillPage: string | undefined
+      skillPage: string | undefined,
+      lastCheckedStage: string | undefined
     const bindings: Binding[] = []
+    let allocatedCheck: Effect.Effect<void, SkillsError, Notion | Store | Crypto.Crypto> =
+      Effect.void
+    const beforeDispatch = Effect.gen(function* () {
+      // Legacy native/migration plans retain their original review and recovery
+      // protocol. The complete-resource/source contract opts into fresh stages.
+      if (plan.complete_resources !== 1 && plan.source_projection === undefined) return
+      if (lastCheckedStage === stage) return
+      yield* verifyLibrary(library, plan)
+      // Immutable chunks within one stage share its checked intent. Every new
+      // page/metadata stage and the first new write of a resumed invocation gets
+      // fresh scope, definition, relation and acknowledged-allocation checks.
+      if (stage !== "review_outcome") {
+        const fresh = yield* inventory(library, plan.name)
+        yield* createChecked(() => checkInventory(plan, fresh))
+        yield* assertSourceProjectionDefinition(library, plan, skillPage)
+        yield* allocatedCheck
+      }
+      lastCheckedStage = stage
+    }).pipe(withReadOnlyNotion)
+    // The original ACK namespace includes the optional Sources table. Additive
+    // descriptor registration must never move an existing operation to a fresh
+    // namespace where an unknown original POST would appear unattempted.
+    const dispatch = yield* sharedCreateDispatch(plan.library, plan, beforeDispatch)
+    if (original) {
+      const reconciled = yield* reconcileSharedCreate(library, plan).pipe(Effect.result)
+      if (reconciled._tag === "Success") return reconciled.success
+      if (
+        !resumable ||
+        !["SHARED_CREATE_UNRESOLVED", "SHARED_RECORD_UNRESOLVED"].includes(
+          reconciled.failure.code,
+        ) ||
+        !(yield* dispatch.canResume)
+      )
+        return yield* Effect.fail(reconciled.failure)
+    }
+    const store = yield* Store
+    if (!original)
+      yield* store.writeJson(key, {
+        version: 1,
+        scope,
+        library_id: library.library_id,
+        plan,
+        ownership_receipt_version: 1,
+        dispatch_receipt_version: 1,
+      })
+    yield* invalidateSubscriptionCatalog(scope, library.skills.database_id)
+    const api = dispatch.api,
+      main = plan.files.find((file) => file.path === plan.entrypoint)!
     return yield* Effect.gen(function* () {
       const raw = yield* api.request(
         "v1/pages",
@@ -1194,19 +1516,76 @@ export function executeSharedCreate(
         { method: "POST" },
       )
       skillPage = yield* createChecked(() => pageReceipt(raw))
+      const resolved = yield* resolveSharedCreateSource(plan, skillPage),
+        facts = resolved.facts
+      const resolvedMain = facts.files.find((file) => file.path === facts.entrypoint)!
+      const allocatedPage = skillPage
+      const sourceSelection =
+        plan.source_projection?.version !== 2
+          ? undefined
+          : {
+              properties: {
+                [library.skills.property_ids.Source!]: {
+                  rich_text: spans(resolved.selection!.source_id),
+                },
+                [library.skills.property_ids.Projection!]: {
+                  rich_text: spans(createProjectionBaseline(resolvedMain)),
+                },
+              },
+            }
+      const enableBody = {
+        properties: { [library.skills.property_ids.Enabled!]: { checkbox: true } },
+      }
+      allocatedCheck = Effect.gen(function* () {
+        const sourceSelected =
+          sourceSelection === undefined ||
+          (yield* dispatch.acknowledged(`v1/pages/${allocatedPage}`, sourceSelection, "PATCH"))
+        const enabled =
+          sharedCreateEnabled(plan) &&
+          (yield* dispatch.acknowledged(`v1/pages/${allocatedPage}`, enableBody, "PATCH"))
+        yield* verifyIndex(
+          library,
+          sourceSelected ? facts : plan,
+          allocatedPage,
+          bindings,
+          enabled,
+          true,
+          sourceSelected ? undefined : "",
+        )
+        for (const binding of bindings) {
+          const native = plan.files.find((file) => file.file_id === binding.file_id)
+          if (native !== undefined) yield* assertBody(binding.page_id, native.projection.markdown)
+          else {
+            const resource = plan.resources?.find((file) => file.file_id === binding.file_id)
+            if (resource === undefined)
+              return yield* Effect.fail(
+                fail(
+                  "SHARED_CREATE_SCOPE",
+                  "An allocated page is outside the original complete file set.",
+                ),
+              )
+            const description = yield* createChecked(() =>
+              projectSharedNotionMarkdown(sharedCreateResourceDescription(resource), {
+                version: sharedCreateProjectionVersion(plan.files),
+                purpose: "data_source_create",
+              }),
+            )
+            yield* assertBody(binding.page_id, description.markdown)
+          }
+        }
+      })
       bindings.push({
         file_id: main.file_id,
         path: main.path,
         page_id: skillPage,
-        event_id: main.event.event_id,
+        event_id: resolvedMain.event.event_id,
       })
       stage = "manifest"
       yield* manifestRecord(library, plan, skillPage, "create")
       stage = "retained_inputs"
       yield* retainInputs(library, plan, skillPage, "create")
-      if (plan.version === 2 && plan.origin.candidate.source !== null) {
+      for (const source of sharedCreateFixedSources(plan)) {
         stage = "source_registration"
-        const source = plan.origin.candidate.source
         yield* registerSourceBinding(library, {
           skillPageId: skillPage,
           mode: "create",
@@ -1221,7 +1600,33 @@ export function executeSharedCreate(
       }
       stage = "main_body"
       yield* assertBody(skillPage, main.projection.markdown)
-      for (const file of plan.files.filter((file) => file.path !== plan.entrypoint)) {
+      if (plan.source_projection?.version === 2) {
+        stage = "retained_source_selection"
+        yield* verifySharedCreateRetained(library, skillPage, plan.source_projection.retained)
+        const selection = sourceSelection!
+        if (!(yield* dispatch.acknowledged(`v1/pages/${skillPage}`, selection, "PATCH"))) {
+          const current = yield* api.request(`v1/pages/${skillPage}`)
+          if (
+            text(sharedSkillProperty(current, library, "Source").rich_text) !== "" ||
+            text(sharedSkillProperty(current, library, "Projection").rich_text) !== ""
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_CREATE_REVIEW_REQUIRED",
+                "The new retained-source page no longer has its original unselected source and empty projection.",
+              ),
+            )
+        }
+        const selected = yield* api.request(`v1/pages/${skillPage}`, selection, { method: "PATCH" })
+        if ((yield* createChecked(() => pageReceipt(selected))) !== skillPage)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_RECEIPT_INVALID",
+              "The initial source selection acknowledgement belongs to another page.",
+            ),
+          )
+      }
+      for (const file of facts.files.filter((file) => file.path !== facts.entrypoint)) {
         stage = `create_file:${file.file_id}`
         const ids = library.files.property_ids,
           rich = (value: string) => ({ rich_text: spans(value) })
@@ -1235,7 +1640,14 @@ export function executeSharedCreate(
               [ids.Path!]: rich(file.path),
               [ids.Projection!]: rich(createProjectionBaseline(file)),
               [ids.Status!]: {
-                select: { name: file.event.kind === "projected" ? "following" : "custom" },
+                select: {
+                  name:
+                    file.event.kind === "projected"
+                      ? "following"
+                      : file.event.kind === "deleted"
+                        ? "tombstone"
+                        : "custom",
+                },
               },
               [ids.Skill!]: { relation: [{ id: skillPage }] },
             },
@@ -1254,40 +1666,83 @@ export function executeSharedCreate(
         stage = `body:${file.file_id}`
         yield* assertBody(page, file.projection.markdown)
       }
+      for (const file of facts.resources ?? []) {
+        stage = `create_resource:${file.file_id}`
+        const ids = library.files.property_ids,
+          rich = (value: string) => ({ rich_text: spans(value) })
+        const description = projectSharedNotionMarkdown(sharedCreateResourceDescription(file), {
+          version: sharedCreateProjectionVersion(plan.files),
+          purpose: "data_source_create",
+        })
+        const rawFile = yield* api.request(
+          "v1/pages",
+          {
+            parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+            properties: {
+              [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
+              [ids["File ID"]!]: rich(file.file_id),
+              [ids.Path!]: rich(file.path),
+              [ids.Projection!]: rich(""),
+              [ids.Status!]: {
+                select: { name: file.event.kind === "deleted" ? "tombstone" : "custom" },
+              },
+              [ids.Skill!]: { relation: [{ id: skillPage }] },
+            },
+            markdown: sharedNotionMarkdownWire(description),
+            markdown_version: "v2",
+          },
+          { method: "POST" },
+        )
+        const page = yield* createChecked(() => pageReceipt(rawFile))
+        bindings.push({
+          file_id: file.file_id,
+          path: file.path,
+          page_id: page,
+          event_id: file.event.event_id,
+        })
+        yield* assertBody(page, description.markdown)
+      }
       stage = "file_events"
-      for (const file of plan.files)
+      for (const event of sharedCreateEvents(facts))
         yield* appendSharedRecord(library, {
           mode: "create",
-          recordId: file.event.event_id,
-          operationId: file.event.event_id,
+          recordId: event.event_id,
+          operationId: event.event_id,
           skillPageId: skillPage,
           kind: "file_event",
-          entityId: file.file_id,
-          payload: file.event,
+          entityId: event.file_id,
+          payload: event,
         })
       stage = "complete_pre_enable"
-      yield* verifyIndex(library, plan, skillPage, bindings, false)
+      const shouldEnable = sharedCreateEnabled(plan)
+      const enabledBefore =
+        shouldEnable && (yield* dispatch.acknowledged(`v1/pages/${skillPage}`, enableBody, "PATCH"))
+      yield* verifyIndex(library, facts, skillPage, bindings, enabledBefore)
       const currentMembers = yield* inventory(library, plan.name)
       yield* createChecked(() => checkInventory(plan, currentMembers))
-      yield* verifyFacts(library, plan, skillPage)
+      yield* verifyFacts(library, facts, skillPage)
       for (const file of plan.files)
         yield* assertBody(
           bindings.find((binding) => binding.file_id === file.file_id)!.page_id,
           file.projection.markdown,
         )
+      for (const file of plan.resources ?? [])
+        yield* loadSharedResourceContent(library, {
+          skillPageId: skillPage,
+          content: file.prepared.content,
+        })
       stage = "enable"
-      const enabled = yield* api.request(
-        `v1/pages/${skillPage}`,
-        { properties: { [library.skills.property_ids.Enabled!]: { checkbox: true } } },
-        { method: "PATCH" },
-      )
-      if ((yield* createChecked(() => pageReceipt(enabled))) !== skillPage)
-        return yield* Effect.fail(
-          fail("SHARED_CREATE_RECEIPT_INVALID", "The enable receipt belongs to another page."),
-        )
+      yield* assertSourceProjectionDefinition(library, plan, skillPage)
+      if (shouldEnable) {
+        const enabled = yield* api.request(`v1/pages/${skillPage}`, enableBody, { method: "PATCH" })
+        if ((yield* createChecked(() => pageReceipt(enabled))) !== skillPage)
+          return yield* Effect.fail(
+            fail("SHARED_CREATE_RECEIPT_INVALID", "The enable receipt belongs to another page."),
+          )
+      }
       stage = "complete_post_enable"
-      yield* verifyIndex(library, plan, skillPage, bindings, true)
-      yield* verifyFacts(library, plan, skillPage)
+      yield* verifyIndex(library, facts, skillPage, bindings, shouldEnable)
+      yield* verifyFacts(library, facts, skillPage)
       stage = "outcome"
       yield* saveOutcome(
         library,
@@ -1324,7 +1779,9 @@ export function executeSharedCreate(
         reused: false as const,
         requires_fresh_read: true as const,
         protection: sharedCreateProtection,
-        ...(yield* createChecked(() => sharedCreateExpectations(plan, bindings))),
+        ...(yield* createChecked(() =>
+          sharedCreateExpectations(facts, bindings, resolved.selection),
+        )),
       }
     }).pipe(
       Effect.catch((error) =>
@@ -1342,13 +1799,18 @@ export function executeSharedCreate(
             stage !== "manifest" &&
             stage !== "retained_inputs" &&
             stage !== "outcome"
-          )
+          ) {
+            const failedStage = stage
+            stage = "review_outcome"
             yield* saveOutcome(library, plan, skillPage, "needs_review", error.code, bindings).pipe(
               Effect.mapError((failure) => recover(failure, plan, "review_outcome", skillPage)),
             )
+            stage = failedStage
+          }
           return yield* Effect.fail(recover(error, plan, stage, skillPage))
         }),
       ),
+      Effect.provideService(Notion, api),
     )
   })
 }
@@ -1401,6 +1863,14 @@ export function loadPendingSharedCreates(
               "The migration completion belongs to another exact original manifest.",
             ),
           )
+        const projected = terminal.version === 1 ? terminal.source_projection : undefined
+        if (projected !== undefined && projected.manifest_record_hash !== header.hash)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_INVALID",
+              "The source projection completion belongs to another original manifest.",
+            ),
+          )
         if (
           terminal.bindings.length === 0 ||
           !terminal.bindings.some((binding) => binding.page_id === input.skillPageId)
@@ -1410,10 +1880,18 @@ export function loadPendingSharedCreates(
           )
         for (const binding of terminal.bindings) {
           const event = input.events.find((event) => event.event_id === binding.event_id)
+          const local = projected?.local_customization === 1
           if (
             event === undefined ||
             event.file_id !== binding.file_id ||
-            (event.kind !== "adopted" && (terminal.version !== 2 || event.kind !== "projected"))
+            (!local &&
+              event.kind !== "adopted" &&
+              ((terminal.version !== 2 && projected === undefined) ||
+                event.kind !== "projected")) ||
+            (local && !["adopted", "projected", "deleted"].includes(event.kind)) ||
+            (projected !== undefined &&
+              ((!local && event.kind !== "projected") ||
+                (event.kind === "projected" && event.source_revision !== projected.revision)))
           )
             return yield* Effect.fail(
               fail(
@@ -1432,6 +1910,24 @@ export function loadPendingSharedCreates(
                 "The native create event differs from its complete content identity.",
               ),
             )
+          if (local)
+            yield* createChecked(() => {
+              const byId = new Map(input.events.map((item) => [item.event_id, item]))
+              const ancestors = new Map<string, FileEvent>()
+              const collect = (id: string): void => {
+                if (ancestors.has(id)) return
+                const current = byId.get(id)
+                if (current === undefined || current.file_id !== binding.file_id)
+                  throw fail(
+                    "SHARED_CREATE_UNRESOLVED",
+                    "The local create completion is missing its exact original C1 ancestry.",
+                  )
+                ancestors.set(id, current)
+                for (const parent of current.parents) collect(parent)
+              }
+              collect(event.event_id)
+              resolveFileState(binding.file_id, [...ancestors.values()])
+            })
         }
         continue
       }
@@ -1464,6 +1960,8 @@ export function createSharedNative(
   input: {
     readonly portable: PortableSkill
     readonly defaultContext?: boolean
+    readonly enabled?: boolean
+    readonly completeResources?: boolean
     readonly members?: readonly string[]
     readonly requires?: readonly string[]
     readonly dryRun?: boolean

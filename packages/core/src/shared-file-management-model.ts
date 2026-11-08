@@ -6,6 +6,7 @@ import {
   FileEventSchema,
   normalizeObservedBody,
   RetainedContentSchema,
+  nativeFileMetadata,
   type FileEvent,
 } from "./shared-file-state.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
@@ -244,6 +245,7 @@ export function validateSharedFileManagementPlan(input: unknown) {
       object_id: `body-${hash}`,
       sha256: hash,
       bytes: new TextEncoder().encode(plan.content.markdown).byteLength,
+      ...nativeFileMetadata(plan.before ?? {}),
     }
     if (
       canonicalSharedJson(retained) !== canonicalSharedJson(plan.content.retained) ||

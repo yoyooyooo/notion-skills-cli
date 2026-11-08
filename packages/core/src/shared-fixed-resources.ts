@@ -11,6 +11,7 @@ export type FixedFile = {
   readonly path: string
   readonly sha256: string
   readonly bytes: number
+  readonly mode?: "100644" | "100755"
 }
 
 /** Content identity contains neither a retrieval URL nor a machine's absolute path. */
@@ -23,6 +24,7 @@ export type MaterializedFixedFile = {
   readonly path: string
   readonly sha256: string
   readonly bytes: Uint8Array
+  readonly mode?: "100644" | "100755"
 }
 
 export type FixedHttpLocation = {
@@ -76,7 +78,12 @@ const compareFiles = (a: FixedFile, b: FixedFile) =>
 const ManifestSchema = Schema.Struct({
   version: Schema.Literal(1),
   files: Schema.Array(
-    Schema.Struct({ path: Schema.String, sha256: Schema.String, bytes: Schema.Number }),
+    Schema.Struct({
+      path: Schema.String,
+      sha256: Schema.String,
+      bytes: Schema.Number,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+    }),
   ),
 })
 const LocalSourceSchema = Schema.Struct({
@@ -160,7 +167,12 @@ export function validateFixedFileManifest(input: unknown): FixedFileManifest {
   return {
     version: 1,
     files: decoded.files
-      .map((file) => ({ path: file.path, sha256: file.sha256, bytes: file.bytes }))
+      .map((file) => ({
+        path: file.path,
+        sha256: file.sha256,
+        bytes: file.bytes,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
+      }))
       .sort(compareFiles),
   }
 }
@@ -263,7 +275,12 @@ function materialize<R>(
             "FIXED_RESOURCE_INCOMPLETE",
             "A requested fixed resource could not be materialized.",
           )
-        return { path: entry.path, sha256: entry.sha256, bytes }
+        return {
+          path: entry.path,
+          sha256: entry.sha256,
+          bytes,
+          ...(entry.mode === undefined ? {} : { mode: entry.mode }),
+        }
       }),
     )
   })
@@ -604,8 +621,8 @@ function identity(path: string, info: FileSystem.File.Info): PathIdentity {
   return { path, dev: info.dev, ino }
 }
 
-function localBytes(
-  entry: FixedFile,
+export function readFixedLocalFile(
+  entry: Pick<FixedFile, "path" | "bytes" | "mode"> & { readonly sha256?: string },
   absoluteRoot: string,
 ): Effect.Effect<Uint8Array, SkillsError, FileSystem.FileSystem | Path.Path> {
   return Effect.gen(function* () {
@@ -658,6 +675,13 @@ function localBytes(
             fail(
               "LOCAL_RESOURCE_NOT_REGULAR_FILE",
               "The opened local resource is not a regular file.",
+            ),
+          )
+        if (entry.mode !== undefined && ((opened.mode & 0o111) !== 0) !== (entry.mode === "100755"))
+          return yield* Effect.fail(
+            fail(
+              "LOCAL_RESOURCE_MODE_CHANGED",
+              "The local file executable mode differs from the frozen manifest.",
             ),
           )
         if (ByteSize.toBigInt(opened.size) !== BigInt(entry.bytes)) {
@@ -725,7 +749,8 @@ function localBytes(
           after.type !== "File" ||
           ByteSize.toBigInt(after.size) !== BigInt(entry.bytes) ||
           afterIdentity.dev !== fdIdentity.dev ||
-          afterIdentity.ino !== fdIdentity.ino
+          afterIdentity.ino !== fdIdentity.ino ||
+          (entry.mode !== undefined && ((after.mode & 0o111) !== 0) !== (entry.mode === "100755"))
         ) {
           return yield* Effect.fail(
             fail("LOCAL_RESOURCE_CHANGED", "The opened local resource changed during its read."),
@@ -792,7 +817,7 @@ export function materializeFixedLocalFiles(
     const selected = yield* validateFixedLocalResourceBinding(input, options)
     return yield* materialize(
       selected.manifest,
-      (entry) => localBytes(entry, selected.absoluteRoot),
+      (entry) => readFixedLocalFile(entry, selected.absoluteRoot),
       true,
       paths,
     )

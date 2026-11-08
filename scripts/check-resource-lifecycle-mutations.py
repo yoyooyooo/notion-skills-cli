@@ -14,8 +14,14 @@ cases=[
  ('editable-overwrite','packages/core/src/shared-file-state.ts','if (input.existing_editable_page)',
   'if (false && input.existing_editable_page)','packages/core/test/shared-file-state.test.ts','timestamp check'),
  ('custom-takeover','packages/core/src/shared-file-state.ts',
-  'if (event.kind === "projected" && parentStates.some((parent) => parent.kind !== "following"))',
-  'if (false && event.kind === "projected" && parentStates.some((parent) => parent.kind !== "following"))',
+  '''if (
+      event.kind === "projected" &&
+      parentStates.some((parent) => parent.kind !== "following" || isResourceFollowing(parent))
+    )''',
+  '''if (
+      false && event.kind === "projected" &&
+      parentStates.some((parent) => parent.kind !== "following" || isResourceFollowing(parent))
+    )''',
   'packages/core/test/shared-file-state.test.ts','metadata-only observation'),
  ('audit-readonly','packages/core/src/shared-file-observer.ts','if (input.readOnly)',
   'if (false && input.readOnly)','packages/core/test/shared-file-observer-readonly.test.ts','audit-style observation'),

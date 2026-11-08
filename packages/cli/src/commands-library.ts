@@ -32,6 +32,9 @@ import { libraryMigrationCommand } from "./commands-library-migration.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { libraryRelationsCommand } from "./commands-library-relations.ts"
 import { libraryGraphCommand } from "./commands-library-graph.ts"
+import { libraryAuditCommand } from "./commands-library-audit.ts"
+import { libraryResourceCommand } from "./commands-library-resource.ts"
+import { libraryInventoryCommand } from "./commands-library-inventory.ts"
 
 const initialize = defineCommand(
   "init",
@@ -378,6 +381,9 @@ export const libraryCommand = defineCommand("library").pipe(
     inspect,
     files,
     state,
+    libraryAuditCommand,
+    libraryResourceCommand,
+    libraryInventoryCommand,
     sources,
     librarySourceDefinitionsCommand,
     snapshots,

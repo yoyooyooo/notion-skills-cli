@@ -153,9 +153,7 @@ describe("once consume contract", () => {
       expect(listed.record).toEqual(snapshot.record)
       expect(listed.scope).toBe(snapshot.scope)
       expect(listed.snapshot_id).toBe(snapshot.snapshot_id)
-      expect(listed.files).toEqual(
-        snapshot.files.map(({ path, bytes }) => ({ path, bytes, ref: f.ref("a") })),
-      )
+      expect(listed.files).toEqual(snapshot.files.map((file) => ({ ...file, ref: f.ref("a") })))
     }
     const wrong = await f.run(
       listSkill(fileRef("current-replacement", "", snapshot.snapshot_id), { offline: true }).pipe(

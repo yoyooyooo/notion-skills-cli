@@ -15,6 +15,7 @@ import { notionApiOrigin } from "./notion-http.ts"
 import { pageId, parseTarget, normalizePath } from "./ref.ts"
 import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 import { currentMaterializationVersion } from "./materialization.ts"
+import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import { catalog } from "./catalog.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -236,6 +237,13 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
         catch: () => fail("STATE_CORRUPT", "Snapshot file manifest is invalid."),
       })
     }
+    yield* Effect.try({
+      try: () => validateSnapshotAcquisition(snapshot),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "Invalid frozen snapshot acquisition."),
+    })
     return snapshot
   }).pipe(
     Effect.mapError((error) =>
@@ -248,10 +256,13 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
 function validateSnapshotObjects(
   snapshot: Snapshot,
   files?: Array<{ readonly path: string; readonly bytes: Uint8Array }>,
+  paths?: readonly string[],
 ) {
   return Effect.gen(function* () {
     const store = yield* Store
-    for (const file of snapshot.files) {
+    for (const file of snapshot.files.filter(
+      (file) => paths === undefined || paths.includes(file.path),
+    )) {
       const bytes = yield* store.readBytes(`objects/${file.sha256}`)
       if (bytes.length !== file.bytes || (yield* sha256(bytes)) !== file.sha256)
         return yield* Effect.fail(
@@ -279,10 +290,35 @@ const SharedCurrentTreeValidationSchema = Schema.Struct({
   version_id: Schema.String,
   materialization_version: Schema.String,
   manifest_sha256: Schema.String,
+  verified_paths: Schema.optional(Schema.Array(Schema.String)),
 })
 
+function validationPaths(snapshot: Snapshot, paths?: readonly string[]) {
+  const selected = paths ?? snapshot.files.map((file) => file.path)
+  if (
+    new Set(selected).size !== selected.length ||
+    selected.some((path) => !snapshot.files.some((file) => file.path === path)) ||
+    snapshot.files.some(
+      (file) =>
+        !selected.includes(file.path) &&
+        (file.path === snapshot.entrypoint ||
+          /\.(md|markdown)$/iu.test(file.path) ||
+          !snapshot.shared_acquisition?.files.some((route) => route.path === file.path)),
+    )
+  )
+    throw fail(
+      "STATE_CORRUPT",
+      "Partial shared validation requires every Markdown body and frozen acquisition for each omitted raw file.",
+    )
+  return selected
+}
+
 /** Content proof only: this never renews a current observation or its body deadline. */
-function validateSharedCurrentTree(snapshot: Snapshot, reuseReceipt = false) {
+function validateSharedCurrentTree(
+  snapshot: Snapshot,
+  reuseReceipt = false,
+  selectedPaths?: readonly string[],
+) {
   return Effect.gen(function* () {
     yield* validateSnapshotManifest(snapshot)
     const store = yield* Store
@@ -305,20 +341,47 @@ function validateSharedCurrentTree(snapshot: Snapshot, reuseReceipt = false) {
       const previous = yield* store
         .readJson(key, SharedCurrentTreeValidationSchema)
         .pipe(Effect.catch(() => Effect.succeed(undefined)))
-      if (previous && canonicalSharedJson(previous) === canonicalSharedJson(receipt))
-        return snapshot
+      if (previous) {
+        const { verified_paths, ...identity } = previous
+        if (canonicalSharedJson(identity) === canonicalSharedJson(receipt)) {
+          yield* Effect.try({
+            try: () => validationPaths(snapshot, verified_paths),
+            catch: (error) =>
+              error instanceof SkillsError
+                ? error
+                : fail("STATE_CORRUPT", "Invalid shared validation selection."),
+          })
+          return snapshot
+        }
+      }
     }
+    const paths = yield* Effect.try({
+      try: () => validationPaths(snapshot, selectedPaths),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "Invalid shared validation selection."),
+    })
     const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
-    yield* validateSnapshotObjects(snapshot, files)
+    yield* validateSnapshotObjects(snapshot, files, paths)
     yield* Effect.try({
-      try: () => assertSharedFileReferences(files),
+      try: () =>
+        assertSharedFileReferences(
+          files,
+          undefined,
+          snapshot.files.map((file) => file.path),
+        ),
       catch: (error) =>
         error instanceof SkillsError
           ? error
           : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
     })
-    // A receipt can only be issued after the actual full bytes/hash and reference gates succeed.
-    yield* store.writeJson(key, receipt)
+    // The complete path/reference proof is distinct from selected actual bytes.
+    // A missing raw object is recoverable only through its frozen acquisition.
+    yield* store.writeJson(key, {
+      ...receipt,
+      ...(paths.length === snapshot.files.length ? {} : { verified_paths: [...paths].sort() }),
+    })
     return snapshot
   })
 }
@@ -336,10 +399,12 @@ export function publishSnapshotObservation(
     readonly bundleCheckpoint?: SourceBundleCheckpoint
     readonly metadataOnly?: true
     readonly sharedBodyValidUntil?: number
+    readonly sharedMaterializedPaths?: readonly string[]
   } = {},
 ) {
   return Effect.gen(function* () {
-    if (snapshot.record.locator.type === "shared_skill") yield* validateSharedCurrentTree(snapshot)
+    if (snapshot.record.locator.type === "shared_skill")
+      yield* validateSharedCurrentTree(snapshot, false, options.sharedMaterializedPaths)
     else yield* validateSnapshot(snapshot)
     const store = yield* Store
     const validatedAt = yield* Clock.currentTimeMillis
@@ -396,6 +461,16 @@ export function publishSnapshotObservation(
     return {
       ...snapshot,
       source: "notion" as const,
+      ...(options.sharedMaterializedPaths === undefined
+        ? {}
+        : {
+            materialization: {
+              manifest_complete: true as const,
+              local_files_ready: options.sharedMaterializedPaths.length === snapshot.files.length,
+              materialized_paths: [...options.sharedMaterializedPaths],
+              loaded: false as const,
+            },
+          }),
       ...(options.sharedBodyValidUntil === undefined
         ? {}
         : { shared_body_valid_until: options.sharedBodyValidUntil }),

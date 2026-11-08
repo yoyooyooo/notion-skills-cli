@@ -37,6 +37,11 @@ import {
   validateSharedNativeAdoptionPlan,
   type SharedNativeAdoptionPlan,
 } from "./shared-native-adoption-model.ts"
+import {
+  SharedResourceAuthoringPlanSchema,
+  validateSharedResourceAuthoringPlan,
+  type SharedResourceAuthoringPlan,
+} from "./shared-resource-authoring-model.ts"
 
 export type SharedPendingFilePlan =
   | SharedObservationPlan
@@ -46,6 +51,7 @@ export type SharedPendingFilePlan =
   | SharedFileManagementPlan
   | SharedSkillApplyPlan
   | SharedNativeAdoptionPlan
+  | SharedResourceAuthoringPlan
 export type SharedPendingFileScope = {
   readonly prefix: string
   readonly scope: string
@@ -68,6 +74,7 @@ const PendingFileOperationSchema = Schema.Struct({
     SharedFileManagementPlanSchema,
     SharedSkillApplyPlanSchema,
     SharedNativeAdoptionPlanSchema,
+    SharedResourceAuthoringPlanSchema,
   ]),
 })
 
@@ -86,6 +93,10 @@ export function pendingFileOperationKey(prefix: string, plan: SharedPendingFileP
 
 function validatePlan(plan: SharedPendingFilePlan) {
   switch (plan.kind) {
+    case "resource_authoring":
+      return validateSharedResourceAuthoringPlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
     case "native_adoption":
       return validateSharedNativeAdoptionPlan(plan).pipe(
         Effect.map((value): SharedPendingFilePlan => value),

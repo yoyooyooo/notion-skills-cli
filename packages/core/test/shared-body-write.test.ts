@@ -914,49 +914,66 @@ describe("explicit shared whole-body writes", () => {
     expect(patches(next)).toHaveLength(0)
   })
 
-  test("restores following only after the fixed source projection matches and keeps the custom bytes", async () => {
-    const shared = remote(),
-      api = client(shared)
-    const fixed = await api.run(
-      makeSourceBinding({
-        url: "https://github.com/owner/repo",
-        commit: "c".repeat(40),
-        tree: "d".repeat(40),
-        root: "skill",
-        files: [
-          {
-            path: "SKILL.md",
-            source_path: "skill/SKILL.md",
-            git_oid: "e".repeat(40),
-            bytes: candidate.length,
-          },
-        ],
-      }),
-    )
-    seed(shared, "source", fixed.source_id, `register-${fixed.source_id}`, fixed.source_id, fixed)
-    shared.source = fixed.source_id
-    const plan = await api.run(
-      prepareSharedBodyWrite({
-        library,
-        skillPageId: skillPage,
-        fileId,
-        action: "restore_follow",
-        candidateMarkdown: candidate,
-        source: { source_id: fixed.source_id, revision: fixed.commit, path: "SKILL.md" },
-      }),
-    )
-    const result = await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))
-    expect(result.status).toBe("applied")
-    expect(plan.event.kind).toBe("following_restored")
-    expect(resolveFileState(fileId, eventRows(shared)).ownership).toEqual({
-      kind: "following",
-      source_revision: fixed.commit,
-      projection: { normalization_version: 1, sha256: hash(candidate) },
-    })
-    expect(property(payloadFor(shared, `body-${hash(original)}`)).markdown).toBe(original)
-    expect(shared.source).toBe(fixed.source_id)
-    expect(patches(api)).toHaveLength(1)
-  })
+  test.each([true, false])(
+    "restore-follow preserves custom bytes and blocks a required body replacement (same body: %s)",
+    async (sameBody) => {
+      const shared = remote(),
+        api = client(shared)
+      const restoredBody = sameBody ? original : candidate
+      const fixed = await api.run(
+        makeSourceBinding({
+          url: "https://github.com/owner/repo",
+          commit: "c".repeat(40),
+          tree: "d".repeat(40),
+          root: "skill",
+          files: [
+            {
+              path: "SKILL.md",
+              source_path: "skill/SKILL.md",
+              git_oid: "e".repeat(40),
+              bytes: restoredBody.length,
+            },
+          ],
+        }),
+      )
+      seed(shared, "source", fixed.source_id, `register-${fixed.source_id}`, fixed.source_id, fixed)
+      shared.source = fixed.source_id
+      const plan = await api.run(
+        prepareSharedBodyWrite({
+          library,
+          skillPageId: skillPage,
+          fileId,
+          action: "restore_follow",
+          candidateMarkdown: restoredBody,
+          source: { source_id: fixed.source_id, revision: fixed.commit, path: "SKILL.md" },
+        }),
+      )
+      if (!sameBody) {
+        const error = failure(
+          await api.run(
+            executeSharedBodyWrite(library, { plan, mode: "create" }).pipe(Effect.result),
+          ),
+        )
+        expect(error.code).toBe("BODY_REPLACEMENT_UNSAFE")
+        expect(shared.markdown).toBe(original)
+        expect(resolveFileState(fileId, eventRows(shared)).ownership.kind).toBe("custom")
+        expect(creates(api)).toHaveLength(0)
+        expect(patches(api)).toHaveLength(0)
+        return
+      }
+      const result = await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))
+      expect(result.status).toBe("applied")
+      expect(plan.event.kind).toBe("following_restored")
+      expect(resolveFileState(fileId, eventRows(shared)).ownership).toEqual({
+        kind: "following",
+        source_revision: fixed.commit,
+        projection: { normalization_version: 1, sha256: hash(original) },
+      })
+      expect(property(payloadFor(shared, `body-${hash(original)}`)).markdown).toBe(original)
+      expect(shared.source).toBe(fixed.source_id)
+      expect(patches(api)).toHaveLength(0)
+    },
+  )
 
   test.each(["references/original.md", null])(
     "moved restore uses its retained source path (%s), never the logical destination",
@@ -968,7 +985,7 @@ describe("explicit shared whole-body writes", () => {
       const oldPath = "references/original.md",
         newPath = "references/moved.md",
         custom = "Custom support\n",
-        upstream = "Fixed upstream\n"
+        upstream = custom
       shared.support = {
         page_id: supportingPage,
         file_id: supportingFile,
