@@ -359,7 +359,27 @@ export function decideObservedBody(state: FileOwnership, observed: BodyFingerpri
     : { kind: "adopt", previous: "following" }
 }
 
-export const notionWriteCapabilities = { conditional_body_replace: false } as const
+/**
+ * A content search match is not a page revision precondition. The public Notion
+ * contract also makes is_locked UI-only. Keep preparation independent of this
+ * unsupported automatic overwrite capability.
+ * https://developers.notion.com/reference/update-page-markdown
+ * https://developers.notion.com/reference/patch-page
+ */
+export const notionWriteCapabilities = Object.freeze({
+  conditional_body_replace: false,
+  editable_projection_overwrite: Object.freeze({
+    kind: "unsupported",
+    provider: "notion",
+    operation: "overwrite_editable_projection",
+    reason: "atomic_content_precondition_unavailable",
+    editing_isolation: "unverified",
+    preparation_allowed: true,
+    automatic_retry: false,
+    content_match_is_revision_cas: false,
+    ui_lock_blocks_api_writers: false,
+  }),
+} as const)
 
 /** Current Notion has no atomic body precondition. Do not overwrite an editable page. */
 export function requireSafeBodyReplacement(input: {
@@ -375,6 +395,7 @@ export function requireSafeBodyReplacement(input: {
         operation_id: input.operation_id,
         candidate_id: input.retained_candidate_id,
         conditional_body_replace: notionWriteCapabilities.conditional_body_replace,
+        capability: notionWriteCapabilities.editable_projection_overwrite,
       },
     )
 }
