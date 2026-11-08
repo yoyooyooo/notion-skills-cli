@@ -631,6 +631,62 @@ describe("shared file lifecycle operations", () => {
     },
   )
 
+  test.each(["references/example.md", "references/example.markdown"])(
+    "complete supporting document writes preserve the exact bound native link: %s",
+    async (path) => {
+      const header = "---\r\nname: reference\r\nlicense: MIT\r\n---\r\n\r\n"
+      const nativeUrl = `https://app.notion.com/p/${id(11).replaceAll("-", "")}`
+      const nativeBody = `# Reference\n\n[Existing reference](${nativeUrl})\n\nOriginal body.`
+      const f = fixture({
+        allowSupportingWrite: true,
+        readback: (wire) => {
+          expect(wire).toBe(nativeBody.replace(/^# Reference/u, "<h1>Reference</h1>"))
+          return nativeBody
+        },
+      })
+      const baseline = await f.baseline()
+      const plan = await f.run(
+        prepareSharedFileManagement({
+          library,
+          snapshot: baseline,
+          action: "add",
+          path,
+          markdown: header + nativeBody.replaceAll("\n", "\r\n") + "\r\n",
+        }),
+      )
+      const added = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+      expect(added.status).toBe("applied")
+      const current = await f.open(true)
+      expect(current.file_bindings?.find((file) => file.path === "references/1.md")?.page_id).toBe(
+        id(11),
+      )
+      const file = current.files.find((file) => file.path === path)!
+      const bytes = await f.run(
+        Effect.gen(function* () {
+          return yield* (yield* Store).readBytes(`objects/${file.sha256}`)
+        }),
+      )
+      const consumer = new TextDecoder().decode(bytes)
+      expect(consumer).toBe(header + nativeBody.replace(nativeUrl, "1.md"))
+      const directory = mkdtempSync(join(tmpdir(), "support-bound-link-"))
+      const input = join(directory, "edited.markdown")
+      writeFileSync(input, consumer + "\n\nIntentional edit.")
+      f.clear()
+      const result = await f.run(
+        writeSkill(fileRef(current.record.id, path, current.snapshot_id), {
+          database: library.skills.database_id,
+          input,
+        }),
+      )
+      expect(result.action).toBe("updated")
+      expect(
+        f.calls.filter((call) => call.method === "PATCH" && call.path.includes("/markdown")),
+      ).toHaveLength(1)
+      expect(f.base.bodies.get(added.page_id ?? "")).toBe(nativeBody + "\n\nIntentional edit.")
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    },
+  )
+
   test("delete publishes a retained tombstone while leaving the body page and old snapshot intact", async () => {
     const f = fixture(),
       snapshot = await f.baseline()
