@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "e335b0e29fd7c42cf8052d09dbc7658b98e0ff85",
+  "synchronized_commit": "7a5703697e120093bc0751741f5701a6c741edb7",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
