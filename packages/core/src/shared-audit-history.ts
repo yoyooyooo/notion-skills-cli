@@ -194,12 +194,13 @@ export function auditRetainedHistory(
           if (
             entry === undefined ||
             file.bytes.length !== entry.bytes ||
+            (entry.mode !== undefined && file.mode !== entry.mode) ||
             (yield* sha256(file.bytes)) !== entry.sha256
           )
             return yield* Effect.fail(
               fail(
                 "RETAINED_SOURCE_INVALID",
-                "A retained archive member failed its exact path and content digest.",
+                "A retained archive member differs from its declared path, size, mode or content digest.",
                 { path: file.path },
               ),
             )

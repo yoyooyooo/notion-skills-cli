@@ -754,7 +754,7 @@ export async function checkAuthoring(context: SmokeContext) {
     const runSdk = async (label: string, code: string) => {
       const start = calls.length,
         before = writes(calls).length
-      const program = `import * as sdk from ${JSON.stringify(sdkPath)};import {access} from 'node:fs/promises';import {join} from 'node:path';const metrics=[];const options={metrics:true,onRequestMetrics:value=>metrics.push(value)};${code}`
+      const program = `import * as sdk from ${JSON.stringify(sdkPath)};import {access} from 'node:fs/promises';import {join} from 'node:path';const metrics=[];const options={database:${JSON.stringify(db)},metrics:true,onRequestMetrics:value=>metrics.push(value)};${code}`
       const output = JSON.parse(
         await context.run([context.runtime, "--input-type=module", "-e", program], 0, sdkEnv),
       )
@@ -804,6 +804,7 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
     assert.deepEqual(cold.after, { script: true, binary: false })
     assert.equal(cold.selected.status, "ready")
     assert.equal(cold.selected.files[0].sha256, hash(scriptBytes))
+    assert.equal(cold.selected.files[0].mode, "100755")
     assert.equal(cold.selected.files[0].content, scriptBytes.toString("utf8"))
     assert.equal(cold.missing.status, "failed")
 

@@ -332,6 +332,7 @@ export function decodeResourceReadResult(value: unknown, expected?: ResourceRead
             path: file.path,
             bytes: file.bytes,
             sha256: file.sha256,
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
             ...(file.file_id === undefined ? {} : { file_id: file.file_id }),
           },
           wanted,

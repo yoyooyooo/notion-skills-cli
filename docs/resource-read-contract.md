@@ -52,7 +52,9 @@ It does not claim that unselected files exist locally or that any content was
 delivered to a model; `delivery.status` is `not_observed`.
 
 Each file carries `requested_ref`, `ref`, optional `file_id`, `path`, `bytes`,
-`sha256`, `encoding`, and `content`. UTF-8 text uses `encoding: "utf8"`; decoding
+`sha256`, optional `mode`, `encoding`, and `content`. Known modes are `100644` or
+`100755` and must match the selected manifest; omitted mode remains unknown, so
+the decoder rejects changing, removing or inventing it. UTF-8 text uses `encoding: "utf8"`; decoding
 preserves BOM, CRLF, Unicode and an empty string. NUL-containing or invalid UTF-8
 files use canonical `encoding: "base64"`. The digest always covers the original
 bytes, not the base64 characters. The SDK writes no host output directory.
@@ -72,9 +74,10 @@ queries. It does not loop over `readSkill`, scan all cached files, prepare a gra
 or fall back to today's source version. A complete local pin retains existing
 offline semantics; retained restoration keeps current library/owner admission.
 
-Core controlled-source tests establish cold selected-object behavior. The npm
-fixture is deliberately warm and establishes independent package exports,
-decoder behavior, lifecycle cleanup and exact output. Its zero requests must
-not be presented as a cold remote download measurement. See
+Core controlled-source tests establish cold selected-object behavior. The dedicated
+resource npm fixture is warm and checks independent package exports, decoder
+behavior, lifecycle cleanup and exact output. The authoring smoke additionally uses
+an empty SDK state against a controlled loopback Notion fixture. Neither fixture
+measures real-service download cost. See
 [consumer contract](consumer-contract.md) and the existing
 `.cursor/skills/verify-ntn-skills/features/skill-consumption.md` verification route.

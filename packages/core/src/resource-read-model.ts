@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { VerifiedManifestSchema } from "./consumer-model.ts"
 import { PrepareBindingSchema, PrepareFailureSchema } from "./graph-prepare-model.ts"
+import { FileEntrySchema } from "./model.ts"
 
 export const RESOURCE_READ_CONTRACT_VERSION = 1
 export const RESOURCE_READ_DEFAULT_BUDGET = {
@@ -39,6 +40,7 @@ export const ResourceReadFileSchema = Schema.Struct({
   path: Schema.String,
   bytes: Schema.Number,
   sha256: PrepareBindingSchema.fields.body_sha256,
+  mode: FileEntrySchema.fields.mode,
   encoding: Schema.Literals(["utf8", "base64"]),
   content: Schema.String,
 })

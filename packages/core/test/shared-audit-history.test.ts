@@ -1,14 +1,121 @@
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
+import { zipSync } from "fflate"
+import { readImportZip } from "../src/import.ts"
 import { property, text, SkillsError } from "../src/model.ts"
 import { runSharedAudit } from "../src/shared-audit.ts"
+import { auditRetainedHistory } from "../src/shared-audit-history.ts"
 import {
   prepareSharedResourceContent,
   retainSharedResourceContent,
 } from "../src/shared-resource-content.ts"
-import { canonicalSharedJson } from "../src/shared-records.ts"
+import { appendSharedRecord, canonicalSharedJson } from "../src/shared-records.ts"
+import type { RetainedSource } from "../src/shared-retained-source.ts"
 import { auditFixture } from "./shared-audit-fixture.ts"
-import { encode, library, rich, skillPage } from "./shared-snapshot-fixture.ts"
+import { digest, encode, library, rich, skillPage } from "./shared-snapshot-fixture.ts"
+
+for (const scenario of [
+  { name: "mismatched declared mode", declared: "100755", archived: "100644", verified: false },
+  { name: "unobserved declared mode", declared: "100755", archived: undefined, verified: false },
+  { name: "matching declared mode", declared: "100755", archived: "100755", verified: true },
+  { name: "legacy absent mode", declared: undefined, archived: "100644", verified: true },
+] as const) {
+  test(`retained archive history checks ${scenario.name} independently of warm bytes`, async () => {
+    const f = await auditFixture(1)
+    const bytes = encode("# Retained mode fixture\n")
+    const archive = zipSync(
+      {
+        "SKILL.md": [
+          bytes,
+          scenario.archived === undefined
+            ? {}
+            : { attrs: Number.parseInt(scenario.archived, 8) << 16, os: 3 },
+        ],
+      },
+      { level: 0 },
+    )
+    expect(readImportZip(archive)[0]?.mode).toBe(scenario.archived)
+    const hash = digest(archive)
+    const chunk = { object_id: `chunk-${hash}`, sha256: hash, bytes: archive.length }
+    const source: RetainedSource = {
+      version: 1,
+      kind: "retained_bundle",
+      library_id: library.library_id,
+      skill_page_id: skillPage,
+      entrypoint: "SKILL.md",
+      files: [
+        {
+          path: "SKILL.md",
+          sha256: digest(bytes),
+          bytes: bytes.length,
+          ...(scenario.declared === undefined ? {} : { mode: scenario.declared }),
+        },
+      ],
+      archive: { format: "zip", sha256: hash, bytes: archive.length, chunks: [chunk] },
+    }
+    const sourceId = `bundle-${digest(canonicalSharedJson(source))}`
+    await f.run(
+      appendSharedRecord(library, {
+        mode: "create",
+        recordId: chunk.object_id,
+        operationId: `retain-${chunk.object_id}`,
+        skillPageId: skillPage,
+        entityId: chunk.object_id,
+        kind: "object",
+        payload: {
+          version: 1,
+          kind: "exact_bytes",
+          encoding: "base64",
+          sha256: hash,
+          bytes: archive.length,
+          data: Buffer.from(archive).toString("base64"),
+        },
+      }),
+    )
+    await f.run(
+      appendSharedRecord(library, {
+        mode: "create",
+        recordId: sourceId,
+        operationId: `retain-${sourceId}`,
+        skillPageId: skillPage,
+        entityId: sourceId,
+        kind: "source",
+        payload: source,
+      }),
+    )
+    f.objects.set(`objects/${digest(bytes)}`, bytes)
+    const before = canonicalSharedJson([...f.records.values()])
+    f.clearLedger()
+    const report = await f.run(
+      auditRetainedHistory(library, {
+        skill_page_id: skillPage,
+        events: [],
+        pins: [],
+        bundles: [sourceId],
+        operations: [],
+      }),
+    )
+    expect(report.history).toHaveLength(1)
+    expect(report.history[0]).toMatchObject({
+      object_id: sourceId,
+      kind: "retained_bundle",
+      cached_available: true,
+      remote_status: scenario.verified ? "verified" : "unavailable",
+    })
+    if (scenario.verified) expect(report.findings).toEqual([])
+    else {
+      expect(report.findings).toHaveLength(1)
+      expect(report.findings[0]).toMatchObject({
+        code: "HISTORY_REMOTE_UNAVAILABLE",
+        object_id: sourceId,
+        coverage: "partial",
+        evidence: { code: "RETAINED_SOURCE_INVALID" },
+      })
+    }
+    expect(canonicalSharedJson([...f.records.values()])).toBe(before)
+    expect(f.writeCount()).toBe(0)
+  })
+}
 
 test("history keeps warm exact bytes separate from a missing remote retained object", async () => {
   const f = await auditFixture(1)
