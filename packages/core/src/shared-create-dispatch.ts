@@ -12,8 +12,26 @@ import {
 import { isCoalescibleNotionRead } from "./shared-read-coalescing.ts"
 import { sha256, Store } from "./store.ts"
 
-type CreateIdentity = { readonly operation_id: string; readonly skill_id: string }
+type CreateIdentity = {
+  readonly operation_id: string
+  readonly skill_id: string
+  readonly recovery_file_projections?: readonly {
+    readonly page_id: string
+    readonly file_id: string
+    readonly path: string
+    readonly skill_page_id: string
+    readonly projection: string
+  }[]
+}
 type Options = NonNullable<Parameters<Notion["Service"]["request"]>[2]>
+
+function projectionSpans(value: string) {
+  const points = Array.from(value),
+    result = []
+  for (let at = 0; at < points.length; at += 2000)
+    result.push({ type: "text", text: { content: points.slice(at, at + 2000).join("") } })
+  return result
+}
 
 function fieldValue(field: Record<string, unknown>, requested: Record<string, unknown>): unknown {
   if ("rich_text" in requested) return text(field.rich_text)
@@ -44,6 +62,55 @@ function observeMutation(
         )
       const row = property(yield* api.request(path)),
         ids = library.skills.property_ids
+      if (property(row.parent).data_source_id === library.files.data_source_id) {
+        const allowed = plan.recovery_file_projections?.filter(
+          (item) => path === "v1/pages/" + item.page_id,
+        )
+        const target = allowed?.[0],
+          fileIds = library.files.property_ids
+        if (
+          !target ||
+          allowed?.length !== 1 ||
+          row.id !== target.page_id ||
+          row.archived === true ||
+          row.is_archived === true ||
+          row.in_trash === true ||
+          Object.keys(request).length !== 1 ||
+          Object.keys(props).length !== 1 ||
+          !Object.hasOwn(props, fileIds.Projection!) ||
+          canonicalSharedJson(props[fileIds.Projection!]) !==
+            canonicalSharedJson({ rich_text: projectionSpans(target.projection) }) ||
+          text(sourceField(row, fileIds["File ID"]!).rich_text) !== target.file_id ||
+          text(sourceField(row, fileIds.Path!).rich_text) !== target.path ||
+          sourceField(row, fileIds.Skill!).has_more === true ||
+          canonicalSharedJson(sourceField(row, fileIds.Skill!).relation) !==
+            canonicalSharedJson([{ id: target.skill_page_id }])
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_SCOPE",
+              "Recovery may only update the exact acknowledged reference Projection metadata.",
+            ),
+          )
+        const owner = property(yield* api.request("v1/pages/" + target.skill_page_id))
+        if (
+          owner.id !== target.skill_page_id ||
+          owner.archived === true ||
+          owner.is_archived === true ||
+          owner.in_trash === true ||
+          property(owner.parent).data_source_id !== library.skills.data_source_id ||
+          text(sourceField(owner, ids["Skill ID"]!).rich_text) !== plan.skill_id
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_SCOPE",
+              "The acknowledged reference no longer belongs to the exact original Skill.",
+            ),
+          )
+        return text(sourceField(row, fileIds.Projection!).rich_text) === target.projection
+          ? row
+          : undefined
+      }
       if (
         property(row.parent).data_source_id !== library.skills.data_source_id ||
         text(sourceField(row, ids["Skill ID"]!).rich_text) !== plan.skill_id
@@ -214,6 +281,9 @@ export function sharedCreateDispatch(
               "Original creation supports only its frozen page mutations.",
             ),
           )
+        // Mutable metadata authority is checked before the first transport write as well
+        // as after its ACK. The durable guard's current observation is a postcondition.
+        if (method === "PATCH") yield* observeMutation(library, plan, path, body, method)
         const identity = `${plan.operation_id}:${yield* sha256(canonicalSharedJson([path, method, body]))}`
         const transport: Notion["Service"] = {
           ...api,

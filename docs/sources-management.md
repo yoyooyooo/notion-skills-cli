@@ -140,7 +140,13 @@ ntn-skills ctl library sources member-reconcile ./member-decision.json --entry E
 
 `admit` 使用现有创建事务保存完整输入、建立可读 Markdown 页与资源，并验证完整目录。默认新条目保持禁用；只有准备时显式 `--enable` 才在验证后启用。已存在的相同 Source/member，包括禁用条目，不能重复创建。来源提供的 Members/Requires 不获得本库关系写权限。
 
-若旧 v1 固定 Git 接纳计划采用 v8 投影，原主页 POST 已收到持久化 ACK，却在保存创建清单前因已知的文档空白差异中断，可审阅同一原操作的有限恢复：
+若 v1 固定 Git 接纳计划因已知的原生 Markdown 表示差异中断，可审阅同一原操作的有限恢复。支持的原状态与固定投影转换如下：
+
+| 原创建状态 | 恢复转换 | 必须保留的原事实 |
+| --- | --- | --- |
+| v8 主页已确认、尚无创建清单 | v8 → v9 | 唯一原主页 ACK，原创建结果仍为空 |
+| v9 主页已确认、尚无创建清单 | v9 → v10 | 唯一原主页 ACK，原创建结果仍为空 |
+| v9 已有清单且记录 `SHARED_CREATE_BODY_MISMATCH` | v9 → v10 | 原 `needs_review` 结果、完整清单与已确认页面的有序前缀 |
 
 ```bash
 ntn-skills ctl library sources recovery review ./admission.json --entry ENTRY \
@@ -153,7 +159,11 @@ ntn-skills ctl library sources recovery reconcile ./admission.json --entry ENTRY
   --target ORIGINAL_MAIN_PAGE_ID
 ```
 
-先检查 `review` 返回的完整决定、`review_id` 和 dry-run 写入上界，再执行原决定。首次恢复要求原凭据范围内的完整本地 journal 与匹配 ACK、原主页仍禁用、Source 与身份未变，以及完整当前正文恰好符合独立冻结的 v9 预测。恢复保留原输入、请求正文与主页，只创建原计划尚未派发的支持页，并另存恢复事实；不会修改已有正文或补造原创建结果。缺失 ACK、未知请求、人工正文变化或额外原始派发均保持待核对，不能靠换页、改计划或重试绕过。已开始的恢复再次调用只核对原结果；完成后仍须重新读取当前快照。
+先检查 `review` 返回的完整决定、`review_id` 和 dry-run 写入上界，再执行原决定。首次恢复要求原凭据范围内的完整本地 journal、与原请求一致的全部派发记录和 ACK、原主页仍禁用、Source 与身份未变，以及每个已有页面的完整当前正文恰好符合对应的新投影。v10 前向预测已观察到的普通文本转义与创建文档的段落到代码块分隔；原输入、提交的 Markdown 字节和旧投影政策保持固定。
+
+恢复保留每个已确认页面，只创建原计划尚未派发的支持页，并另存审阅、归属事件和完成事实。无原创建结果的操作继续保留这个事实；已有的 `needs_review` 结果也不会改写。独立客户端通过共享清单、原结果和完整归属事件核验完成，不需要原执行机器的本地 journal。只有完成记录与归属验证成功后，执行端才退休原 journal；历史输入继续保留。
+
+缺失或篡改 ACK、未知请求、人工正文变化、来源或归属变化、额外原始派发均保持待核对，不能靠换页、改计划或重试绕过。已有正文不在恢复中重写。已开始的恢复再次调用只核对原结果；恢复的历史完成结果不返回当前快照，消费前仍须重新读取。
 
 确认上游已移除成员而要保留当前内容时，使用 `member-prepare ... --retain-removed`，与 `--member` 互斥。它只解除后续发现绑定，保留 Selected Version、自定义正文、资源、用户关系和历史 pin。明确重新绑定也不自动切换内容版本。相似名字或字节不会自动生成改名映射。
 

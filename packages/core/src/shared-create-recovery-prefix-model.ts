@@ -1,5 +1,6 @@
+import { prefixRecoveryRequired } from "./shared-create-recovery-errors.ts"
+export { prefixRecoveryRequired } from "./shared-create-recovery-errors.ts"
 import { Effect, Schema } from "effect"
-import { importDocument } from "./import.ts"
 import { fail, property, text } from "./model.ts"
 import { pageId } from "./ref.ts"
 import { createChecked, validateSharedCreatePlan } from "./shared-create-model.ts"
@@ -10,18 +11,18 @@ import {
   SharedCreateRecoveryObservationSchema,
   type SharedCreateRecoveryBinding,
   type SharedCreateRecoveryObservation,
-} from "./shared-create-recovery-model.ts"
+} from "./shared-create-recovery-proof-model.ts"
 import { nativeFileMetadata, normalizeObservedBody } from "./shared-file-state.ts"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
-import {
-  projectSharedNotionMarkdown,
-  sharedNotionMarkdownPolicy,
-  sharedNotionMarkdownWire,
-} from "./shared-notion-projection.ts"
+import { sharedNotionMarkdownPolicy } from "./shared-notion-projection.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sourceField } from "./shared-source-definitions.ts"
 import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
 import { sha256 } from "./store.ts"
+import {
+  projectSharedRecoveryFiles,
+  sharedRecoveryEventId,
+} from "./shared-create-recovery-projection.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const OriginalId = Schema.String.check(Schema.isPattern(/^skill-create-[a-f0-9]{64}$/u))
@@ -29,8 +30,6 @@ const ReviewId = Schema.String.check(Schema.isPattern(/^create-recovery-[a-f0-9]
 const identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
-export const prefixRecoveryRequired = (message: string) =>
-  fail("SHARED_CREATE_RECOVERY_REQUIRED", message)
 
 export const SharedCreatePrefixBootstrapSchema = Schema.Struct({
   kind: Schema.Literal("acknowledged_main_before_manifest"),
@@ -120,65 +119,14 @@ export function prefixRecoveryPlan(input: unknown) {
 }
 
 function eventId(original: string, fields: unknown) {
-  return sha256(
-    canonicalSharedJson({
-      version: 2,
-      original_operation_id: original,
-      projection_version: 9,
-      event: fields,
-    }),
-  ).pipe(Effect.map((hash) => "recovery-file-" + hash))
+  return sharedRecoveryEventId(original, fields, 9)
 }
 
-/** Recompute only expected rendering; all submitted bytes and native metadata stay frozen. */
+/** The historical v8 to v9 decision remains fixed even when new creation advances. */
 export function makeSharedCreatePrefixRecoveryFiles(input: unknown) {
-  return Effect.gen(function* () {
-    const plan = yield* prefixRecoveryPlan(input)
-    return yield* Effect.forEach(plan.files, (file) =>
-      Effect.gen(function* () {
-        if (file.event.kind !== "projected")
-          return yield* Effect.fail(prefixRecoveryRequired("Expected an original projected file."))
-        const projection = yield* createChecked(() => {
-          const authored =
-            file.path === plan.entrypoint
-              ? importDocument(
-                  { path: file.input_path, bytes: new TextEncoder().encode(file.input.text) },
-                  { name: plan.name, description: plan.description },
-                ).body
-              : file.input.text
-          const next = projectSharedNotionMarkdown(authored, {
-            version: 9,
-            purpose: "data_source_create",
-          })
-          if (sharedNotionMarkdownWire(next) !== sharedNotionMarkdownWire(file.projection))
-            throw prefixRecoveryRequired("Recovery cannot change any original submitted wire byte.")
-          return next
-        })
-        const hash = yield* sha256(projection.markdown)
-        const metadata = nativeFileMetadata(file.content)
-        const content = {
-          object_id: "body-" + hash,
-          sha256: hash,
-          bytes: new TextEncoder().encode(projection.markdown).length,
-          ...metadata,
-        }
-        const fields = {
-          kind: "projected" as const,
-          file_id: file.file_id,
-          parents: [] as readonly string[],
-          source_revision: file.event.source_revision,
-          projection: { normalization_version: 1 as const, sha256: hash },
-          ...metadata,
-        }
-        return {
-          ...file,
-          projection,
-          content,
-          event: { ...fields, event_id: yield* eventId(plan.operation_id, fields) },
-        }
-      }),
-    )
-  })
+  return prefixRecoveryPlan(input).pipe(
+    Effect.flatMap((plan) => projectSharedRecoveryFiles(plan, 9)),
+  )
 }
 
 export function observeSharedCreatePrefixBody(fileId: string, page: string, raw: unknown) {

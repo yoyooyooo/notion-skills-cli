@@ -88,6 +88,7 @@ test("an acknowledged v8 main before the manifest has a separate readonly v9 rec
   expect(review.bindings[0]?.page_id).toBe(target)
   expect(review.files[0]?.content.mode).toBe("100644")
   expect(property(review.files[0]?.content).frontmatter).toContain("license: MIT")
+  if (review.version !== 2) throw new Error("Expected the historical v8 to v9 review")
   expect(JSON.parse(review.observations[0]!.response_json).markdown).toBe(observed)
   const dry = await f.run(
     applySharedCreateRecovery({ plan, review, reviewId: review.review_id, dryRun: true }),

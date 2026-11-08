@@ -9,7 +9,7 @@ import {
 } from "../src/shared-notion-projection.ts"
 
 const create = (input: string) =>
-  projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+  projectSharedNotionMarkdown(input, { version: 9, purpose: "data_source_create" })
 const retained = (input: string) =>
   projectSharedNotionMarkdown(input, { version: 8, purpose: "data_source_create" })
 
@@ -52,7 +52,7 @@ describe("native creation document spacing v9", () => {
   test("body-write predictions keep the retained v8 behavior", () => {
     const input = "\n# Heading\nA paragraph.\n"
     const previous = projectSharedNotionMarkdown(input, { version: 8, purpose: "body_write" })
-    const current = projectSharedNotionMarkdown(input, { purpose: "body_write" })
+    const current = projectSharedNotionMarkdown(input, { version: 9, purpose: "body_write" })
     expect(current.markdown).toBe(previous.markdown)
     expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
     expect(normalizeObservedBody(input)).toBe(input)

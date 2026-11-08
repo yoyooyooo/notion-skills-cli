@@ -5,7 +5,6 @@ import { fail, property } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { pageId } from "./ref.ts"
-import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
 import { sharedSkillId } from "./shared-content.ts"
 import {
   createChecked,
@@ -13,6 +12,7 @@ import {
   sharedCreateBodyPayload,
   sharedCreateEnabled,
   sharedCreateManifestEntity,
+  sharedCreateOutcomesEntity,
 } from "./shared-create-model.ts"
 import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
 import { saveSharedCreateOwnership } from "./shared-create-ownership.ts"
@@ -20,6 +20,7 @@ import {
   loadSharedCreatePlan,
   sharedCreateJournalKey,
   sharedCreateMainRequest,
+  sharedCreateFileRequest,
   retainSharedCreateInputs,
   retainSharedCreateManifest,
   verifySharedCreateRecoveryScope,
@@ -55,10 +56,59 @@ import {
 } from "./shared-records.ts"
 import { registerSourceBinding, resolveSourceBinding } from "./shared-source-binding.ts"
 import { sha256, Store } from "./store.ts"
-import type { SharedCreateBinding } from "./shared-create-outcome.ts"
+import {
+  sharedCreateManifestRecordHash,
+  sharedCreateOutcomeId,
+  type SharedCreateBinding,
+} from "./shared-create-outcome.ts"
+import { originalKnownCreateBootstrap } from "./shared-create-recovery-known-bootstrap.ts"
+import { readSharedCreateKnownCompletion } from "./shared-create-recovery-known-completion.ts"
+import {
+  knownRecoveryPlan,
+  makeSharedCreateKnownRecoveryFiles,
+  makeSharedCreateKnownRecoveryReview,
+  compactSharedCreateRecoveryObservation,
+  validateSharedCreateKnownRecoveryReview,
+  type SharedCreateKnownRecoveryReview,
+  type SharedCreateKnownRecoveryOutcome,
+} from "./shared-create-recovery-known-model.ts"
 
 type Plan = Effect.Success<ReturnType<typeof prefixRecoveryPlan>>
 type Files = Effect.Success<ReturnType<typeof makeSharedCreatePrefixRecoveryFiles>>
+type Review = SharedCreatePrefixRecoveryReview | SharedCreateKnownRecoveryReview
+const isKnownPlan = (plan: Plan) => plan.files[0]?.projection.version === 9
+function recoveryPlan(input: unknown) {
+  const files = property(input).files
+  return Array.isArray(files) && property(property(files[0]).projection).version === 9
+    ? knownRecoveryPlan(input)
+    : prefixRecoveryPlan(input)
+}
+const recoveryFiles = (plan: Plan) =>
+  isKnownPlan(plan)
+    ? makeSharedCreateKnownRecoveryFiles(plan)
+    : makeSharedCreatePrefixRecoveryFiles(plan)
+const originalStatus = (review: Review) =>
+  review.original_outcome_sha256 === null
+    ? ("acknowledged_prefix" as const)
+    : ("needs_review" as const)
+function rebuildReview(plan: Plan, review: Review) {
+  return review.version === 3
+    ? makeSharedCreateKnownRecoveryReview({
+        plan,
+        bootstrap: review.bootstrap,
+        originalOutcomeHash: review.original_outcome_sha256,
+        skillPageId: review.skill_page_id,
+        bindings: review.bindings,
+        observations: review.observations,
+      })
+    : makeSharedCreatePrefixRecoveryReview({
+        plan,
+        bootstrap: review.bootstrap,
+        skillPageId: review.skill_page_id,
+        bindings: review.bindings,
+        observations: review.observations,
+      })
+}
 const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
 const refusal = (message: string) => Effect.fail(prefixRecoveryRequired(message))
@@ -175,21 +225,7 @@ function spans(value: string) {
 const rich = (value: string) => ({ rich_text: spans(value) })
 
 function fileRequest(library: SharedLibrary, page: string, file: Files[number]) {
-  const ids = library.files.property_ids
-  return {
-    parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
-    properties: {
-      [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
-      [ids["File ID"]!]: rich(file.file_id),
-      [ids.Path!]: rich(file.path),
-      [ids.Projection!]: rich(canonicalSharedJson(baseline(file))),
-      [ids.Status!]: { select: { name: "following" } },
-      [ids.Skill!]: { relation: [{ id: page }] },
-    },
-    // v9 has independently proved byte equality to the original v8 wire.
-    markdown: sharedNotionMarkdownWire(file.projection),
-    markdown_version: "v2",
-  }
+  return sharedCreateFileRequest(library, page, file)
 }
 function receipt(raw: unknown) {
   const value = property(raw)
@@ -209,7 +245,8 @@ function noForeignFacts(
   plan: Plan,
   page: string,
   files: Files,
-  review?: SharedCreatePrefixRecoveryReview,
+  review?: Review,
+  originalOutcomeHash: string | null = review?.original_outcome_sha256 ?? null,
 ) {
   return Effect.gen(function* () {
     const headers = yield* querySharedOperationIndex(library, page)
@@ -217,7 +254,37 @@ function noForeignFacts(
       review === undefined
         ? undefined
         : yield* jsonHash({ version: 1, operation_id: review.review_id, payload: review })
+    const originalManifestHash =
+      originalOutcomeHash === null ? undefined : yield* sharedCreateManifestRecordHash(plan)
+    if (
+      originalOutcomeHash !== null &&
+      (!headers.some(
+        (header) =>
+          header.record_id === plan.operation_id &&
+          header.entity_id === sharedCreateManifestEntity &&
+          header.hash === originalManifestHash,
+      ) ||
+        !headers.some(
+          (header) =>
+            header.record_id === sharedCreateOutcomeId(plan.operation_id) &&
+            header.entity_id === sharedCreateOutcomesEntity &&
+            header.hash === originalOutcomeHash,
+        ))
+    )
+      return yield* refusal(
+        "The exact original known failure or manifest disappeared during recovery.",
+      )
     for (const header of headers) {
+      if (
+        originalOutcomeHash !== null &&
+        ((header.record_id === plan.operation_id &&
+          header.entity_id === sharedCreateManifestEntity &&
+          header.hash === originalManifestHash) ||
+          (header.record_id === sharedCreateOutcomeId(plan.operation_id) &&
+            header.entity_id === sharedCreateOutcomesEntity &&
+            header.hash === originalOutcomeHash))
+      )
+        continue
       if (
         review !== undefined &&
         ((header.record_id === sharedCreateRecoveryReviewId(plan.operation_id) &&
@@ -251,7 +318,10 @@ function noForeignFacts(
         return yield* refusal("The partial Skill has foreign or changed ownership facts.")
     }
     const sources = yield* querySharedRecords(library, { skillPageId: page, kind: "source" })
-    if (sources.length > (review === undefined ? 0 : 1))
+    if (
+      sources.length > (review === undefined && originalOutcomeHash === null ? 0 : 1) ||
+      (originalOutcomeHash !== null && sources.length !== 1)
+    )
       return yield* refusal(
         "The partial Skill has a Source fact outside the original fixed binding.",
       )
@@ -273,14 +343,16 @@ function observeAllocated(
   page: string,
   files: Files,
   bindings: readonly SharedCreateBinding[],
-  projected: boolean,
+  projected: ReadonlySet<string>,
   enabled: boolean,
-  review?: SharedCreatePrefixRecoveryReview,
+  review?: Review,
+  originalOutcomeHash: string | null = review?.original_outcome_sha256 ?? null,
 ) {
   return Effect.gen(function* () {
     yield* verifySharedCreateRecoveryScope(library, plan, page)
+    const originalIds = new Set((review?.bindings ?? bindings).map((binding) => binding.file_id))
     const currentFiles = files.map((file) =>
-      file.path === plan.entrypoint && !projected
+      originalIds.has(file.file_id) && !projected.has(file.file_id)
         ? plan.files.find((old) => old.file_id === file.file_id)!
         : file,
     )
@@ -292,7 +364,7 @@ function observeAllocated(
       enabled,
       true,
     )
-    yield* noForeignFacts(library, plan, page, files, review)
+    yield* noForeignFacts(library, plan, page, files, review, originalOutcomeHash)
     const observations = []
     for (const binding of bindings) {
       const raw = yield* (yield* Notion).request(
@@ -306,7 +378,7 @@ function observeAllocated(
         observed.body_bytes !== expected.content.bytes
       )
         return yield* refusal(
-          "The complete current body differs from the independently frozen v9 prediction; preserve that content.",
+          "The complete current body differs from the independently frozen recovery prediction; preserve that content.",
         )
       observations.push(observed)
     }
@@ -321,18 +393,46 @@ export function reviewSharedCreatePrefixRecovery(input: {
   readonly plan: unknown
 }) {
   return Effect.gen(function* () {
-    const plan = yield* prefixRecoveryPlan(input.plan)
+    const plan = yield* recoveryPlan(input.plan)
     const page = pageId(input.target)
     if (!page || plan.operation_id !== input.operationId)
       return yield* refusal("Select the exact original operation and acknowledged target.")
     const library = yield* loadSharedLibrary(input.entry)
+    const files = yield* recoveryFiles(plan)
+    if (isKnownPlan(plan)) {
+      const original = yield* originalKnownCreateBootstrap(library, plan, page)
+      const observations = yield* observeAllocated(
+        library,
+        plan,
+        page,
+        files,
+        original.bindings,
+        new Set(),
+        false,
+        undefined,
+        original.originalOutcomeHash,
+      )
+      return yield* makeSharedCreateKnownRecoveryReview({
+        plan,
+        ...original,
+        skillPageId: page,
+        observations: observations.map(compactSharedCreateRecoveryObservation),
+      })
+    }
     const bootstrap = yield* originalBootstrap(plan, page)
-    const files = yield* makeSharedCreatePrefixRecoveryFiles(plan)
     const main = plan.files.find((file) => file.path === plan.entrypoint)!
     const bindings = [
       { file_id: main.file_id, path: main.path, page_id: page, event_id: main.event.event_id },
     ]
-    const observations = yield* observeAllocated(library, plan, page, files, bindings, false, false)
+    const observations = yield* observeAllocated(
+      library,
+      plan,
+      page,
+      files,
+      bindings,
+      new Set(),
+      false,
+    )
     return yield* makeSharedCreatePrefixRecoveryReview({
       plan,
       bootstrap,
@@ -358,12 +458,10 @@ function existingCompletion(plan: Plan, library: SharedLibrary, page: string) {
       skillPageId: page,
       kind: "file_event",
     })).map((row) => Schema.decodeUnknownSync(FileEventSchema)(row.payload))
-    const result = yield* readSharedCreatePrefixCompletion(library, {
-      skillPageId: page,
-      originalManifestHeader: manifest,
-      events,
-      headers,
-    })
+    const completionInput = { skillPageId: page, originalManifestHeader: manifest, events, headers }
+    const result = yield* isKnownPlan(plan)
+      ? readSharedCreateKnownCompletion(library, completionInput)
+      : readSharedCreatePrefixCompletion(library, completionInput)
     if (!result)
       return yield* refusal(
         "The recovery has no exact completion. Retain all original attempts and reconcile without replay.",
@@ -376,13 +474,7 @@ function existingCompletion(plan: Plan, library: SharedLibrary, page: string) {
       return yield* refusal(
         "The shared original inputs differ from the supplied complete original plan.",
       )
-    const rebuilt = yield* makeSharedCreatePrefixRecoveryReview({
-      plan,
-      bootstrap: result.review.bootstrap,
-      skillPageId: page,
-      bindings: result.review.bindings,
-      observations: result.review.observations,
-    })
+    const rebuilt = yield* rebuildReview(plan, result.review)
     if (!same(rebuilt, result.review))
       return yield* refusal(
         "The retained recovery differs from the exact original input projection.",
@@ -397,7 +489,7 @@ export function reconcileSharedCreatePrefixRecovery(input: {
   readonly plan: unknown
 }) {
   return Effect.gen(function* () {
-    const plan = yield* prefixRecoveryPlan(input.plan)
+    const plan = yield* recoveryPlan(input.plan)
     const page = pageId(input.target)
     if (!page || input.operationId !== plan.operation_id)
       return yield* refusal("Select the exact original create and acknowledged Skill.")
@@ -408,15 +500,15 @@ export function reconcileSharedCreatePrefixRecovery(input: {
       original_operation_id: plan.operation_id,
       recovery_operation_id: result.review.review_id,
       skill_page_id: page,
-      original_status: "acknowledged_prefix" as const,
-      original_outcome_recorded: false as const,
+      original_status: originalStatus(result.review),
+      original_outcome_recorded: result.review.original_outcome_sha256 !== null,
       verification: "original_recovery_outcome" as const,
       verified: true as const,
       current_snapshot_verified: false as const,
       requires_fresh_read: true as const,
       reused: true as const,
-      existing_pages_preserved: 1,
-      created_pages: plan.files.length - 1,
+      existing_pages_preserved: result.review.bindings.length,
+      created_pages: plan.files.length - result.review.bindings.length,
     }
   }).pipe(withReadOnlyNotion)
 }
@@ -429,17 +521,13 @@ export function applySharedCreatePrefixRecovery(input: {
   readonly dryRun?: boolean
 }) {
   return Effect.gen(function* () {
-    const plan = yield* prefixRecoveryPlan(input.plan)
-    const review = yield* validateSharedCreatePrefixRecoveryReview(input.review, input.reviewId)
+    const plan = yield* recoveryPlan(input.plan)
+    const review = yield* property(input.review).version === 3
+      ? validateSharedCreateKnownRecoveryReview(input.review, input.reviewId)
+      : validateSharedCreatePrefixRecoveryReview(input.review, input.reviewId)
     const page = review.skill_page_id,
       library = yield* loadSharedLibrary(input.entry ?? review.library.skills.database_id)
-    const reconstructed = yield* makeSharedCreatePrefixRecoveryReview({
-      plan,
-      bootstrap: review.bootstrap,
-      skillPageId: page,
-      bindings: review.bindings,
-      observations: review.observations,
-    })
+    const reconstructed = yield* rebuildReview(plan, review)
     if (!same(reconstructed, review))
       return yield* refusal(
         "The reviewed decision does not preserve the complete original approved input.",
@@ -460,11 +548,30 @@ export function applySharedCreatePrefixRecovery(input: {
         target: page,
         plan,
       })
-    const bootstrap = yield* originalBootstrap(plan, page)
-    if (!same(bootstrap, review.bootstrap))
+    if (review.version === 3) {
+      const original = yield* originalKnownCreateBootstrap(library, plan, page)
+      if (
+        !same(original.bootstrap, review.bootstrap) ||
+        !same(original.bindings, review.bindings) ||
+        original.originalOutcomeHash !== review.original_outcome_sha256
+      )
+        return yield* refusal(
+          "The complete original request set, ACK prefix or terminal changed after recovery review.",
+        )
+    } else if (!same(yield* originalBootstrap(plan, page), review.bootstrap))
       return yield* refusal("The original local journal or ACK changed after recovery review.")
-    const files = yield* makeSharedCreatePrefixRecoveryFiles(plan)
-    yield* observeAllocated(library, plan, page, files, review.bindings, false, false)
+    const files = yield* recoveryFiles(plan)
+    yield* observeAllocated(
+      library,
+      plan,
+      page,
+      files,
+      review.bindings,
+      new Set(),
+      false,
+      undefined,
+      review.original_outcome_sha256,
+    )
     const plannedRecords = new Set([
       sharedCreateRecoveryReviewId(plan.operation_id),
       plan.operation_id,
@@ -473,6 +580,27 @@ export function applySharedCreatePrefixRecovery(input: {
       ...plan.files.flatMap((file) => [file.input.object_id, file.content.object_id]),
       ...files.flatMap((file) => [file.content.object_id, file.event.event_id]),
     ])
+    if (review.original_outcome_sha256 !== null) {
+      for (const id of [
+        plan.operation_id,
+        plan.source_projection.binding.source_id,
+        ...plan.files.flatMap((file) => [file.input.object_id, file.content.object_id]),
+      ])
+        plannedRecords.delete(id)
+    }
+    const metadataBindings = review.bindings.filter((binding) => {
+      if (review.version === 2) return true
+      const old = plan.files.find((file) => file.file_id === binding.file_id)!,
+        next = files.find((file) => file.file_id === binding.file_id)!
+      return (
+        old.event.kind !== "projected" ||
+        !same(
+          { ...old.event.projection, source_revision: old.event.source_revision },
+          baseline(next),
+        )
+      )
+    })
+    const remainingPages = files.length - review.bindings.length
     if (input.dryRun)
       return {
         status: "planned" as const,
@@ -480,18 +608,21 @@ export function applySharedCreatePrefixRecovery(input: {
         verified: false as const,
         original_operation_id: plan.operation_id,
         recovery_operation_id: review.review_id,
-        original_status: "acknowledged_prefix" as const,
-        original_outcome_recorded: false as const,
-        existing_pages: 1,
-        remaining_pages: files.length - 1,
+        original_status: originalStatus(review),
+        original_outcome_recorded: review.original_outcome_sha256 !== null,
+        existing_pages: review.bindings.length,
+        remaining_pages: remainingPages,
         write_plan: {
           record_ids: [...plannedRecords].sort(),
           maximum_record_creates: plannedRecords.size,
-          native_page_creates: files.length - 1,
+          native_page_creates: remainingPages,
           existing_body_patches: 0,
-          metadata_patches: 1 + (sharedCreateEnabled(plan) ? 1 : 0),
+          metadata_patches: metadataBindings.length + (sharedCreateEnabled(plan) ? 1 : 0),
           notion_write_upper_bound:
-            plannedRecords.size + files.length + (sharedCreateEnabled(plan) ? 1 : 0),
+            plannedRecords.size +
+            remainingPages +
+            metadataBindings.length +
+            (sharedCreateEnabled(plan) ? 1 : 0),
         },
         review,
       }
@@ -506,13 +637,14 @@ export function applySharedCreatePrefixRecovery(input: {
       }
     })
     yield* store.writeJson(key, { version: 2, scope, library_id: library.library_id, review })
-    const main = files.find((file) => file.path === plan.entrypoint)!
-    const bindings: SharedCreateBinding[] = [
-      { ...review.bindings[0]!, event_id: main.event.event_id },
-    ]
+    const bindings: SharedCreateBinding[] = review.bindings.map((binding) => ({
+      ...binding,
+      event_id: files.find((file) => file.file_id === binding.file_id)!.event.event_id,
+    }))
+    const originalIds = new Set(review.bindings.map((binding) => binding.file_id))
+    const projected = new Set<string>()
     let stage = "review",
       checkedStage: string | undefined,
-      projected = false,
       enabled = false
     const beforeDispatch = Effect.gen(function* () {
       if (checkedStage === stage) return
@@ -521,7 +653,25 @@ export function applySharedCreatePrefixRecovery(input: {
     })
     const dispatch = yield* sharedCreateDispatch(
       plan.library,
-      { operation_id: review.review_id, skill_id: plan.skill_id },
+      {
+        operation_id: review.review_id,
+        skill_id: plan.skill_id,
+        ...(review.version === 3
+          ? {
+              recovery_file_projections: metadataBindings
+                .filter((binding) => binding.page_id !== page)
+                .map((binding) => ({
+                  page_id: binding.page_id,
+                  file_id: binding.file_id,
+                  path: binding.path,
+                  skill_page_id: page,
+                  projection: canonicalSharedJson(
+                    baseline(files.find((file) => file.file_id === binding.file_id)!),
+                  ),
+                })),
+            }
+          : {}),
+      },
       beforeDispatch,
     )
     return yield* Effect.gen(function* () {
@@ -558,7 +708,7 @@ export function applySharedCreatePrefixRecovery(input: {
         })
       const api = yield* Notion
       for (const file of files) {
-        if (file.file_id === main.file_id) continue
+        if (originalIds.has(file.file_id)) continue
         stage = "create_file:" + file.file_id
         const raw = yield* api.request("v1/pages", fileRequest(library, page, file), {
           method: "POST",
@@ -571,19 +721,24 @@ export function applySharedCreatePrefixRecovery(input: {
           event_id: file.event.event_id,
         })
       }
-      stage = "main_projection"
-      const raw = yield* api.request(
-        "v1/pages/" + page,
-        {
-          properties: {
-            [library.skills.property_ids.Projection!]: rich(canonicalSharedJson(baseline(main))),
-          },
-        },
-        { method: "PATCH" },
-      )
-      if ((yield* createChecked(() => receipt(raw))) !== page)
-        return yield* refusal("The projection metadata ACK belongs to another original page.")
-      projected = true
+      for (const binding of metadataBindings) {
+        stage = "projection:" + binding.file_id
+        const file = files.find((item) => item.file_id === binding.file_id)!
+        const id =
+          binding.page_id === page
+            ? library.skills.property_ids.Projection!
+            : library.files.property_ids.Projection!
+        const raw = yield* api.request(
+          "v1/pages/" + binding.page_id,
+          { properties: { [id]: rich(canonicalSharedJson(baseline(file))) } },
+          { method: "PATCH" },
+        )
+        if ((yield* createChecked(() => receipt(raw))) !== binding.page_id)
+          return yield* refusal("The projection metadata ACK belongs to another original page.")
+        projected.add(binding.file_id)
+      }
+      // Unchanged baseline fields were verified against both versions at every stage.
+      for (const binding of review.bindings) projected.add(binding.file_id)
       stage = "file_events"
       for (const file of files)
         yield* appendSharedRecord(library, {
@@ -617,15 +772,13 @@ export function applySharedCreatePrefixRecovery(input: {
           return yield* refusal("The enable ACK belongs to another original page.")
         enabled = true
       }
-      yield* observeAllocated(library, plan, page, files, bindings, true, enabled, review)
-      const completion: SharedCreatePrefixRecoveryOutcome = {
-        version: 3,
-        kind: "skill_create_recovery_outcome",
-        status: "applied",
+      yield* observeAllocated(library, plan, page, files, bindings, projected, enabled, review)
+      const completionFields = {
+        kind: "skill_create_recovery_outcome" as const,
+        status: "applied" as const,
         original_operation_id: plan.operation_id,
         original_manifest_sha256: review.original_manifest_sha256,
         original_plan_sha256: review.original_plan_sha256,
-        original_outcome_sha256: null,
         bootstrap_sha256: yield* jsonHash(review.bootstrap),
         recovery_id: review.review_id,
         skill_id: plan.skill_id,
@@ -633,6 +786,14 @@ export function applySharedCreatePrefixRecovery(input: {
         review_record_hash: record.hash,
         bindings,
       }
+      const completion: SharedCreatePrefixRecoveryOutcome | SharedCreateKnownRecoveryOutcome =
+        review.version === 3
+          ? {
+              ...completionFields,
+              version: 4,
+              original_outcome_sha256: review.original_outcome_sha256,
+            }
+          : { ...completionFields, version: 3, original_outcome_sha256: null }
       stage = "completion"
       yield* appendSharedRecord(library, {
         mode: "create",
@@ -655,14 +816,14 @@ export function applySharedCreatePrefixRecovery(input: {
         original_operation_id: plan.operation_id,
         recovery_operation_id: review.review_id,
         skill_page_id: page,
-        original_status: "acknowledged_prefix" as const,
-        original_outcome_recorded: false as const,
+        original_status: originalStatus(review),
+        original_outcome_recorded: review.original_outcome_sha256 !== null,
         verified: true as const,
         current_snapshot_verified: false as const,
         requires_fresh_read: true as const,
         reused: false as const,
-        existing_pages_preserved: 1,
-        created_pages: files.length - 1,
+        existing_pages_preserved: review.bindings.length,
+        created_pages: remainingPages,
       }
     }).pipe(
       Effect.provideService(Notion, dispatch.api),
@@ -673,7 +834,7 @@ export function applySharedCreatePrefixRecovery(input: {
           recovery_operation_id: review.review_id,
           skill_page_id: page,
           stage,
-          original_status: "acknowledged_prefix",
+          original_status: originalStatus(review),
           next: {
             command: "ctl library sources recovery reconcile",
             original_plan_required: true,

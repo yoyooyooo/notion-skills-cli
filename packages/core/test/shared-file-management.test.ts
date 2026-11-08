@@ -513,7 +513,7 @@ describe("shared file lifecycle operations", () => {
         markdown: input,
       }),
     )
-    expect(plan.creation_projection?.version).toBe(9)
+    expect(plan.creation_projection?.version).toBe(10)
     expect(plan.creation_projection?.input_markdown).toBe(input)
     expect(plan.content.markdown).toBe(observed)
     expect(plan.content.retained.sha256).toBe(digest(observed))

@@ -7,6 +7,7 @@ import {
   sharedCreateManifestEntity,
 } from "./shared-create-model.ts"
 import { sharedCreateOutcomeId } from "./shared-create-outcome.ts"
+import { readSharedCreateKnownCompletion } from "./shared-create-recovery-known-completion.ts"
 import {
   sharedCreateRecoveryOutcomeId,
   sharedCreateRecoveryOutcomesEntity,
@@ -198,7 +199,13 @@ export function completedSharedCreatePrefixRecovery(
   library: SharedLibrary,
   input: Parameters<typeof readSharedCreatePrefixCompletion>[1],
 ) {
-  return readSharedCreatePrefixCompletion(library, input).pipe(
-    Effect.map((result) => result !== undefined),
-  )
+  return Effect.gen(function* () {
+    const recovered = yield* readSharedCreateKnownCompletion(library, input)
+    if (recovered !== undefined) {
+      if (recovered.review.bootstrap.kind !== "acknowledged_main_before_manifest")
+        return yield* Effect.fail(invalid("A prefix completion cannot hide an original terminal."))
+      return true
+    }
+    return (yield* readSharedCreatePrefixCompletion(library, input)) !== undefined
+  })
 }

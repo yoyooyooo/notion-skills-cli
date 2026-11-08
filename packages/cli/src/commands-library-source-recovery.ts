@@ -64,7 +64,7 @@ const review = defineCommand(
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Review the exact original v1 fixed Git admission whose v8 main POST was acknowledged before its manifest. Require the original local journal and matching ACK, disabled ownership, complete current v9 body and unchanged Source. No page or original plan is rewritten. Save and inspect the explicit recovery digest.",
+    "Review an exact original v1 fixed Git admission: an acknowledged main before its manifest (v8 to v9, or v9 to v10), or a v9 known body-mismatch failure with an acknowledged page prefix (to v10). Require the original local journal, exact dispatches and ACKs, disabled ownership, complete bodies matching the fixed new projection and unchanged Source. Save and inspect the explicit recovery digest.",
   ),
 )
 
@@ -106,7 +106,7 @@ const apply = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Apply one reviewed recovery in the original credential and Store. Preserve the acknowledged main, original input, wire and fixed Source; create only the original undispatched suffix. Publish the explicit v9 recovery evidence separately. No existing body is patched. A repeated or unknown attempt only reconciles and never resends page writes.",
+    "Apply one reviewed recovery in the original credential and Store. Preserve every acknowledged page, original input, wire, fixed Source and original terminal state; create only the original undispatched suffix. Publish the fixed-version recovery evidence separately. No existing body is patched. A repeated or unknown attempt only reconciles and never resends page writes.",
   ),
 )
 
@@ -143,7 +143,7 @@ const reconcile = defineCommand(
 
 export const sourceRecoveryCommand = defineCommand("recovery").pipe(
   Command.withDescription(
-    "Review, apply or reconcile one exact acknowledged Source-admission prefix",
+    "Review, apply or reconcile an exact acknowledged Source-admission prefix or known failure",
   ),
   Command.withSubcommands([review, apply, reconcile]),
 )

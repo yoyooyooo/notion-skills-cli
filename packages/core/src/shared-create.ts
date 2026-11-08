@@ -1622,32 +1622,9 @@ export function executeSharedCreate(
       }
       for (const file of facts.files.filter((file) => file.path !== facts.entrypoint)) {
         stage = `create_file:${file.file_id}`
-        const ids = library.files.property_ids,
-          rich = (value: string) => ({ rich_text: spans(value) })
         const rawFile = yield* api.request(
           "v1/pages",
-          {
-            parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
-            properties: {
-              [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
-              [ids["File ID"]!]: rich(file.file_id),
-              [ids.Path!]: rich(file.path),
-              [ids.Projection!]: rich(createProjectionBaseline(file)),
-              [ids.Status!]: {
-                select: {
-                  name:
-                    file.event.kind === "projected"
-                      ? "following"
-                      : file.event.kind === "deleted"
-                        ? "tombstone"
-                        : "custom",
-                },
-              },
-              [ids.Skill!]: { relation: [{ id: skillPage }] },
-            },
-            markdown: sharedNotionMarkdownWire(file.projection),
-            markdown_version: "v2",
-          },
+          sharedCreateFileRequest(library, skillPage, file),
           { method: "POST" },
         )
         const page = yield* createChecked(() => pageReceipt(rawFile))
@@ -1977,6 +1954,37 @@ export function verifySharedCreateRecoveryScope(
       )
     yield* assertSourceProjectionDefinition(library, plan, page)
   })
+}
+/** Exact native reference request shared with original-ACK recovery validation. */
+export function sharedCreateFileRequest(
+  library: SharedLibrary,
+  skillPage: string,
+  file: SharedCreatePlan["files"][number],
+) {
+  const ids = library.files.property_ids,
+    rich = (value: string) => ({ rich_text: spans(value) })
+  return {
+    parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+    properties: {
+      [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
+      [ids["File ID"]!]: rich(file.file_id),
+      [ids.Path!]: rich(file.path),
+      [ids.Projection!]: rich(createProjectionBaseline(file)),
+      [ids.Status!]: {
+        select: {
+          name:
+            file.event.kind === "projected"
+              ? "following"
+              : file.event.kind === "deleted"
+                ? "tombstone"
+                : "custom",
+        },
+      },
+      [ids.Skill!]: { relation: [{ id: skillPage }] },
+    },
+    markdown: sharedNotionMarkdownWire(file.projection),
+    markdown_version: "v2",
+  }
 }
 export function sharedCreateMainRequest(library: SharedLibrary, plan: SharedCreatePlan) {
   const main = plan.files.find((file) => file.path === plan.entrypoint)!

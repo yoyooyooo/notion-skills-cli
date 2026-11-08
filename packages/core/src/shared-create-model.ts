@@ -22,6 +22,7 @@ import {
 } from "./shared-file-state.ts"
 import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
 import {
+  currentSharedNotionMarkdownVersion,
   projectSharedNotionMarkdown,
   sharedNotionMarkdownPolicy,
   SharedNotionMarkdownPolicySchema,
@@ -430,7 +431,7 @@ export interface SharedCreateInput {
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: SharedNotionMarkdownVersion = 9,
+  projectionVersion: SharedNotionMarkdownVersion = currentSharedNotionMarkdownVersion,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable
