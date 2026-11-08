@@ -1248,12 +1248,23 @@ function readSkillContent(input: string, options: ReadOptions) {
         try: () => parseTarget(resolved),
         catch: (error) => error as SkillsError,
       })
-      acquired =
+      if (
         target.snapshot === containing.snapshot_id &&
-        target.selector === parseTarget(fileRef(containing.record.id, "")).selector &&
-        containing.materialization === undefined
-          ? { snapshot: containing, files: undefined }
-          : yield* acquireTargetSnapshot(target, options, "generated", "target")
+        target.selector === parseTarget(fileRef(containing.record.id, "")).selector
+      ) {
+        const selected = yield* openFixedSnapshotFiles(
+          containing,
+          (manifest) => [boundSnapshotPath(manifest, target) || manifest.entrypoint],
+          { offline: options.offline },
+        )
+        acquired = {
+          snapshot: {
+            ...containing,
+            materialization: selectedMaterialization(selected.snapshot, selected.files),
+          },
+          files: selected.files,
+        }
+      } else acquired = yield* acquireTargetSnapshot(target, options, "generated", "target")
     } else {
       target = yield* Effect.try({
         try: () => parseTarget(input, options.path),

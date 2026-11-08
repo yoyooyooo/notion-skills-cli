@@ -30,15 +30,23 @@ if (
   ![args[1], args[3], args[5]].every(isAbsolute) ||
   (args.length === 8 &&
     (args[6] !== "--case" ||
-      !["view-dynamics", "scalar-inventory", "records-history"].includes(args[7])))
+      ![
+        "view-dynamics",
+        "scalar-inventory",
+        "records-history",
+        "fixed-names",
+        "ownership-current",
+      ].includes(args[7])))
 )
   throw new Error(
-    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory|records-history]",
+    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory|records-history|fixed-names|ownership-current]",
   )
 const [archive, fixturePath, root] = [args[1], args[3], args[5]]
 const viewDynamicsOnly = args[7] === "view-dynamics"
 const scalarInventoryOnly = args[7] === "scalar-inventory"
 const recordsHistoryOnly = args[7] === "records-history"
+const fixedNamesOnly = args[7] === "fixed-names"
+const ownershipCurrentOnly = args[7] === "ownership-current"
 await mkdir(root, { mode: 0o700 })
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 function assertNoTransport(reports, traceEnabled) {
@@ -371,6 +379,15 @@ async function test(name, run) {
   if (
     (viewDynamicsOnly || scalarInventoryOnly || recordsHistoryOnly) &&
     name !== "scalar logical reads share one complete projected inventory within each refresh"
+  )
+    return
+  if (
+    (fixedNamesOnly &&
+      name !==
+        "fixed names list only their manifest and returned resources do not prepare the main") ||
+    (ownershipCurrentOnly &&
+      name !==
+        "cold current ownership skips suppressed source bytes and preserves complete installed exports")
   )
     return
   const started = performance.now()
@@ -739,7 +756,13 @@ try {
       assert.equal(value.scope, fixture.scope)
       assert.equal(value.record.id, snapshot.record.id)
       assert.deepEqual(value.files, [
-        { path: resource.path, bytes: resource.bytes, ref: fixture.resource.ref },
+        {
+          path: resource.path,
+          bytes: resource.bytes,
+          sha256: resource.sha256,
+          ...(resource.mode === undefined ? {} : { mode: resource.mode }),
+          ref: fixture.resource.ref,
+        },
       ])
       for (const ref of [named(snapshot.record.alias), fixture.resource.ref])
         assert.deepEqual((await sdk.listSkill(ref, fixedOptions)).files, value.files)
@@ -1055,6 +1078,9 @@ try {
     const required = sample.source_files.filter((file) => file.role === "required"),
       excluded = sample.source_files.filter((file) => file.role === "excluded")
     assert.deepEqual(required.map((file) => file.path).sort(), ["SKILL.md", "assets/following.bin"])
+    const sourceMain = required.find((file) => file.path === "SKILL.md")
+    const sourceResource = required.find((file) => file.path === "assets/following.bin")
+    assert.ok(sourceMain && sourceResource)
     assert.equal(excluded.length, 2)
     assert.ok(excluded.every((file) => file.bytes >= 2 * 1024 * 1024))
     for (const file of sample.source_files)
@@ -1241,22 +1267,28 @@ try {
         assert.deepEqual(entry.manifest.files, expected.files)
         const main = expected.files.find((file) => file.path === "SKILL.md")
         const following = expected.files.find((file) => file.path === "assets/following.bin")
-        assert.ok(main && following)
+        const custom = expected.files.find((file) => file.path === "references/1.md")
+        assert.ok(main && following && custom)
+        assert.equal(following.sha256, sourceResource.sha256)
         assert.equal(entry.source_body.sha256, main.sha256)
         assert.equal(entry.source_body.bytes, main.bytes)
+        assert.deepEqual(entry.materialization, { status: "entry_ready", paths: ["SKILL.md"] })
         assert.equal(result.preparation.nodes[0].content, expected.main)
         assert.ok(expected.main.includes(sample.source_main_marker))
         assert.deepEqual(await sdk.decodeConsumeResult(result, currentInput), result)
         const cold = label === "ownership-cold"
-        const sourceProof = sourceTransportProof(label, cold ? required : [], excluded)
+        const sourceProof = sourceTransportProof(label, cold ? [sourceMain] : [], [
+          ...excluded,
+          sourceResource,
+        ])
         const objectProof = objectReadProof(
           label,
-          cold ? [main, following] : [...required, main],
-          excluded,
+          [sourceMain, main, custom],
+          [...excluded, following],
         )
         assert.equal(reports.length, 1)
         assert.equal(reports[0].in_flight, 0)
-        assert.equal(reports[0].provider_requests.http ?? 0, cold ? required.length : 0)
+        assert.equal(reports[0].provider_requests.http ?? 0, cold ? 1 : 0)
         for (const file of excluded)
           await assert.rejects(lstat(join(objects, file.sha256)), { code: "ENOENT" })
         assert.deepEqual(unexpected, [])
@@ -1264,6 +1296,93 @@ try {
           requests.filter((call) => call.method !== "GET" && !call.path.endsWith("/query")).length,
           0,
         )
+        const directoryReports = []
+        const directory = await sdk.listSkill(entry.manifest.snapshot_id, {
+          ...currentOptions,
+          offline: true,
+          onRequestMetrics: (report) => directoryReports.push(report),
+        })
+        assert.equal(directory.snapshot_id, entry.manifest.snapshot_id)
+        assert.deepEqual(
+          directory.files.map(({ ref: _ref, ...file }) => file),
+          expected.files,
+        )
+        assert.equal(directoryReports.length, 1)
+        assert.equal(directoryReports[0].total_requests, 0)
+        assert.equal(directoryReports[0].in_flight, 0)
+        assert.equal(directoryReports[0].trace_dropped, 0)
+        const resourceRef = directory.files.find((file) => file.path === following.path)?.ref
+        assert.equal(typeof resourceRef, "string")
+        let missingExport
+        if (cold) {
+          await assert.rejects(lstat(join(objects, following.sha256)), { code: "ENOENT" })
+          const output = join(root, label + "-missing-resource-export")
+          const before = requests.length
+          const unavailable = await invokeCli(
+            [
+              "export",
+              entry.source_body.ref,
+              "--offline",
+              "--projection",
+              "snapshot",
+              "--output",
+              output,
+            ],
+            cwd,
+            currentEnv,
+          )
+          assert.equal(unavailable.code, 1, unavailable.stdout + unavailable.stderr)
+          assert.equal(unavailable.value.error?.code, "SNAPSHOT_MISSING")
+          assert.equal(requests.length, before)
+          await assert.rejects(lstat(output), { code: "ENOENT" })
+          missingExport = { exit_code: unavailable.code, error: unavailable.value.error }
+        }
+        const resourceLabel = label + "-selected-resource"
+        phase = resourceLabel
+        const resourceReports = []
+        const resourceInput = { version: 1, refs: [resourceRef] }
+        const resourceRead = await traceSourceRequests(
+          resourceLabel,
+          notionOrigin,
+          sample.source_files,
+          () =>
+            traceObjectReads(resourceLabel, objects, () =>
+              sdk.readResources(resourceInput, {
+                ...currentOptions,
+                onRequestMetrics: (report) => resourceReports.push(report),
+              }),
+            ),
+        )
+        assert.equal(resourceRead.status, "ready", JSON.stringify(resourceRead))
+        assert.deepEqual(
+          await sdk.decodeResourceReadResult(resourceRead, resourceInput),
+          resourceRead,
+        )
+        assert.equal(resourceRead.files.length, 1)
+        assert.equal(resourceRead.files[0].path, following.path)
+        assert.equal(resourceRead.files[0].sha256, following.sha256)
+        assert.equal(resourceRead.files[0].bytes, following.bytes)
+        const resourceSourceProof = sourceTransportProof(
+          resourceLabel,
+          cold ? [sourceResource] : [],
+          [sourceMain, ...excluded],
+        )
+        const resourceObjectProof = objectReadProof(
+          resourceLabel,
+          [following],
+          [sourceMain, main, custom, ...excluded],
+        )
+        assert.equal(resourceReports.length, 1)
+        assert.equal(resourceReports[0].in_flight, 0)
+        assert.equal(resourceReports[0].provider_requests.http ?? 0, cold ? 1 : 0)
+        assert.equal(
+          requests.filter((call) => call.phase === resourceLabel && call.path.endsWith("/markdown"))
+            .length,
+          0,
+          "A fixed raw resource must not reread current Markdown",
+        )
+        for (const file of excluded)
+          await assert.rejects(lstat(join(objects, file.sha256)), { code: "ENOENT" })
         const output = join(root, label + "-export")
         const beforeExport = requests.length
         const exported = await invokeCli(
@@ -1290,12 +1409,25 @@ try {
           inventory.push({ path, bytes: bytes.length, sha256: hash(bytes) })
         }
         assert.deepEqual(inventory, expected.export_files)
+        assert.deepEqual(unexpected, [])
+        assert.equal(
+          requests.filter((call) => call.method !== "GET" && !call.path.endsWith("/query")).length,
+          0,
+        )
         evidence.phases.push({
           label,
           snapshot_id: entry.manifest.snapshot_id,
           manifest_files: entry.manifest.files,
           source_requests: sourceProof,
           object_reads: objectProof,
+          partial_offline_export: missingExport ?? null,
+          selected_resource: {
+            ref: resourceRef,
+            source_requests: resourceSourceProof,
+            object_reads: resourceObjectProof,
+            notion_requests: requests.filter((call) => call.phase === resourceLabel).length,
+            request_metrics: resourceReports[0],
+          },
           notion_requests: requests.filter((call) => call.phase === label).length,
           notion_writes: 0,
           full_export: { output, files: inventory, matches_full_byte_oracle: true },

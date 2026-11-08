@@ -80,3 +80,29 @@ remain distinct. No live/human claim is implied by this contract file.
 - Production census uses a separate explicit readonly scope and preserves its
   actual pauses, incomplete coverage and findings. Initial counts do not prove
   completed per-resource content or history coverage.
+
+## Installed process-signal continuation
+
+The existing package smoke calls `scripts/package-smoke/audit.ts`. Its owned
+loopback service reuses `shared-audit-fixture.ts`; every product command runs the
+independently installed Node bin with an empty per-case Store. The service never
+seeds consumer checkpoints or invokes an internal audit entrypoint.
+
+Four cases send actual SIGINT or SIGKILL to that exact child PID, either while a
+read response is withheld before its observation checkpoint, or after a readonly
+SQLite observer confirms a durable completed-task/read prefix and the next read
+is withheld. This does not claim a kill inside an arbitrary SQLite instruction.
+Each case uses offline `list` to recover the original run ID, a bounded new-process
+`resume`, another continuation to completion, and offline `report`. Confirmed
+observation hashes/timestamps and completed tasks must survive. SIGKILL keeps the
+unfinalized invocation visible; resumed accounting must remain an explicit lower
+bound. Existing same-host dead-PID lock recovery is exercised without clearing a
+fence or modifying the Store.
+
+The evidence retains actual argv/PID/exit/signal, HTTP methods and byte observations,
+checkpoint snapshots, budgets, original run ID and final coverage. GETs and exact
+query POSTs are the only allowed service calls; before/after remote fixture hashes
+must match. This covers installed controlled-service OS recovery for AH-692 and
+the corresponding AH-695 continuation slice, not real Notion orphan/deleted-link
+acceptance, physical Mini, human UI or a final candidate unless that exact archive
+is recorded. A prepared recipe alone is not an exercised pass.

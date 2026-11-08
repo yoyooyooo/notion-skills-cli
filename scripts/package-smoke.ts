@@ -5,12 +5,14 @@ import { checkBuiltinLifecycle } from "./package-smoke/builtin-lifecycle.ts"
 import { prepareMigrationFixture } from "./package-smoke/migration-fixture.ts"
 import { checkMigrationConsumption } from "./package-smoke/migration-consumption.ts"
 import { checkAuthoring } from "./package-smoke/authoring.ts"
+import { checkAuditRecovery } from "./package-smoke/audit.ts"
 
 const consumer = await prepareConsumer()
 await checkCommandContract(consumer)
 await checkBuiltinLifecycle(consumer)
 await checkStorageRoots(consumer)
 const authoring = await checkAuthoring(consumer)
+const auditRecovery = await checkAuditRecovery(consumer)
 const fixture = await prepareMigrationFixture(consumer)
 const { trashCheck } = await checkMigrationConsumption(consumer, fixture)
 const { manifest, runtime, run, executable, consumerBin, scratch } = consumer
@@ -23,10 +25,12 @@ console.log(
     consumer_bin: consumerBin,
     proof: "installed_consumer_with_controlled_notion_authoring",
     authoring,
+    audit_recovery: auditRecovery,
     trash_check: trashCheck,
     checks: [
       "installed_bin",
       "controlled_installed_author_lifecycle_and_original_outcome_recovery",
+      "installed_audit_sigint_sigkill_original_run_continuation",
       "version",
       "all_offline_help",
       "independent_historical_operator_installed_bin_and_offline_help",
