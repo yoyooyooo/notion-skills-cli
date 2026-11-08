@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Create, adopt and edit Notion Skills through ntn-skills. Use for a manually created disabled draft, native shared content, pinned body/resources/metadata changes, adding a linked reference page, enabling a reviewed Skill, explicit restore-follow, exact replacement or portable transfer. Preserve interrupted original operations. Route fixed-source selection, Profiles and existing synchronization bindings to ntn-skills-sync.
+description: Create, adopt and edit Notion Skills through ntn-skills. Use for a manually created disabled draft, native shared content, pinned body/resources/metadata changes, adding a linked reference page, enabling a reviewed Skill, explicit restore-follow, exact replacement or portable transfer. Preserve interrupted original operations. Route source selection and Profile/View settings to ntn-skills-sync.
 compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token with Read, Insert and Update content access. Notion requests use the project's direct HTTP engine.
 metadata:
   publisher: ntn-skills
@@ -73,9 +73,7 @@ Add creates a new File identity and returns its native `page_id`. To deliver a r
 
 Move preserves its ID, native page and original source path. Delete records a tombstone and retains the page/body. Relative references are validated without rewriting them; prepare those changes explicitly. Main files cannot be moved or deleted. Failed or inaccessible reads are not deletion intent.
 
-Editing any bound Notion body makes that whole file customized through the next successful current read. Other files retain their own source behavior. Shared metadata remains authoritative in Notion; no tracked/fork conversion or manual adopt marker is required. `restore-follow` explicitly retains the custom body and restores the exact source selected in Notion. It does not select a newer revision. Sharing a selected local source body requires `--allow-local-archive`.
-
-Existing legacy tracked members still require their explicit fork/conversion workflow for personal authoring. Existing local sync bindings retain their own baselines and recovery. Keep generated snapshot directories as consumption output; modifying one never authorizes a silent reverse sync. Route those existing bindings or source/Profile changes to `ntn-skills-sync`.
+Editing any bound Notion body makes that whole file customized through the next successful current read. Other files retain their own source behavior. Shared metadata remains authoritative in Notion. `restore-follow` explicitly retains the custom body and restores the exact source selected in Notion. It does not select a newer revision. Sharing a selected local source body requires `--allow-local-archive`.
 
 ## Finish from the verified result
 
@@ -83,8 +81,4 @@ Require exit 0, `ok: true`, `verified: true`, no `dry_run: true`, and an applied
 
 Preserve `create_operation_id`, `adoption_operation_id`, `body_write_operation_id`, `metadata_operation_id`, `apply_operation_id`, or the original error's recovery plan. For shared writes/apply/restore-follow, read the exact current Skill to reconcile retained operations; use `--authoring` for a disabled draft and repeat only when it reports `read_again`. For an interrupted native create, retain the same input and intent. Use the returned `adopt ... --reconcile` for initial draft adoption, and `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` for add/delete/move. Missing original facts remain unresolved; current equality never proves an unknown request succeeded.
 
-Use `ctl operation resume OPERATION_ID --progress` only when the result identifies the earlier Publication workflow and returns that recovery action. Shared IDs do not use legacy resume. Do not create a replacement, change a name, clear pending state or discard unrelated files to bypass an unresolved result. Consult [operations and recovery](references/operations.md) for the matching path.
-
-## Review a legacy migration
-
-For an explicitly requested migration into a shared library, load [the retained-evidence workflow](references/operations.md#review-a-legacy-migration). It covers frozen input, review and approval, exact copy policies, and original-operation reconciliation or continuation. Ordinary content edits use the commands above.
+Use only the recovery action returned for that operation. Do not create a replacement, change a name, clear pending state or discard unrelated files to bypass an unresolved result. Consult [operations and recovery](references/operations.md) for the matching path.

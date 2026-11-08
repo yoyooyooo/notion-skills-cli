@@ -1,6 +1,6 @@
 ---
 name: ntn-skills
-description: Discover and use workflows from the Notion Skill library. Use when a task may benefit from a stored workflow, names a remote Skill, or follows a Notion skill reference. Select from metadata, load only the chosen workflow, and keep its supporting files on one snapshot. Route Notion content changes to ntn-skills-maintain and fixed sources, shared Profiles and existing synchronization bindings to ntn-skills-sync.
+description: Discover and use workflows from the Notion Skill library. Use when a task may benefit from a stored workflow, names a remote Skill, or follows a Notion skill reference. Select from metadata, load only the chosen workflow, and keep its supporting files on one snapshot. Route Notion content changes to ntn-skills-maintain and fixed sources and Profile/View settings to ntn-skills-sync.
 compatibility: Requires Node.js 22.22.3+ within 22.x or 24.20.0+ and ntn-skills; online discovery and reads use the project's direct HTTP engine and existing Notion token; retaining newly observed shared edits also needs shared Record write access. Shell tools are sufficient; native Read integration requires a host adapter.
 metadata:
   publisher: ntn-skills
@@ -9,9 +9,9 @@ metadata:
 
 # Use the Notion Skill library
 
-Use this entrypoint to find and consume a workflow. Keep three sources distinct: remote Notion pages, directories maintained through sync, and package-supplied builtins. A matching name does not make them the same identity or version.
+Use this entrypoint to find and consume a workflow maintained in Notion. Package-supplied builtins provide the installed CLI instructions; use their exact package identities. A matching name does not establish identity or version.
 
-For a shared library, copy `record.id`, `record.ref` and the `shared_skill` locator exactly; encoded stable IDs are not page IDs. Name/Description, Enabled, Source, Default Context and Router Members come from native Notion properties. Existing legacy records may also carry Source Type, Builtin ID and Sync Mode. Editable remote properties never establish trusted installed-package identity.
+Copy `record.id`, `record.ref` and the `shared_skill` locator exactly; encoded stable IDs are not page IDs. Name/Description, Enabled, Source, Default Context and Router Members come from native Notion properties. Editable remote properties never establish trusted installed-package identity.
 
 ## Discover, inspect and use
 
@@ -39,9 +39,9 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
 
    Resolve links from the containing file, which may itself be a reference. Use the snapshot ID to enumerate the whole file set. Pinned refs work offline and reject `--refresh`/`--max-age`; they do not establish latest content or current permission. Never resolve a relative file by rereading the Skill name and accidentally selecting a newer version.
 
-Use `--json` when version/freshness matters. `list` and `read` retain JSON as their compatibility default while callers migrate. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
+Use `--json` when version/freshness matters. `list` and `read` return JSON by default. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
 
-Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. A complete newly observed Notion edit is retained as a whole-file customization; no field marker or manual adopt command is needed. Other files retain their own source behavior. TTL hits can make no remote requests; the independent full-body deadline bounds same-timestamp edits. Use `--refresh` or explicit `--max-age 0` for complete current validation. Existing legacy native Skills may still use their aligned-source-ZIP checkpoint. Retain `freshness.validation` in host results.
+Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. A complete newly observed Notion edit is retained as a whole-file customization. Other files retain their own source behavior. TTL hits can make no remote requests; the independent full-body deadline bounds same-timestamp edits. Use `--refresh` or explicit `--max-age 0` for complete current validation. Retain `freshness.validation` in host results.
 
 Inspect native Views with `ntn-skills ctl views --database LIBRARY_ENTRY`. Select an exact View with `list --view VIEW_ID --database LIBRARY_ENTRY`, or a shared default with `list --profile PROFILE_ID --database LIBRARY_ENTRY`. `list --default-view` consults the machine-bound Profile; without a configured default, use the first View in API order. Explicit View selection takes precedence. Bare `list` discovers the accessible source scope, including Prompts; follow every cursor for a complete local observation; Profile/View rules do not grant access. The host manages session selection and prompt timing; metadata alone does not activate a workflow.
 
@@ -49,14 +49,13 @@ Inspect native Views with `ntn-skills ctl views --database LIBRARY_ENTRY`. Selec
 
 | Task | Workflow |
 | --- | --- |
-| Execute an existing remote workflow | Select/read as above; no local installation or sync binding is required |
+| Execute an existing remote workflow | Select/read as above; use the selected source and version |
 | Create a Notion Skill, apply a change to a pinned page, or transfer a portable copy | Select `$ntn-skills-maintain@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-maintain` |
-| Select fixed shared sources or Profiles, maintain existing upstream/local bindings, or resolve their original interrupted work | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |
-| Review and migrate one legacy record into a shared library | Load `ntn-skills-maintain` and its legacy migration reference; retain the original evidence |
+| Manage Sources, fixed revisions and Profiles, or reconcile an interrupted source operation | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |
 | Inspect, install or update package-supplied Skills | Use `ctl builtin list/read/status/install/update`; installation is central with shared links by default, and optional Agent roots add links. See [local management](references/commands.md#local-builtins) |
 | Missing workflow, failed load or old content | Follow [diagnosis](references/integration.md#diagnose-discovery-and-loading) before changing configuration or clearing caches |
 
-Context Broker exposes package builtins through ordinary `$`, including `$ntn-skills@builtin`. The exact `@builtin` suffix preserves package identity when names collide. Reading package instructions does not require publishing a copy to Notion or creating a local sync binding. When using a builtin through CLI reads, read its `files` inventory and supporting files with `ctl builtin read EXACT_ID --path PATH`. Do not assume sibling Skills are installed. `ctl builtin read` returns package content; ordinary `list/read` continue to select remote Notion pages.
+Context Broker exposes package builtins through ordinary `$`, including `$ntn-skills@builtin`. The exact `@builtin` suffix preserves package identity when names collide. Read package instructions directly; no publication or installation is needed. When using a builtin through CLI reads, read its `files` inventory and supporting files with `ctl builtin read EXACT_ID --path PATH`. Do not assume sibling Skills are installed. `ctl builtin read` returns package content; ordinary `list/read` continue to select remote Notion pages.
 
 ## Host and connection boundaries
 
