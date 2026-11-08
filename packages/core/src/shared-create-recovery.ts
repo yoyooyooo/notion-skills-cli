@@ -3,6 +3,10 @@ import {
   applySharedCreatePrefixRecovery,
   reconcileSharedCreatePrefixRecovery,
 } from "./shared-create-recovery-prefix.ts"
+import {
+  reviewSharedCreateAcknowledgedContinuation,
+  applySharedCreateAcknowledgedContinuation,
+} from "./shared-create-continuation-acknowledged.ts"
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.ts"
@@ -842,11 +846,25 @@ function observeContinuation(
 }
 
 /** A current allocation is accepted separately; the original POST remains unknown. */
-export function reviewSharedCreateContinuation(input: {
+type ContinuationSelection = {
   readonly entry: string
   readonly operationId: string
   readonly target: string
-}) {
+}
+export function reviewSharedCreateContinuation(
+  input: ContinuationSelection & { readonly plan: unknown },
+): ReturnType<typeof reviewSharedCreateAcknowledgedContinuation>
+export function reviewSharedCreateContinuation(
+  input: ContinuationSelection & { readonly plan?: undefined },
+): ReturnType<typeof reviewMigrationContinuation>
+export function reviewSharedCreateContinuation(
+  input: ContinuationSelection & { readonly plan?: unknown },
+) {
+  return input.plan === undefined
+    ? reviewMigrationContinuation(input)
+    : reviewSharedCreateAcknowledgedContinuation({ ...input, plan: input.plan })
+}
+function reviewMigrationContinuation(input: ContinuationSelection) {
   return Effect.gen(function* () {
     const original = yield* originalFacts(input.entry, input.operationId, input.target)
     const retained = yield* retainedRecoveryReview(original)
@@ -929,8 +947,16 @@ export function applySharedCreateRecovery(input: RecoveryApplyInput) {
   })
 }
 
+export function applySharedCreateContinuation(
+  input: RecoveryApplyInput & { readonly plan: unknown },
+): ReturnType<typeof applySharedCreateAcknowledgedContinuation>
+export function applySharedCreateContinuation(
+  input: RecoveryApplyInput & { readonly plan?: undefined },
+): ReturnType<typeof applyRecovery>
 export function applySharedCreateContinuation(input: RecoveryApplyInput) {
-  return applyRecovery(input, true)
+  return input.plan === undefined
+    ? applyRecovery(input, true)
+    : applySharedCreateAcknowledgedContinuation({ ...input, plan: input.plan })
 }
 
 function applyRecovery(input: RecoveryApplyInput, continuing: boolean) {

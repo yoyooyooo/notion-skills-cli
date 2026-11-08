@@ -32,7 +32,10 @@ import {
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { parseYaml } from "./yaml.ts"
-import { nativeMainFrontmatter } from "./shared-native-file-metadata.ts"
+import {
+  nativeMainFrontmatter,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
 import {
   prepareSharedResourceContent,
   validatePreparedSharedResource,
@@ -712,8 +715,14 @@ export function makeSharedCreatePlan(
                 )
             }
           }
+          const supporting =
+            file.path !== portable.main && projectionVersion >= 11
+              ? splitNativeSupportingMarkdown(text)
+              : undefined
           const authored =
-            file.path === portable.main ? importDocument(file, { name, description }).body : text
+            file.path === portable.main
+              ? importDocument(file, { name, description }).body
+              : (supporting?.body ?? text)
           return {
             path,
             input_path: file.path,
@@ -724,6 +733,9 @@ export function makeSharedCreatePlan(
             ...((complete || sourceProjection !== undefined) && file.path === portable.main
               ? { frontmatter: nativeMainFrontmatter(text) }
               : {}),
+            ...(supporting?.frontmatter === undefined
+              ? {}
+              : { frontmatter: supporting.frontmatter }),
             projection: projectSharedNotionMarkdown(authored, {
               version: projectionVersion,
               purpose: "data_source_create",
@@ -883,8 +895,14 @@ export function makeSharedCreatePlan(
           metadata =
             original.prepared.content.mode === null ? {} : { mode: original.prepared.content.mode }
         const text = yield* createChecked(() =>
-          new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+          new TextDecoder("utf-8", { fatal: true, ignoreBOM: projectionVersion >= 11 }).decode(
+            bytes,
+          ),
         )
+        const supporting =
+          path !== prepared.entrypoint && projectionVersion >= 11
+            ? splitNativeSupportingMarkdown(text)
+            : undefined
         const body =
           path === prepared.entrypoint
             ? yield* createChecked(
@@ -894,7 +912,7 @@ export function makeSharedCreatePlan(
                     { name: prepared.name, description: prepared.description },
                   ).body,
               )
-            : text
+            : (supporting?.body ?? text)
         const projection = yield* createChecked(() =>
           projectSharedNotionMarkdown(body, {
             version: projectionVersion,
@@ -908,6 +926,7 @@ export function makeSharedCreatePlan(
           bytes: new TextEncoder().encode(projection.markdown).length,
           ...metadata,
           ...(path === prepared.entrypoint ? { frontmatter: nativeMainFrontmatter(text) } : {}),
+          ...(supporting?.frontmatter === undefined ? {} : { frontmatter: supporting.frontmatter }),
         }
         const event = yield* eventFor({
           kind: "projected" as const,

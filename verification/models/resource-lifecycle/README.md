@@ -1,6 +1,6 @@
 # Resource lifecycle models
 
-These bounded models check selected lifecycle contracts. Product implementation, installed-package behavior and live service acceptance require their separate evidence. The five TLA+ modules have independent negative controls and use the actual Pstack `statechart` checker and graph compiler, pinned at `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`, and TLC 1.7.4.
+These bounded models check selected lifecycle contracts. Product implementation, installed-package behavior and live service acceptance require their separate evidence. The six TLA+ modules have independent negative controls and use the actual Pstack `statechart` checker and graph compiler, pinned at `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`, and TLC 1.7.4.
 
 ## Run
 
@@ -25,6 +25,7 @@ Broken configurations are expected to fail their named properties. The runner is
 | AuditRun | No semantic writes, reverse inventory before complete coverage, retained progress on resume, honest permission-limited reports. | A coarse abstraction of the audit coordinator. The reverse scan is one step; pagination, HTTP accounting, endpoint/credential fences and concurrent live changes need implementation tests. |
 | ImportCreate | Complete approved input before dispatch, one original mutable-page request per stage, durable ACK before confirmation, whole-tree verification before explicit enablement. | Four abstract stages for one explicitly enabled create: root, Files/resources, metadata/selection, enablement. Exact immutable Record reconciliation is separate from mutable-page ACK authority. Disabled creation, arbitrary files, codec normalization and concurrent user edits need product tests. |
 | CreateRecovery | Complete original evidence, separate original/recovery histories, no uncertain-stage redispatch and exact Projection authority before transport. | One or three original ACK pages, one abstract suffix and three mutable stages. Full payloads, arbitrary cardinality, cold completion and provider behavior require product tests. |
+| AcknowledgedContinuation | Complete original request/ACK authority for an already allocated tree, fresh body checks before continuation stages, no uncertain redispatch and full shared proofs before a cold result. | Three visible pages and four abstract stages. Exact requests, byte commitments, all native files, intermediate Record writes and edits after a check require product tests. |
 
 Safety configurations exhaust their finite reachable state spaces. Liveness is checked only in `AuditRun.liveness.cfg` and `AuditRun.reset.cfg`. It assumes weak fairness of progress steps and that the modeled resumptions are supplied. It does not promise completion when a caller never resumes, permission never returns, or providers never answer. Unknown update outcomes intentionally permit waiting without claiming progress.
 
@@ -36,13 +37,17 @@ ImportCreate distinguishes a lost response with no durable ACK from an acknowled
 
 The current review preserves the original four models and their 19 configurations, invariants and bounds, and adds the separately scoped CreateRecovery model with four configurations. Source-refresh routes complete fixed manifests through typed storage preflight. Original create dispatch compares immutable Record requests by their verified canonical logical envelopes; mutable page-request ACK authority, original dispatch ordering and the original complete-verification/enablement boundary remain unchanged. The new exact recovery metadata allowance checks PATCH scope before the first transport write. It is mapped to CreateRecovery, not added to UpdateCommit or the original ImportCreate transition system.
 
-The `files` map in `coverage.json` also binds reviewed context that is explicitly listed in `unmodeled_bindings`. Fixed-manifest gzip/Base64 storage, 1 MiB logical/180 KiB encoded limits, arbitrary path counts, transport framing and canonical cache representation require their source, Node and real-input tests. Native v9/v10 projection predicts document boundaries and literal-token rendering while preserving original submitted wire bytes; the models do not prove those bytes, actual Notion rendering or retained-policy compatibility.
+The `files` map in `coverage.json` also binds reviewed context that is explicitly listed in `unmodeled_bindings`. Fixed-manifest gzip/Base64 storage, 1 MiB logical/180 KiB encoded limits, arbitrary path counts, transport framing and canonical cache representation require their source, Node and real-input tests. Native v9/v10/v11 projection predicts document boundaries and literal-token rendering, including top-level heading text, while preserving original submitted wire bytes; the models do not prove those bytes, actual Notion rendering or retained-policy compatibility.
 
 The historical v1/v8 main-before-manifest recovery, exact payload schemas and original journal/ACK metadata remain hash-bound review context. CreateRecovery adds only the stated bounded v1/v9 state and authority mapping; ImportCreate has no transition for this separate operation. Both recovery variants preserve acknowledged original pages and inputs, write a separate recovery decision/outcome and never invent an absent original terminal. Exact original request sets, compact response proofs, versioned cold completion, pending-create suppression and consumer reconstruction still require code and installed/live evidence. Their controlled tests are listed in `unmodeled_bindings`.
 
 The durable ACK schema is defined in the existing Sources model, which depends only on Effect. Generic dispatch and prefix review import that same schema directly. Shared recovery Binding, Observation and File schemas now live in a separate proof-model dependency instead of an execution module. Their fields and validation remain unchanged. Schema placement and ESM initialization order require fresh Node process checks; the finite state models do not prove them.
 
 No existing property was weakened or bound reduced. The new recovery model has only the scope stated below; codec correctness remains unmodeled. Public CLI/SDK acceptance and real-service recovery remain separate gates.
+
+Complete supporting YAML headers and known modes remain distinct from the editable body. File-add v2 binds the full original input; v11 source admission retains complete C1/N1 metadata ancestry. Public write/apply compare submitted headers with both the fresh consumer object and retained native ownership. Restore-follow uses the creation projection for its exact no-body-write comparison; differing bodies still reach the unchanged `requireSafeBodyReplacement` guard. These serialization changes do not alter ProjectionRace or UpdateCommit. Header integrity, old plan compatibility and cold complete bytes are checked by the source and installed/live tests listed in `coverage.json`, not by the finite models.
+
+Exact Source batch run keys are now registered in SQLite. Their mutable checkpoints are separate from immutable original member requests and ACKs. Cross-process Node tests exercise dry/apply/reconcile and retirement; no lifecycle model claims to prove SQLite persistence.
 
 ## Code correspondence and mutation replay
 
@@ -109,3 +114,38 @@ node scripts/render-resource-lifecycle.mjs --run /absolute/model-run \
 ```
 
 The long-term design and acceptance sequence live in [Notion](https://app.notion.com/p/4125636c236e819bba12c71af9a0c0f5). Track implementation in [AH-681](https://linear.app/yoyooyooo/issue/AH-681). The phase-one feature map is `.cursor/skills/verify-ntn-skills/features/resource-phase1.md`; do not copy the planning document into the repository or generated report.
+
+## Complete acknowledged continuation
+
+`AcknowledgedContinuation` models the narrower second decision after a known v3/v10 recovery has allocated every native page and retained each original ACK, before any Projection metadata, initial event or enable mutation. The bounded state starts with three visible pages and independently varies the original ACK set and exact request-set predicate. Visibility never supplies missing original authority. Review and apply check that authority separately; a new continuation preserves the original pages and `needs_review` history. Four abstract stages retain original ACK facts, publish exact metadata/events, enable the complete tree and retain a separate completion. A cold reader must find the complete shared proof set even if a local writer previously completed.
+
+| Configuration | Removed boundary | Expected broken rule |
+| --- | --- | --- |
+| `AcknowledgedContinuation.cfg` | None | None |
+| `AcknowledgedContinuation.original.cfg` | Complete original request and ACK set | `CompleteOriginalAuthority` |
+| `AcknowledgedContinuation.fresh.cfg` | Fresh current body check before a stage | `FreshBodyBeforeWrite` |
+| `AcknowledgedContinuation.cold.cfg` | Complete immutable ACK facts at cold verification | `ColdVerificationNeedsSharedProof` |
+| `AcknowledgedContinuation.replay.cfg` | Original uncertain request is never repeated | `AtMostOneContinuationDispatch` |
+
+The state model abstracts complete-set and body-equality predicates. It does not model JSON fields, hash collision resistance, individual immutable Record writes, the actual 34/35 native allocations, 397/407 full file manifests, Notion formatting or a transaction between a fresh check and a later request. The existing dispatcher still owns exact metadata-only PATCH authority. Earlier creation, recovery and unknown-POST continuation versions retain their own contracts.
+
+New review v4/outcome v5 binds an original v10 fixed Git mismatch to v11. A fully acknowledged earlier recovery uses continuation review v2/outcome v6. Their compact file commitments are reconstructed from the complete retained original plan and explicit policy, including all metadata and events. Each full frozen native POST and durable ACK is retained in a separate ordinary object Record, bound by the reviewed directory. Ordinary review and ACK records retain the 64 KiB ceiling. The cold reader checks complete original request bodies, response hashes, exact page/owner/native metadata and the reconstructed complete plan; a response digest alone cannot supply the missing fact. Coherently altered proof headers and review commitments are negative implementation cases.
+
+Pure ACK, frozen POST, observation and file-commitment schemas live outside execution modules. `shared-create-acknowledgement-import.node.test.ts` starts independent native Node processes at each affected public/runtime/model entry. This catches module initialization cycles that a preloaded Effect fixture or one import order can hide. The finite model does not establish ESM initialization or wire-byte compatibility.
+
+After freezing the reviewed source mapping, run the new formal group through the same pinned Pstack checker:
+
+```sh
+node scripts/verify-resource-lifecycle.mjs --model AcknowledgedContinuation \
+  --out /absolute/new/acknowledged-continuation-model
+```
+
+Run the three new implementation mutations only in an independent linked worktree with its own dependencies and the exact frozen source/test snapshot:
+
+```sh
+python3 scripts/check-acknowledged-continuation-mutations.py \
+  --protected-worktree /absolute/active-worktree \
+  --out /absolute/new/acknowledged-continuation-mutations
+```
+
+The runner requires a green baseline, an assertion counterexample after removing each actual boundary, exact source restoration and a green rerun. It covers the complete recovery dispatch/ACK denominator, fresh body rejection before the first continuation write and the shared cold full-ACK reader. It preserves original logs and source hashes. These mutations are additional evidence for the new branch; the earlier four lifecycle and two recovery mutations keep their original scope. Public CLI/SDK installation and the original live owned operations remain separate acceptance gates.

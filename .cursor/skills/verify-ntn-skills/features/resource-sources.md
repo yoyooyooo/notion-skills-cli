@@ -9,6 +9,7 @@
 | NR11-single | 原 `--target PAGE` 路径保留；`--target` 和 `--all-bound` 必须二选一 | 缺失/冲突选择在任何远程访问前失败 |
 | NR14-partial | `sources apply PLAN` 按原子操作的成员边界执行；每个结果保留原 plan/selection ID，明确整批不原子；已有成功、失败和未知分别输出 | 一个成功、一个失败、一个未知不得显示全批 applied，不得用当前 Source 等于候选伪造原操作成功 |
 | NR14-resume | 同一 frozen batch 再次 apply 复用各成员原 journal；reconcile 只核对原回执，零语义写入；本地批次结果按独立运行保存 | 未知 POST/PATCH 不重发；失去原始可见性不猜 applied；current body/source/frontier 变化拒绝过期选择 |
+| NR14-sqlite-checkpoint | 实际 `StoreLive` 的 batch dry-run、apply、reconcile 按精确 `operations/shared-source-batches/<scope SHA256>/source-batch-<SHA256>/<run UUID>.json` 保存并推进本次 run checkpoint；原 frozen plan 与各 member journal 分开，原生 Node 新进程可读取完成结果 | 缺失域不能由 memory Store 通过掩盖；错误 hash/UUID、额外路径段和相邻域必须拒绝；仅本次 run checkpoint 可更新，原 member dispatch/ACK 不可覆写，退休的 dispatch checkpoint 不能复活 |
 | NR14-preserve | 复用现有完整保留与选定内核，不覆写可编辑正文，不重置 Members/Requires、custom/tombstone 或旧 pin | 必需对象缺失、坏 hash、不完整树和未确认人工编辑不得推进选择 |
 | NR17-fixed | 默认 auto 对完整无修改公开 GitHub 原树冻结 v4 候选，复用 source- 选择与按路径消费；--storage retained 明确选择保留副本 | 缺 Git manifest、patched/linked/portable 转换不得冒充原Git树；管理字节的Git OID/SHA256/长度均验证，LFS指针拒绝；公开传输不可达时不偷偷换HEAD |
 | NR17-git-url | 新管理输入允许公开 GitHub 克隆 URL 的 `.git` 后缀；admit 与 refresh 复用原输入解析，在构造固定绑定时得到同一个 canonical URL，保留原 Source 定义、commit、tree、路径、SHA256 与 mode | 已持久化的非 canonical `.git` 描述符仍须拒绝；不能更改原 Source 配置、重新选分支、放松旧绑定身份校验或省略原字节验证来使准备成功 |
@@ -21,5 +22,7 @@
 | NR15-original | `sources run-list` / `run-status ID` 离线恢复ID和原frozen plan；中断checkpoint的成本是下界，不能宣称已完成 | 失去stdout、SIGKILL、预算暂停、当前值相等不能授权重新派发未知写；Source Last Checked仅在完整成功检查后更新，与application结果分开 |
 | NR16-admit | `sources admit`冻结新成员并复用原create kernel；`admit-apply/reconcile`接纳/核对；新成员缺省disabled，显式enable在完整性验证后生效 | 同Source精确member已绑定、缺文件、旧definition、初始POST响应丢失均不得同名重建；all-bound更新不自动接纳新成员 |
 | NR16-member | `sources member-prepare`显式改绑或保留已移除成员；apply只改Origin/Source Member，Selected、正文、关系、custom/old pins保留 | 仍存在member不允许假称removed；不按同名/hash猜rename；原binding或selection漂移零写；当前binding相等但无原receipt仍unknown |
+
+`shared-source-batch-sqlite.node.test.ts` 先在未修复的真实 SQLite 上重现首次 checkpoint 的 `Unknown SQLite domain address`。复用既有 Source fixture 的受控远端事实与实际 batch producer，以独立 Node 进程执行同一 frozen plan 的 dry-run、apply 和只读 reconcile；不复制 memory Store 的本地 JSON/objects。另核精确地址、同 run 多次更新、冷读和退休不可复活，原 member 派发与 ACK 保持 immutable。该受控证据不代替失败安装包之后对原真实 batch 的再次验收。
 
 先跑 focused core 和 CLI parser cases，再驱动独立安装的 Node CLI 与自有三成员真实样本。记录 metadata/body/provider/semantic write 成本、完整输入输出和所有失败。受控故障只能证明被实际注入的分支，不能替代真实 Notion、全库存或 Pi/Mini 验收。

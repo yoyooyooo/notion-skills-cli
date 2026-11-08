@@ -19,6 +19,10 @@ import { decode, fail, SkillsError, SnapshotSchema, type Snapshot, type Source }
 import { Notion } from "./notion.ts"
 import { canonicalMain } from "./portable.ts"
 import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
+import {
+  nativeSupportingMarkdown,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
 import { compileSharedNativeReferences } from "./shared-native-references.ts"
 import { NativeBodyCompletionSchema } from "./shared-native-body-completion.ts"
 import { pageId } from "./ref.ts"
@@ -1343,9 +1347,18 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         entrypoint: record.entrypoint,
       }),
     )
+    const supportingDocument = (file: { readonly path: string; readonly bytes: Uint8Array }) => {
+      const body = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(file.bytes)
+      const provenance = composed.provenance.get(file.path)
+      if (provenance?.kind !== "custom") return splitNativeSupportingMarkdown(body)
+      const state = states.get(provenance.file_id)
+      if (state === undefined)
+        throw fail("BASELINE_MISSING", "The supporting native header has no ownership state.")
+      return { body, ...nativeMetadataForOwnership(state.ownership) }
+    }
     const nativeSources = yield* checked(() =>
       composed.files
-        .filter((file) => /\.md$/iu.test(file.path))
+        .filter((file) => /\.(?:md|markdown)$/iu.test(file.path))
         .map((file) => {
           const binding = activeBindings.find((value) => value.path === file.path)
           const observation =
@@ -1354,7 +1367,10 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
               : nextObservations.find((value) => value.file_id === binding.file_id)
           return {
             path: file.path,
-            markdown: new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
+            markdown:
+              file.path === record.entrypoint
+                ? new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)
+                : supportingDocument(file).body,
             observation,
             page_id: binding?.page_id,
           }
@@ -1394,22 +1410,40 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
     const completeFiles = yield* checked(() =>
       composed.files.map((file) => {
-        if (file.path !== record.entrypoint)
-          return /\.md$/iu.test(file.path)
-            ? {
-                ...file,
-                bytes: encoder.encode(
-                  materializeSharedNativeFile(
-                    new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
-                    file.path,
-                    activeBindings,
-                    resolvedLinks,
-                    native.linkedPages.get(file.path),
-                    native.completions.get(file.path),
-                  ),
-                ),
-              }
-            : file
+        if (file.path !== record.entrypoint) {
+          const markdown = /\.(?:md|markdown)$/iu.test(file.path)
+          if (!markdown) {
+            const provenance = composed.provenance.get(file.path)
+            if (provenance?.kind !== "custom") return file
+            const state = states.get(provenance.file_id)
+            if (state === undefined)
+              throw fail("BASELINE_MISSING", "The supporting native header has no ownership state.")
+            if (
+              resourceContentForOwnership(state.ownership) !== undefined ||
+              nativeMetadataForOwnership(state.ownership).frontmatter === undefined
+            )
+              return file
+          }
+          const document = supportingDocument(file)
+          return {
+            ...file,
+            bytes: encoder.encode(
+              nativeSupportingMarkdown(
+                markdown
+                  ? materializeSharedNativeFile(
+                      document.body,
+                      file.path,
+                      activeBindings,
+                      resolvedLinks,
+                      native.linkedPages.get(file.path),
+                      native.completions.get(file.path),
+                    )
+                  : document.body,
+                document,
+              ),
+            ),
+          }
+        }
         const document = importDocument(file, {
           name: record.name,
           description: record.description,

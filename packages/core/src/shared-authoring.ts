@@ -32,6 +32,10 @@ import { sha256, Store } from "./store.ts"
 import { projectSharedNotionMarkdown } from "./shared-notion-projection.ts"
 import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 import {
+  nativeMainFrontmatter,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
+import {
   NativeBodyCompletionSchema,
   type NativeBodyCompletion,
 } from "./shared-native-body-completion.ts"
@@ -98,7 +102,11 @@ export function sharedAuthoringMarkdown(
   snapshot: Snapshot,
   path: string,
   bytes: Uint8Array,
-  metadata?: { readonly name?: string; readonly description?: string },
+  metadata?: {
+    readonly name?: string
+    readonly description?: string
+    readonly currentBytes?: Uint8Array
+  },
 ): string {
   const locator = snapshot.record.locator
   if (locator.type !== "shared_skill")
@@ -117,9 +125,30 @@ export function sharedAuthoringMarkdown(
   }
   if (markdown.includes("\0"))
     throw fail("INVALID_INPUT", "Shared body writes cannot contain NUL bytes.", { path })
+  const currentText =
+    metadata?.currentBytes === undefined
+      ? undefined
+      : new TextDecoder("utf-8", { fatal: true }).decode(metadata.currentBytes)
+  if (path !== snapshot.entrypoint) {
+    const submitted = splitNativeSupportingMarkdown(markdown)
+    const current =
+      currentText === undefined ? undefined : splitNativeSupportingMarkdown(currentText)
+    if (submitted.frontmatter !== undefined && current?.frontmatter !== undefined) {
+      if (submitted.frontmatter !== current.frontmatter)
+        throw fail(
+          "SHARED_METADATA_CONFLICT",
+          "A body-only write must preserve the exact supporting file header.",
+          { path },
+        )
+      markdown = submitted.body
+    }
+    return restoreSharedNativeFileLinks(
+      normalizeObservedBody(markdown),
+      path,
+      snapshot.file_bindings ?? [],
+    )
+  }
   markdown = normalizeObservedBody(markdown)
-  if (path !== snapshot.entrypoint)
-    return restoreSharedNativeFileLinks(markdown, path, snapshot.file_bindings ?? [])
   const match = /^---\n([\s\S]*?)\n---(?:\n|$)/u.exec(markdown)
   if (match) {
     let value: unknown
@@ -134,12 +163,30 @@ export function sharedAuthoringMarkdown(
     const unknown = Object.keys(frontmatter)
       .filter((name) => !["name", "description", "notion_page_id"].includes(name))
       .sort()
-    if (unknown.length !== 0)
+    if (unknown.length !== 0 && currentText === undefined)
       throw fail(
         "SHARED_FRONTMATTER_UNSUPPORTED",
         "This body-only write cannot preserve additional main frontmatter fields. No fields were discarded or written.",
         { fields: unknown },
       )
+    if (currentText !== undefined) {
+      const currentHeader = nativeMainFrontmatter(currentText)
+      const currentMatch = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(currentHeader)
+      const currentMetadata =
+        currentMatch === null ? {} : property(parseYaml(currentMatch[1] ?? ""))
+      const extras = (value: Record<string, unknown>) =>
+        Object.fromEntries(
+          Object.entries(value).filter(
+            ([key]) => !["name", "description", "notion_page_id"].includes(key),
+          ),
+        )
+      if (canonicalSharedJson(extras(frontmatter)) !== canonicalSharedJson(extras(currentMetadata)))
+        throw fail(
+          "SHARED_METADATA_CONFLICT",
+          "A body-only write must preserve the existing additional main metadata.",
+          { path },
+        )
+    }
     if (
       (frontmatter.name !== undefined &&
         frontmatter.name !== snapshot.record.name &&
@@ -316,8 +363,19 @@ export function writeSharedSkillFile(input: {
     const locator = snapshot.record.locator
     if (locator.type !== "shared_skill")
       return yield* Effect.fail(fail("CONTENT_NOT_MUTABLE", "Select a shared Skill file."))
+    const selected = snapshot.files.find((file) => file.path === input.path)
+    if (selected === undefined)
+      return yield* Effect.fail(
+        fail("SHARED_FILE_NOT_BOUND", "The requested path is absent from the current snapshot."),
+      )
+    const store = yield* Store
+    const currentBytes = yield* store.readBytes(`objects/${selected.sha256}`)
+    if (currentBytes.length !== selected.bytes || (yield* sha256(currentBytes)) !== selected.sha256)
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "The current file bytes differ from the frozen snapshot."),
+      )
     const markdown = yield* checked(() =>
-      sharedAuthoringMarkdown(snapshot, input.path, input.bytes),
+      sharedAuthoringMarkdown(snapshot, input.path, input.bytes, { currentBytes }),
     )
     const projection = yield* checked(() => projectSharedNotionMarkdown(markdown))
     const inputHash = yield* sha256(input.bytes)
@@ -385,6 +443,17 @@ export function writeSharedSkillFile(input: {
       inputProjection: projection,
       authoredInputSha256: inputHash,
       expected: { heads: file.heads, body_sha256: file.body_sha256 },
+    })
+    yield* checked(() => {
+      const retainedInput = sharedAuthoringMarkdown(snapshot, input.path, input.bytes, {
+        currentBytes: new TextEncoder().encode(plan.before.frontmatter ?? ""),
+      })
+      if (retainedInput !== markdown)
+        throw fail(
+          "SHARED_METADATA_CONFLICT",
+          "The submitted header has no matching retained native ownership baseline.",
+          { path: input.path },
+        )
     })
     if (
       plan.page_id !== file.page_id ||
@@ -454,7 +523,9 @@ export function restoreSharedFileFollowing<R = never>(input: {
     const index = yield* querySharedSkillIndex(library, input.skillPageId)
     const journal = yield* pendingScope(scope, library, index.skill_id, input.skillPageId)
     yield* reconcileLocalBeforeNewPlan(library, journal)
-    const projection = yield* checked(() => projectSharedNotionMarkdown(input.candidateMarkdown))
+    const projection = yield* checked(() =>
+      projectSharedNotionMarkdown(input.candidateMarkdown, { purpose: "data_source_create" }),
+    )
     const plan = yield* prepareSharedBodyWrite({
       library,
       skillPageId: input.skillPageId,

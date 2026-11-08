@@ -22,7 +22,12 @@ import {
   knownRecoveryPlan,
   SharedCreateKnownBootstrapSchema,
   type SharedCreateKnownBootstrap,
+  type SharedCreateKnownRecoveryReview,
 } from "./shared-create-recovery-known-model.ts"
+import {
+  sharedCreateRecoveryReviewId,
+  sharedCreateRecoveryReviewEntity,
+} from "./shared-create-recovery-completion.ts"
 import {
   assertSharedCreateAcknowledgedMetadata,
   prefixRecoveryRequired,
@@ -58,6 +63,7 @@ type Fact = {
   readonly payload: unknown
   readonly hash: string
 }
+export type SharedCreateFrozenFact = Fact
 function originalRequest(plan: Plan, body: unknown) {
   return Effect.gen(function* () {
     const request = {
@@ -124,7 +130,15 @@ function matchesFact(row: SharedRecord, fact: Fact, page: string) {
 }
 
 /** Prove the entire original request set. A current page never substitutes for an ACK. */
-export function originalKnownCreateBootstrap(library: SharedLibrary, plan: Plan, page: string) {
+export function originalKnownCreateBootstrap(
+  library: SharedLibrary,
+  plan: Plan,
+  page: string,
+  acknowledgedRecovery?: {
+    readonly review: SharedCreateKnownRecoveryReview
+    readonly hash: string
+  },
+) {
   return Effect.gen(function* () {
     const store = yield* Store,
       scope = yield* authScope,
@@ -153,11 +167,31 @@ export function originalKnownCreateBootstrap(library: SharedLibrary, plan: Plan,
         "The original journal does not retain this complete frozen input and dispatch contract.",
       )
 
-    const operations = yield* querySharedRecords(library, {
+    let operations = yield* querySharedRecords(library, {
       skillPageId: page,
       kind: "operation",
       payloadContainsBody: true,
     })
+    if (acknowledgedRecovery !== undefined) {
+      const expected = acknowledgedRecovery.review
+      const recovery = operations.filter(
+        (row) => row.record_id === sharedCreateRecoveryReviewId(plan.operation_id),
+      )
+      if (
+        expected.version !== 3 ||
+        recovery.length !== 1 ||
+        recovery[0]?.entity_id !== sharedCreateRecoveryReviewEntity ||
+        recovery[0]?.operation_id !== expected.review_id ||
+        recovery[0]?.hash !== acknowledgedRecovery.hash ||
+        !same(recovery[0]?.payload, expected) ||
+        acknowledgedRecovery.hash !==
+          (yield* hash({ version: 1, operation_id: expected.review_id, payload: expected }))
+      )
+        return yield* refusal(
+          "The acknowledged continuation lacks its exact immutable original recovery review.",
+        )
+      operations = operations.filter((row) => row.record_id !== recovery[0]!.record_id)
+    }
     const outcomeRow = operations.find(
       (row) => row.record_id === sharedCreateOutcomeId(plan.operation_id),
     )
@@ -458,3 +492,5 @@ export function originalKnownCreateBootstrap(library: SharedLibrary, plan: Plan,
     return { bootstrap, bindings, originalOutcomeHash: outcomeRow?.hash ?? null }
   })
 }
+
+export { assertRecordRequest as assertSharedCreateFrozenRecordRequest }

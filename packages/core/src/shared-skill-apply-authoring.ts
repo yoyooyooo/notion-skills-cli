@@ -237,20 +237,39 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
     )
     // An unchanged exported tree may contain provider-only resources and extra
     // frontmatter. It does not request a native body write or new ownership.
-    const inputs = yield* applyChecked(() =>
-      changedFiles.map((file) => {
+    const inputs = yield* Effect.forEach(changedFiles, (file) =>
+      Effect.gen(function* () {
+        const current = snapshot.files.find((entry) => entry.path === file.path)
         const bindings = evidence.files.filter((entry) => entry.path === file.path)
-        if (bindings.length !== 1 || bindings[0] === undefined)
-          throw fail(
-            "SHARED_FILE_NOT_BOUND",
-            "Apply can author only an existing unique native file binding; a provider-only file requires an explicit editable binding.",
-            { path: file.path },
+        if (current === undefined || bindings.length !== 1 || bindings[0] === undefined)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_FILE_NOT_BOUND",
+              "Apply can author only an existing unique native file binding; a provider-only file requires an explicit editable binding.",
+              { path: file.path },
+            ),
           )
-        const markdown = sharedAuthoringMarkdown(snapshot, file.path, file.bytes, {
-          name: input.name,
-          description: input.description,
-        })
-        return { file, binding: bindings[0], projection: projectSharedNotionMarkdown(markdown) }
+        const currentBytes = yield* store.readBytes(`objects/${current.sha256}`)
+        if (
+          currentBytes.length !== current.bytes ||
+          (yield* sha256(currentBytes)) !== current.sha256
+        )
+          return yield* Effect.fail(
+            fail(
+              "SNAPSHOT_CONFLICT",
+              "The exact selected authoring object is unavailable or differs.",
+            ),
+          )
+        const projection = yield* applyChecked(() =>
+          projectSharedNotionMarkdown(
+            sharedAuthoringMarkdown(snapshot, file.path, file.bytes, {
+              name: input.name,
+              description: input.description,
+              currentBytes,
+            }),
+          ),
+        )
+        return { file, binding: bindings[0], projection }
       }),
     )
     // Verify references against the final complete proposed tree, retaining all
@@ -298,6 +317,24 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
             inputProjection: entry.projection,
             authoredInputSha256: yield* sha256(entry.file.bytes),
             expected: { heads: entry.binding.heads, body_sha256: entry.binding.body_sha256 },
+          })
+          yield* applyChecked(() => {
+            const retainedInput = sharedAuthoringMarkdown(
+              snapshot,
+              entry.file.path,
+              entry.file.bytes,
+              {
+                name: input.name,
+                description: input.description,
+                currentBytes: new TextEncoder().encode(plan.before.frontmatter ?? ""),
+              },
+            )
+            if (retainedInput !== entry.projection.input_markdown)
+              throw fail(
+                "SHARED_METADATA_CONFLICT",
+                "The submitted header has no matching retained native ownership baseline.",
+                { path: entry.file.path },
+              )
           })
           if (
             plan.page_id !== entry.binding.page_id ||

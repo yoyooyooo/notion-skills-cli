@@ -233,6 +233,7 @@ test("v9 sole-main recovery creates zero native pages and retains all six raw fi
   const { f, plan, selection, target } = await originalFailure(true, true)
   expect(plan.files).toHaveLength(1)
   const review = await f.run(reviewSharedCreateRecovery(selection))
+  if (review.version !== 3) throw new Error("Expected the immutable v9 to v10 review")
   expect(property(review.files[0]?.content).frontmatter).toContain("license: MIT")
   const dry = await f.run(
     applySharedCreateRecovery({ plan, review, reviewId: review.review_id, dryRun: true }),
@@ -688,6 +689,7 @@ test.each([
     const { f, plan, selection, target } = await originalFailure()
     const review = await f.run(reviewSharedCreateRecovery(selection)),
       reference = review.bindings[2]!
+    if (review.version !== 3) throw new Error("Expected the immutable v9 to v10 review")
     const next = review.files.find((file) => file.file_id === reference.file_id)!
     if (next.event.kind !== "projected") throw new Error("Expected projected recovery")
     const projection = canonicalSharedJson({

@@ -17,6 +17,7 @@ The [independent installed author lifecycle](import-create-recovery-dry-run.md#i
 - `write-dry-run`: preflight with remote state unchanged.
 - `write-conflict`: reference/main edits invalidate older pinned baselines.
 - `write-properties`: main frontmatter edits preserve Name, Description and Default Context; explicit property updates use `update` with the same version guards.
+- `native-heading-literals-v11`: predict literal text escaping inside supported native heading bodies while preserving retained v1–v10 projections, original wire bytes and strict complete-body comparison.
 
 ## How to get to it (user POV)
 
@@ -28,6 +29,14 @@ Select the affected entry points and retain their outcomes separately:
 - `write` with a name, invocation alias, page ID/URL, unpinned ref, pinned ref or snapshot ID: prove each selector form actually claimed.
 - Main-file default path, an existing reference path, an approved new reference path and a non-reference asset when the selected database has Files.
 - `write --dry-run`, identical-input unchanged, successful update and stale-baseline `WRITE_CONFLICT`.
+
+## Native heading literal projection
+
+For AH-681, the complete original `scripts/test/corpus/UserNoDeadlock/report.md` and its independent, untruncated Markdown v2 response differ at one heading: `CHECK_DEADLOCK` is returned as `CHECK\_DEADLOCK`. Retain the original 267-byte v10 prediction and the complete 268-byte observation. A new v11 policy must match that observation without changing the submitted wire, the original plan or the response normalizer; saved v1–v10 policies keep their declared behavior.
+
+Before implementation, record a failing pure projection test against the full captured body. Cover H1–H4 literal characters with parsed heading spans, existing escapes, inline/native code, link destinations, tag attributes and structural heading markers. H5/H6 remain explicitly unsupported by the original native serializer. Fenced code and unrelated paragraph/list text must not be reinterpreted as headings. Re-run all 35 original statechart Markdown inputs with explicit v10 and compare every projection field to a separately saved pre-change baseline; v11 must preserve every wire and change only the observed heading file in that tree. Keep the actual input/response hashes and complete replay receipt outside the checkout.
+
+These pure checks establish deterministic forward projection only. Original-operation recovery, any new dispatch, installed CLI and fresh remote verification retain their separate mapped gates; a new projection must not authorize rewriting an already acknowledged body or normalize an unknown response into success.
 
 ## Driving it with control-ntn-skills
 

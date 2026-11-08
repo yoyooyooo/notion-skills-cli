@@ -92,6 +92,11 @@ const fullMatrix = [
   ["CreateRecovery", "original.cfg", ["OriginalEvidenceRequired"]],
   ["CreateRecovery", "replay.cfg", ["AtMostOneRecoveryDispatch"]],
   ["CreateRecovery", "scope.cfg", ["ProjectionAuthorityBeforeWrite", "ExistingBodyWriteForbidden"]],
+  ["AcknowledgedContinuation", "cfg", []],
+  ["AcknowledgedContinuation", "original.cfg", ["CompleteOriginalAuthority"]],
+  ["AcknowledgedContinuation", "fresh.cfg", ["FreshBodyBeforeWrite"]],
+  ["AcknowledgedContinuation", "cold.cfg", ["ColdVerificationNeedsSharedProof"]],
+  ["AcknowledgedContinuation", "replay.cfg", ["AtMostOneContinuationDispatch"]],
 ]
 const selectedModel = option("--model")
 assert.ok(

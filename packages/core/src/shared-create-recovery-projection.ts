@@ -10,10 +10,10 @@ import {
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 
-export function sharedRecoveryEventId(original: string, fields: unknown, version: 9 | 10) {
+export function sharedRecoveryEventId(original: string, fields: unknown, version: 9 | 10 | 11) {
   return sha256(
     canonicalSharedJson({
-      version: version === 9 ? 2 : 3,
+      version: version === 9 ? 2 : version === 10 ? 3 : 4,
       original_operation_id: original,
       projection_version: version,
       event: fields,
@@ -22,7 +22,7 @@ export function sharedRecoveryEventId(original: string, fields: unknown, version
 }
 
 /** Callers establish the exact original variant first. Rendering never changes its wire. */
-export function projectSharedRecoveryFiles(plan: SharedCreatePlan, version: 9 | 10) {
+export function projectSharedRecoveryFiles(plan: SharedCreatePlan, version: 9 | 10 | 11) {
   return Effect.forEach(plan.files, (file) =>
     Effect.gen(function* () {
       if (file.event.kind !== "projected")

@@ -191,7 +191,7 @@ const add = defineCommand(
     ),
 ).pipe(
   Command.withDescription(
-    "Create one supporting File with a stable File ID and one native body page. Validates the complete fresh tree, portable paths and deterministic local Markdown links/images before dispatch. The original plan is durable before one page create; an uncertain response is never replayed. Existing file identities and tombstones cannot be overwritten. --dry-run emits the exact reviewable plan without remote writes.",
+    "Create one supporting File with a stable File ID and one native body page. A complete YAML header, including license metadata, is retained exactly outside the editable body and restored in snapshots and exports. Validates the complete fresh tree, portable paths and deterministic local Markdown links/images before dispatch. The original plan is durable before one page create; an uncertain response is never replayed. Existing file identities and tombstones cannot be overwritten. --dry-run emits the exact reviewable plan without remote writes.",
   ),
 )
 

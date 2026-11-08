@@ -255,6 +255,40 @@ function fixture() {
 }
 
 describe("public selected-source restore-follow", () => {
+  test("restores a native creation projection while retaining supporting YAML and sending no body PATCH", async () => {
+    const f = fixture()
+    const header = "---\nname: reference\nlicense: MIT\n---\n\n"
+    const input = header + "# Reference\n\nLead\n```python\nvalue\n```\n"
+    // The independent v10 native readback contract retains the py fence label.
+    const observed = "# Reference\n\nLead\n\n```py\nvalue\n```"
+    f.base.bodies.set(id(11), observed)
+    f.baseline()
+    await f.register(fixedFiles(input))
+    f.clear()
+    const dry = await f.run(
+      restoreSelectedSharedFile({
+        library,
+        skillPageId: skillPage,
+        path: "references/1.md",
+        dryRun: true,
+      }),
+    )
+    expect(property(property(dry).execution).kind).toBe("no_body_write")
+    expect(f.writes()).toHaveLength(0)
+    const result = await f.run(
+      restoreSelectedSharedFile({ library, skillPageId: skillPage, path: "references/1.md" }),
+    )
+    expect(result.candidate_sha256).toBe(digest(observed))
+    expect(f.patches()).toHaveLength(0)
+    const state = resolveFileState(
+      "file-1",
+      (await f.events()).filter((event) => event.file_id === "file-1"),
+    )
+    expect(state.ownership.kind).toBe("following")
+    if (state.ownership.kind !== "following") throw new Error("Expected following")
+    expect(property(state.ownership).frontmatter).toBe(header)
+  })
+
   test("restores identical selected-source text without a body PATCH and repeats without new history", async () => {
     const f = fixture()
     f.base.bodies.set(id(11), "From exact fixed revision")

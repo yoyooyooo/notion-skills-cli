@@ -109,6 +109,41 @@ test("Sources schema is available offline and prepare requires an explicit targe
   expect(result.stdout).toContain("output")
 })
 
+test("acknowledged Source continuation has explicit offline review, apply and original reconciliation contracts", async () => {
+  const f = await isolated()
+  for (const name of ["review", "apply"]) {
+    const path = ["ctl", "library", "sources", "recovery", "continuation", name]
+    const help = await f.invoke([...path, "--help"])
+    expect(help.exit, help.stderr).toBe(0)
+    expect(help.online).toBe(false)
+    expect(help.stdout).toContain("plan")
+    expect(help.stdout).toContain("--entry")
+    expect(help.stdout).toContain(name === "review" ? "--target" : "--review-id")
+    const schema = await f.invoke(["schema", ...path])
+    expect(schema.exit, schema.stderr).toBe(0)
+    expect(schema.online).toBe(false)
+    expect(schema.stdout).toContain(name === "review" ? "output" : "dry-run")
+  }
+  const reconcile = await f.invoke(["ctl", "library", "sources", "recovery", "reconcile", "--help"])
+  expect(reconcile.exit, reconcile.stderr).toBe(0)
+  expect(reconcile.online).toBe(false)
+  for (const args of [
+    ["review", "original-plan.json", "--entry", "library"],
+    ["apply", "original-plan.json", "--entry", "library", "--review", "review.json"],
+  ]) {
+    const result = await f.invoke([
+      "ctl",
+      "library",
+      "sources",
+      "recovery",
+      "continuation",
+      ...args,
+    ])
+    expect(result.exit).not.toBe(0)
+    expect(result.online).toBe(false)
+  }
+}, 60_000)
+
 test("source invocation IDs and inventory command contracts are available offline in a real empty Node store", async () => {
   const f = await isolated()
   const runs = await f.invoke(["ctl", "library", "sources", "run-list"])

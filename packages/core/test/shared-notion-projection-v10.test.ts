@@ -18,7 +18,10 @@ test("new creation predicts the independently captured Counter v2 body without c
     version: 9,
     purpose: "data_source_create",
   })
-  const current = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+  const current = projectSharedNotionMarkdown(input, {
+    version: 10,
+    purpose: "data_source_create",
+  })
   expect(Buffer.byteLength(observed)).toBe(252)
   expect(createHash("sha256").update(observed).digest("hex")).toBe(
     "4d9eeba3acbf58d70b94061b0ae64b021695ae50c18cb46fc2232125c94000b1",
@@ -41,7 +44,7 @@ test("new literal escaping preserves code, existing escapes, link destinations a
   const input =
     "literal [], <>; escaped\\[\\]\\<; `[]<>~_`; <code>[]<>~_</code>; [label](folder/[index]_name.md).\n\n```txt\n[]<>~_\n```"
   const previous = projectSharedNotionMarkdown(input, { version: 9 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 10 })
   expect(current.markdown).toBe(previous.markdown.replace("literal [], <>", "literal \\[\\], \\<>"))
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
   expect(validateSharedNotionMarkdownProjection(previous)).toEqual(previous)
@@ -51,7 +54,7 @@ test("new literal escaping preserves code, existing escapes, link destinations a
 test("literal item text is escaped without changing structural list and task markers", () => {
   const input = "- Literal [], <>, ~>.\n- [ ] Already a task\n"
   const previous = projectSharedNotionMarkdown(input, { version: 9 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 10 })
   expect(current.markdown).toBe(
     previous.markdown.replace("Literal [], <>, ~>.", "Literal \\[\\], \\<>, \\~>."),
   )
@@ -69,7 +72,10 @@ test("creation predicts the independently observed paragraph-to-fence blank line
     version: 9,
     purpose: "data_source_create",
   })
-  const current = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+  const current = projectSharedNotionMarkdown(input, {
+    version: 10,
+    purpose: "data_source_create",
+  })
   expect(current.markdown).toBe(observed)
   expect(previous.markdown).toBe(observed.replace("PIL:\n\n", "PIL:\n"))
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
@@ -89,7 +95,10 @@ test.each([
     version: 9,
     purpose: "data_source_create",
   })
-  const current = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+  const current = projectSharedNotionMarkdown(input, {
+    version: 10,
+    purpose: "data_source_create",
+  })
   expect(current.markdown).toBe(previous.markdown)
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
 })
@@ -97,7 +106,7 @@ test.each([
 test("paragraph-to-fence body-write policy retains the original exact separator", () => {
   const input = "A paragraph.\n```text\nbody\n```"
   const previous = projectSharedNotionMarkdown(input, { version: 9, purpose: "body_write" })
-  const current = projectSharedNotionMarkdown(input, { purpose: "body_write" })
+  const current = projectSharedNotionMarkdown(input, { version: 10, purpose: "body_write" })
   expect(current.markdown).toBe(previous.markdown)
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
 })

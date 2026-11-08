@@ -22,7 +22,10 @@ import { querySharedRecords } from "./shared-records.ts"
 import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { sha256, Store } from "./store.ts"
-import { nativeMainFrontmatter } from "./shared-native-file-metadata.ts"
+import {
+  nativeMainFrontmatter,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
 import {
   pendingFileOperationKey,
   pendingFileOperations,
@@ -146,46 +149,44 @@ export function restoreSelectedSharedFile<R = never>(input: {
           { paths: [input.path] },
         ),
       )
-    const markdown = yield* checked(() => {
-      let value: string
-      if (binding.file_id === index.main.file_id) {
-        value = importDocument(candidate, { name: index.name, description: index.description }).body
-      } else {
-        try {
-          value = new TextDecoder("utf-8", { fatal: true }).decode(candidate.bytes)
-        } catch {
-          throw fail(
-            "BINARY_FILE",
-            "A native editable page cannot restore binary source bytes; the original file is unchanged.",
-            { path: input.path },
-          )
-        }
+    const document = yield* checked(() => {
+      let text: string
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(candidate.bytes)
+      } catch {
+        throw fail(
+          "BINARY_FILE",
+          "A native editable page cannot restore binary source bytes; the original file is unchanged.",
+          { path: input.path },
+        )
       }
-      if (value.includes("\0"))
+      if (text.includes("\0"))
         throw fail(
           "BINARY_FILE",
           "A native body restore requires complete UTF-8 Markdown without NUL.",
           { path: input.path },
         )
-      return normalizeObservedBody(value)
+      const parsed =
+        binding.file_id === index.main.file_id
+          ? {
+              body: importDocument(candidate, { name: index.name, description: index.description })
+                .body,
+              frontmatter: nativeMainFrontmatter(text),
+            }
+          : splitNativeSupportingMarkdown(text)
+      return { ...parsed, body: normalizeObservedBody(parsed.body) }
     })
     const result = yield* restoreSharedFileFollowing({
       library: input.library,
       skillPageId: index.page_id,
       fileId: binding.file_id,
-      candidateMarkdown: markdown,
+      candidateMarkdown: document.body,
       source: {
         source_id: source.source_id,
         revision: source.revision,
         path: sourcePath,
         ...(candidate.mode === undefined ? {} : { mode: candidate.mode }),
-        ...(binding.file_id === index.main.file_id
-          ? {
-              frontmatter: nativeMainFrontmatter(
-                new TextDecoder("utf-8", { fatal: true }).decode(candidate.bytes),
-              ),
-            }
-          : {}),
+        ...(document.frontmatter === undefined ? {} : { frontmatter: document.frontmatter }),
       },
       expected,
       dryRun: input.dryRun,

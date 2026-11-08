@@ -17,10 +17,16 @@ import {
   isResourceFollowing,
   resolveFileState,
   nativeMetadataForOwnership,
+  nativeFileMetadata,
   type FileEvent,
+  type RetainedContent,
   type ResolvedFileState,
 } from "./shared-file-state.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
+import {
+  nativeSupportingMarkdown,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
 import { loadPendingSharedObservationPlans } from "./shared-observation-operation.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import {
@@ -267,7 +273,10 @@ function proposedTree(
     readonly action: SharedFileManagementPlan["action"]
     readonly path: string
     readonly destination_path: string | null
-    readonly content: { readonly markdown: string }
+    readonly content: {
+      readonly markdown: string
+      readonly retained?: RetainedContent
+    }
     readonly entrypoint: string
   },
 ) {
@@ -281,7 +290,15 @@ function proposedTree(
       )
     candidate = [
       ...files,
-      { path: input.path, bytes: new TextEncoder().encode(input.content.markdown) },
+      {
+        path: input.path,
+        bytes: new TextEncoder().encode(
+          nativeSupportingMarkdown(
+            input.content.markdown,
+            nativeFileMetadata(input.content.retained ?? {}),
+          ),
+        ),
+      },
     ]
   } else {
     if (!files.some((file) => file.path === input.path))
@@ -629,11 +646,14 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       )
     let before: FrozenWriteBody | null = null
     let creationProjection: SharedNotionMarkdownProjection | null = null
+    let supportingHeader: string | undefined
     let fileId: string, current: ResolvedFileState | undefined
     let markdown: string
     if (input.action === "add") {
+      const document = splitNativeSupportingMarkdown(input.markdown)
+      supportingHeader = document.frontmatter
       creationProjection = yield* managementChecked(() =>
-        projectSharedNotionMarkdown(input.markdown, { purpose: "data_source_create" }),
+        projectSharedNotionMarkdown(document.body, { purpose: "data_source_create" }),
       )
       markdown = creationProjection.markdown
       fileId = `file-${yield* sha256(canonicalSharedJson([input.library.library_id, locator.skill_id, input.snapshot.version_id, path, yield* sha256(input.markdown)]))}`
@@ -671,6 +691,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       sha256: hash,
       bytes: new TextEncoder().encode(markdown).byteLength,
       ...nativeMetadataForOwnership(current?.ownership),
+      ...(supportingHeader === undefined ? {} : { frontmatter: supportingHeader }),
     }
     const content = { markdown, retained }
     const checkedTree = yield* managementChecked(() =>
@@ -739,6 +760,9 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       reference_check: checkedTree.check,
       before,
       creation_projection: creationProjection,
+      ...(input.action === "add" && supportingHeader !== undefined
+        ? { creation_input: input.markdown }
+        : {}),
       content,
       event,
     })

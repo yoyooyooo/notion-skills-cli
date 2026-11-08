@@ -18,6 +18,7 @@ import { sharedNotionMarkdownPolicy } from "./shared-notion-projection.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sourceField } from "./shared-source-definitions.ts"
 import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
+import { SharedCreateFrozenPostSchema } from "./shared-create-recovery-acknowledgement-model.ts"
 import { sha256 } from "./store.ts"
 import {
   projectSharedRecoveryFiles,
@@ -34,14 +35,7 @@ const same = (left: unknown, right: unknown) =>
 export const SharedCreatePrefixBootstrapSchema = Schema.Struct({
   kind: Schema.Literal("acknowledged_main_before_manifest"),
   original_journal_sha256: Hash,
-  dispatch: Schema.Struct({
-    version: Schema.Literal(1),
-    operation: Schema.String.check(Schema.isPattern(/^source-op-[a-f0-9]{64}$/u)),
-    identity: Schema.String,
-    path: Schema.Literal("v1/pages"),
-    method: Schema.Literal("POST"),
-    body: Schema.Unknown,
-  }),
+  dispatch: SharedCreateFrozenPostSchema,
   acknowledgement: SourceMutationAcknowledgementSchema,
 })
 export type SharedCreatePrefixBootstrap = typeof SharedCreatePrefixBootstrapSchema.Type

@@ -16,6 +16,7 @@ import { Store } from "../../core/src/store.ts"
 import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { readSourceJson } from "./command-source-input.ts"
 import { parseSourceBudget, sourceRequestBudgets } from "./commands-library-source-run.ts"
+import { sourceContinuationCommand } from "./commands-library-source-continuation.ts"
 
 const planArg = Argument.String("plan")
 const entry = requiredSingleton("entry", "Exact original shared library")
@@ -64,7 +65,7 @@ const review = defineCommand(
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Review an exact original v1 fixed Git admission: an acknowledged main before its manifest (v8 to v9, or v9 to v10), or a v9 known body-mismatch failure with an acknowledged page prefix (to v10). Require the original local journal, exact dispatches and ACKs, disabled ownership, complete bodies matching the fixed new projection and unchanged Source. Save and inspect the explicit recovery digest.",
+    "Review an exact original v1 fixed Git admission: an acknowledged main before its manifest (v8 to v9, v9 to v10, or v10 to v11), or a known v9/v10 body-mismatch failure with an acknowledged page prefix. Each saved version retains its fixed projection meaning. Require the original local journal, exact dispatches and ACKs, disabled ownership, complete bodies matching the fixed new projection and unchanged Source. Save and inspect the explicit recovery digest.",
   ),
 )
 
@@ -145,5 +146,5 @@ export const sourceRecoveryCommand = defineCommand("recovery").pipe(
   Command.withDescription(
     "Review, apply or reconcile an exact acknowledged Source-admission prefix or known failure",
   ),
-  Command.withSubcommands([review, apply, reconcile]),
+  Command.withSubcommands([review, apply, reconcile, sourceContinuationCommand]),
 )

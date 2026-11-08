@@ -320,7 +320,7 @@ export function completedSharedCreateRecovery(
         containsBody,
       })
     const completionRow = yield* read(completionHeader)
-    if (property(completionRow.payload).version === 4) {
+    if ([4, 5, 6].includes(Number(property(completionRow.payload).version))) {
       const recovered = yield* readSharedCreateKnownCompletion(library, input)
       if (
         !recovered ||

@@ -7,8 +7,11 @@ import {
   SharedCreateRecoveryBindingSchema,
   SharedCreateRecoveryFileSchema,
   SharedCreateRecoveryObservationSchema,
+  SharedCreateKnownRecoveryObservationSchema,
+  SharedCreateRecoveryFileCommitmentSchema,
   type SharedCreateRecoveryBinding,
   type SharedCreateRecoveryObservation,
+  type SharedCreateKnownRecoveryObservation,
 } from "./shared-create-recovery-proof-model.ts"
 import { prefixRecoveryRequired } from "./shared-create-recovery-errors.ts"
 import {
@@ -22,6 +25,11 @@ import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-reco
 import { sourceField } from "./shared-source-definitions.ts"
 import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
 import { sha256 } from "./store.ts"
+import {
+  prepareSharedNativeAllocationProof,
+  type PreparedNativeAllocationProof,
+} from "./shared-create-recovery-acknowledgements.ts"
+import { SharedNativeAllocationReferenceSchema } from "./shared-create-recovery-acknowledgement-model.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const OriginalId = Schema.String.check(Schema.isPattern(/^skill-create-[a-f0-9]{64}$/u))
@@ -45,24 +53,6 @@ export const SharedCreateKnownBootstrapSchema = Schema.Struct({
 })
 export type SharedCreateKnownBootstrap = typeof SharedCreateKnownBootstrapSchema.Type
 
-/** The full v2 response is checked before this bounded statement is made.
- * The original input and fixed policy reconstruct all bytes; apply reads them again. */
-export const SharedCreateKnownRecoveryObservationSchema = Schema.Struct({
-  file_id: Identity,
-  page_id: Schema.String,
-  format: Schema.Literal("notion_markdown_v2"),
-  normalization_version: Schema.Literal(1),
-  response_sha256: Hash,
-  body_sha256: Hash,
-  body_bytes: SharedCreateRecoveryObservationSchema.fields.body_bytes,
-  truncated: Schema.Literal(false),
-  unknown_block_count: Schema.Literal(0),
-  warning_count: Schema.Literal(0),
-  has_more: Schema.Literal(false),
-  next_cursor: Schema.Null,
-})
-export type SharedCreateKnownRecoveryObservation =
-  typeof SharedCreateKnownRecoveryObservationSchema.Type
 export function compactSharedCreateRecoveryObservation(
   observed: SharedCreateRecoveryObservation,
 ): SharedCreateKnownRecoveryObservation {
@@ -82,29 +72,59 @@ export function compactSharedCreateRecoveryObservation(
   }
 }
 
-export const SharedCreateKnownRecoveryReviewSchema = Schema.Struct({
-  version: Schema.Literal(3),
+const KnownRecoveryReviewFields = {
   kind: Schema.Literal("skill_create_recovery_review"),
   review_id: ReviewId,
   original_operation_id: OriginalId,
   original_plan_sha256: Hash,
   original_manifest_sha256: Hash,
   original_outcome_sha256: Schema.Union([Hash, Schema.Null]),
-  bootstrap: SharedCreateKnownBootstrapSchema,
   library: SharedLibrarySchema,
   library_id: Identity,
   skill_id: Identity,
   skill_page_id: Schema.String,
   decision: Schema.Literal("reproject_retained_input"),
-  projection_version: Schema.Literal(10),
   observation_kind: Schema.Literal("post_failure_current_read"),
   bindings: Schema.Array(SharedCreateRecoveryBindingSchema),
-  files: Schema.Array(SharedCreateRecoveryFileSchema),
   observations: Schema.Array(SharedCreateKnownRecoveryObservationSchema),
+}
+export function sharedCreateRecoveryFileCommitment(
+  file: Effect.Success<ReturnType<typeof projectSharedRecoveryFiles>>[number],
+) {
+  return {
+    file_id: file.file_id,
+    path: file.path,
+    input_sha256: file.input.sha256,
+    body_sha256: file.content.sha256,
+    body_bytes: file.content.bytes,
+    event_id: file.event.event_id,
+  }
+}
+export const SharedCreateKnownCompactBootstrapSchema = Schema.Struct({
+  kind: SharedCreateKnownBootstrapSchema.fields.kind,
+  original_journal_sha256: Hash,
+  original_dispatches_sha256: Hash,
+  allocations: Schema.Array(SharedNativeAllocationReferenceSchema),
 })
+export type SharedCreateKnownCompactBootstrap = typeof SharedCreateKnownCompactBootstrapSchema.Type
+export const SharedCreateKnownRecoveryReviewSchema = Schema.Union([
+  Schema.Struct({
+    ...KnownRecoveryReviewFields,
+    version: Schema.Literal(3),
+    projection_version: Schema.Literal(10),
+    bootstrap: SharedCreateKnownBootstrapSchema,
+    files: Schema.Array(SharedCreateRecoveryFileSchema),
+  }),
+  Schema.Struct({
+    ...KnownRecoveryReviewFields,
+    version: Schema.Literal(4),
+    projection_version: Schema.Literal(11),
+    bootstrap: SharedCreateKnownCompactBootstrapSchema,
+    files: Schema.Array(SharedCreateRecoveryFileCommitmentSchema),
+  }),
+])
 export type SharedCreateKnownRecoveryReview = typeof SharedCreateKnownRecoveryReviewSchema.Type
-export const SharedCreateKnownRecoveryOutcomeSchema = Schema.Struct({
-  version: Schema.Literal(4),
+const KnownRecoveryOutcomeFields = {
   kind: Schema.Literal("skill_create_recovery_outcome"),
   status: Schema.Literal("applied"),
   original_operation_id: OriginalId,
@@ -117,12 +137,17 @@ export const SharedCreateKnownRecoveryOutcomeSchema = Schema.Struct({
   skill_page_id: Schema.String,
   review_record_hash: Hash,
   bindings: Schema.Array(SharedCreateRecoveryBindingSchema),
-})
+}
+export const SharedCreateKnownRecoveryOutcomeSchema = Schema.Union([
+  Schema.Struct({ ...KnownRecoveryOutcomeFields, version: Schema.Literal(4) }),
+  Schema.Struct({ ...KnownRecoveryOutcomeFields, version: Schema.Literal(5) }),
+])
 export type SharedCreateKnownRecoveryOutcome = typeof SharedCreateKnownRecoveryOutcomeSchema.Type
 
 export function knownRecoveryPlan(input: unknown) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedCreatePlan(input)
+    const originalVersion = plan.files[0]?.projection.version
     if (
       plan.version !== 1 ||
       plan.content_kind !== "skill" ||
@@ -133,9 +158,10 @@ export function knownRecoveryPlan(input: unknown) {
       plan.members.length !== 0 ||
       (plan.requires?.length ?? 0) !== 0 ||
       plan.files.length === 0 ||
+      (originalVersion !== 9 && originalVersion !== 10) ||
       plan.files.some(
         (file) =>
-          file.projection.version !== 9 ||
+          file.projection.version !== originalVersion ||
           file.projection.purpose !== "data_source_create" ||
           file.event.kind !== "projected" ||
           file.event.parents.length !== 0 ||
@@ -144,14 +170,16 @@ export function knownRecoveryPlan(input: unknown) {
       )
     )
       return yield* refusal(
-        "This recovery requires the exact original v1 fixed Git Skill admission with v9 projections and no local overrides.",
+        "This recovery requires the exact original v1 fixed Git Skill admission with one frozen v9 or v10 projection and no local overrides.",
       )
     return { ...plan, source_projection: plan.source_projection }
   })
 }
 export function makeSharedCreateKnownRecoveryFiles(input: unknown) {
   return knownRecoveryPlan(input).pipe(
-    Effect.flatMap((plan) => projectSharedRecoveryFiles(plan, 10)),
+    Effect.flatMap((plan) =>
+      projectSharedRecoveryFiles(plan, plan.files[0]!.projection.version === 9 ? 10 : 11),
+    ),
   )
 }
 
@@ -174,8 +202,11 @@ export function validateSharedCreateKnownRecoveryReview(input: unknown, expected
       review.bindings[0]?.page_id !== review.skill_page_id ||
       new Set(review.bindings.map((binding) => binding.page_id)).size !== count ||
       new Set(review.bindings.map((binding) => binding.file_id)).size !== count ||
-      new Set(review.bootstrap.allocations.map((item) => item.acknowledgement.operation_id))
-        .size !== count ||
+      new Set(
+        review.bootstrap.allocations.map((item) =>
+          "acknowledgement" in item ? item.acknowledgement.operation_id : item.record_id,
+        ),
+      ).size !== count ||
       new Set(review.files.map((file) => file.file_id)).size !== review.files.length ||
       new Set(review.files.map((file) => file.path)).size !== review.files.length ||
       (review.bootstrap.kind === "acknowledged_main_before_manifest"
@@ -185,9 +216,9 @@ export function validateSharedCreateKnownRecoveryReview(input: unknown, expected
       return yield* refusal(
         "The recovery does not distinguish the exact acknowledged prefix from its original terminal state.",
       )
-    for (const file of review.files) {
+    for (const file of review.version === 3 ? review.files : []) {
       if (
-        file.projection.version !== 10 ||
+        file.projection.version !== review.projection_version ||
         file.projection.purpose !== "data_source_create" ||
         file.event.kind !== "projected" ||
         file.event.file_id !== file.file_id ||
@@ -200,7 +231,14 @@ export function validateSharedCreateKnownRecoveryReview(input: unknown, expected
           "Recovery files must preserve exact initial ownership and native metadata.",
         )
       const { event_id, ...fields } = file.event
-      if (event_id !== (yield* sharedRecoveryEventId(review.original_operation_id, fields, 10)))
+      if (
+        event_id !==
+        (yield* sharedRecoveryEventId(
+          review.original_operation_id,
+          fields,
+          review.projection_version,
+        ))
+      )
         return yield* refusal("A recovered ownership event has another immutable identity.")
     }
     const ordered = [
@@ -210,8 +248,31 @@ export function validateSharedCreateKnownRecoveryReview(input: unknown, expected
     for (let index = 0; index < count; index++) {
       const binding = review.bindings[index]!,
         allocation = review.bootstrap.allocations[index]!,
-        observation = review.observations[index]!,
-        file = ordered[index]!
+        observation = review.observations[index]!
+      if (review.version === 4) {
+        const proof = review.bootstrap.allocations[index]!
+        const file = review.files.find((item) => item.file_id === ordered[index]!.file_id)!
+        if (
+          proof.file_id !== binding.file_id ||
+          proof.page_id !== binding.page_id ||
+          proof.allocation_operation_id !== review.original_operation_id ||
+          pageId(binding.page_id) !== binding.page_id ||
+          binding.file_id !== file.file_id ||
+          binding.path !== file.path ||
+          binding.event_id === file.event_id ||
+          observation.file_id !== binding.file_id ||
+          observation.page_id !== binding.page_id ||
+          observation.body_sha256 !== file.body_sha256 ||
+          observation.body_bytes !== file.body_bytes
+        )
+          return yield* refusal(
+            "The v11 recovery lacks its exact independent allocation proof references and observations.",
+          )
+        continue
+      }
+      if (!("acknowledgement" in allocation))
+        return yield* refusal("The original v3 review requires complete original ACKs.")
+      const file = review.files.find((item) => item.file_id === ordered[index]!.file_id)!
       const ack = allocation.acknowledgement,
         response = property(ack.response)
       if (
@@ -281,7 +342,7 @@ export function validateSharedCreateKnownRecoveryReview(input: unknown, expected
 
 export function makeSharedCreateKnownRecoveryReview(input: {
   readonly plan: unknown
-  readonly bootstrap: SharedCreateKnownBootstrap
+  readonly bootstrap: SharedCreateKnownBootstrap | SharedCreateKnownCompactBootstrap
   readonly originalOutcomeHash: string | null
   readonly skillPageId: string
   readonly bindings: readonly SharedCreateRecoveryBinding[]
@@ -290,6 +351,32 @@ export function makeSharedCreateKnownRecoveryReview(input: {
   return Effect.gen(function* () {
     const plan = yield* knownRecoveryPlan(input.plan),
       files = yield* makeSharedCreateKnownRecoveryFiles(plan)
+    const originalVersion = plan.files[0]!.projection.version
+    let bootstrap: SharedCreateKnownBootstrap | SharedCreateKnownCompactBootstrap = input.bootstrap
+    if (
+      originalVersion === 10 &&
+      input.bootstrap.allocations.some((item) => "acknowledgement" in item)
+    ) {
+      const original = yield* createChecked(() =>
+        Schema.decodeUnknownSync(SharedCreateKnownBootstrapSchema)(input.bootstrap, {
+          onExcessProperty: "error",
+        }),
+      )
+      const proofs = yield* prepareSharedCreateKnownAllocationProofs(
+        plan,
+        input.skillPageId,
+        input.bindings,
+        original,
+      )
+      bootstrap = { ...input.bootstrap, allocations: proofs.map((proof) => proof.reference) }
+    }
+    if (
+      originalVersion === 9 &&
+      input.bootstrap.allocations.some((item) => !("acknowledgement" in item))
+    )
+      return yield* refusal(
+        "The original v3 recovery proof cannot be replaced by compact references.",
+      )
     if (
       !input.bindings.some(
         (binding) =>
@@ -301,34 +388,63 @@ export function makeSharedCreateKnownRecoveryReview(input: {
         "This projection recovery needs an independently changed original native prediction.",
       )
     const fields = {
-      version: 3 as const,
+      version: originalVersion === 9 ? (3 as const) : (4 as const),
       kind: "skill_create_recovery_review" as const,
       original_operation_id: plan.operation_id,
       original_plan_sha256: yield* sha256(canonicalSharedJson(plan)),
       original_manifest_sha256: yield* sharedCreateManifestRecordHash(plan),
       original_outcome_sha256: input.originalOutcomeHash,
-      bootstrap: input.bootstrap,
+      bootstrap,
       library: plan.library,
       library_id: plan.library.library_id,
       skill_id: plan.skill_id,
       skill_page_id: input.skillPageId,
       decision: "reproject_retained_input" as const,
-      projection_version: 10 as const,
+      projection_version: originalVersion === 9 ? (10 as const) : (11 as const),
       observation_kind: "post_failure_current_read" as const,
       bindings: input.bindings,
-      files: files.map((file) => ({
-        file_id: file.file_id,
-        path: file.path,
-        input_sha256: file.input.sha256,
-        projection: sharedNotionMarkdownPolicy(file.projection),
-        content: file.content,
-        event: file.event,
-      })),
+      files:
+        originalVersion === 10
+          ? files.map(sharedCreateRecoveryFileCommitment)
+          : files.map((file) => ({
+              file_id: file.file_id,
+              path: file.path,
+              input_sha256: file.input.sha256,
+              projection: sharedNotionMarkdownPolicy(file.projection),
+              content: file.content,
+              event: file.event,
+            })),
       observations: input.observations,
     }
     return yield* validateSharedCreateKnownRecoveryReview({
       ...fields,
       review_id: "create-recovery-" + (yield* sha256(canonicalSharedJson(fields))),
     })
+  })
+}
+
+export function prepareSharedCreateKnownAllocationProofs(
+  plan: Effect.Success<ReturnType<typeof knownRecoveryPlan>>,
+  page: string,
+  bindings: readonly SharedCreateRecoveryBinding[],
+  bootstrap: SharedCreateKnownBootstrap,
+) {
+  return Effect.gen(function* () {
+    const proofs: PreparedNativeAllocationProof[] = []
+    for (const [index, binding] of bindings.entries()) {
+      const allocation = bootstrap.allocations[index]
+      const file = plan.files.find((item) => item.file_id === binding.file_id)
+      if (!allocation || allocation.file_id !== binding.file_id || !file)
+        return yield* refusal(
+          "The compact recovery proof requires the complete original native ACK set.",
+        )
+      proofs.push(
+        yield* prepareSharedNativeAllocationProof(plan, page, binding, allocation.acknowledgement, {
+          attemptId: plan.operation_id,
+          file,
+        }),
+      )
+    }
+    return proofs
   })
 }

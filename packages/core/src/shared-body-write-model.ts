@@ -200,7 +200,13 @@ export function validateSharedBodyWritePlan(input: unknown) {
         )
       if (
         plan.input_projection !== undefined &&
-        ((plan.input_projection.version !== 1 && plan.input_projection.purpose !== "body_write") ||
+        ((plan.input_projection.version !== 1 &&
+          plan.input_projection.purpose !== "body_write" &&
+          !(
+            plan.action === "restore_follow" &&
+            plan.input_projection.version >= 11 &&
+            plan.input_projection.purpose === "data_source_create"
+          )) ||
           validateSharedNotionMarkdownProjection(plan.input_projection).markdown !==
             plan.candidate.markdown)
       )

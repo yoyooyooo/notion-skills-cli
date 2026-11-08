@@ -120,6 +120,7 @@ const mutableSharedLocalPrefixes = [
   "audit/runs",
   "audit/latest",
   "operations/shared-source-runs",
+  "operations/shared-source-batches",
 ]
 const sharedLocalDomains: readonly {
   readonly prefix: string
@@ -143,6 +144,12 @@ const sharedLocalDomains: readonly {
     category: "dispatch",
     address:
       /^operations\/shared-source-runs\/source-run-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-source-batches",
+    category: "dispatch",
+    address:
+      /^operations\/shared-source-batches\/[a-f0-9]{64}\/source-batch-[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
   },
   {
     prefix: "plans/shared-inventory-imports",

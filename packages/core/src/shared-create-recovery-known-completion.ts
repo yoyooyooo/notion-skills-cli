@@ -3,6 +3,7 @@ import { fail, property } from "./model.ts"
 import { pageId } from "./ref.ts"
 import {
   sharedCreateContinuationReviewId,
+  sharedCreateContinuationReviewEntity,
   sharedCreateRecoveryTerminalId,
 } from "./shared-create-continuation-model.ts"
 import {
@@ -21,12 +22,23 @@ import {
 import {
   SharedCreateKnownRecoveryOutcomeSchema,
   validateSharedCreateKnownRecoveryReview,
+  makeSharedCreateKnownRecoveryReview,
 } from "./shared-create-recovery-known-model.ts"
 import { nativeFileMetadata, type FileEvent } from "./shared-file-state.ts"
 import { preservesSharedLibraryBindings, type SharedLibrary } from "./shared-library-model.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import { loadSharedCreatePlan } from "./shared-create.ts"
+import { readSharedNativeAllocationProofs } from "./shared-create-recovery-acknowledgements.ts"
+import { projectSharedRecoveryFiles } from "./shared-create-recovery-projection.ts"
+import { sharedNotionMarkdownPolicy } from "./shared-notion-projection.ts"
+import {
+  SharedCreateAcknowledgedContinuationOutcomeSchema,
+  validateSharedCreateAcknowledgedContinuationReview,
+  makeSharedCreateAcknowledgedContinuationReview,
+  type SharedCreateAcknowledgedContinuationReview,
+} from "./shared-create-continuation-acknowledged-model.ts"
 
 const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
@@ -87,9 +99,14 @@ export function readSharedCreateKnownCompletion(
       sharedCreateRecoveryOutcomesEntity,
     )
     // Earlier immutable recovery versions retain their own completion checks.
-    if (property(completed.payload).version !== 4) return undefined
+    if (![4, 5, 6].includes(Number(property(completed.payload).version))) return undefined
     const outcome = yield* createChecked(() =>
-      Schema.decodeUnknownSync(SharedCreateKnownRecoveryOutcomeSchema)(completed.payload, {
+      Schema.decodeUnknownSync(
+        Schema.Union([
+          SharedCreateKnownRecoveryOutcomeSchema,
+          SharedCreateAcknowledgedContinuationOutcomeSchema,
+        ]),
+      )(completed.payload, {
         onExcessProperty: "error",
       }),
     )
@@ -102,6 +119,37 @@ export function readSharedCreateKnownCompletion(
       retained.payload,
       outcome.recovery_id,
     )
+    let continuation: SharedCreateAcknowledgedContinuationReview | undefined
+    if (outcome.version === 6) {
+      const decision = yield* read(
+        sharedCreateContinuationReviewId(original),
+        sharedCreateContinuationReviewEntity,
+        true,
+      )
+      continuation = yield* validateSharedCreateAcknowledgedContinuationReview(
+        decision.payload,
+        outcome.continuation_id,
+      )
+      if (
+        review.version !== 3 ||
+        review.bootstrap.kind !== "known_needs_review" ||
+        decision.hash !== outcome.continuation_review_record_hash ||
+        decision.operation_id !== continuation.continuation_id ||
+        continuation.recovery_review_record_hash !== retained.hash ||
+        continuation.recovery_id !== review.review_id ||
+        continuation.original_operation_id !== original ||
+        continuation.original_plan_sha256 !== review.original_plan_sha256 ||
+        continuation.original_manifest_sha256 !== review.original_manifest_sha256 ||
+        continuation.original_outcome_sha256 !== review.original_outcome_sha256 ||
+        continuation.skill_page_id !== input.skillPageId ||
+        continuation.skill_id !== review.skill_id ||
+        !same(continuation.bindings, outcome.bindings) ||
+        !preservesSharedLibraryBindings(continuation.library, library)
+      )
+        return yield* Effect.fail(
+          invalid("The completion lacks its exact separately approved acknowledged continuation."),
+        )
+    }
     const originalRow = yield* read(original, sharedCreateManifestEntity, true)
     const manifest = yield* createChecked(() =>
       Schema.decodeUnknownSync(SharedCreateManifestSchema)(originalRow.payload, {
@@ -109,7 +157,7 @@ export function readSharedCreateKnownCompletion(
       }),
     )
     const expected = {
-      version: 4,
+      version: outcome.version === 6 ? 6 : review.version === 3 ? 4 : 5,
       kind: "skill_create_recovery_outcome",
       status: "applied",
       original_operation_id: original,
@@ -122,10 +170,16 @@ export function readSharedCreateKnownCompletion(
       skill_page_id: input.skillPageId,
       review_record_hash: retained.hash,
       bindings: outcome.bindings,
+      ...(outcome.version !== 6
+        ? {}
+        : {
+            continuation_id: outcome.continuation_id,
+            continuation_review_record_hash: outcome.continuation_review_record_hash,
+          }),
     }
     if (
       !same(outcome, expected) ||
-      completed.operation_id !== review.review_id ||
+      completed.operation_id !== (continuation?.continuation_id ?? review.review_id) ||
       retained.operation_id !== review.review_id ||
       originalRow.operation_id !== original ||
       originalRow.hash !== input.originalManifestHeader.hash ||
@@ -156,7 +210,8 @@ export function readSharedCreateKnownCompletion(
       outcome.bindings.some((binding) => pageId(binding.page_id) !== binding.page_id) ||
       headers.some(
         (header) =>
-          header.record_id === sharedCreateContinuationReviewId(original) ||
+          (continuation === undefined &&
+            header.record_id === sharedCreateContinuationReviewId(original)) ||
           header.record_id === sharedCreateRecoveryTerminalId(review.review_id),
       )
     )
@@ -224,15 +279,43 @@ export function readSharedCreateKnownCompletion(
           invalid("Recovery changed an already-created page or the ordered original prefix."),
         )
     }
+    const plan =
+      review.version === 4 || continuation !== undefined
+        ? yield* loadSharedCreatePlan(library, {
+            skillPageId: input.skillPageId,
+            operationId: original,
+          })
+        : undefined
+    if (
+      plan !== undefined &&
+      (yield* sha256(canonicalSharedJson(plan))) !== review.original_plan_sha256
+    )
+      return yield* Effect.fail(
+        invalid("The v11 allocation proofs have another retained original plan."),
+      )
+    const finalFiles =
+      plan !== undefined
+        ? (yield* projectSharedRecoveryFiles(plan, 11)).map((file) => ({
+            file_id: file.file_id,
+            path: file.path,
+            input_sha256: file.input.sha256,
+            projection: sharedNotionMarkdownPolicy(file.projection),
+            content: file.content,
+            event: file.event,
+          }))
+        : review.version === 3
+          ? review.files
+          : []
     for (const old of manifest.files) {
-      const file = review.files.find((item) => item.file_id === old.file_id)
+      const file = finalFiles.find((item) => item.file_id === old.file_id)
       const binding = outcome.bindings.find((item) => item.file_id === old.file_id)
       if (
         !file ||
         !binding ||
-        old.projection.version !== 9 ||
+        old.projection.version !== (review.version === 3 ? 9 : 10) ||
         old.projection.purpose !== "data_source_create" ||
-        file.projection.version !== 10 ||
+        file.projection.version !==
+          (continuation?.projection_version ?? review.projection_version) ||
         file.projection.purpose !== "data_source_create" ||
         old.projection.removed_terminal_lfs !== file.projection.removed_terminal_lfs ||
         file.path !== old.path ||
@@ -260,6 +343,80 @@ export function readSharedCreateKnownCompletion(
           invalid("The completion lacks its exact published initial ownership event."),
         )
     }
-    return { outcome, review, review_record_hash: retained.hash }
+    if (plan !== undefined) {
+      if (continuation !== undefined) {
+        const rebuilt = yield* makeSharedCreateAcknowledgedContinuationReview({
+          plan,
+          originalReview: review,
+          originalReviewHash: retained.hash,
+          recoveryJournalHash: continuation.recovery_journal_sha256,
+          recoveryDispatchesHash: continuation.recovery_dispatches_sha256,
+          bindings: continuation.bindings,
+          allocations: continuation.allocations,
+          observations: continuation.observations,
+        })
+        if (!same(rebuilt, continuation))
+          return yield* Effect.fail(
+            invalid(
+              "The continuation no longer reconstructs the original inputs and exact v11 decision.",
+            ),
+          )
+        const oldFiles = yield* projectSharedRecoveryFiles(plan, 10)
+        yield* readSharedNativeAllocationProofs(
+          library,
+          plan,
+          input.skillPageId,
+          continuation.bindings,
+          continuation.allocations,
+          (binding) => {
+            const previous = review.bindings.some((item) => item.file_id === binding.file_id)
+            const file = (previous ? plan.files : oldFiles).find(
+              (item) => item.file_id === binding.file_id,
+            )
+            if (!file) throw invalid("The continuation allocation has no exact original file.")
+            const acknowledgement =
+              previous && review.version === 3
+                ? review.bootstrap.allocations.find((item) => item.file_id === binding.file_id)
+                    ?.acknowledgement
+                : undefined
+            if (previous && acknowledgement === undefined)
+              throw invalid("The continuation lost an original review-bound ACK.")
+            return {
+              attemptId: previous ? original : review.review_id,
+              file,
+              ...(acknowledgement === undefined ? {} : { acknowledgement }),
+            }
+          },
+        )
+      } else if (review.version === 4) {
+        const rebuilt = yield* makeSharedCreateKnownRecoveryReview({
+          plan,
+          bootstrap: review.bootstrap,
+          originalOutcomeHash: review.original_outcome_sha256,
+          skillPageId: input.skillPageId,
+          bindings: review.bindings,
+          observations: review.observations,
+        })
+        if (!same(rebuilt, review))
+          return yield* Effect.fail(
+            invalid(
+              "The compact recovery commitments differ from the complete original inputs and exact v11 decision.",
+            ),
+          )
+        yield* readSharedNativeAllocationProofs(
+          library,
+          plan,
+          input.skillPageId,
+          review.bindings,
+          review.bootstrap.allocations,
+          (binding) => {
+            const file = plan.files.find((item) => item.file_id === binding.file_id)
+            if (!file) throw invalid("The allocation proof has no exact original file.")
+            return { attemptId: original, file }
+          },
+        )
+      }
+    }
+    return { outcome, review, review_record_hash: retained.hash, continuation }
   })
 }

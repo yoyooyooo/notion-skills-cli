@@ -10,13 +10,17 @@ import {
   prepareSharedCreate,
   reconcileSharedCreate,
 } from "../src/shared-create.ts"
-import { validateSharedCreatePlan } from "../src/shared-create-model.ts"
+import { makeSharedCreatePlan, validateSharedCreatePlan } from "../src/shared-create-model.ts"
+import { prepareSharedCreateLocal } from "../src/shared-create-local.ts"
 import { verifySharedCreatedSnapshot } from "../src/shared-create-verification.ts"
 import { LIBRARY_MARKER } from "../src/shared-library.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { createLibrary, sharedCreateFixture } from "./shared-create-fixture.ts"
 import { encode } from "./shared-snapshot-fixture.ts"
-import { library as withSourcesLibrary } from "./shared-source-projection-fixture.ts"
+import {
+  fixture as sourceFixture,
+  library as withSourcesLibrary,
+} from "./shared-source-projection-fixture.ts"
 
 function portable() {
   return {
@@ -53,6 +57,138 @@ function portable() {
 }
 
 describe("complete resource creation in the original native journal", () => {
+  test.each(["references/a.md", "references/a.markdown"])(
+    "a complete supporting header remains exact through native creation and cold reconstruction: %s",
+    async (path) => {
+      const f = sharedCreateFixture(),
+        input = portable()
+      const header =
+        "---\r\nname: nested-reference\r\nlicense: Complete terms in LICENSE.txt\r\nmetadata: '[opaque label](unresolved.md)'\r\n---\r\n\r\n"
+      const reference = input.files.find((file) => file.path === "references/a.md")!
+      reference.path = path
+      input.files[0]!.bytes = encode(
+        new TextDecoder().decode(input.files[0]!.bytes).replace("references/a.md", path),
+      )
+      reference.bytes = encode(header + "# Guide\r\n\r\n[Config](../data/options.json)\r\n")
+      const plan = await f.run(
+        prepareSharedCreate(createLibrary, { portable: input, completeResources: true }),
+      )
+      const projected = plan.files.find((file) => file.path === reference.path)!
+      expect(projected.input.text).toBe(new TextDecoder().decode(reference.bytes))
+      expect(property(projected.content).frontmatter).toBe(header)
+      expect(projected.content.mode).toBe("100755")
+      expect(projected.projection.markdown).toBe("# Guide\n\n[Config](../data/options.json)")
+      const created = await f.run(executeSharedCreate(createLibrary, { plan, mode: "create" }))
+      f.base.objects.clear()
+      f.base.json.clear()
+      const snapshot = await f.run(
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library: createLibrary,
+            target: created.skill_page_id,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            readOnly: true,
+            forceFull: true,
+          })
+        }),
+      )
+      const actual = snapshot.files.find((file) => file.path === reference.path)!
+      expect(actual.mode).toBe("100755")
+      expect(new TextDecoder().decode(f.base.objects.get(`objects/${actual.sha256}`))).toBe(
+        header + "# Guide\n\n[Config](../data/options.json)",
+      )
+      expect(() => verifySharedCreatedSnapshot(snapshot, created)).not.toThrow()
+      const reconstructed = await f.run(
+        loadSharedCreatePlan(createLibrary, {
+          skillPageId: created.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      )
+      expect(canonicalSharedJson(reconstructed)).toBe(canonicalSharedJson(plan))
+    },
+  )
+
+  test.each(["", "\uFEFF"])(
+    "a supporting local N1 keeps complete C1 header ancestry and its separately authored header and mode: prefix %j",
+    async (prefix) => {
+      const path = "references/nested/SKILL.md"
+      const c1Header = prefix + "---\nname: nested-reference\nlicense: MIT\n---\n\n"
+      const n1Header = prefix + "---\nname: nested-reference\nlicense: Apache-2.0\n---\n\n"
+      const f = sourceFixture([{ path, bytes: encode(c1Header + "# Original\n"), mode: "100755" }])
+      const original = await f.prepare()
+      const source = original.source_projection
+      const baseline = f.snapshot.members[0]!.portable
+      const files = baseline.files.map((file) =>
+        file.path === path
+          ? { ...file, bytes: encode(n1Header + "# Local N1\n"), mode: "100644" as const }
+          : file,
+      )
+      const local = await f.run(
+        prepareSharedCreateLocal({
+          baseline: source.binding,
+          baselineFiles: baseline.files,
+          files,
+          selected: source.binding,
+        }),
+      )
+      const plan = await f.run(
+        makeSharedCreatePlan(withSourcesLibrary, {
+          portable: { ...baseline, files: files.filter((file) => /\.md$/u.test(file.path)) },
+          sourceProjection: { ...source, local },
+          completeResources: true,
+          enabled: true,
+        }),
+      )
+      const projected = plan.files.find((file) => file.path === path)!
+      expect(projected.ancestors).toHaveLength(1)
+      expect(projected.ancestors?.[0]).toMatchObject({
+        kind: "projected",
+        source_revision: f.snapshot.revision,
+        frontmatter: c1Header,
+        mode: "100755",
+      })
+      expect(projected.baseline_body?.markdown).toBe("# Original")
+      expect(property(projected.baseline_body?.content).frontmatter).toBe(c1Header)
+      expect(projected.event).toMatchObject({
+        kind: "adopted",
+        parents: [projected.ancestors![0]!.event_id],
+      })
+      expect(projected.content).toMatchObject({ frontmatter: n1Header, mode: "100644" })
+      expect(projected.input.text).toBe(n1Header + "# Local N1\n")
+      const created = await f.run(executeSharedCreate(withSourcesLibrary, { plan, mode: "create" }))
+      f.base.objects.clear()
+      f.base.json.clear()
+      const snapshot = await f.run(
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library: withSourcesLibrary,
+            target: created.skill_page_id,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            readOnly: true,
+            forceFull: true,
+          })
+        }),
+      )
+      const actual = snapshot.files.find((file) => file.path === path)!
+      expect(actual.mode).toBe("100644")
+      expect(
+        new TextDecoder("utf-8", { ignoreBOM: true }).decode(
+          f.base.objects.get(`objects/${actual.sha256}`),
+        ),
+      ).toBe(n1Header + "# Local N1")
+      expect(() => verifySharedCreatedSnapshot(snapshot, created)).not.toThrow()
+      const reconstructed = await f.run(
+        loadSharedCreatePlan(withSourcesLibrary, {
+          skillPageId: created.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      )
+      expect(canonicalSharedJson(reconstructed)).toBe(canonicalSharedJson(plan))
+    },
+  )
+
   test("raw bytes, Markdown modes and extra main frontmatter survive cold consumption and original reconstruction", async () => {
     const f = sharedCreateFixture(),
       input = portable()

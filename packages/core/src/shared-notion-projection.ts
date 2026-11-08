@@ -7,6 +7,7 @@ import {
   projectNotionMarkdownV10,
 } from "./shared-notion-document-spacing.ts"
 import { projectNativeTextBreaks } from "./shared-notion-text-breaks.ts"
+import { projectNativeHeadingLiterals } from "./shared-notion-literal-text.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import {
   projectNotionMarkdownV2,
@@ -89,6 +90,10 @@ const ProjectionV10Schema = Schema.Struct({
   ...ProjectionV9Schema.fields,
   version: Schema.Literal(10),
 })
+const ProjectionV11Schema = Schema.Struct({
+  ...ProjectionV10Schema.fields,
+  version: Schema.Literal(11),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
@@ -100,10 +105,11 @@ export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV8Schema,
   ProjectionV9Schema,
   ProjectionV10Schema,
+  ProjectionV11Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
-export const currentSharedNotionMarkdownVersion = 10
+export const currentSharedNotionMarkdownVersion = 11
 
 export const SharedNotionMarkdownPolicySchema = Schema.Union([
   Schema.Struct({
@@ -175,6 +181,13 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(11),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
 /** Retained policies keep their exact bytes. New writes predict independently
@@ -224,6 +237,7 @@ export function projectSharedNotionMarkdown(
           literalEscapes: version >= 10 ? "markdown" : version >= 7 ? "underscores" : "none",
         })
       : projected.markdown
+  const body = version >= 11 ? projectNativeHeadingLiterals(text) : text
   return {
     version,
     ...common,
@@ -231,11 +245,11 @@ export function projectSharedNotionMarkdown(
     wire_markdown: projected.wire,
     markdown:
       version >= 8
-        ? mapMarkdownLinks(text, (href) => {
+        ? mapMarkdownLinks(body, (href) => {
             const page = /^https:\/\/www\.notion\.so\/([a-f0-9]{32})$/u.exec(href)?.[1]
             return page === undefined ? href : `https://app.notion.com/p/${page}`
           })
-        : text,
+        : body,
   }
 }
 

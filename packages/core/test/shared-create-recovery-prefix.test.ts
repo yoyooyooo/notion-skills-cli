@@ -81,6 +81,7 @@ test("an acknowledged v8 main before the manifest has a separate readonly v9 rec
   const before = structuredClone([...f.base.json])
   const review = await f.run(reviewSharedCreateRecovery(selection))
   expect(review.version).toBe(2)
+  if (review.version !== 2) throw new Error("Expected the historical v8 to v9 review")
   expect(review.original_operation_id).toBe(plan.operation_id)
   expect(review.original_outcome_sha256).toBeNull()
   expect(review.projection_version).toBe(9)
@@ -88,7 +89,6 @@ test("an acknowledged v8 main before the manifest has a separate readonly v9 rec
   expect(review.bindings[0]?.page_id).toBe(target)
   expect(review.files[0]?.content.mode).toBe("100644")
   expect(property(review.files[0]?.content).frontmatter).toContain("license: MIT")
-  if (review.version !== 2) throw new Error("Expected the historical v8 to v9 review")
   expect(JSON.parse(review.observations[0]!.response_json).markdown).toBe(observed)
   const dry = await f.run(
     applySharedCreateRecovery({ plan, review, reviewId: review.review_id, dryRun: true }),
@@ -304,6 +304,7 @@ test.each([false, true])(
 test("a rehashed review cannot change preserved mode or the original full input", async () => {
   const { f, plan, selection } = await partial()
   const review = await f.run(reviewSharedCreateRecovery(selection))
+  if (review.version !== 2) throw new Error("Expected the historical v8 to v9 review")
   const tampered = structuredClone(review)
   const { review_id: _old, ...fields } = tampered
   property(fields.files[0]?.content).mode = "100755"

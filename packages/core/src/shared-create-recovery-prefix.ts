@@ -69,17 +69,24 @@ import {
   makeSharedCreateKnownRecoveryReview,
   compactSharedCreateRecoveryObservation,
   validateSharedCreateKnownRecoveryReview,
+  prepareSharedCreateKnownAllocationProofs,
   type SharedCreateKnownRecoveryReview,
   type SharedCreateKnownRecoveryOutcome,
 } from "./shared-create-recovery-known-model.ts"
+import {
+  retainSharedNativeAllocationProofs,
+  type PreparedNativeAllocationProof,
+} from "./shared-create-recovery-acknowledgements.ts"
 
 type Plan = Effect.Success<ReturnType<typeof prefixRecoveryPlan>>
 type Files = Effect.Success<ReturnType<typeof makeSharedCreatePrefixRecoveryFiles>>
 type Review = SharedCreatePrefixRecoveryReview | SharedCreateKnownRecoveryReview
-const isKnownPlan = (plan: Plan) => plan.files[0]?.projection.version === 9
+const isKnownPlan = (plan: Plan) =>
+  plan.files[0]?.projection.version === 9 || plan.files[0]?.projection.version === 10
 function recoveryPlan(input: unknown) {
   const files = property(input).files
-  return Array.isArray(files) && property(property(files[0]).projection).version === 9
+  return Array.isArray(files) &&
+    [9, 10].includes(Number(property(property(files[0]).projection).version))
     ? knownRecoveryPlan(input)
     : prefixRecoveryPlan(input)
 }
@@ -92,7 +99,7 @@ const originalStatus = (review: Review) =>
     ? ("acknowledged_prefix" as const)
     : ("needs_review" as const)
 function rebuildReview(plan: Plan, review: Review) {
-  return review.version === 3
+  return review.version === 3 || review.version === 4
     ? makeSharedCreateKnownRecoveryReview({
         plan,
         bootstrap: review.bootstrap,
@@ -495,6 +502,7 @@ export function reconcileSharedCreatePrefixRecovery(input: {
       return yield* refusal("Select the exact original create and acknowledged Skill.")
     const library = yield* loadSharedLibrary(input.entry)
     const result = yield* existingCompletion(plan, library, page)
+    const continuation = "continuation" in result ? result.continuation : undefined
     return {
       status: "recovered" as const,
       original_operation_id: plan.operation_id,
@@ -502,13 +510,23 @@ export function reconcileSharedCreatePrefixRecovery(input: {
       skill_page_id: page,
       original_status: originalStatus(result.review),
       original_outcome_recorded: result.review.original_outcome_sha256 !== null,
-      verification: "original_recovery_outcome" as const,
+      verification:
+        continuation === undefined
+          ? ("original_recovery_outcome" as const)
+          : ("original_acknowledged_continuation_outcome" as const),
+      ...(continuation === undefined
+        ? {}
+        : {
+            continuation_operation_id: continuation.continuation_id,
+            original_write_outcome: "acknowledged" as const,
+          }),
       verified: true as const,
       current_snapshot_verified: false as const,
       requires_fresh_read: true as const,
       reused: true as const,
-      existing_pages_preserved: result.review.bindings.length,
-      created_pages: plan.files.length - result.review.bindings.length,
+      existing_pages_preserved: continuation?.bindings.length ?? result.review.bindings.length,
+      created_pages:
+        continuation === undefined ? plan.files.length - result.review.bindings.length : 0,
     }
   }).pipe(withReadOnlyNotion)
 }
@@ -522,7 +540,7 @@ export function applySharedCreatePrefixRecovery(input: {
 }) {
   return Effect.gen(function* () {
     const plan = yield* recoveryPlan(input.plan)
-    const review = yield* property(input.review).version === 3
+    const review = yield* [3, 4].includes(Number(property(input.review).version))
       ? validateSharedCreateKnownRecoveryReview(input.review, input.reviewId)
       : validateSharedCreatePrefixRecoveryReview(input.review, input.reviewId)
     const page = review.skill_page_id,
@@ -548,15 +566,29 @@ export function applySharedCreatePrefixRecovery(input: {
         target: page,
         plan,
       })
-    if (review.version === 3) {
+    let allocationProofs: readonly PreparedNativeAllocationProof[] = []
+    if (review.version === 3 || review.version === 4) {
       const original = yield* originalKnownCreateBootstrap(library, plan, page)
+      const rebuilt = yield* makeSharedCreateKnownRecoveryReview({
+        plan,
+        ...original,
+        skillPageId: page,
+        observations: review.observations,
+      })
       if (
-        !same(original.bootstrap, review.bootstrap) ||
+        !same(rebuilt, review) ||
         !same(original.bindings, review.bindings) ||
         original.originalOutcomeHash !== review.original_outcome_sha256
       )
         return yield* refusal(
           "The complete original request set, ACK prefix or terminal changed after recovery review.",
+        )
+      if (review.version === 4)
+        allocationProofs = yield* prepareSharedCreateKnownAllocationProofs(
+          plan,
+          page,
+          original.bindings,
+          original.bootstrap,
         )
     } else if (!same(yield* originalBootstrap(plan, page), review.bootstrap))
       return yield* refusal("The original local journal or ACK changed after recovery review.")
@@ -579,6 +611,7 @@ export function applySharedCreatePrefixRecovery(input: {
       sharedCreateRecoveryOutcomeId(plan.operation_id),
       ...plan.files.flatMap((file) => [file.input.object_id, file.content.object_id]),
       ...files.flatMap((file) => [file.content.object_id, file.event.event_id]),
+      ...allocationProofs.map((proof) => proof.reference.record_id),
     ])
     if (review.original_outcome_sha256 !== null) {
       for (const id of [
@@ -656,7 +689,7 @@ export function applySharedCreatePrefixRecovery(input: {
       {
         operation_id: review.review_id,
         skill_id: plan.skill_id,
-        ...(review.version === 3
+        ...(review.version === 3 || review.version === 4
           ? {
               recovery_file_projections: metadataBindings
                 .filter((binding) => binding.page_id !== page)
@@ -685,6 +718,8 @@ export function applySharedCreatePrefixRecovery(input: {
         payload: review,
         payloadContainsBody: true,
       })
+      stage = "allocation_proofs"
+      yield* retainSharedNativeAllocationProofs(library, page, allocationProofs)
       stage = "original_manifest"
       yield* retainSharedCreateManifest(library, plan, page, "create")
       stage = "original_inputs"
@@ -787,10 +822,10 @@ export function applySharedCreatePrefixRecovery(input: {
         bindings,
       }
       const completion: SharedCreatePrefixRecoveryOutcome | SharedCreateKnownRecoveryOutcome =
-        review.version === 3
+        review.version === 3 || review.version === 4
           ? {
               ...completionFields,
-              version: 4,
+              version: review.version === 3 ? 4 : 5,
               original_outcome_sha256: review.original_outcome_sha256,
             }
           : { ...completionFields, version: 3, original_outcome_sha256: null }
