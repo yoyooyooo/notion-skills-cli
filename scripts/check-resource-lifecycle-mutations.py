@@ -19,6 +19,13 @@ cases=[
   'packages/core/test/shared-file-state.test.ts','metadata-only observation'),
  ('audit-readonly','packages/core/src/shared-file-observer.ts','if (input.readOnly)',
   'if (false && input.readOnly)','packages/core/test/shared-file-observer-readonly.test.ts','audit-style observation'),
+ ('readonly-capability','packages/core/src/notion-readonly.ts',
+  '''if (
+          !relativeNotionPath(path) ||
+          (method === "GET" && body !== undefined) ||
+          !isCoalescibleNotionRead({ key: "readonly", path, method, file: options?.file })
+        )''',
+  'if (false)','packages/core/test/notion-readonly-observation.test.ts','auto-adopting consumer'),
 ]
 results=[]
 def execute(label,test,pattern):

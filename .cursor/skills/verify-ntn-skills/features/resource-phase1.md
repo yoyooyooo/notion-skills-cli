@@ -18,6 +18,8 @@ For NR02, a UI lock, confirmation, timestamp, shared Running field or a single l
 
 For NR03, record semantic writes separately from HTTP methods because Notion queries use POST. The read-only capability must reach all downstream observers; merely suppressing the last write does not pass. Verify ordinary current-read adoption through its existing tests.
 
+Use `state --observe` as the public phase-one observation entry. For a real changed-body comparison, retain the owned fixture's body and complete Records before the call: it must report `requires_observation_commit` with zero writes and unchanged facts. Then run ordinary `read` on that same unchanged edited body and verify its established adoption behavior. Keep selected source and projection ancestry unchanged throughout. This comparison does not establish the later single-Skill audit's reference findings or library-wide coverage.
+
 ### Executable entry points
 
 - `ctl library state TARGET --entry ENTRY --observe` reads current bodies and supported original pending outcomes. Use default mode first to preserve the distinction between recorded and observed facts.
