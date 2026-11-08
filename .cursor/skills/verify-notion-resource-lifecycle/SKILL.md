@@ -17,6 +17,7 @@ Read `verification/models/resource-lifecycle/coverage.json` and `README.md`. The
 | UpdateCommit | Complete retention before one authorized selection; one original dispatch, honest unknown outcomes and stable existing session pins. | It does not model every dispatcher, all source adapters, multiple writers or arbitrary resources. |
 | AuditRun | Read-only reverse inventory, declared coverage and monotone resumption under a finite budget. | Two roots and one orphan abstract the real paginated audit; the model does not prove network cost, SQL crash recovery or a globally atomic database snapshot. |
 | ImportCreate | A reviewed complete input, disabled creation, durable original acknowledgements, bounded continuation and enablement only after all abstract stages verify. | Two retained inputs (document and raw resource) and four stages abstract a single explicitly enabled creation. Actual file formats, immutable-record reconciliation and manual edits require code and installed tests. |
+| CreateRecovery | A separately reviewed v9 creation recovery, one or three original ACK pages, a complete original request set, no unknown-attempt replay and exact Projection authority before the first write. | One abstract missing suffix and three mutable stages. It does not prove Markdown v10, arbitrary request counts, cold-record validation, current-body atomicity, transport permissions or actual Notion behavior. |
 
 A passing model is not completion of its linked Issue. Negative controls describe the consequence of removing a guard; classify a production defect only with its current code correspondence or a live reproduction.
 
@@ -39,6 +40,17 @@ python3 scripts/check-resource-lifecycle-mutations.py --out /tmp/notion-resource
 
 Each original baseline must pass, removing the real guard must trigger an assertion failure, and restoring its exact bytes must pass again. The script stops rather than overwriting a concurrent change. Preserve all original output outside the repository. It changes no live Notion content.
 
+For changes to the reviewed v9 recovery path, select the new group instead of rerunning unchanged model groups:
+
+```sh
+node scripts/verify-resource-lifecycle.mjs --model CreateRecovery --out /absolute/new/recovery-model-run
+python3 scripts/check-create-recovery-mutations.py --protected-worktree /absolute/active/worktree --out /absolute/new/recovery-guard-run
+```
+
+The second command runs from a separate candidate worktree with its own dependency tree and caches. It reuses the public recovery and dispatcher fixtures. Removing the complete-original-dispatch-set check must make an incomplete original admission fail the test's independent refusal assertion. Removing the first-PATCH scope check must fail the independent zero-transport-write assertion even though the later scope check still returns an error. A post-write error does not establish safe rejection.
+
+The existing four mutation cases still cover their original body, ownership and read-only boundaries. They do not cover the recovery metadata allowance, the complete original request set or its two histories. Do not report them as new recovery proof.
+
 ## Explain results in domain terms
 
 For the human-edit counterexample, identify the initial read, subsequent human edit and unconditional replacement. Trace `requireSafeBodyReplacement` through restore-follow in the body writer and the source-run policy. Explicit manual author writes have their own protocol and are outside this model's guard-coverage claim. A current byte match is an observation, not a server-enforced precondition.
@@ -54,5 +66,7 @@ Use Pstack `/statechart` semantics: retain generated Mermaid, label states in do
 ## Maintain the verification
 
 When code changes, apply `/maintain-formal-verification-skill`: decide whether a failure is a changed intended contract, model drift or a product defect. Move the reviewed commit and hashes only after tracing that distinction. Run the existing matrix, and keep each new negative control isolated enough to identify the guard it removes.
+
+When only one reviewed model group changes, run that selected group and retain the exact prior receipts for unchanged groups. Record source, runner, model/config/view hashes and the reviewed correspondence; inherited evidence is not a new execution. A projection serialization change does not by itself require changing ProjectionRace or UpdateCommit. A new first-write authority branch requires its own code-level counterexample and explicit mapping.
 
 Performance, arbitrary data sizes, source parsing, actual permissions, concurrent Notion edits, multiple writers, machine-bound local access and complete historical retention need their own tests or additional models. A finite pass does not authorize production imports, host installation, cleanup or changes to the editing protocol.

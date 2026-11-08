@@ -1,6 +1,6 @@
 # Resource lifecycle models
 
-These bounded models check selected lifecycle contracts. Product implementation, installed-package behavior and live service acceptance require their separate evidence. The four TLA+ modules have independent negative controls and use the actual Pstack `statechart` checker and graph compiler, pinned at `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`, and TLC 1.7.4.
+These bounded models check selected lifecycle contracts. Product implementation, installed-package behavior and live service acceptance require their separate evidence. The five TLA+ modules have independent negative controls and use the actual Pstack `statechart` checker and graph compiler, pinned at `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`, and TLC 1.7.4.
 
 ## Run
 
@@ -24,6 +24,7 @@ Broken configurations are expected to fail their named properties. The runner is
 | UpdateCommit | Complete selected resources, no blind retry after an unknown outcome, original-operation receipt, stable existing session pin. | A logical single selection operation, not all remote writes or a global transaction. `objects` abstracts exact available resources; it does not require storing upstream bytes in Notion. |
 | AuditRun | No semantic writes, reverse inventory before complete coverage, retained progress on resume, honest permission-limited reports. | A coarse abstraction of the audit coordinator. The reverse scan is one step; pagination, HTTP accounting, endpoint/credential fences and concurrent live changes need implementation tests. |
 | ImportCreate | Complete approved input before dispatch, one original mutable-page request per stage, durable ACK before confirmation, whole-tree verification before explicit enablement. | Four abstract stages for one explicitly enabled create: root, Files/resources, metadata/selection, enablement. Exact immutable Record reconciliation is separate from mutable-page ACK authority. Disabled creation, arbitrary files, codec normalization and concurrent user edits need product tests. |
+| CreateRecovery | Complete original evidence, separate original/recovery histories, no uncertain-stage redispatch and exact Projection authority before transport. | One or three original ACK pages, one abstract suffix and three mutable stages. Full payloads, arbitrary cardinality, cold completion and provider behavior require product tests. |
 
 Safety configurations exhaust their finite reachable state spaces. Liveness is checked only in `AuditRun.liveness.cfg` and `AuditRun.reset.cfg`. It assumes weak fairness of progress steps and that the modeled resumptions are supplied. It does not promise completion when a caller never resumes, permission never returns, or providers never answer. Unknown update outcomes intentionally permit waiting without claiming progress.
 
@@ -33,17 +34,54 @@ ImportCreate distinguishes a lost response with no durable ACK from an acknowled
 
 ## Current storage, projection and prefix-recovery correspondence
 
-The current review keeps the same four models, 19 configurations, invariants and bounds. Source-refresh changes only route complete fixed manifests through typed storage preflight. Original create dispatch compares immutable Record requests by their verified canonical logical envelopes; mutable page-request ACK authority, original dispatch ordering and the original complete-verification/enablement boundary remain unchanged. These changes do not add transitions to UpdateCommit or ImportCreate.
+The current review preserves the original four models and their 19 configurations, invariants and bounds, and adds the separately scoped CreateRecovery model with four configurations. Source-refresh routes complete fixed manifests through typed storage preflight. Original create dispatch compares immutable Record requests by their verified canonical logical envelopes; mutable page-request ACK authority, original dispatch ordering and the original complete-verification/enablement boundary remain unchanged. The new exact recovery metadata allowance checks PATCH scope before the first transport write. It is mapped to CreateRecovery, not added to UpdateCommit or the original ImportCreate transition system.
 
-The `files` map in `coverage.json` also binds reviewed context that is explicitly listed in `unmodeled_bindings`. Fixed-manifest gzip/Base64 storage, 1 MiB logical/180 KiB encoded limits, arbitrary path counts, transport framing and canonical cache representation require their source, Node and real-input tests. Native projection v9 predicts two creation document boundaries while preserving original submitted wire bytes; the models do not prove that prediction, actual Notion rendering or retained-policy compatibility.
+The `files` map in `coverage.json` also binds reviewed context that is explicitly listed in `unmodeled_bindings`. Fixed-manifest gzip/Base64 storage, 1 MiB logical/180 KiB encoded limits, arbitrary path counts, transport framing and canonical cache representation require their source, Node and real-input tests. Native v9/v10 projection predicts document boundaries and literal-token rendering while preserving original submitted wire bytes; the models do not prove those bytes, actual Notion rendering or retained-policy compatibility.
 
-The three `shared-create-recovery-prefix*` modules, their routing caller and the durable ACK schema in `shared-sources-model.ts` are hash-bound review context only. ImportCreate has no state for an acknowledged original v1/v8 main before its manifest, the exact original local journal and ACK metadata, a separately reviewed suffix operation, two operation histories, or a versioned compact recovery completion. The new path preserves the original main and input, requires its original ACK, writes a separate recovery decision/outcome and never invents the absent original terminal. Code and installed/live tests must establish those facts; passing ImportCreate does not establish this new recovery protocol, its pending-create suppression or cold consumption. Its controlled tests are listed separately in `unmodeled_bindings`.
+The historical v1/v8 main-before-manifest recovery, exact payload schemas and original journal/ACK metadata remain hash-bound review context. CreateRecovery adds only the stated bounded v1/v9 state and authority mapping; ImportCreate has no transition for this separate operation. Both recovery variants preserve acknowledged original pages and inputs, write a separate recovery decision/outcome and never invent an absent original terminal. Exact original request sets, compact response proofs, versioned cold completion, pending-create suppression and consumer reconstruction still require code and installed/live evidence. Their controlled tests are listed in `unmodeled_bindings`.
 
-The durable ACK schema is defined in the existing Sources model, which depends only on Effect. Generic dispatch and prefix review import that same schema directly, preserving its fields and validation while avoiding an eager read from the execution-module cycle. Schema placement and ESM initialization order require fresh Node process checks; the finite state models do not prove them.
+The durable ACK schema is defined in the existing Sources model, which depends only on Effect. Generic dispatch and prefix review import that same schema directly. Shared recovery Binding, Observation and File schemas now live in a separate proof-model dependency instead of an execution module. Their fields and validation remain unchanged. Schema placement and ESM initialization order require fresh Node process checks; the finite state models do not prove them.
 
-No property was weakened, no bound was reduced and no new recovery or codec model is claimed. Public CLI/SDK acceptance and real-service recovery remain separate gates.
+No existing property was weakened or bound reduced. The new recovery model has only the scope stated below; codec correctness remains unmodeled. Public CLI/SDK acceptance and real-service recovery remain separate gates.
 
 ## Code correspondence and mutation replay
+
+### Reviewed v9 creation recovery
+
+`CreateRecovery` is a separate bounded abstraction of the v9-to-v10 recovery protocol. The initial history is either one acknowledged main with no original terminal, or three acknowledged native pages with the original `needs_review` terminal retained. One abstract missing suffix stands for the complete remaining native set. The mutable stages are suffix creation, an exact Projection metadata change and explicit enablement. Initial events must cover the bounded file set before enablement, and a separate completion follows acknowledged verification.
+
+The model keeps the original pages and original terminal state distinct from the recovery operation. A missing original request/ACK set blocks admission and is rechecked before apply. An incomplete recovery has only read-only reconciliation: even a visible page or an ACK for an intermediate stage cannot dispatch the next stage through this protocol. Projection metadata is authorized before transport; checking the same scope after the write cannot satisfy that rule. ExistingBodyWriteForbidden records whether a body-bearing mutation request reaches transport; it does not claim that Notion accepted the field or that actual text was lost.
+
+| Configuration | Removed boundary | Expected broken rules |
+| --- | --- | --- |
+| `CreateRecovery.cfg` | None | None |
+| `CreateRecovery.original.cfg` | Complete original evidence at review/apply | `OriginalEvidenceRequired` |
+| `CreateRecovery.replay.cfg` | No redispatch of an uncertain recovery stage | `AtMostOneRecoveryDispatch` |
+| `CreateRecovery.scope.cfg` | Exact Projection authority before transport | `ProjectionAuthorityBeforeWrite`, `ExistingBodyWriteForbidden` |
+
+This model does not prove the actual 76 original dispatches, the 35 native/407 effective paths, Markdown v10 rendering, byte hashes, compact observations, Record serialization, the cold completion validator or provider permissions. The original-set boolean stands for the implemented full manifest, object, Source, dispatch and ACK checks; the scope boolean stands for complete current owner/path/source/disabled/body checks. A current-scope change is modeled before a stage's check, not as an atomic Notion transaction after that check. The actual new behavior needs the original raw response receipts, controlled tests, fresh Node startup and installed/live acceptance.
+
+The existing `ProjectionRace`, `UpdateCommit`, `AuditRun` and `ImportCreate` configurations retain their earlier boundaries. `ImportCreate` still describes the original create invocation, not this second operation. The shared original reference-request builder preserves the original wire body. The optional `recovery_file_projections` allowance adds a new, explicitly scoped metadata authority and does not authorize any existing body write. The old four guard removals do not exercise that new allowance.
+
+Run only this group when the other exact model/config/view inputs and their reviewed source correspondence remain unchanged:
+
+```sh
+node scripts/verify-resource-lifecycle.mjs --model CreateRecovery --out /absolute/new/recovery-model-run
+```
+
+The full runner now includes the prior 19 configurations and these four. Its source hash check still applies to the complete `files` map before a selected run. Do not update `synchronized_commit` to an uncommitted candidate or call inherited results a fresh run.
+
+Two additional real-code mutations replay the new boundaries in a separate candidate worktree:
+
+```sh
+python3 scripts/check-create-recovery-mutations.py \
+  --protected-worktree /absolute/active/product-worktree \
+  --out /absolute/new/recovery-guard-mutations
+```
+
+The copy must contain the exact frozen candidate, its own dependency files and its own caches. The runner refuses a symlink that escapes that copy and never mutates the protected worktree. It reuses `shared-create-known-recovery.test.ts`: a missing original Record dispatch must refuse review; a `markdown` key on the Projection request must produce zero transport writes. The second mutation removes only the first-PATCH check and leaves the later postcondition intact, so the counterexample demonstrates the real check-after-write defect. Each case requires baseline pass, an assertion failure after guard removal, byte/mode restoration and restored pass. Whole-source hashes are retained before and after.
+
+Only self-loops and steps merged into the same domain label are hidden by the recovery chart. Fault labels retain distinct combinations of missing evidence, repeated dispatch, late authority checks and a body-bearing request reaching transport; they must not be merged into a benign or ambiguous state.
 
 `coverage.json` records the reviewed commit, content hashes and the boundary of each abstraction. A hash mismatch means the model needs review, not that the product is incorrect. Use `/maintain-formal-verification-skill` to compare the changed functions and move the synchronization commit only after confirming the correspondence.
 

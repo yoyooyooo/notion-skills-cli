@@ -64,7 +64,7 @@ fs.rmSync = (name, ...rest) => {
   assert.ok(path.basename(absolute).startsWith("statechart-"))
   fs.renameSync(absolute, path.join(retained, path.basename(absolute)))
 }
-const matrix = [
+const fullMatrix = [
   ["ProjectionRace", "cfg", []],
   ["ProjectionRace", "broken.cfg", ["HumanEditPreserved"]],
   ["UpdateCommit", "cfg", []],
@@ -88,7 +88,18 @@ const matrix = [
   ["ImportCreate", "early.cfg", ["EnableRequiresComplete"]],
   ["ImportCreate", "inference.cfg", ["ConfirmationNeedsOriginalAck"]],
   ["ImportCreate", "stale.cfg", ["FrozenInputRequired"]],
+  ["CreateRecovery", "cfg", []],
+  ["CreateRecovery", "original.cfg", ["OriginalEvidenceRequired"]],
+  ["CreateRecovery", "replay.cfg", ["AtMostOneRecoveryDispatch"]],
+  ["CreateRecovery", "scope.cfg", ["ProjectionAuthorityBeforeWrite", "ExistingBodyWriteForbidden"]],
 ]
+const selectedModel = option("--model")
+assert.ok(
+  selectedModel === undefined || fullMatrix.some(([name]) => name === selectedModel),
+  "The selected model must name an existing verification group",
+)
+const matrix =
+  selectedModel === undefined ? fullMatrix : fullMatrix.filter(([name]) => name === selectedModel)
 const summary = {
   source_commit: coverage.synchronized_commit,
   source_hashes_verified: Object.keys(coverage.files),
@@ -100,6 +111,7 @@ const summary = {
   ),
   pstack_commit: upstream.stdout.trim(),
   tlc: "1.7.4",
+  selected_model: selectedModel ?? null,
   runs: [],
   complete: false,
 }
