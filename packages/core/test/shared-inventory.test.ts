@@ -73,6 +73,52 @@ test("local inventory deduplicates exact real aliases, preserves binary modes, a
   expect(first.source_writes).toBe(0)
 })
 
+test("local inventory prefers the root Skill entrypoint while retaining Prompt, Router and nested resources", async () => {
+  const f = await auditFixture(1),
+    local = await localFixture()
+  await writeFile(join(local.skill, "PROMPT.md"), "# Demo prompts\r\n")
+  await writeFile(join(local.skill, "ROUTER.md"), "# Supporting router\n")
+  await mkdir(join(local.skill, "nested"))
+  await writeFile(join(local.skill, "nested", "SKILL.md"), "# Nested resource\n")
+  const report = await f.run(scanLocalSkillInventory({ roots: [local.skills] }))
+  expect(report.entities).toHaveLength(1)
+  const entity = report.entities[0]!
+  expect(entity.main).toBe("SKILL.md")
+  expect(entity.files.map((file) => file.path)).toEqual([
+    "nested/SKILL.md",
+    "PROMPT.md",
+    "ROUTER.md",
+    "scripts/tool.bin",
+    "SKILL.md",
+  ])
+  expect(entity.files.find((file) => file.path === "scripts/tool.bin")?.mode).toBe("100755")
+  expect(await readFile(join(local.skill, "PROMPT.md"), "utf8")).toBe("# Demo prompts\r\n")
+  expect(report.source_writes).toBe(0)
+  expect(f.ledger).toHaveLength(0)
+})
+
+test("local inventory keeps Prompt and Router fallback and never promotes a nested Skill past a parent entrypoint", async () => {
+  const f = await auditFixture(1)
+  for (const paths of [
+    ["PROMPT.md"],
+    ["ROUTER.md"],
+    ["PROMPT.md", "ROUTER.md"],
+    ["PROMPT.md", "nested/SKILL.md"],
+  ]) {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "ntn-inventory-main-")))
+    for (const path of paths) {
+      await mkdir(join(root, path, ".."), { recursive: true })
+      await writeFile(join(root, path), `# ${path}\n`)
+    }
+    const report = await f.run(scanLocalSkillInventory({ roots: [root] }))
+    expect(report.entities).toHaveLength(1)
+    expect(report.entities[0]?.main).toBe(paths[0]!)
+    expect(report.entities[0]?.files.map((file) => file.path).sort()).toEqual([...paths].sort())
+    expect(report.source_writes).toBe(0)
+  }
+  expect(f.ledger).toHaveLength(0)
+})
+
 test("outside/broken symlinks, secrets and finite budgets stay explicit without reading secret values into reports", async () => {
   const f = await auditFixture(1),
     local = await localFixture()

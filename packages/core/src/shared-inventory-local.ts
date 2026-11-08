@@ -643,7 +643,9 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
           ]),
         ].sort(),
         name: basename(root),
-        main: basename(mains.find((main) => dirname(main) === root)!),
+        main: ownFiles.some((file) => file.path === "SKILL.md")
+          ? "SKILL.md"
+          : basename(mains.find((main) => dirname(main) === root)!),
         manifest_sha256,
         files: ownFiles,
         identities: ownIdentities,

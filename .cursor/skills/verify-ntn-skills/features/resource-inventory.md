@@ -20,6 +20,15 @@ references and budget limits stay visible. No local tree modification or script
 execution is permitted. Local inventory writes only a derived immutable local
 Store artifact and its optional report.
 
+Within one discovered entity, an exact root `SKILL.md` is the main document even
+when `PROMPT.md` or `ROUTER.md` is present as a supporting resource. This follows
+the existing directory-import preference. Without `SKILL.md`, the existing
+entrypoint fallback and first-entrypoint-per-branch boundary remain unchanged.
+Selection never drops another file or changes its bytes or executable mode.
+The selected main participates in the local manifest and reconciliation identity;
+a corrected observation requires a new review. Retained reports and prepared
+plans keep their original main and are never rewritten or silently retargeted.
+
 `reconcile` joins frozen remote/local inventories using explicit stable identity or
 validated source provenance. Name/hash matches are review candidates only. Review
 identities bind both manifests, discovery rules and scope; drift produces a new
@@ -60,6 +69,7 @@ becoming an unbound native resource.
 | --- | --- |
 | Remote | Full pagination audit retained; exact source and no-diff; custom even with equal bytes; missing origin; ambiguous/unsupported source; pending operation; partial audit never automatic; unchanged inputs stable plan ID; metadata/ownership/content drift changes ID |
 | Local | Two aliases to one real entity; duplicate names with different identities; broken and escaping links; approved external target; binary/CRLF/mode; file changing during scan; dirty Git; credentials only flagged without secret values; entry/byte/time limit yields partial |
+| Local entrypoint | Root `SKILL.md` with metadata-free `PROMPT.md`/`ROUTER.md` selects the Skill while preserving the complete bundle; single Prompt/Router and parent-entity boundaries remain; a corrected observation changes manifest/review identity without rewriting an old report or prepared plan; native prepare uses the frozen selected main and writes no Notion content |
 | Reconciliation | Exact library/Source/member/commit and Skill/File mapping; same name/hash cannot claim ownership; local custom remains retained; scope/manifest drift rejects review; zero Notion writes and zero local source writes |
 | Visible census | Target content complete with unrelated missing mode stays globally partial but may have a full metadata census; changed census, unfinished final pages, missing registered properties and absent endpoint proof cannot establish it |
 | Installed/live | Independently installed CLI, fresh state, exact frozen Pro roots and allowed targets; raw manifest comparison; actual counts and exceptions; production Notion reads only after formal audit; no import, relinking or deletion |

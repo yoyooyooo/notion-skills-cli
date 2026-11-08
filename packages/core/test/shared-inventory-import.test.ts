@@ -11,7 +11,11 @@ import {
   validateInventoryImport,
   readReviewedInventoryFiles,
 } from "../src/shared-inventory-import.ts"
-import { scanLocalSkillInventory, reconcileSkillInventories } from "../src/shared-inventory.ts"
+import {
+  scanLocalSkillInventory,
+  reconcileSkillInventories,
+  readLocalSkillInventory,
+} from "../src/shared-inventory.ts"
 import { saveInventoryArtifact } from "../src/shared-inventory-store.ts"
 import { runSharedAudit } from "../src/shared-audit.ts"
 import {
@@ -114,12 +118,14 @@ async function inventoryReview(
   }
 }
 
-async function fixture(options: { resources?: boolean; portableLibrary?: string } = {}) {
+async function fixture(
+  options: { resources?: boolean; portableLibrary?: string; main?: "PROMPT.md" } = {},
+) {
   const f = sharedCreateFixture()
   const root = await mkdtemp(join(tmpdir(), "ntn-reviewed-import-"))
   await mkdir(join(root, "references"))
   await writeFile(
-    join(root, "SKILL.md"),
+    join(root, options.main ?? "SKILL.md"),
     "---\nname: reviewed-import\ndescription: Reviewed complete native input\nlicense: MIT\n---\n\n# Import\n\nRead [guide](references/guide.md).\n" +
       (options.resources
         ? "\n[Script](scripts/run.js) ![Image](assets/icon.png) [Config](data/options.json)\n"
@@ -189,6 +195,95 @@ test("formal import freezes the exact complete inventory and original create ope
   expect(f.writes()).toHaveLength(0)
   expect(await readFile(join(f.root, "SKILL.md"))).toEqual(original)
   expect((await f.prepare()).plan_id).toBe(plan.plan_id)
+})
+
+test("corrected Skill selection creates a new review without rewriting frozen Prompt reports or prepared plans", async () => {
+  const f = await fixture({ main: "PROMPT.md" })
+  const priorPlan = await f.prepare()
+  if (priorPlan.action.kind !== "create") throw new Error("Expected creation")
+  expect(priorPlan.action.creation.original_main_path).toBe("PROMPT.md")
+  const planKey = `plans/shared-inventory-imports/${priorPlan.plan_id}.json`
+  expect(f.base.json.has(planKey)).toBe(true)
+  const savedPlan = canonicalSharedJson(f.base.json.get(planKey))
+  const savedReport = canonicalSharedJson(
+    await f.run(readLocalSkillInventory(f.local.inventory_id)),
+  )
+  const skill = await readFile(join(f.root, "PROMPT.md"))
+  const prompt = "# Demo prompts\r\n\r\nAn example without Skill metadata.\r\n"
+  await writeFile(join(f.root, "SKILL.md"), skill)
+  await writeFile(join(f.root, "PROMPT.md"), prompt)
+
+  const observed = await inventoryReview(f, f.root)
+  expect(observed.entity.main).toBe("SKILL.md")
+  const { inventory_id: _currentId, ...currentReport } = observed.local
+  const legacyEntities = currentReport.entities.map((entity) => ({ ...entity, main: "PROMPT.md" }))
+  // A retained pre-fix observation selected PROMPT.md for this same complete tree.
+  const legacy = {
+    ...currentReport,
+    entities: legacyEntities,
+    manifest_id: `local-manifest-${await f.run(
+      sha256(
+        canonicalSharedJson({
+          rules_version: currentReport.rules_version,
+          scope: currentReport.scope,
+          entities: legacyEntities,
+          aliases: currentReport.aliases,
+          unassigned_files: currentReport.unassigned_files,
+          provenance: currentReport.provenance,
+        }),
+      ),
+    )}`,
+  }
+  const legacyId = await f.run(saveInventoryArtifact("local", legacy))
+  const legacyReview = await f.run(
+    reconcileSkillInventories({
+      remote_inventory_id: observed.review.remote_inventory_id,
+      local_inventory_id: legacyId,
+    }),
+  )
+  const savedLegacy = canonicalSharedJson(await f.run(readLocalSkillInventory(legacyId)))
+  expect(observed.entity).toEqual({ ...legacy.entities[0]!, main: "SKILL.md" })
+  expect(observed.entity.manifest_sha256).toBe(legacy.entities[0]!.manifest_sha256)
+  expect(observed.local.manifest_id).not.toBe(legacy.manifest_id)
+  expect(observed.review.review_id).not.toBe(legacyReview.review_id)
+  expect(observed.review.inventory_id).not.toBe(legacyReview.inventory_id)
+
+  const rejected = await f.run(
+    prepareInventoryImport({
+      ...observed.input,
+      reconciliationId: legacyReview.inventory_id,
+      decision: { kind: "native" },
+    }).pipe(Effect.provide(NodeServices.layer), Effect.result),
+  )
+  expect(rejected._tag).toBe("Failure")
+  if (rejected._tag !== "Failure") throw new Error("Expected original Prompt metadata rejection")
+  expect(rejected.failure.code).toBe("INVALID_SKILL")
+
+  const plan = await f.run(
+    prepareInventoryImport({
+      ...observed.input,
+      decision: { kind: "native" },
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+  if (plan.action.kind !== "create") throw new Error("Expected creation")
+  expect(plan.action.creation.original_main_path).toBe("SKILL.md")
+  expect(plan.action.creation.files.map((file) => file.path)).toEqual([
+    "PROMPT.md",
+    "SKILL.md",
+    "references/guide.md",
+  ])
+  expect(plan.action.creation.files.find((file) => file.path === "PROMPT.md")?.input.text).toBe(
+    prompt,
+  )
+  expect(canonicalSharedJson(await f.run(readLocalSkillInventory(legacyId)))).toBe(savedLegacy)
+  expect(canonicalSharedJson(await f.run(readLocalSkillInventory(f.local.inventory_id)))).toBe(
+    savedReport,
+  )
+  expect(canonicalSharedJson(f.base.json.get(planKey))).toBe(savedPlan)
+  expect(await readFile(join(f.root, "SKILL.md"))).toEqual(skill)
+  expect(await readFile(join(f.root, "PROMPT.md"), "utf8")).toBe(prompt)
+  expect(f.writes()).toHaveLength(0)
+  expect(f.nativeCreates()).toHaveLength(0)
 })
 
 test("changed source content, added files and symlink substitutions invalidate a prepared import before dispatch", async () => {
