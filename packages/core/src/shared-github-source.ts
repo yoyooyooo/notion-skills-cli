@@ -234,6 +234,13 @@ function checked<A>(operation: () => A): Effect.Effect<A, SkillsError> {
   })
 }
 
+/** Canonicalize a new management input; persisted descriptors still require exact stored form. */
+export function canonicalFixedGithubInput(
+  input: Pick<FixedGithubSourceInput, "url" | "commit" | "root">,
+) {
+  return checked(() => fixedInput(input))
+}
+
 function json<A>(bytes: Uint8Array, decode: (input: unknown) => A): Effect.Effect<A, SkillsError> {
   return Effect.try({
     try: () => {

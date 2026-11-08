@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { fail, property } from "./model.ts"
 import { Notion } from "./notion.ts"
+import { matchesNotionRollup } from "./notion-rollup.ts"
 import { fileIntentChecked } from "./shared-file-intent.ts"
 import { LIBRARY_MARKER, libraryFromDatabase } from "./shared-library.ts"
 import type { SharedLibrary, TableBinding } from "./shared-library-model.ts"
@@ -74,11 +75,7 @@ function inspect(table: TableBinding, raw: unknown, schema: FilePropertySchema) 
     if ("rollup" in shape) {
       const expected = property(shape.rollup),
         actual = property(value.rollup)
-      if (
-        actual.relation_property_id !== decodeURIComponent(String(expected.relation_property_id)) ||
-        actual.rollup_property_id !== decodeURIComponent(String(expected.rollup_property_id)) ||
-        actual.function !== expected.function
-      )
+      if (!matchesNotionRollup(actual, expected))
         throw fail(
           "SHARED_FILE_REQUEST_SCHEMA",
           "The registered rollup no longer follows its exact one-hop property identities.",

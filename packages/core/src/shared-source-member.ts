@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { fail } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { fetchFixedGithubFile } from "./shared-github-source.ts"
+import { canonicalFixedGithubInput, fetchFixedGithubFile } from "./shared-github-source.ts"
 import { makeSourceBinding } from "./shared-source-binding.ts"
 import { cacheVerifiedFixedGithubFiles } from "./shared-source-materialization.ts"
 import type { SourceDefinitionInput } from "./shared-sources-model.ts"
@@ -68,13 +68,18 @@ export function prepareSourceMember(
           "The original Git manifest differs from the acquired revision or entrypoint.",
         ),
       )
+    const canonical = yield* canonicalFixedGithubInput({
+      url,
+      commit: manifest.commit,
+      root: manifest.root,
+    })
     const hashes = new Map(
       yield* Effect.forEach(files, (file) =>
         sha256(file.bytes).pipe(Effect.map((hash) => [file.path, hash] as const)),
       ),
     )
     const binding = yield* makeSourceBinding({
-      url,
+      url: canonical.url,
       ...manifest,
       files: manifest.files.map((file) => ({ ...file, sha256: hashes.get(file.path)! })),
     })

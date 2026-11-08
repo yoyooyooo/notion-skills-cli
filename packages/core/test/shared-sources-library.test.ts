@@ -16,7 +16,19 @@ import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 import { library as base, id } from "./shared-snapshot-fixture.ts"
 import { registrationStore } from "./shared-source-registration-fixture.ts"
 
-function fixture() {
+function fixture(
+  fixtureOptions: { encodedRollupIds?: boolean; originFault?: "mismatch" | "unknown" } = {},
+) {
+  const library: typeof base = {
+    ...structuredClone(base),
+    files: {
+      ...base.files,
+      property_ids: {
+        ...base.files.property_ids,
+        ...(fixtureOptions.encodedRollupIds ? { Skill: "a%5B_t" } : {}),
+      },
+    },
+  }
   const local = registrationStore()
   const store: Store["Service"] = {
     ...local.store,
@@ -28,6 +40,8 @@ function fixture() {
   const calls: Array<{ path: string; method: string }> = []
   let next = 90,
     unknown: "accepted" | "absent" | undefined
+  let originFault = fixtureOptions.originFault,
+    originCreated = false
   const field = (name: string, value: unknown, stable: string) => {
     const shape = property(value),
       type = Object.keys(shape)[0]!
@@ -44,6 +58,19 @@ function fixture() {
             },
           }
         : {}),
+      ...(type === "rollup"
+        ? {
+            rollup: {
+              ...property(shape.rollup),
+              relation_property_id: decodeURIComponent(
+                String(property(shape.rollup).relation_property_id),
+              ),
+              rollup_property_id: decodeURIComponent(
+                String(property(shape.rollup).rollup_property_id),
+              ),
+            },
+          }
+        : {}),
     }
   }
   for (const [role, layout] of [
@@ -51,7 +78,7 @@ function fixture() {
     ["files", sharedFileProperties(base.skills.data_source_id)],
     ["records", sharedRecordProperties(base.skills.data_source_id)],
   ] as const) {
-    const table = base[role]
+    const table = library[role]
     databases.set(table.database_id, {
       object: "database",
       id: table.database_id,
@@ -59,7 +86,8 @@ function fixture() {
       is_inline: false,
       in_trash: false,
       data_sources: [{ id: table.data_source_id }],
-      description: role === "skills" ? [{ plain_text: LIBRARY_MARKER + JSON.stringify(base) }] : [],
+      description:
+        role === "skills" ? [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }] : [],
     })
     schemas.set(table.data_source_id, {
       object: "data_source",
@@ -104,7 +132,10 @@ function fixture() {
             if (converted.type === "relation") {
               const relation = property(converted.relation),
                 target = schemas.get(String(relation.data_source_id))!
-              const reverse = `reverse-${next++}`
+              const reverse =
+                fixtureOptions.encodedRollupIds && name === "Skills"
+                  ? "E%5Ega"
+                  : `reverse-${next++}`
               property(target.properties).Origin = field(
                 "Origin",
                 { relation: { data_source_id: ds, dual_property: { synced_property_id: stable } } },
@@ -165,7 +196,29 @@ function fixture() {
               if (name !== priorName) delete fields[priorName]
               fields[name] = updated
             }
-          return Effect.succeed(structuredClone(schema))
+          const observed = structuredClone(schema)
+          if (
+            path === `v1/data_sources/${library.files.data_source_id}` &&
+            method === "PATCH" &&
+            property(property(value.properties).Origin).rollup !== undefined
+          ) {
+            originCreated = true
+            if (originFault === "unknown") {
+              originFault = undefined
+              return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Lost Origin rollup response"))
+            }
+          }
+          if (
+            path === `v1/data_sources/${library.files.data_source_id}` &&
+            method === "GET" &&
+            originCreated &&
+            originFault === "mismatch"
+          ) {
+            originFault = undefined
+            property(property(property(observed.properties).Origin).rollup).rollup_property_id =
+              "different-source-property"
+          }
+          return Effect.succeed(observed)
         }
         return Effect.fail(fail("UNEXPECTED_REQUEST", path))
       }),
@@ -183,6 +236,8 @@ function fixture() {
     calls,
     databases,
     schemas,
+    library,
+    records: local.records,
     lose: (mode: "accepted" | "absent") => {
       unknown = mode
     },
@@ -208,6 +263,85 @@ test("explicit Sources initialization creates one full-page table, relations and
   expect(await f.run(initializeSourceLibrary(result.library))).toMatchObject({ reused: true })
   expect(f.calls.every((call) => call.method === "GET")).toBe(true)
 })
+test("captured raw Origin rollup IDs match encoded stable properties and repeat without writes", async () => {
+  const f = fixture({ encodedRollupIds: true })
+  const result = await f.run(initializeSourceLibrary(f.library))
+  expect(result.library.skills.property_ids.Origin).toBe("E%5Ega")
+  expect(result.library.files.property_ids.Skill).toBe("a%5B_t")
+  const origin = property(property(f.schemas.get(base.files.data_source_id)!.properties).Origin)
+  expect(origin.rollup).toMatchObject({
+    relation_property_id: "a[_t",
+    rollup_property_id: "E^ga",
+    function: "show_unique",
+  })
+  f.calls.length = 0
+  expect((await f.run(initializeSourceLibrary(result.library))).library).toEqual(result.library)
+  expect(f.calls.every((call) => call.method === "GET")).toBe(true)
+})
+
+test("an acknowledged Origin readback failure resumes its original receipt without repeating PATCH", async () => {
+  const f = fixture({ encodedRollupIds: true, originFault: "mismatch" })
+  await expect(f.run(initializeSourceLibrary(f.library))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_MISMATCH",
+  })
+  const original = [...f.records].find(
+    ([, value]) => property(value).identity === "initialize-file-origin-rollup",
+  )
+  if (!original) throw new Error("Missing original Origin dispatch")
+  const key = original[0]
+  const ackKey = key.replace("/source-op-", "/source-ack-")
+  const receiptKey = key.replace("/source-op-", "/source-receipt-")
+  const ack = structuredClone(f.records.get(ackKey))
+  expect(ack).toBeDefined()
+  expect(f.records.has(receiptKey)).toBe(false)
+  f.calls.length = 0
+  const result = await f.run(initializeSourceLibrary(f.library))
+  expect(result.library.sources).toBeDefined()
+  expect(f.records.get(ackKey)).toEqual(ack)
+  expect(f.records.get(receiptKey)).toMatchObject({
+    operation_id: property(original[1]).operation,
+    verified: true,
+  })
+  expect(f.calls.filter((call) => call.method !== "GET")).toEqual([
+    { path: `v1/databases/${base.skills.database_id}`, method: "PATCH" },
+  ])
+})
+
+test("a visible Origin without its original ACK cannot complete initialization or replay the mutation", async () => {
+  const f = fixture({ originFault: "unknown" })
+  await expect(f.run(initializeSourceLibrary(f.library))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_UNKNOWN",
+  })
+  f.calls.length = 0
+  await expect(f.run(initializeSourceLibrary(f.library))).rejects.toMatchObject({
+    code: "SOURCE_WRITE_UNKNOWN",
+  })
+  expect(f.calls.every((call) => call.method === "GET")).toBe(true)
+  expect(f.descriptor().sources).toBeUndefined()
+})
+
+test.each([
+  { relation_property_id: "another-relation" },
+  { rollup_property_id: "another-source" },
+  { function: "show_original" },
+  { rollup_property_id: "E%5Ega" },
+])(
+  "Origin rollup rejects different identities or function without mutation: %j",
+  async (change) => {
+    const f = fixture({ encodedRollupIds: true, originFault: "mismatch" })
+    await expect(f.run(initializeSourceLibrary(f.library))).rejects.toMatchObject({
+      code: "SOURCE_WRITE_MISMATCH",
+    })
+    const origin = property(property(f.schemas.get(base.files.data_source_id)!.properties).Origin)
+    Object.assign(property(origin.rollup), change)
+    f.calls.length = 0
+    await expect(f.run(initializeSourceLibrary(f.library))).rejects.toMatchObject({
+      code: "SOURCE_LIBRARY_CONFLICT",
+    })
+    expect(f.calls.every((call) => call.method === "GET")).toBe(true)
+  },
+)
+
 test("visible Sources creation after lost response is observed without creating a second database", async () => {
   const f = fixture()
   f.lose("accepted")
