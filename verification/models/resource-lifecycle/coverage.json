@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "synchronized_commit": "9f4cdc993bca61273a878382782c6eb1ef2747be",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "files": {
+    "packages/core/src/shared-file-state.ts": "3fe9d24a505667ece01d4e207ade77ddbd363dd3c8104d550d4b53f0932a7c6d",
+    "packages/core/src/shared-file-observer.ts": "7d1671f08f5d35a453ec79b51e90fa97b46d5506f83161082406a9ffe425f931",
+    "packages/core/src/shared-source-refresh.ts": "52c3f40ef0e2892fa3ca08ca455b636992185052eedca976d7d4dddd166a7026",
+    "packages/core/src/shared-selected-source.ts": "0cb4fff97c8632e5738ac73e9c9d3ed2ecd10e39e5957929900b68c6b5a4bf9b",
+    "packages/core/src/shared-snapshot.ts": "a13fd16642dd14407222d1f89f62edf3f955c7aef9bc4e9708fb13c4462d7e25",
+    "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
+    "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4"
+  },
+  "models": {
+    "ProjectionRace": {
+      "kind": "existing_guard_and_rejected_proposal",
+      "symbols": [
+        "requireSafeBodyReplacement",
+        "decideObservedBody",
+        "resolveFileState",
+        "notionWriteCapabilities"
+      ],
+      "scope": "The existing fail-closed helper and its published unsupported capability, versus a rejected future read-check-unconditional-replace design. The helper has no product caller in the reviewed tree. Existing explicit authoring writers have their own matching/review protocol and are not modeled here.",
+      "excluded": [
+        "Provider revision-CAS",
+        "atomic old-string matching",
+        "enforced UI edit exclusion",
+        "multi-page API transactions",
+        "Explicit manual authoring writer protocol and all-writer guard coverage"
+      ]
+    },
+    "UpdateCommit": {
+      "kind": "proposed_coordinator_contract",
+      "symbols": [
+        "prepareSourceRefresh",
+        "applySourceRefresh",
+        "retainFact",
+        "planSelectedSharedSource"
+      ],
+      "scope": "A single already-authorized selection write, two exact resource identities, two selected revisions and one existing session. Prepare/commit ordering contract, not a refinement proof of all current mutation dispatches.",
+      "excluded": [
+        "Multiple writers",
+        "credential rotation",
+        "provider permission propagation",
+        "automatic Notion projection writes",
+        "arbitrary Git filesystem semantics"
+      ]
+    },
+    "AuditRun": {
+      "kind": "proposed_audit_contract",
+      "symbols": ["observeSharedFile", "querySharedSkillIndex", "querySharedRecords"],
+      "scope": "Two surviving Skill roots, one orphan visible only to reverse inventory, one changed body, a one-Skill slice budget and up to two resumptions. The reverse scan abstracts paginated inventory, not its HTTP cost. Existing observation and body-write reconciliation use read-only reconcile mode, not automatic repair. The observer's readOnly regression covers only the separate new-adoption stop.",
+      "excluded": [
+        "Arbitrary concurrent table changes",
+        "global database snapshot",
+        "durable scheduler availability",
+        "automatic repair",
+        "unknown historical data absent from every retained index"
+      ],
+      "implemented_boundary": {
+        "kind": "candidate_semantic_read_boundary",
+        "symbols": [
+          "NotionReadOnly",
+          "readOnlyNotion",
+          "withReadOnlyNotion",
+          "isCoalescibleNotionRead"
+        ],
+        "scope": "The new read-only transport restricts descendant helpers, including legacy Notion requests, before the request scheduler. Current state inspection uses this boundary; this does not implement AuditRun inventory, budgets, checkpoints, or full coverage.",
+        "tests": [
+          "packages/core/test/notion-readonly.test.ts",
+          "packages/core/test/notion-readonly-observation.test.ts"
+        ]
+      }
+    }
+  },
+  "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
+  "review_basis": "Reviewed product base and exact working-tree hashes. NR01/NR02 additions require their own public and live acceptance; these models do not establish completion."
+}

@@ -24,6 +24,8 @@ Shared-library verification covers the managed layout, ownership, fixed manifest
 
 ## Accepted design coverage
 
+AH-681 的首批状态、保护与只读故事见 [阶段一验证地图](resource-phase1.md)。NR01-state、NR02-protection、NR03-readonly 复用现有 source/installed CLI 与共享库验证入口，真实库存导入由后续任务单独验收。
+
 Command/parameter semantics belong to the [protocol](../../../../docs/protocol.md); the [CLI design](../../../../docs/sync-cache-cli-design.md) records rationale, and the [verification matrix](./sync-cache-verification-plan.md) owns case definitions and evidence requirements. Case IDs are stable lookup keys, not test counts or pass results.
 
 | Entry or boundary | Cases | Required proof |
