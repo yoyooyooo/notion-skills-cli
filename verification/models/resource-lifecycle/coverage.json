@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "f5b2b506a56a61cfa8203b6533690d4214f63913",
+  "synchronized_commit": "4943e35846bd4d377bf0ff888140d5d3c8e58748",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
@@ -24,7 +24,7 @@
     "packages/core/src/shared-create-dispatch.ts": "a41e411a6bcbd9b1f6609eb7da6affb066cbdfb90d5685b41a32138f42910ad1",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
-    "packages/core/src/shared-source-definitions.ts": "9a577cb4ca2b78b74c871d36702a53b941b74a43054bd8eac718337ae6343b81",
+    "packages/core/src/shared-source-definitions.ts": "bd5a01ef55e4c628e83840a8a333060ed9d5f5b6d1ee5238a65de723fad1d83d",
     "packages/core/src/shared-records.ts": "a940f79041bf892c04388a68c05fe90e17886036ca7abb8c55a51c97a295c090",
     "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
     "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
@@ -32,8 +32,9 @@
     "packages/core/src/shared-notion-document-spacing.ts": "40d396bcb1c8b4d00d3bc2492d4cafaeddff8d09a88e31549177fd8e8e1f8970",
     "packages/core/src/shared-create-recovery.ts": "8f326682cbcb8ececd7f5a3bd37faf5a5645bb2094c11e1344e879c4fdc2c062",
     "packages/core/src/shared-create-recovery-prefix.ts": "6e38715551d164173865faf89457d6d9ea41cd733f5fa2ccef6ba9f83813b1de",
-    "packages/core/src/shared-create-recovery-prefix-model.ts": "0afbaeb26865390fcf862c8ee2131c55027be1afbced6056e8cd35e17355842e",
-    "packages/core/src/shared-create-recovery-prefix-completion.ts": "fc7ff816c8e19fbfdde3d406b4a052741e67caf157d97aebbfe8a424387fe0eb"
+    "packages/core/src/shared-create-recovery-prefix-model.ts": "e93d1e907b8b63b069149ca673f339bc127afef8ae11301892c99ca393810346",
+    "packages/core/src/shared-create-recovery-prefix-completion.ts": "fc7ff816c8e19fbfdde3d406b4a052741e67caf157d97aebbfe8a424387fe0eb",
+    "packages/core/src/shared-sources-model.ts": "6a6c1ba1782cf1ed545e59428d7ca979f23d06caedfb836595484223a2c0088e"
   },
   "models": {
     "ProjectionRace": {
@@ -189,6 +190,7 @@
       "kind": "hash_bound_context_not_modeled",
       "name": "acknowledged_create_prefix_recovery",
       "files": [
+        "packages/core/src/shared-sources-model.ts",
         "packages/core/src/shared-create-recovery.ts",
         "packages/core/src/shared-create-recovery-prefix.ts",
         "packages/core/src/shared-create-recovery-prefix-model.ts",
@@ -199,6 +201,7 @@
         "applySharedCreateRecovery",
         "reconcileSharedCreateRecovery",
         "originalBootstrap",
+        "SourceMutationAcknowledgementSchema",
         "assertSharedCreateAcknowledgedMetadata",
         "validateSharedCreatePrefixRecoveryReview",
         "reviewSharedCreatePrefixRecovery",
@@ -207,10 +210,12 @@
         "readSharedCreatePrefixCompletion",
         "completedSharedCreatePrefixRecovery"
       ],
-      "scope": "The explicit original-v1/v8 main-ACK-before-manifest bootstrap, exact local journal and ACK metadata checks, separate reviewed suffix operation, original-versus-recovery histories and compact completion recognition are not transitions of ImportCreate. The original main is not replayed or body-patched; a missing original terminal is not invented. The new completion branch in loadPendingSharedCreates is reviewed context, not a modeled recovery or consumer refinement proof.",
+      "scope": "The explicit original-v1/v8 main-ACK-before-manifest bootstrap, exact local journal and ACK metadata checks, separate reviewed suffix operation, original-versus-recovery histories and compact completion recognition are not transitions of ImportCreate. The original main is not replayed or body-patched; a missing original terminal is not invented. The new completion branch in loadPendingSharedCreates is reviewed context, not a modeled recovery or consumer refinement proof. The unchanged durable ACK schema now lives in the pure Sources model as a leaf data dependency; ESM initialization order and serialized schema details remain outside these state models.",
       "tests": [
         "packages/core/test/shared-create-recovery-prefix.test.ts",
-        "packages/core/test/shared-create-recovery.test.ts"
+        "packages/core/test/shared-create-recovery.test.ts",
+        "packages/core/test/shared-audit-sqlite.node.test.ts",
+        "packages/core/test/shared-source-definitions.test.ts"
       ]
     }
   ]
