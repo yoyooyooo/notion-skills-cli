@@ -80,19 +80,20 @@ describe("retained Records on an expired shared consumer read", () => {
       unclassified_body: 0,
     })
     expect(f.requestMetrics().requests).toEqual({
-      notion_metadata: 15,
+      notion_metadata: 16,
       notion_body: 0,
       notion_write: 0,
       provider: 0,
     })
     // P=3 metadata pages plus one Skill row. This single reviewed history adds
-    // exactly 11 queries: pending outcome/plan (2), original facts (5), review (4).
+    // exactly 12 queries: pending outcome/plan (2), original facts (5),
+    // retained review version (1), review (4).
     expect(() =>
       assertRequestBudget(f.requestMetrics(), {
         scenario: "ttl_expired",
         fileCount: 2,
         metadataPages: 3,
-        metadataConstant: 12,
+        metadataConstant: 13,
       }),
     ).not.toThrow()
     expect(f.writeCount()).toBe(0)
