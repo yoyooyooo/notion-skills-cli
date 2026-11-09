@@ -10,6 +10,7 @@ import {
   validateSourceRefresh,
 } from "../src/shared-source-refresh.ts"
 import { planSelectedSharedSource } from "../src/shared-selected-source.ts"
+import { querySharedRecords } from "../src/shared-records.ts"
 import { sourceRefreshFixture, definition, library } from "./shared-source-refresh-fixture.ts"
 import { id, skillPage } from "./shared-snapshot-fixture.ts"
 
@@ -83,10 +84,35 @@ async function fixture(lfs = false) {
 
 test("default Git candidate selects the fixed manifest without retaining upstream ZIP or bodies", async () => {
   const f = await fixture()
+  const [original] = await f.run(
+    querySharedRecords(library, {
+      skillPageId: skillPage,
+      kind: "file_event",
+      entityId: "file-1",
+    }),
+  )
+  if (original === undefined) throw new Error("Expected the existing native custom file event")
+  const event = property(original.payload)
+  expect(event.kind).toBe("adopted")
+  f.seedFact(
+    {
+      ...event,
+      event_id: "native-mode-file-1",
+      parents: [original.record_id],
+      content: { ...property(event.content), mode: "100644" },
+    },
+    "file_event",
+    "file-1",
+    "native-mode-file-1",
+  )
+  const bodies = new Map(f.bodies)
   const plan = await f.run(prepareSourceRefresh(library, id(82), skillPage, f.acquire))
   if (plan.version !== 4) throw new Error("Expected a fixed Git candidate")
   expect(plan.fixed_source.source_id).toBe(plan.source_pin)
   expect(plan.source_files).toHaveLength(3)
+  expect(plan.projected_files.find((file) => file.path === "references/1.md")).toMatchObject({
+    mode: "100644",
+  })
   expect(JSON.stringify(plan)).not.toContain("archive_base64")
   expect(f.requests).toHaveLength(1)
   expect(f.requests[0]).toContain(`/${plan.provider_revision}/skills/demo/SKILL.md`)
@@ -96,6 +122,7 @@ test("default Git candidate selects the fixed manifest without retaining upstrea
     source_pin: plan.source_pin,
     body_writes: 0,
   })
+  expect(f.bodies).toEqual(bodies)
   expect(f.requests).toHaveLength(1)
   expect(
     f.calls.filter(

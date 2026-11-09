@@ -37,7 +37,6 @@ import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
 import { openSharedSnapshot } from "./shared-snapshot.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { resolveFileState, FileEventSchema } from "./shared-file-state.ts"
-import { isResourceContent } from "./shared-resource-content.ts"
 import { composeSharedFilePlacements, sharedFileSourcePath } from "./shared-file-placement.ts"
 import { materializeSharedNativeFile, parseSharedFileLinks } from "./shared-native-file-content.ts"
 import { compileSharedNativeReferences } from "./shared-native-references.ts"
@@ -354,9 +353,9 @@ function projectCandidate(
           file_id: file.file_id,
           path: file.path,
           bytes,
-          ...(isResourceContent(state.ownership.content) && state.ownership.content.mode !== null
-            ? { mode: state.ownership.content.mode }
-            : {}),
+          ...(state.ownership.content.mode === undefined || state.ownership.content.mode === null
+            ? {}
+            : { mode: state.ownership.content.mode }),
         })
         custom.push(file.path)
       }
