@@ -40,14 +40,14 @@ ntn-skills read 'Release Review'
 | 审阅并纳管完整本地 Skill | `ctl library inventory` 的盘点、对账和导入计划 |
 | 新建、维护和导出选定 Skill | `create`、`replace`、`export` |
 | 对固定页面一次应用文件和属性变更 | `apply` |
-| 在共享库管理 Git/GitLab、Linear 等来源并显式更新 | `ctl library sources list/show/check/fetch/prepare/apply` |
+| 在共享库管理固定来源并显式更新 | `ctl library sources prepare`、`apply`、`reconcile`、`run` |
 | 同步已有 Notion 页面与本地 Skill 目录 | `ctl sync local connect`、`ctl sync local run` |
 
 ## 共享库的四张表
 
-当前共享库采用 **Skills / Files / Sources / Records**。Skills 管主文与元数据，Files 打平可编辑支持页，Sources 管可编辑来源配置及关联，Records 保存固定资源、归属和历史。日常 `list/read` 不扫描 Sources、不自动抓取上游；显式来源更新先 `prepare`，再 `apply`，保留自定义文件和旧 pin。GitHub、GitLab、自托管 Git 使用同一 Git 适配边界；Linear 使用显式 issue/document 到文件的映射。完整用法和安全边界见[来源管理](docs/sources-management.md)。
+当前共享库采用 **Skills / Files / Sources / Records**。Skills 管主文与元数据，Files 打平可编辑支持页，Sources 管可编辑来源配置及关联，Records 保存固定资源、归属和历史。日常 `list/read` 不发现新成员、不追分支 HEAD；缺少资源字节时只从已固定的来源取得。显式来源更新先 `prepare`，再 `apply`，保留自定义文件和旧 pin。GitHub、GitLab、自托管 Git 使用同一 Git 适配边界；Linear 使用显式 issue/document 到文件的映射。完整用法和安全边界见[来源管理](docs/sources-management.md)。
 
-`ctl library init --parent PAGE_ID` 创建新的四表库；既有三表库用 `ctl library sources init --entry ENTRY` 显式升级。下文保留的旧两表及 `ctl sync upstream` 操作只适用于尚未迁移的旧库，不能用来管理共享库的 Sources。
+`ctl library init --parent PAGE_ID` 创建新的四表库；既有三表库用 `ctl library sources init --entry ENTRY` 显式升级。已有两表库继续使用其[订阅命令](docs/usage.md#recurring-upstream-synchronization)。
 
 ## 安装
 
@@ -73,19 +73,15 @@ ntn-skills --help
 
 数据库中至少需要一个有效 Skill。Notion Name 和作者填写的 frontmatter `name` 是人类可读的名称，按原值保留；允许 Unicode、数字、空格和连字符，名称必须非空且不含控制字符。例如，`Tty7` 保持为 `Tty7`，调用别名为 `tty7`。别名按 NFC 规范化并转为小写，去掉首尾空白，将连续空白替换为 `-`，对 Unicode 字母、组合标记、数字、`_` 和 `-` 以外的字符做百分号编码。别名只用于选择，不是身份；冲突时须使用精确页面 ID 或引用。`--name` 显式覆盖人类标题，不改变页面身份。[命名与数据库要求](docs/protocol.md#identity-and-references)。
 
-`ctl database init --parent PAGE_ID` 会在自有父页下创建内容表与独立的上游订阅表；接入已有两表时使用 `--content-database ID --upstream-database ID`。命令先验证字段类型和原生关系目标，通过读回后才保存配置；同一目标可安全重入。普通默认写入库独立，只有显式 `--set-default` 才改变。
+新建共享库时，在自有父页下执行 `ntn-skills ctl library init --parent PAGE_ID`。返回的 entry 标识同一套 Skills / Files / Sources / Records 表；消费命令用 `--database`，管理命令用 `--entry`，详见[共享 Notion 库](#共享-notion-库)。
 
-内容来源使用独立的 `Source Type`（`builtin`、`upstream`、`manual`）与保存精确包 ID 的 rich-text `Builtin ID`，不与 Kind 或 Sync Mode 混用。显式 init 可升级已有两表，包括重复已发布的 attach operation；不会回填旧记录。普通 create 兼容缺少字段的旧表，replace/write 保留来源。builtin/upstream 发布要求先升级字段。正文相同而来源不同只更新元数据；全部一致时无远端修改地复用。详见[来源与冻结恢复协议](docs/protocol.md)。
+通过 `ctl library sources` 注册和检查来源配置，先准备固定候选，再应用；部分完成或结果未知时沿原计划核对。明确接纳才新增已审阅成员，普通来源更新保留自定义文件与用户成员关系。完整配置和命令见[来源管理指南](docs/sources-management.md)。
 
-用 `ntn-skills ctl sync upstream connect SOURCE --database DATABASE` 注册 Git 来源并同步其中的 Skills；重复相同连接会复用订阅。后续 `ctl sync upstream run` 使用可重复的 `--target SUBSCRIPTION_ID` 或 `--all`，二选一。每次运行记录同步状态、尝试与成功时间及摘要；失败或部分完成时继续其他目标，并以非零退出码结束。高级注册与 plan/apply 仍位于 `ctl sync upstream`。[持续同步与两表配置](docs/usage.md#recurring-upstream-synchronization)。
-
-普通 `run` 先检查原有未完成工作，再规划新变更；原归属页可读取且确认位于 Notion Trash 时，会恢复受管的 tracked 成员。旧页仍留在 Trash，经过验证的新页替换该成员映射。找不到页面或权限错误会明确失败。旧发布模型的历史重建、接管和专项修复使用独立的 [operator 工件](docs/historical-operations.md)；首次登记原生共享草稿使用下文的日常 `adopt` 命令。
+已有两表库使用 `ctl database init` 和 `ctl sync upstream`，其适用范围见[两表配置与订阅指南](docs/usage.md#recurring-upstream-synchronization)。本地目录分发继续使用 `ctl sync local`。
 
 内容表支持 `Kind=skill|router|prompt`：Skill 入口为 `SKILL.md`；Router 入口为 `ROUTER.md`，包含成员元数据与稳定引用，由 Agent 按需读取成员；Prompt 入口为 `PROMPT.md`，每次显式引用都成为本轮用户要求。`list` 返回带 kind、稳定身份、locator 和 entrypoint 的 `records`；读取与导出返回同一 `record` 与固定快照。历史缺少 Kind 的条目按 Skill 处理。
 
 创建 Prompt 或 Router 时，先准备 portable v2 manifest 与正文文件，再使用现有 `create` 参数：[完整 Prompt/Router 文件与命令示例](docs/usage.md#creating-a-prompt-or-router-from-portable-v2)。文件名或 frontmatter 不会决定 kind；详见 [portable 输入契约](docs/protocol.md#portable-input-contract)。
-
-上游订阅只有至少两个已验证、已发布的有效 Skill 时才提供自动 Router。零个或一个成员不会产生 Router 目录项；单成员直接使用该 Skill 的引用。当前版本的精确 Router 读取也会拒绝不足两个成员的订阅。内容表中手工编写的 Router 继续按作者设置的 Members 工作，详见[订阅与 Router 用法](docs/usage.md#initialize-content-and-subscription-tables)。
 
 Skill 与 Router 的 `Default Context` 复选框各自独立，缺失或未勾选均为 false。Prompt 始终排除默认发现、后台预取和原生 Skill 安装；下一轮再次选择会重新加入本轮要求。初始化会创建该复选框，但不会自动勾选。
 

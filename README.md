@@ -27,7 +27,7 @@ Available on [npm](https://www.npmjs.com/package/ntn-skills). For source builds,
 
 ## Why use it?
 
-You maintain reusable instructions in Notion, but an Agent only needs a few of them for its current task. `ntn-skills list` exposes names and descriptions so the Agent can choose a relevant workflow before loading its instructions. `read` loads the selected file and saves the complete Skill export locally.
+You maintain reusable instructions in Notion, but an Agent only needs a few of them for its current task. `ntn-skills list` exposes names and descriptions so the Agent can choose a relevant workflow before loading its instructions. `read` loads the selected file and fixes the Skill version for later resource reads.
 
 A task can outlive an edit in Notion. The first successful read returns a **snapshot**: a local, fixed version of the workflow and its files. Keep the returned refs for the task. Ordinary current-target reads may reuse content validated within five minutes; use `--refresh` to adopt a freshly validated remote version for a new task. Stable manual edits to committed Notion content are readable through that same current-page path; old pinned snapshots stay unchanged, and unfinished publications retain their original recovery guards.
 
@@ -39,7 +39,8 @@ Shared libraries batch native Files metadata and retained ownership facts, with 
 | Read instructions and supporting files from one version | `read`, then `files` |
 | Move a complete Skill between local files and Notion | `create`, `replace`, `export` |
 | Apply file and metadata changes to one pinned page | `apply` |
-| Subscribe Git Skills into Notion and keep them current | `ctl sync upstream connect`, `ctl sync upstream run` |
+| Manage fixed sources and update shared Skills | `ctl library sources prepare`, `apply`, `reconcile`, `run` |
+| Review and import a complete local Skill | `ctl library inventory` |
 | Keep an existing page and local Skill directory in sync | `ctl sync local connect`, `ctl sync local run` |
 
 ## Shared library sources
@@ -48,7 +49,7 @@ The current shared model uses **Skills / Files / Sources / Records**. Sources ow
 
 `ctl library audit run/resume/report` checks an exact Skill or the complete library without semantic writes. `ctl library inventory` freezes local and remote inventories, reconciles exact identities, and prepares an explicitly approved complete import. Native content, pure upstream content and modified upstream content share the original author/source kernels. See [inventory audit and import](docs/inventory-import.md); a partial scan or a matching name never authorizes an upload.
 
-New `ctl library init --parent PAGE_ID` creates four full-page tables. An existing three-table library is upgraded explicitly using `ctl library sources init --entry ENTRY`. Earlier two-table `ctl sync upstream` examples below describe only unmigrated legacy libraries; they are not the Sources management path.
+New `ctl library init --parent PAGE_ID` creates four full-page tables. An existing three-table library is upgraded explicitly using `ctl library sources init --entry ENTRY`. Existing two-table libraries keep their documented [subscription commands](docs/usage.md#recurring-upstream-synchronization).
 
 ## Installation
 
@@ -74,19 +75,15 @@ Configure an existing Notion connection through `NOTION_API_TOKEN`, or pipe its 
 
 That database needs at least one valid Skill. Notion Name and authored frontmatter `name` are human-readable names preserved exactly: Unicode, digits, spaces and hyphens are allowed; names must be nonempty and contain no control characters. For example, `Tty7` stays `Tty7`, while its callable alias is `tty7`. Aliases normalize to NFC and lowercase, trim surrounding whitespace, replace whitespace runs with `-`, and percent-encode characters outside Unicode letters, marks, numbers, `_` and `-`. Aliases are selection values, never identity; collisions require an exact page ID or ref. `--name` explicitly overrides the human title without changing page identity. [Naming and database requirements](docs/protocol.md#identity-and-references).
 
-`ctl database init --parent PAGE_ID` creates a content table and a separate upstream subscription table under an owned page; attach exact existing tables with `--content-database ID --upstream-database ID`. It validates field types and native relation targets before publishing configuration. Repeat the same target to resume safely. The default write database stays independent unless `--set-default` is supplied.
+For a new shared library, run `ntn-skills ctl library init --parent PAGE_ID` under an owned page. The returned entry identifies its Skills / Files / Sources / Records tables. Use that entry with `--database` for consumption and `--entry` for management; see [Shared Notion library](#shared-notion-library).
 
-Content origin uses `Source Type` (`builtin`, `upstream`, `manual`) and exact rich-text `Builtin ID`, independently of Kind and Sync Mode. Explicit init upgrades existing tables, including repeated published attaches, without backfilling legacy rows. Ordinary create supports tables missing these fields; replace/write preserve provenance. Deliberate builtin/upstream publication requires the upgraded schema. Equal content with changed provenance is a metadata-only update; complete equality is mutation-free reuse. [Origin and frozen recovery](docs/protocol.md).
+Register and inspect provider definitions through `ctl library sources`. Prepare a fixed candidate before applying it, and reconcile partial or unknown results through the original plan. Explicit admission adds a reviewed member; ordinary source updates preserve custom files and user membership. Follow the [source management guide](docs/sources-management.md) for exact definitions and commands.
 
-Use `ntn-skills ctl sync upstream connect SOURCE --database DATABASE` to register a Git source and synchronize its Skills. Repeating the same connection reuses its subscription. Later, `ctl sync upstream run` takes either repeatable `--target SUBSCRIPTION_ID` or `--all`. Each run records status, attempt/success times and a summary; failed or partial batches continue other targets and exit nonzero. Advanced registration and plan/apply remain available under `ctl sync upstream`. [Recurring synchronization and table setup](docs/usage.md#recurring-upstream-synchronization).
-
-Ordinary `run` checks retained work before planning new changes and restores an owned tracked member whose original page is confirmed readable in Notion Trash. The old page stays in Trash; a verified replacement updates that member's mapping. Missing or inaccessible pages are explicit failures. Historical publication rebuild, adoption and targeted repair commands belong to the separate [operator artifact](docs/historical-operations.md); initial adoption of a new native shared draft uses the daily `adopt` command below.
+Existing two-table libraries use `ctl database init` and `ctl sync upstream`; their [setup and subscription guide](docs/usage.md#recurring-upstream-synchronization) describes that separate scope. Local directory distribution continues through `ctl sync local`.
 
 The content table supports `Kind=skill|router|prompt`. Skill uses `SKILL.md`; Router uses `ROUTER.md` with member metadata and stable refs, and loads members only when the Agent selects them; Prompt uses `PROMPT.md` as an explicit user requirement on each submission. `list` returns `records` with kind, stable identity, locator and entrypoint. Reads and exports return the same `record` and fixed snapshot. Missing historical Kind means Skill.
 
 To create a Prompt or Router, stage a portable v2 manifest and body file, then use `create` with the existing flags: [complete Prompt/Router staging and commands](docs/usage.md#creating-a-prompt-or-router-from-portable-v2). Filename/frontmatter alone does not select kind; [portable input contract](docs/protocol.md#portable-input-contract).
-
-Automatic upstream subscription Routers require at least two verified published active Skills. Zero or one member produces no Router catalog entry; use the individual Skill ref for a single member. Current exact Router reads reject insufficient membership. Manually authored content-table Routers keep their explicit Members behavior. See [subscription and Router usage](docs/usage.md#initialize-content-and-subscription-tables).
 
 `Default Context` is an independent checkbox for each Skill or Router. Missing or unchecked means false. Prompt is always excluded from default discovery, background prefetch and native Skill installation; explicitly selecting it again adds its requirements to the new turn. Initialization creates the checkbox but never checks it automatically.
 
