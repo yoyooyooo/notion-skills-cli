@@ -112,6 +112,8 @@ ntn-skills ctl library sources run-status SOURCE_RUN_ID --output ./original-cand
 
 `run-status` / `run-list` 完全离线。仍处于 running 的 checkpoint 可能是运行中或被中断；请求计量仅是最近持久 checkpoint 的下界。预算暂停保留已冻结计划和逐项结果。恢复先导出原计划并 `reconcile`，不能将新运行当作原未知请求未派发的证明。
 
+准备候选时，结构化 `SHARED_REFERENCE_INVALID` 错误保留原 `code`、`message`、`details.from` 和 `details.href`，并在 `details` 标明 `target_page_id`、`source_member` 与 `preparation_stage`。阶段 `current_snapshot` 表示读取当前完整文件树时失败；`candidate_file_references` 表示合成候选与保留内容后的最终引用检查失败。这些字段随原 run 错误保存，可通过离线 `run-status` 回读；引用失败仍不生成可应用计划。旧 run 没有记录的成员或阶段不能据此补推。
+
 | 退出码 | `sources run` / `run-status` 含义 |
 | --- | --- |
 | 0 | 调用完成，没有阻塞或未知工作；检查或手动候选完成不表示已应用 |

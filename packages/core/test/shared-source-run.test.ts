@@ -178,6 +178,62 @@ test("readonly check and prepare expose separate complete candidates without pub
   }
 })
 
+for (const [stage, from] of [
+  ["current_snapshot", "SKILL.md"],
+  ["candidate_file_references", "guide.md"],
+] as const) {
+  test(`source preparation retains ${stage} reference context in its failed run receipt`, async () => {
+    const f = await fixture()
+    const href = "../statechart/SKILL.md"
+    const markdown = `[Statechart](${href})\n`
+    if (stage === "current_snapshot") {
+      f.bodies.set(skillPage, markdown)
+      await expect(f.open({ forceFull: true })).rejects.toThrow(
+        "A local reference escapes the shared Skill root.",
+      )
+      f.clearCalls()
+    } else
+      f.replaceSnapshot({
+        ...f.snapshot,
+        members: f.snapshot.members.map((member) => ({
+          ...member,
+          portable: {
+            ...member.portable,
+            files: [
+              ...member.portable.files,
+              { path: from, bytes: new TextEncoder().encode(markdown) },
+            ],
+          },
+        })),
+      })
+
+    const result = await f.execute({ mode: "prepare" })
+    expect(result.error).toEqual({
+      code: "SHARED_REFERENCE_INVALID",
+      message: "A local reference escapes the shared Skill root.",
+      details: {
+        from,
+        href,
+        target_page_id: skillPage,
+        source_member: "skills/demo",
+        preparation_stage: stage,
+      },
+    })
+    expect(result.execution).toBe("failed")
+    expect(result.phase).toBe("checking")
+    expect(result.plan).toBeNull()
+    expect(result.application).toEqual([])
+    expect(f.writeCount()).toBe(0)
+
+    f.clearCalls()
+    const report = await f.run(reportSourceUpdateRun(result.run_id))
+    expect(report.error).toEqual(result.error)
+    expect(report.plan).toBeNull()
+    expect(report.application).toEqual([])
+    expect(f.calls).toHaveLength(0)
+  })
+}
+
 test("manual policy records check success and candidate while leaving selected content and native bodies unchanged", async () => {
   const f = await fixture()
   const bodies = new Map(f.bodies)

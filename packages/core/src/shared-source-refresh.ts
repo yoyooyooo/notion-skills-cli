@@ -249,6 +249,23 @@ function projectCandidate(
   selected: Effect.Success<ReturnType<typeof binding>>,
   files: readonly ImportFile[],
 ) {
+  const referenceErrorContext =
+    (preparation_stage: "current_snapshot" | "candidate_file_references") =>
+    (error: SkillsError) => {
+      if (
+        error.code !== "SHARED_REFERENCE_INVALID" ||
+        typeof error.details !== "object" ||
+        error.details === null ||
+        Array.isArray(error.details)
+      )
+        return error
+      return fail(error.code, error.message, {
+        ...error.details,
+        target_page_id: selected.id,
+        source_member: selected.member,
+        preparation_stage,
+      })
+    }
   return Effect.gen(function* () {
     const fixed = selected.index.source_reference
       ? yield* resolveSelectedSharedSource(library, selected.id, selected.index.source_reference)
@@ -303,7 +320,7 @@ function projectCandidate(
             },
           }
         : {}),
-    })
+    }).pipe(Effect.mapError(referenceErrorContext("current_snapshot")))
     const records = yield* querySharedRecords(library, {
       skillPageId: selected.id,
       kind: "file_event",
@@ -444,7 +461,9 @@ function projectCandidate(
         )
       }),
     )
-    yield* sourceChecked(() => assertSharedFileReferences(final))
+    yield* sourceChecked(() => assertSharedFileReferences(final)).pipe(
+      Effect.mapError(referenceErrorContext("candidate_file_references")),
+    )
     const projected = yield* Effect.forEach(final, (file) =>
       Effect.gen(function* () {
         return {
