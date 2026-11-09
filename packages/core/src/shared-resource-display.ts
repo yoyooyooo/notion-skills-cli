@@ -25,6 +25,11 @@ type DisplayValue =
 type DisplayValues = Readonly<Record<string, DisplayValue>>
 const revision = (value: string) => (/^[a-f0-9]{40,64}$/u.test(value) ? value.slice(0, 12) : value)
 const rich = (value: string): DisplayValue => ({ rich_text: value })
+// Notion date properties retain minute precision; the underlying observation
+// and provider facts keep their original timestamps.
+const date = (value: number | string): DisplayValue => ({
+  date: new Date(Math.floor(new Date(value).getTime() / 60_000) * 60_000).toISOString(),
+})
 
 /** As-observed summaries only. A new check cannot make an older projected page current. */
 export function describeSharedResourceDisplay(state: SharedResourceState) {
@@ -81,7 +86,7 @@ export function describeSharedResourceDisplay(state: SharedResourceState) {
       ),
     }
     if (observation.kind === "observed" || observation.kind === "resource_verified")
-      values["Content Observed At"] = { date: new Date(observation.observed_at).toISOString() }
+      values["Content Observed At"] = date(observation.observed_at)
     const main = file.page_id === state.skill_page_id
     if (main) {
       values["Selected Revision"] = rich(
@@ -95,17 +100,13 @@ export function describeSharedResourceDisplay(state: SharedResourceState) {
         state.source.kind === "observed" &&
         state.source.last_successful_check.kind === "recorded"
       )
-        values["Last Successful Check"] = {
-          date: new Date(state.source.last_successful_check.checked_at).toISOString(),
-        }
+        values["Last Successful Check"] = date(state.source.last_successful_check.checked_at)
       if (state.candidate.kind === "frozen") {
         values["Discovered Candidate"] = rich(
           `${revision(state.candidate.provider_revision)}${state.candidate.selection_matches && state.candidate.source_binding_matches === true ? " (prepared)" : " (context changed)"}`,
         )
         if (state.candidate.provider_committed_at !== null)
-          values["Upstream Commit Time"] = {
-            date: new Date(state.candidate.provider_committed_at).toISOString(),
-          }
+          values["Upstream Commit Time"] = date(state.candidate.provider_committed_at)
       }
     }
     return {
@@ -323,9 +324,9 @@ export function syncSharedResourceDisplay(
           selected === state.selected.source_id &&
           projection.provider_committed_at !== undefined
         )
-          rows.find((row) => row.role === "skills")!.values["Upstream Commit Time"] = {
-            date: new Date(projection.provider_committed_at).toISOString(),
-          }
+          rows.find((row) => row.role === "skills")!.values["Upstream Commit Time"] = date(
+            projection.provider_committed_at,
+          )
       }
     }
     const results = []

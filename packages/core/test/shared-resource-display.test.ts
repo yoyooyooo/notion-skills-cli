@@ -80,7 +80,13 @@ function fixture() {
   const event = `adopt-${digest(canonicalSharedJson({ version: 1, ...adopted }))}`
   f.seedFact({ ...adopted, event_id: event, kind: "adopted" }, "file_event", "file-1", event)
   f.bodies.set(f.files[0]!.id, custom)
-  const faults: { failPatch?: boolean; concurrentOnMainRead?: number; mainReads: number } = {
+  const faults: {
+    failPatch?: boolean
+    concurrentOnMainRead?: number
+    dateReadback: "same_minute" | "next_minute"
+    mainReads: number
+  } = {
+    dateReadback: "same_minute",
     mainReads: 0,
   }
   const run: typeof f.run = (effect) =>
@@ -115,10 +121,23 @@ function fixture() {
                   expect(id.startsWith("display-")).toBe(true)
                   const field = property(value),
                     type = Object.keys(field)[0]!
+                  const start = property(field.date).start
+                  const nativeDate =
+                    type === "date" && typeof start === "string"
+                      ? {
+                          date: {
+                            start: new Date(
+                              Math.floor(Date.parse(start) / 60_000) * 60_000 +
+                                (faults.dateReadback === "next_minute" ? 60_000 : 0),
+                            ).toISOString(),
+                          },
+                        }
+                      : {}
                   property(row.properties)[id] = {
                     id,
                     type,
                     ...field,
+                    ...nativeDate,
                     ...(type === "rich_text" ? { has_more: false } : {}),
                   }
                 }
@@ -135,7 +154,29 @@ function fixture() {
     ...f,
     run,
     faults,
-    state: () => run(inspectSharedResourceState(library, { target: skillPage, observe: true })),
+    async state(observedAt?: number) {
+      const state = await run(
+        inspectSharedResourceState(library, { target: skillPage, observe: true }),
+      )
+      if (observedAt === undefined) return state
+      return {
+        ...state,
+        observed_at: observedAt,
+        files: state.files.map((file) => {
+          const observation = file.display.observation
+          return {
+            ...file,
+            display: {
+              ...file.display,
+              observation:
+                observation.kind === "observed" || observation.kind === "resource_verified"
+                  ? { ...observation, observed_at: observedAt }
+                  : observation,
+            },
+          }
+        }),
+      }
+    },
   }
 }
 
@@ -185,6 +226,49 @@ describe("readable resource display facts", () => {
       "complete",
     )
     expect(f.writeCount()).toBe(0)
+    expect(f.readBodyCount()).toBe(0)
+  })
+
+  test("non-minute observation dates publish at native minute precision without changing precise facts", async () => {
+    const f = fixture(),
+      state = await f.state(Date.parse("2026-11-09T06:58:19.013Z")),
+      facts = structuredClone(state)
+    f.clearCalls()
+    const result = await f.run(syncSharedResourceDisplay(library, state))
+    expect(result).toMatchObject({
+      display_status: "complete",
+      results: [{ display_status: "verified_applied" }, { display_status: "verified_applied" }],
+    })
+    const dates = f.calls.flatMap((call) =>
+      call.method !== "PATCH"
+        ? []
+        : Object.values(property(property(call.body).properties)).flatMap((value) => {
+            const start = property(property(value).date).start
+            return typeof start === "string" ? [start] : []
+          }),
+    )
+    expect(dates).toEqual(["2026-11-09T06:58:00.000Z", "2026-11-09T06:58:00.000Z"])
+    expect(state).toEqual(facts)
+    f.clearCalls()
+    expect((await f.run(syncSharedResourceDisplay(library, state))).display_status).toBe("complete")
+    expect(f.writeCount()).toBe(0)
+    expect(f.readBodyCount()).toBe(0)
+  })
+
+  test("a different native date minute still fails display readback", async () => {
+    const f = fixture(),
+      state = await f.state(Date.parse("2026-11-09T06:58:00.000Z"))
+    f.faults.dateReadback = "next_minute"
+    f.clearCalls()
+    const result = await f.run(syncSharedResourceDisplay(library, state))
+    expect(result).toMatchObject({
+      display_status: "incomplete",
+      results: [
+        { display_status: "failed", code: "SOURCE_WRITE_MISMATCH" },
+        { display_status: "failed", code: "SOURCE_WRITE_MISMATCH" },
+      ],
+    })
+    expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(2)
     expect(f.readBodyCount()).toBe(0)
   })
 
