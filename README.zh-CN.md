@@ -145,7 +145,7 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 固定来源先用 `source inspect/register` 登记精确 commit/root，再由 `ctl library source select prepare ... --output PLAN` 生成计划并用 `source select apply PLAN --entry ENTRY` 选择。共享 Profile 可通过 `ctl library profile list/show/set/bind/unbind` 管理；`list --profile PROFILE_ID --database ENTRY` 采用共享默认 View，显式 View 优先，普通 `list` 保持完整发现。
 
-完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[共享架构](docs/shared-ssot-architecture.md)。完整纳管保留原生资源和固定来源资源；多项布局 `apply`、首次未知请求在空客户端不可见等边界仍保留。自动更新或恢复跟随若需要替换已有可编辑正文，会因缺少原子前置条件停在 `BODY_REPLACEMENT_UNSAFE`。显式作者写入保留自己的基线与恢复合同，不声称原子版本检查。保留原始操作 ID，并使用该操作返回的确切恢复入口。
+完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[共享架构](docs/shared-ssot-architecture.md)。完整纳管保留原生资源和固定来源资源；多项布局 `apply`、首次未知请求在空客户端不可见等边界仍保留。自动更新若需要替换已有可编辑正文，仍停在 `BODY_REPLACEMENT_UNSAFE`。显式 `restore-follow` 保留完整旧文，以一次完整旧字符串匹配提交，并核对完整返回正文和独立读回后才确认 following；这不提供页面版本 CAS。`file request --submit` 可冻结一份稍后由 `--process` 处理的明确请求，普通 Notion 下拉框只表达意图。显式作者写入保留自己的基线与恢复合同。保留原始操作 ID，并使用该操作返回的确切恢复入口。
 
 Pi 使用 Broker 随包的 CLI/SDK，无需额外安装全局 CLI；终端或其他 Agent 需要命令行时再安装独立 CLI。配置见[在 Pi 使用远程 Skill](docs/shared-authoring.md#use-the-remote-skill-in-pi)。创作、检查、使用与资源读取分别有明确合同；读取成功不等于模型已应用指令。发行验证记录 Broker 内嵌 CLI/SDK 与本次测试的独立 CLI 组合、来源范围和观察结果。
 

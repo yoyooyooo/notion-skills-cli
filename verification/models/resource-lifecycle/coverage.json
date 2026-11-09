@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "synchronized_commit": "5dcfe19ea4da6a974cff8639ee602c7f93b3ba9c",
+  "synchronized_commit": "737e583f2063dc56b21f85d1d942cf32e21505c6",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
-    "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
+    "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
     "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
-    "packages/core/src/shared-body-write.ts": "4cd7fd54a50554ae2ea35c8655fab0a9e466678fa08fbf70d9dc222b0f8128b2",
+    "packages/core/src/shared-body-write.ts": "dc01ee8d387e4e3762d54920c0bc3b15ac5afe2b201df3fc4be99846e0a72811",
     "packages/core/src/shared-source-refresh.ts": "481a1e5783f51bfe10205c4985e14c4da5a8ca2f63f3ee18b4edcba812f82e8b",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
     "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
@@ -21,15 +21,15 @@
     "packages/core/src/shared-inventory-local.ts": "b8c2f6df4c6775c1b5a55e1b9a4a83d520a266a859b6d8e6448ca20621d7d938",
     "packages/core/src/shared-create.ts": "69d18e715677d0d090ebd5772b810a0aa9ebbb29c13daf83187e0a2b69af1518",
     "packages/core/src/shared-create-model.ts": "dea7ad411fbdc574c8e363500aabf346f750808e00c1c5f372e2398e1b17f5e9",
-    "packages/core/src/shared-create-dispatch.ts": "0d683c2820798f273d77203697e2491d076ce45c5b537346cdcfa56a1efb7071",
+    "packages/core/src/shared-create-dispatch.ts": "512d6105a29d0550eacbdd2c09ec5c23108c495e44249a32b045b4055a686eb8",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
-    "packages/core/src/shared-source-definitions.ts": "bd5a01ef55e4c628e83840a8a333060ed9d5f5b6d1ee5238a65de723fad1d83d",
-    "packages/core/src/shared-records.ts": "a940f79041bf892c04388a68c05fe90e17886036ca7abb8c55a51c97a295c090",
+    "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
+    "packages/core/src/shared-records.ts": "7b52c8ffbe14f2129095e408ed12ecee76b5bdbe7a11e6f859d8a7cc62d04b92",
     "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
     "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
-    "packages/core/src/shared-notion-projection.ts": "a836b57c41b3c2b05c4ed12a73f32f3ae00732148d77e94a0fac9d224d43d786",
-    "packages/core/src/shared-notion-document-spacing.ts": "0993f9ff833a5ac89dad4b7c6a1bffbeb6ce646f9cd977b8769d0d269e1b6002",
+    "packages/core/src/shared-notion-projection.ts": "ba762a9aba18ceab5cd9b50a54f1122598fe64514c86558ad85e18495ecaf32f",
+    "packages/core/src/shared-notion-document-spacing.ts": "6ff3c76449c7c2baad0da0424a79dead6e374c12869ebdadde05a5a92a6b961c",
     "packages/core/src/shared-create-recovery.ts": "6d47f210243f4858c6695074576f7362e18c1e96073027c94c87d2799645eb06",
     "packages/core/src/shared-create-recovery-prefix.ts": "1a68fe3537555e0468f0868a36e791c1748f722830186d9a06f75797c89cddcb",
     "packages/core/src/shared-create-recovery-prefix-model.ts": "e25da20d8884cb9d8a7ca157f28c06bbac9ae0ad8cad1370f569da16ea29f348",
@@ -48,10 +48,10 @@
     "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
     "packages/core/src/shared-file-management-model.ts": "7d3c164ad72476fe1d1e44d94fa84cbbed9d3978506f00553e017694fc4206ff",
     "packages/core/src/shared-file-management.ts": "7a88911bab817447b313db17575757fd22312c5d179b6f0edc556d0c7a4c8486",
-    "packages/core/src/shared-authoring.ts": "eac03ce227f45520b3fabbf78e715c1976d419e2642a1276be16e0e5c329bf6d",
+    "packages/core/src/shared-authoring.ts": "57a0553d5e9a04d5cf487ba3ae70981cde6d9a706712e60a99d22828bbf51ef9",
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
     "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
-    "packages/core/src/shared-file-restore.ts": "d1fb292e27399fe35cd85a86191c1555f499c282839b744fd94e13a77f9d178f",
+    "packages/core/src/shared-file-restore.ts": "6b5b6a2d6661ce97350fbf2e29d934b7688ea569357ffe184090425996729fa3",
     "packages/core/src/sqlite-state.ts": "4dc40959c66bf5dea4c0c559fd66c24312d3ccce5be5c7bddc7842ccacdb4931",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
@@ -67,7 +67,9 @@
     "packages/core/src/shared-create-recovery-native-authority.ts": "76b62bc95e6f9dace58f35ecdc370805cbddf24f59621186d4586981781f3382",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
     "packages/core/src/shared-create-recovery-native.ts": "65e872e277bf30fe63046f6795287596c93e8120d64a8f063720a6951e94ce1a",
-    "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459"
+    "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
+    "packages/core/src/shared-file-request.ts": "6b602534a1a766024083c8c589c6490f003daafab6556d0be18bde6a517134fc",
+    "packages/cli/src/commands-library-file-request.ts": "e89665d262ee72cda13a4a74b6fbd4c8f481608ecb71b526f0074fa754a088e8"
   },
   "models": {
     "ProjectionRace": {
@@ -80,13 +82,14 @@
         "automaticSourceStops",
         "runSourceUpdate"
       ],
-      "scope": "The existing editable-page replacement refusal and human-adoption ownership boundary, versus a rejected read-check-unconditional-replace proposal. Changed-body restore-follow calls the guard; automatic source-run policy also refuses unsupported projection replacement. A safe terminal refusal is not successful automatic update progress.",
+      "scope": "The automatic editable-page replacement refusal and human-adoption ownership boundary, versus a rejected read-check-unconditional-replace proposal. The isolated requireSafeBodyReplacement helper and automaticSourceStops retain their refusal contracts. Explicit changed-body restore uses a separate complete-old-body-match protocol and no longer calls the helper. A safe terminal refusal is not successful automatic update progress.",
       "excluded": [
         "Provider revision-CAS",
         "atomic old-string matching",
         "enforced UI edit exclusion",
         "multi-page API transactions",
-        "Explicit manual authoring writer protocol and all-writer guard coverage"
+        "Explicit manual authoring writer protocol and all-writer guard coverage",
+        "Explicit complete-old-body-match restore and request submission authorization"
       ]
     },
     "UpdateCommit": {
@@ -234,7 +237,7 @@
     }
   },
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
-  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim.",
+  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim. Explicit complete-body-match restore, request submission, ACK-bound exact Record GET and projection 13 are reviewed unmodeled changes. Existing model/config/view inputs, finite bounds and prior result receipts are retained; this synchronization claims no new model execution.",
   "unmodeled_bindings": [
     {
       "kind": "hash_bound_context_not_modeled",
@@ -253,22 +256,28 @@
       "files": [
         "packages/core/src/shared-records.ts",
         "packages/core/src/shared-record-codec.ts",
-        "packages/core/src/shared-snapshot-history.ts"
+        "packages/core/src/shared-snapshot-history.ts",
+        "packages/core/src/shared-source-definitions.ts",
+        "packages/core/src/shared-create-dispatch.ts"
       ],
       "symbols": [
         "encodeSharedRecordStorage",
         "decodeSharedRecordStorage",
         "canonicalSharedRecordEnvelope",
         "recordFromCachedEnvelope",
-        "prepareSharedSnapshotHistory"
+        "prepareSharedSnapshotHistory",
+        "guardedSourceMutation",
+        "sharedCreateDispatch",
+        "verifySharedRecordPage"
       ],
-      "scope": "The logical envelope identity stays separate from physical storage. The lifecycle models do not model gzip/Base64, logical or wire byte limits, arbitrary manifest cardinality, rich-text transport, cache representation or immutable Record reconciliation. These hashes bind the reviewed implementation context only.",
+      "scope": "The logical envelope identity stays separate from physical storage. The lifecycle models do not model gzip/Base64, logical or wire byte limits, arbitrary manifest cardinality, rich-text transport, cache representation or immutable Record reconciliation. An original Records POST with a validated durable request/response ACK may observe the exact response page ID by GET. It reuses full active-page, Records ownership, Skill relation and canonical envelope/payload validation, then requires the frozen original logical envelope. Query-index visibility is not required for this acknowledged observation. Unknown, absent or invalid ACKs acquire no such authority; no POST replay or recovery version is added. This exact GET path remains outside all six models. These hashes bind reviewed implementation context only.",
       "tests": [
         "packages/core/test/shared-records.test.ts",
         "packages/core/test/shared-record-payload-cache.test.ts",
         "packages/core/test/shared-record-codec.node.test.ts",
         "packages/core/test/shared-snapshot-history.test.ts",
-        "packages/core/test/shared-source-projection.test.ts"
+        "packages/core/test/shared-source-projection.test.ts",
+        "packages/core/test/shared-create-known-recovery.test.ts"
       ]
     },
     {
@@ -287,16 +296,25 @@
         "projectNativeTextBreaks",
         "currentSharedNotionMarkdownVersion",
         "projectNativeHeadingLiterals",
-        "projectNotionMarkdownV12"
+        "projectNotionMarkdownV12",
+        "projectNotionMarkdownV13"
       ],
-      "scope": "Projection versions, literal-token escaping, top-level creation paragraph/fence spacing, preserved submitted wire bytes and actual Notion rendering remain outside every model. ImportCreate treats the frozen candidate/readback as abstract values; CreateRecovery fixes the v9-to-v10 decision without proving its bytes. ProjectionRace still concerns refusal of unsafe existing-body replacement. Explicit old policies remain fixed. Policy 11 handles observed literal escaping in parsed top-level heading text; the retained version 1-10 policies and creation wire remain unchanged. Exact supporting YAML retention is separately bound below. Policy 12 adds purpose-specific observed separators: body_write ATX heading to paragraph and paragraph to fenced code, and data_source_create ATX heading to list or fenced code. Original wire, leading whitespace, nested blocks, retained policies 1-11 and the existing body-write results are preserved. Complete real-input replay is product evidence, not a finite-model proof.",
+      "scope": "Projection versions, literal-token escaping, document spacing, preserved submitted wire bytes and actual Notion rendering remain outside every model. ImportCreate treats the frozen candidate/readback as abstract values; CreateRecovery fixes the v9-to-v10 decision without proving its bytes. ProjectionRace concerns automatic refusal of unsafe existing-body replacement, not explicit complete-match restore. Explicit old policies remain fixed. Policy 11 handles observed literal escaping in parsed top-level heading text; exact supporting YAML retention is separately bound below. Policy 12 adds purpose-specific observed separators: body_write ATX heading to paragraph and paragraph to fenced code, and data_source_create ATX heading to list or fenced code. Policy 13 extends only data_source_create for fully reconstructed top-level loose decimal-dot ordered lists. All items must start with a single-line paragraph; multi-block items must include a backtick fence and a continuation paragraph and contain only supported paragraphs, fences and simple non-task unordered child lists. At least one item must be multi-block. Its expected readback wraps continuation paragraphs and adjusts those separators. Other list shapes, body-write results, original wire and retained policies 1-12 preserve their prior behavior. The minimal repository list regression and one external complete native81 input/readback comparison are distinct evidence. Neither establishes arbitrary rendering, changes historical recovery decisions or supplies a finite-model proof.",
       "tests": [
         "packages/core/test/shared-notion-document-spacing.test.ts",
         "packages/core/test/shared-notion-projection-v8.test.ts",
         "packages/core/test/shared-create.test.ts",
         "packages/core/test/shared-notion-projection-v10.test.ts",
         "packages/core/test/shared-notion-projection-v11.test.ts",
-        "packages/core/test/shared-notion-projection-v12.test.ts"
+        "packages/core/test/shared-notion-projection-v12.test.ts",
+        "packages/core/test/shared-notion-projection.test.ts"
+      ],
+      "evidence": [
+        {
+          "artifact": "nr31-inventory-63c2b4b0/remaining144-fresh-review-xz8v3h8d/native81-v13-checks/completion.json",
+          "sha256": "4e7e8fdfe4b5b17c83c3c0eac1047be686ebc9ff746ead11adecd48d6fce3fee",
+          "scope": "External retained comparison of one complete 12563-byte native81 input with its independent captured Notion readback, preserving original v12 and submitted-wire hashes. The receipt and its historical fixture digest remain unchanged; the repository regression is minimized separately. This is not a new live run, an arbitrary-input claim or a model result."
+        }
       ]
     },
     {
@@ -362,7 +380,9 @@
         "packages/core/src/shared-file-restore.ts",
         "packages/core/src/shared-create-model.ts",
         "packages/core/src/shared-snapshot.ts",
-        "packages/core/src/shared-native-file-content.ts"
+        "packages/core/src/shared-native-file-content.ts",
+        "packages/core/src/shared-file-state.ts",
+        "packages/core/src/shared-body-write.ts"
       ],
       "symbols": [
         "splitNativeSupportingMarkdown",
@@ -374,9 +394,10 @@
         "applySharedSkillChanges",
         "restoreSharedFileFollowing",
         "validateSharedBodyWritePlan",
-        "restoreSharedNativeFileLinks"
+        "restoreSharedNativeFileLinks",
+        "notionWriteCapabilities"
       ],
-      "scope": "Complete input and retained header serialization are outside the finite models. New file-add v2 retains the exact original supporting header and input; source creation v11 retains C1 and N1 header/mode ancestry. Explicit write/apply check fresh consumer headers against retained native ownership before dispatch. Restore-follow v11 uses the native creation projection, but an unequal body still reaches the unchanged requireSafeBodyReplacement guard. No existing-body overwrite authority, unknown-write replay or ownership transition was added. ProjectionRace retains its original assumptions; old plan identities and unprojected plans remain accepted by their original contracts. The consumer and authoring paths both recognize .md and .markdown, so an explicit edit restores same-owner relative references to their exact bound native pages. This byte-level round trip remains outside the finite models.",
+      "scope": "Complete input and retained header serialization are outside the finite models. New file-add v2 retains the exact original supporting header and input; source creation v11 retains C1 and N1 header/mode ancestry. Explicit write/apply check fresh consumer headers against retained native ownership before dispatch. Restore-follow uses the selected native creation projection for exact no-body-write comparison. A differing-body explicit restore uses the single_full_body_match capability: one nonempty complete old-body match, frozen-input revalidation before dispatch and exact full candidate readback before accepting the following state. It no longer calls requireSafeBodyReplacement. This explicit writer protocol is not page revision CAS, permits no unknown-write replay and remains outside ProjectionRace and every other finite model. Old plan identities and unprojected plans remain accepted by their original contracts. The consumer and authoring paths both recognize .md and .markdown, so an explicit edit restores same-owner relative references to their exact bound native pages. This byte-level round trip remains outside the finite models.",
       "tests": [
         "packages/core/test/shared-native-frontmatter.test.ts",
         "packages/core/test/shared-create-complete.test.ts",
@@ -499,6 +520,23 @@
         "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
         "packages/cli/test/library-inventory.test.ts"
       ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "explicit_file_request_submission",
+      "files": [
+        "packages/core/src/shared-file-request.ts",
+        "packages/cli/src/commands-library-file-request.ts"
+      ],
+      "symbols": [
+        "submitSharedFileRequest",
+        "processSharedFileRequest",
+        "matchesSubmission",
+        "verifyRequest",
+        "libraryFileRequestCommand"
+      ],
+      "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission, and original unknown writes remain barriers to new dispatch. The submission/processing state machine, exact receipt validation and complete-body-match restore are not modeled by any of the six finite models.",
+      "tests": ["packages/core/test/shared-file-request.test.ts", "packages/cli/test/cli.test.ts"]
     }
   ]
 }

@@ -13,11 +13,12 @@ Read `verification/models/resource-lifecycle/coverage.json` and `README.md`. The
 
 | Model | Reviewed contract | Limits |
 | --- | --- | --- |
-| ProjectionRace | The product's fail-closed restore-follow / automatic projection guard, and a rejected read-check-unconditional-replace alternative. | A new source version, a matching earlier read, a normal UI lock or a confirmation does not create atomic edit protection. |
+| ProjectionRace | The automatic projection refusal boundary and isolated replacement-helper contract, versus a rejected read-check-unconditional-replace alternative. | Explicit complete-body-match restore and request submission are unmodeled. A new source version, earlier read, UI lock or confirmation does not create atomic edit protection. |
 | UpdateCommit | Complete retention before one authorized selection; one original dispatch, honest unknown outcomes and stable existing session pins. | It does not model every dispatcher, all source adapters, multiple writers or arbitrary resources. |
 | AuditRun | Read-only reverse inventory, declared coverage and monotone resumption under a finite budget. | Two roots and one orphan abstract the real paginated audit; the model does not prove network cost, SQL crash recovery or a globally atomic database snapshot. |
 | ImportCreate | A reviewed complete input, disabled creation, durable original acknowledgements, bounded continuation and enablement only after all abstract stages verify. | Two retained inputs (document and raw resource) and four stages abstract a single explicitly enabled creation. Actual file formats, immutable-record reconciliation and manual edits require code and installed tests. |
 | CreateRecovery | A separately reviewed v9 creation recovery, one or three original ACK pages, a complete original request set, no unknown-attempt replay and exact Projection authority before the first write. | One abstract missing suffix and three mutable stages. It does not prove Markdown v10, arbitrary request counts, cold-record validation, current-body atomicity, transport permissions or actual Notion behavior. |
+| AcknowledgedContinuation | Complete original request/ACK authority for an allocated tree, fresh body checks before continuation stages, no uncertain redispatch and full shared proofs before cold completion. | Three visible pages and four abstract stages. Exact requests, byte commitments, every immutable Record subrequest, native rendering and edits after a check require implementation evidence. |
 
 A passing model is not completion of its linked Issue. Negative controls describe the consequence of removing a guard; classify a production defect only with its current code correspondence or a live reproduction.
 
@@ -53,9 +54,11 @@ The existing four mutation cases still cover their original body, ownership and 
 
 ## Explain results in domain terms
 
-For the human-edit counterexample, identify the initial read, subsequent human edit and unconditional replacement. Trace `requireSafeBodyReplacement` through restore-follow in the body writer and the source-run policy. Explicit manual author writes have their own protocol and are outside this model's guard-coverage claim. A current byte match is an observation, not a server-enforced precondition.
+For the human-edit counterexample, identify the initial read, subsequent human edit and unconditional replacement. Trace `automaticSourceStops` for the automatic source-run refusal and keep the `requireSafeBodyReplacement` mutation's isolated helper scope explicit. Changed-body restore no longer calls that helper: an explicit restore uses one nonempty complete old-body match, frozen-input revalidation and full candidate readback. Manual authoring and this restore protocol are outside ProjectionRace. Complete string matching is not page revision CAS; a matching earlier GET alone is not a server-enforced precondition.
 
 For selection and import, distinguish a dispatch, its durable original acknowledgement, current visibility and a verified outcome. Reconciliation of an immutable exact fact has a different authority from acknowledgement of a mutable page request. Do not use an equal current page to manufacture a missing acknowledgement or replay a lost create.
+
+Keep `request --submit`, ACK-bound exact Record GET and projection 13 in `unmodeled_bindings`. Submission fixes body/frontier/identity/Source authority; only a verified selection advance within that same Source definition/member may vary. Exact Record GET requires the original durable ACK and the full Record validator, not query visibility or a guessed page ID. Projection 13 covers one bounded creation-list rendering rule, supported by a minimal repository counterexample and a separate complete native81 observation. None of these paths acquires a finite-model proof by updating source hashes; retain the historical v11-to-v12 native recovery contract unchanged.
 
 For audit, distinguish surviving roots, reverse-table orphans, complete target coverage, the full library denominator and resume progress. A target audit can be complete while a derived library inventory remains partial. The real audit uses `withReadOnlyNotion` across descendant helpers, bounds each invocation and checkpoints observed outcomes. Its integration and Node SQLite tests establish details absent from the finite model. Normal current reads can adopt new whole-file edits and are not a substitute for a read-only audit.
 
@@ -65,8 +68,10 @@ Use Pstack `/statechart` semantics: retain generated Mermaid, label states in do
 
 ## Maintain the verification
 
-When code changes, apply `/maintain-formal-verification-skill`: decide whether a failure is a changed intended contract, model drift or a product defect. Move the reviewed commit and hashes only after tracing that distinction. Run the existing matrix, and keep each new negative control isolated enough to identify the guard it removes.
+When code changes, apply `/maintain-formal-verification-skill`: decide whether a failure is a changed intended contract, model drift or a product defect. Move the reviewed commit and hashes only after tracing that distinction. Run the affected existing model group when its modeled contract changes, and keep each new negative control isolated enough to identify the guard it removes.
 
 When only one reviewed model group changes, run that selected group and retain the exact prior receipts for unchanged groups. Record source, runner, model/config/view hashes and the reviewed correspondence; inherited evidence is not a new execution. A projection serialization change does not by itself require changing ProjectionRace or UpdateCommit. A new first-write authority branch requires its own code-level counterexample and explicit mapping.
+
+For changes explicitly outside every model, synchronize the actual source hashes and unmodeled scope without relabeling prior model results as fresh runs. Preserve all six models' existing bounds and receipts; use the relevant code and installed/live evidence for the new path.
 
 Performance, arbitrary data sizes, source parsing, actual permissions, concurrent Notion edits, multiple writers, machine-bound local access and complete historical retention need their own tests or additional models. A finite pass does not authorize production imports, host installation, cleanup or changes to the editing protocol.
