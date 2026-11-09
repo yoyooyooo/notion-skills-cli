@@ -1,7 +1,8 @@
+import { DatabaseSync } from "node:sqlite"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Clock, Duration, Effect, Fiber, FileSystem, Queue, Semaphore } from "effect"
 import { TestClock } from "effect/testing"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { type SkillsError } from "../src/model.ts"
 import {
   makeSqliteRequestScheduler,
@@ -74,6 +75,63 @@ test("independent SQLite scheduler instances admit only one shared credential pe
       }),
     ),
   )
+})
+
+test("transaction preparation time does not shorten the next request interval", async () => {
+  let now = 0
+  let advanced = false
+  const waits: number[] = []
+  const millis = () => now
+  const nanos = () => BigInt(now) * 1_000_000n
+  const preparationClock: Clock.Clock = {
+    currentTimeMillisUnsafe: millis,
+    currentTimeMillis: Effect.sync(millis),
+    currentTimeNanosUnsafe: nanos,
+    currentTimeNanos: Effect.sync(nanos),
+    monotonicTimeNanosUnsafe: nanos,
+    monotonicTimeNanos: Effect.sync(nanos),
+    sleep: (duration) =>
+      Effect.sync(() => {
+        const elapsed = Duration.toMillis(duration)
+        waits.push(elapsed)
+        now += elapsed
+      }),
+  }
+  const prepare = DatabaseSync.prototype.prepare
+  const preparation = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function (
+    this: DatabaseSync,
+    query: string,
+  ) {
+    const statement = prepare.call(this, query)
+    if (!advanced && query.startsWith("INSERT INTO request_schedule")) {
+      // Advance both clocks inside real SQLite preparation, after the claim began.
+      now += 200
+      advanced = true
+    }
+    return statement
+  })
+  try {
+    await Effect.runPromise(
+      withSchedulers(({ first, second }) =>
+        Effect.gen(function* () {
+          const options = {
+            apiOrigin: "https://api.notion.com",
+            connection: "shared-connection",
+            workspace: "shared-workspace",
+            endpoint: "GET page",
+          }
+          yield* first.acquire(credential, yield* deadline, options)
+          expect(advanced).toBe(true)
+          expect(yield* Clock.currentTimeMillis).toBe(200)
+          yield* second.acquire(credential, yield* deadline, options)
+          expect(waits).toEqual([350])
+          expect(yield* Clock.currentTimeMillis).toBe(550)
+        }).pipe(Effect.provideService(Clock.Clock, preparationClock)),
+      ),
+    )
+  } finally {
+    preparation.mockRestore()
+  }
 })
 
 test("shared cooldowns only extend and are rechecked before a waiting process claims a slot", async () => {
