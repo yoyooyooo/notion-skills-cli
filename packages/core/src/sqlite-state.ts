@@ -157,9 +157,20 @@ const sharedLocalDomains: readonly {
     address: /^plans\/shared-inventory-imports\/inventory-import-[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "plans/shared-inventory-batches",
+    category: "dispatch",
+    address: /^plans\/shared-inventory-batches\/import-batch-[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-inventory-imports",
     category: "dispatch",
     address: /^operations\/shared-inventory-imports\/inventory-import-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-native-readbacks",
+    category: "dispatch",
+    address:
+      /^operations\/shared-native-readbacks\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
   },
   {
     prefix: "cache/shared-file-observations",

@@ -30,6 +30,7 @@ Command/parameter semantics belong to the [protocol](../../../../docs/protocol.m
 
 | Entry or boundary | Cases | Required proof |
 | --- | --- | --- |
+| `ctl library inventory prepare-imports/apply-imports/reconcile-imports` | NR32-batch | [Inventory recipe](resource-inventory.md#nr32-batch-import-reliability): complete approved cohort, retained preparation failures, serial original child journals, known body failure isolation, unknown-write stop, repeat without duplicates, actual Node CLI and immutable SQLite batch; invocation counts are not first-pass success rates |
 | AH-617 consumption contract and CLI evidence | SC-VERIFY-01–03 | [Consumption recipe](skill-consumption.md): exact user entry, separate source/projection/session evidence, rejected false positives, real drive and unchanged evidence hashes after Cleanup; CLI proof does not establish Pi/model/installed behavior |
 | `ctl library init/inspect/files/state` and shared catalog/View identity | SS01–SS03, SS10 | [Shared recipe](shared-ssot.md): exact descriptor/property IDs, default new-library Members self-relation, read-only original-init recovery, complete flat metadata and native View membership; no body/provider work for metadata commands |
 | Shared current `read`, `files`, whole-file adoption and `--metrics` | SS03–SS06 | Complete snapshot, persistent custom ownership, unchanged-body zero writes, bounded full verification, original-plan reconciliation and explicit open first-write boundary |

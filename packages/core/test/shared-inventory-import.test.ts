@@ -24,6 +24,12 @@ import {
 } from "../src/shared-inventory-remote.ts"
 import type { SharedBaselineInventory } from "../src/shared-inventory-remote.ts"
 import { INVENTORY_RULES } from "../src/shared-inventory-model.ts"
+import {
+  decodeInventoryBatchInput,
+  executeInventoryBatch,
+  prepareInventoryBatch,
+  type InventoryBatchInputSchema,
+} from "../src/shared-inventory-batch.ts"
 import { Store, sha256 } from "../src/store.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { authScope } from "../src/catalog.ts"
@@ -176,6 +182,210 @@ async function fixture(
     prepare: () => f.run(prepareInventoryImport(input).pipe(Effect.provide(NodeServices.layer))),
   }
 }
+
+async function batchFixture(readback?: (wire: string) => string) {
+  const f = sharedCreateFixture(readback === undefined ? {} : { readback })
+  const root = await mkdtemp(join(tmpdir(), "ntn-import-batch-"))
+  for (const name of ["first", "second"]) {
+    await mkdir(join(root, name))
+    await writeFile(
+      join(root, name, "SKILL.md"),
+      `---\nname: batch-${name}\ndescription: Complete batch fixture\n---\n\n# ${name}\n\nContent for ${name}.\n`,
+    )
+  }
+  const reviewed = await inventoryReview(f, root)
+  const input = {
+    version: 1,
+    reconciliation_id: reviewed.review.inventory_id,
+    items: [...reviewed.local.entities]
+      .sort((a, b) => a.real_root.localeCompare(b.real_root))
+      .map((entity) => ({
+        entity_id: entity.entity_id,
+        approved_manifest: entity.manifest_sha256,
+        decision: { kind: "native" },
+      })),
+  } satisfies typeof InventoryBatchInputSchema.Type
+  f.clear()
+  return {
+    ...f,
+    root,
+    input,
+    prepare: (request: unknown = input) =>
+      f.run(prepareInventoryBatch(f.library, request).pipe(Effect.provide(NodeServices.layer))),
+  }
+}
+
+test("native inventory imports accept Notion formatting and cold consumers use the recorded readback without adoption writes", async () => {
+  const f = await batchFixture((wire) =>
+    wire.replace(/<h1>(.*?)<\/h1>/u, "### $1").replace(/(Content for \w+\.)/u, "<p>$1</p>\n"),
+  )
+  const batch = await f.prepare()
+  const frozen = canonicalSharedJson(batch)
+  const applied = await f.run(executeInventoryBatch(f.library, batch))
+  expect(applied.counts).toMatchObject({ total: 2, confirmed: 2, failed: 0 })
+  for (const row of applied.items) {
+    const result = property(row.result)
+    expect(result.markdown_acceptance).toMatchObject({
+      policy: "notion_import_readback_v1",
+      roundtrip_required: false,
+      representation_changed: ["SKILL.md"],
+    })
+    const page = String(result.skill_page_id)
+    const observed = f.base.bodies.get(page)!
+    f.base.objects.clear()
+    for (const key of [...f.base.json.keys()])
+      if (
+        key.startsWith("operations/shared-native-readbacks/") ||
+        key.startsWith("snapshots/") ||
+        key.startsWith("cache/")
+      )
+        f.base.json.delete(key)
+    f.clear()
+    const snapshot = await f.run(
+      withSharedAuthoringRequest(
+        page,
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library: f.library,
+            target: page,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            readOnly: true,
+          })
+        }),
+      ),
+    )
+    const main = snapshot.files.find((file) => file.path === "SKILL.md")!
+    const body = new TextDecoder().decode(f.base.objects.get(`objects/${main.sha256}`))
+    expect(body).toContain(observed)
+    expect(body).toContain("<p>Content for")
+    expect(f.writes()).toHaveLength(0)
+  }
+  f.clear()
+  const repeated = await f.run(executeInventoryBatch(f.library, batch))
+  expect(repeated.counts).toMatchObject({ confirmed: 2, reused: 2 })
+  expect(f.writes()).toHaveLength(0)
+  expect(canonicalSharedJson(batch)).toBe(frozen)
+})
+
+test("an edit after the first accepted import readback cannot become a new baseline on resume", async () => {
+  const f = await fixture()
+  const plan = await f.prepare()
+  let page: string | undefined
+  f.onCreate((row, kind) => {
+    if (kind === "skill") page = String(row.id)
+    else if (page !== undefined)
+      f.base.bodies.set(page, f.base.bodies.get(page)! + "\nLater manual edit.")
+  })
+  await expect(f.run(executeInventoryImport(f.library, plan))).rejects.toThrow()
+  const created = f.nativeCreates().length
+  await expect(f.run(executeInventoryImport(f.library, plan))).rejects.toThrow()
+  expect(f.nativeCreates()).toHaveLength(created)
+  expect(f.base.bodies.get(page!)).toContain("Later manual edit.")
+})
+
+test("batch imports two complete Skills using original child journals; repeated apply and reconcile add no writes", async () => {
+  const f = await batchFixture()
+  const batch = await f.prepare()
+  expect(batch.items.map((item) => item.status)).toEqual(["prepared", "prepared"])
+  expect(f.writes()).toHaveLength(0)
+  const dry = await f.run(executeInventoryBatch(f.library, batch, { dryRun: true }))
+  expect(dry.counts).toMatchObject({ total: 2, validated: 2, confirmed: 0 })
+  expect(f.writes()).toHaveLength(0)
+  const applied = await f.run(executeInventoryBatch(f.library, batch))
+  expect(applied).toMatchObject({ all_confirmed: true, execution_complete: true, halted: false })
+  expect(applied.counts).toMatchObject({ total: 2, confirmed: 2, reused: 0 })
+  expect(f.nativeCreates()).toHaveLength(2)
+  f.clear()
+  const repeated = await f.run(executeInventoryBatch(f.library, batch))
+  expect(repeated.counts).toMatchObject({ confirmed: 2, reused: 2 })
+  expect(f.writes()).toHaveLength(0)
+  await writeFile(join(f.root, "first", "SKILL.md"), "Local tree changed after import.\n")
+  const reconciled = await f.run(executeInventoryBatch(f.library, batch, { reconcile: true }))
+  expect(reconciled.all_confirmed).toBe(true)
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("batch preparation keeps a failed manifest in the denominator while preparing the other entity", async () => {
+  const f = await batchFixture()
+  const batch = await f.prepare({
+    ...f.input,
+    items: f.input.items.map((item, index) =>
+      index === 0 ? { ...item, approved_manifest: "f".repeat(64) } : item,
+    ),
+  })
+  expect(batch.items.map((item) => item.status)).toEqual(["preparation_failed", "prepared"])
+  expect(f.writes()).toHaveLength(0)
+  const result = await f.run(executeInventoryBatch(f.library, batch))
+  expect(result.counts).toMatchObject({
+    total: 2,
+    preparation_failed: 1,
+    confirmed: 1,
+    not_started: 0,
+  })
+  expect(result.all_confirmed).toBe(false)
+  expect(result.items.map((item) => item.entity_id)).toEqual(
+    f.input.items.map((item) => item.entity_id),
+  )
+  expect(f.nativeCreates()).toHaveLength(1)
+})
+
+test("batch rejects duplicate inputs and rehashed unprepared batches before any remote request", async () => {
+  const f = await batchFixture()
+  const duplicate = await f.run(
+    decodeInventoryBatchInput({
+      ...f.input,
+      items: [f.input.items[0], f.input.items[0]],
+    }).pipe(Effect.flip),
+  )
+  expect(duplicate.code).toBe("INVENTORY_BATCH_INVALID")
+  expect(f.calls).toHaveLength(0)
+  const batch = await f.prepare()
+  const { batch_id: _id, ...contents } = batch
+  const changed = { ...contents, items: [...contents.items].reverse() }
+  const forged = {
+    ...changed,
+    batch_id: `import-batch-${await f.run(sha256(canonicalSharedJson(changed)))}`,
+  }
+  f.clear()
+  const rejected = await f.run(executeInventoryBatch(f.library, forged).pipe(Effect.flip))
+  expect(rejected.code).toBe("INVENTORY_BATCH_NOT_PREPARED")
+  expect(f.calls).toHaveLength(0)
+})
+
+test("a known batch body mismatch preserves its failed original and allows the independent next entity", async () => {
+  const f = await batchFixture((wire) => {
+    const body = wire.replace(/^<h1>([^\n]*)<\/h1>(?=\n|$)/u, "# $1")
+    return body.includes("Content for first.") ? body + "\nAltered.\n" : body
+  })
+  const batch = await f.prepare()
+  const result = await f.run(executeInventoryBatch(f.library, batch))
+  expect(result.counts).toMatchObject({ total: 2, failed: 1, confirmed: 1, not_started: 0 })
+  expect(result.items[0]?.error?.code).toBe("SHARED_CREATE_BODY_MISMATCH")
+  expect(result.halted).toBe(false)
+  expect(f.nativeCreates()).toHaveLength(2)
+  f.clear()
+  const again = await f.run(executeInventoryBatch(f.library, batch))
+  expect(again.counts).toMatchObject({ failed: 1, confirmed: 1, reused: 1 })
+  expect(f.nativeCreates()).toHaveLength(0)
+})
+
+test("unknown batch writes halt remaining dispatches and repeated original work cannot create duplicates", async () => {
+  const f = await batchFixture()
+  const batch = await f.prepare()
+  f.unknown("skill", false)
+  const result = await f.run(executeInventoryBatch(f.library, batch))
+  expect(result).toMatchObject({ halted: true, execution_complete: false, all_confirmed: false })
+  expect(result.counts).toMatchObject({ total: 2, confirmed: 0, failed: 1, not_started: 1 })
+  f.clear()
+  const again = await f.run(executeInventoryBatch(f.library, batch))
+  expect(again.counts).toMatchObject({ failed: 1, not_started: 1 })
+  expect(f.writes()).toHaveLength(0)
+  const checked = await f.run(executeInventoryBatch(f.library, batch, { reconcile: true }))
+  expect(checked.all_confirmed).toBe(false)
+  expect(f.writes()).toHaveLength(0)
+})
 
 test("formal import freezes the exact complete inventory and original create operation; prepare and dry-run write no Notion content", async () => {
   const f = await fixture()

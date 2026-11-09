@@ -27,6 +27,7 @@ export interface SharedSourceProjectionInput {
   readonly member: string
   readonly skillId?: string
   readonly enabled?: boolean
+  readonly markdownImport?: true
   readonly local?: {
     readonly baseline: SourceSnapshot
     readonly files: PortableSkill["files"]
@@ -202,6 +203,9 @@ export function prepareSharedSourceProjection(input: SharedSourceProjectionInput
       },
       enabled: input.enabled ?? false,
       ...(customized === undefined ? {} : { completeResources: true }),
+      ...(input.markdownImport === true && customized === undefined
+        ? { markdownImport: true as const }
+        : {}),
       ...relations,
       sourceProjection: {
         version: 1,

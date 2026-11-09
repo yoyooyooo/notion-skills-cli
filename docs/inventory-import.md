@@ -1,5 +1,21 @@
 # 库存审计与完整 Skill 导入
 
+原生库存导入允许 Notion 改变 Markdown 的空行、强调、标题层级和列表包装。
+导入保留原始输入，并以首次完整读回的 Notion 正文建立自定义内容基线。
+此后 CLI 消费该 Notion 内容，不要求恢复成本地输入的排版。
+正文文字、代码及明确链接目标仍做内容检查；截断或未知内容不算完整导入。
+脚本、JSON、图片和二进制继续保留原始资源字节和模式。
+
+上游文件的消费合同独立于阅读页。未接管文件继续来自选定的固定来源，
+Notion 排版不应改变其 Git 内容身份。本轮新读回策略用于原生库存导入和
+无本地自定义覆盖的固定 Git 库存导入。Git 阅读页的实际指纹由初始 following
+事件记录，格式差异不会自动接管上游内容。含本地覆盖的混合来源、保留型
+Provider 和旧计划暂沿原规则，不能把它们提前算作新策略已经覆盖。
+
+原生导入结果的 `markdown_acceptance` 标明策略、`roundtrip_required: false`
+及表示发生变化的路径。`verified` 指实际读回与保留资源、身份和操作结果已核对，
+不代表任意 Markdown 的视觉等价或无损双向转换已证明。
+
 这些命令把远端审计、本地文件观察和明确的导入计划连接起来。盘点、对账、准备和 dry-run 不写 Notion 内容；只有执行原导入计划才创建已审阅的条目。输入目录和软链始终保留。
 
 先使用 `ntn-skills schema ctl library inventory` 或对应命令的 `--help` 核对当前安装包。此文档描述当前源码接口，不证明旧安装包或任一真实库存已经完成迁入。
@@ -120,4 +136,49 @@ ntn-skills ctl library inventory reconcile-import ./import-plan.json --entry ENT
 真实搬入时，先在授权的小批次执行，再用新的只读 audit、独立安装的 `read/files/export` 和操作前冻结清单核对实际远端字节。导入器自己的 `verified` 结果不能替代这项迁入验收。冷读取使用另一个正常状态目录和现有凭据提供方，不能复制导入器数据库、token 或已填满的资源缓存来证明冷恢复。
 
 计划可能包含全部私有内容，应留在受控目录；不要提交到公开 Git 仓库。此流程不删除本地 Skill，不修改宿主全局投影，不执行脚本，不安装依赖或定时更新。后续的管理权移交另行按已核对身份处理。
+
+## 6. 一次执行已审定的批次
+
+同一库、同一对账中的多个实体可以交给 CLI 串行准备和执行。调用方不必逐项调度 `prepare-import` 和 `apply-import`，也不需要专用 Python 上传或恢复脚本。批次仍使用上面的单项导入内核。
+
+`approved-imports.json` 声明完整的授权集合。每项 `entity_id` 和 `approved_manifest` 来自原本地观察，不能用目录名称代替。
+
+```json
+{
+  "version": 1,
+  "reconciliation_id": "RECONCILIATION_ID",
+  "items": [
+    {
+      "entity_id": "ENTITY_ID",
+      "approved_manifest": "MANIFEST_SHA256",
+      "decision": { "kind": "native" }
+    }
+  ]
+}
+```
+
+来源项的 `decision` 使用 `{"kind":"source","source":"SOURCE_ID","member":"EXACT_MEMBER"}`，必要时增加已有来源证明中的 `baselineCommit`。已有一致项使用 `{"kind":"verify_existing"}`。`enabled` 省略时为 false；已有项不能请求启用。一次最多 1000 个不重复实体。
+
+```bash
+ntn-skills ctl library inventory prepare-imports --entry ENTRY \
+  --input ./approved-imports.json --output ./import-batch.json
+ntn-skills ctl library inventory apply-imports ./import-batch.json --entry ENTRY --dry-run
+ntn-skills ctl library inventory apply-imports ./import-batch.json --entry ENTRY \
+  --output ./import-attempt-1.json
+ntn-skills ctl library inventory reconcile-imports ./import-batch.json --entry ENTRY
+```
+
+部分准备失败时，`prepare-imports` 仍保存包含全部原输入及错误的批次，退出码为 4。成功准备的条目可继续执行，失败条目不会从总数中消失。修复准备问题后可对相同授权清单重新准备，旧批次和旧错误保持不变；已经派发的原操作不能靠新批次重建身份。
+
+执行前验证整个批次及全部子计划的本地原始准备记录，然后逐项核对源树并调用现有作者内核。确定的正文不匹配、正文不完整或需要内容审阅，只保留该项失败并继续独立的后续项。未知写入及其他执行错误停止新的派发，剩余项明确为 `not_started`。这不是全库事务，也不提供跨机器分布式锁。
+
+继续执行使用原 `import-batch.json` 和原 state root。已有完成项通过原操作核对，不再创建页面；未完成项仍受原日志的 ACK、未知写入和内容保护限制。未知响应不能因为重跑命令就自动获得再次写入许可。整次调用预算中断时，批次和子操作日志仍是恢复依据，不能把缺少最终标准输出视为零写入。`reconcile-imports` 不读取本地源树、不重新获取 Provider、不写远端。
+
+报告保留每项原身份、计划 ID、结果或原错误，以及 `total`、`confirmed`、`reused`、`preparation_failed`、`failed`、`not_started` 计数。`reused` 是 `confirmed` 的子集，不能再次相加。dry-run 使用 `validated`，不算作导入成功。执行或核对未全部确认时退出 4。输出文件只允许新建或内容相同，后续调用应选择新的报告文件名。
+
+### 用真实输入改进成功率
+
+批次报告表示本次调用结果，不能直接当作当前版本的首次导入成功率。评估需要另外固定候选版本、完整授权样本和执行覆盖，并区分首次无需 Agent 完成、CLI 沿原操作恢复后完成、已有对象复用、需要人工介入、失败与未执行。
+
+技术失败继续保留在授权样本中，权限未决或未批准共享的项单列。不能通过删除 reference、忽略二进制、放宽完整性比较或过滤难例提高比例。修复一类真实问题后，用正式 CLI 复验受影响样本和成功样本；受控服务结果、真实 Notion 结果及历史累计完成数分别记录。
 

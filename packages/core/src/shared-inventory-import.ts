@@ -340,6 +340,7 @@ export function prepareInventoryImport(
           ...relations,
           enabled: input.enabled ?? false,
           completeResources: true,
+          markdownImport: true,
         })
         action = {
           kind: "create",
@@ -485,6 +486,7 @@ export function prepareInventoryImport(
           acquired,
           member: decision.member,
           enabled: input.enabled ?? false,
+          markdownImport: true,
           ...(changes.length === 0 && localPortable?.relations === undefined
             ? {}
             : {

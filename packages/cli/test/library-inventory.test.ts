@@ -137,3 +137,58 @@ test("native inventory recovery exposes the original outer plan, explicit review
     expect(help.stdout).toContain("original")
   }
 }, 20_000)
+
+test("public import batch commands expose bounded serial preparation, execution and read-only original reconciliation", async () => {
+  for (const command of ["prepare-imports", "apply-imports", "reconcile-imports"]) {
+    const result = await invoke(["schema", "ctl", "library", "inventory", command])
+    expect(result.exit, result.stdout + result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout).schema.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "entry", required: true }),
+        expect.objectContaining({ name: "output" }),
+        expect.objectContaining({ name: "max-requests" }),
+      ]),
+    )
+    const help = await invoke(["ctl", "library", "inventory", command, "--help"])
+    expect(help.exit, help.stdout + help.stderr).toBe(0)
+    expect(help.stdout).toContain(command)
+  }
+}, 20_000)
+
+test("invalid and duplicate import batch inputs are rejected before any authentication or remote work", async () => {
+  const input = join(directory, "invalid-batch.json")
+  const entry = "00000000-0000-4000-8000-000000000003"
+  const item = {
+    entity_id: "entity",
+    approved_manifest: "a".repeat(64),
+    decision: { kind: "native" },
+  }
+  for (const items of [[], [item, item]]) {
+    writeFileSync(
+      input,
+      JSON.stringify({ version: 1, reconciliation_id: "inventory-" + "b".repeat(64), items }),
+    )
+    const result = await invoke([
+      "ctl",
+      "library",
+      "inventory",
+      "prepare-imports",
+      "--entry",
+      entry,
+      "--input",
+      input,
+      "--output",
+      join(directory, "never-created.json"),
+    ])
+    expect(result.exit).not.toBe(0)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "INVENTORY_BATCH_INVALID" },
+    })
+  }
+  for (const command of ["apply-imports", "reconcile-imports"]) {
+    const result = await invoke(["ctl", "library", "inventory", command, input, "--entry", entry])
+    expect(result.exit).not.toBe(0)
+    expect(JSON.parse(result.stdout).error.code).toBe("INVENTORY_BATCH_INVALID")
+  }
+}, 20_000)

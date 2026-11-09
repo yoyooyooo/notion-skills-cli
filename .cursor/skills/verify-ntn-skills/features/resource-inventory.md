@@ -1,5 +1,45 @@
 # Exact resource inventories: AH-711 / AH-716
 
+## Native Markdown import acceptance
+
+New native inventory imports accept Notion presentation changes. Their original
+input remains retained; the complete observed Markdown becomes the initial custom
+content baseline. Consumers read that Notion-authored representation, not a
+reconstruction of the local Markdown. Fixed upstream consumption remains separate.
+Pure fixed-Git inventory imports also record the observed reading-page fingerprint
+without releasing following ownership. Verify a differing Notion heading while
+the cold consumer still obtains the original Git document and raw resources with
+zero adoption writes. Historical projection plans, retained providers and mixed
+local overrides keep their original policy and are not relabelled.
+
+Verify changed heading levels, whitespace and emphasis through the public import
+and subsequent consumption. Reject missing text, altered code, changed explicit
+destinations, incomplete responses and foreign page identities. Preserve all raw
+resources and modes. Reapply must reuse the original outcome without new writes;
+later Notion edits must remain edits, not be absorbed into the import baseline.
+
+## NR32 batch import reliability
+
+The product batch entrypoints own serial preparation, execution and original-plan
+reconciliation. The caller supplies one reviewed set of entities, manifests and
+native/Source decisions, not a per-entity orchestration script. Preparation errors
+remain in the batch denominator. A batch never invents replacement identities or
+retries an unknown write. Individual create/recovery journals remain authoritative.
+
+Required checks: two complete native imports without intervention; a preparation
+failure retained alongside a successful item; duplicate/forged batch rejection
+before transport; a known body mismatch isolated from another independent item;
+unknown writes halt remaining dispatches; repeated original plans create nothing
+new; dry-run and reconciliation write nothing. Check the public Node command and
+the SQLite-backed saved batch, not only memory fixtures. Existing Source/custom
+single-item regressions remain applicable because the batch uses the same kernel.
+
+Report all inputs, confirmed/reused/failed/not-started counts and error codes.
+An invocation confirmation fraction is not a fresh-import success-rate estimate.
+AH-718 measures first-pass and automatically recovered success on a frozen,
+authorized cohort, retaining technical failures and unexecuted items. Historical
+75/253 completion and success on controlled fixtures do not establish that rate.
+
 ## Public contract
 
 `ctl library inventory remote --audit-run ID` derives an upstream-baseline review

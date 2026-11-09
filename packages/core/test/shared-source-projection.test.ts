@@ -18,6 +18,64 @@ import { fixture, library, ids } from "./shared-source-projection-fixture.ts"
 import { id, rich } from "./shared-snapshot-fixture.ts"
 
 describe("initial fixed-source native projections", () => {
+  test("accepted Git reading-page formatting remains following while cold consumers receive fixed Git content", async () => {
+    const f = fixture([], {
+      markdownImport: true,
+      recovery: true,
+      readback: (wire) => wire.replace(/<h1>(.*?)<\/h1>/u, "### $1") + "\n",
+    })
+    const plan = await f.prepare(true)
+    expect(plan.files.every((file) => file.projection.version === 14)).toBe(true)
+    const result = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    expect(property(property(result).markdown_acceptance).representation_changed).toHaveLength(2)
+    const index = await f.run(querySharedSkillIndex(library, result.skill_page_id))
+    expect(index.files[0]?.display_status).toBe("following")
+    expect(index.source_reference).toBe(plan.source_projection.binding.source_id)
+    expect(f.base.bodies.get(result.skill_page_id)).toContain("### Initial")
+    f.base.objects.clear()
+    for (const key of [...f.base.json.keys()])
+      if (
+        key.startsWith("cache/") ||
+        key.startsWith("snapshots/") ||
+        key.startsWith("operations/shared-native-readbacks/")
+      )
+        f.base.json.delete(key)
+    f.clear()
+    const consumed = await f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: result.skill_page_id,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+          readOnly: true,
+        })
+      }),
+    )
+    const main = consumed.files.find((file) => file.path === "SKILL.md")!
+    const mainBody = new TextDecoder().decode(f.base.objects.get(`objects/${main.sha256}`))
+    expect(mainBody).toContain("# Initial")
+    expect(mainBody).not.toContain("### Initial")
+    const reference = consumed.files.find((file) => file.path === "references/a.md")!
+    expect(f.base.objects.get(`objects/${reference.sha256}`)).toEqual(
+      f.snapshot.members[0]!.portable.files.find((file) => file.path === "references/a.md")!.bytes,
+    )
+    expect(f.providerReads()).toBeGreaterThan(0)
+    expect(f.writes()).toHaveLength(0)
+    expect(() => verifySharedCreatedSnapshot(consumed, result)).not.toThrow()
+    expect(
+      await f.run(
+        loadSharedCreatePlan(library, {
+          skillPageId: result.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      ),
+    ).toEqual(plan)
+    expect((await f.run(reconcileSharedCreate(library, plan))).reused).toBe(true)
+    expect(f.writes()).toHaveLength(0)
+  })
+
   test("a complete 407-path source is prepared, created and reconstructed without dropping raw resources", async () => {
     const extras = Array.from({ length: 402 }, (_, index) => ({
       path:

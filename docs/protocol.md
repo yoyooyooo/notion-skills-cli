@@ -17,6 +17,30 @@ Root discovery lists `list`, `read`, `use`, `files`, `export`, `ctl` and `schema
 
 ## Shared Notion library
 
+### Inventory import readback
+
+`prepare-import` and `prepare-imports` select import policy 14 for native Skills
+and fixed-Git members without local overrides. It freezes the original input and
+request while allowing Notion to choose its Markdown presentation. It lowers
+unsupported deep heading levels for the reading page without rewriting code
+fences. Content checks separate visible text, code literals and explicit link
+targets from whitespace, emphasis, heading level and generated domain links.
+This is a bounded import check, not proof of arbitrary semantic or visual equivalence.
+
+The first complete readback is retained immutably before initial content facts are
+published. Native files receive adopted facts for the observed body. Fixed-Git
+reading pages receive observed projection fingerprints while retaining following
+ownership and the original source revision. A later change cannot silently replace
+that first baseline during a resumed operation. Completion can be reconstructed
+from shared events and retained bodies without the importer's local cache.
+
+Successful fresh creation reports `markdown_acceptance.policy` as
+`notion_import_readback_v1`, `roundtrip_required:false`, and changed presentation
+paths. Raw resources remain byte- and mode-checked. Historical policies, retained
+providers and mixed local overrides are unchanged; an import tolerance does not
+authorize a body overwrite or replay an unknown write. The [inventory guide](inventory-import.md)
+documents the public batch interface and its non-success outcomes.
+
 ### Graph preparation and native references
 
 `ctl prepare ROOT... --purpose use` selects exact roots and the transitive Requires closure through the same snapshot reader as `read`. It returns `status:ready` only when every selected instruction is complete, within the node/depth/instruction/context budgets, and bound to a verified immutable snapshot. Its graph lock records the observed version vector; it does not claim that Notion supplied an atomic cross-page snapshot. `--session-bindings FILE` preserves already selected versions while allowing explicit new identities. A failed required node or exhausted budget returns an incomplete result without a usable graph lock.

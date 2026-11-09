@@ -63,6 +63,7 @@ export function fixture(
     readonly main?: string
     readonly readback?: (wire: string) => string
     readonly recovery?: boolean
+    readonly markdownImport?: true
   } = {},
 ) {
   const files = [
@@ -219,6 +220,7 @@ export function fixture(
           acquired: snapshot,
           member: "skills/demo",
           skillId: "fixed-initial-skill",
+          ...(options.markdownImport === true ? { markdownImport: true as const } : {}),
           ...(enabled === undefined ? {} : { enabled }),
         })
         return { ...plan, source_projection: fixedProjection(plan) }

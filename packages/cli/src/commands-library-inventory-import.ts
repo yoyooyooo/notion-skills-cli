@@ -15,6 +15,7 @@ import { Store } from "../../core/src/store.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { readSourceJson } from "./command-source-input.ts"
 import { parseSourceBudget, sourceRequestBudgets } from "./commands-library-source-run.ts"
+import { inventoryBatchCommands } from "./commands-library-inventory-batch.ts"
 
 const entry = requiredSingleton("entry", "Exact reviewed shared library entry")
 const maximumPlanBytes = 192 * 1024 * 1024
@@ -191,4 +192,4 @@ const reconcile = defineCommand(
   ),
 )
 
-export const inventoryImportCommands = [prepare, apply, reconcile]
+export const inventoryImportCommands = [prepare, apply, reconcile, ...inventoryBatchCommands]

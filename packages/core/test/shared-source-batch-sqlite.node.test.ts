@@ -12,6 +12,58 @@ const fixtures = new URL("./", import.meta.url).pathname
 const prefix = `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
 import {Effect,FileSystem,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};`
 
+test("import batch plans survive a fresh SQLite process and retain immutable dispatch protection", async () => {
+  await isolated(async (root) => {
+    const key = `plans/shared-inventory-batches/import-batch-${"a".repeat(64)}.json`
+    const written = await child(
+      stateProgram(
+        root,
+        `
+      const key=${JSON.stringify(key)},value={batch_id:'frozen',items:[{entity_id:'original'}]};
+      yield* state.write(key,value);yield* state.write(key,value);
+      const conflict=yield* state.write(key,{...value,items:[]}).pipe(Effect.flip);
+      const invalid=yield* state.write(key.replace('import-batch-','source-batch-'),value).pipe(Effect.flip);
+      console.log(JSON.stringify({value:yield* state.read(key),conflict:conflict.code,invalid:invalid.code}));
+    `,
+      ),
+    )
+    expect(written.exit, written.stderr).toBe(0)
+    expect(JSON.parse(written.stdout)).toEqual({
+      value: { batch_id: "frozen", items: [{ entity_id: "original" }] },
+      conflict: "STATE_CONFLICT",
+      invalid: "INVALID_ARGUMENT",
+    })
+    const reopened = await child(
+      stateProgram(root, `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`),
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual(JSON.parse(written.stdout).value)
+  })
+}, 30_000)
+
+test("native import readbacks persist immutably across processes", async () => {
+  await isolated(async (root) => {
+    const key = `operations/shared-native-readbacks/${"a".repeat(64)}/skill-create-${"b".repeat(64)}/${"c".repeat(64)}.json`
+    const written = await child(
+      stateProgram(
+        root,
+        `
+      const key=${JSON.stringify(key)};
+      yield* state.write(key,{markdown:'observed'});
+      const conflict=yield* state.write(key,{markdown:'later edit'}).pipe(Effect.flip);
+      console.log(JSON.stringify({code:conflict.code}));`,
+      ),
+    )
+    expect(written.exit, written.stderr).toBe(0)
+    expect(JSON.parse(written.stdout)).toEqual({ code: "STATE_CONFLICT" })
+    const reopened = await child(
+      stateProgram(root, `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));`),
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    expect(JSON.parse(reopened.stdout)).toEqual({ markdown: "observed" })
+  })
+}, 30_000)
+
 async function child(source: string) {
   const worker = spawn(process.execPath, ["--input-type=module", "-e", source], {
     stdio: ["ignore", "pipe", "pipe"],

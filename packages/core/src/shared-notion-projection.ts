@@ -11,6 +11,7 @@ import {
 import { projectNativeTextBreaks } from "./shared-notion-text-breaks.ts"
 import { projectNativeHeadingLiterals } from "./shared-notion-literal-text.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
+import { compatibleImportMarkdown } from "./shared-import-markdown.ts"
 import {
   projectNotionMarkdownV2,
   projectNotionMarkdownV4,
@@ -104,6 +105,10 @@ const ProjectionV13Schema = Schema.Struct({
   ...ProjectionV12Schema.fields,
   version: Schema.Literal(13),
 })
+const ProjectionV14Schema = Schema.Struct({
+  ...ProjectionV13Schema.fields,
+  version: Schema.Literal(14),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
@@ -118,6 +123,7 @@ export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV11Schema,
   ProjectionV12Schema,
   ProjectionV13Schema,
+  ProjectionV14Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
@@ -214,6 +220,13 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(14),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
 /** Retained policies keep their exact bytes. New writes predict independently
@@ -245,6 +258,19 @@ export function projectSharedNotionMarkdown(
   } as const
   if (options.version === 1) return { version: 1, ...common }
   const version = options.version ?? currentSharedNotionMarkdownVersion
+  if (version === 14) {
+    if (options.purpose !== "data_source_create")
+      throw fail(
+        "SHARED_MARKDOWN_PROJECTION_INVALID",
+        "Readback acceptance is an import policy, not an existing-body overwrite policy.",
+      )
+    return {
+      version,
+      ...common,
+      purpose: "data_source_create",
+      wire_markdown: compatibleImportMarkdown(markdown),
+    }
+  }
   if (version >= 3) assertNotionInlineBoundary(markdown)
   const purpose = options.purpose ?? "body_write"
   const projected =

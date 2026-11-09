@@ -423,6 +423,7 @@ export interface SharedCreateInput {
   readonly defaultContext?: boolean
   readonly enabled?: boolean
   readonly completeResources?: boolean
+  readonly markdownImport?: true
   /** Exact same-library current page identities, resolved before freezing. */
   readonly members?: readonly string[]
   readonly requires?: readonly string[]
