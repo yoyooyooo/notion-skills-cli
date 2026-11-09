@@ -17,6 +17,10 @@ and subsequent consumption. Reject missing text, altered code, changed explicit
 destinations, incomplete responses and foreign page identities. Preserve all raw
 resources and modes. Reapply must reuse the original outcome without new writes;
 later Notion edits must remain edits, not be absorbed into the import baseline.
+When a supporting body's content check fails after page allocation, retain that
+page in the original outcome and retain the input objects before allocating the
+supporting tree. A cold reader must reconstruct the original plan without the
+importer's local state; failure must not create a replacement Skill.
 
 ## NR32 batch import reliability
 

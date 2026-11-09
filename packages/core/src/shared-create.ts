@@ -697,15 +697,7 @@ function retainInputs(
         entityId: file.input.object_id,
         payload: sharedCreateInputPayload(file.input.text),
       })
-      yield* appendSharedRecord(library, {
-        mode,
-        recordId: file.content.object_id,
-        operationId: `retain-${file.content.sha256}`,
-        skillPageId: page,
-        kind: "object",
-        entityId: file.content.object_id,
-        payload: sharedCreateBodyPayload(file.projection.markdown),
-      })
+      if (!acceptsNativeImportReadback(plan)) yield* retainCreatedBody(library, file, page, mode)
       if (file.baseline_body !== undefined)
         yield* appendSharedRecord(library, {
           mode,
@@ -753,6 +745,22 @@ function retainInputs(
       })
     if (plan.source_projection?.version === 2)
       yield* retainSharedCreateSource(library, page, plan.source_projection.retained, mode)
+  })
+}
+function retainCreatedBody(
+  library: SharedLibrary,
+  file: SharedCreatePlan["files"][number],
+  page: string,
+  mode: "create" | "reconcile",
+) {
+  return appendSharedRecord(library, {
+    mode,
+    recordId: file.content.object_id,
+    operationId: `retain-${file.content.sha256}`,
+    skillPageId: page,
+    kind: "object",
+    entityId: file.content.object_id,
+    payload: sharedCreateBodyPayload(file.projection.markdown),
   })
 }
 function saveOutcome(
@@ -1415,6 +1423,8 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
     yield* retainInputs(library, facts, page, "reconcile").pipe(
       Effect.mapError((error) => recover(error, plan, "retained_inputs", page)),
     )
+    if (acceptsNativeImportReadback(plan))
+      for (const file of facts.files) yield* retainCreatedBody(library, file, page, "reconcile")
     for (const source of sharedCreateFixedSources(plan)) {
       yield* registerSourceBinding(library, {
         skillPageId: page,
@@ -1627,6 +1637,7 @@ export function executeSharedCreate(
       const resolved = yield* resolveSharedCreateSource(plan, skillPage)
       let facts: SharedCreatePlan = resolved.facts
       const acceptReadback = acceptsNativeImportReadback(plan)
+      if (acceptReadback) stage = "manifest"
       const observe = (file: SharedCreatePlan["files"][number], page: string) =>
         Effect.gen(function* () {
           if (!acceptReadback || facts.version !== 1) return file
@@ -1731,11 +1742,11 @@ export function executeSharedCreate(
             { method: "PATCH" },
           )
         })
-      yield* publishReadingBaseline(resolvedMain, skillPage)
       stage = "manifest"
       yield* manifestRecord(library, plan, skillPage, "create")
       stage = "retained_inputs"
-      if (!acceptReadback) yield* retainInputs(library, plan, skillPage, "create")
+      yield* retainInputs(library, plan, skillPage, "create")
+      yield* publishReadingBaseline(resolvedMain, skillPage)
       for (const source of sharedCreateFixedSources(plan)) {
         stage = "source_registration"
         yield* registerSourceBinding(library, {
@@ -1786,14 +1797,16 @@ export function executeSharedCreate(
           { method: "POST" },
         )
         const page = yield* createChecked(() => pageReceipt(rawFile))
-        const observedFile = yield* observe(file, page)
-        bindings.push({
+        const binding = {
           file_id: file.file_id,
           path: file.path,
           page_id: page,
-          event_id: observedFile.event.event_id,
-        })
+          event_id: file.event.event_id,
+        }
+        bindings.push(binding)
         stage = `body:${file.file_id}`
+        const observedFile = yield* observe(file, page)
+        binding.event_id = observedFile.event.event_id
         yield* assertBody(page, observedFile.projection.markdown)
         yield* publishReadingBaseline(observedFile, page)
       }
@@ -1835,7 +1848,7 @@ export function executeSharedCreate(
       }
       if (acceptReadback) {
         stage = "retained_inputs"
-        yield* retainInputs(library, facts, skillPage, "create")
+        for (const file of facts.files) yield* retainCreatedBody(library, file, skillPage, "create")
       }
       stage = "file_events"
       for (const event of sharedCreateEvents(facts))

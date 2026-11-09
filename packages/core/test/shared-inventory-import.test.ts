@@ -31,7 +31,8 @@ import {
   type InventoryBatchInputSchema,
 } from "../src/shared-inventory-batch.ts"
 import { Store, sha256 } from "../src/store.ts"
-import { canonicalSharedJson } from "../src/shared-records.ts"
+import { canonicalSharedJson, querySharedRecords } from "../src/shared-records.ts"
+import { loadSharedCreatePlan } from "../src/shared-create.ts"
 import { authScope } from "../src/catalog.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
 import { withSharedAuthoringRequest } from "../src/shared-authoring-context.ts"
@@ -125,9 +126,16 @@ async function inventoryReview(
 }
 
 async function fixture(
-  options: { resources?: boolean; portableLibrary?: string; main?: "PROMPT.md" } = {},
+  options: {
+    resources?: boolean
+    portableLibrary?: string
+    main?: "PROMPT.md"
+    readback?: (wire: string) => string
+  } = {},
 ) {
-  const f = sharedCreateFixture()
+  const f = sharedCreateFixture(
+    options.readback === undefined ? {} : { readback: options.readback },
+  )
   const root = await mkdtemp(join(tmpdir(), "ntn-reviewed-import-"))
   await mkdir(join(root, "references"))
   await writeFile(
@@ -283,6 +291,52 @@ test("an edit after the first accepted import readback cannot become a new basel
   await expect(f.run(executeInventoryImport(f.library, plan))).rejects.toThrow()
   expect(f.nativeCreates()).toHaveLength(created)
   expect(f.base.bodies.get(page!)).toContain("Later manual edit.")
+})
+
+test("a failed supporting import retains its allocated page and reconstructible original inputs independently of importer state", async () => {
+  const f = await fixture({
+    readback: (wire) =>
+      wire
+        .replace(/^<h1>(.*?)<\/h1>/u, "# $1")
+        .replace("Preserve this complete file.", "The instructions were lost."),
+  })
+  const plan = await f.prepare()
+  if (plan.action.kind !== "create") throw new Error("Expected native creation")
+  const creation = plan.action.creation
+  const pages = new Map<string, string>()
+  f.onCreate((row, kind) => pages.set(kind, String(row.id)))
+  await expect(f.run(executeInventoryImport(f.library, plan))).rejects.toMatchObject({
+    code: "SHARED_CREATE_BODY_MISMATCH",
+  })
+  const page = pages.get("skill")!,
+    reference = pages.get("file")!
+  const outcomes = await f.run(
+    querySharedRecords(f.library, {
+      skillPageId: page,
+      kind: "operation",
+      recordId: `outcome-${creation.operation_id}`,
+    }),
+  )
+  expect(outcomes).toHaveLength(1)
+  const outcome = property(outcomes[0]!.payload)
+  expect(outcome.status).toBe("needs_review")
+  expect(outcome.bindings).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ path: "references/guide.md", page_id: reference }),
+    ]),
+  )
+  f.base.json.clear()
+  f.base.objects.clear()
+  f.clear()
+  expect(
+    await f.run(
+      loadSharedCreatePlan(f.library, {
+        skillPageId: page,
+        operationId: creation.operation_id,
+      }),
+    ),
+  ).toEqual(creation)
+  expect(f.writes()).toHaveLength(0)
 })
 
 test("batch imports two complete Skills using original child journals; repeated apply and reconcile add no writes", async () => {
