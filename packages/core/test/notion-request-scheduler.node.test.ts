@@ -1,3 +1,4 @@
+import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Clock, Duration, Effect, Fiber, FileSystem, Queue, Semaphore } from "effect"
@@ -17,6 +18,7 @@ const deadline = Clock.monotonicTimeNanos.pipe(
 
 function withSchedulers<A>(
   use: (fixture: {
+    readonly directory: string
     readonly first: NotionRequestScheduler["Service"]
     readonly second: NotionRequestScheduler["Service"]
     readonly clock: TestClock.TestClock
@@ -42,7 +44,7 @@ function withSchedulers<A>(
         // Each constructor owns a separate SQLite connection and local queue.
         const first = yield* makeSqliteRequestScheduler(directory)
         const second = yield* makeSqliteRequestScheduler(directory)
-        return yield* use({ first, second, clock, sleeps })
+        return yield* use({ directory, first, second, clock, sleeps })
       }).pipe(Effect.provideService(Clock.Clock, observedClock))
     }),
   ).pipe(Effect.provide(NodeServices.layer))
@@ -131,6 +133,83 @@ test("transaction preparation time does not shorten the next request interval", 
     )
   } finally {
     preparation.mockRestore()
+  }
+})
+
+test("post-admission delay can compress dispatch gaps while preserving the shared budget", async () => {
+  let now = 0
+  let advanced = false
+  const waits: number[] = []
+  const millis = () => now
+  const nanos = () => BigInt(now) * 1_000_000n
+  const delayedClock: Clock.Clock = {
+    currentTimeMillisUnsafe: millis,
+    currentTimeMillis: Effect.sync(millis),
+    currentTimeNanosUnsafe: nanos,
+    currentTimeNanos: Effect.sync(nanos),
+    monotonicTimeNanosUnsafe: nanos,
+    monotonicTimeNanos: Effect.sync(nanos),
+    sleep: (duration) =>
+      Effect.sync(() => {
+        const elapsed = Duration.toMillis(duration)
+        waits.push(elapsed)
+        now += elapsed
+      }),
+  }
+  const prepare = DatabaseSync.prototype.prepare
+  const delayedUpdate = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function (
+    this: DatabaseSync,
+    query: string,
+  ) {
+    const statement = prepare.call(this, query)
+    if (!advanced && query.startsWith("UPDATE request_schedule SET next_start_ms")) {
+      // The admission timestamp has already been sampled before this final write.
+      now += 200
+      advanced = true
+    }
+    return statement
+  })
+  try {
+    await Effect.runPromise(
+      withSchedulers(({ directory, first, second }) =>
+        Effect.gen(function* () {
+          const database = new DatabaseSync(join(directory, "notion-requests.sqlite"), {
+            readOnly: true,
+          })
+          try {
+            const admission = () => {
+              const row = database
+                .prepare("SELECT next_start_ms FROM request_schedule WHERE credential=?")
+                .get(JSON.stringify(["credential", "", credential]))
+              if (typeof row?.next_start_ms !== "number")
+                throw new Error("Missing admission budget")
+              return row.next_start_ms - 350
+            }
+            const permits = yield* Semaphore.make(1)
+            const firstDispatch = yield* first.withAdmission(
+              credential,
+              yield* deadline,
+              permits,
+              Clock.currentTimeMillis,
+            )
+            const firstAdmission = admission()
+            const secondDispatch = yield* second.withAdmission(
+              credential,
+              yield* deadline,
+              permits,
+              Clock.currentTimeMillis,
+            )
+            expect([firstAdmission, admission()]).toEqual([0, 350])
+            expect([firstDispatch, secondDispatch]).toEqual([200, 350])
+            expect(waits).toEqual([150])
+          } finally {
+            database.close()
+          }
+        }).pipe(Effect.provideService(Clock.Clock, delayedClock)),
+      ),
+    )
+  } finally {
+    delayedUpdate.mockRestore()
   }
 })
 
