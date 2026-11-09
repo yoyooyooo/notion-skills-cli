@@ -915,7 +915,7 @@ describe("explicit shared whole-body writes", () => {
   })
 
   test.each([true, false])(
-    "restore-follow preserves custom bytes and blocks a required body replacement (same body: %s)",
+    "restore-follow retains custom bytes and uses one complete match only when needed (same body: %s)",
     async (sameBody) => {
       const shared = remote(),
         api = client(shared)
@@ -948,30 +948,22 @@ describe("explicit shared whole-body writes", () => {
           source: { source_id: fixed.source_id, revision: fixed.commit, path: "SKILL.md" },
         }),
       )
-      if (!sameBody) {
-        const error = failure(
-          await api.run(
-            executeSharedBodyWrite(library, { plan, mode: "create" }).pipe(Effect.result),
-          ),
-        )
-        expect(error.code).toBe("BODY_REPLACEMENT_UNSAFE")
-        expect(shared.markdown).toBe(original)
-        expect(resolveFileState(fileId, eventRows(shared)).ownership.kind).toBe("custom")
-        expect(creates(api)).toHaveLength(0)
-        expect(patches(api)).toHaveLength(0)
-        return
-      }
       const result = await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))
       expect(result.status).toBe("applied")
       expect(plan.event.kind).toBe("following_restored")
       expect(resolveFileState(fileId, eventRows(shared)).ownership).toEqual({
         kind: "following",
         source_revision: fixed.commit,
-        projection: { normalization_version: 1, sha256: hash(original) },
+        projection: { normalization_version: 1, sha256: hash(restoredBody) },
       })
       expect(property(payloadFor(shared, `body-${hash(original)}`)).markdown).toBe(original)
       expect(shared.source).toBe(fixed.source_id)
-      expect(patches(api)).toHaveLength(0)
+      expect(shared.markdown).toBe(restoredBody)
+      expect(patches(api)).toHaveLength(sameBody ? 0 : 1)
+      if (!sameBody)
+        expect(property(patches(api)[0]!.body).update_content).toEqual({
+          content_updates: [{ old_str: original, new_str: restoredBody }],
+        })
     },
   )
 

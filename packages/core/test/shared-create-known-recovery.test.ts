@@ -16,6 +16,7 @@ import { executeSharedCreate, loadPendingSharedCreates } from "../src/shared-cre
 import { FileEventSchema } from "../src/shared-file-state.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import {
+  appendSharedRecord,
   canonicalSharedJson,
   canonicalSharedRecordEnvelope,
   querySharedRecords,
@@ -46,6 +47,68 @@ const counterActual =
   "# Counter\n\nTLC reached 4 states and 3 steps. The chart draws 4 states and 3 arrows.\n\n## Rules that hold\n\nLow, StaysSmall<br />TLC checked Low only in the initial states, because it has no \\[\\], \\<>, or \\~>. List it as an INVARIANT to check every state."
 const header =
   "---\nname: initial-source\ndescription: Initial complete member\nlicense: MIT\n---\n\n"
+
+test("an acknowledged Record resumes by exact page GET while its query index remains invisible", async () => {
+  const f = fixture()
+  let queries = 0,
+    pageReads = 0,
+    interruptReadback = true
+  const action = Effect.gen(function* () {
+    const api = yield* Notion
+    const delayed: Notion["Service"] = {
+      ...api,
+      request: (path, body, options) =>
+        Effect.suspend(() => {
+          if (path.startsWith(`v1/data_sources/${library.records.data_source_id}/query`)) {
+            queries++
+            return Effect.succeed({
+              object: "list",
+              results: [],
+              has_more: false,
+              next_cursor: null,
+            })
+          }
+          if ([...f.base.records.values()].some((row) => path === `v1/pages/${row.id}`)) {
+            pageReads++
+            if (interruptReadback) {
+              interruptReadback = false
+              return Effect.fail(fail("READ_INTERRUPTED", "The original ACK is already durable."))
+            }
+          }
+          return api.request(path, body, options)
+        }),
+    }
+    const dispatch = yield* sharedCreateDispatch(library, {
+      operation_id: "record-query-delay",
+      skill_id: "exact-original-skill",
+    }).pipe(Effect.provideService(Notion, delayed))
+    return yield* appendSharedRecord(library, {
+      mode: "create",
+      recordId: "record-query-delay-fact",
+      operationId: "record-query-delay",
+      skillPageId: String(f.base.main.id),
+      kind: "operation",
+      entityId: "exact-original-entity",
+      payload: { retained: "exact original content" },
+    }).pipe(Effect.provideService(Notion, dispatch.api))
+  })
+  await expect(f.run(action)).rejects.toMatchObject({ code: "READ_INTERRUPTED" })
+  const acknowledgements = [...f.base.json.entries()].filter(([key]) =>
+    key.includes("/source-ack-"),
+  )
+  expect(acknowledgements).toHaveLength(1)
+  const retainedAcks = structuredClone(acknowledgements)
+  const created = await f.run(action)
+  expect(created.record_id).toBe("record-query-delay-fact")
+  expect(created.payload).toEqual({ retained: "exact original content" })
+  expect(pageReads).toBe(2)
+  // These are append's two preflight queries; the ACK observer performs neither.
+  expect(queries).toBe(2)
+  expect(f.writes()).toHaveLength(1)
+  expect([...f.base.json.entries()].filter(([key]) => key.includes("/source-ack-"))).toEqual(
+    retainedAcks,
+  )
+})
 
 async function originalFailure(onlyMain = false, zeroSuffix = false, earlyCounter = false) {
   const extra = onlyMain

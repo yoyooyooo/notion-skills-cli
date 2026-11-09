@@ -1,0 +1,9 @@
+{
+  "case": "minimal ordered multiblock list from the native81 readback observation",
+  "scope": "Only the observed list fragment is retained; names, prose and commands are consistently generic. The complete original body and hashes stay in the external evidence directory.",
+  "source_readback_receipt_sha256": "44216cc692ab9a0ba673ec60294e9ded63f899ada9e7b20705f32de3407aff86",
+  "input_markdown": "## Ordered steps\n\n1. Select a target:\n\n   ```bash\n   tool inspect <target>\n   tool list --json\n   ```\n\n   `inspect` checks the selected target.\n\n2. Choose a route:\n\n   - `local`: use the local route.\n   - `remote`: use the remote route.\n\n   Check the selected target:\n\n   ```bash\n   tool status\n   tool inspect <target> --json\n   ```\n\n   Keep the selected route for subsequent steps.\n\n3. Inspect the worker:\n\n   ```bash\n   tool workers --json\n   tool agents --json\n   ```\n\n   Match the exact `worker` identity.\n\n4. Select the matching agent.\n\n5. Recheck the selected identities.",
+  "response_markdown": "## Ordered steps\n\n1. Select a target:\n   ```bash\n   tool inspect <target>\n   tool list --json\n   ```\n\n   <p>\n   <code>inspect</code> checks the selected target.\n   </p>\n2. Choose a route:\n   - <code>local</code>: use the local route.\n   - <code>remote</code>: use the remote route.\n\n   <p>\n   Check the selected target:\n   </p>\n\n   ```bash\n   tool status\n   tool inspect <target> --json\n   ```\n\n   <p>\n   Keep the selected route for subsequent steps.\n   </p>\n3. Inspect the worker:\n   ```bash\n   tool workers --json\n   tool agents --json\n   ```\n\n   <p>\n   Match the exact <code>worker</code> identity.\n   </p>\n4. Select the matching agent.\n5. Recheck the selected identities.",
+  "wire_markdown_sha256": "913435eccaca9985ba2138647722a413a8713afd2c78761dcd7c0a4da1385d6b",
+  "v12_markdown_sha256": "371cc9f3f8c73ff7e25cec3441bcd298eaf949a35e911ce2b4b6fff478757e36"
+}

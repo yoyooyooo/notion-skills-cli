@@ -7,6 +7,7 @@ import { pageId } from "../../core/src/ref.ts"
 import {
   processSharedFileRequest,
   readSharedFileRequest,
+  submitSharedFileRequest,
 } from "../../core/src/shared-file-request.ts"
 import { initializeSharedFileRequests } from "../../core/src/shared-file-request-schema.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
@@ -39,6 +40,10 @@ export const libraryFileRequestCommand = defineCommand(
     target: Argument.String("target"),
     path: Argument.String("path"),
     entry,
+    submit: switchFlag(
+      "submit",
+      "Explicitly submit restore intent and freeze the complete current body, frontier and Source identity",
+    ),
     process: switchFlag(
       "process",
       "Process the current declared request once and publish independently verified feedback",
@@ -59,15 +64,20 @@ export const libraryFileRequestCommand = defineCommand(
   (options) =>
     Effect.gen(function* () {
       const target = pageId(options.target)
-      if (!target || (options.process && options.reconcile))
+      if (
+        !target ||
+        [options.submit, options.process, options.reconcile].filter(Boolean).length > 1
+      )
         return yield* Effect.fail(
           fail(
             "INVALID_ARGUMENT",
-            "Select one exact Skill page and use either --process or --reconcile.",
+            "Select one exact Skill page and use at most one of --submit, --process or --reconcile.",
           ),
         )
       const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
       const input = { library, skillPageId: target, path: options.path }
+      if (options.submit)
+        return yield* emit(yield* submitSharedFileRequest({ ...input, dryRun: options.dryRun }))
       return yield* emit(
         yield* options.process || options.dryRun || options.reconcile
           ? processSharedFileRequest({
@@ -80,8 +90,8 @@ export const libraryFileRequestCommand = defineCommand(
       )
     }),
 ).pipe(
-  withConstraints([exclusiveFlags(["process", "reconcile"])]),
+  withConstraints([exclusiveFlags(["submit", "process", "reconcile"])]),
   Command.withDescription(
-    "Read or process a native restore-follow request for exactly one Main File ID or supporting File ID. Default is read-only; --dry-run includes the complete observed body and fixed-source preview. --process exits after one attempt. Unsupported editable-body replacement stays blocked; same-body ownership transitions revalidate cancellation, full body, frontier and Source configuration. Machine feedback never clears the user request and never treats Status as permission. Original unknown writes remain barriers and --reconcile only inspects their exact facts.",
+    "Read, submit or process a restore-follow request for exactly one Main File ID or supporting File ID. Default is read-only. --submit explicitly sets Management Request and freezes the complete body, frontier and Source identity in Management Receipt; --submit --dry-run previews without writes. The Notion dropdown is intent only and cannot authorize a different current body. --process consumes only the submitted receipt, allowing a verified selection advance within the same Source definition/member. Later edits, cancellation or rebinding require a fresh submission. A different body uses one complete old-string match and exact full readback, not page revision CAS. Machine feedback never clears intent or treats Status as permission. Original unknown writes remain barriers; --reconcile verifies their exact facts and may publish feedback metadata, but never repeats the body write.",
   ),
 )

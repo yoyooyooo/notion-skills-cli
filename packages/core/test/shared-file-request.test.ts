@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { Effect } from "effect"
+import { authScope } from "../src/catalog.ts"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { processSharedFileRequest, readSharedFileRequest } from "../src/shared-file-request.ts"
+import { openSharedConsumer } from "../src/shared-consumer.ts"
+import {
+  processSharedFileRequest,
+  readSharedFileRequest,
+  submitSharedFileRequest,
+} from "../src/shared-file-request.ts"
 import {
   fileRequestProperty,
   fileRequestResultProperty,
@@ -38,7 +44,7 @@ const library = {
     property_ids: { ...baseLibrary.files.property_ids, ...requestIds },
   },
 }
-async function fixture(options: { sameBody?: boolean; main?: boolean } = {}) {
+async function fixture(options: { sameBody?: boolean; main?: boolean; submitted?: boolean } = {}) {
   const files = [
     {
       path: "SKILL.md",
@@ -106,19 +112,51 @@ async function fixture(options: { sameBody?: boolean; main?: boolean } = {}) {
                     ],
                   })),
                 )
+              const markdown = /^v1\/pages\/([^/]+)\/markdown$/u.exec(requestPath)
+              if (markdown !== null && method === "PATCH") {
+                f.calls.push({ path: requestPath, method, body })
+                const page = markdown[1]!,
+                  current = f.bodies.get(page),
+                  updates = property(property(body).update_content).content_updates
+                const change =
+                  Array.isArray(updates) && updates.length === 1 ? property(updates[0]) : {}
+                if (
+                  current === undefined ||
+                  typeof change.old_str !== "string" ||
+                  !change.old_str ||
+                  typeof change.new_str !== "string" ||
+                  current.split(change.old_str).length !== 2
+                )
+                  return Effect.fail(
+                    fail("TEST_REQUEST_MATCH", "Expected one complete body match."),
+                  )
+                const changed = current.replace(change.old_str, change.new_str)
+                f.bodies.set(page, changed)
+                return Effect.succeed({
+                  id: page,
+                  markdown: changed,
+                  truncated: false,
+                  unknown_block_ids: [],
+                })
+              }
               const row = [f.main, ...f.files].find((page) => requestPath === `v1/pages/${page.id}`)
               if (row !== undefined && method === "PATCH") {
                 f.calls.push({ path: requestPath, method, body })
                 const fields = property(property(body).properties)
                 if (
-                  Object.keys(fields).length !== 2 ||
+                  Object.keys(fields).some(
+                    (key) =>
+                      !["management_result", "management_receipt", "management_request"].includes(
+                        key,
+                      ),
+                  ) ||
                   fields.management_result === undefined ||
                   fields.management_receipt === undefined
                 )
                   return Effect.fail(
                     fail(
                       "TEST_REQUEST_WRITER",
-                      "Only the separate machine result and original receipt properties may be patched.",
+                      "Only request intent, result and receipt properties may be patched.",
                     ),
                   )
                 const value = text(property(fields.management_receipt).rich_text)
@@ -126,6 +164,12 @@ async function fixture(options: { sameBody?: boolean; main?: boolean } = {}) {
                 expect(summary.startsWith("{")).toBe(false)
                 property(row.properties).management_result = rich("management_result", summary)
                 property(row.properties).management_receipt = rich("management_receipt", value)
+                if (fields.management_request !== undefined) {
+                  expect(property(fields.management_request).select).toEqual({
+                    name: "restore-follow",
+                  })
+                  intent("restore-follow")
+                }
                 hooks.feedback?.(String(property(JSON.parse(value)).status))
                 return Effect.succeed(structuredClone(row))
               }
@@ -165,9 +209,10 @@ async function fixture(options: { sameBody?: boolean; main?: boolean } = {}) {
     registerSourceBinding(library, { skillPageId: skillPage, mode: "create", fixedSource: fixed }),
   )
   property(f.main.properties).source = rich("source", registered.binding.source_id)
-  intent("restore-follow")
-  f.clearCalls()
   const input = { library, skillPageId: skillPage, path }
+  if (options.submitted === false) intent("restore-follow")
+  else await run(submitSharedFileRequest(input))
+  f.clearCalls()
   const state = () => run(readSharedFileIntentContext(input))
   return {
     ...f,
@@ -196,7 +241,7 @@ describe("native file restore requests", () => {
         body = f.bodies.get(f.targetPage),
         before = f.records.size
       const pending = await f.run(readSharedFileRequest(f.input))
-      expect(pending.status).toBe("pending")
+      expect(pending.status).toBe("submitted")
       expect(pending.request.file_id).toBe(main ? "file-main" : "file-1")
       expect(pending.ownership.kind).toBe("custom")
       const preview = await f.run(processSharedFileRequest({ ...f.input, dryRun: true }))
@@ -221,8 +266,8 @@ describe("native file restore requests", () => {
     },
   )
 
-  test("different custom bytes remain blocked; only result metadata is written and repeated processing is idempotent", async () => {
-    const f = await fixture({ sameBody: false }),
+  test("an unsubmitted dropdown cannot authorize different custom bytes; repeated feedback is idempotent", async () => {
+    const f = await fixture({ sameBody: false, submitted: false }),
       body = f.bodies.get(id(11)),
       count = f.records.size
     expect((await f.run(processSharedFileRequest({ ...f.input, dryRun: true }))).status).toBe(
@@ -239,6 +284,80 @@ describe("native file restore requests", () => {
     f.clearCalls()
     await f.run(processSharedFileRequest(f.input))
     expect(f.mutations()).toHaveLength(0)
+  })
+
+  test("explicit submission restores a different body and repeats without another write", async () => {
+    const f = await fixture({ sameBody: false, submitted: false })
+    f.intent("none")
+    expect((await f.run(submitSharedFileRequest({ ...f.input, dryRun: true }))).status).toBe(
+      "planned",
+    )
+    expect(f.mutations()).toHaveLength(0)
+    const submitted = await f.run(submitSharedFileRequest(f.input))
+    expect(submitted.status).toBe("submitted")
+    if (!("feedback" in submitted) || submitted.feedback === undefined)
+      throw new Error("Expected the submitted request receipt")
+    f.clearCalls()
+    const repeated = await f.run(submitSharedFileRequest(f.input))
+    expect("unchanged" in repeated && repeated.unchanged).toBe(true)
+    expect(f.mutations()).toHaveLength(0)
+    const result = await f.run(processSharedFileRequest(f.input))
+    expect(result.status).toBe("verified_applied")
+    expect((await f.state()).state?.ownership.kind).toBe("following")
+    expect(f.bodies.get(f.targetPage)).toBe("Fixed guide")
+    expect(f.bodyWrites()).toHaveLength(1)
+    expect((await f.run(readSharedFileRequest(f.input))).request_id).toBe(
+      submitted.feedback.request_id,
+    )
+    f.clearCalls()
+    expect((await f.run(processSharedFileRequest(f.input))).status).toBe("verified_applied")
+    expect(f.mutations()).toHaveLength(0)
+  })
+
+  test("reconciliation preserves a later unadopted edit without publishing restored feedback", async () => {
+    const f = await fixture({ sameBody: false })
+    expect((await f.run(processSharedFileRequest(f.input))).status).toBe("verified_applied")
+    const receipt = text(property(property(f.target.properties).management_receipt).rich_text)
+    const count = f.records.size
+    f.bodies.set(f.targetPage, "N2 edited after restoration\n")
+    f.clearCalls()
+    const result = await f.run(processSharedFileRequest({ ...f.input, reconcile: true }))
+    expect(result.status).toBe("needs_review")
+    expect(f.bodies.get(f.targetPage)).toBe("N2 edited after restoration\n")
+    expect(text(property(property(f.target.properties).management_receipt).rich_text)).toBe(receipt)
+    expect(f.mutations()).toHaveLength(0)
+    expect(f.records.size).toBe(count)
+  })
+
+  test("a new edit adopted before processing cannot silently replace the submitted body or frontier", async () => {
+    const f = await fixture({ sameBody: false })
+    const submitted = await f.run(readSharedFileRequest(f.input))
+    f.bodies.set(f.targetPage, "N2 edited after submission\n")
+    await f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: skillPage,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+        })
+      }),
+    )
+    f.clearCalls()
+    expect((await f.run(readSharedFileRequest(f.input))).status).toBe("needs_review")
+    const result = await f.run(processSharedFileRequest(f.input))
+    expect(result.status).toBe("blocked")
+    expect("feedback" in result && result.feedback?.code).toBe("SHARED_FILE_REQUEST_CHANGED")
+    expect(f.bodies.get(f.targetPage)).toBe("N2 edited after submission\n")
+    expect(f.bodyWrites()).toHaveLength(0)
+    expect((await f.state()).state?.ownership.kind).toBe("custom")
+    expect((await f.run(readSharedFileRequest(f.input))).request_id).toBe(submitted.request_id)
+    const renewed = await f.run(submitSharedFileRequest(f.input))
+    expect(renewed.status).toBe("submitted")
+    if (!("feedback" in renewed) || renewed.feedback === undefined)
+      throw new Error("Expected the newly submitted request receipt")
+    expect(renewed.feedback.request_id).not.toBe(submitted.request_id)
   })
 
   test("Status alone cannot submit a request or release customization", async () => {

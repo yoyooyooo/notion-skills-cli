@@ -1,5 +1,5 @@
 import { SourceLexer } from "@notion-skills-cli/markdown"
-import type { Token } from "marked"
+import type { Token, Tokens } from "marked"
 import { fail } from "./model.ts"
 import {
   projectNotionMarkdownV5,
@@ -81,4 +81,95 @@ export function projectNotionMarkdownV12(markdown: string, purpose: SharedNotion
     if (previous.endsWith("\n") && !previous.endsWith("\n\n")) parts[at] = `${previous}\n`
   }
   return { wire: projected.wire, markdown: parts.join("") }
+}
+
+function oneLineParagraph(token: Token | undefined) {
+  return (
+    token !== undefined &&
+    (token.type === "paragraph" || token.type === "text") &&
+    !token.raw.replace(/\n+$/u, "").includes("\n")
+  )
+}
+
+function isList(token: Token): token is Tokens.List {
+  return token.type === "list"
+}
+
+function simpleChildList(token: Token) {
+  return (
+    isList(token) &&
+    !token.ordered &&
+    token.items.every(
+      (item) => !item.task && item.tokens.length === 1 && oneLineParagraph(item.tokens[0]),
+    )
+  )
+}
+
+function creationListItem(item: Tokens.ListItem) {
+  if (
+    item.task ||
+    item.tokens.map((token) => token.raw).join("") !== item.text ||
+    item.tokens.some((token) => token.type === "space" && !/^\n+$/u.test(token.raw))
+  )
+    return
+  const children = item.tokens.filter((token) => token.type !== "space")
+  if (!oneLineParagraph(children[0])) return
+  const multiple = children.length > 1
+  if (
+    multiple &&
+    (!children.some((token) => token.type === "code") ||
+      !children.slice(1).some(oneLineParagraph) ||
+      children.some(
+        (token) =>
+          !oneLineParagraph(token) &&
+          !(token.type === "code" && /^`{3,}[^\n]*\n/u.test(token.raw)) &&
+          !simpleChildList(token),
+      ))
+  )
+    return
+  const marker = /^[1-9]\d*\. /u.exec(item.raw)?.[0]
+  if (marker === undefined) return
+  const indent = " ".repeat(marker.length)
+  const decorate = (body: string) =>
+    body
+      .split("\n")
+      .map((line, at) => (at === 0 ? marker + line : line === "" ? "" : indent + line))
+      .join("\n")
+  const suffix = /\n*$/u.exec(item.raw)?.[0] ?? ""
+  if (decorate(item.text.replace(/\n+$/u, "")) + suffix !== item.raw) return
+  const parts = children.map((token, at) => {
+    const body = token.raw.replace(/\n+$/u, "")
+    return at > 0 && oneLineParagraph(token) ? `<p>\n${body}\n</p>` : body
+  })
+  return {
+    multiple,
+    markdown: decorate(parts[0]! + (parts.length > 1 ? "\n" + parts.slice(1).join("\n\n") : "")),
+  }
+}
+
+/** Creation readback wraps continuation paragraphs of the observed ordered
+ * list shape. Other list shapes and retained projection versions stay exact.
+ */
+export function projectNotionMarkdownV13(markdown: string, purpose: SharedNotionMarkdownPurpose) {
+  const projected = projectNotionMarkdownV12(markdown, purpose)
+  if (purpose !== "data_source_create") return projected
+  const tokens = SourceLexer.lex(projected.markdown)
+  if (tokens.map((token) => token.raw).join("") !== projected.markdown)
+    throw fail(
+      "SHARED_MARKDOWN_PROJECTION_UNSUPPORTED",
+      "The selected creation list boundaries could not be projected completely before dispatch.",
+    )
+  return {
+    wire: projected.wire,
+    markdown: tokens
+      .map((token) => {
+        if (!isList(token) || !token.ordered || !token.loose) return token.raw
+        if (token.items.map((item) => item.raw).join("") !== token.raw) return token.raw
+        const items = token.items.map(creationListItem)
+        if (items.some((item) => item === undefined) || !items.some((item) => item?.multiple))
+          return token.raw
+        return items.map((item) => item!.markdown).join("\n") + (/\n*$/u.exec(token.raw)?.[0] ?? "")
+      })
+      .join(""),
+  }
 }

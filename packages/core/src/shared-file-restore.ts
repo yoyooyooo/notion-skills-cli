@@ -49,6 +49,10 @@ export function restoreSelectedSharedFile<R = never>(input: {
   readonly dryRun?: boolean
   readonly allowLocalArchive?: boolean
   readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
+  readonly afterRestoreBodyWrite?: (
+    sha256: string,
+    bytes: number,
+  ) => Effect.Effect<void, SkillsError, R>
 }) {
   return Effect.gen(function* () {
     yield* checked(() => {
@@ -193,6 +197,9 @@ export function restoreSelectedSharedFile<R = never>(input: {
       ...(input.beforeRestoreDispatch === undefined
         ? {}
         : { beforeRestoreDispatch: input.beforeRestoreDispatch }),
+      ...(input.afterRestoreBodyWrite === undefined
+        ? {}
+        : { afterRestoreBodyWrite: input.afterRestoreBodyWrite }),
     })
     const sourceSha256 = yield* sha256(candidate.bytes)
     if (input.dryRun)
@@ -202,9 +209,9 @@ export function restoreSelectedSharedFile<R = never>(input: {
           result.before_sha256 === result.candidate_sha256
             ? { kind: "no_body_write" as const, revalidation_required: true as const }
             : {
-                kind: "blocked" as const,
-                code: "BODY_REPLACEMENT_UNSAFE" as const,
-                capability: notionWriteCapabilities.editable_projection_overwrite,
+                kind: "matched_body_write" as const,
+                revalidation_required: true as const,
+                capability: notionWriteCapabilities.explicit_source_restore,
               },
         source_id: source.source_id,
         source_revision: source.revision,

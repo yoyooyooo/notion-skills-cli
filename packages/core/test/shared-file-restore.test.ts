@@ -340,11 +340,11 @@ describe("public selected-source restore-follow", () => {
     expect(f.writes()).toHaveLength(0)
   })
 
-  test("a different selected source remains previewable but cannot overwrite an editable custom body", async () => {
+  test("a different selected source restores through one full-body match and retains the custom history", async () => {
     const f = fixture()
     f.baseline()
     const source = await f.register(fixedFiles())
-    const before = canonicalSharedJson([...f.base.records.values()])
+    const before = f.base.bodies.get(id(11))
     f.clear()
     const preview = await f.run(
       restoreSelectedSharedFile({
@@ -356,23 +356,22 @@ describe("public selected-source restore-follow", () => {
     )
     expect(preview).toMatchObject({
       source_id: source.source_id,
-      execution: { kind: "blocked", code: "BODY_REPLACEMENT_UNSAFE" },
+      execution: { kind: "matched_body_write", revalidation_required: true },
     })
-    const error = await f.run(
-      Effect.flip(
-        restoreSelectedSharedFile({ library, skillPageId: skillPage, path: "references/1.md" }),
-      ),
-    )
-    expect(error.code).toBe("BODY_REPLACEMENT_UNSAFE")
-    expect(f.base.bodies.get(id(11))).toBe("Reference one\n")
     expect(f.writes()).toHaveLength(0)
-    expect(canonicalSharedJson([...f.base.records.values()])).toBe(before)
+    const result = await f.run(
+      restoreSelectedSharedFile({ library, skillPageId: skillPage, path: "references/1.md" }),
+    )
+    expect(result.status).toBe("applied")
+    expect(f.base.bodies.get(id(11))).toBe("From exact fixed revision")
+    expect(f.patches()).toHaveLength(1)
+    expect(property(f.plans()[0]!.before).markdown).toBe(before)
     expect(
       resolveFileState(
         "file-1",
         (await f.events()).filter((event) => event.file_id === "file-1"),
       ).ownership.kind,
-    ).toBe("custom")
+    ).toBe("following")
   })
 
   test("an unknown no-body restore keeps its original operation unresolved without replay", async () => {
@@ -545,17 +544,15 @@ describe("public selected-source restore-follow", () => {
     expect(f.base.readBodyCount()).toBe(0)
     expect(f.base.bodies.get(id(11))).toBe("Reference one\n")
     const allowed = await f.run(
-      Effect.flip(
-        restoreSelectedSharedFile({
-          library,
-          skillPageId: skillPage,
-          path: "references/1.md",
-          allowLocalArchive: true,
-        }),
-      ),
+      restoreSelectedSharedFile({
+        library,
+        skillPageId: skillPage,
+        path: "references/1.md",
+        allowLocalArchive: true,
+      }),
     )
-    expect(allowed.code).toBe("BODY_REPLACEMENT_UNSAFE")
-    expect(f.writes()).toHaveLength(0)
+    expect(allowed.status).toBe("applied")
+    expect(f.patches()).toHaveLength(1)
   })
 
   test("a new accepted custom edit during source acquisition cannot replace the original expected frontier", async () => {

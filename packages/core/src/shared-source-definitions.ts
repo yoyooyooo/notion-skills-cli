@@ -496,6 +496,8 @@ export function guardedSourceMutation<R, R2 = never>(
     /** Original multi-stage operations may reconcile this exact mutation, never dispatch a later generation. */
     repeat?: "never"
     beforeDispatch?: Effect.Effect<void, SkillsError, R2>
+    /** Observe only after this exact request's response has been durably acknowledged. */
+    observeAcknowledged?: (response: unknown) => Effect.Effect<unknown | undefined, SkillsError, R>
   },
   observe: Effect.Effect<unknown | undefined, SkillsError, R>,
 ) {
@@ -609,7 +611,9 @@ export function guardedSourceMutation<R, R2 = never>(
             "Acknowledged source receipt does not match its dispatch.",
           ),
         )
-      const current = yield* observe
+      const current = yield* acknowledged !== undefined && input.observeAcknowledged !== undefined
+        ? input.observeAcknowledged(acknowledged.response)
+        : observe
       if (current !== undefined) {
         // Read-only reconciliation may save local proof after the original ACK;
         // it never invents an ACK from current equality or repeats the request.
@@ -691,7 +695,9 @@ export function guardedSourceMutation<R, R2 = never>(
         ),
       ),
     )
-    const current = yield* observe
+    const current = yield* input.observeAcknowledged === undefined
+      ? observe
+      : input.observeAcknowledged(acknowledgement.response)
     if (current === undefined)
       return yield* Effect.fail(
         fail(

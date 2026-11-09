@@ -527,6 +527,17 @@ function verifiedRecord(raw: unknown, library: SharedLibrary, selected: Selected
   })
 }
 
+/** Validate an independently read page against one exact Skill-scoped immutable fact. */
+export function verifySharedRecordPage(
+  library: SharedLibrary,
+  raw: unknown,
+  selected: Required<
+    Pick<QuerySharedRecordsInput, "skillPageId" | "recordId" | "kind" | "entityId">
+  >,
+) {
+  return verifiedRecord(raw, library, selected)
+}
+
 function sameFact(
   left: Omit<AnySharedRecord, "page_id">,
   right: Omit<AnySharedRecord, "page_id">,

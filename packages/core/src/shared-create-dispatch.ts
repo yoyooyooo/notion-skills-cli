@@ -8,6 +8,7 @@ import {
   canonicalSharedRecordEnvelope,
   querySharedRecords,
   SharedRecordKindSchema,
+  verifySharedRecordPage,
 } from "./shared-records.ts"
 import { isCoalescibleNotionRead } from "./shared-read-coalescing.ts"
 import { sha256, Store } from "./store.ts"
@@ -46,6 +47,7 @@ function observeMutation(
   path: string,
   body: unknown,
   method: "POST" | "PATCH",
+  acknowledgedPageId?: string,
 ) {
   return Effect.gen(function* () {
     const api = yield* Notion,
@@ -153,13 +155,26 @@ function observeMutation(
           fail("SHARED_CREATE_SCOPE", "A creation fact requires one exact allocated Skill."),
         )
       const kind = decode(SharedRecordKindSchema, property(property(props[ids.Kind!]).select).name)
-      const records = yield* querySharedRecords(library, {
+      const selection = {
         skillPageId,
         recordId,
         kind,
         entityId: text(property(props[ids["Entity ID"]!]).rich_text),
-        payloadContainsBody: true,
-      })
+      }
+      const acknowledgedPage =
+        acknowledgedPageId === undefined
+          ? undefined
+          : property(
+              yield* api.request(`v1/pages/${acknowledgedPageId}`, undefined, { content: "body" }),
+            )
+      if (acknowledgedPage !== undefined && acknowledgedPage.id !== acknowledgedPageId)
+        return yield* Effect.fail(
+          fail("SHARED_CREATE_SCOPE", "Readback differs from the exact acknowledged Record page."),
+        )
+      const records =
+        acknowledgedPage === undefined
+          ? yield* querySharedRecords(library, { ...selection, payloadContainsBody: true })
+          : [yield* verifySharedRecordPage(library, acknowledgedPage, selection)]
       if (records.length === 0) return undefined
       const row = records[0]!
       const envelope = canonicalSharedJson({
@@ -181,7 +196,7 @@ function observeMutation(
             "The original immutable creation fact has a conflicting identity or payload.",
           ),
         )
-      return yield* api.request(`v1/pages/${row.page_id}`)
+      return acknowledgedPage ?? (yield* api.request(`v1/pages/${row.page_id}`))
     }
     const table =
       parent === library.skills.data_source_id
@@ -285,6 +300,10 @@ export function sharedCreateDispatch(
         // as after its ACK. The durable guard's current observation is a postcondition.
         if (method === "PATCH") yield* observeMutation(library, plan, path, body, method)
         const identity = `${plan.operation_id}:${yield* sha256(canonicalSharedJson([path, method, body]))}`
+        const immutableRecord =
+          method === "POST" &&
+          path === "v1/pages" &&
+          property(property(body).parent).data_source_id === library.records.data_source_id
         const transport: Notion["Service"] = {
           ...api,
           request: (requestPath, requestBody, requestOptions) =>
@@ -306,15 +325,27 @@ export function sharedCreateDispatch(
             dryRun,
             repeat: "never",
             ...(beforeDispatch === undefined ? {} : { beforeDispatch }),
+            ...(immutableRecord
+              ? {
+                  observeAcknowledged: (response: unknown) => {
+                    const pageId = property(response).id
+                    if (typeof pageId !== "string" || !/^[a-f0-9-]{36}$/u.test(pageId))
+                      return Effect.fail(
+                        fail(
+                          "SHARED_CREATE_DISPATCH_UNKNOWN",
+                          "The original Record acknowledgement has no exact page ID.",
+                        ),
+                      )
+                    return observeMutation(library, plan, path, body, method, pageId)
+                  },
+                }
+              : {}),
           },
           observeMutation(library, plan, path, body, method),
         ).pipe(Effect.provideService(Notion, transport))
         if (result.status === "planned")
           return { acknowledged: false as const, response: undefined }
         const row = property(result.result)
-        const immutableRecord =
-          method === "POST" &&
-          property(property(body).parent).data_source_id === library.records.data_source_id
         const acknowledged =
           result.status === "applied" ||
           ("original_outcome" in result && result.original_outcome === "applied")

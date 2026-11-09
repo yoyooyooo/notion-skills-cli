@@ -294,6 +294,7 @@ function dispatch<R = never>(
   plan: SharedBodyWritePlan,
   dryRun: boolean,
   beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>,
+  afterRestoreBodyWrite?: (sha256: string, bytes: number) => Effect.Effect<void, SkillsError, R>,
 ) {
   return Effect.gen(function* () {
     const projection =
@@ -332,6 +333,7 @@ function dispatch<R = never>(
       mode: "create",
       beforePlanWrite: (original) => retainPendingFileOperation(scope, original),
       ...(beforeRestoreDispatch === undefined ? {} : { beforeRestoreDispatch }),
+      ...(afterRestoreBodyWrite === undefined ? {} : { afterRestoreBodyWrite }),
     })
     if (result.status !== "unchanged") {
       yield* invalidateSnapshotCache(sharedSkillId(library.library_id, scope.skill_id), scope.scope)
@@ -509,6 +511,10 @@ export function restoreSharedFileFollowing<R = never>(input: {
   }
   readonly dryRun?: boolean
   readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
+  readonly afterRestoreBodyWrite?: (
+    sha256: string,
+    bytes: number,
+  ) => Effect.Effect<void, SkillsError, R>
 }) {
   return Effect.gen(function* () {
     const scope = yield* authScope
@@ -552,6 +558,7 @@ export function restoreSharedFileFollowing<R = never>(input: {
       plan,
       input.dryRun ?? false,
       input.beforeRestoreDispatch,
+      input.afterRestoreBodyWrite,
     )
   })
 }

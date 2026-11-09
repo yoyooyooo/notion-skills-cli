@@ -7,7 +7,6 @@ import {
   decideObservedBody,
   FileEventSchema,
   normalizeObservedBody,
-  requireSafeBodyReplacement,
   resolveFileState,
   resourceContentForOwnership,
   nativeFileMetadata,
@@ -694,6 +693,10 @@ export function executeSharedBodyWrite<R = never>(
     readonly beforePlanWrite?: (plan: SharedBodyWritePlan) => Effect.Effect<void, SkillsError, R>
     /** Optional native request revalidation; never called while reconciling an original write. */
     readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
+    readonly afterRestoreBodyWrite?: (
+      sha256: string,
+      bytes: number,
+    ) => Effect.Effect<void, SkillsError, R>
   },
 ) {
   return Effect.gen(function* () {
@@ -746,14 +749,8 @@ export function executeSharedBodyWrite<R = never>(
         verified: true as const,
         requires_fresh_read: true as const,
       }
-    if (plan.action === "restore_follow" && !sameBody)
-      yield* bodyWriteChecked(() =>
-        requireSafeBodyReplacement({
-          existing_editable_page: true,
-          operation_id: plan.operation_id,
-          retained_candidate_id: plan.candidate.content.object_id,
-        }),
-      )
+    // Explicit restore uses the same single complete old-body match as authoring.
+    // Validation above rejects empty/incomplete preimages; this is not page CAS.
     if (input.beforePlanWrite !== undefined) yield* input.beforePlanWrite(plan)
     yield* appendSharedRecord(library, {
       mode: "create",
@@ -830,8 +827,10 @@ export function executeSharedBodyWrite<R = never>(
           ),
         )
       const current = yield* verifyCurrent(library, plan, false)
-      if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
-        yield* input.beforeRestoreDispatch.pipe(withReadOnlyNotion)
+      if (plan.action === "restore_follow" && input.afterRestoreBodyWrite !== undefined)
+        yield* input
+          .afterRestoreBodyWrite(plan.candidate.content.sha256, plan.candidate.content.bytes)
+          .pipe(withReadOnlyNotion)
       return current
     }).pipe(Effect.result)
     if (exact._tag === "Failure") {

@@ -3,7 +3,9 @@ import { Effect } from "effect"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fail, property, text } from "../src/model.ts"
+import { fail, property, SkillsError, text } from "../src/model.ts"
+import { Notion } from "../src/notion.ts"
+import { readSharedFileRequest, submitSharedFileRequest } from "../src/shared-file-request.ts"
 import {
   automaticSourceStops,
   reportSourceUpdateRun,
@@ -71,8 +73,56 @@ async function fixture(
   const run = <A, E, R>(action: Effect.Effect<A, E, R>) =>
     f.run(
       Effect.gen(function* () {
-        const store = yield* Store
-        return yield* action.pipe(Effect.provideService(Store, { ...store, root }))
+        const store = yield* Store,
+          original = yield* Notion
+        const api: Notion["Service"] = {
+          ...original,
+          request: (path, body, options) => {
+            if (requests && path === `v1/databases/${library.skills.database_id}`)
+              return original.request(path, body, options).pipe(
+                Effect.map((value) => ({
+                  ...property(value),
+                  description: [
+                    { plain_text: "ntn-skills-library:v1 " + JSON.stringify(activeLibrary) },
+                  ],
+                })),
+              )
+            if (
+              requests &&
+              path === `v1/pages/${skillPage}/markdown` &&
+              options?.method === "PATCH"
+            )
+              return Effect.try({
+                try: () => {
+                  f.calls.push({ path, body, method: "PATCH" })
+                  const before = f.bodies.get(skillPage)!,
+                    updates = property(property(body).update_content).content_updates
+                  if (!Array.isArray(updates) || updates.length !== 1)
+                    throw fail("TEST_RESTORE_MATCH", "Expected one complete body match")
+                  const change = property(updates[0])
+                  if (
+                    typeof change.old_str !== "string" ||
+                    !change.old_str ||
+                    typeof change.new_str !== "string" ||
+                    before.split(change.old_str).length !== 2
+                  )
+                    throw fail("TEST_RESTORE_MATCH", "The complete original body no longer matches")
+                  const markdown = before.replace(change.old_str, change.new_str)
+                  f.bodies.set(skillPage, markdown)
+                  return { id: skillPage, markdown, truncated: false, unknown_block_ids: [] }
+                },
+                catch: (error) =>
+                  error instanceof SkillsError
+                    ? error
+                    : fail("TEST_RESTORE_MATCH", "Controlled restore failed"),
+              })
+            return original.request(path, body, options)
+          },
+        }
+        return yield* action.pipe(
+          Effect.provideService(Store, { ...store, root }),
+          Effect.provideService(Notion, api),
+        )
       }),
     )
   const execute = (
@@ -91,7 +141,7 @@ async function fixture(
         () => Effect.succeed(activeLibrary),
       ),
     )
-  return { ...f, run, execute }
+  return { ...f, run, execute, activeLibrary }
 }
 
 test("policy and interval are explicit native configuration; disabled and pinned skip provider discovery", async () => {
@@ -312,4 +362,56 @@ test("a pinned or not-due Source still processes an explicit file request withou
       name: "restore-follow",
     })
   }
+})
+
+test("a submitted C1 request follows the same Source's verified C2 selection without renewing its custom baseline", async () => {
+  const f = await fixture("auto", true, true)
+  await f.execute()
+  const input = { library: f.activeLibrary, skillPageId: skillPage, path: "SKILL.md" }
+  const submitted = await f.run(submitSharedFileRequest(input))
+  expect(submitted.status).toBe("submitted")
+  if (!("feedback" in submitted) || submitted.feedback === undefined)
+    throw new Error("Expected the submitted request receipt")
+  const original = submitted.feedback.submitted
+  expect(original?.source.definition?.source_id).toBe(definition.source_id)
+  const next = {
+    ...f.snapshot,
+    revision: "b".repeat(40),
+    members: f.snapshot.members.map((member) => ({
+      ...member,
+      upstream_hash: "c".repeat(64),
+      content_hash: "d".repeat(64),
+      portable: {
+        ...member.portable,
+        files: member.portable.files.map((file) =>
+          file.path === "SKILL.md"
+            ? {
+                ...file,
+                bytes: new TextEncoder().encode(
+                  "---\nname: source\ndescription: upstream\nlicense: MIT\n---\n\nSelected C2 body\n",
+                ),
+              }
+            : file,
+        ),
+      },
+    })),
+  }
+  f.replaceSnapshot(next)
+  f.clearCalls()
+  const result = await f.execute()
+  if (result.check.status !== "completed")
+    throw new Error("Expected the C2 Source check to complete")
+  expect(result.check.revision).toBe(next.revision)
+  expect(f.bodies.get(skillPage)).toBe("Selected C2 body")
+  expect(
+    result.request_results.map((item) => property(item).result ?? property(item).error),
+  ).toContainEqual(expect.objectContaining({ status: "verified_applied" }))
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(1)
+  const current = await f.run(readSharedFileRequest(input))
+  expect(current.status).toBe("verified_applied")
+  expect(current.request_id).toBe(submitted.feedback.request_id)
+  expect(current.feedback?.submitted).toEqual(original)
+  expect(current.request.source.selected_version).not.toBe(original?.source.selected_version)
 })

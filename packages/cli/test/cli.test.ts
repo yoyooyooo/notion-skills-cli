@@ -447,6 +447,10 @@ test("machine constraints and handler rejection share the command contract", asy
     [["read"], { kind: "mutually_exclusive", flags: ["raw", "output"] }],
     [["ctl", "sync", "local", "plan"], { kind: "exactly_one", flags: ["binding", "all"] }],
     [["ctl", "cache", "clear"], { kind: "requires_absent", flag: "all", absent: ["database"] }],
+    [
+      ["ctl", "library", "file", "request"],
+      { kind: "mutually_exclusive", flags: ["submit", "process", "reconcile"] },
+    ],
   ] as const) {
     const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
     expect(result.exit).toBe(0)
@@ -460,6 +464,18 @@ test("machine constraints and handler rejection share the command contract", asy
     ["ctl", "sync", "local", "plan", "binding", "--all"],
     ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
     ["ctl", "cache", "clear", "--all", "--database", "db"],
+    [
+      "ctl",
+      "library",
+      "file",
+      "request",
+      "00000000-0000-4000-8000-000000000001",
+      "references/1.md",
+      "--entry",
+      "00000000-0000-4000-8000-000000000002",
+      "--submit",
+      "--process",
+    ],
   ])
     await invalid(args)
 }, 60000)

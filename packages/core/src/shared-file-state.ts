@@ -558,6 +558,13 @@ export function decideObservedBody(state: FileOwnership, observed: BodyFingerpri
  */
 export const notionWriteCapabilities = Object.freeze({
   conditional_body_replace: false,
+  explicit_source_restore: Object.freeze({
+    kind: "single_full_body_match",
+    conditional_body_replace: false,
+    nonempty_complete_old_body: true,
+    exact_postcondition_required: true,
+    automatic_retry: false,
+  }),
   editable_projection_overwrite: Object.freeze({
     kind: "unsupported",
     provider: "notion",

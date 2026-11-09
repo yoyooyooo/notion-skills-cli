@@ -2,13 +2,16 @@ import { expect, test } from "bun:test"
 import { Schema } from "effect"
 import { normalizeObservedBody } from "../src/shared-file-state.ts"
 import {
-  currentSharedNotionMarkdownVersion,
-  projectSharedNotionMarkdown,
+  projectSharedNotionMarkdown as projectNativeMarkdown,
   sharedNotionMarkdownPolicy,
   SharedNotionMarkdownPolicySchema,
   sharedNotionMarkdownWire,
   validateSharedNotionMarkdownProjection,
 } from "../src/shared-notion-projection.ts"
+
+// Retained v12 cases stay pinned when the default authoring policy advances.
+const projectSharedNotionMarkdown: typeof projectNativeMarkdown = (input, options) =>
+  projectNativeMarkdown(input, { version: 12, ...options })
 
 test("v12 body writes predict the independently observed heading-to-paragraph separator", () => {
   // Exact boundary from the complete AH-703 four-source public-write readback.
@@ -21,7 +24,6 @@ test("v12 body writes predict the independently observed heading-to-paragraph se
   expect(current.markdown).toBe(observed)
   expect(previous.markdown).toBe(observed.replace("Images\n\n", "Images\n"))
   expect(current.version).toBe(12)
-  expect(currentSharedNotionMarkdownVersion).toBe(12)
   expect(current.input_markdown).toBe(input)
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
   expect(validateSharedNotionMarkdownProjection(previous)).toEqual(previous)
