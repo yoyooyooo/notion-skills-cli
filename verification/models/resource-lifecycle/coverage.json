@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "synchronized_commit": "da8596094f487adcdbd0e1a2ec1ecb6719d51bca",
+  "synchronized_commit": "5dcfe19ea4da6a974cff8639ee602c7f93b3ba9c",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "39d1eb531667514abcbf463bd615f4c3dad60db0a413b27ec0daa83b19438c71",
     "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
     "packages/core/src/shared-body-write.ts": "4cd7fd54a50554ae2ea35c8655fab0a9e466678fa08fbf70d9dc222b0f8128b2",
-    "packages/core/src/shared-source-refresh.ts": "5ebd3e4e621b4e47a5f8847925e5112f44a49d4dfac1a6eef1cba03f4d8d692d",
+    "packages/core/src/shared-source-refresh.ts": "481a1e5783f51bfe10205c4985e14c4da5a8ca2f63f3ee18b4edcba812f82e8b",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
     "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
