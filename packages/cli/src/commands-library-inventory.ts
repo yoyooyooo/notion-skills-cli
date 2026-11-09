@@ -11,6 +11,7 @@ import {
 import { Store } from "../../core/src/store.ts"
 import { emit, requiredSingleton, singleton } from "./command-options.ts"
 import { inventoryImportCommands } from "./commands-library-inventory-import.ts"
+import { inventoryRecoveryCommand } from "./commands-library-inventory-recovery.ts"
 
 const output = singleton(
   "output",
@@ -164,5 +165,12 @@ export const libraryInventoryCommand = defineCommand("inventory").pipe(
   Command.withShortDescription(
     "Audit exact inventories, review identities and explicitly import complete approved Skills",
   ),
-  Command.withSubcommands([remote, local, reconcile, review, ...inventoryImportCommands]),
+  Command.withSubcommands([
+    remote,
+    local,
+    reconcile,
+    review,
+    ...inventoryImportCommands,
+    inventoryRecoveryCommand,
+  ]),
 )

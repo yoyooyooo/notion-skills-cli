@@ -62,6 +62,7 @@ import {
 } from "./shared-create-outcome.ts"
 import { completedSharedCreateRecovery } from "./shared-create-recovery-completion.ts"
 import { completedSharedCreatePrefixRecovery } from "./shared-create-recovery-prefix-completion.ts"
+import { readSharedCreateNativeCompletion } from "./shared-create-recovery-native-completion.ts"
 import { saveSharedCreateOwnership } from "./shared-create-ownership.ts"
 import {
   validateRetainedMigrationConversion,
@@ -1242,6 +1243,74 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       recordId: outcomeId(plan.operation_id),
     })
     const row = rows[0]
+    if (
+      rows.length === 0 &&
+      plan.version === 1 &&
+      plan.complete_resources === 1 &&
+      plan.source_projection === undefined &&
+      plan.files.length === 1 &&
+      plan.files[0]?.projection.version === 11
+    ) {
+      const headers = yield* querySharedOperationIndex(library, page)
+      const manifest = headers.find(
+        (header) =>
+          header.record_id === plan.operation_id && header.entity_id === sharedCreateManifestEntity,
+      )
+      if (manifest !== undefined) {
+        const eventRows = yield* querySharedRecords(library, {
+          skillPageId: page,
+          kind: "file_event",
+        })
+        const events = yield* createChecked(() =>
+          eventRows.map((record) =>
+            Schema.decodeUnknownSync(FileEventSchema)(record.payload, {
+              onExcessProperty: "error",
+            }),
+          ),
+        )
+        const recovered = yield* readSharedCreateNativeCompletion(library, {
+          skillPageId: page,
+          originalManifestHeader: manifest,
+          events,
+          headers,
+        })
+        if (recovered !== undefined) {
+          if (canonicalSharedJson(recovered.plan) !== canonicalSharedJson(plan))
+            return yield* Effect.fail(
+              fail(
+                "SHARED_CREATE_INVALID",
+                "The shared native recovery belongs to another original input.",
+              ),
+            )
+          yield* retire(plan, scope, recovered.outcome.bindings)
+          return {
+            status: "created" as const,
+            operation: "create" as const,
+            action: "created" as const,
+            skill_page_id: page,
+            page_id: page,
+            skill_id: plan.skill_id,
+            entrypoint: plan.entrypoint,
+            record: current.record,
+            ref: current.record.ref,
+            operation_id: plan.operation_id,
+            verified: true as const,
+            reused: true as const,
+            requires_fresh_read: true as const,
+            verification: "original_native_recovery_outcome" as const,
+            original_outcome_recorded: false as const,
+            recovery_operation_id: recovered.review.review_id,
+            protection: sharedCreateProtection,
+            ...(yield* createChecked(() =>
+              sharedCreateExpectations(
+                { ...plan, files: [recovered.file] },
+                recovered.outcome.bindings,
+              ),
+            )),
+          }
+        }
+      }
+    }
     if (rows.length !== 1 || row === undefined)
       return yield* Effect.fail(
         recover(

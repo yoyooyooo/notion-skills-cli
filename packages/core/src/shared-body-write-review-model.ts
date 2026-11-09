@@ -11,7 +11,7 @@ export const OriginalBodyWriteIdentitySchema = Schema.String.check(
   Schema.isPattern(/^body-write-(?:adopt|follow)-[a-f0-9]{64}\.[a-f0-9]{64}$/u),
 )
 export const SharedBodyWriteReviewPlanSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literals([1, 2]),
   kind: Schema.Literal("body_write_review"),
   operation_id: Schema.String.check(Schema.isPattern(/^body-review-[a-f0-9]{64}$/u)),
   original_operation_id: OriginalBodyWriteIdentitySchema,
@@ -62,11 +62,15 @@ export const bodyWriteReviewReceiptId = (operationId: string) => `reviewed-${ope
 function eventDescription(
   plan: Pick<
     SharedBodyWriteReviewPlan,
-    "original_operation_id" | "observation_sha256" | "accepted_observed_sha256" | "event"
+    | "version"
+    | "original_operation_id"
+    | "observation_sha256"
+    | "accepted_observed_sha256"
+    | "event"
   >,
 ) {
   return {
-    version: 1,
+    version: plan.version,
     kind: "body_write_review",
     original_operation_id: plan.original_operation_id,
     observation_sha256: plan.observation_sha256,
@@ -161,14 +165,13 @@ export function validateSharedBodyWriteReviewPlan(input: unknown) {
 export function makeSharedBodyWriteReviewPlan(
   input: Omit<
     SharedBodyWriteReviewPlan,
-    "version" | "kind" | "operation_id" | "original_status" | "decision" | "event"
+    "kind" | "operation_id" | "original_status" | "decision" | "event"
   > & { readonly parents: readonly string[] },
 ) {
   return Effect.gen(function* () {
     const { parents, ...facts } = input
     const provisional = {
       ...facts,
-      version: 1 as const,
       kind: "body_write_review" as const,
       original_status: "needs_review" as const,
       decision: "accepted_observed" as const,

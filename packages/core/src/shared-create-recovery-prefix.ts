@@ -120,7 +120,11 @@ const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
 const refusal = (message: string) => Effect.fail(prefixRecoveryRequired(message))
 const jsonHash = (value: unknown) => sha256(canonicalSharedJson(value))
-function recoveryKey(scope: string, libraryId: string, operation: string) {
+export function sharedCreateRecoveryJournalKey(
+  scope: string,
+  libraryId: string,
+  operation: string,
+) {
   return jsonHash([scope, libraryId]).pipe(
     Effect.map((hash) => "operations/shared-native-recovery/" + hash + "/" + operation + ".json"),
   )
@@ -552,7 +556,7 @@ export function applySharedCreatePrefixRecovery(input: {
       )
     const scope = yield* authScope,
       store = yield* Store
-    const key = yield* recoveryKey(scope, library.library_id, plan.operation_id)
+    const key = yield* sharedCreateRecoveryJournalKey(scope, library.library_id, plan.operation_id)
     const sharedReview = yield* querySharedRecords(library, {
       skillPageId: page,
       kind: "operation",

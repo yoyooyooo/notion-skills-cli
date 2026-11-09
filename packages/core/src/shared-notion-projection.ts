@@ -5,6 +5,7 @@ import { assertNotionInlineBoundary } from "./shared-notion-inline-boundary.ts"
 import {
   projectNotionMarkdownV9,
   projectNotionMarkdownV10,
+  projectNotionMarkdownV12,
 } from "./shared-notion-document-spacing.ts"
 import { projectNativeTextBreaks } from "./shared-notion-text-breaks.ts"
 import { projectNativeHeadingLiterals } from "./shared-notion-literal-text.ts"
@@ -94,6 +95,10 @@ const ProjectionV11Schema = Schema.Struct({
   ...ProjectionV10Schema.fields,
   version: Schema.Literal(11),
 })
+const ProjectionV12Schema = Schema.Struct({
+  ...ProjectionV11Schema.fields,
+  version: Schema.Literal(12),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
@@ -106,10 +111,11 @@ export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV9Schema,
   ProjectionV10Schema,
   ProjectionV11Schema,
+  ProjectionV12Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
-export const currentSharedNotionMarkdownVersion = 11
+export const currentSharedNotionMarkdownVersion = 12
 
 export const SharedNotionMarkdownPolicySchema = Schema.Union([
   Schema.Struct({
@@ -188,6 +194,13 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(12),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
 /** Retained policies keep their exact bytes. New writes predict independently
@@ -222,15 +235,17 @@ export function projectSharedNotionMarkdown(
   if (version >= 3) assertNotionInlineBoundary(markdown)
   const purpose = options.purpose ?? "body_write"
   const projected =
-    version >= 10
-      ? projectNotionMarkdownV10(markdown, purpose)
-      : version === 9
-        ? projectNotionMarkdownV9(markdown, purpose)
-        : version >= 5
-          ? projectNotionMarkdownV5(markdown, purpose)
-          : version === 4
-            ? projectNotionMarkdownV4(markdown, purpose)
-            : projectNotionMarkdownV2(markdown, purpose)
+    version >= 12
+      ? projectNotionMarkdownV12(markdown, purpose)
+      : version >= 10
+        ? projectNotionMarkdownV10(markdown, purpose)
+        : version === 9
+          ? projectNotionMarkdownV9(markdown, purpose)
+          : version >= 5
+            ? projectNotionMarkdownV5(markdown, purpose)
+            : version === 4
+              ? projectNotionMarkdownV4(markdown, purpose)
+              : projectNotionMarkdownV2(markdown, purpose)
   const text =
     version >= 6
       ? projectNativeTextBreaks(projected.markdown, {

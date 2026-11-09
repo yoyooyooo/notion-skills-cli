@@ -80,7 +80,7 @@ export const libraryFileReviewCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["dryRun", "reconcile"])]),
   Command.withDescription(
-    "Explicitly accept the complete currently observed body for one original body-write operation retained as needs_review. --accept-observed-sha256 must identify the exact bytes you reviewed; changed observations fail instead of accepting another version. The original preimage, candidate and needs_review evidence remain retained. The review records accepted_observed and does not replay the original write or rewrite the body. It can review the main or a supporting file through the original operation identity. --dry-run previews without writes; --reconcile only observes the same original review. These flags are mutually exclusive.",
+    "Explicitly accept the complete currently observed body for one original body-write operation retained as needs_review. --accept-observed-sha256 must identify the exact bytes you reviewed; changed observations fail instead of accepting another version. The original preimage, candidate and needs_review evidence remain retained. New version 2 plans preserve the original candidate's frozen native mode and complete frontmatter, including license fields. Existing version 1 review facts keep their original identities and contents. The review records accepted_observed and does not replay the original write or rewrite the body. It can review the main or a supporting file through the original operation identity. --dry-run previews without writes; --reconcile only observes the same original review. A missing original plan or conflicting versions cannot authorize another review. These flags are mutually exclusive.",
   ),
   Command.withExamples([
     {

@@ -85,7 +85,10 @@ export function sharedPendingObservationPrefix(scope: string, libraryId: string,
   )
 }
 
-export function pendingFileOperationKey(prefix: string, plan: SharedPendingFilePlan) {
+export function pendingFileOperationKey(
+  prefix: string,
+  plan: Pick<SharedPendingFilePlan, "file_id" | "operation_id">,
+) {
   return sha256(canonicalSharedJson([plan.file_id, plan.operation_id])).pipe(
     Effect.map((identity) => `${prefix}/${identity}.json`),
   )

@@ -8,6 +8,7 @@ import {
 } from "./shared-create-model.ts"
 import { sharedCreateOutcomeId } from "./shared-create-outcome.ts"
 import { readSharedCreateKnownCompletion } from "./shared-create-recovery-known-completion.ts"
+import { readSharedCreateNativeCompletion } from "./shared-create-recovery-native-completion.ts"
 import {
   sharedCreateRecoveryOutcomeId,
   sharedCreateRecoveryOutcomesEntity,
@@ -200,6 +201,7 @@ export function completedSharedCreatePrefixRecovery(
   input: Parameters<typeof readSharedCreatePrefixCompletion>[1],
 ) {
   return Effect.gen(function* () {
+    if ((yield* readSharedCreateNativeCompletion(library, input)) !== undefined) return true
     const recovered = yield* readSharedCreateKnownCompletion(library, input)
     if (recovered !== undefined) {
       if (recovered.review.bootstrap.kind !== "acknowledged_main_before_manifest")

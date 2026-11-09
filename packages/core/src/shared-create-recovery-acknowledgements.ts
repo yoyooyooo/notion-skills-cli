@@ -172,6 +172,7 @@ export function readSharedNativeAllocationProofs(
       return yield* refusal(
         "A complete original allocation response fact is missing or duplicated.",
       )
+    const proofs: SharedNativeAllocationProof[] = []
     for (const [index, binding] of bindings.entries()) {
       const ref = references[index]!,
         row = rows.find((item) => item.record_id === ref.record_id)
@@ -204,6 +205,8 @@ export function readSharedNativeAllocationProofs(
         return yield* refusal(
           "The retained allocation does not reconstruct its exact original frozen POST and ACK.",
         )
+      proofs.push(proof)
     }
+    return proofs
   })
 }

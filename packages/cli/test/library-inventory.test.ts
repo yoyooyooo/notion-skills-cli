@@ -111,3 +111,29 @@ test("invalid local scopes and incomplete review selectors fail without any prov
     })
   }
 }, 15000)
+
+test("native inventory recovery exposes the original outer plan, explicit review and readonly reconciliation", async () => {
+  for (const command of ["review", "apply", "reconcile"]) {
+    const result = await invoke(["schema", "ctl", "library", "inventory", "recovery", command])
+    expect(result.exit, result.stdout + result.stderr).toBe(0)
+    const parameters: unknown = JSON.parse(result.stdout).schema.parameters
+    expect(parameters).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "entry", required: true })]),
+    )
+    if (command === "apply")
+      expect(parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "review", required: true }),
+          expect.objectContaining({ name: "review-id", required: true }),
+          expect.objectContaining({ name: "dry-run" }),
+        ]),
+      )
+    else
+      expect(parameters).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "target", required: true })]),
+      )
+    const help = await invoke(["ctl", "library", "inventory", "recovery", command, "--help"])
+    expect(help.exit, help.stdout + help.stderr).toBe(0)
+    expect(help.stdout).toContain("original")
+  }
+}, 20_000)

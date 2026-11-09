@@ -55,3 +55,30 @@ export function projectNotionMarkdownV10(markdown: string, purpose: SharedNotion
   }
   return { wire: projected.wire, markdown: parts.join("") }
 }
+
+/** Predict the independently observed separators for each authoring purpose.
+ * Body writes keep their own H1 wire and leading-LF policy; old policies stay fixed.
+ */
+export function projectNotionMarkdownV12(markdown: string, purpose: SharedNotionMarkdownPurpose) {
+  const projected = projectNotionMarkdownV10(markdown, purpose)
+  const tokens = SourceLexer.lex(projected.markdown)
+  if (tokens.map((token) => token.raw).join("") !== projected.markdown)
+    throw fail(
+      "SHARED_MARKDOWN_PROJECTION_UNSUPPORTED",
+      "The selected native document boundaries could not be projected completely before dispatch.",
+    )
+  const parts = tokens.map((token) => token.raw)
+  for (let at = 0; at + 1 < tokens.length; at++) {
+    const token = tokens[at]!
+    const next = tokens[at + 1]!
+    const fence = next.type === "code" && /^ {0,3}(?:`{3,}|~{3,})/u.test(next.raw)
+    const headingBoundary =
+      atxHeading(token) &&
+      (purpose === "body_write" ? next.type === "paragraph" : next.type === "list" || fence)
+    const paragraphFence = purpose === "body_write" && token.type === "paragraph" && fence
+    if (!headingBoundary && !paragraphFence) continue
+    const previous = parts[at]!
+    if (previous.endsWith("\n") && !previous.endsWith("\n\n")) parts[at] = `${previous}\n`
+  }
+  return { wire: projected.wire, markdown: parts.join("") }
+}

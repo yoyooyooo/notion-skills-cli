@@ -66,6 +66,8 @@ test("public file review exposes exact original-operation and singleton acceptan
   expect(help).toContain("accepted_observed")
   expect(help).toContain("--accept-observed-sha256")
   expect(help).toContain("main or a supporting file")
+  expect(help).toContain("frozen native mode and complete frontmatter")
+  expect(help).toContain("Existing version 1 review facts")
 })
 
 test("public review declares and enforces mutually exclusive dry-run and reconcile intent", () => {

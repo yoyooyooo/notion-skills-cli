@@ -461,7 +461,9 @@ ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
 
 Completion returns `reviewed` with `decision: accepted_observed`. The original operation remains `needs_review`, and its preimage, candidate and observed response remain unchanged. The independent review retains the accepted body and an adoption event; it does not rewrite the native body or report the original candidate as applied. To make a correction afterward, perform a fresh read and submit a new explicit write from that current version.
 
-If review is interrupted, retain its original receipt and repeat the exact review with `--reconcile`. Reconciliation only verifies the original review facts and never fills missing facts by repeating unknown writes. `--dry-run` and `--reconcile` are mutually exclusive.
+New review plans use version 2 and retain the original write candidate's complete native mode and frontmatter, including additional YAML fields and license text. The accepted body has its own observed hash and byte count; review does not replace file metadata with a body-only object. Metadata absent from the original candidate remains absent.
+
+If review is interrupted, retain its original receipt and repeat the exact review with `--reconcile`. Reconciliation only verifies the original review facts and never fills missing facts by repeating unknown writes. Existing version 1 plans, events and receipts retain their original identities and contents, including their historical metadata omission. The review identity remains unique to the original body write; a missing original plan or conflicting versions cannot authorize a replacement review. `--dry-run` and `--reconcile` are mutually exclusive.
 
 ## Accepting the current version after an unknown write
 

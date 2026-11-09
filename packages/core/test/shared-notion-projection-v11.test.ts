@@ -3,7 +3,6 @@ import { createHash } from "node:crypto"
 import { Schema } from "effect"
 import { normalizeObservedBody } from "../src/shared-file-state.ts"
 import {
-  currentSharedNotionMarkdownVersion,
   projectSharedNotionMarkdown,
   sharedNotionMarkdownPolicy,
   SharedNotionMarkdownPolicySchema,
@@ -22,7 +21,10 @@ test("v11 predicts the complete observed UserNoDeadlock heading without changing
     version: 10,
     purpose: "data_source_create",
   })
-  const current = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+  const current = projectSharedNotionMarkdown(input, {
+    version: 11,
+    purpose: "data_source_create",
+  })
   expect(Buffer.byteLength(input)).toBe(254)
   expect(createHash("sha256").update(input).digest("hex")).toBe(
     "53433b379971530176a5e150a14c466c4452d07c523b3207e8b6c2b55c68b0cf",
@@ -33,7 +35,6 @@ test("v11 predicts the complete observed UserNoDeadlock heading without changing
   )
   expect(current.markdown).toBe(observed)
   expect(current.version).toBe(11)
-  expect(currentSharedNotionMarkdownVersion).toBe(11)
   expect(current.input_markdown).toBe(input)
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
   expect(Buffer.byteLength(previous.markdown)).toBe(267)
@@ -56,7 +57,7 @@ for (const purpose of ["body_write", "data_source_create"] as const) {
     const prefix = "#".repeat(depth)
     const input = `${prefix} CHECK_DEADLOCK [], <>, ~>.\n`
     const previous = projectSharedNotionMarkdown(input, { version: 10, purpose })
-    const current = projectSharedNotionMarkdown(input, { purpose })
+    const current = projectSharedNotionMarkdown(input, { version: 11, purpose })
     expect(current.markdown).toBe(`${prefix} CHECK\\_DEADLOCK \\[\\], \\<>, \\~>.`)
     expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
     expect(validateSharedNotionMarkdownProjection(current)).toEqual(current)
@@ -72,7 +73,7 @@ test.each([
   "## **CHECK_DEADLOCK**\n",
 ])("v11 preserves heading syntax and protected token bytes (%s)", (input) => {
   const previous = projectSharedNotionMarkdown(input, { version: 10 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 11 })
   expect(current.markdown).toBe(previous.markdown.replace("CHECK_DEADLOCK", "CHECK\\_DEADLOCK"))
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
   expect(validateSharedNotionMarkdownProjection(previous)).toEqual(previous)
@@ -83,7 +84,7 @@ test("v11 keeps complete reference-link tokens and their destinations inside hea
   const input =
     "## CHECK_DEADLOCK [saved_label][target_id]\n\n[target_id]: folder/[index]_name~.md\n"
   const previous = projectSharedNotionMarkdown(input, { version: 10 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 11 })
   expect(current.markdown).toBe(previous.markdown.replace("CHECK_DEADLOCK", "CHECK\\_DEADLOCK"))
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
 })
@@ -92,7 +93,7 @@ test("v11 keeps native code and resolved links when literal tildes cross code-to
   const input =
     "## CHECK_DEADLOCK <code>CODE_[]<>~</code> NEXT_CHECK [saved_label][target_id] <code>CODE_[]<>~</code>\n\n[target_id]: folder/[index]_name~.md\n"
   const previous = projectSharedNotionMarkdown(input, { version: 10 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 11 })
   expect(current.markdown).toBe(
     previous.markdown
       .replace("CHECK_DEADLOCK", "CHECK\\_DEADLOCK")
@@ -106,14 +107,14 @@ test("v11 leaves literal fences, nonheading paragraphs and list structure at the
   const input =
     "```md\n## CHECK_DEADLOCK [], <>, ~>.\n```\n\nCHECK_DEADLOCK [], <>, ~>.\n\n- CHECK_DEADLOCK [], <>, ~>.\n- [ ] Saved task\n"
   const previous = projectSharedNotionMarkdown(input, { version: 10 })
-  const current = projectSharedNotionMarkdown(input)
+  const current = projectSharedNotionMarkdown(input, { version: 11 })
   expect(current.markdown).toBe(previous.markdown)
   expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
 })
 
 test.each([5, 6])("v11 preserves the original unsupported H%i boundary", (depth) => {
   const input = `${"#".repeat(depth)} CHECK_DEADLOCK\n`
-  for (const options of [{ version: 10 as const }, {}])
+  for (const options of [{ version: 10 as const }, { version: 11 as const }])
     expect(() => projectSharedNotionMarkdown(input, options)).toThrow(
       expect.objectContaining({ code: "SHARED_MARKDOWN_PROJECTION_UNSUPPORTED" }),
     )

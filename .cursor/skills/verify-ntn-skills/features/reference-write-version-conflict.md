@@ -18,6 +18,9 @@ The [independent installed author lifecycle](import-create-recovery-dry-run.md#i
 - `write-conflict`: reference/main edits invalidate older pinned baselines.
 - `write-properties`: main frontmatter edits preserve Name, Description and Default Context; explicit property updates use `update` with the same version guards.
 - `native-heading-literals-v11`: predict literal text escaping inside supported native heading bodies while preserving retained v1–v10 projections, original wire bytes and strict complete-body comparison.
+- `native-body-spacing-v12`: predict the observed top-level heading-to-paragraph and paragraph-to-fence separators for explicit body writes; preserve v1–v11 policies, original wire and exact readback checks.
+- `native-create-heading-spacing-v12`: predict the independently observed creation separators from a top-level ATX heading to a list or fenced code, without changing the body-write rules or retained v1–v11 policies.
+- `body-review-native-metadata-v2`: preserve the original operation's frozen native mode and complete frontmatter when explicitly accepting its complete observation, while reconciling existing v1 review identities without writes.
 
 ## How to get to it (user POV)
 
@@ -37,6 +40,28 @@ For AH-681, the complete original `scripts/test/corpus/UserNoDeadlock/report.md`
 Before implementation, record a failing pure projection test against the full captured body. Cover H1–H4 literal characters with parsed heading spans, existing escapes, inline/native code, link destinations, tag attributes and structural heading markers. H5/H6 remain explicitly unsupported by the original native serializer. Fenced code and unrelated paragraph/list text must not be reinterpreted as headings. Re-run all 35 original statechart Markdown inputs with explicit v10 and compare every projection field to a separately saved pre-change baseline; v11 must preserve every wire and change only the observed heading file in that tree. Keep the actual input/response hashes and complete replay receipt outside the checkout.
 
 These pure checks establish deterministic forward projection only. Original-operation recovery, any new dispatch, installed CLI and fresh remote verification retain their separate mapped gates; a new projection must not authorize rewriting an already acknowledged body or normalize an unknown response into success.
+
+## Native body-write document spacing
+
+The AH-703 four-source Skill's original public write froze an 8,195-byte v11 body-write candidate. Its independent complete Markdown v2 response is 8,214 bytes: fourteen top-level heading-to-paragraph separators and five paragraph-to-fenced-code separators each contain one additional LF. All nineteen separators already exist in the complete retained native preimage. The observed result preserves that entire preimage and appends the reviewed owned note. Keep the original `needs_review` operation and its exact v11 candidate; this observation does not authorize replaying its body request.
+
+Before implementing v12, retain failing tests for the two real boundary shapes. Verify existing blank separators are idempotent, fenced contents and nested blocks keep their bytes, leading-LF behavior is unchanged for body writes, and every retained v1–v11 policy validates its original input and wire. Do not relabel a body write as creation: creation has a separate H1 wire rule. Replay the complete frozen input against the independent 8,214-byte response outside the checkout, and compare all historical projection fields with the pre-change baseline.
+
+ProjectionRace and UpdateCommit do not prove Markdown syntax or serialization. This change adds no write authority, retry, ownership transition or relaxed body comparator. Existing original-operation review may accept a separately reviewed complete observation; a new projection version applies only to newly prepared plans.
+
+The original native inventory item 143 provides a separate creation observation: its complete 2,816-byte v11 candidate differs from the complete 2,822-byte native response at six LF separators only. Five are heading-to-list boundaries (four unordered and one ordered); one is heading-to-fenced-code. The original page POST is acknowledged and the page remains disabled; no manifest or later write was sent. Preserve that original operation and page. The older fixed-Git prefix-recovery validator excludes this native plan, so a matching v12 prediction alone cannot claim recovery or authorize another page create.
+
+Policy 12 has not been committed, packaged or dispatched. Its creation-only extension covers those two observed token boundaries, while its existing body-write results remain byte-for-byte fixed. Freeze all prior v12 body examples and both complete real inputs before the extension, retain failing creation tests, verify existing blank separators and fenced/nested content, then replay the entire 2,822-byte observation and both inputs under every old policy. Do not broaden unsupported list grammar or use a smaller substitute input to claim an import succeeded.
+
+## Original body review and retained native metadata
+
+The four-source main review preview exposed a second boundary: its original write candidate retained mode `100644` and the full authored YAML, including the license, but v1 review rebuilt only the observed body object ID, hash and byte count. An adopted event replaces retained content, so omitting those fields loses file metadata. A new v2 review must copy only the original candidate's frozen native metadata; it must not infer fields from the current page, later events or another source. Exact observed body bytes, normalization and immutable original outcome remain independently bound.
+
+Keep one review operation ID per original body write. Before choosing a plan version, inspect the existing local dispatch barrier and shared review plan. Existing v1 plans, events and receipts retain their exact identities and historical metadata-free content; completed and partially dispatched v1 reviews only reconcile. A missing original review plan behind a visible receipt, or disagreement between local and shared plans, is not permission to create a v2 replacement. A preview with no dispatched/local/shared review intent can prepare v2 under the same original-operation identity.
+
+Credential rotation in the same Store must not hide an original review dispatch. Check only the existing opaque file/operation journal address across credential scopes, without reading another scope's payload. A matching address selects read-only reconciliation; it is not completion evidence. Retain the independent counterexample where an invisible v1 review request under the previous scope otherwise caused four new v2 Records to be dispatched. An empty independent Store cannot infer another host's unknown request from absent remote facts; this boundary does not establish distributed mutual exclusion or provider CAS.
+
+Before implementation, retain red tests for a main header with additional YAML and license fields and a supporting native file with executable mode `100755`. Prove v2 plan/event metadata equals the original candidate, including known absence, while body writes remain zero. Seed independent historical v1 facts and verify cold completed replay, partial/unknown barriers and original-write reconciliation without changing their bytes or sending Records/body writes. Retain the existing four-stage unknown-result matrix. Finite lifecycle models do not prove this metadata codec or historical review-version selection; report these concrete compatibility checks separately.
 
 ## Driving it with control-ntn-skills
 
