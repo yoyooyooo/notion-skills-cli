@@ -20,9 +20,11 @@
 | NR17-cold | 清空派生对象后 apply 仅按候选 commit/文件身份获取；read/files/use/export 消费同一选择，旧 bundle 与pin可恢复 | 一个必要资源取回失败或hash不符不得先选择；未知注册不重发；读取一个资源不能重新解析分支或枚举仓库 |
 | NR15-run | `sources run SOURCE --target PAGE 或 --all-bound --mode check/prepare/policy` 是有请求/字节/时间预算的单次工作；disabled/pinned/manual/auto、due 与独立文件请求分别判定；准备阶段的结构化 `SHARED_REFERENCE_INVALID` 在返回结果及离线 run receipt 保留原 code/message/from/href，并标明 `target_page_id`、`source_member` 与 `preparation_stage`（`current_snapshot` / `candidate_file_references`） | 无新commit或未到期不得吞掉显式restore请求；editable正文无原子条件时停止自动覆写；prepare 模式在这两个边界失败时保持 `plan:null`、空 application 与零写，不放宽跨根检查或推断旧错误缺失的成员；同state-root重叠执行不重复获取provider；跨机仍声明单writer部署边界 |
 | NR15-original | `sources run-list` / `run-status ID` 离线恢复ID和原frozen plan；中断checkpoint的成本是下界，不能宣称已完成 | 失去stdout、SIGKILL、预算暂停、当前值相等不能授权重新派发未知写；Source Last Checked仅在完整成功检查后更新，与application结果分开 |
-| NR16-admit | `sources admit`冻结新成员并复用原create kernel；`admit-apply/reconcile`接纳/核对；新成员缺省disabled，显式enable在完整性验证后生效 | 同Source精确member已绑定、缺文件、旧definition、初始POST响应丢失均不得同名重建；all-bound更新不自动接纳新成员 |
+| NR16-admit | `sources admit`冻结新成员并复用原create kernel与当前读回接纳规则；`admit-apply/reconcile`接纳/核对；阅读页表示变化不改变following，消费保留固定来源原文；新成员缺省disabled，显式enable在完整性验证后生效 | 同Source精确member已绑定、缺文件、旧definition、初始POST响应丢失均不得同名重建；all-bound更新不自动接纳新成员；历史冻结计划保持原规则 |
 | NR16-member | `sources member-prepare`显式改绑或保留已移除成员；apply只改Origin/Source Member，Selected、正文、关系、custom/old pins保留 | 仍存在member不允许假称removed；不按同名/hash猜rename；原binding或selection漂移零写；当前binding相等但无原receipt仍unknown |
 
 `shared-source-batch-sqlite.node.test.ts` 先在未修复的真实 SQLite 上重现首次 checkpoint 的 `Unknown SQLite domain address`。复用既有 Source fixture 的受控远端事实与实际 batch producer，以独立 Node 进程执行同一 frozen plan 的 dry-run、apply 和只读 reconcile；不复制 memory Store 的本地 JSON/objects。另核精确地址、同 run 多次更新、冷读和退休不可复活，原 member 派发与 ACK 保持 immutable。该受控证据不代替失败安装包之后对原真实 batch 的再次验收。
 
-先跑 focused core 和 CLI parser cases，再驱动独立安装的 Node CLI 与自有三成员真实样本。记录 metadata/body/provider/semantic write 成本、完整输入输出和所有失败。受控故障只能证明被实际注入的分支，不能替代真实 Notion、全库存或 Pi/Mini 验收。
+`library-source-members-http.test.ts` 用实际 Git HTTP 后端产生新增、改路径、移除三次修订，通过独立 Node CLI 执行 check/admit/member-prepare/apply/reconcile。Notion 服务受控，Git 与文件字节真实。核对候选不自动入库、原选择与用户正文保持、原 pin 与二进制可读、重复操作零写，并区分此结果和实库证据。
+
+先跑 focused core 和 CLI parser cases，再驱动独立安装的 Node CLI 与自有代表性样本。记录 metadata/body/provider/semantic write 成本、完整输入输出和所有失败。受控故障只能证明被实际注入的分支，不能替代真实 Notion、全库存或 Pi/Mini 验收。

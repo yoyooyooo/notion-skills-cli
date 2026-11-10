@@ -67,6 +67,7 @@ export const sourceAdmitCommand = defineCommand(
             member: args.member,
             skillId: args.skillId,
             enabled: args.enable,
+            markdownImport: true,
           })
         }),
         limits,
