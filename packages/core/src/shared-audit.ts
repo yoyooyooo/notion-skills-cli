@@ -22,6 +22,7 @@ import {
 import {
   auditFailureCoverage,
   auditRowId,
+  auditSemanticRow,
   auditSkillSignature,
   inspectAuditInventory,
   readAuditInventory,
@@ -86,6 +87,18 @@ const auditEndpointScope = (api: Notion["Service"]) =>
 
 export function runSharedAudit(input: StartSharedAuditInput) {
   return Effect.gen(function* () {
+    if (
+      input.selector.kind === "census" &&
+      ((input.depth !== undefined && input.depth !== "metadata") ||
+        input.pin_id !== undefined ||
+        input.graph_id !== undefined)
+    )
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "Census scope observes registered metadata only; content, history, pins and graphs require a Skill or library audit.",
+        ),
+      )
     const entry = pageId(input.entry)
     const target = input.selector.kind === "skill" ? pageId(input.selector.page_id) : undefined
     if (entry === undefined || (input.selector.kind === "skill" && target === undefined))
@@ -142,7 +155,12 @@ export function runSharedAudit(input: StartSharedAuditInput) {
       endpoint_scope,
       permission_scope: null,
       library: null,
-      selector: target === undefined ? { kind: "library" } : { kind: "skill", page_id: target },
+      selector:
+        input.selector.kind === "census"
+          ? { kind: "census" }
+          : target === undefined
+            ? { kind: "library" }
+            : { kind: "skill", page_id: target },
       depth: input.depth ?? "metadata",
       pin_id: input.pin_id ?? null,
       incremental: input.incremental === true,
@@ -420,11 +438,13 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
             patch({ baseline_run_id: baseline?.run_id ?? null })
             patch({ findings: yield* resolveInventoryFindings() })
             const pages =
-              current.selector.kind === "skill"
-                ? [current.selector.page_id]
-                : [...new Set(current.inventory.skills.map(auditRowId))].filter(
-                    (id) => pageId(id) === id,
-                  )
+              current.selector.kind === "census"
+                ? []
+                : current.selector.kind === "skill"
+                  ? [current.selector.page_id]
+                  : [...new Set(current.inventory.skills.map(auditRowId))].filter(
+                      (id) => pageId(id) === id,
+                    )
             const work: Array<{ page_id: string; changed: boolean; checked_at: number }> = []
             const reused: AuditRun["items"][number][] = []
             const now = yield* Clock.currentTimeMillis
@@ -607,6 +627,38 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
                 ),
               )
             const selected = current.selector
+            if (selected.kind === "census") {
+              const tables = (["skills", "files", "records", "sources"] as const).filter(
+                (table) => {
+                  const signature = (rows: readonly unknown[]) =>
+                    canonicalSharedJson(
+                      [...rows]
+                        .sort((a, b) => auditRowId(a).localeCompare(auditRowId(b)))
+                        .map(auditSemanticRow),
+                    )
+                  return signature(current.inventory[table]) !== signature(current.census[table])
+                },
+              )
+              if (tables.length > 0)
+                patch({
+                  findings: [
+                    ...current.findings,
+                    auditFinding({
+                      code: "CENSUS_CHANGED_DURING_AUDIT",
+                      severity: "warning",
+                      object_id: current.entry_id,
+                      scope_key: "inventory",
+                      location: "registered_tables",
+                      coverage: "partial",
+                      message:
+                        "Registered metadata changed between census observations; preserve both and take a fresh census before import.",
+                      evidence: { tables },
+                    }),
+                  ],
+                })
+              patch({ execution: "completed" })
+              return
+            }
             const ids =
               selected.kind === "skill"
                 ? [selected.page_id]

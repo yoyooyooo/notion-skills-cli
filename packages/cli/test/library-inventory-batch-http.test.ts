@@ -139,7 +139,7 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
         "run",
         "--entry",
         f.library.skills.database_id,
-        "--all",
+        "--census",
         "--depth",
         "metadata",
       ],
@@ -149,6 +149,11 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
       ["ctl", "library", "inventory", "remote", "--audit-run", field(audit, "run_id")],
       [0, 4],
     )
+    expect(audit).toMatchObject({
+      inspection_scope: "registered_table_census",
+      skill_states: "unobserved",
+      items: [],
+    })
     const local = await invoke(["ctl", "library", "inventory", "local", "--root", inputs])
     const review = await invoke(
       [

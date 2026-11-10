@@ -47,6 +47,20 @@ Notion 侧复用已有 Records 文件清单、逐文件内容哈希和 `Hash` �
 
 ## 1. 取得远端基线
 
+只为新建或重复导入准备目录时，使用 `--census`。它完整读取注册表的元数据和关系，
+并比较前后两次目录，但不逐个检查现有 Skill 的正文、文件归属或上游资源。
+输出明确标记 `skill_states: unobserved`。`inventory remote` 的总体内容覆盖仍可能
+是 partial；只有其中的 `visible_registered_census` 完整、稳定，才允许继续准备新建。
+
+```bash
+ntn-skills ctl library audit run --entry ENTRY --census --max-requests 500
+ntn-skills ctl library inventory remote --audit-run AUDIT_RUN_ID --output ./remote-inventory.json
+```
+
+预算暂停时继续原 run，不重新开始扫描。`--census` 不能与 `--all`、`--target`、
+content/history 深度或 pin/graph 组合。需要检查已有 Skill 当前内容是否一致时，
+仍使用下面的完整审计流程。
+
 `ENTRY` 是已注册共享库的 Skills 数据库入口。完整库审计包括禁用条目、Files 和必要 Records 的反向盘点；不依赖默认 View 中的数量。
 
 ```bash

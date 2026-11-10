@@ -10,8 +10,89 @@ import {
 import { readAuditRun, saveAuditRun } from "../src/shared-audit-store.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sharedCreateManifestEntity } from "../src/shared-create-model.ts"
+import { prepareSharedBaselineInventory } from "../src/shared-inventory-remote.ts"
 import { auditFixture } from "./shared-audit-fixture.ts"
 import { library, rich, skillPage } from "./shared-snapshot-fixture.ts"
+
+test("census scope retains complete registered metadata without inspecting individual Skill states", async () => {
+  const f = await auditFixture()
+  const report = await f.run(
+    runSharedAudit({ entry: library.skills.database_id, selector: { kind: "census" } }),
+  )
+  expect(report.execution).toBe("completed")
+  expect(report.items).toEqual([])
+  expect(report).toMatchObject({
+    inspection_scope: "registered_table_census",
+    skill_states: "unobserved",
+  })
+  expect(f.readBodyCount()).toBe(0)
+  expect(f.writeCount()).toBe(0)
+  expect(
+    f.ledger.filter((call) =>
+      call.path.includes(`/data_sources/${library.records.data_source_id}/query`),
+    ),
+  ).toHaveLength(2)
+  expect(f.ledger.some((call) => call.path.includes("filter_properties=payload"))).toBe(false)
+  const inventory = await f.run(prepareSharedBaselineInventory(report.run_id))
+  expect(inventory.visible_registered_census?.coverage).toBe("full")
+  expect(inventory.coverage).toBe("partial")
+  expect(inventory.resources.every((resource) => !resource.automatic_candidate)).toBe(true)
+})
+
+test("census resumes its original read checkpoint and rejects content or graph claims before transport", async () => {
+  const f = await auditFixture()
+  for (const extra of [
+    { depth: "content" as const },
+    { depth: "history" as const },
+    { graph_id: "graph-" + "a".repeat(64) },
+  ]) {
+    await expect(
+      f.run(
+        runSharedAudit({
+          entry: library.skills.database_id,
+          selector: { kind: "census" },
+          ...extra,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
+  }
+  expect(f.ledger).toHaveLength(0)
+  let report = await f.run(
+    runSharedAudit({
+      entry: library.skills.database_id,
+      selector: { kind: "census" },
+      budget: { requests: 1 },
+    }),
+  )
+  const id = report.run_id
+  for (let i = 0; i < 20 && report.execution === "paused"; i++)
+    report = await f.run(resumeSharedAudit(id, { budget: { requests: 2 } }))
+  expect(report.execution).toBe("completed")
+  expect(report.run_id).toBe(id)
+  expect(report.selector).toEqual({ kind: "census" })
+  expect(report.items).toEqual([])
+  expect(f.writeCount()).toBe(0)
+})
+
+test("census drift stays incomplete instead of replacing the first observation with the second", async () => {
+  const f = await auditFixture()
+  let queries = 0
+  f.intercept((path) => {
+    if (path.includes(`/data_sources/${library.skills.data_source_id}/query`) && ++queries === 2)
+      property(f.main.properties).description = rich("description", "Changed during census")
+    return undefined
+  })
+  const report = await f.run(
+    runSharedAudit({ entry: library.skills.database_id, selector: { kind: "census" } }),
+  )
+  expect(report.execution).toBe("completed")
+  expect(report.coverage).toBe("partial")
+  expect(report.items).toEqual([])
+  const inventory = await f.run(prepareSharedBaselineInventory(report.run_id))
+  expect(inventory.visible_registered_census?.stable).toBe(false)
+  expect(inventory.visible_registered_census?.coverage).toBe("partial")
+  expect(f.writeCount()).toBe(0)
+})
 
 test("metadata audit independently inventories all three tables without bodies or object Payloads", async () => {
   const f = await auditFixture()

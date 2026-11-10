@@ -1,5 +1,19 @@
 # Exact resource inventories: AH-711 / AH-716
 
+## Import preparation census
+
+`ctl library audit run --entry ENTRY --census` uses the existing resumable audit
+reader to enumerate the registered tables twice without individual Skill-state,
+body or provider reads. It reports `skill_states: unobserved`; a complete census
+does not make current content or ownership verified. `inventory remote` retains
+that distinction and only its stable `visible_registered_census` can satisfy new
+import preparation. Keep original all/target audit behavior unchanged.
+
+Verify the real Node CLI path through census → inventory → batch import, offline
+parser rejection of census plus content/history/pin/graph, budget continuation on
+the original run, and changes between the two censuses remaining partial. Never
+replace the first observation with the second just to make their hashes equal.
+
 ## Portable input fingerprint and import reuse
 
 AH-681 remains the whole CLI management/audit/update/consumption program. Import

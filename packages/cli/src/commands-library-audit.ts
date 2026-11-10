@@ -92,7 +92,14 @@ const run = defineCommand(
   "run",
   {
     entry: requiredSingleton("entry", "Exact registered Skills database entry"),
-    target: singleton("target", "One exact Skill page ID; mutually exclusive with --all"),
+    target: singleton(
+      "target",
+      "One exact Skill page ID; mutually exclusive with --all and --census",
+    ),
+    census: switchFlag(
+      "census",
+      "Observe complete registered table metadata only for inventory/import preparation; do not inspect individual Skill states or bodies",
+    ),
     all: switchFlag(
       "all",
       "Audit all visible registered Skills, including disabled entries; mutually exclusive with --target",
@@ -127,9 +134,9 @@ const run = defineCommand(
   (options) =>
     Effect.gen(function* () {
       const target = Option.getOrUndefined(options.target)
-      if ((target === undefined) === !options.all)
+      if (Number(target !== undefined) + Number(options.all) + Number(options.census) !== 1)
         return yield* Effect.fail(
-          fail("INVALID_ARGUMENT", "Choose exactly one --target PAGE or --all."),
+          fail("INVALID_ARGUMENT", "Choose exactly one --target PAGE, --all or --census."),
         )
       const settings = yield* Effect.try({
         try: () => ({
@@ -145,7 +152,11 @@ const run = defineCommand(
       })
       const report = yield* runSharedAudit({
         entry: options.entry,
-        selector: target === undefined ? { kind: "library" } : { kind: "skill", page_id: target },
+        selector: options.census
+          ? { kind: "census" }
+          : target === undefined
+            ? { kind: "library" }
+            : { kind: "skill", page_id: target },
         ...settings,
         pin_id: Option.getOrUndefined(options.pin),
         graph_id: Option.getOrUndefined(options.graph),

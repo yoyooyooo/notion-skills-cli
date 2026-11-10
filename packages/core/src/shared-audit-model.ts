@@ -12,6 +12,7 @@ const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 export const AuditRunIdSchema = Schema.String.check(Schema.isPattern(/^audit-[a-f0-9-]{36}$/u))
 export const AuditSelectorSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("library") }),
+  Schema.Struct({ kind: Schema.Literal("census") }),
   Schema.Struct({ kind: Schema.Literal("skill"), page_id: Schema.String }),
 ])
 export type AuditSelector = typeof AuditSelectorSchema.Type
@@ -280,6 +281,12 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
     endpoint_scope: run.endpoint_scope ?? null,
     selector: run.selector,
     depth: run.depth,
+    ...(run.selector.kind === "census"
+      ? {
+          inspection_scope: "registered_table_census" as const,
+          skill_states: "unobserved" as const,
+        }
+      : {}),
     pin_id: run.pin_id,
     graph: { graph_id: run.graph_id, result: run.graph_result, history: run.graph_history },
     execution: run.execution,

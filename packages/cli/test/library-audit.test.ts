@@ -57,6 +57,7 @@ test("audit production schemas expose explicit scope/depth/budgets, resume and o
         expect.arrayContaining([
           expect.objectContaining({ name: "target", required: false }),
           expect.objectContaining({ name: "all", type: "boolean" }),
+          expect.objectContaining({ name: "census", type: "boolean" }),
           expect.objectContaining({ name: "depth", required: false }),
           expect.objectContaining({ name: "graph", required: false }),
           expect.objectContaining({ name: "incremental", type: "boolean" }),
@@ -85,6 +86,9 @@ test("audit invalid scope/budgets and nonexistent offline reports make zero netw
   for (const args of [
     ["run", "--entry", entry],
     ["run", "--entry", entry, "--all", "--target", entry],
+    ["run", "--entry", entry, "--all", "--census"],
+    ["run", "--entry", entry, "--census", "--depth", "content"],
+    ["run", "--entry", entry, "--census", "--depth", "history"],
     ["run", "--entry", entry, "--all", "--max-requests", "0"],
     ["run", "--entry", entry, "--all", "--max-requests", "1", "--max-requests", "2"],
     ["resume", "../../config.json"],
