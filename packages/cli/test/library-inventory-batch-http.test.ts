@@ -4,12 +4,14 @@ import { mkdtemp, mkdir, readFile, realpath, writeFile, cp } from "node:fs/promi
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
+import { createServer } from "node:http"
 import { Effect, Schema } from "effect"
 import { Notion } from "../../core/src/notion.ts"
 import { property } from "../../core/src/model.ts"
 import { LocalSkillInventorySchema } from "../../core/src/shared-inventory-model.ts"
 import { sharedCreateFixture } from "../../core/test/shared-create-fixture.ts"
 import { id } from "../../core/test/shared-snapshot-fixture.ts"
+import { json } from "../../core/test/notion-http-fixture.ts"
 
 const main =
   process.env.NTN_SKILLS_TEST_EXECUTABLE ??
@@ -34,80 +36,103 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
   const errors: string[] = []
   const commands: unknown[] = []
   let hiddenIdentityQueries = 0
+  let transientReadFailures = 0
   let delayedReadTarget: string | undefined
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    async fetch(request) {
-      try {
-        const url = new URL(request.url)
-        const method = request.method
-        if (method !== "GET" && method !== "POST" && method !== "PATCH")
-          throw new Error(`Unexpected ${method}`)
-        if (url.pathname === "/v1/users/me")
-          return Response.json({
-            object: "user",
-            id: id(99),
-            type: "bot",
-            bot: { workspace_id: id(100) },
-          })
-        const body = method === "GET" ? undefined : await request.json()
-        if (
-          delayedReadTarget !== undefined &&
-          url.pathname === `/v1/data_sources/${f.library.records.data_source_id}/query` &&
-          JSON.stringify(body).includes(delayedReadTarget)
-        )
-          await new Promise((resolve) => setTimeout(resolve, 10000))
-        const parent = property(property(body).parent).data_source_id
-        const filter = property(property(body).filter)
-        if (
-          ((url.pathname === `/v1/data_sources/${f.library.skills.data_source_id}/query` &&
-            filter.property === f.library.skills.property_ids["Skill ID"]) ||
-            (url.pathname === `/v1/data_sources/${f.library.files.data_source_id}/query` &&
-              filter.property === f.library.files.property_ids["File ID"])) &&
-          property(filter.rich_text).equals !== undefined
-        ) {
-          hiddenIdentityQueries++
-          return Response.json({ object: "list", results: [], has_more: false, next_cursor: null })
-        }
-        if (
-          method === "POST" &&
-          url.pathname === "/v1/pages" &&
-          (parent === f.library.skills.data_source_id || parent === f.library.files.data_source_id)
-        ) {
-          // Observe only the real client's saved dispatch. The service never changes client state.
-          const db = new Database(join(state, "state.sqlite"), { readonly: true })
-          try {
-            const rows = db
-              .query(
-                "SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-native-create/%'",
-              )
-              .all()
-              .map(property)
-            if (rows.length === 0) throw new Error("Native POST preceded its durable dispatch")
-            for (const row of rows)
-              f.base.json.set(field(row, "key"), JSON.parse(field(row, "payload")))
-          } finally {
-            db.close()
-          }
-        }
-        return Response.json(
-          await f.run(
-            Effect.flatMap(Notion, (api) =>
-              api.request(url.pathname.slice(1) + url.search, body, { method }),
-            ),
-          ),
-        )
-      } catch (error) {
-        const message = String(error)
-        errors.push(message)
-        return Response.json(
-          { object: "error", code: "validation_error", message },
-          { status: 400 },
-        )
+  const server = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1")
+      const method = request.method
+      if (method !== "GET" && method !== "POST" && method !== "PATCH")
+        throw new Error(`Unexpected ${method}`)
+      if (url.pathname === "/v1/users/me")
+        return json(response, 200, {
+          object: "user",
+          id: id(99),
+          type: "bot",
+          bot: { workspace_id: id(100) },
+        })
+      request.setEncoding("utf8")
+      let encoded = ""
+      for await (const chunk of request) {
+        if (typeof chunk !== "string") throw new Error("Expected a decoded HTTP request body")
+        encoded += chunk
       }
-    },
+      const body: unknown = encoded.length === 0 ? undefined : JSON.parse(encoded)
+      // Exhaust the existing four-attempt HTTP read policy after the first
+      // native POST has been acknowledged. The batch must continue its journal,
+      // not create another page or require the caller to restart it.
+      if (
+        transientReadFailures > 0 &&
+        f.nativeCreates().length === 1 &&
+        url.pathname === `/v1/data_sources/${f.library.records.data_source_id}/query`
+      ) {
+        transientReadFailures--
+        response.destroy()
+        return
+      }
+      if (
+        delayedReadTarget !== undefined &&
+        url.pathname === `/v1/data_sources/${f.library.records.data_source_id}/query` &&
+        JSON.stringify(body).includes(delayedReadTarget)
+      )
+        await new Promise((resolve) => setTimeout(resolve, 10000))
+      const parent = property(property(body).parent).data_source_id
+      const filter = property(property(body).filter)
+      if (
+        ((url.pathname === `/v1/data_sources/${f.library.skills.data_source_id}/query` &&
+          filter.property === f.library.skills.property_ids["Skill ID"]) ||
+          (url.pathname === `/v1/data_sources/${f.library.files.data_source_id}/query` &&
+            filter.property === f.library.files.property_ids["File ID"])) &&
+        property(filter.rich_text).equals !== undefined
+      ) {
+        hiddenIdentityQueries++
+        return json(response, 200, {
+          object: "list",
+          results: [],
+          has_more: false,
+          next_cursor: null,
+        })
+      }
+      if (
+        method === "POST" &&
+        url.pathname === "/v1/pages" &&
+        (parent === f.library.skills.data_source_id || parent === f.library.files.data_source_id)
+      ) {
+        // Observe only the real client's saved dispatch. The service never changes client state.
+        const db = new Database(join(state, "state.sqlite"), { readonly: true })
+        try {
+          const rows = db
+            .query(
+              "SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-native-create/%'",
+            )
+            .all()
+            .map(property)
+          if (rows.length === 0) throw new Error("Native POST preceded its durable dispatch")
+          for (const row of rows)
+            f.base.json.set(field(row, "key"), JSON.parse(field(row, "payload")))
+        } finally {
+          db.close()
+        }
+      }
+      return json(
+        response,
+        200,
+        await f.run(
+          Effect.flatMap(Notion, (api) =>
+            api.request(url.pathname.slice(1) + url.search, body, { method }),
+          ),
+        ),
+      )
+    } catch (error) {
+      const message = String(error)
+      errors.push(message)
+      return json(response, 400, { object: "error", code: "validation_error", message })
+    }
   })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  const address = server.address()
+  if (address === null || typeof address === "string")
+    throw new Error("Expected a loopback HTTP port")
   const node = Bun.which("node")
   if (node === null) throw new Error("Node is required for the public import batch contract")
   const env = {
@@ -121,7 +146,7 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     NOTION_API_TOKEN: "controlled-import-batch-token",
     NOTION_WORKSPACE_ID: "",
-    NOTION_API_BASE_URL: server.url.origin,
+    NOTION_API_BASE_URL: `http://127.0.0.1:${address.port}`,
   }
   const invoke = async (args: string[], exits = [0]) => {
     const child = Bun.spawn([node, main, ...args], {
@@ -227,9 +252,19 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
       "--entry",
       f.library.skills.database_id,
     ]
+    transientReadFailures = 4
     const applied = await invoke(applyArgs)
     expect(applied.all_confirmed).toBe(true)
     expect(applied.counts).toMatchObject({ total: 2, confirmed: 2, reused: 0 })
+    expect(applied.counts).toMatchObject({ automatically_recovered: 1 })
+    expect(applied.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          read_recovery: { first_error: expect.objectContaining({ code: "NOTION_UNAVAILABLE" }) },
+        }),
+      ]),
+    )
+    expect(transientReadFailures).toBe(0)
     expect(hiddenIdentityQueries).toBeGreaterThanOrEqual(2)
     expect(f.nativeCreates()).toHaveLength(2)
     expect([...f.skills.values()].map((page) => f.base.bodies.get(String(page.id))).sort()).toEqual(
@@ -398,6 +433,9 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     expect(f.writes()).toHaveLength(0)
     expect(await readFile(batchPath)).toEqual(batchBytes)
   } finally {
-    server.stop(true)
+    server.closeAllConnections()
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    )
   }
 }, 180_000)

@@ -80,6 +80,14 @@ new; dry-run and reconciliation write nothing. Check the public Node command and
 the SQLite-backed saved batch, not only memory fixtures. Existing Source/custom
 single-item regressions remain applicable because the batch uses the same kernel.
 
+Normal batch apply can continue the same create once when the transport exhausts
+network/DNS/timeout read retries. Keep the same input, journal, lock and budget.
+Record `read_recovery.first_error` before continuing so interrupted reports retain
+it. Count confirmed recoveries as `automatically_recovered`, not first-pass success.
+Verify one native POST per original page, a second failed read stops the batch,
+and unknown writes, access errors, content conflicts and exhausted invocation
+budgets never gain this continuation. Dry-run and reconciliation do not use it.
+
 Invocation deadlines must not erase completed item observations. Delay the second
 item's read in the real Node CLI test, retain the first confirmed result, report
 the active item as interrupted and exit 75. Resume the same batch without writes.

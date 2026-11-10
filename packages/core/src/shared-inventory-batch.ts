@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { fail, SkillsError } from "./model.ts"
+import { fail, property, SkillsError } from "./model.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import {
   executeInventoryImport,
@@ -173,6 +173,7 @@ type BatchOutcome = {
   readonly reused: boolean
   readonly result?: unknown
   readonly error?: typeof ErrorSchema.Type
+  readonly read_recovery?: { readonly first_error: typeof ErrorSchema.Type }
 }
 const isolatedContentErrors = new Set([
   "SHARED_CREATE_BODY_MISMATCH",
@@ -201,6 +202,9 @@ function inventoryBatchReport(
       total: items.length,
       confirmed: count("confirmed"),
       reused: items.filter((item) => item.status === "confirmed" && item.reused).length,
+      automatically_recovered: items.filter(
+        (item) => item.status === "confirmed" && item.read_recovery !== undefined,
+      ).length,
       validated: count("validated"),
       preparation_failed: count("preparation_failed"),
       failed: count("failed"),
@@ -290,12 +294,36 @@ export function executeInventoryBatch(
       const plan_id = item.plan.plan_id
       if (halted) break
       observe(identity.entity_id)
-      const result = yield* executeInventoryImport(library, item.plan, options).pipe(Effect.result)
+      let result = yield* executeInventoryImport(library, item.plan, options).pipe(Effect.result)
+      let readRecovery: BatchOutcome["read_recovery"]
+      if (
+        mode === "apply" &&
+        item.plan.action.kind === "create" &&
+        result._tag === "Failure" &&
+        result.failure.code === "NOTION_UNAVAILABLE" &&
+        ["network", "dns", "timeout"].includes(String(property(result.failure.details).reason))
+      ) {
+        readRecovery = { first_error: errorInfo(result.failure) }
+        items[index] = {
+          ...identity,
+          plan_id,
+          status: "failed",
+          error: readRecovery.first_error,
+          read_recovery: readRecovery,
+        }
+        observe(identity.entity_id)
+        // The transport already owns bounded retries and cooldowns. Continue the
+        // same child once under the same budget; its journal still fences every
+        // mutation. Unknown writes never arrive as a plain transient read error.
+        result = yield* executeInventoryImport(library, item.plan, options).pipe(Effect.result)
+      }
+      const recovery = readRecovery === undefined ? {} : { read_recovery: readRecovery }
       if (result._tag === "Failure") {
         const exhausted = result.failure.code === "REQUEST_BUDGET_EXHAUSTED"
         items[index] = {
           ...identity,
           plan_id,
+          ...recovery,
           status: exhausted ? "interrupted" : "failed",
           error: errorInfo(result.failure),
         }
@@ -308,6 +336,7 @@ export function executeInventoryBatch(
         items[index] = {
           ...identity,
           plan_id,
+          ...recovery,
           status: options.dryRun ? "validated" : verified ? "confirmed" : "failed",
           reused: "reused" in result.success && result.success.reused === true,
           result: result.success,

@@ -152,7 +152,7 @@ const apply = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Apply an original locally prepared batch serially using the existing child journals. Known content failures stay item-local; unknown writes or other execution failures halt new dispatches. Budget interruption retains completed item results and marks the active item interrupted, exits 75, and never grants replay authority. Run the same batch again to continue original work, never create replacement identities. No atomic batch or distributed lock is promised.",
+    "Apply an original locally prepared batch serially using the existing child journals. After exhausted transient read retries, continue that original create once under the same budget and preserve its first error. Known content failures stay item-local; unknown writes or remaining execution failures halt new dispatches. Budget interruption retains completed item results and marks the active item interrupted, exits 75, and never grants replay authority. Run the same batch again to continue original work, never create replacement identities. No atomic batch or distributed lock is promised.",
   ),
 )
 

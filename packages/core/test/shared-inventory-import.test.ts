@@ -27,8 +27,10 @@ import { INVENTORY_RULES } from "../src/shared-inventory-model.ts"
 import {
   decodeInventoryBatchInput,
   executeInventoryBatch,
+  interruptedInventoryBatch,
   prepareInventoryBatch,
   type InventoryBatchInputSchema,
+  type InventoryBatchProgress,
 } from "../src/shared-inventory-batch.ts"
 import { Store, sha256 } from "../src/store.ts"
 import { canonicalSharedJson, querySharedRecords } from "../src/shared-records.ts"
@@ -560,6 +562,7 @@ test("unknown batch writes halt remaining dispatches and repeated original work 
   const result = await f.run(executeInventoryBatch(f.library, batch))
   expect(result).toMatchObject({ halted: true, execution_complete: false, all_confirmed: false })
   expect(result.counts).toMatchObject({ total: 2, confirmed: 0, failed: 1, not_started: 1 })
+  expect(property(result.items[0]).read_recovery).toBeUndefined()
   f.clear()
   const again = await f.run(executeInventoryBatch(f.library, batch))
   expect(again.counts).toMatchObject({ failed: 1, not_started: 1 })
@@ -568,6 +571,118 @@ test("unknown batch writes halt remaining dispatches and repeated original work 
   expect(checked.all_confirmed).toBe(false)
   expect(f.writes()).toHaveLength(0)
 })
+
+test("an exhausted transient read resumes the original batch child once and retains its first failure", async () => {
+  const f = await batchFixture()
+  const batch = await f.prepare()
+  const frozen = canonicalSharedJson(batch)
+  let failures = 0
+  const progress: InventoryBatchProgress[] = []
+  const result = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      return yield* executeInventoryBatch(f.library, batch, {
+        onProgress: (value) => progress.push(structuredClone(value)),
+      }).pipe(
+        Effect.provideService(Notion, {
+          ...api,
+          request: (path, body, options) =>
+            Effect.suspend(() => {
+              if (
+                failures === 0 &&
+                f.nativeCreates().length === 1 &&
+                path.startsWith(`v1/data_sources/${f.library.records.data_source_id}/query`)
+              ) {
+                failures++
+                return Effect.fail(
+                  fail("NOTION_UNAVAILABLE", "Exhausted original metadata read", {
+                    reason: "network",
+                  }),
+                )
+              }
+              return api.request(path, body, options)
+            }),
+        }),
+      )
+    }),
+  )
+  expect(result).toMatchObject({
+    all_confirmed: true,
+    halted: false,
+    counts: { total: 2, confirmed: 2, failed: 0, automatically_recovered: 1 },
+    items: [
+      { status: "confirmed", read_recovery: { first_error: { code: "NOTION_UNAVAILABLE" } } },
+      { status: "confirmed" },
+    ],
+  })
+  expect(f.nativeCreates()).toHaveLength(2)
+  expect(failures).toBe(1)
+  expect(canonicalSharedJson(batch)).toBe(frozen)
+  const pending = progress.find(
+    (value) =>
+      value.active_entity_id === batch.items[0]!.request.entity_id &&
+      property(value.report.items[0]).read_recovery !== undefined,
+  )
+  if (pending === undefined)
+    throw new Error("Recovery must expose its first failure before continuing")
+  expect(
+    interruptedInventoryBatch(pending, fail("REQUEST_BUDGET_EXHAUSTED", "Stopped during recovery")),
+  ).toMatchObject({
+    counts: { confirmed: 0, interrupted: 1, not_started: 1 },
+    items: [
+      { status: "interrupted", read_recovery: { first_error: { code: "NOTION_UNAVAILABLE" } } },
+      { status: "not_started" },
+    ],
+  })
+})
+
+test.each(["NOTION_UNAVAILABLE", "ACCESS_DENIED", "REQUEST_BUDGET_EXHAUSTED"])(
+  "batch continuation remains bounded and preserves the original error for %s",
+  async (code) => {
+    const f = await batchFixture()
+    const batch = await f.prepare()
+    let failures = 0
+    const result = await f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* executeInventoryBatch(f.library, batch).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) =>
+              Effect.suspend(() => {
+                if (
+                  f.nativeCreates().length === 1 &&
+                  path.startsWith(`v1/data_sources/${f.library.records.data_source_id}/query`)
+                ) {
+                  failures++
+                  return Effect.fail(
+                    fail(code, `Original read failure ${failures}`, { reason: "network" }),
+                  )
+                }
+                return api.request(path, body, options)
+              }),
+          }),
+        )
+      }),
+    )
+    expect(result.halted).toBe(true)
+    expect(result.counts).toMatchObject({
+      total: 2,
+      confirmed: 0,
+      not_started: 1,
+      automatically_recovered: 0,
+    })
+    expect(f.nativeCreates()).toHaveLength(1)
+    expect(failures).toBe(code === "NOTION_UNAVAILABLE" ? 2 : 1)
+    const first = result.items[0]!
+    if (code === "NOTION_UNAVAILABLE") {
+      expect(property(first).read_recovery).toMatchObject({
+        first_error: { code, message: "Original read failure 1" },
+      })
+      expect(first.error).toMatchObject({ code, message: "Original read failure 2" })
+    } else expect(property(first).read_recovery).toBeUndefined()
+  },
+)
 
 test("formal import freezes the exact complete inventory and original create operation; prepare and dry-run write no Notion content", async () => {
   const f = await fixture()
