@@ -1,34 +1,34 @@
 {
   "version": 1,
-  "synchronized_commit": "737e583f2063dc56b21f85d1d942cf32e21505c6",
+  "synchronized_commit": "68315aa488e3b00d607860e577d1b65f01b57059",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
     "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
     "packages/core/src/shared-body-write.ts": "dc01ee8d387e4e3762d54920c0bc3b15ac5afe2b201df3fc4be99846e0a72811",
-    "packages/core/src/shared-source-refresh.ts": "481a1e5783f51bfe10205c4985e14c4da5a8ca2f63f3ee18b4edcba812f82e8b",
+    "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
     "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
-    "packages/core/src/shared-audit.ts": "d644c4383f0f326e2db67ef83253ba2fedff2b6bdb7dfd27fcf9738ec50b1afb",
-    "packages/core/src/shared-audit-model.ts": "5145d9d705562da4059073d1cb333023c1a67c8be6927dd1916f4ebbe5b9403d",
+    "packages/core/src/shared-audit.ts": "800cb52e20305897b250ca2ec0c75032ecf424995aaf1d741be7f3c8fc56c706",
+    "packages/core/src/shared-audit-model.ts": "359dfd6c3d9b466c8199c693d0fc1a5c3b73d5eea0bed1a7b6c6721f7694843a",
     "packages/core/src/shared-audit-inventory.ts": "58703cac44c6b829b373dd87486deaab7a2e5b23a25fe674370012d43759ab68",
     "packages/core/src/shared-audit-transport.ts": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
     "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
-    "packages/core/src/shared-inventory-import.ts": "334d050a9d87a2482da9df0f29a20325d141fbc08fe0c92138082e3721b80e00",
-    "packages/core/src/shared-inventory-local.ts": "b8c2f6df4c6775c1b5a55e1b9a4a83d520a266a859b6d8e6448ca20621d7d938",
-    "packages/core/src/shared-create.ts": "69d18e715677d0d090ebd5772b810a0aa9ebbb29c13daf83187e0a2b69af1518",
-    "packages/core/src/shared-create-model.ts": "dea7ad411fbdc574c8e363500aabf346f750808e00c1c5f372e2398e1b17f5e9",
-    "packages/core/src/shared-create-dispatch.ts": "512d6105a29d0550eacbdd2c09ec5c23108c495e44249a32b045b4055a686eb8",
+    "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
+    "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
+    "packages/core/src/shared-create.ts": "7fe6f1c51693fce954b192ec2b45c01415e97cdb4e0f2175abaf2dea0197b1a7",
+    "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
+    "packages/core/src/shared-create-dispatch.ts": "5b42eaf8adc6188508c90596333c1a0ffd51fb85c59625581bf35c765d467d0f",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
     "packages/core/src/shared-records.ts": "7b52c8ffbe14f2129095e408ed12ecee76b5bdbe7a11e6f859d8a7cc62d04b92",
     "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
     "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
-    "packages/core/src/shared-notion-projection.ts": "ba762a9aba18ceab5cd9b50a54f1122598fe64514c86558ad85e18495ecaf32f",
+    "packages/core/src/shared-notion-projection.ts": "28868f51a8d8ca868dc6c11bb045c98ccb8d8adb08377843445469302f35ac87",
     "packages/core/src/shared-notion-document-spacing.ts": "6ff3c76449c7c2baad0da0424a79dead6e374c12869ebdadde05a5a92a6b961c",
     "packages/core/src/shared-create-recovery.ts": "6d47f210243f4858c6695074576f7362e18c1e96073027c94c87d2799645eb06",
     "packages/core/src/shared-create-recovery-prefix.ts": "1a68fe3537555e0468f0868a36e791c1748f722830186d9a06f75797c89cddcb",
@@ -52,7 +52,7 @@
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
     "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
     "packages/core/src/shared-file-restore.ts": "6b5b6a2d6661ce97350fbf2e29d934b7688ea569357ffe184090425996729fa3",
-    "packages/core/src/sqlite-state.ts": "4dc40959c66bf5dea4c0c559fd66c24312d3ccce5be5c7bddc7842ccacdb4931",
+    "packages/core/src/sqlite-state.ts": "98f6e35919b12c6abfbd3874e76a39f714a46da41690aa4ba27f236f8eb4ea04",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
@@ -69,7 +69,11 @@
     "packages/core/src/shared-create-recovery-native.ts": "65e872e277bf30fe63046f6795287596c93e8120d64a8f063720a6951e94ce1a",
     "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
     "packages/core/src/shared-file-request.ts": "6b602534a1a766024083c8c589c6490f003daafab6556d0be18bde6a517134fc",
-    "packages/cli/src/commands-library-file-request.ts": "e89665d262ee72cda13a4a74b6fbd4c8f481608ecb71b526f0074fa754a088e8"
+    "packages/cli/src/commands-library-file-request.ts": "e89665d262ee72cda13a4a74b6fbd4c8f481608ecb71b526f0074fa754a088e8",
+    "packages/core/src/shared-create-import-readback.ts": "b69e01814df63d3cf5459245a0769d6997699b368322ab9c047ab8519d25f8a4",
+    "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
+    "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
+    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621"
   },
   "models": {
     "ProjectionRace": {
@@ -132,7 +136,8 @@
         "SQLite crash atomicity",
         "Durable scheduler availability",
         "Automatic repair",
-        "Unknown historical data absent from every retained index"
+        "Unknown historical data absent from every retained index",
+        "Metadata-only census selector and its unobserved Skill-body result"
       ],
       "implemented_boundary": {
         "kind": "semantic_read_boundary",
@@ -170,7 +175,8 @@
         "Immutable content-addressed Record reconciliation",
         "Credential rotation, distributed writers or global exactly-once delivery",
         "The separately reviewed v1/v8 and v1/v9 prefix/known-failure recovery protocols; CreateRecovery has its own bounded mapping",
-        "Versioned prefix recovery completion, pending-create suppression and cold history/read reconstruction"
+        "Versioned prefix recovery completion, pending-create suppression and cold history/read reconstruction",
+        "Projection-14 first complete import readback, portable input fingerprints and read-only completed-import reuse"
       ],
       "tests": [
         "packages/core/test/shared-inventory-import.test.ts",
@@ -237,7 +243,7 @@
     }
   },
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
-  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim. Explicit complete-body-match restore, request submission, ACK-bound exact Record GET and projection 13 are reviewed unmodeled changes. Existing model/config/view inputs, finite bounds and prior result receipts are retained; this synchronization claims no new model execution.",
+  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim. Explicit complete-body-match restore, request submission, ACK-bound exact Record GET and projection 13 are reviewed unmodeled changes. Existing model/config/view inputs, finite bounds and prior result receipts are retained; this synchronization claims no new model execution. The 68315aa review traces metadata-only census, projection-14 import readback, original-input completed-import reuse, ACK-directed native allocation observation, added dispatch domains and source-reference diagnostic context. These are explicitly unmodeled branches; all six model inputs, bounds, invariants and original result receipts remain unchanged. No new TLC run is claimed.",
   "unmodeled_bindings": [
     {
       "kind": "hash_bound_context_not_modeled",
@@ -537,6 +543,54 @@
       ],
       "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission, and original unknown writes remain barriers to new dispatch. The submission/processing state machine, exact receipt validation and complete-body-match restore are not modeled by any of the six finite models.",
       "tests": ["packages/core/test/shared-file-request.test.ts", "packages/cli/test/cli.test.ts"]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "registered_metadata_census",
+      "files": ["packages/core/src/shared-audit.ts", "packages/core/src/shared-audit-model.ts"],
+      "symbols": ["runSharedAudit", "continueSharedAudit", "auditReport"],
+      "scope": "Census permits metadata depth only, rejects pin/graph scopes, compares semantic registered-table rows before and after inventory, and does not enqueue per-Skill observation. Skill states remain unobserved; a completed census is not a content audit. The existing read-only Notion transport remains in force. This selector is not a transition of AuditRun.",
+      "tests": [
+        "packages/core/test/shared-audit.test.ts",
+        "packages/core/test/shared-audit-inventory.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_import_readback_and_completed_input_reuse",
+      "files": [
+        "packages/core/src/shared-create-import-readback.ts",
+        "packages/core/src/shared-inventory-import-reuse.ts",
+        "packages/core/src/shared-input-fingerprint.ts",
+        "packages/core/src/shared-import-markdown.ts",
+        "packages/core/src/shared-create.ts",
+        "packages/core/src/shared-create-model.ts",
+        "packages/core/src/shared-create-dispatch.ts",
+        "packages/core/src/shared-inventory-import.ts",
+        "packages/core/src/shared-inventory-local.ts",
+        "packages/core/src/shared-notion-projection.ts",
+        "packages/core/src/sqlite-state.ts"
+      ],
+      "symbols": [
+        "fingerprintSkillInput",
+        "inspectReusableNativeImport",
+        "prepareInventoryImport",
+        "executeInventoryImport",
+        "acceptsNativeImportReadback",
+        "observeNativeImportFile",
+        "restoreNativeImportReadbacks",
+        "assertImportedMarkdownContent",
+        "sharedCreateDispatch"
+      ],
+      "scope": "Complete portable input fingerprints include the entrypoint and each relative path/hash/size/mode, not machine paths or Notion presentation. A reused native import needs the exact library/Skill, original manifest and complete applied outcome; it returns read-only and leaves current content unobserved. Projection 14 applies only to new data-source creation, compares text/code/explicit link destinations, freezes the first complete native readback, retains its exact body/events and rejects later differing readbacks. It never authorizes existing-body overwrite or changes fixed source bytes or tombstone history. Original successful POST responses may identify exact allocated pages before query visibility; conflicting identity queries and invalid ownership fail, and missing ACKs never authorize retry. Batch/readback SQLite addresses remain dispatch records. These implementation details and serialization policies are outside ImportCreate, CreateRecovery and AcknowledgedContinuation.",
+      "tests": [
+        "packages/core/test/shared-input-fingerprint.test.ts",
+        "packages/core/test/shared-import-markdown.test.ts",
+        "packages/core/test/shared-inventory-import.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-create-ack-visibility.test.ts",
+        "packages/core/test/shared-create-drift.test.ts"
+      ]
     }
   ]
 }
