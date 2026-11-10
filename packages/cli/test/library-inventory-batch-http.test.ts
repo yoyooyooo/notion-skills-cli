@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite"
 import { mkdtemp, mkdir, readFile, realpath, writeFile, cp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { pathToFileURL } from "node:url"
 import { Effect, Schema } from "effect"
 import { Notion } from "../../core/src/notion.ts"
 import { property } from "../../core/src/model.ts"
@@ -236,6 +237,54 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     )
     for (const page of f.skills.values())
       expect(property(property(page.properties).enabled).checkbox).toBe(false)
+    const target = [...f.skills.keys()][0]!
+    const writesBeforeSdk = f.writes().length
+    const sdkProcess = Bun.spawn(
+      [
+        node,
+        "--input-type=module",
+        "--eval",
+        `
+      const sdk = await import(process.argv[1]);
+      const metrics = [];
+      const options = { database:process.argv[3], metrics:true, onRequestMetrics:value => metrics.push(value) };
+      const read = await sdk.readSkill(process.argv[2], { ...options, authoring:true });
+      let ordinaryError, offlineAuthoringError;
+      try { await sdk.readSkill(process.argv[2], options); } catch (error) { ordinaryError=error.code; }
+      try { await sdk.readSkill(process.argv[2], { ...options, authoring:true, offline:true }); } catch (error) { offlineAuthoringError=error.code; }
+      console.log(JSON.stringify({ read, ordinaryError, offlineAuthoringError, metrics }));
+    `,
+        new URL("./sdk.js", pathToFileURL(main)).href,
+        target,
+        f.library.skills.database_id,
+      ],
+      {
+        env,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+    const [sdkOut, sdkErr, sdkExit] = await Promise.all([
+      new Response(sdkProcess.stdout).text(),
+      new Response(sdkProcess.stderr).text(),
+      sdkProcess.exited,
+    ])
+    expect(sdkExit, sdkErr + sdkOut).toBe(0)
+    const sdkRead = property(JSON.parse(sdkOut))
+    expect(sdkRead).toMatchObject({
+      read: { record: { enabled: false, locator: { page_id: target } } },
+      ordinaryError: "CONTENT_DISABLED",
+      offlineAuthoringError: "EXACT_TARGET_REQUIRED",
+    })
+    expect(sdkRead.metrics).toEqual(
+      expect.arrayContaining([expect.objectContaining({ total_requests: 0 })]),
+    )
+    expect(
+      Array.isArray(sdkRead.metrics) &&
+        sdkRead.metrics.every((metric) => property(property(metric).requests).notion_write === 0),
+    ).toBe(true)
+    expect(f.writes()).toHaveLength(writesBeforeSdk)
     f.clear()
     const repeated = await invoke(applyArgs)
     expect(repeated.counts).toMatchObject({ confirmed: 2, reused: 2 })

@@ -92,6 +92,12 @@ and binding. A query pointing to a different page remains a conflict. Verify the
 first execution and an interrupted readback resume with only one POST per page;
 lost responses must still stop without retrying the creation.
 
+The public SDK's declared `readSkill(..., { authoring: true })` option must reach
+the core exact-current-page check. Verify a disabled imported Skill through the
+installed SDK, then confirm ordinary reads still reject it and authoring plus
+offline fails before HTTP. Management read authority is not normal consumption
+authority and must not leak through the cached snapshot.
+
 Report all inputs, confirmed/reused/failed/not-started counts and error codes.
 An invocation confirmation fraction is not a fresh-import success-rate estimate.
 AH-718 measures first-pass and automatically recovered success on a frozen,
