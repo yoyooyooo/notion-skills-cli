@@ -1,5 +1,30 @@
 # 库存审计与完整 Skill 导入
 
+## 从自有目录准备并导入
+
+普通自有 Skill 使用两条命令。`--root` 可以指向一个 Skill，也可以指向包含多个
+Skill 的目录。准备命令只读取源文件和 Notion；应用命令才执行保存的批次。
+
+```bash
+ntn-skills ctl library inventory prepare-imports --entry ENTRY \
+  --root /absolute/path/to/my-skills --native --output ./import-batch.json
+ntn-skills ctl library inventory apply-imports ./import-batch.json --entry ENTRY
+```
+
+CLI 自行完成完整文件扫描、内容指纹、稳定远端目录检查、身份对账和逐项计划。
+无需先运行盘点命令或手写实体 ID、manifest 哈希与批次 JSON。多个目录重复传入
+`--root`；允许的软链目标与来源登记分别使用 `--allow-target`、`--provenance`。
+新条目保持禁用，不扩大默认上下文。已知上游归属、敏感文件、越界路径、同名冲突
+及完整性检查不因 `--native` 而取消；上游和混合来源仍使用下文明确的 Source 决策。
+
+准备阶段暂停时退出 75，不生成可应用批次。保留返回的 `preparation.audit_run_id`，
+在同一状态目录下给原准备命令追加 `--audit-run AUDIT_RUN_ID`，即可继续该目录检查。
+不得把不存在的批次文件当作可以应用。Census 与后续计划准备共享本次 HTTP 预算；
+输出的 `preparation.census_budget` 与 `budget` 分别记录两个阶段的用量。
+已经开始写入的任务继续使用原批次，不通过重新准备绕过未完成操作。
+
+下文的独立盘点、对账和授权 JSON 入口保留给需要逐项选择来源或审查历史的场景。
+
 原生库存导入允许 Notion 改变 Markdown 的空行、强调、标题层级和列表包装。
 导入保留原始输入，并以首次完整读回的 Notion 正文建立自定义内容基线。
 此后 CLI 消费该 Notion 内容，不要求恢复成本地输入的排版。
@@ -219,9 +244,14 @@ ntn-skills ctl library inventory reconcile-imports ./import-batch.json --entry E
 
 报告保留每项原身份、计划 ID、结果或原错误，以及 `total`、`confirmed`、`reused`、`automatically_recovered`、`preparation_failed`、`failed`、`not_started`、`interrupted` 计数。`automatically_recovered` 表示本次读取故障后自动接续并确认完成的项，不能当作首次无故障成功。它与 `reused` 都是 `confirmed` 的子集，可能重叠，不能再次相加。dry-run 使用 `validated`，不算作导入成功。预算中断优先退出 75；其他执行或核对未全部确认时退出 4。输出文件只允许新建或内容相同，后续调用应选择新的报告文件名。
 
-### 用真实输入改进成功率
+### 用小批实际使用收口
 
-批次报告表示本次调用结果，不能直接当作当前版本的首次导入成功率。评估需要另外固定候选版本、完整授权样本和执行覆盖，并区分首次无需 Agent 完成、CLI 沿原操作恢复后完成、已有对象复用、需要人工介入、失败与未执行。
+导入能力以一小批有代表性的 Skill 能通过正式 CLI 基本顺畅完成、无需 Agent
+逐项修输入或组织恢复为验收标准。不要求严格证明超过90%，也不要求先搬完全部
+历史库存。选择能覆盖正常主文、reference 和原始资源的少量输入，解决真实阻断后
+继续推进资源管理、更新、审计与消费能力，不另建成功率统计工程。
 
-技术失败继续保留在授权样本中，权限未决或未批准共享的项单列。不能通过删除 reference、忽略二进制、放宽完整性比较或过滤难例提高比例。修复一类真实问题后，用正式 CLI 复验受影响样本和成功样本；受控服务结果、真实 Notion 结果及历史累计完成数分别记录。
+批次仍如实区分直接完成、自动恢复、历史复用、失败和未执行。保留历史错误、权限
+边界与未完成操作；不删除 reference、忽略二进制或降低安全检查来制造成功。
+受控服务验证、真实 Notion 使用和历史库存数量分别记录，不把其中一种冒充另一种。
 

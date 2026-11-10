@@ -1,5 +1,20 @@
 # Exact resource inventories: AH-711 / AH-716
 
+## Daily directory entry and representative acceptance
+
+The user accepts a small representative set imported through the formal CLI with
+little friction and no per-Skill Agent orchestration. A statistically proved 90%
+rate and completing the entire historical inventory are not acceptance gates.
+Keep old failures, ownership, resources and unknown-write boundaries intact.
+
+`prepare-imports --root ABS_DIR --native` owns scan → census → reconciliation →
+original batch preparation. Normal use needs no hand-written approval JSON.
+Verify two directory Skills through this public path, bounded census pause/resume
+with its original audit ID, incomplete/empty/ambiguous input failing before HTTP,
+and unchanged original apply/reuse behavior. Known provenance and sensitive input
+must remain blocked rather than being silently coerced into native content.
+The input-JSON path remains for explicit mixed-source decisions.
+
 ## Import preparation census
 
 `ctl library audit run --entry ENTRY --census` uses the existing resumable audit

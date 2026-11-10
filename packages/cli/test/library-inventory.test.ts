@@ -192,3 +192,40 @@ test("invalid and duplicate import batch inputs are rejected before any authenti
     expect(JSON.parse(result.stdout).error.code).toBe("INVENTORY_BATCH_INVALID")
   }
 }, 20_000)
+
+test("directory preparation requires explicit native scope and rejects incomplete roots before HTTP", async () => {
+  const entry = "00000000-0000-4000-8000-000000000003"
+  const base = [
+    "ctl",
+    "library",
+    "inventory",
+    "prepare-imports",
+    "--entry",
+    entry,
+    "--output",
+    join(directory, "directory-batch.json"),
+  ]
+  for (const flags of [
+    [],
+    ["--native"],
+    ["--root", directory],
+    ["--input", "missing.json", "--root", directory, "--native"],
+    ["--input", "missing.json", "--audit-run", "audit-00000000-0000-4000-8000-000000000001"],
+    ["--root", "relative/path", "--native"],
+  ]) {
+    const result = await invoke([...base, ...flags])
+    expect(result.exit).toBe(2)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_ARGUMENT" },
+    })
+  }
+  const empty = join(directory, "empty-native-directory")
+  mkdirSync(empty)
+  const result = await invoke([...base, "--root", empty, "--native"])
+  expect(result.exit).not.toBe(0)
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    ok: false,
+    error: { code: "INVENTORY_DIRECTORY_EMPTY" },
+  })
+}, 20_000)

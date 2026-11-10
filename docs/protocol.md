@@ -19,6 +19,16 @@ Root discovery lists `list`, `read`, `use`, `files`, `export`, `ctl` and `schema
 
 ### Inventory import readback
 
+`prepare-imports` accepts either an explicit reviewed `--input` or absolute
+`--root` directories with `--native`. The directory path orchestrates existing
+readonly scan, stable census, reconciliation and batch preparation. It does not
+introduce another uploader or mutation journal. A budget-paused census returns
+its audit ID with exit 75 and `batch_saved:false`; `--audit-run` resumes that exact
+library census. Census usage is deducted from the invocation budget before plan
+preparation. New Skills stay disabled. Existing provenance, sensitive input and
+identity guards remain authoritative. `apply-imports` accepts the same original
+batch format regardless of which preparation input was used.
+
 Native inventory plans may carry `input_content_sha256`, a version-1 SHA-256 of
 the entrypoint and a sorted relative-path/file-hash/size/mode manifest. Absolute
 paths, observation timestamps and Notion presentation are not part of this digest.

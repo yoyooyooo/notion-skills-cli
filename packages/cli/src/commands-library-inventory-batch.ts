@@ -1,8 +1,20 @@
 import { Effect, Option } from "effect"
-import { Argument, Command } from "effect/cli"
+import { Argument, Command, Flag } from "effect/cli"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
-import { property } from "../../core/src/model.ts"
+import { fail, property } from "../../core/src/model.ts"
+import { pageId } from "../../core/src/ref.ts"
+import {
+  runSharedAudit,
+  resumeSharedAudit,
+  reportSharedAudit,
+} from "../../core/src/shared-audit.ts"
+import {
+  scanLocalSkillInventory,
+  reconcileSkillInventories,
+  prepareSharedBaselineInventory,
+} from "../../core/src/shared-inventory.ts"
+import type { RequestBudgetLimits } from "../../core/src/request-budget.ts"
 import {
   decodeInventoryBatchInput,
   executeInventoryBatch,
@@ -69,13 +81,178 @@ function boundedBatch(
   })
 }
 
+function directoryInput(input: {
+  readonly entry: string
+  readonly roots: readonly string[]
+  readonly targets: readonly string[]
+  readonly provenance: readonly string[]
+  readonly auditRun?: string
+  readonly limits: RequestBudgetLimits
+}) {
+  return Effect.gen(function* () {
+    const started = performance.now()
+    const entryId = pageId(input.entry)
+    if (entryId === undefined)
+      return yield* Effect.fail(fail("INVALID_ARGUMENT", "Use an exact shared library entry."))
+    const prior =
+      input.auditRun === undefined ? undefined : yield* reportSharedAudit(input.auditRun, entryId)
+    if (prior !== undefined && (prior.selector.kind !== "census" || prior.depth !== "metadata"))
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "Directory preparation resumes only an exact metadata census for this library.",
+        ),
+      )
+    const local = yield* scanLocalSkillInventory({
+      roots: input.roots,
+      allow_targets: input.targets,
+      provenance_files: input.provenance,
+      budget: { duration_ms: input.limits.duration_ms },
+    })
+    if (local.coverage !== "full")
+      return yield* Effect.fail(
+        fail(
+          "INVENTORY_DIRECTORY_INCOMPLETE",
+          "The directory scan is incomplete; no target census or import was started.",
+          {
+            local_inventory_id: local.inventory_id,
+            findings: local.findings,
+          },
+        ),
+      )
+    if (local.entities.length === 0 || local.entities.length > 1000)
+      return yield* Effect.fail(
+        fail("INVENTORY_DIRECTORY_EMPTY", "Select directories containing 1–1000 complete Skills.", {
+          local_inventory_id: local.inventory_id,
+          entities: local.entities.length,
+        }),
+      )
+    const duration = Math.floor(input.limits.duration_ms - (performance.now() - started))
+    if (duration <= 0)
+      return yield* Effect.fail(
+        fail(
+          "REQUEST_BUDGET_EXHAUSTED",
+          "The directory scan exhausted the preparation deadline before any remote work.",
+          { local_inventory_id: local.inventory_id },
+        ),
+      )
+    const auditLimits = { ...input.limits, duration_ms: duration }
+    const census =
+      prior?.execution === "completed"
+        ? prior
+        : prior !== undefined
+          ? yield* resumeSharedAudit(prior.run_id, { budget: auditLimits })
+          : yield* runSharedAudit({
+              entry: entryId,
+              selector: { kind: "census" },
+              budget: auditLimits,
+            })
+    const censusBudget = {
+      attempts: census.request_totals.attempts - (prior?.request_totals.attempts ?? 0),
+      request_bytes:
+        census.request_totals.request_bytes - (prior?.request_totals.request_bytes ?? 0),
+      response_bytes:
+        census.request_totals.response_bytes - (prior?.request_totals.response_bytes ?? 0),
+    }
+    const preparation = {
+      kind: "native_directories" as const,
+      local_inventory_id: local.inventory_id,
+      audit_run_id: census.run_id,
+      skill_states: "unobserved" as const,
+      unassigned_files: local.unassigned_files.length,
+      census_budget: censusBudget,
+    }
+    const remaining = {
+      requests: input.limits.requests - censusBudget.attempts,
+      bytes: input.limits.bytes - censusBudget.request_bytes - censusBudget.response_bytes,
+      duration_ms: Math.floor(input.limits.duration_ms - (performance.now() - started)),
+    }
+    if (census.execution !== "completed" || Object.values(remaining).some((value) => value <= 0))
+      return {
+        kind: "stopped" as const,
+        exitCode: census.execution === "paused" || census.execution === "completed" ? 75 : 4,
+        report: {
+          status:
+            census.execution === "paused" || census.execution === "completed"
+              ? "paused"
+              : "incomplete",
+          phase: census.execution === "completed" ? "preparation" : "census",
+          preparation,
+          remote_writes: 0,
+          batch_saved: false,
+          recovery: {
+            command: "prepare-imports",
+            audit_run: census.run_id,
+          },
+        },
+      }
+    const remote = yield* prepareSharedBaselineInventory(census.run_id)
+    if (remote.visible_registered_census?.coverage !== "full")
+      return yield* Effect.fail(
+        fail(
+          "INVENTORY_IMPORT_SCOPE",
+          "The directory import needs a complete stable census; current content remains unobserved.",
+          {
+            audit_run_id: census.run_id,
+            remote_inventory_id: remote.inventory_id,
+          },
+        ),
+      )
+    const review = yield* reconcileSkillInventories({
+      remote_inventory_id: remote.inventory_id,
+      local_inventory_id: local.inventory_id,
+    })
+    const request = yield* decodeInventoryBatchInput({
+      version: 1,
+      reconciliation_id: review.inventory_id,
+      items: local.entities.map((entity) => ({
+        entity_id: entity.entity_id,
+        approved_manifest: entity.manifest_sha256,
+        decision: { kind: "native" },
+        enabled: false,
+      })),
+    })
+    return {
+      kind: "ready" as const,
+      request,
+      remaining,
+      preparation: {
+        ...preparation,
+        remote_inventory_id: remote.inventory_id,
+        reconciliation_id: review.inventory_id,
+      },
+    }
+  })
+}
+
 const prepare = defineCommand(
   "prepare-imports",
   {
     entry,
-    input: requiredSingleton(
-      "input",
-      "Reviewed batch JSON with exact entity manifests and decisions",
+    input: singleton("input", "Reviewed batch JSON with exact entity manifests and decisions"),
+    roots: Flag.String("root").pipe(
+      Flag.atLeast(0),
+      Flag.withDescription(
+        "Explicit absolute Skill or collection directory; repeat as needed. Requires --native and excludes --input",
+      ),
+    ),
+    native: switchFlag(
+      "native",
+      "Prepare every discovered owned Skill in --root directories as native content; preserve all existing scope/provenance guards and keep new Skills disabled",
+    ),
+    targets: Flag.String("allow-target").pipe(
+      Flag.atLeast(0),
+      Flag.withDescription("Explicit real symlink target allowed during directory scanning"),
+    ),
+    provenance: Flag.String("provenance").pipe(
+      Flag.atLeast(0),
+      Flag.withDescription(
+        "Exact local provenance registry used during directory scanning; cannot override Source ownership",
+      ),
+    ),
+    auditRun: singleton(
+      "audit-run",
+      "Resume or reuse an exact metadata census for these directory inputs; only with --root --native",
     ),
     output: requiredSingleton(
       "output",
@@ -85,15 +262,52 @@ const prepare = defineCommand(
   },
   (args) =>
     Effect.gen(function* () {
-      const input = yield* decodeInventoryBatchInput(
-        yield* readSourceJson(args.input, maximumBytes),
+      const inputPath = Option.getOrUndefined(args.input)
+      const auditRun = Option.getOrUndefined(args.auditRun)
+      if (
+        (inputPath === undefined) === (args.roots.length === 0) ||
+        (inputPath !== undefined &&
+          (args.native ||
+            args.targets.length > 0 ||
+            args.provenance.length > 0 ||
+            auditRun !== undefined)) ||
+        (args.roots.length > 0 && !args.native)
       )
+        return yield* Effect.fail(
+          fail(
+            "INVALID_ARGUMENT",
+            "Choose --input REVIEWED_JSON or explicit --root directories with --native. Directory options cannot accompany --input.",
+          ),
+        )
       const limits = yield* parseSourceBudget(args)
+      const source =
+        inputPath !== undefined
+          ? {
+              kind: "ready" as const,
+              request: yield* decodeInventoryBatchInput(
+                yield* readSourceJson(inputPath, maximumBytes),
+              ),
+              remaining: limits,
+              preparation: undefined,
+            }
+          : yield* directoryInput({
+              entry: args.entry,
+              roots: args.roots,
+              targets: args.targets,
+              provenance: args.provenance,
+              auditRun,
+              limits,
+            })
+      if (source.kind === "stopped") {
+        yield* emit(source.report)
+        process.exitCode = source.exitCode
+        return
+      }
       const { result: batch, budget } = yield* withSourceCommandBudget(
         Effect.gen(function* () {
-          return yield* prepareInventoryBatch(yield* loadSharedLibrary(args.entry), input)
+          return yield* prepareInventoryBatch(yield* loadSharedLibrary(args.entry), source.request)
         }),
-        limits,
+        source.remaining,
       )
       yield* (yield* Store).output(
         args.output,
@@ -103,6 +317,7 @@ const prepare = defineCommand(
       yield* emit({
         batch_id: batch.batch_id,
         output: args.output,
+        ...(source.preparation === undefined ? {} : { preparation: source.preparation }),
         counts: {
           total: batch.items.length,
           prepared,
@@ -120,7 +335,7 @@ const prepare = defineCommand(
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Prepare every approved entity serially through the existing import kernel. Retain all preparation failures in the same batch; never drop a file or infer sharing authority. No remote writes occur. Partial preparation saves the complete batch and exits 4.",
+    "Prepare a reviewed JSON set, or scan explicit --root directories with --native, take a stable metadata census and build the original batch automatically. No remote writes occur. Directory census pauses return --audit-run for continuation and exit 75. Census and preparation share the total HTTP budget. Known provenance and sensitive/incomplete inputs keep their existing guards; new Skills stay disabled. Partial preparation retains every entity and error, saves the complete batch and exits 4.",
   ),
 )
 

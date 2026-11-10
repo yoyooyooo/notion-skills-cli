@@ -176,58 +176,34 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
         `---\nname: http-batch-${name}\ndescription: Whole Skill batch\n---\n\n# ${name}\n\nComplete ${name}.\n`,
       )
     }
-    const audit = await invoke(
-      [
-        "ctl",
-        "library",
-        "audit",
-        "run",
-        "--entry",
-        f.library.skills.database_id,
-        "--census",
-        "--depth",
-        "metadata",
-      ],
-      [0, 3, 4],
-    )
-    const remote = await invoke(
-      ["ctl", "library", "inventory", "remote", "--audit-run", field(audit, "run_id")],
-      [0, 4],
-    )
-    expect(audit).toMatchObject({
-      inspection_scope: "registered_table_census",
-      skill_states: "unobserved",
-      items: [],
-    })
-    const local = await invoke(["ctl", "library", "inventory", "local", "--root", inputs])
-    const review = await invoke(
+    const batchPath = join(directory, "batch.json")
+    const censusPaused = await invoke(
       [
         "ctl",
         "library",
         "inventory",
-        "reconcile",
-        "--remote",
-        field(remote, "inventory_id"),
-        "--local",
-        field(local, "inventory_id"),
+        "prepare-imports",
+        "--entry",
+        f.library.skills.database_id,
+        "--root",
+        inputs,
+        "--native",
+        "--output",
+        batchPath,
+        "--max-requests",
+        "1",
       ],
-      [0, 4],
+      [75],
     )
-    const inventory = Schema.decodeUnknownSync(LocalSkillInventorySchema)(local)
-    const inputPath = join(directory, "input.json"),
-      batchPath = join(directory, "batch.json")
-    await writeFile(
-      inputPath,
-      JSON.stringify({
-        version: 1,
-        reconciliation_id: field(review, "inventory_id"),
-        items: inventory.entities.map((entity) => ({
-          entity_id: entity.entity_id,
-          approved_manifest: entity.manifest_sha256,
-          decision: { kind: "native" },
-        })),
-      }),
-    )
+    expect(censusPaused).toMatchObject({
+      status: "paused",
+      phase: "census",
+      remote_writes: 0,
+      batch_saved: false,
+    })
+    expect(f.writes()).toHaveLength(0)
+    await expect(readFile(batchPath)).rejects.toMatchObject({ code: "ENOENT" })
+    const censusId = field(property(censusPaused.preparation), "audit_run_id")
     const prepared = await invoke([
       "ctl",
       "library",
@@ -235,11 +211,24 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
       "prepare-imports",
       "--entry",
       f.library.skills.database_id,
-      "--input",
-      inputPath,
+      "--root",
+      inputs,
+      "--native",
+      "--audit-run",
+      censusId,
       "--output",
       batchPath,
     ])
+    expect(prepared.preparation).toMatchObject({
+      kind: "native_directories",
+      skill_states: "unobserved",
+      audit_run_id: censusId,
+    })
+    const originalBatch = property(JSON.parse(await readFile(batchPath, "utf8")))
+    if (!Array.isArray(originalBatch.items)) throw new Error("Expected complete prepared items")
+    const inputFingerprints = originalBatch.items.map((item) =>
+      field(property(property(item).plan), "input_content_sha256"),
+    )
     expect(prepared.counts).toEqual({ total: 2, prepared: 2, preparation_failed: 0 })
     expect(f.writes()).toHaveLength(0)
     const batchBytes = await readFile(batchPath)
@@ -378,7 +367,7 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     )
     const newInventory = Schema.decodeUnknownSync(LocalSkillInventorySchema)(newLocal)
     expect(newInventory.entities.map((entity) => entity.input_content_sha256).sort()).toEqual(
-      inventory.entities.map((entity) => entity.input_content_sha256).sort(),
+      inputFingerprints.sort(),
     )
     const newInputPath = join(directory, "reuse-input.json"),
       reusePath = join(directory, "reuse-batch.json")
