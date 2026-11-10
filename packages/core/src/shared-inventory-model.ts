@@ -48,6 +48,7 @@ export const LocalInventoryEntitySchema = Schema.Struct({
   name: Schema.String,
   main: Schema.String,
   manifest_sha256: Hash,
+  input_content_sha256: Schema.optional(Schema.NullOr(Hash)),
   files: Schema.Array(LocalInventoryFileSchema),
   discovery_identity: Schema.optional(
     Schema.Struct({ mode: NullableText, canonical_name: NullableText, config_file: NullableText }),

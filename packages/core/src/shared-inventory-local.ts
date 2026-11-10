@@ -23,6 +23,7 @@ import {
   type ProvenanceDocument,
 } from "./shared-inventory-provenance.ts"
 import { saveInventoryArtifact } from "./shared-inventory-store.ts"
+import { fingerprintSkillInput } from "./shared-input-fingerprint.ts"
 
 const executeFile = promisify(execFile)
 const within = (root: string, path: string) => {
@@ -626,6 +627,14 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
           })),
         ),
       )
+      const main = ownFiles.some((file) => file.path === "SKILL.md")
+        ? "SKILL.md"
+        : basename(mains.find((main) => dirname(main) === root)!)
+      const inputContentSha256 = ownFiles.every(
+        (file) => file.status === "verified" && file.sha256 !== null,
+      )
+        ? yield* fingerprintSkillInput({ main, files: ownFiles })
+        : null
       entities.push({
         entity_id: `local-entity-${yield* sha256(root)}`,
         real_root: root,
@@ -643,10 +652,9 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
           ]),
         ].sort(),
         name: basename(root),
-        main: ownFiles.some((file) => file.path === "SKILL.md")
-          ? "SKILL.md"
-          : basename(mains.find((main) => dirname(main) === root)!),
+        main,
         manifest_sha256,
+        input_content_sha256: inputContentSha256,
         files: ownFiles,
         identities: ownIdentities,
         discovery_identity,

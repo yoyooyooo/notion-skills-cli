@@ -19,6 +19,17 @@ Root discovery lists `list`, `read`, `use`, `files`, `export`, `ctl` and `schema
 
 ### Inventory import readback
 
+Native inventory plans may carry `input_content_sha256`, a version-1 SHA-256 of
+the entrypoint and a sorted relative-path/file-hash/size/mode manifest. Absolute
+paths, observation timestamps and Notion presentation are not part of this digest.
+The existing path-bound approval manifest remains separate. New `reuse_import`
+actions retain exact target, original operation, portable input, manifest Record
+hash and completion Record hash. Apply re-observes those records and the accessible
+target before reporting `already_imported`, `reused:true`, `remote_writes:0`, and
+`current_content:unobserved`. It neither establishes current byte equality nor
+grants existing-content replacement. An absent or unfinished original outcome
+cannot authorize a duplicate create.
+
 `prepare-import` and `prepare-imports` select import policy 14 for native Skills
 and fixed-Git members without local overrides. It freezes the original input and
 request while allowing Notion to choose its Markdown presentation. It lowers

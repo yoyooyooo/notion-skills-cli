@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
-import { mkdtemp, mkdir, readFile, realpath, writeFile } from "node:fs/promises"
+import { mkdtemp, mkdir, readFile, realpath, writeFile, cp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Effect, Schema } from "effect"
@@ -214,6 +214,83 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     f.clear()
     const repeated = await invoke(applyArgs)
     expect(repeated.counts).toMatchObject({ confirmed: 2, reused: 2 })
+    expect(f.writes()).toHaveLength(0)
+    const relocated = join(directory, "relocated-inputs")
+    await cp(inputs, relocated, { recursive: true })
+    const newLocal = await invoke(["ctl", "library", "inventory", "local", "--root", relocated])
+    const newAudit = await invoke(
+      [
+        "ctl",
+        "library",
+        "audit",
+        "run",
+        "--entry",
+        f.library.skills.database_id,
+        "--all",
+        "--depth",
+        "metadata",
+      ],
+      [0, 3, 4],
+    )
+    const newRemote = await invoke(
+      ["ctl", "library", "inventory", "remote", "--audit-run", field(newAudit, "run_id")],
+      [0, 4],
+    )
+    const newReview = await invoke(
+      [
+        "ctl",
+        "library",
+        "inventory",
+        "reconcile",
+        "--remote",
+        field(newRemote, "inventory_id"),
+        "--local",
+        field(newLocal, "inventory_id"),
+      ],
+      [0, 4],
+    )
+    const newInventory = Schema.decodeUnknownSync(LocalSkillInventorySchema)(newLocal)
+    expect(newInventory.entities.map((entity) => entity.input_content_sha256).sort()).toEqual(
+      inventory.entities.map((entity) => entity.input_content_sha256).sort(),
+    )
+    const newInputPath = join(directory, "reuse-input.json"),
+      reusePath = join(directory, "reuse-batch.json")
+    await writeFile(
+      newInputPath,
+      JSON.stringify({
+        version: 1,
+        reconciliation_id: field(newReview, "inventory_id"),
+        items: newInventory.entities.map((entity) => ({
+          entity_id: entity.entity_id,
+          approved_manifest: entity.manifest_sha256,
+          decision: { kind: "native" },
+        })),
+      }),
+    )
+    f.clear()
+    await invoke([
+      "ctl",
+      "library",
+      "inventory",
+      "prepare-imports",
+      "--entry",
+      f.library.skills.database_id,
+      "--input",
+      newInputPath,
+      "--output",
+      reusePath,
+    ])
+    const reusedInput = await invoke([
+      "ctl",
+      "library",
+      "inventory",
+      "apply-imports",
+      reusePath,
+      "--entry",
+      f.library.skills.database_id,
+    ])
+    expect(reusedInput.counts).toMatchObject({ confirmed: 2, reused: 2, failed: 0 })
+    expect(f.currentBodies()).toHaveLength(0)
     expect(f.writes()).toHaveLength(0)
     await writeFile(join(inputs, "first", "SKILL.md"), "Changed after completion.\n")
     const reconciled = await invoke([

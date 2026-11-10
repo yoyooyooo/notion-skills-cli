@@ -1,5 +1,25 @@
 # Exact resource inventories: AH-711 / AH-716
 
+## Portable input fingerprint and import reuse
+
+AH-681 remains the whole CLI management/audit/update/consumption program. Import
+reliability and repeat-import cost are subfeatures, not its only completion gate.
+
+`input_content_sha256` fingerprints the entrypoint and sorted relative file hashes,
+sizes and modes. Keep it distinct from path-bound approval `manifest_sha256`,
+Notion readback fingerprints, effective consumer snapshots and metadata digests.
+Unobserved bytes cannot supply a usable input fingerprint.
+
+Reimport can reuse only an exact accessible target plus a checksum-verified original
+native manifest and applied outcome. Same name or hash alone is not authority.
+Verify relocating the same input with fresh importer state, changed Notion body
+preservation, zero current-body/provider reads and zero remote writes for reuse,
+changed file/path/mode rejection, incomplete original outcome rejection, and a
+receipt removed after preparation. Explicit enablement does not pass through reuse.
+Include the public Node batch path after a fresh metadata inventory and local scan.
+Historical input reuse reports current content as unobserved, and stays a separate
+reused count rather than inflating first-time import success.
+
 ## Native Markdown import acceptance
 
 New native inventory imports accept Notion presentation changes. Their original

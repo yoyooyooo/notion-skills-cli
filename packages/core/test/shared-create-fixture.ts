@@ -91,6 +91,7 @@ export function sharedCreateFixture(
     [String(base.main.id), structuredClone(base.main)],
   ])
   const emptyRelations = (row: Record<string, unknown>) => {
+    property(row.properties).tags ??= { id: "tags", type: "multi_select", multi_select: [] }
     for (const field of ["members", "requires"])
       property(row.properties)[field] ??= {
         id: field,

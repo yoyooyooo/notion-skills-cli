@@ -29,7 +29,10 @@ const prepare = defineCommand(
       "approve-manifest",
       "Explicitly approved complete entity manifest SHA-256; approval includes every listed path and mode",
     ),
-    native: switchFlag("native", "Create a wholly owned native Skill with no upstream provenance"),
+    native: switchFlag(
+      "native",
+      "Import a wholly owned native Skill; reuse a completed equal input without replacing later Notion edits",
+    ),
     source: singleton("source", "Exact registered Source for this upstream member"),
     member: singleton("member", "Exact member of --source"),
     baseline: singleton(

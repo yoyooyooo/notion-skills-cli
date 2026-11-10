@@ -1,6 +1,6 @@
 import { Effect, Path, Schema } from "effect"
 import { importDocument } from "./import.ts"
-import { fail, SkillsError } from "./model.ts"
+import { aliasFor, fail, property, text, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { executeSharedCreate, prepareSharedCreate, previewSharedCreate } from "./shared-create.ts"
@@ -30,6 +30,13 @@ import { readSourceDefinition } from "./shared-source-definitions.ts"
 import { prepareSharedSourceProjection } from "./shared-source-projection.ts"
 import { sha256, Store } from "./store.ts"
 import type { SourceSnapshot } from "./upstream-source.ts"
+import { sharedSkillProperty } from "./shared-content.ts"
+import { fingerprintSkillInput } from "./shared-input-fingerprint.ts"
+import {
+  inspectReusableNativeImport,
+  InventoryImportReuseSchema,
+  type InventoryImportReuse,
+} from "./shared-inventory-import-reuse.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 export const InventoryImportPlanSchema = Schema.Struct({
@@ -42,7 +49,9 @@ export const InventoryImportPlanSchema = Schema.Struct({
   remote_inventory_id: Schema.String,
   local_entity: LocalInventoryEntitySchema,
   approved_manifest: Hash,
+  input_content_sha256: Schema.optional(Hash),
   action: Schema.Union([
+    InventoryImportReuseSchema,
     Schema.Struct({
       kind: Schema.Literal("create"),
       input_class: Schema.Literals(["native", "pure_upstream", "modified_upstream"]),
@@ -266,6 +275,10 @@ export function prepareInventoryImport(
       input.entityId,
     )
     const files = yield* readReviewedInventoryFiles(confirmed.entity)
+    const inputContentSha256 = yield* fingerprintSkillInput({
+      main: entity.main,
+      files: entity.files,
+    })
     let action: InventoryImportPlan["action"]
     if (input.decision.kind === "verify_existing") {
       const existing = remote.resources.find(
@@ -292,18 +305,25 @@ export function prepareInventoryImport(
         content_sha256: existing.content_sha256,
       }
     } else {
-      if (
+      const existingTarget =
         match.remote_page_id !== null ||
         match.candidates.length !== 0 ||
         entity.identities.some((identity) => identity.page_id !== null)
-      )
-        return yield* Effect.fail(
-          fail(
-            "INVENTORY_EXISTING_REVIEW_REQUIRED",
-            "An existing, unavailable or ambiguous identity cannot become a new Skill. Review its exact existing target first.",
-            { remote_page_id: match.remote_page_id, candidates: match.candidates },
-          ),
+      const existingError = () =>
+        fail(
+          "INVENTORY_EXISTING_REVIEW_REQUIRED",
+          "An existing, unavailable or changed input cannot become a new Skill. Review its exact target and use an explicit update operation.",
+          {
+            remote_page_id: match.remote_page_id,
+            candidates: match.candidates,
+            input_content_sha256: inputContentSha256,
+          },
         )
+      if (
+        match.remote_page_id === null &&
+        entity.identities.some((identity) => identity.page_id !== null)
+      )
+        return yield* Effect.fail(existingError())
       if (input.decision.kind === "native") {
         if (
           entity.identities.some(
@@ -335,22 +355,65 @@ export function prepareInventoryImport(
         const relations = yield* checked(() =>
           portableRelationSelection(portable.relations, input.library.library_id),
         )
-        const creation = yield* prepareSharedCreate(input.library, {
-          portable,
-          ...relations,
-          enabled: input.enabled ?? false,
-          completeResources: true,
-          markdownImport: true,
-        })
-        action = {
-          kind: "create",
-          input_class: "native",
-          creation,
-          baseline_revision: null,
-          selected_revision: null,
-          custom_paths: portable.files.map((file) => file.path),
+        const candidates = yield* checked(() =>
+          remote.resources.filter((resource) => {
+            if (match.remote_page_id !== null) return resource.page_id === match.remote_page_id
+            if (match.candidates.some((candidate) => candidate.page_id === resource.page_id))
+              return true
+            const name = text(
+              sharedSkillProperty(property(resource.metadata).skill, input.library, "Name").title,
+            )
+            return name === portable.name || aliasFor(name) === aliasFor(portable.name)
+          }),
+        )
+        const reusable: InventoryImportReuse[] = []
+        for (const candidate of candidates) {
+          if (candidate.skill_id === null) continue
+          const found = yield* inspectReusableNativeImport({
+            library: input.library,
+            pageId: candidate.page_id,
+            skillId: candidate.skill_id,
+            inputContentSha256,
+          })
+          if (found !== undefined) reusable.push(found)
+        }
+        if (reusable.length > 1)
+          return yield* Effect.fail(
+            fail(
+              "INVENTORY_IMPORT_AMBIGUOUS",
+              "More than one existing Skill has a confirmed import of this input; choose its exact identity.",
+            ),
+          )
+        const previous = reusable[0]
+        if (previous !== undefined) {
+          if (input.enabled === true)
+            return yield* Effect.fail(
+              fail(
+                "INVENTORY_EXISTING_REVIEW_REQUIRED",
+                "Reusing an import never enables or changes an existing Skill; use an explicit metadata update.",
+              ),
+            )
+          action = previous
+        } else {
+          if (existingTarget || candidates.length > 0) return yield* Effect.fail(existingError())
+          const creation = yield* prepareSharedCreate(input.library, {
+            portable,
+            ...relations,
+            enabled: input.enabled ?? false,
+            completeResources: true,
+            markdownImport: true,
+          })
+          action = {
+            kind: "create",
+            input_class: "native",
+            creation,
+            baseline_revision: null,
+            selected_revision: null,
+            custom_paths: portable.files.map((file) => file.path),
+          }
         }
       } else {
+        if (existingTarget) return yield* Effect.fail(existingError())
         const decision = input.decision
         const localPortable = yield* checked(() => readPortable(files))
         const localFiles = localPortable?.files ?? files
@@ -520,6 +583,7 @@ export function prepareInventoryImport(
       remote_inventory_id: review.remote_inventory_id,
       local_entity: entity,
       approved_manifest: input.approvedManifest,
+      input_content_sha256: inputContentSha256,
       action,
       permissions:
         "only_this_complete_reviewed_entity; no_local_changes; no_existing_content_replacement" as const,
@@ -557,6 +621,27 @@ export function validateInventoryImport(input: unknown) {
         fail("INVENTORY_IMPORT_INVALID", "The frozen import digest or approved manifest differs."),
       )
     if (plan.action.kind === "create") yield* validateSharedCreatePlan(plan.action.creation)
+    if (
+      plan.input_content_sha256 !== undefined &&
+      plan.input_content_sha256 !==
+        (yield* fingerprintSkillInput({
+          main: plan.local_entity.main,
+          files: plan.local_entity.files,
+        }))
+    )
+      return yield* Effect.fail(
+        fail(
+          "INVENTORY_IMPORT_INVALID",
+          "The portable input digest differs from the complete reviewed tree.",
+        ),
+      )
+    if (
+      plan.action.kind === "reuse_import" &&
+      plan.action.input_content_sha256 !== plan.input_content_sha256
+    )
+      return yield* Effect.fail(
+        fail("INVENTORY_IMPORT_INVALID", "The reused receipt belongs to another input digest."),
+      )
     return plan
   })
 }
@@ -596,6 +681,36 @@ export function executeInventoryImport(
           fail("INVENTORY_REVIEW_STALE", "The approved original input changed."),
         )
       yield* readReviewedInventoryFiles(current.entity)
+    }
+    if (plan.action.kind === "reuse_import") {
+      const original = plan.action
+      const current = yield* inspectReusableNativeImport({
+        library,
+        pageId: original.page_id,
+        skillId: original.skill_id,
+        inputContentSha256: original.input_content_sha256,
+      })
+      if (current === undefined || canonicalSharedJson(current) !== canonicalSharedJson(original))
+        return yield* Effect.fail(
+          fail(
+            "INVENTORY_IMPORT_RECEIPT_CHANGED",
+            "The original completed-import receipt changed after preparation; preserve current content.",
+          ),
+        )
+      return {
+        plan_id: plan.plan_id,
+        status: options.dryRun ? ("planned" as const) : ("already_imported" as const),
+        verified: !options.dryRun,
+        reused: !options.dryRun,
+        verification: "original_input_and_completion" as const,
+        current_content: "unobserved" as const,
+        remote_writes: 0,
+        local_writes: 0,
+        skill_page_id: original.page_id,
+        skill_id: original.skill_id,
+        operation_id: original.operation_id,
+        input_content_sha256: original.input_content_sha256,
+      }
     }
     if (plan.action.kind === "verify_existing") {
       const audit = yield* runSharedAudit({
@@ -663,6 +778,7 @@ export function executeInventoryImport(
       ...result,
       local_writes: 0,
       imported_from_frozen_manifest: plan.approved_manifest,
+      input_content_sha256: plan.input_content_sha256,
     }
   })
   const handled = work.pipe(

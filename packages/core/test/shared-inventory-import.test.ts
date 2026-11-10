@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { mkdtemp, mkdir, writeFile, readFile, symlink, chmod } from "node:fs/promises"
+import { mkdtemp, mkdir, writeFile, readFile, symlink, chmod, cp } from "node:fs/promises"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join, dirname } from "node:path"
@@ -190,6 +190,134 @@ async function fixture(
     prepare: () => f.run(prepareInventoryImport(input).pipe(Effect.provide(NodeServices.layer))),
   }
 }
+
+async function currentInventoryReview(f: ReturnType<typeof sharedCreateFixture>, root: string) {
+  const auditState = await mkdtemp(join(tmpdir(), "ntn-repeat-audit-"))
+  const audit = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion,
+        store = yield* Store
+      return yield* runSharedAudit({
+        entry: f.library.skills.database_id,
+        selector: { kind: "library" },
+        depth: "metadata",
+      }).pipe(
+        Effect.provideService(Store, { ...store, root: auditState }),
+        Effect.provideService(Notion, {
+          ...api,
+          apiOrigin: "https://api.notion.test",
+          request: (path, body, options) =>
+            api
+              .request(
+                path,
+                path.startsWith(`v1/data_sources/${f.library.records.data_source_id}/query`) &&
+                  body !== null &&
+                  typeof body === "object" &&
+                  !("filter" in body)
+                  ? { ...body, filter: { and: [] } }
+                  : body,
+                options,
+              )
+              .pipe(
+                Effect.map((value) =>
+                  path === "v1/users/me" ? { object: "user", id: id(9000) } : value,
+                ),
+              ),
+        }),
+      )
+    }),
+  )
+  const remote = await f.run(prepareSharedBaselineInventory(audit.run_id))
+  expect(remote.visible_registered_census?.coverage).toBe("full")
+  const local = await f.run(scanLocalSkillInventory({ roots: [root] }))
+  const review = await f.run(
+    reconcileSkillInventories({
+      remote_inventory_id: remote.inventory_id,
+      local_inventory_id: local.inventory_id,
+    }),
+  )
+  const entity = local.entities[0]!
+  return {
+    local,
+    entity,
+    input: {
+      library: f.library,
+      reconciliationId: review.inventory_id,
+      entityId: entity.entity_id,
+      approvedManifest: entity.manifest_sha256,
+      decision: { kind: "native" as const },
+    },
+  }
+}
+
+test("a fresh review in another directory skips a completed native import by original input digest without reading current bodies", async () => {
+  const f = await fixture()
+  f.skills.clear()
+  f.files.clear()
+  f.base.records.clear()
+  const original = await f.prepare()
+  const result = await f.run(executeInventoryImport(f.library, original))
+  if (!("skill_page_id" in result) || typeof result.skill_page_id !== "string")
+    throw new Error("Expected original creation")
+  const copy = await mkdtemp(join(tmpdir(), "ntn-relocated-input-"))
+  await cp(f.root, copy, { recursive: true })
+  f.base.bodies.set(result.skill_page_id, "# Later Notion edit\n\nKeep the author's current work.")
+  f.base.json.clear()
+  f.base.objects.clear()
+  const fresh = await currentInventoryReview(f, copy)
+  expect(fresh.entity.manifest_sha256).not.toBe(original.approved_manifest)
+  expect(fresh.entity.input_content_sha256).toBe(original.input_content_sha256)
+  f.clear()
+  const plan = await f.run(
+    prepareInventoryImport(fresh.input).pipe(Effect.provide(NodeServices.layer)),
+  )
+  expect(plan.action.kind).toBe("reuse_import")
+  const reused = await f.run(executeInventoryImport(f.library, plan))
+  expect(reused).toMatchObject({
+    status: "already_imported",
+    reused: true,
+    verified: true,
+    current_content: "unobserved",
+    remote_writes: 0,
+    skill_page_id: result.skill_page_id,
+  })
+  expect(f.currentBodies()).toHaveLength(0)
+  expect(f.writes()).toHaveLength(0)
+  expect(f.base.bodies.get(result.skill_page_id)).toContain("Keep the author's current work.")
+  const dry = await f.run(executeInventoryImport(f.library, plan, { dryRun: true }))
+  expect(dry).toMatchObject({ status: "planned", verified: false, reused: false, remote_writes: 0 })
+  if (original.action.kind !== "create") throw new Error("Expected original creation")
+  f.removeCompletion(original.action.creation.operation_id)
+  await expect(f.run(executeInventoryImport(f.library, plan))).rejects.toMatchObject({
+    code: "INVENTORY_PREVIOUS_IMPORT_INCOMPLETE",
+  })
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("same-name input changes and incomplete original imports cannot be counted as a reusable success", async () => {
+  const f = await fixture()
+  f.skills.clear()
+  f.files.clear()
+  f.base.records.clear()
+  const original = await f.prepare()
+  if (original.action.kind !== "create") throw new Error("Expected original create")
+  await f.run(executeInventoryImport(f.library, original))
+  await writeFile(join(f.root, "references/guide.md"), "# Updated input\n")
+  const changed = await currentInventoryReview(f, f.root)
+  f.clear()
+  await expect(
+    f.run(prepareInventoryImport(changed.input).pipe(Effect.provide(NodeServices.layer))),
+  ).rejects.toMatchObject({ code: "INVENTORY_EXISTING_REVIEW_REQUIRED" })
+  expect(f.writes()).toHaveLength(0)
+  await writeFile(join(f.root, "references/guide.md"), "# Guide\n\nPreserve this complete file.\n")
+  f.removeCompletion(original.action.creation.operation_id)
+  const incomplete = await currentInventoryReview(f, f.root)
+  f.clear()
+  await expect(
+    f.run(prepareInventoryImport(incomplete.input).pipe(Effect.provide(NodeServices.layer))),
+  ).rejects.toMatchObject({ code: "INVENTORY_PREVIOUS_IMPORT_INCOMPLETE" })
+  expect(f.writes()).toHaveLength(0)
+})
 
 async function batchFixture(readback?: (wire: string) => string) {
   const f = sharedCreateFixture(readback === undefined ? {} : { readback })
@@ -667,7 +795,8 @@ test("complete native inventory import preserves independently frozen resource b
     "scripts/run.js",
   ])
   const created = await f.run(executeInventoryImport(f.library, plan))
-  if (!("skill_page_id" in created)) throw new Error("Expected created page")
+  if (!("skill_page_id" in created) || typeof created.skill_page_id !== "string")
+    throw new Error("Expected created page")
   expect(created.verified).toBe(true)
   expect(f.nativeCreates()).toHaveLength(expected.size)
   expect(f.enablePatches()).toHaveLength(0)
@@ -929,7 +1058,8 @@ test("an unchanged original upstream tree selects the checked C2 through the pub
   expect(f.acquisitions).toEqual([f.c2.revision, f.c1.revision])
   expect(f.writes()).toHaveLength(0)
   const created = await f.run(executeInventoryImport(sourceLibrary, plan))
-  if (!("skill_page_id" in created)) throw new Error("Expected created page")
+  if (!("skill_page_id" in created) || typeof created.skill_page_id !== "string")
+    throw new Error("Expected created page")
   expect(created.verified).toBe(true)
   f.base.objects.clear()
   f.base.json.clear()
@@ -1002,7 +1132,8 @@ test("complete modified-upstream import retains C1 ancestry and local N1 while u
   const originalConfig = new Uint8Array(await readFile(join(f.root, "data/options.json")))
   const originalBinary = new Uint8Array(await readFile(join(f.root, "assets/custom.bin")))
   const created = await f.run(executeInventoryImport(sourceLibrary, plan))
-  if (!("skill_page_id" in created)) throw new Error("Expected created page")
+  if (!("skill_page_id" in created) || typeof created.skill_page_id !== "string")
+    throw new Error("Expected created page")
   expect(created.verified).toBe(true)
   f.base.objects.clear()
   f.base.json.clear()
@@ -1106,7 +1237,8 @@ test("an exact retained member with unspecified provider modes imports as follow
   expect(plan.action.custom_paths).toEqual([])
   expect(plan.action.creation.source_projection?.version).toBe(2)
   const created = await f.run(executeInventoryImport(sourceLibrary, plan))
-  if (!("skill_page_id" in created)) throw new Error("Expected retained created page")
+  if (!("skill_page_id" in created) || typeof created.skill_page_id !== "string")
+    throw new Error("Expected retained created page")
   expect(created.verified).toBe(true)
   f.base.objects.clear()
   f.base.json.clear()
@@ -1171,7 +1303,8 @@ test("existing verification checks its complete target while retaining unaudited
     })
   const original = await f.prepare()
   const created = await f.run(executeInventoryImport(f.library, original))
-  if (!("skill_page_id" in created)) throw new Error("Expected created page")
+  if (!("skill_page_id" in created) || typeof created.skill_page_id !== "string")
+    throw new Error("Expected created page")
   const audit = await f.run(
     atEndpoint(
       runSharedAudit({
