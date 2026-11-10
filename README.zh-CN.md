@@ -51,6 +51,8 @@ ntn-skills read 'Release Review'
 
 ## 安装
 
+默认 `ntn-skills` 使用 npm 安装包。开发时可对一次命令设置 `NTN_SKILLS_DEV_ROOT=/绝对路径/源码仓库`，通过薄 Bun 入口直接运行 TypeScript 源码，不重新构建；取消变量就回到安装包。源码模式仍由支持的 Node 运行实际 CLI／SQLite，需要本机已安装 Bun，详见[开发入口](CONTRIBUTING.md#development-setup)。
+
 安装 [Node.js](https://nodejs.org) **22.x 分支的 22.22.3+，或 24.20.0+**，其中包含 npm。安装包通过项目自己的 Effect HTTP 引擎直接连接 Notion API。
 
 从官方 npm registry 安装已发布版本：

@@ -65,6 +65,8 @@ ntn-skills --help
 
 The version command prints the installed version; help lists the available commands. A consumer needs Node.js and npm. [Project-local installation](docs/usage.md#install-in-a-consuming-project), [PATH setup](docs/usage.md#install-from-npm-globally) and [local tarball installation](docs/usage.md#install-a-local-tarball-globally) are covered in the usage guide.
 
+The executable defaults to this npm installation. Developers may set `NTN_SKILLS_DEV_ROOT=/absolute/checkout` for a single command to run local TypeScript through the thin Bun launcher without rebuilding; unset it for the package again. This requires Bun and the same supported Node runtime. See [development setup](CONTRIBUTING.md#development-setup).
+
 To produce a package yourself, follow [the contributor setup and build instructions](CONTRIBUTING.md#development-setup). Bun installs dependencies and builds the package; development and real SQLite consumers execute on Node.js.
 
 ## Quick start
