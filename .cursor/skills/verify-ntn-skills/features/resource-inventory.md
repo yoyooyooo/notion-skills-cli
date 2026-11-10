@@ -72,6 +72,12 @@ new; dry-run and reconciliation write nothing. Check the public Node command and
 the SQLite-backed saved batch, not only memory fixtures. Existing Source/custom
 single-item regressions remain applicable because the batch uses the same kernel.
 
+For acknowledged native page creation, an empty exact-identity query does not
+invalidate the saved response. Read its exact page ID and check parent, identity
+and binding. A query pointing to a different page remains a conflict. Verify the
+first execution and an interrupted readback resume with only one POST per page;
+lost responses must still stop without retrying the creation.
+
 Report all inputs, confirmed/reused/failed/not-started counts and error codes.
 An invocation confirmation fraction is not a fresh-import success-rate estimate.
 AH-718 measures first-pass and automatically recovered success on a frozen,

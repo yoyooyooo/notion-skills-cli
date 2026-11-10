@@ -231,13 +231,26 @@ function observeMutation(
           "The original stable creation identity has ambiguous allocations.",
         ),
       )
-    if (raw.results.length === 0) return undefined
+    if (raw.results.length === 0 && acknowledgedPageId === undefined) return undefined
     const candidate = property(raw.results[0]),
-      page = candidate.id
+      page = acknowledgedPageId ?? candidate.id
     if (typeof page !== "string") return undefined
+    if (
+      acknowledgedPageId !== undefined &&
+      raw.results.length === 1 &&
+      candidate.id !== acknowledgedPageId
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_SCOPE",
+          "The stable identity query points to a different page than the original acknowledgement.",
+        ),
+      )
     const row = property(yield* api.request(`v1/pages/${page}`))
     if (
+      row.id !== page ||
       row.archived === true ||
+      row.is_archived === true ||
       row.in_trash === true ||
       property(row.parent).data_source_id !== table.data_source_id ||
       text(sourceField(row, id).rich_text) !== identity
@@ -325,7 +338,7 @@ export function sharedCreateDispatch(
             dryRun,
             repeat: "never",
             ...(beforeDispatch === undefined ? {} : { beforeDispatch }),
-            ...(immutableRecord
+            ...(method === "POST" && path === "v1/pages"
               ? {
                   observeAcknowledged: (response: unknown) => {
                     const pageId = property(response).id
@@ -333,7 +346,7 @@ export function sharedCreateDispatch(
                       return Effect.fail(
                         fail(
                           "SHARED_CREATE_DISPATCH_UNKNOWN",
-                          "The original Record acknowledgement has no exact page ID.",
+                          "The original creation acknowledgement has no exact page ID.",
                         ),
                       )
                     return observeMutation(library, plan, path, body, method, pageId)

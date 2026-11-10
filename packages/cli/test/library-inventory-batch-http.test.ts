@@ -32,6 +32,7 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
   f.base.records.clear()
   const errors: string[] = []
   const commands: unknown[] = []
+  let hiddenIdentityQueries = 0
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -50,6 +51,17 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
           })
         const body = method === "GET" ? undefined : await request.json()
         const parent = property(property(body).parent).data_source_id
+        const filter = property(property(body).filter)
+        if (
+          ((url.pathname === `/v1/data_sources/${f.library.skills.data_source_id}/query` &&
+            filter.property === f.library.skills.property_ids["Skill ID"]) ||
+            (url.pathname === `/v1/data_sources/${f.library.files.data_source_id}/query` &&
+              filter.property === f.library.files.property_ids["File ID"])) &&
+          property(filter.rich_text).equals !== undefined
+        ) {
+          hiddenIdentityQueries++
+          return Response.json({ object: "list", results: [], has_more: false, next_cursor: null })
+        }
         if (
           method === "POST" &&
           url.pathname === "/v1/pages" &&
@@ -210,6 +222,7 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     const applied = await invoke(applyArgs)
     expect(applied.all_confirmed).toBe(true)
     expect(applied.counts).toMatchObject({ total: 2, confirmed: 2, reused: 0 })
+    expect(hiddenIdentityQueries).toBeGreaterThanOrEqual(2)
     expect(f.nativeCreates()).toHaveLength(2)
     expect([...f.skills.values()].map((page) => f.base.bodies.get(String(page.id))).sort()).toEqual(
       ["### first\n\n<p>Complete first.</p>\n", "### second\n\n<p>Complete second.</p>\n"],
