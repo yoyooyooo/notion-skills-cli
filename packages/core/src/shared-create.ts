@@ -1689,7 +1689,12 @@ export function executeSharedCreate(
         )
         for (const binding of bindings) {
           const native = facts.files.find((file) => file.file_id === binding.file_id)
-          if (native !== undefined) yield* assertBody(binding.page_id, native.projection.markdown)
+          if (native !== undefined)
+            yield* assertBody(
+              binding.page_id,
+              native.projection.markdown,
+              acceptReadback && native.event.kind === "deleted",
+            )
           else {
             const resource = plan.resources?.find((file) => file.file_id === binding.file_id)
             if (resource === undefined)
@@ -1718,6 +1723,7 @@ export function executeSharedCreate(
       const publishReadingBaseline = (file: SharedCreatePlan["files"][number], page: string) =>
         Effect.gen(function* () {
           if (!acceptReadback || file.event.kind !== "projected") return
+          if (page === skillPage && sourceSelection !== undefined) return
           const original = resolved.facts.files.find((item) => item.file_id === file.file_id)!
           const projection = createProjectionBaseline(file)
           if (projection === createProjectionBaseline(original)) return
@@ -1807,7 +1813,11 @@ export function executeSharedCreate(
         stage = `body:${file.file_id}`
         const observedFile = yield* observe(file, page)
         binding.event_id = observedFile.event.event_id
-        yield* assertBody(page, observedFile.projection.markdown)
+        yield* assertBody(
+          page,
+          observedFile.projection.markdown,
+          acceptReadback && observedFile.event.kind === "deleted",
+        )
         yield* publishReadingBaseline(observedFile, page)
       }
       for (const file of facts.resources ?? []) {
@@ -1873,6 +1883,7 @@ export function executeSharedCreate(
         yield* assertBody(
           bindings.find((binding) => binding.file_id === file.file_id)!.page_id,
           file.projection.markdown,
+          acceptReadback && file.event.kind === "deleted",
         )
       for (const file of plan.resources ?? [])
         yield* loadSharedResourceContent(library, {

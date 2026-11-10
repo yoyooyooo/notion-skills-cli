@@ -53,6 +53,21 @@ test("generated domain links do not hide an explicit target and known Notion pag
   ).not.toThrow()
 })
 
+test("automatically linked styled labels retain their visible text without replacing authored destinations", () => {
+  expect(() =>
+    assertImportedMarkdownContent(
+      "Update **SKILL.md** after using Telegra.ph.",
+      "Update [<b>SKILL.md</b>](http://SKILL.md) after using [Telegra.ph](http://Telegra.ph).",
+    ),
+  ).not.toThrow()
+  for (const [before, after] of [
+    ["Read [**SKILL.md**](references/SKILL.md).", "Read [<b>SKILL.md</b>](http://SKILL.md)."],
+    ["Read [**SKILL.md**](https://SKILL.md).", "Read [<b>SKILL.md</b>](http://SKILL.md)."],
+    ["Read **SKILL.md**.", "Read [<b>SKILL.md</b>](https://wrong.example/)."],
+  ])
+    expect(() => assertImportedMarkdownContent(before!, after!)).toThrow()
+})
+
 test("import compatibility does not rewrite fences or raw resources and keeps historical projection policies", () => {
   const input =
     "##### Deep heading\n\n| A | B |\n| :--- | ---: |\n| pipe \\| literal | value |\n\n```md\n###### Keep literal\n```"

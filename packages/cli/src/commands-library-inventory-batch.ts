@@ -2,11 +2,15 @@ import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
+import { property } from "../../core/src/model.ts"
 import {
   decodeInventoryBatchInput,
   executeInventoryBatch,
   prepareInventoryBatch,
   validateInventoryBatch,
+  interruptedInventoryBatch,
+  type InventoryImportBatch,
+  type InventoryBatchProgress,
 } from "../../core/src/shared-inventory-batch.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
@@ -29,6 +33,41 @@ const saveReport = (value: object, destination: Option.Option<string>) =>
       )
     yield* emit(value)
   })
+
+function boundedBatch(
+  batch: InventoryImportBatch,
+  entry: string,
+  limits: Parameters<typeof withSourceCommandBudget>[1],
+  options: { readonly dryRun?: boolean; readonly reconcile?: boolean },
+) {
+  return Effect.suspend(() => {
+    let progress: InventoryBatchProgress | undefined
+    return withSourceCommandBudget(
+      Effect.gen(function* () {
+        const library = yield* loadSharedLibrary(entry)
+        const work = executeInventoryBatch(library, batch, {
+          ...options,
+          onProgress: (value) => {
+            progress = value
+          },
+        })
+        return yield* options.reconcile ? work : withSourceUpdateLock(library, work)
+      }),
+      limits,
+    ).pipe(
+      Effect.catchIf(
+        (error) => error.code === "REQUEST_BUDGET_EXHAUSTED",
+        (error) =>
+          progress === undefined
+            ? Effect.fail(error)
+            : Effect.succeed({
+                result: interruptedInventoryBatch(progress, error),
+                budget: property(error.details).budget,
+              }),
+      ),
+    )
+  })
+}
 
 const prepare = defineCommand(
   "prepare-imports",
@@ -101,23 +140,19 @@ const apply = defineCommand(
     Effect.gen(function* () {
       const batch = yield* validateInventoryBatch(yield* readSourceJson(args.batch, maximumBytes))
       const limits = yield* parseSourceBudget(args)
-      const { result, budget } = yield* withSourceCommandBudget(
-        Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(args.entry)
-          return yield* withSourceUpdateLock(
-            library,
-            executeInventoryBatch(library, batch, { dryRun: args.dryRun }),
-          )
-        }),
-        limits,
-      )
+      const { result, budget } = yield* boundedBatch(batch, args.entry, limits, {
+        dryRun: args.dryRun,
+      })
       yield* saveReport({ ...result, budget }, args.output)
-      if (args.dryRun ? result.counts.validated !== result.counts.total : !result.all_confirmed)
+      if (result.interruption !== null) process.exitCode = 75
+      else if (
+        args.dryRun ? result.counts.validated !== result.counts.total : !result.all_confirmed
+      )
         process.exitCode = 4
     }),
 ).pipe(
   Command.withDescription(
-    "Apply an original locally prepared batch serially using the existing child journals. Known content failures stay item-local; unknown writes or other execution failures halt new dispatches. Run the same batch again to continue original work, never create replacement identities. No atomic batch or distributed lock is promised.",
+    "Apply an original locally prepared batch serially using the existing child journals. Known content failures stay item-local; unknown writes or other execution failures halt new dispatches. Budget interruption retains completed item results and marks the active item interrupted, exits 75, and never grants replay authority. Run the same batch again to continue original work, never create replacement identities. No atomic batch or distributed lock is promised.",
   ),
 )
 
@@ -128,16 +163,10 @@ const reconcile = defineCommand(
     Effect.gen(function* () {
       const batch = yield* validateInventoryBatch(yield* readSourceJson(args.batch, maximumBytes))
       const limits = yield* parseSourceBudget(args)
-      const { result, budget } = yield* withSourceCommandBudget(
-        Effect.gen(function* () {
-          return yield* executeInventoryBatch(yield* loadSharedLibrary(args.entry), batch, {
-            reconcile: true,
-          })
-        }),
-        limits,
-      )
+      const { result, budget } = yield* boundedBatch(batch, args.entry, limits, { reconcile: true })
       yield* saveReport({ ...result, budget }, args.output)
-      if (!result.all_confirmed) process.exitCode = 4
+      if (result.interruption !== null) process.exitCode = 75
+      else if (!result.all_confirmed) process.exitCode = 4
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(

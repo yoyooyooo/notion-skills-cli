@@ -30,8 +30,9 @@ target before reporting `already_imported`, `reused:true`, `remote_writes:0`, an
 grants existing-content replacement. An absent or unfinished original outcome
 cannot authorize a duplicate create.
 
-`prepare-import` and `prepare-imports` select import policy 14 for native Skills
-and fixed-Git members without local overrides. It freezes the original input and
+`prepare-import` and `prepare-imports` select import policy 14 for native Skills,
+fixed-Git members, local Git overrides and supported retained-source members.
+It freezes the original input and
 request while allowing Notion to choose its Markdown presentation. It lowers
 unsupported deep heading levels for the reading page without rewriting code
 fences. Content checks separate visible text, code literals and explicit link
@@ -44,11 +45,16 @@ reading pages receive observed projection fingerprints while retaining following
 ownership and the original source revision. A later change cannot silently replace
 that first baseline during a resumed operation. Completion can be reconstructed
 from shared events and retained bodies without the importer's local cache.
+Retained-source main pages publish the observed baseline with their initial source
+selection. Mixed Git imports preserve C1 ancestor events and raw baseline bytes.
+Custom files adopt the observed representation. Deleted documents retain the
+pre-deletion body and event unchanged; their reading-page formatting is checked
+without making it a new historical version or restoring the deleted path.
 
 Successful fresh creation reports `markdown_acceptance.policy` as
 `notion_import_readback_v1`, `roundtrip_required:false`, and changed presentation
-paths. Raw resources remain byte- and mode-checked. Historical policies, retained
-providers and mixed local overrides are unchanged; an import tolerance does not
+paths. Raw resources remain byte- and mode-checked. Historical plans keep their
+frozen policies; an import tolerance does not
 authorize a body overwrite or replay an unknown write. The [inventory guide](inventory-import.md)
 documents the public batch interface and its non-success outcomes.
 

@@ -30,19 +30,24 @@ function importContent(markdown: string) {
           literal(token.text)
           break
         case "link":
-        case "image":
-          links.push({
+        case "image": {
+          const labelStart = text.length
+          const link = {
             href: token.href.replace(
               /^https:\/\/www\.notion\.so\/([a-f0-9]{32})$/u,
               "https://app.notion.com/p/$1",
             ),
-            automatic:
-              token.type !== "image" &&
-              token.href.replace(/^https?:\/\//u, "").replace(/\/$/u, "") === token.text,
+            automatic: false,
             authored: token.type === "image" || /^[\[<]/u.test(token.raw),
-          })
+          }
+          links.push(link)
           inline(token.text, token.tokens)
+          link.automatic =
+            token.type !== "image" &&
+            token.href.replace(/^https?:\/\//u, "").replace(/\/$/u, "") ===
+              text.slice(labelStart).join("")
           break
+        }
         case "html":
           if (
             !/^<\/?(?:b|strong|i|em|s|del|p|h[1-6]|table|tr|td|th|thead|tbody|br)(?:\s[^>]*)?\s*\/?>$/iu.test(

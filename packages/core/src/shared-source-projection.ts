@@ -118,6 +118,7 @@ export function prepareSharedSourceProjection(input: SharedSourceProjectionInput
           ),
         },
         enabled: input.enabled ?? false,
+        ...(input.markdownImport === true ? { markdownImport: true as const } : {}),
         ...relations,
         sourceProjection: {
           ...common,
@@ -203,9 +204,7 @@ export function prepareSharedSourceProjection(input: SharedSourceProjectionInput
       },
       enabled: input.enabled ?? false,
       ...(customized === undefined ? {} : { completeResources: true }),
-      ...(input.markdownImport === true && customized === undefined
-        ? { markdownImport: true as const }
-        : {}),
+      ...(input.markdownImport === true ? { markdownImport: true as const } : {}),
       ...relations,
       sourceProjection: {
         version: 1,

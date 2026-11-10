@@ -43,8 +43,16 @@ reconstruction of the local Markdown. Fixed upstream consumption remains separat
 Pure fixed-Git inventory imports also record the observed reading-page fingerprint
 without releasing following ownership. Verify a differing Notion heading while
 the cold consumer still obtains the original Git document and raw resources with
-zero adoption writes. Historical projection plans, retained providers and mixed
-local overrides keep their original policy and are not relabelled.
+zero adoption writes. Every import preserves its original provenance and explicit
+ownership.
+New retained-source imports use the same readback policy. The initial page-bound
+source selection owns its main-page Projection update; do not publish that
+Projection early as a separate mutation. Verify cold retained consumption with
+different reading-page headings, no provider fallback and zero adoption writes.
+New mixed Git imports keep C1 ancestors and exact source inputs while custom bodies
+use Notion readback and untouched files consume C2. Deleted Markdown keeps its
+original event and pre-deletion content; it never reappears in the consumed tree.
+Historical plans keep their frozen policy and are not relabelled.
 
 Verify changed heading levels, whitespace and emphasis through the public import
 and subsequent consumption. Reject missing text, altered code, changed explicit
@@ -71,6 +79,12 @@ unknown writes halt remaining dispatches; repeated original plans create nothing
 new; dry-run and reconciliation write nothing. Check the public Node command and
 the SQLite-backed saved batch, not only memory fixtures. Existing Source/custom
 single-item regressions remain applicable because the batch uses the same kernel.
+
+Invocation deadlines must not erase completed item observations. Delay the second
+item's read in the real Node CLI test, retain the first confirmed result, report
+the active item as interrupted and exit 75. Resume the same batch without writes.
+The report is an observation, not a replacement journal or replay permission;
+unknown writes and interruptions must still respect original child guards.
 
 For acknowledged native page creation, an empty exact-identity query does not
 invalidate the saved response. Read its exact page ID and check parent, identity

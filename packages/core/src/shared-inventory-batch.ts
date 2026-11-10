@@ -163,7 +163,13 @@ export function validateInventoryBatch(input: unknown) {
 type BatchOutcome = {
   readonly entity_id: string
   readonly plan_id: string | null
-  readonly status: "preparation_failed" | "not_started" | "failed" | "confirmed" | "validated"
+  readonly status:
+    | "preparation_failed"
+    | "not_started"
+    | "interrupted"
+    | "failed"
+    | "confirmed"
+    | "validated"
   readonly reused: boolean
   readonly result?: unknown
   readonly error?: typeof ErrorSchema.Type
@@ -174,10 +180,69 @@ const isolatedContentErrors = new Set([
   "BODY_INCOMPLETE",
 ])
 
+function inventoryBatchReport(
+  batch: Pick<InventoryImportBatch, "batch_id">,
+  mode: "apply" | "dry_run" | "reconcile",
+  items: readonly BatchOutcome[],
+  halted: boolean,
+  interruption: typeof ErrorSchema.Type | null = null,
+) {
+  const count = (status: BatchOutcome["status"]) =>
+    items.filter((item) => item.status === status).length
+  return {
+    batch_id: batch.batch_id,
+    mode,
+    execution_complete: interruption === null && count("not_started") === 0,
+    all_confirmed: count("confirmed") === items.length,
+    halted,
+    interruption,
+    atomic: false,
+    counts: {
+      total: items.length,
+      confirmed: count("confirmed"),
+      reused: items.filter((item) => item.status === "confirmed" && item.reused).length,
+      validated: count("validated"),
+      preparation_failed: count("preparation_failed"),
+      failed: count("failed"),
+      not_started: count("not_started"),
+      interrupted: count("interrupted"),
+    },
+    items: [...items],
+    measurement: "invocation_outcomes_not_first_pass_success_rate",
+    recovery: "reuse_original_batch_and_child_journals; unknown_writes_are_not_replayed",
+    ...(mode !== "apply" ? { remote_writes: 0 } : {}),
+  }
+}
+
+export type InventoryBatchProgress = {
+  readonly report: ReturnType<typeof inventoryBatchReport>
+  readonly active_entity_id: string | null
+}
+
+/** Retain completed observations after the invocation owner has cancelled and
+ * joined its work. This report grants no replay authority; child journals do. */
+export function interruptedInventoryBatch(progress: InventoryBatchProgress, error: SkillsError) {
+  return inventoryBatchReport(
+    progress.report,
+    progress.report.mode,
+    progress.report.items.map((item) =>
+      item.entity_id === progress.active_entity_id
+        ? { ...item, status: "interrupted", error: errorInfo(error) }
+        : item,
+    ),
+    true,
+    errorInfo(error),
+  )
+}
+
 export function executeInventoryBatch(
   library: SharedLibrary,
   input: unknown,
-  options: { readonly dryRun?: boolean; readonly reconcile?: boolean } = {},
+  options: {
+    readonly dryRun?: boolean
+    readonly reconcile?: boolean
+    readonly onProgress?: (progress: InventoryBatchProgress) => void
+  } = {},
 ) {
   const work = Effect.gen(function* () {
     const batch = yield* validateInventoryBatch(input)
@@ -205,59 +270,53 @@ export function executeInventoryBatch(
           )
       }
     }
-    const items: BatchOutcome[] = []
+    const items: BatchOutcome[] = batch.items.map((item) => ({
+      entity_id: item.request.entity_id,
+      reused: false,
+      ...(item.status === "preparation_failed"
+        ? { plan_id: null, status: item.status, error: item.error }
+        : { plan_id: item.plan.plan_id, status: "not_started" }),
+    }))
+    const mode = options.reconcile ? "reconcile" : options.dryRun ? "dry_run" : "apply"
     let halted = false
-    for (const item of batch.items) {
+    let interruption: typeof ErrorSchema.Type | null = null
+    const report = () => inventoryBatchReport(batch, mode, items, halted, interruption)
+    const observe = (active: string | null) =>
+      options.onProgress?.({ report: report(), active_entity_id: active })
+    observe(null)
+    for (const [index, item] of batch.items.entries()) {
       const identity = { entity_id: item.request.entity_id, reused: false }
-      if (item.status === "preparation_failed") {
-        items.push({ ...identity, plan_id: null, status: item.status, error: item.error })
-        continue
-      }
+      if (item.status === "preparation_failed") continue
       const plan_id = item.plan.plan_id
-      if (halted) {
-        items.push({ ...identity, plan_id, status: "not_started" })
-        continue
-      }
+      if (halted) break
+      observe(identity.entity_id)
       const result = yield* executeInventoryImport(library, item.plan, options).pipe(Effect.result)
       if (result._tag === "Failure") {
-        items.push({ ...identity, plan_id, status: "failed", error: errorInfo(result.failure) })
+        const exhausted = result.failure.code === "REQUEST_BUDGET_EXHAUSTED"
+        items[index] = {
+          ...identity,
+          plan_id,
+          status: exhausted ? "interrupted" : "failed",
+          error: errorInfo(result.failure),
+        }
+        if (exhausted) interruption = errorInfo(result.failure)
         halted =
-          !options.dryRun && !options.reconcile && !isolatedContentErrors.has(result.failure.code)
+          exhausted ||
+          (!options.dryRun && !options.reconcile && !isolatedContentErrors.has(result.failure.code))
       } else {
         const verified = "verified" in result.success && result.success.verified === true
-        items.push({
+        items[index] = {
           ...identity,
           plan_id,
           status: options.dryRun ? "validated" : verified ? "confirmed" : "failed",
           reused: "reused" in result.success && result.success.reused === true,
           result: result.success,
-        })
+        }
         halted = !options.dryRun && !options.reconcile && !verified
       }
+      observe(null)
     }
-    const count = (status: BatchOutcome["status"]) =>
-      items.filter((item) => item.status === status).length
-    return {
-      batch_id: batch.batch_id,
-      mode: options.reconcile ? "reconcile" : options.dryRun ? "dry_run" : "apply",
-      execution_complete: count("not_started") === 0,
-      all_confirmed: count("confirmed") === items.length,
-      halted,
-      atomic: false,
-      counts: {
-        total: items.length,
-        confirmed: count("confirmed"),
-        reused: items.filter((item) => item.status === "confirmed" && item.reused).length,
-        validated: count("validated"),
-        preparation_failed: count("preparation_failed"),
-        failed: count("failed"),
-        not_started: count("not_started"),
-      },
-      items,
-      measurement: "invocation_outcomes_not_first_pass_success_rate",
-      recovery: "reuse_original_batch_and_child_journals; unknown_writes_are_not_replayed",
-      ...(options.dryRun || options.reconcile ? { remote_writes: 0 } : {}),
-    }
+    return report()
   })
   return options.dryRun || options.reconcile ? work.pipe(withReadOnlyNotion) : work
 }

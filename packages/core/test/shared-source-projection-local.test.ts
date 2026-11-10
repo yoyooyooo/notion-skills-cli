@@ -59,6 +59,7 @@ const prepare = (
   acquired: SourceSnapshot,
   files: PortableSkill["files"],
   baseline = f.snapshot,
+  markdownImport = false,
 ) =>
   f.run(
     Effect.gen(function* () {
@@ -69,12 +70,120 @@ const prepare = (
         member: "skills/demo",
         skillId: "local-source-skill",
         enabled: true,
+        ...(markdownImport ? { markdownImport: true as const } : {}),
         local: { baseline, files },
       })
     }),
   )
 
 describe("complete local customization of a proven immutable C1", () => {
+  test("Notion formatting preserves C1 ancestry, custom overrides and deleted documents while following files consume C2", async () => {
+    const f = fixture(
+      [{ path: "old.md", bytes: encode("# Old document\n\nKeep its history.\n"), mode: "100644" }],
+      {
+        recovery: true,
+        readback: (wire) => wire.replace(/<h1>(.*?)<\/h1>/u, "### $1") + "\n",
+      },
+    )
+    const original = f.snapshot.members[0]!.portable.files
+    const selectedFiles = original.map((file) =>
+      file.path === "data/options.json" ? { ...file, bytes: encode('{"selected":"C2"}\n') } : file,
+    )
+    const selected = revision(f.snapshot, selectedFiles)
+    f.registerSnapshot(selected)
+    const local = original
+      .filter((file) => file.path !== "old.md")
+      .map((file) =>
+        file.path === "SKILL.md"
+          ? {
+              ...file,
+              bytes: encode(
+                "---\nname: Authored local\ndescription: Keep local intent\nlicense: Local\n---\n\n# N1 main\n\n[Guide](references/a.md)\n",
+              ),
+            }
+          : file.path === "references/a.md"
+            ? { ...file, bytes: encode("# N1 guide\n\nKeep these custom instructions.\n") }
+            : file.path === "scripts/run.js"
+              ? { ...file, bytes: encode("#!/usr/bin/env node\nconsole.log('local')\n") }
+              : file,
+      )
+    const plan = await prepare(f, selected, local, f.snapshot, true)
+    expect(plan.files.every((file) => file.projection.version === 14)).toBe(true)
+    const frozen = canonicalSharedJson(plan)
+    const created = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    const records = await f.run(
+      querySharedRecords(library, { skillPageId: created.skill_page_id, kind: "file_event" }),
+    )
+    const events = records.map((row) => decode(FileEventSchema, row.payload))
+    for (const file of plan.files) {
+      const actual = resolveFileState(
+        file.file_id,
+        events.filter((event) => event.file_id === file.file_id),
+      )
+      expect(actual.ownership.kind).toBe(file.path === "old.md" ? "tombstone" : "custom")
+      for (const ancestor of file.ancestors ?? []) expect(events).toContainEqual(ancestor)
+      expect(file.ancestors?.[0]).toMatchObject({ source_revision: f.snapshot.revision })
+      if (file.event.kind === "deleted") {
+        expect(actual.heads).toEqual([file.event.event_id])
+        expect(actual.ownership).toEqual({ kind: "tombstone", retained: file.event.retained })
+      } else expect(actual.heads).not.toEqual([file.event.event_id])
+    }
+    expect(created.expected_source_projection?.source_revision).toBe(selected.revision)
+    for (const before of fixedProjection(plan).local!.baseline_inputs) {
+      const body = await f.run(
+        loadSharedResourceContent(library, {
+          skillPageId: created.skill_page_id,
+          content: before.prepared.content,
+        }),
+      )
+      expect(body.bytes).toEqual(
+        new Uint8Array(original.find((file) => file.path === before.path)!.bytes),
+      )
+    }
+    f.base.json.clear()
+    f.base.objects.clear()
+    f.clear()
+    const snapshot = await f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: created.skill_page_id,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+          readOnly: true,
+        })
+      }),
+    )
+    expect(snapshot.files.some((file) => file.path === "old.md")).toBe(false)
+    const main = snapshot.files.find((file) => file.path === "SKILL.md")!
+    const mainText = new TextDecoder().decode(f.base.objects.get(`objects/${main.sha256}`))
+    expect(mainText).toContain("### N1 main")
+    expect(mainText).toContain('"license": "Local"')
+    const guide = snapshot.files.find((file) => file.path === "references/a.md")!
+    expect(new TextDecoder().decode(f.base.objects.get(`objects/${guide.sha256}`))).toContain(
+      "### N1 guide",
+    )
+    for (const path of ["data/options.json", "scripts/run.js", "assets/icon.png"]) {
+      const file = snapshot.files.find((file) => file.path === path)!
+      const expected = (path === "scripts/run.js" ? local : selectedFiles).find(
+        (file) => file.path === path,
+      )!
+      expect(f.base.objects.get(`objects/${file.sha256}`)).toEqual(expected.bytes)
+      expect(file.mode).toBe(expected.mode)
+    }
+    expect(() => verifySharedCreatedSnapshot(snapshot, created)).not.toThrow()
+    const restored = await f.run(
+      loadSharedCreatePlan(library, {
+        skillPageId: created.skill_page_id,
+        operationId: plan.operation_id,
+      }),
+    )
+    expect(canonicalSharedJson(restored)).toBe(frozen)
+    expect((await f.run(reconcileSharedCreate(library, restored))).reused).toBe(true)
+    expect(f.writes()).toHaveLength(0)
+  })
+
   test("C1 ancestry and N1 bytes remain independent from selected C2 through cold complete consumption", async () => {
     const f = fixture(),
       originals = f.snapshot.members[0]!.portable.files

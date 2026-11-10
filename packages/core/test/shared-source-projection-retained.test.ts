@@ -38,8 +38,11 @@ const adapters: readonly SourceDefinitionInput["adapter"][] = [
   { type: "github-market", url: "https://skills.sh/team/repository/skill" },
   { type: "linear", resources: [{ kind: "issue", id: "OWNED-1", path: "SKILL.md" }] },
 ]
-function retainedFixture(adapter = adapters[1]!) {
-  const f = fixture()
+function retainedFixture(
+  adapter = adapters[1]!,
+  options: { readonly markdownImport?: true; readonly readback?: (wire: string) => string } = {},
+) {
+  const f = fixture([], { ...options, recovery: options.markdownImport === true })
   for (const [key, value] of Object.entries(
     sourceDefinitionPropertiesFor(library, { ...input, adapter }),
   ))
@@ -61,6 +64,7 @@ function retainedFixture(adapter = adapters[1]!) {
           member: "skills/demo",
           skillId: "retained-initial-skill",
           enabled,
+          ...(options.markdownImport === true ? { markdownImport: true as const } : {}),
         })
       }),
     )
@@ -68,6 +72,75 @@ function retainedFixture(adapter = adapters[1]!) {
 }
 
 describe("retained initial source projection in the original create kernel", () => {
+  for (const adapter of adapters)
+    test(`${adapter.type} import accepts reading-page formatting while cold consumers keep the retained source`, async () => {
+      const f = retainedFixture(adapter, {
+        markdownImport: true,
+        readback: (wire) => wire.replace(/<h1>(.*?)<\/h1>/u, "### $1") + "\n",
+      })
+      const plan = await f.prepare()
+      const frozen = canonicalSharedJson(plan)
+      expect(plan.files.every((file) => file.projection.version === 14)).toBe(true)
+      const created = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+      expect(property(property(created).markdown_acceptance)).toMatchObject({
+        policy: "notion_import_readback_v1",
+        roundtrip_required: false,
+      })
+      expect(f.base.bodies.get(created.skill_page_id)).toContain("### Initial")
+      const selection = created.expected_source_projection!
+      expect(selection.source_revision).toBe(selection.source_id)
+      expect(selection.source_id).toMatch(/^bundle-[a-f0-9]{64}$/u)
+      const facts = await f.run(
+        querySharedRecords(library, {
+          skillPageId: created.skill_page_id,
+          kind: "file_event",
+        }),
+      )
+      for (const row of facts) {
+        const event = decode(FileEventSchema, row.payload)
+        expect(event.kind).toBe("projected")
+        expect(resolveFileState(event.file_id, [event]).ownership.kind).toBe("following")
+      }
+      f.base.json.clear()
+      f.base.objects.clear()
+      f.clear()
+      const snapshot = await f.run(
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library,
+            target: created.skill_page_id,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            readOnly: true,
+          })
+        }),
+      )
+      for (const original of f.snapshot.members[0]!.portable.files.filter(
+        (file) => file.path !== "SKILL.md",
+      )) {
+        const file = snapshot.files.find((file) => file.path === original.path)!
+        expect(file.mode).toBe(original.mode)
+        expect(f.base.objects.get(`objects/${file.sha256}`)).toEqual(original.bytes)
+      }
+      const main = snapshot.files.find((file) => file.path === "SKILL.md")!
+      const mainText = new TextDecoder().decode(f.base.objects.get(`objects/${main.sha256}`))
+      expect(mainText).toContain("# Initial")
+      expect(mainText).not.toContain("### Initial")
+      expect(() => verifySharedCreatedSnapshot(snapshot, created)).not.toThrow()
+      const restored = await f.run(
+        loadSharedCreatePlan(library, {
+          skillPageId: created.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      )
+      expect(canonicalSharedJson(restored)).toBe(frozen)
+      expect((await f.run(reconcileSharedCreate(library, restored))).reused).toBe(true)
+      expect(f.writes()).toHaveLength(0)
+      expect(f.providerReads()).toBe(0)
+      expect(canonicalSharedJson(plan)).toBe(frozen)
+    })
+
   for (const adapter of adapters)
     test(`the complete ${adapter.type} member derives its real page-bound bundle only after allocation`, async () => {
       const f = retainedFixture(adapter),

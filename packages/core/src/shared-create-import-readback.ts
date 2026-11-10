@@ -38,8 +38,6 @@ const checked = <A>(fn: () => A) =>
 export function acceptsNativeImportReadback(plan: SharedCreatePlan): boolean {
   return (
     plan.version === 1 &&
-    (plan.source_projection === undefined ||
-      (plan.source_projection.version === 1 && plan.source_projection.local === undefined)) &&
     plan.files.length > 0 &&
     plan.files.every((file) => file.projection.version === 14)
   )
@@ -48,16 +46,16 @@ export function acceptsNativeImportReadback(plan: SharedCreatePlan): boolean {
 function withObservedBody(file: NativeFile, markdown: string) {
   return Effect.gen(function* () {
     if (
-      (file.event.kind !== "adopted" && file.event.kind !== "projected") ||
-      file.ancestors !== undefined
+      file.event.kind !== "adopted" &&
+      file.event.kind !== "projected" &&
+      file.event.kind !== "deleted"
     )
       return yield* Effect.fail(
-        fail(
-          "SHARED_CREATE_SCOPE",
-          "Import readback must retain native or fixed-source ownership without changing ancestry.",
-        ),
+        fail("SHARED_CREATE_SCOPE", "Import readback requires a resolved initial ownership event."),
       )
     yield* checked(() => assertImportedMarkdownContent(file.projection.markdown, markdown))
+    // A tombstone retains the pre-deletion version, not its reading-page rendering.
+    if (file.event.kind === "deleted") return { ...file, event: file.event }
     const hash = yield* sha256(markdown)
     const content = {
       ...file.content,
@@ -158,7 +156,7 @@ export function restoreNativeImportReadbacks(
           )
         const event = yield* checked(() => decode(FileEventSchema, row.payload))
         if (
-          (event.kind !== "adopted" && event.kind !== "projected") ||
+          (event.kind !== "adopted" && event.kind !== "projected" && event.kind !== "deleted") ||
           event.file_id !== file.file_id ||
           event.event_id !== binding.event_id
         )
@@ -171,47 +169,49 @@ export function restoreNativeImportReadbacks(
         const markdown =
           event.kind === "adopted"
             ? (yield* loadRetainedBody(plan.library, skillPage, event.content)).markdown
-            : yield* Effect.gen(function* () {
-                const objectId = `body-${event.projection.sha256}`
-                const bodies = yield* querySharedRecords(plan.library, {
-                  skillPageId: skillPage,
-                  kind: "object",
-                  entityId: objectId,
-                  recordId: objectId,
-                  payloadContainsBody: true,
+            : event.kind === "deleted"
+              ? (yield* loadRetainedBody(plan.library, skillPage, event.retained)).markdown
+              : yield* Effect.gen(function* () {
+                  const objectId = `body-${event.projection.sha256}`
+                  const bodies = yield* querySharedRecords(plan.library, {
+                    skillPageId: skillPage,
+                    kind: "object",
+                    entityId: objectId,
+                    recordId: objectId,
+                    payloadContainsBody: true,
+                  })
+                  const body = bodies[0]
+                  if (
+                    bodies.length !== 1 ||
+                    body === undefined ||
+                    body.operation_id !== `retain-${event.projection.sha256}`
+                  )
+                    return yield* Effect.fail(
+                      fail(
+                        "RETAINED_BODY_UNAVAILABLE",
+                        "The original reading-page baseline is unavailable.",
+                      ),
+                    )
+                  const payload = yield* checked(() =>
+                    decode(
+                      Schema.Struct({
+                        version: Schema.Literal(1),
+                        kind: Schema.Literal("normalized_markdown"),
+                        normalization_version: Schema.Literal(1),
+                        markdown: Schema.String,
+                      }),
+                      body.payload,
+                    ),
+                  )
+                  if ((yield* sha256(payload.markdown)) !== event.projection.sha256)
+                    return yield* Effect.fail(
+                      fail(
+                        "RETAINED_BODY_INVALID",
+                        "The retained reading-page baseline differs from its initial fingerprint.",
+                      ),
+                    )
+                  return payload.markdown
                 })
-                const body = bodies[0]
-                if (
-                  bodies.length !== 1 ||
-                  body === undefined ||
-                  body.operation_id !== `retain-${event.projection.sha256}`
-                )
-                  return yield* Effect.fail(
-                    fail(
-                      "RETAINED_BODY_UNAVAILABLE",
-                      "The original reading-page baseline is unavailable.",
-                    ),
-                  )
-                const payload = yield* checked(() =>
-                  decode(
-                    Schema.Struct({
-                      version: Schema.Literal(1),
-                      kind: Schema.Literal("normalized_markdown"),
-                      normalization_version: Schema.Literal(1),
-                      markdown: Schema.String,
-                    }),
-                    body.payload,
-                  ),
-                )
-                if ((yield* sha256(payload.markdown)) !== event.projection.sha256)
-                  return yield* Effect.fail(
-                    fail(
-                      "RETAINED_BODY_INVALID",
-                      "The retained reading-page baseline differs from its initial fingerprint.",
-                    ),
-                  )
-                return payload.markdown
-              })
         const resolved = yield* withObservedBody(file, markdown)
         if (canonicalSharedJson(resolved.event) !== canonicalSharedJson(event))
           return yield* Effect.fail(

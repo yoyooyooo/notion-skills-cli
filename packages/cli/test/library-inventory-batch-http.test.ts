@@ -33,6 +33,7 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
   const errors: string[] = []
   const commands: unknown[] = []
   let hiddenIdentityQueries = 0
+  let delayedReadTarget: string | undefined
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -50,6 +51,12 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
             bot: { workspace_id: id(100) },
           })
         const body = method === "GET" ? undefined : await request.json()
+        if (
+          delayedReadTarget !== undefined &&
+          url.pathname === `/v1/data_sources/${f.library.records.data_source_id}/query` &&
+          JSON.stringify(body).includes(delayedReadTarget)
+        )
+          await new Promise((resolve) => setTimeout(resolve, 10000))
         const parent = property(property(body).parent).data_source_id
         const filter = property(property(body).filter)
         if (
@@ -232,6 +239,24 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
     f.clear()
     const repeated = await invoke(applyArgs)
     expect(repeated.counts).toMatchObject({ confirmed: 2, reused: 2 })
+    expect(f.writes()).toHaveLength(0)
+    const delayed = [...f.skills.values()].find((row) =>
+      JSON.stringify(row.properties).includes("http-batch-second"),
+    )
+    if (typeof delayed?.id !== "string") throw new Error("Expected the second imported page")
+    delayedReadTarget = delayed.id
+    const paused = await invoke([...applyArgs, "--duration-ms", "5000"], [75])
+    expect(paused).toMatchObject({
+      all_confirmed: false,
+      execution_complete: false,
+      halted: true,
+      interruption: { code: "REQUEST_BUDGET_EXHAUSTED" },
+      counts: { total: 2, confirmed: 1, reused: 1, interrupted: 1 },
+    })
+    expect(f.writes()).toHaveLength(0)
+    delayedReadTarget = undefined
+    const resumed = await invoke(applyArgs)
+    expect(resumed.counts).toMatchObject({ total: 2, confirmed: 2, reused: 2, interrupted: 0 })
     expect(f.writes()).toHaveLength(0)
     const relocated = join(directory, "relocated-inputs")
     await cp(inputs, relocated, { recursive: true })
