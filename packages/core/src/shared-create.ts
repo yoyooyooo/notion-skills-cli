@@ -69,6 +69,13 @@ import {
 import { completedSharedCreateRecovery } from "./shared-create-recovery-completion.ts"
 import { completedSharedCreatePrefixRecovery } from "./shared-create-recovery-prefix-completion.ts"
 import { readSharedCreateNativeCompletion } from "./shared-create-recovery-native-completion.ts"
+import {
+  validateSharedCreateRestorationReview,
+  saveSharedCreateRestorationCompletion,
+  readSharedCreateRestoration,
+  sharedCreateRestorationOutcomesEntity,
+  type SharedCreateRestorationReview,
+} from "./shared-create-restoration.ts"
 import { saveSharedCreateOwnership } from "./shared-create-ownership.ts"
 import {
   validateRetainedMigrationConversion,
@@ -1361,7 +1368,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
           page,
         ),
       )
-    const outcome = yield* createChecked(() => decodeOutcome(row))
+    let outcome = yield* createChecked(() => decodeOutcome(row))
     if (
       outcome.skill_id !== plan.skill_id ||
       outcome.skill_page_id !== page ||
@@ -1390,6 +1397,10 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       return yield* Effect.fail(
         fail("SHARED_CREATE_SCOPE", "The exact original outcome belongs to another Skill."),
       )
+    if (outcome.status === "needs_review") {
+      const restored = yield* readSharedCreateRestoration(library, plan, page, outcome, row.hash)
+      if (restored !== undefined) outcome = restored.outcome
+    }
     if (outcome.status !== "applied")
       return yield* Effect.fail(
         recover(
@@ -1544,10 +1555,15 @@ export function executeSharedCreate(
     readonly plan: SharedCreatePlan
     readonly mode: "create" | "reconcile"
     readonly migrationInput?: unknown
+    readonly restoration?: SharedCreateRestorationReview
   },
 ) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedCreatePlan(input.plan)
+    const restoration =
+      input.restoration === undefined
+        ? undefined
+        : (yield* validateSharedCreateRestorationReview(input.restoration, plan)).review
     if (input.mode === "reconcile") return yield* reconcileSharedCreate(library, plan)
     if (input.mode !== "create")
       return yield* Effect.fail(
@@ -1573,7 +1589,12 @@ export function executeSharedCreate(
     const beforeDispatch = Effect.gen(function* () {
       // Legacy native/migration plans retain their original review and recovery
       // protocol. The complete-resource/source contract opts into fresh stages.
-      if (plan.complete_resources !== 1 && plan.source_projection === undefined) return
+      if (
+        plan.complete_resources !== 1 &&
+        plan.source_projection === undefined &&
+        restoration === undefined
+      )
+        return
       if (lastCheckedStage === stage) return
       yield* verifyLibrary(library, plan)
       // Immutable chunks within one stage share its checked intent. Every new
@@ -1609,14 +1630,23 @@ export function executeSharedCreate(
       if (reconciled._tag === "Success") return reconciled.success
       if (
         !resumable ||
-        !["SHARED_CREATE_UNRESOLVED", "SHARED_RECORD_UNRESOLVED"].includes(
-          reconciled.failure.code,
-        ) ||
+        ![
+          "SHARED_CREATE_UNRESOLVED",
+          "SHARED_RECORD_UNRESOLVED",
+          ...(restoration === undefined ? [] : ["SHARED_CREATE_REVIEW_REQUIRED"]),
+        ].includes(reconciled.failure.code) ||
         !(yield* dispatch.canResume)
       )
         return yield* Effect.fail(reconciled.failure)
     }
     const store = yield* Store
+    if (restoration !== undefined && !original)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_RESTORATION_REQUIRED",
+          "Restoration cannot start a new original create.",
+        ),
+      )
     if (!original)
       yield* store.writeJson(key, {
         version: 1,
@@ -1903,16 +1933,19 @@ export function executeSharedCreate(
       yield* verifyIndex(library, facts, skillPage, bindings, shouldEnable)
       yield* verifyFacts(library, facts, skillPage)
       stage = "outcome"
-      yield* saveOutcome(
-        library,
-        plan,
-        skillPage,
-        "applied",
-        acceptReadback
-          ? "IMPORTED_READBACK_AND_RESOURCES_VERIFIED"
-          : "EXACT_NATIVE_TREE_AND_EVENTS_VERIFIED",
-        bindings,
-      )
+      if (restoration !== undefined)
+        yield* saveSharedCreateRestorationCompletion(library, plan, restoration, bindings)
+      else
+        yield* saveOutcome(
+          library,
+          plan,
+          skillPage,
+          "applied",
+          acceptReadback
+            ? "IMPORTED_READBACK_AND_RESOURCES_VERIFIED"
+            : "EXACT_NATIVE_TREE_AND_EVENTS_VERIFIED",
+          bindings,
+        )
       yield* retire(plan, scope, bindings)
       const current = yield* api.request(`v1/pages/${skillPage}`)
       const record = yield* createChecked(() =>
@@ -1966,6 +1999,7 @@ export function executeSharedCreate(
           // A known semantic mismatch gets a small review fact. An uncertain
           // transport result never triggers another POST, PATCH, rollback or retry.
           if (
+            restoration === undefined &&
             skillPage !== undefined &&
             [
               "BODY_INCOMPLETE",
@@ -2031,7 +2065,25 @@ export function loadPendingSharedCreates(
     }
     const pending: SharedCreatePlan[] = []
     for (const header of candidates) {
-      const terminal = outcomes.get(header.record_id)
+      let terminal = outcomes.get(header.record_id)
+      if (
+        terminal?.status === "needs_review" &&
+        headers.some((item) => item.entity_id === sharedCreateRestorationOutcomesEntity)
+      ) {
+        const plan = yield* loadSharedCreatePlan(library, {
+          skillPageId: input.skillPageId,
+          operationId: header.record_id,
+        })
+        const restored = yield* readSharedCreateRestoration(
+          library,
+          plan,
+          input.skillPageId,
+          terminal,
+          outcomeHashes.get(header.record_id)!,
+          input.events,
+        )
+        if (restored !== undefined) terminal = restored.outcome
+      }
       if (terminal?.status === "applied") {
         if (terminal.version === 2 && terminal.manifest_record_hash !== header.hash)
           return yield* Effect.fail(

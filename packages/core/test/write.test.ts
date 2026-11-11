@@ -902,6 +902,25 @@ test("operation summaries hide private receipt fields and scope foreign publicat
   expect(hidden._tag === "Failure" && hidden.failure.code).toBe("OPERATION_NOT_FOUND")
 })
 
+test("a native create ID is routed before unrelated upstream history or authentication", async () => {
+  const f = fixture()
+  const id = "skill-create-" + "a".repeat(64)
+  f.json.set("upstream/commands/unrelated.json", { malformed: true })
+  const result = await f.run(showOperation(id).pipe(Effect.result))
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      code: "NATIVE_CREATE_PLAN_REQUIRED",
+      details: {
+        operation_id: id,
+        domain: "shared_native_create",
+        next: { command: "ctl library create recovery review", original_plan_required: true },
+      },
+    },
+  })
+  expect(f.requests).toEqual([])
+})
+
 test("review operations remain accessible without authenticating and never replay", async () => {
   const f = fixture()
   const id = "p_local_review"

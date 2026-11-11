@@ -157,6 +157,28 @@ Native authoring plans freeze the original input, the request Markdown and the e
 
 The existing authoring projection preserves authored H1 headings by sending native heading tags during create and file add; body writes keep ordinary heading syntax. It predicts common inline code, bold, italic and strikethrough. Fenced code keeps literal content. CRLF becomes LF and terminal line feeds are removed before projection. An exact-readback mismatch keeps the original operation for review. These older rules are not a byte-roundtrip requirement for policy-14 imports.
 
+### Continue an original create after an exact body correction
+
+Keep the failed create's complete `error.details.recovery.plan`, original operation ID and acknowledged main page. A known `SHARED_CREATE_BODY_MISMATCH` can remain unresolved even after an explicit edit restores that same page to the exact frozen candidate. Repeating `create` does not erase the original failure. Review that precise case through the public original-create commands:
+
+```bash
+ntn-skills ctl library create recovery review ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE --output ./restoration-review.json
+
+ntn-skills ctl library create recovery apply ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --review ./restoration-review.json --review-id RETURNED_REVIEW_ID --dry-run
+
+ntn-skills ctl library create recovery apply ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --review ./restoration-review.json --review-id RETURNED_REVIEW_ID
+
+ntn-skills ctl library create recovery reconcile ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE
+```
+
+This bounded route accepts an ordinary native Markdown create whose only allocated native page is the original main. It checks the same library, original full input, failed outcome, complete original request/ACK set, unchanged metadata and relations, and complete current Markdown. The body must equal the original candidate exactly; an automatic hyperlink is not normalized away. Review and dry-run do not write. Apply preserves the main page and old `needs_review` fact, resumes only the original never-dispatched file suffix, verifies the full tree and original initial events, and retains a separate restoration completion. It does not patch an existing body or replay an unknown request. An acknowledged suffix whose readback was interrupted is observed by its exact original ACK before any further dispatch.
+
+Use the original credential scope and Store for review/apply because they contain the original durable request receipts. An independent Store can later reconcile the shared completion without those local receipts; that historical verification still needs a fresh `read` for current content. Inventory and fixed-source recoveries retain their own commands. `ctl operation show skill-create-…` identifies this native-create family and directs the caller to the original-plan route; it does not treat the identifier as a legacy resumable operation.
+
 ### Update native properties
 
 ```bash

@@ -7,6 +7,17 @@ const Attempt = Schema.String.check(
   Schema.isPattern(/^(?:skill-create|create-recovery)-[a-f0-9]{64}$/u),
 )
 
+/** Shared data-only original request/ACK commitments, independent of recovery execution. */
+export const SharedCreateKnownBootstrapSchema = Schema.Struct({
+  kind: Schema.Literals(["known_needs_review", "acknowledged_main_before_manifest"]),
+  original_journal_sha256: Hash,
+  original_dispatches_sha256: Hash,
+  allocations: Schema.Array(
+    Schema.Struct({ file_id: Identity, acknowledgement: SourceMutationAcknowledgementSchema }),
+  ),
+})
+export type SharedCreateKnownBootstrap = typeof SharedCreateKnownBootstrapSchema.Type
+
 /** Data-only ownership of the unchanged frozen create POST and original ACK.
  * Request builders, completion readers and executable recovery stay outside this leaf. */
 export const SharedCreateFrozenPostSchema = Schema.Struct({

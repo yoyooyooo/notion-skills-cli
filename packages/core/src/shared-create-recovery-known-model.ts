@@ -29,7 +29,15 @@ import {
   prepareSharedNativeAllocationProof,
   type PreparedNativeAllocationProof,
 } from "./shared-create-recovery-acknowledgements.ts"
-import { SharedNativeAllocationReferenceSchema } from "./shared-create-recovery-acknowledgement-model.ts"
+import {
+  SharedNativeAllocationReferenceSchema,
+  SharedCreateKnownBootstrapSchema,
+  type SharedCreateKnownBootstrap,
+} from "./shared-create-recovery-acknowledgement-model.ts"
+export {
+  SharedCreateKnownBootstrapSchema,
+  type SharedCreateKnownBootstrap,
+} from "./shared-create-recovery-acknowledgement-model.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const OriginalId = Schema.String.check(Schema.isPattern(/^skill-create-[a-f0-9]{64}$/u))
@@ -38,20 +46,6 @@ const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:
 const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
 const refusal = (message: string) => Effect.fail(prefixRecoveryRequired(message))
-
-/** Request bodies are derived from the full original plan, never copied into this proof. */
-export const SharedCreateKnownBootstrapSchema = Schema.Struct({
-  kind: Schema.Literals(["known_needs_review", "acknowledged_main_before_manifest"]),
-  original_journal_sha256: Hash,
-  original_dispatches_sha256: Hash,
-  allocations: Schema.Array(
-    Schema.Struct({
-      file_id: Identity,
-      acknowledgement: SourceMutationAcknowledgementSchema,
-    }),
-  ),
-})
-export type SharedCreateKnownBootstrap = typeof SharedCreateKnownBootstrapSchema.Type
 
 export function compactSharedCreateRecoveryObservation(
   observed: SharedCreateRecoveryObservation,
