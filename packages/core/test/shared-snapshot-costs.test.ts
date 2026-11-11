@@ -33,7 +33,11 @@ describe("shared snapshot controlled transport budgets", () => {
         })
         expect(unchanged.snapshot_id).toBe(first.snapshot_id)
 
-        for (const file of [f.main, ...f.files].slice(0, changedFiles)) {
+        const changedPages =
+          changedFiles === 1 && f.files[0] !== undefined
+            ? [f.files[0]]
+            : [f.main, ...f.files].slice(0, changedFiles)
+        for (const file of changedPages) {
           file.last_edited_time = new Date(
             Date.parse(String(file.last_edited_time)) + 1,
           ).toISOString()
@@ -54,6 +58,7 @@ describe("shared snapshot controlled transport budgets", () => {
                 environment: "controlled Notion service fixture; not a live HTTP measurement",
                 file_count: fileCount,
                 changed_files: changedFiles,
+                changed_page_ids: changedPages.map((file) => file.id),
                 phases: {
                   cold: { snapshot_id: first.snapshot_id, metrics: cold },
                   unchanged_online: {
@@ -82,6 +87,11 @@ describe("shared snapshot controlled transport budgets", () => {
           retained_body: 2 * changedFiles,
           unclassified_body: 0,
         })
+        expect(
+          f.calls
+            .map((call) => new URL(call.path, "https://controlled.invalid/").pathname)
+            .filter((path) => path.endsWith("/markdown")),
+        ).toEqual(changedPages.map((file) => `/v1/pages/${file.id}/markdown`))
         expect(trace.in_flight).toBe(0)
         expect(trace.unknown_response_bytes).toBe(0)
         expect(changed.snapshot_id).not.toBe(first.snapshot_id)

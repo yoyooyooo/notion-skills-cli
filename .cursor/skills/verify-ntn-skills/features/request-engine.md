@@ -109,6 +109,8 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 
 ### HTTP 账本合同
 
+AH-631 在同一 trace 的 attempt 与 queue/retry wait 上增加可选 `attribution: {phase, skill_page_id, operation_id}`。这些字段来自实际 producer 的 Effect 调用上下文，未知为 null；不包含正文、路径、token，也不授权任何操作。阶段仅为 consume、retention、author_preflight、author_apply、author_verify、reconcile；同一重试链保持原归属，离开该调用后不泄漏到下一请求。共享请求的标签只证明 producer 的阶段，不能据此把所有 waiter 归到同一 owner；批量跨 owner 的查询保留 null。旧 trace 缺字段也按 unknown 解释，不按序号猜因果。
+
 `request_metrics.trace` 是有界事件数组。attempt 事件记录序号、请求分类及 body 分类、method、发送起点、实际耗时、结果、请求/响应字节、HTTP status、request ID、reason 和 Retry-After；没有观察到的安全字段为 null。wait 事件记录 queue/retry 和实测等待毫秒。数组不保存原始路径、正文、认证头或 token，`trace_dropped` 明确指出截断，不能把不完整账本计为完整请求证据。
 
 完整空账本需要同时看到 `trace_enabled:true`、`total_requests:0`、空 trace 和 `trace_dropped:0`。service 尚未创建或失败回执没有账本时不能推断零请求。真实入口成功与失败的统一输出由 NG-RE-05 验收；retry 策略接入后还须在唯一传输循环核对 `retry_wait_ms` 的实际归因，不能添加第二次 sleep 来满足数字。

@@ -3,6 +3,52 @@ export type RequestKind = "notion_metadata" | "notion_body" | "notion_write" | "
 export type BodyRequestKind = "current_body" | "retained_body" | "unclassified_body"
 export type RequestMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE" | "HEAD"
 export type RequestOutcome = "success" | "failure" | "cancelled"
+export type RequestPhase =
+  | "consume"
+  | "retention"
+  | "author_preflight"
+  | "author_apply"
+  | "author_verify"
+  | "reconcile"
+/** The actual request producer's call context; shared waiters need their own evidence. */
+export type RequestAttribution = {
+  readonly phase: RequestPhase | null
+  readonly skill_page_id: string | null
+  readonly operation_id: string | null
+}
+export function requestAttribution(
+  value: Partial<RequestAttribution> | undefined,
+  redactedValue?: string,
+): RequestAttribution {
+  const phase = value?.phase
+  const owner = value?.skill_page_id
+  const operation = value?.operation_id
+  return {
+    phase:
+      phase !== undefined &&
+      phase !== null &&
+      [
+        "consume",
+        "retention",
+        "author_preflight",
+        "author_apply",
+        "author_verify",
+        "reconcile",
+      ].includes(phase)
+        ? phase
+        : null,
+    skill_page_id:
+      typeof owner === "string" && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/iu.test(owner)
+        ? owner.toLowerCase()
+        : null,
+    operation_id:
+      typeof operation === "string" &&
+      /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/u.test(operation) &&
+      !(redactedValue && operation.includes(redactedValue))
+        ? operation
+        : null,
+  }
+}
 /** Git fetches are subprocess acquisitions, not observable HTTP attempts. */
 export type SourceAcquisition = {
   readonly provider: "git" | "skills.sh"
@@ -167,8 +213,14 @@ export type RequestTraceEvent =
       readonly request_id: string | null
       readonly rate_limit_reason: string | null
       readonly retry_after_seconds: number | null
+      readonly attribution?: RequestAttribution
     }
-  | { readonly event: "wait"; readonly kind: "queue" | "retry"; readonly milliseconds: number }
+  | {
+      readonly event: "wait"
+      readonly kind: "queue" | "retry"
+      readonly milliseconds: number
+      readonly attribution?: RequestAttribution
+    }
 export type RequestObservation = {
   readonly path: string
   readonly method: RequestMethod
@@ -180,6 +232,7 @@ export type RequestObservation = {
   readonly target?: NotionRequestTarget | null
   /** A metadata-shaped endpoint may carry retained body bytes. Never hide them as metadata. */
   readonly content?: "body" | "current_body" | "retained_body"
+  readonly attribution?: RequestAttribution
 }
 
 export function classifyRequest(request: RequestObservation): RequestKind {
@@ -416,6 +469,9 @@ export function createRequestMetrics(
           kind,
           body_kind: bodyKind ?? null,
           target,
+          ...(request.attribution === undefined
+            ? {}
+            : { attribution: requestAttribution(request.attribution) }),
           method: request.method,
           started_ms: sentAt,
           duration_ms: elapsed,
@@ -443,11 +499,16 @@ export function createRequestMetrics(
     coalesced() {
       coalesced += 1
     },
-    wait(milliseconds: number, kind: "queue" | "retry") {
+    wait(milliseconds: number, kind: "queue" | "retry", attribution?: RequestAttribution) {
       nonNegative(milliseconds, "wait")
       if (kind === "queue") queueWait += milliseconds
       else retryWait += milliseconds
-      retain({ event: "wait", kind, milliseconds })
+      retain({
+        event: "wait",
+        kind,
+        milliseconds,
+        ...(attribution === undefined ? {} : { attribution: requestAttribution(attribution) }),
+      })
     },
     /** Record one real end-to-end operation, not one request or an invented matrix sample. */
     operation(milliseconds: number) {

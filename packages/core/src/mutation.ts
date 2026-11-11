@@ -24,7 +24,7 @@ import {
   validateDescription,
 } from "./model.ts"
 import type { Snapshot, Source } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import { fileRef, normalizePath, pageId, parseTarget } from "./ref.ts"
 import { openSkill, targetSnapshot, snapshotInfo } from "./snapshot.ts"
 import { sha256, Store } from "./store.ts"
@@ -373,6 +373,15 @@ function writeSkillCurrent(inputTarget: string, options: WriteOptions) {
         database: selectedDatabase,
         refresh: true,
       }).pipe(
+        (effect) =>
+          withNotionRequestAttribution(effect, {
+            phase: "author_verify",
+            skill_page_id:
+              current.record.locator.type === "shared_skill"
+                ? current.record.locator.page_id
+                : null,
+            operation_id: result.operation_id,
+          }),
         Effect.mapError((error) =>
           fail(
             "SHARED_WRITE_REFRESH_FAILED",
@@ -542,7 +551,13 @@ function sharedApplyResult(
     const after = yield* openSkill(locator.page_id, {
       database: locator.database_id,
       refresh: true,
-    })
+    }).pipe((effect) =>
+      withNotionRequestAttribution(effect, {
+        phase: "author_verify",
+        skill_page_id: locator.page_id,
+        operation_id: result.operation_id,
+      }),
+    )
     yield* Effect.try({
       try: () => {
         if (after.record.id !== current.record.id)

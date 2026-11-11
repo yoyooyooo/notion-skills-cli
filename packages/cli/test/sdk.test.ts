@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import * as publicSdk from "../src/sdk.ts"
 import { Effect, Path } from "effect"
 import {
   consume,
@@ -17,6 +18,7 @@ import {
   RESOURCE_READ_CONTRACT_VERSION,
   READ_OUTPUT_PROOF_VERSION,
   CATALOG_DIRECTORY_CONTRACT_VERSION,
+  CONSUMPTION_EFFECTS_VERSION,
 } from "../src/sdk.ts"
 import { nodeRuntime } from "../src/runtime.ts"
 
@@ -134,6 +136,7 @@ describe("Promise SDK boundary", () => {
   })
 
   test("an already aborted signal proves no transport and read uses the exported typed error", async () => {
+    expect(CONSUMPTION_EFFECTS_VERSION).toBe(1)
     const controller = new AbortController()
     controller.abort()
     const reports: unknown[] = []
@@ -143,13 +146,23 @@ describe("Promise SDK boundary", () => {
         signal: controller.signal,
         onRequestMetrics: (snapshot) => reports.push(snapshot),
       }),
-    ).toEqual({ version: 1, status: "cancelled", reason: "interrupted" })
+    ).toEqual({
+      version: 1,
+      status: "cancelled",
+      reason: "interrupted",
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+    })
     await expect(
       readSkill(input.targets[0]!, { env: {}, signal: controller.signal }),
     ).rejects.toBeInstanceOf(SkillsError)
     await expect(
       readSkill(input.targets[0]!, { env: {}, signal: controller.signal }),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
+    ).rejects.toMatchObject({
+      code: "CANCELLED",
+      details: {
+        effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+      },
+    })
     expectUnstartedMetrics(reports, 1)
   })
 
@@ -205,6 +218,7 @@ describe("Promise SDK boundary", () => {
   })
 
   test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {
+    expect(Reflect.get(publicSdk, "RESOURCE_READ_EFFECTS_VERSION")).toBe(1)
     expect([
       SDK_VERSION,
       CONSUMER_CONTRACT_VERSION,
@@ -219,7 +233,11 @@ describe("Promise SDK boundary", () => {
       { version: 1, refs: [resourceRef], budget: { timeBudgetMs: 120_001 } },
     ])
       expect(
-        await readResources(input, { env: {}, onRequestMetrics: (value) => reports.push(value) }),
+        await readResources(input, {
+          env: {},
+          readOnly: true,
+          onRequestMetrics: (value) => reports.push(value),
+        }),
       ).toMatchObject({ status: "failed", error: { code: "INVALID_ARGUMENT" } })
     expectUnstartedMetrics(reports, 4)
   })
@@ -233,11 +251,17 @@ describe("Promise SDK boundary", () => {
         { version: 1, refs: [resourceRef] },
         {
           env: {},
+          readOnly: true,
           signal: controller.signal,
           onRequestMetrics: (value) => reports.push(value),
         },
       ),
-    ).toEqual({ version: 1, status: "cancelled", reason: "interrupted" })
+    ).toEqual({
+      version: 1,
+      status: "cancelled",
+      reason: "interrupted",
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+    })
     expectUnstartedMetrics(reports, 1)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toBeInstanceOf(SkillsError)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toMatchObject({

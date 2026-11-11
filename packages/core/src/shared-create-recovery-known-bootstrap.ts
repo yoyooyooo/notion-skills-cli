@@ -11,6 +11,7 @@ import {
   sharedCreateManifest,
   sharedCreateManifestEntity,
   sharedCreateOutcomesEntity,
+  type SharedCreatePlan,
 } from "./shared-create-model.ts"
 import {
   decodeSharedCreateOutcome,
@@ -19,7 +20,6 @@ import {
   type SharedCreateBinding,
 } from "./shared-create-outcome.ts"
 import {
-  knownRecoveryPlan,
   SharedCreateKnownBootstrapSchema,
   type SharedCreateKnownBootstrap,
   type SharedCreateKnownRecoveryReview,
@@ -48,7 +48,7 @@ import {
 import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
 import { sha256, Store } from "./store.ts"
 
-type Plan = Effect.Success<ReturnType<typeof knownRecoveryPlan>>
+type Plan = SharedCreatePlan
 type Dispatch = typeof SharedCreatePrefixBootstrapSchema.fields.dispatch.Type
 type Acknowledgement = typeof SourceMutationAcknowledgementSchema.Type
 const same = (left: unknown, right: unknown) =>
@@ -59,7 +59,7 @@ type Fact = {
   readonly record_id: string
   readonly operation_id: string
   readonly entity_id: string
-  readonly kind: "operation" | "object" | "source"
+  readonly kind: SharedRecord["kind"]
   readonly payload: unknown
   readonly hash: string
 }
@@ -140,6 +140,9 @@ export function originalKnownCreateBootstrap(
   },
 ) {
   return Effect.gen(function* () {
+    if (plan.version !== 1 || plan.source_projection?.version === 2)
+      return yield* refusal("Select an original native or fixed-Git v1 create.")
+    const selectedSource = plan.source_projection?.binding
     const store = yield* Store,
       scope = yield* authScope,
       api = yield* Notion
@@ -248,14 +251,19 @@ export function originalKnownCreateBootstrap(
         outcome.operation_id !== plan.operation_id ||
         outcome.skill_id !== plan.skill_id ||
         outcome.skill_page_id !== page ||
-        !same(outcome.source_projection, {
-          source_id: plan.source_projection.binding.source_id,
-          revision: plan.source_projection.binding.commit,
-          manifest_record_hash: manifestHash,
-        })
+        !same(
+          outcome.source_projection ?? null,
+          selectedSource === undefined
+            ? null
+            : {
+                source_id: selectedSource.source_id,
+                revision: selectedSource.commit,
+                manifest_record_hash: manifestHash,
+              },
+        )
       )
         return yield* refusal(
-          "Only the exact original fixed Git body-mismatch terminal can enter known-failure recovery.",
+          "Only the exact original body-mismatch terminal can enter known-failure recovery.",
         )
       bindings = outcome.bindings
       if (
@@ -300,14 +308,14 @@ export function originalKnownCreateBootstrap(
           sharedCreateBodyPayload(file.projection.markdown),
         )
       }
-      const source = plan.source_projection.binding
-      yield* addFact(
-        source.source_id,
-        "register-" + source.source_id,
-        source.source_id,
-        "source",
-        source,
-      )
+      if (selectedSource !== undefined)
+        yield* addFact(
+          selectedSource.source_id,
+          "register-" + selectedSource.source_id,
+          selectedSource.source_id,
+          "source",
+          selectedSource,
+        )
       yield* addFact(
         outcomeRow.record_id,
         plan.operation_id,
@@ -324,10 +332,15 @@ export function originalKnownCreateBootstrap(
           "The exact original manifest and known terminal must remain the complete operation set.",
         )
       for (const row of operations) remoteFacts.set(row.record_id, row)
-      const sourceFact = facts.get(source.source_id)!
-      if (sourceRows.length !== 1 || !matchesFact(sourceRows[0]!, sourceFact, page))
-        return yield* refusal("The original complete fixed Source binding is missing or changed.")
-      remoteFacts.set(sourceRows[0]!.record_id, sourceRows[0]!)
+      if (selectedSource === undefined) {
+        if (sourceRows.length !== 0)
+          return yield* refusal("The original native create acquired an unrelated Source.")
+      } else {
+        const sourceFact = facts.get(selectedSource.source_id)!
+        if (sourceRows.length !== 1 || !matchesFact(sourceRows[0]!, sourceFact, page))
+          return yield* refusal("The original complete fixed Source binding is missing or changed.")
+        remoteFacts.set(sourceRows[0]!.record_id, sourceRows[0]!)
+      }
       const objects = [...facts.values()].filter((fact) => fact.kind === "object")
       for (let offset = 0; offset < objects.length; offset += 80) {
         const selected = objects.slice(offset, offset + 80)
@@ -370,13 +383,12 @@ export function originalKnownCreateBootstrap(
     const seenFacts = new Set<string>(),
       seenNative = new Set<string>(),
       seenPages = new Set<string>()
-    for (const key of yield* store.listKeys("operations/shared-sources/")) {
-      if (!/\/source-op-[a-f0-9]{64}\.json$/u.test(key)) continue
+    const dispatchKeys = yield* store.listKeys("operations/shared-sources/")
+    for (const key of dispatchKeys) {
+      if (!key.startsWith(root) || !/\/source-op-[a-f0-9]{64}\.json$/u.test(key)) continue
       const saved = yield* store.readJson(key, Schema.Unknown)
       const identity = property(saved).identity
       if (typeof identity !== "string" || !identity.startsWith(plan.operation_id + ":")) continue
-      if (!key.startsWith(root))
-        return yield* refusal("An original dispatch exists in another credential namespace.")
       const dispatch = yield* createChecked(() =>
         Schema.decodeUnknownSync(SharedCreatePrefixBootstrapSchema.fields.dispatch)(saved, {
           onExcessProperty: "error",
@@ -384,7 +396,10 @@ export function originalKnownCreateBootstrap(
       )
       if (
         !same(dispatch, yield* originalRequest(plan, dispatch.body)) ||
-        key !== root + dispatch.operation + ".json"
+        key !== root + dispatch.operation + ".json" ||
+        dispatchKeys.some(
+          (other) => other !== key && other.endsWith("/" + dispatch.operation + ".json"),
+        )
       )
         return yield* refusal(
           "An original dispatch no longer has its exact immutable request identity.",

@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "synchronized_commit": "68315aa488e3b00d607860e577d1b65f01b57059",
+  "synchronized_commit": "9e8a1eaacb0959b7d8d5a13c7eb9c86aa59b4725",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
-    "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
-    "packages/core/src/shared-body-write.ts": "dc01ee8d387e4e3762d54920c0bc3b15ac5afe2b201df3fc4be99846e0a72811",
+    "packages/core/src/shared-file-observer.ts": "f8cf74c46f17b2a2bc519faa50afdc9508b98e77b2f5be0c33e821e6a1010ff3",
+    "packages/core/src/shared-body-write.ts": "eaa57a6ffd1de92e4005cd5358fd764b3f91e895f1df58b78bdda10ec8650f08",
     "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
-    "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
+    "packages/core/src/shared-snapshot.ts": "c4a4c2dfea1a1e47ac7b1565c1651f7c9412a80285bcacaaad4ec712016aaf09",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
@@ -19,13 +19,13 @@
     "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
     "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
-    "packages/core/src/shared-create.ts": "7fe6f1c51693fce954b192ec2b45c01415e97cdb4e0f2175abaf2dea0197b1a7",
+    "packages/core/src/shared-create.ts": "e0df7eb91252ec11de84cc2dd0a8447bd93412d6899cf93c08dc60786f3b9454",
     "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
-    "packages/core/src/shared-create-dispatch.ts": "5b42eaf8adc6188508c90596333c1a0ffd51fb85c59625581bf35c765d467d0f",
+    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
-    "packages/core/src/shared-records.ts": "7b52c8ffbe14f2129095e408ed12ecee76b5bdbe7a11e6f859d8a7cc62d04b92",
+    "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
     "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
     "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
     "packages/core/src/shared-notion-projection.ts": "28868f51a8d8ca868dc6c11bb045c98ccb8d8adb08377843445469302f35ac87",
@@ -39,41 +39,57 @@
     "packages/core/src/shared-create-recovery-completion.ts": "54048f4fc7a1d68a92bd242659b50997ccd63df3d2264df27a188eaa6ba25e10",
     "packages/core/src/shared-create-recovery-model.ts": "083aa3ac6948558fbe22adf3453656f9d50c73cf3e9adcc0dff96bdbd15b84dc",
     "packages/core/src/shared-create-recovery-errors.ts": "f0c1ffa8acd7df3f7f852d7b1d27300253c84ca5ac6ce22db2f09e7e823ee166",
-    "packages/core/src/shared-create-recovery-known-bootstrap.ts": "fb60422234d934c79da57926432ee1f420447fa85b4a47b51312851b6bf34b0f",
+    "packages/core/src/shared-create-recovery-known-bootstrap.ts": "18a14e3a4aa756a6108f930bf027ef9906d4b36de2f1ccd131ee0dc8906a8cd0",
     "packages/core/src/shared-create-recovery-known-completion.ts": "02a8cfb7e4bd762042ffc1a2390a65ace365a53a0e02c330b8a7e715769e0844",
-    "packages/core/src/shared-create-recovery-known-model.ts": "fcf08490e0b57bb0044a5c4572c4537eed2068a2e35f458ce815442eb16099b5",
+    "packages/core/src/shared-create-recovery-known-model.ts": "ab738dfdd466b4509a5488da9eb12c1b0f4fac6d4bfbc2a078b4594063b3f789",
     "packages/core/src/shared-create-recovery-projection.ts": "4cca5c3fc40619cfc064df8fb84213474dedc8941c457e9697361abd557d8cc3",
     "packages/core/src/shared-create-recovery-proof-model.ts": "e48c97c936d311a91d31709f25f084b60de0e40c9267fac71c6d0daf80b5dd54",
     "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
     "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
-    "packages/core/src/shared-file-management-model.ts": "7d3c164ad72476fe1d1e44d94fa84cbbed9d3978506f00553e017694fc4206ff",
-    "packages/core/src/shared-file-management.ts": "7a88911bab817447b313db17575757fd22312c5d179b6f0edc556d0c7a4c8486",
-    "packages/core/src/shared-authoring.ts": "57a0553d5e9a04d5cf487ba3ae70981cde6d9a706712e60a99d22828bbf51ef9",
+    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
+    "packages/core/src/shared-file-management.ts": "8d439fb120a44a68df9b360e6a997a9013d0bdb1b390aca4825570e1b6be0243",
+    "packages/core/src/shared-skill-apply.ts": "81209af64cc51d3e3881a6550e3db7d6eeb0c0af37d68abdc19711de83a374f7",
+    "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
+    "packages/core/src/mutation.ts": "c93d7dbe639e96cd5f84530ff7448fe6064573e3cf092518e19d6ba64d41a31a",
+    "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
+    "packages/core/src/shared-authoring.ts": "9d420d7d613ec90a90024d2b00a55564da80443c27ee72a5f2ba14ac8db7b5e1",
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
     "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
-    "packages/core/src/shared-file-restore.ts": "6b5b6a2d6661ce97350fbf2e29d934b7688ea569357ffe184090425996729fa3",
+    "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/src/sqlite-state.ts": "98f6e35919b12c6abfbd3874e76a39f714a46da41690aa4ba27f236f8eb4ea04",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
     "packages/core/src/shared-create-recovery-acknowledgements.ts": "d82b8d76a655ff2e5b5bbac92872a6ec4147ae43cef3fd41f83982a65e68d44d",
-    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "0524c310de8f321182fb28c259aa2c23fbb307b5284fa7770ccb15cc45137a4d",
+    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "d7c8da03dc0534a6e09820ac62dc3a24c8fae16191e86a163c2da4266269a064",
     "packages/core/src/shared-native-file-content.ts": "c0d8de5045e44bfbf12ab675eeb56ecaec1f525162334bf750c40eb7fddf2a00",
     "packages/core/src/shared-body-write-review-model.ts": "d98a7ea4d75668fdb8594419636f8f392473bfe8f7c3915e319ce7f62209cf3c",
     "packages/core/src/shared-body-write-review.ts": "614ad401ee64be50c2ff80e56b1e44d48e887f1eff952df6432333bf9b37840b",
     "packages/core/src/shared-pending-file-operations.ts": "b5d0b026a53253b61858d25882bbfca585faf0aba5213d31a13fae4babc07723",
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-plan.ts": "d686bb94d7daa8eee9dc68f1acf22f99a0b9c4484a36429763ee9c949c350a3e",
-    "packages/core/src/shared-create-recovery-native-authority.ts": "76b62bc95e6f9dace58f35ecdc370805cbddf24f59621186d4586981781f3382",
+    "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
-    "packages/core/src/shared-create-recovery-native.ts": "65e872e277bf30fe63046f6795287596c93e8120d64a8f063720a6951e94ce1a",
+    "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
     "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
-    "packages/core/src/shared-file-request.ts": "6b602534a1a766024083c8c589c6490f003daafab6556d0be18bde6a517134fc",
-    "packages/cli/src/commands-library-file-request.ts": "e89665d262ee72cda13a4a74b6fbd4c8f481608ecb71b526f0074fa754a088e8",
+    "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
+    "packages/cli/src/commands-library-file-request.ts": "0aef3dbd6ca32c48d9036f4672dcf4dbd6ff5ae04c16522f6482a0f0146e9736",
     "packages/core/src/shared-create-import-readback.ts": "b69e01814df63d3cf5459245a0769d6997699b368322ab9c047ab8519d25f8a4",
     "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
     "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
-    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621"
+    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621",
+    "packages/core/src/shared-create-restoration.ts": "96a94b5bcb994edd08ce1ad229ace568b72850a758795220f46b7dbc20d62c49",
+    "packages/core/src/consumption-effects.ts": "630d530d5acccfc55109be28f904378a3903d0104d1a5caa5e6b9fc0b95a1035",
+    "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
+    "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb",
+    "packages/cli/src/commands-library-file-accept-add.ts": "bfbbcac521a242df3f24800b28ff04aa2e70c0eb328d1ec93ea9e0e11ac14d51",
+    "packages/cli/src/commands-library-files.ts": "9e857febc8f08eb0e866d781513b26ee669fe6a1302cc768c91aaf6fce052fd4",
+    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
+    "packages/core/src/resource-read.ts": "759615b3589da94137f21d138405e33715e4437e758062e5110303c6e10e8fc4",
+    "packages/core/src/resource-read-model.ts": "26842f8115c6940196e8c3586fb7b8f69f776dd5b43d22a1b51eb4ebbcd8b62b",
+    "packages/cli/src/sdk.ts": "2efb65b67ced6fd262828471db1346a9db06955fdb4c3164f61ab4d900eee02f",
+    "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
+    "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765"
   },
   "models": {
     "ProjectionRace": {
@@ -220,20 +236,25 @@
         "applySharedCreateAcknowledgedContinuation",
         "observe",
         "readSharedNativeAllocationProofs",
-        "readSharedCreateKnownCompletion"
+        "readSharedCreateKnownCompletion",
+        "reviewSharedCreateRestoration",
+        "applySharedCreateRestoration",
+        "readSharedCreateRestoration",
+        "loadPendingSharedCreates"
       ],
-      "scope": "Three already visible native allocations with an independently variable original ACK subset and exact-request-set predicate. The separate continuation requires the complete original request/ACK authority at review and apply, a fresh current-body check before each abstract stage, no uncertain redispatch, complete initial events before enablement and complete retained original ACK proofs before a cold result is accepted. Four stages abstract ACK fact retention, exact metadata/events, enablement and immutable completion; original pages and needs_review history remain separate.",
+      "scope": "Two explicit finite branches. The retained fixed-source continuation starts with three already allocated pages and four stages. NativeRestoration starts with one original acknowledged main and one original unattempted reference, adding a single native allocation stage before the complete initial event set. Both vary exact original request/ACK authority, preserve the original pages and needs_review history, check a fresh body before each new stage, and retain a separate completion. A request with its exact durable ACK can return from interrupted readback to verification without increasing attempts; visibility without that ACK never authorizes redispatch. Enablement requires every native page and initial event; cold verification requires the full original shared proof set and complete verified stages.",
       "excluded": [
-        "Actual 34/35 native and 397/407 full-file cardinality",
-        "Exact frozen request/response JSON, cryptographic hashes, ordinary 64 KiB envelopes and rich-text transport",
-        "Markdown v11 rendering, complete source acquisition and retained-policy compatibility",
+        "Actual 34/35 native and 397/407 full-file cardinality or arbitrary suffix counts",
+        "Exact frozen request/response JSON, cryptographic hashes, 64 KiB envelopes, original local Store scope and rich-text transport",
+        "Markdown rendering, automatic-link repair, complete source acquisition and retained-policy compatibility",
         "Edits occurring after a stage observation, distributed writers, provider CAS and atomic multi-page writes",
-        "Every immutable Record subrequest, current native-page allocation or general interrupted-stage restart",
-        "The direct original v10-to-v11 recovery branch, earlier recovery variants and public CLI/SDK behavior"
+        "Every immutable Record subrequest, recovery version codecs, generic interrupted-operation restart and unknown-success inference",
+        "Other recovery branches and public CLI/SDK/Pi execution"
       ],
       "tests": [
         "packages/core/test/shared-create-projection-continuation.test.ts",
-        "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/core/test/shared-create-restoration.test.ts"
       ],
       "mutation_replays": [
         "complete-recovery-dispatch-and-ack-set",
@@ -243,7 +264,7 @@
     }
   },
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
-  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim. Explicit complete-body-match restore, request submission, ACK-bound exact Record GET and projection 13 are reviewed unmodeled changes. Existing model/config/view inputs, finite bounds and prior result receipts are retained; this synchronization claims no new model execution. The 68315aa review traces metadata-only census, projection-14 import readback, original-input completed-import reuse, ACK-directed native allocation observation, added dispatch domains and source-reference diagnostic context. These are explicitly unmodeled branches; all six model inputs, bounds, invariants and original result receipts remain unchanged. No new TLC run is claimed.",
+  "review_basis": "The synchronized commit and content hashes bind reviewed runtime correspondence, not a full refinement proof. Public CLI, installed SDK, real Notion/provider/UI behavior and physical machines require independent evidence. Prior ProjectionRace, UpdateCommit, AuditRun, ImportCreate and CreateRecovery inputs and receipts are retained unchanged. The five retained and five NativeRestoration AcknowledgedContinuation configurations were checked together in formal-native-restoration-v3; their unchanged model/config/view inputs retain those original named-positive and negative-control results. Original failed runtime and tool invocations remain separate. Native inventory immutable-Record prefix recovery, consumption-effect disclosure, strict-read-only routing, request attribution and header reuse are hash-bound implementation context only. The new independent native file-add current acceptance is explicitly unmodeled: it supplies its own reviewed adoption/completion, never an original ACK or successful original add outcome. Current source correspondence and direct tests do not turn earlier TLC results into a proof of this separate decision. No source hash alone establishes an invariant, liveness property or task completion.",
   "unmodeled_bindings": [
     {
       "kind": "hash_bound_context_not_modeled",
@@ -506,6 +527,7 @@
         "nativeMainRecoveryPlan",
         "makeSharedCreateNativeRecoveryReview",
         "originalNativeMainAllocation",
+        "acknowledgedNativeRecoveryPrefix",
         "observeNativeMainRecovery",
         "reviewSharedCreateNativeRecovery",
         "applySharedCreateNativeRecovery",
@@ -519,7 +541,7 @@
         "reconcileSharedCreate",
         "completedSharedCreatePrefixRecovery"
       ],
-      "scope": "Native inventory review v5/outcome v7 is a separate unmodeled branch for a v1 complete one-main Skill acknowledged under projection 11 before any Records. Exact original prepared/executed inventory intent, credential-scoped create journal and the sole full original POST/ACK are required before the fixed projection-12 decision. The disabled/default-false page, original wire, full input, mode and frontmatter remain unchanged; no Source, resources, Members or Requires are admitted. Apply appends only the exact immutable Record union and creates no Skill/File page, metadata/body PATCH or enablement. Known same-Store pending evidence and any repeated or uncertain recovery select read-only original reconciliation, never an undispatched suffix. Cold completion reconstructs the full original plan and validates complete shared ACK/body/event facts; the dispatch-set commitment uses those same validated ACK payloads without a second query. This is historical completion, not current-body atomicity or distributed exclusion. The existing ImportCreate, CreateRecovery and AcknowledgedContinuation models do not acquire this branch, new transitions, invariants or liveness claims. Original recovery contracts remain fixed; direct code counterexamples and installed/live execution provide separate evidence.",
+      "scope": "Native inventory review v5/outcome v7 is a separate unmodeled branch for a v1 complete one-main Skill acknowledged under projection 11 before any Records. Exact original prepared/executed inventory intent, credential-scoped create journal and the sole full original POST/ACK are required before the fixed projection-12 decision. The disabled/default-false page, original wire, full input, mode and frontmatter remain unchanged; no Source, resources, Members or Requires are admitted. Apply appends only the exact immutable Record union and creates no Skill/File page, metadata/body PATCH or enablement. A complete repeated attempt reconciles its original result. A partial attempt may continue only a contiguous exact Record prefix with complete same-scope original dispatches and durable ACKs, exact current acknowledged Record pages and a fresh unchanged disabled native body. Only the never-dispatched tail is authorized; missing or changed ACKs, extra or foreign dispatches and unknown requests remain read-only. This bounded immutable-Record continuation is unmodeled and changes no old review or outcome codec. Cold completion reconstructs the full original plan and validates complete shared ACK/body/event facts; the dispatch-set commitment uses those same validated ACK payloads without a second query. This is historical completion, not current-body atomicity or distributed exclusion. The existing ImportCreate, CreateRecovery and AcknowledgedContinuation models do not acquire this branch, new transitions, invariants or liveness claims. Original recovery contracts remain fixed; direct code counterexamples and installed/live execution provide separate evidence.",
       "tests": [
         "packages/core/test/shared-create-native-recovery.test.ts",
         "packages/core/test/shared-inventory-import.test.ts",
@@ -532,16 +554,25 @@
       "name": "explicit_file_request_submission",
       "files": [
         "packages/core/src/shared-file-request.ts",
-        "packages/cli/src/commands-library-file-request.ts"
+        "packages/cli/src/commands-library-file-request.ts",
+        "packages/core/src/shared-file-restore.ts",
+        "packages/core/src/shared-authoring.ts",
+        "packages/core/src/shared-body-write.ts"
       ],
       "symbols": [
         "submitSharedFileRequest",
         "processSharedFileRequest",
         "matchesSubmission",
         "verifyRequest",
-        "libraryFileRequestCommand"
+        "libraryFileRequestCommand",
+        "writeFeedback",
+        "assertRequestRestorePlan",
+        "restoreSelectedSharedFile",
+        "reconcileSelectedSharedFileRestore",
+        "restoreSharedFileFollowing",
+        "executeSharedBodyWrite"
       ],
-      "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission, and original unknown writes remain barriers to new dispatch. The submission/processing state machine, exact receipt validation and complete-body-match restore are not modeled by any of the six finite models.",
+      "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission. The actual restore plan and retained bodies are verified before its ID is written and read back in processing feedback; no preceding processing/null write is needed. Exact feedback metadata acknowledgment is separate from current complete-context eligibility, so a later body edit stops before body dispatch without converting a known metadata ACK into an unknown mutation. Existing guardedSourceMutation rules still prohibit accepting unknown writes from matching fields. Legacy --reconcile --operation binds the validated original plan to its submitted file/preimage/frontier/Source and requires exact original outcome/event; no current-text equality creates success. A verified not-applied original permits only an explicit new submission, while pending and unknown originals cannot be replaced. Historical verified receipts without submitted retain their prior read-only contract. These request/feedback transitions, the callback and explicit complete-body-match restore remain outside all six finite models, including ProjectionRace's excluded explicit writer/request authorization and AcknowledgedContinuation's unrelated create branches. No model, configuration, view, transition or prior model result changes or acquires these claims.",
       "tests": ["packages/core/test/shared-file-request.test.ts", "packages/cli/test/cli.test.ts"]
     },
     {
@@ -591,6 +622,106 @@
         "packages/core/test/shared-create-ack-visibility.test.ts",
         "packages/core/test/shared-create-drift.test.ts"
       ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "ordinary_native_restoration_codec_and_request_diagnostics",
+      "files": [
+        "packages/core/src/shared-create-restoration.ts",
+        "packages/core/src/shared-create-recovery-known-bootstrap.ts",
+        "packages/core/src/shared-create-recovery-acknowledgement-model.ts",
+        "packages/core/src/consumption-effects.ts",
+        "packages/core/src/notion.ts",
+        "packages/core/src/request-metrics.ts",
+        "packages/core/src/shared-records.ts"
+      ],
+      "symbols": [
+        "validateSharedCreateRestorationReview",
+        "originalKnownCreateBootstrap",
+        "prepareSharedNativeAllocationProof",
+        "withNotionRequestAttribution"
+      ],
+      "scope": "The AcknowledgedContinuation native branch abstracts original authority, stage order, ACK-only readback continuation and cold proof requirements only. Exact original plan/review/outcome hashes, one-main scope, full original POST/ACK metadata, retained input reconstruction, unchanged same-page body and relation checks, separate immutable records and Node ESM initialization remain product-test obligations. Request phase/owner fields, compact-header reuse, consumption-effect disclosure and strict-read-only handling do not change this state model or prove every authoring request is classified. Unknown attribution remains explicit.",
+      "tests": [
+        "packages/core/test/shared-create-restoration.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/core/test/consumer-effects.test.ts",
+        "packages/core/test/request-metrics.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "author_request_lineage_and_current_acceptance_diagnostics",
+      "files": [
+        "packages/core/src/shared-snapshot.ts",
+        "packages/core/src/shared-create-dispatch.ts",
+        "packages/core/src/shared-skill-apply.ts",
+        "packages/core/src/shared-metadata-write.ts",
+        "packages/core/src/shared-file-management.ts",
+        "packages/core/src/mutation.ts",
+        "packages/core/src/command-operations.ts"
+      ],
+      "symbols": [
+        "executeSharedSkillApply",
+        "executeSharedMetadataWrite",
+        "executeSharedFileManagement",
+        "sharedCreateDispatch",
+        "withNotionRequestAttribution"
+      ],
+      "scope": "The earlier author-lineage synchronization changed diagnostic context and one recovery message only. The later independent add-acceptance behavior is mapped separately below. Actual parent apply Records bind the parent operation; body/metadata children override it with their own exact operation. Author preflight, dispatch, verify and original reconciliation are annotated at existing call boundaries without adding requests, authority, retries or state transitions. A first native main POST has an unknown owner; only frozen file/Record relations or a validated original metadata target identify a later writer's Skill. The body-current acceptance message discloses accepted_current/unknown separately from accepted_observed/needs_review and does not rewrite the original outcome. No finite model, configuration or statechart input changed after the ten retained/native AcknowledgedContinuation checks; that run is reused for the unchanged semantics, not presented as a fresh check of request classification.",
+      "tests": [
+        "packages/core/test/shared-skill-apply.test.ts",
+        "packages/core/test/shared-file-management.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-body-current-acceptance.test.ts",
+        "packages/core/test/notion-http-fixture.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "independent_native_file_add_current_acceptance",
+      "files": [
+        "packages/core/src/shared-file-add-acceptance.ts",
+        "packages/core/src/shared-file-management-model.ts",
+        "packages/core/src/shared-file-management.ts",
+        "packages/core/src/shared-snapshot.ts",
+        "packages/cli/src/commands-library-file-accept-add.ts",
+        "packages/cli/src/commands-library-files.ts",
+        "packages/core/src/shared-create-dispatch.ts",
+        "packages/core/src/shared-records.ts"
+      ],
+      "symbols": [
+        "reviewSharedFileAddAcceptance",
+        "applySharedFileAddAcceptance",
+        "reconcileSharedFileAddAcceptance",
+        "completedSharedFileAddAcceptance",
+        "loadCompletedSharedFileAddAcceptances",
+        "sharedCreateDispatch"
+      ],
+      "scope": "This separate explicit author decision is outside all six bounded transition systems. It accepts only one same-page ordinary native add with an exact retained known body-mismatch outcome after an authorized repair to the frozen candidate; a complete original request/ACK was not retained and old completion remains unproven. Original plan/failure, original author Store and credential, exact owner/File/page, complete native bytes, original snapshot, relations and frontier bind the decision. The new review, distinct adopted event and independent completion use existing durable Record dispatch/ACK guards. The original add event is never emitted, the original needs_review outcome stays unchanged, and no native page/body/property is written. Unknown new writes never replay; cold verification checks full shared evidence, not local objects or one digest. Later legitimate author edits remain separate from historical acceptance. Exact JSON/body/hash/size bounds, budgets, transport behavior and cold fact validation need implementation and live tests; no new TLC or statechart result is asserted.",
+      "tests": [
+        "packages/core/test/shared-file-management.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "fixed_resource_batch_readonly_effects",
+      "files": [
+        "packages/core/src/resource-read.ts",
+        "packages/core/src/resource-read-model.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/core/test/resource-read.test.ts",
+        "packages/cli/test/sdk.test.ts"
+      ],
+      "symbols": ["readResources", "withConsumptionEffects", "readOnlyNotion"],
+      "scope": "Fixed resource batches carry the existing consumption policy into the existing semantic Notion write guard and report effects on ready/failed/cancelled outcomes. RESOURCE_READ_EFFECTS_VERSION=1 declares batch support separately from scalar support. No resource-lifecycle state, acquisition identity, write authority, retry or recovery transition changes. AuditRun does not model these SDK/argument/receipt paths; original models/cfg/views and named results are reused without a fresh TLC run.",
+      "tests": [
+        "packages/core/test/resource-read.test.ts",
+        "packages/core/test/consumer-effects.test.ts",
+        "packages/cli/test/sdk.test.ts"
+      ],
+      "counterexample": "Before the fix, readOnly:true allowed one controlled descendant semantic write to reach transport; strict mode now returns NOTION_READ_ONLY with zero writes. The normal control still reaches transport once."
     }
   ]
 }

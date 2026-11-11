@@ -47,6 +47,42 @@ ntn-skills ctl prepare ROOT_ID OTHER_ROOT_ID --database LIBRARY_ENTRY --purpose 
 
 这些诊断与 `request_metrics` 一样不计入 `maxContextBytes`，也不进入 graph lock。CLI 进程启动耗时由外部调用者单独记录。HTTP attempts、请求/响应 bytes、正文类别、provider、coalesced、queue wait、retry wait 与准备阶段各自保留，不能相互替代。
 
+## 有界历史与本地成本（AH-506）
+
+2026-11-11 的独立安装 Node SDK 样本使用同一四文件菱形、最终正文、credential scope、空 Store seed 与 cold → warm → expired-unchanged → single-cold 顺序。历史档位为 H=1/101/301；只改变共享 Requires 文件的合法历史数量。运行时为 CLI commit `147ac9386f014853545334c624347da0a42e4ff3`，SDK SHA-256 为 `0da69d00f5377a94b6f37fe844d0702494ea6f110d647593bcd954a32afad0f5`。这是受控 loopback HTTP 与真实 Node SQLite，不能替代生产 Notion 或长期日用样本。
+
+| H | cold HTTP attempts | decoded response bytes | `boundedEnvelope` | `decodeHeader` | DB 文件长度 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 15 | 24,475 | 4 | 8 | 299,008 B |
+| 101 | 18 | 374,591 | 104 | 208 | 397,312 B |
+| 301 | 24 | 1,074,823 | 304 | 608 | 565,248 B |
+
+| H | `shared_local_records` 行 | objects 文件数 / bytes | manifest 文件数 / bytes | expired HTTP / response bytes |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 20 | 12 / 2,188 | 4 / 6,178 | 10 / 19,571 |
+| 101 | 120 | 112 / 52,288 | 4 / 6,178 | 12 / 211,715 |
+| 301 | 320 | 312 / 152,488 | 4 / 6,178 | 16 / 596,003 |
+
+三个档位的当前 observation 与 snapshot 表均保持 4 行；warm 和 expired-unchanged 没有增加这些逻辑行、objects、manifest 或 cache 目录文件。warm 的 `validated_at` 原样保留。物理 objects 包含缓存的历史 envelope 等对象，不等于业务文件数。历史 Payload 缓存仍有线性增长项，不能把 latest 单槽称为全部缓存恒定。
+
+每档图 warm 保留一次身份请求、61 response bytes，正文请求与上述解码计数均为零；expired-unchanged 的正文请求也为零，但完整 metadata 校验与本地 envelope 校验仍随 H 增长。WAL/SHM 在每次 SDK scope 关闭后的采样点不存在；这不代表运行期间的峰值为零。DB 文件长度、SQLite page/free-page 计数与逻辑行分别记录，cache clear 不承诺文件立即缩小。
+
+H=301 的 cold / single-cold 样本为 15.35s / 15.16s，均未超过事前沿用的 30s 单次预算；完整历史消费预算为 240s，producer 为 60s，重试预算为零。进程 CPU 的 user/system 微秒另存原报告，包含 SDK、同进程受控 HTTP 服务和 V8 覆盖率开销；独立 replay CPU、wire bytes 和真实长期趋势仍未知。H301 single-cold 的 V8 输出缺少 `recordFromEnvelope` 条目，该字段保留 null，跨根完整解码比较也为 unknown；已报告的 `boundedEnvelope=304`、`decodeHeader=608` 与完整正文/身份/关系 oracle 独立成立。旧包重复 header 的原数据仍会失败于 `decodeHeader === 2 * boundedEnvelope`。
+
+本样本不采用新 checkpoint：所有冻结时间、完整性和复用预算满足，已有缓存守住未变观察与单槽。H>301、更多/更大业务文件或实际日用超出 30s 单次预算时，应先记录同条件成本，再比较可重建 checkpoint 与完整 replay；不外推无限历史的恒定成本。本切片只改验证与观测，没有修改 cache 生命周期转移，因此保留既有有限模型及其范围，不以新哈希冒充模型扩展。
+
+单 reference 变化另走 `shared-snapshot-costs.test.ts` 的 N=1/10/100/101/300、k=1/3。N>1、k=1 明确只改变 reference 页，并核对正文请求的精确 page；未变 metadata 仍批量分页。101 文件的 fixed/current-proof 场景保留缺失与损坏的未选对象，按需主文成功而显式选择坏对象失败。Node SQLite 的旧观察发布、权限否定、clear fence 和未决操作保护继续由原测试覆盖；原 GC 用例只把不可达 owned 对象移入 Trash，并验证仍能读回被引用历史。
+
+复跑时先保存一份 history 输入，再固定同一 loopback 端口，端口占用直接失败：
+
+```sh
+node scripts/sdk-fixture.ts --outdir "$RUN/history" --records-history
+NTN_SKILLS_RECORDS_HISTORY_FIXTURE="$RUN/history/history.json" NTN_SKILLS_SOURCE_FIXTURE_PORT=45036 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$SDK_FIXTURE" --outdir "$RUN/history-installed" --case records-history
+NTN_SKILLS_SOURCE_FIXTURE_PORT=45037 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$SDK_FIXTURE" --outdir "$RUN/scalar-installed" --case scalar-inventory
+```
+
+`RUN` 和 fixture/archive 必须是本次 owned 的绝对路径，每次使用新输出目录。scalar 原场景补记 warm、expired、refresh、offline、旧 pin、权限恢复与 clear 的逻辑/物理状态；完整 export 文件字节另列，不计作默认消费。缺失或截断观测不能记零，保留失败及未知字段。
+
 ## 可复跑测量
 
 `scripts/measure-graph-prepare.ts` 固定菱形与 101 节点拓扑，分别测 cold、warm 与 metadata revalidation。比较前冻结拓扑、缓存状态、样本数、完整 graph lock 与预算，分别保存修改前后的原始调用、字节与结果。cold 使用该夹具的空派生缓存，warm 使用普通 TTL，revalidation 只使元数据到期。受控服务调用数和本地执行时间不等于真实 Notion 网络延迟。

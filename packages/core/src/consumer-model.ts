@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ConsumptionEffectsSchema } from "./consumption-effects.ts"
 import {
   PrepareBindingSchema,
   PrepareFailureSchema,
@@ -74,6 +75,7 @@ export type ConsumeEntry = typeof ConsumeEntrySchema.Type
 export const ConsumeReadySchema = Schema.Struct({
   version: Schema.Literal(CONSUMER_CONTRACT_VERSION),
   status: Schema.Literal("ready"),
+  effects: Schema.optional(ConsumptionEffectsSchema),
   preparation: PrepareReadySchema,
   entries: Schema.Array(ConsumeEntrySchema),
   export: Schema.Struct({ status: Schema.Literal("not_requested") }),
@@ -86,11 +88,13 @@ export const ConsumeResultSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(CONSUMER_CONTRACT_VERSION),
     status: Schema.Literal("failed"),
+    effects: Schema.optional(ConsumptionEffectsSchema),
     error: PrepareFailureSchema,
   }),
   Schema.Struct({
     version: Schema.Literal(CONSUMER_CONTRACT_VERSION),
     status: Schema.Literal("cancelled"),
+    effects: Schema.optional(ConsumptionEffectsSchema),
     reason: Schema.Literal("interrupted"),
   }),
 ])

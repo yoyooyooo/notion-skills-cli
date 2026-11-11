@@ -84,7 +84,7 @@ if (recordsHistoryOnly) {
   // The consumer receives only the frozen service observations and empty config.
   const observations = []
   const finishedAt = Date.now() - 5000
-  for (const history of [1, 101]) {
+  for (const history of [1, 101, 301]) {
     const f = nativeGraphFixture()
     const [a, , c, d, optional] = f.pageIds
     const shared = f.pages[3]
@@ -236,7 +236,7 @@ if (recordsHistoryOnly) {
   console.log(
     JSON.stringify({
       path: join(root, "history.json"),
-      histories: [1, 101],
+      histories: [1, 101, 301],
       production_network: false,
     }),
   )

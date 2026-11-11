@@ -1,7 +1,8 @@
 import { Cause, Effect, Option, Schema } from "effect"
+import { withConsumptionEffects, type ConsumptionEffects } from "./consumption-effects.ts"
 import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
 import { type PreparedNode } from "./graph-prepare-model.ts"
-import { aliasFor, entrypointFor, fail, SkillsError } from "./model.ts"
+import { aliasFor, entrypointFor, fail, property, SkillsError } from "./model.ts"
 import { fileRef, normalizePath, pageId, parseRef, parseTarget } from "./ref.ts"
 import { validateSharedRecordIdentity } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -19,6 +20,13 @@ import {
 } from "./consumer-model.ts"
 
 export * from "./consumer-model.ts"
+export {
+  CONSUMPTION_EFFECTS_VERSION,
+  ConsumptionEffectsSchema,
+  ConsumptionRetentionEffectSchema,
+  type ConsumptionEffects,
+  type ConsumptionRetentionEffect,
+} from "./consumption-effects.ts"
 
 const invalid = () => fail("CONSUME_INVALID_PROOF", "Consumption evidence is inconsistent.")
 const same = (left: unknown, right: unknown) =>
@@ -422,44 +430,61 @@ export type ConsumeOptions = NonNullable<Parameters<typeof prepareGraphWithSnaps
  * interruption keeps its native semantics. Neither case can attest model delivery.
  */
 export function consume(input: unknown, options: ConsumeOptions = {}) {
-  return Effect.suspend(() => {
-    const cancelled: ConsumeResult = {
-      version: CONSUMER_CONTRACT_VERSION,
-      status: "cancelled",
-      reason: "interrupted",
-    }
-    const signal = options.signal
-    if (signal?.aborted) return Effect.succeed(cancelled)
-    const work = consumeReady(input, options).pipe(
-      Effect.catchCause((cause) => {
-        const error = Option.getOrUndefined(Cause.findErrorOption(cause))
-        if (
-          Cause.hasDies(cause) ||
-          Cause.hasInterruptsOnly(cause) ||
-          !(error instanceof SkillsError)
-        )
-          return Effect.failCause(cause)
-        return Effect.succeed<ConsumeResult>({
-          version: CONSUMER_CONTRACT_VERSION,
-          status: "failed",
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.details === undefined ? {} : { details: error.details }),
-          },
-        })
-      }),
-    )
-    if (signal === undefined) return work
-    const cancellation = Effect.callback<ConsumeResult>((resume) => {
-      const abort = () => resume(Effect.succeed(cancelled))
-      signal.addEventListener("abort", abort, { once: true })
-      if (signal.aborted) abort()
-      return Effect.sync(() => signal.removeEventListener("abort", abort))
-    })
-    return work.pipe(
-      Effect.raceFirst(cancellation),
-      Effect.map((result) => (signal.aborted ? cancelled : result)),
-    )
-  })
+  return withConsumptionEffects(
+    Effect.suspend(() => {
+      const cancelled: ConsumeResult = {
+        version: CONSUMER_CONTRACT_VERSION,
+        status: "cancelled",
+        reason: "interrupted",
+      }
+      const signal = options.signal
+      if (signal?.aborted) return Effect.succeed(cancelled)
+      const work = consumeReady(input, options).pipe(
+        Effect.catchCause((cause) => {
+          const error = Option.getOrUndefined(Cause.findErrorOption(cause))
+          if (
+            Cause.hasDies(cause) ||
+            Cause.hasInterruptsOnly(cause) ||
+            !(error instanceof SkillsError)
+          )
+            return Effect.failCause(cause)
+          return Effect.succeed<ConsumeResult>({
+            version: CONSUMER_CONTRACT_VERSION,
+            status: "failed",
+            error: {
+              code: error.code,
+              message: error.message,
+              ...(error.details === undefined ? {} : { details: error.details }),
+            },
+          })
+        }),
+      )
+      if (signal === undefined) return work
+      const cancellation = Effect.callback<ConsumeResult>((resume) => {
+        const abort = () => resume(Effect.succeed(cancelled))
+        signal.addEventListener("abort", abort, { once: true })
+        if (signal.aborted) abort()
+        return Effect.sync(() => signal.removeEventListener("abort", abort))
+      })
+      return work.pipe(
+        Effect.raceFirst(cancellation),
+        Effect.map((result) => (signal.aborted ? cancelled : result)),
+      )
+    }),
+    options,
+  ).pipe(
+    Effect.map((result): ConsumeResult & { readonly effects: ConsumptionEffects } =>
+      result.status === "ready"
+        ? { ...result, preparation: { ...result.preparation, effects: result.effects } }
+        : result.status === "failed"
+          ? {
+              ...result,
+              error: {
+                ...result.error,
+                details: { ...property(result.error.details), effects: result.effects },
+              },
+            }
+          : result,
+    ),
+  )
 }

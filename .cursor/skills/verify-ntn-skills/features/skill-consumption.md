@@ -1,6 +1,38 @@
 # Skill 消费链
 
+## AH-953：当前消费效果与严格只读
+
+先保留 `consumer-effects.test.ts` 的原行为失败，再验证同一公开 `consume/readSkill` 路径。当前读取的历史留存与作者正文修改分别报告；根和 Requires 的留存绑定原 Skill page、File ID、operation。固定/暖读取的确实零写、部分完成后失败、响应丢失与取消不能混成同一结果。语义 POST query 属于读，不能按 HTTP 方法粗算写入。
+
+`shared-metadata-consumption.test.ts` 的 3/101 行场景仍完整比较逻辑引用与物理页面读取的正文、snapshot、Members/Requires、固定文件及目录观察。两次调用的 freshness 和 effects 分别验证：首次当前读取必须报告该 main 的 confirmed retention，随后同内容 refresh 必须报告 none，不能把前次留存回执当成快照的永久属性。完整集成检查发现旧的整体对象等式误将这两种本次效果视为相同；两项原红例与修订后 28 项通过日志分别保存。这里只同步既有测试合同，没有改变产品源码、请求数或生命周期模型。
+
+`readOnly`/`--read-only` 必须经现有 Notion 只读 capability 覆盖全部后代调用，必要留存在首次写前明确拒绝；固定历史仍可读取。正常当前读取继续保留原 retention，不能删除它凑零写。回执复用已有请求和原 operation，不增加远端查询或把完整账本送给模型。源测试、独立 Node SDK/CLI 与真实 Pi 两臂分别留证；本页不声明已完成真实服务或模型验收。
+
+CLI 既有 `resource-lifecycle/AuditRun.tla` 的 `AuditReadOnly == writes = 0` 只覆盖粗粒度 audit；请求层语义只读 capability 的源回归另行覆盖后代调用。该有限模型没有 consumer effects、部分留存或取消状态，不能当作这些新语义的证明。AH-953 没有修改生命周期转移；Broker 的原 `RetentionDisclosure` 模型承接 normal/read-only/unknown 与效果投影。
+
 归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC26 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。本地开发时在实际 Broker checkout 读取同一路径，不要求两个仓库相邻，也不复制另一份地图。
+
+## AH-631：阶段归因与同次解码
+
+沿原 `request_metrics.trace` 记录实际 producer 的显式阶段、已知 Skill owner 与原 operation；缺少调用上下文为 null，共享 waiter 不能由单个 producer 标签推断独占归属。queue/retry 沿原传输循环记账，不按 attempt 排序猜写前写后。普通消费、retention、作者 preflight/apply/verify 与 reconcile 分开，追踪不开启时不添加远端请求。
+
+先用原 `sdk-package-smoke.mjs --case records-history` 的 V8 正控制冻结解码次数，再复用同一 query row 已验证的 header；不缓存整次 consume，不跨响应或写入边界复用事实。固定同一历史、四文件闭包、Store 初态与结果 oracle，逐字段核身份/版本/归属/关系/manifest，HTTP/bytes 不因减少本地解码而声称下降。保留旧行为反例、未知 ACK、同 ID 冲突、错 scope、权限收缩与缺损对象回归。
+
+旧/新包顺序使用同一 `NTN_SKILLS_RECORDS_HISTORY_FIXTURE=/absolute/history.json` 和 `NTN_SKILLS_SOURCE_FIXTURE_PORT`，固定 source origin 与 credential scope；端口冲突明确失败，不能自动换端口继续当作同条件对照。每臂仍从相同空 Store seed 独立复制。完整原 oracle 和所有阶段先保留到报告，再断言 cold header 次数等于完整 metadata pass 加同一 payload row 的次数；旧包的重复解码仍必须失败。原脚本默认仍可独立生成 fixture，不新增生产配置项。
+
+## AH-506：有界历史与局部缓存成本
+
+复用原 history producer、独立安装 smoke 和缓存场景，冻结 H=1/101/301、相同四文件闭包/最终内容、scope、空 Store seed、cache age 与操作顺序；旧两档 fixture 必须先被三档判据拒绝。沿既有预算：producer 60s、每次消费 30s、全部历史消费 240s、零重试。必要完整历史校验与重复本地解码分账，不能因 metadata 变少就推断 CPU 下降。
+
+分别采样 SQLite 各表逻辑行、cache/dispatch active/retired 项、DB/WAL/SHM 物理字节、objects/manifest/cache/显式导出目录，以及 V8 解码次数和实际 HTTP/响应 bytes。进程 CPU 包含同进程受控服务及覆盖率开销，不称作 replay CPU。暖/过期未变必须保持原固定 pin 和已声明单槽；访问不续期。单 reference 变化、部分对象缺失、refresh/offline/旧 pin、删除/权限与 clear 沿原 scalar/cache 场景另列。
+
+历史计数在 Profiler 开启后，才从同一已安装 SDK 文件的独立 ESM URL 加载本次观察实例；绑定原文件 SHA 和该 URL，其他 smoke 分支仍用原实例。默认 `all` 先前已经执行过的函数可能只给出不完整的 function coverage，因此即使初次非零探针通过，后续也不能当作精确计数。每份实际函数记录必须有 block coverage；冷 Store 必经函数若缺项显式记 null，不能补零，跨根比较保持 unknown。cold header/boundedEnvelope 还须有正计数，并保留原 2 倍公式，旧重复 header 仍必须失败。保留原覆盖率、缺项与失败，不根据函数消失猜优化收益；同运行时先编译／后编译的定点控制和同归档 history 重放分别留证。
+
+AH-638 本机 Node 24.20.0 / V8 13.6.233.17 的原完整安装包 gate 为21 pass/1 fail，H301 header507与bounded303不满足原2倍公式；旧driver的独立history冷入口1/1通过，不能称为红例。十二相位的请求/响应/正文与身份逐字节一致，同运行时先编译函数的10000次调用只报告6886、后编译函数准确，原件支持观察器编译时机的原因。修后同archive默认all按原先后顺序通过22/22及12相位，H301 cold为bounded304/header608；单根wrapper缺项仍null，跨根完整计数仍unknown。回执 `verification-evidence/ah955-20261111/cli-ci-node22-20261111/records-counter-repair/verification-receipt.json` SHA256 `631cde631b10cb434abbf84ba9e49906d468b6cc9fe0978dff5b91585ff4d936`。修复只调整观察实例的加载与计数资格，不改变生产Core/SDK、状态或效果；原有限模型与87个源码绑定保持，不新增或重跑TLA来证明V8计数。原失败不改判，四平台远端CI另按最终head验证。
+
+多文件控制复用 `shared-snapshot-costs` 的 N=1/10/100/101/300、k=1/3 与实际 N+1 反例，所需正文随 k 获取；按需读取用 101 文件含缺失/损坏未选项的控制，显式选择损坏对象仍须拒绝。冷完整观察不当作已有完整证明后的按需获取；未选 Member 正控制仍沿原 history diamond。
+
+只有上述冻结预算实际失败才比较本地可重建 checkpoint；不采用时记录实测范围、线性项与触发预算，不声称无限历史恒定成本。清理复用现有 cache clear/GC 及生命周期，只退役派生观察并保护活动 pin/未决操作，不把逻辑删除写成 SQLite 立即缩盘。本切片若未改生命周期规则则不改有限模型；既有模型不证明真实长期时间或任意规模趋势。
 
 ## SC25：日常命令与目录 SDK
 
@@ -203,6 +235,10 @@ Cleanup 只回收本 run 的 scratch 和可确认归属的 package scratch，走
 
 `readResources` 是独立 `RESOURCE_READ_CONTRACT_VERSION = 1` 能力；consumer v1 的非空 `requestedFiles` 仍拒绝。不要用逐个 `readSkill` 或重新 prepare 主文模拟批读。完整合同与默认/硬预算见 `docs/resource-read-contract.md`。
 
+AH-639 的真实 Pi `read(paths, readOnly:true)` 暴露了批读 policy 未接到生产者的缺口。先用既有 `resource-read.test.ts` 保留红例：在实际所选对象读取后代尝试一次语义写，普通调用确实到达 transport，严格调用必须由原 `readOnlyNotion` 在 scheduler 前拒绝且零写；同一批读的完整 ready/failed/cancelled 效果回执保持。复用 `withConsumptionEffects`，单独导出 `RESOURCE_READ_EFFECTS_VERSION = 1`，Broker runtime 记录 `resource_read_effects_version: 1`，不能用 scalar 的版本推定批读支持。SDK 明确转发 `readOnly` 并保留清理后的效果，旧普通结果无 effects 时仍兼容并按 unknown 处理，旧生产者的严格请求在调用前拒绝。继续核对 owner/pin/File、BOM/CRLF/empty/binary 完整 hash 与原 decoder，定向回归及 typecheck/build 分别留证。
+
+该接线复用既有只读 capability 和效果合同，没有修改 resource-lifecycle 的状态转移；TLA/cfg/statechart 不扩展也不机械重跑，Broker coverage 单独绑定实际源码和回归。原 A v2 运行和冻结包不改，源码/构建结果不证明原自主任务成功。证据沿既有 `verification-evidence/ah955-20261111/ah639-batch-readonly`，真实 Pi 最小批读由独立执行者验收。
+
 从 CLI 根目录选择新的仓外绝对目录，先执行安全的定向回归，不运行包含永久删除的聚合 `test/check`：
 
 ```bash
@@ -222,6 +258,10 @@ node scripts/sdk-package-smoke.mjs --archive "$RESOURCE_ARCHIVE" --fixture "$RES
 fixture 必须使用符合 CLI runtime 要求的实际 Node 运行；它会经过 SQLite Store 和完整 current 发布检查，Bun 不可代替。fixture 明确为全 warm，`resources` 是独立新增 Skill，不能把它的零请求称作冷下载。Core tests 用实际请求集合证明只拉所选对象、共享 chunk一次、未选主文/文件零读取，并覆盖81 chunks跨查询分批。原 `a` 单资源 fixture保留。所有失败日志、包hash、source metrics和取消连接close保存到本次证据目录；SDK产物不冒充Pi/provider已投递。
 
 SDK 初始化取消沿同一个 `sdk-package-smoke.mjs` 验证：分别对 list/catalog、consume、readSkill、readResources 在 pre-abort 和 owned config.json 读取回调尚未交付给 Store 的切点取消，保留原返回状态、实际 fetch/HTTP 观察及一次完整 metrics 回调。Notion 尚未取得时所有可执行 HTTP Effect 都在获取门之后，故应为 0 attempts / 0 unknown bytes；取得服务后缺账本仍为 null，不能一概补零。既有 headers/body 中途取消继续要求实际 1 attempt、连接关闭、in_flight=0，未知响应字节不得抹去。先保留旧包 null 账本失败，再用新独立安装包复跑同入口；真实 Pi 会话切换验收由跨仓原 driver 接续。
+
+安装包回归对 `consume` 和 `readResources` 的初始化取消同时精确核对完整 `effects`：version 1、无远端写、作者内容不变且 retention 为空；不能只删掉新增字段来适配旧断言。AH-638 的 CI run `43015434462` 原 Ubuntu/Node 22 安装报告保留 20 passed / 2 failed，失败来自两个遗漏效果回执的旧预期。CLI 的 `cli.test.ts` 与 `prepare.test.ts` 完整生产构建使用其他现有 CLI 文件同样的 120 秒前置预算；30 秒行为测试预算不变。原 macOS/Node 22 的两个 30 秒前置超时仍保留，较慢的具体宿主原因未知；新的定向和远端结果分别记录，不从修改推定通过。
+
+上述两文件的本机原定向结果为 105 pass / 1 fail / 1 error；两次完整构建已完成，另一个 SC25 C3 聚合测试在 26 个串行 Node 调用的 30 秒总预算内超时，未完成调用由测试框架终止。保留该原日志，按既有独立用户命令将原断言拆成每日入口、六条 ctl/历史路径对照及六个作者 schema 场景，各维持 30 秒预算、原真实 Node 进程、离线隔离和所有相等断言；不改产品实现、不省略路径，也不把拆分说成 CLI 启动性能改善。
 
 把**本次独立安装**的 `RESOURCE_CONSUMER/node_modules/ntn-skills/dist/ntn-skills.js` 交给 Broker `NTN_SKILLS_BUILD_ENTRY`，沿 Broker 主地图的 Launch → Doctor → resource-batch → Evidence → Cleanup 完成真实宿主验证。SDK smoke不创建生产远端数据，包与证据保留；只在确认进程全部结束后回收本次自有临时目录，走系统 Trash。Skill规程的可用性仍需独立新会话实际完成路径，不能由文档新增推断通过。
 
@@ -296,11 +336,11 @@ scalar 复用不改变 Members/Requires 语义，也不建立跨请求缓存。�
 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_FIXTURE/fixture.json" --outdir "$RUN/scratch/records-consumer" --case records-history
 ```
 
-同一次独立安装先用原 scalar loopback 做一次小冷读，绑定安装 SDK 的 SHA/URL/函数范围，验证 Node precise coverage 的 `recordFromEnvelope`、`boundedEnvelope`、`decodeHeader`、`resolveFileState` 有实际非零调用，并用下一次无消费采样证明清零。计数器不可用或探针失败时保留原错误并停止，不能用缺项补0、增加产品 hook 或换平台追绿。原始函数 ranges 与阶段计数保存在 `records-history/*-coverage.json`。
+同一次独立安装在开启 Node precise coverage 后加载独立 history SDK 实例，再用原 scalar loopback 做一次小冷读，绑定安装 SDK 的 SHA、实际模块 URL 与函数范围，验证 `recordFromEnvelope`、`boundedEnvelope`、`decodeHeader`、`resolveFileState` 有实际非零 block coverage，并用下一次无消费采样证明清零。计数器不可用或探针失败时保留原错误并停止，不能用必经函数缺项补0、增加产品 hook 或换平台追绿。原始函数 ranges 与阶段计数保存在 `records-history/*-coverage.json`。
 
-探针通过后，原 `sdk-fixture.ts --records-history` 在60秒内通过既有 `nativeGraphFixture`/`prepareGraph` producer 生成 H=1/H=101 的合法父事件与 retained facts。四个业务主文件、owner/File ID/最终内容及关系不变；只共享 Requires d 的历史量变化，未选 optional 不提供正文响应。两种历史的 heads 可能使 pin 不同，各自对完整 producer oracle 验证，不强行抹平版本。producer 请求、写入及 frozen source 与空 consumer config 分账，绝不把生成的对象/SQLite 缓存复制给消费者。
+探针通过后，原 `sdk-fixture.ts --records-history` 在60秒内通过既有 `nativeGraphFixture`/`prepareGraph` producer 生成 H=1/101/301 的合法父事件与 retained facts。四个业务主文件、owner/File ID/最终内容及关系不变；只共享 Requires d 的历史量变化，未选 optional 不提供正文响应。三档历史的 heads 可能使 pin 不同，各自对完整 producer oracle 验证，不强行抹平版本。producer 请求、写入及 frozen source 与空 consumer config 分账，绝不把生成的对象/SQLite 缓存复制给消费者。
 
-每个 H 串行执行多根 cold/warm/expired-unchanged，再以独立冷状态执行单根 a；单根 a 的完整 Requires 已包含同四节点，因此能直接观察增加根 c 是否重复取数/解码。共八次SDK调用、每次30秒、总240秒、n=1/0重试，外层仍用原15分钟预算。对账完整HTTP journal/trace/响应字节、未选正文0、零常规写回、全文/manifest/关系/本地旧pin对象hash，并保存实际失败位置；失败后不启动后续相位。总函数次数不能冒充逐fact归属或内部Schema/DFS循环次数，带coverage耗时不能作为稳定性能收益；CPU/RSS/压缩wire bytes保持unknown。
+每个 H 串行执行多根 cold/warm/expired-unchanged，再以独立冷状态执行单根 a；单根 a 的完整 Requires 已包含同四节点，因此能直接观察增加根 c 是否重复取数/解码。共十二次SDK调用、每次30秒、总240秒、n=1/0重试，外层仍用原15分钟预算。对账完整HTTP journal/trace/响应字节、未选正文0、零常规写回、全文/manifest/关系/本地旧pin对象hash，并保存实际失败位置；内容／请求失败后不启动后续相位，解码公式沿既有驱动在完整十二相位留证后断言。总函数次数不能冒充逐fact归属或内部Schema/DFS循环次数，带coverage耗时不能作为稳定性能收益；CPU/RSS/压缩wire bytes保持unknown。
 
 默认 `all` 保留原22个case及其反例，并在原scalar case末尾追加同一测量；`view-dynamics`/`scalar-inventory` 的定向含义保持。常规 `package:check`/CI 继续沿同一原driver执行。Evidence先保留完整相位、生成器与安装身份、所有原失败；所有进程/服务终局后通过本Skill原cleanup将明确owned scratch移入系统Trash，再核原件保持。该测量不新增SC22/SC20前置。
 
@@ -320,9 +360,9 @@ graph inventory 返回 Name、Description、Kind、Enabled、Default Context、S
 
 ### CI 保留计数比较与原 coverage 文件
 
-原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与八相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留，不改变 Profiler 配置、SDK 调用、计数、预算或失败位置。
+原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与十二相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留；原 Profiler 参数、SDK 调用、预算及计数公式不变，实际 history 模块加载顺序和 URL 另行记录。
 
-`root_comparisons` 保存各函数的真实差值及 `necessary_decode_reuse`，false 或非零必须原样进入 artifact。ledger 的 `status: passed` 表示八相位测量与内容/请求门槛完成，不证明所有 decoder 差值为零。comparison 仍是观察结果，不通过增加消费者样本或放宽断言将差值消除。
+`root_comparisons` 保存各函数的真实差值及 `necessary_decode_reuse`，false 或非零必须原样进入 artifact。ledger 的 `status: passed` 表示十二相位测量与内容/请求门槛完成，不证明所有 decoder 差值为零。comparison 仍是观察结果，不通过增加消费者样本或放宽断言将差值消除。
 
 ### Tags / View 动态观察与正文隔离
 

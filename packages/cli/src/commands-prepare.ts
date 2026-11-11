@@ -67,6 +67,10 @@ export const prepareCommand = defineCommand(
     ),
     database: databaseFlag,
     ...readPolicyFlags,
+    readOnly: switchFlag(
+      "read-only",
+      "Forbid every remote write, including internal history retention",
+    ),
     maxNodes: singleton(
       "max-nodes",
       "Maximum selected root/required nodes, excluding directory-only candidates (default 64)",
@@ -161,7 +165,12 @@ export const prepareCommand = defineCommand(
             ? {}
             : { sessionBindings: yield* readBindings(bindingPath) }),
         },
-        { database: Option.getOrUndefined(config.database), execution, metrics: config.metrics },
+        {
+          database: Option.getOrUndefined(config.database),
+          execution,
+          metrics: config.metrics,
+          readOnly: config.readOnly,
+        },
       )
       yield* emit({
         ...prepared,

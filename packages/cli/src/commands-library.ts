@@ -35,6 +35,7 @@ import { libraryGraphCommand } from "./commands-library-graph.ts"
 import { libraryAuditCommand } from "./commands-library-audit.ts"
 import { libraryResourceCommand } from "./commands-library-resource.ts"
 import { libraryInventoryCommand } from "./commands-library-inventory.ts"
+import { libraryCreateCommand } from "./commands-library-create.ts"
 
 const initialize = defineCommand(
   "init",
@@ -384,6 +385,7 @@ export const libraryCommand = defineCommand("library").pipe(
     libraryAuditCommand,
     libraryResourceCommand,
     libraryInventoryCommand,
+    libraryCreateCommand,
     sources,
     librarySourceDefinitionsCommand,
     snapshots,

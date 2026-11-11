@@ -223,7 +223,31 @@ describe("scalar current metadata consumption", () => {
         const logicalBodies = bodies(f)
         const snapshot = f.base.json.get("snapshots/" + result.snapshot_id + ".json")
         const physical = await f.run(readSkill(skillPage, { ...options, refresh: true }))
-        expect({ ...result, freshness: undefined }).toEqual({ ...physical, freshness: undefined })
+        // The selected content is identical, but effects belong to each call.
+        expect({ ...result, freshness: undefined, effects: undefined }).toEqual({
+          ...physical,
+          freshness: undefined,
+          effects: undefined,
+        })
+        expect(result.effects).toEqual({
+          version: 1,
+          remote_writes: "retained",
+          author_content: "unchanged",
+          retention: [
+            {
+              skill_page_id: skillPage,
+              file_id: "file-main",
+              operation_id: expect.stringMatching(/^observe-[a-f0-9]{64}\.[a-f0-9]{64}$/),
+              status: "confirmed",
+            },
+          ],
+        })
+        expect(physical.effects).toEqual({
+          version: 1,
+          remote_writes: "none",
+          author_content: "unchanged",
+          retention: [],
+        })
         expect(f.base.json.get("snapshots/" + physical.snapshot_id + ".json")).toEqual(snapshot)
         expect(result.members?.map((entry) => entry.id)).toEqual([
           "shared_skill:library-snapshot:other-1",

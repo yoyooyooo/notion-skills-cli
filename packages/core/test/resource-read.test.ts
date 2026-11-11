@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Crypto, Deferred, Effect, Fiber, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { recordScope } from "../src/cache.ts"
-import { type ContentRecord, type Snapshot } from "../src/model.ts"
+import { property, type ContentRecord, type Snapshot } from "../src/model.ts"
+import { noConsumptionWrites, type ConsumptionEffects } from "../src/consumption-effects.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef } from "../src/ref.ts"
 import {
@@ -144,6 +145,92 @@ function ready(result: ResourceReadResult): ResourceReadReady {
 }
 
 describe("fixed resource batch", () => {
+  test("strict resource batches retain exact selected bytes and observed effects", async () => {
+    const f = await fixture(true),
+      observed: ConsumptionEffects[] = []
+    const result = ready(
+      await f.run(
+        readResources(f.input(), {
+          readOnly: true,
+          onEffects: (effects) => observed.push(effects),
+        }),
+      ),
+    )
+    expect(property(result).effects).toEqual(noConsumptionWrites())
+    expect(observed).toEqual([noConsumptionWrites()])
+    expect(result.files.map((file) => file.sha256)).toEqual(
+      [f.resources[1]!, f.resources[0]!, f.resources[2]!, f.resources[3]!].map((file) =>
+        digest(file.bytes),
+      ),
+    )
+    expect(await f.run(decodeResourceReadResult(result, f.input()))).toEqual(result)
+    const { effects: _effects, ...legacy } = result
+    expect(await f.run(decodeResourceReadResult(legacy, f.input()))).toEqual(legacy)
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
+  })
+
+  test("strict batch guards descendant semantic writes before the actual transport", async () => {
+    for (const readOnly of [true, false]) {
+      const f = await fixture(),
+        observed: ConsumptionEffects[] = []
+      let writes = 0
+      const result = await f.run(
+        Effect.gen(function* () {
+          const api = yield* Notion,
+            store = yield* Store
+          return yield* readResources(f.input(["references/a.txt"]), {
+            readOnly,
+            onEffects: (effects) => observed.push(effects),
+          }).pipe(
+            Effect.provideService(Notion, {
+              ...api,
+              request: (path, body, options) => {
+                if (path === "v1/pages")
+                  return Effect.sync(() => {
+                    writes++
+                    return { id: "controlled-write" }
+                  })
+                return api.request(path, body, options)
+              },
+            }),
+            Effect.provideService(Store, {
+              ...store,
+              readBytes: (key) =>
+                Effect.gen(function* () {
+                  const descendant = yield* Notion
+                  yield* descendant.request(
+                    "v1/pages",
+                    { parent: { page_id: skillPage } },
+                    { method: "POST" },
+                  )
+                  return yield* store.readBytes(key)
+                }),
+            }),
+          )
+        }),
+      )
+      if (readOnly) {
+        expect(writes).toBe(0)
+        expect(result).toMatchObject({
+          status: "failed",
+          effects: noConsumptionWrites(),
+          error: { code: "NOTION_READ_ONLY", details: { effects: noConsumptionWrites() } },
+        })
+        expect("files" in result).toBe(false)
+      } else {
+        expect(result.status).toBe("ready")
+        expect(writes).toBe(1)
+        expect(property(result).effects).toEqual({
+          version: 1,
+          remote_writes: "unknown",
+          author_content: "unknown",
+          retention: [],
+        })
+      }
+      expect(observed).toEqual([result.effects])
+    }
+  })
+
   test("one manifest read preserves selected order and exact text/binary bytes without reading the main or unselected files", async () => {
     const f = await fixture()
     const main = f.snapshot.files.find((file) => file.path === f.snapshot.entrypoint)!
@@ -645,6 +732,7 @@ describe("fixed resource batch", () => {
       version: 1,
       status: "cancelled",
       reason: "interrupted",
+      effects: noConsumptionWrites(),
     })
     expect(f.jsonReads.size).toBe(0)
     expect(f.objectReads.size).toBe(0)
@@ -683,6 +771,7 @@ describe("fixed resource batch", () => {
           : { status: "failed", error: { code: "RESOURCE_TIME_BUDGET" } },
       )
       expect("files" in result).toBe(false)
+      expect(property(result).effects).toEqual(noConsumptionWrites())
     }
   })
 })

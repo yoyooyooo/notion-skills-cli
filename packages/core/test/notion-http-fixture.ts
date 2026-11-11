@@ -3,7 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ConfigProvider, Effect, FileSystem, Layer } from "effect"
 import { FetchHttpClient } from "effect/http"
 import { decode } from "../src/model.ts"
-import { NotionTransport } from "../src/notion.ts"
+import { Notion, NotionTransport } from "../src/notion.ts"
 import { NotionCredentialProviderLive } from "../src/notion-credential.ts"
 import { makeRequestScheduler, NotionRequestScheduler } from "../src/notion-request-scheduler.ts"
 import { Store } from "../src/store.ts"
@@ -107,4 +107,61 @@ export function json(
 ) {
   response.writeHead(status, { "content-type": "application/json", ...headers })
   response.end(JSON.stringify(value))
+}
+
+export type ForwardedFixtureRequest = {
+  readonly request_id: string
+  readonly path: string
+  readonly method: "GET" | "POST" | "PATCH"
+  readonly body: unknown
+}
+
+/** Exercise the real transport/trace while reusing an existing owned protocol fixture. */
+export function recordedFixtureTransport<A>(
+  fixture: Notion["Service"],
+  use: (api: Notion["Service"], requests: readonly ForwardedFixtureRequest[]) => Promise<A>,
+) {
+  const requests: ForwardedFixtureRequest[] = []
+  return localServer(
+    (request, response) => {
+      void (async () => {
+        const parts: Buffer[] = []
+        for await (const part of request) parts.push(Buffer.from(part))
+        const raw = Buffer.concat(parts).toString("utf8")
+        const method = request.method
+        if (method !== "GET" && method !== "POST" && method !== "PATCH")
+          throw new Error("Unsupported fixture HTTP method")
+        const entry: ForwardedFixtureRequest = {
+          request_id: `owned-fixture-${requests.length + 1}`,
+          path: request.url!.replace(/^\//u, ""),
+          method,
+          body: raw === "" ? undefined : JSON.parse(raw),
+        }
+        requests.push(entry)
+        const result = await Effect.runPromise(
+          fixture.request(entry.path, entry.body, { method }).pipe(Effect.result),
+        )
+        if (result._tag === "Failure") throw result.failure
+        json(response, 200, result.success, { "x-request-id": entry.request_id })
+      })().catch((error: unknown) =>
+        json(response, 400, { object: "error", code: "validation_error", message: String(error) }),
+      )
+    },
+    (origin) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const transport = yield* Notion
+          return yield* Effect.promise(() =>
+            use(
+              { ...fixture, request: transport.request, requestMetrics: transport.requestMetrics },
+              requests,
+            ),
+          )
+        }).pipe(
+          Effect.provide(
+            runtime(origin, { intervalMs: 0, config: { NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000" } }),
+          ),
+        ),
+      ),
+  )
 }

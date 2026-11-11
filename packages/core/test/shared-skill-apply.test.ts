@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { fail, property, SkillsError, text, type Snapshot } from "../src/model.ts"
-import { Notion } from "../src/notion.ts"
+import { Notion, withNotionRequestAttribution } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
 import { openSkill } from "../src/snapshot.ts"
@@ -24,6 +24,7 @@ import {
   type SharedSkillApplyPlan,
 } from "../src/shared-skill-apply-model.ts"
 import { sharedSnapshotFixture, library, skillPage, encode, id } from "./shared-snapshot-fixture.ts"
+import { recordedFixtureTransport } from "./notion-http-fixture.ts"
 
 type Fixture = ReturnType<typeof sharedSnapshotFixture>
 type Environment =
@@ -164,6 +165,74 @@ function payloads(f: Fixture) {
 }
 
 describe("frozen sequential shared apply", () => {
+  test("actual parent and child HTTP attempts keep their own author phase and original operation", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot),
+      fixture = await f.run(withWriter(f, Notion))
+    await recordedFixtureTransport(fixture, async (api, requests) => {
+      const result = await f.run(
+        withNotionRequestAttribution(executeSharedSkillApply(library, { plan, mode: "create" }), {
+          phase: "author_preflight",
+          skill_page_id: skillPage,
+          operation_id: null,
+        }).pipe(Effect.provideService(Notion, api)),
+      )
+      expect(result.status).toBe("applied")
+      const metrics = api.requestMetrics!()
+      expect(metrics.trace_dropped).toBe(0)
+      const writes = metrics.trace.filter(
+        (entry) => entry.event === "attempt" && entry.kind === "notion_write",
+      )
+      expect(writes.length).toBeGreaterThan(0)
+      for (const attempt of writes) {
+        if (attempt.event !== "attempt") throw new Error("Expected actual HTTP attempt")
+        const request = requests.find((entry) => entry.request_id === attempt.request_id)
+        if (request === undefined) throw new Error("Missing exact request/response identity")
+        const record = text(property(property(property(request.body).properties).record).rich_text)
+        const expected =
+          request.method === "PATCH"
+            ? request.path.endsWith("/markdown")
+              ? plan.bodies.find((child) => request.path === `v1/pages/${child.page_id}/markdown`)!
+                  .operation_id
+              : plan.metadata!.operation_id
+            : record === plan.operation_id || record === `outcome-${plan.operation_id}`
+              ? plan.operation_id
+              : (plan.bodies.find(
+                  (child) =>
+                    record === child.operation_id ||
+                    record === `outcome-${child.operation_id}` ||
+                    record === child.event.event_id ||
+                    record === `body-${child.before.fingerprint.sha256}` ||
+                    record === `body-${child.candidate.content.sha256}`,
+                )?.operation_id ??
+                (record === plan.metadata!.operation_id ||
+                record === `outcome-${plan.metadata!.operation_id}`
+                  ? plan.metadata!.operation_id
+                  : undefined))
+        if (expected === undefined)
+          throw new Error("A write does not belong to any frozen parent or child fact")
+        expect(attempt.attribution).toEqual({
+          phase: "author_apply",
+          skill_page_id: skillPage,
+          operation_id: expected,
+        })
+      }
+      expect(
+        writes.filter((entry) => entry.attribution?.operation_id === plan.operation_id),
+      ).toHaveLength(2)
+      for (const child of [...plan.bodies, plan.metadata!])
+        expect(writes.some((entry) => entry.attribution?.operation_id === child.operation_id)).toBe(
+          true,
+        )
+      expect(
+        metrics.trace.some(
+          (entry) => entry.event === "attempt" && entry.attribution?.phase === "author_verify",
+        ),
+      ).toBe(true)
+    })
+  })
+
   test("one original batch changes main, supporting body and nominated metadata; old pin bytes remain", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f),

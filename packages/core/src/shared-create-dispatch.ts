@@ -1,6 +1,6 @@
 import { Crypto, Effect, Schema } from "effect"
 import { decode, fail, property, text, type SkillsError } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { guardedSourceMutation, sourceField } from "./shared-source-definitions.ts"
 import {
@@ -317,16 +317,43 @@ export function sharedCreateDispatch(
           method === "POST" &&
           path === "v1/pages" &&
           property(property(body).parent).data_source_id === library.records.data_source_id
+        const table = immutableRecord
+          ? library.records
+          : property(property(body).parent).data_source_id === library.files.data_source_id
+            ? library.files
+            : undefined
+        const relation =
+          table === undefined
+            ? undefined
+            : property(property(property(body).properties)[table.property_ids.Skill!]).relation
+        const owner =
+          method === "PATCH"
+            ? (plan.recovery_file_projections?.find((item) => path === `v1/pages/${item.page_id}`)
+                ?.skill_page_id ??
+              path.match(/^v1\/pages\/([a-f0-9-]{36})$/u)?.[1] ??
+              null)
+            : Array.isArray(relation) &&
+                relation.length === 1 &&
+                typeof property(relation[0]).id === "string"
+              ? String(property(relation[0]).id)
+              : null
         const transport: Notion["Service"] = {
           ...api,
-          request: (requestPath, requestBody, requestOptions) =>
-            api.request(
+          request: (requestPath, requestBody, requestOptions) => {
+            const originalWrite = requestOptions?.method === method && requestPath === path
+            const requested = api.request(
               requestPath,
               requestBody,
-              requestOptions?.method === method && requestPath === path
-                ? { ...options, ...requestOptions }
-                : requestOptions,
-            ),
+              originalWrite ? { ...options, ...requestOptions } : requestOptions,
+            )
+            return originalWrite
+              ? withNotionRequestAttribution(requested, {
+                  phase: "author_apply",
+                  skill_page_id: owner,
+                  operation_id: plan.operation_id,
+                })
+              : requested
+          },
         }
         const result = yield* guardedSourceMutation(
           library,
@@ -349,7 +376,19 @@ export function sharedCreateDispatch(
                           "The original creation acknowledgement has no exact page ID.",
                         ),
                       )
-                    return observeMutation(library, plan, path, body, method, pageId)
+                    return withNotionRequestAttribution(
+                      observeMutation(library, plan, path, body, method, pageId),
+                      {
+                        phase: "author_verify",
+                        skill_page_id:
+                          owner ??
+                          (property(property(body).parent).data_source_id ===
+                          library.skills.data_source_id
+                            ? pageId
+                            : null),
+                        operation_id: plan.operation_id,
+                      },
+                    )
                   },
                 }
               : {}),
@@ -381,6 +420,7 @@ export function sharedCreateDispatch(
             : error,
         ),
         Effect.provide(services),
+        (effect) => withNotionRequestAttribution(effect, { operation_id: plan.operation_id }),
       )
     return {
       canResume: Effect.gen(function* () {

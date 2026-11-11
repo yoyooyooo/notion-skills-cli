@@ -1,5 +1,9 @@
 import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
+import {
+  withConsumptionEffects,
+  type ConsumptionObservationOptions,
+} from "./consumption-effects.ts"
 import { readArchive } from "./archive.ts"
 import { openRetainedSnapshot } from "./shared-history-materialization.ts"
 import {
@@ -1184,7 +1188,7 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
   })
 }
 
-export interface ReadOptions extends ReadPolicyOptions {
+export interface ReadOptions extends ReadPolicyOptions, ConsumptionObservationOptions {
   readonly database?: string
   readonly path?: string
   readonly from?: string
@@ -1197,6 +1201,10 @@ export interface ReadOptions extends ReadPolicyOptions {
 export const READ_OUTPUT_PROOF_VERSION = 1
 
 export function readSkill(input: string, options: ReadOptions = {}) {
+  return withConsumptionEffects(readSkillSelected(input, options), options)
+}
+
+function readSkillSelected(input: string, options: ReadOptions) {
   if (options.authoring === true) {
     const selected = pageId(input)
     if (!selected || options.from || options.offline || options.maxAge !== undefined)
@@ -1214,7 +1222,8 @@ export function readSkill(input: string, options: ReadOptions = {}) {
   return readSkillContent(input, options)
 }
 
-function readSkillContent(input: string, options: ReadOptions) {
+function readSkillContent(input: string, supplied: ReadOptions) {
+  const options = { ...supplied, sharedReadOnly: supplied.readOnly }
   return Effect.gen(function* () {
     if (options.from && options.path !== undefined)
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "--from and --path cannot be combined."))

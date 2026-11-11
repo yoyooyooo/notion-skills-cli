@@ -17,6 +17,24 @@ const result = await readResources(input, { database, signal });
 const verified = await decodeResourceReadResult(result, input);
 ```
 
+## Effects and strict read-only policy
+
+`RESOURCE_READ_EFFECTS_VERSION = 1` separately declares the batch policy and
+effects capability. It is independent of the scalar `CONSUMPTION_EFFECTS_VERSION`
+and the original resource contract version. `readResources(input, { readOnly: true })`
+uses the existing semantic Notion write guard for the complete descendant call
+chain. A forbidden write fails with `NOTION_READ_ONLY` before the transport or
+scheduler is called. Ordinary fixed reads keep their existing acquisition path.
+
+Current ready, failed and cancelled outcomes carry the version-1 `effects` receipt
+described in the [consumer contract](consumer-contract.md#consumption-effects-and-strict-read-only-mode).
+Failures also preserve it in `error.details.effects`; cancellation reports the
+observed effect after owned request cleanup. The receipt describes this operation,
+not the snapshot's history. Source identities, full bytes and delivery fields are
+unchanged. The decoder accepts older version-1 results without effects; their
+effects remain unknown to a consumer. A host must verify this batch capability
+before dispatching a strict request and must not silently ignore the policy.
+
 ## Selection and budgets
 
 All refs must be exact pinned file references belonging to one owner and one

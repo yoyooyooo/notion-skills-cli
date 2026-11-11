@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { fail, property, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
+import type { SharedBodyWritePlan } from "./shared-body-write.ts"
 import { BodyFingerprintSchema, isResourceFollowing } from "./shared-file-state.ts"
 import {
   assertSharedFileIntentReady,
@@ -196,6 +197,48 @@ function matchesSubmission(submitted: RequestContext, current: RequestContext) {
   )
 }
 
+function unreconciledRestore(result: Feedback | undefined): result is Feedback & {
+  readonly original_operation_id: string
+} {
+  return (
+    result !== undefined &&
+    result.original_operation_id !== null &&
+    (result.status === "processing" || result.status === "unknown")
+  )
+}
+
+/** A legacy missing receipt ID is not authority to adopt an arbitrary completed restore. */
+function assertRequestRestorePlan(result: Feedback, plan: SharedBodyWritePlan) {
+  const before = result.before,
+    source = property(result.source)
+  if (
+    result.submitted === undefined ||
+    !matchesSubmission(result.submitted, before) ||
+    before.intent !== "restore-follow" ||
+    plan.action !== "restore_follow" ||
+    (result.original_operation_id !== null && result.original_operation_id !== plan.operation_id) ||
+    plan.library_id !== before.library_id ||
+    plan.skill_page_id !== before.skill_page_id ||
+    plan.skill_id !== before.skill_id ||
+    plan.file_id !== before.file_id ||
+    plan.page_id !== before.page_id ||
+    plan.path !== before.path ||
+    canonicalSharedJson(plan.before.fingerprint) !== canonicalSharedJson(before.body) ||
+    plan.before.bytes !== before.bytes ||
+    canonicalSharedJson(plan.event.parents) !== canonicalSharedJson(before.heads) ||
+    canonicalSharedJson(plan.source_context ?? null) !== canonicalSharedJson(before.source) ||
+    plan.source_id !== before.source.selected_version ||
+    plan.restore_source?.source_id !== source.source_id ||
+    plan.restore_source?.revision !== source.revision ||
+    plan.restore_source?.path !== source.path ||
+    source.selected_version !== plan.source_id
+  )
+    throw fail(
+      "SHARED_FILE_REQUEST_ORIGINAL_SCOPE",
+      "The original restore does not match this submitted request's exact file, complete preimage, frontier and Source identity.",
+    )
+}
+
 function verifiedFeedback(input: RequestInput, observed: RequestObservation) {
   return Effect.gen(function* () {
     const result = observed.feedback
@@ -285,6 +328,7 @@ function writeFeedback(
     const serialized = canonicalSharedJson(result)
     const after = submit ? { ...expected, intent: "restore-follow" as const } : expected
     const summary = `${result.status}: ${result.message}\n${result.code}${result.original_operation_id === null ? "" : `\nOriginal operation: ${result.original_operation_id}`}`
+    let observedContext: RequestContext | undefined
     const mutation = yield* guardedSourceMutation(
       input.library,
       {
@@ -301,18 +345,40 @@ function writeFeedback(
       },
       Effect.gen(function* () {
         const observed = yield* observeRequest(input)
-        return sameContext(observed.context, after) &&
+        // Confirm only this metadata PATCH here. A concurrent body/Source edit is
+        // checked separately below, not an unknown outcome for an acknowledged receipt.
+        const sameNative =
+          observed.context.library_id === after.library_id &&
+          observed.context.skill_page_id === after.skill_page_id &&
+          observed.context.skill_id === after.skill_id &&
+          observed.context.file_id === after.file_id &&
+          observed.context.page_id === after.page_id &&
+          observed.context.path === after.path
+        if (
+          sameNative &&
+          (!submit || observed.context.intent === after.intent) &&
           observed.summary === summary &&
           canonicalSharedJson(observed.feedback ?? null) === serialized
-          ? observed.context
-          : undefined
+        ) {
+          observedContext = observed.context
+          return observed.context
+        }
+        return undefined
       }),
     )
+    const unknown = "original_outcome" in mutation && mutation.original_outcome === "unknown"
+    if (!unknown && (observedContext === undefined || !sameContext(observedContext, after)))
+      return {
+        status: "needs_review" as const,
+        code: "SHARED_FILE_REQUEST_CHANGED",
+        feedback: result,
+        feedback_operation_id: mutation.operation_id,
+        body_writes: 0 as const,
+        message:
+          "The feedback metadata was verified, but the current complete file context changed; no body execution is authorized.",
+      }
     return {
-      status:
-        "original_outcome" in mutation && mutation.original_outcome === "unknown"
-          ? ("unknown" as const)
-          : result.status,
+      status: unknown ? ("unknown" as const) : result.status,
       feedback: result,
       feedback_operation_id: mutation.operation_id,
       body_writes: 0 as const,
@@ -380,18 +446,33 @@ function verifyRequest(
 export function submitSharedFileRequest(input: RequestInput & { readonly dryRun?: boolean }) {
   return Effect.gen(function* () {
     const observed = yield* observeRequest(input)
-    if (observed.feedback?.status === "unknown" && observed.feedback.original_operation_id !== null)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_FILE_REQUEST_PENDING",
-          "Reconcile the original restore before submitting new intent.",
-        ),
-      )
+    const previous = observed.feedback
+    let originalNotApplied = false
+    if (
+      previous !== undefined &&
+      previous.original_operation_id !== null &&
+      (unreconciledRestore(previous) || previous.code === "ORIGINAL_NOT_APPLIED")
+    ) {
+      const original = yield* reconcileSelectedSharedFileRestore({
+        ...input,
+        operationId: previous.original_operation_id,
+        validateOriginal: (plan) => assertRequestRestorePlan(previous, plan),
+      })
+      if (original.status !== "not_applied")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_FILE_REQUEST_PENDING",
+            "Reconcile the original restore feedback before submitting new intent.",
+          ),
+        )
+      originalNotApplied = true
+    }
     yield* assertSharedFileIntentReady(input.library, observed.file)
     const submitted: RequestContext = { ...observed.context, intent: "restore-follow" }
     const requestId = "file-request-" + (yield* sha256(canonicalSharedJson(submitted)))
     if (
       observed.context.intent === "restore-follow" &&
+      !originalNotApplied &&
       observed.feedback?.submitted !== undefined &&
       sameContext(observed.feedback.submitted, submitted)
     )
@@ -434,12 +515,38 @@ export function processSharedFileRequest(
     readonly dryRun?: boolean
     readonly allowLocalArchive?: boolean
     readonly reconcile?: boolean
+    readonly operationId?: string
   },
 ) {
   return Effect.gen(function* () {
+    if (
+      input.operationId !== undefined &&
+      (!input.reconcile ||
+        !/^body-write-follow-[a-f0-9]{64}\.[a-f0-9]{64}$/u.test(input.operationId))
+    )
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "An exact original restore-follow --operation is accepted only with --reconcile.",
+        ),
+      )
     const frozen = yield* observeRequest(input)
     if (frozen.context.intent === "none")
       return { status: "no_request" as const, remote_writes: 0 as const }
+    const previous = frozen.feedback
+    if (
+      input.operationId !== undefined &&
+      (previous === undefined ||
+        (previous.original_operation_id !== null &&
+          previous.original_operation_id !== input.operationId) ||
+        (previous.original_operation_id === null && previous.status !== "processing"))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_REQUEST_ORIGINAL_SCOPE",
+          "The supplied original operation conflicts with the current receipt; only a legacy processing receipt may bind its missing ID.",
+        ),
+      )
     if (yield* verifiedFeedback(input, frozen))
       return {
         status: "verified_applied" as const,
@@ -447,35 +554,76 @@ export function processSharedFileRequest(
         remote_writes: 0 as const,
         feedback: frozen.feedback,
       }
-    const previous = frozen.feedback
     if (input.reconcile) {
-      if (!previous?.original_operation_id)
+      const operationId = input.operationId ?? previous?.original_operation_id
+      if (!previous || !operationId)
         return yield* Effect.fail(
           fail(
             "SHARED_FILE_REQUEST_NO_ORIGINAL",
             "This request has no original restore operation to reconcile.",
           ),
         )
+      let originalPlan: SharedBodyWritePlan | undefined
       const result = yield* reconcileSelectedSharedFileRestore({
         ...input,
-        operationId: previous.original_operation_id,
+        operationId,
+        validateOriginal: (plan) => {
+          assertRequestRestorePlan(previous, plan)
+          originalPlan = plan
+        },
       })
       const after = yield* observeRequest(input)
-      if (result.status !== "applied")
+      const plan = originalPlan
+      if (
+        plan === undefined ||
+        after.context.intent !== "restore-follow" ||
+        after.request_id !== frozen.request_id ||
+        canonicalSharedJson(after.feedback ?? null) !== canonicalSharedJson(previous) ||
+        after.context.library_id !== plan.library_id ||
+        after.context.skill_page_id !== plan.skill_page_id ||
+        after.context.skill_id !== plan.skill_id ||
+        after.context.file_id !== plan.file_id ||
+        after.context.page_id !== plan.page_id ||
+        after.context.path !== plan.path ||
+        canonicalSharedJson(after.context.source) !==
+          canonicalSharedJson(plan.source_context ?? null)
+      )
         return {
-          status: "blocked" as const,
+          status: "needs_review" as const,
           original: result,
           remote_writes: 0 as const,
           message:
-            "The original restore is verified as not applied or separately reviewed. Read the current request before preparing new intent.",
+            "The original operation was observed, but the current request, file or Source identity changed; no feedback was published.",
         }
+      if (result.status === "not_applied") {
+        const blocked: Feedback = {
+          ...previous,
+          status: "blocked",
+          code: "ORIGINAL_NOT_APPLIED",
+          message:
+            "The exact original restore was not applied. Read the current file, then use file request --submit to authorize new intent before --process.",
+          original_operation_id: operationId,
+        }
+        if (input.dryRun)
+          return {
+            status: "planned" as const,
+            dry_run: true as const,
+            feedback: blocked,
+            original: result,
+            remote_writes: 0 as const,
+          }
+        return yield* writeFeedback(input, blocked, after.context)
+      }
       if (
-        after.context.intent !== "restore-follow" ||
+        result.status !== "applied" ||
         after.file.state?.ownership.kind !== "following" ||
         isResourceFollowing(after.file.state.ownership) ||
         after.file.state.ownership.projection.sha256 !== after.context.body.sha256 ||
         after.context.source.selected_version !== result.selected_version ||
-        after.file.state.ownership.source_revision !== result.source?.revision
+        after.file.state.ownership.source_revision !== result.source?.revision ||
+        after.context.body.sha256 !== plan.candidate.content.sha256 ||
+        after.context.bytes !== plan.candidate.content.bytes ||
+        canonicalSharedJson(after.context.heads) !== canonicalSharedJson([plan.event.event_id])
       )
         return {
           status: "needs_review" as const,
@@ -489,6 +637,7 @@ export function processSharedFileRequest(
         status: "verified_applied",
         code: "ORIGINAL_VERIFIED",
         message: "The exact original restore facts were verified without repeating a body write.",
+        original_operation_id: operationId,
         after: after.context,
       }
       if (input.dryRun)
@@ -500,13 +649,21 @@ export function processSharedFileRequest(
         }
       return yield* writeFeedback(input, completed, after.context)
     }
-    if (previous?.status === "unknown" && previous.original_operation_id !== null)
+    if (unreconciledRestore(previous))
       return {
-        status: "unknown" as const,
+        status: previous.status,
         feedback: previous,
         remote_writes: 0 as const,
         message:
-          "Reconcile the exact original restore; processing cannot replace an unknown operation.",
+          "Use file request --reconcile for the exact original restore; processing cannot replace a pending or unknown operation.",
+      }
+    if (previous?.code === "ORIGINAL_NOT_APPLIED")
+      return {
+        status: "blocked" as const,
+        feedback: previous,
+        remote_writes: 0 as const,
+        message:
+          "Read the current file and use file request --submit before processing new intent.",
       }
     if (
       previous?.submitted === undefined ||
@@ -571,31 +728,50 @@ export function processSharedFileRequest(
         body_writes: 0 as const,
         remote_writes: 0 as const,
       }
-    const progress = yield* writeFeedback(
-      input,
-      feedback(
-        frozen,
-        "processing",
-        "SUBMITTED_REQUEST_REVALIDATION",
-        "Revalidating the submitted body and fixed source before the explicit restore.",
-        source,
-        null,
-      ),
-      frozen.context,
+    const progressFeedback = feedback(
+      frozen,
+      "processing",
+      "SUBMITTED_REQUEST_REVALIDATION",
+      "Revalidating the submitted body and fixed source before the explicit restore.",
+      source,
+      null,
     )
-    if (progress.status !== "processing") return progress
+    let retainedOperationId: string | null = null
     const restored = yield* restoreSelectedSharedFile({
       ...input,
       dryRun: false,
       beforeRestoreDispatch: verifyRequest(input, frozen),
+      afterRestorePlanRetained: (original) =>
+        Effect.gen(function* () {
+          retainedOperationId = original.operation_id
+          yield* fileIntentChecked(() => assertRequestRestorePlan(progressFeedback, original))
+          const bound = yield* writeFeedback(
+            input,
+            {
+              ...progressFeedback,
+              original_operation_id: original.operation_id,
+            },
+            frozen.context,
+          )
+          if (bound.status !== "processing")
+            return yield* Effect.fail(
+              fail(
+                "SHARED_FILE_REQUEST_ORIGINAL_PENDING",
+                "The original plan is retained, but its request binding was not verified; reconcile this original operation before any new intent.",
+              ),
+            )
+        }),
       afterRestoreBodyWrite: (sha256, bytes) => verifyRequest(input, frozen, { sha256, bytes }),
     }).pipe(Effect.result)
     if (restored._tag === "Failure") {
       const error = restored.failure,
         details = property(error.details)
       const operation =
-        typeof details.body_write_operation_id === "string" ? details.body_write_operation_id : null
-      const unknown = /UNKNOWN|UNRESOLVED|PENDING|REVIEW_REQUIRED/u.test(error.code)
+        typeof details.body_write_operation_id === "string"
+          ? details.body_write_operation_id
+          : retainedOperationId
+      const unknown =
+        operation !== null || /UNKNOWN|UNRESOLVED|PENDING|REVIEW_REQUIRED/u.test(error.code)
       const result = feedback(
         frozen,
         unknown ? "unknown" : "blocked",

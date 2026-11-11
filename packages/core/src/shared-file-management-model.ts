@@ -9,7 +9,11 @@ import {
   nativeFileMetadata,
   type FileEvent,
 } from "./shared-file-state.ts"
-import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
+import {
+  canonicalSharedJson,
+  validateSharedRecordEnvelope,
+  type SharedRecord,
+} from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import {
   SharedNotionMarkdownProjectionSchema,
@@ -63,6 +67,40 @@ export const SharedFileManagementPlanSchema = Schema.Union([
 export type SharedFileManagementPlan = typeof SharedFileManagementPlanSchema.Type
 export const fileManagementOutcomesEntity = "file-management-outcomes-v1"
 export const fileManagementOutcomeId = (operationId: string) => `outcome-${operationId}`
+export const SharedFileManagementOutcomeSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  kind: Schema.Literal("file_management_outcome"),
+  operation_id: Schema.String,
+  file_id: Schema.String,
+  status: Schema.Literals(["applied", "not_sent", "rejected", "needs_review"]),
+  reason_code: Schema.String,
+  page_id: Schema.optional(Schema.String),
+  event_id: Schema.optional(Schema.String),
+})
+export type SharedFileManagementOutcome = typeof SharedFileManagementOutcomeSchema.Type
+
+export function decodeSharedFileManagementOutcome(row: SharedRecord): SharedFileManagementOutcome {
+  const value = Schema.decodeUnknownSync(SharedFileManagementOutcomeSchema)(row.payload, {
+    onExcessProperty: "error",
+  })
+  const event = plannedFileManagementEventId(value.operation_id)
+  if (
+    event === undefined ||
+    row.kind !== "operation" ||
+    row.entity_id !== fileManagementOutcomesEntity ||
+    row.record_id !== fileManagementOutcomeId(value.operation_id) ||
+    row.operation_id !== value.operation_id ||
+    (value.page_id !== undefined && pageId(value.page_id) !== value.page_id) ||
+    (value.status === "applied"
+      ? value.event_id !== event || value.page_id === undefined
+      : value.event_id !== undefined)
+  )
+    throw fail(
+      "SHARED_FILE_MANAGEMENT_INVALID",
+      "The lifecycle outcome does not identify its exact original operation.",
+    )
+  return value
+}
 export const fileManagementProtection = {
   preserves_page_and_body: true,
   move_strategy: "single_path_property_patch",

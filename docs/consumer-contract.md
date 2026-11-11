@@ -133,6 +133,60 @@ Options derive the existing prepare options (`database`, `execution`, `metrics`)
 add an optional `AbortSignal`. There is no daemon, new scheduler, retry owner or separate
 credential store.
 
+## Consumption effects and strict read-only mode
+
+The SDK exports `CONSUMPTION_EFFECTS_VERSION = 1`, `ConsumptionEffects` and
+`ConsumptionRetentionEffect`. Every current `consume` outcome carries `effects` at
+the top level, including failed and cancelled outcomes. Ready preparation results
+carry the same receipt in `preparation.effects`; failed results also include it in
+`error.details.effects`. `prepareGraph` and `readSkill` return `effects` on success
+and attach it to `SkillsError.details.effects` on failure.
+
+```ts
+type ConsumptionEffects = {
+  version: 1
+  remote_writes: "none" | "retained" | "unknown"
+  author_content: "unchanged" | "unknown"
+  retention: readonly {
+    skill_page_id: string
+    file_id: string
+    operation_id: string
+    status: "confirmed" | "unknown"
+  }[]
+}
+```
+
+This receipt observes the requests already executed by this operation. It adds no
+probe or remote request. Semantic queries, including POST queries, remain reads.
+`none` means this operation dispatched no semantic remote write. `retained` means
+all observed writes were acknowledged immutable history Records; the receipt names
+the original Skill, File and observation operation for each root or required Skill.
+It does not imply that graph preparation, delivery or activation succeeded. A lost
+write response or cancellation during dispatch remains `unknown`, including when
+some earlier Records were acknowledged. An unclassified write also leaves
+`author_content` unknown. Missing effects in an older version 1 receipt mean
+**unknown**, never zero writes; the additive fields remain optional in the decoder
+for that compatibility.
+
+`ConsumeOptions.readOnly` and `ReadSkillOptions.readOnly`, and CLI `read --read-only`,
+`use --read-only` and `ctl prepare --read-only`, forbid every semantic remote write
+before dispatch. Exact fixed history remains usable, and unchanged current content
+can reuse existing retention. If current content needs a new observation Record,
+the operation refuses before its first write and reports the existing Core error
+with a `none` receipt. Normal consumption still retains newly observed author edits;
+strict mode does not delete retention or pretend that it has happened. A host must
+check the exported capability before relying on this option with an older SDK.
+
+Fixed resource batches declare this support separately through
+`RESOURCE_READ_EFFECTS_VERSION = 1`. `ResourceReadOptions.readOnly` uses the same
+write guard and effect observer, including failed and cancelled outcomes. The
+scalar capability alone does not establish batch support. The
+[resource contract](resource-read-contract.md#effects-and-strict-read-only-policy)
+defines compatibility with older results and the host's fail-before-dispatch gate.
+
+The default compact `use` output discloses its effect summary. JSON returns the
+structured receipt. Explicit `read --raw` continues to return only the exact text.
+
 ## CLI command disposition and compatibility
 
 The `agent-cli-ref-20261105` candidate keeps one parser/handler definition per
@@ -292,6 +346,14 @@ acquired-service metrics remain `null` and cannot prove zero work. A zero ledger
 not change a failed or cancelled operation into success. Callbacks should not throw.
 Counters and trace contain no raw credentials, request paths or full bodies. Hosts
 must count SDK calls separately from those HTTP measurements and retain truncation.
+
+Each Notion attempt and its queue/retry waits include diagnostic `attribution`:
+`phase`, `skill_page_id` and `operation_id`. Explicit call contexts distinguish
+`consume`, `retention`, `author_preflight`, `author_apply`, `author_verify` and
+`reconcile`; absent context is `null`, and older traces without this field are unknown.
+The owner and original operation describe the actual request producer. They do not
+establish ownership of every coalesced waiter, grant access, or authorize reuse across
+responses or write boundaries. This trace adds no remote probe.
 
 An already aborted signal does no acquisition. Aborting initialization, headers or
 body work interrupts the operation and waits for its scope cleanup before settlement.

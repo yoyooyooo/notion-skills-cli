@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { withConsumptionRetention } from "./consumption-effects.ts"
 import { decode, fail, property, SkillsError } from "./model.ts"
 import { pageId as notionPageId } from "./ref.ts"
 import {
@@ -256,7 +257,18 @@ export function commitSharedObservationPlan<R = never>(
 ) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedObservationPlan(input.plan)
-    yield* appendSharedRecord(library, {
+    const append = (record: Parameters<typeof appendSharedRecord>[1]) =>
+      withConsumptionRetention(
+        appendSharedRecord(library, record),
+        {
+          skill_page_id: plan.skill_page_id,
+          file_id: plan.file_id,
+          operation_id: plan.operation_id,
+        },
+        library.records.data_source_id,
+        input.mode === "reconcile" ? "reconcile" : "retention",
+      )
+    yield* append({
       mode: input.mode,
       recordId: plan.operation_id,
       operationId: plan.operation_id,
@@ -271,7 +283,7 @@ export function commitSharedObservationPlan<R = never>(
       content.sha256,
       plan.body.native_body_completion,
     )
-    yield* appendSharedRecord(library, {
+    yield* append({
       mode: input.mode,
       recordId: content.object_id,
       operationId: retainedIdentity.operation_id,
@@ -282,7 +294,7 @@ export function commitSharedObservationPlan<R = never>(
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "object")))
     if (input.mode === "create" && input.beforeEventWrite !== undefined)
       yield* input.beforeEventWrite
-    yield* appendSharedRecord(library, {
+    yield* append({
       mode: input.mode,
       recordId: plan.event.event_id,
       operationId: plan.event.event_id,

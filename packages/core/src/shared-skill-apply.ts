@@ -2,6 +2,7 @@ import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
 import { fail, property, type SkillsError } from "./model.ts"
+import { withNotionRequestAttribution } from "./notion.ts"
 import { sharedSkillId } from "./shared-content.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
@@ -193,7 +194,10 @@ function saveOutcome(
   reason: string,
 ) {
   return Effect.gen(function* () {
-    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    const headers = yield* withNotionRequestAttribution(
+      querySharedOperationIndex(library, plan.skill_page_id),
+      { phase: "author_verify" },
+    )
     const fingerprints: Outcome["children"][number][] = []
     for (const child of children) {
       if (child.status === "not_sent") {
@@ -377,7 +381,13 @@ export function reconcileSharedSkillApply(library: SharedLibrary, input: SharedS
       requires_fresh_read: true as const,
       protection: sharedSkillApplyProtection,
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "reconcile",
+      skill_page_id: input.skill_page_id,
+      operation_id: input.operation_id,
+    }),
+  )
 }
 
 export function executeSharedSkillApply(
@@ -401,7 +411,7 @@ export function executeSharedSkillApply(
           "The prepared apply belongs to another authenticated snapshot scope.",
         ),
       )
-    yield* verifyScope(library, plan)
+    yield* withNotionRequestAttribution(verifyScope(library, plan), { phase: "author_preflight" })
     const journal = yield* journalScope(scope, plan)
     const local = yield* pendingFileOperations(journal)
     const original = local.find((entry) => entry.plan.operation_id === plan.operation_id)
@@ -422,13 +432,16 @@ export function executeSharedSkillApply(
           "Reconcile original shared operations before a new apply.",
         ),
       )
-    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    const headers = yield* withNotionRequestAttribution(
+      querySharedOperationIndex(library, plan.skill_page_id),
+      { phase: "author_preflight" },
+    )
     if (headers.some((header) => header.record_id === plan.operation_id))
       return yield* reconcileSharedSkillApply(library, plan)
-    const pending = yield* loadPendingSharedSkillApplies(library, {
-      skillPageId: plan.skill_page_id,
-      headers,
-    })
+    const pending = yield* withNotionRequestAttribution(
+      loadPendingSharedSkillApplies(library, { skillPageId: plan.skill_page_id, headers }),
+      { phase: "author_preflight" },
+    )
     if (pending.length !== 0)
       return yield* Effect.fail(
         fail("SHARED_APPLY_PENDING", "Reconcile the original shared apply before new intent.", {
@@ -570,7 +583,13 @@ export function executeSharedSkillApply(
       requires_fresh_read: true as const,
       protection: sharedSkillApplyProtection,
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "author_apply",
+      skill_page_id: input.plan.skill_page_id,
+      operation_id: input.plan.operation_id,
+    }),
+  )
 }
 
 /** Completed batches scan only compact headers and small outcomes. */

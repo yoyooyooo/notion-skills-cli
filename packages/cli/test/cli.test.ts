@@ -28,7 +28,7 @@ beforeAll(async () => {
     build.exited,
   ])
   if (exit !== 0) throw new Error(`Fresh production CLI build failed: ${stdout}\n${stderr}`)
-})
+}, 120_000)
 const node = (() => {
   const executable = Bun.which("node")
   if (!executable) throw new Error("Node.js is required for the production CLI consumer tests.")
@@ -62,12 +62,15 @@ async function invoke(
   const root = options.root ?? (await mkdtemp(join(tmpdir(), "ntn-skills-cli-test-")))
   const requestsBefore = http.calls()
   const selectedRoot = options.inaccessible ? "/nonexistent/ntn-skills-cli-help" : root
+  const environment = { ...process.env }
+  // These tests exercise this freshly built package, not a caller's development checkout.
+  delete environment.NTN_SKILLS_DEV_ROOT
   const child = Bun.spawn([options.runtime ?? node, options.entrypoint ?? main, ...args], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
     env: {
-      ...process.env,
+      ...environment,
       NOTION_API_TOKEN: options.traceOnline ? "controlled-offline-probe-token" : "",
       NOTION_WORKSPACE_ID: "",
       NOTION_API_BASE_URL: http.origin,
@@ -478,6 +481,35 @@ test("machine constraints and handler rejection share the command contract", asy
     ],
   ])
     await invalid(args)
+}, 60000)
+
+test("file request original operation is explicit, reconcile-only and available in public help", async () => {
+  const command = ["ctl", "library", "file", "request"]
+  const target = [
+    "00000000-0000-4000-8000-000000000001",
+    "references/1.md",
+    "--entry",
+    "00000000-0000-4000-8000-000000000002",
+  ]
+  const operation = `body-write-follow-${"a".repeat(64)}.${"b".repeat(64)}`
+  for (const flags of [
+    ["--operation", operation],
+    ["--process", "--operation", operation],
+    ["--submit", "--operation", operation],
+    ["--reconcile", "--operation", "wrong"],
+    ["--reconcile", "--operation", operation, "--operation", operation],
+  ])
+    await invalid([...command, ...target, ...flags])
+  const schema = await invoke(["schema", ...command], { inaccessible: true, traceOnline: true })
+  expect(schema.exit).toBe(0)
+  expect(schema.onlineCalled).toBe(false)
+  expect(JSON.parse(schema.stdout).schema.parameters).toContainEqual(
+    expect.objectContaining({ name: "operation" }),
+  )
+  const help = await invoke([...command, "--help"], { inaccessible: true, traceOnline: true })
+  expect(help.exit).toBe(0)
+  expect(help.onlineCalled).toBe(false)
+  expect(help.stdout).toContain("--operation")
 }, 60000)
 
 test("update Default Context accepts explicit true and false and rejects repetition", async () => {
@@ -953,7 +985,7 @@ test("implicit root help works offline", async () => {
   expect(result.onlineCalled).toBe(false)
 })
 
-test("SC25 C3 daily help/schema stay small while ctl and historical exact paths share one parser", async () => {
+test("SC25 C3 daily help/schema keep internal operator commands out of the daily surface", async () => {
   const root = await invoke(["schema"], { inaccessible: true, traceOnline: true })
   expect(root.exit).toBe(0)
   expect(root.onlineCalled).toBe(false)
@@ -974,14 +1006,17 @@ test("SC25 C3 daily help/schema stay small while ctl and historical exact paths 
   expect(help.exit).toBe(0)
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout).not.toContain("--session-bindings")
-  for (const path of [
-    ["views"],
-    ["prepare"],
-    ["resolve"],
-    ["operation", "resume"],
-    ["sync", "local", "run"],
-    ["sync", "upstream", "run"],
-  ]) {
+}, 30000)
+
+for (const path of [
+  ["views"],
+  ["prepare"],
+  ["resolve"],
+  ["operation", "resume"],
+  ["sync", "local", "run"],
+  ["sync", "upstream", "run"],
+])
+  test(`SC25 C3 ctl and historical ${path.join(" ")} share one parser`, async () => {
     const canonical = await invoke(["schema", "ctl", ...path], {
       inaccessible: true,
       traceOnline: true,
@@ -997,13 +1032,14 @@ test("SC25 C3 daily help/schema stay small while ctl and historical exact paths 
     })
     expect(commandHelp.exit).toBe(0)
     expect(commandHelp.onlineCalled).toBe(false)
-  }
-  for (const author of ["create", "adopt", "write", "update", "apply", "replace"]) {
+  }, 30000)
+
+for (const author of ["create", "adopt", "write", "update", "apply", "replace"])
+  test(`SC25 C3 historical ${author} schema remains available offline`, async () => {
     const schema = await invoke(["schema", author], { inaccessible: true, traceOnline: true })
     expect(schema.exit).toBe(0)
     expect(JSON.parse(schema.stdout).schema.name).toBe(author)
-  }
-}, 30000)
+  }, 30000)
 
 for (const command of [
   ["list"],
