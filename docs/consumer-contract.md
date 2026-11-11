@@ -177,6 +177,13 @@ with a `none` receipt. Normal consumption still retains newly observed author ed
 strict mode does not delete retention or pretend that it has happened. A host must
 check the exported capability before relying on this option with an older SDK.
 
+Fixed resource batches declare this support separately through
+`RESOURCE_READ_EFFECTS_VERSION = 1`. `ResourceReadOptions.readOnly` uses the same
+write guard and effect observer, including failed and cancelled outcomes. The
+scalar capability alone does not establish batch support. The
+[resource contract](resource-read-contract.md#effects-and-strict-read-only-policy)
+defines compatibility with older results and the host's fail-before-dispatch gate.
+
 The default compact `use` output discloses its effect summary. JSON returns the
 structured receipt. Explicit `read --raw` continues to return only the exact text.
 
