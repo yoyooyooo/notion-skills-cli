@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "f04bed8f666b63e5b582c935aa6df9379c152d48",
+  "synchronized_commit": "1a1bfb955e8caf31845594076f3e6462eb78c670",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
@@ -8,7 +8,7 @@
     "packages/core/src/shared-body-write.ts": "f74c5a9a1d2673b0a1b85e242759dafb31048d33cba1ef6849a6e5c74932b297",
     "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
-    "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
+    "packages/core/src/shared-snapshot.ts": "8bc936fadd4424221eb7e80d6dfe903cb34d83b2b0bddaee4955086dbafb8fb8",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
@@ -21,7 +21,7 @@
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
     "packages/core/src/shared-create.ts": "e0df7eb91252ec11de84cc2dd0a8447bd93412d6899cf93c08dc60786f3b9454",
     "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
-    "packages/core/src/shared-create-dispatch.ts": "5b42eaf8adc6188508c90596333c1a0ffd51fb85c59625581bf35c765d467d0f",
+    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
@@ -47,7 +47,11 @@
     "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
     "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
     "packages/core/src/shared-file-management-model.ts": "7d3c164ad72476fe1d1e44d94fa84cbbed9d3978506f00553e017694fc4206ff",
-    "packages/core/src/shared-file-management.ts": "7a88911bab817447b313db17575757fd22312c5d179b6f0edc556d0c7a4c8486",
+    "packages/core/src/shared-file-management.ts": "46ef081fc7964b964c870c9cc8a9749e2de6f3edca8831adb5431fdff3defd94",
+    "packages/core/src/shared-skill-apply.ts": "81209af64cc51d3e3881a6550e3db7d6eeb0c0af37d68abdc19711de83a374f7",
+    "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
+    "packages/core/src/mutation.ts": "c93d7dbe639e96cd5f84530ff7448fe6064573e3cf092518e19d6ba64d41a31a",
+    "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
     "packages/core/src/shared-authoring.ts": "57a0553d5e9a04d5cf487ba3ae70981cde6d9a706712e60a99d22828bbf51ef9",
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
     "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
@@ -626,6 +630,34 @@
         "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
         "packages/core/test/consumer-effects.test.ts",
         "packages/core/test/request-metrics.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "author_request_lineage_and_current_acceptance_diagnostics",
+      "files": [
+        "packages/core/src/shared-snapshot.ts",
+        "packages/core/src/shared-create-dispatch.ts",
+        "packages/core/src/shared-skill-apply.ts",
+        "packages/core/src/shared-metadata-write.ts",
+        "packages/core/src/shared-file-management.ts",
+        "packages/core/src/mutation.ts",
+        "packages/core/src/command-operations.ts"
+      ],
+      "symbols": [
+        "executeSharedSkillApply",
+        "executeSharedMetadataWrite",
+        "executeSharedFileManagement",
+        "sharedCreateDispatch",
+        "withNotionRequestAttribution"
+      ],
+      "scope": "This synchronization changes diagnostic context and one recovery message only. Actual parent apply Records bind the parent operation; body/metadata children override it with their own exact operation. Author preflight, dispatch, verify and original reconciliation are annotated at existing call boundaries without adding requests, authority, retries or state transitions. A first native main POST has an unknown owner; only frozen file/Record relations or a validated original metadata target identify a later writer's Skill. The body-current acceptance message discloses accepted_current/unknown separately from accepted_observed/needs_review and does not rewrite the original outcome. No finite model, configuration or statechart input changed after the ten retained/native AcknowledgedContinuation checks; that run is reused for the unchanged semantics, not presented as a fresh check of request classification.",
+      "tests": [
+        "packages/core/test/shared-skill-apply.test.ts",
+        "packages/core/test/shared-file-management.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-body-current-acceptance.test.ts",
+        "packages/core/test/notion-http-fixture.ts"
       ]
     }
   ]
