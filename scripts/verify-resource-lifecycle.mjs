@@ -97,6 +97,11 @@ const fullMatrix = [
   ["AcknowledgedContinuation", "fresh.cfg", ["FreshBodyBeforeWrite"]],
   ["AcknowledgedContinuation", "cold.cfg", ["ColdVerificationNeedsSharedProof"]],
   ["AcknowledgedContinuation", "replay.cfg", ["AtMostOneContinuationDispatch"]],
+  ["AcknowledgedContinuation", "native.cfg", []],
+  ["AcknowledgedContinuation", "native.original.cfg", ["CompleteOriginalAuthority"]],
+  ["AcknowledgedContinuation", "native.fresh.cfg", ["FreshBodyBeforeWrite"]],
+  ["AcknowledgedContinuation", "native.cold.cfg", ["ColdVerificationNeedsSharedProof"]],
+  ["AcknowledgedContinuation", "native.replay.cfg", ["AtMostOneContinuationDispatch"]],
 ]
 const selectedModel = option("--model")
 assert.ok(

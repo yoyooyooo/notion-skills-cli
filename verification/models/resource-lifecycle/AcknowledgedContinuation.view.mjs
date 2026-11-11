@@ -1,16 +1,18 @@
-export const title = "Continue complete acknowledged allocations with a separate decision"
+export const title = "Continue acknowledged original allocations and exact native restoration"
 const faults = (v) => [
   ...(!v.authorityExact ? ["Original request or ACK set incomplete"] : []),
   ...(!v.bodyCheckedBeforeWrite ? ["Changed body passed the write boundary"] : []),
   ...(Object.values(v.attempts).some((n) => n > 1) ? ["Uncertain continuation repeated"] : []),
-  ...(v.coldVerified && v.proofs.length !== 3 ? ["Cold result lacks full shared proofs"] : []),
+  ...(v.coldVerified && v.proofs.length !== v.originalPages.length
+    ? ["Cold result lacks full original shared proofs"]
+    : []),
 ]
 export function state(v) {
   const bad = faults(v)
   if (bad.length) return bad.join(" / ")
   const label = {
     inspect: "Inspect the complete original allocation set",
-    reviewed: "Inspect the separate v11 continuation decision",
+    reviewed: "Inspect the separate original continuation decision",
     unknown: "Uncertain continuation; reconcile only",
     blocked: "Stop without another dispatch",
     completed: "Read the immutable shared proof chain",
@@ -18,12 +20,22 @@ export function state(v) {
   }[v.phase]
   if (label) return label
   if (v.phase === "ready" && !v.fresh) return "Current body changed; stop required"
-  return {
-    1: "Retain original ACK facts",
-    2: "Publish exact metadata and initial events",
-    3: "Enable the complete tree",
-    4: "Retain the separate completion",
-  }[v.step]
+  return (
+    v.originalPages.length === 1
+      ? {
+          1: "Retain original main ACK and restoration review",
+          2: "Allocate the original never-dispatched reference",
+          3: "Publish the complete original initial events",
+          4: "Enable the complete tree",
+          5: "Retain the separate restoration completion",
+        }
+      : {
+          1: "Retain original ACK facts",
+          2: "Publish exact metadata and initial events",
+          3: "Enable the complete tree",
+          4: "Retain the separate completion",
+        }
+  )[v.step]
 }
 export function step(action) {
   return (
@@ -39,6 +51,7 @@ export function step(action) {
       PersistAck: "retain its original ACK",
       VerifyStage: "verify the acknowledged stage",
       RequestUncertain: "the response or readback becomes uncertain",
+      ResumeAcknowledgedStage: "observe the exact original ACK without another dispatch",
       ReplayIncompleteContinuation: "repeat the uncertain original request",
       ProofUnavailable: "a full shared ACK fact becomes unavailable",
       ColdVerify: "independently check complete immutable proofs",
