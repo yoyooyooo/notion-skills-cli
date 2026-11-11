@@ -211,32 +211,44 @@ describe("fixed snapshot selected files", () => {
     expect(f.json.get(`snapshots/${snapshotId}.json`)).toEqual(historical)
   })
 
-  test("complete local manifest prepares only the entry despite missing or corrupt unselected objects", async () => {
-    const f = await fixture()
-    const main = f.file(f.snapshot.entrypoint)
-    f.objects.delete("objects/" + f.file("references/1.md").sha256)
-    f.objects.set("objects/" + f.file("references/2.md").sha256, encode("corrupt unselected"))
-    const before = structuredClone(f.json.get("snapshots/" + f.snapshot.snapshot_id + ".json"))
-    const result = await f.run(
-      consume({
-        version: 1,
-        targets: [f.ref()],
-        purpose: "inspect",
-        freshness: { policy: "offline" },
-      }),
-    )
-    expect(result.status).toBe("ready")
-    if (result.status !== "ready") throw new Error(JSON.stringify(result))
-    expect(result.entries[0]?.manifest.files).toEqual(f.snapshot.files)
-    expect(result.entries[0]?.materialization).toEqual({
-      status: "entry_ready",
-      paths: [f.snapshot.entrypoint],
+  for (const fileCount of [3, 101])
+    test(`N=${fileCount}: complete local manifest prepares only the entry despite missing or corrupt unselected objects`, async () => {
+      const f = await fixture(false, fileCount)
+      const main = f.file(f.snapshot.entrypoint)
+      expect(f.snapshot.files).toHaveLength(fileCount)
+      f.objects.delete("objects/" + f.file("references/1.md").sha256)
+      f.objects.set("objects/" + f.file("references/2.md").sha256, encode("corrupt unselected"))
+      const before = structuredClone(f.json.get("snapshots/" + f.snapshot.snapshot_id + ".json"))
+      const result = await f.run(
+        consume({
+          version: 1,
+          targets: [f.ref()],
+          purpose: "inspect",
+          freshness: { policy: "offline" },
+        }),
+      )
+      expect(result.status).toBe("ready")
+      if (result.status !== "ready") throw new Error(JSON.stringify(result))
+      expect(result.entries[0]?.manifest.files).toEqual(f.snapshot.files)
+      expect(result.entries[0]?.materialization).toEqual({
+        status: "entry_ready",
+        paths: [f.snapshot.entrypoint],
+      })
+      expect([...f.objectReads.keys()]).toEqual(["objects/" + main.sha256])
+      expect(f.jsonReads.get("snapshots/" + f.snapshot.snapshot_id + ".json")).toBe(1)
+      expect(f.json.get("snapshots/" + f.snapshot.snapshot_id + ".json")).toEqual(before)
+      expect(f.calls).toHaveLength(0)
+      for (const [path, code] of [
+        ["references/1.md", "SNAPSHOT_MISSING"],
+        ["references/2.md", "STATE_CORRUPT"],
+      ] as const) {
+        f.objectReads.clear()
+        const error = await f.run(Effect.flip(readSkill(f.ref(path), { offline: true })))
+        expect(error.code).toBe(code)
+        expect([...f.objectReads.keys()]).toEqual(["objects/" + f.file(path).sha256])
+        expect(f.calls).toHaveLength(0)
+      }
     })
-    expect([...f.objectReads.keys()]).toEqual(["objects/" + main.sha256])
-    expect(f.jsonReads.get("snapshots/" + f.snapshot.snapshot_id + ".json")).toBe(1)
-    expect(f.json.get("snapshots/" + f.snapshot.snapshot_id + ".json")).toEqual(before)
-    expect(f.calls).toHaveLength(0)
-  })
 
   test("a pinned directory reads no objects while preserving the complete manifest", async () => {
     const f = await fixture()
