@@ -1,6 +1,6 @@
 import { Context, Crypto, Effect, Option, Schema } from "effect"
 import { decode, fail, listSchema, property, SkillsError, text } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library.ts"
 import {
   decodeSharedRecordStorage,
@@ -507,13 +507,16 @@ function decodeRecord(rawValue: unknown, library: SharedLibrary, selected: Selec
   const header = decodeHeader(rawValue, library, selected)
   const raw = object(rawValue, "Record page")
   const properties = object(raw.properties, "Record properties")
-  return recordFromEnvelope(
+  return {
     header,
-    richText(getField(properties, "Payload", fieldIds(library)), "Payload"),
-  )
+    ...recordFromEnvelope(
+      header,
+      richText(getField(properties, "Payload", fieldIds(library)), "Payload"),
+    ),
+  }
 }
 
-function verifiedRecord(raw: unknown, library: SharedLibrary, selected: SelectedRecords) {
+function verifiedRecordRow(raw: unknown, library: SharedLibrary, selected: SelectedRecords) {
   return Effect.gen(function* () {
     const parsed = yield* checked(() => decodeRecord(raw, library, selected))
     const hash = yield* sha256(parsed.canonical)
@@ -523,8 +526,12 @@ function verifiedRecord(raw: unknown, library: SharedLibrary, selected: Selected
           record_id: parsed.record.record_id,
         }),
       )
-    return parsed.record
+    return parsed
   })
+}
+
+function verifiedRecord(raw: unknown, library: SharedLibrary, selected: SelectedRecords) {
+  return verifiedRecordRow(raw, library, selected).pipe(Effect.map((row) => row.record))
 }
 
 /** Validate an independently read page against one exact Skill-scoped immutable fact. */
@@ -685,8 +692,11 @@ function queryRecordRows(
           return yield* Effect.fail(
             invalid("Records metadata projection unexpectedly included Payload."),
           )
-        const header = yield* checked(() => decodeHeader(raw, library, selected))
-        const record = metadataOnly ? undefined : yield* verifiedRecord(raw, library, selected)
+        // The verified payload and header come from this exact response row.
+        // Later responses and write-boundary checks still decode their own headers.
+        const { header, record }: RecordRow = metadataOnly
+          ? { header: yield* checked(() => decodeHeader(raw, library, selected)) }
+          : yield* verifiedRecordRow(raw, library, selected)
         if (pages.has(header.page_id))
           return yield* Effect.fail(
             invalid("Records query repeated a page.", { page_id: header.page_id }),
@@ -708,7 +718,18 @@ function queryRecordRows(
       if (!page.has_more) return rows
       cursor = yield* checked(() => identifier(page.next_cursor, "Records cursor", 2048))
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      skill_page_id:
+        selected.libraryProfile === true
+          ? null
+          : "skillPageIds" in selected
+            ? selected.skillPageIds.length === 1
+              ? selected.skillPageIds[0]!
+              : null
+            : selected.skillPageId,
+    }),
+  )
 }
 
 function uniqueRecords(rows: readonly RecordRow[]) {

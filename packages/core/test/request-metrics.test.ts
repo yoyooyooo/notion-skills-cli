@@ -4,12 +4,41 @@ import {
   classifyBodyRequest,
   classifyRequest,
   createRequestMetrics,
+  requestAttribution,
   notionRequestTarget,
   RequestBudgetError,
   SHARED_ADOPTION_REQUEST_COST,
 } from "../src/request-metrics.ts"
 
 describe("request metrics", () => {
+  test("explicit producer attribution remains attached to attempts and queue waits", () => {
+    const metrics = createRequestMetrics({ traceLimit: 10 })
+    const attribution = {
+      phase: "retention" as const,
+      skill_page_id: "11111111-2222-4333-8444-555555555555",
+      operation_id: "observe-original.operation",
+    }
+    metrics.begin({
+      path: "v1/pages",
+      method: "POST",
+      ...{ attribution },
+    })({ outcome: "failure", responseBytes: 11 })
+    expect(metrics.snapshot().trace[0]).toMatchObject({ attribution })
+    metrics.wait(10, "queue", attribution)
+    expect(metrics.snapshot().trace[1]).toMatchObject({ attribution })
+    expect(requestAttribution(undefined)).toEqual({
+      phase: null,
+      skill_page_id: null,
+      operation_id: null,
+    })
+    expect(
+      requestAttribution(
+        { phase: "consume", skill_page_id: "private name", operation_id: "observe-secret" },
+        "secret",
+      ),
+    ).toEqual({ phase: "consume", skill_page_id: null, operation_id: null })
+  })
+
   test("Git acquisition costs remain separate from HTTP and preserve unknown wire/auth costs", () => {
     let time = 10
     const metrics = createRequestMetrics({ now: () => time, traceLimit: 2 })

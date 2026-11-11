@@ -45,6 +45,15 @@ const [archive, fixturePath, root] = [args[1], args[3], args[5]]
 const viewDynamicsOnly = args[7] === "view-dynamics"
 const scalarInventoryOnly = args[7] === "scalar-inventory"
 const recordsHistoryOnly = args[7] === "records-history"
+const frozenRecordsHistory = process.env.NTN_SKILLS_RECORDS_HISTORY_FIXTURE
+if (frozenRecordsHistory !== undefined && !isAbsolute(frozenRecordsHistory))
+  throw new Error("NTN_SKILLS_RECORDS_HISTORY_FIXTURE must name an absolute frozen history.json")
+const sourceFixturePort = process.env.NTN_SKILLS_SOURCE_FIXTURE_PORT
+if (
+  sourceFixturePort !== undefined &&
+  (!/^[1-9][0-9]{0,4}$/.test(sourceFixturePort) || Number(sourceFixturePort) > 65535)
+)
+  throw new Error("NTN_SKILLS_SOURCE_FIXTURE_PORT must be a fixed loopback port in 1–65535")
 const fixedNamesOnly = args[7] === "fixed-names"
 const ownershipCurrentOnly = args[7] === "ownership-current"
 await mkdir(root, { mode: 0o700 })
@@ -1488,6 +1497,7 @@ try {
     const source = await startSdkSourceFixture(
       sample,
       join(root, "scalar-inventory-notion-requests.jsonl"),
+      { port: sourceFixturePort === undefined ? 0 : Number(sourceFixturePort) },
     )
     const { notion, requests, unexpected } = source
     let phase = "setup"
@@ -1520,6 +1530,7 @@ try {
         status: "running",
         sdk_path: sdkPath,
         sdk_sha256: hash(sdkSourceText),
+        source_origin: source.origin,
         budgets: { preparation_ms: 60000, call_ms: 30000, consumers_ms: 240000, retries: 0 },
         histories: [1, 101],
         phases: [],
@@ -1699,22 +1710,25 @@ try {
         await save("counter-ready.json", ledger.counter)
 
         const fixtureRoot = join(phaseRoot, "source-fixture")
-        const generated = await command(
-          [
-            process.execPath,
-            join(dirname(fileURLToPath(import.meta.url)), "sdk-fixture.ts"),
-            "--outdir",
-            fixtureRoot,
-            "--records-history",
-          ],
-          { timeout: 60000 },
-        )
+        const generated =
+          frozenRecordsHistory === undefined
+            ? await command(
+                [
+                  process.execPath,
+                  join(dirname(fileURLToPath(import.meta.url)), "sdk-fixture.ts"),
+                  "--outdir",
+                  fixtureRoot,
+                  "--records-history",
+                ],
+                { timeout: 60000 },
+              )
+            : undefined
         assert.equal(
-          generated.code,
+          generated?.code ?? 0,
           0,
           "Original history producer failed; preserve its command receipt",
         )
-        const fixtureFile = join(fixtureRoot, "history.json"),
+        const fixtureFile = frozenRecordsHistory ?? join(fixtureRoot, "history.json"),
           fixtureBytes = await readFile(fixtureFile)
         const histories = JSON.parse(fixtureBytes).observations
         assert.deepEqual(
@@ -1890,6 +1904,13 @@ try {
           await save(`h${sample.history}-root-comparison.json`, comparison)
         }
         assert.equal(ledger.phases.length, 8)
+        // Keep the full unchanged operation sequence in a failing baseline report.
+        for (const observed of ledger.phases.filter((item) => item.label.endsWith("-cold")))
+          assert.equal(
+            observed.decoder_calls.decodeHeader,
+            observed.decoder_calls.recordFromEnvelope * 2,
+            `${observed.label}: metadata and exact payload rows each decode their header once`,
+          )
         ledger.status = "passed"
       } catch (error) {
         ledger.status =
