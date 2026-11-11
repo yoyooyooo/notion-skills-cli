@@ -80,6 +80,7 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | `UPSTREAM_CONTENT_READ_ONLY` | Edit the source or explicitly fork the selected member |
 | Shared body/metadata write, apply or restore-follow is unknown | Read the exact current Skill; obey `read_again` after original facts settle, and retain missing original facts as unresolved |
 | Shared create is unknown | Keep the same complete input and original intent; its retry reconciles original creation identities without blindly repeating POSTs |
+| Known ordinary native body mismatch, with the same original main explicitly restored to its exact candidate | `ctl library create recovery review ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN --output REVIEW`; inspect the digest, then `recovery apply ORIGINAL_PLAN --entry LIBRARY --review REVIEW --review-id ID [--dry-run]` |
 | Initial draft adoption is unknown | Preserve `adoption_operation_id` and use the returned `adopt PAGE_ID --database LIBRARY --reconcile`; no current equality or absent record authorizes a replay |
 | Shared add/delete/move is unknown | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | An original operation from another retained protocol | Follow its exact returned recovery action and original ID; do not translate it into a new create |
@@ -87,6 +88,12 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | Output path conflict | Choose a new destination or review the owned previous output |
 
 Shared operation IDs are not accepted by legacy `ctl operation resume`. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. Historical migration/repair commands live in the separate operator tool and are for an explicitly diagnosed maintenance task.
+
+The exact-restoration route requires the original Store, one original main allocation, full original request/ACK set, unchanged metadata/relations and exact complete current Markdown. It never normalizes away an automatic link or patches an existing body. It retains a separate completion while preserving the original `needs_review` outcome. Independent `ctl library create recovery reconcile ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN` proves that historical chain; read current content afterward. Inventory and fixed-source plans keep their own recovery routes.
+
+### Reserved creation markers on older pages
+
+An older publication reference page may start with `ntn-skills-create:v1:…`. That reserved paragraph records the original creation identity, parent, logical path and input commitment so interrupted creation can identify the same page. A child page lacks the database property slots used by a publication root, so this older protocol carries its identity in the first physical block. Valid consumer reads exclude it from authored content, and that protocol's writers preserve it. Do not delete, relocate or re-encode it for appearance: current page visibility alone cannot replace its original recovery evidence. Current shared native Skills/Files use registered properties and immutable Records; adding a reference through `ctl library file add` does not require manually creating this marker.
 
 ## Builtin management
 

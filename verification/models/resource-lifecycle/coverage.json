@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "synchronized_commit": "68315aa488e3b00d607860e577d1b65f01b57059",
+  "synchronized_commit": "f04bed8f666b63e5b582c935aa6df9379c152d48",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
-    "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
-    "packages/core/src/shared-body-write.ts": "dc01ee8d387e4e3762d54920c0bc3b15ac5afe2b201df3fc4be99846e0a72811",
+    "packages/core/src/shared-file-observer.ts": "f8cf74c46f17b2a2bc519faa50afdc9508b98e77b2f5be0c33e821e6a1010ff3",
+    "packages/core/src/shared-body-write.ts": "f74c5a9a1d2673b0a1b85e242759dafb31048d33cba1ef6849a6e5c74932b297",
     "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
     "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
@@ -19,13 +19,13 @@
     "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
     "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
-    "packages/core/src/shared-create.ts": "7fe6f1c51693fce954b192ec2b45c01415e97cdb4e0f2175abaf2dea0197b1a7",
+    "packages/core/src/shared-create.ts": "e0df7eb91252ec11de84cc2dd0a8447bd93412d6899cf93c08dc60786f3b9454",
     "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
     "packages/core/src/shared-create-dispatch.ts": "5b42eaf8adc6188508c90596333c1a0ffd51fb85c59625581bf35c765d467d0f",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
-    "packages/core/src/shared-records.ts": "7b52c8ffbe14f2129095e408ed12ecee76b5bdbe7a11e6f859d8a7cc62d04b92",
+    "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
     "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
     "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
     "packages/core/src/shared-notion-projection.ts": "28868f51a8d8ca868dc6c11bb045c98ccb8d8adb08377843445469302f35ac87",
@@ -39,9 +39,9 @@
     "packages/core/src/shared-create-recovery-completion.ts": "54048f4fc7a1d68a92bd242659b50997ccd63df3d2264df27a188eaa6ba25e10",
     "packages/core/src/shared-create-recovery-model.ts": "083aa3ac6948558fbe22adf3453656f9d50c73cf3e9adcc0dff96bdbd15b84dc",
     "packages/core/src/shared-create-recovery-errors.ts": "f0c1ffa8acd7df3f7f852d7b1d27300253c84ca5ac6ce22db2f09e7e823ee166",
-    "packages/core/src/shared-create-recovery-known-bootstrap.ts": "6b6b560a1ee7b7e02fec33bda2301cc39b9cc88b133809320d4f899d29f1c10c",
+    "packages/core/src/shared-create-recovery-known-bootstrap.ts": "18a14e3a4aa756a6108f930bf027ef9906d4b36de2f1ccd131ee0dc8906a8cd0",
     "packages/core/src/shared-create-recovery-known-completion.ts": "02a8cfb7e4bd762042ffc1a2390a65ace365a53a0e02c330b8a7e715769e0844",
-    "packages/core/src/shared-create-recovery-known-model.ts": "fcf08490e0b57bb0044a5c4572c4537eed2068a2e35f458ce815442eb16099b5",
+    "packages/core/src/shared-create-recovery-known-model.ts": "ab738dfdd466b4509a5488da9eb12c1b0f4fac6d4bfbc2a078b4594063b3f789",
     "packages/core/src/shared-create-recovery-projection.ts": "4cca5c3fc40619cfc064df8fb84213474dedc8941c457e9697361abd557d8cc3",
     "packages/core/src/shared-create-recovery-proof-model.ts": "e48c97c936d311a91d31709f25f084b60de0e40c9267fac71c6d0daf80b5dd54",
     "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
@@ -57,7 +57,7 @@
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
     "packages/core/src/shared-create-recovery-acknowledgements.ts": "d82b8d76a655ff2e5b5bbac92872a6ec4147ae43cef3fd41f83982a65e68d44d",
-    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "0524c310de8f321182fb28c259aa2c23fbb307b5284fa7770ccb15cc45137a4d",
+    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "d7c8da03dc0534a6e09820ac62dc3a24c8fae16191e86a163c2da4266269a064",
     "packages/core/src/shared-native-file-content.ts": "c0d8de5045e44bfbf12ab675eeb56ecaec1f525162334bf750c40eb7fddf2a00",
     "packages/core/src/shared-body-write-review-model.ts": "d98a7ea4d75668fdb8594419636f8f392473bfe8f7c3915e319ce7f62209cf3c",
     "packages/core/src/shared-body-write-review.ts": "614ad401ee64be50c2ff80e56b1e44d48e887f1eff952df6432333bf9b37840b",
@@ -73,7 +73,11 @@
     "packages/core/src/shared-create-import-readback.ts": "b69e01814df63d3cf5459245a0769d6997699b368322ab9c047ab8519d25f8a4",
     "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
     "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
-    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621"
+    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621",
+    "packages/core/src/shared-create-restoration.ts": "96a94b5bcb994edd08ce1ad229ace568b72850a758795220f46b7dbc20d62c49",
+    "packages/core/src/consumption-effects.ts": "630d530d5acccfc55109be28f904378a3903d0104d1a5caa5e6b9fc0b95a1035",
+    "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
+    "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb"
   },
   "models": {
     "ProjectionRace": {
@@ -220,20 +224,25 @@
         "applySharedCreateAcknowledgedContinuation",
         "observe",
         "readSharedNativeAllocationProofs",
-        "readSharedCreateKnownCompletion"
+        "readSharedCreateKnownCompletion",
+        "reviewSharedCreateRestoration",
+        "applySharedCreateRestoration",
+        "readSharedCreateRestoration",
+        "loadPendingSharedCreates"
       ],
-      "scope": "Three already visible native allocations with an independently variable original ACK subset and exact-request-set predicate. The separate continuation requires the complete original request/ACK authority at review and apply, a fresh current-body check before each abstract stage, no uncertain redispatch, complete initial events before enablement and complete retained original ACK proofs before a cold result is accepted. Four stages abstract ACK fact retention, exact metadata/events, enablement and immutable completion; original pages and needs_review history remain separate.",
+      "scope": "Two explicit finite branches. The retained fixed-source continuation starts with three already allocated pages and four stages. NativeRestoration starts with one original acknowledged main and one original unattempted reference, adding a single native allocation stage before the complete initial event set. Both vary exact original request/ACK authority, preserve the original pages and needs_review history, check a fresh body before each new stage, and retain a separate completion. A request with its exact durable ACK can return from interrupted readback to verification without increasing attempts; visibility without that ACK never authorizes redispatch. Enablement requires every native page and initial event; cold verification requires the full original shared proof set and complete verified stages.",
       "excluded": [
-        "Actual 34/35 native and 397/407 full-file cardinality",
-        "Exact frozen request/response JSON, cryptographic hashes, ordinary 64 KiB envelopes and rich-text transport",
-        "Markdown v11 rendering, complete source acquisition and retained-policy compatibility",
+        "Actual 34/35 native and 397/407 full-file cardinality or arbitrary suffix counts",
+        "Exact frozen request/response JSON, cryptographic hashes, 64 KiB envelopes, original local Store scope and rich-text transport",
+        "Markdown rendering, automatic-link repair, complete source acquisition and retained-policy compatibility",
         "Edits occurring after a stage observation, distributed writers, provider CAS and atomic multi-page writes",
-        "Every immutable Record subrequest, current native-page allocation or general interrupted-stage restart",
-        "The direct original v10-to-v11 recovery branch, earlier recovery variants and public CLI/SDK behavior"
+        "Every immutable Record subrequest, recovery version codecs, generic interrupted-operation restart and unknown-success inference",
+        "Other recovery branches and public CLI/SDK/Pi execution"
       ],
       "tests": [
         "packages/core/test/shared-create-projection-continuation.test.ts",
-        "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/core/test/shared-create-restoration.test.ts"
       ],
       "mutation_replays": [
         "complete-recovery-dispatch-and-ack-set",
@@ -243,7 +252,7 @@
     }
   },
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
-  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim. Explicit complete-body-match restore, request submission, ACK-bound exact Record GET and projection 13 are reviewed unmodeled changes. Existing model/config/view inputs, finite bounds and prior result receipts are retained; this synchronization claims no new model execution. The 68315aa review traces metadata-only census, projection-14 import readback, original-input completed-import reuse, ACK-directed native allocation observation, added dispatch domains and source-reference diagnostic context. These are explicitly unmodeled branches; all six model inputs, bounds, invariants and original result receipts remain unchanged. No new TLC run is claimed.",
+  "review_basis": "The synchronized commit and content hashes bind reviewed runtime correspondence, not a full refinement proof. Public CLI, installed SDK, real Notion/provider/UI behavior and physical machines require independent evidence. Prior ProjectionRace, UpdateCommit, AuditRun, ImportCreate and CreateRecovery inputs and receipts are retained unchanged. AcknowledgedContinuation now has an explicit bounded NativeRestoration branch and ACK-only interrupted-readback transition; its five retained and five native configurations must be freshly checked, including all named negative controls. Original failed runtime and tool invocations are retained separately. Native inventory immutable-Record prefix recovery remains unmodeled. Consumption-effect disclosure, strict-read-only routing and safe request attribution/header reuse are hash-bound implementation context only; this synchronization adds no model claim for those branches. No source hash alone establishes an invariant, liveness property or task completion.",
   "unmodeled_bindings": [
     {
       "kind": "hash_bound_context_not_modeled",
@@ -591,6 +600,32 @@
         "packages/core/test/shared-create.test.ts",
         "packages/core/test/shared-create-ack-visibility.test.ts",
         "packages/core/test/shared-create-drift.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "ordinary_native_restoration_codec_and_request_diagnostics",
+      "files": [
+        "packages/core/src/shared-create-restoration.ts",
+        "packages/core/src/shared-create-recovery-known-bootstrap.ts",
+        "packages/core/src/shared-create-recovery-acknowledgement-model.ts",
+        "packages/core/src/consumption-effects.ts",
+        "packages/core/src/notion.ts",
+        "packages/core/src/request-metrics.ts",
+        "packages/core/src/shared-records.ts"
+      ],
+      "symbols": [
+        "validateSharedCreateRestorationReview",
+        "originalKnownCreateBootstrap",
+        "prepareSharedNativeAllocationProof",
+        "withNotionRequestAttribution"
+      ],
+      "scope": "The AcknowledgedContinuation native branch abstracts original authority, stage order, ACK-only readback continuation and cold proof requirements only. Exact original plan/review/outcome hashes, one-main scope, full original POST/ACK metadata, retained input reconstruction, unchanged same-page body and relation checks, separate immutable records and Node ESM initialization remain product-test obligations. Request phase/owner fields, compact-header reuse, consumption-effect disclosure and strict-read-only handling do not change this state model or prove every authoring request is classified. Unknown attribution remains explicit.",
+      "tests": [
+        "packages/core/test/shared-create-restoration.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/core/test/consumer-effects.test.ts",
+        "packages/core/test/request-metrics.test.ts"
       ]
     }
   ]
