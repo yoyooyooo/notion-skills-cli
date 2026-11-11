@@ -4,6 +4,8 @@
 
 先保留 `consumer-effects.test.ts` 的原行为失败，再验证同一公开 `consume/readSkill` 路径。当前读取的历史留存与作者正文修改分别报告；根和 Requires 的留存绑定原 Skill page、File ID、operation。固定/暖读取的确实零写、部分完成后失败、响应丢失与取消不能混成同一结果。语义 POST query 属于读，不能按 HTTP 方法粗算写入。
 
+`shared-metadata-consumption.test.ts` 的 3/101 行场景仍完整比较逻辑引用与物理页面读取的正文、snapshot、Members/Requires、固定文件及目录观察。两次调用的 freshness 和 effects 分别验证：首次当前读取必须报告该 main 的 confirmed retention，随后同内容 refresh 必须报告 none，不能把前次留存回执当成快照的永久属性。完整集成检查发现旧的整体对象等式误将这两种本次效果视为相同；两项原红例与修订后 28 项通过日志分别保存。这里只同步既有测试合同，没有改变产品源码、请求数或生命周期模型。
+
 `readOnly`/`--read-only` 必须经现有 Notion 只读 capability 覆盖全部后代调用，必要留存在首次写前明确拒绝；固定历史仍可读取。正常当前读取继续保留原 retention，不能删除它凑零写。回执复用已有请求和原 operation，不增加远端查询或把完整账本送给模型。源测试、独立 Node SDK/CLI 与真实 Pi 两臂分别留证；本页不声明已完成真实服务或模型验收。
 
 CLI 既有 `resource-lifecycle/AuditRun.tla` 的 `AuditReadOnly == writes = 0` 只覆盖粗粒度 audit；请求层语义只读 capability 的源回归另行覆盖后代调用。该有限模型没有 consumer effects、部分留存或取消状态，不能当作这些新语义的证明。AH-953 没有修改生命周期转移；Broker 的原 `RetentionDisclosure` 模型承接 normal/read-only/unknown 与效果投影。
