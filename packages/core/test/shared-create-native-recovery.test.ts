@@ -239,6 +239,107 @@ test("native review/dry-run freezes eight Records and recovery preserves its one
   expect(f.writes()).toHaveLength(0)
 })
 
+async function interruptedFirstRecoveryRecord() {
+  const x = await ready(),
+    { f } = x
+  let firstRecord: string | undefined
+  let interrupt = true
+  const failure = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      return yield* Effect.flip(
+        applyInventoryNativeRecovery(x.apply).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) => {
+              if (firstRecord && path === "v1/pages/" + firstRecord && interrupt) {
+                interrupt = false
+                return Effect.fail(fail("NETWORK_ERROR", "Interrupted exact ACK readback"))
+              }
+              return api.request(path, body, options).pipe(
+                Effect.tap((raw) =>
+                  Effect.sync(() => {
+                    if (path === "v1/pages" && options?.method === "POST" && !firstRecord)
+                      firstRecord = String(property(raw).id)
+                  }),
+                ),
+              )
+            },
+          }),
+        ),
+      )
+    }),
+  )
+  expect(failure.code).toBe("NETWORK_ERROR")
+  expect(f.writes()).toHaveLength(1)
+  return { ...x, firstRecord: firstRecord! }
+}
+
+test("an acknowledged first recovery Record resumes only its never-dispatched suffix", async () => {
+  const x = await interruptedFirstRecoveryRecord(),
+    { f, firstRecord } = x
+  const originalPage = canonicalSharedJson(f.base.records.get(firstRecord!))
+  f.clear()
+  const dry = await f.run(applyInventoryNativeRecovery({ ...x.apply, dryRun: true }))
+  expect(dry).toMatchObject({
+    status: "planned",
+    acknowledged_records: 1,
+    write_plan: { maximum_record_creates: 7, notion_write_upper_bound: 7 },
+  })
+  expect(f.writes()).toHaveLength(0)
+  const recovered = await f.run(applyInventoryNativeRecovery(x.apply))
+  expect(recovered).toMatchObject({ status: "recovered", verified: true })
+  expect(f.writes()).toHaveLength(7)
+  expect(f.nativeCreates()).toHaveLength(0)
+  expect(f.enablePatches()).toHaveLength(0)
+  expect(canonicalSharedJson(f.base.records.get(firstRecord!))).toBe(originalPage)
+  f.credential("independent-native-prefix-reader")
+  f.base.json.clear()
+  f.base.objects.clear()
+  f.clear()
+  expect(await f.run(reconcileInventoryNativeRecovery(x.selected))).toMatchObject({
+    status: "recovered",
+    verified: true,
+  })
+  expect(f.writes()).toHaveLength(0)
+})
+
+test.each([
+  "missing-ack",
+  "changed-ack",
+  "extra-dispatch",
+  "foreign-dispatch",
+  "changed-record",
+] as const)("an interrupted native recovery with %s cannot create a suffix", async (kind) => {
+  const x = await interruptedFirstRecoveryRecord(),
+    { f } = x
+  const key = [...f.base.json.keys()].find(
+    (key) =>
+      /\/source-op-[a-f0-9]{64}\.json$/u.test(key) &&
+      String(property(f.base.json.get(key)).identity).startsWith(x.review.review_id + ":"),
+  )!
+  const ack = key.replace("/source-op-", "/source-ack-")
+  if (kind === "missing-ack") f.base.json.delete(ack)
+  if (kind === "changed-ack")
+    f.base.json.set(ack, { ...property(f.base.json.get(ack)), response_hash: "f".repeat(64) })
+  if (kind === "extra-dispatch")
+    f.base.json.set(
+      key.replace(/source-op-[a-f0-9]{64}/u, "source-op-" + "e".repeat(64)),
+      f.base.json.get(key),
+    )
+  if (kind === "foreign-dispatch")
+    f.base.json.set(
+      key.replace(/\/[a-f0-9]{64}\//u, "/" + "e".repeat(64) + "/"),
+      f.base.json.get(key),
+    )
+  if (kind === "changed-record")
+    property(f.base.records.get(x.firstRecord)!.properties).hash = rich("hash", "f".repeat(64))
+  f.clear()
+  const result = await f.run(Effect.flip(applyInventoryNativeRecovery(x.apply)))
+  expect(result.code).toMatch(/SHARED_CREATE|SHARED_RECORD|SOURCE_OPERATION/u)
+  expect(f.writes()).toHaveLength(0)
+})
+
 test("independent empty Store reconstructs the original native ACK, body/header/mode and original reconcile-import", async () => {
   const x = await ready(),
     { f } = x

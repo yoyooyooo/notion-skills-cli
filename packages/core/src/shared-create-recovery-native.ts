@@ -24,6 +24,7 @@ import { sharedCreateRecoveryJournalKey } from "./shared-create-recovery-prefix.
 import {
   originalNativeMainAllocation,
   observeNativeMainRecovery,
+  acknowledgedNativeRecoveryPrefix,
   type NativeRecoveryFact,
 } from "./shared-create-recovery-native-authority.ts"
 import { readSharedCreateNativeCompletion } from "./shared-create-recovery-native-completion.ts"
@@ -289,13 +290,29 @@ export function applySharedCreateNativeRecovery(input: {
       recordId: sharedCreateRecoveryReviewId(plan.operation_id),
       payloadContainsBody: true,
     })
-    if ((yield* store.readJson(key, Schema.Unknown)) !== undefined || sharedReviews.length !== 0)
-      return yield* reconcileSharedCreateNativeRecovery({ entry: input.entry, plan, target: page })
+    const journal = yield* store.readJson(key, Schema.Unknown)
+    const prior = journal !== undefined || sharedReviews.length !== 0
+    const reconciled = prior
+      ? yield* reconcileSharedCreateNativeRecovery({ entry: input.entry, plan, target: page }).pipe(
+          Effect.result,
+        )
+      : undefined
+    if (reconciled?._tag === "Success") return reconciled.success
+    if (prior && !same(journal, { version: 3, scope, library_id: library.library_id, review }))
+      return yield* refusal("The exact original native recovery journal is missing or changed.")
     const original = yield* originalNativeMainAllocation(plan, page)
     if (!same(original.bootstrap, review.bootstrap))
       return yield* refusal("The original native dispatch or durable ACK changed after review.")
-    yield* observeNativeMainRecovery(library, plan, page)
     const planned = yield* recoveryFacts(plan, review, original.proof)
+    const prefix = prior
+      ? yield* acknowledgedNativeRecoveryPrefix(library, review, planned.facts)
+      : []
+    if (prefix === undefined) {
+      if (reconciled?._tag === "Failure") return yield* Effect.fail(reconciled.failure)
+      return yield* refusal("Only the exact acknowledged native recovery prefix can continue.")
+    }
+    yield* observeNativeMainRecovery(library, plan, page, prefix)
+    const remaining = planned.facts.slice(prefix.length)
     if (input.dryRun)
       return {
         status: "planned" as const,
@@ -307,18 +324,20 @@ export function applySharedCreateNativeRecovery(input: {
         original_outcome_recorded: false as const,
         existing_pages: 1,
         remaining_pages: 0,
+        acknowledged_records: prefix.length,
         write_plan: {
-          record_ids: planned.facts.map((fact) => fact.record_id).sort(),
-          maximum_record_creates: planned.facts.length,
+          record_ids: remaining.map((fact) => fact.record_id).sort(),
+          maximum_record_creates: remaining.length,
           native_page_creates: 0,
           existing_body_patches: 0,
           metadata_patches: 0,
-          notion_write_upper_bound: planned.facts.length,
+          notion_write_upper_bound: remaining.length,
         },
         review,
       }
-    yield* store.writeJson(key, { version: 3, scope, library_id: library.library_id, review })
-    const acknowledged: NativeRecoveryFact[] = []
+    if (journal === undefined)
+      yield* store.writeJson(key, { version: 3, scope, library_id: library.library_id, review })
+    const acknowledged: NativeRecoveryFact[] = [...prefix]
     let stage = "review"
     const dispatch = yield* sharedCreateDispatch(
       plan.library,
@@ -326,7 +345,7 @@ export function applySharedCreateNativeRecovery(input: {
       observeNativeMainRecovery(library, plan, page, acknowledged).pipe(Effect.asVoid),
     )
     return yield* Effect.gen(function* () {
-      for (const fact of planned.facts) {
+      for (const fact of remaining) {
         stage = fact.record_id
         yield* appendSharedRecord(library, {
           mode: "create",
