@@ -1617,12 +1617,15 @@ try {
       const phaseRoot = join(root, "records-history")
       await mkdir(phaseRoot, { mode: 0o700 })
       const sdkSourceText = await readFile(sdkPath, "utf8")
+      const coverageUrl = new URL(pathToFileURL(sdkPath))
+      coverageUrl.searchParams.set("records-history", "precise-coverage")
       const names = ["recordFromEnvelope", "boundedEnvelope", "decodeHeader", "resolveFileState"]
       const ledger = {
         version: 1,
         status: "running",
         sdk_path: sdkPath,
         sdk_sha256: hash(sdkSourceText),
+        module_url: coverageUrl.href,
         source_origin: source.origin,
         budgets: { preparation_ms: 60000, call_ms: 30000, consumers_ms: 240000, retries: 0 },
         histories: [1, 101, 301],
@@ -1664,7 +1667,7 @@ try {
       }
       const coverage = async (label) => {
         const raw = await post("Profiler.takePreciseCoverage")
-        const scripts = raw.result.filter((item) => item.url === pathToFileURL(sdkPath).href)
+        const scripts = raw.result.filter((item) => item.url === coverageUrl.href)
         assert.ok(scripts.length <= 1, "SDK coverage must identify one exact installed module")
         const selected = []
         for (const name of names) {
@@ -1691,21 +1694,18 @@ try {
           ]),
         )
         const unreported = names.filter((name) => !selected.some((fn) => fn.functionName === name))
-        // A cold Store cannot parse payloads without the remote-envelope wrapper.
-        // Preserve a missing V8 entry as unknown instead of reporting false zero.
-        if (
-          label.endsWith("-cold") &&
-          counts.boundedEnvelope > 0 &&
-          unreported.includes("recordFromEnvelope")
-        ) {
-          counts.recordFromEnvelope = null
-          ledger.counter.unavailable ??= []
-          ledger.counter.unavailable.push({
-            phase: label,
-            function: "recordFromEnvelope",
-            reason: "missing V8 function entry during observed cold payload decoding",
-          })
-        }
+        // Every cold history read passes all four decoders. A missing V8 entry
+        // is unknown even if another required decoder also went unreported.
+        if (label.endsWith("-cold"))
+          for (const name of unreported) {
+            counts[name] = null
+            ledger.counter.unavailable ??= []
+            ledger.counter.unavailable.push({
+              phase: label,
+              function: name,
+              reason: "missing V8 function entry during observed cold payload decoding",
+            })
+          }
         assert.ok(
           Object.values(counts).every(
             (count) => count === null || (Number.isSafeInteger(count) && count >= 0),
@@ -1713,12 +1713,16 @@ try {
         )
         await save(label + "-coverage.json", {
           timestamp: raw.timestamp,
-          url: pathToFileURL(sdkPath).href,
+          url: coverageUrl.href,
           sdk_sha256: ledger.sdk_sha256,
           functions: selected,
           unreported_functions: unreported,
           counts,
         })
+        if (selected.some((fn) => fn.isBlockCoverage !== true)) {
+          ledger.counter.status = "checking"
+          assert.fail(`${label}: exact decoder counts require block coverage`)
+        }
         return counts
       }
       const currentCalls = (label) => requests.filter((call) => call.phase === label)
@@ -1777,6 +1781,10 @@ try {
         await post("Profiler.startPreciseCoverage", { callCount: true, detailed: true })
         started = true
         ledger.counter.status = "not_checked"
+        // Earlier smoke cases may have compiled the main SDK before coverage.
+        // This history-only instance uses the same installed bytes, but compiles
+        // after precise coverage starts so hot functions retain exact counters.
+        const sdk = await import(coverageUrl.href)
         const probeCwd = join(phaseRoot, "probe-consumer")
         await emptyConsumer(sample.seed, probeCwd)
         phase = "records-probe"
@@ -2056,12 +2064,17 @@ try {
         }
         assert.equal(ledger.phases.length, 12)
         // Keep the full unchanged operation sequence in a failing baseline report.
-        for (const observed of ledger.phases.filter((item) => item.label.endsWith("-cold")))
+        for (const observed of ledger.phases.filter((item) => item.label.endsWith("-cold"))) {
+          assert.ok(
+            observed.decoder_calls.decodeHeader > 0 && observed.decoder_calls.boundedEnvelope > 0,
+            `${observed.label}: cold header and payload counters must be available`,
+          )
           assert.equal(
             observed.decoder_calls.decodeHeader,
             observed.decoder_calls.boundedEnvelope * 2,
             `${observed.label}: metadata and exact payload rows each decode their header once`,
           )
+        }
         if (ledger.counter.unavailable?.length) ledger.counter.status = "partially_available"
         ledger.status = "passed"
       } catch (error) {
@@ -3232,7 +3245,17 @@ try {
       signal: controller.signal,
       onRequestMetrics: (value) => reports.push(value),
     })
-    assert.deepEqual(cancelled, { version: 1, status: "cancelled", reason: "interrupted" })
+    assert.deepEqual(cancelled, {
+      version: 1,
+      status: "cancelled",
+      reason: "interrupted",
+      effects: {
+        version: 1,
+        remote_writes: "none",
+        author_content: "unchanged",
+        retention: [],
+      },
+    })
     assertNoTransport(reports, false)
   })
 
@@ -3408,6 +3431,12 @@ try {
             version: 1,
             status: "cancelled",
             reason: "interrupted",
+            effects: {
+              version: 1,
+              remote_writes: "none",
+              author_content: "unchanged",
+              retention: [],
+            },
           })
         else assert.deepEqual(observation.error, { code: "CANCELLED", typed: true })
         assertNoTransport(observation.reports, true)

@@ -26,7 +26,9 @@ CLI 既有 `resource-lifecycle/AuditRun.tla` 的 `AuditReadOnly == writes = 0` �
 
 分别采样 SQLite 各表逻辑行、cache/dispatch active/retired 项、DB/WAL/SHM 物理字节、objects/manifest/cache/显式导出目录，以及 V8 解码次数和实际 HTTP/响应 bytes。进程 CPU 包含同进程受控服务及覆盖率开销，不称作 replay CPU。暖/过期未变必须保持原固定 pin 和已声明单槽；访问不续期。单 reference 变化、部分对象缺失、refresh/offline/旧 pin、删除/权限与 clear 沿原 scalar/cache 场景另列。
 
-精确覆盖率若缺少冷 Store 必须经过的 `recordFromEnvelope` 条目而已观察到 `boundedEnvelope`，前者显式记 null，不能补零；跨根完整计数比较也保持 unknown。cold header 复用另由实际 `boundedEnvelope` 次数约束，旧重复 header 的原报告仍须触发同一失败判据。保留覆盖率原件及缺失函数说明，不根据函数消失猜优化收益。
+历史计数在 Profiler 开启后，才从同一已安装 SDK 文件的独立 ESM URL 加载本次观察实例；绑定原文件 SHA 和该 URL，其他 smoke 分支仍用原实例。默认 `all` 先前已经执行过的函数可能只给出不完整的 function coverage，因此即使初次非零探针通过，后续也不能当作精确计数。每份实际函数记录必须有 block coverage；冷 Store 必经函数若缺项显式记 null，不能补零，跨根比较保持 unknown。cold header/boundedEnvelope 还须有正计数，并保留原 2 倍公式，旧重复 header 仍必须失败。保留原覆盖率、缺项与失败，不根据函数消失猜优化收益；同运行时先编译／后编译的定点控制和同归档 history 重放分别留证。
+
+AH-638 本机 Node 24.20.0 / V8 13.6.233.17 的原完整安装包 gate 为21 pass/1 fail，H301 header507与bounded303不满足原2倍公式；旧driver的独立history冷入口1/1通过，不能称为红例。十二相位的请求/响应/正文与身份逐字节一致，同运行时先编译函数的10000次调用只报告6886、后编译函数准确，原件支持观察器编译时机的原因。修后同archive默认all按原先后顺序通过22/22及12相位，H301 cold为bounded304/header608；单根wrapper缺项仍null，跨根完整计数仍unknown。回执 `verification-evidence/ah955-20261111/cli-ci-node22-20261111/records-counter-repair/verification-receipt.json` SHA256 `631cde631b10cb434abbf84ba9e49906d468b6cc9fe0978dff5b91585ff4d936`。修复只调整观察实例的加载与计数资格，不改变生产Core/SDK、状态或效果；原有限模型与87个源码绑定保持，不新增或重跑TLA来证明V8计数。原失败不改判，四平台远端CI另按最终head验证。
 
 多文件控制复用 `shared-snapshot-costs` 的 N=1/10/100/101/300、k=1/3 与实际 N+1 反例，所需正文随 k 获取；按需读取用 101 文件含缺失/损坏未选项的控制，显式选择损坏对象仍须拒绝。冷完整观察不当作已有完整证明后的按需获取；未选 Member 正控制仍沿原 history diamond。
 
@@ -257,6 +259,10 @@ fixture 必须使用符合 CLI runtime 要求的实际 Node 运行；它会经�
 
 SDK 初始化取消沿同一个 `sdk-package-smoke.mjs` 验证：分别对 list/catalog、consume、readSkill、readResources 在 pre-abort 和 owned config.json 读取回调尚未交付给 Store 的切点取消，保留原返回状态、实际 fetch/HTTP 观察及一次完整 metrics 回调。Notion 尚未取得时所有可执行 HTTP Effect 都在获取门之后，故应为 0 attempts / 0 unknown bytes；取得服务后缺账本仍为 null，不能一概补零。既有 headers/body 中途取消继续要求实际 1 attempt、连接关闭、in_flight=0，未知响应字节不得抹去。先保留旧包 null 账本失败，再用新独立安装包复跑同入口；真实 Pi 会话切换验收由跨仓原 driver 接续。
 
+安装包回归对 `consume` 和 `readResources` 的初始化取消同时精确核对完整 `effects`：version 1、无远端写、作者内容不变且 retention 为空；不能只删掉新增字段来适配旧断言。AH-638 的 CI run `43015434462` 原 Ubuntu/Node 22 安装报告保留 20 passed / 2 failed，失败来自两个遗漏效果回执的旧预期。CLI 的 `cli.test.ts` 与 `prepare.test.ts` 完整生产构建使用其他现有 CLI 文件同样的 120 秒前置预算；30 秒行为测试预算不变。原 macOS/Node 22 的两个 30 秒前置超时仍保留，较慢的具体宿主原因未知；新的定向和远端结果分别记录，不从修改推定通过。
+
+上述两文件的本机原定向结果为 105 pass / 1 fail / 1 error；两次完整构建已完成，另一个 SC25 C3 聚合测试在 26 个串行 Node 调用的 30 秒总预算内超时，未完成调用由测试框架终止。保留该原日志，按既有独立用户命令将原断言拆成每日入口、六条 ctl/历史路径对照及六个作者 schema 场景，各维持 30 秒预算、原真实 Node 进程、离线隔离和所有相等断言；不改产品实现、不省略路径，也不把拆分说成 CLI 启动性能改善。
+
 把**本次独立安装**的 `RESOURCE_CONSUMER/node_modules/ntn-skills/dist/ntn-skills.js` 交给 Broker `NTN_SKILLS_BUILD_ENTRY`，沿 Broker 主地图的 Launch → Doctor → resource-batch → Evidence → Cleanup 完成真实宿主验证。SDK smoke不创建生产远端数据，包与证据保留；只在确认进程全部结束后回收本次自有临时目录，走系统 Trash。Skill规程的可用性仍需独立新会话实际完成路径，不能由文档新增推断通过。
 
 ### 固定主文与当前缓存的按需读取
@@ -330,11 +336,11 @@ scalar 复用不改变 Members/Requires 语义，也不建立跨请求缓存。�
 node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_FIXTURE/fixture.json" --outdir "$RUN/scratch/records-consumer" --case records-history
 ```
 
-同一次独立安装先用原 scalar loopback 做一次小冷读，绑定安装 SDK 的 SHA/URL/函数范围，验证 Node precise coverage 的 `recordFromEnvelope`、`boundedEnvelope`、`decodeHeader`、`resolveFileState` 有实际非零调用，并用下一次无消费采样证明清零。计数器不可用或探针失败时保留原错误并停止，不能用缺项补0、增加产品 hook 或换平台追绿。原始函数 ranges 与阶段计数保存在 `records-history/*-coverage.json`。
+同一次独立安装在开启 Node precise coverage 后加载独立 history SDK 实例，再用原 scalar loopback 做一次小冷读，绑定安装 SDK 的 SHA、实际模块 URL 与函数范围，验证 `recordFromEnvelope`、`boundedEnvelope`、`decodeHeader`、`resolveFileState` 有实际非零 block coverage，并用下一次无消费采样证明清零。计数器不可用或探针失败时保留原错误并停止，不能用必经函数缺项补0、增加产品 hook 或换平台追绿。原始函数 ranges 与阶段计数保存在 `records-history/*-coverage.json`。
 
-探针通过后，原 `sdk-fixture.ts --records-history` 在60秒内通过既有 `nativeGraphFixture`/`prepareGraph` producer 生成 H=1/H=101 的合法父事件与 retained facts。四个业务主文件、owner/File ID/最终内容及关系不变；只共享 Requires d 的历史量变化，未选 optional 不提供正文响应。两种历史的 heads 可能使 pin 不同，各自对完整 producer oracle 验证，不强行抹平版本。producer 请求、写入及 frozen source 与空 consumer config 分账，绝不把生成的对象/SQLite 缓存复制给消费者。
+探针通过后，原 `sdk-fixture.ts --records-history` 在60秒内通过既有 `nativeGraphFixture`/`prepareGraph` producer 生成 H=1/101/301 的合法父事件与 retained facts。四个业务主文件、owner/File ID/最终内容及关系不变；只共享 Requires d 的历史量变化，未选 optional 不提供正文响应。三档历史的 heads 可能使 pin 不同，各自对完整 producer oracle 验证，不强行抹平版本。producer 请求、写入及 frozen source 与空 consumer config 分账，绝不把生成的对象/SQLite 缓存复制给消费者。
 
-每个 H 串行执行多根 cold/warm/expired-unchanged，再以独立冷状态执行单根 a；单根 a 的完整 Requires 已包含同四节点，因此能直接观察增加根 c 是否重复取数/解码。共八次SDK调用、每次30秒、总240秒、n=1/0重试，外层仍用原15分钟预算。对账完整HTTP journal/trace/响应字节、未选正文0、零常规写回、全文/manifest/关系/本地旧pin对象hash，并保存实际失败位置；失败后不启动后续相位。总函数次数不能冒充逐fact归属或内部Schema/DFS循环次数，带coverage耗时不能作为稳定性能收益；CPU/RSS/压缩wire bytes保持unknown。
+每个 H 串行执行多根 cold/warm/expired-unchanged，再以独立冷状态执行单根 a；单根 a 的完整 Requires 已包含同四节点，因此能直接观察增加根 c 是否重复取数/解码。共十二次SDK调用、每次30秒、总240秒、n=1/0重试，外层仍用原15分钟预算。对账完整HTTP journal/trace/响应字节、未选正文0、零常规写回、全文/manifest/关系/本地旧pin对象hash，并保存实际失败位置；内容／请求失败后不启动后续相位，解码公式沿既有驱动在完整十二相位留证后断言。总函数次数不能冒充逐fact归属或内部Schema/DFS循环次数，带coverage耗时不能作为稳定性能收益；CPU/RSS/压缩wire bytes保持unknown。
 
 默认 `all` 保留原22个case及其反例，并在原scalar case末尾追加同一测量；`view-dynamics`/`scalar-inventory` 的定向含义保持。常规 `package:check`/CI 继续沿同一原driver执行。Evidence先保留完整相位、生成器与安装身份、所有原失败；所有进程/服务终局后通过本Skill原cleanup将明确owned scratch移入系统Trash，再核原件保持。该测量不新增SC22/SC20前置。
 
@@ -354,9 +360,9 @@ graph inventory 返回 Name、Description、Kind、Enabled、Default Context、S
 
 ### CI 保留计数比较与原 coverage 文件
 
-原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与八相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留，不改变 Profiler 配置、SDK 调用、计数、预算或失败位置。
+原 `package-check.ts` 已把完整 SDK report 内嵌到 CI 上传的 `ntn-package-check.json`。history ledger 同时保留 `root_comparisons` 与 `coverage_files`：每份原 `*-coverage.json` 的文件名、UTF-8 原文、bytes 和 SHA-256 随报告归档，包含 probe/reset 与十二相位各自的 before/after；从 `content` 还原文件后，逐字节核对长度/hash。独立相位文件继续保留；原 Profiler 参数、SDK 调用、预算及计数公式不变，实际 history 模块加载顺序和 URL 另行记录。
 
-`root_comparisons` 保存各函数的真实差值及 `necessary_decode_reuse`，false 或非零必须原样进入 artifact。ledger 的 `status: passed` 表示八相位测量与内容/请求门槛完成，不证明所有 decoder 差值为零。comparison 仍是观察结果，不通过增加消费者样本或放宽断言将差值消除。
+`root_comparisons` 保存各函数的真实差值及 `necessary_decode_reuse`，false 或非零必须原样进入 artifact。ledger 的 `status: passed` 表示十二相位测量与内容/请求门槛完成，不证明所有 decoder 差值为零。comparison 仍是观察结果，不通过增加消费者样本或放宽断言将差值消除。
 
 ### Tags / View 动态观察与正文隔离
 

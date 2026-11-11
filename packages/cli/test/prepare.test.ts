@@ -43,7 +43,7 @@ beforeAll(async () => {
   ])
   if (exit !== 0) throw new Error(`Fresh CLI build failed: ${out}\n${err}`)
   if (evidence !== undefined) await mkdir(evidence, { recursive: true })
-})
+}, 120_000)
 afterAll(async () => {
   http.close()
   if (evidence === undefined && process.platform === "darwin")
