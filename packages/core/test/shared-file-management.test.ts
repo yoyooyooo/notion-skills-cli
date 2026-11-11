@@ -8,6 +8,11 @@ import { HttpClient } from "effect/http"
 import { authScope } from "../src/catalog.ts"
 import { decode, fail, property, SkillsError, SnapshotSchema, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
+import {
+  reviewSharedFileAddAcceptance,
+  applySharedFileAddAcceptance,
+  reconcileSharedFileAddAcceptance,
+} from "../src/shared-file-add-acceptance.ts"
 import { recordedFixtureTransport } from "./notion-http-fixture.ts"
 import { sharedSnapshotVersion } from "../src/shared-snapshot-identity.ts"
 import { openSharedSnapshot, type FixedSharedSource } from "../src/shared-snapshot.ts"
@@ -119,6 +124,12 @@ function fixture(
                 ...(options?.content === undefined ? {} : { content: options.content }),
               })
               const url = new URL(path, "https://api.notion.com/")
+              const acknowledgedRecord =
+                method === "GET"
+                  ? base.records.get(url.pathname.replace(/^\/v1\/pages\//u, ""))
+                  : undefined
+              if (acknowledgedRecord !== undefined)
+                return Effect.succeed(structuredClone(acknowledgedRecord))
               if (url.pathname === `/v1/data_sources/${library.files.data_source_id}/query`) {
                 const offset =
                   property(body).start_cursor === undefined
@@ -379,7 +390,370 @@ function fixture(
   }
 }
 
+async function failedNativeAdd(prepare?: (f: ReturnType<typeof fixture>) => void) {
+  const f = fixture()
+  prepare?.(f)
+  const snapshot = await f.baseline()
+  const plan = await f.run(
+    prepareSharedFileManagement({
+      library,
+      snapshot,
+      action: "add",
+      path: "references/reviewed.md",
+      markdown: "# Reviewed file\n",
+    }),
+  )
+  f.onFileCreate((row) =>
+    f.base.bodies.set(String(row.id), plan.content.markdown + "\nUnaccepted body"),
+  )
+  const failure = await f.run(
+    Effect.flip(executeSharedFileManagement(library, { plan, mode: "create" })),
+  )
+  expect(failure.code).toBe("SHARED_FILE_MANAGEMENT_REVIEW_REQUIRED")
+  const page = String(property(failure.details).page_id)
+  f.base.bodies.set(page, plan.content.markdown)
+  f.clear()
+  const request = {
+    library,
+    skillPageId: skillPage,
+    originalOperationId: plan.operation_id,
+    acceptedObservedSha256: digest(encode(plan.content.markdown)),
+  }
+  return { f, plan, page, request }
+}
+
 describe("shared file lifecycle operations", () => {
+  test.each([
+    "wrong operation",
+    "missing original plan",
+    "invalid original response",
+    "foreign file page",
+    "changed prior body",
+    "changed source",
+    "wrong observed hash",
+  ])("independent add acceptance refuses %s without writes", async (problem) => {
+    const { f, plan, page, request } = await failedNativeAdd()
+    if (problem === "wrong operation")
+      request.originalOperationId = plan.operation_id.replace(
+        /.$/u,
+        plan.operation_id.endsWith("0") ? "1" : "0",
+      )
+    if (problem === "missing original plan" || problem === "invalid original response") {
+      const recordId =
+        problem === "missing original plan" ? plan.operation_id : "outcome-" + plan.operation_id
+      for (const [key, row] of f.base.records)
+        if (
+          text(
+            property(property(row.properties)[library.records.property_ids["Record ID"]!])
+              .rich_text,
+          ) === recordId
+        )
+          f.base.records.delete(key)
+      if (problem === "invalid original response")
+        f.base.seedFact(
+          {
+            version: 1,
+            kind: "file_management_outcome",
+            operation_id: plan.operation_id,
+            file_id: plan.file_id,
+            status: "needs_review",
+            reason_code: "INVALID_PAGE_RESPONSE",
+            page_id: page,
+          },
+          "operation",
+          "file-management-outcomes-v1",
+          recordId,
+          plan.operation_id,
+        )
+    }
+    if (problem === "foreign file page") f.files.find((row) => row.id === page)!.id = id(99999)
+    if (problem === "changed prior body")
+      f.base.bodies.set(skillPage, "A later unaccepted owner edit")
+    if (problem === "changed source")
+      property(property(f.base.main.properties).source).rich_text = [
+        { plain_text: "foreign-source" },
+      ]
+    if (problem === "wrong observed hash") request.acceptedObservedSha256 = "0".repeat(64)
+    const error = await f.run(Effect.flip(reviewSharedFileAddAcceptance(request)))
+    expect(error.code).toMatch(/SHARED_FILE_ADD_ACCEPTANCE_REQUIRED|SHARED_FILE_SOURCE_CONTEXT/)
+    expect(f.base.writeCount()).toBe(0)
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.pathPatches()).toHaveLength(0)
+  })
+
+  test("independent add acceptance refuses an unknown original create and preserves it", async () => {
+    const f = fixture(),
+      snapshot = await f.baseline()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot,
+        action: "add",
+        path: "references/unknown.md",
+        markdown: "# Original unknown\n",
+      }),
+    )
+    f.createUnknown("visible")
+    expect(
+      (await f.run(Effect.flip(executeSharedFileManagement(library, { plan, mode: "create" }))))
+        .code,
+    ).toBe("WRITE_OUTCOME_UNKNOWN")
+    f.clear()
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            reviewSharedFileAddAcceptance({
+              library,
+              skillPageId: skillPage,
+              originalOperationId: plan.operation_id,
+              acceptedObservedSha256: plan.content.retained.sha256,
+            }),
+          ),
+        )
+      ).code,
+    ).toBe("SHARED_FILE_ADD_ACCEPTANCE_REQUIRED")
+    expect(f.base.writeCount()).toBe(0)
+    expect(f.fileCreates()).toHaveLength(0)
+  })
+
+  test.each(["target body", "prior frontier", "owner metadata", "other Store"])(
+    "independent add acceptance rechecks %s after review",
+    async (changed) => {
+      const { f, plan, page, request } = await failedNativeAdd()
+      const review = await f.run(reviewSharedFileAddAcceptance(request))
+      if (changed === "target body")
+        f.base.bodies.set(page, plan.content.markdown + "\nChanged after review")
+      if (changed === "prior frontier")
+        f.base.seedFact(
+          { ...plan.event, event_id: "foreign-acceptance" },
+          "file_event",
+          plan.file_id,
+          "foreign-acceptance",
+        )
+      if (changed === "owner metadata")
+        property(property(f.base.main.properties).description).rich_text = [
+          { plain_text: "Changed owner description" },
+        ]
+      if (changed === "other Store") f.base.json.clear()
+      f.clear()
+      expect(
+        (
+          await f.run(
+            Effect.flip(
+              applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+            ),
+          )
+        ).code,
+      ).toBe("SHARED_FILE_ADD_ACCEPTANCE_REQUIRED")
+      expect(f.base.writeCount()).toBe(0)
+      expect(f.fileCreates()).toHaveLength(0)
+      expect(f.pathPatches()).toHaveLength(0)
+    },
+  )
+
+  test("independent add acceptance keeps an unknown new decision fenced without replay", async () => {
+    const { f, request } = await failedNativeAdd()
+    const review = await f.run(reviewSharedFileAddAcceptance(request))
+    f.base.unknownRecord("operation", false)
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+          ),
+        )
+      ).code,
+    ).toBe("WRITE_OUTCOME_UNKNOWN")
+    expect(f.base.writeCount()).toBe(1)
+    f.clear()
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+          ),
+        )
+      ).code,
+    ).toBe("SHARED_FILE_ADD_ACCEPTANCE_REQUIRED")
+    expect((await f.run(Effect.flip(reconcileSharedFileAddAcceptance(request)))).code).toBe(
+      "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+    )
+    expect(f.base.writeCount()).toBe(0)
+  })
+
+  test("independent add acceptance refuses an oversized complete review before any decision write", async () => {
+    const { f, request } = await failedNativeAdd((value) => {
+      value.base.bodies.set(skillPage, "A".repeat(35000))
+      value.base.bodies.set(id(11), "B".repeat(35000))
+    })
+    const error = await f.run(Effect.flip(reviewSharedFileAddAcceptance(request)))
+    expect(error.code).toBe("SHARED_RECORD_TOO_LARGE")
+    expect(f.base.writeCount()).toBe(0)
+  })
+
+  test.each([false, true])(
+    "independent add acceptance never repeats an unknown event (visible=%s)",
+    async (visible) => {
+      const { f, request } = await failedNativeAdd()
+      const review = await f.run(reviewSharedFileAddAcceptance(request))
+      f.base.unknownRecord("file_event", visible)
+      expect(
+        (
+          await f.run(
+            Effect.flip(
+              applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+            ),
+          )
+        ).code,
+      ).toBe("WRITE_OUTCOME_UNKNOWN")
+      expect(f.base.writeCount()).toBe(2)
+      f.clear()
+      if (visible) {
+        expect(
+          (
+            await f.run(
+              applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+            )
+          ).verified,
+        ).toBe(true)
+        expect(f.base.writeCount()).toBe(1)
+        expect(
+          f.base.calls.filter(
+            (call) =>
+              call.path === "v1/pages" &&
+              property(property(property(call.body).properties)[library.records.property_ids.Kind!])
+                .select &&
+              property(
+                property(
+                  property(property(call.body).properties)[library.records.property_ids.Kind!],
+                ).select,
+              ).name === "file_event",
+          ),
+        ).toHaveLength(0)
+      } else {
+        expect(
+          (
+            await f.run(
+              Effect.flip(
+                applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+              ),
+            )
+          ).code,
+        ).toBe("SHARED_FILE_ADD_ACCEPTANCE_REQUIRED")
+        expect(f.base.writeCount()).toBe(0)
+      }
+      expect(f.fileCreates()).toHaveLength(0)
+      expect(f.pathPatches()).toHaveLength(0)
+    },
+  )
+
+  test.each(["old plan", "old outcome", "review", "event", "completion"])(
+    "independent add acceptance cold readers reject missing %s",
+    async (missing) => {
+      const { f, plan, request } = await failedNativeAdd()
+      const review = await f.run(reviewSharedFileAddAcceptance(request))
+      await f.run(applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }))
+      const recordId =
+        missing === "old plan"
+          ? plan.operation_id
+          : missing === "old outcome"
+            ? "outcome-" + plan.operation_id
+            : missing === "review"
+              ? "review-" + review.operation_id
+              : missing === "event"
+                ? review.event.event_id
+                : "outcome-" + review.operation_id
+      for (const [key, row] of f.base.records)
+        if (
+          text(
+            property(property(row.properties)[library.records.property_ids["Record ID"]!])
+              .rich_text,
+          ) === recordId
+        )
+          f.base.records.delete(key)
+      f.base.json.clear()
+      f.base.objects.clear()
+      f.credential("independent-missing-" + missing)
+      f.clear()
+      const error = await f.run(Effect.flip(reconcileSharedFileAddAcceptance(request)))
+      expect(error.code).toMatch(/SHARED_FILE_ADD_ACCEPTANCE_REQUIRED|SHARED_RECORD_UNRESOLVED/)
+      await expect(f.open(true)).rejects.toBeDefined()
+      expect(f.base.writeCount()).toBe(0)
+      expect(f.fileCreates()).toHaveLength(0)
+    },
+  )
+
+  test("independent add acceptance preserves the failed add and publishes only its own ownership", async () => {
+    const f = fixture(),
+      snapshot = await f.baseline()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot,
+        action: "add",
+        path: "references/author_note.md",
+        markdown: "# Author review\n\n[Original policy](1.md)\n",
+      }),
+    )
+    f.onFileCreate((row) =>
+      f.base.bodies.set(String(row.id), plan.content.markdown.replace("(1.md)", "(https://1.md)")),
+    )
+    const failure = await f.run(
+      Effect.flip(executeSharedFileManagement(library, { plan, mode: "create" })),
+    )
+    expect(failure.code).toBe("SHARED_FILE_MANAGEMENT_REVIEW_REQUIRED")
+    const page = String(property(failure.details).page_id)
+    const outcomes = () =>
+      f.run(
+        querySharedRecords(library, {
+          skillPageId: skillPage,
+          kind: "operation",
+          recordId: "outcome-" + plan.operation_id,
+        }),
+      )
+    const original = canonicalSharedJson(await outcomes())
+    const request = {
+      library,
+      skillPageId: skillPage,
+      originalOperationId: plan.operation_id,
+      acceptedObservedSha256: digest(encode(plan.content.markdown)),
+    }
+    f.clear()
+    expect((await f.run(Effect.flip(reviewSharedFileAddAcceptance(request)))).code).toBe(
+      "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+    )
+    expect(f.base.writeCount()).toBe(0)
+    f.base.bodies.set(page, plan.content.markdown)
+    const review = await f.run(reviewSharedFileAddAcceptance(request))
+    expect(f.base.writeCount()).toBe(0)
+    const apply = { library, review, reviewId: review.review_id }
+    expect((await f.run(applySharedFileAddAcceptance({ ...apply, dryRun: true }))).status).toBe(
+      "planned",
+    )
+    expect(f.base.writeCount()).toBe(0)
+    const accepted = await f.run(applySharedFileAddAcceptance(apply))
+    expect(accepted.status).toBe("reviewed")
+    expect(accepted.original_status).toBe("needs_review")
+    expect(accepted.original_completion).toBe("unproven")
+    expect(accepted.event.event_id).not.toBe(plan.event.event_id)
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.pathPatches()).toHaveLength(0)
+    expect(f.base.writeCount()).toBe(3)
+    expect(canonicalSharedJson(await outcomes())).toBe(original)
+    expect((await f.events()).some((event) => event.event_id === plan.event.event_id)).toBe(false)
+    f.clear()
+    expect((await f.run(applySharedFileAddAcceptance(apply))).verified).toBe(true)
+    expect((await f.run(reconcileSharedFileManagement(library, plan))).status).toBe("reviewed")
+    expect(f.base.writeCount()).toBe(0)
+    f.base.json.clear()
+    f.base.objects.clear()
+    f.credential("independent-file-reader")
+    f.clear()
+    expect((await f.run(reconcileSharedFileAddAcceptance(request))).verified).toBe(true)
+    expect((await f.open(true)).files.some((file) => file.path === plan.path)).toBe(true)
+    expect(f.base.writeCount()).toBe(0)
+  })
   test("actual lifecycle writes use the frozen owner and operation through the real transport", async () => {
     const f = fixture(),
       snapshot = await f.baseline()

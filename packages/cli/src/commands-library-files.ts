@@ -19,6 +19,7 @@ import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryFileRestoreCommand } from "./commands-library-file-restore.ts"
 import { libraryFileReviewCommand } from "./commands-library-file-review.ts"
 import { libraryFileAcceptCurrentCommand } from "./commands-library-file-accept-current.ts"
+import { libraryFileAcceptAddCommand } from "./commands-library-file-accept-add.ts"
 import { libraryFileTakeoverCommand } from "./commands-library-file-takeover.ts"
 import {
   libraryFileDisplayCommand,
@@ -280,5 +281,6 @@ export const libraryFilesCommand = defineCommand("file").pipe(
     libraryFileDisplayCommand,
     libraryFileReviewCommand,
     libraryFileAcceptCurrentCommand,
+    libraryFileAcceptAddCommand,
   ]),
 )

@@ -1,4 +1,8 @@
 import { Clock, Effect, Schema } from "effect"
+import {
+  completedSharedFileAddAcceptance,
+  loadCompletedSharedFileAddAcceptances,
+} from "./shared-file-add-acceptance.ts"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, validateSnapshot } from "./cache.ts"
 import { decode, fail, property, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
@@ -65,6 +69,8 @@ import {
   plannedFileManagementEventId,
   retainedFileManagementPayload,
   validateSharedFileManagementPlan,
+  decodeSharedFileManagementOutcome as decodeOutcome,
+  type SharedFileManagementOutcome as Outcome,
   type SharedFileManagementPlan,
 } from "./shared-file-management-model.ts"
 export {
@@ -104,17 +110,6 @@ const MarkdownSchema = Schema.Struct({
   unknown_block_ids: Schema.Array(Schema.String),
   warnings: Schema.optional(Schema.Array(Schema.Unknown)),
 })
-const OutcomeSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  kind: Schema.Literal("file_management_outcome"),
-  operation_id: Schema.String,
-  file_id: Schema.String,
-  status: Schema.Literals(["applied", "not_sent", "rejected", "needs_review"]),
-  reason_code: Schema.String,
-  page_id: Schema.optional(Schema.String),
-  event_id: Schema.optional(Schema.String),
-})
-type Outcome = typeof OutcomeSchema.Type
 type Context = {
   readonly index: SharedSkillIndex
   readonly events: readonly FileEvent[]
@@ -776,26 +771,6 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
   })
 }
 
-function decodeOutcome(row: SharedRecord): Outcome {
-  const value = Schema.decodeUnknownSync(OutcomeSchema)(row.payload, { onExcessProperty: "error" })
-  const event = plannedFileManagementEventId(value.operation_id)
-  if (
-    event === undefined ||
-    row.kind !== "operation" ||
-    row.entity_id !== fileManagementOutcomesEntity ||
-    row.record_id !== fileManagementOutcomeId(value.operation_id) ||
-    row.operation_id !== value.operation_id ||
-    (value.page_id !== undefined && pageId(value.page_id) !== value.page_id) ||
-    (value.status === "applied"
-      ? value.event_id !== event || value.page_id === undefined
-      : value.event_id !== undefined)
-  )
-    throw fail(
-      "SHARED_FILE_MANAGEMENT_INVALID",
-      "The lifecycle outcome does not identify its exact original operation.",
-    )
-  return value
-}
 function saveOutcome(
   library: SharedLibrary,
   plan: SharedFileManagementPlan,
@@ -1081,7 +1056,15 @@ export function reconcileSharedFileManagement(
       return yield* Effect.fail(
         fail("SHARED_FILE_MANAGEMENT_SCOPE", "The original outcome belongs to another file."),
       )
-    if (outcome.status === "needs_review")
+    if (outcome.status === "needs_review") {
+      const accepted = yield* completedSharedFileAddAcceptance(library, plan)
+      if (accepted !== undefined) {
+        yield* retireVerified(
+          plan,
+          yield* scopeFor(scope, library, plan.skill_id, plan.skill_page_id),
+        )
+        return accepted
+      }
       return yield* Effect.fail(
         recovery(
           fail(
@@ -1092,6 +1075,7 @@ export function reconcileSharedFileManagement(
           "postcondition",
         ),
       )
+    }
     if (outcome.status === "applied") {
       const event = yield* appendSharedRecord(library, {
         mode: "reconcile",
@@ -1417,6 +1401,10 @@ export function loadPendingSharedFileManagement(
 ) {
   return Effect.gen(function* () {
     const headers = input.headers ?? (yield* querySharedOperationIndex(library, input.skillPageId))
+    const independentAcceptances = yield* loadCompletedSharedFileAddAcceptances(library, {
+      ...input,
+      headers,
+    })
     const resources = yield* loadPendingSharedResourceAuthoring(library, { ...input, headers })
     const candidates = headers.filter(
       (header) =>
@@ -1527,6 +1515,8 @@ export function loadPendingSharedFileManagement(
             "The original lifecycle plan differs from its exact compact index identity.",
           ),
         )
+      if (outcome?.status === "needs_review" && independentAcceptances.has(plan.operation_id))
+        continue
       plans.push(plan)
     }
     return [...plans, ...resources].sort((left, right) =>
