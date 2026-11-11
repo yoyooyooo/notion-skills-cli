@@ -15,7 +15,11 @@ import {
   isResourceFollowing,
   resourceContentForOwnership,
 } from "./shared-file-state.ts"
-import { reconcileSharedBodyWrite, validateSharedBodyWritePlan } from "./shared-body-write.ts"
+import {
+  reconcileSharedBodyWrite,
+  validateSharedBodyWritePlan,
+  type SharedBodyWritePlan,
+} from "./shared-body-write.ts"
 import { sharedFileSourcePath } from "./shared-file-placement.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedRecords } from "./shared-records.ts"
@@ -49,6 +53,9 @@ export function restoreSelectedSharedFile<R = never>(input: {
   readonly dryRun?: boolean
   readonly allowLocalArchive?: boolean
   readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
+  readonly afterRestorePlanRetained?: (
+    plan: SharedBodyWritePlan,
+  ) => Effect.Effect<void, SkillsError, R>
   readonly afterRestoreBodyWrite?: (
     sha256: string,
     bytes: number,
@@ -200,6 +207,9 @@ export function restoreSelectedSharedFile<R = never>(input: {
       ...(input.afterRestoreBodyWrite === undefined
         ? {}
         : { afterRestoreBodyWrite: input.afterRestoreBodyWrite }),
+      ...(input.afterRestorePlanRetained === undefined
+        ? {}
+        : { afterRestorePlanRetained: input.afterRestorePlanRetained }),
     })
     const sourceSha256 = yield* sha256(candidate.bytes)
     if (input.dryRun)
@@ -255,6 +265,8 @@ export function reconcileSelectedSharedFileRestore(input: {
   readonly skillPageId: string
   readonly path: string
   readonly operationId: string
+  /** Additional caller-owned identity checks on the validated original; never dispatches. */
+  readonly validateOriginal?: (plan: SharedBodyWritePlan) => void
 }) {
   return Effect.gen(function* () {
     if (!/^body-write-follow-[a-f0-9]{64}\.[a-f0-9]{64}$/u.test(input.operationId))
@@ -295,6 +307,8 @@ export function reconcileSelectedSharedFileRestore(input: {
           "The original restore belongs to another exact library, Skill or file.",
         ),
       )
+    const validateOriginal = input.validateOriginal
+    if (validateOriginal !== undefined) yield* checked(() => validateOriginal(plan))
     const original = yield* reconcileSharedBodyWrite(input.library, plan)
     const scope = yield* authScope
     const journal = {

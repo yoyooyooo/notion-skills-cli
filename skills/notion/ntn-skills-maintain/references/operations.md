@@ -81,6 +81,7 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | `WRITE_CONFLICT` | Read the current exact item and merge the intended change into a fresh pinned edit |
 | `UPSTREAM_CONTENT_READ_ONLY` | Edit the source or explicitly fork the selected member |
 | Shared body/metadata write, apply or restore-follow is unknown | Read the exact current Skill; obey `read_again` after original facts settle, and retain missing original facts as unresolved |
+| Restore request stopped before final feedback | `ctl library file request TARGET PATH --entry ENTRY --reconcile`; for an older processing receipt missing its ID, add `--operation ORIGINAL` after inspecting the exact original through `ctl library state`. Preview with `--dry-run`; no body write is repeated. A verified `ORIGINAL_NOT_APPLIED` requires explicit new `--submit` before processing |
 | Shared create is unknown | Keep the same complete input and original intent; its retry reconciles original creation identities without blindly repeating POSTs |
 | Known ordinary native body mismatch, with the same original main explicitly restored to its exact candidate | `ctl library create recovery review ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN --output REVIEW`; inspect the digest, then `recovery apply ORIGINAL_PLAN --entry LIBRARY --review REVIEW --review-id ID [--dry-run]` |
 | Initial draft adoption is unknown | Preserve `adoption_operation_id` and use the returned `adopt PAGE_ID --database LIBRARY --reconcile`; no current equality or absent record authorizes a replay |

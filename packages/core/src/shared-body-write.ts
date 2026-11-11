@@ -697,6 +697,10 @@ export function executeSharedBodyWrite<R = never>(
     readonly plan: SharedBodyWritePlan
     readonly mode: "create" | "reconcile"
     readonly beforePlanWrite?: (plan: SharedBodyWritePlan) => Effect.Effect<void, SkillsError, R>
+    /** The original plan and retained bodies are verified; no native body write has been sent. */
+    readonly afterRestorePlanRetained?: (
+      plan: SharedBodyWritePlan,
+    ) => Effect.Effect<void, SkillsError, R>
     /** Optional native request revalidation; never called while reconciling an original write. */
     readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
     readonly afterRestoreBodyWrite?: (
@@ -787,6 +791,10 @@ export function executeSharedBodyWrite<R = never>(
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "plan")))
     yield* retainPlannedBodies(library, plan, "create")
     const current = yield* Effect.gen(function* () {
+      if (plan.action === "restore_follow" && input.afterRestorePlanRetained !== undefined)
+        yield* withNotionRequestAttribution(input.afterRestorePlanRetained(plan), {
+          phase: "author_apply",
+        })
       const verified = yield* withNotionRequestAttribution(verifyCurrent(library, plan, true), {
         phase: "author_preflight",
       })

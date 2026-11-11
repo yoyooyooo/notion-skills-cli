@@ -5,7 +5,7 @@
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
     "packages/core/src/shared-file-observer.ts": "f8cf74c46f17b2a2bc519faa50afdc9508b98e77b2f5be0c33e821e6a1010ff3",
-    "packages/core/src/shared-body-write.ts": "f74c5a9a1d2673b0a1b85e242759dafb31048d33cba1ef6849a6e5c74932b297",
+    "packages/core/src/shared-body-write.ts": "eaa57a6ffd1de92e4005cd5358fd764b3f91e895f1df58b78bdda10ec8650f08",
     "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
     "packages/core/src/shared-snapshot.ts": "c4a4c2dfea1a1e47ac7b1565c1651f7c9412a80285bcacaaad4ec712016aaf09",
@@ -52,10 +52,10 @@
     "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
     "packages/core/src/mutation.ts": "c93d7dbe639e96cd5f84530ff7448fe6064573e3cf092518e19d6ba64d41a31a",
     "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
-    "packages/core/src/shared-authoring.ts": "57a0553d5e9a04d5cf487ba3ae70981cde6d9a706712e60a99d22828bbf51ef9",
+    "packages/core/src/shared-authoring.ts": "9d420d7d613ec90a90024d2b00a55564da80443c27ee72a5f2ba14ac8db7b5e1",
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
     "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
-    "packages/core/src/shared-file-restore.ts": "6b5b6a2d6661ce97350fbf2e29d934b7688ea569357ffe184090425996729fa3",
+    "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/src/sqlite-state.ts": "98f6e35919b12c6abfbd3874e76a39f714a46da41690aa4ba27f236f8eb4ea04",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
@@ -72,8 +72,8 @@
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
     "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
     "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
-    "packages/core/src/shared-file-request.ts": "6b602534a1a766024083c8c589c6490f003daafab6556d0be18bde6a517134fc",
-    "packages/cli/src/commands-library-file-request.ts": "e89665d262ee72cda13a4a74b6fbd4c8f481608ecb71b526f0074fa754a088e8",
+    "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
+    "packages/cli/src/commands-library-file-request.ts": "0aef3dbd6ca32c48d9036f4672dcf4dbd6ff5ae04c16522f6482a0f0146e9736",
     "packages/core/src/shared-create-import-readback.ts": "b69e01814df63d3cf5459245a0769d6997699b368322ab9c047ab8519d25f8a4",
     "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
     "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
@@ -554,16 +554,25 @@
       "name": "explicit_file_request_submission",
       "files": [
         "packages/core/src/shared-file-request.ts",
-        "packages/cli/src/commands-library-file-request.ts"
+        "packages/cli/src/commands-library-file-request.ts",
+        "packages/core/src/shared-file-restore.ts",
+        "packages/core/src/shared-authoring.ts",
+        "packages/core/src/shared-body-write.ts"
       ],
       "symbols": [
         "submitSharedFileRequest",
         "processSharedFileRequest",
         "matchesSubmission",
         "verifyRequest",
-        "libraryFileRequestCommand"
+        "libraryFileRequestCommand",
+        "writeFeedback",
+        "assertRequestRestorePlan",
+        "restoreSelectedSharedFile",
+        "reconcileSelectedSharedFileRestore",
+        "restoreSharedFileFollowing",
+        "executeSharedBodyWrite"
       ],
-      "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission, and original unknown writes remain barriers to new dispatch. The submission/processing state machine, exact receipt validation and complete-body-match restore are not modeled by any of the six finite models.",
+      "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission. The actual restore plan and retained bodies are verified before its ID is written and read back in processing feedback; no preceding processing/null write is needed. Exact feedback metadata acknowledgment is separate from current complete-context eligibility, so a later body edit stops before body dispatch without converting a known metadata ACK into an unknown mutation. Existing guardedSourceMutation rules still prohibit accepting unknown writes from matching fields. Legacy --reconcile --operation binds the validated original plan to its submitted file/preimage/frontier/Source and requires exact original outcome/event; no current-text equality creates success. A verified not-applied original permits only an explicit new submission, while pending and unknown originals cannot be replaced. Historical verified receipts without submitted retain their prior read-only contract. These request/feedback transitions, the callback and explicit complete-body-match restore remain outside all six finite models, including ProjectionRace's excluded explicit writer/request authorization and AcknowledgedContinuation's unrelated create branches. No model, configuration, view, transition or prior model result changes or acquires these claims.",
       "tests": ["packages/core/test/shared-file-request.test.ts", "packages/cli/test/cli.test.ts"]
     },
     {
