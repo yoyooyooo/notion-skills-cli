@@ -199,6 +199,8 @@ ntn-skills ctl library inventory reconcile-import ./import-plan.json --entry ENT
 
 `reconcile-import` 不读本地源树、不重新发现 Provider、不写远端，只核对原冻结操作。原源树随后改变不妨碍核对既有操作。没有原响应证明时，当前页面恰好匹配也不能补造成功。
 
+历史单主文原生导入若已取得原页面 ACK、但在写入清单前因固定 v11 正文预测失败，可通过 `ctl library inventory recovery review/apply/reconcile` 审阅同一原计划和原页面；只支持原固定 v12 预测与当前完整正文精确一致的受限分支。恢复只追加已审阅的不可变 Records，保留页面、输入、完整 frontmatter、模式与禁用状态，不创建新 Skill/File 页面或 PATCH 正文。若首批 Record 已 ACK 而查询索引暂未可见，原 `apply --dry-run` 会核对完整请求与 ACK、精确回执页面和当前正文，并列出从未发送的剩余 Record。确认后重用同一 review 与 review-id 继续；缺失、篡改或未知 ACK 仍只能核对原结果。
+
 真实搬入时，先在授权的小批次执行，再用新的只读 audit、独立安装的 `read/files/export` 和操作前冻结清单核对实际远端字节。导入器自己的 `verified` 结果不能替代这项迁入验收。冷读取使用另一个正常状态目录和现有凭据提供方，不能复制导入器数据库、token 或已填满的资源缓存来证明冷恢复。
 
 计划可能包含全部私有内容，应留在受控目录；不要提交到公开 Git 仓库。此流程不删除本地 Skill，不修改宿主全局投影，不执行脚本，不安装依赖或定时更新。后续的管理权移交另行按已核对身份处理。

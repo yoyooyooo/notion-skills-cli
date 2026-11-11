@@ -95,7 +95,7 @@ const apply = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Apply one inspected native recovery decision in the original credential and Store. Preserve the same disabled main page, original input, wire, full frontmatter and mode. Append only the exact immutable Record union; no new native page, body PATCH, metadata PATCH, Source write or enablement is allowed. Repeated or uncertain recovery attempts only reconcile and never replay any suffix.",
+    "Apply one inspected native recovery decision in the original credential and Store. Preserve the same disabled main page, original input, wire, full frontmatter and mode. Append only the exact immutable Record union; no new native page, body PATCH, metadata PATCH, Source write or enablement is allowed. A partial attempt may continue only its exact fully acknowledged Record prefix after original-request, ACK, page and current-body checks; dry-run reports the never-dispatched suffix. Unknown requests only reconcile and are never replayed.",
   ),
 )
 const reconcile = defineCommand(

@@ -59,7 +59,7 @@ type Fact = {
   readonly record_id: string
   readonly operation_id: string
   readonly entity_id: string
-  readonly kind: "operation" | "object" | "source"
+  readonly kind: SharedRecord["kind"]
   readonly payload: unknown
   readonly hash: string
 }

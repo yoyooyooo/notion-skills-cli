@@ -15,6 +15,9 @@ import {
   observeSharedCreatePrefixBody,
 } from "./shared-create-recovery-prefix-model.ts"
 import { prepareSharedNativeAllocationProof } from "./shared-create-recovery-acknowledgements.ts"
+import { SharedCreateFrozenPostSchema } from "./shared-create-recovery-acknowledgement-model.ts"
+import { assertSharedCreateFrozenRecordRequest } from "./shared-create-recovery-known-bootstrap.ts"
+import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
 import { prefixRecoveryRequired } from "./shared-create-recovery-errors.ts"
 import {
   nativeMainRecoveryPlan,
@@ -137,6 +140,76 @@ export type NativeRecoveryFact = {
   readonly kind: SharedRecord["kind"]
   readonly payload: unknown
   readonly hash: string
+}
+
+/** A saved ACK prefix can grant only the never-dispatched tail of this same review. */
+export function acknowledgedNativeRecoveryPrefix(
+  library: SharedLibrary,
+  review: SharedCreateNativeRecoveryReview,
+  facts: readonly NativeRecoveryFact[],
+) {
+  return Effect.gen(function* () {
+    const api = yield* Notion,
+      store = yield* Store
+    const namespace = yield* hash([
+      yield* api.credentialIdentity,
+      library.library_id,
+      library.sources?.data_source_id ?? null,
+    ])
+    const root = "operations/shared-sources/" + namespace + "/"
+    const keys = yield* store.listKeys("operations/shared-sources/")
+    const retained = new Map<string, typeof SharedCreateFrozenPostSchema.Type>()
+    for (const key of keys) {
+      if (!key.startsWith(root) || !/\/source-op-[a-f0-9]{64}\.json$/u.test(key)) continue
+      const raw = yield* store.readJson(key, Schema.Unknown)
+      const identity = property(raw).identity
+      if (typeof identity !== "string" || !identity.startsWith(review.review_id + ":")) continue
+      const request = yield* createChecked(() =>
+        Schema.decodeUnknownSync(SharedCreateFrozenPostSchema)(raw, { onExcessProperty: "error" }),
+      )
+      const { version: _version, operation, ...fields } = request
+      if (
+        request.identity !==
+          review.review_id + ":" + (yield* hash([request.path, request.method, request.body])) ||
+        operation !== "source-op-" + (yield* hash(fields)) ||
+        key !== root + operation + ".json" ||
+        keys.some((other) => other !== key && other.endsWith("/" + operation + ".json"))
+      )
+        return yield* refusal("The native recovery dispatch changed identity or credential scope.")
+      const recordId = text(
+        property(
+          property(property(request.body).properties)[library.records.property_ids["Record ID"]!],
+        ).rich_text,
+      )
+      const fact = facts.find((candidate) => candidate.record_id === recordId)
+      if (fact === undefined || retained.has(recordId))
+        return yield* refusal("The native recovery has an extra or duplicate original dispatch.")
+      yield* createChecked(() =>
+        assertSharedCreateFrozenRecordRequest(library, review.skill_page_id, request.body, fact),
+      )
+      // An unacknowledged original request can only reconcile, never unlock a suffix.
+      if (
+        (yield* store.readJson(key.replace("/source-op-", "/source-ack-"), Schema.Unknown)) ===
+        undefined
+      )
+        return undefined
+      retained.set(recordId, request)
+    }
+    if (retained.size === 0) return undefined
+    const prefix = facts.slice(0, retained.size)
+    if (prefix.some((fact) => !retained.has(fact.record_id)))
+      return yield* refusal("The acknowledged native recovery requests are not one exact prefix.")
+    const dispatch = yield* sharedCreateDispatch(library, {
+      operation_id: review.review_id,
+      skill_id: review.skill_id,
+    })
+    for (const fact of prefix) {
+      const request = retained.get(fact.record_id)!
+      if (!(yield* dispatch.acknowledged(request.path, request.body, request.method)))
+        return yield* refusal("The native recovery prefix lacks an exact durable ACK observation.")
+    }
+    return prefix
+  }).pipe(withReadOnlyNotion)
 }
 
 /** A complete fresh stage check permits only the already acknowledged exact fact prefix. */
