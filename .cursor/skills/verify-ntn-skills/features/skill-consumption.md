@@ -18,6 +18,18 @@ CLI 既有 `resource-lifecycle/AuditRun.tla` 的 `AuditReadOnly == writes = 0` �
 
 旧/新包顺序使用同一 `NTN_SKILLS_RECORDS_HISTORY_FIXTURE=/absolute/history.json` 和 `NTN_SKILLS_SOURCE_FIXTURE_PORT`，固定 source origin 与 credential scope；端口冲突明确失败，不能自动换端口继续当作同条件对照。每臂仍从相同空 Store seed 独立复制。完整原 oracle 和所有阶段先保留到报告，再断言 cold header 次数等于完整 metadata pass 加同一 payload row 的次数；旧包的重复解码仍必须失败。原脚本默认仍可独立生成 fixture，不新增生产配置项。
 
+## AH-506：有界历史与局部缓存成本
+
+复用原 history producer、独立安装 smoke 和缓存场景，冻结 H=1/101/301、相同四文件闭包/最终内容、scope、空 Store seed、cache age 与操作顺序；旧两档 fixture 必须先被三档判据拒绝。沿既有预算：producer 60s、每次消费 30s、全部历史消费 240s、零重试。必要完整历史校验与重复本地解码分账，不能因 metadata 变少就推断 CPU 下降。
+
+分别采样 SQLite 各表逻辑行、cache/dispatch active/retired 项、DB/WAL/SHM 物理字节、objects/manifest/cache/显式导出目录，以及 V8 解码次数和实际 HTTP/响应 bytes。进程 CPU 包含同进程受控服务及覆盖率开销，不称作 replay CPU。暖/过期未变必须保持原固定 pin 和已声明单槽；访问不续期。单 reference 变化、部分对象缺失、refresh/offline/旧 pin、删除/权限与 clear 沿原 scalar/cache 场景另列。
+
+精确覆盖率若缺少冷 Store 必须经过的 `recordFromEnvelope` 条目而已观察到 `boundedEnvelope`，前者显式记 null，不能补零；跨根完整计数比较也保持 unknown。cold header 复用另由实际 `boundedEnvelope` 次数约束，旧重复 header 的原报告仍须触发同一失败判据。保留覆盖率原件及缺失函数说明，不根据函数消失猜优化收益。
+
+多文件控制复用 `shared-snapshot-costs` 的 N=1/10/100/101/300、k=1/3 与实际 N+1 反例，所需正文随 k 获取；按需读取用 101 文件含缺失/损坏未选项的控制，显式选择损坏对象仍须拒绝。冷完整观察不当作已有完整证明后的按需获取；未选 Member 正控制仍沿原 history diamond。
+
+只有上述冻结预算实际失败才比较本地可重建 checkpoint；不采用时记录实测范围、线性项与触发预算，不声称无限历史恒定成本。清理复用现有 cache clear/GC 及生命周期，只退役派生观察并保护活动 pin/未决操作，不把逻辑删除写成 SQLite 立即缩盘。本切片若未改生命周期规则则不改有限模型；既有模型不证明真实长期时间或任意规模趋势。
+
 ## SC25：日常命令与目录 SDK
 
 全部 16 个原顶层路径与子树去向维护在 [消费合同的命令 disposition](../../../../docs/consumer-contract.md#cli-command-disposition-and-compatibility)。默认 help/schema 只展示日常消费和 ctl 入口，作者命令按任务发现；`schema ctl ...` 完整展开所选管理树。旧五个 root 管理路径精确调用仍与 ctl 使用同一 parser/handler，不能从默认目录不可见推断能力被删除。

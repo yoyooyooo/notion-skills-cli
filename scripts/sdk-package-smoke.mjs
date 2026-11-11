@@ -86,6 +86,99 @@ const fixture = JSON.parse(await readFile(fixturePath, "utf8"))
 const env = JSON.parse(await readFile(fixture.env, "utf8"))
 const originalCwd = process.cwd()
 const originalToken = process.env.NOTION_API_TOKEN
+// Passive owned-Store measurements, after SDK scope closure. Opening SQLite for
+// inspection is excluded from the sampled DB/WAL/SHM sizes and operation CPU.
+async function localStoreCosts(cwd) {
+  assert.ok(cwd.startsWith(root + "/"), "Cost inspection is limited to the owned consumer")
+  const inventory = async (directory) => {
+    const entries = []
+    for (const relative of await readdir(directory, { recursive: true }).catch((error) => {
+      if (error.code === "ENOENT") return []
+      throw error
+    })) {
+      const info = await lstat(join(directory, relative))
+      if (info.isDirectory()) continue
+      assert.ok(info.isFile(), "Cost inventory does not follow links")
+      entries.push({ path: relative, bytes: info.size })
+    }
+    entries.sort((left, right) => left.path.localeCompare(right.path))
+    return {
+      files: entries.length,
+      bytes: entries.reduce((sum, item) => sum + item.bytes, 0),
+      entries,
+    }
+  }
+  const state = join(cwd, env.NTN_SKILLS_HOME)
+  const physical = {}
+  for (const [kind, suffix] of [
+    ["db", ""],
+    ["wal", "-wal"],
+    ["shm", "-shm"],
+  ]) {
+    const info = await lstat(join(state, "state.sqlite" + suffix)).catch((error) => {
+      if (error.code === "ENOENT") return undefined
+      throw error
+    })
+    if (info !== undefined) assert.ok(info.isFile())
+    physical[kind] = { exists: info !== undefined, bytes: info?.size ?? 0 }
+  }
+  const database = new DatabaseSync(join(state, "state.sqlite"), { readOnly: true })
+  let logical
+  try {
+    const tables = {}
+    for (const { name } of database
+      .prepare(
+        "SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      )
+      .all()) {
+      assert.match(name, /^[A-Za-z_][A-Za-z0-9_]*$/)
+      tables[name] = database.prepare(`SELECT count(*) AS count FROM "${name}"`).get().count
+    }
+    const domains = new Map()
+    for (const row of database
+      .prepare(
+        "SELECT key,category,retired,length(CAST(payload AS BLOB)) AS bytes FROM shared_local_records",
+      )
+      .all()) {
+      const domain = row.key.split("/").slice(0, 2).join("/")
+      const id = JSON.stringify([domain, row.category, row.retired])
+      const value = domains.get(id) ?? {
+        domain,
+        category: row.category,
+        retired: row.retired,
+        rows: 0,
+        payload_bytes: 0,
+      }
+      value.rows++
+      value.payload_bytes += row.bytes
+      domains.set(id, value)
+    }
+    logical = {
+      tables,
+      shared_local_domains: [...domains.values()].sort((left, right) =>
+        JSON.stringify(left).localeCompare(JSON.stringify(right)),
+      ),
+      observations: database
+        .prepare(
+          "SELECT scope,record_identity,snapshot_id,generation,validated_at FROM observations ORDER BY scope,record_identity,generation",
+        )
+        .all(),
+      page_size: database.prepare("PRAGMA page_size").get().page_size,
+      page_count: database.prepare("PRAGMA page_count").get().page_count,
+      free_pages: database.prepare("PRAGMA freelist_count").get().freelist_count,
+    }
+  } finally {
+    database.close()
+  }
+  return {
+    sampled: "after SDK scope closure; before read-only SQLite inspection",
+    physical,
+    logical,
+    objects: await inventory(join(state, "objects")),
+    manifests: await inventory(join(state, "snapshots")),
+    cache_directory: await inventory(join(cwd, env.NTN_SKILLS_CACHE_HOME)),
+  }
+}
 // Setup only, against the owned clone. This is the existing disposable-cache
 // retirement operation; the signed payload is preserved and never rewritten.
 function fixtureCurrentReceipt(database, key, retirePayload) {
@@ -1532,12 +1625,13 @@ try {
         sdk_sha256: hash(sdkSourceText),
         source_origin: source.origin,
         budgets: { preparation_ms: 60000, call_ms: 30000, consumers_ms: 240000, retries: 0 },
-        histories: [1, 101],
+        histories: [1, 101, 301],
         phases: [],
         root_comparisons: [],
         coverage_files: [],
         counter: { status: "not_checked" },
         timing_includes_coverage: true,
+        process_cpu_includes: ["SDK", "controlled HTTP fixture", "V8 coverage"],
         unknown: [
           "per_fact_decode_attribution",
           "schema_iteration_count",
@@ -1596,12 +1690,33 @@ try {
             selected.find((fn) => fn.functionName === name)?.ranges[0].count ?? 0,
           ]),
         )
-        assert.ok(Object.values(counts).every((count) => Number.isSafeInteger(count) && count >= 0))
+        const unreported = names.filter((name) => !selected.some((fn) => fn.functionName === name))
+        // A cold Store cannot parse payloads without the remote-envelope wrapper.
+        // Preserve a missing V8 entry as unknown instead of reporting false zero.
+        if (
+          label.endsWith("-cold") &&
+          counts.boundedEnvelope > 0 &&
+          unreported.includes("recordFromEnvelope")
+        ) {
+          counts.recordFromEnvelope = null
+          ledger.counter.unavailable ??= []
+          ledger.counter.unavailable.push({
+            phase: label,
+            function: "recordFromEnvelope",
+            reason: "missing V8 function entry during observed cold payload decoding",
+          })
+        }
+        assert.ok(
+          Object.values(counts).every(
+            (count) => count === null || (Number.isSafeInteger(count) && count >= 0),
+          ),
+        )
         await save(label + "-coverage.json", {
           timestamp: raw.timestamp,
           url: pathToFileURL(sdkPath).href,
           sdk_sha256: ledger.sdk_sha256,
           functions: selected,
+          unreported_functions: unreported,
           counts,
         })
         return counts
@@ -1733,7 +1848,7 @@ try {
         const histories = JSON.parse(fixtureBytes).observations
         assert.deepEqual(
           histories.map((item) => item.history),
-          [1, 101],
+          [1, 101, 301],
         )
         ledger.fixture = {
           path: fixtureFile,
@@ -1749,11 +1864,12 @@ try {
             required: node.required,
             members: node.members,
           }))
-        assert.deepEqual(
-          business(histories[0]),
-          business(histories[1]),
-          "History length must not change the final business input",
-        )
+        for (const sample of histories.slice(1))
+          assert.deepEqual(
+            business(histories[0]),
+            business(sample),
+            "History length must not change the final business input",
+          )
         await save("frozen-input.json", {
           fixture: ledger.fixture,
           histories: histories.map((item) => ({
@@ -1790,8 +1906,10 @@ try {
             assert.ok(
               Object.values(await coverage(phase + "-before")).every((count) => count === 0),
             )
+            const storageBefore = await localStoreCosts(cwd)
             const reports = [],
-              before = performance.now()
+              before = performance.now(),
+              cpuBefore = process.cpuUsage()
             let result, failure
             try {
               result = await sdk.consume(
@@ -1809,6 +1927,7 @@ try {
               failure = { code: error.code, message: String(error.message) }
             }
             const elapsed = performance.now() - before,
+              cpu = process.cpuUsage(cpuBefore),
               counts = await coverage(phase)
             const calls = currentCalls(phase)
             const observed = {
@@ -1818,7 +1937,9 @@ try {
               targets,
               cwd,
               elapsed_ms: elapsed,
+              process_cpu_us: cpu,
               decoder_calls: counts,
+              local_storage: { before: storageBefore, after: await localStoreCosts(cwd) },
               result,
               failure: failure ?? null,
               request_metrics: reports,
@@ -1883,17 +2004,47 @@ try {
             if (state === "warm" || state === "expired")
               assert.equal(reports[0].requests.notion_body, 0)
             if (state === "expired") assert.ok(reports[0].total_requests > 0)
+            if (state === "warm") {
+              assert.deepEqual(
+                observed.local_storage.after.logical.tables,
+                storageBefore.logical.tables,
+              )
+              assert.deepEqual(
+                observed.local_storage.after.logical.observations,
+                storageBefore.logical.observations,
+                "Warm access must not renew TTL or add observation slots",
+              )
+            }
+            if (state === "warm" || state === "expired") {
+              assert.deepEqual(
+                observed.local_storage.after.logical.tables,
+                arm[0].local_storage.after.logical.tables,
+                "An unchanged history must reuse the declared local slots",
+              )
+              for (const kind of ["objects", "manifests", "cache_directory"])
+                assert.deepEqual(
+                  observed.local_storage.after[kind],
+                  arm[0].local_storage.after[kind],
+                )
+            }
           }
           const multi = arm[0],
             single = arm[3]
           const comparison = {
             multi: multi.label,
             single: single.label,
-            necessary_decode_reuse: names.every(
-              (name) => multi.decoder_calls[name] === single.decoder_calls[name],
-            ),
+            necessary_decode_reuse: names.some(
+              (name) => multi.decoder_calls[name] === null || single.decoder_calls[name] === null,
+            )
+              ? null
+              : names.every((name) => multi.decoder_calls[name] === single.decoder_calls[name]),
             decoder_delta: Object.fromEntries(
-              names.map((name) => [name, multi.decoder_calls[name] - single.decoder_calls[name]]),
+              names.map((name) => [
+                name,
+                multi.decoder_calls[name] === null || single.decoder_calls[name] === null
+                  ? null
+                  : multi.decoder_calls[name] - single.decoder_calls[name],
+              ]),
             ),
             http_delta:
               multi.request_metrics[0].total_requests - single.request_metrics[0].total_requests,
@@ -1903,14 +2054,15 @@ try {
           ledger.root_comparisons.push(comparison)
           await save(`h${sample.history}-root-comparison.json`, comparison)
         }
-        assert.equal(ledger.phases.length, 8)
+        assert.equal(ledger.phases.length, 12)
         // Keep the full unchanged operation sequence in a failing baseline report.
         for (const observed of ledger.phases.filter((item) => item.label.endsWith("-cold")))
           assert.equal(
             observed.decoder_calls.decodeHeader,
-            observed.decoder_calls.recordFromEnvelope * 2,
+            observed.decoder_calls.boundedEnvelope * 2,
             `${observed.label}: metadata and exact payload rows each decode their header once`,
           )
+        if (ledger.counter.unavailable?.length) ledger.counter.status = "partially_available"
         ledger.status = "passed"
       } catch (error) {
         ledger.status =
@@ -2503,6 +2655,8 @@ try {
           external_target_reads: externalReads.length,
           full_current_page_reads: fullPageReads.length,
           full_export: { output, files: inventory, matches_full_page_oracle: true },
+          local_storage: await localStoreCosts(cwd),
+          export_bytes: inventory.reduce((sum, file) => sum + file.bytes, 0),
         })
       }
       assert.notEqual(
@@ -2576,6 +2730,9 @@ try {
       ) => {
         phase = label
         source.setPhase(phase)
+        const storageBefore = await localStoreCosts(sdkCwd)
+        const before = performance.now(),
+          cpuBefore = process.cpuUsage()
         const reports = []
         let result, failure
         if (cliProcess) {
@@ -2614,6 +2771,8 @@ try {
             failure = cause.code
           }
         }
+        const elapsed = performance.now() - before,
+          cpu = process.cpuUsage(cpuBefore)
         assert.equal(reports.length, 1)
         const metrics = reports[0]
         const calls = requests.filter((call) => call.phase === label)
@@ -2630,6 +2789,10 @@ try {
           ref,
           result,
           error: failure,
+          elapsed_ms: elapsed,
+          process_cpu_us: cliProcess ? null : cpu,
+          process_cpu_includes: cliProcess ? null : ["SDK", "controlled HTTP fixture"],
+          local_storage: { before: storageBefore, after: await localStoreCosts(sdkCwd) },
           request_metrics: metrics,
           calls,
         }
@@ -2671,6 +2834,7 @@ try {
       const clearObservations = async (label, all = false) => {
         phase = label
         source.setPhase(phase)
+        const storageBefore = await localStoreCosts(sdkCwd)
         const invocation = await invokeCli(
           [
             "ctl",
@@ -2684,7 +2848,14 @@ try {
           currentEnv,
         )
         const calls = requests.filter((call) => call.phase === label)
-        const observed = { label, entry: "installed-cli", result: invocation.value, calls }
+        const storageAfter = await localStoreCosts(sdkCwd)
+        const observed = {
+          label,
+          entry: "installed-cli",
+          result: invocation.value,
+          calls,
+          local_storage: { before: storageBefore, after: storageAfter },
+        }
         evidence.cache_lifecycle.push(observed)
         await writeFile(join(root, label + ".json"), JSON.stringify(observed, null, 2) + "\n", {
           mode: 0o600,
@@ -2693,6 +2864,9 @@ try {
         assert.equal(invocation.code, 0, JSON.stringify(invocation.value))
         assert.equal(invocation.value.operation, "cache_clear")
         assert.equal(calls.length, 0)
+        assert.deepEqual(storageAfter.objects, storageBefore.objects)
+        assert.deepEqual(storageAfter.manifests, storageBefore.manifests)
+        assert.equal(storageAfter.logical.tables.snapshots, storageBefore.logical.tables.snapshots)
       }
       const warm = await readCurrent("cache-warm-sdk")
       assert.equal(warm.request_metrics.total_requests, 0)
