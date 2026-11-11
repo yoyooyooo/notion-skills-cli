@@ -133,6 +133,53 @@ Options derive the existing prepare options (`database`, `execution`, `metrics`)
 add an optional `AbortSignal`. There is no daemon, new scheduler, retry owner or separate
 credential store.
 
+## Consumption effects and strict read-only mode
+
+The SDK exports `CONSUMPTION_EFFECTS_VERSION = 1`, `ConsumptionEffects` and
+`ConsumptionRetentionEffect`. Every current `consume` outcome carries `effects` at
+the top level, including failed and cancelled outcomes. Ready preparation results
+carry the same receipt in `preparation.effects`; failed results also include it in
+`error.details.effects`. `prepareGraph` and `readSkill` return `effects` on success
+and attach it to `SkillsError.details.effects` on failure.
+
+```ts
+type ConsumptionEffects = {
+  version: 1
+  remote_writes: "none" | "retained" | "unknown"
+  author_content: "unchanged" | "unknown"
+  retention: readonly {
+    skill_page_id: string
+    file_id: string
+    operation_id: string
+    status: "confirmed" | "unknown"
+  }[]
+}
+```
+
+This receipt observes the requests already executed by this operation. It adds no
+probe or remote request. Semantic queries, including POST queries, remain reads.
+`none` means this operation dispatched no semantic remote write. `retained` means
+all observed writes were acknowledged immutable history Records; the receipt names
+the original Skill, File and observation operation for each root or required Skill.
+It does not imply that graph preparation, delivery or activation succeeded. A lost
+write response or cancellation during dispatch remains `unknown`, including when
+some earlier Records were acknowledged. An unclassified write also leaves
+`author_content` unknown. Missing effects in an older version 1 receipt mean
+**unknown**, never zero writes; the additive fields remain optional in the decoder
+for that compatibility.
+
+`ConsumeOptions.readOnly` and `ReadSkillOptions.readOnly`, and CLI `read --read-only`,
+`use --read-only` and `ctl prepare --read-only`, forbid every semantic remote write
+before dispatch. Exact fixed history remains usable, and unchanged current content
+can reuse existing retention. If current content needs a new observation Record,
+the operation refuses before its first write and reports the existing Core error
+with a `none` receipt. Normal consumption still retains newly observed author edits;
+strict mode does not delete retention or pretend that it has happened. A host must
+check the exported capability before relying on this option with an older SDK.
+
+The default compact `use` output discloses its effect summary. JSON returns the
+structured receipt. Explicit `read --raw` continues to return only the exact text.
+
 ## CLI command disposition and compatibility
 
 The `agent-cli-ref-20261105` candidate keeps one parser/handler definition per

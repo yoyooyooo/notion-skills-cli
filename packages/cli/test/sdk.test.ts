@@ -17,6 +17,7 @@ import {
   RESOURCE_READ_CONTRACT_VERSION,
   READ_OUTPUT_PROOF_VERSION,
   CATALOG_DIRECTORY_CONTRACT_VERSION,
+  CONSUMPTION_EFFECTS_VERSION,
 } from "../src/sdk.ts"
 import { nodeRuntime } from "../src/runtime.ts"
 
@@ -134,6 +135,7 @@ describe("Promise SDK boundary", () => {
   })
 
   test("an already aborted signal proves no transport and read uses the exported typed error", async () => {
+    expect(CONSUMPTION_EFFECTS_VERSION).toBe(1)
     const controller = new AbortController()
     controller.abort()
     const reports: unknown[] = []
@@ -143,13 +145,23 @@ describe("Promise SDK boundary", () => {
         signal: controller.signal,
         onRequestMetrics: (snapshot) => reports.push(snapshot),
       }),
-    ).toEqual({ version: 1, status: "cancelled", reason: "interrupted" })
+    ).toEqual({
+      version: 1,
+      status: "cancelled",
+      reason: "interrupted",
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+    })
     await expect(
       readSkill(input.targets[0]!, { env: {}, signal: controller.signal }),
     ).rejects.toBeInstanceOf(SkillsError)
     await expect(
       readSkill(input.targets[0]!, { env: {}, signal: controller.signal }),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
+    ).rejects.toMatchObject({
+      code: "CANCELLED",
+      details: {
+        effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+      },
+    })
     expectUnstartedMetrics(reports, 1)
   })
 

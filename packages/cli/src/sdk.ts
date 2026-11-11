@@ -12,7 +12,8 @@ import {
   type ConsumeInput,
   type ConsumeResult,
 } from "../../core/src/consumer-model.ts"
-import { fail, SkillsError } from "../../core/src/model.ts"
+import { fail, property, SkillsError } from "../../core/src/model.ts"
+import { noConsumptionWrites } from "../../core/src/consumption-effects.ts"
 import { Notion } from "../../core/src/notion.ts"
 import {
   createRequestMetrics,
@@ -49,6 +50,11 @@ import {
 
 export const SDK_VERSION = 1
 export const PACKAGE_VERSION = version
+export { CONSUMPTION_EFFECTS_VERSION } from "../../core/src/consumption-effects.ts"
+export type {
+  ConsumptionEffects,
+  ConsumptionRetentionEffect,
+} from "../../core/src/consumption-effects.ts"
 export {
   CONSUMER_CONTRACT_VERSION,
   SOURCE_IDENTITY_COMPILER,
@@ -89,8 +95,8 @@ export interface SdkOptions {
   readonly onRequestMetrics?: (snapshot: RequestMetricsSnapshot | null) => void
 }
 
-export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal">
-export type ReadSkillOptions = SdkOptions & ReadOptions
+export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "onEffects">
+export type ReadSkillOptions = SdkOptions & Omit<ReadOptions, "onEffects">
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
 export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreListSkill>[1]>
 export type ListSkillResult = Effect.Success<ReturnType<typeof coreListSkill>>
@@ -181,6 +187,7 @@ export async function consume(
   input: unknown,
   options: ConsumeOptions = {},
 ): Promise<ConsumeResult> {
+  let effects = noConsumptionWrites()
   try {
     return await runOperation(
       () =>
@@ -188,20 +195,30 @@ export async function consume(
           database: options.database,
           execution: options.execution,
           metrics: options.metrics,
+          readOnly: options.readOnly,
+          onEffects: (value) => {
+            effects = value
+          },
         }),
       options,
     )
   } catch (error) {
     if (!(error instanceof SkillsError)) throw error
     if (error.code === "CANCELLED")
-      return { version: CONSUMER_CONTRACT_VERSION, status: "cancelled", reason: "interrupted" }
+      return {
+        version: CONSUMER_CONTRACT_VERSION,
+        status: "cancelled",
+        reason: "interrupted",
+        effects,
+      }
     return {
       version: CONSUMER_CONTRACT_VERSION,
       status: "failed",
+      effects,
       error: {
         code: error.code,
         message: error.message,
-        ...(error.details === undefined ? {} : { details: error.details }),
+        details: { ...property(error.details), effects },
       },
     }
   }
@@ -262,25 +279,36 @@ export async function decodeResourceReadResult(
 }
 
 /** Core read shape, without the CLI ok wrapper. Fixed File refs preserve the same checks. */
-export function readSkill(
+export async function readSkill(
   target: string,
   options: ReadSkillOptions = {},
 ): Promise<ReadSkillResult> {
-  return runOperation(
-    () =>
-      coreReadSkill(target, {
-        database: options.database,
-        path: options.path,
-        from: options.from,
-        lines: options.lines,
-        output: options.output,
-        authoring: options.authoring,
-        refresh: options.refresh,
-        offline: options.offline,
-        maxAge: options.maxAge,
-      }),
-    options,
-  )
+  let effects = noConsumptionWrites()
+  try {
+    return await runOperation(
+      () =>
+        coreReadSkill(target, {
+          database: options.database,
+          path: options.path,
+          from: options.from,
+          lines: options.lines,
+          output: options.output,
+          authoring: options.authoring,
+          refresh: options.refresh,
+          offline: options.offline,
+          maxAge: options.maxAge,
+          readOnly: options.readOnly,
+          onEffects: (value) => {
+            effects = value
+          },
+        }),
+      options,
+    )
+  } catch (error) {
+    if (error instanceof SkillsError)
+      throw fail(error.code, error.message, { ...property(error.details), effects })
+    throw error
+  }
 }
 
 /** Core files shape. Fixed refs read the verified manifest without acquiring file objects. */

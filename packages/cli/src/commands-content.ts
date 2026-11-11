@@ -165,6 +165,10 @@ export const readCommand = defineCommand(
     database: databaseFlag,
     metrics: requestMetricsFlag,
     json: switchFlag("json", "Emit the stable JSON result; incompatible with --raw"),
+    readOnly: switchFlag(
+      "read-only",
+      "Forbid every remote write, including internal history retention",
+    ),
     authoring: switchFlag(
       "authoring",
       "Inspect one exact current native page for editing, including disabled content; always validates online without qualifying disabled consumer reuse",
@@ -205,6 +209,7 @@ export const readCommand = defineCommand(
         lines: Option.getOrUndefined(config.lines),
         output: Option.getOrUndefined(config.output),
         authoring: config.authoring,
+        readOnly: config.readOnly,
         ...(yield* readPolicy(config)),
       })
       if (config.raw) {
