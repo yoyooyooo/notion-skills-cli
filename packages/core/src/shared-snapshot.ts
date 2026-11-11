@@ -695,10 +695,15 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       return yield* Effect.fail(
         fail(
           "SHARED_FILE_MANAGEMENT_RECONCILED",
-          "The original file lifecycle outcome is verified. Read current metadata again before publishing.",
+          result.status === "reviewed"
+            ? "The independent current-file acceptance is verified; the original add remains needs_review and its completion is unproven. Read current metadata again."
+            : "The original file lifecycle outcome is verified. Read current metadata again before publishing.",
           {
             file_management_operation_id: plan.operation_id,
             status: result.status,
+            ...(result.status === "reviewed"
+              ? { decision: result.decision, original_status: result.original_status }
+              : {}),
             read_again: true,
           },
         ),

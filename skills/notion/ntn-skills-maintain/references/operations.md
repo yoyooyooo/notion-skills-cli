@@ -95,6 +95,17 @@ If an original body write remains unresolved, keep its original plan, response a
 
 The exact-restoration route requires the original Store, one original main allocation, full original request/ACK set, unchanged metadata/relations and exact complete current Markdown. It never normalizes away an automatic link or patches an existing body. It retains a separate completion while preserving the original `needs_review` outcome. Independent `ctl library create recovery reconcile ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN` proves that historical chain; read current content afterward. Inventory and fixed-source plans keep their own recovery routes.
 
+For an ordinary native file add with the exact retained `SHARED_FILE_MANAGEMENT_BODY_MISMATCH` outcome, a separate current-file acceptance is available after the author explicitly repairs that same bound page to its frozen candidate. Preserve the original plan, Store and failure. This narrow path requires the complete unchanged native tree, exact owner/File/page bindings and event frontier; unknown or invalid page responses are ineligible. Inspect the complete current Markdown and select its SHA-256, then save and inspect the review:
+
+```sh
+ntn-skills ctl library file accept-add review SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --output REVIEW
+ntn-skills ctl library file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID --dry-run
+ntn-skills ctl library file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID
+ntn-skills ctl library file accept-add reconcile SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY
+```
+
+These commands emit JSON and request metrics without extra output flags. Acceptance writes only its complete review, a new adopted event and its own completion. It never creates or patches a native page, emits the old add event, or supplies a missing original request/ACK. The old add remains `needs_review` with unproven completion. Repeated completed acceptance and reconciliation are read-only; unknown new Record dispatches cannot be replayed. Obtain a fresh current read afterward; it may first report `read_again` while retiring a derived local barrier. Source-backed files and changed trees keep their existing author workflows. A relative link changed into an HTTPS link is a real content change and must not be normalized into equality.
+
 ### Reserved creation markers on older pages
 
 An older publication reference page may start with `ntn-skills-create:v1:…`. That reserved paragraph records the original creation identity, parent, logical path and input commitment so interrupted creation can identify the same page. A child page lacks the database property slots used by a publication root, so this older protocol carries its identity in the first physical block. Valid consumer reads exclude it from authored content, and that protocol's writers preserve it. Do not delete, relocate or re-encode it for appearance: current page visibility alone cannot replace its original recovery evidence. Current shared native Skills/Files use registered properties and immutable Records; adding a reference through `ctl library file add` does not require manually creating this marker.
