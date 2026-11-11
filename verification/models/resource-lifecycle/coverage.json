@@ -84,7 +84,12 @@
     "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb",
     "packages/cli/src/commands-library-file-accept-add.ts": "bfbbcac521a242df3f24800b28ff04aa2e70c0eb328d1ec93ea9e0e11ac14d51",
     "packages/cli/src/commands-library-files.ts": "9e857febc8f08eb0e866d781513b26ee669fe6a1302cc768c91aaf6fce052fd4",
-    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d"
+    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
+    "packages/core/src/resource-read.ts": "759615b3589da94137f21d138405e33715e4437e758062e5110303c6e10e8fc4",
+    "packages/core/src/resource-read-model.ts": "26842f8115c6940196e8c3586fb7b8f69f776dd5b43d22a1b51eb4ebbcd8b62b",
+    "packages/cli/src/sdk.ts": "2efb65b67ced6fd262828471db1346a9db06955fdb4c3164f61ab4d900eee02f",
+    "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
+    "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765"
   },
   "models": {
     "ProjectionRace": {
@@ -689,6 +694,25 @@
         "packages/core/test/shared-file-management.test.ts",
         "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
       ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "fixed_resource_batch_readonly_effects",
+      "files": [
+        "packages/core/src/resource-read.ts",
+        "packages/core/src/resource-read-model.ts",
+        "packages/cli/src/sdk.ts",
+        "packages/core/test/resource-read.test.ts",
+        "packages/cli/test/sdk.test.ts"
+      ],
+      "symbols": ["readResources", "withConsumptionEffects", "readOnlyNotion"],
+      "scope": "Fixed resource batches carry the existing consumption policy into the existing semantic Notion write guard and report effects on ready/failed/cancelled outcomes. RESOURCE_READ_EFFECTS_VERSION=1 declares batch support separately from scalar support. No resource-lifecycle state, acquisition identity, write authority, retry or recovery transition changes. AuditRun does not model these SDK/argument/receipt paths; original models/cfg/views and named results are reused without a fresh TLC run.",
+      "tests": [
+        "packages/core/test/resource-read.test.ts",
+        "packages/core/test/consumer-effects.test.ts",
+        "packages/cli/test/sdk.test.ts"
+      ],
+      "counterexample": "Before the fix, readOnly:true allowed one controlled descendant semantic write to reach transport; strict mode now returns NOTION_READ_ONLY with zero writes. The normal control still reaches transport once."
     }
   ]
 }

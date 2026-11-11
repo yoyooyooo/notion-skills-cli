@@ -233,6 +233,10 @@ Cleanup 只回收本 run 的 scratch 和可确认归属的 package scratch，走
 
 `readResources` 是独立 `RESOURCE_READ_CONTRACT_VERSION = 1` 能力；consumer v1 的非空 `requestedFiles` 仍拒绝。不要用逐个 `readSkill` 或重新 prepare 主文模拟批读。完整合同与默认/硬预算见 `docs/resource-read-contract.md`。
 
+AH-639 的真实 Pi `read(paths, readOnly:true)` 暴露了批读 policy 未接到生产者的缺口。先用既有 `resource-read.test.ts` 保留红例：在实际所选对象读取后代尝试一次语义写，普通调用确实到达 transport，严格调用必须由原 `readOnlyNotion` 在 scheduler 前拒绝且零写；同一批读的完整 ready/failed/cancelled 效果回执保持。复用 `withConsumptionEffects`，单独导出 `RESOURCE_READ_EFFECTS_VERSION = 1`，Broker runtime 记录 `resource_read_effects_version: 1`，不能用 scalar 的版本推定批读支持。SDK 明确转发 `readOnly` 并保留清理后的效果，旧普通结果无 effects 时仍兼容并按 unknown 处理，旧生产者的严格请求在调用前拒绝。继续核对 owner/pin/File、BOM/CRLF/empty/binary 完整 hash 与原 decoder，定向回归及 typecheck/build 分别留证。
+
+该接线复用既有只读 capability 和效果合同，没有修改 resource-lifecycle 的状态转移；TLA/cfg/statechart 不扩展也不机械重跑，Broker coverage 单独绑定实际源码和回归。原 A v2 运行和冻结包不改，源码/构建结果不证明原自主任务成功。证据沿既有 `verification-evidence/ah955-20261111/ah639-batch-readonly`，真实 Pi 最小批读由独立执行者验收。
+
 从 CLI 根目录选择新的仓外绝对目录，先执行安全的定向回归，不运行包含永久删除的聚合 `test/check`：
 
 ```bash

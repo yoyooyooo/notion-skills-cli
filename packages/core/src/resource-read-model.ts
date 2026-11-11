@@ -2,8 +2,10 @@ import { Schema } from "effect"
 import { VerifiedManifestSchema } from "./consumer-model.ts"
 import { PrepareBindingSchema, PrepareFailureSchema } from "./graph-prepare-model.ts"
 import { FileEntrySchema } from "./model.ts"
+import { ConsumptionEffectsSchema } from "./consumption-effects.ts"
 
 export const RESOURCE_READ_CONTRACT_VERSION = 1
+export const RESOURCE_READ_EFFECTS_VERSION = 1
 export const RESOURCE_READ_DEFAULT_BUDGET = {
   maxFiles: 16,
   maxBytes: 1_048_576,
@@ -49,6 +51,7 @@ export type ResourceReadFile = typeof ResourceReadFileSchema.Type
 export const ResourceReadReadySchema = Schema.Struct({
   version: Schema.Literal(RESOURCE_READ_CONTRACT_VERSION),
   status: Schema.Literal("ready"),
+  effects: Schema.optional(ConsumptionEffectsSchema),
   manifest: VerifiedManifestSchema,
   manifest_sha256: PrepareBindingSchema.fields.body_sha256,
   selection: Schema.Struct({
@@ -72,11 +75,13 @@ export const ResourceReadResultSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(RESOURCE_READ_CONTRACT_VERSION),
     status: Schema.Literal("failed"),
+    effects: Schema.optional(ConsumptionEffectsSchema),
     error: PrepareFailureSchema,
   }),
   Schema.Struct({
     version: Schema.Literal(RESOURCE_READ_CONTRACT_VERSION),
     status: Schema.Literal("cancelled"),
+    effects: Schema.optional(ConsumptionEffectsSchema),
     reason: Schema.Literal("interrupted"),
   }),
 ])

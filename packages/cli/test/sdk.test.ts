@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import * as publicSdk from "../src/sdk.ts"
 import { Effect, Path } from "effect"
 import {
   consume,
@@ -217,6 +218,7 @@ describe("Promise SDK boundary", () => {
   })
 
   test("independent resource capability preserves consumer v1 and rejects structural errors before runtime acquisition", async () => {
+    expect(Reflect.get(publicSdk, "RESOURCE_READ_EFFECTS_VERSION")).toBe(1)
     expect([
       SDK_VERSION,
       CONSUMER_CONTRACT_VERSION,
@@ -231,7 +233,11 @@ describe("Promise SDK boundary", () => {
       { version: 1, refs: [resourceRef], budget: { timeBudgetMs: 120_001 } },
     ])
       expect(
-        await readResources(input, { env: {}, onRequestMetrics: (value) => reports.push(value) }),
+        await readResources(input, {
+          env: {},
+          readOnly: true,
+          onRequestMetrics: (value) => reports.push(value),
+        }),
       ).toMatchObject({ status: "failed", error: { code: "INVALID_ARGUMENT" } })
     expectUnstartedMetrics(reports, 4)
   })
@@ -245,11 +251,17 @@ describe("Promise SDK boundary", () => {
         { version: 1, refs: [resourceRef] },
         {
           env: {},
+          readOnly: true,
           signal: controller.signal,
           onRequestMetrics: (value) => reports.push(value),
         },
       ),
-    ).toEqual({ version: 1, status: "cancelled", reason: "interrupted" })
+    ).toEqual({
+      version: 1,
+      status: "cancelled",
+      reason: "interrupted",
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+    })
     expectUnstartedMetrics(reports, 1)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toBeInstanceOf(SkillsError)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toMatchObject({

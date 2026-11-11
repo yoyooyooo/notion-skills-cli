@@ -2,7 +2,11 @@ import { Cause, Effect, Option, Schema } from "effect"
 import { databaseId as resolveDatabaseId } from "./catalog.ts"
 import { validateSnapshotManifest } from "./cache.ts"
 import type { VerifiedManifest } from "./consumer-model.ts"
-import { aliasFor, entrypointFor, fail, SkillsError, type Snapshot } from "./model.ts"
+import { aliasFor, entrypointFor, fail, property, SkillsError, type Snapshot } from "./model.ts"
+import {
+  withConsumptionEffects,
+  type ConsumptionObservationOptions,
+} from "./consumption-effects.ts"
 import { fileRef, normalizePath, pageId, parseRef } from "./ref.ts"
 import { openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
 import { validateSharedRecordIdentity } from "./shared-content.ts"
@@ -350,7 +354,7 @@ export function decodeResourceReadResult(value: unknown, expected?: ResourceRead
   })
 }
 
-export type ResourceReadOptions = {
+export type ResourceReadOptions = ConsumptionObservationOptions & {
   readonly database?: string
   readonly offline?: boolean
   readonly signal?: AbortSignal
@@ -407,60 +411,75 @@ function readReady(input: ResourceReadInput, options: ResourceReadOptions) {
 
 /** One resource-only operation; a failed/cancelled batch never exposes partial ready evidence. */
 export function readResources(value: unknown, options: ResourceReadOptions = {}) {
-  return Effect.suspend(() => {
-    const cancelled: ResourceReadResult = {
-      version: RESOURCE_READ_CONTRACT_VERSION,
-      status: "cancelled",
-      reason: "interrupted",
-    }
-    const signal = options.signal
-    if (signal?.aborted) return Effect.succeed(cancelled)
-    const work = checked(() => decodeResourceReadInput(value)).pipe(
-      Effect.flatMap((input) =>
-        readReady(input, options).pipe(
-          Effect.timeout(budgetFor(input).timeBudgetMs),
-          Effect.mapError((error) =>
-            error instanceof SkillsError
-              ? error
-              : fail(
-                  "RESOURCE_TIME_BUDGET",
-                  "Resource reading exceeded its complete-operation time budget.",
-                  {
-                    time_budget_ms: budgetFor(input).timeBudgetMs,
-                  },
-                ),
+  return withConsumptionEffects(
+    Effect.suspend(() => {
+      const cancelled: ResourceReadResult = {
+        version: RESOURCE_READ_CONTRACT_VERSION,
+        status: "cancelled",
+        reason: "interrupted",
+      }
+      const signal = options.signal
+      if (signal?.aborted) return Effect.succeed(cancelled)
+      const work = checked(() => decodeResourceReadInput(value)).pipe(
+        Effect.flatMap((input) =>
+          readReady(input, options).pipe(
+            Effect.timeout(budgetFor(input).timeBudgetMs),
+            Effect.mapError((error) =>
+              error instanceof SkillsError
+                ? error
+                : fail(
+                    "RESOURCE_TIME_BUDGET",
+                    "Resource reading exceeded its complete-operation time budget.",
+                    {
+                      time_budget_ms: budgetFor(input).timeBudgetMs,
+                    },
+                  ),
+            ),
           ),
         ),
-      ),
-      Effect.catchCause((cause) => {
-        const error = Option.getOrUndefined(Cause.findErrorOption(cause))
-        if (
-          Cause.hasDies(cause) ||
-          Cause.hasInterruptsOnly(cause) ||
-          !(error instanceof SkillsError)
-        )
-          return Effect.failCause(cause)
-        return Effect.succeed<ResourceReadResult>({
-          version: RESOURCE_READ_CONTRACT_VERSION,
-          status: "failed",
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.details === undefined ? {} : { details: error.details }),
-          },
-        })
-      }),
-    )
-    if (signal === undefined) return work
-    const cancellation = Effect.callback<ResourceReadResult>((resume) => {
-      const abort = () => resume(Effect.succeed(cancelled))
-      signal.addEventListener("abort", abort, { once: true })
-      if (signal.aborted) abort()
-      return Effect.sync(() => signal.removeEventListener("abort", abort))
-    })
-    return work.pipe(
-      Effect.raceFirst(cancellation),
-      Effect.map((result) => (signal.aborted ? cancelled : result)),
-    )
-  })
+        Effect.catchCause((cause) => {
+          const error = Option.getOrUndefined(Cause.findErrorOption(cause))
+          if (
+            Cause.hasDies(cause) ||
+            Cause.hasInterruptsOnly(cause) ||
+            !(error instanceof SkillsError)
+          )
+            return Effect.failCause(cause)
+          return Effect.succeed<ResourceReadResult>({
+            version: RESOURCE_READ_CONTRACT_VERSION,
+            status: "failed",
+            error: {
+              code: error.code,
+              message: error.message,
+              ...(error.details === undefined ? {} : { details: error.details }),
+            },
+          })
+        }),
+      )
+      if (signal === undefined) return work
+      const cancellation = Effect.callback<ResourceReadResult>((resume) => {
+        const abort = () => resume(Effect.succeed(cancelled))
+        signal.addEventListener("abort", abort, { once: true })
+        if (signal.aborted) abort()
+        return Effect.sync(() => signal.removeEventListener("abort", abort))
+      })
+      return work.pipe(
+        Effect.raceFirst(cancellation),
+        Effect.map((result) => (signal.aborted ? cancelled : result)),
+      )
+    }),
+    options,
+  ).pipe(
+    Effect.map((result) =>
+      result.status === "failed"
+        ? {
+            ...result,
+            error: {
+              ...result.error,
+              details: { ...property(result.error.details), effects: result.effects },
+            },
+          }
+        : result,
+    ),
+  )
 }

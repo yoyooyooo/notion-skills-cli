@@ -73,6 +73,7 @@ export { READ_OUTPUT_PROOF_VERSION } from "../../core/src/snapshot.ts"
 export type { RequestMetricsSnapshot } from "../../core/src/request-metrics.ts"
 export {
   RESOURCE_READ_CONTRACT_VERSION,
+  RESOURCE_READ_EFFECTS_VERSION,
   RESOURCE_READ_DEFAULT_BUDGET,
   RESOURCE_READ_MAX_BUDGET,
 } from "../../core/src/resource-read-model.ts"
@@ -100,7 +101,7 @@ export type ReadSkillOptions = SdkOptions & Omit<ReadOptions, "onEffects">
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
 export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreListSkill>[1]>
 export type ListSkillResult = Effect.Success<ReturnType<typeof coreListSkill>>
-export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal">
+export type ResourceReadOptions = SdkOptions & Omit<CoreResourceReadOptions, "signal" | "onEffects">
 export type ListCatalogOptions = SdkOptions & CoreListCatalogOptions
 export type ListCatalogDirectoryOptions = SdkOptions & CoreListCatalogDirectoryOptions
 export type ListSkillsOptions = SdkOptions & CoreListSkillsOptions
@@ -241,26 +242,37 @@ export async function readResources(
   input: unknown,
   options: ResourceReadOptions = {},
 ): Promise<ResourceReadResult> {
+  let effects = noConsumptionWrites()
   try {
     return await runOperation(
       () =>
         coreReadResources(decodeResourceReadInput(input), {
           database: options.database,
           offline: options.offline,
+          readOnly: options.readOnly,
+          onEffects: (value) => {
+            effects = value
+          },
         }),
       options,
     )
   } catch (error) {
     if (!(error instanceof SkillsError)) throw error
     if (error.code === "CANCELLED")
-      return { version: RESOURCE_READ_CONTRACT_VERSION, status: "cancelled", reason: "interrupted" }
+      return {
+        version: RESOURCE_READ_CONTRACT_VERSION,
+        status: "cancelled",
+        reason: "interrupted",
+        effects,
+      }
     return {
       version: RESOURCE_READ_CONTRACT_VERSION,
       status: "failed",
+      effects,
       error: {
         code: error.code,
         message: error.message,
-        ...(error.details === undefined ? {} : { details: error.details }),
+        details: { ...property(error.details), effects },
       },
     }
   }
