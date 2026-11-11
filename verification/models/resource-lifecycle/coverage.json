@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "1a1bfb955e8caf31845594076f3e6462eb78c670",
+  "synchronized_commit": "9e8a1eaacb0959b7d8d5a13c7eb9c86aa59b4725",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
@@ -8,7 +8,7 @@
     "packages/core/src/shared-body-write.ts": "f74c5a9a1d2673b0a1b85e242759dafb31048d33cba1ef6849a6e5c74932b297",
     "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
-    "packages/core/src/shared-snapshot.ts": "8bc936fadd4424221eb7e80d6dfe903cb34d83b2b0bddaee4955086dbafb8fb8",
+    "packages/core/src/shared-snapshot.ts": "c4a4c2dfea1a1e47ac7b1565c1651f7c9412a80285bcacaaad4ec712016aaf09",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
@@ -46,8 +46,8 @@
     "packages/core/src/shared-create-recovery-proof-model.ts": "e48c97c936d311a91d31709f25f084b60de0e40c9267fac71c6d0daf80b5dd54",
     "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
     "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
-    "packages/core/src/shared-file-management-model.ts": "7d3c164ad72476fe1d1e44d94fa84cbbed9d3978506f00553e017694fc4206ff",
-    "packages/core/src/shared-file-management.ts": "46ef081fc7964b964c870c9cc8a9749e2de6f3edca8831adb5431fdff3defd94",
+    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
+    "packages/core/src/shared-file-management.ts": "8d439fb120a44a68df9b360e6a997a9013d0bdb1b390aca4825570e1b6be0243",
     "packages/core/src/shared-skill-apply.ts": "81209af64cc51d3e3881a6550e3db7d6eeb0c0af37d68abdc19711de83a374f7",
     "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
     "packages/core/src/mutation.ts": "c93d7dbe639e96cd5f84530ff7448fe6064573e3cf092518e19d6ba64d41a31a",
@@ -81,7 +81,10 @@
     "packages/core/src/shared-create-restoration.ts": "96a94b5bcb994edd08ce1ad229ace568b72850a758795220f46b7dbc20d62c49",
     "packages/core/src/consumption-effects.ts": "630d530d5acccfc55109be28f904378a3903d0104d1a5caa5e6b9fc0b95a1035",
     "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
-    "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb"
+    "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb",
+    "packages/cli/src/commands-library-file-accept-add.ts": "bfbbcac521a242df3f24800b28ff04aa2e70c0eb328d1ec93ea9e0e11ac14d51",
+    "packages/cli/src/commands-library-files.ts": "9e857febc8f08eb0e866d781513b26ee669fe6a1302cc768c91aaf6fce052fd4",
+    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d"
   },
   "models": {
     "ProjectionRace": {
@@ -256,7 +259,7 @@
     }
   },
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
-  "review_basis": "The synchronized commit and content hashes bind reviewed runtime correspondence, not a full refinement proof. Public CLI, installed SDK, real Notion/provider/UI behavior and physical machines require independent evidence. Prior ProjectionRace, UpdateCommit, AuditRun, ImportCreate and CreateRecovery inputs and receipts are retained unchanged. AcknowledgedContinuation now has an explicit bounded NativeRestoration branch and ACK-only interrupted-readback transition; its five retained and five native configurations must be freshly checked, including all named negative controls. Original failed runtime and tool invocations are retained separately. Native inventory immutable-Record prefix recovery remains unmodeled. Consumption-effect disclosure, strict-read-only routing and safe request attribution/header reuse are hash-bound implementation context only; this synchronization adds no model claim for those branches. No source hash alone establishes an invariant, liveness property or task completion.",
+  "review_basis": "The synchronized commit and content hashes bind reviewed runtime correspondence, not a full refinement proof. Public CLI, installed SDK, real Notion/provider/UI behavior and physical machines require independent evidence. Prior ProjectionRace, UpdateCommit, AuditRun, ImportCreate and CreateRecovery inputs and receipts are retained unchanged. The five retained and five NativeRestoration AcknowledgedContinuation configurations were checked together in formal-native-restoration-v3; their unchanged model/config/view inputs retain those original named-positive and negative-control results. Original failed runtime and tool invocations remain separate. Native inventory immutable-Record prefix recovery, consumption-effect disclosure, strict-read-only routing, request attribution and header reuse are hash-bound implementation context only. The new independent native file-add current acceptance is explicitly unmodeled: it supplies its own reviewed adoption/completion, never an original ACK or successful original add outcome. Current source correspondence and direct tests do not turn earlier TLC results into a proof of this separate decision. No source hash alone establishes an invariant, liveness property or task completion.",
   "unmodeled_bindings": [
     {
       "kind": "hash_bound_context_not_modeled",
@@ -651,13 +654,40 @@
         "sharedCreateDispatch",
         "withNotionRequestAttribution"
       ],
-      "scope": "This synchronization changes diagnostic context and one recovery message only. Actual parent apply Records bind the parent operation; body/metadata children override it with their own exact operation. Author preflight, dispatch, verify and original reconciliation are annotated at existing call boundaries without adding requests, authority, retries or state transitions. A first native main POST has an unknown owner; only frozen file/Record relations or a validated original metadata target identify a later writer's Skill. The body-current acceptance message discloses accepted_current/unknown separately from accepted_observed/needs_review and does not rewrite the original outcome. No finite model, configuration or statechart input changed after the ten retained/native AcknowledgedContinuation checks; that run is reused for the unchanged semantics, not presented as a fresh check of request classification.",
+      "scope": "The earlier author-lineage synchronization changed diagnostic context and one recovery message only. The later independent add-acceptance behavior is mapped separately below. Actual parent apply Records bind the parent operation; body/metadata children override it with their own exact operation. Author preflight, dispatch, verify and original reconciliation are annotated at existing call boundaries without adding requests, authority, retries or state transitions. A first native main POST has an unknown owner; only frozen file/Record relations or a validated original metadata target identify a later writer's Skill. The body-current acceptance message discloses accepted_current/unknown separately from accepted_observed/needs_review and does not rewrite the original outcome. No finite model, configuration or statechart input changed after the ten retained/native AcknowledgedContinuation checks; that run is reused for the unchanged semantics, not presented as a fresh check of request classification.",
       "tests": [
         "packages/core/test/shared-skill-apply.test.ts",
         "packages/core/test/shared-file-management.test.ts",
         "packages/core/test/shared-create.test.ts",
         "packages/core/test/shared-body-current-acceptance.test.ts",
         "packages/core/test/notion-http-fixture.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "independent_native_file_add_current_acceptance",
+      "files": [
+        "packages/core/src/shared-file-add-acceptance.ts",
+        "packages/core/src/shared-file-management-model.ts",
+        "packages/core/src/shared-file-management.ts",
+        "packages/core/src/shared-snapshot.ts",
+        "packages/cli/src/commands-library-file-accept-add.ts",
+        "packages/cli/src/commands-library-files.ts",
+        "packages/core/src/shared-create-dispatch.ts",
+        "packages/core/src/shared-records.ts"
+      ],
+      "symbols": [
+        "reviewSharedFileAddAcceptance",
+        "applySharedFileAddAcceptance",
+        "reconcileSharedFileAddAcceptance",
+        "completedSharedFileAddAcceptance",
+        "loadCompletedSharedFileAddAcceptances",
+        "sharedCreateDispatch"
+      ],
+      "scope": "This separate explicit author decision is outside all six bounded transition systems. It accepts only one same-page ordinary native add with an exact retained known body-mismatch outcome after an authorized repair to the frozen candidate; a complete original request/ACK was not retained and old completion remains unproven. Original plan/failure, original author Store and credential, exact owner/File/page, complete native bytes, original snapshot, relations and frontier bind the decision. The new review, distinct adopted event and independent completion use existing durable Record dispatch/ACK guards. The original add event is never emitted, the original needs_review outcome stays unchanged, and no native page/body/property is written. Unknown new writes never replay; cold verification checks full shared evidence, not local objects or one digest. Later legitimate author edits remain separate from historical acceptance. Exact JSON/body/hash/size bounds, budgets, transport behavior and cold fact validation need implementation and live tests; no new TLC or statechart result is asserted.",
+      "tests": [
+        "packages/core/test/shared-file-management.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
       ]
     }
   ]
