@@ -340,6 +340,14 @@ not change a failed or cancelled operation into success. Callbacks should not th
 Counters and trace contain no raw credentials, request paths or full bodies. Hosts
 must count SDK calls separately from those HTTP measurements and retain truncation.
 
+Each Notion attempt and its queue/retry waits include diagnostic `attribution`:
+`phase`, `skill_page_id` and `operation_id`. Explicit call contexts distinguish
+`consume`, `retention`, `author_preflight`, `author_apply`, `author_verify` and
+`reconcile`; absent context is `null`, and older traces without this field are unknown.
+The owner and original operation describe the actual request producer. They do not
+establish ownership of every coalesced waiter, grant access, or authorize reuse across
+responses or write boundaries. This trace adds no remote probe.
+
 An already aborted signal does no acquisition. Aborting initialization, headers or
 body work interrupts the operation and waits for its scope cleanup before settlement.
 `consume` and `readResources` return `status: cancelled`; `readSkill`, `listSkill`,

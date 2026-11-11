@@ -1,7 +1,7 @@
 import { Clock, Crypto, Effect, Schema } from "effect"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { decode, fail, property, SkillsError } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
   decideObservedBody,
@@ -681,7 +681,13 @@ export function reconcileSharedBodyWrite(library: SharedLibrary, input: SharedBo
         "event",
       ),
     )
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "reconcile",
+      skill_page_id: input.skill_page_id,
+      operation_id: input.operation_id,
+    }),
+  )
 }
 
 /** One initial dispatch. Existing or unknown plans always take read-only recovery. */
@@ -705,18 +711,27 @@ export function executeSharedBodyWrite<R = never>(
     if (input.mode === "reconcile") return yield* reconcileSharedBodyWrite(library, plan)
     if (input.mode !== "create")
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "Write mode must be create or reconcile."))
-    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    const headers = yield* withNotionRequestAttribution(
+      querySharedOperationIndex(library, plan.skill_page_id),
+      { phase: "author_preflight" },
+    )
     if (headers.some((header) => header.record_id === plan.operation_id))
       return yield* reconcileSharedBodyWrite(library, plan)
-    const preflight = yield* currentContext(library, plan.skill_page_id, plan.file_id)
-    const pending = yield* loadPendingSharedBodyWrites(library, {
-      skillPageId: plan.skill_page_id,
-      events: preflight.events,
-      headers: headers.filter(
-        (header) =>
-          header.entity_id === plan.file_id || header.entity_id === bodyWriteOutcomesEntity,
-      ),
-    })
+    const preflight = yield* withNotionRequestAttribution(
+      currentContext(library, plan.skill_page_id, plan.file_id),
+      { phase: "author_preflight" },
+    )
+    const pending = yield* withNotionRequestAttribution(
+      loadPendingSharedBodyWrites(library, {
+        skillPageId: plan.skill_page_id,
+        events: preflight.events,
+        headers: headers.filter(
+          (header) =>
+            header.entity_id === plan.file_id || header.entity_id === bodyWriteOutcomesEntity,
+        ),
+      }),
+      { phase: "author_preflight" },
+    )
     if (pending[0] !== undefined)
       return yield* Effect.fail(
         recoveryError(
@@ -730,9 +745,14 @@ export function executeSharedBodyWrite<R = never>(
       )
     // Pending and current-state checks share this one read-only preflight.
     // After retaining records below, verification always reads a new context.
-    const initial = yield* verifyCurrent(library, plan, true, preflight)
+    const initial = yield* withNotionRequestAttribution(
+      verifyCurrent(library, plan, true, preflight),
+      { phase: "author_preflight" },
+    )
     if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
-      yield* input.beforeRestoreDispatch.pipe(withReadOnlyNotion)
+      yield* withNotionRequestAttribution(input.beforeRestoreDispatch.pipe(withReadOnlyNotion), {
+        phase: "author_preflight",
+      })
     const sameBody = plan.before.fingerprint.sha256 === plan.candidate.content.sha256
     if (
       sameBody &&
@@ -751,7 +771,10 @@ export function executeSharedBodyWrite<R = never>(
       }
     // Explicit restore uses the same single complete old-body match as authoring.
     // Validation above rejects empty/incomplete preimages; this is not page CAS.
-    if (input.beforePlanWrite !== undefined) yield* input.beforePlanWrite(plan)
+    if (input.beforePlanWrite !== undefined)
+      yield* withNotionRequestAttribution(input.beforePlanWrite(plan), {
+        phase: "author_preflight",
+      })
     yield* appendSharedRecord(library, {
       mode: "create",
       recordId: plan.operation_id,
@@ -764,9 +787,13 @@ export function executeSharedBodyWrite<R = never>(
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "plan")))
     yield* retainPlannedBodies(library, plan, "create")
     const current = yield* Effect.gen(function* () {
-      const verified = yield* verifyCurrent(library, plan, true)
+      const verified = yield* withNotionRequestAttribution(verifyCurrent(library, plan, true), {
+        phase: "author_preflight",
+      })
       if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
-        yield* input.beforeRestoreDispatch.pipe(withReadOnlyNotion)
+        yield* withNotionRequestAttribution(input.beforeRestoreDispatch.pipe(withReadOnlyNotion), {
+          phase: "author_preflight",
+        })
       return verified
     }).pipe(Effect.result)
     if (current._tag === "Failure") {
@@ -775,9 +802,9 @@ export function executeSharedBodyWrite<R = never>(
     }
     let response: unknown
     if (sameBody) {
-      const observed = yield* readExactBody(plan.page_id).pipe(
-        Effect.mapError((error) => recoveryError(error, plan, "unchanged_body_observation")),
-      )
+      const observed = yield* withNotionRequestAttribution(readExactBody(plan.page_id), {
+        phase: "author_verify",
+      }).pipe(Effect.mapError((error) => recoveryError(error, plan, "unchanged_body_observation")))
       response = {
         id: plan.page_id,
         markdown: observed.raw_markdown,
@@ -826,7 +853,9 @@ export function executeSharedBodyWrite<R = never>(
             "The whole response differs from the exact frozen candidate; preserve all unmatched text.",
           ),
         )
-      const current = yield* verifyCurrent(library, plan, false)
+      const current = yield* withNotionRequestAttribution(verifyCurrent(library, plan, false), {
+        phase: "author_verify",
+      })
       if (plan.action === "restore_follow" && input.afterRestoreBodyWrite !== undefined)
         yield* input
           .afterRestoreBodyWrite(plan.candidate.content.sha256, plan.candidate.content.bytes)
@@ -859,7 +888,10 @@ export function executeSharedBodyWrite<R = never>(
       entityId: plan.file_id,
       payload: plan.event,
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "event")))
-    const events = yield* fileEvents(library, plan.skill_page_id, plan.file_id)
+    const events = yield* withNotionRequestAttribution(
+      fileEvents(library, plan.skill_page_id, plan.file_id),
+      { phase: "author_verify" },
+    )
     const state = yield* bodyWriteChecked(() => resolveFileState(plan.file_id, events)).pipe(
       Effect.mapError((error) => recoveryError(error, plan, "observed_frontier")),
     )
@@ -883,7 +915,13 @@ export function executeSharedBodyWrite<R = never>(
       verified: true as const,
       requires_fresh_read: true as const,
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "author_apply",
+      skill_page_id: input.plan.skill_page_id,
+      operation_id: input.plan.operation_id,
+    }),
+  )
 }
 
 /**

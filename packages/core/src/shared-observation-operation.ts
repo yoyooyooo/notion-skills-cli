@@ -266,6 +266,7 @@ export function commitSharedObservationPlan<R = never>(
           operation_id: plan.operation_id,
         },
         library.records.data_source_id,
+        input.mode === "reconcile" ? "reconcile" : "retention",
       )
     yield* append({
       mode: input.mode,

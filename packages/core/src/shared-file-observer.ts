@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { withNotionRequestAttribution } from "./notion.ts"
 import { decode, fail, SkillsError } from "./model.ts"
 import type { SharedLibrary } from "./shared-library.ts"
 import {
@@ -269,7 +270,7 @@ export function observeSharedFile<R = never>(input: ObserveSharedFileInput<R>) {
     yield* commitSharedObservationPlan(input.library, { mode: "create", plan: operation })
     // No success is returned until all three original shared facts are verified.
     return { body, state, changed: true, event, operation } satisfies SharedFileObservation
-  })
+  }).pipe((effect) => withNotionRequestAttribution(effect, { skill_page_id: input.skillPageId }))
 }
 
 /** Read a retained immutable object. Current body pages are never used as history. */

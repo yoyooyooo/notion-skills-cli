@@ -17,9 +17,11 @@ const deferred = () => {
 
 // This is the original installed scalar-inventory service. It serves only its
 // declared fixture facts; controls change HTTP delivery, never SDK results.
-export async function startSdkSourceFixture(sample, ledgerPath) {
+export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   assert.ok(sample?.notion?.library?.skills)
   assert.ok(isAbsolute(ledgerPath), "The owned request ledger must be absolute")
+  const port = options.port ?? 0
+  assert.ok(Number.isInteger(port) && port >= 0 && port <= 65535, "Invalid loopback fixture port")
   const eventsPath = ledgerPath.endsWith(".jsonl")
     ? ledgerPath.slice(0, -6) + ".events.jsonl"
     : ledgerPath + ".events.jsonl"
@@ -521,7 +523,7 @@ export async function startSdkSourceFixture(sample, ledgerPath) {
       finalize()
     }
   })
-  server.listen(0, "127.0.0.1")
+  server.listen(port, "127.0.0.1")
   await once(server, "listening")
   const origin = "http://127.0.0.1:" + server.address().port
   if (sample.view_dynamics?.observations[0])
