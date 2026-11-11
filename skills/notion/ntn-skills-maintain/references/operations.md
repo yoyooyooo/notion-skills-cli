@@ -14,11 +14,13 @@
 | Deliberately replace the entire file set | `replace INPUT --target PINNED_MAIN_REF` | Preserve page identity and replace the included file set |
 | One non-document resource | `ctl library resource add/replace PAGE_ID PATH --entry LIBRARY --input FILE` | Exact bytes and executable mode; no resource execution |
 | Complete reviewed local import | `ctl library inventory prepare-import/apply-import/reconcile-import` | One approved complete inventory entity and its original create operation |
-| Portable copy | `export PINNED_MAIN_REF --output NEW_DIRECTORY_OR_ZIP` | Export the chosen fixed version without changing Notion |
+| Fixed shared snapshot copy | `export PINNED_MAIN_REF --projection snapshot --output NEW_DIRECTORY_OR_ZIP` | Export the chosen complete read view without changing Notion |
 
 `apply` accepts a changes directory, ZIP or Markdown file. Paths are rooted at the Skill, including `references/` and other nested directories. A single Markdown file uses its basename. Preserve the original main path and kind when supplying a portable manifest. A path cannot be both changed and removed; the main file and reserved portability files cannot be deleted. Full replacement is a deliberate different operation: omitted supporting files leave the Skill's inclusion set.
 
 Use exact page IDs/URLs or returned refs. Names and aliases can collide; incomplete discovery does not establish uniqueness. The creation database is explicit `--database`, the configured default, or the only discovered library. An existing target keeps its database.
+
+For a shared Skill, select `export --projection snapshot` explicitly. The default source projection belongs to the earlier authored-publication format and rejects shared Skills. Exported snapshot files are consumption output; editing them does not submit a change. Select the intended complete files as explicit `write` or sparse `apply` input against a fresh author pin.
 
 ## Initial native draft adoption
 
@@ -88,6 +90,8 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | Output path conflict | Choose a new destination or review the owned previous output |
 
 Shared operation IDs are not accepted by legacy `ctl operation resume`. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. Historical migration/repair commands live in the separate operator tool and are for an explicitly diagnosed maintenance task.
+
+If an original body write remains unresolved, keep its original plan, response and current complete-body observation. A later matching body or visible file event does not supply a missing original completion. When the returned recovery action permits an explicit current-body decision, inspect the exact full observation and use `ctl library file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --dry-run` before submitting that same decision. This retains an independent acceptance; it does not repeat the body PATCH or change the original unknown outcome into applied. Follow a returned `read_again` with a new current read before authoring again.
 
 The exact-restoration route requires the original Store, one original main allocation, full original request/ACK set, unchanged metadata/relations and exact complete current Markdown. It never normalizes away an automatic link or patches an existing body. It retains a separate completion while preserving the original `needs_review` outcome. Independent `ctl library create recovery reconcile ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN` proves that historical chain; read current content afterward. Inventory and fixed-source plans keep their own recovery routes.
 
