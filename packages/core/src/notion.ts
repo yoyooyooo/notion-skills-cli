@@ -9,6 +9,7 @@ import {
   Layer,
   Option,
   Path,
+  Redacted,
   Schema,
   Semaphore,
 } from "effect"
@@ -25,7 +26,12 @@ import {
 } from "./notion-request-scheduler.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
 import { RequestBudget, withinRequestBudget } from "./request-budget.ts"
-import { createRequestMetrics, type RequestMetricsSnapshot } from "./request-metrics.ts"
+import {
+  createRequestMetrics,
+  requestAttribution,
+  type RequestAttribution,
+  type RequestMetricsSnapshot,
+} from "./request-metrics.ts"
 import { isCoalescibleNotionRead, makeSharedReadCoalescer } from "./shared-read-coalescing.ts"
 import {
   NotionCredentialProvider,
@@ -52,6 +58,23 @@ export type NotionConnectionIdentity = {
   readonly connection: string
   readonly workspace: string | null
   readonly api_origin: string
+}
+
+const NotionRequestAttribution = Context.Reference<RequestAttribution>(
+  "ntn-skills/NotionRequestAttribution",
+  { defaultValue: () => requestAttribution(undefined) },
+)
+/** Diagnostic lineage only. This does not grant authority or reuse any request. */
+export function withNotionRequestAttribution<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  attribution: Partial<RequestAttribution>,
+) {
+  return Effect.gen(function* () {
+    const inherited = yield* NotionRequestAttribution
+    return yield* effect.pipe(
+      Effect.provideService(NotionRequestAttribution, { ...inherited, ...attribution }),
+    )
+  })
 }
 
 type NotionRequestOptions = {
@@ -180,6 +203,10 @@ export const NotionTransport = Layer.effect(
     ) =>
       Effect.gen(function* () {
         const budget = Option.getOrUndefined(yield* Effect.serviceOption(RequestBudget))
+        const attribution = requestAttribution(
+          yield* NotionRequestAttribution,
+          Redacted.value(credential.token),
+        )
         const method = options?.method ?? (body === undefined ? "GET" : "POST")
         const identity = credential.identity
         const mutating =
@@ -248,8 +275,8 @@ export const NotionTransport = Layer.effect(
             const recordWait = Effect.gen(function* () {
               const elapsed = Number((yield* Clock.monotonicTimeNanos) - queuedAt) / 1_000_000
               const retry = Math.min(elapsed, waitedForRetry)
-              if (retry > 0) metrics.wait(retry, "retry")
-              metrics.wait(elapsed - retry, "queue")
+              if (retry > 0) metrics.wait(retry, "retry", attribution)
+              metrics.wait(elapsed - retry, "queue", attribution)
             })
             const unbudgetedAttempt = Effect.gen(function* () {
               if (budget !== undefined) yield* budget.admit(prepared.requestBytes)
@@ -262,6 +289,7 @@ export const NotionTransport = Layer.effect(
                 ...(options?.content ? { content: options.content } : {}),
                 requestBytes: prepared.requestBytes,
                 target: prepared.target,
+                attribution,
               })
               let responseBytes: number | undefined
               let budgetResponseBytes = 0

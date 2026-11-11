@@ -1,6 +1,6 @@
 import { Context, Effect, Exit, Schema } from "effect"
 import { fail, property, type SkillsError } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import { readOnlyNotion } from "./notion-readonly.ts"
 import { isCoalescibleNotionRead } from "./shared-read-coalescing.ts"
 
@@ -56,8 +56,13 @@ export function withConsumptionRetention<A, E, R>(
   effect: Effect.Effect<A, E, R>,
   identity: RetentionIdentity,
   recordsDataSourceId: string,
+  phase: "retention" | "reconcile" = "retention",
 ) {
-  return effect.pipe(Effect.provideService(ConsumptionRetention, { identity, recordsDataSourceId }))
+  return withNotionRequestAttribution(effect, {
+    phase,
+    skill_page_id: identity.skill_page_id,
+    operation_id: identity.operation_id,
+  }).pipe(Effect.provideService(ConsumptionRetention, { identity, recordsDataSourceId }))
 }
 
 /** Observe the existing requests; queries do not become writes and no probe is added. */
@@ -128,7 +133,7 @@ export function withConsumptionEffects<A extends object, R>(
           )
         }),
     }
-    return yield* effect.pipe(
+    return yield* withNotionRequestAttribution(effect, { phase: "consume" }).pipe(
       Effect.provideService(Notion, options.readOnly ? readOnlyNotion(observed) : observed),
       Effect.provideService(ConsumptionEffectsSnapshot, snapshot),
       Effect.map((result) => ({ ...result, effects: snapshot() })),

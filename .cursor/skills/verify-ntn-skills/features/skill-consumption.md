@@ -6,7 +6,17 @@
 
 `readOnly`/`--read-only` 必须经现有 Notion 只读 capability 覆盖全部后代调用，必要留存在首次写前明确拒绝；固定历史仍可读取。正常当前读取继续保留原 retention，不能删除它凑零写。回执复用已有请求和原 operation，不增加远端查询或把完整账本送给模型。源测试、独立 Node SDK/CLI 与真实 Pi 两臂分别留证；本页不声明已完成真实服务或模型验收。
 
+CLI 既有 `resource-lifecycle/AuditRun.tla` 的 `AuditReadOnly == writes = 0` 只覆盖粗粒度 audit；请求层语义只读 capability 的源回归另行覆盖后代调用。该有限模型没有 consumer effects、部分留存或取消状态，不能当作这些新语义的证明。AH-953 没有修改生命周期转移；Broker 的原 `RetentionDisclosure` 模型承接 normal/read-only/unknown 与效果投影。
+
 归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC26 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。本地开发时在实际 Broker checkout 读取同一路径，不要求两个仓库相邻，也不复制另一份地图。
+
+## AH-631：阶段归因与同次解码
+
+沿原 `request_metrics.trace` 记录实际 producer 的显式阶段、已知 Skill owner 与原 operation；缺少调用上下文为 null，共享 waiter 不能由单个 producer 标签推断独占归属。queue/retry 沿原传输循环记账，不按 attempt 排序猜写前写后。普通消费、retention、作者 preflight/apply/verify 与 reconcile 分开，追踪不开启时不添加远端请求。
+
+先用原 `sdk-package-smoke.mjs --case records-history` 的 V8 正控制冻结解码次数，再复用同一 query row 已验证的 header；不缓存整次 consume，不跨响应或写入边界复用事实。固定同一历史、四文件闭包、Store 初态与结果 oracle，逐字段核身份/版本/归属/关系/manifest，HTTP/bytes 不因减少本地解码而声称下降。保留旧行为反例、未知 ACK、同 ID 冲突、错 scope、权限收缩与缺损对象回归。
+
+旧/新包顺序使用同一 `NTN_SKILLS_RECORDS_HISTORY_FIXTURE=/absolute/history.json` 和 `NTN_SKILLS_SOURCE_FIXTURE_PORT`，固定 source origin 与 credential scope；端口冲突明确失败，不能自动换端口继续当作同条件对照。每臂仍从相同空 Store seed 独立复制。完整原 oracle 和所有阶段先保留到报告，再断言 cold header 次数等于完整 metadata pass 加同一 payload row 的次数；旧包的重复解码仍必须失败。原脚本默认仍可独立生成 fixture，不新增生产配置项。
 
 ## SC25：日常命令与目录 SDK
 

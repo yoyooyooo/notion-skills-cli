@@ -2,6 +2,7 @@ import { Context, Effect, Option } from "effect"
 import { fail, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
 import { pageId, parseTarget } from "./ref.ts"
 import { Store } from "./store.ts"
+import { withNotionRequestAttribution } from "./notion.ts"
 
 /** Explicit authoring admits one exact native owner, never its linked targets. */
 class SharedAuthoringTarget extends Context.Service<
@@ -20,7 +21,10 @@ export function withSharedAuthoringTarget<A, E, R>(
   effect: Effect.Effect<A, E, R>,
 ) {
   return pageId(selected) === selected
-    ? effect.pipe(Effect.provideService(SharedAuthoringTarget, { page_id: selected }))
+    ? withNotionRequestAttribution(effect, {
+        phase: "author_preflight",
+        skill_page_id: selected,
+      }).pipe(Effect.provideService(SharedAuthoringTarget, { page_id: selected }))
     : Effect.fail(fail("EXACT_TARGET_REQUIRED", "Authoring requires an exact native page."))
 }
 
