@@ -469,8 +469,14 @@ export function catalog(options: CatalogOptions = {}, selection: "all" | "conten
 export function freshCatalogForRead(options: Pick<CatalogOptions, "database"> = {}) {
   return Effect.gen(function* () {
     const sharedSkills = new Map<string, SharedSkillMetadataObservation>()
-    const directory = yield* readCatalog({ ...options, refresh: true }, "all", sharedSkills)
-    return { catalog: directory, sharedSkills }
+    const exactSharedRecords = new Map<string, ContentRecord>()
+    const directory = yield* readCatalog(
+      { ...options, refresh: true },
+      "all",
+      sharedSkills,
+      exactSharedRecords,
+    )
+    return { catalog: directory, sharedSkills, exactSharedRecords }
   })
 }
 
@@ -478,6 +484,7 @@ function readCatalog(
   options: CatalogOptions,
   selection: "all" | "content",
   observations?: Map<string, SharedSkillMetadataObservation>,
+  exactSharedRecords?: Map<string, ContentRecord>,
 ) {
   return Effect.gen(function* () {
     yield* Effect.try({
@@ -735,6 +742,10 @@ function readCatalog(
                 ),
               )
             sharedIdentities.set(record.id, record.locator.page_id)
+            // A private scalar-read handoff preserves the exact registered
+            // identity, including disabled records. Public discovery still
+            // excludes them; their body/permission gate remains authoritative.
+            exactSharedRecords?.set(record.id, record)
             if (record.enabled !== false) skills.set(record.id, record)
           } else skills.set(row.id, record)
         }

@@ -286,9 +286,10 @@ function openSnapshot(
       scope = directory.scope
       const resolved = yield* Effect.try({
         try: () =>
-          isCurrentNameTarget({ selector })
+          observation.exactSharedRecords.get(selector) ??
+          (isCurrentNameTarget({ selector })
             ? resolveCatalogReference(selector, directory).record
-            : resolveRecord(selector, directory),
+            : resolveRecord(selector, directory)),
         catch: (error) => error as SkillsError,
       })
       if (resolved.locator.type === "notion_subscription")

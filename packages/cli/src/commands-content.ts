@@ -388,6 +388,9 @@ export const applyCommand = defineCommand(
       "New Description; nonblank, at most 2000 Unicode characters",
     ),
     defaultContext: Flag.Boolean("default-context").pipe(
+      Flag.withDescription(
+        "Optional View-filter metadata only; does not enable the Skill or auto-load its instructions",
+      ),
       Flag.atMost(1),
       Flag.map((values) => Option.fromUndefinedOr(values[0])),
     ),
@@ -619,6 +622,9 @@ export const updateCommand = defineCommand(
     ...memberFlags,
     ...requiredFlags,
     defaultContext: Flag.Boolean("default-context").pipe(
+      Flag.withDescription(
+        "Optional View-filter metadata only; does not enable the Skill or auto-load its instructions",
+      ),
       Flag.atMost(1),
       Flag.map((values) => Option.fromUndefinedOr(values[0])),
     ),

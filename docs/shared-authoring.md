@@ -46,6 +46,8 @@ New databases are full-page, not inline, and are named **Skills**, **Files**, **
 
 Direct edits to a bound Notion body are detected by normal current reads. After the complete edited body has been retained and verified, that whole file becomes customized. Other files retain their own ownership. Name, Description, Default Context and Router Members remain native Notion properties; a body edit does not change them.
 
+`Enabled` controls ordinary current consumption. `Default Context` remains an optional author-managed organization and View-filter attribute, not another enablement or full-body injection switch. A host uses the selected View result without applying the checkbox twice. Keep existing schema IDs, values and explicit authoring options; this contract does not rename, remove or automatically hide a user column. An unfiltered View remains unaffected by this checkbox, while a View that explicitly filters it follows ordinary metadata freshness.
+
 ## Use the remote Skill in Pi
 
 Use a shared-capable `pi-context-broker` installation. Add the selected library to Pi's existing `~/.pi/agent/context-broker/config.yml`, preserving any unrelated sources and preferences:
