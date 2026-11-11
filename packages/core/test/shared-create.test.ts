@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { authScope } from "../src/catalog.ts"
 import { decode, property } from "../src/model.ts"
+import { Notion } from "../src/notion.ts"
+import { recordedFixtureTransport } from "./notion-http-fixture.ts"
 import type { PortableSkill } from "../src/portable.ts"
 import {
   createSharedNative,
@@ -61,6 +63,49 @@ function facts(f: ReturnType<typeof sharedCreateFixture>, page: string) {
 }
 
 describe("native shared creation", () => {
+  test("actual create writes bind the original operation and only an already known owner", async () => {
+    const f = sharedCreateFixture()
+    const plan = await f.run(prepareSharedCreate(createLibrary, { portable: portable() }))
+    await recordedFixtureTransport(await f.run(Notion), async (api, requests) => {
+      const result = await f.run(
+        executeSharedCreate(createLibrary, { plan, mode: "create" }).pipe(
+          Effect.provideService(Notion, api),
+        ),
+      )
+      expect(result.status).toBe("created")
+      const trace = api.requestMetrics!().trace
+      const writes = trace.filter(
+        (entry) => entry.event === "attempt" && entry.kind === "notion_write",
+      )
+      expect(writes.length).toBeGreaterThan(0)
+      let newMain = 0
+      for (const attempt of writes) {
+        if (attempt.event !== "attempt") throw new Error("Expected actual HTTP attempt")
+        const request = requests.find((entry) => entry.request_id === attempt.request_id)
+        if (request === undefined) throw new Error("Missing exact request/response identity")
+        const unknownBeforeAllocation =
+          request.method === "POST" &&
+          property(property(request.body).parent).data_source_id ===
+            createLibrary.skills.data_source_id
+        if (unknownBeforeAllocation) newMain++
+        expect(attempt.attribution).toEqual({
+          phase: "author_apply",
+          operation_id: plan.operation_id,
+          skill_page_id: unknownBeforeAllocation ? null : result.skill_page_id,
+        })
+      }
+      expect(newMain).toBe(1)
+      expect(
+        trace.some(
+          (entry) =>
+            entry.event === "attempt" &&
+            entry.attribution?.phase === "author_verify" &&
+            entry.attribution?.operation_id === plan.operation_id,
+        ),
+      ).toBe(true)
+    })
+  })
+
   test("an explicit disabled native creation freezes that intent while legacy plans retain their default", async () => {
     const f = sharedCreateFixture()
     const legacy = await f.run(makeSharedCreatePlan(createLibrary, { portable: portable() }))

@@ -2,7 +2,7 @@ import { Clock, Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, validateSnapshot } from "./cache.ts"
 import { decode, fail, property, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { composeSharedFiles, type CompositionFile } from "./shared-composition.ts"
 import { sharedSkillId } from "./shared-content.ts"
@@ -1129,7 +1129,13 @@ export function reconcileSharedFileManagement(
       verified: true as const,
       requires_fresh_read: true as const,
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "reconcile",
+      skill_page_id: input.skill_page_id,
+      operation_id: input.operation_id,
+    }),
+  )
 }
 
 export function executeSharedFileManagement(
@@ -1158,10 +1164,15 @@ export function executeSharedFileManagement(
         )
       return yield* reconcileSharedFileManagement(library, plan)
     }
-    const context = yield* currentContext(library, plan.skill_page_id)
+    const context = yield* withNotionRequestAttribution(
+      currentContext(library, plan.skill_page_id),
+      { phase: "author_preflight" },
+    )
     if (context.headers.some((header) => header.record_id === plan.operation_id))
       return yield* reconcileSharedFileManagement(library, plan)
-    const remote = yield* pendingRemote(library, context)
+    const remote = yield* withNotionRequestAttribution(pendingRemote(library, context), {
+      phase: "author_preflight",
+    })
     if (local.length !== 0 || remote.length !== 0)
       return yield* Effect.fail(
         fail(
@@ -1169,7 +1180,9 @@ export function executeSharedFileManagement(
           "An original shared file operation must be reconciled before this new lifecycle dispatch.",
         ),
       )
-    const before = yield* verifyBefore(library, plan, context)
+    const before = yield* withNotionRequestAttribution(verifyBefore(library, plan, context), {
+      phase: "author_preflight",
+    })
     yield* retainPendingFileOperation(journal, plan)
     yield* invalidateSnapshotCache(sharedSkillId(plan.library_id, plan.skill_id), scope)
     yield* originalRecord(library, plan, "create").pipe(
@@ -1180,6 +1193,7 @@ export function executeSharedFileManagement(
     )
     const checked = yield* currentContext(library, plan.skill_page_id).pipe(
       Effect.flatMap((current) => verifyBefore(library, plan, current)),
+      (effect) => withNotionRequestAttribution(effect, { phase: "author_preflight" }),
       Effect.result,
     )
     if (checked._tag === "Failure") {
@@ -1306,7 +1320,10 @@ export function executeSharedFileManagement(
         ]),
       )
       return { after, binding }
-    }).pipe(Effect.result)
+    }).pipe(
+      (effect) => withNotionRequestAttribution(effect, { phase: "author_verify" }),
+      Effect.result,
+    )
     if (exact._tag === "Failure") {
       yield* saveOutcome(
         library,
@@ -1336,7 +1353,9 @@ export function executeSharedFileManagement(
       entityId: plan.file_id,
       payload: plan.event,
     }).pipe(Effect.mapError((error) => recovery(error, plan, "event")))
-    const events = yield* readEvents(library, plan.skill_page_id)
+    const events = yield* withNotionRequestAttribution(readEvents(library, plan.skill_page_id), {
+      phase: "author_verify",
+    })
     const state = yield* managementChecked(() =>
       resolveFileState(
         plan.file_id,
@@ -1378,7 +1397,13 @@ export function executeSharedFileManagement(
       verified: true as const,
       requires_fresh_read: true as const,
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "author_apply",
+      skill_page_id: input.plan.skill_page_id,
+      operation_id: input.plan.operation_id,
+    }),
+  )
 }
 
 /** Share the existing one-per-Skill compact index; completed plans never load full bodies. */
