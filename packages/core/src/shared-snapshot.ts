@@ -768,11 +768,14 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         fail(
           "SHARED_BODY_WRITE_RECONCILED",
           result.status === "reviewed"
-            ? "The independent accepted-observed review is verified; the original write remains needs_review. Read the current page again."
+            ? `The independent ${result.decision} decision is verified; the original write remains ${result.original_status}. Read the current page again.`
             : "The original body write is now verified. Read the current page again before publishing a new snapshot.",
           {
             body_write_operation_id: plan.operation_id,
             status: result.status,
+            ...(result.status === "reviewed"
+              ? { decision: result.decision, original_status: result.original_status }
+              : {}),
             original_downloaded_at: plan.before.downloaded_at,
             read_again: true,
           },
