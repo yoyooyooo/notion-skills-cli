@@ -412,6 +412,29 @@ The continuation creates no native page and patches no existing body. Its review
 Expose the known all-allocated branch through `ctl library sources recovery continuation review PLAN --entry ENTRY --target PAGE --output REVIEW`, followed by `continuation apply PLAN --entry ENTRY --review REVIEW --review-id ID --dry-run`; the inspected original attempt uses the same apply command without `--dry-run`. Reconciliation stays `ctl library sources recovery reconcile PLAN --entry ENTRY --target PAGE`. Preserve prior plans/reviews and unknown original operations. Run the dedicated `AcknowledgedContinuation` state model and three actual guard mutations in an isolated source snapshot. Require fresh native Node entry processes in `shared-create-acknowledgement-import.node.test.ts`; preloaded module caches cannot establish absence of schema initialization cycles.
 
 
+### SS16 original native main restored to its exact frozen candidate
+
+An ordinary native create can retain a known body mismatch after Notion adds an
+unintended link. An explicit author edit may restore that same page to the exact
+original candidate; it does not erase the original needs_review outcome. Use
+create recovery review/apply/reconcile with the original plan and exact page.
+The bounded branch requires the original one-main ACK, unchanged complete
+manifest/inputs and known failure, no Source or raw resources, and the original
+complete metadata, Members and Requires. Current Markdown must be complete and
+equal to the frozen projection, with no URL stripping or relaxed comparison.
+
+The review binds the original journal/request/ACK set, outcome, page and complete
+body observation. Apply preserves every old fact and native page, creates only
+the original never-dispatched file suffix, and publishes the original file
+events plus a separate restoration completion. The original needs_review remains
+immutable. Unknown native requests never replay; repeated completed apply and
+reconcile write nothing. A cold client must validate the retained review, full
+original main ACK, original failure and complete initial event set before accepting
+completion. Verify same-page link correction, changed body/ACK/owner/review refusal,
+unknown suffix and interrupted readback, original operation routing, and independent
+complete main/reference consumption. The original real failure and author repair
+remain separate evidence from controlled tests and any later successful recovery.
+
 ### SS16 native inventory recovery — One acknowledged main before any Records
 
 Keep the original complete inventory import and v1 native create plan unchanged. The bounded native review uses projection 11 to 12 only for a complete one-main Skill with an initial adopted event, no Source, resources, Members or Requires, and disabled/default-false intent. It requires the original prepared and executed inventory records, credential-scoped create journal, and exactly one original main POST with its complete durable ACK. Neither a copied plan nor a matching current page authorizes recovery. Extra or cross-scope dispatch evidence, missing ACKs, additional Files or Source facts, changed metadata, incomplete Markdown or a different full body must refuse before writes.

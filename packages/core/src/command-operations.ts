@@ -757,6 +757,24 @@ export function showOperation(id: string) {
     const child = /^(uo_[a-f0-9]{64}):(0|[1-9][0-9]{0,9})$/.exec(id)
     if (!child && !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id))
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "Provide one exact operation ID."))
+    if (/^skill-create-[a-f0-9]{64}$/u.test(id))
+      return yield* Effect.fail(
+        fail(
+          "NATIVE_CREATE_PLAN_REQUIRED",
+          "This is a native shared-create operation. Inspect and recover it with its exact retained create plan and original page; unrelated upstream history is not its operation store.",
+          {
+            operation_id: id,
+            domain: "shared_native_create",
+            next: {
+              command: "ctl library create recovery review",
+              original_plan_required: true,
+              original_page_required: true,
+              reason:
+                "Known ordinary native body mismatches require explicit exact-candidate review. Source, inventory and migration creates retain their own recovery commands.",
+            },
+          },
+        ),
+      )
     const storedId = child ? (yield* publicationIdentityForUpstream(id)).id : id
     const operations = yield* localOperations(storedId)
     const upstream = yield* showUpstreamOperation(storedId)
