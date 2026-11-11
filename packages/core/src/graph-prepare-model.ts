@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { ConsumptionEffectsSchema } from "./consumption-effects.ts"
 import { ContentKindSchema, ContentRecordSchema, FileEntrySchema } from "./model.ts"
 import {
   NativeReferenceIndexSchema,
@@ -131,6 +132,7 @@ export const PrepareGraphLockSchema = Schema.Struct({
 })
 const ResultFields = {
   version: Schema.Literal(1),
+  effects: Schema.optional(ConsumptionEffectsSchema),
   purpose: PreparePurposeSchema,
   scope: Sha,
   roots: Schema.Array(Root),

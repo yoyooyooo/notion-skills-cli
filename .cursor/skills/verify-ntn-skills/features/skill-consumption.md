@@ -1,5 +1,11 @@
 # Skill 消费链
 
+## AH-953：当前消费效果与严格只读
+
+先保留 `consumer-effects.test.ts` 的原行为失败，再验证同一公开 `consume/readSkill` 路径。当前读取的历史留存与作者正文修改分别报告；根和 Requires 的留存绑定原 Skill page、File ID、operation。固定/暖读取的确实零写、部分完成后失败、响应丢失与取消不能混成同一结果。语义 POST query 属于读，不能按 HTTP 方法粗算写入。
+
+`readOnly`/`--read-only` 必须经现有 Notion 只读 capability 覆盖全部后代调用，必要留存在首次写前明确拒绝；固定历史仍可读取。正常当前读取继续保留原 retention，不能删除它凑零写。回执复用已有请求和原 operation，不增加远端查询或把完整账本送给模型。源测试、独立 Node SDK/CLI 与真实 Pi 两臂分别留证；本页不声明已完成真实服务或模型验收。
+
 归属 AH-617；本页维护 CLI 的验证入口，不记录功能已通过。SC01–SC26 的任务、用户入口、驱动、证据和状态，以及缓存 × 会话 × 入口 × intent 的完整组合，统一维护在 [Broker 消费链主地图](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/skill-consumption.md)。本地开发时在实际 Broker checkout 读取同一路径，不要求两个仓库相邻，也不复制另一份地图。
 
 ## SC25：日常命令与目录 SDK

@@ -53,7 +53,7 @@ afterAll(async () => {
 async function fixture(options: { main?: string } = {}) {
   const root = await mkdtemp(join(evidence ?? tmpdir(), "ntn-prepare-consumer-"))
   temporary.push(root)
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     NOTION_API_TOKEN: token,
     NOTION_WORKSPACE_ID: "",
@@ -66,6 +66,8 @@ async function fixture(options: { main?: string } = {}) {
     XDG_CONFIG_HOME: join(root, "xdg-config"),
     XDG_CACHE_HOME: join(root, "xdg-cache"),
   }
+  // Exercise this freshly built Node artifact even when the caller uses a daily source shim.
+  delete env.NTN_SKILLS_DEV_ROOT
   const instruction = (name: string) =>
     name === "a" && options.main !== undefined
       ? options.main
@@ -183,9 +185,16 @@ console.log(JSON.stringify({seeded:snapshots.length,scope:${JSON.stringify(scope
 
 test("SC25 use returns one complete root/Requires closure without loading optional bodies", async () => {
   const f = await fixture()
-  const used = await f.invoke(["use", f.ref(0), "--offline", "--json"])
+  const used = await f.invoke(["use", f.ref(0), "--offline", "--read-only", "--json"])
   expect(used.exit).toBe(0)
   const ready = decode(ConsumeReadySchema, JSON.parse(used.stdout))
+  expect(ready.effects).toEqual({
+    version: 1,
+    remote_writes: "none",
+    author_content: "unchanged",
+    retention: [],
+  })
+  expect(ready.preparation.effects).toEqual(ready.effects)
   expect(ready.preparation.required_closure).toEqual(
     f.snapshots.slice(0, 2).map((snapshot) => snapshot.record.id),
   )
@@ -199,6 +208,7 @@ test("SC25 use returns one complete root/Requires closure without loading option
   expect(ready.activation.status).toBe("not_evaluated")
   const compact = await f.invoke(["use", f.ref(0), "--offline"])
   expect(compact.exit).toBe(0)
+  expect(compact.stdout).toStartWith("Effects: no remote writes.\n")
   expect(compact.stdout.match(/Exact prepared instruction a\./g)).toHaveLength(1)
   expect(compact.stdout.match(/Exact prepared instruction b\./g)).toHaveLength(1)
   expect(compact.stdout).not.toContain("Exact prepared instruction optional")
@@ -206,6 +216,7 @@ test("SC25 use returns one complete root/Requires closure without loading option
   const missing = await f.invoke(["use", f.ref(3), "--offline", "--json"])
   expect(missing.exit).toBe(1)
   expect(JSON.parse(missing.stdout).ok).toBe(false)
+  expect(JSON.parse(missing.stdout).error.details.effects).toEqual(ready.effects)
   for (const args of [
     ["use", f.ref(0), "--refresh", "--json"],
     ["use", f.ref(0), "--lines", "1-2", "--json"],
@@ -219,8 +230,9 @@ test("SC25 use returns one complete root/Requires closure without loading option
 
 test("SC25 read --json preserves inspect-only behavior and rejects --raw conflicts", async () => {
   const f = await fixture()
-  const inspected = await f.invoke(["read", f.ref(3), "--offline", "--json"])
+  const inspected = await f.invoke(["read", f.ref(3), "--offline", "--read-only", "--json"])
   expect(inspected.exit).toBe(0)
+  expect(JSON.parse(inspected.stdout).effects.remote_writes).toBe("none")
   expect(JSON.parse(inspected.stdout).content).toBe(
     "# broken\nExact prepared instruction broken.\n",
   )
@@ -245,6 +257,7 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
   expect(help.exit).toBe(0)
   expect(help.stdout).toContain("--session-bindings")
   expect(help.stdout).toContain("--max-context-bytes")
+  expect(help.stdout).toContain("--read-only")
   const schema = await f.invoke(["schema", "ctl", "prepare"])
   expect(schema.exit).toBe(0)
   const parameters: Array<{ name: string; min_occurrences: number; default?: unknown }> =
@@ -265,10 +278,11 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
 
 test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect boundary and stable session bindings", async () => {
   const f = await fixture()
-  const used = await f.invoke(["ctl", "prepare", f.ref(0), "--offline"])
+  const used = await f.invoke(["ctl", "prepare", f.ref(0), "--offline", "--read-only"])
   expect(used.exit).toBe(0)
   const ready = decode(PrepareReadySchema, JSON.parse(used.stdout))
   expect(ready.status).toBe("ready")
+  expect(ready.effects?.remote_writes).toBe("none")
   expect(ready.required_closure).toEqual(
     f.snapshots.slice(0, 2).map((snapshot) => snapshot.record.id),
   )

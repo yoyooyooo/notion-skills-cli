@@ -1,5 +1,10 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { HttpClient } from "effect/http"
+import {
+  currentConsumptionEffects,
+  withConsumptionEffects,
+  type ConsumptionObservationOptions,
+} from "./consumption-effects.ts"
 import { authScope } from "./catalog.ts"
 import { locallySelectedScope, type ObservedSnapshot, type ReadPolicyOptions } from "./cache.ts"
 import {
@@ -112,15 +117,18 @@ export function prepareGraph(
   inputValue: PrepareInput,
   options: Parameters<typeof prepareGraphWithSnapshots>[1] = {},
 ) {
-  return prepareGraphWithSnapshots(inputValue, options).pipe(
-    Effect.map(({ preparation }) => preparation),
+  return withConsumptionEffects(
+    prepareGraphWithSnapshots(inputValue, options).pipe(
+      Effect.map(({ preparation }) => preparation),
+    ),
+    options,
   )
 }
 
 /** Internal same-operation artifacts for the consumer. No second snapshot read is needed. */
 export function prepareGraphWithSnapshots(
   inputValue: PrepareInput,
-  options: {
+  options: ConsumptionObservationOptions & {
     readonly database?: string
     readonly execution?: PrepareExecutionOptions
     readonly metrics?: boolean
@@ -166,7 +174,7 @@ export function prepareGraphWithSnapshots(
     return yield* withPrepareExecution(
       prepareSelected(input, targets, budget, {
         database: options.database,
-        sharedReadOnly: execution.priority === "prefetch",
+        sharedReadOnly: options.readOnly === true || execution.priority === "prefetch",
         metrics: options.metrics,
         startedAt,
       }).pipe(Effect.provideService(Notion, selectedApi)),
@@ -640,8 +648,10 @@ function prepareSelectedInScope(
       if (result._tag === "Failure") errors.push({ target, ...failure(result.failure) })
     }
     const prepared = orderedNodes().filter((node) => node.state === "prepared")
+    const effects = yield* currentConsumptionEffects
     const base = {
       version: 1 as const,
+      ...(effects === undefined ? {} : { effects }),
       purpose: input.purpose,
       scope,
       roots,
