@@ -30,7 +30,7 @@ import {
   DatabaseInitOperationSchema,
 } from "./database-init.ts"
 import { Store } from "./store.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import { openSkill, snapshotInfo, targetSnapshot } from "./snapshot.ts"
 import { snapshotAuthoredPortable } from "./export.ts"
 import { beginPublication } from "./publication.ts"
@@ -507,6 +507,12 @@ function updateSkillCurrent(input: string, options: UpdateSkillOptions) {
           previous_version_id: current.version_id,
         }
       const saved = yield* openSkill(locator.page_id, { database }).pipe(
+        (effect) =>
+          withNotionRequestAttribution(effect, {
+            phase: "author_verify",
+            skill_page_id: locator.page_id,
+            operation_id: result.operation_id,
+          }),
         Effect.mapError((error) =>
           fail(
             "SHARED_METADATA_REFRESH_FAILED",
