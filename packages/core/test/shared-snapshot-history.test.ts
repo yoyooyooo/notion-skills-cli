@@ -76,6 +76,48 @@ async function archiveFixture() {
 }
 
 describe("Notion-resident fixed snapshot sources", () => {
+  test("a complete 407-path history restores every byte and mode from compressed metadata in a cold store", async () => {
+    const { f, snapshot } = await archiveFixture()
+    const exemplar = required(
+      snapshot.files.find((file) => file.path === "scripts/check.sh"),
+      "script bytes",
+    )
+    const files = [
+      ...snapshot.files,
+      ...Array.from({ length: 407 - snapshot.files.length }, (_, index) => ({
+        ...exemplar,
+        path: `complete/${String(index).padStart(4, "0")}/resource.sh`,
+        mode: index % 2 === 0 ? ("100755" as const) : ("100644" as const),
+      })),
+    ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    const large = reidentify({ ...snapshot, files }, digest(canonicalSharedJson(files)))
+    const plan = await f.run(prepareSharedSnapshotHistory(library, large))
+    expect(plan.manifest.files).toHaveLength(407)
+    expect(encode(canonicalSharedJson(plan.manifest)).length).toBeGreaterThan(64 * 1024)
+    const expected = new Map(
+      files.map((file) => [
+        file.path,
+        {
+          bytes: required(f.objects.get(`objects/${file.sha256}`), file.path).slice(),
+          mode: file.mode,
+        },
+      ]),
+    )
+    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
+    f.objects.clear()
+    f.clearCalls()
+    const restored = await f.run(
+      restoreSharedSnapshotHistory(library, { skillPageId: skillPage, pinId: plan.pin_id }),
+    )
+    expect(restored.files).toHaveLength(407)
+    for (const file of restored.files) {
+      const original = required(expected.get(file.path), file.path)
+      expect(file.bytes).toEqual(original.bytes)
+      expect(file.mode).toBe(original.mode)
+    }
+    expect(f.writeCount()).toBe(0)
+  })
+
   test("metadata inspection stays body-free and a cold complete tree uses a batched object query", async () => {
     const { f, snapshot, expected } = await archiveFixture()
     const plan = await f.run(prepareSharedSnapshotHistory(library, snapshot))
@@ -501,7 +543,7 @@ describe("shared snapshot history primitives", () => {
     )
     const files = [
       ...snapshot.files,
-      ...Array.from({ length: 1000 }, (_, index) => ({
+      ...Array.from({ length: 10000 }, (_, index) => ({
         ...exemplar,
         path: `extra/${String(index).padStart(4, "0")}.dat`,
       })),

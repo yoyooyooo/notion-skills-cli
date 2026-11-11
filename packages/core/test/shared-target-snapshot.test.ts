@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { decode, property, SnapshotSchema } from "../src/model.ts"
-import { targetSnapshot } from "../src/snapshot.ts"
+import { readSkill, targetSnapshot } from "../src/snapshot.ts"
 import { parseTarget } from "../src/ref.ts"
 import { SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-snapshot.ts"
 import {
@@ -24,6 +24,48 @@ function latestEntries(fixture: ReturnType<typeof sharedSnapshotFixture>) {
 }
 
 describe("standard targetSnapshot shared-library integration", () => {
+  for (const policy of [{ refresh: true }, { maxAge: 0 }]) {
+    test(`relative current reads consume ${JSON.stringify(policy)} once and keep its observation`, async () => {
+      const f = sharedSnapshotFixture()
+      await f.target(parseTarget(skillPage), options)
+      f.json.clear()
+      f.objects.clear()
+      f.clearCalls()
+      const first = await f.run(
+        readSkill("references/1.md", { ...options, ...policy, from: stableRef }),
+      )
+      expect("content" in first && first.content).toBe("Reference one\n")
+      expect(first.source).toBe("notion")
+      expect(first.freshness?.policy).toBe(policy.refresh ? "refresh" : "max_age")
+      expect(first.materialization?.materialized_paths).toEqual(["references/1.md"])
+      expect(f.readBodyCount()).toBe(3)
+      expect(f.writeCount()).toBe(0)
+
+      f.clearCalls()
+      const warm = await f.run(
+        readSkill("references/1.md", { ...options, maxAge: 30_000, from: stableRef }),
+      )
+      expect(warm.snapshot_id).toBe(first.snapshot_id)
+      expect("content" in warm && warm.content).toBe("Reference one\n")
+      expect(warm.source).toBe("local_cache")
+      expect(warm.freshness?.policy).toBe("max_age")
+      expect(warm.freshness?.validated_at).toBe(first.freshness?.validated_at)
+      expect(f.calls).toHaveLength(0)
+
+      const rejected = await f.run(
+        readSkill("2.md", { ...options, ...policy, from: first.ref }).pipe(Effect.flip),
+      )
+      expect(rejected.code).toBe("INVALID_ARGUMENT")
+      expect(f.calls).toHaveLength(0)
+      const pinned = await f.run(readSkill("2.md", { ...options, offline: true, from: first.ref }))
+      expect("content" in pinned && pinned.content).toBe("Reference two\n")
+      expect(pinned.snapshot_id).toBe(first.snapshot_id)
+      expect(pinned.source).toBe("local_snapshot")
+      expect(pinned.freshness?.policy).toBe("pinned")
+      expect(f.calls).toHaveLength(0)
+    })
+  }
+
   test("an unchecked old current cache fails locally while its exact historical pin remains readable", async () => {
     const f = sharedSnapshotFixture()
     const first = await f.target(parseTarget(skillPage), options)

@@ -8,6 +8,7 @@ import {
   publicationIntegrityMigration,
 } from "./publication-integrity-state.ts"
 import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
+import { sharedSkillId } from "./shared-content.ts"
 
 const migrations = {
   "0001_local_state": Effect.gen(function* () {
@@ -86,16 +87,95 @@ const migrations = {
 }
 
 type SharedLocalCategory = "cache" | "dispatch"
+function sharedFileObservationOwner(value: unknown) {
+  const { generation, scope, library_id, skill_id, skill_page_id } = property(value)
+  if (
+    typeof generation !== "number" ||
+    !Number.isSafeInteger(generation) ||
+    generation < 1 ||
+    typeof scope !== "string" ||
+    typeof library_id !== "string" ||
+    typeof skill_id !== "string" ||
+    typeof skill_page_id !== "string"
+  )
+    throw fail(
+      "INVALID_ARGUMENT",
+      "A shared file observation requires an exact owner and positive safe generation.",
+    )
+  return {
+    generation,
+    scope,
+    library_id,
+    skill_id,
+    skill_page_id,
+    record_identity: sharedSkillId(library_id, skill_id),
+  }
+}
 const sharedCurrentTreeValidationPrefix = "cache/shared-current-tree-validation"
+// These exact domains hold evolving local run state or a derived pointer.
+// All original write intents, acknowledgements, plans and inventory observations
+// retain their immutable-payload rule in the same existing SQLite table.
+const mutableSharedLocalPrefixes = [
+  sharedCurrentTreeValidationPrefix,
+  "audit/runs",
+  "audit/latest",
+  "operations/shared-source-runs",
+  "operations/shared-source-batches",
+]
 const sharedLocalDomains: readonly {
   readonly prefix: string
   readonly category: SharedLocalCategory
   readonly address: RegExp
 }[] = [
   {
+    prefix: "audit/runs",
+    category: "cache",
+    address:
+      /^audit\/runs\/audit-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+  },
+  { prefix: "audit/latest", category: "cache", address: /^audit\/latest\/[a-f0-9]{64}\.json$/u },
+  {
+    prefix: "inventory/observations",
+    category: "dispatch",
+    address: /^inventory\/observations\/inventory-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-source-runs",
+    category: "dispatch",
+    address:
+      /^operations\/shared-source-runs\/source-run-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-source-batches",
+    category: "dispatch",
+    address:
+      /^operations\/shared-source-batches\/[a-f0-9]{64}\/source-batch-[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
+  },
+  {
+    prefix: "plans/shared-inventory-imports",
+    category: "dispatch",
+    address: /^plans\/shared-inventory-imports\/inventory-import-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "plans/shared-inventory-batches",
+    category: "dispatch",
+    address: /^plans\/shared-inventory-batches\/import-batch-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-inventory-imports",
+    category: "dispatch",
+    address: /^operations\/shared-inventory-imports\/inventory-import-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-native-readbacks",
+    category: "dispatch",
+    address:
+      /^operations\/shared-native-readbacks\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "cache/shared-file-observations",
     category: "cache",
-    address: /^cache\/shared-file-observations\/[a-f0-9]{64}\/[0-9]{20}\.json$/u,
+    address: /^cache\/shared-file-observations\/[a-f0-9]{64}\/(?:[0-9]{20}|latest)\.json$/u,
   },
   {
     prefix: "cache/shared-page-identities",
@@ -160,7 +240,7 @@ const sharedLocalDomains: readonly {
     prefix: "operations/shared-sources",
     category: "dispatch",
     address:
-      /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection)-[a-f0-9]{64}\.json$/u,
+      /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection|ack)-[a-f0-9]{64}\.json$/u,
   },
   {
     prefix: "operations/shared-source-registration",
@@ -633,10 +713,81 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                           { key },
                         ),
                 })
+                if (parts[1] === "shared-file-observations" && parts[3] === "latest.json") {
+                  const owner = yield* Effect.try({
+                    try: () => sharedFileObservationOwner(value),
+                    catch: storageError,
+                  })
+                  const fences = yield* sql<{
+                    retired_through: number
+                  }>`SELECT retired_through FROM cache_fences WHERE scope=${owner.scope} AND identity=${owner.record_identity}`
+                  if (owner.generation <= (fences[0]?.retired_through ?? 0))
+                    return yield* Effect.fail(
+                      fail(
+                        "CACHE_INVALIDATED",
+                        "An in-flight file observation was retired before publication.",
+                      ),
+                    )
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const parsed = yield* parse(previous.payload)
+                    const prior = yield* Effect.try({
+                      try: () => sharedFileObservationOwner(parsed),
+                      catch: () =>
+                        fail(
+                          "STATE_CORRUPT",
+                          "The shared file observation slot has an invalid owner or generation.",
+                        ),
+                    })
+                    if (previous.category !== "cache")
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CORRUPT",
+                          "The shared file observation slot has an invalid generation.",
+                        ),
+                      )
+                    for (const field of [
+                      "scope",
+                      "library_id",
+                      "skill_id",
+                      "skill_page_id",
+                    ] as const)
+                      if (prior[field] !== owner[field])
+                        return yield* Effect.fail(
+                          fail(
+                            "STATE_CONFLICT",
+                            "A shared file observation slot cannot change its owner.",
+                            { key, field },
+                          ),
+                        )
+                    if (owner.generation < prior.generation) return
+                    if (owner.generation === prior.generation) {
+                      if (previous.payload !== payload)
+                        return yield* Effect.fail(
+                          fail(
+                            "STATE_CONFLICT",
+                            "One shared file observation generation cannot have different content.",
+                            { key },
+                          ),
+                        )
+                      // A completion from before cache clearing must not resurrect its eligibility.
+                      return
+                    }
+                    yield* sql`UPDATE shared_local_records SET payload=${payload},retired=0 WHERE key=${key} AND category='cache'`
+                  } else {
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'cache',${payload},0)`
+                  }
+                  return
+                }
                 // Content proofs are rebuilt only after complete verification. Replacing one cannot
                 // renew or recreate a current observation; its independent fence remains authoritative.
-                if (key.startsWith(`${sharedCurrentTreeValidationPrefix}/`))
-                  yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload,retired=0 WHERE shared_local_records.category='cache' AND excluded.category='cache'`
+                if (mutableSharedLocalPrefixes.some((prefix) => key.startsWith(`${prefix}/`)))
+                  yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload,retired=0 WHERE shared_local_records.category=excluded.category AND (excluded.category='cache' OR shared_local_records.retired=0)`
                 // All other shared lookups and dispatch evidence retain their frozen payloads.
                 else
                   yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},${sharedCategory},${payload},0) ON CONFLICT(key) DO NOTHING`
@@ -822,6 +973,24 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                   catch: storageError,
                 })
                 if (sharedCategory !== undefined) {
+                  if (
+                    key.startsWith("cache/shared-file-observations/") &&
+                    key.endsWith("/latest.json")
+                  ) {
+                    const rows = yield* sql<{
+                      payload: string
+                    }>`SELECT payload FROM shared_local_records WHERE key=${key} AND category='cache'`
+                    if (rows[0] !== undefined) {
+                      const parsed = yield* parse(rows[0].payload)
+                      const saved = yield* Effect.try({
+                        try: () => sharedFileObservationOwner(parsed),
+                        catch: storageError,
+                      })
+                      // Fence every generation already reserved, including a newer
+                      // request that has not reached this slot before cache clearing.
+                      yield* sql`UPDATE cache_fences SET retired_through=generation WHERE scope=${saved.scope} AND identity=${saved.record_identity}`
+                    }
+                  }
                   // Dispatch payloads remain auditable after completion and never join cache clearing.
                   yield* sql`UPDATE shared_local_records SET retired=1 WHERE key=${key} AND category=${sharedCategory}`
                   continue

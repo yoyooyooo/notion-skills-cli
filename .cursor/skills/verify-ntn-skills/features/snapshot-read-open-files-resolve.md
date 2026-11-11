@@ -72,6 +72,8 @@ Preconditions:
 
 - **Relative links.** Bind `REF` to the containing file's pinned ref and `RELATIVE_PATH` to a real relative link. Resolve preserves its snapshot; relative read and read of the returned `RESOLVED_REF` return the same actual file/bytes. Resolve alone does not prove that a file exists.
 
+  Also drive `read RELATIVE_PATH --from CURRENT_REF --refresh` and `--max-age 0` from a cold shared-library state. Resolve the current containing version once, then materialize the requested file from that fixed manifest. Preserve the current observation's source/freshness; its internal pin must not receive a second current-refresh policy. Compare exact bytes, require one complete body observation and zero writes, and repeat with a warm bounded-age policy. Explicitly pinned `--from` with either refresh or max-age must still fail before any request. `shared-target-snapshot.test.ts` covers these boundaries; the installed SDK smoke's scalar-inventory case exercises the separate CLI process.
+
   ```bash
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- resolve "$RELATIVE_PATH" --from "$REF"
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read "$RELATIVE_PATH" --from "$REF"

@@ -130,10 +130,23 @@ export function composeSharedFilePlacements(
     readonly overrides: readonly CompositionOverride[]
     /** Complete immutable directory when source contains only the requested real bytes. */
     readonly manifest?: readonly CompositionPath[]
+    /** Complete ownership when selected immutable raw bytes are deliberately deferred. */
+    readonly overrideMetadata?: readonly CompositionOverrideMetadata[]
+    readonly selectedPaths?: readonly string[]
   },
 ): SharedComposition {
   const manifest = input.manifest ?? input.source
-  const plan = planSharedFilePlacements({ ...input, source: manifest })
+  const plan = planSharedFilePlacements({
+    ...input,
+    source: manifest,
+    overrides: input.overrideMetadata ?? input.overrides,
+  })
+  const selected = input.selectedPaths ?? plan.paths
+  if (
+    new Set(selected).size !== selected.length ||
+    selected.some((path) => !plan.paths.includes(path))
+  )
+    throw fail("FILE_NOT_FOUND", "Selected file bytes must belong to the complete placement plan.")
   const sourcePaths = new Set(manifest.map((file) => file.path))
   const sources = new Map<string, CompositionFile>()
   for (const file of input.source) {
@@ -151,7 +164,7 @@ export function composeSharedFilePlacements(
       })
     sources.set(file.path, file)
   }
-  const custom = new Map<string, { readonly path: string; readonly bytes: Uint8Array }>()
+  const custom = new Map<string, CompositionFile>()
   for (const override of input.overrides)
     if (override.kind === "custom") {
       if (!(override.bytes instanceof Uint8Array))
@@ -161,28 +174,38 @@ export function composeSharedFilePlacements(
       custom.set(override.file_id, override)
     }
   return {
-    files: plan.paths.map((path) => {
-      const origin = plan.provenance.get(path)
-      if (origin === undefined)
-        throw fail("INVALID_SOURCE", "An effective file has no planned provenance.", { path })
-      if (origin.kind === "custom") {
-        const file = custom.get(origin.file_id)
-        if (file === undefined || file.path !== path)
-          throw fail("INVALID_COMPOSITION_OVERRIDE", "A planned custom file has no exact bytes.", {
-            file_id: origin.file_id,
+    files: plan.paths
+      .filter((path) => selected.includes(path))
+      .map((path) => {
+        const origin = plan.provenance.get(path)
+        if (origin === undefined)
+          throw fail("INVALID_SOURCE", "An effective file has no planned provenance.", { path })
+        if (origin.kind === "custom") {
+          const file = custom.get(origin.file_id)
+          if (file === undefined || file.path !== path)
+            throw fail(
+              "INVALID_COMPOSITION_OVERRIDE",
+              "A planned custom file has no exact bytes.",
+              {
+                file_id: origin.file_id,
+                path,
+              },
+            )
+          return {
             path,
+            bytes: file.bytes,
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
+          }
+        }
+        const originalPath = sourcePath(origin)
+        const file = sources.get(originalPath)
+        if (file === undefined)
+          throw fail("SHARED_SOURCE_FILE_MISSING", "Required fixed source bytes are unavailable.", {
+            path,
+            source_path: originalPath,
           })
-        return { path, bytes: file.bytes }
-      }
-      const originalPath = sourcePath(origin)
-      const file = sources.get(originalPath)
-      if (file === undefined)
-        throw fail("SHARED_SOURCE_FILE_MISSING", "Required fixed source bytes are unavailable.", {
-          path,
-          source_path: originalPath,
-        })
-      return { path, bytes: file.bytes }
-    }),
+        return { path, bytes: file.bytes, ...(file.mode === undefined ? {} : { mode: file.mode }) }
+      }),
     provenance: plan.provenance,
   }
 }

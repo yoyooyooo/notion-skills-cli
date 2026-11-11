@@ -11,7 +11,7 @@ metadata:
 
 Use this entrypoint to find and consume a workflow. Keep three sources distinct: remote Notion pages, directories maintained through sync, and package-supplied builtins. A matching name does not make them the same identity or version.
 
-For a shared library, copy `record.id`, `record.ref` and the `shared_skill` locator exactly; encoded stable IDs are not page IDs. Name/Description, Enabled, Source, Default Context and Router Members come from native Notion properties. Existing legacy records may also carry Source Type, Builtin ID and Sync Mode. Editable remote properties never establish trusted installed-package identity.
+For a shared library, copy `record.id`, `record.ref` and the `shared_skill` locator exactly; encoded stable IDs are not page IDs. Name/Description, Enabled, Source, Default Context and Router Members come from native Notion properties. Editable remote properties never establish trusted installed-package identity.
 
 ## Discover, inspect and use
 
@@ -37,11 +37,13 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
    ntn-skills read 'RELATIVE_PATH' --from 'PINNED_CONTAINING_FILE_REF'
    ```
 
-   Resolve links from the containing file, which may itself be a reference. Use the snapshot ID to enumerate the whole file set. Pinned refs work offline and reject `--refresh`/`--max-age`; they do not establish latest content or current permission. Never resolve a relative file by rereading the Skill name and accidentally selecting a newer version.
+   Resolve links from the containing file, which may itself be a reference. Use the snapshot ID to enumerate the whole file set, including hashes and known executable modes. A pin rejects `--refresh`/`--max-age` and never selects newer content. Already materialized bytes work offline; a missing shared resource may require access to its frozen acquisition source. Missing bytes without that access stay unavailable. A pin does not establish current permission. Never resolve a relative file by rereading the Skill name and accidentally selecting a newer version.
 
 Use `--json` when version/freshness matters. `list` and `read` retain JSON as their compatibility default while callers migrate. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
 
-Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. A complete newly observed Notion edit is retained as a whole-file customization; no field marker or manual adopt command is needed. Other files retain their own source behavior. TTL hits can make no remote requests; the independent full-body deadline bounds same-timestamp edits. Use `--refresh` or explicit `--max-age 0` for complete current validation. Existing legacy native Skills may still use their aligned-source-ZIP checkpoint. Retain `freshness.validation` in host results.
+Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. They fix the complete directory while leaving non-document resource bytes lazy; `files` does not mean every file has been downloaded. `use` loads its selected instruction closure, and resource reads keep those same pins. Full export and authoring reads materialize the complete tree. New fixed Git manifests can use management-verified SHA-256 identities; older Git manifests without them retain the full-read fallback.
+
+A complete newly observed Notion edit is retained as a whole-file customization; no field marker or manual adopt command is needed. Other files retain their own source behavior. TTL hits can make no remote requests; the independent full-body deadline bounds same-timestamp edits. `--refresh` or explicit `--max-age 0` validates current observed content without requiring every binary or script to be prefetched. Retain freshness, validation, materialization and pin fields in host results. Prepared or materialized content does not prove delivery to the model or workflow activation.
 
 Inspect native Views with `ntn-skills ctl views --database LIBRARY_ENTRY`. Select an exact View with `list --view VIEW_ID --database LIBRARY_ENTRY`, or a shared default with `list --profile PROFILE_ID --database LIBRARY_ENTRY`. `list --default-view` consults the machine-bound Profile; without a configured default, use the first View in API order. Explicit View selection takes precedence. Bare `list` discovers the accessible source scope, including Prompts; follow every cursor for a complete local observation; Profile/View rules do not grant access. The host manages session selection and prompt timing; metadata alone does not activate a workflow.
 
@@ -52,7 +54,7 @@ Inspect native Views with `ntn-skills ctl views --database LIBRARY_ENTRY`. Selec
 | Execute an existing remote workflow | Select/read as above; no local installation or sync binding is required |
 | Create a Notion Skill, apply a change to a pinned page, or transfer a portable copy | Select `$ntn-skills-maintain@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-maintain` |
 | Select fixed shared sources or Profiles, maintain existing upstream/local bindings, or resolve their original interrupted work | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |
-| Review and migrate one legacy record into a shared library | Load `ntn-skills-maintain` and its legacy migration reference; retain the original evidence |
+| Audit a library, reconcile approved local inventory, or import a complete local Skill | Load `ntn-skills-maintain`; use its read-only inventory and frozen import workflow |
 | Inspect, install or update package-supplied Skills | Use `ctl builtin list/read/status/install/update`; installation is central with shared links by default, and optional Agent roots add links. See [local management](references/commands.md#local-builtins) |
 | Missing workflow, failed load or old content | Follow [diagnosis](references/integration.md#diagnose-discovery-and-loading) before changing configuration or clearing caches |
 

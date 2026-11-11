@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect"
 import { fail, property, text } from "./model.ts"
 import { Notion } from "./notion.ts"
+import { matchesNotionRollup } from "./notion-rollup.ts"
 import { pageId } from "./ref.ts"
 import { LIBRARY_MARKER, SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
 import {
@@ -305,42 +306,45 @@ export function initializeSourceLibrary(library: SharedLibrary) {
     // A source is derived for Files rather than maintained in a second mutable relation.
     const fs = property(yield* api.request(`v1/data_sources/${library.files.data_source_id}`))
     const fileOrigin = property(property(fs.properties).Origin)
-    if (!fileOrigin.id) {
-      yield* guardedSourceMutation(
-        library,
-        {
-          identity: "initialize-file-origin-rollup",
-          path: `v1/data_sources/${library.files.data_source_id}`,
-          method: "PATCH",
-          body: {
-            properties: {
-              Origin: {
-                rollup: {
-                  relation_property_id: library.files.property_ids.Skill,
-                  rollup_property_id: skillOrigin,
-                  function: "show_unique",
-                },
-              },
-            },
-          },
-        },
-        Effect.gen(function* () {
-          const row = property(
-              yield* api.request(`v1/data_sources/${library.files.data_source_id}`),
-            ),
-            value = property(property(row.properties).Origin)
-          return value.type === "rollup" &&
-            property(value.rollup).rollup_property_id === skillOrigin
-            ? row
-            : undefined
-        }),
-      )
-    } else if (
-      fileOrigin.type !== "rollup" ||
-      property(fileOrigin.rollup).rollup_property_id !== skillOrigin
+    const rollup = {
+      relation_property_id: library.files.property_ids.Skill,
+      rollup_property_id: skillOrigin,
+      function: "show_unique",
+    }
+    if (
+      fileOrigin.id &&
+      (fileOrigin.type !== "rollup" || !matchesNotionRollup(fileOrigin.rollup, rollup))
     )
       return yield* Effect.fail(
         fail("SOURCE_LIBRARY_CONFLICT", "Files Origin is not the selected Skill-derived source."),
+      )
+    // A visible field may still have an original ACK awaiting verified readback.
+    // Reconcile that journal locally; current equality never authorizes another PATCH.
+    const originResult = yield* guardedSourceMutation(
+      library,
+      {
+        identity: "initialize-file-origin-rollup",
+        path: `v1/data_sources/${library.files.data_source_id}`,
+        method: "PATCH",
+        body: { properties: { Origin: { rollup } } },
+        dryRun: Boolean(fileOrigin.id),
+        repeat: "never",
+      },
+      Effect.gen(function* () {
+        const row = property(yield* api.request(`v1/data_sources/${library.files.data_source_id}`)),
+          value = property(property(row.properties).Origin)
+        return value.type === "rollup" && matchesNotionRollup(value.rollup, rollup)
+          ? row
+          : undefined
+      }),
+    )
+    if ("original_outcome" in originResult && originResult.original_outcome === "unknown")
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_WRITE_UNKNOWN",
+          "The Origin rollup is visible but its original mutation has no acknowledgment.",
+          { operation_id: originResult.operation_id },
+        ),
       )
     const attached = yield* attachSourceLibrary(library.skills.database_id, candidate)
     return { library: attached.library, reused: false }

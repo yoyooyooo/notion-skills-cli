@@ -1,6 +1,7 @@
 import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
 import { Config, Context, Crypto, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { ConfigSchema, SnapshotSchema, decode, fail, property, SkillsError } from "./model.ts"
+import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import type { Base, SyncBinding, SyncReceipt } from "./sync.ts"
 import type { UpstreamRepository } from "./upstream-state.ts"
 import type { PublicationIntegrityRepository } from "./publication-integrity-state.ts"
@@ -197,9 +198,19 @@ export const StoreLive = Layer.effect(
         )
     const validateObjects = (snapshot: typeof SnapshotSchema.Type) =>
       Effect.gen(function* () {
+        const deferred = yield* Effect.try({
+          try: () => validateSnapshotAcquisition(snapshot),
+          catch: (error) =>
+            error instanceof SkillsError
+              ? error
+              : fail("STATE_CORRUPT", "Invalid frozen snapshot acquisition."),
+        })
         for (const file of snapshot.files) {
           if (!/^[a-f0-9]{64}$/.test(file.sha256))
             return yield* Effect.fail(fail("STATE_CORRUPT", "Snapshot object identity is invalid."))
+          // A frozen raw acquisition is a complete manifest fact, not a claim
+          // that its bytes are local. Selected/full readers verify actual bytes.
+          if (deferred.has(file.path)) continue
           const bytes = yield* readBytes(`objects/${file.sha256}`)
           const hash = yield* crypto.digest("SHA-256", bytes)
           if (
@@ -270,7 +281,8 @@ export const StoreLive = Layer.effect(
             })
             yield* validateObjects(snapshot)
             // File publication precedes pointer registration. A crash can leave an unreferenced file,
-            // never a committed successful snapshot whose objects have not been made durable.
+            // Materialized document objects are durable; declared raw acquisition
+            // locations may remain unavailable locally until explicitly selected.
             yield* writeBytes(key, new TextEncoder().encode(JSON.stringify(value)))
             const bytes = yield* readBytes(key)
             const canonical = yield* Effect.try({

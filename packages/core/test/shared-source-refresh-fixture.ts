@@ -1,4 +1,5 @@
 import { Effect } from "effect"
+import type { HttpClient } from "effect/http"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Notion } from "../src/notion.ts"
 import { property, SkillsError } from "../src/model.ts"
@@ -46,9 +47,14 @@ export const definition: SourceDefinitionInput = {
 }
 const encode = (s: string) => new TextEncoder().encode(s)
 export async function sourceRefreshFixture(
-  options: { nativeMain?: string; definition?: SourceDefinitionInput; member?: string } = {},
+  options: {
+    nativeMain?: string
+    definition?: SourceDefinitionInput
+    member?: string
+    httpClient?: HttpClient.HttpClient
+  } = {},
 ) {
-  const f = sharedSnapshotFixture({ fileCount: 2 })
+  const f = sharedSnapshotFixture({ fileCount: 2, httpClient: options.httpClient })
   if (options.nativeMain !== undefined) f.bodies.set(skillPage, options.nativeMain)
   await f.open()
   const relatedPages: Record<string, unknown>[] = []
@@ -83,7 +89,7 @@ export async function sourceRefreshFixture(
     in_trash: false,
     properties,
   }
-  const snapshot: SourceSnapshot = {
+  let snapshot: SourceSnapshot = {
     revision: "a".repeat(40),
     provenance: { provider: "git" },
     members: [
@@ -195,7 +201,12 @@ export async function sourceRefreshFixture(
     ...f,
     run,
     source,
-    snapshot,
+    get snapshot() {
+      return snapshot
+    },
+    replaceSnapshot: (next: SourceSnapshot) => {
+      snapshot = structuredClone(next)
+    },
     acquire,
     relatedPages,
     hooks,

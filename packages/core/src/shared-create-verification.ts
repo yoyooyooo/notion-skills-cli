@@ -30,7 +30,7 @@ export function verifySharedCreatedSnapshot(
   const expected = [...input.expected_files].sort((left, right) =>
     left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
   )
-  const migration = input.expected_migration
+  const migration = input.expected_migration ?? input.expected_source_projection
   const expectedPaths = migration?.consumed_paths ?? expected.map((file) => file.path)
   const exactInitialEvents =
     migration === undefined ||

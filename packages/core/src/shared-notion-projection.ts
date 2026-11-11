@@ -2,8 +2,16 @@ import { Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { normalizeObservedBody } from "./shared-file-state.ts"
 import { assertNotionInlineBoundary } from "./shared-notion-inline-boundary.ts"
+import {
+  projectNotionMarkdownV9,
+  projectNotionMarkdownV10,
+  projectNotionMarkdownV12,
+  projectNotionMarkdownV13,
+} from "./shared-notion-document-spacing.ts"
 import { projectNativeTextBreaks } from "./shared-notion-text-breaks.ts"
+import { projectNativeHeadingLiterals } from "./shared-notion-literal-text.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
+import { compatibleImportMarkdown } from "./shared-import-markdown.ts"
 import {
   projectNotionMarkdownV2,
   projectNotionMarkdownV4,
@@ -77,6 +85,30 @@ const ProjectionV8Schema = Schema.Struct({
   ...ProjectionV7Schema.fields,
   version: Schema.Literal(8),
 })
+const ProjectionV9Schema = Schema.Struct({
+  ...ProjectionV8Schema.fields,
+  version: Schema.Literal(9),
+})
+const ProjectionV10Schema = Schema.Struct({
+  ...ProjectionV9Schema.fields,
+  version: Schema.Literal(10),
+})
+const ProjectionV11Schema = Schema.Struct({
+  ...ProjectionV10Schema.fields,
+  version: Schema.Literal(11),
+})
+const ProjectionV12Schema = Schema.Struct({
+  ...ProjectionV11Schema.fields,
+  version: Schema.Literal(12),
+})
+const ProjectionV13Schema = Schema.Struct({
+  ...ProjectionV12Schema.fields,
+  version: Schema.Literal(13),
+})
+const ProjectionV14Schema = Schema.Struct({
+  ...ProjectionV13Schema.fields,
+  version: Schema.Literal(14),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
@@ -86,9 +118,16 @@ export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV6Schema,
   ProjectionV7Schema,
   ProjectionV8Schema,
+  ProjectionV9Schema,
+  ProjectionV10Schema,
+  ProjectionV11Schema,
+  ProjectionV12Schema,
+  ProjectionV13Schema,
+  ProjectionV14Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
+export const currentSharedNotionMarkdownVersion = 13
 
 export const SharedNotionMarkdownPolicySchema = Schema.Union([
   Schema.Struct({
@@ -146,10 +185,52 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(9),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(10),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(11),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(12),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(13),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(14),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
 /** Retained policies keep their exact bytes. New writes predict independently
- * observed literal underscores and bare Notion page-link canonicalization. */
+ * observed literal text escaping and bare Notion page-link canonicalization. */
 export function projectSharedNotionMarkdown(
   input: string,
   options: {
@@ -176,19 +257,43 @@ export function projectSharedNotionMarkdown(
     removed_terminal_lfs: normalized.length - markdown.length,
   } as const
   if (options.version === 1) return { version: 1, ...common }
-  const version = options.version ?? 8
+  const version = options.version ?? currentSharedNotionMarkdownVersion
+  if (version === 14) {
+    if (options.purpose !== "data_source_create")
+      throw fail(
+        "SHARED_MARKDOWN_PROJECTION_INVALID",
+        "Readback acceptance is an import policy, not an existing-body overwrite policy.",
+      )
+    return {
+      version,
+      ...common,
+      purpose: "data_source_create",
+      wire_markdown: compatibleImportMarkdown(markdown),
+    }
+  }
   if (version >= 3) assertNotionInlineBoundary(markdown)
   const purpose = options.purpose ?? "body_write"
   const projected =
-    version >= 5
-      ? projectNotionMarkdownV5(markdown, purpose)
-      : version === 4
-        ? projectNotionMarkdownV4(markdown, purpose)
-        : projectNotionMarkdownV2(markdown, purpose)
+    version >= 13
+      ? projectNotionMarkdownV13(markdown, purpose)
+      : version >= 12
+        ? projectNotionMarkdownV12(markdown, purpose)
+        : version >= 10
+          ? projectNotionMarkdownV10(markdown, purpose)
+          : version === 9
+            ? projectNotionMarkdownV9(markdown, purpose)
+            : version >= 5
+              ? projectNotionMarkdownV5(markdown, purpose)
+              : version === 4
+                ? projectNotionMarkdownV4(markdown, purpose)
+                : projectNotionMarkdownV2(markdown, purpose)
   const text =
     version >= 6
-      ? projectNativeTextBreaks(projected.markdown, { literalUnderscores: version >= 7 })
+      ? projectNativeTextBreaks(projected.markdown, {
+          literalEscapes: version >= 10 ? "markdown" : version >= 7 ? "underscores" : "none",
+        })
       : projected.markdown
+  const body = version >= 11 ? projectNativeHeadingLiterals(text) : text
   return {
     version,
     ...common,
@@ -196,11 +301,11 @@ export function projectSharedNotionMarkdown(
     wire_markdown: projected.wire,
     markdown:
       version >= 8
-        ? mapMarkdownLinks(text, (href) => {
+        ? mapMarkdownLinks(body, (href) => {
             const page = /^https:\/\/www\.notion\.so\/([a-f0-9]{32})$/u.exec(href)?.[1]
             return page === undefined ? href : `https://app.notion.com/p/${page}`
           })
-        : text,
+        : body,
   }
 }
 

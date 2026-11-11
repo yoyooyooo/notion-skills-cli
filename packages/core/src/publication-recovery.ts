@@ -1233,7 +1233,7 @@ export function recoverPublication<A extends object, E extends SkillsError, R>(
                 if (!skip)
                   yield* session.notion.request(intent.path, intent.body, { method: intent.method })
               }
-              const files: { path: string; bytes: Uint8Array }[] = []
+              const files: Array<PortableSkill["files"][number]> = []
               for (const file of receipt.portable.files) {
                 const bytes = yield* store.readBytes(`objects/${file.sha256}`)
                 if ((yield* sha256(bytes)) !== file.sha256)
@@ -1242,7 +1242,11 @@ export function recoverPublication<A extends object, E extends SkillsError, R>(
                       path: file.path,
                     }),
                   )
-                files.push({ path: file.path, bytes })
+                files.push({
+                  path: file.path,
+                  bytes,
+                  ...(file.mode === undefined ? {} : { mode: file.mode }),
+                })
               }
               if (!options.modeOnly)
                 yield* session.run(

@@ -5,7 +5,7 @@ import { decode, fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
-import type { FileEvent } from "../src/shared-file-state.ts"
+import type { FileEvent, NativeFileMetadata } from "../src/shared-file-state.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { prepareSharedBodyWrite } from "../src/shared-body-write.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
@@ -103,12 +103,13 @@ export interface Remote {
   initial: FileEvent
   support?: { page_id: string; file_id: string; path: string; markdown: string }
 }
-function remote(markdown = original): Remote {
+function remote(markdown = original, metadata: NativeFileMetadata = {}): Remote {
   const normalized = markdown.replace(/\r\n/g, "\n")
   const content = {
     object_id: `body-${hash(normalized)}`,
     sha256: hash(normalized),
     bytes: new TextEncoder().encode(normalized).byteLength,
+    ...metadata,
   }
   const event: FileEvent = {
     event_id: "initial-custom",

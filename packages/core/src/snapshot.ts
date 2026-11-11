@@ -207,6 +207,10 @@ function openSnapshot(
   options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
   view: SnapshotView = "generated",
   allowBundleCache = false,
+  selectedFiles?: {
+    readonly requestedPaths: readonly string[]
+    readonly requestedFileIds?: readonly string[]
+  },
 ) {
   return Effect.gen(function* () {
     const startedAt = yield* Clock.currentTimeMillis
@@ -226,6 +230,7 @@ function openSnapshot(
         startedAt,
         forceFull: Boolean(options.refresh) || options.maxAge === 0,
         readOnly: options.sharedReadOnly,
+        ...selectedFiles,
       })
     let skill: NotionPageRecord
     let scope: string
@@ -268,6 +273,7 @@ function openSnapshot(
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
           readOnly: options.sharedReadOnly,
+          ...selectedFiles,
         })
       }
       skill = yield* Effect.try({
@@ -280,9 +286,10 @@ function openSnapshot(
       scope = directory.scope
       const resolved = yield* Effect.try({
         try: () =>
-          isCurrentNameTarget({ selector })
+          observation.exactSharedRecords.get(selector) ??
+          (isCurrentNameTarget({ selector })
             ? resolveCatalogReference(selector, directory).record
-            : resolveRecord(selector, directory),
+            : resolveRecord(selector, directory)),
         catch: (error) => error as SkillsError,
       })
       if (resolved.locator.type === "notion_subscription")
@@ -313,6 +320,7 @@ function openSnapshot(
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
           readOnly: options.sharedReadOnly,
+          ...selectedFiles,
         })
       }
       skill = yield* Effect.try({
@@ -786,8 +794,7 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
     entrypoint: snapshot.entrypoint,
     ref: snapshotFileRef(snapshot, snapshot.entrypoint),
     files: snapshot.files.map((f) => ({
-      path: f.path,
-      bytes: f.bytes,
+      ...f,
       ref: snapshotFileRef(snapshot, f.path),
     })),
     ...(snapshot.source ? { source: snapshot.source } : {}),
@@ -895,46 +902,17 @@ function acquireTargetSnapshot(
     let snapshot: ObservedSnapshot
     let files: readonly { readonly path: string; readonly bytes: Uint8Array }[] | undefined
     if (target.snapshot) {
-      if (access !== "all") {
-        const selected = yield* openFixedSnapshotFiles(target.snapshot, select, options)
-        snapshot = {
-          ...selected.snapshot,
-          source: "local_snapshot",
-          freshness: {
-            policy: "pinned",
-            ...(selected.access_denied === undefined ? {} : { stale: true }),
-          },
-          materialization: selectedMaterialization(selected.snapshot, selected.files),
-        }
-        files = selected.files
-      } else {
-        const complete = yield* loadSnapshotManifest(target.snapshot).pipe(
-          Effect.flatMap((manifest) =>
-            Effect.gen(function* () {
-              const accessDenied = yield* assertKnownSnapshotAccess(manifest, options.offline)
-              yield* validateSnapshot(manifest)
-              return { manifest, accessDenied }
-            }),
-          ),
-          Effect.result,
-        )
-        if (complete._tag === "Success")
-          snapshot = {
-            ...complete.success.manifest,
-            source: "local_snapshot",
-            freshness: {
-              policy: "pinned",
-              ...(complete.success.accessDenied === undefined ? {} : { stale: true }),
-            },
-          }
-        else {
-          if (complete.failure.code !== "SNAPSHOT_MISSING")
-            return yield* Effect.fail(complete.failure)
-          const retained = yield* openRetainedSnapshot(target.snapshot, select, options)
-          if (retained === undefined) return yield* Effect.fail(complete.failure)
-          snapshot = retained
-        }
+      const selected = yield* openFixedSnapshotFiles(target.snapshot, select, options)
+      snapshot = {
+        ...selected.snapshot,
+        source: "local_snapshot",
+        freshness: {
+          policy: "pinned",
+          ...(selected.access_denied === undefined ? {} : { stale: true }),
+        },
+        materialization: selectedMaterialization(selected.snapshot, selected.files),
       }
+      files = selected.files
     } else {
       const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).read_max_age_ms
       const scopeResult = yield* locallySelectedScope(Boolean(options.offline)).pipe(Effect.result)
@@ -965,7 +943,7 @@ function acquireTargetSnapshot(
       const observedResult =
         scope && selected && !options.refresh
           ? yield* cachedRemoteObservation(selected, scope, {
-              ...(access === "all" ? {} : { access: "metadata" as const }),
+              access: "metadata" as const,
               offline: options.offline,
             }).pipe(Effect.result)
           : undefined
@@ -1006,7 +984,7 @@ function acquireTargetSnapshot(
           return yield* Effect.fail(
             fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
           )
-        if (access !== "all") {
+        if (access !== "all" || observed.snapshot.record.locator.type === "shared_skill") {
           const selected = yield* Effect.gen(function* () {
             const fixed = observed.stored_snapshot ?? observed.snapshot
             const paths = yield* Effect.try({
@@ -1079,6 +1057,17 @@ function acquireTargetSnapshot(
           options,
           view,
           !options.refresh && options.maxAge !== 0,
+          access === "all"
+            ? undefined
+            : {
+                requestedPaths:
+                  access === "target" && target.path && target.file_id === undefined
+                    ? [target.path]
+                    : [],
+                ...(access === "target" && target.file_id !== undefined
+                  ? { requestedFileIds: [target.file_id] }
+                  : {}),
+              },
         ).pipe(
           Effect.tapError((error) =>
             Effect.gen(function* () {
@@ -1126,6 +1115,14 @@ function acquireTargetSnapshot(
             maxAge,
             online.freshness?.validation === "metadata",
           ),
+        }
+        if (access !== "all" && snapshot.record.locator.type === "shared_skill") {
+          const selected = yield* openFixedSnapshotFiles(snapshot, select, options)
+          files = selected.files
+          snapshot = {
+            ...snapshot,
+            materialization: selectedMaterialization(selected.snapshot, selected.files),
+          }
         }
       }
     }
@@ -1252,12 +1249,23 @@ function readSkillContent(input: string, options: ReadOptions) {
         try: () => parseTarget(resolved),
         catch: (error) => error as SkillsError,
       })
-      acquired =
+      if (
         target.snapshot === containing.snapshot_id &&
-        target.selector === parseTarget(fileRef(containing.record.id, "")).selector &&
-        containing.materialization === undefined
-          ? { snapshot: containing, files: undefined }
-          : yield* acquireTargetSnapshot(target, options, "generated", "target")
+        target.selector === parseTarget(fileRef(containing.record.id, "")).selector
+      ) {
+        const selected = yield* openFixedSnapshotFiles(
+          containing,
+          (manifest) => [boundSnapshotPath(manifest, target) || manifest.entrypoint],
+          { offline: options.offline },
+        )
+        acquired = {
+          snapshot: {
+            ...containing,
+            materialization: selectedMaterialization(selected.snapshot, selected.files),
+          },
+          files: selected.files,
+        }
+      } else acquired = yield* acquireTargetSnapshot(target, options, "generated", "target")
     } else {
       target = yield* Effect.try({
         try: () => parseTarget(input, options.path),
@@ -1381,8 +1389,7 @@ export function listSkill(
     return {
       ...snapshotInfo(snapshot),
       files: files.map((f) => ({
-        path: f.path,
-        bytes: f.bytes,
+        ...f,
         ref: snapshotFileRef(snapshot, f.path),
       })),
     }

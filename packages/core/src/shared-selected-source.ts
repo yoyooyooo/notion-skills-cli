@@ -134,6 +134,7 @@ export function planSelectedSharedSource(
           path: file.path,
           bytes: file.bytes,
           identity: { kind: "sha256" as const, sha256: file.sha256 },
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
         })),
         local_paths: [],
         materialize: (paths: readonly string[]) =>
@@ -153,6 +154,7 @@ export function planSelectedSharedSource(
           path: file.path,
           bytes: file.bytes,
           identity: { kind: "sha256" as const, sha256: file.sha256 },
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
         })),
         local_paths: [],
         materialize: (paths: readonly string[]) =>
@@ -178,7 +180,12 @@ export function planSelectedSharedSource(
         manifest: binding.files.map((file) => ({
           path: file.path,
           bytes: file.bytes,
-          identity: { kind: "git" as const, git_oid: file.git_oid },
+          identity: {
+            kind: "git" as const,
+            git_oid: file.git_oid,
+            ...(file.sha256 === undefined ? {} : { sha256: file.sha256 }),
+          },
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
         })),
         local_paths: [],
         materialize: (paths: readonly string[]) =>
@@ -188,7 +195,11 @@ export function planSelectedSharedSource(
               yield* localContentRestrictedHashes(materialized.map((file) => file.sha256)),
             )
             return {
-              files: materialized.map((file) => ({ path: file.path, bytes: file.bytes })),
+              files: materialized.map((file) => ({
+                path: file.path,
+                bytes: file.bytes,
+                ...(file.mode === undefined ? {} : { mode: file.mode }),
+              })),
               local_paths: materialized
                 .filter((file) => restricted.has(file.sha256))
                 .map((file) => file.path),

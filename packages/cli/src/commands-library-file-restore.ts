@@ -1,12 +1,15 @@
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 import { databaseId } from "../../core/src/catalog.ts"
-import { defineCommand } from "../../core/src/command-schema.ts"
+import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { fail } from "../../core/src/model.ts"
 import { pageId } from "../../core/src/ref.ts"
-import { restoreSelectedSharedFile } from "../../core/src/shared-file-restore.ts"
+import {
+  reconcileSelectedSharedFileRestore,
+  restoreSelectedSharedFile,
+} from "../../core/src/shared-file-restore.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
-import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
+import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 
 export const libraryFileRestoreCommand = defineCommand(
   "restore-follow",
@@ -26,9 +29,26 @@ export const libraryFileRestoreCommand = defineCommand(
       "allow-local-archive",
       "Authorize retaining this exact local source file in shared Notion records",
     ),
+    reconcile: switchFlag(
+      "reconcile",
+      "Read the exact original restore outcome without writes; requires --operation",
+    ),
+    operation: singleton(
+      "operation",
+      "Exact original body-write-follow operation ID for --reconcile",
+    ),
   },
-  ({ target, path, entry, dryRun, allowLocalArchive }) =>
+  ({ target, path, entry, dryRun, allowLocalArchive, reconcile, operation }) =>
     Effect.gen(function* () {
+      const operationId = Option.getOrUndefined(operation)
+      if (dryRun && reconcile)
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "--dry-run and --reconcile are mutually exclusive."),
+        )
+      if (reconcile !== (operationId !== undefined))
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "Use --reconcile with exactly one --operation."),
+        )
       const selected = pageId(target)
       if (!selected)
         return yield* Effect.fail(
@@ -38,6 +58,15 @@ export const libraryFileRestoreCommand = defineCommand(
           ),
         )
       const library = yield* loadSharedLibrary(yield* databaseId(entry))
+      if (reconcile && operationId !== undefined)
+        return yield* emit(
+          yield* reconcileSelectedSharedFileRestore({
+            library,
+            skillPageId: selected,
+            path,
+            operationId,
+          }),
+        )
       yield* emit(
         yield* restoreSelectedSharedFile({
           library,
@@ -49,7 +78,8 @@ export const libraryFileRestoreCommand = defineCommand(
       )
     }),
 ).pipe(
+  withConstraints([exclusiveFlags(["dryRun", "reconcile"])]),
   Command.withDescription(
-    "Explicitly release a whole-file customization and follow the source currently selected in Notion. Resolves exact immutable Git or composed source bytes; moved files use their retained original source path. Retains the previous complete custom body, writes once with a complete old-body match, and requires an exact result plus fresh current read. Does not select a newer source, infer a same-named local replacement, replay an unknown operation, or silently share local resource bytes. Native Notion body writes support UTF-8 Markdown; binary content fails before mutation.",
+    "Prepare or restore one whole file to the exact source currently selected in Notion; moved files keep their original source path. --dry-run freezes the complete current body and fixed-source candidate. A differing body uses one nonempty complete old-string match, retaining custom history before dispatch. This is not page revision CAS: unmatched edits remain and any warning or differing full readback prevents following ownership. An identical body needs no body PATCH. Repeated already-following state is unchanged. --reconcile --operation reads only the original plan/outcome; it never replays unknown writes or infers completion from current text. Selection, unrelated files and relations remain independent; binary content and unauthorized local archives fail before mutation.",
   ),
 )

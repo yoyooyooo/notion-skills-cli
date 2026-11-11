@@ -35,7 +35,11 @@ const scope = digest(
   JSON.stringify(["fixture-user", "", "https://api.notion.com", "controlled-credential"]),
 )
 const binary = new Uint8Array([0, 255, 1, 2, 128, 13, 10])
-async function fixture(retained = false, large = false) {
+async function fixture(
+  retained = false,
+  large = false,
+  modes: Readonly<Record<string, NonNullable<Snapshot["files"][number]["mode"]>>> = {},
+) {
   const f = sharedSnapshotFixture({ fileCount: 1 })
   const original = await f.open()
   const largeBytes = new Uint8Array(SHARED_HISTORY_CHUNK_BYTES * 81)
@@ -59,6 +63,7 @@ async function fixture(retained = false, large = false) {
       path: file.path,
       bytes: file.bytes.length,
       sha256: digest(file.bytes),
+      ...(modes[file.path] === undefined ? {} : { mode: modes[file.path] }),
     })),
   ]
   const version = digest(canonicalSharedJson(files))
@@ -178,6 +183,87 @@ describe("fixed resource batch", () => {
     const warm = ready(await f.run(readResources(f.input(), { offline: true })))
     expect(warm).toEqual(result)
     expect(f.calls).toHaveLength(0)
+  })
+
+  test.each([false, true])(
+    "known file modes bind exact CRLF and binary bytes while legacy unknown remains absent (retained=%s)",
+    async (retained) => {
+      const f = await fixture(retained, false, {
+        "references/bom.txt": "100755",
+        "assets/raw.bin": "100644",
+      })
+      const input = f.input(["references/bom.txt", "assets/raw.bin", "empty.txt"])
+      const result = ready(await f.run(readResources(input)))
+      expect(result.files[0]).toMatchObject({
+        mode: "100755",
+        encoding: "utf8",
+        content: "\uFEFF第一行\r\nSecond line\r\n",
+        sha256: digest(f.resources[1]!.bytes),
+      })
+      expect(result.files[1]).toMatchObject({
+        mode: "100644",
+        encoding: "base64",
+        content: Buffer.from(binary).toString("base64"),
+        sha256: digest(binary),
+      })
+      expect(Object.hasOwn(result.files[2]!, "mode")).toBe(false)
+      expect(
+        await f.run(decodeResourceReadResult(JSON.parse(JSON.stringify(result)), input)),
+      ).toEqual(result)
+
+      const { mode: _knownMode, ...withoutMode } = result.files[0]!
+      const mutations = [
+        { index: 0, file: { ...result.files[0]!, mode: "100644" } },
+        { index: 0, file: withoutMode },
+        { index: 2, file: { ...result.files[2]!, mode: "100644" } },
+      ]
+      for (const mutation of mutations) {
+        const proof = await f.run(
+          decodeResourceReadResult(
+            {
+              ...result,
+              files: result.files.map((file, index) =>
+                index === mutation.index ? mutation.file : file,
+              ),
+            },
+            input,
+          ).pipe(Effect.result),
+        )
+        expect(proof._tag).toBe("Failure")
+        if (proof._tag === "Failure") expect(proof.failure.code).toBe("RESOURCE_INVALID_PROOF")
+      }
+      f.clearCalls()
+      expect(ready(await f.run(readResources(input, { offline: true })))).toEqual(result)
+      expect(f.calls).toHaveLength(0)
+    },
+  )
+
+  test("retained frozen modes cannot be changed, removed or invented under an existing snapshot identity", async () => {
+    const f = await fixture(true, false, { "references/bom.txt": "100755" })
+    const known = f.snapshot.files.find((file) => file.path === "references/bom.txt")!
+    const unknown = f.snapshot.files.find((file) => file.path === "empty.txt")!
+    const { mode: _knownMode, ...withoutMode } = known
+    const mutations = [
+      { ...known, mode: "100644" as const },
+      withoutMode,
+      { ...unknown, mode: "100644" as const },
+    ]
+    for (const mutation of mutations) {
+      const snapshot: Snapshot = {
+        ...f.snapshot,
+        files: f.snapshot.files.map((file) => (file.path === mutation.path ? mutation : file)),
+      }
+      f.json.set("snapshots/" + snapshot.snapshot_id + ".json", snapshot)
+      const saved = await f.run(
+        registerRetainedSnapshot(scope, library, f.plan!.pin_id, f.plan!.manifest).pipe(
+          Effect.result,
+        ),
+      )
+      expect(saved._tag).toBe("Failure")
+      if (saved._tag === "Failure") expect(saved.failure.code).toBe("STATE_CORRUPT")
+    }
+    expect(f.calls).toHaveLength(0)
+    expect(f.objectReads.size).toBe(0)
   })
 
   test("stable File identity corrects an old path hint and duplicate aliases fail before any bytes", async () => {

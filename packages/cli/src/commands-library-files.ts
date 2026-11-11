@@ -19,6 +19,15 @@ import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryFileRestoreCommand } from "./commands-library-file-restore.ts"
 import { libraryFileReviewCommand } from "./commands-library-file-review.ts"
 import { libraryFileAcceptCurrentCommand } from "./commands-library-file-accept-current.ts"
+import { libraryFileTakeoverCommand } from "./commands-library-file-takeover.ts"
+import {
+  libraryFileDisplayCommand,
+  libraryFileDisplaySchemaCommand,
+} from "./commands-library-file-display.ts"
+import {
+  libraryFileRequestCommand,
+  libraryFileRequestSchemaCommand,
+} from "./commands-library-file-request.ts"
 
 const entry = requiredSingleton("entry", "Exact shared library entry ID, URL or registered alias")
 const target = Argument.String("target").pipe(
@@ -182,7 +191,7 @@ const add = defineCommand(
     ),
 ).pipe(
   Command.withDescription(
-    "Create one supporting File with a stable File ID and one native body page. Validates the complete fresh tree, portable paths and deterministic local Markdown links/images before dispatch. The original plan is durable before one page create; an uncertain response is never replayed. Existing file identities and tombstones cannot be overwritten. --dry-run emits the exact reviewable plan without remote writes.",
+    "Create one supporting File with a stable File ID and one native body page. A complete YAML header, including license metadata, is retained exactly outside the editable body and restored in snapshots and exports. Validates the complete fresh tree, portable paths and deterministic local Markdown links/images before dispatch. The original plan is durable before one page create; an uncertain response is never replayed. Existing file identities and tombstones cannot be overwritten. --dry-run emits the exact reviewable plan without remote writes.",
   ),
 )
 
@@ -264,6 +273,11 @@ export const libraryFilesCommand = defineCommand("file").pipe(
     move,
     reconcile,
     libraryFileRestoreCommand,
+    libraryFileTakeoverCommand,
+    libraryFileRequestSchemaCommand,
+    libraryFileRequestCommand,
+    libraryFileDisplaySchemaCommand,
+    libraryFileDisplayCommand,
     libraryFileReviewCommand,
     libraryFileAcceptCurrentCommand,
   ]),

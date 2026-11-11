@@ -7,6 +7,7 @@ import { normalizePath } from "./ref.ts"
 export interface ImportFile {
   readonly path: string
   readonly bytes: Uint8Array
+  readonly mode?: "100644" | "100755"
 }
 const MAX_BYTES = 128 * 1024 * 1024
 const MAX_FILES = 10_000
@@ -44,7 +45,10 @@ export function readImportZip(bytes: Uint8Array): ImportFile[] {
     const directoryEnd = offset + view.getUint32(end + 12, true)
     if (directoryEnd !== end) throw fail("INVALID_ARCHIVE", "Invalid ZIP directory bounds.")
     const seen = new Set<string>()
-    const expected = new Map<string, { path: string; size: number; crc: number }>()
+    const expected = new Map<
+      string,
+      { path: string; size: number; crc: number; mode?: ImportFile["mode"] }
+    >()
     let total = 0
     let at = offset
     for (let index = 0; index < count; index++) {
@@ -70,7 +74,15 @@ export function readImportZip(bytes: Uint8Array): ImportFile[] {
       const size = view.getUint32(at + 24, true)
       total += size
       if (total > MAX_BYTES) throw fail("ARCHIVE_TOO_LARGE", "ZIP exceeds 128 MiB expanded.")
-      if (!raw.endsWith("/")) expected.set(raw, { path, size, crc: view.getUint32(at + 16, true) })
+      if (!raw.endsWith("/"))
+        expected.set(raw, {
+          path,
+          size,
+          crc: view.getUint32(at + 16, true),
+          ...(view.getUint8(at + 5) === 3 && kind === 0x8000
+            ? { mode: mode & 0o111 ? "100755" : "100644" }
+            : {}),
+        })
       at = next
     }
     if (at !== directoryEnd)
@@ -93,7 +105,11 @@ export function readImportZip(bytes: Uint8Array): ImportFile[] {
         for (const byte of data) crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff]!
         if ((crc ^ 0xffffffff) >>> 0 !== file.crc)
           throw fail("INVALID_ARCHIVE", "ZIP entry checksum mismatch.", { path: file.path })
-        return { path: file.path, bytes: data }
+        return {
+          path: file.path,
+          bytes: data,
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
+        }
       })
       .sort((a, b) => a.path.localeCompare(b.path))
   } catch (error) {
@@ -185,7 +201,11 @@ export function loadImport(input: string) {
         total += bytes.length
         if (total > MAX_BYTES)
           return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Directory exceeds 128 MiB."))
-        files.push({ path: normalizePath(name.split(path.sep).join("/")), bytes })
+        files.push({
+          path: normalizePath(name.split(path.sep).join("/")),
+          bytes,
+          mode: stat.mode & 0o111 ? "100755" : "100644",
+        })
       }
       return { kind: "directory" as const, files }
     }

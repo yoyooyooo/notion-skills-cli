@@ -54,7 +54,13 @@ export const PublicationSupersedePlanSchema = Schema.Struct({
   scope: Schema.String,
   database_id: Schema.String,
   data_source_id: Schema.String,
-  frozen_files: Schema.Array(Schema.Struct({ path: Schema.String, sha256: Hash })),
+  frozen_files: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      sha256: Hash,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+    }),
+  ),
   expected_guards: Schema.Record(Schema.String, Schema.Unknown),
   owned_known_siblings: Schema.Array(Schema.String),
   discovery: CreationDiscoverySchema,
@@ -91,7 +97,11 @@ function frozen(receipt: Receipt) {
       const bytes = yield* store.readBytes(`objects/${file.sha256}`)
       if ((yield* sha256(bytes)) !== file.sha256)
         return yield* refusal("An original frozen source object changed or is corrupt.")
-      files.push({ path: file.path, bytes })
+      files.push({
+        path: file.path,
+        bytes,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
+      })
     }
     return { ...receipt.portable, files }
   })

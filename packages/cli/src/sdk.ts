@@ -274,6 +274,7 @@ export function readSkill(
         from: options.from,
         lines: options.lines,
         output: options.output,
+        authoring: options.authoring,
         refresh: options.refresh,
         offline: options.offline,
         maxAge: options.maxAge,

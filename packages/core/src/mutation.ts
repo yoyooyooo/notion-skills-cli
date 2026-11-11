@@ -974,14 +974,19 @@ export function resumePreparedPublication<R, E>(
   bounds: PreparedPublicationRecovery<R, E>,
   options: PublicationOptions = {},
 ) {
-  return recoverPreparedPublication(operationId, bounds, options, false, (session, baseline) =>
-    executePublicationDocument(
-      bounds.portable,
-      { ...options, database: notionPage(bounds.baseline.record).locator.database_id },
-      "replace",
-      session,
-      baseline,
-    ).pipe(Effect.provideService(Notion, session.notion)),
+  return recoverPreparedPublication(
+    operationId,
+    bounds,
+    options,
+    false,
+    (session, baseline, portable) =>
+      executePublicationDocument(
+        portable,
+        { ...options, database: notionPage(bounds.baseline.record).locator.database_id },
+        "replace",
+        session,
+        baseline,
+      ).pipe(Effect.provideService(Notion, session.notion)),
   )
 }
 

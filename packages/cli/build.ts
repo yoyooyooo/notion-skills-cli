@@ -15,7 +15,7 @@ if (args.length) {
   await mkdir(target)
 }
 for (const [entry, name] of [
-  ["main", "ntn-skills"],
+  ["launcher", "ntn-skills"],
   ["sdk", "sdk"],
 ]) {
   const result = await Bun.build({

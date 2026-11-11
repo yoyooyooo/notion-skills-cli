@@ -49,9 +49,10 @@ export type SharedSourcePlan = {
 export type SourcePlanFile = {
   readonly path: string
   readonly bytes: number
+  readonly mode?: "100644" | "100755"
   readonly identity:
     | { readonly kind: "sha256"; readonly sha256: string }
-    | { readonly kind: "git"; readonly git_oid: string }
+    | { readonly kind: "git"; readonly git_oid: string; readonly sha256?: string }
 }
 
 export type SourcePlanInspection = {
@@ -101,6 +102,8 @@ const GitSourceSchema = Schema.Struct({
       source_path: Schema.String,
       git_oid: Schema.String,
       bytes: Schema.Number,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+      sha256: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
     }),
   ),
 })
@@ -271,12 +274,18 @@ function resourceManifest(resource: SourcePlanResource): readonly SourcePlanFile
     ? resource.source.files.map((file) => ({
         path: file.path,
         bytes: file.bytes,
-        identity: { kind: "git", git_oid: file.git_oid },
+        identity: {
+          kind: "git",
+          git_oid: file.git_oid,
+          ...(file.sha256 === undefined ? {} : { sha256: file.sha256 }),
+        },
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
       }))
     : resource.manifest.files.map((file) => ({
         path: file.path,
         bytes: file.bytes,
         identity: { kind: "sha256", sha256: file.sha256 },
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
       }))
 }
 
@@ -520,6 +529,7 @@ export function materializeSharedSourcePlan(
       sourceTree(base, mounts).map((file) => ({
         path: file.path,
         bytes: new Uint8Array(file.bytes),
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
       })),
     )
     if (

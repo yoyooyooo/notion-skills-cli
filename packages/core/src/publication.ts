@@ -229,7 +229,11 @@ export function beginPublication(
     for (const file of portable.files) {
       const hash = yield* sha256(file.bytes)
       yield* store.writeBytes(`objects/${hash}`, file.bytes)
-      files.push({ path: file.path, sha256: hash })
+      files.push({
+        path: file.path,
+        sha256: hash,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
+      })
     }
     return yield* publicationSession(
       {

@@ -509,9 +509,18 @@ export const makeSqliteRequestScheduler = (
                 if (rows.length !== 1 || typeof at !== "number" || !Number.isFinite(at))
                   return yield* Effect.fail(schedulerError(undefined))
                 if (at > current) return { admitted: false, at } as const
-                for (const scope of scopes)
-                  yield* sql`UPDATE request_schedule SET next_start_ms=${current + scope.interval} WHERE credential=${scope.key}`
                 if (claim) yield* sql`DELETE FROM request_waiters WHERE id=${claim.pending.id}`
+                const intervals = sql.join(
+                  " ",
+                  false,
+                )(scopes.map((scope) => sql`WHEN ${scope.key} THEN ${scope.interval}`))
+                // Preparation must not consume the next request's interval. Keep the
+                // freshly sampled budget update as the transaction's final write.
+                const admittedAt = Math.max(current, yield* Clock.currentTimeMillis)
+                yield* sql`UPDATE request_schedule SET next_start_ms=${admittedAt} + CASE credential ${intervals} END WHERE ${sql.in(
+                  "credential",
+                  scopes.map((scope) => scope.key),
+                )}`
                 return { admitted: true } as const
               }),
             ),

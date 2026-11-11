@@ -20,21 +20,21 @@ import {
 } from "../../core/src/shared-github-source.ts"
 import { registerSourceBinding } from "../../core/src/shared-source-binding.ts"
 import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
-import {
-  FileEventSchema,
-  notionWriteCapabilities,
-  resolveFileState,
-} from "../../core/src/shared-file-state.ts"
+import { notionWriteCapabilities } from "../../core/src/shared-file-state.ts"
+import { inspectSharedResourceState } from "../../core/src/shared-resource-state.ts"
+import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
 import { querySharedSkillIndex } from "../../core/src/shared-skill-index.ts"
 import { Notion } from "../../core/src/notion.ts"
-import { querySharedRecords } from "../../core/src/shared-records.ts"
-import { decode, fail, property, SkillsError, SnapshotSchema } from "../../core/src/model.ts"
+import { fail, property, SkillsError, SnapshotSchema } from "../../core/src/model.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { emit, singleton, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryMigrationCommand } from "./commands-library-migration.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { libraryRelationsCommand } from "./commands-library-relations.ts"
 import { libraryGraphCommand } from "./commands-library-graph.ts"
+import { libraryAuditCommand } from "./commands-library-audit.ts"
+import { libraryResourceCommand } from "./commands-library-resource.ts"
+import { libraryInventoryCommand } from "./commands-library-inventory.ts"
 
 const initialize = defineCommand(
   "init",
@@ -121,62 +121,52 @@ const state = defineCommand(
   {
     target: Argument.String("target"),
     entry: requiredSingleton("entry", "Exact shared library database entry"),
+    observe: switchFlag(
+      "observe",
+      "Read exact current bodies and original-operation evidence without adopting, reconciling or writing",
+    ),
+    candidate: singleton(
+      "candidate",
+      "Optional complete frozen JSON plan from ctl library sources prepare; no provider refresh",
+    ),
+    sessionPin: singleton(
+      "session-pin",
+      "Optional exact retained snapshot- ID supplied by the caller's session; current selection remains independent",
+    ),
   },
-  ({ target, entry }) =>
+  ({ target, entry, observe, candidate, sessionPin }) =>
     Effect.gen(function* () {
       const library = yield* loadSharedLibrary(entry)
-      const index = yield* querySharedSkillIndex(library, target)
-      const facts = yield* querySharedRecords(library, {
-        skillPageId: index.page_id,
-        kind: "file_event",
-      })
-      const states = yield* Effect.try({
-        try: () => {
-          const events = facts.map((fact) => {
-            const event = decode(FileEventSchema, fact.payload)
-            if (fact.entity_id !== event.file_id || fact.record_id !== event.event_id)
-              throw fail(
-                "SHARED_STATE_SCOPE",
-                "A file event disagrees with its shared record identity.",
-              )
-            return event
-          })
-          const bindings = [index.main, ...index.files]
-          const currentIds = new Set(bindings.map((binding) => binding.file_id))
-          return {
-            files: bindings.map((binding) => {
-              const selected = events.filter((event) => event.file_id === binding.file_id)
-              return {
-                file_id: binding.file_id,
-                path: binding.path,
-                page_id: binding.page_id,
-                resolution: selected.length
-                  ? resolveFileState(binding.file_id, selected)
-                  : { kind: "uninitialized" as const },
-              }
-            }),
-            unbound_file_ids: [...new Set(events.map((event) => event.file_id))].filter(
-              (id) => !currentIds.has(id),
-            ),
-          }
-        },
-        catch: (error) =>
-          error instanceof SkillsError
-            ? error
-            : fail("SHARED_STATE_INVALID", "The shared file facts could not be decoded."),
-      })
-      yield* emit({
-        library_id: library.library_id,
-        skill_id: index.skill_id,
-        skill_page_id: index.page_id,
-        ...states,
-        metadata_only: true,
-        request_metrics: (yield* Notion).requestMetrics?.(),
-      })
-    }),
+      const candidatePath = Option.getOrUndefined(candidate)
+      const frozen =
+        candidatePath === undefined
+          ? undefined
+          : yield* Effect.gen(function* () {
+              const content = yield* (yield* FileSystem.FileSystem)
+                .readFileString(candidatePath)
+                .pipe(
+                  Effect.mapError(() =>
+                    fail("INVALID_ARGUMENT", "The frozen candidate file could not be read."),
+                  ),
+                )
+              return yield* Effect.try({
+                try: (): unknown => JSON.parse(content),
+                catch: () =>
+                  fail("INVALID_ARGUMENT", "The frozen candidate file must be valid JSON."),
+              })
+            })
+      yield* emit(
+        yield* inspectSharedResourceState(library, {
+          target,
+          observe,
+          candidate: frozen,
+          sessionPin: Option.getOrUndefined(sessionPin),
+        }),
+      )
+    }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Rebuild file ownership from Notion's shared immutable facts without reading current bodies or local file state. Missing baselines remain uninitialized; incompatible event heads fail explicitly. This inspection does not change ownership or restore following.",
+    "Inspect Source origin, exact selected base, recorded page projection, custom ancestry and an explicitly supplied session pin as separate facts. Default inspection reads metadata, shared operation headers and local pending receipts; current bodies and unresolved operation payloads stay unobserved. --observe reads exact bodies and supported original-operation evidence without adopting or reconciling. --candidate validates an existing complete sources prepare plan without fetching newer provider content. --session-pin inspects an exact retained snapshot manifest without loading its byte objects or claiming the session has selected it automatically. Missing facts, inaccessible bodies and unsupported operation families remain explicit. The whole call runs with semantic read-only Notion capability; it never changes page content, selection, ownership or schema.",
   ),
 )
 
@@ -391,6 +381,9 @@ export const libraryCommand = defineCommand("library").pipe(
     inspect,
     files,
     state,
+    libraryAuditCommand,
+    libraryResourceCommand,
+    libraryInventoryCommand,
     sources,
     librarySourceDefinitionsCommand,
     snapshots,

@@ -3,6 +3,7 @@ import { assertKnownSnapshotAccess, validateSnapshot, validateSnapshotManifest }
 import { fail, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
 import { openRetainedSnapshotFiles } from "./shared-history-materialization.ts"
 import { sharedSnapshotFrozenTree } from "./shared-history-workflow.ts"
+import { materializeSharedFixedAcquisition } from "./shared-fixed-acquisition.ts"
 import { sha256, Store } from "./store.ts"
 
 const checked = <A>(action: () => A) =>
@@ -122,7 +123,12 @@ export function openFixedSnapshotFiles(
         )
       bytesByPath.set(path, bytes)
     }
-    if (missing.length) {
+    if (missing.length && snapshot.shared_acquisition !== undefined) {
+      const acquired = yield* materializeSharedFixedAcquisition(snapshot, missing, options)
+      for (const file of acquired) bytesByPath.set(file.path, file.bytes)
+    }
+    const stillMissing = missing.filter((path) => !bytesByPath.has(path))
+    if (stillMissing.length) {
       const retained = yield* openRetainedSnapshotFiles(
         snapshot.snapshot_id,
         (manifest) => {
@@ -136,7 +142,7 @@ export function openFixedSnapshotFiles(
               "STATE_CORRUPT",
               "The retained manifest conflicts with the immutable local snapshot.",
             )
-          return missing
+          return stillMissing
         },
         options,
       )

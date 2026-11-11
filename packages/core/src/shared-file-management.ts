@@ -14,11 +14,19 @@ import {
   decideObservedBody,
   FileEventSchema,
   normalizeObservedBody,
+  isResourceFollowing,
   resolveFileState,
+  nativeMetadataForOwnership,
+  nativeFileMetadata,
   type FileEvent,
+  type RetainedContent,
   type ResolvedFileState,
 } from "./shared-file-state.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
+import {
+  nativeSupportingMarkdown,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
 import { loadPendingSharedObservationPlans } from "./shared-observation-operation.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import {
@@ -37,6 +45,11 @@ import {
   type SharedPendingFileScope,
 } from "./shared-pending-file-operations.ts"
 import { sha256, Store } from "./store.ts"
+import type { SharedResourceAuthoringPlan } from "./shared-resource-authoring-model.ts"
+import {
+  loadPendingSharedResourceAuthoring,
+  reconcileSharedResourceAuthoring,
+} from "./shared-resource-authoring-recovery.ts"
 import {
   projectSharedNotionMarkdown,
   sharedNotionMarkdownWire,
@@ -244,9 +257,13 @@ function snapshotTree(snapshot: Snapshot) {
     yield* validateSnapshot(snapshot)
     const store = yield* Store
     return yield* Effect.forEach(snapshot.files, (file) =>
-      store
-        .readBytes(`objects/${file.sha256}`)
-        .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
+      store.readBytes(`objects/${file.sha256}`).pipe(
+        Effect.map((bytes) => ({
+          path: file.path,
+          bytes,
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
+        })),
+      ),
     )
   })
 }
@@ -256,7 +273,10 @@ function proposedTree(
     readonly action: SharedFileManagementPlan["action"]
     readonly path: string
     readonly destination_path: string | null
-    readonly content: { readonly markdown: string }
+    readonly content: {
+      readonly markdown: string
+      readonly retained?: RetainedContent
+    }
     readonly entrypoint: string
   },
 ) {
@@ -270,7 +290,15 @@ function proposedTree(
       )
     candidate = [
       ...files,
-      { path: input.path, bytes: new TextEncoder().encode(input.content.markdown) },
+      {
+        path: input.path,
+        bytes: new TextEncoder().encode(
+          nativeSupportingMarkdown(
+            input.content.markdown,
+            nativeFileMetadata(input.content.retained ?? {}),
+          ),
+        ),
+      },
     ]
   } else {
     if (!files.some((file) => file.path === input.path))
@@ -344,6 +372,7 @@ function checkSnapshotIdentity(
       required: snapshot.required,
       file_bindings: snapshot.file_bindings,
       native_references: snapshot.native_references,
+      shared_acquisition: snapshot.shared_acquisition,
       source:
         index.source_reference === ""
           ? null
@@ -425,7 +454,9 @@ function assertFreshEvidence(
       state.ownership.kind === "custom"
         ? state.ownership.content.sha256
         : state.ownership.kind === "following"
-          ? state.ownership.projection.sha256
+          ? isResourceFollowing(state.ownership)
+            ? snapshot.files.find((file) => file.path === binding.path)?.sha256
+            : state.ownership.projection.sha256
           : undefined
     if (expected !== file.body_sha256)
       throw fail(
@@ -447,6 +478,96 @@ function pendingRemote(library: SharedLibrary, context: Context) {
     const written = yield* loadPendingSharedBodyWrites(library, input)
     const managed = yield* loadPendingSharedFileManagement(library, input)
     return [...observed, ...written, ...managed]
+  })
+}
+
+/** Shared complete-tree proof for non-body lifecycle authors. This is read-only;
+ * callers still retain their own original plan and inspect pending operations. */
+export function inspectSharedFileManagementContext(library: SharedLibrary, snapshot: Snapshot) {
+  return Effect.gen(function* () {
+    const locator = snapshot.record.locator
+    if (locator.type !== "shared_skill")
+      return yield* Effect.fail(
+        fail("CONTENT_NOT_MUTABLE", "File management requires a shared Skill."),
+      )
+    const scope = yield* authScope
+    const context = yield* currentContext(library, locator.page_id)
+    const states = yield* managementChecked(() => resolved(context))
+    const now = yield* Clock.currentTimeMillis
+    const evidence = yield* managementChecked(() =>
+      assertFreshEvidence(snapshot, library, context, states, scope, now),
+    )
+    yield* checkSnapshotIdentity(library, snapshot, context, states, evidence.source_revision)
+    return {
+      ...context,
+      states,
+      evidence,
+      scope,
+      journal: yield* scopeFor(scope, library, context.index.skill_id, locator.page_id),
+      tree: yield* snapshotTree(snapshot),
+      metadata_sha256: yield* metadataDigest(context.index),
+      events_sha256: yield* eventDigest(context.events),
+      tree_sha256: yield* sha256(canonicalSharedJson(snapshot.files)),
+      pending: yield* pendingRemote(library, context),
+    }
+  })
+}
+
+/** Recheck the exact frozen snapshot/frontier before dispatch, never substitute
+ * a current tree or infer completion from matching bytes. */
+export function revalidateSharedFileManagementContext(
+  library: SharedLibrary,
+  input: {
+    readonly library_id: string
+    readonly skill_id: string
+    readonly skill_page_id: string
+    readonly snapshot_id: string
+    readonly snapshot_version_id: string
+    readonly snapshot_scope: string
+    readonly source_revision: string
+    readonly metadata_sha256: string
+    readonly events_sha256: string
+    readonly tree_sha256: string
+  },
+) {
+  return Effect.gen(function* () {
+    const scope = yield* authScope
+    if (library.library_id !== input.library_id || scope !== input.snapshot_scope)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_MANAGEMENT_SCOPE",
+          "The original operation belongs to another library or authentication scope.",
+        ),
+      )
+    const snapshot = yield* (yield* Store).readJson(
+      `snapshots/${input.snapshot_id}.json`,
+      SnapshotSchema,
+    )
+    const context = yield* currentContext(library, input.skill_page_id)
+    if (
+      snapshot === undefined ||
+      snapshot.scope !== scope ||
+      snapshot.version_id !== input.snapshot_version_id ||
+      context.index.skill_id !== input.skill_id ||
+      (yield* metadataDigest(context.index)) !== input.metadata_sha256 ||
+      (yield* eventDigest(context.events)) !== input.events_sha256 ||
+      (yield* sha256(canonicalSharedJson(snapshot.files))) !== input.tree_sha256
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_MANAGEMENT_STALE",
+          "The original snapshot, binding, metadata or file frontier changed after planning.",
+        ),
+      )
+    const states = yield* managementChecked(() => resolved(context))
+    yield* checkSnapshotIdentity(library, snapshot, context, states, input.source_revision)
+    return {
+      ...context,
+      states,
+      snapshot,
+      tree: yield* snapshotTree(snapshot),
+      pending: yield* pendingRemote(library, context),
+    }
   })
 }
 
@@ -525,11 +646,14 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       )
     let before: FrozenWriteBody | null = null
     let creationProjection: SharedNotionMarkdownProjection | null = null
+    let supportingHeader: string | undefined
     let fileId: string, current: ResolvedFileState | undefined
     let markdown: string
     if (input.action === "add") {
+      const document = splitNativeSupportingMarkdown(input.markdown)
+      supportingHeader = document.frontmatter
       creationProjection = yield* managementChecked(() =>
-        projectSharedNotionMarkdown(input.markdown, { purpose: "data_source_create" }),
+        projectSharedNotionMarkdown(document.body, { purpose: "data_source_create" }),
       )
       markdown = creationProjection.markdown
       fileId = `file-${yield* sha256(canonicalSharedJson([input.library.library_id, locator.skill_id, input.snapshot.version_id, path, yield* sha256(input.markdown)]))}`
@@ -545,6 +669,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
           ),
         )
       before = yield* readBody(binding.page_id)
+      before = { ...before, ...nativeMetadataForOwnership(current.ownership) }
       if (
         (yield* managementChecked(() =>
           decideObservedBody(current!.ownership, before!.fingerprint),
@@ -565,6 +690,8 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       object_id: `body-${hash}`,
       sha256: hash,
       bytes: new TextEncoder().encode(markdown).byteLength,
+      ...nativeMetadataForOwnership(current?.ownership),
+      ...(supportingHeader === undefined ? {} : { frontmatter: supportingHeader }),
     }
     const content = { markdown, retained }
     const checkedTree = yield* managementChecked(() =>
@@ -633,6 +760,9 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       reference_check: checkedTree.check,
       before,
       creation_projection: creationProjection,
+      ...(input.action === "add" && supportingHeader !== undefined
+        ? { creation_input: input.markdown }
+        : {}),
       content,
       event,
     })
@@ -903,9 +1033,11 @@ export function loadSharedFileManagementPlan(
 /** Exact original-operation facts only. Matching current bytes never authorize replay or success. */
 export function reconcileSharedFileManagement(
   library: SharedLibrary,
-  input: SharedFileManagementPlan,
+  input: SharedFileManagementPlan | SharedResourceAuthoringPlan,
 ) {
   return Effect.gen(function* () {
+    if (input.kind === "resource_authoring")
+      return yield* reconcileSharedResourceAuthoring(library, input)
     const plan = yield* validateSharedFileManagementPlan(input)
     const scope = yield* authScope
     if (library.library_id !== plan.library_id)
@@ -1260,12 +1392,14 @@ export function loadPendingSharedFileManagement(
 ) {
   return Effect.gen(function* () {
     const headers = input.headers ?? (yield* querySharedOperationIndex(library, input.skillPageId))
+    const resources = yield* loadPendingSharedResourceAuthoring(library, { ...input, headers })
     const candidates = headers.filter(
       (header) =>
         header.record_id.startsWith("file-management-") &&
         header.entity_id !== fileManagementOutcomesEntity,
     )
-    if (candidates.length === 0) return [] as readonly SharedFileManagementPlan[]
+    if (candidates.length === 0)
+      return resources as readonly (SharedFileManagementPlan | SharedResourceAuthoringPlan)[]
     const byId = new Map(headers.map((header) => [header.record_id, header]))
     const outcomes = new Map<string, Outcome>()
     if (headers.some((header) => header.entity_id === fileManagementOutcomesEntity)) {
@@ -1370,7 +1504,7 @@ export function loadPendingSharedFileManagement(
         )
       plans.push(plan)
     }
-    return plans.sort((left, right) =>
+    return [...plans, ...resources].sort((left, right) =>
       left.operation_id < right.operation_id ? -1 : left.operation_id > right.operation_id ? 1 : 0,
     )
   })

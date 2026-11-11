@@ -116,7 +116,12 @@ export function sharedSnapshotFrozenTree(value: Snapshot | SharedSnapshotManifes
     ...(value.router_members === undefined ? {} : { router_members: value.router_members }),
     files: [...value.files]
       .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
-      .map((file) => ({ path: file.path, bytes: file.bytes, sha256: file.sha256 })),
+      .map((file) => ({
+        path: file.path,
+        bytes: file.bytes,
+        sha256: file.sha256,
+        ...(file.mode === undefined ? {} : { mode: file.mode }),
+      })),
   })
 }
 
@@ -406,6 +411,7 @@ function historicalSnapshotManifest(scope: string, manifest: SharedSnapshotManif
             path: file.path,
             sha256: file.sha256,
             bytes: file.bytes,
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
           })),
         }),
       ))

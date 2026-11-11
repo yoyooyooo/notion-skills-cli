@@ -246,9 +246,13 @@ function recoveryError(
  * permission to resend any POST. A verified plan is not proof that a later step
  * was never dispatched before a crash.
  */
-export function commitSharedObservationPlan(
+export function commitSharedObservationPlan<R = never>(
   library: SharedLibrary,
-  input: { readonly mode: "create" | "reconcile"; readonly plan: SharedObservationPlan },
+  input: {
+    readonly mode: "create" | "reconcile"
+    readonly plan: SharedObservationPlan
+    readonly beforeEventWrite?: Effect.Effect<void, SkillsError, R>
+  },
 ) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedObservationPlan(input.plan)
@@ -276,6 +280,8 @@ export function commitSharedObservationPlan(
       entityId: content.object_id,
       payload: retainedObservationBody(plan.body),
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "object")))
+    if (input.mode === "create" && input.beforeEventWrite !== undefined)
+      yield* input.beforeEventWrite
     yield* appendSharedRecord(library, {
       mode: input.mode,
       recordId: plan.event.event_id,

@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import type { SharedCreatePlan } from "./shared-create-model.ts"
+import { sharedCreateFiles, type SharedCreatePlan } from "./shared-create-model.ts"
 import type { SharedCreateBinding } from "./shared-create-outcome.ts"
 import { Store } from "./store.ts"
 
@@ -91,7 +91,7 @@ export function saveSharedCreateOwnership(
 ) {
   return Effect.gen(function* () {
     const root = bindings.find((binding) => binding.path === plan.entrypoint)
-    if (!root || bindings.length !== plan.files.length)
+    if (!root || bindings.length !== sharedCreateFiles(plan).length)
       return yield* Effect.fail(
         fail(
           "OWNERSHIP_RECEIPT_INVALID",

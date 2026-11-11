@@ -283,7 +283,13 @@ export const PublicationReceiptSchema = Schema.Struct({
     description: Schema.String,
     main: Schema.String,
     files: Schema.mutable(
-      Schema.Array(Schema.Struct({ path: Schema.String, sha256: Schema.String })),
+      Schema.Array(
+        Schema.Struct({
+          path: Schema.String,
+          sha256: Schema.String,
+          mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+        }),
+      ),
     ),
   }),
   guards: Schema.mutableKey(Schema.Record(Schema.String, Schema.mutableKey(Schema.Unknown))),

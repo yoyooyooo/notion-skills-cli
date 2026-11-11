@@ -1,11 +1,13 @@
+import { sourceRecoveryCommand } from "./commands-library-source-recovery.ts"
 import {
   attachSourceLibrary,
   initializeSourceLibrary,
 } from "../../core/src/shared-sources-library.ts"
-import { Effect, FileSystem, Option } from "effect"
+import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
-import { defineCommand } from "../../core/src/command-schema.ts"
-import { fail } from "../../core/src/model.ts"
+import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
+import { fail, property } from "../../core/src/model.ts"
+import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import {
   readSourceDefinition,
@@ -22,30 +24,39 @@ import {
 } from "../../core/src/shared-source-adapters.ts"
 import {
   prepareSourceRefresh,
+  sourceRefreshPin,
   applySourceRefresh,
   reconcileSourceRefresh,
   reviewSourceMembers,
 } from "../../core/src/shared-source-refresh.ts"
+import {
+  prepareSourceRefreshBatch,
+  runSourceRefreshBatch,
+} from "../../core/src/shared-source-batch.ts"
 import { exportPortable } from "../../core/src/export.ts"
 import { assertSharedFileReferences } from "../../core/src/shared-file-references.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { Store } from "../../core/src/store.ts"
 import { Notion } from "../../core/src/notion.ts"
+import {
+  sourceRunCommand,
+  sourceRunStatusCommand,
+  sourceRunListCommand,
+  sourceRequestBudgets,
+  parseSourceBudget,
+} from "./commands-library-source-run.ts"
+import { withSourceUpdateLock } from "../../core/src/shared-source-policy.ts"
+import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
+import { readSourceJson as input } from "./command-source-input.ts"
+import {
+  sourceAdmitCommand,
+  sourceAdmitApplyCommand,
+  sourceAdmitReconcileCommand,
+  sourceMemberPrepareCommand,
+  sourceMemberApplyCommand,
+  sourceMemberReconcileCommand,
+} from "./commands-library-source-members.ts"
 const entry = requiredSingleton("entry", "Exact shared Skills database with Sources attached")
-function input(path: string) {
-  return Effect.gen(function* () {
-    const raw = yield* (yield* FileSystem.FileSystem)
-      .readFileString(path)
-      .pipe(
-        Effect.mapError(() =>
-          fail("SOURCE_INPUT_UNAVAILABLE", "Cannot read the selected source JSON input."),
-        ),
-      )
-    if (Buffer.byteLength(raw) > 48 * 1024 * 1024)
-      return yield* Effect.fail(fail("SOURCE_INPUT_TOO_LARGE", "Source input exceeds 48 MiB."))
-    return yield* sourceChecked(() => JSON.parse(raw) as unknown)
-  })
-}
 const list = defineCommand("list", { entry }, ({ entry }) =>
   Effect.gen(function* () {
     const library = yield* loadSharedLibrary(entry)
@@ -101,12 +112,12 @@ const put = defineCommand(
     Effect.gen(function* () {
       const raw = yield* input(args.input)
       const definition = yield* sourceChecked(() => validateSourceDefinition(raw))
+      const library = yield* loadSharedLibrary(args.entry)
+      const action = putSourceDefinition(library, definition, args.expected, args.dryRun)
       yield* emit(
-        yield* putSourceDefinition(
-          yield* loadSharedLibrary(args.entry),
-          definition,
-          args.expected,
-          args.dryRun,
+        yield* withSourceUpdateLock(
+          library,
+          args.dryRun ? action.pipe(withReadOnlyNotion) : action,
         ),
       )
     }),
@@ -127,7 +138,14 @@ const bind = defineCommand(
   },
   (args) =>
     Effect.gen(function* () {
-      yield* emit(yield* bindSourceDefinition(yield* loadSharedLibrary(args.entry), args))
+      const library = yield* loadSharedLibrary(args.entry)
+      const action = bindSourceDefinition(library, args)
+      yield* emit(
+        yield* withSourceUpdateLock(
+          library,
+          args.dryRun ? action.pipe(withReadOnlyNotion) : action,
+        ),
+      )
     }),
 ).pipe(
   Command.withDescription(
@@ -214,31 +232,76 @@ const prepare = defineCommand(
   {
     source: Argument.String("source"),
     entry,
-    target: requiredSingleton("target", "Exact already-bound Skill page"),
+    target: singleton("target", "Exact already-bound Skill page; exclusive with --all-bound"),
+    allBound: switchFlag("all-bound", "Freeze every enabled Skill bound to this exact Source"),
+    storage: singleton(
+      "storage",
+      "auto, fixed-git, or retained; auto uses unchanged complete public GitHub trees directly",
+    ),
     output: requiredSingleton("output", "New or identical frozen plan JSON"),
   },
-  ({ source, entry, target, output }) =>
+  ({ source, entry, target, allBound, storage, output }) =>
     Effect.gen(function* () {
-      const plan = yield* prepareSourceRefresh(yield* loadSharedLibrary(entry), source, target)
+      const selected = Option.getOrUndefined(target)
+      if ((selected !== undefined) === allBound)
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "Choose exactly one of --target or --all-bound."),
+        )
+      const policy = Option.getOrElse(storage, () => "auto")
+      if (policy !== "auto" && policy !== "fixed-git" && policy !== "retained")
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "Choose auto, fixed-git, or retained storage."),
+        )
+      const library = yield* loadSharedLibrary(entry)
+      const plan = allBound
+        ? yield* prepareSourceRefreshBatch(library, source, undefined, policy)
+        : yield* prepareSourceRefresh(library, source, selected ?? "", undefined, policy)
       yield* (yield* Store).output(
         output,
         new TextEncoder().encode(JSON.stringify(plan, null, 2) + "\n"),
       )
-      yield* emit({
-        plan_id: plan.plan_id,
-        output,
-        member: plan.member,
-        provider_revision: plan.provider_revision,
-        source_pin: plan.bundle_id,
-        projected_files: plan.projected_files,
-        custom_files_preserved: plan.custom_files_preserved,
-        member_review: plan.member_review,
-        remote_writes: 0,
-      })
-    }),
+      yield* emit(
+        plan.kind === "source_refresh_batch"
+          ? {
+              plan_id: plan.plan_id,
+              output,
+              provider_revision: plan.provider_revision,
+              member_review: plan.member_review,
+              membership: plan.membership,
+              items: plan.plans.map((item) => ({
+                plan_id: item.plan_id,
+                target_page_id: item.target_page_id,
+                member: item.member,
+                source_pin: sourceRefreshPin(item),
+                storage: item.version === 4 ? "fixed_git" : "retained",
+                projected_files: item.projected_files,
+                custom_files_preserved: item.custom_files_preserved,
+              })),
+              remote_writes: 0,
+              request_metrics: (yield* Notion).requestMetrics?.(),
+            }
+          : {
+              plan_id: plan.plan_id,
+              output,
+              member: plan.member,
+              provider_revision: plan.provider_revision,
+              source_pin: sourceRefreshPin(plan),
+              storage: plan.version === 4 ? "fixed_git" : "retained",
+              projected_files: plan.projected_files,
+              custom_files_preserved: plan.custom_files_preserved,
+              member_review: plan.member_review,
+              remote_writes: 0,
+              request_metrics: (yield* Notion).requestMetrics?.(),
+            },
+      )
+    }).pipe(withReadOnlyNotion),
 ).pipe(
+  withConstraints([
+    { kind: "exactly_one", flags: ["target", "allBound"] },
+    { kind: "allowed_values", flag: "storage", values: ["auto", "fixed-git", "retained"] },
+  ]),
   Command.withDescription(
-    "Freeze a complete provider revision and preview one member against current native ownership; no remote writes.",
+    "Freeze one provider revision for one --target or --all-bound enabled Skills, preserving current ownership and complete membership; no remote writes.",
   ),
 )
 const apply = defineCommand(
@@ -246,20 +309,47 @@ const apply = defineCommand(
   {
     plan: Argument.String("plan"),
     entry,
+    ...sourceRequestBudgets,
     dryRun: switchFlag(
       "dry-run",
       "Recheck the exact frozen plan without retaining or selecting content",
     ),
   },
-  ({ plan, entry, dryRun }) =>
+  (args) =>
     Effect.gen(function* () {
-      yield* emit(
-        yield* applySourceRefresh(yield* loadSharedLibrary(entry), yield* input(plan), dryRun),
+      const frozen = yield* input(args.plan)
+      const limits = yield* parseSourceBudget(args)
+      const { result, budget } = yield* withSourceCommandBudget(
+        Effect.gen(function* () {
+          const library = yield* loadSharedLibrary(args.entry)
+          if (property(frozen).kind === "source_refresh_batch") {
+            const result = yield* withSourceUpdateLock(
+              library,
+              runSourceRefreshBatch(library, frozen, { mode: "apply", dryRun: args.dryRun }),
+            )
+            if (result.status === "partial")
+              return yield* Effect.fail(
+                fail(
+                  "SOURCE_BATCH_PARTIAL",
+                  "Some original member operations need review.",
+                  result,
+                ),
+              )
+            return result
+          }
+          const action = applySourceRefresh(library, frozen, args.dryRun)
+          return yield* withSourceUpdateLock(
+            library,
+            args.dryRun ? action.pipe(withReadOnlyNotion) : action,
+          )
+        }),
+        limits,
       )
+      yield* emit({ ...result, budget })
     }),
 ).pipe(
   Command.withDescription(
-    "Recheck one frozen source/member plan, retain its complete bundle and explicitly select it using the existing guarded Source journal. Preserves custom bodies and old pins.",
+    "Apply the exact frozen member or Source batch through existing original-operation journals. Partial results retain every member outcome; no multi-page atomicity or body overwrite is claimed.",
   ),
 )
 const init = defineCommand("init", { entry }, ({ entry }) =>
@@ -292,13 +382,23 @@ const attach = defineCommand(
 )
 const reconcile = defineCommand(
   "reconcile",
-  { plan: Argument.String("plan"), entry },
-  ({ plan, entry }) =>
+  { plan: Argument.String("plan"), entry, ...sourceRequestBudgets },
+  (args) =>
     Effect.gen(function* () {
-      yield* emit(
-        yield* reconcileSourceRefresh(yield* loadSharedLibrary(entry), yield* input(plan)),
+      const frozen = yield* input(args.plan)
+      const limits = yield* parseSourceBudget(args)
+      const { result, budget } = yield* withSourceCommandBudget(
+        Effect.gen(function* () {
+          const library = yield* loadSharedLibrary(args.entry)
+          if (property(frozen).kind === "source_refresh_batch")
+            return yield* runSourceRefreshBatch(library, frozen, { mode: "reconcile" })
+          return yield* reconcileSourceRefresh(library, frozen)
+        }),
+        limits,
       )
-    }),
+      yield* emit({ ...result, budget })
+      if ("status" in result && result.status === "partial") process.exitCode = 4
+    }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
     "Read the exact original refresh-selection outcome without repeating writes. A missing or unknown original selection is not replaced from current visibility.",
@@ -322,5 +422,15 @@ export const librarySourceDefinitionsCommand = defineCommand("sources").pipe(
     prepare,
     apply,
     reconcile,
+    sourceRunCommand,
+    sourceRunStatusCommand,
+    sourceRunListCommand,
+    sourceAdmitCommand,
+    sourceAdmitApplyCommand,
+    sourceAdmitReconcileCommand,
+    sourceRecoveryCommand,
+    sourceMemberPrepareCommand,
+    sourceMemberApplyCommand,
+    sourceMemberReconcileCommand,
   ]),
 )

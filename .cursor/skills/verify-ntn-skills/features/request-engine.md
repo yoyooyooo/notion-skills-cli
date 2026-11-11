@@ -124,6 +124,6 @@ bun test packages/core/test/notion.test.ts packages/core/test/shared-read-coales
 NG04_EVIDENCE="$NG04_EVIDENCE" node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/notion-request-scheduler.node.test.ts packages/core/test/notion-scheduler-multiprocess.node.test.ts --reporter=json --outputFile="$NG04_EVIDENCE/scheduler.json"
 ```
 
-保留短预算先到、长预算先到、同一有效预算共享三个观察，以及单 waiter/最后 waiter 取消、429/503、Retry-After、队列满载、未知写和崩溃恢复原例。NG04_EVIDENCE 必须为新 owned 外部目录；`cross-process-spacing.json` 在断言前保存每个 worker 的派发、server arrival 与完成时间。派发间隔仍至少325ms、六次派发跨度仍至少1650ms；逐请求需满足派发≤到达≤完成。服务器实际到达间隔原样记录，不能宣称它等于配置的发送间隔。调度器保证准入/派发预算，不保证操作系统与 HTTP 客户端首次初始化后的服务器匀速到达。
+保留短预算先到、长预算先到、同一有效预算共享三个观察，以及单 waiter/最后 waiter 取消、429/503、Retry-After、队列满载、未知写和崩溃恢复原例。NG04_EVIDENCE 必须为新 owned 外部目录；`cross-process-spacing.json` 在断言前保存已提交的准入预算，以及每个 worker 的派发、server arrival 与完成时间。三个 worker 经现有 ready/release 屏障，在 owned SQLite fixture 安装审计 trigger 后才开始请求；只取同一 credential scope 的六次 `next_start_ms` 更新，减去默认350ms得到准入时间。准入间隔至少350ms、六次准入跨度至少1750ms；逐请求仍需满足派发≤到达≤完成。保留原始派发和到达间隔诊断，以及后置延迟压缩派发间隔的受控回归。调度器保证准入预算；事务提交、OS 调度和 HTTP 客户端初始化可能延迟后续派发或到达，不能把这些时间点当作准入或宣称它们匀速间隔。
 
 默认消费不启动预取。可选 prefetch 仍限只读叶子并遵守既有预算，不能预取具有 adoption/retention 副作用的整个 current consume。当前 pending 请求共享、机器级 SQLite 准入和已有重试 owner 保持；没有同条件全任务收益证据时，不新增跨进程内容共享服务、后台 daemon 或另一层 retry。独立安装的 AbortSignal 门禁与真实 Pi Stop 各自验收，不能用内部 producer 取消代替 Agent 已停止或模型已收到正文。

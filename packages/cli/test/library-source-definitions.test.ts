@@ -84,6 +84,15 @@ test("all current Sources subcommands expose help without probing authentication
     "prepare",
     "apply",
     "reconcile",
+    "run",
+    "run-list",
+    "run-status",
+    "admit",
+    "admit-apply",
+    "admit-reconcile",
+    "member-prepare",
+    "member-apply",
+    "member-reconcile",
   ]) {
     const result = await f.invoke(["ctl", "library", "sources", name, "--help"])
     expect(result.exit, result.stderr).toBe(0)
@@ -99,6 +108,133 @@ test("Sources schema is available offline and prepare requires an explicit targe
   expect(result.stdout).toContain("target")
   expect(result.stdout).toContain("output")
 })
+
+test("acknowledged Source continuation has explicit offline review, apply and original reconciliation contracts", async () => {
+  const f = await isolated()
+  for (const name of ["review", "apply"]) {
+    const path = ["ctl", "library", "sources", "recovery", "continuation", name]
+    const help = await f.invoke([...path, "--help"])
+    expect(help.exit, help.stderr).toBe(0)
+    expect(help.online).toBe(false)
+    expect(help.stdout).toContain("plan")
+    expect(help.stdout).toContain("--entry")
+    expect(help.stdout).toContain(name === "review" ? "--target" : "--review-id")
+    const schema = await f.invoke(["schema", ...path])
+    expect(schema.exit, schema.stderr).toBe(0)
+    expect(schema.online).toBe(false)
+    expect(schema.stdout).toContain(name === "review" ? "output" : "dry-run")
+  }
+  const reconcile = await f.invoke(["ctl", "library", "sources", "recovery", "reconcile", "--help"])
+  expect(reconcile.exit, reconcile.stderr).toBe(0)
+  expect(reconcile.online).toBe(false)
+  for (const args of [
+    ["review", "original-plan.json", "--entry", "library"],
+    ["apply", "original-plan.json", "--entry", "library", "--review", "review.json"],
+  ]) {
+    const result = await f.invoke([
+      "ctl",
+      "library",
+      "sources",
+      "recovery",
+      "continuation",
+      ...args,
+    ])
+    expect(result.exit).not.toBe(0)
+    expect(result.online).toBe(false)
+  }
+}, 60_000)
+
+test("source invocation IDs and inventory command contracts are available offline in a real empty Node store", async () => {
+  const f = await isolated()
+  const runs = await f.invoke(["ctl", "library", "sources", "run-list"])
+  expect(runs.exit, runs.stderr).toBe(0)
+  expect(runs.online).toBe(false)
+  expect(JSON.parse(runs.stdout)).toMatchObject({
+    ok: true,
+    items: [],
+    offline: true,
+    remote_writes: 0,
+  })
+  for (const name of [
+    "local",
+    "remote",
+    "reconcile",
+    "review",
+    "prepare-import",
+    "apply-import",
+    "reconcile-import",
+  ]) {
+    const help = await f.invoke(["ctl", "library", "inventory", name, "--help"])
+    expect(help.exit, help.stderr).toBe(0)
+    expect(help.online).toBe(false)
+    const schema = await f.invoke(["schema", "ctl", "library", "inventory", name])
+    expect(schema.exit, schema.stderr).toBe(0)
+    expect(schema.online).toBe(false)
+  }
+}, 60_000)
+
+test("ambiguous Source/update/import intent fails before reading credentials or contacting a library", async () => {
+  const f = await isolated()
+  const entry = "00000000-0000-4000-8000-000000000001"
+  for (const argv of [
+    ["sources", "run", "source", "--entry", entry, "--all-bound", "--target", entry],
+    ["sources", "run", "source", "--entry", entry, "--all-bound", "--mode", "unknown"],
+    ["sources", "run", "source", "--entry", entry, "--all-bound", "--max-requests", "0"],
+    [
+      "sources",
+      "member-prepare",
+      "source",
+      "--entry",
+      entry,
+      "--target",
+      entry,
+      "--member",
+      "skills/new",
+      "--retain-removed",
+      "--output",
+      "plan.json",
+    ],
+    [
+      "inventory",
+      "prepare-import",
+      "--entry",
+      entry,
+      "--review",
+      "review",
+      "--entity",
+      "entity",
+      "--approve-manifest",
+      "a".repeat(64),
+      "--native",
+      "--source",
+      "source",
+      "--member",
+      "member",
+      "--output",
+      "plan.json",
+    ],
+    [
+      "inventory",
+      "prepare-import",
+      "--entry",
+      entry,
+      "--review",
+      "review",
+      "--entity",
+      "entity",
+      "--approve-manifest",
+      "a".repeat(64),
+      "--verify-existing",
+      "--enable",
+      "--output",
+      "plan.json",
+    ],
+  ]) {
+    const result = await f.invoke(["ctl", "library", ...argv])
+    expect(result.exit).not.toBe(0)
+    expect(result.online).toBe(false)
+  }
+}, 60_000)
 test("a complete Source configuration containing secrets is rejected before contacting Notion", async () => {
   const f = await isolated(),
     file = join(f.directory, "source.json")

@@ -12,9 +12,17 @@ bun run dev --help
 bun run check && bun run package:check
 ```
 
-Use `bun run dev <command>` to build the current sources and execute the freshly built CLI with Node.js. Successful builds stay silent; failed builds report diagnostics on stderr and stop the command. Argv and exit status pass through to the same production entrypoint used by the package. It uses the project's Effect HTTP engine and credential provider. The official SQLite driver uses `node:sqlite`; running the product through Bun is unsupported.
+Use `bun run scripts/dev.ts <command>` (or `bun run dev <command>`) to run the current TypeScript sources without building or touching `dist`. The thin Bun entry starts Node with a loader only for the existing Markdown text imports. Node executes the same command implementation, Effect HTTP engine and official SQLite driver as the npm package. Arguments, caller working directory, signals and exit status pass through; Bun does not open the production state database.
 
-A developer-owned global `ntn-skills` shim can use `exec bun run --silent "/absolute/checkout/scripts/dev.ts" "$@"`. Configure consumer hosts with `command: [ntn-skills]` and launch them in a neutral workspace outside the source checkout. The shim owns the implementation path; consumer prompts need only the public command and selected refs. See the [host integration contract](docs/host-integration.md).
+The normal npm `ntn-skills` executable contains the source-selection shim. With no override it runs its installed bundle, with no subprocess or package-manager lookup. An explicit absolute `NTN_SKILLS_DEV_ROOT` selects a checkout and executes `bun run "$NTN_SKILLS_DEV_ROOT/scripts/dev.ts"`; an invalid root fails rather than silently using another version. Unset the variable to return to the npm package. No dated release directories, alternate global wrappers or version manager are needed.
+
+```bash
+ntn-skills --version                         # installed npm package
+NTN_SKILLS_DEV_ROOT=/absolute/checkout ntn-skills --help
+bun run /absolute/checkout/scripts/dev.ts --help
+```
+
+This override is for CLI invocation, not the SDK embedded in a host plugin. Pi normally loads `npm:pi-context-broker` from its own npm package store; use its native package override for Broker development, rather than introducing another launcher. Source paths belong to the explicit development environment, never consumer prompts. See the [host integration contract](docs/host-integration.md).
 
 For repeatable live verification, read `.cursor/skills/verify-ntn-skills/SKILL.md` and its feature map in the source checkout. Its executable `control.ts` isolates credential config/state/cache and XDG bases, records real CLI actions/readback, and preserves evidence while moving owned scratch to system Trash. Builtin verification must also isolate HOME and `NTN_SKILLS_DATA_HOME`/`XDG_DATA_HOME` because installation defaults to shared Agent links. The map routes the [implemented sync/cache design](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/sync-cache-cli-design.md) to acceptance cases; definitions are not passing results. Live mutations need current authorization; npm excludes these repository-local files.
 

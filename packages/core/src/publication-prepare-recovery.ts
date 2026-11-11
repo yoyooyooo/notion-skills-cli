@@ -35,7 +35,11 @@ export function recoverPreparedPublication<
   bounds: PreparedPublicationRecovery<R, E>,
   options: PublicationOptions,
   acknowledgedContinuation = false,
-  continuation?: (session: Publication, baseline: Snapshot) => Effect.Effect<A, E2, R2>,
+  continuation?: (
+    session: Publication,
+    baseline: Snapshot,
+    portable: PortableSkill,
+  ) => Effect.Effect<A, E2, R2>,
 ) {
   return Effect.gen(function* () {
     yield* rejectPublicationSourceOverride(options)
@@ -84,9 +88,21 @@ export function recoverPreparedPublication<
               fail("PUBLICATION_LOCKED", "A live or unverifiable process owns this publication."),
             )
         }
+        const portable: PortableSkill = {
+          ...bounds.portable,
+          files: bounds.portable.files.map((file) => {
+            const original = receipt.portable.files.find((entry) => entry.path === file.path)
+            return original?.mode === undefined ? { path: file.path, bytes: file.bytes } : file
+          }),
+        }
         const files = []
-        for (const file of bounds.portable.files)
-          files.push({ path: file.path, sha256: yield* sha256(file.bytes) })
+        for (const file of portable.files) {
+          files.push({
+            path: file.path,
+            sha256: yield* sha256(file.bytes),
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
+          })
+        }
         if (
           canonical(receipt.portable) !==
           canonical({
@@ -118,7 +134,7 @@ export function recoverPreparedPublication<
             ),
           )
         // Existing integrity record must match; this call never changes an existing record.
-        yield* preparePublicationIntegrity(operationId, bounds.portable)
+        yield* preparePublicationIntegrity(operationId, portable)
         const executionBaseline = bounds.continuation_baseline ?? bounds.baseline
         if (bounds.continuation_baseline !== undefined) {
           if (
@@ -235,7 +251,7 @@ export function recoverPreparedPublication<
                 }),
               )
               yield* session.bind(locator, bounds.baseline.scope)
-              return yield* continuation(session, executionBaseline)
+              return yield* continuation(session, executionBaseline, portable)
             }),
           ),
         )

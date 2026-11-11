@@ -23,7 +23,7 @@ export function restoreSharedNativeFileLinks(
   path: string,
   files: readonly { readonly page_id: string; readonly path: string }[],
 ): string {
-  if (!/\.md$/iu.test(path)) return markdown
+  if (!/\.(?:md|markdown)$/iu.test(path)) return markdown
   return mapSharedMarkdownReferences(path, markdown, (reference) => {
     const href = reference.href
     if (href.startsWith("#") || href.startsWith("?")) return href

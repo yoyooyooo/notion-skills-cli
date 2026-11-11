@@ -15,6 +15,7 @@ import {
   sharedCreateManifestEntity,
 } from "./shared-create-model.ts"
 import type { SharedCreateOutcome } from "./shared-create-outcome.ts"
+import { readSharedCreateKnownCompletion } from "./shared-create-recovery-known-completion.ts"
 import {
   validateSharedCreateRecoveryReview,
   type SharedCreateRecoveryReview,
@@ -319,6 +320,23 @@ export function completedSharedCreateRecovery(
         containsBody,
       })
     const completionRow = yield* read(completionHeader)
+    if ([4, 5, 6].includes(Number(property(completionRow.payload).version))) {
+      const recovered = yield* readSharedCreateKnownCompletion(library, input)
+      if (
+        !recovered ||
+        recovered.review.bootstrap.kind !== "known_needs_review" ||
+        recovered.outcome.original_outcome_sha256 !== input.originalOutcomeHash ||
+        original.version !== 1 ||
+        original.status !== "needs_review" ||
+        original.reason_code !== "SHARED_CREATE_BODY_MISMATCH" ||
+        original.operation_id !== recovered.review.original_operation_id ||
+        original.skill_id !== recovered.review.skill_id ||
+        original.skill_page_id !== recovered.review.skill_page_id ||
+        !same(original.bindings, recovered.review.bindings)
+      )
+        return yield* Effect.fail(invalid("The recovery differs from the selected known failure."))
+      return true
+    }
     const completion = yield* createChecked(() =>
       Schema.decodeUnknownSync(SharedCreateRecoveryOutcomeSchema)(completionRow.payload, {
         onExcessProperty: "error",

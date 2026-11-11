@@ -7,6 +7,7 @@ import {
   Exit,
   FileSystem,
   Layer,
+  Option,
   Path,
   Schema,
   Semaphore,
@@ -23,6 +24,7 @@ import {
   type RequestPriority,
 } from "./notion-request-scheduler.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
+import { RequestBudget, withinRequestBudget } from "./request-budget.ts"
 import { createRequestMetrics, type RequestMetricsSnapshot } from "./request-metrics.ts"
 import { isCoalescibleNotionRead, makeSharedReadCoalescer } from "./shared-read-coalescing.ts"
 import {
@@ -73,6 +75,8 @@ export class Notion extends Context.Service<
     ) => Effect.Effect<unknown, SkillsError>
     readonly version: Effect.Effect<string, SkillsError>
     readonly credentialIdentity: Effect.Effect<string, SkillsError>
+    /** Static endpoint identity; reading it performs no authentication or HTTP request. */
+    readonly apiOrigin?: string
     readonly connectionIdentity?: Effect.Effect<NotionConnectionIdentity, SkillsError>
     /** Actual HTTP attempts; payload bytes exclude HTTP/TLS framing. */
     readonly requestMetrics?: () => RequestMetricsSnapshot
@@ -175,6 +179,7 @@ export const NotionTransport = Layer.effect(
       options?: NotionRequestOptions,
     ) =>
       Effect.gen(function* () {
+        const budget = Option.getOrUndefined(yield* Effect.serviceOption(RequestBudget))
         const method = options?.method ?? (body === undefined ? "GET" : "POST")
         const identity = credential.identity
         const mutating =
@@ -210,11 +215,16 @@ export const NotionTransport = Layer.effect(
             // A shared producer owns admission; incompatible queue budgets
             // cannot inherit the first waiter's timeout or deferred outcome.
             options?.queueBudgetMs ?? NOTION_ADMISSION_BUDGET_MS,
+            ...(budget === undefined ? [] : [budget.identity]),
             ...(options?.priority === "prefetch" ? ["prefetch", options.rateShare ?? 0.1] : []),
           ]),
         )
-        const deadline =
+        const operationDeadline =
           (yield* Clock.monotonicTimeNanos) + BigInt(NOTION_ADMISSION_BUDGET_MS) * 1_000_000n
+        const deadline =
+          budget !== undefined && budget.deadline < operationDeadline
+            ? budget.deadline
+            : operationDeadline
         const scheduleOptions = () => ({
           ...identities.get(identity),
           apiOrigin: origin,
@@ -226,6 +236,7 @@ export const NotionTransport = Layer.effect(
         let retryNotBefore: bigint | undefined
         const once = Effect.scoped(
           Effect.gen(function* () {
+            if (budget !== undefined) yield* budget.check
             const queuedAt = yield* Clock.monotonicTimeNanos
             let admitted = false
             let waitedForRetry = 0
@@ -240,7 +251,8 @@ export const NotionTransport = Layer.effect(
               if (retry > 0) metrics.wait(retry, "retry")
               metrics.wait(elapsed - retry, "queue")
             })
-            const attempt = Effect.gen(function* () {
+            const unbudgetedAttempt = Effect.gen(function* () {
+              if (budget !== undefined) yield* budget.admit(prepared.requestBytes)
               admitted = true
               yield* recordWait
               const finish = metrics.begin({
@@ -252,6 +264,7 @@ export const NotionTransport = Layer.effect(
                 target: prepared.target,
               })
               let responseBytes: number | undefined
+              let budgetResponseBytes = 0
               let observed: ReturnType<typeof notionResponseDetails> | undefined
               return yield* Effect.gen(function* () {
                 const response = yield* sendNotionRequest({
@@ -261,9 +274,12 @@ export const NotionTransport = Layer.effect(
                   observe: (metadata, bytes) => {
                     observed = metadata
                     responseBytes = bytes
+                    budget?.responseBytes(bytes - budgetResponseBytes)
+                    budgetResponseBytes = bytes
                   },
                 }).pipe(
                   Effect.timeout(timeoutMs),
+                  (effect) => (budget === undefined ? effect : withinRequestBudget(effect, budget)),
                   Effect.mapError((error) => {
                     const cause =
                       error instanceof SkillsError
@@ -337,12 +353,23 @@ export const NotionTransport = Layer.effect(
                 ),
               )
             })
+            const attempt =
+              budget === undefined ? unbudgetedAttempt : budget.withPermit(unbudgetedAttempt)
             return yield* scheduler
               .withAdmission(identity, deadline, permits, attempt, {
                 ...scheduleOptions(),
                 onWait: observedWait,
               })
-              .pipe(Effect.onExit(() => (admitted ? Effect.void : recordWait)))
+              .pipe(
+                Effect.mapError((error) =>
+                  budget !== undefined &&
+                  deadline === budget.deadline &&
+                  property(error.details).reason === "admission_wait_exhausted"
+                    ? budget.exhaust("duration")
+                    : error,
+                ),
+                Effect.onExit(() => (admitted ? Effect.void : recordWait)),
+              )
           }),
         )
         const execute = Effect.gen(function* () {
@@ -417,6 +444,7 @@ export const NotionTransport = Layer.effect(
       })
     return {
       credentialIdentity: resolveCredential.pipe(Effect.map((credential) => credential.identity)),
+      apiOrigin: origin,
       version: Effect.succeed(NOTION_API_VERSION),
       requestMetrics: () => metrics.snapshot(),
       metrics,

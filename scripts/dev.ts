@@ -3,23 +3,8 @@ import { createHash } from "node:crypto"
 import { readFile, writeFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 
-const root = fileURLToPath(new URL("../", import.meta.url))
-const build = spawn(process.execPath, ["run", "build"], {
-  cwd: root,
-  stdio: ["ignore", "pipe", "pipe"],
-})
-const buildDiagnostics: Buffer[] = []
-build.stdout.on("data", (chunk: Buffer) => buildDiagnostics.push(chunk))
-build.stderr.on("data", (chunk: Buffer) => buildDiagnostics.push(chunk))
-const built = await new Promise<number>((resolve, reject) => {
-  build.once("error", reject)
-  build.once("close", (code) => resolve(code ?? 1))
-})
-if (built !== 0) {
-  for (const chunk of buildDiagnostics) process.stderr.write(chunk)
-  process.exit(built)
-}
-const entry = fileURLToPath(new URL("../packages/cli/dist/ntn-skills.js", import.meta.url))
+const entry = fileURLToPath(new URL("../packages/cli/src/main.ts", import.meta.url))
+const loader = fileURLToPath(new URL("./source-loader.ts", import.meta.url))
 const args = process.argv.slice(2)
 const timingFile = process.env.NTN_SKILLS_VERIFY_CLI_TIMING_FILE
 const timing = timingFile
@@ -37,9 +22,10 @@ const timing = timingFile
       started_at: new Date().toISOString(),
     }
   : undefined
-// Build and all receipt hashes above are outside the Node CLI process interval.
+// No compilation occurs. The supported Node runtime executes the TS source;
+// the small loader handles the existing explicit Markdown text imports.
 const started = timing === undefined ? undefined : process.hrtime.bigint()
-const product = spawn("node", [entry, ...args], {
+const product = spawn("node", ["--import", loader, entry, ...args], {
   cwd: process.cwd(),
   stdio: "inherit",
 })
@@ -55,7 +41,8 @@ product.once("error", (error) => {
 product.once("close", async (code, signal) => {
   const elapsed =
     started === undefined || !spawned ? null : Number(process.hrtime.bigint() - started) / 1_000_000
-  process.exitCode = code ?? (signal === "SIGINT" ? 130 : signal === "SIGTERM" ? 143 : 1)
+  process.exitCode =
+    code !== null && code >= 0 ? code : signal === "SIGINT" ? 130 : signal === "SIGTERM" ? 143 : 1
   if (timingFile && timing) {
     try {
       await writeFile(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { once } from "node:events"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
@@ -34,6 +34,11 @@ export async function checkAuthoring(context: SmokeContext) {
   const commands: unknown[] = []
   const errors: unknown[] = []
   const retainedPlans = new Map<string, string>()
+  const retainedResourcePlans = new Map<string, string>()
+  const resourcePages = new Set<string>()
+  const resourceBlocks = new Map<string, Record<string, unknown>>()
+  const resourceChildren = new Map<string, string[]>()
+  let nextResourceId = 95_000
   const original = sharedCreateFixture()
   const ownedPages = new Set<string>()
   original.onCreate((row) => ownedPages.add(String(row.id)))
@@ -56,6 +61,8 @@ export async function checkAuthoring(context: SmokeContext) {
   let editedAt = Date.now()
   let loseOutcome = false
   let lostOperation: string | undefined
+  let loseResourceOutcome = false
+  let lostResourceOperation: string | undefined
   const token = "controlled-installed-author-token"
   const view = id(90_001)
   const writes = (values: readonly HttpObservation[]) =>
@@ -91,6 +98,70 @@ export async function checkAuthoring(context: SmokeContext) {
     }
   }
 
+  function observeOriginalResourcePlan() {
+    const database = new Database(join(state, "state.sqlite"), { readonly: true })
+    try {
+      const rows = database
+        .query(
+          "SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-observation-pending/%'",
+        )
+        .all()
+        .map(property)
+        .filter(
+          (row) =>
+            property(property(JSON.parse(String(row.payload))).plan).kind === "resource_authoring",
+        )
+      assert.equal(
+        rows.length,
+        1,
+        "One durable original resource plan must precede a display mutation",
+      )
+      const row = rows[0]!,
+        key = String(row.key),
+        payload = String(row.payload)
+      if (retainedResourcePlans.has(key)) assert.equal(payload, retainedResourcePlans.get(key))
+      retainedResourcePlans.set(key, payload)
+      const plan = property(property(JSON.parse(payload)).plan)
+      const facts = [...original.base.records.values()].map((record) => ({
+        record_id: text(property(property(record.properties).record).rich_text),
+        operation_id: property(
+          JSON.parse(text(property(property(record.properties).payload).rich_text)),
+        ).operation_id,
+      }))
+      assert.ok(
+        facts.some((fact) => fact.operation_id === plan.operation_id),
+        "Original shared resource intent precedes display",
+      )
+      assert.ok(
+        facts.some((fact) => fact.record_id === plan.prior_pin),
+        "Exact prior complete pin precedes display",
+      )
+      for (const content of [plan.content, plan.before].filter((value) => value !== null))
+        assert.ok(
+          facts.some((fact) => fact.record_id === property(content).object_id),
+          "Exact before/after resource manifests precede display",
+        )
+      return plan
+    } finally {
+      database.close()
+    }
+  }
+
+  function addResourceBlock(page: string, value: unknown) {
+    const blockId = id(nextResourceId++)
+    const block = {
+      ...property(structuredClone(value)),
+      object: "block",
+      id: blockId,
+      parent: { type: "page_id", page_id: page },
+      archived: false,
+      in_trash: false,
+    }
+    resourceBlocks.set(blockId, block)
+    resourceChildren.set(page, [...(resourceChildren.get(page) ?? []), blockId])
+    return block
+  }
+
   const request = async (path: string, body: unknown, method: "GET" | "POST" | "PATCH") => {
     const url = new URL(path, "http://127.0.0.1")
     if (url.pathname === "/v1/users/me") {
@@ -123,6 +194,78 @@ export async function checkAuthoring(context: SmokeContext) {
       }
     }
     const parent = property(property(body).parent).data_source_id
+    const raw = property(body)
+    if (
+      path === "v1/pages" &&
+      method === "POST" &&
+      parent === createLibrary.files.data_source_id &&
+      Array.isArray(raw.children)
+    ) {
+      observeOriginalResourcePlan()
+      assert.equal(raw.markdown, undefined)
+      assert.equal(raw.children.length, 1)
+      const page = id(nextResourceId++)
+      const row = {
+        object: "page",
+        id: page,
+        last_edited_time: new Date(++editedAt).toISOString(),
+        parent: {
+          type: "data_source_id",
+          data_source_id: createLibrary.files.data_source_id,
+          database_id: createLibrary.files.database_id,
+        },
+        properties: Object.fromEntries(
+          Object.entries(property(raw.properties)).map(([key, value]) => {
+            const field = property(value),
+              type = Array.isArray(field.rich_text)
+                ? "rich_text"
+                : Array.isArray(field.title)
+                  ? "title"
+                  : Array.isArray(field.relation)
+                    ? "relation"
+                    : "select"
+            return [
+              key,
+              {
+                ...field,
+                id: key,
+                type,
+                ...(type === "rich_text" || type === "relation" ? { has_more: false } : {}),
+              },
+            ]
+          }),
+        ),
+      }
+      original.files.set(page, row)
+      original.base.bodies.set(page, "RESOURCE MANAGEMENT NOTES; NEVER CONSUME AS RESOURCE BYTES")
+      resourcePages.add(page)
+      addResourceBlock(page, raw.children[0])
+      return structuredClone(row)
+    }
+    const resourceChild = /^v1\/blocks\/([^/]+)\/children(?:\?.*)?$/u.exec(path)
+    if (resourceChild !== null && resourcePages.has(resourceChild[1]!)) {
+      const page = resourceChild[1]!
+      if (method === "GET")
+        return {
+          object: "list",
+          results: (resourceChildren.get(page) ?? []).map((block) =>
+            structuredClone(resourceBlocks.get(block)),
+          ),
+          has_more: false,
+          next_cursor: null,
+        }
+      assert.equal(method, "PATCH")
+      observeOriginalResourcePlan()
+      assert.ok(Array.isArray(raw.children) && raw.children.length === 1)
+      const block = addResourceBlock(page, raw.children[0])
+      original.files.get(page)!.last_edited_time = new Date(++editedAt).toISOString()
+      return { object: "list", results: [block], has_more: false, next_cursor: null }
+    }
+    const resourceBlock = /^v1\/blocks\/([^/]+)$/u.exec(path)
+    if (resourceBlock !== null && resourceBlocks.has(resourceBlock[1]!)) {
+      assert.equal(method, "GET")
+      return structuredClone(resourceBlocks.get(resourceBlock[1]!))
+    }
     if (
       path === "v1/pages" &&
       method === "POST" &&
@@ -131,10 +274,30 @@ export async function checkAuthoring(context: SmokeContext) {
       )
     )
       observeOriginalCreatePlan()
-    const matched = /^v1\/pages\/([^/]+)(\/markdown)?$/u.exec(path)
+    const matched = /^v1\/pages\/([^/]+)(\/markdown)?$/u.exec(url.pathname.slice(1))
     const page = matched?.[1]
     const selected =
       page === undefined ? undefined : (original.skills.get(page) ?? original.files.get(page))
+    if (page !== undefined && resourcePages.has(page)) {
+      assert.equal(
+        matched?.[2],
+        undefined,
+        "Raw resource management prose must never enter Markdown consumption",
+      )
+      assert.ok(selected)
+      if (method === "PATCH") {
+        observeOriginalResourcePlan()
+        const changes = property(raw.properties)
+        assert.deepEqual(Object.keys(raw), ["properties"])
+        assert.deepEqual(Object.keys(changes), ["path"])
+        property(selected.properties).path = {
+          ...property(property(selected.properties).path),
+          ...property(changes.path),
+        }
+        selected.last_edited_time = new Date(++editedAt).toISOString()
+      } else assert.equal(method, "GET")
+      return structuredClone(selected)
+    }
     // This is the same strict whole-body/property fixture boundary used by
     // shared-skill-apply.test.ts. Unknown pages, paths and properties fail.
     if (
@@ -205,6 +368,18 @@ export async function checkAuthoring(context: SmokeContext) {
       ) {
         loseOutcome = false
         lostOperation = record.slice("outcome-".length)
+        observed.response_lost = true
+        incoming.socket.destroy()
+        return
+      }
+      if (
+        loseResourceOutcome &&
+        method === "POST" &&
+        path === "v1/pages" &&
+        record.startsWith("outcome-resource-authoring-")
+      ) {
+        loseResourceOutcome = false
+        lostResourceOperation = record.slice("outcome-".length)
         observed.response_lost = true
         incoming.socket.destroy()
         return
@@ -507,6 +682,281 @@ export async function checkAuthoring(context: SmokeContext) {
         text(property(property(row.properties).record).rich_text) === `outcome-${lostOperation}`,
     )
     assert.equal(outcomes.length, 1, "Recovery must retain one exact original outcome")
+    const resourceTarget = String(created.record.locator.page_id)
+    const resource = (action: string, path: string, extra: string[] = []) => [
+      "ctl",
+      "library",
+      "resource",
+      action,
+      resourceTarget,
+      path,
+      ...extra,
+      "--entry",
+      db,
+    ]
+    const scriptBytes = Buffer.from(
+      "#!/bin/sh\r\nprintf 'this file is evidence, never an execution step'\r\n",
+      "utf8",
+    )
+    const binaryBytes = Buffer.from(
+      Uint8Array.from({ length: 70_003 }, (_, index) =>
+        index < 2 ? [255, 0][index]! : (index * 73) % 251,
+      ),
+    )
+    const scriptInput = join(root, "resource-script.sh"),
+      binaryInput = join(root, "resource-binary.bin")
+    await writeFile(scriptInput, scriptBytes)
+    await chmod(scriptInput, 0o700)
+    await writeFile(binaryInput, binaryBytes)
+    await chmod(binaryInput, 0o600)
+    await noWrites(
+      "resource-add-dry",
+      resource("add", "scripts/check.sh", ["--input", scriptInput, "--dry-run"]),
+    )
+    const addedScript = await invoke(
+      "resource-add-script",
+      resource("add", "scripts/check.sh", ["--input", scriptInput]),
+    )
+    const addedBinary = await invoke(
+      "resource-add-binary",
+      resource("add", "assets/payload.bin", ["--input", binaryInput]),
+    )
+    assert.equal(addedScript.status, "applied")
+    assert.equal(addedScript.content.sha256, hash(scriptBytes))
+    assert.equal(addedScript.content.mode, "100755")
+    assert.equal(addedBinary.content.sha256, hash(binaryBytes))
+    const rawDirectory = await noWrites("resource-complete-directory", [
+      "files",
+      owner,
+      "--database",
+      db,
+      "--refresh",
+    ])
+    const initialRaw = rawDirectory.files.filter(
+      (file: { path: string }) =>
+        file.path === "scripts/check.sh" || file.path === "assets/payload.bin",
+    )
+    assert.equal(initialRaw.length, 2)
+    for (const file of initialRaw) {
+      assert.equal(file.sha256, hash(file.path === "scripts/check.sh" ? scriptBytes : binaryBytes))
+      assert.equal(file.mode, file.path === "scripts/check.sh" ? "100755" : "100644")
+    }
+    const sdkRoot = join(root, "cold-sdk")
+    const sdkEnv = {
+      ...env,
+      HOME: join(sdkRoot, "home"),
+      NTN_SKILLS_HOME: join(sdkRoot, "state"),
+      NTN_SKILLS_CONFIG_HOME: join(sdkRoot, "config"),
+      NTN_SKILLS_CACHE_HOME: join(sdkRoot, "cache"),
+      NTN_SKILLS_SCHEDULER_ROOT: join(sdkRoot, "scheduler"),
+    }
+    const sdkPath = join(context.installed, "dist", "sdk.js")
+    const runSdk = async (label: string, code: string) => {
+      const start = calls.length,
+        before = writes(calls).length
+      const program = `import * as sdk from ${JSON.stringify(sdkPath)};import {access} from 'node:fs/promises';import {join} from 'node:path';const metrics=[];const options={database:${JSON.stringify(db)},metrics:true,onRequestMetrics:value=>metrics.push(value)};${code}`
+      const output = JSON.parse(
+        await context.run([context.runtime, "--input-type=module", "-e", program], 0, sdkEnv),
+      )
+      assert.equal(writes(calls).length, before, `${label}: SDK acquisition is read-only`)
+      assert.equal(
+        output.metrics.reduce(
+          (total: number, metric: { total_requests: number }) => total + metric.total_requests,
+          0,
+        ),
+        calls.length - start,
+        `${label}: SDK transport totals include all loopback requests`,
+      )
+      commands.push({
+        label,
+        sdk: sdkPath,
+        runtime: context.runtime,
+        result: output,
+        http_start: start,
+        http_count: calls.length - start,
+      })
+      await writeFile(join(root, `${label}.json`), JSON.stringify(output, null, 2) + "\n")
+      assert.equal(errors.length, 0)
+      return output
+    }
+    const cold = await runSdk(
+      "resource-sdk-cold-selected",
+      `
+const input={version:1,targets:[${JSON.stringify(String(created.record.ref))}],purpose:'use',freshness:{policy:'refresh'}};
+const consumed=await sdk.consume(input,options);await sdk.decodeConsumeResult(consumed,input);
+const directory=await sdk.listSkill(${JSON.stringify(owner)},options);
+const refs=Object.fromEntries(directory.files.map(file=>[file.path,file.ref]));
+const present=async sha=>access(join(process.env.NTN_SKILLS_HOME,'objects',sha)).then(()=>true,()=>false);
+const cold={script:await present(${JSON.stringify(hash(scriptBytes))}),binary:await present(${JSON.stringify(hash(binaryBytes))})};
+const selected=await sdk.readResources({version:1,refs:[refs['scripts/check.sh']]},options);
+const after={script:await present(${JSON.stringify(hash(scriptBytes))}),binary:await present(${JSON.stringify(hash(binaryBytes))})};
+const missing=await sdk.readResources({version:1,refs:[refs['assets/payload.bin']]},{...options,offline:true});
+console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metrics}));`,
+    )
+    assert.equal(cold.consumed.status, "ready")
+    assert.equal(cold.consumed.entries[0].manifest.snapshot_id, rawDirectory.snapshot_id)
+    assert.equal(cold.consumed.entries[0].materialization.status, "entry_ready")
+    assert.deepEqual(cold.consumed.entries[0].materialization.paths, ["SKILL.md"])
+    assert.deepEqual(cold.consumed.delivery, { status: "not_observed" })
+    assert.deepEqual(cold.consumed.activation, { status: "not_evaluated" })
+    assert.deepEqual(cold.directory.files, rawDirectory.files)
+    assert.deepEqual(cold.cold, { script: false, binary: false })
+    assert.deepEqual(cold.after, { script: true, binary: false })
+    assert.equal(cold.selected.status, "ready")
+    assert.equal(cold.selected.files[0].sha256, hash(scriptBytes))
+    assert.equal(cold.selected.files[0].mode, "100755")
+    assert.equal(cold.selected.files[0].content, scriptBytes.toString("utf8"))
+    assert.equal(cold.missing.status, "failed")
+
+    const changedBinary = Buffer.from(
+      binaryBytes.map((value, index) => (index < 2 ? value : value ^ 0x55)),
+    )
+    await writeFile(binaryInput, changedBinary)
+    loseResourceOutcome = true
+    const uncertainResource = await invoke(
+      "resource-lost-original-outcome",
+      resource("replace", "assets/payload.bin", ["--input", binaryInput]),
+      1,
+    )
+    assert.equal(uncertainResource.error.code, "WRITE_OUTCOME_UNKNOWN")
+    assert.equal(loseResourceOutcome, false)
+    assert.ok(lostResourceOperation?.startsWith("resource-authoring-replace-"))
+    const reconciledResource = await noWrites("resource-reconcile-original", [
+      "ctl",
+      "library",
+      "resource",
+      "reconcile",
+      resourceTarget,
+      lostResourceOperation!,
+      "--entry",
+      db,
+    ])
+    assert.equal(reconciledResource.status, "applied")
+    assert.equal(reconciledResource.operation_id, lostResourceOperation)
+    const changedDirectory = await noWrites("resource-changed-directory", [
+      "files",
+      owner,
+      "--database",
+      db,
+      "--refresh",
+    ])
+    assert.notEqual(changedDirectory.snapshot_id, rawDirectory.snapshot_id)
+    assert.equal(
+      changedDirectory.files.find((file: { path: string }) => file.path === "assets/payload.bin")
+        .sha256,
+      hash(changedBinary),
+    )
+    const historicalStart = calls.length
+    const oldBinaryRef = rawDirectory.files.find(
+      (file: { path: string }) => file.path === "assets/payload.bin",
+    ).ref
+    const historical = await runSdk(
+      "resource-sdk-original-pin-after-replace",
+      `const result=await sdk.readResources({version:1,refs:[${JSON.stringify(oldBinaryRef)}]},options);console.log(JSON.stringify({result,metrics}));`,
+    )
+    assert.equal(historical.result.status, "ready")
+    assert.equal(historical.result.selection.snapshot_id, rawDirectory.snapshot_id)
+    assert.equal(historical.result.files[0].encoding, "base64")
+    assert.deepEqual(Buffer.from(historical.result.files[0].content, "base64"), binaryBytes)
+    assert.equal(
+      calls.slice(historicalStart).some((call) => call.path.includes("/markdown")),
+      false,
+    )
+
+    const changedScript = Buffer.from("# retained as an ordinary non-executable file\n", "utf8")
+    await writeFile(scriptInput, changedScript)
+    await chmod(scriptInput, 0o600)
+    const replacedResource = await invoke(
+      "resource-replace-script",
+      resource("replace", "scripts/check.sh", ["--input", scriptInput]),
+    )
+    assert.equal(replacedResource.file_id, addedScript.file_id)
+    assert.equal(replacedResource.content.mode, "100644")
+    const movedResource = await invoke(
+      "resource-move",
+      resource("move", "scripts/check.sh", ["scripts/renamed.sh"]),
+    )
+    assert.equal(movedResource.file_id, addedScript.file_id)
+    await invoke("resource-delete", resource("delete", "scripts/renamed.sh"))
+    const deletedDirectory = await noWrites("resource-deleted-directory", [
+      "files",
+      owner,
+      "--database",
+      db,
+      "--refresh",
+    ])
+    assert.equal(
+      deletedDirectory.files.some((file: { path: string }) => file.path === "scripts/renamed.sh"),
+      false,
+    )
+    const undeletedResource = await invoke(
+      "resource-undelete",
+      resource("undelete", "scripts/renamed.sh"),
+    )
+    assert.equal(undeletedResource.file_id, addedScript.file_id)
+    assert.equal(undeletedResource.content.sha256, hash(changedScript))
+    const originalResource = await noWrites("resource-reconcile-first-add-after-move", [
+      "ctl",
+      "library",
+      "resource",
+      "reconcile",
+      resourceTarget,
+      addedScript.operation_id,
+      "--entry",
+      db,
+    ])
+    assert.equal(originalResource.operation_id, addedScript.operation_id)
+    const finalResources = await noWrites("resource-final-directory", [
+      "files",
+      owner,
+      "--database",
+      db,
+      "--refresh",
+    ])
+    const exportedResources = join(root, "complete-resource-export")
+    await noWrites("resource-full-export", [
+      "export",
+      finalResources.snapshot_id,
+      "--output",
+      exportedResources,
+      "--format",
+      "directory",
+      "--projection",
+      "snapshot",
+      "--offline",
+    ])
+    assert.deepEqual(await readFile(join(exportedResources, "scripts/renamed.sh")), changedScript)
+    assert.deepEqual(await readFile(join(exportedResources, "assets/payload.bin")), changedBinary)
+    assert.equal((await stat(join(exportedResources, "scripts/renamed.sh"))).mode & 0o111, 0)
+    assert.equal(
+      original.base.bodies.get(addedScript.page_id),
+      "RESOURCE MANAGEMENT NOTES; NEVER CONSUME AS RESOURCE BYTES",
+    )
+    const resourceEvidence = {
+      first_snapshot: rawDirectory.snapshot_id,
+      final_snapshot: finalResources.snapshot_id,
+      stable_file_id: addedScript.file_id,
+      original_operation: addedScript.operation_id,
+      lost_original_operation: lostResourceOperation,
+      binary: {
+        bytes: binaryBytes.length,
+        old_sha256: hash(binaryBytes),
+        new_sha256: hash(changedBinary),
+      },
+      script: {
+        old_sha256: hash(scriptBytes),
+        old_mode: "100755",
+        new_sha256: hash(changedScript),
+        new_mode: "100644",
+      },
+      cold_sdk_roots: sdkRoot,
+      sdk_sha256: hash(await readFile(sdkPath)),
+      complete_manifest_verified: true,
+      cold_raw_downloads_before_selection: 0,
+      old_pin_recovered_after_current_replacement: true,
+      management_body_preserved: true,
+      complete_export: exportedResources,
+    }
     const listedViews = await noWrites("ctl-views", ["ctl", "views", "--database", db, "--refresh"])
     const historicalViews = await noWrites("historical-views", [
       "views",
@@ -662,6 +1112,7 @@ export async function checkAuthoring(context: SmokeContext) {
         enable_disable_verified: true,
       },
       original_outcome_count: outcomes.length,
+      raw_resource_lifecycle: resourceEvidence,
       command_count: commands.length,
       server_received_requests: calls.length,
       request_observation: "loopback_service; transport totals reconciled when returned by the CLI",
@@ -682,6 +1133,11 @@ export async function checkAuthoring(context: SmokeContext) {
           calls,
           errors,
           retained_create_plans: [...retainedPlans].map(([key, value]) => ({
+            key,
+            sha256: hash(value),
+            payload: JSON.parse(value),
+          })),
+          retained_resource_plans: [...retainedResourcePlans].map(([key, value]) => ({
             key,
             sha256: hash(value),
             payload: JSON.parse(value),

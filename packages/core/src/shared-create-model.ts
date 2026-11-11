@@ -12,9 +12,17 @@ import { portableFiles, type PortableSkill } from "./portable.ts"
 import { pageId } from "./ref.ts"
 import { composeSharedFiles } from "./shared-composition.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
-import { FileEventSchema, RetainedContentSchema } from "./shared-file-state.ts"
+import {
+  FileEventSchema,
+  RetainedContentSchema,
+  NativeFileMetadataFields,
+  nativeFileMetadata,
+  resolveFileState,
+  type FileEvent,
+} from "./shared-file-state.ts"
 import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
 import {
+  currentSharedNotionMarkdownVersion,
   projectSharedNotionMarkdown,
   sharedNotionMarkdownPolicy,
   SharedNotionMarkdownPolicySchema,
@@ -24,7 +32,30 @@ import {
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { parseYaml } from "./yaml.ts"
+import {
+  nativeMainFrontmatter,
+  splitNativeSupportingMarkdown,
+} from "./shared-native-file-metadata.ts"
+import {
+  prepareSharedResourceContent,
+  validatePreparedSharedResource,
+} from "./shared-resource-content.ts"
+import {
+  SharedCreateResourceSchema,
+  SharedCreateResourceManifestSchema,
+} from "./shared-create-resources.ts"
+import { gitBlobOid, validateFixedGithubSource } from "./shared-github-source.ts"
+import {
+  SharedSourceProjectionSchema,
+  SharedSourceProjectionManifestSchema,
+  type SharedSourceProjection,
+} from "./shared-source-projection-model.ts"
 import { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-objects.ts"
+import { sharedCreateLocalManifest, validateSharedCreateLocal } from "./shared-create-local.ts"
+import {
+  sharedCreateRetainedManifest,
+  validateSharedCreateRetained,
+} from "./shared-create-retained.ts"
 export { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-objects.ts"
 import {
   makeSharedMigrationCreateOrigin,
@@ -35,6 +66,20 @@ import {
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
+/** A plan-only draft. FileEventSchema rejects it, so it cannot become a remote
+ * ownership fact until the original Skill allocation supplies its real identity. */
+const CreateProjectionDraftSchema = Schema.Struct({
+  kind: Schema.Literal("source_projection_pending"),
+  event_id: Identity,
+  file_id: Identity,
+  parents: Schema.Array(Identity),
+  projection: Schema.Struct({ normalization_version: Schema.Literal(1), sha256: Hash }),
+  ...NativeFileMetadataFields,
+})
+const CreateEventSchema = Schema.Union([FileEventSchema, CreateProjectionDraftSchema])
+const RelationBindingsSchema = Schema.Array(
+  Schema.Struct({ page_id: Schema.String, skill_id: Identity }),
+)
 const PortableProjectionSchema = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
@@ -53,11 +98,16 @@ const CreatePlanFields = {
   name: Schema.String,
   description: Schema.String,
   default_context: Schema.Boolean,
+  enabled: Schema.optional(Schema.Boolean),
+  complete_resources: Schema.optional(Schema.Literal(1)),
+  resources: Schema.optional(Schema.Array(SharedCreateResourceSchema)),
   original_main_path: Schema.String,
   entrypoint: Schema.String,
   members: Schema.Array(Schema.String),
   requires: Schema.optional(Schema.Array(Schema.String)),
+  relation_bindings: Schema.optional(RelationBindingsSchema),
   input_projection: Schema.optional(PortableProjectionSchema),
+  source_projection: Schema.optional(SharedSourceProjectionSchema),
   reference_check: Schema.Struct({ checked_files: Schema.Number, local_references: Schema.Number }),
   files: Schema.Array(
     Schema.Struct({
@@ -69,10 +119,15 @@ const CreatePlanFields = {
         text: Schema.String,
         sha256: Hash,
         bytes: Schema.Number,
+        mode: Schema.optional(Schema.Literals(["100644", "100755"])),
       }),
       projection: SharedNotionMarkdownProjectionSchema,
       content: RetainedContentSchema,
-      event: FileEventSchema,
+      event: CreateEventSchema,
+      ancestors: Schema.optional(Schema.Array(FileEventSchema)),
+      baseline_body: Schema.optional(
+        Schema.Struct({ markdown: Schema.String, content: RetainedContentSchema }),
+      ),
     }),
   ),
 }
@@ -81,6 +136,10 @@ export const SharedCreatePlanSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(2),
     ...CreatePlanFields,
+    files: Schema.Array(
+      Schema.Struct({ ...CreatePlanFields.files.value.fields, event: FileEventSchema }),
+    ),
+    source_projection: Schema.optionalKey(Schema.Never),
     origin: SharedMigrationCreateOriginSchema,
   }),
 ])
@@ -94,21 +153,33 @@ const CreateManifestFields = {
   name: Schema.String,
   description: Schema.String,
   default_context: Schema.Boolean,
+  enabled: Schema.optional(Schema.Boolean),
+  complete_resources: Schema.optional(Schema.Literal(1)),
+  resources: Schema.optional(Schema.Array(SharedCreateResourceManifestSchema)),
   original_main_path: Schema.String,
   entrypoint: Schema.String,
   members: Schema.Array(Schema.String),
   requires: Schema.optional(Schema.Array(Schema.String)),
+  relation_bindings: Schema.optional(RelationBindingsSchema),
   input_projection: Schema.optional(PortableProjectionSchema),
+  source_projection: Schema.optional(SharedSourceProjectionManifestSchema),
   reference_check: Schema.Struct({ checked_files: Schema.Number, local_references: Schema.Number }),
   files: Schema.Array(
     Schema.Struct({
       file_id: Identity,
       path: Schema.String,
       input_path: Schema.String,
-      input: Schema.Struct({ object_id: Identity, sha256: Hash, bytes: Schema.Number }),
+      input: Schema.Struct({
+        object_id: Identity,
+        sha256: Hash,
+        bytes: Schema.Number,
+        mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+      }),
       projection: SharedNotionMarkdownPolicySchema,
       content: RetainedContentSchema,
-      event: FileEventSchema,
+      event: CreateEventSchema,
+      ancestors: Schema.optional(Schema.Array(FileEventSchema)),
+      baseline_body: Schema.optional(Schema.Struct({ content: RetainedContentSchema })),
     }),
   ),
 }
@@ -117,6 +188,10 @@ export const SharedCreateManifestSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(2),
     ...CreateManifestFields,
+    files: Schema.Array(
+      Schema.Struct({ ...CreateManifestFields.files.value.fields, event: FileEventSchema }),
+    ),
+    source_projection: Schema.optionalKey(Schema.Never),
     origin: SharedMigrationOriginManifestSchema,
   }),
 ])
@@ -126,6 +201,7 @@ export const SharedCreateJournalSchema = Schema.Struct({
   library_id: Identity,
   plan: SharedCreatePlanSchema,
   ownership_receipt_version: Schema.optional(Schema.Literal(1)),
+  dispatch_receipt_version: Schema.optional(Schema.Literal(1)),
 })
 export const sharedCreateManifestEntity = "skill-create-manifest-v1"
 export const sharedCreateOutcomesEntity = "skill-create-outcomes-v1"
@@ -136,9 +212,38 @@ export const sharedCreateProtection = {
   exact_projected_body_required: true,
   automatic_retry: false,
   original_input_retained: true,
-  binary_support: false,
+  binary_support: true,
   metadata_compare_and_swap: false,
 } as const
+export function sharedCreateFixedSource(plan: SharedCreatePlan) {
+  return (
+    (plan.source_projection?.version === 1 ? plan.source_projection.binding : null) ??
+    (plan.version === 2 ? plan.origin.candidate.source : null)
+  )
+}
+export function sharedCreateEnabled(plan: SharedCreatePlan) {
+  return plan.enabled ?? true
+}
+export function sharedCreateFixedSources(plan: SharedCreatePlan) {
+  const selected = sharedCreateFixedSource(plan)
+  const baseline =
+    plan.source_projection?.version === 1 ? plan.source_projection.local?.baseline : undefined
+  return [
+    ...(selected === null ? [] : [selected]),
+    ...(baseline === undefined || baseline.source_id === selected?.source_id ? [] : [baseline]),
+  ]
+}
+export function sharedCreateFiles(plan: SharedCreatePlan) {
+  return [
+    ...plan.files,
+    ...(plan.resources ?? []).map((file) => ({ ...file, content: file.prepared.content })),
+  ]
+}
+export function sharedCreateEvents(plan: SharedCreatePlan) {
+  return sharedCreateFiles(plan)
+    .flatMap((file) => [...(file.ancestors ?? []), file.event])
+    .map((event) => Schema.decodeUnknownSync(FileEventSchema)(event, { onExcessProperty: "error" }))
+}
 export function sharedCreateExpectations(
   plan: SharedCreatePlan,
   bindings: readonly {
@@ -146,24 +251,41 @@ export function sharedCreateExpectations(
     readonly path: string
     readonly page_id: string
   }[],
+  selectedSource?: {
+    readonly source_id: string
+    readonly revision: string
+    readonly paths: readonly string[]
+  },
 ) {
+  const fixed = sharedCreateFixedSource(plan)
+  const source =
+    selectedSource ??
+    (fixed === null
+      ? undefined
+      : {
+          source_id: fixed.source_id,
+          revision: fixed.commit,
+          paths: fixed.files.map((file) => file.path),
+        })
   return {
-    expected_files: plan.files.map((file) => {
-      const matching = bindings.filter(
-        (binding) => binding.file_id === file.file_id && binding.path === file.path,
-      )
-      if (matching.length !== 1 || matching[0] === undefined)
-        throw fail(
-          "SHARED_CREATE_INVALID",
-          "The original completion does not identify every exact created file page.",
+    expected_files: sharedCreateFiles(plan)
+      .filter((file) => file.event.kind !== "deleted")
+      .map((file) => {
+        const matching = bindings.filter(
+          (binding) => binding.file_id === file.file_id && binding.path === file.path,
         )
-      return {
-        file_id: file.file_id,
-        path: file.path,
-        page_id: matching[0].page_id,
-        sha256: file.content.sha256,
-      }
-    }),
+        if (matching.length !== 1 || matching[0] === undefined)
+          throw fail(
+            "SHARED_CREATE_INVALID",
+            "The original completion does not identify every exact created file page.",
+          )
+        return {
+          file_id: file.file_id,
+          path: file.path,
+          page_id: matching[0].page_id,
+          sha256: file.content.sha256,
+        }
+      }),
     ...(plan.version === 2
       ? {
           expected_migration: {
@@ -183,11 +305,31 @@ export function sharedCreateExpectations(
           },
         }
       : {}),
+    ...(plan.source_projection === undefined
+      ? {}
+      : {
+          expected_source_projection: {
+            source_id: source!.source_id,
+            source_revision: source!.revision,
+            consumed_paths: (() => {
+              const paths = new Set(source!.paths)
+              for (const file of sharedCreateFiles(plan))
+                file.event.kind === "deleted" ? paths.delete(file.path) : paths.add(file.path)
+              return [...paths].sort()
+            })(),
+            events: sharedCreateFiles(plan)
+              .filter((file) => file.event.kind !== "deleted")
+              .map((file) => ({
+                file_id: file.file_id,
+                event_id: file.event.event_id,
+              })),
+          },
+        }),
     expected_metadata: {
       name: plan.name,
       description: plan.description,
       kind: plan.content_kind,
-      enabled: true as const,
+      enabled: sharedCreateEnabled(plan),
       default_context: plan.default_context,
       ...(plan.content_kind === "router" || plan.members.length > 0
         ? { members: plan.members }
@@ -220,11 +362,40 @@ export function sharedCreateManifest(plan: SharedCreatePlan) {
     name: plan.name,
     description: plan.description,
     default_context: plan.default_context,
+    ...(plan.enabled === undefined ? {} : { enabled: plan.enabled }),
+    ...(plan.complete_resources === undefined
+      ? {}
+      : { complete_resources: plan.complete_resources }),
+    ...(plan.resources === undefined
+      ? {}
+      : {
+          resources: plan.resources.map(({ prepared, ...file }) => ({
+            ...file,
+            content: prepared.content,
+          })),
+        }),
     original_main_path: plan.original_main_path,
     entrypoint: plan.entrypoint,
     members: plan.members,
     ...(plan.requires === undefined ? {} : { requires: plan.requires }),
+    ...(plan.relation_bindings === undefined ? {} : { relation_bindings: plan.relation_bindings }),
     ...(plan.input_projection === undefined ? {} : { input_projection: plan.input_projection }),
+    ...(plan.source_projection === undefined
+      ? {}
+      : {
+          source_projection:
+            plan.source_projection.version === 1
+              ? {
+                  ...plan.source_projection,
+                  ...(plan.source_projection.local === undefined
+                    ? {}
+                    : { local: sharedCreateLocalManifest(plan.source_projection.local) }),
+                }
+              : {
+                  ...plan.source_projection,
+                  retained: sharedCreateRetainedManifest(plan.source_projection.retained),
+                },
+        }),
     reference_check: plan.reference_check,
     files: plan.files.map((file) => ({
       file_id: file.file_id,
@@ -234,10 +405,15 @@ export function sharedCreateManifest(plan: SharedCreatePlan) {
         object_id: file.input.object_id,
         sha256: file.input.sha256,
         bytes: file.input.bytes,
+        ...(file.input.mode === undefined ? {} : { mode: file.input.mode }),
       },
       projection: sharedNotionMarkdownPolicy(file.projection),
       content: file.content,
       event: file.event,
+      ...(file.ancestors === undefined ? {} : { ancestors: file.ancestors }),
+      ...(file.baseline_body === undefined
+        ? {}
+        : { baseline_body: { content: file.baseline_body.content } }),
     })),
   }
 }
@@ -245,19 +421,175 @@ export function sharedCreateManifest(plan: SharedCreatePlan) {
 export interface SharedCreateInput {
   readonly portable: PortableSkill
   readonly defaultContext?: boolean
+  readonly enabled?: boolean
+  readonly completeResources?: boolean
+  readonly markdownImport?: true
   /** Exact same-library current page identities, resolved before freezing. */
   readonly members?: readonly string[]
   readonly requires?: readonly string[]
+  readonly relationBindings?: typeof RelationBindingsSchema.Type
+  readonly sourceProjection?: SharedSourceProjection
 }
 
 /** Deterministic, no I/O: input bytes, explicit projection and every identity freeze together. */
 export function makeSharedCreatePlan(
   library: SharedLibrary,
   input: SharedCreateInput,
-  projectionVersion: SharedNotionMarkdownVersion = 8,
+  projectionVersion: SharedNotionMarkdownVersion = currentSharedNotionMarkdownVersion,
 ) {
   return Effect.gen(function* () {
     const portable = input.portable
+    const complete = input.completeResources === true
+    const sourceProjection =
+      input.sourceProjection === undefined
+        ? undefined
+        : yield* createChecked(() =>
+            Schema.decodeUnknownSync(SharedSourceProjectionSchema)(input.sourceProjection, {
+              onExcessProperty: "error",
+            }),
+          )
+    const local =
+      sourceProjection?.version !== 1 || sourceProjection.local === undefined
+        ? undefined
+        : yield* validateSharedCreateLocal(sourceProjection.local, sourceProjection.binding)
+    const retained =
+      sourceProjection?.version !== 2
+        ? undefined
+        : yield* validateSharedCreateRetained(sourceProjection.retained)
+    if (local !== undefined && !complete)
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_LOCAL_IMPORT_INVALID",
+          "Local customization requires the complete original create contract.",
+        ),
+      )
+    if (sourceProjection?.version === 1) {
+      const binding = sourceProjection.binding
+      const fixed = yield* createChecked(() =>
+        validateFixedGithubSource({
+          url: binding.url,
+          commit: binding.commit,
+          tree: binding.tree,
+          root: binding.root,
+          files: binding.files,
+        }),
+      )
+      if (
+        binding.source_id !==
+        `source-${yield* sha256(canonicalSharedJson({ version: 1, kind: "git", ...fixed }))}`
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CREATE_SOURCE_INVALID",
+            "The initial projection has a different immutable fixed-source identity.",
+          ),
+        )
+      yield* createChecked(() => {
+        if (
+          pageId(sourceProjection.definition.page_id) !== sourceProjection.definition.page_id ||
+          !sourceProjection.definition.source_id ||
+          !sourceProjection.definition.member ||
+          !library.sources ||
+          !library.skills.property_ids.Origin ||
+          !library.skills.property_ids["Source Member"]
+        )
+          throw fail(
+            "SHARED_CREATE_SOURCE_INVALID",
+            "Initial projection requires its exact registered Source definition and member.",
+          )
+        if (
+          binding.files.some((file) => file.sha256 === undefined) ||
+          portable.main !== entrypointFor(portable.kind)
+        )
+          throw fail(
+            "SHARED_CREATE_SOURCE_INVALID",
+            "The full resource manifest or canonical main path differs from the frozen source.",
+          )
+        const documents = [
+          ...new Set([
+            ...binding.files
+              .filter((file) => file.path === portable.main || /\.(md|markdown)$/iu.test(file.path))
+              .map((file) => file.path),
+            ...(local?.changes.keys() ?? []),
+          ]),
+        ].sort()
+        if (
+          canonicalSharedJson(portable.files.map((file) => file.path).sort()) !==
+          canonicalSharedJson(documents)
+        )
+          throw fail(
+            "SHARED_CREATE_SOURCE_INVALID",
+            "Every Markdown document must have one initial readable page; other bytes stay in the full fixed source.",
+          )
+      })
+      for (const file of portable.files) {
+        const change = local?.changes.get(file.path)
+        const fixedFile =
+          change === "custom"
+            ? local!.local.manifest.find((candidate) => candidate.path === file.path)
+            : (change === "deleted" ? local!.local.baseline : binding).files.find(
+                (candidate) => candidate.path === file.path,
+              )
+        if (
+          fixedFile?.sha256 !== (yield* sha256(file.bytes)) ||
+          fixedFile.bytes !== file.bytes.length ||
+          fixedFile.mode !== file.mode ||
+          ("git_oid" in fixedFile && fixedFile.git_oid !== (yield* gitBlobOid(file.bytes)))
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_SOURCE_INVALID",
+              "A projected document does not match its complete fixed-source bytes and Git blob identity.",
+            ),
+          )
+      }
+    }
+    if (sourceProjection?.version === 2) {
+      yield* createChecked(() => {
+        if (
+          !sourceProjection.provider_revision ||
+          !sourceProjection.definition.source_id ||
+          !sourceProjection.definition.member ||
+          pageId(sourceProjection.definition.page_id) !== sourceProjection.definition.page_id ||
+          !library.sources ||
+          !library.skills.property_ids.Origin ||
+          !library.skills.property_ids["Source Member"] ||
+          portable.main !== retained!.input.entrypoint ||
+          portable.main !== entrypointFor(portable.kind)
+        )
+          throw fail(
+            "SHARED_CREATE_SOURCE_INVALID",
+            "Retained projection requires its exact registered Source/member and complete entrypoint.",
+          )
+        const documents = retained!.files
+          .filter((file) => file.path === portable.main || /\.(md|markdown)$/iu.test(file.path))
+          .map((file) => file.path)
+          .sort()
+        if (
+          canonicalSharedJson(documents) !==
+          canonicalSharedJson(portable.files.map((file) => file.path).sort())
+        )
+          throw fail(
+            "SHARED_CREATE_SOURCE_INVALID",
+            "Every retained Markdown document must have an initial readable page.",
+          )
+      })
+      for (const file of portable.files) {
+        const expected = retained!.input.files.find((item) => item.path === file.path)
+        if (
+          expected === undefined ||
+          file.mode !== expected.mode ||
+          file.bytes.length !== expected.bytes ||
+          (yield* sha256(file.bytes)) !== expected.sha256
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_SOURCE_INVALID",
+              "A retained projection differs from its complete original source bytes.",
+            ),
+          )
+      }
+    }
     const prepared = yield* createChecked(() => {
       Schema.decodeUnknownSync(SharedLibrarySchema)(library, { onExcessProperty: "error" })
       portableFiles(portable)
@@ -289,6 +621,29 @@ export function makeSharedCreatePlan(
         )
       const members = [...(input.members ?? [])].sort()
       const required = input.requires === undefined ? undefined : [...input.requires].sort()
+      const targets = [...new Set([...members, ...(required ?? [])])].sort()
+      if (
+        (complete || sourceProjection !== undefined) &&
+        targets.length > 0 &&
+        input.relationBindings === undefined
+      )
+        throw fail(
+          "SHARED_CREATE_RELATION_SCOPE",
+          "Complete creation must freeze the stable Skill identity of every relation target.",
+        )
+      if (input.relationBindings !== undefined) {
+        Schema.decodeUnknownSync(RelationBindingsSchema)(input.relationBindings, {
+          onExcessProperty: "error",
+        })
+        if (
+          canonicalSharedJson(input.relationBindings.map((binding) => binding.page_id)) !==
+          canonicalSharedJson(targets)
+        )
+          throw fail(
+            "SHARED_CREATE_RELATION_SCOPE",
+            "Frozen relations must cover exactly the selected current pages.",
+          )
+      }
       for (const [field, ids] of [
         ["Members", members],
         ["Requires", required],
@@ -317,6 +672,10 @@ export function makeSharedCreatePlan(
           "This library needs a registered native Members relation before Router creation.",
         )
       const files = portable.files
+        .filter(
+          (file) =>
+            !complete || file.path === portable.main || /\.(md|markdown)$/iu.test(file.path),
+        )
         .map((file) => {
           let text: string
           try {
@@ -335,7 +694,12 @@ export function makeSharedCreatePlan(
               { path: file.path, bytes: file.bytes.length },
             )
           const path = file.path === portable.main ? entrypoint : file.path
-          if (file.path === portable.main && projectionVersion !== 1) {
+          if (
+            file.path === portable.main &&
+            projectionVersion !== 1 &&
+            sourceProjection === undefined &&
+            !complete
+          ) {
             const frontmatter = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(text)
             if (frontmatter !== null) {
               const metadata: unknown = parseYaml(frontmatter[1] ?? "")
@@ -352,12 +716,27 @@ export function makeSharedCreatePlan(
                 )
             }
           }
+          const supporting =
+            file.path !== portable.main && projectionVersion >= 11
+              ? splitNativeSupportingMarkdown(text)
+              : undefined
           const authored =
-            file.path === portable.main ? importDocument(file, { name, description }).body : text
+            file.path === portable.main
+              ? importDocument(file, { name, description }).body
+              : (supporting?.body ?? text)
           return {
             path,
             input_path: file.path,
             text,
+            ...((complete || sourceProjection !== undefined) && file.mode !== undefined
+              ? { mode: file.mode }
+              : {}),
+            ...((complete || sourceProjection !== undefined) && file.path === portable.main
+              ? { frontmatter: nativeMainFrontmatter(text) }
+              : {}),
+            ...(supporting?.frontmatter === undefined
+              ? {}
+              : { frontmatter: supporting.frontmatter }),
             projection: projectSharedNotionMarkdown(authored, {
               version: projectionVersion,
               purpose: "data_source_create",
@@ -366,12 +745,48 @@ export function makeSharedCreatePlan(
         })
         .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
       const tree = composeSharedFiles({
-        base: files.map((file) => ({
-          path: file.path,
-          bytes: new TextEncoder().encode(file.projection.markdown),
-        })),
+        base:
+          sourceProjection === undefined
+            ? complete
+              ? portable.files.map((file) => ({
+                  path: file.path === portable.main ? entrypoint : file.path,
+                  bytes:
+                    file.path === portable.main || /\.(md|markdown)$/iu.test(file.path)
+                      ? new TextEncoder().encode(
+                          files.find((item) => item.input_path === file.path)!.projection.markdown,
+                        )
+                      : file.bytes,
+                }))
+              : files.map((file) => ({
+                  path: file.path,
+                  bytes: new TextEncoder().encode(file.projection.markdown),
+                }))
+            : (sourceProjection.version === 1
+                ? sourceProjection.binding.files
+                : sourceProjection.retained.files
+              ).map((file) => ({
+                path: file.path,
+                // Non-document bytes are not projected. Here only their exact paths participate in link validation.
+                bytes: new TextEncoder().encode(
+                  files.find((document) => document.path === file.path)?.projection.markdown ?? "",
+                ),
+              })),
         mounts: [],
-        overrides: [],
+        overrides:
+          local === undefined
+            ? []
+            : [...local.changes].map(([path, kind]) =>
+                kind === "deleted"
+                  ? { kind: "tombstone" as const, file_id: path, path }
+                  : {
+                      kind: "custom" as const,
+                      file_id: path,
+                      path,
+                      bytes: new TextEncoder().encode(
+                        files.find((file) => file.path === path)?.projection.markdown ?? "",
+                      ),
+                    },
+              ),
         entrypoint,
       })
       const references = assertSharedFileReferences(tree.files, projectionVersion)
@@ -389,16 +804,33 @@ export function makeSharedCreatePlan(
             text: file.text,
             sha256: inputHash,
             bytes: new TextEncoder().encode(file.text).length,
+            ...(file.mode === undefined ? {} : { mode: file.mode }),
           },
           projection: file.projection,
           content: {
             object_id: `body-${bodyHash}`,
             sha256: bodyHash,
             bytes: new TextEncoder().encode(file.projection.markdown).length,
+            ...nativeFileMetadata(file),
           },
         }
       }),
     )
+    const resources = complete
+      ? yield* Effect.forEach(
+          portable.files
+            .filter((file) => file.path !== portable.main && !/\.(md|markdown)$/iu.test(file.path))
+            .sort((a, b) => a.path.localeCompare(b.path)),
+          (file) =>
+            Effect.gen(function* () {
+              return {
+                path: file.path,
+                input_path: file.path,
+                prepared: yield* prepareSharedResourceContent(file.bytes, file.mode ?? null),
+              }
+            }),
+        )
+      : undefined
     const identity = {
       version: 1,
       library,
@@ -406,11 +838,25 @@ export function makeSharedCreatePlan(
       name: prepared.name,
       description: prepared.description,
       default_context: input.defaultContext ?? false,
+      ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+      ...(complete
+        ? {
+            complete_resources: 1 as const,
+            resources: resources!.map(({ prepared, ...file }) => ({
+              ...file,
+              content: prepared.content,
+            })),
+          }
+        : {}),
       original_main_path: portable.main,
       entrypoint: prepared.entrypoint,
       members: prepared.members,
       ...(prepared.required === undefined ? {} : { requires: prepared.required }),
+      ...(input.relationBindings === undefined
+        ? {}
+        : { relation_bindings: input.relationBindings }),
       ...(portable.projection === undefined ? {} : { input_projection: portable.projection }),
+      ...(sourceProjection === undefined ? {} : { source_projection: sourceProjection }),
       files: candidates.map((file) => ({
         path: file.path,
         input_path: file.input_path,
@@ -422,20 +868,155 @@ export function makeSharedCreatePlan(
       reference_check: prepared.references,
     }
     const digest = yield* sha256(canonicalSharedJson(identity))
-    const skillId = `skill-${digest}`
+    const skillId = sourceProjection?.skill_id ?? `skill-${digest}`
+    const eventFor = <A extends Omit<FileEvent, "event_id">>(fields: A) =>
+      sha256(canonicalSharedJson({ version: 1, ...fields })).pipe(
+        Effect.map((hash) => ({ ...fields, event_id: `create-file-${hash}` })),
+      )
+    const baselineFor = (fileId: string, path: string, native: boolean) =>
+      Effect.gen(function* () {
+        const original = local?.local.baseline_inputs.find((file) => file.path === path)
+        if (original === undefined || local === undefined) return undefined
+        if (!native)
+          return {
+            event: yield* eventFor({
+              kind: "resource_followed" as const,
+              file_id: fileId,
+              parents: [] as readonly string[],
+              source_id: local.local.baseline.source_id,
+              source_revision: local.local.baseline.commit,
+              path,
+              source_path: path,
+              content: original.prepared.content,
+              retained: null,
+            }),
+            body: undefined,
+          }
+        const bytes = local.baselineBytes.get(path)!,
+          metadata =
+            original.prepared.content.mode === null ? {} : { mode: original.prepared.content.mode }
+        const text = yield* createChecked(() =>
+          new TextDecoder("utf-8", { fatal: true, ignoreBOM: projectionVersion >= 11 }).decode(
+            bytes,
+          ),
+        )
+        const supporting =
+          path !== prepared.entrypoint && projectionVersion >= 11
+            ? splitNativeSupportingMarkdown(text)
+            : undefined
+        const body =
+          path === prepared.entrypoint
+            ? yield* createChecked(
+                () =>
+                  importDocument(
+                    { path, bytes },
+                    { name: prepared.name, description: prepared.description },
+                  ).body,
+              )
+            : (supporting?.body ?? text)
+        const projection = yield* createChecked(() =>
+          projectSharedNotionMarkdown(body, {
+            version: projectionVersion,
+            purpose: "data_source_create",
+          }),
+        )
+        const hash = yield* sha256(projection.markdown)
+        const content = {
+          object_id: `body-${hash}`,
+          sha256: hash,
+          bytes: new TextEncoder().encode(projection.markdown).length,
+          ...metadata,
+          ...(path === prepared.entrypoint ? { frontmatter: nativeMainFrontmatter(text) } : {}),
+          ...(supporting?.frontmatter === undefined ? {} : { frontmatter: supporting.frontmatter }),
+        }
+        const event = yield* eventFor({
+          kind: "projected" as const,
+          file_id: fileId,
+          parents: [] as readonly string[],
+          source_revision: local.local.baseline.commit,
+          projection: { normalization_version: 1 as const, sha256: hash },
+          ...nativeFileMetadata(content),
+        })
+        return { event, body: { markdown: projection.markdown, content } }
+      })
     const files = yield* Effect.forEach(candidates, (file) =>
       Effect.gen(function* () {
         const fileId = `file-${yield* sha256(canonicalSharedJson([skillId, file.path]))}`
-        const fields = {
-          kind: "adopted" as const,
+        const baseline = yield* baselineFor(fileId, file.path, true)
+        const parents = baseline === undefined ? [] : [baseline.event.event_id]
+        const change = local?.changes.get(file.path)
+        const fields =
+          change === "deleted"
+            ? { kind: "deleted" as const, file_id: fileId, parents, retained: file.content }
+            : sourceProjection === undefined || change === "custom"
+              ? {
+                  kind: "adopted" as const,
+                  file_id: fileId,
+                  parents,
+                  content: file.content,
+                }
+              : sourceProjection.version === 2
+                ? {
+                    kind: "source_projection_pending" as const,
+                    file_id: fileId,
+                    parents: [] as readonly string[],
+                    projection: { normalization_version: 1 as const, sha256: file.content.sha256 },
+                    ...nativeFileMetadata(file.content),
+                  }
+                : {
+                    kind: "projected" as const,
+                    file_id: fileId,
+                    parents: [] as readonly string[],
+                    source_revision: sourceProjection.binding.commit,
+                    projection: { normalization_version: 1 as const, sha256: file.content.sha256 },
+                    ...nativeFileMetadata(file.content),
+                  }
+        const event =
+          fields.kind === "source_projection_pending"
+            ? {
+                ...fields,
+                event_id: `create-projection-${yield* sha256(canonicalSharedJson({ version: 1, ...fields }))}`,
+              }
+            : yield* eventFor(fields)
+        return {
+          ...file,
           file_id: fileId,
-          parents: [] as readonly string[],
-          content: file.content,
+          event,
+          ...(baseline === undefined ? {} : { ancestors: [baseline.event] }),
+          ...(baseline?.body === undefined ? {} : { baseline_body: baseline.body }),
         }
-        const eventId = `create-file-${yield* sha256(canonicalSharedJson({ version: 1, ...fields }))}`
-        return { ...file, file_id: fileId, event: { ...fields, event_id: eventId } }
       }),
     )
+    const resourceFiles =
+      resources === undefined
+        ? undefined
+        : yield* Effect.forEach(resources, (file) =>
+            Effect.gen(function* () {
+              const fileId = `file-${yield* sha256(canonicalSharedJson([skillId, file.path]))}`
+              const baseline = yield* baselineFor(fileId, file.path, false),
+                parents = baseline === undefined ? [] : [baseline.event.event_id]
+              const fields =
+                local?.changes.get(file.path) === "deleted"
+                  ? {
+                      kind: "deleted" as const,
+                      file_id: fileId,
+                      parents,
+                      retained: file.prepared.content,
+                    }
+                  : {
+                      kind: "adopted" as const,
+                      file_id: fileId,
+                      parents,
+                      content: file.prepared.content,
+                    }
+              return {
+                ...file,
+                file_id: fileId,
+                event: yield* eventFor(fields),
+                ...(baseline === undefined ? {} : { ancestors: [baseline.event] }),
+              }
+            }),
+          )
     const plan: SharedCreatePlan = {
       version: 1,
       kind: "skill_create",
@@ -446,17 +1027,29 @@ export function makeSharedCreatePlan(
       name: prepared.name,
       description: prepared.description,
       default_context: input.defaultContext ?? false,
+      ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+      ...(complete ? { complete_resources: 1 as const, resources: resourceFiles! } : {}),
       original_main_path: portable.main,
       entrypoint: prepared.entrypoint,
       members: prepared.members,
       ...(prepared.required === undefined ? {} : { requires: prepared.required }),
+      ...(input.relationBindings === undefined
+        ? {}
+        : { relation_bindings: input.relationBindings }),
       reference_check: prepared.references,
       files,
       ...(portable.projection === undefined ? {} : { input_projection: portable.projection }),
+      ...(sourceProjection === undefined ? {} : { source_projection: sourceProjection }),
     }
     yield* createChecked(() => {
       Schema.decodeUnknownSync(SharedCreatePlanSchema)(plan, { onExcessProperty: "error" })
-      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan))
+      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan), "operation")
+      if (plan.source_projection?.version === 1)
+        validateSharedRecordEnvelope(
+          `register-${plan.source_projection.binding.source_id}`,
+          plan.source_projection.binding,
+          "source",
+        )
       for (const file of files) {
         validateSharedRecordEnvelope(
           `retain-input-${file.input.sha256}`,
@@ -467,6 +1060,12 @@ export function makeSharedCreatePlan(
           sharedCreateBodyPayload(file.projection.markdown),
         )
         validateSharedRecordEnvelope(file.event.event_id, file.event)
+      }
+      for (const file of sharedCreateFiles(plan)) {
+        for (const event of [...(file.ancestors ?? []), file.event])
+          validateSharedRecordEnvelope(event.event_id, event)
+        if (file.event.kind !== "source_projection_pending")
+          resolveFileState(file.file_id, [...(file.ancestors ?? []), file.event])
       }
     })
     return plan
@@ -517,7 +1116,7 @@ export function makeSharedMigrationCreatePlan(
     const plan: SharedCreatePlan = { ...fields, operation_id: `skill-create-${digest}` }
     yield* createChecked(() => {
       Schema.decodeUnknownSync(SharedCreatePlanSchema)(plan, { onExcessProperty: "error" })
-      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan))
+      validateSharedRecordEnvelope(plan.operation_id, sharedCreateManifest(plan), "operation")
       for (const file of files) {
         validateSharedRecordEnvelope(
           `retain-input-${file.input.sha256}`,
@@ -589,19 +1188,45 @@ export function validateSharedCreatePlan(input: unknown) {
       files: plan.files.map((file) => ({
         path: file.input_path,
         bytes: new TextEncoder().encode(file.input.text),
+        ...(file.input.mode === undefined ? {} : { mode: file.input.mode }),
       })),
       ...(plan.input_projection === undefined ? {} : { projection: plan.input_projection }),
     }
+    if ((plan.complete_resources === 1) !== (plan.resources !== undefined))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_INVALID",
+          "A complete creation must freeze its entire raw resource set.",
+        ),
+      )
+    const rawFiles = []
+    for (const file of plan.resources ?? []) {
+      const verified = yield* validatePreparedSharedResource(file.prepared)
+      rawFiles.push({
+        path: file.input_path,
+        bytes: verified.bytes,
+        ...(file.prepared.content.mode === null ? {} : { mode: file.prepared.content.mode }),
+      })
+    }
+    const completePortable = { ...portable, files: [...portable.files, ...rawFiles] }
     const projectionVersion = yield* createChecked(() => sharedCreateProjectionVersion(plan.files))
     const expected = yield* makeSharedCreatePlan(
       plan.library,
       {
-        portable,
+        portable: completePortable,
         defaultContext: plan.default_context,
+        ...(plan.enabled === undefined ? {} : { enabled: plan.enabled }),
+        ...(plan.complete_resources === undefined ? {} : { completeResources: true }),
         ...(plan.content_kind === "router" || plan.members.length > 0
           ? { members: plan.members }
           : {}),
         ...(plan.requires === undefined ? {} : { requires: plan.requires }),
+        ...(plan.relation_bindings === undefined
+          ? {}
+          : { relationBindings: plan.relation_bindings }),
+        ...(plan.source_projection === undefined
+          ? {}
+          : { sourceProjection: plan.source_projection }),
       },
       projectionVersion,
     )

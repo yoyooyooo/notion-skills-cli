@@ -219,6 +219,135 @@ test("real Store publishes, repairs and retires current-tree proofs without rene
   })
 }, 30_000)
 
+test("the bounded file-observation slot keeps the highest real-process generation and fences every pre-clear completion", async () => {
+  await isolated(async (root) => {
+    const key = `cache/shared-file-observations/${"7".repeat(64)}/latest.json`
+    const identity = "shared_skill:slot-library:slot-skill"
+    const payload = {
+      version: 1,
+      scope,
+      library_id: "slot-library",
+      skill_id: "slot-skill",
+      skill_page_id: "page",
+      snapshot_id: "fixed-snapshot",
+      observations: Array.from({ length: 80 }, (_, index) => ({
+        file_id: `file-${index}`,
+        sha256: "a".repeat(64),
+      })),
+    }
+    const write = (generation: number) =>
+      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:${generation}})`
+    const initialize = await child(
+      root,
+      `for(let i=0;i<3;i++)yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});${write(1)}`,
+    )
+    expect(initialize.exit, initialize.stderr).toBe(0)
+    const contenders = await Promise.all([3, 2].map((generation) => child(root, write(generation))))
+    for (const result of contenders) expect(result.exit, result.stderr).toBe(0)
+    const newest = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(newest.exit, newest.stderr).toBe(0)
+    expect(JSON.parse(newest.stdout).generation).toBe(3)
+    const conflict = await child(
+      root,
+      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:3,snapshot_id:'other'})`,
+    )
+    expect(conflict.exit).not.toBe(0)
+    expect(conflict.stderr).toContain("different content")
+    const cleared = await child(
+      root,
+      `yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify({active:yield* state.list('cache/shared-file-observations')}))`,
+    )
+    expect(cleared.exit, cleared.stderr).toBe(0)
+    expect(JSON.parse(cleared.stdout).active).toEqual([])
+    const late = await child(root, write(4))
+    expect(late.exit).not.toBe(0)
+    expect(late.stderr).toContain("retired before publication")
+    const batch = (count: number) =>
+      child(
+        root,
+        `for(let i=0;i<${count};i++){const generation=yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation})}yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify({rows:yield* sql\`SELECT count(*) AS count,sum(length(payload)) AS bytes FROM shared_local_records\`,pages:yield* sql\`PRAGMA page_count\`}))}))`,
+      )
+    const first = await batch(20),
+      repeated = await batch(60)
+    expect(first.exit, first.stderr).toBe(0)
+    expect(repeated.exit, repeated.stderr).toBe(0)
+    const initial = JSON.parse(first.stdout),
+      final = JSON.parse(repeated.stdout)
+    expect(initial.rows[0].count).toBe(1)
+    expect(final).toEqual(initial)
+  })
+}, 30_000)
+
+function partialSharedProgram(root: string, action: "directory" | "selected" | "all") {
+  return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
+import {ConfigProvider,Effect,FileSystem,Layer} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {SqlClient} from ${JSON.stringify(import.meta.resolve("effect/sql"))};
+import {HttpClient,HttpClientResponse} from ${JSON.stringify(import.meta.resolve("effect/http"))};
+import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
+import {Notion} from ${JSON.stringify(core + "notion.ts")};
+import {targetSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
+import {property} from ${JSON.stringify(core + "model.ts")};
+import {registerSourcePlanBinding} from ${JSON.stringify(core + "shared-source-plan-binding.ts")};
+import {configureSharedHttpOrigins} from ${JSON.stringify(core + "shared-source-config.ts")};
+import {sqliteState} from ${JSON.stringify(core + "sqlite-state.ts")};
+import {sharedSnapshotFixture,digest,library,rich,skillPage} from ${JSON.stringify(new URL("./shared-snapshot-fixture.ts", import.meta.url).pathname)};
+process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
+const raw=Uint8Array.from({length:262147},(_,i)=>(i*73)%251),hash=digest(raw),requests=[];
+const client=HttpClient.make((request,url)=>Effect.sync(()=>{requests.push(url.toString());return HttpClientResponse.fromWeb(request,new Response(raw.slice(),{headers:{'content-length':String(raw.length)}}))}));
+const fixture=sharedSnapshotFixture({httpClient:client});await fixture.open();
+const registered=await fixture.run(registerSourcePlanBinding(library,{skillPageId:skillPage,mode:'create',plan:{version:1,kind:'composition',base:null,mounts:[{mount_path:'assets',resource:{kind:'http',manifest:{version:1,files:[{path:'large.bin',sha256:hash,bytes:raw.length,mode:'100755'}]},locations:[{sha256:hash,url:'https://resources.example.com/large'}]}}]}}));
+property(fixture.main.properties).source=rich('source',registered.binding.source_plan_id);
+const remote=await fixture.run(Notion);
+const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,remote),Layer.succeed(HttpClient.HttpClient,client),StoreLive.pipe(Layer.provideMerge(NodeServices.layer)));
+Effect.runPromise(Effect.gen(function*(){
+ const store=yield* Store;yield* configureSharedHttpOrigins(['https://resources.example.com']);
+ const access=${JSON.stringify(action === "directory" ? "manifest" : action === "selected" ? "target" : "all")};
+ const snapshot=yield* targetSnapshot({selector:skillPage,...(access==='target'?{path:'assets/large.bin'}:{})},{refresh:access==='manifest'},'generated',access);
+ const object=yield* store.readBytes('objects/'+hash).pipe(Effect.result);
+ const stats=yield* Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(store.root,yield* FileSystem.FileSystem);return yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;return {observations:yield* sql\`SELECT count(*) AS count FROM shared_local_records WHERE key LIKE 'cache/shared-file-observations/%'\`,snapshots:yield* sql\`SELECT count(*) AS count FROM snapshots\`}}))}));
+ console.log(JSON.stringify({snapshot_id:snapshot.snapshot_id,files:snapshot.files,materialization:snapshot.materialization,requests,raw_present:object._tag==='Success',raw_exact:object._tag==='Success'&&digest(object.success)===hash,stats}));
+}).pipe(Effect.provide(services),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+}
+
+test("real Store publishes a complete raw directory before bytes and a fresh Node process acquires only its selected fixed object", async () => {
+  await isolated(async (root) => {
+    const directory = await runProgram(partialSharedProgram(root, "directory"))
+    expect(directory.exit, directory.stderr).toBe(0)
+    const first = JSON.parse(directory.stdout)
+    expect(first.files).toHaveLength(4)
+    expect(first.raw_present).toBe(false)
+    expect(first.requests).toEqual([])
+    expect(first.materialization).toMatchObject({
+      manifest_complete: true,
+      local_files_ready: false,
+      loaded: false,
+    })
+    expect(first.stats).toEqual({ observations: [{ count: 1 }], snapshots: [{ count: 1 }] })
+    const selected = await runProgram(partialSharedProgram(root, "selected"))
+    expect(selected.exit, selected.stderr).toBe(0)
+    const second = JSON.parse(selected.stdout)
+    expect(second.snapshot_id).toBe(first.snapshot_id)
+    expect(second.raw_exact).toBe(true)
+    expect(second.requests).toEqual(["https://resources.example.com/large"])
+    const reopened = await runProgram(partialSharedProgram(root, "all"))
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    const full = JSON.parse(reopened.stdout)
+    expect(full.snapshot_id).toBe(first.snapshot_id)
+    expect(full.files).toEqual(first.files)
+    expect(full.raw_exact).toBe(true)
+    expect(full.requests).toEqual([])
+    expect(full.stats).toEqual(first.stats)
+    expect(full.materialization).toMatchObject({
+      manifest_complete: true,
+      local_files_ready: true,
+      loaded: false,
+    })
+  })
+}, 30_000)
+
 test("shared cache and typed dispatch addresses persist across real Node restarts", async () => {
   await isolated(async (root) => {
     const entries = Object.values(keys).map((key, index) => ({

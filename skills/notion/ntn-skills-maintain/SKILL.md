@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Create, adopt and edit Notion Skills through ntn-skills. Use for a manually created disabled draft, native shared content, pinned body/resources/metadata changes, adding a linked reference page, enabling a reviewed Skill, explicit restore-follow, exact replacement or portable transfer. Preserve interrupted original operations. Route fixed-source selection, Profiles and existing synchronization bindings to ntn-skills-sync.
+description: Create, adopt and edit Notion Skills through ntn-skills. Use for native content, pinned body/resource/metadata changes, linked reference pages, library audits, exact inventory reconciliation and complete reviewed imports. Preserve original operations and whole custom files. Route source policy, fixed-source selection, Profiles and existing synchronization bindings to ntn-skills-sync.
 compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion token with Read, Insert and Update content access. Notion requests use the project's direct HTTP engine.
 metadata:
   publisher: ntn-skills
@@ -21,7 +21,39 @@ ntn-skills create ./release-review --database LIBRARY_ENTRY
 
 Ordinary Skill folders need no hand-authored manifest. `--name` and `--description` explicitly override input metadata. A name collision does not permit replacing another page. Prompt/Router kind declarations still use the portable contract in [content formats](references/operations.md#content-formats).
 
-A shared library creates native Skills/Files pages, preserves the original input, and enables the Skill only after its complete file set verifies. Omit `--storage` for that path. Unsupported binary or input projection fails before creation without dropping files; consume binary resources through a fixed source. A create result that is unknown must retain its exact input and original operation.
+A shared library creates native Skills/Files pages, preserves the original input, and enables the Skill only after its complete file set verifies. Omit `--storage` for that path. Ordinary `create` keeps its existing UTF-8 native input contract. Use the reviewed complete inventory workflow below when the Skill includes binary, JSON or script resources; it uses the same original creation journal. Unsupported input must fail before partial creation. An unknown result retains its exact input and original operation.
+
+## Audit and import a complete local Skill
+
+Freeze the authorized roots and target library first. Do not expand a private project, external symlink target or package-owned tree merely because a Skill refers to it.
+
+```bash
+ntn-skills ctl library audit run --entry LIBRARY_ENTRY --all --depth content
+ntn-skills ctl library audit resume AUDIT_RUN_ID
+ntn-skills ctl library inventory remote --audit-run AUDIT_RUN_ID
+ntn-skills ctl library inventory local --root /absolute/approved/skills --allow-target /absolute/approved/targets
+ntn-skills ctl library inventory reconcile --remote REMOTE_INVENTORY_ID --local LOCAL_INVENTORY_ID
+ntn-skills ctl library inventory review RECONCILIATION_ID
+```
+
+Use `audit report RUN_ID` or `audit list` offline to inspect original observations. Audit depth, execution, coverage and severity are separate: exit 75 is resumable budget exhaustion, 4 is incomplete coverage, and 3 is a completed full audit with error findings. Partial scope cannot prove absence. Inventory records complete paths, hashes, byte sizes, modes, real identities, logical aliases, restricted dependencies and provenance without executing scripts or changing the source tree. Add only the exact relevant `--provenance` files; an AK installation needs its assets mode configuration alongside install/upstream registries.
+
+Review one entity and its complete manifest, then choose exactly one input kind:
+
+```bash
+ntn-skills ctl library inventory prepare-import --entry LIBRARY_ENTRY \
+  --review RECONCILIATION_ID --entity ENTITY_ID --approve-manifest MANIFEST_SHA256 \
+  --native --output ./import-plan.json
+ntn-skills ctl library inventory apply-import ./import-plan.json --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library inventory apply-import ./import-plan.json --entry LIBRARY_ENTRY
+ntn-skills ctl library inventory reconcile-import ./import-plan.json --entry LIBRARY_ENTRY
+```
+
+For upstream content, replace `--native` with `--source SOURCE_ID --member EXACT_MEMBER`. Local modifications require a proven original fixed commit; the current upstream revision cannot serve as an invented old baseline. Exact existing equal content uses `--verify-existing`; differences and ambiguous identities need a separate reviewed author/source plan. Names and hashes alone never authorize replacement.
+
+New entries default to disabled. Add `--enable` only when preparing a plan that explicitly includes making the fully verified new Skill available. Markdown, references, scripts, JSON, images, binary, modes and required relative paths all participate in completeness. Same-library portable relations retain their explicit ownership; upstream relationship suggestions do not modify user selections. Revalidate the complete source tree and provenance before applying. Never drop unsupported files to obtain a successful main-only import.
+
+Use the same original plan for partial recovery and repeated execution. `reconcile-import` reads the original outcome without source-tree reads, provider rediscovery or remote writes. Only original durable receipts can justify continuation; current equality does not confirm a lost response. A copied or rehashed JSON is not new upload authority. For an actual inventory migration, independently audit and consume each reviewed batch from its frozen pre-import manifest, retaining all conflicts, pending authorization and failures in the denominator. Do not delete or redirect local originals as part of import.
 
 ## Adopt a draft created in Notion
 
@@ -75,7 +107,17 @@ Move preserves its ID, native page and original source path. Delete records a to
 
 Editing any bound Notion body makes that whole file customized through the next successful current read. Other files retain their own source behavior. Shared metadata remains authoritative in Notion; no tracked/fork conversion or manual adopt marker is required. `restore-follow` explicitly retains the custom body and restores the exact source selected in Notion. It does not select a newer revision. Sharing a selected local source body requires `--allow-local-archive`.
 
-Existing legacy tracked members still require their explicit fork/conversion workflow for personal authoring. Existing local sync bindings retain their own baselines and recovery. Keep generated snapshot directories as consumption output; modifying one never authorizes a silent reverse sync. Route those existing bindings or source/Profile changes to `ntn-skills-sync`.
+For non-document resources, use `ctl library resource` with one exact path and input file:
+
+```bash
+ntn-skills ctl library resource add SKILL_PAGE_ID assets/icon.png --entry LIBRARY_ENTRY --input ./icon.png
+ntn-skills ctl library resource replace SKILL_PAGE_ID scripts/run.js --entry LIBRARY_ENTRY --input ./run.js
+ntn-skills ctl library resource reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY
+```
+
+The resource command preserves raw bytes and known executable mode in retained objects, with a stable Files management page; the page's notes are not the binary payload. `move` preserves identity and source path, `delete` records a tombstone, `undelete` restores the retained custom resource, and `restore` explicitly follows the selected source again. Paths and references must remain valid. Old pins keep original bytes; a later source update cannot revive a tombstone. These commands never run the resource. Use their `--dry-run` and original operation ID for review and reconciliation; changing inputs does not clear an unknown operation.
+
+Keep generated snapshot directories as consumption output; modifying one never authorizes a silent reverse sync. Preserve another operation family's original baselines and returned recovery actions. Route current Source policy and Profile changes to `ntn-skills-sync`.
 
 ## Finish from the verified result
 
@@ -83,8 +125,4 @@ Require exit 0, `ok: true`, `verified: true`, no `dry_run: true`, and an applied
 
 Preserve `create_operation_id`, `adoption_operation_id`, `body_write_operation_id`, `metadata_operation_id`, `apply_operation_id`, or the original error's recovery plan. For shared writes/apply/restore-follow, read the exact current Skill to reconcile retained operations; use `--authoring` for a disabled draft and repeat only when it reports `read_again`. For an interrupted native create, retain the same input and intent. Use the returned `adopt ... --reconcile` for initial draft adoption, and `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` for add/delete/move. Missing original facts remain unresolved; current equality never proves an unknown request succeeded.
 
-Use `ctl operation resume OPERATION_ID --progress` only when the result identifies the earlier Publication workflow and returns that recovery action. Shared IDs do not use legacy resume. Do not create a replacement, change a name, clear pending state or discard unrelated files to bypass an unresolved result. Consult [operations and recovery](references/operations.md) for the matching path.
-
-## Review a legacy migration
-
-For an explicitly requested migration into a shared library, load [the retained-evidence workflow](references/operations.md#review-a-legacy-migration). It covers frozen input, review and approval, exact copy policies, and original-operation reconciliation or continuation. Ordinary content edits use the commands above.
+Use the exact recovery action returned for the original operation; different operation families are not interchangeable. Do not create a replacement, change a name, clear pending state or discard unrelated files to bypass an unresolved result. Consult [operations and recovery](references/operations.md) for the matching path.

@@ -237,6 +237,10 @@ export function portableFiles(
     throw fail("INVALID_SKILL", "Portable Skill requires an entrypoint.")
   const seen = new Set<string>()
   for (const file of skill.files) {
+    if (file.mode !== undefined && file.mode !== "100644" && file.mode !== "100755")
+      throw fail("INVALID_ARCHIVE", "Portable resources require a regular-file mode.", {
+        path: file.path,
+      })
     if (
       !file.path ||
       normalizePath(file.path) !== file.path ||
@@ -279,7 +283,16 @@ export function portableZip(skill: PortableSkill, projection = false, snapshot =
   const files = portableFiles(skill, projection, snapshot)
   const entries: Zippable = Object.create(null)
   for (const file of files)
-    entries[file.path] = [file.bytes, { mtime: new Date(1980, 0, 1), level: 6 }]
+    entries[file.path] = [
+      file.bytes,
+      {
+        mtime: new Date(1980, 0, 1),
+        level: 6,
+        ...(file.mode === undefined
+          ? {}
+          : { os: 3, attrs: ((file.mode === "100755" ? 0o100755 : 0o100644) << 16) >>> 0 }),
+      },
+    ]
   const bytes = zipSync(entries)
   if (bytes.length > 20 * 1024 * 1024)
     throw fail("FILE_TOO_LARGE", "Portable Skill ZIP must fit Notion's 20 MiB direct upload limit.")
@@ -386,6 +399,7 @@ export function canonicalMain(
     .join("\n")
   return {
     path: previous.path,
+    ...(previous.mode === undefined ? {} : { mode: previous.mode }),
     bytes: encoder.encode(`---\n${frontmatter}\n---\n\n${body.trim()}${body.trim() ? "\n" : ""}`),
   }
 }

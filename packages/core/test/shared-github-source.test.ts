@@ -52,7 +52,10 @@ const commitResponse = () => Response.json({ sha: commit, tree: { sha: tree } })
 test("retained metadata reuses a complete pinned tree with the same selection checks and no transport", () => {
   const commitObject = { sha: commit, tree: { sha: tree } }
   const rawTree = treeBody([rootEntry, entry("skills/demo/SKILL.md")])
-  expect(inspectFixedGithubMetadata(input, commitObject, rawTree)).toEqual(source)
+  expect(inspectFixedGithubMetadata(input, commitObject, rawTree)).toEqual({
+    ...source,
+    files: [{ ...file, mode: "100644" }],
+  })
   expect(() =>
     inspectFixedGithubMetadata(input, { ...commitObject, sha: "0".repeat(40) }, rawTree),
   ).toThrow("different pinned commit")
@@ -149,7 +152,10 @@ describe("fixed public GitHub source inspection", () => {
     const result = await run(inspectFixedGithubSource({ ...input, metrics }), http.api)
     expect(result).toEqual({
       ...source,
-      files: [file, { ...file, path: "z.sh", source_path: "skills/demo/z.sh" }],
+      files: [
+        { ...file, mode: "100644" },
+        { ...file, path: "z.sh", source_path: "skills/demo/z.sh", mode: "100755" },
+      ],
     })
     expect(http.requests.map((request) => request.url)).toEqual([
       `https://api.github.com/repos/example/skills/git/commits/${commit}`,
@@ -174,7 +180,7 @@ describe("fixed public GitHub source inspection", () => {
   test("supports an explicitly pinned repository root", async () => {
     const http = controlled([commitResponse(), Response.json(treeBody([entry("SKILL.md")]))])
     const result = await run(inspectFixedGithubSource({ ...input, root: "" }), http.api)
-    expect(result.files).toEqual([{ ...file, source_path: "SKILL.md" }])
+    expect(result.files).toEqual([{ ...file, source_path: "SKILL.md", mode: "100644" }])
   })
 
   test.each([

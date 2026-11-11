@@ -90,6 +90,7 @@ const publicFiles = [
   "docs/protocol.md",
   "docs/shared-authoring.md",
   "docs/sources-management.md",
+  "docs/inventory-import.md",
   "docs/shared-migration-activation.md",
   "docs/shared-ssot-architecture.md",
   "docs/historical-operations.md",

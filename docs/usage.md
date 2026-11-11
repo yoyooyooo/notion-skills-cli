@@ -17,6 +17,7 @@ Choose the task, then retain the returned identities for subsequent commands:
 | Maintain an existing upstream subscription | `ctl sync upstream connect SOURCE --database LIBRARY`, then `ctl sync upstream run --target SUBSCRIPTION_ID` |
 | Keep a Notion page and local directory synchronized | `ctl sync local connect PAGE_ID --path DIRECTORY`, then `ctl sync local run BINDING` |
 | Select a fixed shared source or Profile | [Shared source selection and defaults](shared-authoring.md#select-a-fixed-source-and-restore-following) |
+| Inspect resource versions and pending work without adopting edits | `ctl library state PAGE_ID --entry LIBRARY`; add `--observe` for current body comparisons and original pending outcomes |
 | Inspect an interrupted operation | Use the [matching shared recovery path](shared-authoring.md#handle-an-interrupted-operation), or `ctl operation show OPERATION_ID` for an earlier Publication/sync result |
 
 In Context Broker, select `$ntn-skills-maintain@builtin` for content changes or `$ntn-skills-sync@builtin` for fixed sources, Profile defaults and existing synchronization relationships. These package Skills are available through ordinary `$` discovery with their supporting files, without publishing a copy to Notion. The host supplies the executable argv and source/database scope; use those values when there are multiple configured sources.

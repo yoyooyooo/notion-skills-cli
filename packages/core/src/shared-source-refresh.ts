@@ -3,11 +3,19 @@ import { zipSync } from "fflate"
 import { authScope } from "./catalog.ts"
 import { fail, property, text, snapshotMembers, type SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
+import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { readImportZip, importDocument, type ImportFile } from "./import.ts"
 import { canonicalMain } from "./portable.ts"
 import { pageId } from "./ref.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { discoverSourceDefinition } from "./shared-source-adapters.ts"
+import {
+  makeSourceBinding,
+  registerSourceBinding,
+  SharedGitSourceBindingSchema,
+} from "./shared-source-binding.ts"
+import { materializeFixedGithubSource } from "./shared-source-materialization.ts"
+import { prepareSourceMember } from "./shared-source-member.ts"
 import {
   guardedSourceMutation,
   readSourceDefinition,
@@ -49,7 +57,7 @@ import {
 import { prepareSharedMetadataWrite } from "./shared-metadata-write.ts"
 import { sha256, Store } from "./store.ts"
 
-const MemberReviewSchema = Schema.Struct({
+export const MemberReviewSchema = Schema.Struct({
   version: Schema.Literal(1),
   comparison: Schema.Literal("current_origin_bindings"),
   relation_ownership: Schema.Literal("notion"),
@@ -81,9 +89,10 @@ export function reviewSourceMembers(
   library: SharedLibrary,
   source: string,
   snapshot: SourceSnapshot,
+  membership?: Effect.Success<ReturnType<typeof listSourceMembers>>,
 ) {
   return Effect.gen(function* () {
-    const bound = (yield* listSourceMembers(library, source)).items.filter(
+    const bound = (membership ?? (yield* listSourceMembers(library, source))).items.filter(
       (item) => item.kind === "skill" && item.member !== "",
     )
     return yield* sourceChecked(() => {
@@ -132,8 +141,7 @@ export function reviewSourceMembers(
   })
 }
 
-const RefreshSchema = Schema.Struct({
-  version: Schema.Literals([1, 2, 3]),
+const RefreshFields = {
   kind: Schema.Literal("source_refresh"),
   plan_id: Schema.String,
   library_id: Schema.String,
@@ -146,18 +154,51 @@ const RefreshSchema = Schema.Struct({
   previous_pin: Schema.String,
   current_snapshot: Schema.String,
   provider_revision: Schema.String,
+  provider_committed_at: Schema.optional(Schema.String),
   created_at: Schema.Number,
+  projected_files: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      bytes: Schema.Number,
+      sha256: Schema.String,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+    }),
+  ),
+  custom_files_preserved: Schema.Array(Schema.String),
+}
+const RetainedRefreshSchema = Schema.Struct({
+  ...RefreshFields,
+  version: Schema.Literals([1, 2, 3]),
   bundle_id: Schema.String,
   bundle: RetainedSourceSchema,
   archive_base64: Schema.String,
-  projected_files: Schema.Array(
-    Schema.Struct({ path: Schema.String, bytes: Schema.Number, sha256: Schema.String }),
-  ),
-  custom_files_preserved: Schema.Array(Schema.String),
   selection: Schema.optional(SharedMetadataWritePlanSchema),
   member_review: Schema.optional(MemberReviewSchema),
 })
-export type SourceRefreshPlan = typeof RefreshSchema.Type
+const GitRefreshSchema = Schema.Struct({
+  ...RefreshFields,
+  version: Schema.Literal(4),
+  source_pin: Schema.String,
+  fixed_source: SharedGitSourceBindingSchema,
+  source_files: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      sha256: Schema.String,
+      bytes: Schema.Number,
+      mode: Schema.optional(Schema.Literals(["100644", "100755"])),
+    }),
+  ),
+  selection: SharedMetadataWritePlanSchema,
+  member_review: MemberReviewSchema,
+})
+export const SourceRefreshPlanSchema = Schema.Union([RetainedRefreshSchema, GitRefreshSchema])
+export type SourceRefreshPlan = typeof SourceRefreshPlanSchema.Type
+export type RetainedSourceRefreshPlan = typeof RetainedRefreshSchema.Type
+export type SourceRefreshStorage = "auto" | "retained" | "fixed-git"
+export const sourceRefreshPin = (plan: SourceRefreshPlan) =>
+  plan.version === 4 ? plan.source_pin : plan.bundle_id
+export const sourceRefreshFiles = (plan: SourceRefreshPlan) =>
+  plan.version === 4 ? plan.source_files : plan.bundle.files
 
 function binding(library: SharedLibrary, sourcePage: string, target: string, member?: string) {
   return Effect.gen(function* () {
@@ -208,6 +249,23 @@ function projectCandidate(
   selected: Effect.Success<ReturnType<typeof binding>>,
   files: readonly ImportFile[],
 ) {
+  const referenceErrorContext =
+    (preparation_stage: "current_snapshot" | "candidate_file_references") =>
+    (error: SkillsError) => {
+      if (
+        error.code !== "SHARED_REFERENCE_INVALID" ||
+        typeof error.details !== "object" ||
+        error.details === null ||
+        Array.isArray(error.details)
+      )
+        return error
+      return fail(error.code, error.message, {
+        ...error.details,
+        target_page_id: selected.id,
+        source_member: selected.member,
+        preparation_stage,
+      })
+    }
   return Effect.gen(function* () {
     const fixed = selected.index.source_reference
       ? yield* resolveSelectedSharedSource(library, selected.id, selected.index.source_reference)
@@ -262,7 +320,7 @@ function projectCandidate(
             },
           }
         : {}),
-    })
+    }).pipe(Effect.mapError(referenceErrorContext("current_snapshot")))
     const records = yield* querySharedRecords(library, {
       skillPageId: selected.id,
       kind: "file_event",
@@ -312,6 +370,9 @@ function projectCandidate(
           file_id: file.file_id,
           path: file.path,
           bytes,
+          ...(state.ownership.content.mode === undefined || state.ownership.content.mode === null
+            ? {}
+            : { mode: state.ownership.content.mode }),
         })
         custom.push(file.path)
       }
@@ -400,10 +461,17 @@ function projectCandidate(
         )
       }),
     )
-    yield* sourceChecked(() => assertSharedFileReferences(final))
+    yield* sourceChecked(() => assertSharedFileReferences(final)).pipe(
+      Effect.mapError(referenceErrorContext("candidate_file_references")),
+    )
     const projected = yield* Effect.forEach(final, (file) =>
       Effect.gen(function* () {
-        return { path: file.path, bytes: file.bytes.length, sha256: yield* sha256(file.bytes) }
+        return {
+          path: file.path,
+          bytes: file.bytes.length,
+          sha256: yield* sha256(file.bytes),
+          ...(file.mode === undefined ? {} : { mode: file.mode }),
+        }
       }),
     )
     return {
@@ -419,9 +487,133 @@ export function prepareSourceRefresh(
   source: string,
   target: string,
   acquire: typeof discoverSourceDefinition = discoverSourceDefinition,
+  storage: SourceRefreshStorage = "auto",
 ) {
   return Effect.gen(function* () {
     const definition = yield* readSourceDefinition(library, source)
+    if (!definition.enabled || definition.options.shared_target_set !== undefined)
+      return yield* Effect.fail(
+        fail("SOURCE_COMPOSITION_REVIEW_REQUIRED", "Choose an enabled single-origin Source."),
+      )
+    const acquired = yield* acquire(definition, { metrics: (yield* Notion).metrics })
+    const memberReview = yield* reviewSourceMembers(library, definition.page_id, acquired)
+    return yield* prepareSourceRefreshFromSnapshot(library, {
+      definition,
+      acquired,
+      memberReview,
+      target,
+      storage,
+    })
+  }).pipe(withReadOnlyNotion)
+}
+
+/** Retained v1-v3 remains an explicit recovery policy with independent compatibility coverage. */
+export function prepareRetainedSourceRefresh(
+  library: SharedLibrary,
+  source: string,
+  target: string,
+  acquire: typeof discoverSourceDefinition = discoverSourceDefinition,
+) {
+  return Effect.gen(function* () {
+    const definition = yield* readSourceDefinition(library, source)
+    if (!definition.enabled || definition.options.shared_target_set !== undefined)
+      return yield* Effect.fail(
+        fail("SOURCE_COMPOSITION_REVIEW_REQUIRED", "Choose an enabled single-origin Source."),
+      )
+    const acquired = yield* acquire(definition, { metrics: (yield* Notion).metrics })
+    const memberReview = yield* reviewSourceMembers(library, definition.page_id, acquired)
+    return yield* prepareRetainedSourceRefreshFromSnapshot(library, {
+      definition,
+      acquired,
+      memberReview,
+      target,
+    })
+  }).pipe(withReadOnlyNotion)
+}
+
+/** Reuse one immutable provider observation across a completely enumerated Source. */
+export function prepareSourceRefreshFromSnapshot(
+  library: SharedLibrary,
+  input: {
+    readonly definition: Effect.Success<ReturnType<typeof readSourceDefinition>>
+    readonly acquired: SourceSnapshot
+    readonly memberReview: typeof MemberReviewSchema.Type
+    readonly target: string
+    readonly storage?: SourceRefreshStorage
+  },
+) {
+  return Effect.gen(function* () {
+    const { definition, acquired, memberReview, target } = input
+    if (!acquired.revision || (acquired.unavailable?.length ?? 0) !== 0)
+      return yield* Effect.fail(
+        fail("SOURCE_REFRESH_INCOMPLETE", "Source has unresolved deterministic resources."),
+      )
+    if (input.storage === "retained")
+      return yield* prepareRetainedSourceRefreshFromSnapshot(library, input)
+    const selected = yield* binding(library, definition.page_id, target)
+    const prepared = yield* prepareSourceMember(
+      definition,
+      acquired,
+      selected.member,
+      input.storage,
+    )
+    if (prepared.kind === "retained") {
+      return yield* prepareRetainedSourceRefreshFromSnapshot(library, input)
+    }
+    const { binding: fixed, files, manifest: verifiedFiles } = prepared
+    const preview = yield* projectCandidate(library, selected, files)
+    const selection = yield* prepareSharedMetadataWrite({
+      library,
+      skillPageId: selected.id,
+      changes: [{ field: "Source", value: fixed.source_id }],
+      expected: { values: [{ field: "Source", value: selected.index.source_reference }] },
+    })
+    const contents = {
+      version: 4 as const,
+      kind: "source_refresh" as const,
+      library_id: library.library_id,
+      sources_data_source_id: sourceTable(library).data_source_id,
+      source_page_id: definition.page_id,
+      source_id: definition.source_id,
+      source_fingerprint: definition.fingerprint,
+      target_page_id: selected.id,
+      member: selected.member,
+      previous_pin: selected.index.source_reference,
+      provider_revision: acquired.revision,
+      ...(acquired.provenance.committed_at === undefined
+        ? {}
+        : { provider_committed_at: acquired.provenance.committed_at }),
+      created_at: yield* Clock.currentTimeMillis,
+      source_pin: fixed.source_id,
+      fixed_source: fixed,
+      source_files: verifiedFiles,
+      ...preview,
+      selection,
+      member_review: memberReview,
+    }
+    const plan = {
+      ...contents,
+      plan_id: `source-refresh-${yield* sha256(canonicalSharedJson(contents))}`,
+    }
+    yield* sourceChecked(() => {
+      validateSharedRecordEnvelope(`register-${fixed.source_id}`, fixed, "source")
+      validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
+    })
+    return plan
+  }).pipe(withReadOnlyNotion)
+}
+
+function prepareRetainedSourceRefreshFromSnapshot(
+  library: SharedLibrary,
+  input: {
+    readonly definition: Effect.Success<ReturnType<typeof readSourceDefinition>>
+    readonly acquired: SourceSnapshot
+    readonly memberReview: typeof MemberReviewSchema.Type
+    readonly target: string
+  },
+) {
+  return Effect.gen(function* () {
+    const { definition, acquired, memberReview, target } = input
     if (definition.options.shared_target_set !== undefined)
       return yield* Effect.fail(
         fail(
@@ -431,8 +623,6 @@ export function prepareSourceRefresh(
         ),
       )
     const selected = yield* binding(library, definition.page_id, target)
-    const acquired = yield* acquire(definition, { metrics: (yield* Notion).metrics })
-    const memberReview = yield* reviewSourceMembers(library, definition.page_id, acquired)
     const matches = acquired.members.filter((item) => item.member_key === selected.member)
     if (matches.length !== 1)
       return yield* Effect.fail(
@@ -441,7 +631,16 @@ export function prepareSourceRefresh(
         }),
       )
     const files = matches[0]!.portable.files
-      .map((file) => ({ path: file.path, bytes: new Uint8Array(file.bytes) }))
+      .map((file) => {
+        const mode =
+          matches[0]!.git_manifest?.files.find((entry) => entry.path === file.path)?.mode ??
+          file.mode
+        return {
+          path: file.path,
+          bytes: new Uint8Array(file.bytes),
+          ...(mode === undefined ? {} : { mode }),
+        }
+      })
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
     if (matches[0]!.portable.main !== "SKILL.md")
       return yield* Effect.fail(
@@ -450,7 +649,18 @@ export function prepareSourceRefresh(
     const preview = yield* projectCandidate(library, selected, files)
     const archive = zipSync(
       Object.fromEntries(
-        files.map((file) => [file.path, [file.bytes, { mtime: new Date("1980-01-01T00:00:00Z") }]]),
+        files.map((file) => [
+          file.path,
+          [
+            file.bytes,
+            {
+              mtime: new Date("1980-01-01T00:00:00Z"),
+              ...(file.mode === undefined
+                ? {}
+                : { os: 3, attrs: ((file.mode === "100755" ? 0o100755 : 0o100644) << 16) >>> 0 }),
+            },
+          ],
+        ]),
       ),
       { level: 6 },
     )
@@ -470,7 +680,12 @@ export function prepareSourceRefresh(
         entrypoint: "SKILL.md",
         files: yield* Effect.forEach(files, (file) =>
           Effect.gen(function* () {
-            return { path: file.path, sha256: yield* sha256(file.bytes), bytes: file.bytes.length }
+            return {
+              path: file.path,
+              sha256: yield* sha256(file.bytes),
+              bytes: file.bytes.length,
+              ...(file.mode === undefined ? {} : { mode: file.mode }),
+            }
           }),
         ),
         archive: { format: "zip", sha256: yield* sha256(archive), bytes: archive.length, chunks },
@@ -499,6 +714,9 @@ export function prepareSourceRefresh(
       member: selected.member,
       previous_pin: selected.index.source_reference,
       provider_revision: acquired.revision,
+      ...(acquired.provenance.committed_at === undefined
+        ? {}
+        : { provider_committed_at: acquired.provenance.committed_at }),
       created_at: yield* Clock.currentTimeMillis,
       bundle_id: bundleId,
       bundle,
@@ -510,28 +728,30 @@ export function prepareSourceRefresh(
     const plan = {
       ...contents,
       plan_id: `source-refresh-${yield* sha256(canonicalSharedJson(contents))}`,
-    } satisfies SourceRefreshPlan
+    } satisfies RetainedSourceRefreshPlan
     yield* sourceChecked(() => {
-      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, plan.bundle)
+      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, plan.bundle, "snapshot")
       validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
     })
     return plan
-  })
+  }).pipe(withReadOnlyNotion)
 }
 export function validateSourceRefresh(library: SharedLibrary, input: unknown) {
   return Effect.gen(function* () {
     const plan = yield* sourceChecked(() =>
-      Schema.decodeUnknownSync(RefreshSchema)(structuredClone(input), {
+      Schema.decodeUnknownSync(SourceRefreshPlanSchema)(structuredClone(input), {
         onExcessProperty: "error",
       }),
     )
     const { plan_id, ...rest } = plan
     if (
       (plan.version === 1 ? plan.selection !== undefined : plan.selection === undefined) ||
-      (plan.version === 3 ? plan.member_review === undefined : plan.member_review !== undefined) ||
+      (plan.version >= 3 ? plan.member_review === undefined : plan.member_review !== undefined) ||
       !Number.isSafeInteger(plan.created_at) ||
       plan.created_at < 0 ||
       !plan.provider_revision ||
+      (plan.provider_committed_at !== undefined &&
+        !Number.isFinite(Date.parse(plan.provider_committed_at))) ||
       plan.library_id !== library.library_id ||
       plan.sources_data_source_id !== sourceTable(library).data_source_id ||
       pageId(plan.target_page_id) !== plan.target_page_id ||
@@ -547,9 +767,38 @@ export function validateSourceRefresh(library: SharedLibrary, input: unknown) {
         plan_id: plan.plan_id,
         selection: plan.selection,
       })
+    if (plan.version === 4) {
+      const fixed = yield* makeSourceBinding(plan.fixed_source)
+      if (
+        fixed.source_id !== plan.source_pin ||
+        fixed.commit !== plan.provider_revision ||
+        canonicalSharedJson(fixed) !== canonicalSharedJson(plan.fixed_source) ||
+        plan.source_files.length !== fixed.files.length ||
+        new Set(plan.source_files.map((file) => file.path)).size !== plan.source_files.length ||
+        plan.source_files.some(
+          (file) =>
+            !/^[a-f0-9]{64}$/u.test(file.sha256) ||
+            !fixed.files.some(
+              (entry) =>
+                entry.path === file.path && entry.bytes === file.bytes && entry.mode === file.mode,
+            ),
+        )
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_REFRESH_INVALID",
+            "Fixed Git candidate identity or complete file manifest differs.",
+          ),
+        )
+      yield* sourceChecked(() => {
+        validateSharedRecordEnvelope(`register-${fixed.source_id}`, fixed, "source")
+        validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
+      })
+      return { kind: "git" as const, plan }
+    }
     const bundle = yield* validateRetainedSource(library, plan.bundle, plan.target_page_id)
     yield* sourceChecked(() => {
-      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, bundle)
+      validateSharedRecordEnvelope(`retain-${plan.bundle_id}`, bundle, "snapshot")
       validateSharedRecordEnvelope(plan.plan_id, sourceRefreshProvenance(plan))
     })
     const bytes = Buffer.from(plan.archive_base64, "base64")
@@ -582,16 +831,47 @@ export function validateSourceRefresh(library: SharedLibrary, input: unknown) {
       if (
         !expected ||
         file.bytes.length !== expected.bytes ||
+        (expected.mode !== undefined && file.mode !== expected.mode) ||
         (yield* sha256(file.bytes)) !== expected.sha256
       )
         return yield* Effect.fail(
           fail("SOURCE_REFRESH_INVALID", "Frozen file differs from manifest."),
         )
     }
-    return { plan, archive: bytes, files }
+    return { kind: "retained" as const, plan, archive: bytes, files }
   })
 }
-function retainFact(
+
+function materializeSourceRefresh(
+  candidate: Effect.Success<ReturnType<typeof validateSourceRefresh>>,
+) {
+  return Effect.gen(function* () {
+    if (candidate.kind === "retained") return candidate.files
+    const files = yield* materializeFixedGithubSource(candidate.plan.fixed_source, {
+      metrics: (yield* Notion).metrics,
+    })
+    for (const file of files) {
+      const expected = candidate.plan.source_files.find((entry) => entry.path === file.path)
+      if (
+        expected === undefined ||
+        file.sha256 !== expected.sha256 ||
+        file.bytes.length !== expected.bytes
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_REFRESH_INVALID",
+            "Retrieved fixed Git bytes differ from the frozen candidate.",
+          ),
+        )
+    }
+    return files.map((file) => ({
+      path: file.path,
+      bytes: file.bytes,
+      ...(file.mode === undefined ? {} : { mode: file.mode }),
+    }))
+  })
+}
+export function retainSourceFact(
   library: SharedLibrary,
   input: Omit<AppendSharedRecordInput, "mode" | "beforeCreate">,
 ) {
@@ -649,7 +929,7 @@ function checkedSelection(library: SharedLibrary, plan: SourceRefreshPlan, value
       selection.skill_page_id !== plan.target_page_id ||
       change.property_id !== library.skills.property_ids.Source ||
       change.before !== plan.previous_pin ||
-      change.after !== plan.bundle_id
+      change.after !== sourceRefreshPin(plan)
     )
       return yield* Effect.fail(
         fail(
@@ -704,7 +984,7 @@ function saveSelection(
     // V2 and V3 are independently verifiable from the digest-bound approval and the
     // normal shared metadata journal, so there is no second dispatch index.
     if (plan.version === 1)
-      yield* retainFact(library, {
+      yield* retainSourceFact(library, {
         recordId: `selection-${plan.plan_id}`,
         operationId: plan.plan_id,
         skillPageId: plan.target_page_id,
@@ -747,8 +1027,13 @@ function sourceRefreshProvenance(plan: SourceRefreshPlan) {
     source_id: plan.source_id,
     source_fingerprint: plan.source_fingerprint,
     provider_revision: plan.provider_revision,
+    ...(plan.provider_committed_at === undefined
+      ? {}
+      : { provider_committed_at: plan.provider_committed_at }),
     member: plan.member,
-    bundle_id: plan.bundle_id,
+    ...(plan.version === 4
+      ? { source_pin: plan.source_pin, storage: "fixed_git" }
+      : { bundle_id: plan.bundle_id }),
     previous_pin: plan.previous_pin,
     custom_files_preserved: plan.custom_files_preserved,
     plan_id: plan.plan_id,
@@ -757,9 +1042,16 @@ function sourceRefreshProvenance(plan: SourceRefreshPlan) {
   }
 }
 
-export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRun = false) {
+export function applySourceRefresh(
+  library: SharedLibrary,
+  input: unknown,
+  dryRun = false,
+  reportSourceStatus = true,
+) {
   return Effect.gen(function* () {
-    const { plan, archive, files } = yield* validateSourceRefresh(library, input)
+    const candidate = yield* validateSourceRefresh(library, input)
+    const { plan } = candidate
+    const sourcePin = sourceRefreshPin(plan)
     const definition = yield* readSourceDefinition(library, plan.source_page_id)
     if (definition.options.shared_target_set !== undefined)
       return yield* Effect.fail(
@@ -777,12 +1069,13 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
         fail("SOURCE_DEFINITION_CHANGED", "Source definition changed after preparation."),
       )
     const selected = yield* binding(library, definition.page_id, plan.target_page_id, plan.member)
-    const alreadySelected = selected.index.source_reference === plan.bundle_id
+    const alreadySelected = selected.index.source_reference === sourcePin
     if (!alreadySelected && selected.index.source_reference !== plan.previous_pin)
       return yield* Effect.fail(
         fail("SOURCE_SELECTION_CHANGED", "Current content pin changed after preparation."),
       )
-    if (alreadySelected && plan.previous_pin === plan.bundle_id) {
+    const files = yield* materializeSourceRefresh(candidate)
+    if (alreadySelected && plan.previous_pin === sourcePin) {
       const unchanged = yield* projectCandidate(library, selected, files)
       if (
         unchanged.current_snapshot !== plan.current_snapshot ||
@@ -796,7 +1089,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
         verified: true,
         plan_id: plan.plan_id,
         snapshot_id: unchanged.current_snapshot,
-        source_pin: plan.bundle_id,
+        source_pin: sourcePin,
         provider_revision: plan.provider_revision,
         remote_writes: 0,
         body_writes: 0,
@@ -807,7 +1100,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
       return {
         status: "already_selected",
         plan_id: plan.plan_id,
-        source_pin: plan.bundle_id,
+        source_pin: sourcePin,
         current_pin_verified: true,
         verified: false,
         body_writes: 0,
@@ -834,7 +1127,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
         status: alreadySelected ? "already_selected" : "planned",
         dry_run: true,
         plan_id: plan.plan_id,
-        source_pin: plan.bundle_id,
+        source_pin: sourcePin,
         projected_files: plan.projected_files,
         custom_files_preserved: plan.custom_files_preserved,
         notion_writes: 0,
@@ -842,34 +1135,42 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
 
     // These exact facts are independently replay-safe; a missing outcome stays
     // in reconciliation and cannot cause a second POST of that dispatch.
-    for (const [index, chunk] of plan.bundle.archive.chunks.entries()) {
-      const bytes = archive.slice(index * 32768, index * 32768 + chunk.bytes)
-      yield* retainFact(library, {
-        recordId: chunk.object_id,
-        operationId: `retain-${chunk.object_id}`,
+    const sourceRecord = yield* Effect.gen(function* () {
+      if (candidate.kind === "git")
+        return (yield* registerSourceBinding(library, {
+          skillPageId: selected.id,
+          mode: "create",
+          fixedSource: candidate.plan.fixed_source,
+        })).record
+      for (const [index, chunk] of candidate.plan.bundle.archive.chunks.entries()) {
+        const bytes = candidate.archive.slice(index * 32768, index * 32768 + chunk.bytes)
+        yield* retainSourceFact(library, {
+          recordId: chunk.object_id,
+          operationId: `retain-${chunk.object_id}`,
+          skillPageId: selected.id,
+          entityId: chunk.object_id,
+          kind: "object",
+          payload: {
+            version: 1,
+            kind: "exact_bytes",
+            encoding: "base64",
+            sha256: chunk.sha256,
+            bytes: chunk.bytes,
+            data: bytes.toString("base64"),
+          },
+          payloadContainsBody: true,
+        })
+      }
+      return yield* retainSourceFact(library, {
+        recordId: candidate.plan.bundle_id,
+        operationId: `retain-${candidate.plan.bundle_id}`,
         skillPageId: selected.id,
-        entityId: chunk.object_id,
-        kind: "object",
-        payload: {
-          version: 1,
-          kind: "exact_bytes",
-          encoding: "base64",
-          sha256: chunk.sha256,
-          bytes: chunk.bytes,
-          data: bytes.toString("base64"),
-        },
-        payloadContainsBody: true,
+        entityId: candidate.plan.bundle_id,
+        kind: "source",
+        payload: candidate.plan.bundle,
       })
-    }
-    const sourceRecord = yield* retainFact(library, {
-      recordId: plan.bundle_id,
-      operationId: `retain-${plan.bundle_id}`,
-      skillPageId: selected.id,
-      entityId: plan.bundle_id,
-      kind: "source",
-      payload: plan.bundle,
     })
-    const provenanceRecord = yield* retainFact(library, {
+    const provenanceRecord = yield* retainSourceFact(library, {
       recordId: plan.plan_id,
       operationId: plan.plan_id,
       skillPageId: selected.id,
@@ -903,7 +1204,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
       selection = (yield* prepareSharedSourceSelection({
         library,
         skillPageId: selected.id,
-        sourceId: plan.bundle_id,
+        sourceId: sourcePin,
         expectedSourceId: plan.previous_pin || null,
       })).plan
     yield* saveSelection(library, plan, selection)
@@ -921,7 +1222,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
         ),
       )
 
-    const fixed = yield* resolveSelectedSharedSource(library, selected.id, plan.bundle_id)
+    const fixed = yield* resolveSelectedSharedSource(library, selected.id, sourcePin)
     const verified = yield* openSharedSnapshot({
       library,
       target: selected.id,
@@ -953,6 +1254,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
           path: `v1/pages/${linked.page_id}`,
           method: "PATCH",
           body: { properties: { [origin]: { relation: [{ id: plan.source_page_id }] } } },
+          repeat: "never",
         },
         Effect.gen(function* () {
           const row = yield* api.request(`v1/pages/${linked.page_id}`),
@@ -967,18 +1269,19 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
       )
     const field = sourceTable(library).property_ids
     const checkedAt = Math.floor(plan.created_at / 60000) * 60000
-    const summary = `Member ${plan.member}; selected ${plan.bundle_id}; ${plan.projected_files.length} verified effective files; ${plan.custom_files_preserved.length} custom files preserved.`
+    const summary = `Member ${plan.member}; selected ${sourcePin}; ${plan.projected_files.length} verified effective files; ${plan.custom_files_preserved.length} custom files preserved.`
     const observed = yield* api.request(`v1/pages/${plan.source_page_id}`)
     const moreRecent =
       Date.parse(String(property(sourceField(observed, field["Last Checked"]!).date).start)) >
       checkedAt
-    if (!moreRecent)
+    if (!moreRecent && reportSourceStatus)
       yield* guardedSourceMutation(
         library,
         {
           identity: `${plan.plan_id}:status`,
           path: `v1/pages/${plan.source_page_id}`,
           method: "PATCH",
+          repeat: "never",
           body: {
             properties: {
               [field.Status!]: { select: { name: "applied" } },
@@ -1004,7 +1307,7 @@ export function applySourceRefresh(library: SharedLibrary, input: unknown, dryRu
       verified: true,
       snapshot_id: verified.snapshot_id,
       plan_id: plan.plan_id,
-      source_pin: plan.bundle_id,
+      source_pin: sourcePin,
       provider_revision: plan.provider_revision,
       selection: applied,
       custom_files_preserved: plan.custom_files_preserved,

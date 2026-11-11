@@ -24,6 +24,7 @@ import {
 } from "./shared-body-write-review-model.ts"
 import {
   FileEventSchema,
+  nativeFileMetadata,
   normalizeObservedBody,
   resolveFileState,
   type FileEvent,
@@ -32,6 +33,7 @@ import {
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 import {
+  pendingFileOperationKey,
   pendingFileOperations,
   retainPendingFileOperation,
   sharedPendingObservationPrefix,
@@ -251,7 +253,11 @@ function loadOriginalFacts(
   })
 }
 
-function planFor(facts: OriginalFacts, accepted: string) {
+function planFor(
+  facts: OriginalFacts,
+  accepted: string,
+  version: SharedBodyWriteReviewPlan["version"],
+) {
   return Effect.gen(function* () {
     if (!/^[a-f0-9]{64}$/u.test(accepted) || accepted !== facts.rawHash)
       return yield* Effect.fail(
@@ -266,6 +272,7 @@ function planFor(facts: OriginalFacts, accepted: string) {
       )
     const original = facts.original
     return yield* makeSharedBodyWriteReviewPlan({
+      version,
       original_operation_id: original.operation_id,
       original_plan_sha256: facts.originalPlanHash,
       original_outcome_sha256: facts.originalOutcomeHash,
@@ -279,9 +286,60 @@ function planFor(facts: OriginalFacts, accepted: string) {
       observation_id: bodyWriteObservationId(original.operation_id),
       observation_sha256: facts.observationHash,
       accepted_observed_sha256: accepted,
-      content: facts.content,
+      content: {
+        ...facts.content,
+        ...(version === 1 ? {} : nativeFileMetadata(original.candidate.content)),
+      },
       parents: original.event.parents,
     })
+  })
+}
+
+/** Version comes from the immutable original review, never the current default. */
+function retainedReviewPlan(
+  library: SharedLibrary,
+  original: SharedBodyWritePlan,
+  operationId: string,
+) {
+  return Effect.gen(function* () {
+    const records = yield* querySharedRecords(library, {
+      kind: "operation",
+      skillPageId: original.skill_page_id,
+      recordId: operationId,
+      payloadContainsBody: true,
+    })
+    if (records.length === 0) return undefined
+    const record = records[0]
+    if (
+      records.length !== 1 ||
+      record === undefined ||
+      record.kind !== "operation" ||
+      record.record_id !== operationId ||
+      record.operation_id !== operationId ||
+      record.entity_id !== original.file_id ||
+      record.skill_page_id !== original.skill_page_id
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_BODY_REVIEW_INVALID",
+          "The retained review does not name the exact original file.",
+        ),
+      )
+    const plan = yield* validateSharedBodyWriteReviewPlan(record.payload)
+    if (
+      plan.operation_id !== operationId ||
+      plan.original_operation_id !== original.operation_id ||
+      plan.library_id !== library.library_id ||
+      plan.skill_page_id !== original.skill_page_id ||
+      plan.file_id !== original.file_id
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_BODY_REVIEW_INVALID",
+          "The retained review belongs to another original operation.",
+        ),
+      )
+    return plan
   })
 }
 
@@ -435,7 +493,7 @@ function verifyChain(
   events?: readonly FileEvent[],
 ) {
   return Effect.gen(function* () {
-    const expected = yield* planFor(facts, plan.accepted_observed_sha256)
+    const expected = yield* planFor(facts, plan.accepted_observed_sha256, plan.version)
     if (canonicalSharedJson(expected) !== canonicalSharedJson(plan))
       return yield* Effect.fail(
         fail(
@@ -531,7 +589,14 @@ export function completedSharedBodyWriteReview(
           "The current original plan differs from the pending write.",
         ),
       )
-    const plan = yield* planFor(facts, facts.rawHash)
+    const plan = yield* retainedReviewPlan(library, original, operationId)
+    if (plan === undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_RECORD_UNRESOLVED",
+          "The original review plan has not been observed; its receipt cannot authorize a replacement.",
+        ),
+      )
     return yield* verifyChain(library, plan, facts, input.events)
   })
 }
@@ -564,28 +629,70 @@ export function reviewSharedBodyWrite(input: {
       input.skillPageId,
       input.originalOperationId,
     )
-    const plan = yield* planFor(facts, input.acceptedObservedSha256)
+    const original = facts.original
+    const operationId = yield* bodyWriteReviewOperationId(original.operation_id)
     const scope = {
-      prefix: yield* sharedPendingObservationPrefix(input.scope, plan.library_id, plan.skill_id),
+      prefix: yield* sharedPendingObservationPrefix(
+        input.scope,
+        original.library_id,
+        original.skill_id,
+      ),
       scope: input.scope,
-      library_id: plan.library_id,
-      skill_id: plan.skill_id,
-      skill_page_id: plan.skill_page_id,
+      library_id: original.library_id,
+      skill_id: original.skill_id,
+      skill_page_id: original.skill_page_id,
     }
     const local = yield* pendingFileOperations(scope)
-    const headers = yield* querySharedOperationIndex(input.library, plan.skill_page_id)
-    const existing = local.find((entry) => entry.plan.operation_id === plan.operation_id)
-    if (existing !== undefined && canonicalSharedJson(existing.plan) !== canonicalSharedJson(plan))
+    const headers = yield* querySharedOperationIndex(input.library, original.skill_page_id)
+    const existing = local.find((entry) => entry.plan.operation_id === operationId)
+    const localPlan =
+      existing === undefined ? undefined : yield* validateSharedBodyWriteReviewPlan(existing.plan)
+    const sharedPlan = yield* retainedReviewPlan(input.library, original, operationId)
+    if (
+      localPlan !== undefined &&
+      sharedPlan !== undefined &&
+      canonicalSharedJson(localPlan) !== canonicalSharedJson(sharedPlan)
+    )
       return yield* Effect.fail(
-        fail("STATE_CORRUPT", "The retained original review cannot be replaced by another plan."),
+        fail("STATE_CORRUPT", "The local and shared original review plans disagree."),
       )
+    const retained = localPlan ?? sharedPlan
+    // Another credential scope can hide the original shared review request.
+    // Its opaque Store address is enough to forbid a fresh version/dispatch;
+    // never read another scope's plan or treat that address as completion.
+    const localKey = yield* pendingFileOperationKey(scope.prefix, {
+      file_id: original.file_id,
+      operation_id: operationId,
+    })
+    const suffix = localKey.slice(localKey.lastIndexOf("/"))
+    const priorScopeDispatch = (yield* (yield* Store).listKeys(
+      "operations/shared-observation-pending/",
+    )).some(
+      (key) =>
+        key !== localKey &&
+        /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key) &&
+        key.endsWith(suffix),
+    )
     const recovery =
       input.mode === "reconcile" ||
-      existing !== undefined ||
+      retained !== undefined ||
+      priorScopeDispatch ||
       headers.some(
         (header) =>
-          header.record_id === plan.operation_id ||
-          header.record_id === bodyWriteReviewReceiptId(plan.operation_id),
+          header.record_id === operationId ||
+          header.record_id === bodyWriteReviewReceiptId(operationId),
+      )
+    if (recovery && retained === undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_RECORD_UNRESOLVED",
+          "The original review plan has not been observed; reconcile never prepares a replacement.",
+        ),
+      )
+    const plan = yield* planFor(facts, input.acceptedObservedSha256, retained?.version ?? 2)
+    if (retained !== undefined && canonicalSharedJson(retained) !== canonicalSharedJson(plan))
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "The retained original review cannot be replaced by another plan."),
       )
     let result: ReturnType<typeof reviewed>
     if (recovery) result = yield* verifyChain(input.library, plan, facts)

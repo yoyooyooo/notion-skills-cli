@@ -16,7 +16,7 @@ import {
 import { readImportZip } from "../src/import.ts"
 import {
   applySourceRefresh,
-  prepareSourceRefresh,
+  prepareRetainedSourceRefresh as prepareSourceRefresh,
   validateSourceRefresh,
 } from "../src/shared-source-refresh.ts"
 import { resolveSelectedSharedSource } from "../src/shared-selected-source.ts"

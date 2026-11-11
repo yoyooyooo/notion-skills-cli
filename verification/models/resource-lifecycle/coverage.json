@@ -1,0 +1,596 @@
+{
+  "version": 1,
+  "synchronized_commit": "68315aa488e3b00d607860e577d1b65f01b57059",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "files": {
+    "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
+    "packages/core/src/shared-file-observer.ts": "bf78f46ca185242fece7e439c49ebe6b382a436cde9a8cb35de03634742ce239",
+    "packages/core/src/shared-body-write.ts": "dc01ee8d387e4e3762d54920c0bc3b15ac5afe2b201df3fc4be99846e0a72811",
+    "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
+    "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
+    "packages/core/src/shared-snapshot.ts": "07f9d7d56a0f554ec9c2137bf030b5f259c082130fab15f1e42c7b909422e89e",
+    "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
+    "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
+    "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
+    "packages/core/src/shared-audit.ts": "800cb52e20305897b250ca2ec0c75032ecf424995aaf1d741be7f3c8fc56c706",
+    "packages/core/src/shared-audit-model.ts": "359dfd6c3d9b466c8199c693d0fc1a5c3b73d5eea0bed1a7b6c6721f7694843a",
+    "packages/core/src/shared-audit-inventory.ts": "58703cac44c6b829b373dd87486deaab7a2e5b23a25fe674370012d43759ab68",
+    "packages/core/src/shared-audit-transport.ts": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
+    "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
+    "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
+    "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
+    "packages/core/src/shared-create.ts": "7fe6f1c51693fce954b192ec2b45c01415e97cdb4e0f2175abaf2dea0197b1a7",
+    "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
+    "packages/core/src/shared-create-dispatch.ts": "5b42eaf8adc6188508c90596333c1a0ffd51fb85c59625581bf35c765d467d0f",
+    "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
+    "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
+    "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
+    "packages/core/src/shared-records.ts": "7b52c8ffbe14f2129095e408ed12ecee76b5bdbe7a11e6f859d8a7cc62d04b92",
+    "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
+    "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
+    "packages/core/src/shared-notion-projection.ts": "28868f51a8d8ca868dc6c11bb045c98ccb8d8adb08377843445469302f35ac87",
+    "packages/core/src/shared-notion-document-spacing.ts": "6ff3c76449c7c2baad0da0424a79dead6e374c12869ebdadde05a5a92a6b961c",
+    "packages/core/src/shared-create-recovery.ts": "6d47f210243f4858c6695074576f7362e18c1e96073027c94c87d2799645eb06",
+    "packages/core/src/shared-create-recovery-prefix.ts": "1a68fe3537555e0468f0868a36e791c1748f722830186d9a06f75797c89cddcb",
+    "packages/core/src/shared-create-recovery-prefix-model.ts": "e25da20d8884cb9d8a7ca157f28c06bbac9ae0ad8cad1370f569da16ea29f348",
+    "packages/core/src/shared-create-recovery-prefix-completion.ts": "8b62d9ce6ed2750f5567fe3eeba55906a6dcee166238009da599b2a9d7ccad5d",
+    "packages/core/src/shared-sources-model.ts": "6a6c1ba1782cf1ed545e59428d7ca979f23d06caedfb836595484223a2c0088e",
+    "packages/core/src/shared-notion-text-breaks.ts": "96095acadecec50a3feb2f6c4aeea73c14b1dc36bf956c72fbdb0910f916b6aa",
+    "packages/core/src/shared-create-recovery-completion.ts": "54048f4fc7a1d68a92bd242659b50997ccd63df3d2264df27a188eaa6ba25e10",
+    "packages/core/src/shared-create-recovery-model.ts": "083aa3ac6948558fbe22adf3453656f9d50c73cf3e9adcc0dff96bdbd15b84dc",
+    "packages/core/src/shared-create-recovery-errors.ts": "f0c1ffa8acd7df3f7f852d7b1d27300253c84ca5ac6ce22db2f09e7e823ee166",
+    "packages/core/src/shared-create-recovery-known-bootstrap.ts": "fb60422234d934c79da57926432ee1f420447fa85b4a47b51312851b6bf34b0f",
+    "packages/core/src/shared-create-recovery-known-completion.ts": "02a8cfb7e4bd762042ffc1a2390a65ace365a53a0e02c330b8a7e715769e0844",
+    "packages/core/src/shared-create-recovery-known-model.ts": "fcf08490e0b57bb0044a5c4572c4537eed2068a2e35f458ce815442eb16099b5",
+    "packages/core/src/shared-create-recovery-projection.ts": "4cca5c3fc40619cfc064df8fb84213474dedc8941c457e9697361abd557d8cc3",
+    "packages/core/src/shared-create-recovery-proof-model.ts": "e48c97c936d311a91d31709f25f084b60de0e40c9267fac71c6d0daf80b5dd54",
+    "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
+    "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
+    "packages/core/src/shared-file-management-model.ts": "7d3c164ad72476fe1d1e44d94fa84cbbed9d3978506f00553e017694fc4206ff",
+    "packages/core/src/shared-file-management.ts": "7a88911bab817447b313db17575757fd22312c5d179b6f0edc556d0c7a4c8486",
+    "packages/core/src/shared-authoring.ts": "57a0553d5e9a04d5cf487ba3ae70981cde6d9a706712e60a99d22828bbf51ef9",
+    "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
+    "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
+    "packages/core/src/shared-file-restore.ts": "6b5b6a2d6661ce97350fbf2e29d934b7688ea569357ffe184090425996729fa3",
+    "packages/core/src/sqlite-state.ts": "98f6e35919b12c6abfbd3874e76a39f714a46da41690aa4ba27f236f8eb4ea04",
+    "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
+    "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
+    "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
+    "packages/core/src/shared-create-recovery-acknowledgements.ts": "d82b8d76a655ff2e5b5bbac92872a6ec4147ae43cef3fd41f83982a65e68d44d",
+    "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "0524c310de8f321182fb28c259aa2c23fbb307b5284fa7770ccb15cc45137a4d",
+    "packages/core/src/shared-native-file-content.ts": "c0d8de5045e44bfbf12ab675eeb56ecaec1f525162334bf750c40eb7fddf2a00",
+    "packages/core/src/shared-body-write-review-model.ts": "d98a7ea4d75668fdb8594419636f8f392473bfe8f7c3915e319ce7f62209cf3c",
+    "packages/core/src/shared-body-write-review.ts": "614ad401ee64be50c2ff80e56b1e44d48e887f1eff952df6432333bf9b37840b",
+    "packages/core/src/shared-pending-file-operations.ts": "b5d0b026a53253b61858d25882bbfca585faf0aba5213d31a13fae4babc07723",
+    "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
+    "packages/core/src/shared-create-recovery-native-plan.ts": "d686bb94d7daa8eee9dc68f1acf22f99a0b9c4484a36429763ee9c949c350a3e",
+    "packages/core/src/shared-create-recovery-native-authority.ts": "76b62bc95e6f9dace58f35ecdc370805cbddf24f59621186d4586981781f3382",
+    "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
+    "packages/core/src/shared-create-recovery-native.ts": "65e872e277bf30fe63046f6795287596c93e8120d64a8f063720a6951e94ce1a",
+    "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
+    "packages/core/src/shared-file-request.ts": "6b602534a1a766024083c8c589c6490f003daafab6556d0be18bde6a517134fc",
+    "packages/cli/src/commands-library-file-request.ts": "e89665d262ee72cda13a4a74b6fbd4c8f481608ecb71b526f0074fa754a088e8",
+    "packages/core/src/shared-create-import-readback.ts": "b69e01814df63d3cf5459245a0769d6997699b368322ab9c047ab8519d25f8a4",
+    "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
+    "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
+    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621"
+  },
+  "models": {
+    "ProjectionRace": {
+      "kind": "existing_guard_and_rejected_proposal",
+      "symbols": [
+        "requireSafeBodyReplacement",
+        "decideObservedBody",
+        "resolveFileState",
+        "notionWriteCapabilities",
+        "automaticSourceStops",
+        "runSourceUpdate"
+      ],
+      "scope": "The automatic editable-page replacement refusal and human-adoption ownership boundary, versus a rejected read-check-unconditional-replace proposal. The isolated requireSafeBodyReplacement helper and automaticSourceStops retain their refusal contracts. Explicit changed-body restore uses a separate complete-old-body-match protocol and no longer calls the helper. A safe terminal refusal is not successful automatic update progress.",
+      "excluded": [
+        "Provider revision-CAS",
+        "atomic old-string matching",
+        "enforced UI edit exclusion",
+        "multi-page API transactions",
+        "Explicit manual authoring writer protocol and all-writer guard coverage",
+        "Explicit complete-old-body-match restore and request submission authorization"
+      ]
+    },
+    "UpdateCommit": {
+      "kind": "implemented_single_selection_abstraction",
+      "symbols": [
+        "prepareSourceRefresh",
+        "applySourceRefresh",
+        "retainSourceFact",
+        "planSelectedSharedSource"
+      ],
+      "scope": "A bounded abstraction of one already-authorized selection write, two exact resource identities, two selected revisions and one existing session. Complete preparation precedes selection; an unknown original outcome cannot be invented from current equality. This is not a refinement proof of all source coordinator dispatches or a transaction across selection and readable projection.",
+      "excluded": [
+        "Multiple writers or processes with different Stores",
+        "credential rotation",
+        "provider permission propagation",
+        "automatic Notion projection writes",
+        "arbitrary Git filesystem semantics",
+        "Source batch and periodic-run scheduling",
+        "Fixed-manifest storage codec, byte limits, canonical payload-cache behavior and immutable Record reconciliation"
+      ]
+    },
+    "AuditRun": {
+      "kind": "implemented_audit_coordinator_abstraction",
+      "symbols": [
+        "runSharedAudit",
+        "resumeSharedAudit",
+        "continueSharedAudit",
+        "readAuditInventory",
+        "inspectAuditInventory",
+        "inspectAuditSkill",
+        "saveAuditRun",
+        "auditJournalNotion",
+        "reportSharedAudit"
+      ],
+      "scope": "Two surviving Skill roots, one orphan visible to the reverse census, one changed body, a one-Skill slice budget and up to two resumptions. The implemented coordinator performs initial/final registered-table census, durable task progress and a read-only semantic boundary; this finite model abstracts those operations and does not prove their HTTP accounting, SQLite durability or complete real-library coverage.",
+      "excluded": [
+        "Arbitrary concurrent table changes or a global database snapshot",
+        "HTTP pagination and request/byte/deadline accounting",
+        "Endpoint and credential scope fences",
+        "SQLite crash atomicity",
+        "Durable scheduler availability",
+        "Automatic repair",
+        "Unknown historical data absent from every retained index",
+        "Metadata-only census selector and its unobserved Skill-body result"
+      ],
+      "implemented_boundary": {
+        "kind": "semantic_read_boundary",
+        "symbols": [
+          "NotionReadOnly",
+          "readOnlyNotion",
+          "withReadOnlyNotion",
+          "isCoalescibleNotionRead"
+        ],
+        "scope": "The read-only transport restricts descendant helpers, including legacy Notion requests, before scheduling. The real-code mutation gate removes this guard around an otherwise auto-adopting observer and requires the independent zero-write assertion to fail.",
+        "tests": [
+          "packages/core/test/notion-readonly.test.ts",
+          "packages/core/test/notion-readonly-observation.test.ts",
+          "packages/core/test/shared-audit.test.ts"
+        ]
+      }
+    },
+    "ImportCreate": {
+      "kind": "implemented_original_create_abstraction",
+      "symbols": [
+        "prepareInventoryImport",
+        "executeInventoryImport",
+        "prepareSharedCreate",
+        "sharedCreateDispatch",
+        "inspectSharedCreateDispatch",
+        "reconcileSharedCreate",
+        "verifySharedCreatedSnapshot"
+      ],
+      "scope": "One explicitly enabled original create, two complete input objects and four abstract mutable stages: root allocation, Files/resources, metadata/selection and enablement. Preparation freezes approved bytes, the first dispatch rechecks the original local input, stage confirmation requires its durable original ACK, and explicit enablement follows complete verification. Lost-response absence cannot authorize replay; an acknowledged interrupted readback can be reconciled. This remains the original create execution/reconciliation abstraction; the separately reviewed acknowledged-prefix recovery protocol is excluded.",
+      "excluded": [
+        "Disabled creation",
+        "Arbitrary file counts, chunking, Markdown projection versions including v9 creation spacing and v10 literal/fence serialization, Record compression and logical/wire byte limits",
+        "C1/N1/C2 classification and provider/member acquisition",
+        "Concurrent human editing or a filesystem transaction during dispatch",
+        "Immutable content-addressed Record reconciliation",
+        "Credential rotation, distributed writers or global exactly-once delivery",
+        "The separately reviewed v1/v8 and v1/v9 prefix/known-failure recovery protocols; CreateRecovery has its own bounded mapping",
+        "Versioned prefix recovery completion, pending-create suppression and cold history/read reconstruction",
+        "Projection-14 first complete import readback, portable input fingerprints and read-only completed-import reuse"
+      ],
+      "tests": [
+        "packages/core/test/shared-inventory-import.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-create-recovery.test.ts",
+        "packages/core/test/shared-source-projection.test.ts"
+      ]
+    },
+    "CreateRecovery": {
+      "kind": "implemented_bounded_recovery_abstraction",
+      "symbols": [
+        "originalKnownCreateBootstrap",
+        "validateSharedCreateKnownRecoveryReview",
+        "reviewSharedCreatePrefixRecovery",
+        "applySharedCreatePrefixRecovery",
+        "reconcileSharedCreatePrefixRecovery",
+        "observeAllocated",
+        "sharedCreateDispatch"
+      ],
+      "scope": "A v1/v9 recovery with one original main ACK and no original terminal, or three original native ACKs and a retained needs_review terminal; one abstract missing suffix and three mutable stages. Review/apply require the complete original evidence. An uncertain intermediate recovery never redispatches or advances through reconciliation. Exact Projection metadata authority must be checked before transport, with all initial files/events verified before enablement. The two operation histories and original native pages remain separate.",
+      "excluded": [
+        "Actual 76-dispatch and 35-native/407-effective-file cardinality",
+        "Request/ACK serialization, cryptographic hashes, gzip, rich-text framing and SQLite durability",
+        "Markdown v9/v10 rendering, retained wire bytes and compact full-response observations",
+        "Cold completion and arbitrary consumer/history reconstruction",
+        "Concurrent edits after a stage's current observation, distributed writers and provider CAS",
+        "The historical v8-to-v9 recovery variant and original create/reconcile transitions",
+        "Arbitrary suffixes, immutable Record dispatch/reconciliation and all-writer authorization"
+      ],
+      "tests": ["packages/core/test/shared-create-known-recovery.test.ts"],
+      "mutation_replays": [
+        "complete-original-dispatch-set",
+        "projection-authority-before-first-write"
+      ]
+    },
+    "AcknowledgedContinuation": {
+      "kind": "implemented_bounded_acknowledged_continuation_abstraction",
+      "symbols": [
+        "acknowledgedContext",
+        "reviewSharedCreateAcknowledgedContinuation",
+        "applySharedCreateAcknowledgedContinuation",
+        "observe",
+        "readSharedNativeAllocationProofs",
+        "readSharedCreateKnownCompletion"
+      ],
+      "scope": "Three already visible native allocations with an independently variable original ACK subset and exact-request-set predicate. The separate continuation requires the complete original request/ACK authority at review and apply, a fresh current-body check before each abstract stage, no uncertain redispatch, complete initial events before enablement and complete retained original ACK proofs before a cold result is accepted. Four stages abstract ACK fact retention, exact metadata/events, enablement and immutable completion; original pages and needs_review history remain separate.",
+      "excluded": [
+        "Actual 34/35 native and 397/407 full-file cardinality",
+        "Exact frozen request/response JSON, cryptographic hashes, ordinary 64 KiB envelopes and rich-text transport",
+        "Markdown v11 rendering, complete source acquisition and retained-policy compatibility",
+        "Edits occurring after a stage observation, distributed writers, provider CAS and atomic multi-page writes",
+        "Every immutable Record subrequest, current native-page allocation or general interrupted-stage restart",
+        "The direct original v10-to-v11 recovery branch, earlier recovery variants and public CLI/SDK behavior"
+      ],
+      "tests": [
+        "packages/core/test/shared-create-projection-continuation.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
+      ],
+      "mutation_replays": [
+        "complete-recovery-dispatch-and-ack-set",
+        "fresh-complete-body-before-continuation-write",
+        "cold-complete-native-ack-proof-reader"
+      ]
+    }
+  },
+  "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
+  "review_basis": "Exact implementation commit and content hashes reviewed for the stated bounded abstractions. Hash equality binds a model review to these source files; it is not a full refinement proof. Public CLI, installed SDK, real providers, Notion, human UI edits and both physical hosts require their independent evidence. A model pass does not establish AH-681 completion. The files map also includes the explicitly named unmodeled_bindings as reviewed context; hash verification of those files does not extend any model, invariant, bound or liveness claim. Explicit complete-body-match restore, request submission, ACK-bound exact Record GET and projection 13 are reviewed unmodeled changes. Existing model/config/view inputs, finite bounds and prior result receipts are retained; this synchronization claims no new model execution. The 68315aa review traces metadata-only census, projection-14 import readback, original-input completed-import reuse, ACK-directed native allocation observation, added dispatch domains and source-reference diagnostic context. These are explicitly unmodeled branches; all six model inputs, bounds, invariants and original result receipts remain unchanged. No new TLC run is claimed.",
+  "unmodeled_bindings": [
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "local_inventory_entrypoint_selection",
+      "files": ["packages/core/src/shared-inventory-local.ts"],
+      "symbols": ["scanLocalSkillInventory"],
+      "scope": "Local filesystem discovery and root entrypoint preference are outside the finite lifecycle models. Within an existing entity root, an exact SKILL.md takes precedence while all supporting files and fallback boundaries remain. A new observation binds the selected main in its manifest and review identity; retained reports and prepared plans keep their original main. This hash binds reviewed scanner context only and adds no model, invariant or liveness claim.",
+      "tests": [
+        "packages/core/test/shared-inventory.test.ts",
+        "packages/core/test/shared-inventory-import.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "fixed_manifest_storage",
+      "files": [
+        "packages/core/src/shared-records.ts",
+        "packages/core/src/shared-record-codec.ts",
+        "packages/core/src/shared-snapshot-history.ts",
+        "packages/core/src/shared-source-definitions.ts",
+        "packages/core/src/shared-create-dispatch.ts"
+      ],
+      "symbols": [
+        "encodeSharedRecordStorage",
+        "decodeSharedRecordStorage",
+        "canonicalSharedRecordEnvelope",
+        "recordFromCachedEnvelope",
+        "prepareSharedSnapshotHistory",
+        "guardedSourceMutation",
+        "sharedCreateDispatch",
+        "verifySharedRecordPage"
+      ],
+      "scope": "The logical envelope identity stays separate from physical storage. The lifecycle models do not model gzip/Base64, logical or wire byte limits, arbitrary manifest cardinality, rich-text transport, cache representation or immutable Record reconciliation. An original Records POST with a validated durable request/response ACK may observe the exact response page ID by GET. It reuses full active-page, Records ownership, Skill relation and canonical envelope/payload validation, then requires the frozen original logical envelope. Query-index visibility is not required for this acknowledged observation. Unknown, absent or invalid ACKs acquire no such authority; no POST replay or recovery version is added. This exact GET path remains outside all six models. These hashes bind reviewed implementation context only.",
+      "tests": [
+        "packages/core/test/shared-records.test.ts",
+        "packages/core/test/shared-record-payload-cache.test.ts",
+        "packages/core/test/shared-record-codec.node.test.ts",
+        "packages/core/test/shared-snapshot-history.test.ts",
+        "packages/core/test/shared-source-projection.test.ts",
+        "packages/core/test/shared-create-known-recovery.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_projection_versions",
+      "files": [
+        "packages/core/src/shared-notion-projection.ts",
+        "packages/core/src/shared-notion-document-spacing.ts",
+        "packages/core/src/shared-notion-text-breaks.ts",
+        "packages/core/src/shared-notion-literal-text.ts"
+      ],
+      "symbols": [
+        "projectSharedNotionMarkdown",
+        "projectNotionMarkdownV9",
+        "projectNotionMarkdownV10",
+        "projectNativeTextBreaks",
+        "currentSharedNotionMarkdownVersion",
+        "projectNativeHeadingLiterals",
+        "projectNotionMarkdownV12",
+        "projectNotionMarkdownV13"
+      ],
+      "scope": "Projection versions, literal-token escaping, document spacing, preserved submitted wire bytes and actual Notion rendering remain outside every model. ImportCreate treats the frozen candidate/readback as abstract values; CreateRecovery fixes the v9-to-v10 decision without proving its bytes. ProjectionRace concerns automatic refusal of unsafe existing-body replacement, not explicit complete-match restore. Explicit old policies remain fixed. Policy 11 handles observed literal escaping in parsed top-level heading text; exact supporting YAML retention is separately bound below. Policy 12 adds purpose-specific observed separators: body_write ATX heading to paragraph and paragraph to fenced code, and data_source_create ATX heading to list or fenced code. Policy 13 extends only data_source_create for fully reconstructed top-level loose decimal-dot ordered lists. All items must start with a single-line paragraph; multi-block items must include a backtick fence and a continuation paragraph and contain only supported paragraphs, fences and simple non-task unordered child lists. At least one item must be multi-block. Its expected readback wraps continuation paragraphs and adjusts those separators. Other list shapes, body-write results, original wire and retained policies 1-12 preserve their prior behavior. The minimal repository list regression and one external complete native81 input/readback comparison are distinct evidence. Neither establishes arbitrary rendering, changes historical recovery decisions or supplies a finite-model proof.",
+      "tests": [
+        "packages/core/test/shared-notion-document-spacing.test.ts",
+        "packages/core/test/shared-notion-projection-v8.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-notion-projection-v10.test.ts",
+        "packages/core/test/shared-notion-projection-v11.test.ts",
+        "packages/core/test/shared-notion-projection-v12.test.ts",
+        "packages/core/test/shared-notion-projection.test.ts"
+      ],
+      "evidence": [
+        {
+          "artifact": "nr31-inventory-63c2b4b0/remaining144-fresh-review-xz8v3h8d/native81-v13-checks/completion.json",
+          "sha256": "4e7e8fdfe4b5b17c83c3c0eac1047be686ebc9ff746ead11adecd48d6fce3fee",
+          "scope": "External retained comparison of one complete 12563-byte native81 input with its independent captured Notion readback, preserving original v12 and submitted-wire hashes. The receipt and its historical fixture digest remain unchanged; the repository regression is minimized separately. This is not a new live run, an arbitrary-input claim or a model result."
+        }
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "creation_recovery_payload_and_cold_completion",
+      "files": [
+        "packages/core/src/shared-sources-model.ts",
+        "packages/core/src/shared-create-recovery.ts",
+        "packages/core/src/shared-create-recovery-prefix.ts",
+        "packages/core/src/shared-create-recovery-prefix-model.ts",
+        "packages/core/src/shared-create-recovery-prefix-completion.ts",
+        "packages/core/src/shared-create-recovery-completion.ts",
+        "packages/core/src/shared-create-recovery-model.ts",
+        "packages/core/src/shared-create-recovery-errors.ts",
+        "packages/core/src/shared-create-recovery-known-bootstrap.ts",
+        "packages/core/src/shared-create-recovery-known-completion.ts",
+        "packages/core/src/shared-create-recovery-known-model.ts",
+        "packages/core/src/shared-create-recovery-projection.ts",
+        "packages/core/src/shared-create-recovery-proof-model.ts"
+      ],
+      "symbols": [
+        "reviewSharedCreateRecovery",
+        "applySharedCreateRecovery",
+        "reconcileSharedCreateRecovery",
+        "originalBootstrap",
+        "SourceMutationAcknowledgementSchema",
+        "assertSharedCreateAcknowledgedMetadata",
+        "validateSharedCreatePrefixRecoveryReview",
+        "reviewSharedCreatePrefixRecovery",
+        "applySharedCreatePrefixRecovery",
+        "reconcileSharedCreatePrefixRecovery",
+        "readSharedCreatePrefixCompletion",
+        "completedSharedCreatePrefixRecovery",
+        "originalKnownCreateBootstrap",
+        "validateSharedCreateKnownRecoveryReview",
+        "readSharedCreateKnownCompletion",
+        "projectSharedRecoveryFiles",
+        "sharedRecoveryEventId",
+        "SharedCreateKnownRecoveryOutcomeSchema",
+        "SharedCreateRecoveryBindingSchema",
+        "SharedCreateRecoveryObservationSchema",
+        "SharedCreateRecoveryFileSchema"
+      ],
+      "scope": "The historical v1/v8 main-ACK-before-manifest protocol remains unmodeled. CreateRecovery models only the explicit bounded state/authority mapping for the v9 known-failure or sole-main branch. Full journal/dispatch/ACK content validation, exact Source and native metadata, compact observations, versioned v3/v4 payloads, complete retained objects, cold completion and pending-create suppression remain hash-bound reviewed context, not a consumer refinement proof. ACK and recovery proof schemas are leaf data dependencies; ESM initialization order requires real fresh Node checks and is not established by TLC.",
+      "tests": [
+        "packages/core/test/shared-create-recovery-prefix.test.ts",
+        "packages/core/test/shared-create-recovery.test.ts",
+        "packages/core/test/shared-audit-sqlite.node.test.ts",
+        "packages/core/test/shared-source-definitions.test.ts",
+        "packages/core/test/shared-create-known-recovery.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "complete_native_headers_and_restore_projection",
+      "files": [
+        "packages/core/src/shared-native-file-metadata.ts",
+        "packages/core/src/shared-file-management-model.ts",
+        "packages/core/src/shared-file-management.ts",
+        "packages/core/src/shared-authoring.ts",
+        "packages/core/src/shared-body-write-model.ts",
+        "packages/core/src/shared-skill-apply-authoring.ts",
+        "packages/core/src/shared-file-restore.ts",
+        "packages/core/src/shared-create-model.ts",
+        "packages/core/src/shared-snapshot.ts",
+        "packages/core/src/shared-native-file-content.ts",
+        "packages/core/src/shared-file-state.ts",
+        "packages/core/src/shared-body-write.ts"
+      ],
+      "symbols": [
+        "splitNativeSupportingMarkdown",
+        "nativeSupportingMarkdown",
+        "validateSharedFileManagementPlan",
+        "makeSharedCreatePlan",
+        "sharedAuthoringMarkdown",
+        "writeSharedSkillFile",
+        "applySharedSkillChanges",
+        "restoreSharedFileFollowing",
+        "validateSharedBodyWritePlan",
+        "restoreSharedNativeFileLinks",
+        "notionWriteCapabilities"
+      ],
+      "scope": "Complete input and retained header serialization are outside the finite models. New file-add v2 retains the exact original supporting header and input; source creation v11 retains C1 and N1 header/mode ancestry. Explicit write/apply check fresh consumer headers against retained native ownership before dispatch. Restore-follow uses the selected native creation projection for exact no-body-write comparison. A differing-body explicit restore uses the single_full_body_match capability: one nonempty complete old-body match, frozen-input revalidation before dispatch and exact full candidate readback before accepting the following state. It no longer calls requireSafeBodyReplacement. This explicit writer protocol is not page revision CAS, permits no unknown-write replay and remains outside ProjectionRace and every other finite model. Old plan identities and unprojected plans remain accepted by their original contracts. The consumer and authoring paths both recognize .md and .markdown, so an explicit edit restores same-owner relative references to their exact bound native pages. This byte-level round trip remains outside the finite models.",
+      "tests": [
+        "packages/core/test/shared-native-frontmatter.test.ts",
+        "packages/core/test/shared-create-complete.test.ts",
+        "packages/core/test/shared-file-management.test.ts",
+        "packages/core/test/shared-file-restore.test.ts",
+        "packages/core/test/shared-authoring.test.ts",
+        "packages/core/test/shared-skill-apply.test.ts",
+        "packages/core/test/shared-body-write.test.ts",
+        "packages/core/test/shared-snapshot-history.test.ts",
+        "packages/core/test/shared-native-file-content.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "source_batch_sqlite_checkpoints",
+      "files": ["packages/core/src/sqlite-state.ts", "packages/core/src/shared-source-batch.ts"],
+      "symbols": ["mutableSharedLocalPrefixes", "sharedLocalDomains"],
+      "scope": "SQLite address registration and checkpoint persistence are outside UpdateCommit and AuditRun. Only exact operations/shared-source-batches/<scope SHA>/source-batch-<plan SHA>/<run UUID>.json addresses become mutable run checkpoints; original source member dispatch, ACK and selection facts remain immutable. Retired runs cannot be reopened. Real Node processes test dry/apply/reconcile with one original batch and independent run records; memory Store fixtures do not establish durability.",
+      "tests": [
+        "packages/core/test/shared-source-batch-sqlite.node.test.ts",
+        "packages/core/test/shared-source-batch.test.ts",
+        "packages/core/test/shared-audit-sqlite.node.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "compact_native_ack_proofs_and_v11_recovery",
+      "files": [
+        "packages/core/src/shared-create-recovery-acknowledgement-model.ts",
+        "packages/core/src/shared-create-recovery-acknowledgements.ts",
+        "packages/core/src/shared-create-recovery-proof-model.ts",
+        "packages/core/src/shared-create-continuation-acknowledged-model.ts",
+        "packages/core/src/shared-create-continuation-acknowledged.ts",
+        "packages/core/src/shared-create-recovery-known-model.ts",
+        "packages/core/src/shared-create-recovery-known-completion.ts"
+      ],
+      "symbols": [
+        "SharedCreateFrozenPostSchema",
+        "SharedNativeAllocationProofSchema",
+        "SharedNativeAllocationReferenceSchema",
+        "SharedCreateRecoveryFileCommitmentSchema",
+        "SharedCreateKnownRecoveryObservationSchema",
+        "prepareSharedNativeAllocationProof",
+        "readSharedNativeAllocationProofs",
+        "makeSharedCreateAcknowledgedContinuationReview"
+      ],
+      "scope": "New review v4/outcome v5 handles an original v10 known fixed-Git failure. Continuation review v2/outcome v6 applies only to an exact known v3/v10 recovery whose entire native allocation set has durable original ACKs before metadata/events/enablement. Compact file commitments are independently reconstructed from the full retained original plan and explicit v11 policy, including all native metadata/events. Separate ordinary bounded object Records retain each full frozen POST and original ACK; immutable response hashes alone do not establish cold authority. The model abstracts the complete-set and cold-proof predicates but does not prove byte serialization, field schemas, real cardinality, SQLite, ESM startup or every consumer. Old review/outcome meanings remain fixed.",
+      "tests": [
+        "packages/core/test/shared-create-projection-continuation.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/core/test/shared-create-known-recovery.test.ts",
+        "packages/core/test/shared-create-recovery-prefix.test.ts",
+        "packages/core/test/shared-create-continuation.test.ts",
+        "packages/cli/test/library-source-definitions.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "explicit_body_review_native_metadata_and_versioned_reconciliation",
+      "files": [
+        "packages/core/src/shared-body-write-review-model.ts",
+        "packages/core/src/shared-body-write-review.ts",
+        "packages/core/src/shared-pending-file-operations.ts"
+      ],
+      "symbols": [
+        "makeSharedBodyWriteReviewPlan",
+        "validateSharedBodyWriteReviewPlan",
+        "bodyWriteReviewOperationId",
+        "bodyWriteReviewReceipt",
+        "reviewSharedBodyWrite",
+        "reconcileSharedBodyWriteReview",
+        "completedSharedBodyWriteReview",
+        "pendingFileOperationKey"
+      ],
+      "scope": "New body review plan v2 binds only the original candidate native mode and complete frontmatter to the exact retained observed body. The original review operation ID and existing opaque journal-address hash remain unchanged; retained local/shared v1 plans determine historical replay. Missing or conflicting original facts never authorize a replacement dispatch. The exact file/operation opaque key in the same Store forbids a fresh dispatch after a credential-scope change, without reading another scope payload. An empty independent Store cannot infer another host unknown request; this is not distributed mutual exclusion or provider CAS. Historical v1 plan/event/receipt bytes and no-write reconciliation remain required. Explicit manual review codecs, version selection, same-Store opaque routing and cold completion are not modeled transitions in ProjectionRace, UpdateCommit, ImportCreate or the other finite models. Existing abstract invariants and guard proofs do not establish these metadata or address checks.",
+      "tests": [
+        "packages/core/test/shared-body-write-review-metadata.test.ts",
+        "packages/core/test/shared-body-write-review.test.ts",
+        "packages/core/test/shared-body-write.test.ts",
+        "packages/core/test/shared-body-current-acceptance.test.ts",
+        "packages/cli/test/library-file-review.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_inventory_main_ack_recovery_and_cold_completion",
+      "files": [
+        "packages/core/src/shared-create-recovery-native-model.ts",
+        "packages/core/src/shared-create-recovery-native-plan.ts",
+        "packages/core/src/shared-create-recovery-native-authority.ts",
+        "packages/core/src/shared-create-recovery-native-completion.ts",
+        "packages/core/src/shared-create-recovery-native.ts",
+        "packages/core/src/shared-inventory-recovery.ts",
+        "packages/core/src/shared-create.ts",
+        "packages/core/src/shared-create-recovery-prefix.ts",
+        "packages/core/src/shared-create-recovery-prefix-completion.ts",
+        "packages/core/src/shared-create-recovery-acknowledgements.ts"
+      ],
+      "symbols": [
+        "nativeMainRecoveryPlan",
+        "makeSharedCreateNativeRecoveryReview",
+        "originalNativeMainAllocation",
+        "observeNativeMainRecovery",
+        "reviewSharedCreateNativeRecovery",
+        "applySharedCreateNativeRecovery",
+        "reconcileSharedCreateNativeRecovery",
+        "readSharedCreateNativeCompletion",
+        "readSharedNativeAllocationProofs",
+        "sharedCreateRecoveryJournalKey",
+        "reviewInventoryNativeRecovery",
+        "applyInventoryNativeRecovery",
+        "reconcileInventoryNativeRecovery",
+        "reconcileSharedCreate",
+        "completedSharedCreatePrefixRecovery"
+      ],
+      "scope": "Native inventory review v5/outcome v7 is a separate unmodeled branch for a v1 complete one-main Skill acknowledged under projection 11 before any Records. Exact original prepared/executed inventory intent, credential-scoped create journal and the sole full original POST/ACK are required before the fixed projection-12 decision. The disabled/default-false page, original wire, full input, mode and frontmatter remain unchanged; no Source, resources, Members or Requires are admitted. Apply appends only the exact immutable Record union and creates no Skill/File page, metadata/body PATCH or enablement. Known same-Store pending evidence and any repeated or uncertain recovery select read-only original reconciliation, never an undispatched suffix. Cold completion reconstructs the full original plan and validates complete shared ACK/body/event facts; the dispatch-set commitment uses those same validated ACK payloads without a second query. This is historical completion, not current-body atomicity or distributed exclusion. The existing ImportCreate, CreateRecovery and AcknowledgedContinuation models do not acquire this branch, new transitions, invariants or liveness claims. Original recovery contracts remain fixed; direct code counterexamples and installed/live execution provide separate evidence.",
+      "tests": [
+        "packages/core/test/shared-create-native-recovery.test.ts",
+        "packages/core/test/shared-inventory-import.test.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/cli/test/library-inventory.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "explicit_file_request_submission",
+      "files": [
+        "packages/core/src/shared-file-request.ts",
+        "packages/cli/src/commands-library-file-request.ts"
+      ],
+      "symbols": [
+        "submitSharedFileRequest",
+        "processSharedFileRequest",
+        "matchesSubmission",
+        "verifyRequest",
+        "libraryFileRequestCommand"
+      ],
+      "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission, and original unknown writes remain barriers to new dispatch. The submission/processing state machine, exact receipt validation and complete-body-match restore are not modeled by any of the six finite models.",
+      "tests": ["packages/core/test/shared-file-request.test.ts", "packages/cli/test/cli.test.ts"]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "registered_metadata_census",
+      "files": ["packages/core/src/shared-audit.ts", "packages/core/src/shared-audit-model.ts"],
+      "symbols": ["runSharedAudit", "continueSharedAudit", "auditReport"],
+      "scope": "Census permits metadata depth only, rejects pin/graph scopes, compares semantic registered-table rows before and after inventory, and does not enqueue per-Skill observation. Skill states remain unobserved; a completed census is not a content audit. The existing read-only Notion transport remains in force. This selector is not a transition of AuditRun.",
+      "tests": [
+        "packages/core/test/shared-audit.test.ts",
+        "packages/core/test/shared-audit-inventory.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_import_readback_and_completed_input_reuse",
+      "files": [
+        "packages/core/src/shared-create-import-readback.ts",
+        "packages/core/src/shared-inventory-import-reuse.ts",
+        "packages/core/src/shared-input-fingerprint.ts",
+        "packages/core/src/shared-import-markdown.ts",
+        "packages/core/src/shared-create.ts",
+        "packages/core/src/shared-create-model.ts",
+        "packages/core/src/shared-create-dispatch.ts",
+        "packages/core/src/shared-inventory-import.ts",
+        "packages/core/src/shared-inventory-local.ts",
+        "packages/core/src/shared-notion-projection.ts",
+        "packages/core/src/sqlite-state.ts"
+      ],
+      "symbols": [
+        "fingerprintSkillInput",
+        "inspectReusableNativeImport",
+        "prepareInventoryImport",
+        "executeInventoryImport",
+        "acceptsNativeImportReadback",
+        "observeNativeImportFile",
+        "restoreNativeImportReadbacks",
+        "assertImportedMarkdownContent",
+        "sharedCreateDispatch"
+      ],
+      "scope": "Complete portable input fingerprints include the entrypoint and each relative path/hash/size/mode, not machine paths or Notion presentation. A reused native import needs the exact library/Skill, original manifest and complete applied outcome; it returns read-only and leaves current content unobserved. Projection 14 applies only to new data-source creation, compares text/code/explicit link destinations, freezes the first complete native readback, retains its exact body/events and rejects later differing readbacks. It never authorizes existing-body overwrite or changes fixed source bytes or tombstone history. Original successful POST responses may identify exact allocated pages before query visibility; conflicting identity queries and invalid ownership fail, and missing ACKs never authorize retry. Batch/readback SQLite addresses remain dispatch records. These implementation details and serialization policies are outside ImportCreate, CreateRecovery and AcknowledgedContinuation.",
+      "tests": [
+        "packages/core/test/shared-input-fingerprint.test.ts",
+        "packages/core/test/shared-import-markdown.test.ts",
+        "packages/core/test/shared-inventory-import.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-create-ack-visibility.test.ts",
+        "packages/core/test/shared-create-drift.test.ts"
+      ]
+    }
+  ]
+}

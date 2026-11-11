@@ -48,6 +48,7 @@ function fixture(
   fixtureOptions: {
     readonly readback?: (wire: string) => string
     readonly allowMainWrite?: boolean
+    readonly allowSupportingWrite?: boolean
   } = {},
 ) {
   const base = sharedSnapshotFixture()
@@ -205,14 +206,15 @@ function fixture(
               if (markdown !== null && base.bodies.has(markdown[1] ?? "")) {
                 if (
                   method === "PATCH" &&
-                  markdown[1] === skillPage &&
-                  fixtureOptions.allowMainWrite === true
+                  ((markdown[1] === skillPage && fixtureOptions.allowMainWrite === true) ||
+                    (markdown[1] !== skillPage && fixtureOptions.allowSupportingWrite === true))
                 ) {
+                  const page = markdown[1]!
                   const updates = property(property(body).update_content).content_updates
                   const update =
                     Array.isArray(updates) && updates.length === 1 ? property(updates[0]) : {}
                   if (
-                    update.old_str !== base.bodies.get(skillPage) ||
+                    update.old_str !== base.bodies.get(page) ||
                     typeof update.new_str !== "string" ||
                     ![...base.json.entries()].some(
                       ([key, value]) =>
@@ -226,10 +228,12 @@ function fixture(
                         "Explicit public write lost its complete original preimage or durable plan",
                       ),
                     )
-                  base.bodies.set(skillPage, update.new_str)
-                  base.main.last_edited_time = new Date().toISOString()
+                  base.bodies.set(page, update.new_str)
+                  const row =
+                    page === skillPage ? base.main : files.find((file) => file.id === page)
+                  if (row !== undefined) row.last_edited_time = new Date().toISOString()
                   return Effect.succeed({
-                    id: skillPage,
+                    id: page,
                     markdown: update.new_str,
                     truncated: false,
                     unknown_block_ids: [],
@@ -483,6 +487,8 @@ describe("shared file lifecycle operations", () => {
     for (const [page, body] of existing) expect(f.base.bodies.get(page)).toBe(body)
     expect(f.base.bodies.get(result.page_id ?? "")).toBe("# New")
     expect(plan.creation_projection?.input_markdown).toBe("# New\n")
+    expect(plan.version).toBe(1)
+    expect(property(plan).creation_input).toBeUndefined()
     expect(plan.creation_projection?.removed_terminal_lfs).toBe(1)
     expect(property(f.fileCreates()[0]?.body).markdown).toBe("<h1>New</h1>")
     expect(
@@ -513,7 +519,7 @@ describe("shared file lifecycle operations", () => {
         markdown: input,
       }),
     )
-    expect(plan.creation_projection?.version).toBe(8)
+    expect(plan.creation_projection?.version).toBe(13)
     expect(plan.creation_projection?.input_markdown).toBe(input)
     expect(plan.content.markdown).toBe(observed)
     expect(plan.content.retained.sha256).toBe(digest(observed))
@@ -529,6 +535,157 @@ describe("shared file lifecycle operations", () => {
     expect(property(f.fileCreates()[0]?.body).markdown).toBe(wire)
     expect(f.pathPatches()).toHaveLength(0)
   })
+
+  test.each(["references/nested/SKILL.md", "references/example.markdown", "notes/example.txt"])(
+    "supporting file add retains exact YAML separately from its native body and complete snapshot: %s",
+    async (path) => {
+      const header =
+        "---\r\nname: reference\r\nlicense: Complete terms in LICENSE.txt\r\nnotes: '[metadata label](unresolved.md)'\r\n---\r\n\r\n"
+      const input = header + "# Reference\r\n\r\nOriginal body.\r\n"
+      const observed = "# Reference\n\nOriginal body."
+      const f = fixture({
+        allowSupportingWrite: true,
+        readback: (wire) => {
+          expect(wire).toBe("<h1>Reference</h1>\n\nOriginal body.")
+          return observed
+        },
+      })
+      const snapshot = await f.baseline()
+      const plan = await f.run(
+        prepareSharedFileManagement({
+          library,
+          snapshot,
+          action: "add",
+          path,
+          markdown: input,
+        }),
+      )
+      expect(plan.version).toBe(2)
+      expect(property(plan).creation_input).toBe(input)
+      expect(property(plan.content.retained).frontmatter).toBe(header)
+      expect(plan.content.markdown).toBe(observed)
+      expect(plan.reference_check.local_references).toBe(0)
+      f.clear()
+      const result = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+      expect(result.status).toBe("applied")
+      expect(f.fileCreates()).toHaveLength(1)
+      expect(f.pathPatches()).toHaveLength(0)
+      const current = await f.open(true)
+      const file = current.files.find((value) => value.path === path)!
+      const bytes = await f.run(
+        Effect.gen(function* () {
+          return yield* (yield* Store).readBytes(`objects/${file.sha256}`)
+        }),
+      )
+      expect(new TextDecoder().decode(bytes)).toBe(header + observed)
+      const directory = mkdtempSync(join(tmpdir(), "support-header-write-"))
+      const changedPath = join(directory, "changed.md")
+      writeFileSync(changedPath, header + observed + "\n\nIntentional edit.")
+      f.clear()
+      const written = await f.run(
+        writeSkill(fileRef(current.record.id, file.path, current.snapshot_id), {
+          database: library.skills.database_id,
+          input: changedPath,
+        }),
+      )
+      expect(written.action).toBe("updated")
+      expect(f.pathPatches()).toHaveLength(1)
+      expect(f.base.bodies.get(result.page_id ?? "")).toBe(observed + "\n\nIntentional edit.")
+      const edited = await f.open(true)
+      const editedFile = edited.files.find((value) => value.path === file.path)!
+      const editedBytes = await f.run(
+        Effect.gen(function* () {
+          return yield* (yield* Store).readBytes(`objects/${editedFile.sha256}`)
+        }),
+      )
+      expect(new TextDecoder().decode(editedBytes)).toBe(
+        header + observed + "\n\nIntentional edit.",
+      )
+      f.clear()
+      const historical = await f.run(
+        readSkill(fileRef(current.record.id, file.path, current.snapshot_id)),
+      )
+      expect(property(historical).content).toBe(header + observed)
+      expect(f.calls).toHaveLength(0)
+      writeFileSync(changedPath, header.replace("LICENSE.txt", "OTHER.txt") + observed)
+      f.clear()
+      const rejected = await f.run(
+        Effect.flip(
+          writeSkill(fileRef(edited.record.id, file.path, edited.snapshot_id), {
+            database: library.skills.database_id,
+            input: changedPath,
+          }),
+        ),
+      )
+      expect(rejected.code).toBe("SHARED_METADATA_CONFLICT")
+      expect(f.pathPatches()).toHaveLength(0)
+      expect(f.fileCreates()).toHaveLength(0)
+      const changedHeader = {
+        ...plan,
+        content: { ...plan.content, retained: { ...plan.content.retained, frontmatter: "" } },
+      }
+      expect((await f.run(Effect.flip(validateSharedFileManagementPlan(changedHeader)))).code).toBe(
+        "SHARED_FILE_MANAGEMENT_INVALID",
+      )
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    },
+  )
+
+  test.each(["references/example.md", "references/example.markdown"])(
+    "complete supporting document writes preserve the exact bound native link: %s",
+    async (path) => {
+      const header = "---\r\nname: reference\r\nlicense: MIT\r\n---\r\n\r\n"
+      const nativeUrl = `https://app.notion.com/p/${id(11).replaceAll("-", "")}`
+      const nativeBody = `# Reference\n\n[Existing reference](${nativeUrl})\n\nOriginal body.`
+      const f = fixture({
+        allowSupportingWrite: true,
+        readback: (wire) => {
+          expect(wire).toBe(nativeBody.replace(/^# Reference/u, "<h1>Reference</h1>"))
+          return nativeBody
+        },
+      })
+      const baseline = await f.baseline()
+      const plan = await f.run(
+        prepareSharedFileManagement({
+          library,
+          snapshot: baseline,
+          action: "add",
+          path,
+          markdown: header + nativeBody.replaceAll("\n", "\r\n") + "\r\n",
+        }),
+      )
+      const added = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+      expect(added.status).toBe("applied")
+      const current = await f.open(true)
+      expect(current.file_bindings?.find((file) => file.path === "references/1.md")?.page_id).toBe(
+        id(11),
+      )
+      const file = current.files.find((file) => file.path === path)!
+      const bytes = await f.run(
+        Effect.gen(function* () {
+          return yield* (yield* Store).readBytes(`objects/${file.sha256}`)
+        }),
+      )
+      const consumer = new TextDecoder().decode(bytes)
+      expect(consumer).toBe(header + nativeBody.replace(nativeUrl, "1.md"))
+      const directory = mkdtempSync(join(tmpdir(), "support-bound-link-"))
+      const input = join(directory, "edited.markdown")
+      writeFileSync(input, consumer + "\n\nIntentional edit.")
+      f.clear()
+      const result = await f.run(
+        writeSkill(fileRef(current.record.id, path, current.snapshot_id), {
+          database: library.skills.database_id,
+          input,
+        }),
+      )
+      expect(result.action).toBe("updated")
+      expect(
+        f.calls.filter((call) => call.method === "PATCH" && call.path.includes("/markdown")),
+      ).toHaveLength(1)
+      expect(f.base.bodies.get(added.page_id ?? "")).toBe(nativeBody + "\n\nIntentional edit.")
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    },
+  )
 
   test("delete publishes a retained tombstone while leaving the body page and old snapshot intact", async () => {
     const f = fixture(),

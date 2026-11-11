@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { SkillsError } from "../src/model.ts"
 import { normalizeObservedBody } from "../src/shared-file-state.ts"
 import {
@@ -8,12 +9,68 @@ import {
   validateSharedNotionMarkdownProjection,
 } from "../src/shared-notion-projection.ts"
 import { notionV2Observations } from "./shared-notion-projection-observations.ts"
+import native81 from "./fixtures/native81-multiblock-list-readback.json"
 
 const projectV1 = (input: string) => projectSharedNotionMarkdown(input, { version: 1 })
 const projectV2 = (
   input: string,
   options: { readonly purpose?: "body_write" | "data_source_create" } = {},
 ) => projectSharedNotionMarkdown(input, { ...options, version: 2 })
+
+describe("native Markdown projection v13 creation lists", () => {
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
+
+  test("predicts the observed native81 list fragment with generic text and unchanged wire", () => {
+    const projection = projectSharedNotionMarkdown(native81.input_markdown, {
+      purpose: "data_source_create",
+    })
+    expect(projection.version).toBe(13)
+    expect(projection.markdown).toBe(native81.response_markdown)
+    expect(sha256(sharedNotionMarkdownWire(projection))).toBe(native81.wire_markdown_sha256)
+    expect(sharedNotionMarkdownPolicy(projection).version).toBe(13)
+    expect(validateSharedNotionMarkdownProjection(projection)).toEqual(projection)
+  })
+
+  test("retains the fragment's v12 spelling and refuses to relabel its frozen projection", () => {
+    const retained = projectSharedNotionMarkdown(native81.input_markdown, {
+      version: 12,
+      purpose: "data_source_create",
+    })
+    expect(sha256(retained.markdown)).toBe(native81.v12_markdown_sha256)
+    expect(sha256(sharedNotionMarkdownWire(retained))).toBe(native81.wire_markdown_sha256)
+    expect(validateSharedNotionMarkdownProjection(retained)).toEqual(retained)
+    expect(() => validateSharedNotionMarkdownProjection({ ...retained, version: 13 })).toThrow(
+      "differs from its declared input policy",
+    )
+  })
+
+  test("body-write projection keeps the retained v12 spelling for this creation-only observation", () => {
+    const previous = projectSharedNotionMarkdown(native81.input_markdown, {
+      version: 12,
+      purpose: "body_write",
+    })
+    const current = projectSharedNotionMarkdown(native81.input_markdown, {
+      purpose: "body_write",
+    })
+    expect(current.markdown).toBe(previous.markdown)
+    expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
+  })
+
+  test.each([
+    "1. First\n\n2. Second",
+    "- First\n\n  ```text\n  literal\n  ```\n\n  Continuation.",
+    "1. First\n\n   Continuation without a code child.\n\n2. Second",
+    "```text\n1. First\n\n   Continuation.\n```",
+  ])("unobserved list shapes and literal code keep their v12 projection (%s)", (input) => {
+    const previous = projectSharedNotionMarkdown(input, {
+      version: 12,
+      purpose: "data_source_create",
+    })
+    const current = projectSharedNotionMarkdown(input, { purpose: "data_source_create" })
+    expect(current.markdown).toBe(previous.markdown)
+    expect(sharedNotionMarkdownWire(current)).toBe(sharedNotionMarkdownWire(previous))
+  })
+})
 
 describe("retained native Markdown projection v1", () => {
   test("freezes one editor EOF newline as an explicit change while preserving the input", () => {

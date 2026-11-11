@@ -6,18 +6,18 @@ Sources 是第四张独立全页面 Database。它拥有来源身份、Provider�
 
 | 字段或内容 | 权威来源 | 显式来源刷新可做的修改 |
 | --- | --- | --- |
-| Selected Version（注册属性 ID 为 Source） | 审阅后的固定候选 | 仅选择已完整保留并验证的 bundle |
+| Selected Version（注册属性 ID 为 Source） | 审阅后的固定候选 | 选择完整验证的固定 Git 清单或保留源；不保存浮动 HEAD |
 | following 文件与源资源 | 选中的固定 Source + 原有文件归属事实 | 按新 pin 合成；删除仍在 following 的绑定文件会阻止刷新 |
 | custom 主文、资源与额外 frontmatter | Notion 作者与原有 custom 事实 | 保留完整字节；主文中同名额外 frontmatter 覆盖来源默认值 |
 | Members / Requires | Notion 作者显式选定的完整关系集合 | 不写入、不重建；空集合也是明确选择 |
 | Name / Description / Tags / Enabled / Default Context / 未注册属性 | Notion 作者 | 不写入；源名称差异只进入候选审阅 |
 | View 配置 | Notion 数据库 View | 不访问写入端点、不重置 |
-| Sources 的 Last Checked / Last Revision / Last Result / Status | 已完成的刷新操作 | 验证成功后写这四个注册属性 |
+| Sources 的 Last Checked / Last Revision / Last Result / Status | 已完成的来源检查及其应用结果 | 完整检查后更新，并明确待确认、已应用、部分或阻塞；失败检查不冒充完成 |
 | 历史 pin、归属事件、原始未知操作 | 不可变 Records 与原始操作凭据 | 保留，不把当前可见状态当成未知请求的成功回执 |
 
 目标 Skill 的 PATCH properties 只包含 Source 的注册 ID。Records 只附加该次来源审计所需的 Origin；Sources 状态只使用表中列出的四项。刷新不会把读到的旧整行属性回写，因此在 Source PATCH 前发生的无关关系编辑仍保留。这是字段级写入边界，不是 Notion 原子 compare-and-swap；正文、归属或选中 pin 漂移仍需要重新准备。
 
-比较过两种方案：把活跃配置混入不可变 Records，或独立 Sources。选后者，避免用户编辑配置破坏历史事件，也不把表数当作产品能力约束。普通 Skill 消费只依赖当前 pin、文件与已确认归属，不扫描 Sources、不访问上游；只有明确的来源管理命令读取配置并启动适配器。
+Sources 单独保存可编辑配置，Records 保留不可变历史。普通 Skill 消费只依赖当前 pin、文件与已确认归属，不扫描 Sources，也不重新发现分支或成员。缺少所需字节时可以按冻结的 acquisition 位置读取精确 Git 对象、HTTP 资源或保留对象；只有来源管理命令读取可编辑配置并启动候选发现。
 
 ## 来源适配
 
@@ -33,11 +33,11 @@ Sources 是第四张独立全页面 Database。它拥有来源身份、Provider�
 
 ## 数据库迁入约束
 
-原59份配置从保留的原始记录恢复为 Sources 行，原档案仍留在 Records。先建立稳定ID与关系，再核对每个Skill的来源和成员；原生主文、支持页、资源包、custom/following事件及旧pin不变。已有来源过滤View需切到新的Origin关系；旧归档关系只作历史说明且默认隐藏。Sources、Skills、Files、Records均在用户指定父页下，内部身份不依赖表名。
+从保留的原始记录恢复 Sources 行时，原档案仍留在 Records。先建立稳定 ID 与关系，再逐项核对 Skill 的来源和成员；原生主文、支持页、资源包、custom/following 事件及旧 pin 不变。以当前完整审计报告计数，不把历史配置数量当作当前库存。已有来源过滤 View 需按审阅后的计划切到 Origin 关系；旧归档关系仍可解释历史。Sources、Skills、Files、Records 均在指定父页下，内部身份不依赖表名。
 
 ## 验证边界
 
-来源列表必须完整分页，长配置需完整属性读取，重复Source ID或多重Origin不能以第一条兜底。相关核心、Node SQLite、公开CLI、独立安装与真实服务分别留证。新模型不恢复旧Upstream库，也不主动全量抓取或应用59个上游；真实外部Provider与受控测试必须分别报告。
+来源列表必须完整分页，长配置需完整属性读取，重复 Source ID 或多重 Origin 不能以第一条兜底。核心、Node SQLite、公开 CLI、独立安装与真实服务分别留证。每次运行都使用明确 Source 和目标范围；真实外部 Provider 与受控测试分别报告。
 
 ## 日常命令
 
@@ -72,11 +72,109 @@ ntn-skills ctl library sources reconcile ./refresh.json --entry ENTRY
 
 `prepare` 会读取完整上游候选、当前自定义正文和绑定，并将待选字节写入私有本地计划。计划包含资源，可能有敏感业务内容；不要上传到公开仓库。`apply` 不再次追逐分支，用原计划中的字节、fingerprint、member、当前 pin 和快照核对后执行。内容变化需重新准备；未知写入继续核对原操作，不能通过改输入强行重发。普通 `read/files/export` 仍使用同一固定快照接口。
 
-成功 `apply` 更新 Sources 的 Last Checked / Last Revision / Last Result，表示最后一次完成验证的显式推进，**不是自动轮询或后台同步状态**。`check/fetch` 是只读操作，不修改这些栏位。一个来源对应多个 Skill 时逐个目标显式推进；Router 的成员索引与正文不被来源检查隐式重建。
+成功 `apply` 可以反馈该次显式推进。有限的 `run --mode policy` 在完整检查后反馈检查时间、精确修订、可取得的提交时间、应用状态和保留的自定义路径；即使需要确认，也能区分“检查完成”和“内容已应用”。`check/fetch`、`run --mode check` 和 `run --mode prepare` 保持远端只读。Router 的 Members/Requires、启停和分类不由来源检查重建。
 
-`check` 与新建 `prepare` 返回 `member_review`，按精确 Source Member key 比较当前完整 Origin 绑定与上游候选，列出 `added`、`missing`、`renamed`。这个比较基线是当前来源绑定，不是历史上游目录，也不是作者的 Members。缺失项要求人工判断；不能按显示名替换或清空 Requires。新增成员先按普通创建/导入流程建立，再由作者明确接受关系。来源刷新忽略上游包里的关系字段，不能通过来源内容取得修改本地关系的权限。
+`check` 与新建 `prepare` 返回 `member_review`，按精确 Source Member key 比较当前完整 Origin 绑定与上游候选，列出新增、缺失和待确认映射。这个比较基线是当前来源绑定，不是历史上游目录，也不是作者的 Members。缺失项要求明确决策；不能按显示名替换或清空 Requires。新增成员通过 `admit` 或完整库存导入计划接纳。来源刷新忽略上游包里的关系字段，不能通过来源内容取得修改本地关系的权限。
 
 当前来源工作流没有持续托管 Members 的模式。旧发布档案及其中的 baseline、显式 add/remove 和未结清操作继续保留，不能从当前差异猜造旧 baseline，也不能据此恢复旧发布器。若迁入的旧工作流仍声称持续管理成员，先审阅它的完整基线和增删意图，再明确选择当前 Notion 集合；不提供隐式 reseed 或自动跟随。
+
+### 一次检查完整来源，按原计划推进
+
+`--all-bound` 冻结该 Source 的完整 Origin 成员观察，并为启用的 Skill 形成逐项候选。上游只获取一次；未启用的绑定仍参与成员和重复身份检查。它与 `--target` 互斥。
+
+```bash
+ntn-skills ctl library sources prepare SOURCE --entry ENTRY --all-bound --output ./source-batch.json
+ntn-skills ctl library sources apply ./source-batch.json --entry ENTRY --dry-run
+ntn-skills ctl library sources apply ./source-batch.json --entry ENTRY
+ntn-skills ctl library sources reconcile ./source-batch.json --entry ENTRY
+```
+
+批次保存来源配置指纹、成员清单、每项原选择与原操作。结果逐项报告；一项未知不会把其他项改成成功，也不会重建整批。来源状态反馈和内容推进是两个独立结果。`reconcile` 只核对原操作；当前 Source 值恰好等于目标值，不能证明响应丢失的请求已成功。
+
+`--storage auto` 默认将未转换、完整且可公开直接读取的 GitHub 树保存为固定 Git 清单；它包含精确 commit/tree、Git blob OID、字节数、已验证的 SHA-256 和执行模式。其他已支持输入使用保留源。`--storage fixed-git` 要求满足直接读取条件，失败时不会悄悄改策略；`--storage retained` 明确保留完整资源。LFS 指针、子模块、不可读取对象或不完整成员不能形成完整候选。
+
+### 有限运行与策略
+
+```bash
+ntn-skills ctl library sources run SOURCE --entry ENTRY --all-bound --mode check
+ntn-skills ctl library sources run SOURCE --entry ENTRY --all-bound --mode prepare --output ./candidate.json
+ntn-skills ctl library sources run SOURCE --entry ENTRY --all-bound --mode policy --due \
+  --max-requests 2000 --max-bytes 134217728 --duration-ms 300000
+ntn-skills ctl library sources run-list
+ntn-skills ctl library sources run-status SOURCE_RUN_ID --output ./original-candidate.json
+```
+
+每次 `run` 都有确定终点和本地 run ID。`check` 只检查，`prepare` 形成只读候选，`policy` 按来源配置执行：禁用来源跳过；`pinned` 不重新发现上游；`manual` 保留待确认候选；`auto` 只推进满足当前保护条件的候选。`--due` 以 `options.check_interval_ms` 判断是否到期，最小一分钟，最大 366 天；`auto` 配置必须明确提供该间隔。
+
+启用来源中的已登记文件请求，即使没有新 commit、尚未到期或策略为 pinned，仍会在 `policy` 运行中处理。请求和结果分别保留；受保护条件阻塞的请求不会消失。来源检查不会安装定时器、守护进程或 webhook。
+
+默认预算为 2,000 次实际 HTTP 尝试、128 MiB HTTP payload 和五分钟总时长。重试计入次数，排队与等待计入时长；已放行响应造成的字节超额会如实报告。Git 子进程受超时和整次调用期限约束，其传输字节不冒充 HTTP 计量。相同 state root 内同库使用本地写锁；跨机器仍须安排单一管理写入者，这不是 Notion 原子事务或跨机器锁。
+
+`run-status` / `run-list` 完全离线。仍处于 running 的 checkpoint 可能是运行中或被中断；请求计量仅是最近持久 checkpoint 的下界。预算暂停保留已冻结计划和逐项结果。恢复先导出原计划并 `reconcile`，不能将新运行当作原未知请求未派发的证明。
+
+准备候选时，结构化 `SHARED_REFERENCE_INVALID` 错误保留原 `code`、`message`、`details.from` 和 `details.href`，并在 `details` 标明 `target_page_id`、`source_member` 与 `preparation_stage`。阶段 `current_snapshot` 表示读取当前完整文件树时失败；`candidate_file_references` 表示合成候选与保留内容后的最终引用检查失败。这些字段随原 run 错误保存，可通过离线 `run-status` 回读；引用失败仍不生成可应用计划。旧 run 没有记录的成员或阶段不能据此补推。
+
+| 退出码 | `sources run` / `run-status` 含义 |
+| --- | --- |
+| 0 | 调用完成，没有阻塞或未知工作；检查或手动候选完成不表示已应用 |
+| 3 | 有需要审阅、阻塞或失败的逐项结果 |
+| 4 | 原结果未知或调用尚不完整 |
+| 75 | 预算暂停，保留原计划与 checkpoint |
+| 1 | 执行失败 |
+| 2 | 参数错误 |
+
+现有 Notion API 没有已证实的正文原子前置条件。自动运行遇到需要替换的可编辑正文时返回 `BODY_REPLACEMENT_UNSAFE`；需要建立的新 Markdown 页面返回 `INITIAL_PROJECTION_REQUIRED`。这类项不能报告为“Notion 页面已同步”。选择版本、实际页面表示、自定义基线与会话 pin 是不同状态，可用 `ctl library state` 核对。
+
+### 显式接纳和成员变化
+
+```bash
+ntn-skills ctl library sources admit SOURCE --entry ENTRY --member EXACT_MEMBER \
+  --skill-id NEW_STABLE_ID --output ./admission.json
+ntn-skills ctl library sources admit-apply ./admission.json --entry ENTRY --dry-run
+ntn-skills ctl library sources admit-apply ./admission.json --entry ENTRY
+ntn-skills ctl library sources admit-reconcile ./admission.json --entry ENTRY
+
+ntn-skills ctl library sources member-prepare SOURCE --entry ENTRY --target SKILL_PAGE_ID \
+  --member EXACT_NEW_MEMBER --output ./member-decision.json
+ntn-skills ctl library sources member-apply ./member-decision.json --entry ENTRY
+ntn-skills ctl library sources member-reconcile ./member-decision.json --entry ENTRY
+```
+
+`admit` 使用现有创建事务保存完整输入、建立可读 Markdown 页与资源，并验证完整目录。默认新条目保持禁用；只有准备时显式 `--enable` 才在验证后启用。已存在的相同 Source/member，包括禁用条目，不能重复创建。来源提供的 Members/Requires 不获得本库关系写权限。
+
+新 `admit` 计划与库存导入使用相同的 Notion 读回接纳规则。标题层级、空行、强调和
+列表包装可以变化，初次完整读回会记录为阅读页基线。未接管文件仍消费固定来源的
+原始内容，不能因阅读页排版不同自动变为 custom。正文缺失、代码或明确链接目标
+被改动、原始资源不完整仍会阻塞。已冻结的历史计划继续使用原规则。
+
+若 v1 固定 Git 接纳计划因已知的原生 Markdown 表示差异中断，可审阅同一原操作的有限恢复。支持的原状态与固定投影转换如下：
+
+| 原创建状态 | 恢复转换 | 必须保留的原事实 |
+| --- | --- | --- |
+| v8 主页已确认、尚无创建清单 | v8 → v9 | 唯一原主页 ACK，原创建结果仍为空 |
+| v9 主页已确认、尚无创建清单 | v9 → v10 | 唯一原主页 ACK，原创建结果仍为空 |
+| v9 已有清单且记录 `SHARED_CREATE_BODY_MISMATCH` | v9 → v10 | 原 `needs_review` 结果、完整清单与已确认页面的有序前缀 |
+
+```bash
+ntn-skills ctl library sources recovery review ./admission.json --entry ENTRY \
+  --target ORIGINAL_MAIN_PAGE_ID --output ./recovery-review.json
+ntn-skills ctl library sources recovery apply ./admission.json --entry ENTRY \
+  --review ./recovery-review.json --review-id REVIEW_ID --dry-run
+ntn-skills ctl library sources recovery apply ./admission.json --entry ENTRY \
+  --review ./recovery-review.json --review-id REVIEW_ID
+ntn-skills ctl library sources recovery reconcile ./admission.json --entry ENTRY \
+  --target ORIGINAL_MAIN_PAGE_ID
+```
+
+先检查 `review` 返回的完整决定、`review_id` 和 dry-run 写入上界，再执行原决定。首次恢复要求原凭据范围内的完整本地 journal、与原请求一致的全部派发记录和 ACK、原主页仍禁用、Source 与身份未变，以及每个已有页面的完整当前正文恰好符合对应的新投影。v10 前向预测已观察到的普通文本转义与创建文档的段落到代码块分隔；原输入、提交的 Markdown 字节和旧投影政策保持固定。
+
+恢复保留每个已确认页面，只创建原计划尚未派发的支持页，并另存审阅、归属事件和完成事实。无原创建结果的操作继续保留这个事实；已有的 `needs_review` 结果也不会改写。独立客户端通过共享清单、原结果和完整归属事件核验完成，不需要原执行机器的本地 journal。只有完成记录与归属验证成功后，执行端才退休原 journal；历史输入继续保留。
+
+缺失或篡改 ACK、未知请求、人工正文变化、来源或归属变化、额外原始派发均保持待核对，不能靠换页、改计划或重试绕过。已有正文不在恢复中重写。已开始的恢复再次调用只核对原结果；恢复的历史完成结果不返回当前快照，消费前仍须重新读取。
+
+确认上游已移除成员而要保留当前内容时，使用 `member-prepare ... --retain-removed`，与 `--member` 互斥。它只解除后续发现绑定，保留 Selected Version、自定义正文、资源、用户关系和历史 pin。明确重新绑定也不自动切换内容版本。相似名字或字节不会自动生成改名映射。
+
+完整本地 Skill 的三类导入、逐项授权与源树漂移检查见[库存审计与导入](inventory-import.md)。
 
 ### 导出与重导入关系
 
@@ -111,7 +209,7 @@ ntn-skills ctl library sources reconcile ./refresh.json --entry ENTRY
 }
 ```
 
-新建使用 `--expect absent`。`policy=pinned` 的 Git 配置必须指定完整 commit；`manual` 允许分支，但只有显式检查/准备时解析当前 commit。导入保留的 `accepted_ref` 是额外固定选择，不能在未检查它的情况下把 Ref 展示值当成实际推进版本。HTTP(S)/SSH 是 Git 传输边界；共享配置不能指向 `file://` 或本机目录，私有仓库仍由本机正常认证。
+新建使用 `--expect absent`。`policy=pinned` 的 Git 配置必须指定完整 commit；`manual` 允许分支，并在明确的检查或准备中解析当前 commit。`auto` 使用同样的冻结候选，再由有限 `run --mode policy` 按保护条件推进；配置例如 `"options": { "check_interval_ms": 3600000 }`。保留的 `accepted_ref` 是额外固定选择，不能在未检查它的情况下把 Ref 展示值当成实际推进版本。HTTP(S)/SSH 是 Git 传输边界；共享配置不能指向 `file://` 或本机目录，私有仓库由本机正常认证读取，并遵守明确的共享保留权限。
 
 Linear 来源明确把 issue/document 映射成文件，主入口必须有 `SKILL.md`；附属文档可保存到任意安全相对路径。凭据不出现在配置中。
 
@@ -141,11 +239,13 @@ Linear 来源明确把 issue/document 映射成文件，主入口必须有 `SKIL
 
 - 共享管理选择以 Notion 为权威；本地只保存派生缓存和原始写入凭据。已确认的历史配置更新可再次有意调整，未确认请求不可用不同输入绕过。当前协议不提供跨机器写锁或 Notion 原子 compare-and-swap，管理仍需单写者。
 - 一个 Skill 的主 Origin/member 明确且唯一。原有 shared_target_set 配置及来源归档被保留；多贡献者合并不能由单来源 refresh 整体覆盖，需要明确的固定 composition。检查和导出来源本身仍可使用。
-- `prepare/apply` 针对已绑定 Skill，不会新增或删除整组成员，也不会后台抓取全部59个来源。新增成员先通过正常内容创建/导入明确建立，再绑定；取得合法目录不等于任意 Markdown 都能无损写成原生页面。
+- `prepare/apply` 针对明确已绑定范围；新成员必须 `admit` 或完整库存导入。取得合法目录不等于任意 Markdown 都能无损写成原生页面，不能丢弃无法表示的文件后启用。
 - 自定义文件保持其完整正文；上游删除尚在跟随的原生文件、最终链接破损、文件归属变化和本地权限限制均会阻止更新。二进制/脚本可在完整资源包中消费，不执行，也不强制创建可编辑文本页。
 - 原生页面的自动投影回写仍是独立能力：推进当前固定版本不自动覆盖用户看到的 custom 页面。当前读取会按归属合成完整目录。
 - 初始化或字段变更采用明确操作，不以显示名推断数据库身份。原3表合同及旧pin可读，日用正式库使用4表；这是原模型升级和历史解释，不是恢复旧Upstream运行链。
 
 ## 原始计划的版本
 
-当前新建 refresh v3 延续 v2 的精确原生 Source 选择操作，并把只供审阅的 `member_review` 绑定进同一计划摘要和来源审计。执行复用已有共享元数据日志，没有第二套关系同步账本。保存的 v1/v2 计划继续按原语义核对，不为它们制造历史成员基线；失败或未知结果不会因新版本发布被改写。原计划与新计划分别留证，不把当前 pin 可见当作旧请求成功。候选 bundle、来源审计和字节块在任何远端派发之前检查64KiB单记录限额；长资源走现有有界分块，不能通过先写完再发现清单超限。
+固定 Git refresh v4 保存完整固定清单；保留源继续使用 v3。两者都绑定精确 Source 选择、`member_review` 和同一来源审计，执行复用现有共享元数据日志。保存的 v1/v2/v3 计划继续按原语义核对，不为旧计划制造历史成员基线；失败或未知结果不会因新版本发布被改写。所有原计划分别留证，不把当前 pin 可见当作旧请求成功。候选清单、来源审计和字节块在远端派发前检查单记录限额；长资源使用已有有界分块。
+
+新操作把原请求、成功响应 ACK 和验证结果分别持久化。收到并保存原 ACK 后发生读回失败，可以在后续精确核对中确认原结果。没有原 ACK 的旧未知操作仍保持未知；当前布局或属性相等不能补造回执。

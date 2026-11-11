@@ -1,18 +1,28 @@
+import {
+  SharedCreateRecoveryBindingSchema,
+  SharedCreateRecoveryObservationSchema,
+  SharedCreateRecoveryFileSchema,
+  type SharedCreateRecoveryBinding,
+  type SharedCreateRecoveryObservation,
+  type SharedCreateRecoveryFile,
+} from "./shared-create-recovery-proof-model.ts"
+export {
+  SharedCreateRecoveryBindingSchema,
+  SharedCreateRecoveryObservationSchema,
+  SharedCreateRecoveryFileSchema,
+  type SharedCreateRecoveryBinding,
+  type SharedCreateRecoveryObservation,
+  type SharedCreateRecoveryFile,
+} from "./shared-create-recovery-proof-model.ts"
 import { Effect, Schema } from "effect"
 import { importDocument } from "./import.ts"
 import { fail, property } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { validateSharedCreatePlan, type SharedCreatePlan } from "./shared-create-model.ts"
-import {
-  FileEventSchema,
-  RetainedContentSchema,
-  normalizeObservedBody,
-  type FileEvent,
-} from "./shared-file-state.ts"
+import { FileEventSchema, normalizeObservedBody, type FileEvent } from "./shared-file-state.ts"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
 import {
   projectSharedNotionMarkdown,
-  SharedNotionMarkdownPolicySchema,
   sharedNotionMarkdownPolicy,
   sharedNotionMarkdownWire,
 } from "./shared-notion-projection.ts"
@@ -31,28 +41,6 @@ const bytes = (text: string) => new TextEncoder().encode(text).length
 const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
 
-export const SharedCreateRecoveryBindingSchema = Schema.Struct({
-  file_id: Identity,
-  path: Schema.String,
-  page_id: Schema.String,
-  event_id: Identity,
-})
-export const SharedCreateRecoveryObservationSchema = Schema.Struct({
-  file_id: Identity,
-  page_id: Schema.String,
-  response_json: Schema.String,
-  response_sha256: Hash,
-  body_sha256: Hash,
-  body_bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
-})
-export const SharedCreateRecoveryFileSchema = Schema.Struct({
-  file_id: Identity,
-  path: Schema.String,
-  input_sha256: Hash,
-  projection: SharedNotionMarkdownPolicySchema,
-  content: RetainedContentSchema,
-  event: FileEventSchema,
-})
 export const SharedCreateRecoveryReviewSchema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("skill_create_recovery_review"),
@@ -72,9 +60,6 @@ export const SharedCreateRecoveryReviewSchema = Schema.Struct({
   observations: Schema.Array(SharedCreateRecoveryObservationSchema),
 })
 export type SharedCreateRecoveryReview = typeof SharedCreateRecoveryReviewSchema.Type
-export type SharedCreateRecoveryObservation = typeof SharedCreateRecoveryObservationSchema.Type
-export type SharedCreateRecoveryBinding = typeof SharedCreateRecoveryBindingSchema.Type
-export type SharedCreateRecoveryFile = typeof SharedCreateRecoveryFileSchema.Type
 export interface SharedCreateRecoveryReviewInput {
   readonly originalManifestHash: string
   readonly originalOutcomeHash: string

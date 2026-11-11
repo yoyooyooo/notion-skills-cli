@@ -6,6 +6,7 @@ import {
   FileEventSchema,
   normalizeObservedBody,
   RetainedContentSchema,
+  nativeFileMetadata,
   type FileEvent,
 } from "./shared-file-state.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
@@ -14,10 +15,11 @@ import {
   SharedNotionMarkdownProjectionSchema,
   validateSharedNotionMarkdownProjection,
 } from "./shared-notion-projection.ts"
+import { splitNativeSupportingMarkdown } from "./shared-native-file-metadata.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
-export const SharedFileManagementPlanSchema = Schema.Struct({
+const SharedFileManagementPlanV1Schema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("file_management"),
   action: Schema.Literals(["add", "delete", "move"]),
@@ -49,6 +51,15 @@ export const SharedFileManagementPlanSchema = Schema.Struct({
   content: Schema.Struct({ markdown: Schema.String, retained: RetainedContentSchema }),
   event: FileEventSchema,
 })
+export const SharedFileManagementPlanSchema = Schema.Union([
+  SharedFileManagementPlanV1Schema,
+  Schema.Struct({
+    ...SharedFileManagementPlanV1Schema.fields,
+    version: Schema.Literal(2),
+    action: Schema.Literal("add"),
+    creation_input: Schema.String,
+  }),
+])
 export type SharedFileManagementPlan = typeof SharedFileManagementPlanSchema.Type
 export const fileManagementOutcomesEntity = "file-management-outcomes-v1"
 export const fileManagementOutcomeId = (operationId: string) => `outcome-${operationId}`
@@ -240,10 +251,26 @@ export function validateSharedFileManagementPlan(input: unknown) {
       }
     })
     const hash = yield* sha256(plan.content.markdown)
+    const inputMetadata =
+      plan.version === 2
+        ? yield* managementChecked(() => {
+            const input = splitNativeSupportingMarkdown(plan.creation_input)
+            if (
+              input.frontmatter === undefined ||
+              input.body !== plan.creation_projection?.input_markdown
+            )
+              throw fail(
+                "SHARED_FILE_MANAGEMENT_INVALID",
+                "The original supporting file must reconstruct its exact YAML header and projected body input.",
+              )
+            return { frontmatter: input.frontmatter }
+          })
+        : nativeFileMetadata(plan.before ?? {})
     const retained = {
       object_id: `body-${hash}`,
       sha256: hash,
       bytes: new TextEncoder().encode(plan.content.markdown).byteLength,
+      ...inputMetadata,
     }
     if (
       canonicalSharedJson(retained) !== canonicalSharedJson(plan.content.retained) ||
@@ -298,7 +325,11 @@ export function validateSharedFileManagementPlan(input: unknown) {
 }
 
 export function makeSharedFileManagementPlan(
-  input: Omit<SharedFileManagementPlan, "operation_id" | "event" | "version" | "kind"> & {
+  input: Omit<
+    typeof SharedFileManagementPlanV1Schema.Type,
+    "operation_id" | "event" | "version" | "kind"
+  > & {
+    readonly creation_input?: string
     readonly event:
       | Omit<Extract<FileEvent, { kind: "adopted" }>, "event_id">
       | Omit<Extract<FileEvent, { kind: "deleted" }>, "event_id">
@@ -310,7 +341,7 @@ export function makeSharedFileManagementPlan(
     const eventHash = yield* sha256(canonicalSharedJson(eventDescription(provisional)))
     const frozen = {
       ...input,
-      version: 1 as const,
+      version: input.creation_input === undefined ? (1 as const) : (2 as const),
       kind: "file_management" as const,
       event: { ...input.event, event_id: `${input.action}-${eventHash}` },
     }

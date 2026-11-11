@@ -1213,7 +1213,7 @@ async function main() {
       verified,
       repeated_imports: repeated,
       transport:
-        "canonical scripts/dev.ts fresh build followed by Node.js CLI with the project direct HTTP engine; isolated config and state",
+        "canonical scripts/dev.ts runs TypeScript directly with Node.js and the project direct HTTP engine, without building; isolated config and state",
     }
     await save(join(evidence, "summary.json"), summary)
     return summary
