@@ -8,6 +8,7 @@ import { HttpClient } from "effect/http"
 import { authScope } from "../src/catalog.ts"
 import { decode, fail, property, SkillsError, SnapshotSchema, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
+import { recordedFixtureTransport } from "./notion-http-fixture.ts"
 import { sharedSnapshotVersion } from "../src/shared-snapshot-identity.ts"
 import { openSharedSnapshot, type FixedSharedSource } from "../src/shared-snapshot.ts"
 import {
@@ -379,6 +380,51 @@ function fixture(
 }
 
 describe("shared file lifecycle operations", () => {
+  test("actual lifecycle writes use the frozen owner and operation through the real transport", async () => {
+    const f = fixture(),
+      snapshot = await f.baseline()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot,
+        action: "add",
+        path: "references/attribution.md",
+        markdown: "# Exact lifecycle owner\n",
+      }),
+    )
+    await recordedFixtureTransport(await f.run(Notion), async (api, requests) => {
+      const result = await f.run(
+        executeSharedFileManagement(library, { plan, mode: "create" }).pipe(
+          Effect.provideService(Notion, api),
+        ),
+      )
+      expect(result.status).toBe("applied")
+      const trace = api.requestMetrics!().trace
+      const writes = trace.filter(
+        (entry) => entry.event === "attempt" && entry.kind === "notion_write",
+      )
+      expect(writes.length).toBeGreaterThan(0)
+      for (const entry of writes) {
+        if (entry.event !== "attempt") throw new Error("Expected actual HTTP attempt")
+        expect(requests.some((request) => request.request_id === entry.request_id)).toBe(true)
+        expect(entry.attribution).toEqual({
+          phase: "author_apply",
+          skill_page_id: skillPage,
+          operation_id: plan.operation_id,
+        })
+      }
+      for (const phase of ["author_preflight", "author_verify"])
+        expect(
+          trace.some(
+            (entry) =>
+              entry.event === "attempt" &&
+              entry.attribution?.phase === phase &&
+              entry.attribution?.operation_id === plan.operation_id,
+          ),
+        ).toBe(true)
+    })
+  })
+
   test("a disabled author adds a reference page and its native link becomes a pinned resource", async () => {
     const f = fixture({ allowMainWrite: true })
     property(property(f.base.main.properties).enabled).checkbox = false

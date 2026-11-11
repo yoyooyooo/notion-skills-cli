@@ -2,7 +2,7 @@ import { Clock, Crypto, Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
 import { fail, property, SkillsError, text, type SharedSkillRecord } from "./model.ts"
-import { Notion } from "./notion.ts"
+import { Notion, withNotionRequestAttribution } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage, sharedSkillProperty } from "./shared-content.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
@@ -500,7 +500,13 @@ export function reconcileSharedMetadataWrite(
         "outcome",
       ),
     )
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "reconcile",
+      skill_page_id: input.skill_page_id,
+      operation_id: input.operation_id,
+    }),
+  )
 }
 
 export function executeSharedMetadataWrite<R = never>(
@@ -522,7 +528,10 @@ export function executeSharedMetadataWrite<R = never>(
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "Metadata write mode must be create or reconcile."),
       )
-    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    const headers = yield* withNotionRequestAttribution(
+      querySharedOperationIndex(library, plan.skill_page_id),
+      { phase: "author_preflight" },
+    )
     if (
       headers.some(
         (header) =>
@@ -530,10 +539,10 @@ export function executeSharedMetadataWrite<R = never>(
       )
     )
       return yield* reconcileSharedMetadataWrite(library, plan)
-    const pending = yield* loadPendingSharedMetadataWrites(library, {
-      skillPageId: plan.skill_page_id,
-      headers,
-    })
+    const pending = yield* withNotionRequestAttribution(
+      loadPendingSharedMetadataWrites(library, { skillPageId: plan.skill_page_id, headers }),
+      { phase: "author_preflight" },
+    )
     const originalPending = pending[0]
     if (originalPending !== undefined)
       return yield* Effect.fail(
@@ -546,8 +555,9 @@ export function executeSharedMetadataWrite<R = never>(
           "pending",
         ),
       )
-    yield* verifyBefore(library, plan)
-    if (input.beforeDispatch !== undefined) yield* input.beforeDispatch(plan)
+    yield* withNotionRequestAttribution(verifyBefore(library, plan), { phase: "author_preflight" })
+    if (input.beforeDispatch !== undefined)
+      yield* withNotionRequestAttribution(input.beforeDispatch(plan), { phase: "author_preflight" })
     if (
       plan.changes.every(
         (change) => canonicalSharedJson(change.before) === canonicalSharedJson(change.after),
@@ -573,7 +583,10 @@ export function executeSharedMetadataWrite<R = never>(
     const ready = yield* Effect.gen(function* () {
       yield* verifyBefore(library, plan)
       if (input.beforeDispatch !== undefined) yield* input.beforeDispatch(plan)
-    }).pipe(Effect.result)
+    }).pipe(
+      (effect) => withNotionRequestAttribution(effect, { phase: "author_preflight" }),
+      Effect.result,
+    )
     if (ready._tag === "Failure") {
       yield* outcome(library, plan, "not_sent", ready.failure.code)
       return yield* Effect.fail(recovery(ready.failure, plan, "pre_send"))
@@ -629,7 +642,10 @@ export function executeSharedMetadataWrite<R = never>(
             ),
           )
       }
-    }).pipe(Effect.result)
+    }).pipe(
+      (effect) => withNotionRequestAttribution(effect, { phase: "author_verify" }),
+      Effect.result,
+    )
     if (verified._tag === "Failure") {
       yield* outcome(library, plan, "needs_review", verified.failure.code, observed)
       return yield* Effect.fail(
@@ -658,7 +674,13 @@ export function executeSharedMetadataWrite<R = never>(
       requires_fresh_read: true as const,
       protection: sharedMetadataWriteProtection,
     }
-  })
+  }).pipe((effect) =>
+    withNotionRequestAttribution(effect, {
+      phase: "author_apply",
+      skill_page_id: input.plan.skill_page_id,
+      operation_id: input.plan.operation_id,
+    }),
+  )
 }
 
 /** One small metadata-family query, reusing the consumer's common operation index. */
