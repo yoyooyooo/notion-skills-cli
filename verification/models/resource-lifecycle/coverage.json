@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "9e8a1eaacb0959b7d8d5a13c7eb9c86aa59b4725",
+  "synchronized_commit": "a01f00ddda99878adae37cf178674ff18f4ab676",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
@@ -13,10 +13,10 @@
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
     "packages/core/src/shared-audit.ts": "800cb52e20305897b250ca2ec0c75032ecf424995aaf1d741be7f3c8fc56c706",
-    "packages/core/src/shared-audit-model.ts": "359dfd6c3d9b466c8199c693d0fc1a5c3b73d5eea0bed1a7b6c6721f7694843a",
-    "packages/core/src/shared-audit-inventory.ts": "58703cac44c6b829b373dd87486deaab7a2e5b23a25fe674370012d43759ab68",
+    "packages/core/src/shared-audit-model.ts": "0c878b9cd2d6c87078f3baa516e5d566210b841453015ccebab7875856129497",
+    "packages/core/src/shared-audit-inventory.ts": "8525d7ba64a1ce944d7605a5fd0185f3f7392c547cb15baf064b3a07abb4200a",
     "packages/core/src/shared-audit-transport.ts": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
-    "packages/core/src/shared-audit-store.ts": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
+    "packages/core/src/shared-audit-store.ts": "6ac34010a9c2b61e2ab349589bcc18fae86590bc8a0f82adb14954898f24386c",
     "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
     "packages/core/src/shared-create.ts": "e0df7eb91252ec11de84cc2dd0a8447bd93412d6899cf93c08dc60786f3b9454",
@@ -89,7 +89,9 @@
     "packages/core/src/resource-read-model.ts": "26842f8115c6940196e8c3586fb7b8f69f776dd5b43d22a1b51eb4ebbcd8b62b",
     "packages/cli/src/sdk.ts": "2efb65b67ced6fd262828471db1346a9db06955fdb4c3164f61ab4d900eee02f",
     "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
-    "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765"
+    "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765",
+    "packages/core/src/shared-content.ts": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f",
+    "packages/core/src/shared-audit-inspect.ts": "882e5cd0ed213d4e96eb780880fab2eec5963c9edb500d3e2934ad123c681e1e"
   },
   "models": {
     "ProjectionRace": {
@@ -153,7 +155,8 @@
         "Durable scheduler availability",
         "Automatic repair",
         "Unknown historical data absent from every retained index",
-        "Metadata-only census selector and its unobserved Skill-body result"
+        "Metadata-only census selector and its unobserved Skill-body result",
+        "Native unregistered draft classification and stored v1 versus resumable v2 audit rules"
       ],
       "implemented_boundary": {
         "kind": "semantic_read_boundary",
@@ -722,6 +725,36 @@
         "packages/cli/test/sdk.test.ts"
       ],
       "counterexample": "Before the fix, readOnly:true allowed one controlled descendant semantic write to reach transport; strict mode now returns NOTION_READ_ONLY with zero writes. The normal control still reaches transport once."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_draft_audit_classification_and_historical_rules",
+      "files": [
+        "packages/core/src/shared-content.ts",
+        "packages/core/src/shared-audit-inventory.ts",
+        "packages/core/src/shared-audit-inspect.ts",
+        "packages/core/src/shared-audit-model.ts",
+        "packages/core/src/shared-audit-store.ts"
+      ],
+      "symbols": [
+        "sharedMetadataEntryFromPage",
+        "sharedSkillTextProperty",
+        "inspectAuditDraft",
+        "inspectAuditSkill",
+        "readStoredAuditRun",
+        "readAuditRun",
+        "reportSharedAudit"
+      ],
+      "scope": "Disabled empty-identity pages remain outside consumer discovery and are classified before managed-tree inspection. Complete metadata may pass while content/history stay unobserved. Residual fields, reverse rows and malformed/partial observations remain findings. Known v1 observations stay readable offline but cannot resume or provide a v2 incremental baseline. Original read-only transport, reverse-census completeness and checkpoint rules remain. AuditRun abstracts these owners and does not prove concrete field classification, CLI exit states, package environment isolation or HTTP bytes.",
+      "tests": [
+        "packages/core/test/shared-audit-draft.test.ts",
+        "packages/core/test/shared-audit-inventory.test.ts",
+        "packages/core/test/shared-audit.test.ts",
+        "packages/core/test/shared-native-adoption.test.ts",
+        "scripts/package-smoke/audit.ts"
+      ],
+      "review": "docs/maintenance-state-verification.md",
+      "counterexample": "Original shared directory classifies a disabled empty-ID page as unregistered while full audit reports both missing identities and incomplete managed inspection. Four of the five initial tests fail before production edits."
     }
   ],
   "cases": [
@@ -1200,5 +1233,39 @@
     "issue": "AH-1007",
     "product_semantics_changed": false,
     "basis": "Existing frozen config inventory migrated without changing TLA, cfg or protected source."
+  },
+  "maintenance_state_review": {
+    "issue": "AH-1025",
+    "source_commit": "a01f00ddda99878adae37cf178674ff18f4ab676",
+    "document": "docs/maintenance-state-verification.md",
+    "reviewed_files": [
+      {
+        "file": "packages/core/src/shared-content.ts",
+        "before": null,
+        "after": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f"
+      },
+      {
+        "file": "packages/core/src/shared-audit-inventory.ts",
+        "before": "58703cac44c6b829b373dd87486deaab7a2e5b23a25fe674370012d43759ab68",
+        "after": "8525d7ba64a1ce944d7605a5fd0185f3f7392c547cb15baf064b3a07abb4200a"
+      },
+      {
+        "file": "packages/core/src/shared-audit-inspect.ts",
+        "before": null,
+        "after": "882e5cd0ed213d4e96eb780880fab2eec5963c9edb500d3e2934ad123c681e1e"
+      },
+      {
+        "file": "packages/core/src/shared-audit-model.ts",
+        "before": "359dfd6c3d9b466c8199c693d0fc1a5c3b73d5eea0bed1a7b6c6721f7694843a",
+        "after": "0c878b9cd2d6c87078f3baa516e5d566210b841453015ccebab7875856129497"
+      },
+      {
+        "file": "packages/core/src/shared-audit-store.ts",
+        "before": "7f73d962569be620041c82b108776e5e508180082d579674ce06f9b742e0f022",
+        "after": "6ac34010a9c2b61e2ab349589bcc18fae86590bc8a0f82adb14954898f24386c"
+      }
+    ],
+    "model_cfg_and_views_changed": false,
+    "proof_boundary": "Existing AuditRun six-case check plus independent concrete regressions; no new field invariant is inferred from a source hash."
   }
 }
