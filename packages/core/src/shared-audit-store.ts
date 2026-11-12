@@ -21,7 +21,7 @@ export function saveAuditRun(run: AuditRun) {
   }).pipe(Effect.uninterruptible)
 }
 
-export function readAuditRun(runId: string, entryId?: string) {
+function readStoredAuditRun(runId: string, entryId?: string) {
   return Effect.gen(function* () {
     yield* Effect.try({
       try: () => decode(AuditRunIdSchema, runId),
@@ -49,11 +49,11 @@ export function readAuditRun(runId: string, entryId?: string) {
           run_id: runId,
         }),
       )
-    if (checkpoint.run.rules_version !== AUDIT_RULES_VERSION)
+    if (!["resource-audit-v1", AUDIT_RULES_VERSION].includes(checkpoint.run.rules_version))
       return yield* Effect.fail(
         fail(
           "AUDIT_RULES_UNSUPPORTED",
-          "Resume/report requires the checkpoint's supported audit rules version.",
+          "The retained checkpoint uses an unknown audit rules version.",
           { run_id: runId, rules_version: checkpoint.run.rules_version },
         ),
       )
@@ -63,6 +63,26 @@ export function readAuditRun(runId: string, entryId?: string) {
       )
     return checkpoint.run
   })
+}
+
+export function readAuditRun(runId: string, entryId?: string) {
+  return readStoredAuditRun(runId, entryId).pipe(
+    Effect.flatMap((run) =>
+      run.rules_version === AUDIT_RULES_VERSION
+        ? Effect.succeed(run)
+        : Effect.fail(
+            fail(
+              "AUDIT_RULES_UNSUPPORTED",
+              "Historical audit rules remain readable offline but cannot resume under current rules.",
+              {
+                run_id: runId,
+                rules_version: run.rules_version,
+                current_rules_version: AUDIT_RULES_VERSION,
+              },
+            ),
+          ),
+    ),
+  )
 }
 
 export function auditHistoryKey(run: AuditRun) {
@@ -118,11 +138,11 @@ export function publishAuditSummary(run: AuditRun) {
 /** Deliberately has no Notion requirement or authentication call. */
 export function reportSharedAudit(runId: string, entryId?: string) {
   return Effect.gen(function* () {
-    const run = yield* readAuditRun(runId, entryId)
+    const run = yield* readStoredAuditRun(runId, entryId)
     const previous =
       run.baseline_run_id === null
         ? undefined
-        : yield* readAuditRun(run.baseline_run_id).pipe(
+        : yield* readStoredAuditRun(run.baseline_run_id).pipe(
             Effect.catchIf(
               (error) => error.code === "AUDIT_RUN_NOT_FOUND",
               () => Effect.succeed(undefined),
@@ -154,7 +174,7 @@ export function listSharedAudits(input: { readonly entry?: string; readonly limi
     for (const candidate of yield* (yield* Store).listKeys("audit/runs/")) {
       const id = /^audit\/runs\/(audit-[a-f0-9-]{36})\.json$/u.exec(candidate)?.[1]
       if (id === undefined) continue
-      const result = yield* readAuditRun(id).pipe(Effect.result)
+      const result = yield* readStoredAuditRun(id).pipe(Effect.result)
       if (result._tag === "Failure") unreadable.push({ run_id: id, code: result.failure.code })
       else if (entry === undefined || result.success.entry_id === entry) runs.push(result.success)
     }
@@ -167,6 +187,8 @@ export function listSharedAudits(input: { readonly entry?: string; readonly limi
       unreadable,
       runs: runs.slice(0, limit).map((run) => ({
         run_id: run.run_id,
+        rules_version: run.rules_version,
+        current_rules: run.rules_version === AUDIT_RULES_VERSION,
         entry_id: run.entry_id,
         selector: run.selector,
         depth: run.depth,

@@ -100,7 +100,11 @@ Prompt and Router input still uses the existing portable v2 kind declaration. Co
 
 ## Adopt a draft created in Notion
 
-A manually created page can remain disabled and unregistered while you draft it. It stays outside the consumer directory and does not prevent other valid Skills from being listed. To register that existing page, complete its native Name and Description, set Kind to `skill`, and keep Enabled unchecked:
+A manually created page can remain disabled and unregistered while you draft it. It stays outside the consumer directory and does not prevent other valid Skills from being listed.
+
+A metadata audit reports an unregistered draft without treating its missing identities as corruption. It still reports retained Main File ID, Source, Projection, References, managed relations, Files or Records. An audit result does not grant adoption permission. Content and history remain unverified until the registered file lifecycle can be inspected. Invalid property types and incomplete reverse observations stay explicit rather than becoming empty fields.
+
+To register the original page, complete its native Name and Description, set Kind to `skill`, and keep Enabled unchecked:
 
 ```bash
 ntn-skills adopt SKILL_PAGE_ID --database LIBRARY_ENTRY --dry-run

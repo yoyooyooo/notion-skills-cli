@@ -1,5 +1,7 @@
 # Resource audit: AH-690–AH-695
 
+AH-1024 adds the [maintenance matrix](skill-maintenance.md). A disabled unregistered draft is not a corrupt managed Skill. Its metadata classification does not authorize adoption, prove empty history, or establish content availability. Preserve reverse-table findings when its identities are missing.
+
 ## User contract and boundaries
 
 `ctl library audit run` audits one exact Skill or the complete registered library;
@@ -62,6 +64,13 @@ live owned Notion evidence, independent package evidence and human UI observatio
 remain distinct. No live/human claim is implied by this contract file.
 
 ## Exercised evidence
+
+AH-1025 adds `shared-audit-draft.test.ts` and the `checkAuditDrafts` slice in the
+existing installed package smoke. Both directory classification and full audit
+reports must agree on an unfinished disabled draft. Existing bindings and history
+remain findings. Metadata success does not imply content/history verification.
+Current v2 rules reject resuming v1 while retaining its offline reports.
+See [the source correspondence review](../../../../docs/maintenance-state-verification.md).
 
 - `shared-audit*.test.ts` covers independent census, retained history, exact graph
   failure, same-run continuation, cancellation, offline discovery, scope mismatch,

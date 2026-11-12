@@ -58,6 +58,7 @@ import {
   auditRich,
   auditRowId,
   auditSkillSignature,
+  inspectAuditDraft,
   isAuditPause,
 } from "./shared-audit-inventory.ts"
 import { auditRetainedHistory } from "./shared-audit-history.ts"
@@ -149,6 +150,35 @@ export function inspectAuditSkill(
     const raw =
       input.inventory.skills.find((row) => auditRowId(row) === input.page_id) ??
       (yield* api.request(`v1/pages/${input.page_id}`))
+    const draft = yield* checked(() => inspectAuditDraft(library, input.inventory, raw))
+    if (draft) {
+      findings.push(...draft.findings)
+      if (input.depth !== "metadata")
+        add(
+          "UNREGISTERED_CONTENT_UNVERIFIED",
+          input.page_id,
+          input.depth,
+          "A draft has no registered file tree. Content and retained-history verification remain unobserved.",
+          { depth: input.depth, adoption: "not_evaluated" },
+          "partial",
+          "warning",
+        )
+      return {
+        scope_key,
+        page_id: input.page_id,
+        skill_id: null,
+        signature: yield* auditSkillSignature(library, input.inventory, input.page_id),
+        checked_at: yield* Clock.currentTimeMillis,
+        observed_from: input.observed_from,
+        coverage: auditCoverage(findings.map((finding) => finding.coverage)),
+        findings,
+        tree: [],
+        history: [],
+        requires: auditRelationIds(raw, library.skills, "Requires"),
+        state: draft.state,
+        reused_from: null,
+      } satisfies AuditItem
+    }
     const files: FileRecord[] = []
     for (const row of input.inventory.files.filter((row) =>
       auditRelationIds(row, library.files, "Skill").includes(input.page_id),

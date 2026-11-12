@@ -5,6 +5,8 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
+AH-1024 渐进维护先读 [完整 Skill 维护矩阵](features/skill-maintenance.md)。草稿、半注册、目录资格、audit 覆盖与原操作状态分别核对。MNT01 反例同时经过目录分类和完整审计，不能靠忽略空字段获得通过。每个子票维护自身回归和公开入口，再由原 Broker integration 验证管理到实际消费。
+
 ## 有限模型维护路由
 
 AH-1006 使用 [维护合同](../../../docs/formal-verification-maintenance.md)。资源生命周期继续走 `verify-notion-resource-lifecycle`；原 ACK/Records 前缀、独立接受与业务反馈走 [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md)；FV07 / AH-1013 请求引擎走 [request-engine-formal](features/request-engine-formal.md)。三组复用 `scripts/verify-resource-lifecycle.mjs --suite lifecycle|operation-recovery|request-engine`，`--model` 选择完整模型组。默认生命周期入口不变，模型通过与真实 CLI/安装/Notion 验收分别记账。

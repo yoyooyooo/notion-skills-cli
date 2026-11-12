@@ -9,6 +9,8 @@ description: 验证 Notion skills 原操作恢复的状态协议。修改 ACK Re
 
 ## 选择范围
 
+AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) 进入本 guardian。复用原操作事实，不为新命令另造恢复权威。新增协议先写状态边界、精确反例和真实实现映射；尚未实现或未运行的场景不继承旧28配置的通过结论。
+
 | 变化 | 模型 | 公共回归 |
 | --- | --- | --- |
 | 原 ACK、frozen request、exact Record GET、原生恢复前缀或 suffix | AcknowledgedRecordPrefix | shared-create-native-recovery、shared-create-known-recovery |

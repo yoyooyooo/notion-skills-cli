@@ -9,6 +9,8 @@ Use the existing `verify-ntn-skills` Skill for live Notion, public CLI, installe
 
 ## Select the maintenance owner
 
+AH-1024 的具体维护场景由 [Skill 维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) 持有。AuditRun 不含草稿字段的分类规则；MNT01 需要目录与完整审计的实现回归及安装入口。不要为每个feature创建重复guardian，或把源码hash同步当成新性质证明。
+
 The default suite remains `lifecycle`. For exact acknowledged Record prefixes, independent acceptance and restore feedback, use [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md) and `--suite operation-recovery`. Those models now own these narrower boundaries; the six lifecycle models retain their original bounds. Request ownership, cancellation and deadline changes use the existing [RequestEngine formal feature](../verify-ntn-skills/features/request-engine-formal.md) and `--suite request-engine`.
 
 Read the [maintenance contract](../../../docs/formal-verification-maintenance.md). CI runs every reviewed config in the affected repository suites. The independent `cases.expected_rules` inventory must remain complete; a removed property, extra/unchecked rule, changed tool byte, unexpected negative, incomplete or cut result fails. `--model` selects a whole model group without changing this contract. Output must be new or pre-created empty and absolute.

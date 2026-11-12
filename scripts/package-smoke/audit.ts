@@ -12,7 +12,7 @@ import { Notion } from "../../packages/core/src/notion.ts"
 import { AuditRunSchema, type AuditRun } from "../../packages/core/src/shared-audit-model.ts"
 import { canonicalSharedJson } from "../../packages/core/src/shared-records.ts"
 import { auditFixture } from "../../packages/core/test/shared-audit-fixture.ts"
-import { library } from "../../packages/core/test/shared-snapshot-fixture.ts"
+import { library, rich, skillPage } from "../../packages/core/test/shared-snapshot-fixture.ts"
 import type { SmokeContext } from "./context.ts"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
@@ -168,6 +168,7 @@ export async function checkAuditRecovery(context: SmokeContext) {
     assert.ok(address !== null && typeof address !== "string")
     const env = {
       ...context.env,
+      NTN_SKILLS_DEV_ROOT: undefined,
       HOME: join(location, "home"),
       NTN_SKILLS_HOME: state,
       NTN_SKILLS_CONFIG_HOME: join(location, "config"),
@@ -481,4 +482,228 @@ export async function checkAuditRecovery(context: SmokeContext) {
       JSON.stringify({ completed, cases: results, evidence: root }, null, 2) + "\n",
     )
   }
+}
+
+export async function checkAuditDrafts(
+  context: Pick<SmokeContext, "scratch" | "runtime" | "executable" | "env">,
+) {
+  const root = join(context.scratch, "controlled-audit-drafts")
+  await mkdir(root)
+  const cases = [
+    { name: "draft-metadata", depth: "metadata", exit: 0, code: "UNREGISTERED_DRAFT" },
+    {
+      name: "unfinished-content",
+      depth: "content",
+      exit: 4,
+      code: "UNREGISTERED_CONTENT_UNVERIFIED",
+    },
+    { name: "partial-identity", depth: "metadata", exit: 4, code: "MAIN_FILE_ID_INVALID" },
+    { name: "history-bound", depth: "metadata", exit: 3, code: "UNREGISTERED_LIFECYCLE_BOUND" },
+  ] as const
+  const results: unknown[] = []
+  for (const item of cases) {
+    const location = join(root, item.name)
+    await mkdir(location)
+    const fixture = await auditFixture(1),
+      fields = property(fixture.main.properties)
+    fields.skill_id = rich("skill_id", item.name === "partial-identity" ? "existing-skill" : "")
+    fields.main_file_id = rich("main_file_id", "")
+    for (const name of ["source", "projection", "references"]) fields[name] = rich(name, "")
+    fields.enabled = { id: "enabled", type: "checkbox", checkbox: item.name === "partial-identity" }
+    if (item.name !== "history-bound") fixture.records.clear()
+    if (item.name === "unfinished-content") {
+      fields.title = { id: "title", type: "title", title: [] }
+      fields.description = rich("description", "")
+      fields.kind = { id: "kind", type: "select", select: null }
+    }
+    const remoteHash = () =>
+      hash(
+        canonicalSharedJson({
+          main: fixture.main,
+          files: fixture.files,
+          bodies: [...fixture.bodies],
+          records: [...fixture.records],
+        }),
+      )
+    const before = remoteHash(),
+      calls: HttpObservation[] = [],
+      errors: string[] = []
+    const token = "controlled-draft-audit-no-secret"
+    const server = createServer(async (incoming, response) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of incoming) chunks.push(Buffer.from(chunk))
+      const bytes = Buffer.concat(chunks),
+        path = String(incoming.url).replace(/^\//u, ""),
+        method = String(incoming.method)
+      const call: HttpObservation = {
+        path,
+        method,
+        request_bytes: bytes.length,
+        response_bytes: 0,
+        status: null,
+        withheld: false,
+      }
+      calls.push(call)
+      try {
+        assert.equal(incoming.headers.authorization, `Bearer ${token}`)
+        assert.ok(
+          method === "GET" ||
+            (method === "POST" &&
+              /^v1\/(data_sources|databases)\/[^/]+\/query(?:\?|$)/u.test(path)),
+          "Audit attempted a semantic remote write",
+        )
+        const body: unknown = bytes.length ? JSON.parse(bytes.toString()) : undefined
+        const value = await fixture.run(
+          Effect.flatMap(Notion, (api) => api.request(path, body, { method })),
+        )
+        const data = JSON.stringify(value)
+        call.response_bytes = Buffer.byteLength(data)
+        call.status = 200
+        response.writeHead(200, { "content-type": "application/json" })
+        response.end(data)
+      } catch (error) {
+        errors.push(String(error))
+        call.status = 400
+        const data = JSON.stringify({
+          object: "error",
+          code: "validation_error",
+          message: "Owned draft fixture rejected this request",
+        })
+        call.response_bytes = Buffer.byteLength(data)
+        response.writeHead(400, { "content-type": "application/json" })
+        response.end(data)
+      }
+    })
+    server.listen(0, "127.0.0.1")
+    await once(server, "listening")
+    const address = server.address()
+    assert.ok(address && typeof address !== "string")
+    const env = {
+      ...context.env,
+      NTN_SKILLS_DEV_ROOT: undefined,
+      HOME: join(location, "home"),
+      NTN_SKILLS_HOME: join(location, "state"),
+      NTN_SKILLS_CONFIG_HOME: join(location, "config"),
+      NTN_SKILLS_CACHE_HOME: join(location, "cache"),
+      NTN_SKILLS_SCHEDULER_ROOT: join(location, "scheduler"),
+      NTN_SKILLS_NOTION_INTERVAL_MS: "100",
+      NOTION_API_TOKEN: token,
+      NOTION_WORKSPACE_ID: "",
+      NOTION_API_BASE_URL: `http://127.0.0.1:${address.port}`,
+    }
+    const argv = [
+      context.runtime,
+      context.executable,
+      "ctl",
+      "library",
+      "audit",
+      "run",
+      "--entry",
+      library.skills.database_id,
+      "--target",
+      skillPage,
+      "--depth",
+      item.depth,
+      "--max-requests",
+      "100",
+      "--duration-ms",
+      "30000",
+    ]
+    let passed = false
+    try {
+      const child = spawn(argv[0]!, argv.slice(1), {
+        cwd: context.scratch,
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      let stdout = "",
+        stderr = "",
+        timedOut = false
+      child.stdout?.on("data", (data: Buffer) => {
+        stdout += data.toString()
+      })
+      child.stderr?.on("data", (data: Buffer) => {
+        stderr += data.toString()
+      })
+      const timer = setTimeout(() => {
+        timedOut = true
+        child.kill("SIGKILL")
+      }, 60000)
+      const terminal = await once(child, "close").finally(() => clearTimeout(timer))
+      await writeFile(
+        join(location, "command.json"),
+        JSON.stringify(
+          {
+            argv,
+            pid: child.pid,
+            exit: terminal[0],
+            signal: terminal[1],
+            timedOut,
+            stdout,
+            stderr,
+          },
+          null,
+          2,
+        ) + "\n",
+      )
+      assert.equal(timedOut, false)
+      assert.equal(terminal[0], item.exit, stdout || stderr)
+      assert.equal(terminal[1], null)
+      const report = property(JSON.parse(stdout))
+      assert.equal(report.ok, true)
+      assert.equal(report.execution, "completed")
+      assert.equal(report.rules_version, "resource-audit-v2")
+      assert.ok(
+        Array.isArray(report.findings) &&
+          report.findings.some((finding) => property(finding).code === item.code),
+      )
+      assert.equal(report.coverage, item.exit === 4 ? "partial" : "full")
+      assert.equal(
+        Number(property(report.severity).error) > 0,
+        item.name === "partial-identity" || item.name === "history-bound",
+      )
+      assert.equal(report.remote_writes, 0)
+      assert.equal(errors.length, 0, JSON.stringify(errors))
+      assert.equal(remoteHash(), before)
+      assert.ok(
+        calls.every((call) => !call.path.includes("/markdown")),
+        "Draft metadata is not an implicit body acquisition",
+      )
+      results.push({
+        name: item.name,
+        exit: terminal[0],
+        run_id: report.run_id,
+        coverage: report.coverage,
+        remote_writes: 0,
+        requests: calls.length,
+        evidence: location,
+      })
+      passed = true
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      )
+      await writeFile(
+        join(location, "evidence.json"),
+        JSON.stringify(
+          {
+            passed,
+            calls,
+            errors,
+            remote_before_sha256: before,
+            remote_after_sha256: remoteHash(),
+          },
+          null,
+          2,
+        ) + "\n",
+      )
+      await writeFile(
+        join(root, "summary.json"),
+        JSON.stringify({ complete: results.length === cases.length, cases: results }, null, 2) +
+          "\n",
+      )
+    }
+  }
+  return { complete: true, cases: results, evidence: root }
 }

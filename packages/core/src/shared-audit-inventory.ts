@@ -4,6 +4,11 @@ import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import type { SharedLibrary, TableBinding } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import {
+  sharedMetadataEntryFromPage,
+  sharedSkillProperty,
+  sharedSkillTextProperty,
+} from "./shared-content.ts"
 import { sha256 } from "./store.ts"
 import {
   auditFinding,
@@ -226,6 +231,149 @@ function relationErrors(raw: unknown): readonly unknown[] {
 }
 const validBusinessId = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value)
 
+/** Directory exclusion is not adoption authority. Check the visible lifecycle
+ * before suppressing missing-identity errors for an unfinished draft. */
+export function inspectAuditDraft(library: SharedLibrary, inventory: AuditInventory, raw: unknown) {
+  if (
+    auditRich(raw, library.skills, "Skill ID") !== "" ||
+    auditField(raw, library.skills, "Enabled").checkbox !== false
+  )
+    return undefined
+  const entry = sharedMetadataEntryFromPage(
+    raw,
+    {
+      alias: library.library_id,
+      title: "Skills",
+      role: "content",
+      database_id: library.skills.database_id,
+      data_source_ids: [library.skills.data_source_id],
+      shared_library: library,
+    },
+    library.skills.data_source_id,
+  )
+  if (entry.state !== "unregistered") return undefined
+  const findings: AuditFinding[] = []
+  const add = (
+    code: string,
+    severity: AuditFinding["severity"],
+    location: string,
+    message: string,
+    evidence: unknown,
+    coverage: AuditFinding["coverage"] = "full",
+  ) =>
+    findings.push(
+      auditFinding({
+        code,
+        severity,
+        object_id: entry.page_id,
+        scope_key: `skill:${entry.page_id}`,
+        location,
+        message,
+        evidence,
+        coverage,
+      }),
+    )
+  add(
+    "UNREGISTERED_DRAFT",
+    "info",
+    "registration",
+    "This disabled page has no registered Skill identity. It is not consumer content or an adoption approval.",
+    { enabled: false, adoption: "not_evaluated" },
+  )
+  for (const name of ["Main File ID", "Source", "Projection", "References"]) {
+    try {
+      if (sharedSkillTextProperty(raw, library, name) !== "")
+        add(
+          "UNREGISTERED_LIFECYCLE_BOUND",
+          "error",
+          name,
+          "An unregistered page retains a managed binding. Preserve its original lifecycle before adoption.",
+          { property: name },
+        )
+    } catch (error) {
+      add(
+        "UNREGISTERED_LIFECYCLE_UNOBSERVED",
+        "warning",
+        name,
+        "The draft's managed field was not observed completely.",
+        { property: name, code: error instanceof SkillsError ? error.code : "INVALID_RESPONSE" },
+        "partial",
+      )
+    }
+  }
+  for (const name of ["Members", "Requires", "Origin", "Supporting Files"]) {
+    if (library.skills.property_ids[name] === undefined) continue
+    try {
+      const field = sharedSkillProperty(raw, library, name)
+      if (
+        field.type !== "relation" ||
+        !Array.isArray(field.relation) ||
+        (field.has_more !== undefined && field.has_more !== false) ||
+        field.relation.some((value) => pageId(String(property(value).id)) === undefined)
+      )
+        throw fail("AUDIT_RELATION_INCOMPLETE", "The draft relation is incomplete.")
+      if (field.relation.length)
+        add(
+          "UNREGISTERED_LIFECYCLE_BOUND",
+          "error",
+          name,
+          "An unregistered page retains managed relations.",
+          { property: name, targets: field.relation.map((value) => property(value).id) },
+        )
+    } catch (error) {
+      add(
+        "UNREGISTERED_LIFECYCLE_UNOBSERVED",
+        "warning",
+        name,
+        "The draft's managed relation was not observed completely.",
+        { property: name, code: error instanceof SkillsError ? error.code : "INVALID_RESPONSE" },
+        "partial",
+      )
+    }
+  }
+  for (const table of ["files", "records"] as const) {
+    const owned = inventory[table].filter((value) =>
+      auditRelationIds(value, library[table], "Skill").includes(entry.page_id),
+    )
+    if (owned.length)
+      add(
+        "UNREGISTERED_LIFECYCLE_BOUND",
+        "error",
+        table,
+        "Related physical rows remain attached to this unregistered page.",
+        { table, page_ids: owned.map(auditRowId) },
+      )
+    if (
+      !inventory.complete.includes(table) ||
+      inventory[table].some((value) => relationErrors(value).length)
+    )
+      add(
+        "UNREGISTERED_LIFECYCLE_UNOBSERVED",
+        "warning",
+        table,
+        "The reverse owner inventory is incomplete; absence of lifecycle history is not established.",
+        { table },
+        "partial",
+      )
+  }
+  return {
+    entry,
+    findings,
+    state: {
+      registration: "unregistered",
+      enabled: false,
+      adoption: "not_evaluated",
+      lifecycle: findings.some((value) => value.code === "UNREGISTERED_LIFECYCLE_BOUND")
+        ? "bound"
+        : findings.some((value) => value.coverage !== "full")
+          ? "unobserved"
+          : "unbound",
+      content: "unobserved",
+      history: "unobserved",
+    },
+  }
+}
+
 export function inspectAuditInventory(
   library: SharedLibrary,
   inventory: AuditInventory,
@@ -294,7 +442,25 @@ export function inspectAuditInventory(
         )
       const field = kind === "skills" ? "Skill ID" : kind === "files" ? "File ID" : "Record ID"
       const identity = auditRich(raw, table, field)
-      if (!validBusinessId(identity))
+      let draft = false
+      if (kind === "skills") {
+        try {
+          const observed = inspectAuditDraft(library, inventory, raw)
+          if (observed) {
+            draft = true
+            findings.push(...observed.findings)
+          }
+        } catch (error) {
+          add(
+            "SKILL_METADATA_INVALID",
+            raw,
+            "registration",
+            "The native page cannot be classified from its complete registered properties.",
+            { code: error instanceof SkillsError ? error.code : "INVALID_RESPONSE" },
+          )
+        }
+      }
+      if (!draft && !validBusinessId(identity))
         add("BUSINESS_ID_INVALID", raw, field, "The row has no valid stable business identity.", {
           value: identity,
         })
@@ -350,7 +516,7 @@ export function inspectAuditInventory(
         )
       if (kind === "skills") {
         const main = auditRich(raw, table, "Main File ID")
-        if (!validBusinessId(main))
+        if (!draft && !validBusinessId(main))
           add(
             "MAIN_FILE_ID_INVALID",
             raw,
@@ -358,7 +524,7 @@ export function inspectAuditInventory(
             "The main body has no stable File identity.",
             { value: main },
           )
-        else claim(canonicalSharedJson(["files", [id], main]), raw)
+        else if (validBusinessId(main)) claim(canonicalSharedJson(["files", [id], main]), raw)
       }
       if (kind === "files") {
         const path = auditRich(raw, table, "Path")

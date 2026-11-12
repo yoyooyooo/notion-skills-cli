@@ -17,6 +17,13 @@ Root discovery lists `list`, `read`, `use`, `files`, `export`, `ctl` and `schema
 
 ## Shared Notion library
 
+### Draft audit state and historical rules
+
+`ctl library audit run` uses `resource-audit-v2`. Metadata inspection classifies a disabled, unregistered native page as a draft, not a corrupt registered Skill. Existing Main File ID, source fields, managed relations, Files and Records remain explicit findings. A draft does not gain adoption authority. Content or history requested before registration remains partial and unverified.
+
+`audit report` and `audit list` can read retained v1 observations offline without changing their findings. Run summaries include `rules_version` and `current_rules`. An old run cannot resume or become a current incremental baseline. Unknown rule versions, invalid scope and damaged checkpoints still fail. Audit remains read-only, and the initial/final reverse inventory behavior is unchanged by this classification fix.
+
+
 ### Inventory import readback
 
 `prepare-imports` accepts either an explicit reviewed `--input` or absolute

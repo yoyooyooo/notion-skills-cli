@@ -34,6 +34,7 @@ export async function prepareConsumer() {
   )
   const env = {
     ...process.env,
+    NTN_SKILLS_DEV_ROOT: undefined,
     PATH: `${dirname(runtime)}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
     NOTION_API_TOKEN: "",
     NOTION_WORKSPACE_ID: "",

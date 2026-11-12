@@ -68,6 +68,8 @@ Adopt establishes stable Skill and main File identities and retains the complete
 
 Keep `adoption_operation_id`. An interrupted adoption uses its returned `adopt ... --reconcile` action, which verifies only the original outcome without repeating writes. Reconciliation still requires a fresh authoring read for current content. Do not assign identities by hand or use create to duplicate an existing draft.
 
+Metadata audit recognizes a disabled unregistered draft without demanding registered identities. Managed fields, related Files or Records still produce a lifecycle finding; an audit never grants adoption authority. Content/history checks of an unregistered draft remain partial. Old v1 audit reports stay available offline with their original findings, but current v2 rules require a new run rather than resuming or reusing the old classification.
+
 ## Edit an exact current item
 
 Read the current page and keep its pinned main ref:

@@ -167,7 +167,7 @@ const run = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Read-only resource audit with a stable run ID and durable local checkpoint. Metadata checks complete identity/file manifests, ownership facts and relations without loading all Records Payloads or bodies. Content additionally verifies current native bodies and effective fixed-file bytes and deterministic references. History additionally checks retained snapshot/custom/bundle objects remotely; cached availability and remote verification stay distinct. Complete unfiltered registered-table pagination includes malformed physical rows. The report separates execution, coverage and severity, records a non-atomic observation interval and never declares unknown or unobserved scope healthy. Requests include actual retries; time includes waits; byte budget permits one admitted response overshoot, reported exactly. No adoption, repair, operation replay, scripts, arbitrary websites or remote writes. Exit 0: completed/full/no error findings; 3: completed/full/error findings; 4: incomplete coverage; 75: paused/resumable; 1: execution failure; 2: invalid arguments.",
+    "Read-only resource audit with a stable run ID and durable local checkpoint. Metadata checks complete identity/file manifests, ownership facts and relations without loading all Records Payloads or bodies. Disabled unregistered drafts are metadata states, not missing-identity failures; surviving bindings remain findings and draft content/history stay unverified. Content additionally verifies current native bodies and effective fixed-file bytes and deterministic references. History additionally checks retained snapshot/custom/bundle objects remotely; cached availability and remote verification stay distinct. Complete unfiltered registered-table pagination includes malformed physical rows. The report separates execution, coverage and severity, records a non-atomic observation interval and never declares unknown or unobserved scope healthy. Requests include actual retries; time includes waits; byte budget permits one admitted response overshoot, reported exactly. No adoption, repair, operation replay, scripts, arbitrary websites or remote writes. Exit 0: completed/full/no error findings; 3: completed/full/error findings; 4: incomplete coverage; 75: paused/resumable; 1: execution failure; 2: invalid arguments.",
   ),
 )
 
@@ -215,7 +215,7 @@ const report = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Read one exact retained audit report entirely offline. No Notion/provider calls or credential refresh occur. Missing, wrong-scope, corrupt or unsupported-version checkpoints are errors. Reports preserve execution/coverage/severity independently, stable added/persistent/recovered findings and the original observation interval. An offline historical report is not a new current health check.",
+    "Read one exact retained audit report entirely offline. No Notion/provider calls or credential refresh occur. Missing, wrong-scope, corrupt or unsupported-version checkpoints are errors. Reports preserve execution/coverage/severity independently, stable added/persistent/recovered findings and the original observation interval. Known v1 reports retain their original findings, while only current rules can resume. An offline historical report is not a new current health check.",
   ),
 )
 
@@ -243,7 +243,7 @@ const list = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "List retained local audit run IDs entirely offline, including interrupted runs without a final stdout receipt. Unreadable checkpoint IDs remain visible separately. This does not contact Notion or refresh old observations.",
+    "List retained local audit run IDs entirely offline, including interrupted runs without a final stdout receipt. Each summary names its rules version and whether those rules are current. Unreadable checkpoint IDs remain visible separately. This does not contact Notion or refresh old observations.",
   ),
 )
 
