@@ -20,7 +20,7 @@ AH-1006 把现有有限模型接入持续维护。仓库中的 TLA/config/view�
 
 原运行器先核对 protected source bytes、固定 TLC jar 和 statechart 的 31 个工具文件，再快照本轮模型输入。`summary.json` 保存 checkout/source commit、运行器与合同 hash、coverage/tool-lock/source hash、每项 TLA/config/view hash、完整规则结果与探索状态。缺工具、语法/解析错误、工具异常退出、超时、cut、未检查规则、错误性质和不完整结果均不得视为通过。读取原始 `report.md`、TLC 输出和生成 `chart.mmd`，不能只看 shell exit 0。
 
-输出必须是新建或预先创建的空绝对目录。每次失败保留原目录，下次改用新目录；不覆盖 summary，不把旧失败重写成成功。实际 mutation 在独立副本或独立工作树进行，必须记录原件通过、真实行为断言失败、精确恢复后通过及原工作树未变。语法错误或装配失败不算成功捕获守卫。
+模型输出必须是新建或预先创建的空绝对目录。真实 mutation 的输出要求按各入口执行；effects/consumer 入口要求输出目录本身尚不存在。每次失败保留原目录，下次改用新目录；不覆盖 summary，不把旧失败重写成成功。实际 mutation 在独立副本或独立工作树进行，必须记录原件通过、真实行为断言失败、精确恢复后通过及原工作树未变。语法错误或装配失败不算成功捕获守卫。
 
 ## 三类变更的复验义务
 

@@ -40,7 +40,7 @@ jobs:
         suite: [lifecycle, operation-recovery, request-engine]
     env:
       PSTACK_STATECHART_ROOT: ${{ github.workspace }}/.formal-tools/pstack/pstack/skills/statechart
-      TLA2TOOLS: ${{ runner.temp }}/tla2tools-1.7.4.jar
+      TLA2TOOLS: ${{ github.workspace }}/.formal-tools/tla2tools-1.7.4.jar
     steps:
       - uses: actions/checkout@v4
       - name: Checkout the frozen statechart implementation
