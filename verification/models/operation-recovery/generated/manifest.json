@@ -89,7 +89,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["PrefixNeedsOriginalAck"],
+      "broken": [
+        "PrefixNeedsOriginalAck"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -129,7 +131,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["ExactRecordBinding"],
+      "broken": [
+        "ExactRecordBinding"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -169,7 +173,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["PrefixMustBeContiguous"],
+      "broken": [
+        "PrefixMustBeContiguous"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -209,7 +215,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["UnknownNeverRedispatched"],
+      "broken": [
+        "UnknownNeverRedispatched"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -249,7 +257,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["AckLookupIndependentOfQuery"],
+      "broken": [
+        "AckLookupIndependentOfQuery"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -289,7 +299,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["DispatchNeedsFreshPremise"],
+      "broken": [
+        "DispatchNeedsFreshPremise"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -329,7 +341,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["DispatchNeedsPermission"],
+      "broken": [
+        "DispatchNeedsPermission"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -369,7 +383,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["OriginalFactsPreserved"],
+      "broken": [
+        "OriginalFactsPreserved"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -409,7 +425,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["CompletionNeedsVerification"],
+      "broken": [
+        "CompletionNeedsVerification"
+      ],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -487,7 +505,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["KnownFailureRequired"],
+      "broken": [
+        "KnownFailureRequired"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -525,7 +545,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["FrozenIdentityRequired"],
+      "broken": [
+        "FrozenIdentityRequired"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -563,7 +585,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["IndependentIdentity"],
+      "broken": [
+        "IndependentIdentity"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -601,7 +625,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["OriginalFactsPreserved"],
+      "broken": [
+        "OriginalFactsPreserved"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -639,7 +665,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["UnknownNeverRedispatched"],
+      "broken": [
+        "UnknownNeverRedispatched"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -677,7 +705,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["ColdRecoveryNeedsCompleteProof"],
+      "broken": [
+        "ColdRecoveryNeedsCompleteProof"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -715,7 +745,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["CompletionNeedsAdoption"],
+      "broken": [
+        "CompletionNeedsAdoption"
+      ],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -792,7 +824,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["BodyNeedsBoundOriginal"],
+      "broken": [
+        "BodyNeedsBoundOriginal"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -831,7 +865,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["BodyNeedsCurrentPremise"],
+      "broken": [
+        "BodyNeedsCurrentPremise"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -870,7 +906,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["FeedbackNeverRepeatsBody"],
+      "broken": [
+        "FeedbackNeverRepeatsBody"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -909,7 +947,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["FeedbackRequiresRealAck"],
+      "broken": [
+        "FeedbackRequiresRealAck"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -948,7 +988,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["OriginalRequestPreserved"],
+      "broken": [
+        "OriginalRequestPreserved"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -987,7 +1029,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["SuccessNeedsAppliedOriginal"],
+      "broken": [
+        "SuccessNeedsAppliedOriginal"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1026,7 +1070,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["SuccessNeedsAppliedOriginal"],
+      "broken": [
+        "SuccessNeedsAppliedOriginal"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1065,7 +1111,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["HistoricalAckPreserved"],
+      "broken": [
+        "HistoricalAckPreserved"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1104,7 +1152,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["UnknownFeedbackNeverRedispatched"],
+      "broken": [
+        "UnknownFeedbackNeverRedispatched"
+      ],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1174,7 +1224,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["PrefixNeedsOriginalAck"],
+      "broken": [
+        "PrefixNeedsOriginalAck"
+      ],
       "chart_states": 20,
       "chart_arrows": 26,
       "inputs": [
@@ -1230,7 +1282,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["OriginalFactsPreserved"],
+      "broken": [
+        "OriginalFactsPreserved"
+      ],
       "chart_states": 15,
       "chart_arrows": 19,
       "inputs": [
@@ -1286,7 +1340,9 @@
         "complete": true,
         "cut": false
       },
-      "broken": ["FeedbackNeverRepeatsBody"],
+      "broken": [
+        "FeedbackNeverRepeatsBody"
+      ],
       "chart_states": 24,
       "chart_arrows": 35,
       "inputs": [
@@ -1313,19 +1369,41 @@
     "exit": 0
   },
   "mutations": {
-    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/mutations-03",
-    "summary_sha256": "0ae447cd9635d40caea938397b16940f79ad3676e91458fe5cb6e0a84cb3454c",
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/mutations-04",
+    "summary_sha256": "a2b99a2a7117a54b18152f7892ba093ef9accb6dd1a6fb20573ad1183b89a074",
+    "coverage_sha256": "aa55a082efad910beffb5018e9e25460bb4f09b30c52f8d68e5f7e575dce21ef",
     "guards": 4,
     "passed": true,
     "full_candidate_restored": true,
-    "protected_source_unchanged": true
+    "protected_source_unchanged": true,
+    "protected_source_count": 17,
+    "protected_check": "content and mode for all 17 coverage.files entries"
   },
   "skill_validation": {
     "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/skill-validation-02",
     "summary_sha256": "adc95c4c4c7f215a93e096bc0a3d313e7921599f85610d221ca79d73cc2792ec",
     "exit": 0
   },
-  "cold_agent": "Not included in this generation manifest; attach the independent cold-run receipt before marking the guardian ready",
+  "cold_agent": {
+    "status": "passed",
+    "scope": "IndependentAcceptance cold slice plus four real guard mutations; not a three-model full cold run",
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/cold-operation/independent-acceptance-j67k_40e",
+    "receipt": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/cold-operation/independent-acceptance-j67k_40e/cold-receipt.md",
+    "receipt_sha256": "962e8614dacdf91d76665226d106134322883c17b717108ce8f2a051ba769006",
+    "independent_audit": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/cold-operation/independent-acceptance-j67k_40e/independent-audit.json",
+    "independent_audit_sha256": "af9164a384670e6f06ece87980f8c26a64976a3645f8b94365ddbd7b75eabe82",
+    "model_summary_sha256": "80f5f98a409a85716aa7bd3be278c448775b4398a32f5f69ffeebbf67f3f7f9e",
+    "model_configurations": 8,
+    "rules_per_configuration": 9,
+    "public_regression": {
+      "pass": 45,
+      "fail": 0,
+      "expectations": 346
+    },
+    "mutation_case_count": 4,
+    "product_covered_source_and_modes_unchanged": true,
+    "covered_files": 17
+  },
   "raw_manifest": {
     "path": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/build-04/evidence-manifest.json",
     "sha256": "d418eeb71e83490089a5a6bf25cddf77b5cc0700582f2a8343ad8794197265ac",
@@ -1340,7 +1418,13 @@
       "limit": 1000000,
       "outputLimit": 8000000,
       "maxEdges": 10000
-    }
+    },
+    "stylesheet_source": "/Users/yoyo/Documents/code/personal/verification-evidence/ah681-20261108/ah922-ah740-recovery-20261111/pinned-pstack-repository/pstack/skills/statechart/references/render.md",
+    "stylesheet_source_sha256": "8cca446eb0c8f87f2ef7b97c4b149f59aacdc153134b4217c4bcde09b10ac3c4",
+    "stylesheet_sha256": "86148f1c5f7acb64d97932edc05543920774ba44c452b8f082b2afc883598b41",
+    "stylesheet_archive": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/statechart-recommended.css",
+    "stylesheet_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+    "application": "one SVG style element immediately after the root opening tag; original geometry and all original bytes unchanged"
   },
   "assets": [
     {
@@ -1350,8 +1434,8 @@
     },
     {
       "path": "AcknowledgedRecordPrefix-cfg/chart.svg",
-      "bytes": 19768,
-      "sha256": "00c1df765133bacbdfefa344726d8d3eb4eff89ef1983b61db966c73d6800bdd"
+      "bytes": 21739,
+      "sha256": "8dbbb0174da3c24405ef7640ca76469e66ce68ae33f8100a6c10848d2c4fed6b"
     },
     {
       "path": "AcknowledgedRecordPrefix-cfg/report.md",
@@ -1365,8 +1449,8 @@
     },
     {
       "path": "AcknowledgedRecordPrefix-missing-ack-cfg/chart.svg",
-      "bytes": 22238,
-      "sha256": "7a5ad7b09a04c5da8ea142c81eb1cf15fd3fa5a3e0bdb06511e05848101946ca"
+      "bytes": 24209,
+      "sha256": "a00d4f5288bc1004f8974a5f8e3f804202c2692bdcb80e30f465c7ecc300edf6"
     },
     {
       "path": "AcknowledgedRecordPrefix-missing-ack-cfg/report.md",
@@ -1380,8 +1464,8 @@
     },
     {
       "path": "IndependentAcceptance-cfg/chart.svg",
-      "bytes": 18456,
-      "sha256": "7ee8eab6a5e822796c121e21700750862cd2b729c5989ab39c7113b05b012073"
+      "bytes": 20427,
+      "sha256": "49bfc9d2edb46643859803c5ff6bfda85a26fe3a3554d65d895e0c9abfb8a2df"
     },
     {
       "path": "IndependentAcceptance-cfg/report.md",
@@ -1395,8 +1479,8 @@
     },
     {
       "path": "IndependentAcceptance-equal-current-is-old-success-cfg/chart.svg",
-      "bytes": 16436,
-      "sha256": "4d00dccc12effa4f5914e7bc90b0e2991578a74fc6d12086ea1ba6a4ee88ae26"
+      "bytes": 18407,
+      "sha256": "1518d0715cc4ef392ab91a4742059e92648121571c9ea6cee80fa7001fab77ef"
     },
     {
       "path": "IndependentAcceptance-equal-current-is-old-success-cfg/report.md",
@@ -1415,8 +1499,8 @@
     },
     {
       "path": "RestoreFeedback-cfg/chart.svg",
-      "bytes": 22578,
-      "sha256": "c27240d92650d142609122d6008c2f309a5a511a62a4089a9cd877ac4dc8c99c"
+      "bytes": 24549,
+      "sha256": "b965ead26caba375d807f1da35af5e61051680682edb832ea3131c66c885b731"
     },
     {
       "path": "RestoreFeedback-cfg/report.md",
@@ -1430,13 +1514,60 @@
     },
     {
       "path": "RestoreFeedback-repeat-body-after-feedback-loss-cfg/chart.svg",
-      "bytes": 27311,
-      "sha256": "d5d82bcde1ba6027402b2b0990dc812856bd9f6416e7508ee4a1f97cb7266f1c"
+      "bytes": 29282,
+      "sha256": "91d298214d1cd9d2526b7e14db1879a3f6bc68b3fa105942471dc9ba0fe29338"
     },
     {
       "path": "RestoreFeedback-repeat-body-after-feedback-loss-cfg/report.md",
       "bytes": 1262,
       "sha256": "ca25b7187be390d27eb81d4e1118ba3a8f534d2becf304e139a1596914e63744"
     }
-  ]
+  ],
+  "evidence_history": [
+    {
+      "update": "theme-05",
+      "previous_manifest": {
+        "path": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/before/manifest.json",
+        "sha256": "df677a901edc781e4d5df509aeb37cd38016f0b32382674839b8e19ab49d8966"
+      },
+      "previous_mutations": {
+        "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/mutations-03",
+        "summary_sha256": "0ae447cd9635d40caea938397b16940f79ad3676e91458fe5cb6e0a84cb3454c",
+        "guards": 4,
+        "passed": true,
+        "full_candidate_restored": true,
+        "protected_source_unchanged": true
+      },
+      "previous_cold_agent": "Not included in this generation manifest; attach the independent cold-run receipt before marking the guardian ready",
+      "previous_renderer": {
+        "name": "Pele",
+        "version": "1.9.0",
+        "implementation_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5",
+        "options": {
+          "limit": 1000000,
+          "outputLimit": 8000000,
+          "maxEdges": 10000
+        }
+      }
+    }
+  ],
+  "rendering_review": {
+    "status": "passed",
+    "application_record": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/theme-application.json",
+    "application_record_sha256": "df01ae6c50c4cb88f654333eb98272be3e6c01525095b967962a60f3c040f692",
+    "svg_count": 6,
+    "geometry_unchanged": true,
+    "models_mmd_reports_and_views_unchanged": true,
+    "scope": "six selected SVGs in light appearance",
+    "visual_receipt": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/visual-qa.json",
+    "visual_receipt_sha256": "022bf59ba71c21f9b297f92b49772375b75319d9923f00cfb750cec42dc9f9ce",
+    "checked_for": [
+      "group colors",
+      "violation and shortest-counterexample path marks",
+      "Chinese text integrity",
+      "visible diagram boundaries",
+      "obstructing overlaps"
+    ],
+    "dark_appearance_visually_checked": false
+  }
 }
