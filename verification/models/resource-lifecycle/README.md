@@ -178,3 +178,11 @@ python3 scripts/check-acknowledged-continuation-mutations.py \
 ```
 
 The runner requires a green baseline, an assertion counterexample after removing each actual boundary, exact source restoration and a green rerun. It covers the complete recovery dispatch/ACK denominator, fresh body rejection before the first continuation write and the shared cold full-ACK reader. It preserves original logs and source hashes. These mutations are additional evidence for the new branch; the earlier four lifecycle and two recovery mutations keep their original scope. Public CLI/SDK installation and the original live owned operations remain separate acceptance gates.
+
+## AH-1006 持续维护入口
+
+本目录原六模型和33配置保留。完整独立规则清单已迁入 `coverage.json.cases`，固定工具文件与 jar 绑定在 `tool-lock.json`；不再仅检查返回的 broken 集合。所有正负配置都必须完整检查预定规则，配置漏规则、源码未经审阅漂移、工具字节变化、超时/cut/解析错误均失败。
+
+`node scripts/verify-resource-lifecycle.mjs --out /absolute/new/run` 为原默认入口；`--model AuditRun` 选择整个模型组，包括既有 liveness 配置。新增领域使用 `--suite operation-recovery` 或 `--suite request-engine`，各自有 coverage/README，不能把其结果算作本目录扩大证明范围。`npm run test:formal-contract` 检查结果判定器的失败边界。
+
+维护分工、view/模型/实现三类复验义务及 CI artifact 规则见 [维护合同](../../../docs/formal-verification-maintenance.md)。失败 evidence 保留原目录，新一轮使用新的空绝对目录。

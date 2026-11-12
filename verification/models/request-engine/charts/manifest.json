@@ -1,0 +1,547 @@
+{
+  "version": 1,
+  "generated_at": "2026-11-12T10:22:29.636Z",
+  "evidence_run": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/request-engine/models-v4",
+  "raw_summary_sha256": "dc299596cf0367001fef6ea57cedde059d4a77c8864d092010350dd43466a538",
+  "checkout_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "synchronized_source_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "tool_lock_sha256": "379937f0a64c7086a4d2d950dd0afad7dd37c3adc03e6286c2ace15d8b950cc6",
+  "tlc_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+  "runner_sha256": "3697297a7d468d4cf74ded1739ec68a1f58665404098e2111ed0652985007749",
+  "coverage_snapshot_sha256": "be35858e09ecfd7a3f19345f8dedc4ffdc43d613fe6f6e8e1aa2be3c98329f76",
+  "source_hashes": {
+    "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
+    "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
+    "packages/core/src/notion-request-scheduler.ts": "4258d1aeded6bb81f7712ea2ba582ec46732e0094ed72d452287d22f229ba03c",
+    "packages/core/src/request-budget.ts": "06bfeb2265fddac57e34ee61c251324e15d1d9a37f615879f2ffa675d4597860",
+    "packages/core/src/notion-write-policy.ts": "9a1ef3007f7a43091c647e80dbe1676c36a3284e3feb0bc33fa6e763271ef5b9",
+    "packages/core/src/request-timeout.ts": "8788c67b243b6bd6197ab06048a4511af54c672f7c73bb13dcc7e5f290d05e41",
+    "packages/core/test/shared-read-coalescing.test.ts": "bfbd951a02bb5a433e043903e31b4f8e413766288a1222d8cfed9879833c98a4",
+    "packages/core/test/notion.test.ts": "516347d96ead545a0d36d7944305debef8fee77243e3c59eb2ddb5ff53f9109b",
+    "packages/core/test/request-budget.test.ts": "d9b381f60bea36c7ea3c5bd3a73c5f5ee71dbf80ea9d04759fc81351d9b66e57",
+    "packages/core/test/request-engine-contract.test.ts": "27b8460d80eea01ac9c5ec640258e7f52bfb0a0ef209e5e10f1105fa9f1caf2a",
+    "packages/core/test/notion-request-scheduler.node.test.ts": "185e8f352da47e5b3fa44bb4ffcb06fffdc052fcb685321e9eb61b9ac570f286",
+    "packages/core/test/notion-scheduler-multiprocess.node.test.ts": "c8f0a75d2969d347e4578e768ae797a5947b12672ceae7bf3b8bf28de5ddf7cd",
+    "packages/core/package.json": "ac30318d9593be57d80d803f89f9c7a2cb933b5e690823d10849828223ce59b6",
+    "bun.lock": "359d60c207746e8fca1cf3fa7a7733c7454ac844ab2d375a895d0b271cb3020c",
+    "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c"
+  },
+  "renderer": {
+    "name": "pele",
+    "version": "1.9.0",
+    "dist_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5",
+    "stylesheet_sha256": "badd8b23686ba7d66ae36659ed8e520eb1d1c3f82daf2a67cc6f38b047a43304",
+    "options": {
+      "limit": 1000000,
+      "outputLimit": 8000000,
+      "maxEdges": 10000
+    }
+  },
+  "regeneration": "Use the existing statechart skill with this suite, then render its unchanged Mermaid with Pele 1.9.0 and the recorded options.",
+  "suites": [
+    {
+      "model": "SharedProducer",
+      "config": "cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": [],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cancel.cfg",
+      "distinct": 71,
+      "complete": true,
+      "cut": false,
+      "broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "release.cfg",
+      "distinct": 65,
+      "complete": true,
+      "cut": false,
+      "broken": ["LastWaiterReleasesProducer"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "scope.cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": ["ScopeIsolated"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "budget.cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": ["BudgetIsolated"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "queue.cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": ["QueueBudgetIsolated"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "service.cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": ["ServiceIsolated"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cache.cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": ["SettledResultNotReused"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cleanup.cfg",
+      "distinct": 75,
+      "complete": true,
+      "cut": false,
+      "broken": ["ReplacementSurvivesOldCleanup"],
+      "expected_rules": [
+        "BudgetIsolated",
+        "LastWaiterReleasesProducer",
+        "NoDeadlock",
+        "QueueBudgetIsolated",
+        "ReplacementSurvivesOldCleanup",
+        "ScopeIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "SurvivingWaiterKeepsProducer",
+        "TypeOK"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cfg",
+      "distinct": 390,
+      "complete": true,
+      "cut": false,
+      "broken": [],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cooldown.cfg",
+      "distinct": 1207,
+      "complete": true,
+      "cut": false,
+      "broken": ["CooldownBeforeAdmission"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "queue.cfg",
+      "distinct": 489,
+      "complete": true,
+      "cut": false,
+      "broken": ["CallerDeadlineRespected"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "operation.cfg",
+      "distinct": 452,
+      "complete": true,
+      "cut": false,
+      "broken": ["CallerDeadlineRespected"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "attempts.cfg",
+      "distinct": 506,
+      "complete": true,
+      "cut": false,
+      "broken": ["AttemptBudgetRespected"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "unknown.cfg",
+      "distinct": 715,
+      "complete": true,
+      "cut": false,
+      "broken": ["UnknownMutationNeverRetried"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "permit.cfg",
+      "distinct": 390,
+      "complete": true,
+      "cut": false,
+      "broken": ["NoPermitDuringQueueOrBackoff"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "lease.cfg",
+      "distinct": 390,
+      "complete": true,
+      "cut": false,
+      "broken": ["CancelledQueueReleasesLease"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "timeout.cfg",
+      "distinct": 406,
+      "complete": true,
+      "cut": false,
+      "broken": ["AttemptDeadlineRespected"],
+      "expected_rules": [
+        "AttemptBudgetRespected",
+        "AttemptDeadlineRespected",
+        "CallerDeadlineRespected",
+        "CancelledQueueReleasesLease",
+        "CooldownBeforeAdmission",
+        "NoDeadlock",
+        "NoPermitDuringQueueOrBackoff",
+        "TypeOK",
+        "UnknownMutationNeverRetried"
+      ],
+      "matches": true
+    }
+  ],
+  "charts": [
+    {
+      "model": "SharedProducer",
+      "config": "cfg",
+      "states": {
+        "distinct": 75,
+        "initial": 5,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "inputs": [
+        {
+          "path": "model-inputs/SharedProducer.tla",
+          "sha256": "f25dec0a17e0ca8e3c5d5d2b6544f2eec40ac1672f51c5bf7c58a92d32731884"
+        },
+        {
+          "path": "model-inputs/SharedProducer.cfg",
+          "sha256": "7b304d7f2416c3dc50b429e95af14c4bbc1d9cfb54fa793672dae53995056ed2"
+        },
+        {
+          "path": "model-inputs/SharedProducer.view.mjs",
+          "sha256": "8b27e172f0473f1505c2ec78e252b7d7919f1fa8be7483f422a9a80813726c18"
+        }
+      ],
+      "source_report": "SharedProducer-cfg/report.md",
+      "mermaid": "shared-producer.mmd",
+      "mermaid_sha256": "a038afe73439cb611ff49dd3de6c10585723c25900ae9a77940419ff684a7fcf",
+      "svg": "shared-producer.svg",
+      "svg_sha256": "d7952ca8dcc57dfbe99df9cd2b5ac84c9ba1e0e703b050e6699e980cd7299298",
+      "width": 1005,
+      "height": 1095,
+      "arrows": 18
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cfg",
+      "states": {
+        "distinct": 390,
+        "initial": 4,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "inputs": [
+        {
+          "path": "model-inputs/RequestAdmission.tla",
+          "sha256": "bdf8766b26596aa24d1f88c2a0fe2d53c51a066669f6155abb01bda6bc606848"
+        },
+        {
+          "path": "model-inputs/RequestAdmission.cfg",
+          "sha256": "98048ff4d23970a2dc18a0a3036860ae23e30177b2edd6d61824120a3484442c"
+        },
+        {
+          "path": "model-inputs/RequestAdmission.view.mjs",
+          "sha256": "7369457a1b954eaf490bb0e2c12239de4063baba2cdc892719fbe2f8cab70151"
+        }
+      ],
+      "source_report": "RequestAdmission-cfg/report.md",
+      "mermaid": "request-admission.mmd",
+      "mermaid_sha256": "bbf239de30fe4f91695ab98837c5cc948e7251346a148bd8745a5fb9e3976a3c",
+      "svg": "request-admission.svg",
+      "svg_sha256": "793303a2d548283a460802cf407b4152aa15b776dd68d75dbf7918ed655c49b1",
+      "width": 1562,
+      "height": 844,
+      "arrows": 16
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cancel.cfg",
+      "states": {
+        "distinct": 71,
+        "initial": 5,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["SurvivingWaiterKeepsProducer"],
+      "inputs": [
+        {
+          "path": "model-inputs/SharedProducer.tla",
+          "sha256": "f25dec0a17e0ca8e3c5d5d2b6544f2eec40ac1672f51c5bf7c58a92d32731884"
+        },
+        {
+          "path": "model-inputs/SharedProducer.cancel.cfg",
+          "sha256": "bd12290f476e77b8012012753daed42ad46377b1f301dce5f5a8e9db32170730"
+        },
+        {
+          "path": "model-inputs/SharedProducer.view.mjs",
+          "sha256": "8b27e172f0473f1505c2ec78e252b7d7919f1fa8be7483f422a9a80813726c18"
+        }
+      ],
+      "source_report": "SharedProducer-cancel-cfg/report.md",
+      "mermaid": "cancel-surviving-waiter.mmd",
+      "mermaid_sha256": "1b8c18de70bd744af673f323f0fcc81b5eb8b6f22a9cb70e34a31e196b47a699",
+      "svg": "cancel-surviving-waiter.svg",
+      "svg_sha256": "f3fa6c48b7ba8145a2dfeb0d63a2eb1ef32a66034e85fabc8ac516dcfd55d845",
+      "width": 1141,
+      "height": 1118,
+      "arrows": 17
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "unknown.cfg",
+      "states": {
+        "distinct": 715,
+        "initial": 4,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["UnknownMutationNeverRetried"],
+      "inputs": [
+        {
+          "path": "model-inputs/RequestAdmission.tla",
+          "sha256": "bdf8766b26596aa24d1f88c2a0fe2d53c51a066669f6155abb01bda6bc606848"
+        },
+        {
+          "path": "model-inputs/RequestAdmission.unknown.cfg",
+          "sha256": "d37ac058bd943139486fdd1d5f9c134c2b90a38c4e65da1a8194de7b89113e05"
+        },
+        {
+          "path": "model-inputs/RequestAdmission.view.mjs",
+          "sha256": "7369457a1b954eaf490bb0e2c12239de4063baba2cdc892719fbe2f8cab70151"
+        }
+      ],
+      "source_report": "RequestAdmission-unknown-cfg/report.md",
+      "mermaid": "unknown-write-retry.mmd",
+      "mermaid_sha256": "0ef17de99ed1e0ffe4fbd270dd953d8ff686570608c2a2d89d1482a44f1b64b2",
+      "svg": "unknown-write-retry.svg",
+      "svg_sha256": "85e658c3771b63b6f0c4f3ce9a5735fe77e87fb449d77ccf3b49af872c4afac9",
+      "width": 878,
+      "height": 874,
+      "arrows": 7
+    }
+  ]
+}

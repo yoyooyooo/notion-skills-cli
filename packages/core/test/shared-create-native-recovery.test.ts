@@ -239,10 +239,11 @@ test("native review/dry-run freezes eight Records and recovery preserves its one
   expect(f.writes()).toHaveLength(0)
 })
 
-async function interruptedFirstRecoveryRecord() {
+async function interruptedFirstRecoveryRecord(ackCount = 1) {
   const x = await ready(),
     { f } = x
   let firstRecord: string | undefined
+  const acknowledgedRecords: string[] = []
   let interrupt = true
   const failure = await f.run(
     Effect.gen(function* () {
@@ -252,15 +253,22 @@ async function interruptedFirstRecoveryRecord() {
           Effect.provideService(Notion, {
             ...api,
             request: (path, body, options) => {
-              if (firstRecord && path === "v1/pages/" + firstRecord && interrupt) {
+              if (
+                acknowledgedRecords.length === ackCount &&
+                path === "v1/pages/" + acknowledgedRecords.at(-1) &&
+                interrupt
+              ) {
                 interrupt = false
                 return Effect.fail(fail("NETWORK_ERROR", "Interrupted exact ACK readback"))
               }
               return api.request(path, body, options).pipe(
                 Effect.tap((raw) =>
                   Effect.sync(() => {
-                    if (path === "v1/pages" && options?.method === "POST" && !firstRecord)
-                      firstRecord = String(property(raw).id)
+                    if (path === "v1/pages" && options?.method === "POST") {
+                      const page = String(property(raw).id)
+                      firstRecord ??= page
+                      acknowledgedRecords.push(page)
+                    }
                   }),
                 ),
               )
@@ -271,7 +279,7 @@ async function interruptedFirstRecoveryRecord() {
     }),
   )
   expect(failure.code).toBe("NETWORK_ERROR")
-  expect(f.writes()).toHaveLength(1)
+  expect(f.writes()).toHaveLength(ackCount)
   return { ...x, firstRecord: firstRecord! }
 }
 
@@ -302,6 +310,62 @@ test("an acknowledged first recovery Record resumes only its never-dispatched su
     verified: true,
   })
   expect(f.writes()).toHaveLength(0)
+})
+
+test("a later acknowledged Record cannot substitute for a missing first prefix dispatch", async () => {
+  const x = await interruptedFirstRecoveryRecord(2),
+    { f } = x
+  const firstKey = [...f.base.json.keys()].find(
+    (key) =>
+      /\/source-op-[a-f0-9]{64}\.json$/u.test(key) &&
+      String(property(f.base.json.get(key)).identity).startsWith(x.review.review_id + ":") &&
+      property(property(f.base.json.get(key.replace("/source-op-", "/source-ack-"))).response)
+        .id === x.firstRecord,
+  )!
+  expect(typeof firstKey).toBe("string")
+  f.base.json.delete(firstKey)
+  f.base.json.delete(firstKey.replace("/source-op-", "/source-ack-"))
+  const retainedRecords = structuredClone([...f.base.records])
+  f.clear()
+  const result = await f.run(Effect.result(applyInventoryNativeRecovery(x.apply)))
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      code: "SHARED_CREATE_RECOVERY_REQUIRED",
+      message: "The acknowledged native recovery requests are not one exact prefix.",
+    },
+  })
+  expect(f.writes()).toHaveLength(0)
+  expect([...f.base.records]).toEqual(retainedRecords)
+})
+
+test("permission refusal while verifying an acknowledged prefix cannot dispatch its suffix", async () => {
+  const x = await interruptedFirstRecoveryRecord(),
+    { f } = x
+  const retained = structuredClone([...f.base.json])
+  f.clear()
+  const result = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      return yield* Effect.result(
+        applyInventoryNativeRecovery(x.apply).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) =>
+              path === "v1/pages/" + x.firstRecord
+                ? Effect.fail(fail("PERMISSION_DENIED", "Original Record GET is forbidden"))
+                : api.request(path, body, options),
+          }),
+        ),
+      )
+    }),
+  )
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: { code: "PERMISSION_DENIED" },
+  })
+  expect(f.writes()).toHaveLength(0)
+  expect([...f.base.json]).toEqual(retained)
 })
 
 test.each([

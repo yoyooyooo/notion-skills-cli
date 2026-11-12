@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pele pele-state" viewBox="0 0 1562 844" width="1562" height="844" style="max-width:100%;height:auto;--_bg:var(--pele-bg,#fff);--_fg:var(--pele-fg,#1f1f1f);--_m:var(--pele-muted,#6e6e6e);--_l:var(--pele-line,#1f1f1f);--_s:var(--pele-surface,#f3f3f3);--_a:var(--pele-surface-alt,#e6e6e6);--_b:var(--pele-border,#8a8a8a);--_c:var(--pele-accent,#5b7bd5);color:var(--_fg);--_tw:var(--pele-title-weight,bold);--_fm:var(--pele-font-mono,monospace);font:16px sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;font-family:var(--pele-font,sans-serif)" fill="var(--_fg)" role="graphics-document document" aria-roledescription="state"><style>
+.pele {
+  --pele-bg: #ffffff;
+  --pele-fg: #1c1c1c;
+  --pele-muted: #656565;
+  --pele-line: #808080;
+  --pele-surface: #fcfcfc;
+  --pele-surface-alt: #f1f1f1;
+  --pele-border: #c9c9c9;
+}
+.pele .blue rect { fill: #c3e0ff; }
+.pele .orange rect { fill: #f0d3bf; }
+.pele .purple rect { fill: #e3d5ff; }
+.pele .yellow rect { fill: #f0dcbf; }
+.pele .teal rect { fill: #bfe3df; }
+.pele .tan rect { fill: #e5d9ce; }
+.pele .pink rect { fill: #ffcbe6; }
+.pele .breaks rect {
+  fill: #ffecee !important;
+  stroke: #e72e3b !important;
+  stroke-width: 2.5px !important;
+}
+.pele .breaks text {
+  fill: #cd2834 !important;
+}
+.pele .mayBreak rect {
+  fill: #fff3e6 !important;
+  stroke: #e8730c !important;
+  stroke-width: 2.5px !important;
+}
+.pele .mayBreak text {
+  fill: #b85a06 !important;
+}
+.pele .bugPath rect {
+  stroke: #1680f3 !important;
+  stroke-width: 2.5px !important;
+}
+.pele .repeats rect {
+  stroke: #9b35d6 !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 3;
+}
+@media (prefers-color-scheme: dark) {
+  .pele {
+    --pele-bg: #1f1f1f;
+    --pele-fg: #f5f5f5;
+    --pele-muted: #acacac;
+    --pele-line: #939393;
+    --pele-surface: #121212;
+    --pele-surface-alt: #2c2c2c;
+    --pele-border: #4e4e4e;
+  }
+  .pele .blue rect { fill: #1b3857; }
+  .pele .orange rect { fill: #573117; }
+  .pele .purple rect { fill: #3c2e57; }
+  .pele .yellow rect { fill: #573d17; }
+  .pele .teal rect { fill: #174641; }
+  .pele .tan rect { fill: #3d3127; }
+  .pele .pink rect { fill: #57233e; }
+  .pele .breaks rect {
+    fill: #2e2021 !important;
+    stroke: #cf2b35 !important;
+  }
+  .pele .breaks text {
+    fill: #ff6463 !important;
+  }
+  .pele .mayBreak rect {
+    fill: #2e2619 !important;
+    stroke: #d0700f !important;
+  }
+  .pele .mayBreak text {
+    fill: #ffa257 !important;
+  }
+  .pele .bugPath rect {
+    stroke: #116dd2 !important;
+  }
+  .pele .repeats rect {
+    stroke: #9a3fcf !important;
+  }
+}
+</style><text class="pele-title" font-weight="var(--_tw)" text-anchor="middle" xml:space="preserve"><tspan x="781" y="25.6">请求准入与未知写入边界</tspan></text><g transform="translate(0,36)"><g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round"><g class="pele-edge pele-transition" data-id="edge0"><path d="M1168.62,22L1168.62,59"/><path class="pele-marker" d="M1168.62,66L1165.26,58L1171.97,58Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge1"><path d="M1168.62,110L1168.62,172"/><path class="pele-marker" d="M1168.62,179L1165.26,171L1171.97,171Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge2"><path d="M1236.62,241L1236.62,249.09C1236.62,251.7 1449.17,256.9 1449.17,259.5L1449.17,303"/><path class="pele-marker" d="M1449.17,310L1445.81,302L1452.53,302Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge3"><path d="M1116.62,241L1116.62,249.09C1116.62,251.7 927.12,256.9 927.12,259.5L927.12,303"/><path class="pele-marker" d="M927.12,310L923.76,302L930.48,302Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge4"><path d="M875.12,354C875.12,358.63 389.5,367.88 389.5,372.5L389.5,416"/><path class="pele-marker" d="M389.5,423L386.14,415L392.86,415Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge5"><path d="M927.12,354L927.12,416"/><path class="pele-marker" d="M927.12,423L923.76,415L930.48,415Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge6"><path d="M1220.62,241L1220.62,254C1220.62,282 1317.17,282 1317.17,310L1317.17,644.5C1317.17,693.75 802.06,693.75 802.06,743L802.06,749"/><path class="pele-marker" d="M802.06,756L798.7,748L805.42,748Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge7"><path d="M409.5,467C409.5,491.8 465.38,507 556.56,507C647.73,507 703.62,517.64 703.62,535L703.62,575C703.62,581.94 780.12,581.94 780.12,588.88L780.12,593.5"/><path class="pele-marker" d="M780.12,600.5L776.76,592.5L783.48,592.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge8"><path d="M377.5,467C377.5,491.8 361.73,507 336,507C310.27,507 294.5,517.64 294.5,535L294.5,593.5"/><path class="pele-marker" d="M294.5,600.5L291.14,592.5L297.86,592.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge9"><path d="M923.12,467C923.12,491.8 910.67,507 890.37,507C870.06,507 857.62,517.64 857.62,535L857.62,593.5"/><path class="pele-marker" d="M857.62,600.5L854.26,592.5L860.98,592.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge10"><path d="M907.12,467C907.12,484.36 832.54,495 710.87,495C589.19,495 514.62,510.2 514.62,535L514.62,575C514.62,580.4 372,583.48 372,588.88L372,593.5"/><path class="pele-marker" d="M372,600.5L368.64,592.5L375.36,592.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge11"><path d="M939.12,467C939.12,501 1066.17,501 1066.17,535L1066.17,593.5"/><path class="pele-marker" d="M1066.17,600.5L1062.81,592.5L1069.53,592.5Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge12"><path d="M268,600.5L268,587.5C268,576.25 186.39,576.25 186.39,565L186.39,265.75C186.39,262.42 1100.62,255.77 1100.62,252.44L1100.62,248"/><path class="pele-marker" d="M1100.62,241L1103.97,249L1097.26,249Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge13"><path d="M979.12,354C979.12,365.19 1198.17,367.56 1198.17,378.75L1198.17,644.5C1198.17,693.75 786.06,693.75 786.06,743L786.06,749"/><path class="pele-marker" d="M786.06,756L782.7,748L789.42,748Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge14"><path d="M361.5,467C361.5,484.36 311.44,495 229.75,495C148.07,495 98,514 98,545L98,681.75C98,710.43 215.05,728 406.03,728C597.01,728 714.06,733.99 714.06,743.75L714.06,749"/><path class="pele-marker" d="M714.06,756L710.7,748L717.42,748Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge15"><path d="M320,644.5L320,688C320,705.36 397.91,716 525.03,716C652.15,716 730.06,726.26 730.06,743L730.06,749"/><path class="pele-marker" d="M730.06,756L726.7,748L733.42,748Z" fill="var(--_l)" stroke="none"/></g></g><g class="pele-edge-labels" font-size="14"><g class="pele-edge-label" data-id="edge1"><rect x="1115.62" y="130.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="1168.62" y="145.9" text-anchor="middle">申请短队列租约</text></g><g class="pele-edge-label" data-id="edge2"><rect x="1382.17" y="261.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="1449.17" y="276.9" text-anchor="middle">取消排队并释放租约</text></g><g class="pele-edge-label" data-id="edge3"><rect x="860.12" y="261.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="927.12" y="276.9" text-anchor="middle">核对期限及共享冷却</text></g><g class="pele-edge-label" data-id="edge4"><rect x="322.5" y="374.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="389.5" y="389.9" text-anchor="middle">核对并消费请求预算</text></g><g class="pele-edge-label" data-id="edge5"><rect x="860.12" y="374.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="927.12" y="389.9" text-anchor="middle">核对并消费请求预算</text></g><g class="pele-edge-label" data-id="edge6"><rect x="1271.17" y="434.5" width="92" height="21" rx="3" fill="var(--_bg)"/><text x="1317.17" y="449.9" text-anchor="middle">排队期限耗尽</text></g><g class="pele-edge-label" data-id="edge7"><rect x="636.62" y="544.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="703.62" y="559.9" text-anchor="middle">取得响应并释放许可</text></g><g class="pele-edge-label" data-id="edge8"><rect x="196.39" y="537" width="196.23" height="36" rx="3" fill="var(--_bg)"/><text text-anchor="middle" xml:space="preserve"><tspan x="294.5" y="550.9">只读失败进入有界重试 or 单次</tspan><tspan x="294.5" y="568.9">请求或整个调用已超时</tspan></text></g><g class="pele-edge-label" data-id="edge9"><rect x="790.62" y="544.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="857.62" y="559.9" text-anchor="middle">取得响应并释放许可</text></g><g class="pele-edge-label" data-id="edge10"><rect x="412.62" y="544.5" width="204" height="21" rx="3" fill="var(--_bg)"/><text x="514.62" y="559.9" text-anchor="middle">写入被明确拒绝允许原请求重试</text></g><g class="pele-edge-label" data-id="edge11"><rect x="968.06" y="537" width="196.23" height="36" rx="3" fill="var(--_bg)"/><text text-anchor="middle" xml:space="preserve"><tspan x="1066.17" y="550.9">写入响应不确定 or 单次请求或</tspan><tspan x="1066.17" y="568.9">整个调用已超时</tspan></text></g><g class="pele-edge-label" data-id="edge12"><rect x="133.39" y="434.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="186.39" y="449.9" text-anchor="middle">申请短队列租约</text></g><g class="pele-edge-label" data-id="edge13"><rect x="1145.17" y="434.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="1198.17" y="449.9" text-anchor="middle">拒绝已耗尽预算</text></g><g class="pele-edge-label" data-id="edge14"><rect x="10" y="612" width="176" height="21" rx="3" fill="var(--_bg)"/><text x="98" y="627.4" text-anchor="middle">单次请求或整个调用已超时</text></g><g class="pele-edge-label" data-id="edge15"><rect x="267" y="665" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="320" y="680.4" text-anchor="middle">拒绝已耗尽预算</text></g></g><g class="pele-nodes"><g class="pele-node pele-state" data-id="s0" transform="translate(1168.62,88)"><rect x="-48" y="-22" width="96" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">尚未准入</text></g><g class="pele-node pele-state" data-id="s1" transform="translate(1168.62,210)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">排队持有短租约且未占网络</tspan><tspan x="0" y="16.1">许可</tspan></text></g><g class="pele-node pele-state" data-id="s2" transform="translate(1449.17,332)"><rect x="-104" y="-22" width="208" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">调用者取消且租约已释放</text></g><g class="pele-node pele-state" data-id="s3" transform="translate(927.12,332)"><rect x="-104" y="-22" width="208" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">已获共享准入及网络许可</text></g><g class="pele-node pele-state" data-id="s4" transform="translate(758.06,778)"><rect x="-88" y="-22" width="176" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">预算耗尽且停止派发</text></g><g class="pele-node pele-state" data-id="s5" transform="translate(389.5,445)"><rect x="-72" y="-22" width="144" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">只读请求已派发</text></g><g class="pele-node pele-state" data-id="s6" transform="translate(927.12,445)"><rect x="-64" y="-22" width="128" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">原写入已派发</text></g><g class="pele-node pele-state" data-id="s7" transform="translate(824.12,622.5)"><rect x="-96" y="-22" width="192" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">结果已返回许可已释放</text></g><g class="pele-node pele-state" data-id="s8" transform="translate(320,622.5)"><rect x="-104" y="-22" width="208" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">允许重试并等待共享冷却</text></g><g class="pele-node pele-state" data-id="s9" transform="translate(1066.17,622.5)"><rect x="-104" y="-22" width="208" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">原写入结果未知不得重发</text></g><g class="pele-node pele-state-start" data-id="root_start" transform="translate(1168.62,15)"><circle r="7" fill="var(--_l)"/></g></g></g></svg>

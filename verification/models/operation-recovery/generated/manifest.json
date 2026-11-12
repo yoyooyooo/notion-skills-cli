@@ -1,0 +1,1517 @@
+{
+  "version": 1,
+  "suite": "operation-recovery",
+  "source_base": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "checkout_commit_at_run": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "product_behavior_changed": false,
+  "coverage_sha256": "9c13faaecc23f3d63162e6b72975bcfad5da0423152a106853870fbea08c5209",
+  "source_hashes": {
+    "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
+    "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
+    "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
+    "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
+    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
+    "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
+    "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
+    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
+    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
+    "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
+    "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
+    "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
+    "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
+    "packages/core/test/shared-file-management.test.ts": "9ff24ac090ca96de59a16b3bf68fdefaaaebb1a1e646084f618c62535e98258f",
+    "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
+    "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
+    "packages/core/test/shared-snapshot-fixture.ts": "8dd55082681ef323f1fdc7b54626f7af19a3c48d900aa7e7bfc7c37b3e840826"
+  },
+  "tool": {
+    "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+    "tlc": "1.7.4",
+    "tlc_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "tool_lock_sha256": "379937f0a64c7086a4d2d950dd0afad7dd37c3adc03e6286c2ace15d8b950cc6",
+    "tool_files_verified": 31,
+    "runner_sha256": "b9f25a0662ad0f1f00df65d58e01119f7e77d7d78e77af489347aa4b7357ee62",
+    "result_contract_sha256": "669452a444d30c0226082e82fbff43009df993575fa70db2cb107e2dc21ef9d1"
+  },
+  "formal_run": {
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/formal-04",
+    "summary_sha256": "084df4e5c6c1a23c3c9d0cbf65b978a517ced299b541b094ddb6cf8242a929fc",
+    "complete": true,
+    "case_count": 28
+  },
+  "cases": [
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "cfg",
+      "states": {
+        "distinct": 77,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.cfg",
+          "sha256": "8a59b43e5840b414a20f617c59fea4b247ea401c2cc0c06a4299f4e52e06fa7f"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "missing-ack.cfg",
+      "states": {
+        "distinct": 115,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["PrefixNeedsOriginalAck"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.missing-ack.cfg",
+          "sha256": "c9ab0a76206d652fbd71131c3a54974750f115c8966b35c325c4a0a32e5d5bac"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "mismatched-binding.cfg",
+      "states": {
+        "distinct": 114,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["ExactRecordBinding"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.mismatched-binding.cfg",
+          "sha256": "f0b1b1a3ef251b2f0e415960b44a13e2cf02f73c6d0c7157392abb438411a659"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "noncontiguous-prefix.cfg",
+      "states": {
+        "distinct": 96,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["PrefixMustBeContiguous"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.noncontiguous-prefix.cfg",
+          "sha256": "93045c8baf691f23d7e09663a8bf7e47f49905661bae704029d57348fb36bb70"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "repeat-unknown.cfg",
+      "states": {
+        "distinct": 111,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["UnknownNeverRedispatched"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.repeat-unknown.cfg",
+          "sha256": "9a075b2e2664cc2176186c548778b292a4e708271cd94b3dc111c724300a4e6e"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "query-authority.cfg",
+      "states": {
+        "distinct": 48,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["AckLookupIndependentOfQuery"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.query-authority.cfg",
+          "sha256": "40083812837a3d63ce3c15ea44181bda951e0d577dd5dcfd411a653370c2bba6"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "stale-premise.cfg",
+      "states": {
+        "distinct": 107,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["DispatchNeedsFreshPremise"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.stale-premise.cfg",
+          "sha256": "d3dcbb5f5a18a642a11328f561d910f1c0b21162bb2f99ecf1dc875b5a66e8d0"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "permission.cfg",
+      "states": {
+        "distinct": 107,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["DispatchNeedsPermission"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.permission.cfg",
+          "sha256": "1beac36a3a4e47389e4fb21208712aaa278fca7f3d66332682cf51e0a069cec5"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "overwrite-original.cfg",
+      "states": {
+        "distinct": 77,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["OriginalFactsPreserved"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.overwrite-original.cfg",
+          "sha256": "1128a2eca869ffcbc4eb99a36576708674f4b8a75c55aa4e2633a115e0b0cbe2"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "skip-verification.cfg",
+      "states": {
+        "distinct": 79,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["CompletionNeedsVerification"],
+      "expected_rules": [
+        "AckLookupIndependentOfQuery",
+        "CompletionNeedsVerification",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "ExactRecordBinding",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "PrefixMustBeContiguous",
+        "PrefixNeedsOriginalAck",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.skip-verification.cfg",
+          "sha256": "4d5f40c2fb63145e29024b14a12c0ca8d6a80b98c819b80735c1d4cee8fed9c6"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "cfg",
+      "states": {
+        "distinct": 216,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.cfg",
+          "sha256": "932e31ab465d45ce12bfa94d11088a3be9a71571df8e9927211ad7d3c57f6933"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "accept-unknown-original.cfg",
+      "states": {
+        "distinct": 418,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["KnownFailureRequired"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.accept-unknown-original.cfg",
+          "sha256": "389f87694c8291b06c37c2e266429430fc48741062b255c8e156d8c62fc0b296"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "stale-context.cfg",
+      "states": {
+        "distinct": 988,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["FrozenIdentityRequired"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.stale-context.cfg",
+          "sha256": "61ab62afb0f0b4edf5ecf01c4c125c314ccee9cb678b6bf6b118532bdf03c2d1"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "reuse-original-id.cfg",
+      "states": {
+        "distinct": 418,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["IndependentIdentity"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.reuse-original-id.cfg",
+          "sha256": "e62a57c3072d15644db844e972bbbe67d44124002443d7f4c9a29ef5e1df79b1"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "equal-current-is-old-success.cfg",
+      "states": {
+        "distinct": 216,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["OriginalFactsPreserved"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.equal-current-is-old-success.cfg",
+          "sha256": "4a426c980fd06f5d651214b3ad3b683c1dc8d075f5d3b8975c55235d868423a9"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "repeat-unknown.cfg",
+      "states": {
+        "distinct": 1567,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["UnknownNeverRedispatched"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.repeat-unknown.cfg",
+          "sha256": "d2f6897f6dd9292fc1573050eb69d1c0069d46828ea03f270b062c9127f1f35b"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "incomplete-cold-proof.cfg",
+      "states": {
+        "distinct": 256,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["ColdRecoveryNeedsCompleteProof"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.incomplete-cold-proof.cfg",
+          "sha256": "2ea18cc262236b13c81206a9380b52fea3367f2e1e6f91c47697aa70f6099183"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "skip-adopted-event.cfg",
+      "states": {
+        "distinct": 288,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["CompletionNeedsAdoption"],
+      "expected_rules": [
+        "ColdRecoveryNeedsCompleteProof",
+        "CompletionNeedsAdoption",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "KnownFailureRequired",
+        "NoDeadlock",
+        "OriginalFactsPreserved",
+        "TypeOK",
+        "UnknownNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.skip-adopted-event.cfg",
+          "sha256": "4ba0d5f0e7b80d1fb6c049a6aa3965acf2969f8a2c8017a7dac140a0a16facd5"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "cfg",
+      "states": {
+        "distinct": 45,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.cfg",
+          "sha256": "2aa3689f57d8ee55b45b1ac935cad34c3dac5a413d4cce9a19b0f61b185ae036"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "unverified-binding.cfg",
+      "states": {
+        "distinct": 95,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["BodyNeedsBoundOriginal"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.unverified-binding.cfg",
+          "sha256": "d77c84b5f7aaefc6c52e58ea5261a87874a203d2154117c7e855118699070b80"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "stale-body.cfg",
+      "states": {
+        "distinct": 63,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["BodyNeedsCurrentPremise"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.stale-body.cfg",
+          "sha256": "bed0b4e4168e0ce95afe03f63464a63b7f21d29210b246609c1141542e6dbb41"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "repeat-body-after-feedback-loss.cfg",
+      "states": {
+        "distinct": 99,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["FeedbackNeverRepeatsBody"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.repeat-body-after-feedback-loss.cfg",
+          "sha256": "a4f8522f7cddcd03953e60ffe2e06267d788c8aba9372fbed7a71c564fb3aa35"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "equal-feedback-is-ack.cfg",
+      "states": {
+        "distinct": 47,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["FeedbackRequiresRealAck"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.equal-feedback-is-ack.cfg",
+          "sha256": "d4846241f77a5ccf7bab96a4e02d53c00a8e2e25b84d84d7d3c5aa067e66826b"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "replace-pending-original.cfg",
+      "states": {
+        "distinct": 55,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["OriginalRequestPreserved"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.replace-pending-original.cfg",
+          "sha256": "c2b59180d326e270ad7b59a41e2108cc733f21115db404c7ff626a756c4a5279"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "invalid-original-is-success.cfg",
+      "states": {
+        "distinct": 51,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.invalid-original-is-success.cfg",
+          "sha256": "b1c772a8cbb0a1851989abec1d53309d86d4c830a2ea5872d77b12bd93c26523"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "equal-current-is-original-success.cfg",
+      "states": {
+        "distinct": 47,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.equal-current-is-original-success.cfg",
+          "sha256": "e5a728d0ccc55040e292550352cd323e6cac004726cbaf5cf3a5f59721dba282"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "forget-historical-ack.cfg",
+      "states": {
+        "distinct": 49,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["HistoricalAckPreserved"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.forget-historical-ack.cfg",
+          "sha256": "b14a7c9b9d0e538bbb69e983043a9be79c254937578d2d0776980818863a65d8"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "repeat-unknown-feedback.cfg",
+      "states": {
+        "distinct": 72,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["UnknownFeedbackNeverRedispatched"],
+      "expected_rules": [
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "HistoricalAckPreserved",
+        "NoDeadlock",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "TypeOK",
+        "UnknownFeedbackNeverRedispatched"
+      ],
+      "inventory_matches": true,
+      "matches": true,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.repeat-unknown-feedback.cfg",
+          "sha256": "1a9efe0aa2773896d174b2112ba38e58bd275bd731a64f1a4bc515cef0a67b56"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    }
+  ],
+  "selected_charts": [
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "cfg",
+      "directory": "AcknowledgedRecordPrefix-cfg",
+      "states": {
+        "distinct": 77,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "chart_states": 19,
+      "chart_arrows": 25,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.cfg",
+          "sha256": "8a59b43e5840b414a20f617c59fea4b247ea401c2cc0c06a4299f4e52e06fa7f"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "missing-ack.cfg",
+      "directory": "AcknowledgedRecordPrefix-missing-ack-cfg",
+      "states": {
+        "distinct": 115,
+        "initial": 9,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["PrefixNeedsOriginalAck"],
+      "chart_states": 20,
+      "chart_arrows": 26,
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.tla",
+          "sha256": "07bc610d592ceb208ef77ca21c78357924a4b5217cad4ea27fb22634c8e3af40"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.missing-ack.cfg",
+          "sha256": "c9ab0a76206d652fbd71131c3a54974750f115c8966b35c325c4a0a32e5d5bac"
+        },
+        {
+          "path": "model-inputs/AcknowledgedRecordPrefix.view.mjs",
+          "sha256": "d7489efec61754f21babdc6abd09b164adcae54da7d6d99e96e272a754ed27c5"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "cfg",
+      "directory": "IndependentAcceptance-cfg",
+      "states": {
+        "distinct": 216,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "chart_states": 19,
+      "chart_arrows": 23,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.cfg",
+          "sha256": "932e31ab465d45ce12bfa94d11088a3be9a71571df8e9927211ad7d3c57f6933"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "equal-current-is-old-success.cfg",
+      "directory": "IndependentAcceptance-equal-current-is-old-success-cfg",
+      "states": {
+        "distinct": 216,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["OriginalFactsPreserved"],
+      "chart_states": 15,
+      "chart_arrows": 19,
+      "inputs": [
+        {
+          "path": "model-inputs/IndependentAcceptance.tla",
+          "sha256": "66a24715fa602b94dfb765284574a717d9a322c87fe41e3ab3b8a93e6a0bc33d"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.equal-current-is-old-success.cfg",
+          "sha256": "4a426c980fd06f5d651214b3ad3b683c1dc8d075f5d3b8975c55235d868423a9"
+        },
+        {
+          "path": "model-inputs/IndependentAcceptance.view.mjs",
+          "sha256": "ac796bb1466d03e06d62fad2cdc1c2f07882597a6f6ff692f2787d666748f52a"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "cfg",
+      "directory": "RestoreFeedback-cfg",
+      "states": {
+        "distinct": 45,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "chart_states": 23,
+      "chart_arrows": 30,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.cfg",
+          "sha256": "2aa3689f57d8ee55b45b1ac935cad34c3dac5a413d4cce9a19b0f61b185ae036"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "repeat-body-after-feedback-loss.cfg",
+      "directory": "RestoreFeedback-repeat-body-after-feedback-loss-cfg",
+      "states": {
+        "distinct": 99,
+        "initial": 6,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["FeedbackNeverRepeatsBody"],
+      "chart_states": 24,
+      "chart_arrows": 35,
+      "inputs": [
+        {
+          "path": "model-inputs/RestoreFeedback.tla",
+          "sha256": "1664e9a36c85eb327560b4211196b8529e661dfe538894b9dfcd295f363c6d1c"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.repeat-body-after-feedback-loss.cfg",
+          "sha256": "a4f8522f7cddcd03953e60ffe2e06267d788c8aba9372fbed7a71c564fb3aa35"
+        },
+        {
+          "path": "model-inputs/RestoreFeedback.view.mjs",
+          "sha256": "861226ee7708c86cd2db3455d45239dfe993ac9641dffdc640752b9ef0af02f3"
+        }
+      ]
+    }
+  ],
+  "regressions": {
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/regressions-01",
+    "summary_sha256": "a6865230b7e229b3472c09a36c07ef8d5c29e5fda6e9285e2e2f11d5a766521b",
+    "tests": 149,
+    "assertions": 1345,
+    "exit": 0
+  },
+  "mutations": {
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/mutations-04",
+    "summary_sha256": "a2b99a2a7117a54b18152f7892ba093ef9accb6dd1a6fb20573ad1183b89a074",
+    "coverage_sha256": "aa55a082efad910beffb5018e9e25460bb4f09b30c52f8d68e5f7e575dce21ef",
+    "guards": 4,
+    "passed": true,
+    "full_candidate_restored": true,
+    "protected_source_unchanged": true,
+    "protected_source_count": 17,
+    "protected_check": "content and mode for all 17 coverage.files entries"
+  },
+  "skill_validation": {
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/skill-validation-02",
+    "summary_sha256": "adc95c4c4c7f215a93e096bc0a3d313e7921599f85610d221ca79d73cc2792ec",
+    "exit": 0
+  },
+  "cold_agent": {
+    "status": "passed",
+    "scope": "IndependentAcceptance cold slice plus four real guard mutations; not a three-model full cold run",
+    "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/cold-operation/independent-acceptance-j67k_40e",
+    "receipt": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/cold-operation/independent-acceptance-j67k_40e/cold-receipt.md",
+    "receipt_sha256": "962e8614dacdf91d76665226d106134322883c17b717108ce8f2a051ba769006",
+    "independent_audit": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/cold-operation/independent-acceptance-j67k_40e/independent-audit.json",
+    "independent_audit_sha256": "af9164a384670e6f06ece87980f8c26a64976a3645f8b94365ddbd7b75eabe82",
+    "model_summary_sha256": "80f5f98a409a85716aa7bd3be278c448775b4398a32f5f69ffeebbf67f3f7f9e",
+    "model_configurations": 8,
+    "rules_per_configuration": 9,
+    "public_regression": {
+      "pass": 45,
+      "fail": 0,
+      "expectations": 346
+    },
+    "mutation_case_count": 4,
+    "product_covered_source_and_modes_unchanged": true,
+    "covered_files": 17
+  },
+  "raw_manifest": {
+    "path": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/build-04/evidence-manifest.json",
+    "sha256": "d418eeb71e83490089a5a6bf25cddf77b5cc0700582f2a8343ad8794197265ac",
+    "file_count": 1590,
+    "total_bytes": 49107926
+  },
+  "renderer": {
+    "name": "Pele",
+    "version": "1.9.0",
+    "implementation_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5",
+    "options": {
+      "limit": 1000000,
+      "outputLimit": 8000000,
+      "maxEdges": 10000
+    },
+    "stylesheet_source": "/Users/yoyo/Documents/code/personal/verification-evidence/ah681-20261108/ah922-ah740-recovery-20261111/pinned-pstack-repository/pstack/skills/statechart/references/render.md",
+    "stylesheet_source_sha256": "8cca446eb0c8f87f2ef7b97c4b149f59aacdc153134b4217c4bcde09b10ac3c4",
+    "stylesheet_sha256": "86148f1c5f7acb64d97932edc05543920774ba44c452b8f082b2afc883598b41",
+    "stylesheet_archive": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/statechart-recommended.css",
+    "stylesheet_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+    "application": "one SVG style element immediately after the root opening tag; original geometry and all original bytes unchanged"
+  },
+  "assets": [
+    {
+      "path": "AcknowledgedRecordPrefix-cfg/chart.mmd",
+      "bytes": 2316,
+      "sha256": "c48a939f6d9f7c0e47cfd04506c6049bd9f6c4a148054926bb497fdc02ffc500"
+    },
+    {
+      "path": "AcknowledgedRecordPrefix-cfg/chart.svg",
+      "bytes": 21739,
+      "sha256": "8dbbb0174da3c24405ef7640ca76469e66ce68ae33f8100a6c10848d2c4fed6b"
+    },
+    {
+      "path": "AcknowledgedRecordPrefix-cfg/report.md",
+      "bytes": 493,
+      "sha256": "8aba950e376dc63a30a5af9332cef5e5aec810f88af7236acf51b67fc3e28fe2"
+    },
+    {
+      "path": "AcknowledgedRecordPrefix-missing-ack-cfg/chart.mmd",
+      "bytes": 2709,
+      "sha256": "8918bb7774bb7c273441c6bf2e366568778f71a56e132e9dd13659e15671fc66"
+    },
+    {
+      "path": "AcknowledgedRecordPrefix-missing-ack-cfg/chart.svg",
+      "bytes": 24209,
+      "sha256": "a00d4f5288bc1004f8974a5f8e3f804202c2692bdcb80e30f465c7ecc300edf6"
+    },
+    {
+      "path": "AcknowledgedRecordPrefix-missing-ack-cfg/report.md",
+      "bytes": 644,
+      "sha256": "5fa96a580840e5924ea58520ed23ae22159fa9a17f477035fd85c63e67052c1d"
+    },
+    {
+      "path": "IndependentAcceptance-cfg/chart.mmd",
+      "bytes": 2277,
+      "sha256": "792e53b21ea8f0664ecb1bbc035af8a7e41eeacd12a0ce201fe2810a55e404d0"
+    },
+    {
+      "path": "IndependentAcceptance-cfg/chart.svg",
+      "bytes": 20427,
+      "sha256": "49bfc9d2edb46643859803c5ff6bfda85a26fe3a3554d65d895e0c9abfb8a2df"
+    },
+    {
+      "path": "IndependentAcceptance-cfg/report.md",
+      "bytes": 375,
+      "sha256": "73668e57de5887bac5a012b22bdd6bf947f81a7029c9bca9c87c438b9784ae30"
+    },
+    {
+      "path": "IndependentAcceptance-equal-current-is-old-success-cfg/chart.mmd",
+      "bytes": 2257,
+      "sha256": "2b2672a49a7870ffde0c6e07c2370e0948bbd56d52c102e0a6c47239eacde037"
+    },
+    {
+      "path": "IndependentAcceptance-equal-current-is-old-success-cfg/chart.svg",
+      "bytes": 18407,
+      "sha256": "1518d0715cc4ef392ab91a4742059e92648121571c9ea6cee80fa7001fab77ef"
+    },
+    {
+      "path": "IndependentAcceptance-equal-current-is-old-success-cfg/report.md",
+      "bytes": 1859,
+      "sha256": "82ab9b3c9c99200eacbd2b1cd234ce5f001ab6c69f173ed9b3227d2875749583"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2465,
+      "sha256": "a9f25d8f9f1af07678594a15883db2df2dfbc506b1d453a6a32a60c586785fd3"
+    },
+    {
+      "path": "RestoreFeedback-cfg/chart.mmd",
+      "bytes": 2756,
+      "sha256": "601b4d85743d4d9844f7610cd5d2921a8f7c888953f7fd7caf923720f9835360"
+    },
+    {
+      "path": "RestoreFeedback-cfg/chart.svg",
+      "bytes": 24549,
+      "sha256": "b965ead26caba375d807f1da35af5e61051680682edb832ea3131c66c885b731"
+    },
+    {
+      "path": "RestoreFeedback-cfg/report.md",
+      "bytes": 468,
+      "sha256": "f26e9efa186d12877364daef2abe754555408d8763b30f1fa4f46351ce19fbdd"
+    },
+    {
+      "path": "RestoreFeedback-repeat-body-after-feedback-loss-cfg/chart.mmd",
+      "bytes": 3499,
+      "sha256": "53649221800695819dd5090137ad7b08b87c9215924533e51f31f304247843a3"
+    },
+    {
+      "path": "RestoreFeedback-repeat-body-after-feedback-loss-cfg/chart.svg",
+      "bytes": 29282,
+      "sha256": "91d298214d1cd9d2526b7e14db1879a3f6bc68b3fa105942471dc9ba0fe29338"
+    },
+    {
+      "path": "RestoreFeedback-repeat-body-after-feedback-loss-cfg/report.md",
+      "bytes": 1262,
+      "sha256": "ca25b7187be390d27eb81d4e1118ba3a8f534d2becf304e139a1596914e63744"
+    }
+  ],
+  "evidence_history": [
+    {
+      "update": "theme-05",
+      "previous_manifest": {
+        "path": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/before/manifest.json",
+        "sha256": "df677a901edc781e4d5df509aeb37cd38016f0b32382674839b8e19ab49d8966"
+      },
+      "previous_mutations": {
+        "root": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/mutations-03",
+        "summary_sha256": "0ae447cd9635d40caea938397b16940f79ad3676e91458fe5cb6e0a84cb3454c",
+        "guards": 4,
+        "passed": true,
+        "full_candidate_restored": true,
+        "protected_source_unchanged": true
+      },
+      "previous_cold_agent": "Not included in this generation manifest; attach the independent cold-run receipt before marking the guardian ready",
+      "previous_renderer": {
+        "name": "Pele",
+        "version": "1.9.0",
+        "implementation_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5",
+        "options": {
+          "limit": 1000000,
+          "outputLimit": 8000000,
+          "maxEdges": 10000
+        }
+      }
+    }
+  ],
+  "rendering_review": {
+    "status": "passed",
+    "application_record": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/theme-application.json",
+    "application_record_sha256": "df01ae6c50c4cb88f654333eb98272be3e6c01525095b967962a60f3c040f692",
+    "svg_count": 6,
+    "geometry_unchanged": true,
+    "models_mmd_reports_and_views_unchanged": true,
+    "scope": "six selected SVGs in light appearance",
+    "visual_receipt": "/Users/yoyo/Documents/code/personal/verification-evidence/ah1006-20261112/operation-recovery/theme-05/visual-qa.json",
+    "visual_receipt_sha256": "022bf59ba71c21f9b297f92b49772375b75319d9923f00cfb750cec42dc9f9ce",
+    "checked_for": [
+      "group colors",
+      "violation and shortest-counterexample path marks",
+      "Chinese text integrity",
+      "visible diagram boundaries",
+      "obstructing overlaps"
+    ],
+    "dark_appearance_visually_checked": false
+  }
+}

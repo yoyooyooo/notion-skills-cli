@@ -7,141 +7,155 @@ import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import { pathToFileURL } from "node:url"
 import { inspect } from "node:util"
+import {
+  assertFormalCase,
+  assertFormalResult,
+  inspectFormalResult,
+} from "./formal-result-contract.mjs"
 
 const repository = path.resolve(import.meta.dirname, "..")
+const suites = {
+  lifecycle: "verification/models/resource-lifecycle",
+  "operation-recovery": "verification/models/operation-recovery",
+  "request-engine": "verification/models/request-engine",
+}
+const defaultSuite = "lifecycle"
+const lockFile = "verification/models/resource-lifecycle/tool-lock.json"
+const configExtension = ""
 const args = process.argv.slice(2)
-const option = (name) => {
-  const i = args.indexOf(name)
-  return i < 0 ? undefined : args[i + 1]
+if (args.includes("--help")) {
+  console.log(
+    "Usage: node scripts/verify-resource-lifecycle.mjs --out /absolute/new/output [--suite " +
+      Object.keys(suites).join("|") +
+      "] [--model Model] [--statechart PINNED_SKILL] [--jar TLC_JAR]",
+  )
+  process.exit(0)
 }
-const out = path.resolve(
-  option("--out") ?? fs.mkdtempSync(path.join(os.tmpdir(), "notion-formal-")),
-)
-const tool = option("--statechart") ?? process.env.PSTACK_STATECHART_ROOT
-const jar = option("--jar") ?? process.env.TLA2TOOLS
-if (!tool || !jar)
-  throw new Error(
-    "Pass --statechart PATH_TO_PINNED_SKILL and --jar PATH_TO_TLA2TOOLS_1_7_4. See verification/models/resource-lifecycle/README.md.",
+const options = new Map()
+for (let i = 0; i < args.length; i += 2) {
+  assert.ok(
+    ["--out", "--suite", "--model", "--statechart", "--jar"].includes(args[i]),
+    "Unknown argument: " + args[i],
   )
-const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
-const coverage = JSON.parse(
-  fs.readFileSync(
-    path.join(repository, "verification/models/resource-lifecycle/coverage.json"),
-    "utf8",
-  ),
-)
-for (const [file, expected] of Object.entries(coverage.files))
-  assert.equal(
-    hash(fs.readFileSync(path.join(repository, file))),
-    expected,
-    `Model/source correspondence needs review before verification: ${file}`,
-  )
-assert.equal(
-  hash(fs.readFileSync(jar)),
-  "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
-)
-const upstream = spawnSync("git", ["-C", tool, "rev-parse", "HEAD"], { encoding: "utf8" })
-assert.equal(upstream.status, 0)
-assert.equal(upstream.stdout.trim(), "c742dd61706fbacc1b95f1a20b7b988cf096ce6c")
-if (fs.existsSync(out)) assert.equal(fs.readdirSync(out).length, 0, "Use a new output directory")
+  assert.ok(args[i + 1] && !args[i + 1].startsWith("--"), "Missing argument value: " + args[i])
+  assert.ok(!options.has(args[i]), "Repeated argument: " + args[i])
+  options.set(args[i], args[i + 1])
+}
+if (options.has("--out")) assert.ok(path.isAbsolute(options.get("--out")), "--out must be absolute")
+const suite = options.get("--suite") ?? defaultSuite
+assert.ok(Object.hasOwn(suites, suite), "Unknown verification suite: " + suite)
+const selectedModel = options.get("--model")
+const root = path.join(repository, suites[suite])
+const out = options.has("--out")
+  ? path.resolve(options.get("--out"))
+  : fs.mkdtempSync(path.join(os.tmpdir(), "notion-formal-"))
+if (fs.existsSync(out))
+  assert.equal(fs.readdirSync(out).length, 0, "Use a new empty output directory")
 else fs.mkdirSync(out, { recursive: true, mode: 0o700 })
-const tmp = path.join(out, "scratch"),
-  retained = path.join(out, "retained-tool-temporaries"),
-  models = path.join(out, "model-inputs")
-for (const p of [tmp, retained, models]) fs.mkdirSync(p, { mode: 0o700 })
-fs.cpSync(path.join(repository, "verification/models/resource-lifecycle"), models, {
-  recursive: true,
-})
-process.env.TMPDIR = tmp
-process.env.TLA2TOOLS = path.resolve(jar)
-// Pstack normally deletes its own temporary directories. The user's project
-// policy requires retention instead. This adapter preserves those directories
-// and changes neither TLC options nor the chart/check algorithms.
-const rm = fs.rmSync
-fs.rmSync = (name, ...rest) => {
-  const absolute = path.resolve(String(name))
-  assert.equal(path.dirname(absolute), tmp, "Refuse cleanup outside this owned run")
-  assert.ok(path.basename(absolute).startsWith("statechart-"))
-  fs.renameSync(absolute, path.join(retained, path.basename(absolute)))
-}
-const fullMatrix = [
-  ["ProjectionRace", "cfg", []],
-  ["ProjectionRace", "broken.cfg", ["HumanEditPreserved"]],
-  ["UpdateCommit", "cfg", []],
-  [
-    "UpdateCommit",
-    "broken.cfg",
-    ["AtMostOneDispatch", "SelectedVersionComplete", "SessionPinStable", "NoInventedOutcome"],
-  ],
-  ["UpdateCommit", "retry.cfg", ["AtMostOneDispatch"]],
-  ["UpdateCommit", "early.cfg", ["SelectedVersionComplete"]],
-  ["UpdateCommit", "moving.cfg", ["SessionPinStable"]],
-  ["UpdateCommit", "inference.cfg", ["NoInventedOutcome"]],
-  ["AuditRun", "cfg", []],
-  ["AuditRun", "broken.cfg", ["CompleteMeansCovered"]],
-  ["AuditRun", "mutating.cfg", ["AuditReadOnly"]],
-  ["AuditRun", "reset.cfg", ["CheckpointMonotone", "EventuallyReport"]],
-  ["AuditRun", "limited.cfg", []],
-  ["AuditRun", "liveness.cfg", []],
-  ["ImportCreate", "cfg", []],
-  ["ImportCreate", "retry.cfg", ["AtMostOneDispatch"]],
-  ["ImportCreate", "early.cfg", ["EnableRequiresComplete"]],
-  ["ImportCreate", "inference.cfg", ["ConfirmationNeedsOriginalAck"]],
-  ["ImportCreate", "stale.cfg", ["FrozenInputRequired"]],
-  ["CreateRecovery", "cfg", []],
-  ["CreateRecovery", "original.cfg", ["OriginalEvidenceRequired"]],
-  ["CreateRecovery", "replay.cfg", ["AtMostOneRecoveryDispatch"]],
-  ["CreateRecovery", "scope.cfg", ["ProjectionAuthorityBeforeWrite", "ExistingBodyWriteForbidden"]],
-  ["AcknowledgedContinuation", "cfg", []],
-  ["AcknowledgedContinuation", "original.cfg", ["CompleteOriginalAuthority"]],
-  ["AcknowledgedContinuation", "fresh.cfg", ["FreshBodyBeforeWrite"]],
-  ["AcknowledgedContinuation", "cold.cfg", ["ColdVerificationNeedsSharedProof"]],
-  ["AcknowledgedContinuation", "replay.cfg", ["AtMostOneContinuationDispatch"]],
-  ["AcknowledgedContinuation", "native.cfg", []],
-  ["AcknowledgedContinuation", "native.original.cfg", ["CompleteOriginalAuthority"]],
-  ["AcknowledgedContinuation", "native.fresh.cfg", ["FreshBodyBeforeWrite"]],
-  ["AcknowledgedContinuation", "native.cold.cfg", ["ColdVerificationNeedsSharedProof"]],
-  ["AcknowledgedContinuation", "native.replay.cfg", ["AtMostOneContinuationDispatch"]],
-]
-const selectedModel = option("--model")
-assert.ok(
-  selectedModel === undefined || fullMatrix.some(([name]) => name === selectedModel),
-  "The selected model must name an existing verification group",
-)
-const matrix =
-  selectedModel === undefined ? fullMatrix : fullMatrix.filter(([name]) => name === selectedModel)
+const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
+const head = spawnSync("git", ["-C", repository, "rev-parse", "HEAD"], { encoding: "utf8" })
+assert.equal(head.status, 0)
 const summary = {
-  source_commit: coverage.synchronized_commit,
-  source_hashes_verified: Object.keys(coverage.files),
-  source_hashes: coverage.files,
-  review_basis: coverage.review_basis,
-  model_import_commit: coverage.model_import_commit,
-  model_kinds: Object.fromEntries(
-    Object.entries(coverage.models).map(([name, model]) => [name, model.kind]),
-  ),
-  pstack_commit: upstream.stdout.trim(),
-  tlc: "1.7.4",
+  version: 2,
+  suite,
   selected_model: selectedModel ?? null,
+  checkout_commit: head.stdout.trim(),
+  runner_sha256: hash(fs.readFileSync(import.meta.filename)),
+  result_contract_sha256: hash(
+    fs.readFileSync(new URL("./formal-result-contract.mjs", import.meta.url)),
+  ),
   runs: [],
   complete: false,
 }
 const writeSummary = () =>
   fs.writeFileSync(path.join(out, "summary.json"), JSON.stringify(summary, null, 2) + "\n")
+writeSummary()
+const originalRm = fs.rmSync
 try {
+  const coverageFile = path.join(root, "coverage.json")
+  const coverage = JSON.parse(fs.readFileSync(coverageFile, "utf8"))
+  const lock = JSON.parse(fs.readFileSync(path.join(repository, lockFile), "utf8"))
+  const tool = options.get("--statechart") ?? process.env.PSTACK_STATECHART_ROOT
+  const jar = options.get("--jar") ?? process.env.TLA2TOOLS
+  assert.ok(
+    tool && path.isAbsolute(tool) && jar && path.isAbsolute(jar),
+    "Configure absolute PSTACK_STATECHART_ROOT and TLA2TOOLS; see the existing model README",
+  )
+  summary.coverage_sha256 = hash(fs.readFileSync(coverageFile))
+  summary.source_commit = coverage.synchronized_commit ?? coverage.source_base
+  summary.source_hashes = coverage.files
+  summary.maintenance = coverage.maintenance
+  summary.pstack_commit = lock.commit
+  summary.tlc = "1.7.4"
+  summary.tlc_sha256 = hash(fs.readFileSync(jar))
+  summary.tool_lock_sha256 = hash(fs.readFileSync(path.join(repository, lockFile)))
+  summary.proofScope = coverage.kind ?? coverage.correspondence
+  for (const [file, expected] of Object.entries(coverage.files)) {
+    assert.equal(
+      hash(fs.readFileSync(path.join(repository, file))),
+      expected,
+      "Model/source correspondence needs review before verification: " + file,
+    )
+  }
+  summary.source_hashes_verified = Object.keys(coverage.files)
+  assert.equal(summary.tlc_sha256, lock.tlc_sha256, "Use the frozen TLC jar")
+  for (const member of lock.files) {
+    assert.equal(
+      hash(fs.readFileSync(path.join(tool, member.path))),
+      member.sha256,
+      "Pinned statechart file changed: " + member.path,
+    )
+  }
+  summary.tool_files_verified = lock.files.length
+  assert.ok(
+    Array.isArray(coverage.cases) && coverage.cases.length > 0,
+    "Missing reviewed case inventory",
+  )
+  const identities = new Set()
+  for (const c of coverage.cases) {
+    assertFormalCase(c)
+    const identity = c.model + "." + c.config
+    assert.ok(!identities.has(identity), "Duplicate configured case: " + identity)
+    identities.add(identity)
+  }
+  assert.ok(
+    selectedModel === undefined || coverage.cases.some((c) => c.model === selectedModel),
+    "Unknown model in suite",
+  )
+  const cases = coverage.cases.filter(
+    (c) => selectedModel === undefined || c.model === selectedModel,
+  )
+  summary.expected_cases = cases
+  const scratch = path.join(out, "scratch")
+  const retained = path.join(out, "retained-tool-temporaries")
+  const inputs = path.join(out, "model-inputs")
+  for (const p of [scratch, retained]) fs.mkdirSync(p, { mode: 0o700 })
+  fs.cpSync(root, inputs, { recursive: true })
+  process.env.TMPDIR = scratch
+  process.env.TLA2TOOLS = path.resolve(jar)
+  // Preserve all tool scratch, including failed runs, under this run's evidence.
+  fs.rmSync = (name) => {
+    const absolute = path.resolve(String(name))
+    assert.equal(path.dirname(absolute), scratch, "Refuse cleanup outside this owned run")
+    assert.ok(path.basename(absolute).startsWith("statechart-"))
+    fs.renameSync(absolute, path.join(retained, path.basename(absolute)))
+  }
   const { check } = await import(pathToFileURL(path.join(tool, "scripts/run.ts")))
   const { compile } = await import(pathToFileURL(path.join(tool, "scripts/pipeline.ts")))
   const { checkView } = await import(pathToFileURL(path.join(tool, "scripts/frontends/view.ts")))
-  for (const [name, suffix, expected] of matrix) {
-    const destination = path.join(out, `${name}-${suffix.replaceAll(".", "-")}`)
+  writeSummary()
+  for (const c of cases) {
+    const destination = path.join(out, c.model + "-" + c.config.replaceAll(".", "-"))
     fs.mkdirSync(destination)
-    const result = await check(
-      path.join(models, name + ".tla"),
-      path.join(models, name + "." + suffix),
-    )
-    const view = checkView(
-      await import(pathToFileURL(path.join(models, name + ".view.mjs"))),
-      inspect,
-    )
+    const spec = path.join(inputs, c.model + ".tla")
+    const config = path.join(inputs, c.model + "." + c.config + configExtension)
+    const viewFile = path.join(inputs, c.model + ".view.mjs")
+    const inputHashes = [spec, config, viewFile].map((file) => ({
+      path: path.relative(out, file),
+      sha256: hash(fs.readFileSync(file)),
+    }))
+    const result = await check(spec, config)
+    const view = checkView(await import(pathToFileURL(viewFile)), inspect)
     const rendered = compile(result, view)
     for (const [file, parts] of rendered.files) {
       const fd = fs.openSync(path.join(destination, file), "wx")
@@ -153,43 +167,38 @@ try {
         fs.closeSync(fd)
       }
     }
-    const rules = [...result.rules, ...result.properties].map(({ rule, outcome }) => ({
-      name: rule.name,
-      kind: rule.kind,
-      outcome,
-    }))
-    const broken = rules
-      .filter((x) => x.outcome === "broken")
-      .map((x) => x.name)
-      .sort()
+    const observation = inspectFormalResult(c, result)
     const row = {
-      model: name,
-      config: suffix,
+      model: c.model,
+      config: c.config,
+      variant: c.config,
       states: result.states,
       exit: result.exit,
-      rules,
-      expected_broken: [...expected].sort(),
-      matches: JSON.stringify(broken) === JSON.stringify([...expected].sort()),
+      ...observation,
+      expected_broken: c.expected_broken,
+      inputs: inputHashes,
       report: path.relative(out, path.join(destination, "report.md")),
     }
     summary.runs.push(row)
     writeSummary()
-    console.log(JSON.stringify(row))
-    assert.notEqual(result.exit, 2, `Tool/model error: ${name}/${suffix}`)
-    assert.ok(
-      result.states.complete && !result.states.cut,
-      `Incomplete state exploration: ${name}/${suffix}`,
+    console.log(
+      JSON.stringify({
+        model: c.model,
+        config: c.config,
+        states: result.states.distinct,
+        broken: observation.broken,
+        inventory_matches: observation.inventory_matches,
+        matches: observation.matches,
+      }),
     )
-    assert.ok(row.matches, `Unexpected verification result: ${name}/${suffix}`)
-    assert.ok(
-      rules.every((x) => x.outcome === "holds" || x.outcome === "broken"),
-      "A rule remained unchecked",
-    )
+    assertFormalResult(c, result, observation)
   }
   summary.complete = true
-  writeSummary()
+} catch (error) {
+  summary.error = { name: error.name, message: error.message }
+  throw error
 } finally {
-  fs.rmSync = rm
+  fs.rmSync = originalRm
   writeSummary()
 }
-console.log(`Formal model and shortest-path charts saved: ${out}`)
+console.log("Formal results and statecharts retained: " + out)

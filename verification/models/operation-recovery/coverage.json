@@ -1,0 +1,570 @@
+{
+  "version": 1,
+  "synchronized_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "files": {
+    "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
+    "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
+    "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
+    "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
+    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
+    "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
+    "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
+    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
+    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
+    "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
+    "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
+    "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
+    "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
+    "packages/core/test/shared-file-management.test.ts": "9ff24ac090ca96de59a16b3bf68fdefaaaebb1a1e646084f618c62535e98258f",
+    "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
+    "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
+    "packages/core/test/shared-snapshot-fixture.ts": "8dd55082681ef323f1fdc7b54626f7af19a3c48d900aa7e7bfc7c37b3e840826"
+  },
+  "models": {
+    "AcknowledgedRecordPrefix": {
+      "kind": "implemented_original_ack_prefix_abstraction",
+      "symbols": [
+        "acknowledgedNativeRecoveryPrefix",
+        "observeNativeMainRecovery",
+        "sharedCreateDispatch",
+        "guardedSourceMutation",
+        "applySharedCreateNativeRecovery"
+      ],
+      "scope": "Two finite immutable Record positions retain one original ACK prefix and one never-dispatched suffix. The malformed retained set {2} witnesses a prefix hole. Distinguishes original frozen request and payload, durable ACK, exact GET, query/census visibility, intent persistence, dispatch, provider application, ACK persistence, verification, stale premise and permission stops. Current matching facts do not fabricate missing original ACKs.",
+      "excluded": [
+        "Cross-machine exactly-once",
+        "All eight native recovery Records or arbitrary prefix lengths",
+        "Credential rotation implementation and real Notion permission propagation",
+        "Atomic GET-plus-write or provider CAS",
+        "Provider eventual visibility and unconditional liveness"
+      ]
+    },
+    "IndependentAcceptance": {
+      "kind": "implemented_independent_acceptance_abstraction",
+      "symbols": [
+        "reviewSharedFileAddAcceptance",
+        "validateReview",
+        "applySharedFileAddAcceptance",
+        "completedSharedFileAddAcceptance",
+        "reconcileSharedFileAddAcceptance",
+        "sharedCreateDispatch"
+      ],
+      "scope": "One failed original add, one separate acceptance identity, frozen File/owner/frontier, three ordered immutable Records (review/adopted/completion), one attempt per Record, and a cold read of five full shared proof classes. Unknown immutable fact may be exactly observed without inventing an ACK, allowing only the next distinct Record.",
+      "excluded": [
+        "Whole File lifecycle",
+        "Arbitrary native byte representation and codec limits",
+        "Distributed acceptance writers",
+        "Automatic acceptance or repair of unknown original creates",
+        "Cold history proof does not assert current body remains unchanged"
+      ]
+    },
+    "RestoreFeedback": {
+      "kind": "implemented_business_restore_feedback_abstraction",
+      "symbols": [
+        "submitSharedFileRequest",
+        "assertRequestRestorePlan",
+        "writeFeedback",
+        "processSharedFileRequest",
+        "restoreSelectedSharedFile",
+        "reconcileSelectedSharedFileRestore"
+      ],
+      "scope": "One frozen submitted request, one exact original restore identity, verified processing binding, one body dispatch and one final business feedback dispatch. Body outcome, current equality, feedback application, durable metadata ACK and current eligibility remain separate. Reconcile after body completion only advances undispatched feedback; pending and unknown cannot be replaced by a new submit.",
+      "excluded": [
+        "HTTP RequestEngine retries and Broker process state",
+        "Whole business workflow or arbitrary notification retries",
+        "Original processing metadata PATCH transport internals (modeled at retained ACK and exact readback boundary)",
+        "Provider CAS or exclusion of edits between the final observation and dispatch",
+        "Unconditional progress while results remain unknown"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "missing-ack.cfg",
+      "expected_broken": ["PrefixNeedsOriginalAck"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "mismatched-binding.cfg",
+      "expected_broken": ["ExactRecordBinding"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "noncontiguous-prefix.cfg",
+      "expected_broken": ["PrefixMustBeContiguous"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "repeat-unknown.cfg",
+      "expected_broken": ["UnknownNeverRedispatched"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "query-authority.cfg",
+      "expected_broken": ["AckLookupIndependentOfQuery"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "stale-premise.cfg",
+      "expected_broken": ["DispatchNeedsFreshPremise"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "permission.cfg",
+      "expected_broken": ["DispatchNeedsPermission"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "overwrite-original.cfg",
+      "expected_broken": ["OriginalFactsPreserved"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedRecordPrefix",
+      "config": "skip-verification.cfg",
+      "expected_broken": ["CompletionNeedsVerification"],
+      "expected_rules": [
+        "TypeOK",
+        "PrefixNeedsOriginalAck",
+        "PrefixMustBeContiguous",
+        "ExactRecordBinding",
+        "UnknownNeverRedispatched",
+        "AckLookupIndependentOfQuery",
+        "DispatchNeedsFreshPremise",
+        "DispatchNeedsPermission",
+        "OriginalFactsPreserved",
+        "CompletionNeedsVerification",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "accept-unknown-original.cfg",
+      "expected_broken": ["KnownFailureRequired"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "stale-context.cfg",
+      "expected_broken": ["FrozenIdentityRequired"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "reuse-original-id.cfg",
+      "expected_broken": ["IndependentIdentity"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "equal-current-is-old-success.cfg",
+      "expected_broken": ["OriginalFactsPreserved"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "repeat-unknown.cfg",
+      "expected_broken": ["UnknownNeverRedispatched"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "incomplete-cold-proof.cfg",
+      "expected_broken": ["ColdRecoveryNeedsCompleteProof"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "IndependentAcceptance",
+      "config": "skip-adopted-event.cfg",
+      "expected_broken": ["CompletionNeedsAdoption"],
+      "expected_rules": [
+        "TypeOK",
+        "KnownFailureRequired",
+        "FrozenIdentityRequired",
+        "IndependentIdentity",
+        "OriginalFactsPreserved",
+        "UnknownNeverRedispatched",
+        "CompletionNeedsAdoption",
+        "ColdRecoveryNeedsCompleteProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "unverified-binding.cfg",
+      "expected_broken": ["BodyNeedsBoundOriginal"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "stale-body.cfg",
+      "expected_broken": ["BodyNeedsCurrentPremise"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "repeat-body-after-feedback-loss.cfg",
+      "expected_broken": ["FeedbackNeverRepeatsBody"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "equal-feedback-is-ack.cfg",
+      "expected_broken": ["FeedbackRequiresRealAck"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "replace-pending-original.cfg",
+      "expected_broken": ["OriginalRequestPreserved"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "invalid-original-is-success.cfg",
+      "expected_broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "equal-current-is-original-success.cfg",
+      "expected_broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "forget-historical-ack.cfg",
+      "expected_broken": ["HistoricalAckPreserved"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RestoreFeedback",
+      "config": "repeat-unknown-feedback.cfg",
+      "expected_broken": ["UnknownFeedbackNeverRedispatched"],
+      "expected_rules": [
+        "TypeOK",
+        "BodyNeedsBoundOriginal",
+        "BodyNeedsCurrentPremise",
+        "FeedbackNeverRepeatsBody",
+        "FeedbackRequiresRealAck",
+        "UnknownFeedbackNeverRedispatched",
+        "OriginalRequestPreserved",
+        "SuccessNeedsAppliedOriginal",
+        "HistoricalAckPreserved",
+        "NoDeadlock"
+      ]
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-notion-operation-recovery/SKILL.md",
+    "routing": "Relevant protected-source, model, config, view, coverage, runner and skill changes run this suite in formal CI. Use --model for a reviewed local slice.",
+    "view_only": "Rerun the affected existing positive/negative configs, retain exact bug paths and render with /statechart; no expanded proof claim.",
+    "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
+    "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
+    "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
+  }
+}
