@@ -1,0 +1,114 @@
+---
+title: "原恢复操作与业务反馈分别核实"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 违例
+    lg1: 已核实
+    lg2: 停止或等待
+    lg3: 执行中
+    lg4: Breaks FeedbackNeverRepeatsBody
+    lg5: Path to the FeedbackNeverRepeatsBody bug
+  }
+  class lg0 pink
+  class lg1 teal
+  class lg2 yellow
+  class lg3 blue
+  class lg4 breaks
+  class lg5 bugPath
+  s0: 核对冻结提交和原恢复身份
+  s1: 取消 superseded 或失败前提 停止
+  s2: 原恢复计划已保留
+  s3: 原身份处理回执 ACK 已留存
+  s4: 原身份绑定未核实 停止
+  s5: 原身份或当前前提变化 停止
+  s6: 原身份已核实 复核当前前提
+  s7: 正文派发已授权
+  s8: 原正文动作已派发一次
+  s9: 服务端已应用正文
+  s10: 原正文结果未知 停止
+  s11: 原恢复 applied 结果已保留
+  s12: 仅业务反馈待派发
+  s13: 正文已完成但反馈未派发
+  s14: 反馈冻结意图已保留
+  s15: 反馈已派发一次
+  s16: 反馈 ACK 未知 停止重派发
+  s17: 违反反馈失败不得重做正文
+  s18: 服务端已应用反馈
+  s19: 历史反馈 ACK 已留存
+  s20: 历史反馈 ACK 留存 读回中断
+  s21: 原恢复和业务反馈分别核实
+  s22: 保留历史反馈 ACK 当前前提不再授权正文
+  s23: 历史反馈 ACK 仍有效 当前前提已变化
+  [*] --> s0
+  s0 --> s1: 拒绝无效原前提
+  s0 --> s2: 保留原计划和冻结提交
+  s2 --> s3: 留存原身份绑定 ACK
+  s2 --> s4: 绑定读回中断
+  s3 --> s4: 绑定读回中断
+  s3 --> s5: 拒绝原身份冲突
+  s3 --> s6: 读回核实精确原身份
+  s6 --> s5: 拒绝过期正文前提
+  s6 --> s7: 复核当前正文 frontier 和 Source
+  s7 --> s8: 派发原正文动作
+  s8 --> s9: 服务端应用正文
+  s8 --> s10: 原响应丢失 不推断成功
+  s9 --> s11: 留存原 applied 结果
+  s9 --> s10: 原响应丢失 不推断成功
+  s11 --> s12: 准备原操作的业务反馈
+  s11 --> s13: 预算停止在反馈派发前
+  s12 --> s14: 留存反馈意图
+  s13 --> s12: 只核对原恢复并补反馈
+  s13 --> s6: 错误地因反馈失败重做正文
+  s14 --> s15: 派发一次反馈
+  s14 --> s16: 响应或读回中断
+  s13 --> s5: 当前变化则停止补反馈
+  s7 --> s17: 派发原正文动作
+  s15 --> s18: 服务端应用反馈
+  s15 --> s16: 响应或读回中断
+  s16 --> s6: 错误地因反馈失败重做正文
+  s18 --> s19: 持久留存反馈 ACK
+  s18 --> s16: 响应或读回中断
+  s19 --> s20: 响应或读回中断
+  s19 --> s21: 核实反馈和当前前提
+  s19 --> s22: 保留历史 ACK 并停止新正文动作
+  s20 --> s19: 依历史 ACK 只读核实
+  s20 --> s6: 错误地因反馈失败重做正文
+  s21 --> s23: 正文或 Source 后续变化
+  s6 --> s22: 拒绝过期正文前提
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 blue
+  class s0 bugPath
+  class s1 yellow
+  class s2 blue
+  class s2 bugPath
+  class s3 blue
+  class s3 bugPath
+  class s4 yellow
+  class s5 yellow
+  class s6 blue
+  class s6 bugPath
+  class s7 blue
+  class s7 bugPath
+  class s8 blue
+  class s8 bugPath
+  class s9 blue
+  class s9 bugPath
+  class s10 yellow
+  class s11 blue
+  class s11 bugPath
+  class s12 blue
+  class s13 yellow
+  class s13 bugPath
+  class s14 blue
+  class s15 blue
+  class s16 yellow
+  class s17 pink
+  class s17 breaks
+  class s17 bugPath
+  class s18 blue
+  class s19 blue
+  class s20 yellow
+  class s21 teal
+  class s22 yellow
+  class s23 teal

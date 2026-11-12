@@ -16,6 +16,8 @@ Required negative cases: wrong exact identity or same-name foreign Source; broke
 
 For an original Records POST with a validated durable request/response ACK, observe its original response page ID by exact GET when the query index has not caught up. Reuse the complete active-page, Records ownership, Skill relation and canonical envelope/payload validator, then require equality with the frozen original request. The controlled regression in `shared-create-known-recovery.test.ts` keeps the page query-invisible and interrupts the first GET after ACK; the repeated original operation must observe it without another POST. Missing, unknown or tampered ACKs cannot enter this path. This changes observation of an acknowledged immutable Record, adds no recovery version and remains outside ImportCreate, CreateRecovery and AcknowledgedContinuation's finite abstractions. Keep its code evidence separate from live query behavior.
 
+[verify-notion-operation-recovery](../../verify-notion-operation-recovery/SKILL.md) 与 [源码对应](../../../../verification/models/operation-recovery/README.md) 维护新增的 AcknowledgedRecordPrefix：原 ACK 连续前缀、exact ACK GET 与 query/census 的分离、当前前提/权限停止、只推进已证明未派发的 suffix。有限模型使用两个 Record 位置；真实 native recovery 的八项 Record 与完整输入、旧失败保留仍由本页现有公共回归核对。missing ACK、非连续 dispatch、权限拒绝和 unknown 不产生新写入。ImportCreate、CreateRecovery、AcknowledgedContinuation 的既有范围保持不变。独立接受和原 restore 业务反馈分别由同一入口的另外两个有界模型维护，不把模型穷举冒充安装 CLI 或真实 Notion 结果。
+
 - `import-inputs`: folder, ZIP and single Markdown selection with metadata overrides.
 - `import-selection`: explicit database, configured default and sole-discovery creation scope.
 - `import-dry-run`: preflight decision with unchanged remote contents.

@@ -5,6 +5,11 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
+## 有限模型维护路由
+
+AH-1006 使用 [维护合同](../../../docs/formal-verification-maintenance.md)。资源生命周期继续走 `verify-notion-resource-lifecycle`；原 ACK/Records 前缀、独立接受与业务反馈走 [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md)；FV07 / AH-1013 请求引擎走 [request-engine-formal](features/request-engine-formal.md)。三组复用 `scripts/verify-resource-lifecycle.mjs --suite lifecycle|operation-recovery|request-engine`，`--model` 选择完整模型组。默认生命周期入口不变，模型通过与真实 CLI/安装/Notion 验收分别记账。
+
+
 AH-681 阶段一先读 [资源状态与页面保护](features/resource-phase1.md)，按 NR01-state、NR02-protection、NR03-readonly 分别核对公开状态、真实并发能力和严格只读调用链。先维护当前票的观察点与反例，再实施；工具验收和真实库存落地分别记录。
 
 AH-617 消费链重构先读 [Skill 消费链](features/skill-consumption.md)。SC-VERIFY-01～03 将本 CLI 的真实消费、成本证据与清理边界接到 Broker 的 SC01–SC26 统一地图；SC25 通过 list/read/use 和 SDK 目录入口取证，SC26 负责真实 Pi 与常规 check/CI 接线。新架构、模型投影和日用安装分别取证。未执行的规程仍为 draft，不沿用 AH-561 的历史 pass。

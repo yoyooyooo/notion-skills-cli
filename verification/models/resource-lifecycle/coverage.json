@@ -723,5 +723,482 @@
       ],
       "counterexample": "Before the fix, readOnly:true allowed one controlled descendant semantic write to reach transport; strict mode now returns NOTION_READ_ONLY with zero writes. The normal control still reaches transport once."
     }
-  ]
+  ],
+  "cases": [
+    {
+      "model": "ProjectionRace",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": ["TypeOK", "HumanEditPreserved", "NoDeadlock"]
+    },
+    {
+      "model": "ProjectionRace",
+      "config": "broken.cfg",
+      "expected_broken": ["HumanEditPreserved"],
+      "expected_rules": ["TypeOK", "HumanEditPreserved", "NoDeadlock"]
+    },
+    {
+      "model": "UpdateCommit",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "UpdateCommit",
+      "config": "broken.cfg",
+      "expected_broken": [
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "UpdateCommit",
+      "config": "retry.cfg",
+      "expected_broken": ["AtMostOneDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "UpdateCommit",
+      "config": "early.cfg",
+      "expected_broken": ["SelectedVersionComplete"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "UpdateCommit",
+      "config": "moving.cfg",
+      "expected_broken": ["SessionPinStable"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "UpdateCommit",
+      "config": "inference.cfg",
+      "expected_broken": ["NoInventedOutcome"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "SelectedVersionComplete",
+        "SessionPinStable",
+        "NoInventedOutcome",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditRun",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "CompleteMeansCovered",
+        "CheckpointMonotone",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditRun",
+      "config": "broken.cfg",
+      "expected_broken": ["CompleteMeansCovered"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "CompleteMeansCovered",
+        "CheckpointMonotone",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditRun",
+      "config": "mutating.cfg",
+      "expected_broken": ["AuditReadOnly"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "CompleteMeansCovered",
+        "CheckpointMonotone",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditRun",
+      "config": "reset.cfg",
+      "expected_broken": ["CheckpointMonotone", "EventuallyReport"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "CompleteMeansCovered",
+        "CheckpointMonotone",
+        "EventuallyReport",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditRun",
+      "config": "limited.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "CompleteMeansCovered",
+        "CheckpointMonotone",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditRun",
+      "config": "liveness.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "CompleteMeansCovered",
+        "CheckpointMonotone",
+        "EventuallyReport",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "ImportCreate",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "EnableRequiresComplete",
+        "ConfirmationNeedsOriginalAck",
+        "FrozenInputRequired",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "ImportCreate",
+      "config": "retry.cfg",
+      "expected_broken": ["AtMostOneDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "EnableRequiresComplete",
+        "ConfirmationNeedsOriginalAck",
+        "FrozenInputRequired",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "ImportCreate",
+      "config": "early.cfg",
+      "expected_broken": ["EnableRequiresComplete"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "EnableRequiresComplete",
+        "ConfirmationNeedsOriginalAck",
+        "FrozenInputRequired",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "ImportCreate",
+      "config": "inference.cfg",
+      "expected_broken": ["ConfirmationNeedsOriginalAck"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "EnableRequiresComplete",
+        "ConfirmationNeedsOriginalAck",
+        "FrozenInputRequired",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "ImportCreate",
+      "config": "stale.cfg",
+      "expected_broken": ["FrozenInputRequired"],
+      "expected_rules": [
+        "TypeOK",
+        "AtMostOneDispatch",
+        "EnableRequiresComplete",
+        "ConfirmationNeedsOriginalAck",
+        "FrozenInputRequired",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "CreateRecovery",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalEvidenceRequired",
+        "OriginalHistoryPreserved",
+        "AtMostOneRecoveryDispatch",
+        "ProjectionAuthorityBeforeWrite",
+        "ExistingBodyWriteForbidden",
+        "RecoveryConfirmationNeedsAck",
+        "EnableRequiresAllInitialFiles",
+        "CompletionRequiresAllStages",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "CreateRecovery",
+      "config": "original.cfg",
+      "expected_broken": ["OriginalEvidenceRequired"],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalEvidenceRequired",
+        "OriginalHistoryPreserved",
+        "AtMostOneRecoveryDispatch",
+        "ProjectionAuthorityBeforeWrite",
+        "ExistingBodyWriteForbidden",
+        "RecoveryConfirmationNeedsAck",
+        "EnableRequiresAllInitialFiles",
+        "CompletionRequiresAllStages",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "CreateRecovery",
+      "config": "replay.cfg",
+      "expected_broken": ["AtMostOneRecoveryDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalEvidenceRequired",
+        "OriginalHistoryPreserved",
+        "AtMostOneRecoveryDispatch",
+        "ProjectionAuthorityBeforeWrite",
+        "ExistingBodyWriteForbidden",
+        "RecoveryConfirmationNeedsAck",
+        "EnableRequiresAllInitialFiles",
+        "CompletionRequiresAllStages",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "CreateRecovery",
+      "config": "scope.cfg",
+      "expected_broken": ["ProjectionAuthorityBeforeWrite", "ExistingBodyWriteForbidden"],
+      "expected_rules": [
+        "TypeOK",
+        "OriginalEvidenceRequired",
+        "OriginalHistoryPreserved",
+        "AtMostOneRecoveryDispatch",
+        "ProjectionAuthorityBeforeWrite",
+        "ExistingBodyWriteForbidden",
+        "RecoveryConfirmationNeedsAck",
+        "EnableRequiresAllInitialFiles",
+        "CompletionRequiresAllStages",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "original.cfg",
+      "expected_broken": ["CompleteOriginalAuthority"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "fresh.cfg",
+      "expected_broken": ["FreshBodyBeforeWrite"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "cold.cfg",
+      "expected_broken": ["ColdVerificationNeedsSharedProof"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "replay.cfg",
+      "expected_broken": ["AtMostOneContinuationDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "native.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "native.original.cfg",
+      "expected_broken": ["CompleteOriginalAuthority"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "native.fresh.cfg",
+      "expected_broken": ["FreshBodyBeforeWrite"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "native.cold.cfg",
+      "expected_broken": ["ColdVerificationNeedsSharedProof"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "native.replay.cfg",
+      "expected_broken": ["AtMostOneContinuationDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "CompleteOriginalAuthority",
+        "OriginalHistoryPreserved",
+        "FreshBodyBeforeWrite",
+        "AtMostOneContinuationDispatch",
+        "ConfirmationNeedsOriginalAck",
+        "EnableRequiresCompleteEvents",
+        "ColdVerificationNeedsSharedProof",
+        "NoDeadlock"
+      ]
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-notion-resource-lifecycle/SKILL.md",
+    "routing": "Relevant protected-source, model, config, view, coverage, runner and skill changes run this suite in formal CI. Use --model for a reviewed local slice.",
+    "view_only": "Rerun the affected existing positive/negative configs, retain exact bug paths and render with /statechart; no expanded proof claim.",
+    "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
+    "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
+    "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
+  },
+  "formal_maintenance_review": {
+    "issue": "AH-1007",
+    "product_semantics_changed": false,
+    "basis": "Existing frozen config inventory migrated without changing TLA, cfg or protected source."
+  }
 }

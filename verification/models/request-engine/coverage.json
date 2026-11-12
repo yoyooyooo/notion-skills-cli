@@ -1,0 +1,368 @@
+{
+  "version": 1,
+  "synchronized_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
+  "review_basis": "AH-1013 source inspection of the existing Notion service, Effect 4.0.5 Cache and shared scheduler; no runtime changes. New contract tests have their own exact hash.",
+  "files": {
+    "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
+    "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
+    "packages/core/src/notion-request-scheduler.ts": "4258d1aeded6bb81f7712ea2ba582ec46732e0094ed72d452287d22f229ba03c",
+    "packages/core/src/request-budget.ts": "06bfeb2265fddac57e34ee61c251324e15d1d9a37f615879f2ffa675d4597860",
+    "packages/core/src/notion-write-policy.ts": "9a1ef3007f7a43091c647e80dbe1676c36a3284e3feb0bc33fa6e763271ef5b9",
+    "packages/core/src/request-timeout.ts": "8788c67b243b6bd6197ab06048a4511af54c672f7c73bb13dcc7e5f290d05e41",
+    "packages/core/test/shared-read-coalescing.test.ts": "bfbd951a02bb5a433e043903e31b4f8e413766288a1222d8cfed9879833c98a4",
+    "packages/core/test/notion.test.ts": "516347d96ead545a0d36d7944305debef8fee77243e3c59eb2ddb5ff53f9109b",
+    "packages/core/test/request-budget.test.ts": "d9b381f60bea36c7ea3c5bd3a73c5f5ee71dbf80ea9d04759fc81351d9b66e57",
+    "packages/core/test/request-engine-contract.test.ts": "0149f068fe0612eab8adb28b718e7626f08b8f4ce3bf012b8009fca4e3d6f12d",
+    "packages/core/test/notion-request-scheduler.node.test.ts": "185e8f352da47e5b3fa44bb4ffcb06fffdc052fcb685321e9eb61b9ac570f286",
+    "packages/core/test/notion-scheduler-multiprocess.node.test.ts": "c8f0a75d2969d347e4578e768ae797a5947b12672ceae7bf3b8bf28de5ddf7cd",
+    "packages/core/package.json": "ac30318d9593be57d80d803f89f9c7a2cb933b5e690823d10849828223ce59b6",
+    "bun.lock": "359d60c207746e8fca1cf3fa7a7733c7454ac844ab2d375a895d0b271cb3020c",
+    "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c"
+  },
+  "models": {
+    "SharedProducer": {
+      "kind": "bounded_service_local_ownership",
+      "symbols": [
+        "makeSharedReadCoalescer",
+        "ReadKey",
+        "NotionTransport.request requestKey",
+        "Cache.EntryImpl.await",
+        "Cache.removeEntry"
+      ],
+      "bounds": "Two concurrent waiters, one shared or two separate producers, one replacement; equality abstracts complete credential/origin/content/service and queue/invocation budget identities.",
+      "scope": "One Notion service; no cross-process content sharing. Effect dependency guard scope is reference counting and entry-identity removal only."
+    },
+    "RequestAdmission": {
+      "kind": "bounded_admission_and_retry",
+      "symbols": [
+        "makeRequestScheduler.schedule",
+        "NotionTransport.request once/execute",
+        "makeRequestBudget",
+        "withinRequestBudget",
+        "isRetryableNotionWriteRejection"
+      ],
+      "bounds": "One invocation with opt-in budget, two admitted attempts, four clock ticks, short/long queue window, one-tick attempt timer; read and mutating request variants.",
+      "scope": "Shared SQL claims are abstract atomic decisions. No proof of SQLite driver/crash, arbitrary clocks, all rate-limit scopes, byte serialization, or cross-machine coordination."
+    }
+  },
+  "cases": [
+    {
+      "model": "SharedProducer",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cancel.cfg",
+      "expected_broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "release.cfg",
+      "expected_broken": ["LastWaiterReleasesProducer"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "scope.cfg",
+      "expected_broken": ["ScopeIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "budget.cfg",
+      "expected_broken": ["BudgetIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "queue.cfg",
+      "expected_broken": ["QueueBudgetIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "service.cfg",
+      "expected_broken": ["ServiceIsolated"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cache.cfg",
+      "expected_broken": ["SettledResultNotReused"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cleanup.cfg",
+      "expected_broken": ["ReplacementSurvivesOldCleanup"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "cooldown.cfg",
+      "expected_broken": ["CooldownBeforeAdmission"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "queue.cfg",
+      "expected_broken": ["CallerDeadlineRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "operation.cfg",
+      "expected_broken": ["CallerDeadlineRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "attempts.cfg",
+      "expected_broken": ["AttemptBudgetRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "unknown.cfg",
+      "expected_broken": ["UnknownMutationNeverRetried"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "permit.cfg",
+      "expected_broken": ["NoPermitDuringQueueOrBackoff"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "lease.cfg",
+      "expected_broken": ["CancelledQueueReleasesLease"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "RequestAdmission",
+      "config": "timeout.cfg",
+      "expected_broken": ["AttemptDeadlineRespected"],
+      "expected_rules": [
+        "TypeOK",
+        "CooldownBeforeAdmission",
+        "CallerDeadlineRespected",
+        "AttemptBudgetRespected",
+        "UnknownMutationNeverRetried",
+        "NoPermitDuringQueueOrBackoff",
+        "CancelledQueueReleasesLease",
+        "AttemptDeadlineRespected",
+        "NoDeadlock"
+      ]
+    }
+  ],
+  "dependencies": {
+    "effect": {
+      "version": "4.0.5",
+      "guard_file": "node_modules/effect/dist/Cache.js",
+      "source_hash_field": "files",
+      "scope": "Only the Cache guards called by makeSharedReadCoalescer; not whole-library verification."
+    }
+  },
+  "test_signature_review": {
+    "issue": "AH-1013",
+    "change": "Factory return inference requires the fifth withAdmission options argument; explicitly pass an empty options object in the cooled-queue test. Runtime defaults and tested contract are unchanged. Typecheck and the affected four real tests are rerun."
+  },
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-ntn-skills/features/request-engine-formal.md",
+    "routing": "Relevant protected-source, model, config, view, coverage, runner and skill changes run this suite in formal CI. Use --model for a reviewed local slice.",
+    "view_only": "Rerun the affected existing positive/negative configs, retain exact bug paths and render with /statechart; no expanded proof claim.",
+    "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
+    "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
+    "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
+  }
+}

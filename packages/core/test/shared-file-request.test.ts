@@ -522,6 +522,43 @@ describe("native file restore requests", () => {
     expect(f.mutations()).toHaveLength(0)
   })
 
+  test("a verified feedback ACK remains historical when the body changes before its readback", async () => {
+    const f = await fixture({ sameBody: false })
+    f.hooks.feedback = (status) => {
+      if (status === "verified_applied") f.bodies.set(f.targetPage, "A later human edit\n")
+    }
+    const result = await f.run(Effect.result(processSharedFileRequest(f.input)))
+    expect(result).toMatchObject({
+      _tag: "Success",
+      success: {
+        status: "needs_review",
+        code: "SHARED_FILE_REQUEST_CHANGED",
+        feedback: { status: "verified_applied" },
+        body_writes: 0,
+      },
+    })
+    expect(f.bodyWrites()).toHaveLength(1)
+    expect(f.bodies.get(f.targetPage)).toBe("A later human edit\n")
+    const original = await f.run(readSharedFileRequest(f.input))
+    expect(original.feedback?.status).toBe("verified_applied")
+    expect(typeof original.feedback?.original_operation_id).toBe("string")
+    const acks = () => [...f.json].filter(([key]) => key.includes("/source-ack-"))
+    const retainedAcks = structuredClone(acks())
+    expect(retainedAcks.length).toBeGreaterThan(0)
+    f.hooks.feedback = undefined
+    f.clearCalls()
+    expect((await f.run(processSharedFileRequest({ ...f.input, reconcile: true }))).status).toBe(
+      "needs_review",
+    )
+    expect(f.mutations()).toHaveLength(0)
+    expect(f.bodyWrites()).toHaveLength(0)
+    expect(f.bodies.get(f.targetPage)).toBe("A later human edit\n")
+    expect(acks()).toEqual(retainedAcks)
+    expect((await f.run(readSharedFileRequest(f.input))).feedback?.original_operation_id).toBe(
+      original.feedback?.original_operation_id,
+    )
+  })
+
   test("an explicit original operation repairs only a matching legacy processing receipt", async () => {
     const f = await fixture({ sameBody: false })
     expect((await f.run(processSharedFileRequest(f.input))).status).toBe("verified_applied")

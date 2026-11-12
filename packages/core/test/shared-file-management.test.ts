@@ -684,6 +684,62 @@ describe("shared file lifecycle operations", () => {
     },
   )
 
+  test.each(["review_record_sha256", "event_record_sha256"])(
+    "independent add acceptance cold readers reject a coherently rehashed wrong %s",
+    async (field) => {
+      const { f, plan, request } = await failedNativeAdd()
+      const review = await f.run(reviewSharedFileAddAcceptance(request))
+      await f.run(applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }))
+      const original = await f.run(
+        querySharedRecords(library, {
+          skillPageId: skillPage,
+          kind: "operation",
+          recordId: "outcome-" + plan.operation_id,
+        }),
+      )
+      const completion = (
+        await f.run(
+          querySharedRecords(library, {
+            skillPageId: skillPage,
+            kind: "operation",
+            recordId: "outcome-" + review.operation_id,
+          }),
+        )
+      )[0]!
+      // The Record itself has a valid envelope and hash. Only its exact binding
+      // to the complete independent review/adopted event is wrong.
+      f.base.records.delete(completion.page_id)
+      f.base.seedFact(
+        { ...property(completion.payload), [field]: "0".repeat(64) },
+        "operation",
+        completion.entity_id,
+        completion.record_id,
+        completion.operation_id,
+      )
+      f.base.json.clear()
+      f.base.objects.clear()
+      f.credential("cold-coherent-acceptance-" + field)
+      f.clear()
+      const result = await f.run(Effect.result(reconcileSharedFileAddAcceptance(request)))
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED" },
+      })
+      expect(
+        await f.run(
+          querySharedRecords(library, {
+            skillPageId: skillPage,
+            kind: "operation",
+            recordId: "outcome-" + plan.operation_id,
+          }),
+        ),
+      ).toEqual(original)
+      expect(f.base.writeCount()).toBe(0)
+      expect(f.fileCreates()).toHaveLength(0)
+      expect(f.pathPatches()).toHaveLength(0)
+    },
+  )
+
   test("independent add acceptance preserves the failed add and publishes only its own ownership", async () => {
     const f = fixture(),
       snapshot = await f.baseline()

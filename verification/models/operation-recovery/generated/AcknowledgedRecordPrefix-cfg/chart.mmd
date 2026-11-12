@@ -1,0 +1,76 @@
+---
+title: "原 ACK 连续前缀与未派发后缀"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 已核实
+    lg1: 停止或等待
+    lg2: 执行中
+  }
+  class lg0 teal
+  class lg1 yellow
+  class lg2 blue
+  s0: 核对冻结请求和原 ACK 连续前缀
+  s1: 按 ACK 响应页精确读取 Record
+  s2: 原请求或 Record 冲突 停止
+  s3: 缺失原 ACK 停止
+  s4: 原 Record 非连续前缀 停止
+  s5: 原操作结果未知 停止
+  s6: 原 ACK 前缀已核实
+  s7: 前缀已核实但写入前提已失效
+  s8: 精确 GET 已核实 等待完整索引清点
+  s9: 仅未派发后缀获准
+  s10: 权限拒绝 停止
+  s11: 当前正文或所有权变化 停止
+  s12: 冻结后缀意图已留存
+  s13: 后缀已派发一次
+  s14: 后缀无原 ACK 结果未知
+  s15: 服务端已应用后缀
+  s16: 后缀原 ACK 已留存
+  s17: 独立完成已核实 原事实保留
+  s18: 后缀原 ACK 已留存但读回中断
+  [*] --> s0
+  s0 --> s1: 核对完整原请求与 ACK 集
+  s0 --> s2: 拒绝不符的冻结身份
+  s0 --> s3: 没有原 ACK 不推断成功
+  s0 --> s4: 拒绝前缀空洞
+  s0 --> s5: 没有原 ACK 不推断成功
+  s1 --> s6: 核实 exact GET 的身份和完整载荷
+  s1 --> s2: 拒绝载荷冲突
+  s1 --> s7: 核实 exact GET 的身份和完整载荷
+  s6 --> s7: 当前前提变化 or 权限变化
+  s6 --> s8: query 尚不可见时等待清点
+  s6 --> s9: 派发前复核正文 所有权和权限
+  s7 --> s10: 拒绝无权限写入
+  s7 --> s11: 拒绝旧前提
+  s7 --> s8: query 尚不可见时等待清点
+  s8 --> s6: 完整清点追上精确事实
+  s9 --> s12: 留存冻结意图
+  s8 --> s7: 完整清点追上精确事实
+  s12 --> s13: 只派发从未派发的后缀
+  s12 --> s14: 响应或读回中断
+  s13 --> s15: 服务端应用
+  s13 --> s14: 响应或读回中断
+  s15 --> s16: 持久留存原 ACK
+  s16 --> s17: 精确核实独立完成
+  s16 --> s18: 响应或读回中断
+  s18 --> s16: 依原 ACK 只读续验
+  class s0 blue
+  class s1 blue
+  class s2 yellow
+  class s3 yellow
+  class s4 yellow
+  class s5 yellow
+  class s6 blue
+  class s7 blue
+  class s8 yellow
+  class s9 blue
+  class s10 yellow
+  class s11 yellow
+  class s12 blue
+  class s13 blue
+  class s14 yellow
+  class s15 blue
+  class s16 blue
+  class s17 teal
+  class s18 yellow

@@ -1,0 +1,74 @@
+---
+title: "独立接受保留原失败事实"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 已核实
+    lg1: 停止或等待
+    lg2: 执行中
+  }
+  class lg0 teal
+  class lg1 yellow
+  class lg2 blue
+  s0: 核对原失败和新的独立接受身份
+  s1: 冻结接受上下文已变化
+  s2: 派发前复核冻结接受上下文
+  s3: 接受身份与原操作冲突 停止
+  s4: 原结果未知 不接受
+  s5: 冻结 File 所有者或 frontier 变化 停止
+  s6: 本 Record 获准派发
+  s7: 本 Record 冻结意图已留存
+  s8: 本 Record 已派发一次
+  s9: 本 Record 无 ACK 结果未知
+  s10: 服务端已应用本 Record
+  s11: 本 Record 原 ACK 已留存
+  s12: 本 Record 已精确核实
+  s13: 本 Record 原 ACK 已留存但读回中断
+  s14: 独立接受完成 原失败仍未证实成功
+  s15: 共享原事实或独立接受证明缺失
+  s16: 五项完整共享证明可读
+  s17: 冷读证明不完整 停止
+  s18: 冷读核实完整独立接受
+  [*] --> s0
+  s0 --> s1: 冻结独立 review 和身份
+  s0 --> s2: 冻结独立 review 和身份
+  s0 --> s3: 拒绝复用原身份
+  s0 --> s4: 拒绝未知原操作
+  s1 --> s5: 拒绝过期 review
+  s2 --> s1: 当前 frontier 变化
+  s2 --> s6: 重新核对完整冻结上下文
+  s6 --> s7: 留存本 Record 意图
+  s7 --> s8: 只派发一次
+  s7 --> s9: 响应或读回中断
+  s8 --> s10: 服务端应用
+  s8 --> s9: 响应或读回中断
+  s10 --> s11: 持久留存原 ACK
+  s11 --> s12: 精确读取并核实本 Record
+  s11 --> s13: 响应或读回中断
+  s9 --> s12: 精确核实已存在的不可变事实
+  s12 --> s2: 按顺序转至 adopted 或 completion
+  s13 --> s12: 精确核实已存在的不可变事实
+  s12 --> s14: 保留原失败并完成独立接受
+  s14 --> s15: 空本地 Store 读取共享证明
+  s14 --> s16: 空本地 Store 读取共享证明
+  s15 --> s17: 拒绝任何缺失证明
+  s16 --> s18: 核实五项完整证明
+  class s0 blue
+  class s1 blue
+  class s2 blue
+  class s3 yellow
+  class s4 yellow
+  class s5 yellow
+  class s6 blue
+  class s7 blue
+  class s8 blue
+  class s9 yellow
+  class s10 blue
+  class s11 blue
+  class s12 blue
+  class s13 yellow
+  class s14 teal
+  class s15 blue
+  class s16 blue
+  class s17 yellow
+  class s18 teal

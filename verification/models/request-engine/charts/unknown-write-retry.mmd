@@ -1,0 +1,31 @@
+---
+title: "请求准入与未知写入边界"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: Breaks UnknownMutationNeverRetried
+    lg1: Path to the UnknownMutationNeverRetried bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  s0: 尚未准入
+  s1: 排队持有短租约且未占网络许可
+  s2: 已获共享准入及网络许可
+  s3: 原写入已派发
+  s4: 原写入结果未知不得重发
+  s5: 未知写入被错误重试
+  [*] --> s0
+  s0 --> s1: 申请短队列租约
+  s1 --> s1: 等待时间推进
+  s1 --> s2: 核对期限及共享冷却
+  s2 --> s3: 核对并消费请求预算
+  s3 --> s4: 写入响应不确定
+  s4 --> s5: 错误地重试未知写入
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s3 bugPath
+  class s4 bugPath
+  class s5 breaks
+  class s5 bugPath

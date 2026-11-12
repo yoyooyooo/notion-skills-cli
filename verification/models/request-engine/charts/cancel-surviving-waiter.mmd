@@ -1,0 +1,46 @@
+---
+title: "共享读取的所有权与取消"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: Breaks SurvivingWaiterKeepsProducer
+    lg1: Path to the SurvivingWaiterKeepsProducer bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  s0: 尚无读取
+  s1: 首个等待者启动 producer
+  s2: 兼容等待者共享 producer
+  s3: 身份或预算不同各自执行
+  s4: 独立请求取得独立结果
+  s5: 仅存活等待者取得结果
+  s6: 独立请求只取消自己的 producer
+  s7: 存活等待者的 producer 被取消
+  s8: 再次读取启动新 producer
+  s9: 所有等待者退出且 producer 已释放
+  s10: 取消完成原请求保留中断
+  s11: 原 key 已启动替代 producer
+  s12: 旧清理不影响替代 producer
+  [*] --> s0
+  s0 --> s1: 发起首个读取
+  s1 --> s3: 核对完整共享身份
+  s1 --> s2: 核对完整共享身份
+  s2 --> s5: producer 返回
+  s2 --> s7: 一个调用者取消
+  s3 --> s4: 独立 producer 返回
+  s3 --> s5: producer 返回
+  s3 --> s6: 一个调用者取消
+  s5 --> s8: 再次读取同一 key
+  s6 --> s5: producer 返回
+  s6 --> s9: 一个调用者取消
+  s7 --> s9: 一个调用者取消
+  s6 --> s4: 独立 producer 返回
+  s9 --> s10: 核实所有等待者退出
+  s10 --> s11: 以原 key 发起新读取
+  s11 --> s12: 已取消旧 producer 的清理迟到
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s7 breaks
+  class s7 bugPath
