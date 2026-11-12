@@ -89,9 +89,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "PrefixNeedsOriginalAck"
-      ],
+      "broken": ["PrefixNeedsOriginalAck"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -131,9 +129,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "ExactRecordBinding"
-      ],
+      "broken": ["ExactRecordBinding"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -173,9 +169,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "PrefixMustBeContiguous"
-      ],
+      "broken": ["PrefixMustBeContiguous"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -215,9 +209,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "UnknownNeverRedispatched"
-      ],
+      "broken": ["UnknownNeverRedispatched"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -257,9 +249,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "AckLookupIndependentOfQuery"
-      ],
+      "broken": ["AckLookupIndependentOfQuery"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -299,9 +289,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "DispatchNeedsFreshPremise"
-      ],
+      "broken": ["DispatchNeedsFreshPremise"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -341,9 +329,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "DispatchNeedsPermission"
-      ],
+      "broken": ["DispatchNeedsPermission"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -383,9 +369,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "OriginalFactsPreserved"
-      ],
+      "broken": ["OriginalFactsPreserved"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -425,9 +409,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "CompletionNeedsVerification"
-      ],
+      "broken": ["CompletionNeedsVerification"],
       "expected_rules": [
         "AckLookupIndependentOfQuery",
         "CompletionNeedsVerification",
@@ -505,9 +487,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "KnownFailureRequired"
-      ],
+      "broken": ["KnownFailureRequired"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -545,9 +525,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "FrozenIdentityRequired"
-      ],
+      "broken": ["FrozenIdentityRequired"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -585,9 +563,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "IndependentIdentity"
-      ],
+      "broken": ["IndependentIdentity"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -625,9 +601,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "OriginalFactsPreserved"
-      ],
+      "broken": ["OriginalFactsPreserved"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -665,9 +639,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "UnknownNeverRedispatched"
-      ],
+      "broken": ["UnknownNeverRedispatched"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -705,9 +677,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "ColdRecoveryNeedsCompleteProof"
-      ],
+      "broken": ["ColdRecoveryNeedsCompleteProof"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -745,9 +715,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "CompletionNeedsAdoption"
-      ],
+      "broken": ["CompletionNeedsAdoption"],
       "expected_rules": [
         "ColdRecoveryNeedsCompleteProof",
         "CompletionNeedsAdoption",
@@ -824,9 +792,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "BodyNeedsBoundOriginal"
-      ],
+      "broken": ["BodyNeedsBoundOriginal"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -865,9 +831,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "BodyNeedsCurrentPremise"
-      ],
+      "broken": ["BodyNeedsCurrentPremise"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -906,9 +870,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "FeedbackNeverRepeatsBody"
-      ],
+      "broken": ["FeedbackNeverRepeatsBody"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -947,9 +909,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "FeedbackRequiresRealAck"
-      ],
+      "broken": ["FeedbackRequiresRealAck"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -988,9 +948,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "OriginalRequestPreserved"
-      ],
+      "broken": ["OriginalRequestPreserved"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1029,9 +987,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "SuccessNeedsAppliedOriginal"
-      ],
+      "broken": ["SuccessNeedsAppliedOriginal"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1070,9 +1026,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "SuccessNeedsAppliedOriginal"
-      ],
+      "broken": ["SuccessNeedsAppliedOriginal"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1111,9 +1065,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "HistoricalAckPreserved"
-      ],
+      "broken": ["HistoricalAckPreserved"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1152,9 +1104,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "UnknownFeedbackNeverRedispatched"
-      ],
+      "broken": ["UnknownFeedbackNeverRedispatched"],
       "expected_rules": [
         "BodyNeedsBoundOriginal",
         "BodyNeedsCurrentPremise",
@@ -1224,9 +1174,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "PrefixNeedsOriginalAck"
-      ],
+      "broken": ["PrefixNeedsOriginalAck"],
       "chart_states": 20,
       "chart_arrows": 26,
       "inputs": [
@@ -1282,9 +1230,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "OriginalFactsPreserved"
-      ],
+      "broken": ["OriginalFactsPreserved"],
       "chart_states": 15,
       "chart_arrows": 19,
       "inputs": [
@@ -1340,9 +1286,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "FeedbackNeverRepeatsBody"
-      ],
+      "broken": ["FeedbackNeverRepeatsBody"],
       "chart_states": 24,
       "chart_arrows": 35,
       "inputs": [
