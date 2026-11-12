@@ -1,0 +1,1882 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-12",
+  "product_base": "ee4e712df6cd85fe268fbafe16d9d19a47794666",
+  "source_review_commit": "9e8a1eaacb0959b7d8d5a13c7eb9c86aa59b4725",
+  "source_bindings_verified": 87,
+  "model_config_files_unchanged": [
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.cfg",
+      "sha256": "a6f647aa13e29ca179c1de86ca17861d7616d5a3faebbc015aa9abfbe56b98a7",
+      "bytes": 361
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.cold.cfg",
+      "sha256": "9dea34b21295b1ff321c62fca18bf4ba0cf413b98da99ce9ebcf85cfe900d0a8",
+      "bytes": 360
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.fresh.cfg",
+      "sha256": "5e1ba55042c200c142c641e2e9da869c3354e3cc0dcb5b99545dcaf7d4d04e14",
+      "bytes": 360
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.native.cfg",
+      "sha256": "f0c03d61acd8008cb98100794783679973f3de97d3a4e5b14c4b16fd3c31bb4f",
+      "bytes": 360
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.native.cold.cfg",
+      "sha256": "836360bb212dcbc3dd62348b51b5773f8c202d7fd30a01126c6dcefa2fca6f73",
+      "bytes": 359
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.native.fresh.cfg",
+      "sha256": "868a799a143bb63d9812c7ffd0951ec0e430c8eb040d28f44332436a5f48821a",
+      "bytes": 359
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.native.original.cfg",
+      "sha256": "5a051e2f924ba24c5e6ea8ed5f67f5172137ceea5c33662dcfb90e0ac36f624c",
+      "bytes": 359
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.native.replay.cfg",
+      "sha256": "5e8da35bdd6579e3172e60266df70abc0d5d2a232528f5bf3d19c931b54e4b05",
+      "bytes": 359
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.original.cfg",
+      "sha256": "5a55272cb82a05e49613535509f24c29902e2edcc1b153e626e28fa8d3a5b4c4",
+      "bytes": 360
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.replay.cfg",
+      "sha256": "be1e2737e4248532a5f36f16a309845eeeff0845fac56672be20d2ef31028f7f",
+      "bytes": 360
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AcknowledgedContinuation.tla",
+      "sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571",
+      "bytes": 10262
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.broken.cfg",
+      "sha256": "4dbeee1f1c5ec8e61a20aa05c98be561bd6ed79e8d570ecda019ee332d1935af",
+      "bytes": 186
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.cfg",
+      "sha256": "567e065868471f8dad6f7f8760aea596cbfc5235d8ff6871b3d02c7262245b31",
+      "bytes": 187
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.limited.cfg",
+      "sha256": "3c1249f64b7d064f73eb0e17ca12e37dd19ed9568e8f47ddc75dbe097985eaac",
+      "bytes": 188
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.liveness.cfg",
+      "sha256": "f65efedfa5f511dd9f9eee782d31101696ca0309c2a7871e9647ff923c92092c",
+      "bytes": 217
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.mutating.cfg",
+      "sha256": "fb7e0cf98b9077b233448fd24f5a9b4b04fcec42f01f377a490d3c1ae9a03533",
+      "bytes": 186
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.reset.cfg",
+      "sha256": "2e6845b7b74b6790ae41cc0ea702a0bbc91ab4bd2600ae8ebc26273c3859652a",
+      "bytes": 216
+    },
+    {
+      "path": "verification/models/resource-lifecycle/AuditRun.tla",
+      "sha256": "5f6cdb6f4cc8eb2c478abd630e8c262bdf08304d6aa01653eae41cff3b19f593",
+      "bytes": 3940
+    },
+    {
+      "path": "verification/models/resource-lifecycle/CreateRecovery.cfg",
+      "sha256": "ef883476f7ccffd3f87614ec9f08e476f4766c5590bc96d280369a755f605251",
+      "bytes": 350
+    },
+    {
+      "path": "verification/models/resource-lifecycle/CreateRecovery.original.cfg",
+      "sha256": "53d5c65685074b48c00af0bd649fcd0a5d916baa8bf89882c32e405862eada66",
+      "bytes": 349
+    },
+    {
+      "path": "verification/models/resource-lifecycle/CreateRecovery.replay.cfg",
+      "sha256": "c1cb6e0036d4a3f982cd7468b398090fe3236f3ddab19ead75e84d79d59c71b3",
+      "bytes": 349
+    },
+    {
+      "path": "verification/models/resource-lifecycle/CreateRecovery.scope.cfg",
+      "sha256": "583f7b39bd1bc94e2e021c549772f724dcfed1be43d511bb7816666ac8577bd3",
+      "bytes": 349
+    },
+    {
+      "path": "verification/models/resource-lifecycle/CreateRecovery.tla",
+      "sha256": "cbe08f9e692aa03a2c1954b98ee320780cea83dc168504239dd27e0ed083a3cc",
+      "bytes": 10026
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ImportCreate.cfg",
+      "sha256": "e1650f388e11f5864d1b8db1894b8a83bd1503d8a954dea6347995d749309f0d",
+      "bytes": 227
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ImportCreate.early.cfg",
+      "sha256": "6ac89228773ec2a6f9e33b337e715ec2e85c01ab17b1de44f05723b172d97091",
+      "bytes": 226
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ImportCreate.inference.cfg",
+      "sha256": "27671cad35e0e1fedaf9655a9e5416dedd53373649b73df3ad4c2544ebbfd4b1",
+      "bytes": 226
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ImportCreate.retry.cfg",
+      "sha256": "44efed3c25fb573691a0e8d2fece5d77dc932b512cc1a9d55ec7fe73c3576f76",
+      "bytes": 226
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ImportCreate.stale.cfg",
+      "sha256": "93448435b2719d423ac620c6a6339eab5ecd53b6fca5e5d428b643435f231ea7",
+      "bytes": 226
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ImportCreate.tla",
+      "sha256": "0f717e215e10e53699cb1cabeac633d0a1df65f81e3781b0c7ce962723d0d589",
+      "bytes": 6807
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ProjectionRace.broken.cfg",
+      "sha256": "25a2b29d1e1c354c5789467928cf65a4d6ea1b1b6b4c49721e7974050ffb4e1e",
+      "bytes": 88
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ProjectionRace.cfg",
+      "sha256": "6f230133c3693300e797ed64e1f38d536118aa013a4aca45975766f7eb6c6720",
+      "bytes": 89
+    },
+    {
+      "path": "verification/models/resource-lifecycle/ProjectionRace.tla",
+      "sha256": "71c7394a6d73aac3d9c95d1c0d897f239fd671e864a2fdde812b0d538a2a0db1",
+      "bytes": 1835
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.broken.cfg",
+      "sha256": "db0ce0c08018e3fbaccb95e45ce79f97222b6b578a05a3d1c7a5a834f748d7fc",
+      "bytes": 205
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.cfg",
+      "sha256": "eadb3ff424d8310d14232c2f3ee5ac7e52f4d0098e296c74a1be5ccb1e53b0c5",
+      "bytes": 209
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.early.cfg",
+      "sha256": "74d7bd493631bbc9dbbf0856a333e2b7b8e93865eea86f6a70ced82d7110295a",
+      "bytes": 208
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.inference.cfg",
+      "sha256": "912e84323de9dab966cbc6b24acf6b0e0977d5ca607960e9001886807fb89426",
+      "bytes": 208
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.moving.cfg",
+      "sha256": "ac4af59cd97da96426bf05094de2db483843a77988af728ca92b94215780d2a5",
+      "bytes": 208
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.retry.cfg",
+      "sha256": "c690c0e9bb08997478c5af5a30ed653b7e2aeda40ca025f11f9b2a6d67b0b0f6",
+      "bytes": 208
+    },
+    {
+      "path": "verification/models/resource-lifecycle/UpdateCommit.tla",
+      "sha256": "b66dd7cecef578942f80781ac19e43ee20b8f28cf35efb72b738f986d51a9b00",
+      "bytes": 4114
+    }
+  ],
+  "runner_sha256": "82bfa85582bc6fa27c60cf3563fd6c3864945b8fdd645da4179de2d60996d1f1",
+  "tool_lock": {
+    "path": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/tool-lock.json",
+    "sha256": "a40a919761e91652dfd1c9f608fb071b06e3f9b62207ff2f47e95826e186161f"
+  },
+  "raw_manifest": {
+    "path": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/raw-manifest.json",
+    "sha256": "012a46de86a6c81741624bdb740f98a6a092b88a0ecd6782918e11c8eed4de9c",
+    "files": 1192,
+    "total_bytes": 27137828
+  },
+  "final_runs": [
+    {
+      "model": "ProjectionRace",
+      "path": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/ProjectionRace-run-v1",
+      "summary_sha256": "4242df6a9090e4fcee55ba7acc3eaac40d531f87caf312e5e594601425c855f1",
+      "complete": true,
+      "runs": [
+        {
+          "model": "ProjectionRace",
+          "config": "cfg",
+          "states": {
+            "distinct": 7,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 0,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "HumanEditPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": [],
+          "matches": true,
+          "report": "ProjectionRace-cfg/report.md"
+        },
+        {
+          "model": "ProjectionRace",
+          "config": "broken.cfg",
+          "states": {
+            "distinct": 11,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "HumanEditPreserved",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["HumanEditPreserved"],
+          "matches": true,
+          "report": "ProjectionRace-broken-cfg/report.md"
+        }
+      ]
+    },
+    {
+      "model": "UpdateCommit",
+      "path": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/UpdateCommit-run-v2",
+      "summary_sha256": "5e08038b9f9429ba5c92005c857020212a5fbc08e2c6b8855597ec25b9b013e3",
+      "complete": true,
+      "runs": [
+        {
+          "model": "UpdateCommit",
+          "config": "cfg",
+          "states": {
+            "distinct": 15,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 0,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SelectedVersionComplete",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SessionPinStable",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoInventedOutcome",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": [],
+          "matches": true,
+          "report": "UpdateCommit-cfg/report.md"
+        },
+        {
+          "model": "UpdateCommit",
+          "config": "broken.cfg",
+          "states": {
+            "distinct": 111,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneDispatch",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "SelectedVersionComplete",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "SessionPinStable",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoInventedOutcome",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": [
+            "AtMostOneDispatch",
+            "NoInventedOutcome",
+            "SelectedVersionComplete",
+            "SessionPinStable"
+          ],
+          "matches": true,
+          "report": "UpdateCommit-broken-cfg/report.md"
+        },
+        {
+          "model": "UpdateCommit",
+          "config": "retry.cfg",
+          "states": {
+            "distinct": 31,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneDispatch",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "SelectedVersionComplete",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SessionPinStable",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoInventedOutcome",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["AtMostOneDispatch"],
+          "matches": true,
+          "report": "UpdateCommit-retry-cfg/report.md"
+        },
+        {
+          "model": "UpdateCommit",
+          "config": "early.cfg",
+          "states": {
+            "distinct": 39,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SelectedVersionComplete",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "SessionPinStable",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoInventedOutcome",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["SelectedVersionComplete"],
+          "matches": true,
+          "report": "UpdateCommit-early-cfg/report.md"
+        },
+        {
+          "model": "UpdateCommit",
+          "config": "moving.cfg",
+          "states": {
+            "distinct": 15,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SelectedVersionComplete",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SessionPinStable",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoInventedOutcome",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["SessionPinStable"],
+          "matches": true,
+          "report": "UpdateCommit-moving-cfg/report.md"
+        },
+        {
+          "model": "UpdateCommit",
+          "config": "inference.cfg",
+          "states": {
+            "distinct": 19,
+            "initial": 1,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SelectedVersionComplete",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "SessionPinStable",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoInventedOutcome",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["NoInventedOutcome"],
+          "matches": true,
+          "report": "UpdateCommit-inference-cfg/report.md"
+        }
+      ]
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "path": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/AcknowledgedContinuation-run-v4",
+      "summary_sha256": "5f0064f60bc09738e1b79880a601f1de81a95b9d5b76c038ade922a3dc8357f8",
+      "complete": true,
+      "runs": [
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "cfg",
+          "states": {
+            "distinct": 88,
+            "initial": 16,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 0,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": [],
+          "matches": true,
+          "report": "AcknowledgedContinuation-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "original.cfg",
+          "states": {
+            "distinct": 717,
+            "initial": 16,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["CompleteOriginalAuthority"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-original-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "fresh.cfg",
+          "states": {
+            "distinct": 134,
+            "initial": 16,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["FreshBodyBeforeWrite"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-fresh-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "cold.cfg",
+          "states": {
+            "distinct": 95,
+            "initial": 16,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["ColdVerificationNeedsSharedProof"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-cold-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "replay.cfg",
+          "states": {
+            "distinct": 562,
+            "initial": 16,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["AtMostOneContinuationDispatch"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-replay-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "native.cfg",
+          "states": {
+            "distinct": 61,
+            "initial": 4,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 0,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": [],
+          "matches": true,
+          "report": "AcknowledgedContinuation-native-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "native.original.cfg",
+          "states": {
+            "distinct": 213,
+            "initial": 4,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["CompleteOriginalAuthority"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-native-original-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "native.fresh.cfg",
+          "states": {
+            "distinct": 103,
+            "initial": 4,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["FreshBodyBeforeWrite"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-native-fresh-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "native.cold.cfg",
+          "states": {
+            "distinct": 62,
+            "initial": 4,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["ColdVerificationNeedsSharedProof"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-native-cold-cfg/report.md"
+        },
+        {
+          "model": "AcknowledgedContinuation",
+          "config": "native.replay.cfg",
+          "states": {
+            "distinct": 698,
+            "initial": 4,
+            "complete": true,
+            "cut": false
+          },
+          "exit": 1,
+          "rules": [
+            {
+              "name": "TypeOK",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "CompleteOriginalAuthority",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "OriginalHistoryPreserved",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "FreshBodyBeforeWrite",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "AtMostOneContinuationDispatch",
+              "kind": "invariant",
+              "outcome": "broken"
+            },
+            {
+              "name": "ConfirmationNeedsOriginalAck",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "EnableRequiresCompleteEvents",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "ColdVerificationNeedsSharedProof",
+              "kind": "invariant",
+              "outcome": "holds"
+            },
+            {
+              "name": "NoDeadlock",
+              "kind": "deadlock",
+              "outcome": "holds"
+            }
+          ],
+          "expected_broken": ["AtMostOneContinuationDispatch"],
+          "matches": true,
+          "report": "AcknowledgedContinuation-native-replay-cfg/report.md"
+        }
+      ]
+    }
+  ],
+  "renderer": {
+    "package": "pele",
+    "version": "1.9.0",
+    "options": {
+      "limit": 1000000,
+      "outputLimit": 8000000,
+      "maxEdges": 10000
+    }
+  },
+  "generator": {
+    "path": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/assemble-statecharts.mjs",
+    "sha256": "de20d8f17d14ba95d480d9849b14020a4a156b3a7f83ee1b7de7d732cc24dcb8"
+  },
+  "claims": {
+    "fresh_tlc_configs": 18,
+    "positive": 4,
+    "negative": 14,
+    "selected_charts": 8,
+    "product_behavior_changed": false,
+    "models_or_configs_changed": false,
+    "new_formal_coverage": false,
+    "real_code_mutations_run": false,
+    "live_notion_run": false
+  },
+  "charts": [
+    {
+      "id": "projection-safe",
+      "title": "自动投影保护人工编辑",
+      "meaning": "缺少服务端保护时停止自动覆盖；提前读到相同正文不能授权后续无条件覆盖。",
+      "model": "ProjectionRace",
+      "config": "cfg",
+      "run": "ProjectionRace-run-v1",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/ProjectionRace-run-v1/ProjectionRace-cfg",
+      "states": {
+        "distinct": 7,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 6,
+      "chart_arrows": 6,
+      "arrows_with_start": 7,
+      "bug_paths_only": false,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "HumanEditPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": [],
+      "shortest_path_steps": null,
+      "dimensions": {
+        "width": 548,
+        "height": 511
+      },
+      "inputs": {
+        "model_sha256": "71c7394a6d73aac3d9c95d1c0d897f239fd671e864a2fdde812b0d538a2a0db1",
+        "config_sha256": "6f230133c3693300e797ed64e1f38d536118aa013a4aca45975766f7eb6c6720",
+        "view_sha256": "ec0ca7c6ea744aab0b0a963dd3ea75eccb791ff63af0c4bc317608874bf32ef0"
+      },
+      "files": {
+        "mmd": {
+          "path": "projection-safe.mmd",
+          "sha256": "4ad522fa252333dfdc0e194e4f1cc894f2413430f7b4906548911f011a98d95d",
+          "bytes": 501
+        },
+        "svg": {
+          "path": "projection-safe.svg",
+          "sha256": "d5bd4cf59ef9d22c675bcd2662fa46a7f370d3afff1732424140e08f7ffc2298",
+          "bytes": 6082
+        },
+        "report.md": {
+          "path": "projection-safe.report.md",
+          "sha256": "965b289e94f5c9a7038344af476cccf5f21c3fd4f07dccda01bd4a467257e716",
+          "bytes": 212
+        }
+      }
+    },
+    {
+      "id": "projection-unsafe",
+      "title": "移除保护后覆盖人工编辑",
+      "meaning": "这是被否决的无条件覆盖方案：先读原文，再发生人工编辑，随后覆盖。反例不表示当前生产代码已经发生内容丢失。",
+      "model": "ProjectionRace",
+      "config": "broken.cfg",
+      "run": "ProjectionRace-run-v1",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/ProjectionRace-run-v1/ProjectionRace-broken-cfg",
+      "states": {
+        "distinct": 11,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 10,
+      "chart_arrows": 10,
+      "arrows_with_start": 11,
+      "bug_paths_only": false,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "HumanEditPreserved",
+          "kind": "invariant",
+          "outcome": "broken"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": ["HumanEditPreserved"],
+      "shortest_path_steps": "4",
+      "dimensions": {
+        "width": 881,
+        "height": 722
+      },
+      "inputs": {
+        "model_sha256": "71c7394a6d73aac3d9c95d1c0d897f239fd671e864a2fdde812b0d538a2a0db1",
+        "config_sha256": "25a2b29d1e1c354c5789467928cf65a4d6ea1b1b6b4c49721e7974050ffb4e1e",
+        "view_sha256": "ec0ca7c6ea744aab0b0a963dd3ea75eccb791ff63af0c4bc317608874bf32ef0"
+      },
+      "files": {
+        "mmd": {
+          "path": "projection-unsafe.mmd",
+          "sha256": "704505e126b1a29dcd3b2c03ef5d4374b204a0cbdfdb0eef0b98f00c86a5a174",
+          "bytes": 1077
+        },
+        "svg": {
+          "path": "projection-unsafe.svg",
+          "sha256": "84c59a579849b67dd4b0a2094275e3e58229560ceece9236ed268baead583265",
+          "bytes": 10012
+        },
+        "report.md": {
+          "path": "projection-unsafe.report.md",
+          "sha256": "5e606dd585b68d370421dea404301ac70867b857b4c22189f8febc222f392833",
+          "bytes": 479
+        }
+      }
+    },
+    {
+      "id": "update-safe",
+      "title": "完整候选与固定版本消费",
+      "meaning": "先保留主文与引用，再冻结候选并派发。未知结果只核对原操作；旧会话继续使用原 pin。",
+      "model": "UpdateCommit",
+      "config": "cfg",
+      "run": "UpdateCommit-run-v2",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/UpdateCommit-run-v2/UpdateCommit-cfg",
+      "states": {
+        "distinct": 15,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 10,
+      "chart_arrows": 10,
+      "arrows_with_start": 11,
+      "bug_paths_only": false,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AtMostOneDispatch",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "SelectedVersionComplete",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "SessionPinStable",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoInventedOutcome",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": [],
+      "shortest_path_steps": null,
+      "dimensions": {
+        "width": 378,
+        "height": 1171
+      },
+      "inputs": {
+        "model_sha256": "b66dd7cecef578942f80781ac19e43ee20b8f28cf35efb72b738f986d51a9b00",
+        "config_sha256": "eadb3ff424d8310d14232c2f3ee5ac7e52f4d0098e296c74a1be5ccb1e53b0c5",
+        "view_sha256": "6d05d6506709adcd734e33079489d5dcdee20a4335ab901a296c99967b4bc64b"
+      },
+      "files": {
+        "mmd": {
+          "path": "update-safe.mmd",
+          "sha256": "c5f5a0cfe5c003cc78a1bda49ecd3f6255c08713cb1d1ba1d32c28bc320c0517",
+          "bytes": 693
+        },
+        "svg": {
+          "path": "update-safe.svg",
+          "sha256": "b76edfbc9d66d06328767adebb08f42bc493838c7df07611bbc2a23ca2dd7907",
+          "bytes": 8583
+        },
+        "report.md": {
+          "path": "update-safe.report.md",
+          "sha256": "83cf4948cb7389b7131f873756d5ac0ea70a5995f26aac336710cd5b5b121898",
+          "bytes": 276
+        }
+      }
+    },
+    {
+      "id": "update-retry",
+      "title": "未知结果被错误重发",
+      "meaning": "移除禁止重发的边界后，一次原操作的派发次数超过一。",
+      "model": "UpdateCommit",
+      "config": "retry.cfg",
+      "run": "UpdateCommit-run-v2",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/UpdateCommit-run-v2/UpdateCommit-retry-cfg",
+      "states": {
+        "distinct": 31,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 11,
+      "chart_arrows": 12,
+      "arrows_with_start": 13,
+      "bug_paths_only": false,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AtMostOneDispatch",
+          "kind": "invariant",
+          "outcome": "broken"
+        },
+        {
+          "name": "SelectedVersionComplete",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "SessionPinStable",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoInventedOutcome",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": ["AtMostOneDispatch"],
+      "shortest_path_steps": "7",
+      "dimensions": {
+        "width": 824,
+        "height": 1287
+      },
+      "inputs": {
+        "model_sha256": "b66dd7cecef578942f80781ac19e43ee20b8f28cf35efb72b738f986d51a9b00",
+        "config_sha256": "c690c0e9bb08997478c5af5a30ed653b7e2aeda40ca025f11f9b2a6d67b0b0f6",
+        "view_sha256": "6d05d6506709adcd734e33079489d5dcdee20a4335ab901a296c99967b4bc64b"
+      },
+      "files": {
+        "mmd": {
+          "path": "update-retry.mmd",
+          "sha256": "6aa9e0c46432544ebc78d4ef3a1448e33b8efb830f1672f17f4852dc9625fa6b",
+          "bytes": 1209
+        },
+        "svg": {
+          "path": "update-retry.svg",
+          "sha256": "911ad8dbd2211939504e9cfff41dbbd7a809c89789894a0c2ff8bf75d7faf5d9",
+          "bytes": 10812
+        },
+        "report.md": {
+          "path": "update-retry.report.md",
+          "sha256": "a2097ac58f260aa062a4ab342ba1076d75116a8b2fd02ecf3d08c694ba09f292",
+          "bytes": 675
+        }
+      }
+    },
+    {
+      "id": "continuation-retained",
+      "title": "已分配三页的原 ACK 续接",
+      "meaning": "初始已分配主文与两个引用页，仍须核对完整原请求和 ACK。四个有序阶段共用下图的单阶段循环。",
+      "model": "AcknowledgedContinuation",
+      "config": "cfg",
+      "run": "AcknowledgedContinuation-run-v4",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/AcknowledgedContinuation-run-v4/AcknowledgedContinuation-cfg",
+      "states": {
+        "distinct": 88,
+        "initial": 16,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 14,
+      "chart_arrows": 19,
+      "arrows_with_start": 20,
+      "bug_paths_only": false,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "CompleteOriginalAuthority",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalHistoryPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "FreshBodyBeforeWrite",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AtMostOneContinuationDispatch",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ConfirmationNeedsOriginalAck",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "EnableRequiresCompleteEvents",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ColdVerificationNeedsSharedProof",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": [],
+      "shortest_path_steps": null,
+      "dimensions": {
+        "width": 1440,
+        "height": 1228
+      },
+      "inputs": {
+        "model_sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571",
+        "config_sha256": "a6f647aa13e29ca179c1de86ca17861d7616d5a3faebbc015aa9abfbe56b98a7",
+        "view_sha256": "824d3f9486463a6b4b9018298593928d375ba37197c558a82866d15b9afd0e0d"
+      },
+      "files": {
+        "mmd": {
+          "path": "continuation-retained.mmd",
+          "sha256": "f2e5b37c7c01d031e02ad26bfbd99ceedde9f731a20070192fd2c116e8f417af",
+          "bytes": 1910
+        },
+        "svg": {
+          "path": "continuation-retained.svg",
+          "sha256": "4c0d4d46d13a2685b7bfef0da66c15f55176be6e42ed2a1ba6d37de1f88e47d5",
+          "bytes": 15867
+        },
+        "report.md": {
+          "path": "continuation-retained.report.md",
+          "sha256": "6ce8115f0cb50007169af30b4efc8498a8fd1ad6f80287c3d7ba9e1c84ea6128",
+          "bytes": 465
+        }
+      }
+    },
+    {
+      "id": "continuation-native",
+      "title": "原主文同页恢复后的续接",
+      "meaning": "初始原主文已经显式恢复到冻结候选；模型不证明恢复正文的过程。主文加一个从未派发的引用，按五个有序阶段续接。",
+      "model": "AcknowledgedContinuation",
+      "config": "native.cfg",
+      "run": "AcknowledgedContinuation-run-v4",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/AcknowledgedContinuation-run-v4/AcknowledgedContinuation-native-cfg",
+      "states": {
+        "distinct": 61,
+        "initial": 4,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 14,
+      "chart_arrows": 19,
+      "arrows_with_start": 20,
+      "bug_paths_only": false,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "CompleteOriginalAuthority",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalHistoryPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "FreshBodyBeforeWrite",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AtMostOneContinuationDispatch",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ConfirmationNeedsOriginalAck",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "EnableRequiresCompleteEvents",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ColdVerificationNeedsSharedProof",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": [],
+      "shortest_path_steps": null,
+      "dimensions": {
+        "width": 1440,
+        "height": 1228
+      },
+      "inputs": {
+        "model_sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571",
+        "config_sha256": "f0c03d61acd8008cb98100794783679973f3de97d3a4e5b14c4b16fd3c31bb4f",
+        "view_sha256": "824d3f9486463a6b4b9018298593928d375ba37197c558a82866d15b9afd0e0d"
+      },
+      "files": {
+        "mmd": {
+          "path": "continuation-native.mmd",
+          "sha256": "f2e5b37c7c01d031e02ad26bfbd99ceedde9f731a20070192fd2c116e8f417af",
+          "bytes": 1910
+        },
+        "svg": {
+          "path": "continuation-native.svg",
+          "sha256": "4c0d4d46d13a2685b7bfef0da66c15f55176be6e42ed2a1ba6d37de1f88e47d5",
+          "bytes": 15867
+        },
+        "report.md": {
+          "path": "continuation-native.report.md",
+          "sha256": "8b9ac3acfd9da61ea19a4871f13260d7c44df68032749aa1abaac9c80839c9ca",
+          "bytes": 464
+        }
+      }
+    },
+    {
+      "id": "continuation-missing-original",
+      "title": "缺少原请求或 ACK 仍接受续接",
+      "meaning": "移除完整原事实门槛后，审阅一步就可能授予没有依据的续接 authority。这里展示 retained 分支；native 同类负例也在本次十配置检查中通过预期判据。",
+      "model": "AcknowledgedContinuation",
+      "config": "original.cfg",
+      "run": "AcknowledgedContinuation-run-v4",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/AcknowledgedContinuation-run-v4/AcknowledgedContinuation-original-cfg",
+      "states": {
+        "distinct": 717,
+        "initial": 16,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 2,
+      "chart_arrows": 1,
+      "arrows_with_start": 2,
+      "bug_paths_only": true,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "CompleteOriginalAuthority",
+          "kind": "invariant",
+          "outcome": "broken"
+        },
+        {
+          "name": "OriginalHistoryPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "FreshBodyBeforeWrite",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AtMostOneContinuationDispatch",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ConfirmationNeedsOriginalAck",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "EnableRequiresCompleteEvents",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ColdVerificationNeedsSharedProof",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": ["CompleteOriginalAuthority"],
+      "shortest_path_steps": "1",
+      "dimensions": {
+        "width": 906,
+        "height": 422
+      },
+      "inputs": {
+        "model_sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571",
+        "config_sha256": "5a55272cb82a05e49613535509f24c29902e2edcc1b153e626e28fa8d3a5b4c4",
+        "view_sha256": "824d3f9486463a6b4b9018298593928d375ba37197c558a82866d15b9afd0e0d"
+      },
+      "files": {
+        "mmd": {
+          "path": "continuation-missing-original.mmd",
+          "sha256": "13a291076b0ff3b1964944b273885853c6e3ea81b80f4c1e74d0fa5645c588f3",
+          "bytes": 624
+        },
+        "svg": {
+          "path": "continuation-missing-original.svg",
+          "sha256": "deb5197e9e3b48ecc6860e5ebc9fa9296fb9f9c3f6e3d8cd4a66ab0810309ae4",
+          "bytes": 4893
+        },
+        "report.md": {
+          "path": "continuation-missing-original.report.md",
+          "sha256": "64279aceab36255e69fde31840f4bd76016c77317f348d70fbccc8f89b08afbc",
+          "bytes": 538
+        }
+      }
+    },
+    {
+      "id": "continuation-native-retry",
+      "title": "原主文恢复后的未知续接被重发",
+      "meaning": "已有一次派发但未留存 ACK，结果未知；重发同一原请求立即违反一次派发边界。最短反例发生在第一个抽象阶段，不能改称某个真实后缀写入事故。",
+      "model": "AcknowledgedContinuation",
+      "config": "native.replay.cfg",
+      "run": "AcknowledgedContinuation-run-v4",
+      "source_directory": "/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/AcknowledgedContinuation-run-v4/AcknowledgedContinuation-native-replay-cfg",
+      "states": {
+        "distinct": 698,
+        "initial": 4,
+        "complete": true,
+        "cut": false
+      },
+      "chart_states": 6,
+      "chart_arrows": 5,
+      "arrows_with_start": 6,
+      "bug_paths_only": true,
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "CompleteOriginalAuthority",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalHistoryPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "FreshBodyBeforeWrite",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AtMostOneContinuationDispatch",
+          "kind": "invariant",
+          "outcome": "broken"
+        },
+        {
+          "name": "ConfirmationNeedsOriginalAck",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "EnableRequiresCompleteEvents",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ColdVerificationNeedsSharedProof",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "expected_broken": ["AtMostOneContinuationDispatch"],
+      "shortest_path_steps": "5",
+      "dimensions": {
+        "width": 1168,
+        "height": 874
+      },
+      "inputs": {
+        "model_sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571",
+        "config_sha256": "5e8da35bdd6579e3172e60266df70abc0d5d2a232528f5bf3d19c931b54e4b05",
+        "view_sha256": "824d3f9486463a6b4b9018298593928d375ba37197c558a82866d15b9afd0e0d"
+      },
+      "files": {
+        "mmd": {
+          "path": "continuation-native-retry.mmd",
+          "sha256": "028e1e7acb890aa6be50d28f68a6e2c5a658a858449f0449087a5327affee8c9",
+          "bytes": 1136
+        },
+        "svg": {
+          "path": "continuation-native-retry.svg",
+          "sha256": "e3e8a3dbd4dfa1576707b42621040292053c64ad8b21c4c2cd7688faf170a359",
+          "bytes": 7778
+        },
+        "report.md": {
+          "path": "continuation-native-retry.report.md",
+          "sha256": "3e73fd2be09cde90ad898e679f38d48f612a65f90aa7975f2bcbac06e62c46c0",
+          "bytes": 790
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+---
+title: "可编辑页面的并发写入边界"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: Breaks HumanEditPreserved
+    lg1: Path to the HumanEditPreserved bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  s0: 页面仍展示上游 v1
+  s1: 已读回原文一致
+  s2: 页面已有人工编辑
+  s3: 准备执行覆盖
+  s4: 检查后发生人工编辑
+  s5: 保留正文并接管此文件
+  s6: 写入前发生人工编辑
+  s7: 已写入上游 v2
+  s8: 读回并报告结果
+  s9: 人工内容已被覆盖
+  [*] --> s0
+  s0 --> s1: 检查当前正文
+  s0 --> s2: 你编辑 Notion 页面
+  s1 --> s3: 检查写入能力
+  s1 --> s4: 你编辑 Notion 页面
+  s2 --> s5: 确认已有人工内容
+  s3 --> s6: 你编辑 Notion 页面
+  s3 --> s7: 服务端执行覆盖
+  s4 --> s6: 检查写入能力
+  s6 --> s9: 服务端执行覆盖
+  s7 --> s8: 读取写后结果
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s3 bugPath
+  class s6 bugPath
+  class s9 breaks
+  class s9 bugPath

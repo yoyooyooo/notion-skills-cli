@@ -1,0 +1,60 @@
+---
+title: "原 ACK 续接与同页恢复的验证边界"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 已验证
+    lg1: 已停止或等待
+    lg2: 执行中
+  }
+  class lg0 teal
+  class lg1 yellow
+  class lg2 blue
+  s0: 核对原请求和完整 ACK
+  s1: 停止#65292;不再派发
+  s2: 独立续接决定已审阅
+  s3: 本阶段待派发
+  s4: 当前正文已变化#65292;必须停止
+  s5: 原请求事实已变化#65292;必须停止
+  s6: 本阶段已派发一次
+  s7: 服务端已应用本阶段
+  s8: 没有原 ACK#65292;结果未知
+  s9: 原 ACK 已留存#65292;待核实本阶段
+  s10: 原 ACK 已留存#65292;读回中断
+  s11: 独立完成已留存#65292;待冷读核实
+  s12: 冷读已核实独立完成
+  s13: 共享原始证明不完整#65292;必须停止
+  [*] --> s0
+  s0 --> s1: 拒绝不完整或额外原始派发
+  s0 --> s2: 核对完整原请求与持久 ACK
+  s2 --> s3: 执行前复核精确原事实集
+  s2 --> s4: 观察到当前正文变化
+  s2 --> s5: 原始请求事实变得不可用
+  s3 --> s6: 派发一次已授权续接请求
+  s3 --> s4: 观察到当前正文变化
+  s5 --> s1: 拒绝不完整或额外原始派发
+  s6 --> s7: 服务端应用请求
+  s6 --> s8: 响应或读回变得不确定
+  s4 --> s1: 派发前拒绝变化后的正文
+  s7 --> s9: 留存本次原始 ACK
+  s9 --> s3: 核实本阶段#65292;进入下一阶段
+  s9 --> s10: 响应或读回变得不确定
+  s10 --> s9: 依原 ACK 继续读回#65292;不再派发
+  s9 --> s11: 核实最后阶段
+  s11 --> s12: 独立核对完整不可变证明
+  s11 --> s13: 完整共享 ACK 事实变得不可用
+  s13 --> s1: 拒绝不完整的不可变证据
+  class s0 blue
+  class s1 yellow
+  class s2 blue
+  class s3 blue
+  class s4 blue
+  class s5 blue
+  class s6 blue
+  class s7 blue
+  class s8 yellow
+  class s9 blue
+  class s10 yellow
+  class s11 blue
+  class s12 teal
+  class s13 blue

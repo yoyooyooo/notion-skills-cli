@@ -7,7 +7,12 @@ export const state = (v) => {
   if (v.acknowledged && !v.receipt) broken.push("猜造成功")
   if (broken.length) return "违反：" + broken.join("、")
   return {
-    preparing: "准备完整候选",
+    preparing:
+      v.objects.length === 0
+        ? "候选资源尚未保留"
+        : v.objects.length === 1
+          ? "主文已保留，引用尚未齐全"
+          : "完整候选已保留",
     ready: "候选已冻结",
     inflight: "一次原始派发",
     response: "服务端已处理",

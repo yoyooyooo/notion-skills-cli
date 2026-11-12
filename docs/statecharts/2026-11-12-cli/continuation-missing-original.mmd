@@ -1,0 +1,24 @@
+---
+title: "原 ACK 续接与同页恢复的验证边界"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 违例
+    lg1: 执行中
+    lg2: Breaks CompleteOriginalAuthority
+    lg3: Path to the CompleteOriginalAuthority bug
+  }
+  class lg0 pink
+  class lg1 blue
+  class lg2 breaks
+  class lg3 bugPath
+  s0: 核对原请求和完整 ACK
+  s1: 违反#65306;原请求或 ACK 集不完整
+  [*] --> s0
+  s0 --> s1: 核对完整原请求与持久 ACK
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 blue
+  class s0 bugPath
+  class s1 pink
+  class s1 breaks
+  class s1 bugPath

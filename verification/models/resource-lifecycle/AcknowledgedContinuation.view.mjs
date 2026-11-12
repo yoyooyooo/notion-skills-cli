@@ -1,72 +1,73 @@
-export const title = "Continue acknowledged original allocations and exact native restoration"
+export const title = "原 ACK 续接与同页恢复的验证边界"
 const faults = (v) => [
-  ...(!v.authorityExact ? ["Original request or ACK set incomplete"] : []),
-  ...(!v.bodyCheckedBeforeWrite ? ["Changed body passed the write boundary"] : []),
-  ...(Object.values(v.attempts).some((n) => n > 1) ? ["Uncertain continuation repeated"] : []),
+  ...(!v.authorityExact ? ["违反：原请求或 ACK 集不完整"] : []),
+  ...(!v.bodyCheckedBeforeWrite ? ["违反：正文变化后仍越过写入边界"] : []),
+  ...(Object.values(v.attempts).some((n) => n > 1) ? ["违反：未知续接请求被重复派发"] : []),
   ...(v.coldVerified && v.proofs.length !== v.originalPages.length
-    ? ["Cold result lacks full original shared proofs"]
+    ? ["违反：冷读缺少完整原始共享证明"]
     : []),
 ]
+const originalExact = (v) =>
+  v.originalRequestsExact && v.originalAcks.length === v.originalPages.length
+
 export function state(v) {
   const bad = faults(v)
   if (bad.length) return bad.join(" / ")
-  const label = {
-    inspect: "Inspect the complete original allocation set",
-    reviewed: "Inspect the separate original continuation decision",
-    unknown: "Uncertain continuation; reconcile only",
-    blocked: "Stop without another dispatch",
-    completed: "Read the immutable shared proof chain",
-    "cold verified": "Cold completion verified",
+  if (v.phase === "reviewed" && !originalExact(v)) return "原请求事实已变化，必须停止"
+  if (["reviewed", "ready"].includes(v.phase) && !v.fresh) return "当前正文已变化，必须停止"
+  if (v.phase === "unknown")
+    return v.acked.includes(v.step) ? "原 ACK 已留存，读回中断" : "没有原 ACK，结果未知"
+  if (v.phase === "completed" && v.proofs.length !== v.originalPages.length)
+    return "共享原始证明不完整，必须停止"
+  return {
+    inspect: "核对原请求和完整 ACK",
+    reviewed: "独立续接决定已审阅",
+    ready: "本阶段待派发",
+    inflight: "本阶段已派发一次",
+    response: "服务端已应用本阶段",
+    readback: "原 ACK 已留存，待核实本阶段",
+    blocked: "停止，不再派发",
+    completed: "独立完成已留存，待冷读核实",
+    "cold verified": "冷读已核实独立完成",
   }[v.phase]
-  if (label) return label
-  if (v.phase === "ready" && !v.fresh) return "Current body changed; stop required"
-  return (
-    v.originalPages.length === 1
-      ? {
-          1: "Retain original main ACK and restoration review",
-          2: "Allocate the original never-dispatched reference",
-          3: "Publish the complete original initial events",
-          4: "Enable the complete tree",
-          5: "Retain the separate restoration completion",
-        }
-      : {
-          1: "Retain original ACK facts",
-          2: "Publish exact metadata and initial events",
-          3: "Enable the complete tree",
-          4: "Retain the separate completion",
-        }
-  )[v.step]
 }
-export function step(action) {
+
+export function step(action, from, to) {
+  // The full report retains the second unknown-result edge after provider apply.
+  // Both edges lead to the same no-ACK state; show its earlier occurrence once.
+  if (action === "RequestUncertain" && from.phase === "response") return null
+  // A changed-body state already has its own stop path; omit the second refusal cause.
+  if (action === "LoseOriginalEvidence" && !from.fresh) return null
+  if (action === "VerifyStage")
+    return to.phase === "completed" ? "核实最后阶段" : "核实本阶段，进入下一阶段"
   return (
     {
-      Review: "check every original request and durable ACK",
-      LoseOriginalEvidence: "an original receipt becomes unavailable",
-      Begin: "recheck the exact original set before apply",
-      RejectOriginalEvidence: "refuse incomplete or extra original attempts",
-      CurrentBodyChanges: "an observed body changes",
-      RejectCurrentBody: "refuse the changed body before transport",
-      Dispatch: "send one original authorized continuation request",
-      ProviderApplies: "the provider applies the request",
-      PersistAck: "retain its original ACK",
-      VerifyStage: "verify the acknowledged stage",
-      RequestUncertain: "the response or readback becomes uncertain",
-      ResumeAcknowledgedStage: "observe the exact original ACK without another dispatch",
-      ReplayIncompleteContinuation: "repeat the uncertain original request",
-      ProofUnavailable: "a full shared ACK fact becomes unavailable",
-      ColdVerify: "independently check complete immutable proofs",
-      ColdReject: "refuse incomplete immutable evidence",
-      ReadOnlyReconcile: "read the original operation without writing",
-      Terminal: "retain the terminal result",
+      Review: "核对完整原请求与持久 ACK",
+      LoseOriginalEvidence: "原始请求事实变得不可用",
+      Begin: "执行前复核精确原事实集",
+      RejectOriginalEvidence: "拒绝不完整或额外原始派发",
+      CurrentBodyChanges: "观察到当前正文变化",
+      RejectCurrentBody: "派发前拒绝变化后的正文",
+      Dispatch: "派发一次已授权续接请求",
+      ProviderApplies: "服务端应用请求",
+      PersistAck: "留存本次原始 ACK",
+      RequestUncertain: "响应或读回变得不确定",
+      ResumeAcknowledgedStage: "依原 ACK 继续读回，不再派发",
+      ReplayIncompleteContinuation: "错误地重发未知原请求",
+      ProofUnavailable: "完整共享 ACK 事实变得不可用",
+      ColdVerify: "独立核对完整不可变证明",
+      ColdReject: "拒绝不完整的不可变证据",
+      ReadOnlyReconcile: null,
+      Terminal: null,
     }[action] ?? action
   )
 }
 export const group = (v) =>
   faults(v).length
-    ? "unsafe"
+    ? "违例"
     : v.phase === "cold verified"
-      ? "completed"
+      ? "已验证"
       : ["blocked", "unknown"].includes(v.phase)
-        ? "stopped"
-        : "active"
-export const colors = { unsafe: "pink", completed: "teal", stopped: "yellow", active: "blue" }
+        ? "已停止或等待"
+        : "执行中"
+export const colors = { 违例: "pink", 已验证: "teal", 已停止或等待: "yellow", 执行中: "blue" }

@@ -1,0 +1,44 @@
+---
+title: "更新提交和固定版本消费"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: Breaks AtMostOneDispatch
+    lg1: Path to the AtMostOneDispatch bug
+  }
+  class lg0 breaks
+  class lg1 bugPath
+  s0: 候选资源尚未保留
+  s1: 主文已保留#65292;引用尚未齐全
+  s2: 完整候选已保留
+  s3: 候选已冻结
+  s4: 一次原始派发
+  s5: 服务端已处理
+  s6: 结果未知且仅可核对原操作
+  s7: 原结果已核实
+  s8: 更新结果已发布
+  s9: 违反#65306;重复派发
+  s10: 原操作回执已可见
+  [*] --> s0
+  s0 --> s1: 保留主文
+  s1 --> s2: 保留引用资源
+  s2 --> s3: 冻结完整清单
+  s3 --> s4: 提交原操作
+  s4 --> s5: 服务端选择候选
+  s5 --> s6: 响应丢失
+  s5 --> s7: 收到原操作回执
+  s6 --> s9: 错误地重发未知操作
+  s6 --> s10: 原回执变为可见
+  s7 --> s8: 报告已完成
+  s10 --> s7: 核对原回执
+  s10 --> s9: 错误地重发未知操作
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 bugPath
+  class s1 bugPath
+  class s2 bugPath
+  class s3 bugPath
+  class s4 bugPath
+  class s5 bugPath
+  class s6 bugPath
+  class s9 breaks
+  class s9 bugPath

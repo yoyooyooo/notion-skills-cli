@@ -123,6 +123,8 @@ The `1a1bfb9` correspondence additionally binds parent/child author request line
 
 ## Statechart rendering
 
+The [2026-11-12 Chinese core statecharts](../../../docs/statecharts/2026-11-12-cli/README.md) contain eight generated Mermaid/SVG charts and exact reports. ProjectionRace, UpdateCommit and both AcknowledgedContinuation branches were freshly checked through all 18 configurations against product base `ee4e712df6cd85fe268fbafe16d9d19a47794666`. Only presentation views changed: the TLA modules, configurations, bounds and properties remain unchanged. The chart set records omitted display steps, the original raw-output manifest and the explicitly unmodeled branches; it adds no product or live-service acceptance claim.
+
 Use `pele@1.9.0`, installed outside the repository, for the generated `.mmd` files. Render with `{ limit: 1000000, outputLimit: 8000000, maxEdges: 10000 }`. Keep source `.mmd`, report, SVG and source/hash metadata together. Display only the compact primary charts; complete mutation traces remain in the report bundle. Generated run logs, screenshots, binaries and private library data do not belong in Git.
 
 The report generator requires the completed model result and actual mutation replay summary:
