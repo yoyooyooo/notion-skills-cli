@@ -134,9 +134,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "missing-ack.cfg",
-      "expected_broken": [
-        "PrefixNeedsOriginalAck"
-      ],
+      "expected_broken": ["PrefixNeedsOriginalAck"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -154,9 +152,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "mismatched-binding.cfg",
-      "expected_broken": [
-        "ExactRecordBinding"
-      ],
+      "expected_broken": ["ExactRecordBinding"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -174,9 +170,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "noncontiguous-prefix.cfg",
-      "expected_broken": [
-        "PrefixMustBeContiguous"
-      ],
+      "expected_broken": ["PrefixMustBeContiguous"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -194,9 +188,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "repeat-unknown.cfg",
-      "expected_broken": [
-        "UnknownNeverRedispatched"
-      ],
+      "expected_broken": ["UnknownNeverRedispatched"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -214,9 +206,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "query-authority.cfg",
-      "expected_broken": [
-        "AckLookupIndependentOfQuery"
-      ],
+      "expected_broken": ["AckLookupIndependentOfQuery"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -234,9 +224,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "stale-premise.cfg",
-      "expected_broken": [
-        "DispatchNeedsFreshPremise"
-      ],
+      "expected_broken": ["DispatchNeedsFreshPremise"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -254,9 +242,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "permission.cfg",
-      "expected_broken": [
-        "DispatchNeedsPermission"
-      ],
+      "expected_broken": ["DispatchNeedsPermission"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -274,9 +260,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "overwrite-original.cfg",
-      "expected_broken": [
-        "OriginalFactsPreserved"
-      ],
+      "expected_broken": ["OriginalFactsPreserved"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -294,9 +278,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "skip-verification.cfg",
-      "expected_broken": [
-        "CompletionNeedsVerification"
-      ],
+      "expected_broken": ["CompletionNeedsVerification"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -330,9 +312,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "accept-unknown-original.cfg",
-      "expected_broken": [
-        "KnownFailureRequired"
-      ],
+      "expected_broken": ["KnownFailureRequired"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -348,9 +328,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "stale-context.cfg",
-      "expected_broken": [
-        "FrozenIdentityRequired"
-      ],
+      "expected_broken": ["FrozenIdentityRequired"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -366,9 +344,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "reuse-original-id.cfg",
-      "expected_broken": [
-        "IndependentIdentity"
-      ],
+      "expected_broken": ["IndependentIdentity"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -384,9 +360,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "equal-current-is-old-success.cfg",
-      "expected_broken": [
-        "OriginalFactsPreserved"
-      ],
+      "expected_broken": ["OriginalFactsPreserved"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -402,9 +376,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "repeat-unknown.cfg",
-      "expected_broken": [
-        "UnknownNeverRedispatched"
-      ],
+      "expected_broken": ["UnknownNeverRedispatched"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -420,9 +392,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "incomplete-cold-proof.cfg",
-      "expected_broken": [
-        "ColdRecoveryNeedsCompleteProof"
-      ],
+      "expected_broken": ["ColdRecoveryNeedsCompleteProof"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -438,9 +408,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "skip-adopted-event.cfg",
-      "expected_broken": [
-        "CompletionNeedsAdoption"
-      ],
+      "expected_broken": ["CompletionNeedsAdoption"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -473,9 +441,7 @@
     {
       "model": "RestoreFeedback",
       "config": "unverified-binding.cfg",
-      "expected_broken": [
-        "BodyNeedsBoundOriginal"
-      ],
+      "expected_broken": ["BodyNeedsBoundOriginal"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -492,9 +458,7 @@
     {
       "model": "RestoreFeedback",
       "config": "stale-body.cfg",
-      "expected_broken": [
-        "BodyNeedsCurrentPremise"
-      ],
+      "expected_broken": ["BodyNeedsCurrentPremise"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -511,9 +475,7 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-body-after-feedback-loss.cfg",
-      "expected_broken": [
-        "FeedbackNeverRepeatsBody"
-      ],
+      "expected_broken": ["FeedbackNeverRepeatsBody"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -530,9 +492,7 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-feedback-is-ack.cfg",
-      "expected_broken": [
-        "FeedbackRequiresRealAck"
-      ],
+      "expected_broken": ["FeedbackRequiresRealAck"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -549,9 +509,7 @@
     {
       "model": "RestoreFeedback",
       "config": "replace-pending-original.cfg",
-      "expected_broken": [
-        "OriginalRequestPreserved"
-      ],
+      "expected_broken": ["OriginalRequestPreserved"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -568,9 +526,7 @@
     {
       "model": "RestoreFeedback",
       "config": "invalid-original-is-success.cfg",
-      "expected_broken": [
-        "SuccessNeedsAppliedOriginal"
-      ],
+      "expected_broken": ["SuccessNeedsAppliedOriginal"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -587,9 +543,7 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-current-is-original-success.cfg",
-      "expected_broken": [
-        "SuccessNeedsAppliedOriginal"
-      ],
+      "expected_broken": ["SuccessNeedsAppliedOriginal"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -606,9 +560,7 @@
     {
       "model": "RestoreFeedback",
       "config": "forget-historical-ack.cfg",
-      "expected_broken": [
-        "HistoricalAckPreserved"
-      ],
+      "expected_broken": ["HistoricalAckPreserved"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -625,9 +577,7 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-unknown-feedback.cfg",
-      "expected_broken": [
-        "UnknownFeedbackNeverRedispatched"
-      ],
+      "expected_broken": ["UnknownFeedbackNeverRedispatched"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -660,9 +610,7 @@
     {
       "model": "MaintenanceApply",
       "config": "skip-prefix.cfg",
-      "expected_broken": [
-        "ConfirmedPrefixBeforeSuffix"
-      ],
+      "expected_broken": ["ConfirmedPrefixBeforeSuffix"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -678,9 +626,7 @@
     {
       "model": "MaintenanceApply",
       "config": "replay-unknown.cfg",
-      "expected_broken": [
-        "UnknownNeverRepeated"
-      ],
+      "expected_broken": ["UnknownNeverRepeated"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -696,9 +642,7 @@
     {
       "model": "MaintenanceApply",
       "config": "partial-completion.cfg",
-      "expected_broken": [
-        "CompletionNeedsAllChildren"
-      ],
+      "expected_broken": ["CompletionNeedsAllChildren"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -714,9 +658,7 @@
     {
       "model": "MaintenanceApply",
       "config": "publish-pending.cfg",
-      "expected_broken": [
-        "PendingTreeNotPublished"
-      ],
+      "expected_broken": ["PendingTreeNotPublished"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -732,9 +674,7 @@
     {
       "model": "MaintenanceApply",
       "config": "ignore-drift.cfg",
-      "expected_broken": [
-        "ObservedDriftStopsDispatch"
-      ],
+      "expected_broken": ["ObservedDriftStopsDispatch"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
