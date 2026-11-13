@@ -1,7 +1,18 @@
+import { execFileSync } from "node:child_process"
 import { mkdir, mkdtemp, readFile, writeFile, realpath } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
+
+export function resolveConsumerRuntime(command: string): string {
+  const runtime = execFileSync(command, ["--print", "process.execPath"], {
+    encoding: "utf8",
+    timeout: 10_000,
+  }).trim()
+  if (!isAbsolute(runtime))
+    throw new Error("The consumer Node runtime must report an absolute executable path.")
+  return runtime
+}
 
 export async function prepareConsumer() {
   const { values } = parseArgs({
@@ -27,11 +38,13 @@ export async function prepareConsumer() {
     await mkdtemp(join(evidenceRoot ?? tmpdir(), "ntn-skills-consumer-")),
   )
   console.error(JSON.stringify({ consumer_smoke_scratch: scratch }))
-  const runtime = values.runtime ? resolve(values.runtime) : Bun.which("node")
-  if (!runtime)
+  const runtimeCommand = values.runtime ? resolve(values.runtime) : Bun.which("node")
+  if (!runtimeCommand)
     throw new Error(
       "Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+, must be installed for consumer checks.",
     )
+  // Resolve version-manager shims before the consumer and Pi receive isolated homes.
+  const runtime = resolveConsumerRuntime(runtimeCommand)
   const dependency = values.archive
     ? `file:${resolve(values.archive)}`
     : values.registry!.split("@")[1]!

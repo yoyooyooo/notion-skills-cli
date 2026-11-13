@@ -38,6 +38,8 @@ Mock supplies model decisions only. Actual CLI, SDK, Pi tools, serializer, sourc
 
 Independent installation, real Notion, real Pi with a loopback model and real-model usability are separate evidence scopes. A successful one does not stand in for another. No result authorizes a global installation change, production inventory repair, main merge or publication.
 
+The installed consumer resolves the selected Node launcher's actual `process.execPath` before changing HOME. The same concrete runtime drives CLI commands and the Pi source adapter. The launcher regression exercises a real child process whose launcher only works in its original home, then verifies the resolved Node in an isolated home. It does not inherit version-manager configuration or relax the installed Pi acceptance conditions. The original Volta launch failure remains a failed run.
+
 ## Independent review corrections after `9e4cefb`
 
 The cold review reproduced two bugs on the frozen product, without mutating its

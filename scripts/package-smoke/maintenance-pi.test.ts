@@ -1,8 +1,10 @@
 import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
+import { resolveConsumerRuntime } from "./consumer.ts"
 import {
   acceptanceFailures,
   verifyMaintenanceResource,
@@ -27,6 +29,37 @@ const task: MaintenanceTask = {
   input_dir: "/tmp/mnt-input",
   current_main_file: "/tmp/mnt-current-main.md",
 }
+
+test("the installed consumer resolves a home-dependent Node launcher before Pi isolation", {
+  skip: process.platform === "win32",
+}, async () => {
+  const root = await mkdtemp(join(tmpdir(), "mnt-node-launcher-"))
+  const home = process.env.HOME
+  assert.ok(home)
+  const node = execFileSync("node", ["--print", "process.execPath"], {
+    encoding: "utf8",
+    timeout: 10_000,
+  }).trim()
+  const launcher = join(root, "node-launcher")
+  await writeFile(
+    launcher,
+    `#!/bin/sh\n[ "$HOME" = ${quoteArgv([home])} ] || exit 73\nexec ${quoteArgv([node])} "$@"\n`,
+    { mode: 0o700 },
+  )
+  const env = { HOME: join(root, "isolated-home"), PATH: "/usr/bin:/bin" }
+  assert.throws(() => execFileSync(launcher, ["--version"], { env, timeout: 5_000 }))
+  const runtime = resolveConsumerRuntime(launcher)
+  const observed = JSON.parse(
+    execFileSync(
+      runtime,
+      ["--print", "JSON.stringify({node:process.execPath,home:process.env.HOME})"],
+      { env, encoding: "utf8", timeout: 5_000 },
+    ),
+  )
+  assert.equal(observed.node, node)
+  assert.equal(observed.home, env.HOME)
+  assert.notEqual(runtime, launcher)
+})
 
 const secret = "EXPECTED_BODY_SHOULD_NOT_LEAK"
 const preparedOk = JSON.stringify({
