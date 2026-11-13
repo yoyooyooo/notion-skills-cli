@@ -48,9 +48,7 @@
         "complete": true,
         "cut": false
       },
-      "broken": [
-        "AtMostOneContinuationDispatch"
-      ],
+      "broken": ["AtMostOneContinuationDispatch"],
       "inputs": [
         {
           "path": "model-inputs/AcknowledgedContinuation.tla",
