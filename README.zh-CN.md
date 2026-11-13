@@ -137,9 +137,9 @@ ntn-skills create ./my-skill --database 'ENTRY_DATABASE_ID'
 ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --input ./changed-existing-files --description '更新后的用途'
 ```
 
-新建库可用 `ctl library init --parent PARENT_PAGE_ID`；它不迁移旧内容或更改默认库。普通 Skill 文件夹不需要手写 manifest。普通 `create` 保持其 UTF-8 输入合同；包含脚本、JSON、图片或 binary 的完整纳管使用[已审阅清单导入](docs/inventory-import.md)，复用同一原始创建日志，默认创建为禁用状态，只有计划明确要求且完整验证通过才启用。`apply` 可把已有绑定文件和显式属性变更冻结为一个顺序执行的批次；它不是原子事务，后项失败时前项可能已经完成。当前只支持单独的一项新增或删除，混合或多项布局变更会在写入前拒绝。文档生命周期使用 `ctl library file add/delete/move/restore-follow`；原始资源使用 `ctl library resource add/replace/move/delete/restore/undelete`，保留精确字节、稳定身份、已知可执行模式和旧 pin。
+新建库可用 `ctl library init --parent PARENT_PAGE_ID`；它不迁移旧内容或更改默认库。普通 Skill 文件夹不需要手写 manifest。普通 `create` 保持其 UTF-8 输入合同；包含脚本、JSON、图片或 binary 的完整纳管使用[已审阅清单导入](docs/inventory-import.md)，复用同一原始创建日志，默认创建为禁用状态，只有计划明确要求且完整验证通过才启用。共享 `apply` 可在同一原操作中提交原生文件的新增、修改、显式布局变更和指定属性，省略的文件保持不变。`--remove` 指定删除，版本 1 的 `--changes` 清单指定移动、删除和恢复。各子操作顺序执行，后项失败时保留前项已验证的结果。`replace` 对省略文件推导出的混合或多项删除仍会在写入前拒绝。文档生命周期使用 `ctl library file add/delete/move/restore-follow`；原始资源使用 `ctl library resource add/replace/move/delete/restore/undelete`，保留精确字节、稳定身份、已知可执行模式和旧 pin。
 
-已经在 Notion 新建的草稿可保持禁用，补全 Name、Description 并将 Kind 设为 `skill` 后，用 `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` 在原页面登记稳定身份并保留完整正文。随后 `read SKILL_PAGE_ID --authoring` 返回新的编辑 pin；普通修改保留禁用状态，`update SKILL_PAGE_ID --enabled true` 才会在完整验证后启用。尚未登记的禁用草稿不进入消费目录，也不阻断其他 Skill。新增 reference 时先 `ctl library file add`，再用 fresh pin 将返回的原生页面链接写入主文；[完整步骤](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill)说明两步如何配合。
+已经在 Notion 新建的草稿可保持禁用，补全 Name、Description 并将 Kind 设为 `skill` 后，用 `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` 在原页面登记稳定身份并保留完整正文。随后 `read SKILL_PAGE_ID --authoring` 返回新的编辑 pin；普通修改保留禁用状态，`update SKILL_PAGE_ID --enabled true` 才会在完整验证后启用。尚未登记的禁用草稿不进入消费目录，也不阻断其他 Skill。新增 reference 并在主文加入链接时，可将两份文件一次交给稀疏 `apply`；步骤见[整树维护合同](docs/maintenance-tree-contract.md)。若单独使用 `ctl library file add`，[reference 指南](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill)说明后续如何取得 fresh pin 并修改主文。
 
 共享库使用独立的 **Skills、Files、Records、Sources** 数据库。descriptor 与属性 ID 保存内部身份，显示名变化不影响定位。Notion 管理可编辑正文、元数据与保留历史，本地缓存由这些事实派生。日常用 `--database` 明确选库；裸 `list` 仍是工作区发现。身份、固定版本与恢复边界见[共享架构](docs/shared-ssot-architecture.md)。
 
@@ -147,7 +147,7 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 固定来源先用 `source inspect/register` 登记精确 commit/root，再由 `ctl library source select prepare ... --output PLAN` 生成计划并用 `source select apply PLAN --entry ENTRY` 选择。共享 Profile 可通过 `ctl library profile list/show/set/bind/unbind` 管理；`list --profile PROFILE_ID --database ENTRY` 采用共享默认 View，显式 View 优先，普通 `list` 保持完整发现。
 
-完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[共享架构](docs/shared-ssot-architecture.md)。完整纳管保留原生资源和固定来源资源；多项布局 `apply`、首次未知请求在空客户端不可见等边界仍保留。自动更新若需要替换已有可编辑正文，仍停在 `BODY_REPLACEMENT_UNSAFE`。显式 `restore-follow` 保留完整旧文，以一次完整旧字符串匹配提交，并核对完整返回正文和独立读回后才确认 following；这不提供页面版本 CAS。`file request --submit` 可冻结一份稍后由 `--process` 处理的明确请求，普通 Notion 下拉框只表达意图。显式作者写入保留自己的基线与恢复合同。保留原始操作 ID，并使用该操作返回的确切恢复入口。
+完整操作与恢复入口见[共享库创作指南](docs/shared-authoring.md)、[共享协议](docs/protocol.md#shared-notion-library)和[共享架构](docs/shared-ssot-architecture.md)。完整纳管保留原生资源和固定来源资源；首次未知请求在空客户端不可见等边界仍保留。自动更新若需要替换已有可编辑正文，仍停在 `BODY_REPLACEMENT_UNSAFE`。显式 `restore-follow` 保留完整旧文，以一次完整旧字符串匹配提交，并核对完整返回正文和独立读回后才确认 following；这不提供页面版本 CAS。`file request --submit` 可冻结一份稍后由 `--process` 处理的明确请求，普通 Notion 下拉框只表达意图。显式作者写入保留自己的基线与恢复合同。保留原始操作 ID，统一 `ctl operation` 按原操作类型路由。只有原 shared apply 可在原本地日志和当前保护条件下，通过显式 `resume` 续接已验证前缀之后确实未发送的后缀；其他共享操作与旧 Publication 各自保留原恢复协议。
 
 Pi 使用 Broker 随包的 CLI/SDK，无需额外安装全局 CLI；终端或其他 Agent 需要命令行时再安装独立 CLI。配置见[在 Pi 使用远程 Skill](docs/shared-authoring.md#use-the-remote-skill-in-pi)。创作、检查、使用与资源读取分别有明确合同；读取成功不等于模型已应用指令。发行验证记录 Broker 内嵌 CLI/SDK 与本次测试的独立 CLI 组合、来源范围和观察结果。
 
@@ -176,7 +176,7 @@ ntn-skills export 'My Skill' --database ops --output ./my-skill.zip
 ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --input ./changed-files --dry-run
 ```
 
-`create` 要求名称尚不存在。更新已有页面时，`apply` 针对一个 pinned 主文件 ref 或 snapshot，接受变更文件、可重复的 `--remove PATH` 和显式属性参数，省略的文件保留。共享目标当前支持已有绑定文件与属性，或单独一项新增/删除；混合或多项布局变更会在写入前拒绝。旧 Publication 目标继续使用其完整稀疏替换流程。去掉 `--dry-run` 执行已审阅的变更；基线过期会在写入前失败。单独修改文件或属性仍可使用 `write`、`update`。[输入格式、冲突与部分成功的处理](docs/usage.md#creating-importing-exporting-and-updating-skills)。
+`create` 要求名称尚不存在。更新已有页面时，`apply` 针对一个 pinned 主文件 ref 或 snapshot，接受原生文件的新增与修改、可重复的 `--remove PATH`、版本 1 的 `--changes` 清单和显式属性参数，省略的文件保留。共享目标可将这些变更合为一份经过完整文件树验证的计划；`replace` 对省略文件推导出的混合或多项删除仍会拒绝。旧 Publication 目标继续使用其完整稀疏替换流程。去掉 `--dry-run` 执行已审阅的变更；基线过期会在写入前失败。单独修改文件或属性仍可使用 `write`、`update`。[输入格式、冲突与部分成功的处理](docs/usage.md#creating-importing-exporting-and-updating-skills)。
 
 用 `replace ./my-skill --target 'CURRENT_PAGE_ID_OR_PINNED_MAIN_REF' --database ops --dry-run` 明确替换已有页面。即使导入的名称、描述变化，`--target` 仍保留选定页面身份；目标缺失、不可访问或版本过期时失败，不按导入名称回退或创建新页。
 
