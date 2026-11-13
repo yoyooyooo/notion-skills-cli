@@ -59,6 +59,57 @@ describe("maintenance tree classification", () => {
     expect(error.code).toBe("SHARED_APPLY_PATH_IDENTITY")
   })
 
+  test.each(["100644", "100755", undefined] as const)(
+    "revive preserves retained mode %s, including historical absence",
+    (mode) => {
+      const path = "references/retained.md"
+      const retained = {
+        path,
+        bytes: encode("original\n"),
+        ...(mode === undefined ? {} : { mode }),
+      }
+      for (const submittedMode of mode === undefined
+        ? ([undefined, "100644", "100755"] as const)
+        : [undefined, mode]) {
+        const result = classifyMaintenanceChanges({
+          entrypoint: "SKILL.md",
+          active,
+          tombstones: [retained],
+          requested: [
+            {
+              path,
+              bytes: retained.bytes,
+              ...(submittedMode === undefined ? {} : { mode: submittedMode }),
+            },
+          ],
+          explicitRemoves: [],
+          changes: { version: 1, revives: [{ path }] },
+        })
+        expect(result.revives).toEqual([retained])
+        expect(result.finalFiles.find((file) => file.path === path)).toEqual(retained)
+      }
+    },
+  )
+
+  test.each(["100644", "100755"] as const)(
+    "revive rejects changing retained mode %s even when submitted bytes match",
+    (mode) => {
+      const path = "references/retained.md",
+        bytes = encode("original\n")
+      const error = rejected(() =>
+        classifyMaintenanceChanges({
+          entrypoint: "SKILL.md",
+          active,
+          tombstones: [{ path, bytes, mode }],
+          requested: [{ path, bytes, mode: mode === "100644" ? "100755" : "100644" }],
+          explicitRemoves: [],
+          changes: { version: 1, revives: [{ path }] },
+        }),
+      )
+      expect(error.code).toBe("SHARED_APPLY_MODE_CHANGED")
+    },
+  )
+
   test("an explicit move keeps bytes and a fenced span is not rewritten", () => {
     const moved = classifyMaintenanceChanges({
       entrypoint: "SKILL.md",

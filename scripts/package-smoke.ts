@@ -14,6 +14,25 @@ import {
 } from "./package-smoke/audit.ts"
 
 const consumer = await prepareConsumer()
+if (consumer.stage === "maintenance") {
+  const authoring = await checkAuthoring(consumer, checkProgressiveMaintenance, {
+    maintenanceOnly: true,
+  })
+  console.log(
+    JSON.stringify({
+      name: consumer.manifest.name,
+      version: consumer.manifest.version,
+      runtime: (await consumer.run([consumer.runtime, "--version"])).trim(),
+      executable: consumer.executable,
+      consumer_bin: consumer.consumerBin,
+      proof: "installed_progressive_maintenance_only",
+      stage: consumer.stage,
+      authoring,
+      scratch: consumer.scratch,
+    }),
+  )
+  process.exit(0)
+}
 await checkCommandContract(consumer)
 await checkBuiltinLifecycle(consumer)
 await checkStorageRoots(consumer)

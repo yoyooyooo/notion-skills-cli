@@ -22,9 +22,13 @@ export async function prepareConsumer() {
       registry: { type: "string" },
       runtime: { type: "string" },
       "migration-archive": { type: "string" },
+      stage: { type: "string" },
     },
     strict: true,
   })
+  const stage = values.stage ?? "all"
+  if (stage !== "all" && stage !== "maintenance")
+    throw new Error("--stage must be all or maintenance.")
   if (Boolean(values.archive) === Boolean(values.registry))
     throw new Error("Select exactly one --archive or --registry input.")
   if (values.registry && !/^ntn-skills@\d+\.\d+\.\d+(?:-[\da-z.-]+)?$/i.test(values.registry))
@@ -186,6 +190,7 @@ export async function prepareConsumer() {
   }
   const evidence: Record<string, unknown> = {}
   return {
+    stage,
     scratch,
     runtime,
     env,

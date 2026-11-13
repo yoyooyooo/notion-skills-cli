@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { writeFile } from "node:fs/promises"
+import { chmod, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { property, text } from "../../packages/core/src/model.ts"
 import { canonicalSharedJson } from "../../packages/core/src/shared-records.ts"
@@ -88,6 +88,8 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
     [firstPath]: referenceOne,
     [secondPath]: referenceTwo,
   })
+  await chmod(join(changes, firstPath), 0o644)
+  await chmod(join(changes, secondPath), 0o755)
   const before = snapshot("before-split")
   const preview = property(
     await noWrites("mnt-split-preview", ["apply", originalRef, "--input", changes, "--dry-run"]),
@@ -136,6 +138,7 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
   ] as const) {
     const row = observedFiles.find((value) => value.path === path)
     assert.ok(row)
+    assert.equal(row.mode, path === firstPath ? "100644" : "100755")
     const ref = string(row.ref, "Visible fixed resource ref")
     const read = property(
       await noWrites("mnt-read-" + identity.file_id, ["read", ref, "--json", "--read-only"]),
@@ -173,6 +176,8 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
   )
   assert.equal(old.content, originalBody)
   const unchangedInput = await directory("maintenance-noop-input", sameInput)
+  await chmod(join(unchangedInput, firstPath), 0o644)
+  await chmod(join(unchangedInput, secondPath), 0o755)
   const noOpBefore = snapshot("before-noop")
   const unchanged = property(
     await noWrites("mnt-exact-noop", ["apply", splitRef, "--input", unchangedInput]),
@@ -258,17 +263,23 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
     "A tombstone retains its native row and stable identity",
   )
   const beforeRevive = snapshot("before-revive")
-  const restored = property(
-    await invoke("mnt-undelete-same-identity", [
-      "ctl",
-      "file",
-      "undelete",
-      target,
-      secondPath,
-      "--entry",
-      database,
-    ]),
-  )
+  const reviveManifest = join(root, "maintenance-revive.json")
+  await writeFile(reviveManifest, JSON.stringify({ version: 1, revives: [{ path: secondPath }] }))
+  const reviveInput = await directory("maintenance-revive-input", {
+    "SKILL.md": string(moveRead.content, "Main with restored reference"),
+  })
+  const reviveArgs = [
+    "apply",
+    string(deleteRead.ref, "Deleted pin"),
+    "--input",
+    reviveInput,
+    "--changes",
+    reviveManifest,
+  ]
+  const revivePreview = property(await noWrites("mnt-revive-preview", [...reviveArgs, "--dry-run"]))
+  assert.equal(revivePreview.dry_run, true)
+  assert.equal(snapshot("after-revive-preview").source_sha256, beforeRevive.source_sha256)
+  const restored = property(await invoke("mnt-revive-with-reference", reviveArgs))
   assert.equal(restored.verified, true)
   assert.deepEqual(fileIdentity(secondPath), second)
   assert.equal(snapshot("after-revive").files, beforeRevive.files)
@@ -290,8 +301,14 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
     ]),
   )
   assert.ok(Array.isArray(restoredFiles.files))
+  assert.equal(restoredRead.content, moveRead.content)
   const restoredEntry = restoredFiles.files.map(property).find((value) => value.path === secondPath)
   assert.ok(restoredEntry)
+  assert.equal(restoredEntry.mode, "100755")
+  assert.equal(
+    restoredFiles.files.map(property).find((value) => value.path === movedPath)?.mode,
+    "100644",
+  )
   const restoredBody = property(
     await noWrites("mnt-restored-original-bytes", [
       "read",
@@ -330,6 +347,9 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
     move_preserved_identity: true,
     delete_preserved_native_page: true,
     undelete_same_identity_and_bytes: true,
+    revive_parent_operation: operation(restored),
+    revive_preserved_original_modes: true,
+    revive_restored_main_reference: true,
     old_deleted_pin_preserved: true,
     raw_source: "same live owned service used by installed authoring; no product state seeded",
     boundaries: { installed_node: true, actual_http: true, real_notion: false, real_pi: false },

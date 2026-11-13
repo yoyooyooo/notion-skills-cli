@@ -34,6 +34,7 @@ import type { SharedFileManagementPlan } from "./shared-file-management-model.ts
 import {
   assertMaintenanceReferences,
   classifyMaintenanceChanges,
+  type MaintenanceTreeFile,
 } from "./shared-skill-apply-tree.ts"
 import type { SharedApplyChangesManifest } from "./shared-skill-apply-model.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
@@ -98,14 +99,15 @@ function applyMaintenanceTree(
       ),
     )
     const revivePaths = new Set((input.changes?.revives ?? []).map((item) => item.path))
-    const tombstones: { path: string; bytes: Uint8Array }[] = []
+    const tombstones: MaintenanceTreeFile[] = []
     for (const binding of inspected.index.files) {
       const state = inspected.states.get(binding.file_id)
       if (state?.ownership.kind !== "tombstone") continue
       const bytes = revivePaths.has(binding.path)
         ? encoder.encode((yield* readManagedFileBody(binding.page_id)).markdown)
         : new Uint8Array()
-      tombstones.push({ path: binding.path, bytes })
+      const mode = state.ownership.retained.mode
+      tombstones.push({ path: binding.path, bytes, ...(mode == null ? {} : { mode }) })
     }
     const classified = yield* applyChecked(() =>
       classifyMaintenanceChanges({

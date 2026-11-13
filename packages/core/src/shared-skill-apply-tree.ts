@@ -21,7 +21,7 @@ export type ClassifiedMaintenance = {
     readonly mode?: "100644" | "100755"
   }[]
   readonly removes: readonly string[]
-  readonly revives: readonly { readonly path: string; readonly bytes: Uint8Array }[]
+  readonly revives: readonly MaintenanceTreeFile[]
   readonly finalFiles: readonly MaintenanceTreeFile[]
 }
 
@@ -97,7 +97,7 @@ function modeOf(
 export function classifyMaintenanceChanges(input: {
   readonly entrypoint: string
   readonly active: readonly MaintenanceTreeFile[]
-  readonly tombstones: readonly { readonly path: string; readonly bytes: Uint8Array }[]
+  readonly tombstones: readonly MaintenanceTreeFile[]
   readonly requested: readonly MaintenanceTreeFile[]
   readonly explicitRemoves: readonly string[]
   readonly changes: SharedApplyChangesManifest | null
@@ -212,8 +212,9 @@ export function classifyMaintenanceChanges(input: {
         "Undelete restores the retained original bytes. A different body was not written.",
         { path },
       )
+    const mode = modeOf(tombstone, submitted ?? tombstone)
     requested.delete(path)
-    return { path, bytes: tombstone.bytes }
+    return { path, bytes: tombstone.bytes, ...(mode === undefined ? {} : { mode }) }
   })
   const adds: MaintenanceTreeFile[] = []
   const edits: MaintenanceTreeFile[] = []
@@ -259,8 +260,7 @@ export function classifyMaintenanceChanges(input: {
       bytes: move.bytes,
       ...(move.mode === undefined ? {} : { mode: move.mode }),
     })
-  for (const revive of classifiedRevives)
-    finalFiles.push({ path: revive.path, bytes: revive.bytes })
+  for (const revive of classifiedRevives) finalFiles.push(revive)
   for (const add of adds) finalFiles.push(add)
   finalFiles.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
   if (new Set(finalFiles.map((file) => file.path)).size !== finalFiles.length)

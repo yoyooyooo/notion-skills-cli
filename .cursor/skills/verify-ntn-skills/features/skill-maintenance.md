@@ -53,7 +53,19 @@ AuditRun 目前只抽象只读、反向覆盖和续跑，不含具体草稿字�
 
 ## Joined installed acceptance
 
-The package smoke calls `checkProgressiveMaintenance` and `checkInstalledMaintenanceRepair` through the existing installed authoring fixture. The first retains one original main and two new references, verifies actual raw bodies and stable identities, preserves an old pin, performs explicit move/delete/undelete, and shows zero source-row growth for identical current input. Repair seeds only native service rows, then drives the installed Node bin through public plan/apply/show/reconcile/repeat commands. It verifies historical-main and managed-file repair, unchanged original pages, URLs, authors, body and extra properties, one identity PATCH per page, zero repeat writes/row growth, and an explicit ordinary-child refusal. Source-function tests remain a separate layer; neither controlled HTTP path claims real Notion acceptance.
+The package smoke calls `checkProgressiveMaintenance` and `checkInstalledMaintenanceRepair` through the existing installed authoring fixture. The first retains one original main and two new references with original modes `100644` and `100755`, verifies actual raw bodies and stable identities, preserves an old pin, performs explicit move/delete/revive, and shows zero source-row growth for identical current input. Revival uses one public `apply --changes` parent for the original file and its main-body reference, with a zero-write dry-run first; require unchanged native identity, bytes and mode, plus the original deleted pin remaining absent. Repair seeds only native service rows, then drives the installed Node bin through public plan/apply/show/reconcile/repeat commands. It verifies historical-main and managed-file repair, unchanged original pages, URLs, authors, body and extra properties, one identity PATCH per page, zero repeat writes/row growth, and an explicit ordinary-child refusal. Source-function tests remain a separate layer; neither controlled HTTP path claims real Notion acceptance.
+
+For the installed progressive representative, use the existing package smoke entrypoint from the repository root:
+
+```bash
+NTN_SMOKE_EVIDENCE_ROOT=/absolute/owned/evidence \
+  bun scripts/package-smoke.ts --stage maintenance \
+  --archive /absolute/ntn-skills.tgz \
+  --migration-archive /absolute/ntn-skills-state-migration.tgz \
+  --runtime /absolute/node
+```
+
+Use the exact supplied candidate archives and a supported Node executable. This installs into an isolated consumer and runs the same progressive stage through public CLI subprocesses and the owned HTTP service; it does not run repair, Pi or the remaining package stages. Omit `--stage` for the complete package smoke. Preserve stdout/stderr/exit and the emitted `ntn-skills-consumer-*` directory. Read `controlled-authoring/progressive-maintenance.json`, `controlled-authoring/evidence.json` and `controlled-authoring/source-terminal.json` together: audit actual command inputs/outputs, HTTP request/response ledger, source bodies and identities, modes, no-write observations, and service shutdown. Do not replace missing originals with a returned summary or import internal handlers to manufacture evidence.
 
 For a focused repair run, reuse `prepareConsumer` and `checkAuthoring(consumer, undefined, { repairOnly: true })` with an independently installed archive. This skips the unrelated author lifecycle while retaining the same command/HTTP ledger, isolated SQLite state, native source oracle and service shutdown. Preserve `maintenance-repair.json`, `evidence.json` and `source-terminal.json`; a missing original command, source response or shutdown record cannot be replaced by the returned summary.
 
@@ -66,6 +78,13 @@ Resolve the selected Node launcher's `process.execPath` before creating isolated
 Formal source correspondence is recorded in `docs/maintenance-verification-review.md`. AuditScope adds 7 exact positive/negative configurations to lifecycle; MaintenanceApply adds 6 to operation recovery. Full suite totals are 40 and 34 respectively. A new run must preserve its original failure artifacts and complete property inventory.
 
 ## Independent-review regressions
+
+`shared-skill-apply.test.ts` must exercise complete add/delete/revive parents with
+regular, executable and historically unknown modes. Known original modes survive
+revival; unknown modes stay absent. `shared-skill-apply-tree.test.ts` rejects a
+submitted mode change even when bytes match. A version-2 dry-run must perform the
+same complete-tree reconstruction as execution and reject unavailable retained
+bytes before any pending receipt, original plan or semantic write.
 
 `shared-native-repair.test.ts` must keep a same-owner local original repair pending
 when the source query temporarily omits its plan. A completed-looking identity is

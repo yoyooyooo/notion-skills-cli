@@ -766,6 +766,7 @@ export function executeSharedSkillApply(
           apply_operation_id: pending[0]!.operation_id,
         }),
       )
+    if (plan.version === 2) yield* loadSharedApplyReferenceTree(plan)
     if (input.dryRun)
       return {
         status: "planned" as const,
@@ -774,7 +775,6 @@ export function executeSharedSkillApply(
         plan,
         protection: sharedSkillApplyProtection,
       }
-    if (plan.version === 2) yield* loadSharedApplyReferenceTree(plan)
     yield* retainPendingFileOperation(journal, plan)
     yield* invalidateSnapshotCache(sharedSkillId(plan.library_id, plan.skill_id), scope)
     yield* originalRecord(library, plan, "create")

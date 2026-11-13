@@ -596,6 +596,111 @@ describe("frozen sequential shared apply", () => {
     expect(f.writeCount()).toBe(0)
   })
 
+  test.each(["100644", "100755", undefined] as const)(
+    "complete apply revives the same native file with retained mode %s",
+    async (mode) => {
+      const f = sharedSnapshotFixture(),
+        snapshot = await fresh(f)
+      const path = "references/restore-mode.md"
+      await f.run(
+        withWriter(
+          f,
+          applySharedSkillChanges(snapshot, {
+            files: [
+              { path, bytes: encode("# Retained body\n"), ...(mode === undefined ? {} : { mode }) },
+              { path: "references/unchanged.md", bytes: encode("# Unchanged body\n") },
+            ],
+          }),
+        ),
+      )
+      const added = await fresh(f)
+      const original = added.files.find((file) => file.path === path)
+      expect(original?.mode).toBe(mode)
+      const sourceRows = structuredClone(f.files)
+      await f.run(
+        withWriter(
+          f,
+          applySharedSkillChanges(added, {
+            files: [],
+            changes: { version: 1, removes: [path] },
+          }),
+        ),
+      )
+      const deleted = await fresh(f)
+      expect(deleted.files.some((file) => file.path === path)).toBe(false)
+      f.clearCalls()
+      const preview = await f.run(
+        applySharedSkillChanges(deleted, {
+          files: [],
+          changes: { version: 1, revives: [{ path }] },
+          dryRun: true,
+        }),
+      )
+      if (
+        preview.status !== "planned" ||
+        preview.kind !== "skill_apply" ||
+        preview.plan.version !== 2
+      )
+        throw new Error("Expected a complete revival parent")
+      expect(f.writeCount()).toBe(0)
+      expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+      const revived = await f.run(
+        withWriter(
+          f,
+          executeSharedSkillApply(library, {
+            plan: preview.plan,
+            mode: "create",
+          }),
+        ),
+      )
+      expect(revived.status).toBe("applied")
+      expect(preview.plan.final_files.find((file) => file.path === path)?.mode).toBe(mode)
+      const current = await fresh(f)
+      expect(current.files.find((file) => file.path === path)).toEqual(original)
+      expect(f.files.map((file) => file.id)).toEqual(sourceRows.map((file) => file.id))
+      expect(deleted.files.some((file) => file.path === path)).toBe(false)
+    },
+  )
+
+  test.each([true, false])(
+    "complete tree reconstruction rejects unavailable retained bytes before writes, dryRun=%s",
+    async (dryRun) => {
+      const f = sharedSnapshotFixture(),
+        snapshot = await fresh(f)
+      const preview = await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [
+            { path: "references/complete-tree.md", bytes: encode("# Added\n"), mode: "100644" },
+            { path: "references/second-added.md", bytes: encode("# Second added\n") },
+          ],
+          dryRun: true,
+        }),
+      )
+      if (
+        preview.status !== "planned" ||
+        preview.kind !== "skill_apply" ||
+        preview.plan.version !== 2
+      )
+        throw new Error("Expected a complete layout parent")
+      const retained = snapshot.files.find((file) => file.path === "references/2.md")
+      if (retained === undefined) throw new Error("Missing untouched file")
+      f.objects.delete(`objects/${retained.sha256}`)
+      f.clearCalls()
+      const result = await f.run(
+        executeSharedSkillApply(library, {
+          plan: preview.plan,
+          mode: "create",
+          dryRun,
+        }).pipe(Effect.result),
+      )
+      expect(f.writeCount()).toBe(0)
+      expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+      expect(failure(result).code).toBe("SNAPSHOT_MISSING")
+    },
+  )
+
   test("main plus two mutually referencing files is one parent apply and keeps omitted files", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f)
