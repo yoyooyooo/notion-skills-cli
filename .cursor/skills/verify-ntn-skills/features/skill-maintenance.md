@@ -53,7 +53,9 @@ AuditRun 目前只抽象只读、反向覆盖和续跑，不含具体草稿字�
 
 ## Joined installed acceptance
 
-The package smoke now calls `checkProgressiveMaintenance` through the existing installed authoring fixture. It must retain one original main and two new references, verify actual raw bodies and stable identities, preserve an old pin, perform explicit move/delete/undelete, and show zero source-row growth for identical current input. `checkMaintenanceRepairHttp` alone remains a source-fixture check; it cannot stand in for the actual installed/live repair evidence.
+The package smoke calls `checkProgressiveMaintenance` and `checkInstalledMaintenanceRepair` through the existing installed authoring fixture. The first retains one original main and two new references, verifies actual raw bodies and stable identities, preserves an old pin, performs explicit move/delete/undelete, and shows zero source-row growth for identical current input. Repair seeds only native service rows, then drives the installed Node bin through public plan/apply/show/reconcile/repeat commands. It verifies historical-main and managed-file repair, unchanged original pages, URLs, authors, body and extra properties, one identity PATCH per page, zero repeat writes/row growth, and an explicit ordinary-child refusal. Source-function tests remain a separate layer; neither controlled HTTP path claims real Notion acceptance.
+
+For a focused repair run, reuse `prepareConsumer` and `checkAuthoring(consumer, undefined, { repairOnly: true })` with an independently installed archive. This skips the unrelated author lifecycle while retaining the same command/HTTP ledger, isolated SQLite state, native source oracle and service shutdown. Preserve `maintenance-repair.json`, `evidence.json` and `source-terminal.json`; a missing original command, source response or shutdown record cannot be replaced by the returned summary.
 
 The primary Linux/Node24 CI lane builds a Broker from its frozen source with this exact CLI candidate, installs both artifacts and Pi 1.5.0, and sets `MNT_VERIFY_PI_REQUIRED=1`. The existing package runner then drives actual Pi, tools, Node CLI, SQLite, source HTTP and normal model serializer. `maintenance-ci.test.ts` fails if that path, pinned version, mandatory flag or original artifact retention is removed. Other lanes report the Pi scope as not_run and still run all installed CLI checks.
 
@@ -76,3 +78,10 @@ request-budget pause in both initial and final observations. The online and
 offline reports retain that finding. Resume keeps the original failed response,
 even when a separate final observation later proves access. These are concrete
 source/transport regressions, not newly claimed TLC properties.
+
+`shared-file-management.test.ts` must exercise a real controlled HTTP response
+for an event that the same execution acknowledged but an immediate full query
+omits. That exact acknowledged event can join the fresh history; a conflicting
+same-ID payload must stop completion. Independent reconciliation still requires
+the original complete outcome: a matching current path or event alone never
+settles an unknown original operation.

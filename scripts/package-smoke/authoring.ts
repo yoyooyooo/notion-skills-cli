@@ -14,6 +14,10 @@ import {
 } from "../../packages/core/test/shared-create-fixture.ts"
 import { id, rich } from "../../packages/core/test/shared-snapshot-fixture.ts"
 import type { SmokeContext } from "./context.ts"
+import {
+  checkInstalledMaintenanceRepair,
+  seedMaintenanceRepairFixture,
+} from "./maintenance-repair.ts"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 type HttpObservation = {
@@ -50,7 +54,7 @@ export type AuthoringContinuation = {
 export async function checkAuthoring(
   context: SmokeContext,
   continuation?: (input: AuthoringContinuation) => Promise<unknown>,
-  options: { readonly maintenanceOnly?: boolean } = {},
+  options: { readonly maintenanceOnly?: boolean; readonly repairOnly?: boolean } = {},
 ) {
   const root = join(context.scratch, "controlled-authoring")
   await mkdir(root)
@@ -641,8 +645,32 @@ export async function checkAuthoring(
       loseMaintenanceOutcome = prefix
     },
   })
+  const repair = async () => {
+    const targets = seedMaintenanceRepairFixture(original)
+    ownedPages.add(targets.mainPage)
+    ownedPages.add(targets.filePage)
+    return checkInstalledMaintenanceRepair(continuationInput(targets.mainPage), targets)
+  }
   let completed = false
   try {
+    if (options.repairOnly) {
+      const maintenanceRepair = await repair()
+      completed = true
+      const result = {
+        proof: "independent_installed_node_with_controlled_notion",
+        scope: "maintenance_repair_only",
+        runtime: context.runtime,
+        executable: context.executable,
+        cli_sha256: hash(await readFile(context.executable)),
+        maintenance_repair: maintenanceRepair,
+        command_count: commands.length,
+        server_received_requests: calls.length,
+        writes: writes(calls).length,
+        receipt: join(root, "evidence.json"),
+      }
+      context.evidence.controlled_installed_maintenance_repair = result
+      return result
+    }
     const initial = {
       "SKILL.md":
         "---\nname: Installed author\ndescription: Independent installed author fixture\n---\n\n# Installed author\n\nInitial main.\n",
@@ -1281,6 +1309,7 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
     assert.equal(preservedDraft.content, draftRead.content)
     const maintenance =
       continuation === undefined ? undefined : await continuation(continuationInput(draftPage))
+    const maintenanceRepair = await repair()
     completed = true
     const result = {
       proof: "independent_installed_node_with_controlled_notion",
@@ -1310,6 +1339,7 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
       },
       original_outcome_count: outcomes.length,
       raw_resource_lifecycle: resourceEvidence,
+      maintenance_repair: maintenanceRepair,
       ...(maintenance === undefined ? {} : { maintenance }),
       command_count: commands.length,
       server_received_requests: calls.length,

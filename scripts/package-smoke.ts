@@ -51,6 +51,7 @@ console.log(
     checks: [
       "installed_bin",
       "controlled_installed_author_lifecycle_and_original_outcome_recovery",
+      "installed_identity_repair_preserves_native_pages_and_reuses_original_operation",
       "installed_audit_sigint_sigkill_original_run_continuation",
       "installed_audit_drafts_partial_registration_and_retained_lifecycle",
       "installed_target_audit_ignores_unrelated_rows",
