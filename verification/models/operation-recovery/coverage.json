@@ -1,25 +1,39 @@
 {
   "version": 1,
-  "synchronized_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "synchronized_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
     "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
-    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
+    "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
     "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
     "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
-    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
+    "packages/core/src/shared-file-management-model.ts": "189a7dbd8581d08a31e46c7459dee81fcd71c4c730081919b6d9437ad8041f4e",
     "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
-    "packages/core/test/shared-file-management.test.ts": "9ff24ac090ca96de59a16b3bf68fdefaaaebb1a1e646084f618c62535e98258f",
+    "packages/core/test/shared-file-management.test.ts": "125a282584ec7a0dad2c40407d8f6b5b49e5978d76a36038182aae0e9256df86",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
-    "packages/core/test/shared-snapshot-fixture.ts": "8dd55082681ef323f1fdc7b54626f7af19a3c48d900aa7e7bfc7c37b3e840826"
+    "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
+    "packages/core/src/shared-skill-apply.ts": "6f4bef589d743624018e4245fc3f4e70726c75ca17b650fa01788bcd9a59f046",
+    "packages/core/src/shared-skill-apply-model.ts": "5346f4b702e2850c6b75c0915e68a7d62693b3c5a8dacdd958212e6a1d1ec825",
+    "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
+    "packages/core/src/shared-skill-apply-tree.ts": "608ba7979c7197f905dc2e01837ad4253b7554c5750f12c3d99b2c5347fe826f",
+    "packages/core/src/shared-skill-apply-authoring.ts": "bb4c4e0d93c3fad8cbea478ca65db78f4aef62fc9041b042e3b8aec78d44de6f",
+    "packages/core/src/shared-file-management.ts": "0f9004ff78aad56e6dcee841fbe0cf1beaea47947d8b858bac9ded2f0cc466ee",
+    "packages/core/src/shared-snapshot.ts": "8aa8ea16e287d6e845778c0c5d00e7074b319452ea7b8920dc813ae48097e8ef",
+    "packages/core/src/shared-native-repair.ts": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+    "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
+    "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
+    "packages/core/test/shared-skill-apply.test.ts": "d43001ad0a65f43599a21943374fdb698be1d5e2ec09e491fc23c9f5f92be7d3",
+    "packages/core/test/shared-skill-apply-tree.test.ts": "2d2046104865c0aef4a79fe43d4f93096790c652ea334b15200e49ae7bbf4b53",
+    "packages/core/test/shared-native-repair.test.ts": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+    "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -76,6 +90,25 @@
         "Original processing metadata PATCH transport internals (modeled at retained ACK and exact readback boundary)",
         "Provider CAS or exclusion of edits between the final observation and dispatch",
         "Unconditional progress while results remain unknown"
+      ]
+    },
+    "MaintenanceApply": {
+      "kind": "bounded_original_parent_and_verified_child_prefix",
+      "symbols": [
+        "loadSharedApplyReferenceTree",
+        "authenticateApplyParent",
+        "executeSharedSkillApply",
+        "resumeSharedSkillApply",
+        "reconcileSharedSkillApply",
+        "loadPendingSharedSkillApplies"
+      ],
+      "scope": "Three ordered children; original dispatch, received response, retained verified outcome and parent progress remain distinct. Current pending tree is not published. Original local authority is required for an unsent suffix. No CAS, atomic multi-page write or eventual-progress claim.",
+      "excluded": [
+        "Every native POST/PATCH/Record subrequest, inherited from narrower operation guardians",
+        "Notion atomic transactions or revision compare-and-swap",
+        "An edit after a completed pre-dispatch observation; real readback and failure tests remain required",
+        "Raw Markdown/bytes, resource formats, reference rewrite parsing and permissions",
+        "Arbitrary plan length, all provider scopes and subsequent legitimate author changes after completion"
       ]
     }
   },
@@ -557,6 +590,102 @@
         "HistoricalAckPreserved",
         "NoDeadlock"
       ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "skip-prefix.cfg",
+      "expected_broken": ["ConfirmedPrefixBeforeSuffix"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "replay-unknown.cfg",
+      "expected_broken": ["UnknownNeverRepeated"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "partial-completion.cfg",
+      "expected_broken": ["CompletionNeedsAllChildren"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "publish-pending.cfg",
+      "expected_broken": ["PendingTreeNotPublished"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "ignore-drift.cfg",
+      "expected_broken": ["ObservedDriftStopsDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
     }
   ],
   "maintenance": {
@@ -566,5 +695,33 @@
     "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
     "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
     "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
+  },
+  "maintenance_review": {
+    "batch": "AH-1024 / MNT02–09",
+    "baseline": "6c38e747a9e40186fdf9d4ecda033eb5b413561c",
+    "document": "docs/maintenance-verification-review.md",
+    "claim": "Source correspondence reviewed; this metadata itself is not a new run. Exact result scope is the final runner summary plus concrete original artifacts.",
+    "reviewed_paths": [
+      "packages/core/src/shared-create-dispatch.ts",
+      "packages/core/src/shared-file-management-model.ts",
+      "packages/core/test/shared-file-management.test.ts",
+      "packages/core/test/shared-snapshot-fixture.ts",
+      "packages/core/src/shared-skill-apply.ts",
+      "packages/core/src/shared-skill-apply-model.ts",
+      "packages/core/src/shared-skill-apply-target.ts",
+      "packages/core/src/shared-skill-apply-tree.ts",
+      "packages/core/src/shared-skill-apply-authoring.ts",
+      "packages/core/src/shared-file-management.ts",
+      "packages/core/src/shared-snapshot.ts",
+      "packages/core/src/shared-native-repair.ts",
+      "packages/core/src/shared-native-repair-model.ts",
+      "packages/core/src/shared-maintenance-operations.ts",
+      "packages/core/test/shared-skill-apply.test.ts",
+      "packages/core/test/shared-skill-apply-tree.test.ts",
+      "packages/core/test/shared-native-repair.test.ts",
+      "packages/core/test/shared-maintenance-operations.test.ts"
+    ],
+    "product_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
+    "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here."
   }
 }

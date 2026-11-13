@@ -1,27 +1,27 @@
 {
   "version": 1,
-  "synchronized_commit": "a01f00ddda99878adae37cf178674ff18f4ab676",
+  "synchronized_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
-    "packages/core/src/shared-file-state.ts": "61ead4550c584920679ca426835065c9d97ddce99fdaf1cd3cbc1e18db21ebf9",
+    "packages/core/src/shared-file-state.ts": "d24fa9d2eae2cde1dc41b180b9064342b05d342324621f811e9d1f87806c2a75",
     "packages/core/src/shared-file-observer.ts": "f8cf74c46f17b2a2bc519faa50afdc9508b98e77b2f5be0c33e821e6a1010ff3",
     "packages/core/src/shared-body-write.ts": "eaa57a6ffd1de92e4005cd5358fd764b3f91e895f1df58b78bdda10ec8650f08",
     "packages/core/src/shared-source-refresh.ts": "f3829e9b22f86731da884a85abe5958d5523762cda6aaac8df3650a7120549fe",
     "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
-    "packages/core/src/shared-snapshot.ts": "c4a4c2dfea1a1e47ac7b1565c1651f7c9412a80285bcacaaad4ec712016aaf09",
+    "packages/core/src/shared-snapshot.ts": "8aa8ea16e287d6e845778c0c5d00e7074b319452ea7b8920dc813ae48097e8ef",
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
-    "packages/core/src/shared-audit.ts": "800cb52e20305897b250ca2ec0c75032ecf424995aaf1d741be7f3c8fc56c706",
-    "packages/core/src/shared-audit-model.ts": "0c878b9cd2d6c87078f3baa516e5d566210b841453015ccebab7875856129497",
-    "packages/core/src/shared-audit-inventory.ts": "8525d7ba64a1ce944d7605a5fd0185f3f7392c547cb15baf064b3a07abb4200a",
+    "packages/core/src/shared-audit.ts": "6ad0d730ff1565cb31c8cb3c559f7b9f7a7f88d384bbb07b525a3c43e8e5b76c",
+    "packages/core/src/shared-audit-model.ts": "014e9356111cf441945a6da506b4c35bfbb473211825bee1ca3a2cd4502a8f7c",
+    "packages/core/src/shared-audit-inventory.ts": "ee87cdd0b69ee45006abfafa278a6cf47486447a6f469b10848ded5789f302ae",
     "packages/core/src/shared-audit-transport.ts": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
-    "packages/core/src/shared-audit-store.ts": "6ac34010a9c2b61e2ab349589bcc18fae86590bc8a0f82adb14954898f24386c",
+    "packages/core/src/shared-audit-store.ts": "b23d196e7f3bece7396174fb7719fccddc87baafd3297d110f41763cd77bfd67",
     "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
     "packages/core/src/shared-create.ts": "e0df7eb91252ec11de84cc2dd0a8447bd93412d6899cf93c08dc60786f3b9454",
     "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
-    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
+    "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
@@ -46,17 +46,17 @@
     "packages/core/src/shared-create-recovery-proof-model.ts": "e48c97c936d311a91d31709f25f084b60de0e40c9267fac71c6d0daf80b5dd54",
     "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
     "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
-    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
-    "packages/core/src/shared-file-management.ts": "8d439fb120a44a68df9b360e6a997a9013d0bdb1b390aca4825570e1b6be0243",
-    "packages/core/src/shared-skill-apply.ts": "81209af64cc51d3e3881a6550e3db7d6eeb0c0af37d68abdc19711de83a374f7",
+    "packages/core/src/shared-file-management-model.ts": "189a7dbd8581d08a31e46c7459dee81fcd71c4c730081919b6d9437ad8041f4e",
+    "packages/core/src/shared-file-management.ts": "0f9004ff78aad56e6dcee841fbe0cf1beaea47947d8b858bac9ded2f0cc466ee",
+    "packages/core/src/shared-skill-apply.ts": "6f4bef589d743624018e4245fc3f4e70726c75ca17b650fa01788bcd9a59f046",
     "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
-    "packages/core/src/mutation.ts": "c93d7dbe639e96cd5f84530ff7448fe6064573e3cf092518e19d6ba64d41a31a",
+    "packages/core/src/mutation.ts": "7165a46dfda395579d60ce06fca4e462cdd3f0bc801be1852544b20f3422bd73",
     "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
     "packages/core/src/shared-authoring.ts": "9d420d7d613ec90a90024d2b00a55564da80443c27ee72a5f2ba14ac8db7b5e1",
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
-    "packages/core/src/shared-skill-apply-authoring.ts": "e3777527c0b2596f4f996e208fbab8e858185f53d7275bf941d90507c00ee15f",
+    "packages/core/src/shared-skill-apply-authoring.ts": "bb4c4e0d93c3fad8cbea478ca65db78f4aef62fc9041b042e3b8aec78d44de6f",
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
-    "packages/core/src/sqlite-state.ts": "98f6e35919b12c6abfbd3874e76a39f714a46da41690aa4ba27f236f8eb4ea04",
+    "packages/core/src/sqlite-state.ts": "7cc5bcce6c2e5188325550e3210d97379bb19972dcb97fb1bc3e8db243d14a8c",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
@@ -83,7 +83,7 @@
     "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
     "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb",
     "packages/cli/src/commands-library-file-accept-add.ts": "bfbbcac521a242df3f24800b28ff04aa2e70c0eb328d1ec93ea9e0e11ac14d51",
-    "packages/cli/src/commands-library-files.ts": "9e857febc8f08eb0e866d781513b26ee669fe6a1302cc768c91aaf6fce052fd4",
+    "packages/cli/src/commands-library-files.ts": "6dde857dcaf3c0557af71533866d1f71a17542ffae799ba5da1fde528ff14e2f",
     "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
     "packages/core/src/resource-read.ts": "759615b3589da94137f21d138405e33715e4437e758062e5110303c6e10e8fc4",
     "packages/core/src/resource-read-model.ts": "26842f8115c6940196e8c3586fb7b8f69f776dd5b43d22a1b51eb4ebbcd8b62b",
@@ -91,7 +91,18 @@
     "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
     "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765",
     "packages/core/src/shared-content.ts": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f",
-    "packages/core/src/shared-audit-inspect.ts": "882e5cd0ed213d4e96eb780880fab2eec5963c9edb500d3e2934ad123c681e1e"
+    "packages/core/src/shared-audit-inspect.ts": "abeee66ddc0ca11c04fe36b24b9a75492dcf4543a8c35ab8df1efbb216f28881",
+    "packages/core/src/shared-audit-growth.ts": "f60c17994802029eb4611fd50fa37812b6421f8a5f9e24869796a16c03c0c1f6",
+    "packages/core/src/shared-native-repair.ts": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+    "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
+    "packages/core/src/shared-file-adoption.ts": "ed0a335a38ef55a64b0c636098cae7ccd79a07cb09c4d1780098215a799c51cb",
+    "packages/core/src/shared-file-adoption-model.ts": "766ce528ac63aa58adf3bd684d30ecda4fc174f1b351ad595483a02cec1342a2",
+    "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
+    "packages/core/src/shared-skill-apply-tree.ts": "608ba7979c7197f905dc2e01837ad4253b7554c5750f12c3d99b2c5347fe826f",
+    "packages/core/src/shared-maintenance-target.ts": "24b523ebf892633478d6e25458468b27870b280bde281c6b634d81af1c6e45d6",
+    "packages/core/test/shared-audit-target.test.ts": "f6758e765385b7a4f75f14b95145cf46bec0be4633874a4817b312d99f01a96f",
+    "packages/core/test/shared-native-repair.test.ts": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+    "packages/core/test/shared-file-adoption.test.ts": "64dec2552982ef2209b2c0491e57f9226d5ddd60944eb0d122e0f94e0cc65d3b"
   },
   "models": {
     "ProjectionRace": {
@@ -263,6 +274,18 @@
         "complete-recovery-dispatch-and-ack-set",
         "fresh-complete-body-before-continuation-write",
         "cold-complete-native-ack-proof-reader"
+      ]
+    },
+    "AuditScope": {
+      "kind": "bounded_target_and_reverse_scope_contract",
+      "symbols": ["readReachableAudit", "auditReachableReady", "auditReport", "resumeSharedAudit"],
+      "scope": "One selected owner with four abstract fact groups, target versus independent full reverse scope, two-read budget and one resume. Actual source guards and concrete limitations are reviewed in docs/maintenance-verification-review.md.",
+      "excluded": [
+        "HTTP pagination, bytes and exact request cost",
+        "Real Notion permissions and concurrent changes",
+        "Actual body, reference and Record byte integrity",
+        "Arbitrary dependency graphs or all private session pins",
+        "Repair authorization and write execution"
       ]
     }
   },
@@ -1219,6 +1242,104 @@
         "ColdVerificationNeedsSharedProof",
         "NoDeadlock"
       ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "target-as-global.cfg",
+      "expected_broken": ["GlobalCoverageNeedsReverse"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "missing-owner-records.cfg",
+      "expected_broken": ["TargetCoverageNeedsOwnerFacts"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "mutating-audit.cfg",
+      "expected_broken": ["AuditReadOnly"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "reset-progress.cfg",
+      "expected_broken": ["ConfirmedEvidenceMonotone"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "scope-switch.cfg",
+      "expected_broken": ["OriginalScopePreserved"],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "AuditScope",
+      "config": "permission.cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "AuditReadOnly",
+        "TargetCoverageNeedsOwnerFacts",
+        "GlobalCoverageNeedsReverse",
+        "ConfirmedEvidenceMonotone",
+        "OriginalScopePreserved",
+        "NoDeadlock"
+      ]
     }
   ],
   "maintenance": {
@@ -1267,5 +1388,41 @@
     ],
     "model_cfg_and_views_changed": false,
     "proof_boundary": "Existing AuditRun six-case check plus independent concrete regressions; no new field invariant is inferred from a source hash."
+  },
+  "maintenance_review": {
+    "batch": "AH-1024 / MNT02–09",
+    "baseline": "6c38e747a9e40186fdf9d4ecda033eb5b413561c",
+    "document": "docs/maintenance-verification-review.md",
+    "claim": "Source correspondence reviewed; this metadata itself is not a new run. Exact result scope is the final runner summary plus concrete original artifacts.",
+    "reviewed_paths": [
+      "packages/core/src/shared-file-state.ts",
+      "packages/core/src/shared-snapshot.ts",
+      "packages/core/src/shared-audit.ts",
+      "packages/core/src/shared-audit-model.ts",
+      "packages/core/src/shared-audit-inventory.ts",
+      "packages/core/src/shared-audit-store.ts",
+      "packages/core/src/shared-create-dispatch.ts",
+      "packages/core/src/shared-file-management-model.ts",
+      "packages/core/src/shared-file-management.ts",
+      "packages/core/src/shared-skill-apply.ts",
+      "packages/core/src/mutation.ts",
+      "packages/core/src/shared-skill-apply-authoring.ts",
+      "packages/core/src/sqlite-state.ts",
+      "packages/cli/src/commands-library-files.ts",
+      "packages/core/src/shared-audit-inspect.ts",
+      "packages/core/src/shared-audit-growth.ts",
+      "packages/core/src/shared-native-repair.ts",
+      "packages/core/src/shared-native-repair-model.ts",
+      "packages/core/src/shared-file-adoption.ts",
+      "packages/core/src/shared-file-adoption-model.ts",
+      "packages/core/src/shared-skill-apply-target.ts",
+      "packages/core/src/shared-skill-apply-tree.ts",
+      "packages/core/src/shared-maintenance-target.ts",
+      "packages/core/test/shared-audit-target.test.ts",
+      "packages/core/test/shared-native-repair.test.ts",
+      "packages/core/test/shared-file-adoption.test.ts"
+    ],
+    "product_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
+    "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here."
   }
 }
