@@ -37,3 +37,34 @@ Canonical `ctl audit/file/resource` spellings share their handlers with retained
 Mock supplies model decisions only. Actual CLI, SDK, Pi tools, serializer, source writes and session recording run normally. The independent oracle checks native calls, exact source bodies, whole generated directory objects, each operation's effects and actual HTTP. Repeated paths in author commands or audit reports are not duplicate directories. Duplicate native call IDs remain visible to the verifier.
 
 Independent installation, real Notion, real Pi with a loopback model and real-model usability are separate evidence scopes. A successful one does not stand in for another. No result authorizes a global installation change, production inventory repair, main merge or publication.
+
+## Independent review corrections after `9e4cefb`
+
+The cold review reproduced two bugs on the frozen product, without mutating its
+guards. Original failure artifacts remain alongside the corrected runs.
+
+**Repair query visibility.** An applied identity PATCH with a lost outcome stayed
+blocked while the original plan was query-visible, but a temporary query omission
+let the same Store consume and add observation Records. The corrected gate joins
+the credential-scoped locator and original pre-POST marker with remote headers.
+Only an exact complete original shared proof releases that barrier. Another owner
+does not inherit it. An empty local repair inventory does not add an identity
+request to ordinary audit or consumer paths. The local marker does not create ACK
+authority or repair knowledge for a fresh Store.
+
+**Permission evidence at a budget boundary.** A Files denial was held in a local
+variable until Records completed, so the next exhausted request erased the known
+denial from the paused report. Each observed group now reaches the in-memory run
+before the next request, and the audit transport durably retains the confirmed
+reachable failure. This applies to the initial and final observations. Resume
+replays the original task's denial; later final observations may improve current
+coverage without rewriting its historical evidence. Report-only next actions do
+not expand a healthy target into a full census.
+
+These changes restore the existing promises; they do not add a model variable for
+real query visibility or each permission error. `AuditScope` still proves only its
+declared finite facts and progress contract. Repair metadata, local marker lookup
+and exact HTTP response retention remain concrete implementation checks. The
+independent review reproducers are rerun by changing only their checkout path;
+their assertions and old failures stay intact. Model source hashes are updated
+only after this correspondence review and the affected real-code checks.

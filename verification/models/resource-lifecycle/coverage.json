@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
+  "synchronized_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "d24fa9d2eae2cde1dc41b180b9064342b05d342324621f811e9d1f87806c2a75",
@@ -12,10 +12,10 @@
     "packages/core/src/shared-source-run.ts": "1de13e7fccd1d47062642125b8b8089ad4303ddf41bd72506f95aba63cb940d8",
     "packages/core/src/notion-readonly.ts": "3ae3082aae877cf2ad92e032926a5e6f8c97a3194e7524a40d34efaa3f169fc1",
     "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
-    "packages/core/src/shared-audit.ts": "6ad0d730ff1565cb31c8cb3c559f7b9f7a7f88d384bbb07b525a3c43e8e5b76c",
-    "packages/core/src/shared-audit-model.ts": "014e9356111cf441945a6da506b4c35bfbb473211825bee1ca3a2cd4502a8f7c",
-    "packages/core/src/shared-audit-inventory.ts": "ee87cdd0b69ee45006abfafa278a6cf47486447a6f469b10848ded5789f302ae",
-    "packages/core/src/shared-audit-transport.ts": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
+    "packages/core/src/shared-audit.ts": "5643141cc260ca03448fd692685efbc2ef1d3895d327fc0adf46103abaf202e1",
+    "packages/core/src/shared-audit-model.ts": "47ad139967aa965385f405fcc298ff69ca35d7f65a2c6a5946936e8a36a07381",
+    "packages/core/src/shared-audit-inventory.ts": "b6111866a290d342040ab209c989a240061d96eedefe70e23771a3f13aee4c1e",
+    "packages/core/src/shared-audit-transport.ts": "90c241ed72226b2a6dc2d901e7f2138b2bda7373a80e8e9240cbbeed82fefada",
     "packages/core/src/shared-audit-store.ts": "b23d196e7f3bece7396174fb7719fccddc87baafd3297d110f41763cd77bfd67",
     "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
@@ -92,16 +92,16 @@
     "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765",
     "packages/core/src/shared-content.ts": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f",
     "packages/core/src/shared-audit-inspect.ts": "abeee66ddc0ca11c04fe36b24b9a75492dcf4543a8c35ab8df1efbb216f28881",
-    "packages/core/src/shared-audit-growth.ts": "f60c17994802029eb4611fd50fa37812b6421f8a5f9e24869796a16c03c0c1f6",
-    "packages/core/src/shared-native-repair.ts": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+    "packages/core/src/shared-audit-growth.ts": "7faff1d53cf46b61994a5385ff165bd9f4753546887ffd61e6e2c216997a2a88",
+    "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-file-adoption.ts": "ed0a335a38ef55a64b0c636098cae7ccd79a07cb09c4d1780098215a799c51cb",
     "packages/core/src/shared-file-adoption-model.ts": "766ce528ac63aa58adf3bd684d30ecda4fc174f1b351ad595483a02cec1342a2",
     "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
     "packages/core/src/shared-skill-apply-tree.ts": "608ba7979c7197f905dc2e01837ad4253b7554c5750f12c3d99b2c5347fe826f",
     "packages/core/src/shared-maintenance-target.ts": "24b523ebf892633478d6e25458468b27870b280bde281c6b634d81af1c6e45d6",
-    "packages/core/test/shared-audit-target.test.ts": "f6758e765385b7a4f75f14b95145cf46bec0be4633874a4817b312d99f01a96f",
-    "packages/core/test/shared-native-repair.test.ts": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+    "packages/core/test/shared-audit-target.test.ts": "ad98b201f4a300baa646fcad4d5a7ec633e6244abd7771c4a7e075ab8def8708",
+    "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-file-adoption.test.ts": "64dec2552982ef2209b2c0491e57f9226d5ddd60944eb0d122e0f94e0cc65d3b"
   },
   "models": {
@@ -236,7 +236,9 @@
         "The historical v8-to-v9 recovery variant and original create/reconcile transitions",
         "Arbitrary suffixes, immutable Record dispatch/reconciliation and all-writer authorization"
       ],
-      "tests": ["packages/core/test/shared-create-known-recovery.test.ts"],
+      "tests": [
+        "packages/core/test/shared-create-known-recovery.test.ts"
+      ],
       "mutation_replays": [
         "complete-original-dispatch-set",
         "projection-authority-before-first-write"
@@ -278,7 +280,12 @@
     },
     "AuditScope": {
       "kind": "bounded_target_and_reverse_scope_contract",
-      "symbols": ["readReachableAudit", "auditReachableReady", "auditReport", "resumeSharedAudit"],
+      "symbols": [
+        "readReachableAudit",
+        "auditReachableReady",
+        "auditReport",
+        "resumeSharedAudit"
+      ],
       "scope": "One selected owner with four abstract fact groups, target versus independent full reverse scope, two-read budget and one resume. Actual source guards and concrete limitations are reviewed in docs/maintenance-verification-review.md.",
       "excluded": [
         "HTTP pagination, bytes and exact request cost",
@@ -295,8 +302,12 @@
     {
       "kind": "hash_bound_context_not_modeled",
       "name": "local_inventory_entrypoint_selection",
-      "files": ["packages/core/src/shared-inventory-local.ts"],
-      "symbols": ["scanLocalSkillInventory"],
+      "files": [
+        "packages/core/src/shared-inventory-local.ts"
+      ],
+      "symbols": [
+        "scanLocalSkillInventory"
+      ],
       "scope": "Local filesystem discovery and root entrypoint preference are outside the finite lifecycle models. Within an existing entity root, an exact SKILL.md takes precedence while all supporting files and fallback boundaries remain. A new observation binds the selected main in its manifest and review identity; retained reports and prepared plans keep their original main. This hash binds reviewed scanner context only and adds no model, invariant or liveness claim.",
       "tests": [
         "packages/core/test/shared-inventory.test.ts",
@@ -466,8 +477,14 @@
     {
       "kind": "hash_bound_context_not_modeled",
       "name": "source_batch_sqlite_checkpoints",
-      "files": ["packages/core/src/sqlite-state.ts", "packages/core/src/shared-source-batch.ts"],
-      "symbols": ["mutableSharedLocalPrefixes", "sharedLocalDomains"],
+      "files": [
+        "packages/core/src/sqlite-state.ts",
+        "packages/core/src/shared-source-batch.ts"
+      ],
+      "symbols": [
+        "mutableSharedLocalPrefixes",
+        "sharedLocalDomains"
+      ],
       "scope": "SQLite address registration and checkpoint persistence are outside UpdateCommit and AuditRun. Only exact operations/shared-source-batches/<scope SHA>/source-batch-<plan SHA>/<run UUID>.json addresses become mutable run checkpoints; original source member dispatch, ACK and selection facts remain immutable. Retired runs cannot be reopened. Real Node processes test dry/apply/reconcile with one original batch and independent run records; memory Store fixtures do not establish durability.",
       "tests": [
         "packages/core/test/shared-source-batch-sqlite.node.test.ts",
@@ -599,13 +616,23 @@
         "executeSharedBodyWrite"
       ],
       "scope": "The request command defaults to read-only inspection. --submit freezes the complete observed body fingerprint/size, event frontier, file identity and Source context in Management Receipt; its dry-run writes nothing. A dropdown alone expresses intent and does not authorize replacement. --process consumes the submitted receipt, permitting only a verified selected-version advance within the same Source definition/member; later body/frontier edits, cancellation, moves or rebinding require fresh submission. --submit, --process and --reconcile are mutually exclusive. Feedback neither clears user intent nor treats Status as permission. The actual restore plan and retained bodies are verified before its ID is written and read back in processing feedback; no preceding processing/null write is needed. Exact feedback metadata acknowledgment is separate from current complete-context eligibility, so a later body edit stops before body dispatch without converting a known metadata ACK into an unknown mutation. Existing guardedSourceMutation rules still prohibit accepting unknown writes from matching fields. Legacy --reconcile --operation binds the validated original plan to its submitted file/preimage/frontier/Source and requires exact original outcome/event; no current-text equality creates success. A verified not-applied original permits only an explicit new submission, while pending and unknown originals cannot be replaced. Historical verified receipts without submitted retain their prior read-only contract. These request/feedback transitions, the callback and explicit complete-body-match restore remain outside all six finite models, including ProjectionRace's excluded explicit writer/request authorization and AcknowledgedContinuation's unrelated create branches. No model, configuration, view, transition or prior model result changes or acquires these claims.",
-      "tests": ["packages/core/test/shared-file-request.test.ts", "packages/cli/test/cli.test.ts"]
+      "tests": [
+        "packages/core/test/shared-file-request.test.ts",
+        "packages/cli/test/cli.test.ts"
+      ]
     },
     {
       "kind": "hash_bound_context_not_modeled",
       "name": "registered_metadata_census",
-      "files": ["packages/core/src/shared-audit.ts", "packages/core/src/shared-audit-model.ts"],
-      "symbols": ["runSharedAudit", "continueSharedAudit", "auditReport"],
+      "files": [
+        "packages/core/src/shared-audit.ts",
+        "packages/core/src/shared-audit-model.ts"
+      ],
+      "symbols": [
+        "runSharedAudit",
+        "continueSharedAudit",
+        "auditReport"
+      ],
       "scope": "Census permits metadata depth only, rejects pin/graph scopes, compares semantic registered-table rows before and after inventory, and does not enqueue per-Skill observation. Skill states remain unobserved; a completed census is not a content audit. The existing read-only Notion transport remains in force. This selector is not a transition of AuditRun.",
       "tests": [
         "packages/core/test/shared-audit.test.ts",
@@ -740,7 +767,11 @@
         "packages/core/test/resource-read.test.ts",
         "packages/cli/test/sdk.test.ts"
       ],
-      "symbols": ["readResources", "withConsumptionEffects", "readOnlyNotion"],
+      "symbols": [
+        "readResources",
+        "withConsumptionEffects",
+        "readOnlyNotion"
+      ],
       "scope": "Fixed resource batches carry the existing consumption policy into the existing semantic Notion write guard and report effects on ready/failed/cancelled outcomes. RESOURCE_READ_EFFECTS_VERSION=1 declares batch support separately from scalar support. No resource-lifecycle state, acquisition identity, write authority, retry or recovery transition changes. AuditRun does not model these SDK/argument/receipt paths; original models/cfg/views and named results are reused without a fresh TLC run.",
       "tests": [
         "packages/core/test/resource-read.test.ts",
@@ -785,13 +816,23 @@
       "model": "ProjectionRace",
       "config": "cfg",
       "expected_broken": [],
-      "expected_rules": ["TypeOK", "HumanEditPreserved", "NoDeadlock"]
+      "expected_rules": [
+        "TypeOK",
+        "HumanEditPreserved",
+        "NoDeadlock"
+      ]
     },
     {
       "model": "ProjectionRace",
       "config": "broken.cfg",
-      "expected_broken": ["HumanEditPreserved"],
-      "expected_rules": ["TypeOK", "HumanEditPreserved", "NoDeadlock"]
+      "expected_broken": [
+        "HumanEditPreserved"
+      ],
+      "expected_rules": [
+        "TypeOK",
+        "HumanEditPreserved",
+        "NoDeadlock"
+      ]
     },
     {
       "model": "UpdateCommit",
@@ -827,7 +868,9 @@
     {
       "model": "UpdateCommit",
       "config": "retry.cfg",
-      "expected_broken": ["AtMostOneDispatch"],
+      "expected_broken": [
+        "AtMostOneDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -840,7 +883,9 @@
     {
       "model": "UpdateCommit",
       "config": "early.cfg",
-      "expected_broken": ["SelectedVersionComplete"],
+      "expected_broken": [
+        "SelectedVersionComplete"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -853,7 +898,9 @@
     {
       "model": "UpdateCommit",
       "config": "moving.cfg",
-      "expected_broken": ["SessionPinStable"],
+      "expected_broken": [
+        "SessionPinStable"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -866,7 +913,9 @@
     {
       "model": "UpdateCommit",
       "config": "inference.cfg",
-      "expected_broken": ["NoInventedOutcome"],
+      "expected_broken": [
+        "NoInventedOutcome"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -891,7 +940,9 @@
     {
       "model": "AuditRun",
       "config": "broken.cfg",
-      "expected_broken": ["CompleteMeansCovered"],
+      "expected_broken": [
+        "CompleteMeansCovered"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -903,7 +954,9 @@
     {
       "model": "AuditRun",
       "config": "mutating.cfg",
-      "expected_broken": ["AuditReadOnly"],
+      "expected_broken": [
+        "AuditReadOnly"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -915,7 +968,10 @@
     {
       "model": "AuditRun",
       "config": "reset.cfg",
-      "expected_broken": ["CheckpointMonotone", "EventuallyReport"],
+      "expected_broken": [
+        "CheckpointMonotone",
+        "EventuallyReport"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -966,7 +1022,9 @@
     {
       "model": "ImportCreate",
       "config": "retry.cfg",
-      "expected_broken": ["AtMostOneDispatch"],
+      "expected_broken": [
+        "AtMostOneDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -979,7 +1037,9 @@
     {
       "model": "ImportCreate",
       "config": "early.cfg",
-      "expected_broken": ["EnableRequiresComplete"],
+      "expected_broken": [
+        "EnableRequiresComplete"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -992,7 +1052,9 @@
     {
       "model": "ImportCreate",
       "config": "inference.cfg",
-      "expected_broken": ["ConfirmationNeedsOriginalAck"],
+      "expected_broken": [
+        "ConfirmationNeedsOriginalAck"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -1005,7 +1067,9 @@
     {
       "model": "ImportCreate",
       "config": "stale.cfg",
-      "expected_broken": ["FrozenInputRequired"],
+      "expected_broken": [
+        "FrozenInputRequired"
+      ],
       "expected_rules": [
         "TypeOK",
         "AtMostOneDispatch",
@@ -1035,7 +1099,9 @@
     {
       "model": "CreateRecovery",
       "config": "original.cfg",
-      "expected_broken": ["OriginalEvidenceRequired"],
+      "expected_broken": [
+        "OriginalEvidenceRequired"
+      ],
       "expected_rules": [
         "TypeOK",
         "OriginalEvidenceRequired",
@@ -1052,7 +1118,9 @@
     {
       "model": "CreateRecovery",
       "config": "replay.cfg",
-      "expected_broken": ["AtMostOneRecoveryDispatch"],
+      "expected_broken": [
+        "AtMostOneRecoveryDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "OriginalEvidenceRequired",
@@ -1069,7 +1137,10 @@
     {
       "model": "CreateRecovery",
       "config": "scope.cfg",
-      "expected_broken": ["ProjectionAuthorityBeforeWrite", "ExistingBodyWriteForbidden"],
+      "expected_broken": [
+        "ProjectionAuthorityBeforeWrite",
+        "ExistingBodyWriteForbidden"
+      ],
       "expected_rules": [
         "TypeOK",
         "OriginalEvidenceRequired",
@@ -1102,7 +1173,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "original.cfg",
-      "expected_broken": ["CompleteOriginalAuthority"],
+      "expected_broken": [
+        "CompleteOriginalAuthority"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1118,7 +1191,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "fresh.cfg",
-      "expected_broken": ["FreshBodyBeforeWrite"],
+      "expected_broken": [
+        "FreshBodyBeforeWrite"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1134,7 +1209,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "cold.cfg",
-      "expected_broken": ["ColdVerificationNeedsSharedProof"],
+      "expected_broken": [
+        "ColdVerificationNeedsSharedProof"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1150,7 +1227,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "replay.cfg",
-      "expected_broken": ["AtMostOneContinuationDispatch"],
+      "expected_broken": [
+        "AtMostOneContinuationDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1182,7 +1261,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "native.original.cfg",
-      "expected_broken": ["CompleteOriginalAuthority"],
+      "expected_broken": [
+        "CompleteOriginalAuthority"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1198,7 +1279,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "native.fresh.cfg",
-      "expected_broken": ["FreshBodyBeforeWrite"],
+      "expected_broken": [
+        "FreshBodyBeforeWrite"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1214,7 +1297,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "native.cold.cfg",
-      "expected_broken": ["ColdVerificationNeedsSharedProof"],
+      "expected_broken": [
+        "ColdVerificationNeedsSharedProof"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1230,7 +1315,9 @@
     {
       "model": "AcknowledgedContinuation",
       "config": "native.replay.cfg",
-      "expected_broken": ["AtMostOneContinuationDispatch"],
+      "expected_broken": [
+        "AtMostOneContinuationDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "CompleteOriginalAuthority",
@@ -1260,7 +1347,9 @@
     {
       "model": "AuditScope",
       "config": "target-as-global.cfg",
-      "expected_broken": ["GlobalCoverageNeedsReverse"],
+      "expected_broken": [
+        "GlobalCoverageNeedsReverse"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -1274,7 +1363,9 @@
     {
       "model": "AuditScope",
       "config": "missing-owner-records.cfg",
-      "expected_broken": ["TargetCoverageNeedsOwnerFacts"],
+      "expected_broken": [
+        "TargetCoverageNeedsOwnerFacts"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -1288,7 +1379,9 @@
     {
       "model": "AuditScope",
       "config": "mutating-audit.cfg",
-      "expected_broken": ["AuditReadOnly"],
+      "expected_broken": [
+        "AuditReadOnly"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -1302,7 +1395,9 @@
     {
       "model": "AuditScope",
       "config": "reset-progress.cfg",
-      "expected_broken": ["ConfirmedEvidenceMonotone"],
+      "expected_broken": [
+        "ConfirmedEvidenceMonotone"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -1316,7 +1411,9 @@
     {
       "model": "AuditScope",
       "config": "scope-switch.cfg",
-      "expected_broken": ["OriginalScopePreserved"],
+      "expected_broken": [
+        "OriginalScopePreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "AuditReadOnly",
@@ -1424,5 +1521,54 @@
     ],
     "product_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
     "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here."
+  },
+  "independent_review_corrections": {
+    "source_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
+    "previous_frozen": "9e4cefb74ec67155a61c64270add2edf85c0e219",
+    "document": "docs/maintenance-verification-review.md",
+    "changes": [
+      {
+        "file": "packages/core/src/shared-audit.ts",
+        "before": "6ad0d730ff1565cb31c8cb3c559f7b9f7a7f88d384bbb07b525a3c43e8e5b76c",
+        "after": "5643141cc260ca03448fd692685efbc2ef1d3895d327fc0adf46103abaf202e1"
+      },
+      {
+        "file": "packages/core/src/shared-audit-model.ts",
+        "before": "014e9356111cf441945a6da506b4c35bfbb473211825bee1ca3a2cd4502a8f7c",
+        "after": "47ad139967aa965385f405fcc298ff69ca35d7f65a2c6a5946936e8a36a07381"
+      },
+      {
+        "file": "packages/core/src/shared-audit-inventory.ts",
+        "before": "ee87cdd0b69ee45006abfafa278a6cf47486447a6f469b10848ded5789f302ae",
+        "after": "b6111866a290d342040ab209c989a240061d96eedefe70e23771a3f13aee4c1e"
+      },
+      {
+        "file": "packages/core/src/shared-audit-transport.ts",
+        "before": "ef8de334923370a2204937f4dc7bb524976f829805e5ba454d3b1ecea1821c1d",
+        "after": "90c241ed72226b2a6dc2d901e7f2138b2bda7373a80e8e9240cbbeed82fefada"
+      },
+      {
+        "file": "packages/core/src/shared-audit-growth.ts",
+        "before": "f60c17994802029eb4611fd50fa37812b6421f8a5f9e24869796a16c03c0c1f6",
+        "after": "7faff1d53cf46b61994a5385ff165bd9f4753546887ffd61e6e2c216997a2a88"
+      },
+      {
+        "file": "packages/core/src/shared-native-repair.ts",
+        "before": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+        "after": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1"
+      },
+      {
+        "file": "packages/core/test/shared-audit-target.test.ts",
+        "before": "f6758e765385b7a4f75f14b95145cf46bec0be4633874a4817b312d99f01a96f",
+        "after": "ad98b201f4a300baa646fcad4d5a7ec633e6244abd7771c4a7e075ab8def8708"
+      },
+      {
+        "file": "packages/core/test/shared-native-repair.test.ts",
+        "before": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+        "after": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50"
+      }
+    ],
+    "properties_and_bounds_changed": false,
+    "evidence_scope": "Original independent B1/B2 reproductions passed; initial/final Files-denial checkpoints, exact original outcome barriers and no-extra-auth cancellation checked in concrete tests. AuditScope does not model real query visibility/permission classification. No new actual Notion or model completion claimed by this metadata."
   }
 }

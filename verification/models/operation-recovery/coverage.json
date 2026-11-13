@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
+  "synchronized_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
@@ -27,12 +27,12 @@
     "packages/core/src/shared-skill-apply-authoring.ts": "bb4c4e0d93c3fad8cbea478ca65db78f4aef62fc9041b042e3b8aec78d44de6f",
     "packages/core/src/shared-file-management.ts": "0f9004ff78aad56e6dcee841fbe0cf1beaea47947d8b858bac9ded2f0cc466ee",
     "packages/core/src/shared-snapshot.ts": "8aa8ea16e287d6e845778c0c5d00e7074b319452ea7b8920dc813ae48097e8ef",
-    "packages/core/src/shared-native-repair.ts": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+    "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
     "packages/core/test/shared-skill-apply.test.ts": "d43001ad0a65f43599a21943374fdb698be1d5e2ec09e491fc23c9f5f92be7d3",
     "packages/core/test/shared-skill-apply-tree.test.ts": "2d2046104865c0aef4a79fe43d4f93096790c652ea334b15200e49ae7bbf4b53",
-    "packages/core/test/shared-native-repair.test.ts": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+    "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371"
   },
   "models": {
@@ -134,7 +134,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "missing-ack.cfg",
-      "expected_broken": ["PrefixNeedsOriginalAck"],
+      "expected_broken": [
+        "PrefixNeedsOriginalAck"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -152,7 +154,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "mismatched-binding.cfg",
-      "expected_broken": ["ExactRecordBinding"],
+      "expected_broken": [
+        "ExactRecordBinding"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -170,7 +174,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "noncontiguous-prefix.cfg",
-      "expected_broken": ["PrefixMustBeContiguous"],
+      "expected_broken": [
+        "PrefixMustBeContiguous"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -188,7 +194,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "repeat-unknown.cfg",
-      "expected_broken": ["UnknownNeverRedispatched"],
+      "expected_broken": [
+        "UnknownNeverRedispatched"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -206,7 +214,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "query-authority.cfg",
-      "expected_broken": ["AckLookupIndependentOfQuery"],
+      "expected_broken": [
+        "AckLookupIndependentOfQuery"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -224,7 +234,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "stale-premise.cfg",
-      "expected_broken": ["DispatchNeedsFreshPremise"],
+      "expected_broken": [
+        "DispatchNeedsFreshPremise"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -242,7 +254,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "permission.cfg",
-      "expected_broken": ["DispatchNeedsPermission"],
+      "expected_broken": [
+        "DispatchNeedsPermission"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -260,7 +274,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "overwrite-original.cfg",
-      "expected_broken": ["OriginalFactsPreserved"],
+      "expected_broken": [
+        "OriginalFactsPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -278,7 +294,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "skip-verification.cfg",
-      "expected_broken": ["CompletionNeedsVerification"],
+      "expected_broken": [
+        "CompletionNeedsVerification"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -312,7 +330,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "accept-unknown-original.cfg",
-      "expected_broken": ["KnownFailureRequired"],
+      "expected_broken": [
+        "KnownFailureRequired"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -328,7 +348,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "stale-context.cfg",
-      "expected_broken": ["FrozenIdentityRequired"],
+      "expected_broken": [
+        "FrozenIdentityRequired"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -344,7 +366,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "reuse-original-id.cfg",
-      "expected_broken": ["IndependentIdentity"],
+      "expected_broken": [
+        "IndependentIdentity"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -360,7 +384,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "equal-current-is-old-success.cfg",
-      "expected_broken": ["OriginalFactsPreserved"],
+      "expected_broken": [
+        "OriginalFactsPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -376,7 +402,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "repeat-unknown.cfg",
-      "expected_broken": ["UnknownNeverRedispatched"],
+      "expected_broken": [
+        "UnknownNeverRedispatched"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -392,7 +420,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "incomplete-cold-proof.cfg",
-      "expected_broken": ["ColdRecoveryNeedsCompleteProof"],
+      "expected_broken": [
+        "ColdRecoveryNeedsCompleteProof"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -408,7 +438,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "skip-adopted-event.cfg",
-      "expected_broken": ["CompletionNeedsAdoption"],
+      "expected_broken": [
+        "CompletionNeedsAdoption"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -441,7 +473,9 @@
     {
       "model": "RestoreFeedback",
       "config": "unverified-binding.cfg",
-      "expected_broken": ["BodyNeedsBoundOriginal"],
+      "expected_broken": [
+        "BodyNeedsBoundOriginal"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -458,7 +492,9 @@
     {
       "model": "RestoreFeedback",
       "config": "stale-body.cfg",
-      "expected_broken": ["BodyNeedsCurrentPremise"],
+      "expected_broken": [
+        "BodyNeedsCurrentPremise"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -475,7 +511,9 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-body-after-feedback-loss.cfg",
-      "expected_broken": ["FeedbackNeverRepeatsBody"],
+      "expected_broken": [
+        "FeedbackNeverRepeatsBody"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -492,7 +530,9 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-feedback-is-ack.cfg",
-      "expected_broken": ["FeedbackRequiresRealAck"],
+      "expected_broken": [
+        "FeedbackRequiresRealAck"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -509,7 +549,9 @@
     {
       "model": "RestoreFeedback",
       "config": "replace-pending-original.cfg",
-      "expected_broken": ["OriginalRequestPreserved"],
+      "expected_broken": [
+        "OriginalRequestPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -526,7 +568,9 @@
     {
       "model": "RestoreFeedback",
       "config": "invalid-original-is-success.cfg",
-      "expected_broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_broken": [
+        "SuccessNeedsAppliedOriginal"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -543,7 +587,9 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-current-is-original-success.cfg",
-      "expected_broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_broken": [
+        "SuccessNeedsAppliedOriginal"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -560,7 +606,9 @@
     {
       "model": "RestoreFeedback",
       "config": "forget-historical-ack.cfg",
-      "expected_broken": ["HistoricalAckPreserved"],
+      "expected_broken": [
+        "HistoricalAckPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -577,7 +625,9 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-unknown-feedback.cfg",
-      "expected_broken": ["UnknownFeedbackNeverRedispatched"],
+      "expected_broken": [
+        "UnknownFeedbackNeverRedispatched"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -610,7 +660,9 @@
     {
       "model": "MaintenanceApply",
       "config": "skip-prefix.cfg",
-      "expected_broken": ["ConfirmedPrefixBeforeSuffix"],
+      "expected_broken": [
+        "ConfirmedPrefixBeforeSuffix"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -626,7 +678,9 @@
     {
       "model": "MaintenanceApply",
       "config": "replay-unknown.cfg",
-      "expected_broken": ["UnknownNeverRepeated"],
+      "expected_broken": [
+        "UnknownNeverRepeated"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -642,7 +696,9 @@
     {
       "model": "MaintenanceApply",
       "config": "partial-completion.cfg",
-      "expected_broken": ["CompletionNeedsAllChildren"],
+      "expected_broken": [
+        "CompletionNeedsAllChildren"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -658,7 +714,9 @@
     {
       "model": "MaintenanceApply",
       "config": "publish-pending.cfg",
-      "expected_broken": ["PendingTreeNotPublished"],
+      "expected_broken": [
+        "PendingTreeNotPublished"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -674,7 +732,9 @@
     {
       "model": "MaintenanceApply",
       "config": "ignore-drift.cfg",
-      "expected_broken": ["ObservedDriftStopsDispatch"],
+      "expected_broken": [
+        "ObservedDriftStopsDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -723,5 +783,24 @@
     ],
     "product_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
     "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here."
+  },
+  "independent_review_corrections": {
+    "source_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
+    "previous_frozen": "9e4cefb74ec67155a61c64270add2edf85c0e219",
+    "document": "docs/maintenance-verification-review.md",
+    "changes": [
+      {
+        "file": "packages/core/src/shared-native-repair.ts",
+        "before": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+        "after": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1"
+      },
+      {
+        "file": "packages/core/test/shared-native-repair.test.ts",
+        "before": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+        "after": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50"
+      }
+    ],
+    "properties_and_bounds_changed": false,
+    "evidence_scope": "Original independent B1/B2 reproductions passed; initial/final Files-denial checkpoints, exact original outcome barriers and no-extra-auth cancellation checked in concrete tests. AuditScope does not model real query visibility/permission classification. No new actual Notion or model completion claimed by this metadata."
   }
 }

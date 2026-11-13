@@ -12,7 +12,7 @@ AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影�
 | MNT04 整树计划 | apply planner、文件与引用解析 | apply、resource-lifecycle | 省略当删除、同名猜移动、误改样例、丢未改文件 |
 | MNT05 执行和删除恢复 | 原父子操作与文件状态 | operation-recovery、实际HTTP | unknown重放、半树当完整、恢复新身份、覆盖人类编辑 |
 | MNT06 Agent命令与维护Skill | canonical parser、原操作路由、builtin | help/schema、安装CLI、冷Agent | next.argv猜引用、跨族恢复、说明代替可执行入口 |
-| MNT07 保留原因与增长 | audit/history、同事实复用 | resource-audit、表行和请求 | 无链接当孤儿、同header当同payload、历史pin当垃圾。同主同 Record 头只记 possible_equivalent；`next.argv` 只指向 help 或 resume |
+| MNT07 保留原因与增长 | audit/history、同事实复用 | resource-audit、表行和请求 | 无链接当孤儿、同header当同payload、历史pin当垃圾。同主同 Record 头只记 possible_equivalent；`next.argv` 为只读 help/resume/report，完整反向 census 单列为可选 alternative |
 | MNT08 跨系统组合 | 现有Pi Mock和integration | 实际CLI、Pi、serializer、Session | 测试插件补正文、半新图、晚回调、效果丢失 |
 | MNT09 安装与日用候选 | 分发产物与owned真实目标 | package smoke、真实Notion、Pi两臂 | 源码代替安装、私有缓存兜底、暖纠错改记冷成功 |
 
@@ -60,3 +60,17 @@ The primary Linux/Node24 CI lane builds a Broker from its frozen source with thi
 `maintenance-pi.test.ts` validates the independent oracle: exact read-only next.argv, original call IDs, full source and effects, complete directory objects and native Session. Paths repeated in authoring output do not count as duplicate generated directories. Mock cannot choose a missing ref from the source oracle or replace an unsupported split with a simpler write. Model usage is not a real-model cost measurement.
 
 Formal source correspondence is recorded in `docs/maintenance-verification-review.md`. AuditScope adds 7 exact positive/negative configurations to lifecycle; MaintenanceApply adds 6 to operation recovery. Full suite totals are 40 and 34 respectively. A new run must preserve its original failure artifacts and complete property inventory.
+
+## Independent-review regressions
+
+`shared-native-repair.test.ts` must keep a same-owner local original repair pending
+when the source query temporarily omits its plan. A completed-looking identity is
+not an outcome, and another owner remains usable. The no-repair path must not add
+a redundant authentication request; `shared-audit.test.ts` checks cancellation
+and resumed request reuse.
+
+`shared-audit-target.test.ts` checks a Files permission denial followed by a
+request-budget pause in both initial and final observations. The online and
+offline reports retain that finding. Resume keeps the original failed response,
+even when a separate final observation later proves access. These are concrete
+source/transport regressions, not newly claimed TLC properties.
