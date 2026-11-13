@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Crypto, Effect, FileSystem, Path } from "effect"
@@ -1018,6 +1018,56 @@ describe("public shared apply and replace routing", () => {
       expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
     })
   }
+
+  test.each(["100644", "100755", undefined] as const)(
+    "public pinned apply preserves isolated added file mode %s",
+    async (mode) => {
+      const f = sharedSnapshotFixture(),
+        baseline = await fresh(f)
+      const directory = mkdtempSync(join(tmpdir(), "shared-public-add-mode-"))
+      const path = "single-added.md",
+        markdown = "# Single supporting file\n\nOriginal added body.\n"
+      const inputPath = join(directory, path)
+      writeFileSync(inputPath, markdown)
+      if (mode !== undefined) chmodSync(inputPath, mode === "100755" ? 0o755 : 0o644)
+      // A bare Markdown input has no imported mode; directories retain stat metadata.
+      const options = { input: mode === undefined ? inputPath : directory }
+      const ref = fileRef(baseline.record.id, baseline.entrypoint, baseline.snapshot_id)
+      const beforeIds = f.files.map((file) => file.id)
+      try {
+        f.clearCalls()
+        const preview = await f.run(applySkill(ref, { ...options, dryRun: true }))
+        expect(property(preview).status).toBe("planned")
+        expect(f.writeCount()).toBe(0)
+        expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+        expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+        const result = await f.run(withWriter(f, applySkill(ref, options)))
+        expect(result.operation).toBe("apply")
+        expect(property(result).status).toBe("applied")
+        expect(property(result).verified).toBe(true)
+        expect(property(result).changes).toEqual({ files: [path], removed: [] })
+        const current = await fresh(f)
+        const added = current.files.find((file) => file.path === path)
+        if (added === undefined) throw new Error("Missing isolated added file")
+        expect(added.mode).toBe(mode)
+        expect(new TextDecoder().decode(f.objects.get(`objects/${added.sha256}`)).trimEnd()).toBe(
+          markdown.trimEnd(),
+        )
+        expect(current.files.filter((file) => file.path !== path)).toEqual([...baseline.files])
+        expect(f.files).toHaveLength(beforeIds.length + 1)
+        expect(f.files.slice(0, beforeIds.length).map((file) => file.id)).toEqual(beforeIds)
+        const plans = payloads(f).filter(
+          (value) => value.kind === "file_management" && value.action === "add",
+        )
+        expect(plans).toHaveLength(1)
+        expect(plans[0]?.creation_mode).toBe(mode)
+        expect(property(property(plans[0]?.content).retained).mode).toBe(mode)
+        expect(payloads(f).some((value) => value.kind === "skill_apply")).toBe(false)
+      } finally {
+        if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+      }
+    },
+  )
 
   test("one public pinned apply maintains main, resource and metadata despite an unrelated broken source", async () => {
     const f = sharedSnapshotFixture(),

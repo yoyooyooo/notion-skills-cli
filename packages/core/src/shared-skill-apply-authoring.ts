@@ -585,6 +585,7 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
               snapshot,
               action: "add",
               path: added.path,
+              ...(added.mode === undefined ? {} : { mode: added.mode }),
               markdown: yield* applyChecked(() =>
                 new TextDecoder("utf-8", { fatal: true }).decode(added.bytes),
               ),
