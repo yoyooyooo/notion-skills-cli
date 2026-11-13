@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
+  "synchronized_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
@@ -16,22 +16,22 @@
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
-    "packages/core/test/shared-file-management.test.ts": "125a282584ec7a0dad2c40407d8f6b5b49e5978d76a36038182aae0e9256df86",
+    "packages/core/test/shared-file-management.test.ts": "c3d44838103181e667da85310e9cdce6c926f0ca0f33641b06d431c81916a8ae",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
     "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
-    "packages/core/src/shared-skill-apply.ts": "6f4bef589d743624018e4245fc3f4e70726c75ca17b650fa01788bcd9a59f046",
+    "packages/core/src/shared-skill-apply.ts": "b6910c450acaaeb1b57198def4884b710643f732f0209b3e73f4d89a4510a1b4",
     "packages/core/src/shared-skill-apply-model.ts": "5346f4b702e2850c6b75c0915e68a7d62693b3c5a8dacdd958212e6a1d1ec825",
     "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
-    "packages/core/src/shared-skill-apply-tree.ts": "608ba7979c7197f905dc2e01837ad4253b7554c5750f12c3d99b2c5347fe826f",
-    "packages/core/src/shared-skill-apply-authoring.ts": "bb4c4e0d93c3fad8cbea478ca65db78f4aef62fc9041b042e3b8aec78d44de6f",
-    "packages/core/src/shared-file-management.ts": "0f9004ff78aad56e6dcee841fbe0cf1beaea47947d8b858bac9ded2f0cc466ee",
+    "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
+    "packages/core/src/shared-skill-apply-authoring.ts": "84baef66ae05beafde049f2528a428093148a5a83749b4d66b658b910311741e",
+    "packages/core/src/shared-file-management.ts": "662a2c61a04e79999cf30f222992141cbdc7b5c58b86e2cf3ea3630f76dba456",
     "packages/core/src/shared-snapshot.ts": "8aa8ea16e287d6e845778c0c5d00e7074b319452ea7b8920dc813ae48097e8ef",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
-    "packages/core/test/shared-skill-apply.test.ts": "d43001ad0a65f43599a21943374fdb698be1d5e2ec09e491fc23c9f5f92be7d3",
-    "packages/core/test/shared-skill-apply-tree.test.ts": "2d2046104865c0aef4a79fe43d4f93096790c652ea334b15200e49ae7bbf4b53",
+    "packages/core/test/shared-skill-apply.test.ts": "27a1644c0e0924e9d9ba4693b6dc331145ee2787f5ee490799390acdb42eb83a",
+    "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371"
   },
@@ -104,7 +104,9 @@
       ],
       "scope": "Three ordered children; original dispatch, received response, retained verified outcome and parent progress remain distinct. Current pending tree is not published. Original local authority is required for an unsent suffix. No CAS, atomic multi-page write or eventual-progress claim.",
       "excluded": [
-        "Every native POST/PATCH/Record subrequest, inherited from narrower operation guardians",
+        "Every native POST/PATCH/Record subrequest; narrower recovery models apply only to their named protocols",
+        "Same-execution lifecycle-event ACK/query union, provider index visibility and per-Record crash persistence",
+        "Known versus unknown native file modes, exact byte reconstruction and dry-run preview validation",
         "Notion atomic transactions or revision compare-and-swap",
         "An edit after a completed pre-dispatch observation; real readback and failure tests remain required",
         "Raw Markdown/bytes, resource formats, reference rewrite parsing and permissions",
@@ -722,7 +724,35 @@
       "packages/core/test/shared-maintenance-operations.test.ts"
     ],
     "product_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
-    "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here."
+    "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here.",
+    "event_ack_followup": {
+      "source_commit": "dafa00d5d781dcc44071a0092001e01ae829dfb6",
+      "document": "docs/maintenance-verification-review.md#same-execution-lifecycle-event-verification",
+      "model_contract": "MaintenanceApply still separates response receipt, retained original outcome and parent progress. Its interrupted acknowledgement-to-outcome state cannot reconcile without that original outcome. AcknowledgedRecordPrefix retains its exact original ACK and complete-census requirements; IndependentAcceptance and RestoreFeedback protocols are unchanged.",
+      "unmodeled": "The current file-management execution may join its already verified immutable event fact into a fresh complete query that omits it. Exact envelope validation, conflicting same-ID payloads and individual event/outcome subrequests remain concrete checks. The returned fact is not a durable journal, cannot settle an earlier operation and supplies no unknown-write replay authority.",
+      "tests": ["packages/core/test/shared-file-management.test.ts"],
+      "properties_and_bounds_changed": false
+    },
+    "revival_mode_followup": {
+      "source_commit": "2e5b3ac9e6fc16a35863657237257ea380e534b8",
+      "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
+      "model_contract": "MaintenanceApply still begins with valid ordered child intent and preserves original dispatch, acknowledgement, outcome and parent-prefix boundaries. Its variables do not represent native modes, exact retained byte reconstruction or dry-run results.",
+      "unmodeled": "Tombstones, revivals and final manifests retain known native modes without inventing historical unknown values. The unchanged strict full-tree reconstruction now runs before both planned preview and local parent retention. An invalid original revival was rejected before any parent Record or child dispatch; the correction adds no recovery authority.",
+      "tests": [
+        "packages/core/test/shared-skill-apply-tree.test.ts",
+        "packages/core/test/shared-skill-apply.test.ts"
+      ],
+      "properties_and_bounds_changed": false,
+      "evidence_scope": "The 40/34 complete model runs and 85/186 domain regressions retained for dafa00d predate this follow-up. The new ten-case red/green and 38 affected source regressions establish the concrete metadata/preflight correction. Those earlier model runs are not a new execution of this source commit."
+    },
+    "single_add_mode_followup": {
+      "source_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
+      "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
+      "unmodeled": "The existing isolated add route forwards optional input mode to the already supported file-management plan fields. Known modes and historical absence keep their existing meanings; no retained operation, phase or recovery authority changes. This native metadata routing is outside the finite models.",
+      "tests": ["packages/core/test/shared-skill-apply.test.ts"],
+      "properties_and_bounds_changed": false,
+      "evidence_scope": "Three public applySkill cases use actual filesystem input: directory modes 100644/100755 and a bare Markdown input with unknown mode. The original one-pass/two-failure result becomes three passes. This is concrete source evidence; the prior dafa00d formal runs keep their original identity."
+    }
   },
   "independent_review_corrections": {
     "source_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",

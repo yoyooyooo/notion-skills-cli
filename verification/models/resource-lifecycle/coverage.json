@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
+  "synchronized_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-file-state.ts": "d24fa9d2eae2cde1dc41b180b9064342b05d342324621f811e9d1f87806c2a75",
@@ -47,14 +47,14 @@
     "packages/core/src/shared-notion-literal-text.ts": "1cf9234380190ddff38b4c031cd310c0809b139dd24423658fe5acfe52da60ff",
     "packages/core/src/shared-native-file-metadata.ts": "9aa82e5498c7f3e86d8d5be676eeda8fed784026488d3aaf8377c54b3cf3dd61",
     "packages/core/src/shared-file-management-model.ts": "189a7dbd8581d08a31e46c7459dee81fcd71c4c730081919b6d9437ad8041f4e",
-    "packages/core/src/shared-file-management.ts": "0f9004ff78aad56e6dcee841fbe0cf1beaea47947d8b858bac9ded2f0cc466ee",
-    "packages/core/src/shared-skill-apply.ts": "6f4bef589d743624018e4245fc3f4e70726c75ca17b650fa01788bcd9a59f046",
+    "packages/core/src/shared-file-management.ts": "662a2c61a04e79999cf30f222992141cbdc7b5c58b86e2cf3ea3630f76dba456",
+    "packages/core/src/shared-skill-apply.ts": "b6910c450acaaeb1b57198def4884b710643f732f0209b3e73f4d89a4510a1b4",
     "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
     "packages/core/src/mutation.ts": "7165a46dfda395579d60ce06fca4e462cdd3f0bc801be1852544b20f3422bd73",
     "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
     "packages/core/src/shared-authoring.ts": "9d420d7d613ec90a90024d2b00a55564da80443c27ee72a5f2ba14ac8db7b5e1",
     "packages/core/src/shared-body-write-model.ts": "58a6f898a5349fd245037e3db0508ea5052fd5f5813ccd2d1f004f12b21076d1",
-    "packages/core/src/shared-skill-apply-authoring.ts": "bb4c4e0d93c3fad8cbea478ca65db78f4aef62fc9041b042e3b8aec78d44de6f",
+    "packages/core/src/shared-skill-apply-authoring.ts": "84baef66ae05beafde049f2528a428093148a5a83749b4d66b658b910311741e",
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/src/sqlite-state.ts": "7cc5bcce6c2e5188325550e3210d97379bb19972dcb97fb1bc3e8db243d14a8c",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
@@ -98,7 +98,7 @@
     "packages/core/src/shared-file-adoption.ts": "ed0a335a38ef55a64b0c636098cae7ccd79a07cb09c4d1780098215a799c51cb",
     "packages/core/src/shared-file-adoption-model.ts": "766ce528ac63aa58adf3bd684d30ecda4fc174f1b351ad595483a02cec1342a2",
     "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
-    "packages/core/src/shared-skill-apply-tree.ts": "608ba7979c7197f905dc2e01837ad4253b7554c5750f12c3d99b2c5347fe826f",
+    "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
     "packages/core/src/shared-maintenance-target.ts": "24b523ebf892633478d6e25458468b27870b280bde281c6b634d81af1c6e45d6",
     "packages/core/test/shared-audit-target.test.ts": "ad98b201f4a300baa646fcad4d5a7ec633e6244abd7771c4a7e075ab8def8708",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
@@ -418,6 +418,49 @@
         "packages/core/test/shared-audit-sqlite.node.test.ts",
         "packages/core/test/shared-source-definitions.test.ts",
         "packages/core/test/shared-create-known-recovery.test.ts"
+      ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "same_execution_lifecycle_event_verification",
+      "files": [
+        "packages/core/src/shared-file-management.ts",
+        "packages/core/src/shared-records.ts",
+        "packages/core/src/shared-file-state.ts",
+        "packages/core/src/shared-pending-file-operations.ts",
+        "packages/core/src/shared-skill-apply.ts"
+      ],
+      "symbols": [
+        "executeSharedFileManagement",
+        "appendSharedRecord",
+        "resolveFileState",
+        "reconcileSharedFileManagement",
+        "resumeSharedSkillApply"
+      ],
+      "scope": "Only the current execution joins the exact immutable fact returned by appendSharedRecord with the fresh complete event query. A conflicting same-ID payload or invalid event graph fails. This verified fact is not a new durable request/ACK journal or cross-invocation authority. Original reconciliation still requires the exact original outcome, and an interrupted event-to-outcome window can remain pending. The lifecycle models do not model this query union, individual lifecycle Record writes, provider index visibility or crash recovery of the in-memory acknowledgement. The narrower operation-recovery models retain their separate protocol and census bounds.",
+      "document": "docs/maintenance-verification-review.md#same-execution-lifecycle-event-verification",
+      "tests": ["packages/core/test/shared-file-management.test.ts"]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_revival_mode_and_preview_reconstruction",
+      "files": [
+        "packages/core/src/shared-skill-apply-authoring.ts",
+        "packages/core/src/shared-skill-apply-tree.ts",
+        "packages/core/src/shared-skill-apply.ts",
+        "packages/core/src/shared-skill-apply-target.ts"
+      ],
+      "symbols": [
+        "applySharedSkillChanges",
+        "classifyMaintenanceChanges",
+        "executeSharedSkillApply",
+        "loadSharedApplyReferenceTree"
+      ],
+      "scope": "Revival retains the original known native file mode through tombstone classification and the complete final manifest; historical absence remains unknown and a conflicting known submitted mode fails. The isolated one-file add route forwards its supplied optional mode to the existing file-management plan, matching the complete-parent route without changing historical plans. The unchanged exact tree reconstruction now also precedes a planned dry-run result, before local parent retention or any original Record/child dispatch. Native metadata, byte reconstruction and preview validation are not transitions in the lifecycle models. The original failed revival stopped before writes; no unknown recovery authority or model promise changes.",
+      "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
+      "tests": [
+        "packages/core/test/shared-skill-apply-tree.test.ts",
+        "packages/core/test/shared-skill-apply.test.ts"
       ]
     },
     {

@@ -22,6 +22,87 @@ The current-snapshot barrier rejects pending trees. Existing pins retain selecte
 
 These finite models do not promise atomic Notion transactions, compare-and-swap, arbitrary plan length, eventual unknown resolution or every native subrequest interleaving. Actual bytes, source changes, reference parsing, lost responses, row growth and package installation need separate concrete evidence.
 
+## Same-execution lifecycle event verification
+
+The correspondence review at `dafa00d5d781dcc44071a0092001e01ae829dfb6`
+compares the protected source with `d5159127d0ca927a5f3540b79423ec9b11bc98ea`.
+The only changed protected implementation and test are the file-management event
+verification and its HTTP regression in `ff5f17a3f3b523afb4ebbe26a13d35a763ca3891`.
+The remaining protected source bytes match the earlier correspondence.
+
+For a move, `executeSharedFileManagement` still requires the original Path PATCH
+response and exact page, body and ownership postcondition before appending the
+lifecycle event. `appendSharedRecord` returns only an exact verified immutable
+fact, obtained from an existing record or the original successful POST response.
+The same execution now combines that returned fact with the fresh complete
+event query before resolving file state. This supplies positive evidence for
+one already verified event when the query index omits it. It does not infer any
+other event or mutation from query absence.
+
+| Boundary | Implementation and model correspondence |
+| --- | --- |
+| Exact immutable event | The returned fact has passed the original owner, Record ID, kind, entity, canonical envelope and Hash checks. A fresh query containing the same event ID with another payload fails. `resolveFileState` still checks the joined graph for missing parents, foreign identities and incompatible heads. Exact Record payloads and this query union are outside the finite models. |
+| Original child outcome | `saveOutcome` remains after the exact native postcondition, verified event and graph checks. `MaintenanceApply` still separates `RetainAck`, `VerifyOutcome` and `CheckpointChild`; its acknowledgement is historical response receipt, not a new durable per-request ACK row. No parent child is verified merely because its event is present. |
+| Interrupted execution | The returned event fact is retained in this execution only. Interruption, a query failure or a graph conflict before the original outcome can leave the child pending; an unknown outcome POST also remains fenced. The model permits interruption after acknowledgement and reconciliation only with the original outcome. It does not model every event/outcome subrequest or prove crash recovery for this in-memory fact. |
+| Independent recovery | `reconcileSharedFileManagement` still requires the original exact outcome; `resumeSharedSkillApply` refuses a started child without one. Current path/body equality or a subsequently visible event cannot manufacture that outcome. The separate `AcknowledgedRecordPrefix` exact-ACK GET and complete-census requirement are unchanged; this union grants no native recovery suffix authority. |
+
+The actual HTTP regression hides the newly acknowledged event from the complete
+query response and requires one Path PATCH, one event POST and one outcome POST.
+Its second case returns a conflicting event with a valid recomputed Hash and
+requires rejection with no outcome POST. Existing unknown-PATCH and
+event-alone-without-outcome negatives remain required. These checks exercise
+the concrete branch; they do not turn the lifecycle models, independent add
+acceptance or restore feedback into a proof of all file-management subrequests.
+
+No TLA transition, configuration, property, bound or view changes for this review.
+The source bindings and explicit exclusions are updated; fresh complete suite
+results belong to their own runner artifacts. Earlier failed operations retain
+their original pending history, and no eventual-visibility or unconditional
+completion claim is added.
+
+## Native revival metadata and preview reconstruction
+
+The follow-up source review is `2e5b3ac9e6fc16a35863657237257ea380e534b8`,
+whose parent is `dafa00d5d781dcc44071a0092001e01ae829dfb6`. Tombstone
+classification now carries the original retained mode into the revival and final
+manifest. Known `100644` and `100755` values remain unchanged; a conflicting
+submitted mode is rejected, while historical absence remains unknown even if
+the caller submits a mode. No native mode update or default is inferred.
+
+`loadSharedApplyReferenceTree` retains its strict original byte, hash, path and
+mode comparison. Its existing v2 reconstruction now also runs before a dry-run
+returns `planned`. In both preview and execution it precedes local parent
+retention, the original parent Record and child dispatch. The original failed
+revival therefore stopped before writes; this change does not create another
+ACK/outcome recovery route or relax the final-tree check.
+
+The subsequent `02cfbd2831e991d66d77ed95c41c2340c7523481` correction
+forwards the supplied optional mode through the isolated one-file add route to
+the existing file-management plan, as the complete-parent route already does.
+This preserves new input metadata without changing retained historical plans or
+adding mode-update authority. Three public `applySkill` regressions use actual
+filesystem input: regular and executable directory entries retain their modes,
+while a bare Markdown input remains unknown. The original one-pass/two-failure
+run becomes three passes; these are controlled source tests, not installed or
+live Notion results.
+
+`MaintenanceApply` abstracts valid ordered children and their original outcomes,
+not native modes, byte reconstruction or preview results. The changed constructor
+and earlier preview validation remain concrete preflight obligations outside the
+finite models. The new controlled regressions distinguish both known modes from
+historical absence, reject a changed known mode and require unavailable baseline
+bytes to fail before writes in both preview and execution. The original ten-case
+run had three passes and seven assertion failures; the corrected ten cases and
+the 38 affected source tests passed. Installation and live Notion require their
+separate results.
+
+The completed 40-case lifecycle and 34-case operation-recovery runs at `dafa00d`
+predate this correction and include the original mode omission. They establish
+their declared finite contracts, not mode preservation. Their original inputs
+and results retain that source identity. The final source bindings include this
+reviewed follow-up; no model, configuration, property, bound or view changed, and
+those earlier runs are not relabeled as a new run of either follow-up commit.
+
 ## Original-page repair
 
 Historical-main repair and managed-file adoption freeze one exact owner, native page, complete body, editable-property preimage, relationship and original-operation frontier. `sharedCreateDispatch` permits only the nominated blank-identity PATCH; ordinary creation does not acquire a general metadata-edit capability. Original body, plan and outcome are retained separately. Credential-scoped SQLite locators and POST markers are barriers, not a second remote authority.
