@@ -363,7 +363,11 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
         ? ("complete" as const)
         : ("partial" as const),
     ownership_coverage:
-      run.inventory.scope?.kind === "reachable" ? run.inventory.scope.owner_coverage : null,
+      run.census.scope?.kind === "reachable"
+        ? run.census.scope.owner_coverage
+        : run.inventory.scope?.kind === "reachable"
+          ? run.inventory.scope.owner_coverage
+          : null,
     pin_id: run.pin_id,
     graph: { graph_id: run.graph_id, result: run.graph_result, history: run.graph_history },
     execution: run.execution,

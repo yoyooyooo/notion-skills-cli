@@ -270,7 +270,7 @@ function directFinding(
 export function readReachableAudit(
   library: SharedLibrary,
   root: string,
-  onRootObserved?: (raw: unknown) => void,
+  onObserved?: (inventory: AuditInventory) => void,
 ) {
   return Effect.gen(function* () {
     const findings: AuditDirectFinding[] = []
@@ -338,7 +338,37 @@ export function readReachableAudit(
           "warning",
         ),
       )
-    onRootObserved?.(raw)
+    const dependencies: string[] = []
+    const skills: unknown[] = [raw],
+      sources: unknown[] = []
+    type OwnedRows = { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" }
+    let files: OwnedRows = { rows: [], status: "unobserved" }
+    let records: OwnedRows = { rows: [], status: "unobserved" }
+    let sourceStatus: AuditCoverage | "unobserved" | "not_configured" =
+      library.sources === undefined ? "not_configured" : "unobserved"
+    const inventory = (): AuditInventory => ({
+      skills: [...skills],
+      files: [...files.rows],
+      records: [...records.rows],
+      sources: [...sources],
+      complete: [],
+      scope: {
+        kind: "reachable",
+        root_page_id: root,
+        dependencies: [...dependencies],
+        owner_coverage: [
+          {
+            owner_page_id: root,
+            files: files.status,
+            records: records.status,
+            sources: sourceStatus,
+          },
+        ],
+        direct_findings: [...findings],
+      },
+    })
+    const publish = () => onObserved?.(inventory())
+    publish()
     const relationNames = ["Requires", "Origin", "Members"].filter(
       (name) => library.skills.property_ids[name] !== undefined,
     )
@@ -353,20 +383,24 @@ export function readReachableAudit(
           code: result.failure.code,
           details: result.failure.details ?? null,
         })
+      skills[0] = relationErrors.length
+        ? { ...property(raw), audit_relation_errors: [...relationErrors] }
+        : raw
+      publish()
     }
     if (relationErrors.length) raw = { ...property(raw), audit_relation_errors: relationErrors }
-    const dependencies = [
-      ...new Set([
-        ...auditRelationIds(raw, library.skills, "Requires"),
-        ...auditRelationIds(raw, library.skills, "Origin"),
-      ]),
-    ]
-      .filter((id) => id !== root)
-      .sort()
-    const skills = [raw]
-    const sources: unknown[] = []
-    let sourceStatus: AuditCoverage | "unobserved" | "not_configured" =
-      library.sources === undefined ? "not_configured" : "full"
+    dependencies.push(
+      ...[
+        ...new Set([
+          ...auditRelationIds(raw, library.skills, "Requires"),
+          ...auditRelationIds(raw, library.skills, "Origin"),
+        ]),
+      ]
+        .filter((id) => id !== root)
+        .sort(),
+    )
+    skills[0] = raw
+    sourceStatus = library.sources === undefined ? "not_configured" : "full"
     if (library.sources !== undefined && library.skills.property_ids.Origin === undefined) {
       sourceStatus = "unobserved"
       findings.push(
@@ -380,6 +414,7 @@ export function readReachableAudit(
         ),
       )
     }
+    publish()
     for (const id of dependencies) {
       const response = yield* api.request(`v1/pages/${id}`).pipe(Effect.result)
       if (response._tag === "Failure") {
@@ -397,6 +432,7 @@ export function readReachableAudit(
             coverage,
           ),
         )
+        publish()
         continue
       }
       const dependency = property(response.success)
@@ -428,13 +464,12 @@ export function readReachableAudit(
             "full",
           ),
         )
+      publish()
     }
     const owned = (kind: "files" | "records") =>
       readAuditInventory(library, kind, { owner_page_id: root }).pipe(Effect.result)
-    const filesResult = yield* owned("files")
-    const recordsResult = yield* owned("records")
     const settle = (
-      result: typeof filesResult,
+      result: Effect.Success<ReturnType<typeof owned>>,
       table: "files" | "records",
     ): { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" } => {
       if (result._tag === "Success") return { rows: result.success, status: "full" }
@@ -451,17 +486,25 @@ export function readReachableAudit(
       )
       return { rows: [], status: auditFailureCoverage(result.failure) }
     }
-    let files: { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" }
-    let records: { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" }
-    try {
-      files = settle(filesResult, "files")
-      records = settle(recordsResult, "records")
-    } catch (error) {
-      if (error instanceof SkillsError) return yield* Effect.fail(error)
-      return yield* Effect.fail(
-        fail("AUDIT_INVENTORY_INCOMPLETE", "The reachable owner query did not complete."),
-      )
-    }
+    const filesResult = yield* owned("files")
+    const settledFiles = yield* Effect.try({
+      try: () => settle(filesResult, "files"),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("AUDIT_INVENTORY_INCOMPLETE", "The owner Files query did not complete."),
+    })
+    files = settledFiles
+    publish()
+    const recordsResult = yield* owned("records")
+    records = yield* Effect.try({
+      try: () => settle(recordsResult, "records"),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("AUDIT_INVENTORY_INCOMPLETE", "The owner Records query did not complete."),
+    })
+    publish()
     if (relationErrors.length && sourceStatus === "full") sourceStatus = "partial"
     if (findings.length > 64) {
       findings.length = 63
@@ -476,29 +519,8 @@ export function readReachableAudit(
         ),
       )
     }
-    return {
-      inventory: {
-        skills,
-        files: files.rows,
-        records: records.rows,
-        sources,
-        complete: [],
-        scope: {
-          kind: "reachable" as const,
-          root_page_id: root,
-          dependencies,
-          owner_coverage: [
-            {
-              owner_page_id: root,
-              files: files.status,
-              records: records.status,
-              sources: sourceStatus,
-            },
-          ],
-          direct_findings: findings,
-        },
-      },
-    }
+    publish()
+    return { inventory: inventory() }
   })
 }
 

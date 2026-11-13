@@ -446,39 +446,13 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
               )
             const field = task.phase === "initial" ? "inventory" : "census"
             const root = current.selector.page_id
-            const read = yield* readReachableAudit(library(), root, (raw) => {
-              const observed = current[field]
-              const inventory: AuditInventory = {
-                ...observed,
-                skills: [raw, ...observed.skills.filter((row) => auditRowId(row) !== root)],
-                scope:
-                  observed.scope?.kind === "reachable"
-                    ? observed.scope
-                    : {
-                        kind: "reachable",
-                        root_page_id: root,
-                        dependencies: [],
-                        direct_findings: [],
-                        owner_coverage: [
-                          {
-                            owner_page_id: root,
-                            files: "unobserved",
-                            records: "unobserved",
-                            sources: "unobserved",
-                          },
-                        ],
-                      },
-              }
+            const read = yield* readReachableAudit(library(), root, (inventory) => {
               patch({
                 [field]: inventory,
-                ...(task.phase === "initial"
-                  ? {
-                      findings: [
-                        ...current.findings.filter((finding) => finding.scope_key !== "inventory"),
-                        ...inspectAuditInventory(library(), inventory),
-                      ],
-                    }
-                  : {}),
+                findings: [
+                  ...current.findings.filter((finding) => finding.scope_key !== "inventory"),
+                  ...inspectAuditInventory(library(), inventory),
+                ],
               })
             })
             patch({ [field]: read.inventory })

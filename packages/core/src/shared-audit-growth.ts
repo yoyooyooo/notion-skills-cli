@@ -165,8 +165,8 @@ function operationHeaders(state: unknown) {
   })
 }
 
-/** Structured argv only. Tokens name installed help or this run's resume.
- * Nothing here is executed, and no shell string is assembled. */
+/** Structured read-only recommendations. Broader census is an optional alternative;
+ * reporting the current run never expands its scope or executes a recommendation. */
 export function auditNextSteps(
   run: AuditRun,
   findings: readonly Pick<AuditFinding, "code">[],
@@ -195,12 +195,6 @@ export function auditNextSteps(
       HELP,
       "Review the observed identity and scope before a separately authorized repair; this help does not write.",
     )
-  if (run.inventory.scope?.kind === "reachable")
-    add(
-      "reverse_census_unobserved",
-      ["ntn-skills", "ctl", "audit", "run", "--all", "--entry", run.entry_id],
-      "Optional full reverse inventory can find owner relations missing from this target closure. This is a broader read, not an automatic next action.",
-    )
   if (findings.some((finding) => finding.code === "RECORD_DUPLICATE_COPY"))
     add(
       "record_headers_possible_equivalent",
@@ -212,6 +206,12 @@ export function auditNextSteps(
       "inspect_retained_report",
       ["ntn-skills", "ctl", "audit", "report", run.run_id],
       "Inspect this same retained report offline; this does not refresh current state.",
+    )
+  if (run.inventory.scope?.kind === "reachable")
+    add(
+      "reverse_census_unobserved",
+      ["ntn-skills", "ctl", "audit", "run", "--all", "--entry", run.entry_id],
+      "Optional full reverse inventory can find owner relations missing from this target closure. This is a broader read, not an automatic next action.",
     )
   return steps
 }

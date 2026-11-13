@@ -19,6 +19,7 @@ import { nativeRepairEntity } from "../src/shared-native-repair-model.ts"
 import { querySharedSkillIndex } from "../src/shared-skill-index.ts"
 import { querySharedOperationIndex } from "../src/shared-operation-index.ts"
 import { id, library, rich, sharedSnapshotFixture, skillPage } from "./shared-snapshot-fixture.ts"
+import { authScope } from "../src/catalog.ts"
 
 function errorOf(result: { readonly _tag: string; readonly failure?: unknown }) {
   if (result._tag !== "Failure" || !(result.failure instanceof SkillsError))
@@ -708,7 +709,62 @@ describe("historical missing-main repair", () => {
     const pending = await fixture.run(
       loadPendingSharedRepairs(library, { skillPageId: skillPage, headers: [] }),
     )
-    expect(pending).toEqual([])
+    expect(pending).toContainEqual(
+      expect.objectContaining({
+        operation_id: planned.operation_id,
+        skill_page_id: skillPage,
+        entry: "historical-missing-main",
+      }),
+    )
+  })
+
+  test("known local repair remains pending when its remote plan is temporarily query-invisible", async () => {
+    const fixture = historicalFixture()
+    const planned = await fixture.run(planRepair(skillPage, planOptions))
+    fixture.loseOutcome()
+    const failed = await fixture.run(
+      applyRepair(planned.plan, {
+        database: library.skills.database_id,
+        operationId: planned.operation_id,
+      }).pipe(Effect.result),
+    )
+    expect(failed).toMatchObject({ _tag: "Failure", failure: { code: "WRITE_OUTCOME_UNKNOWN" } })
+    const scope = await fixture.run(authScope)
+    const before = [...fixture.records.keys()]
+    fixture.clearCalls()
+    const hidden = await fixture.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* openSharedSnapshot({ library, target: skillPage, scope, startedAt: 1 }).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) =>
+              api.request(path, body, options).pipe(
+                Effect.map((value) => {
+                  if (!path.startsWith(`v1/data_sources/${library.records.data_source_id}/query`))
+                    return value
+                  const result = property(value)
+                  if (!Array.isArray(result.results)) return value
+                  return {
+                    ...result,
+                    results: result.results.filter(
+                      (row) =>
+                        text(property(property(property(row).properties).record).rich_text) !==
+                        planned.operation_id,
+                    ),
+                  }
+                }),
+              ),
+          }),
+        )
+      }).pipe(Effect.result),
+    )
+    expect(hidden).toMatchObject({ _tag: "Failure", failure: { code: "SHARED_REPAIR_PENDING" } })
+    expect(fixture.writes()).toHaveLength(0)
+    expect([...fixture.records.keys()]).toEqual(before)
+    expect(
+      await fixture.run(loadPendingSharedRepairs(library, { skillPageId: id(80), headers: [] })),
+    ).toEqual([])
   })
 
   test("plan and reconcile do not write", async () => {

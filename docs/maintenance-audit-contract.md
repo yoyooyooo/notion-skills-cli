@@ -14,11 +14,15 @@ A bad page id or an unreadable target becomes `TARGET_PAGE_UNAVAILABLE` or `TARG
 
 Current rules are `resource-audit-v3`. v1 and v2 checkpoints stay readable offline and cannot resume. Budgets, cancellation, checkpoints, zero remote writes, and offline report are unchanged.
 
+Both the initial and final reachable observations publish each received owner result before starting the next query. If Files access is denied and the following Records request exhausts the budget, the paused online and offline reports retain the permission finding and its owner coverage. Resume replays the confirmed denial within that original task; a separate final observation may establish that access has since changed, while the original denied response remains in the run's evidence. Budget exhaustion is an additional fact, not a replacement for an already received failure.
+
 ## Retention
 
 The same report carries `growth` and `next`. Growth lists active files, tombstones, original operation headers, snapshot and body-fact headers, known history retainers, and unobserved private pins. Metadata and the default report do not load every Record payload. Same-owner equal Record ID headers are `possible_equivalent` until a full payload comparison exists. Conflicting header facts are errors. Equal header hashes across owners are reported as a header observation only; body equality is unverified and no merge is proposed. An unlinked script is not an orphan.
 
 `next.argv` is one explicit read-only recommendation with a reason. Optional `alternatives` describe a separate full census or further inspection; the audit executes neither. Details are bounded while counts retain their observed denominator. Audit does not garbage-collect, delete, merge or repair remote rows.
+
+A healthy target's default next action reports that same retained run. The broader reverse census remains an optional alternative rather than silently expanding the target's scope.
 
 ## Verification ownership
 

@@ -26,6 +26,58 @@ function queries(fixture: Awaited<ReturnType<typeof auditFixture>>) {
   )
 }
 
+test("an observed owner permission denial survives the next request's budget pause and offline read", async () => {
+  const fixture = await auditFixture(1)
+  let denied = 0
+  let allowFiles = false
+  fixture.intercept((path) => {
+    if (!path.startsWith(`v1/data_sources/${library.files.data_source_id}/query`)) return undefined
+    if (allowFiles) return undefined
+    denied++
+    return Effect.fail(fail("ACCESS_DENIED", "Owned Files read denied"))
+  })
+  const report = await fixture.run(
+    runSharedAudit({
+      entry: library.skills.database_id,
+      selector: { kind: "skill", page_id: skillPage },
+      budget: { requests: 4 },
+    }),
+  )
+  const requests = fixture.ledger.length
+  const offline = await fixture.run(reportSharedAudit(report.run_id))
+  expect(denied).toBe(1)
+  expect(report.execution).toBe("paused")
+  expect(report.pause_reason).toBe("REQUEST_BUDGET_EXHAUSTED")
+  expect(offline.findings).toContainEqual(
+    expect.objectContaining({
+      code: "OWNER_ROWS_UNOBSERVED",
+      coverage: "permission_limited",
+    }),
+  )
+  expect(fixture.ledger).toHaveLength(requests)
+  expect(fixture.writeCount()).toBe(0)
+  // Resuming the same observation interval replays the already received denial,
+  // even when a later service observation would now succeed.
+  allowFiles = true
+  const resumed = await fixture.run(resumeSharedAudit(report.run_id, { budget: { requests: 80 } }))
+  expect(resumed.run_id).toBe(report.run_id)
+  expect(resumed.execution).toBe("completed")
+  expect(denied).toBe(1)
+  const retained = await fixture.run(readAuditRun(report.run_id))
+  expect(Object.values(retained.observations)).toContainEqual(
+    expect.objectContaining({
+      task_key: expect.stringMatching(/^reachable:initial/u),
+      path: expect.stringContaining(`v1/data_sources/${library.files.data_source_id}/query`),
+      outcome: "failure",
+      value: expect.objectContaining({ code: "ACCESS_DENIED" }),
+    }),
+  )
+  // A later final observation may establish current access, but cannot erase
+  // the earlier failed observation from the original run's retained evidence.
+  expect(retained.totals.replayed_requests).toBeGreaterThan(0)
+  expect(fixture.writeCount()).toBe(0)
+})
+
 test("an early target identity finding survives budget exhaustion before owned rows finish", async () => {
   const fixture = await auditFixture(1)
   property(fixture.main.properties).main_file_id = rich("main_file_id", "")
@@ -45,6 +97,41 @@ test("an early target identity finding survives budget exhaustion before owned r
   expect(report.run_id).toBe(original)
   expect(report.execution).toBe("completed")
   expect(report.findings.some((finding) => finding.code === "MAIN_FILE_ID_INVALID")).toBe(true)
+  expect(fixture.writeCount()).toBe(0)
+})
+
+test("the final target observation also retains a permission denial before its next request is budget-paused", async () => {
+  const baseline = await auditFixture(1)
+  const selection = {
+    entry: library.skills.database_id,
+    selector: { kind: "skill" as const, page_id: skillPage },
+  }
+  expect((await baseline.run(runSharedAudit(selection))).execution).toBe("completed")
+  const path = `v1/data_sources/${library.files.data_source_id}/query`
+  const queries = baseline.ledger.flatMap((call, index) =>
+    call.path.startsWith(path) ? [index] : [],
+  )
+  expect(queries.length).toBeGreaterThan(1)
+  const fixture = await auditFixture(1)
+  let seen = 0
+  fixture.intercept((actual) =>
+    actual.startsWith(path) && ++seen === queries.length
+      ? Effect.fail(fail("ACCESS_DENIED", "Final owned Files observation denied"))
+      : undefined,
+  )
+  const report = await fixture.run(
+    runSharedAudit({ ...selection, budget: { requests: queries.at(-1)! + 1 } }),
+  )
+  const retained = await fixture.run(readAuditRun(report.run_id))
+  expect(report.execution).toBe("paused")
+  expect(retained.tasks[0]).toMatchObject({ kind: "reachable", phase: "final" })
+  expect(report.findings).toContainEqual(
+    expect.objectContaining({ code: "OWNER_ROWS_UNOBSERVED", coverage: "permission_limited" }),
+  )
+  expect(report.ownership_coverage).toContainEqual(
+    expect.objectContaining({ owner_page_id: skillPage, files: "permission_limited" }),
+  )
+  expect((await fixture.run(reportSharedAudit(report.run_id))).findings).toEqual(report.findings)
   expect(fixture.writeCount()).toBe(0)
 })
 
@@ -116,7 +203,8 @@ test("target request count stays flat when unrelated rows exist and library cens
       .filter((step) => step !== null)
       .every((step) => step.argv[0] === "ntn-skills"),
   ).toBe(true)
-  expect(JSON.stringify(report.next)).not.toMatch(/[;&|`$<>]/u)
+  for (const step of [report.next, ...report.alternatives])
+    if (step !== null) expect(JSON.stringify(step.argv)).not.toMatch(/[;&|`$<>]/u)
   const libraryRun = await crowded.run(
     runSharedAudit({ entry: library.skills.database_id, selector: { kind: "library" } }),
   )

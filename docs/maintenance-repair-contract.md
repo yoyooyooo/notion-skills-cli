@@ -22,7 +22,9 @@ The only mutable page request is one identity PATCH through `sharedCreateDispatc
 
 ## Consumption
 
-A repair plan without its outcome keeps that Skill out of current consumption. `loadPendingSharedRepairs` selects only the headers for that Skill page and validates the exact paired plan/outcome and retained body before accepting completion. Another Skill in the library is not blocked by those headers. A File ID written before its outcome is not current-ready. The consumer does not adopt the half-repaired tree.
+A repair plan without its outcome keeps that Skill out of current consumption. `loadPendingSharedRepairs` combines the selected owner's remote headers with that credential's retained local locator and original pre-POST marker. A query that temporarily omits the original plan cannot erase a locally known pending repair. The marker is a refusal barrier, not evidence of successful dispatch or completion: releasing it still requires the exact shared plan, outcome and retained body. A dry-run locator without an original POST marker does not establish a dispatched repair.
+
+The local lookup does not authenticate again when no repair locators exist. With retained locators, it checks the current credential, database, exact owner and original address before using a marker. A different owner or credential is not blocked by another owner's repair. This does not promise that a fresh Store can discover remote history omitted by the service. A File ID written before its outcome is not current-ready, and the consumer does not adopt the half-repaired tree.
 
 ## Family
 

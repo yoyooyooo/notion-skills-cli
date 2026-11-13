@@ -185,6 +185,7 @@ export function loadPendingSharedRepairs(
         }),
       )
     const pending = pendingRepairHeaders(input.skillPageId, input.headers)
+    const candidates = new Map<string, NonNullable<ReturnType<typeof recognizeRepairOperation>>>()
     for (const header of input.headers) {
       const recognized = recognizeRepairOperation(header.record_id)
       if (
@@ -193,6 +194,51 @@ export function loadPendingSharedRepairs(
         header.entity_id !== nativeRepairEntity
       )
         continue
+      candidates.set(recognized.operation_id, recognized)
+    }
+    const store = yield* Store
+    const retainedKeys = (yield* store.listKeys("operations/shared-maintenance-repair/")).filter(
+      (key) => key.endsWith("/locator.json"),
+    )
+    // Do not re-authenticate ordinary audit/consumer paths when this Store has
+    // never retained a repair intent. A nonempty journal still needs its scope.
+    const prefix = retainedKeys.length ? yield* repairScopePrefix() : undefined
+    for (const key of retainedKeys) {
+      if (prefix === undefined || !key.startsWith(prefix)) continue
+      const locator = yield* store.readJson(key, LocatorSchema)
+      if (
+        locator === undefined ||
+        locator.database_id !== library.skills.database_id ||
+        locator.skill_page_id !== input.skillPageId
+      )
+        continue
+      const recognized = recognizeRepairOperation(locator.operation_id)
+      if (
+        recognized === undefined ||
+        recognized.operation_id !== locator.operation_id ||
+        recognized.entry !== locator.entry ||
+        key !== `${prefix}${locator.operation_id}/locator.json`
+      )
+        return yield* Effect.fail(
+          fail(
+            "STATE_CORRUPT",
+            "The local original repair locator does not match its credential, owner and address.",
+          ),
+        )
+      const marker = yield* store.readJson(
+        `${prefix}${locator.operation_id}/plan-post.json`,
+        MarkerSchema,
+      )
+      // A preview is not a dispatch. Only the original pre-POST barrier joins
+      // the pending set when the remote query temporarily cannot see its plan.
+      if (marker === undefined) continue
+      if (marker.operation_id !== locator.operation_id || marker.record_id !== locator.operation_id)
+        return yield* Effect.fail(
+          fail("STATE_CORRUPT", "The original repair POST barrier does not match its locator."),
+        )
+      candidates.set(recognized.operation_id, recognized)
+    }
+    for (const recognized of candidates.values()) {
       if (pending.some((value) => value.operation_id === recognized.operation_id)) continue
       const original = yield* readOriginalRepairProof(
         library,
@@ -247,12 +293,11 @@ export function assertSharedRepairPending(
   })
 }
 
+function repairScopePrefix() {
+  return authScope.pipe(Effect.map((scope) => `operations/shared-maintenance-repair/${scope}/`))
+}
 function repairKey(operationId: string, name: "locator" | "plan-post" | "outcome-post") {
-  return authScope.pipe(
-    Effect.map(
-      (scope) => `operations/shared-maintenance-repair/${scope}/${operationId}/${name}.json`,
-    ),
-  )
+  return repairScopePrefix().pipe(Effect.map((prefix) => `${prefix}${operationId}/${name}.json`))
 }
 
 function skillText(raw: unknown, library: SharedLibrary, name: string) {
