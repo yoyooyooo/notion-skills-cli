@@ -42,3 +42,9 @@ Show reports retained intent, not success. Reconcile is read-only and checks the
 Partial current trees remain behind the original pending-operation barrier. Previously selected pins retain their exact bytes. Concurrent human changes are kept; no automatic compensation overwrites them. A verified `partial` or `not_applied` outcome is not a completed requested edit. Repeating identical actual current input creates no new child operation; repeating stale authored metadata is still a conflict.
 
 The related models abstract bounded scope and ordered effects. Installed CLI, actual HTTP, source row/body oracles and original session evidence remain separate acceptance obligations; neither a model diagram nor exit zero substitutes for those checks.
+
+## Native link allocation boundary
+
+Logical path validation is not proof that Notion can preserve a local URL. Same-owner existing targets are converted to exact native page URLs before dispatch. A new linked target has no native page ID until its allocation is acknowledged. The current command rejects such same-batch links before writing and recommends staging the new reference pages, obtaining a fresh author pin, then applying the linked bodies. This includes cyclic new references; the prior permissive transport fixture is not retained as live-service proof. Existing body/reference edits still use one parent apply, and no transaction/automatic rollback is claimed.
+
+Complete operation identity remains defined over the full plan. Oversized repeated representations use the lossless `derived-text-v1` stored representation; all omitted fields are reconstructed through the frozen normalization/projection version and checked against the original operation digest. The actual stored fact is still bounded to 64 KiB. Unknown dispatch, original authority, scope and prefix/suffix rules are unchanged.

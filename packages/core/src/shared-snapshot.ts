@@ -703,6 +703,21 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           {
             file_management_operation_id: plan.operation_id,
             status: result.status,
+            next: {
+              argv: [
+                "ntn-skills",
+                "read",
+                plan.skill_page_id,
+                "--database",
+                input.library.skills.database_id,
+                "--authoring",
+                "--read-only",
+                "--json",
+              ],
+              read_only: true,
+              reason:
+                "The original replay barrier was reconciled. Obtain a fresh current author pin without remote writes; do not repeat the original add.",
+            },
             ...(result.status === "reviewed"
               ? { decision: result.decision, original_status: result.original_status }
               : {}),

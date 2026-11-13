@@ -1,3 +1,4 @@
+import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Clock, Effect, Schema } from "effect"
 import {
   completedSharedFileAddAcceptance,
@@ -13,6 +14,7 @@ import { sharedSkillId } from "./shared-content.ts"
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import type { FrozenWriteBody } from "./shared-body-write-model.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import {
   decideObservedBody,
@@ -151,12 +153,30 @@ function scopeFor(scope: string, library: SharedLibrary, skillId: string, skillP
   })
 }
 function recovery(error: SkillsError, plan: SharedFileManagementPlan, stage: string) {
+  const page = property(error.details).page_id
   return fail(error.code, error.message, {
     ...property(error.details),
     file_management_operation_id: plan.operation_id,
     stage,
     protection: fileManagementProtection,
     recovery: { mode: "reconcile", plan },
+    next: {
+      argv:
+        typeof page === "string" && pageId(page) === page
+          ? ["ntn-skills", "ctl", "api", `v1/pages/${page}/markdown?markdown_version=v2`]
+          : [
+              "ntn-skills",
+              "ctl",
+              "operation",
+              "show",
+              plan.operation_id,
+              "--target",
+              plan.skill_page_id,
+            ],
+      read_only: true,
+      reason:
+        "Inspect the exact retained page or original operation. Do not repeat create or remove its pending state; a known add mismatch can be independently reviewed through ctl file accept-add.",
+    },
     ...(stage === "plan" && error.code === "WRITE_OUTCOME_UNKNOWN"
       ? { first_plan_visibility_boundary: true }
       : {}),
@@ -677,13 +697,19 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
     let before: FrozenWriteBody | null = null
     let creationProjection: SharedNotionMarkdownProjection | null = null
     let supportingHeader: string | undefined
+    let creationBindings: readonly { readonly page_id: string; readonly path: string }[] | undefined
     let fileId: string, current: ResolvedFileState | undefined
     let markdown: string
     if (input.action === "add") {
       const document = splitNativeSupportingMarkdown(input.markdown)
       supportingHeader = document.frontmatter
+      const available = bindings(context.index).map(({ page_id, path }) => ({ page_id, path }))
+      const authored = yield* managementChecked(() =>
+        restoreSharedNativeFileLinks(document.body, path, available),
+      )
+      if (authored !== document.body) creationBindings = available
       creationProjection = yield* managementChecked(() =>
-        projectSharedNotionMarkdown(document.body, { purpose: "data_source_create" }),
+        projectSharedNotionMarkdown(authored, { purpose: "data_source_create" }),
       )
       markdown = creationProjection.markdown
       fileId = `file-${yield* sha256(canonicalSharedJson([input.library.library_id, locator.skill_id, input.snapshot.version_id, path, yield* sha256(input.markdown)]))}`
@@ -835,9 +861,11 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       before,
       creation_projection: creationProjection,
       ...(input.action === "add" && input.mode !== undefined ? { creation_mode: input.mode } : {}),
-      ...(input.action === "add" && supportingHeader !== undefined
+      ...(input.action === "add" &&
+      (supportingHeader !== undefined || creationBindings !== undefined)
         ? { creation_input: input.markdown }
         : {}),
+      ...(creationBindings === undefined ? {} : { creation_bindings: creationBindings }),
       content,
       event,
     })
@@ -893,7 +921,7 @@ function originalRecord(
     skillPageId: plan.skill_page_id,
     kind: "operation",
     entityId: plan.file_id,
-    payload: plan,
+    payload: storedSharedOperationPlan(plan),
     payloadContainsBody: true,
   })
 }
@@ -1129,6 +1157,21 @@ function verifyBefore(
         ),
       )
     if (plan.action === "add") {
+      if (
+        plan.version === 3 &&
+        plan.creation_bindings.some(
+          (expected) =>
+            !bindings(context.index).some(
+              (actual) => actual.path === expected.path && actual.page_id === expected.page_id,
+            ),
+        )
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_FILE_MANAGEMENT_STALE",
+            "A native reference target changed before file creation.",
+          ),
+        )
       if (
         bindings(context.index).some(
           (binding) => binding.file_id === plan.file_id || binding.path === plan.path,

@@ -1,3 +1,4 @@
+import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
@@ -133,7 +134,7 @@ function originalRecord(
     skillPageId: plan.skill_page_id,
     kind: "operation",
     entityId: sharedSkillApplyPlansEntity,
-    payload: plan,
+    payload: storedSharedOperationPlan(plan),
     payloadContainsBody: true,
   }).pipe(Effect.mapError((error) => recovery(error, plan, "plan")))
 }
@@ -433,7 +434,7 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
     if (
       rows.length !== 1 ||
       rows[0] === undefined ||
-      canonicalSharedJson(rows[0].payload) !== canonicalSharedJson(plan)
+      canonicalSharedJson(rows[0].payload) !== canonicalSharedJson(storedSharedOperationPlan(plan))
     )
       return yield* Effect.fail(
         fail(

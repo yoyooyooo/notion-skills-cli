@@ -1,3 +1,4 @@
+import { expandSharedOperationPlan, storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { pageId } from "./ref.ts"
@@ -252,7 +253,9 @@ function assertLayoutStages(plan: Extract<SharedSkillApplyPlan, { version: 2 }>)
 export function validateSharedSkillApplyPlan(input: unknown) {
   return Effect.gen(function* () {
     const plan = yield* applyChecked(() =>
-      Schema.decodeUnknownSync(SharedSkillApplyPlanSchema)(input, { onExcessProperty: "error" }),
+      Schema.decodeUnknownSync(SharedSkillApplyPlanSchema)(expandSharedOperationPlan(input), {
+        onExcessProperty: "error",
+      }),
     )
     const children = sharedSkillApplyChildren(plan)
     yield* applyChecked(() => {
@@ -295,7 +298,9 @@ export function validateSharedSkillApplyPlan(input: unknown) {
           "The original apply identity does not match its complete child plans.",
         ),
       )
-    yield* applyChecked(() => validateSharedRecordEnvelope(plan.operation_id, plan))
+    yield* applyChecked(() =>
+      validateSharedRecordEnvelope(plan.operation_id, storedSharedOperationPlan(plan)),
+    )
     return plan
   })
 }

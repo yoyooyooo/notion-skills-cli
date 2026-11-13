@@ -21,7 +21,8 @@ import {
   splitNativeSupportingMarkdown,
 } from "./shared-native-file-metadata.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSharedFileReferences, sharedMarkdownReferences } from "./shared-file-references.ts"
+import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 import {
   prepareSharedFileManagement,
   executeSharedFileManagement,
@@ -119,6 +120,46 @@ function applyMaintenanceTree(
         changes: input.changes ?? null,
       }),
     )
+    // New Notion pages have no page IDs until their allocation is acknowledged.
+    // Never send a local URL that the service can reinterpret as an HTTPS host.
+    // Stage references first, then submit linked bodies against the fresh pin.
+    yield* applyChecked(() => {
+      const addedPaths = new Set(classified.adds.map((file) => file.path))
+      const unresolved = [...classified.adds, ...classified.edits].flatMap((file) =>
+        sharedMarkdownReferences(
+          file.path,
+          new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
+        )
+          .filter(
+            (ref) =>
+              addedPaths.has(ref.target) && !ref.href.startsWith("#") && !ref.href.startsWith("?"),
+          )
+          .map((ref) => ({ from: ref.from, target: ref.target })),
+      )
+      if (unresolved.length)
+        throw fail(
+          "SHARED_NATIVE_REFERENCE_UNBOUND",
+          "A linked new file has no native page yet. Add the reference files first, read the current Skill again, then apply the linked main/files. No writes were sent.",
+          {
+            references: unresolved,
+            writes_sent: false,
+            next: {
+              argv: [
+                "ntn-skills",
+                "ctl",
+                "library",
+                "files",
+                locator.page_id,
+                "--entry",
+                locator.database_id,
+              ],
+              read_only: true,
+              reason:
+                "Inspect existing native bindings. Stage new files before linking them; do not guess a page URL.",
+            },
+          },
+        )
+    })
     const project = (file: (typeof classified.edits)[number], currentBytes?: Uint8Array) =>
       applyChecked(() =>
         projectSharedNotionMarkdown(
@@ -150,7 +191,10 @@ function applyMaintenanceTree(
           const document = splitNativeSupportingMarkdown(
             new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
           )
-          return projectSharedNotionMarkdown(document.body, { purpose: "data_source_create" })
+          return projectSharedNotionMarkdown(
+            restoreSharedNativeFileLinks(document.body, file.path, snapshot.file_bindings ?? []),
+            { purpose: "data_source_create" },
+          )
         }),
       })
     if (

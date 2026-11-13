@@ -20,6 +20,8 @@ import {
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import {
   FileEventSchema,
+  RetainedContentSchema,
+  nativeFileMetadata,
   nativeMetadataForOwnership,
   normalizeObservedBody,
   resolveFileState,
@@ -60,7 +62,7 @@ const Binding = Schema.Struct({
   page_id: Schema.String,
   path: Schema.String,
 })
-const Review = Schema.Struct({
+const ReviewV1 = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("file_add_current_review"),
   review_id: Schema.String,
@@ -86,6 +88,15 @@ const Review = Schema.Struct({
   observations: Schema.Array(Schema.Struct({ file_id: Schema.String, response: Response })),
   event: FileEventSchema,
 })
+const Review = Schema.Union([
+  ReviewV1,
+  Schema.Struct({
+    ...ReviewV1.fields,
+    version: Schema.Literal(2),
+    decision: Schema.Literal("accept_observed_file"),
+    accepted_content: RetainedContentSchema,
+  }),
+])
 export type SharedFileAddAcceptanceReview = typeof Review.Type
 const Completion = Schema.Struct({
   version: Schema.Literal(1),
@@ -282,10 +293,20 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
       return yield* refusal(
         "The complete original snapshot and retained prior ownership do not reconstruct the frozen version.",
       )
+    const acceptedContent = review.version === 2 ? review.accepted_content : plan.content.retained
+    if (
+      review.version === 2 &&
+      (acceptedContent.kind !== undefined ||
+        acceptedContent.object_id !== `body-${acceptedContent.sha256}` ||
+        !same(nativeFileMetadata(acceptedContent), nativeFileMetadata(plan.content.retained)))
+    )
+      return yield* refusal(
+        "Observed acceptance must preserve native mode/header and retain the exact selected bytes.",
+      )
     const candidate = {
       file_id: plan.file_id,
       parents: [] as readonly string[],
-      content: plan.content.retained,
+      content: acceptedContent,
     }
     const event = {
       kind: "adopted" as const,
@@ -310,7 +331,7 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
         )
       const content =
         binding.file_id === plan.file_id
-          ? plan.content.retained
+          ? acceptedContent
           : state!.ownership.kind === "custom"
             ? state!.ownership.content
             : undefined
@@ -325,7 +346,7 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
       if (
         binding.file_id === plan.file_id &&
         ((yield* sha256(response.markdown)) !== review.accepted_observed_sha256 ||
-          body !== plan.content.markdown)
+          (review.version === 1 && body !== plan.content.markdown))
       )
         return yield* refusal(
           "The explicitly selected complete target body differs from the original candidate; link changes are not normalized into equivalence.",
@@ -357,6 +378,13 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
           )
       }
       tree.push(file)
+      if (binding.file_id === plan.file_id && review.version === 2)
+        yield* checked(() =>
+          validateSharedRecordEnvelope(
+            "retain-" + acceptedContent.sha256,
+            retainedFileManagementPayload(body),
+          ),
+        )
     }
     if (baseline.files.length !== priorBindings.length)
       return yield* refusal(
@@ -397,6 +425,7 @@ function currentReview(
   baseline: Snapshot,
   acceptedHash: string,
   existing?: SharedFileAddAcceptanceReview,
+  acceptCurrent = false,
 ) {
   return Effect.gen(function* () {
     const { plan } = retained,
@@ -501,14 +530,33 @@ function currentReview(
       }),
     )
     const id = yield* identity(plan.operation_id)
+    const targetObservation = observations.find((value) => value.file_id === plan.file_id)
+    if (targetObservation === undefined)
+      return yield* refusal("The exact target body was not observed.")
+    const observedBody = normalizeObservedBody(targetObservation.response.markdown)
+    const observedHash = yield* sha256(observedBody)
+    const acceptedContent = acceptCurrent
+      ? {
+          ...plan.content.retained,
+          object_id: "body-" + observedHash,
+          sha256: observedHash,
+          bytes: new TextEncoder().encode(observedBody).byteLength,
+        }
+      : plan.content.retained
     const description = {
       version: 1,
       file_id: plan.file_id,
       parents: [],
-      content: plan.content.retained,
+      content: acceptedContent,
     }
     const fields = {
-      version: 1 as const,
+      ...(acceptCurrent
+        ? {
+            version: 2 as const,
+            decision: "accept_observed_file" as const,
+            accepted_content: acceptedContent,
+          }
+        : { version: 1 as const, decision: "accept_current_file" as const }),
       kind: "file_add_current_review" as const,
       operation_id: id,
       original_operation_id: plan.operation_id,
@@ -516,7 +564,6 @@ function currentReview(
       original_outcome_sha256: retained.outcomeRow.hash,
       original_status: "needs_review" as const,
       original_complete_ack: "not_retained" as const,
-      decision: "accept_current_file" as const,
       library_id: plan.library_id,
       skill_id: plan.skill_id,
       skill_page_id: plan.skill_page_id,
@@ -534,7 +581,7 @@ function currentReview(
         kind: "adopted" as const,
         file_id: plan.file_id,
         parents: [],
-        content: plan.content.retained,
+        content: acceptedContent,
         event_id: "adopt-" + (yield* hash(description)),
       },
     }
@@ -630,6 +677,22 @@ export function completedSharedFileAddAcceptance(
     if (reviews.length !== 1 || reviewRow === undefined || reviewRow.operation_id !== id)
       return yield* refusal("The complete independent author review is unavailable.")
     const review = yield* validateReview(reviewRow.payload, retained)
+    if (review.version === 2) {
+      const observation = review.observations.find((value) => value.file_id === plan.file_id)
+      if (observation === undefined)
+        return yield* refusal("The independently accepted body is missing.")
+      yield* appendSharedRecord(library, {
+        mode: "reconcile",
+        recordId: review.accepted_content.object_id,
+        operationId: "retain-" + review.accepted_content.sha256,
+        skillPageId: plan.skill_page_id,
+        kind: "object",
+        entityId: review.accepted_content.object_id,
+        payload: retainedFileManagementPayload(
+          normalizeObservedBody(observation.response.markdown),
+        ),
+      })
+    }
     const events = observed?.events ?? (yield* readEvents(library, plan.skill_page_id))
     if (
       events.some((event) => event.event_id === plan.event.event_id) ||
@@ -751,6 +814,7 @@ export function reviewSharedFileAddAcceptance(input: {
   readonly skillPageId: string
   readonly originalOperationId: string
   readonly acceptedObservedSha256: string
+  readonly acceptCurrent?: boolean
 }) {
   return Effect.gen(function* () {
     const retained = yield* original(input.library, input.skillPageId, input.originalOperationId)
@@ -763,7 +827,14 @@ export function reviewSharedFileAddAcceptance(input: {
       return yield* refusal(
         "The original complete author snapshot is required for a new independent decision.",
       )
-    return yield* currentReview(input.library, retained, baseline, input.acceptedObservedSha256)
+    return yield* currentReview(
+      input.library,
+      retained,
+      baseline,
+      input.acceptedObservedSha256,
+      undefined,
+      input.acceptCurrent === true,
+    )
   }).pipe(withReadOnlyNotion, (effect) =>
     withNotionRequestAttribution(effect, {
       phase: "author_preflight",
@@ -810,6 +881,7 @@ export function applySharedFileAddAcceptance(input: {
         review.baseline,
         review.accepted_observed_sha256,
         review,
+        review.version === 2,
       )
       if (!same(fresh, review))
         return yield* refusal(
@@ -833,7 +905,7 @@ export function applySharedFileAddAcceptance(input: {
           native_page_creates: 0,
           native_body_patches: 0,
           original_add_event: "not_dispatched",
-          immutable_records: 3,
+          immutable_records: review.version === 2 ? 4 : 3,
           original_outcome: "needs_review",
         },
       }
@@ -857,6 +929,22 @@ export function applySharedFileAddAcceptance(input: {
         payload: review,
         payloadContainsBody: true,
       })
+      if (review.version === 2) {
+        const observation = review.observations.find((value) => value.file_id === review.file_id)
+        if (observation === undefined)
+          return yield* refusal("The reviewed target observation is missing.")
+        yield* appendSharedRecord(input.library, {
+          mode: "create",
+          recordId: review.accepted_content.object_id,
+          operationId: "retain-" + review.accepted_content.sha256,
+          skillPageId: review.skill_page_id,
+          kind: "object",
+          entityId: review.accepted_content.object_id,
+          payload: retainedFileManagementPayload(
+            normalizeObservedBody(observation.response.markdown),
+          ),
+        })
+      }
       const eventRow = yield* appendSharedRecord(input.library, {
         mode: "create",
         recordId: review.event.event_id,

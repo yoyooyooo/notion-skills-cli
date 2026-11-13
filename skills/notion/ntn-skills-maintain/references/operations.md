@@ -106,6 +106,8 @@ ntn-skills ctl file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id RE
 ntn-skills ctl file accept-add reconcile SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY
 ```
 
+The default review still requires the exact frozen candidate. When intentionally retaining the actual complete observation instead, add `--accept-current` to `review` together with its exact `--accept-observed-sha256`. The separate review, retained observed body, adopted event and completion do not change the original failure. This permits a subsequent ordinary `write` to correct a known wrong link without recreating the page. The operator must inspect the actual content; the flag is not automatic approval or an unknown-create retry.
+
 These commands emit JSON and request metrics without extra output flags. Acceptance writes only its complete review, a new adopted event and its own completion. It never creates or patches a native page, emits the old add event, or supplies a missing original request/ACK. The old add remains `needs_review` with unproven completion. Repeated completed acceptance and reconciliation are read-only; unknown new Record dispatches cannot be replayed. Obtain a fresh current read afterward; it may first report `read_again` while retiring a derived local barrier. Source-backed files and changed trees keep their existing author workflows. A relative link changed into an HTTPS link is a real content change and must not be normalized into equality.
 
 ### Reserved creation markers on older pages

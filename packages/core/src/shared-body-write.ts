@@ -1,3 +1,4 @@
+import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Clock, Crypto, Effect, Schema } from "effect"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { decode, fail, property, SkillsError } from "./model.ts"
@@ -579,7 +580,7 @@ export function reconcileSharedBodyWrite(library: SharedLibrary, input: SharedBo
       skillPageId: plan.skill_page_id,
       kind: "operation",
       entityId: plan.file_id,
-      payload: plan,
+      payload: storedSharedOperationPlan(plan),
       payloadContainsBody: true,
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "plan")))
     yield* retainPlannedBodies(library, plan, "reconcile")
@@ -786,7 +787,7 @@ export function executeSharedBodyWrite<R = never>(
       skillPageId: plan.skill_page_id,
       kind: "operation",
       entityId: plan.file_id,
-      payload: plan,
+      payload: storedSharedOperationPlan(plan),
       payloadContainsBody: true,
     }).pipe(Effect.mapError((error) => recoveryError(error, plan, "plan")))
     yield* retainPlannedBodies(library, plan, "create")

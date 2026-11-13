@@ -14,6 +14,7 @@ import {
   reconcileSharedFileAddAcceptance,
 } from "../src/shared-file-add-acceptance.ts"
 import { recordedFixtureTransport } from "./notion-http-fixture.ts"
+import { inspectAuditSkill } from "../src/shared-audit-inspect.ts"
 import { sharedSnapshotVersion } from "../src/shared-snapshot-identity.ts"
 import { openSharedSnapshot, type FixedSharedSource } from "../src/shared-snapshot.ts"
 import {
@@ -424,6 +425,117 @@ async function failedNativeAdd(prepare?: (f: ReturnType<typeof fixture>) => void
 }
 
 describe("shared file lifecycle operations", () => {
+  test("explicit observed-file acceptance unblocks a known failed add without claiming its old write succeeded", async () => {
+    const { f, plan, page, request } = await failedNativeAdd()
+    const observed = plan.content.markdown + "\n\nObserved link needing an ordinary edit."
+    f.base.bodies.set(page, observed)
+    const selected = { ...request, acceptedObservedSha256: digest(encode(observed)) }
+    expect((await f.run(Effect.flip(reviewSharedFileAddAcceptance(selected)))).code).toBe(
+      "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+    )
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            reviewSharedFileAddAcceptance({
+              ...selected,
+              acceptCurrent: true,
+              acceptedObservedSha256: "0".repeat(64),
+            }),
+          ),
+        )
+      ).code,
+    ).toBe("SHARED_FILE_ADD_ACCEPTANCE_REQUIRED")
+    const review = await f.run(reviewSharedFileAddAcceptance({ ...selected, acceptCurrent: true }))
+    expect(review.version).toBe(2)
+    expect(f.base.writeCount()).toBe(0)
+    const applied = await f.run(
+      applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+    )
+    expect(applied.original_status).toBe("needs_review")
+    expect(applied.original_completion).toBe("unproven")
+    expect(applied.event.kind).toBe("adopted")
+    if (applied.event.kind !== "adopted") throw new Error("Expected independent adoption")
+    expect(applied.event.content.sha256).toBe(digest(encode(observed)))
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.pathPatches()).toHaveLength(0)
+    expect((await f.events()).some((event) => event.event_id === plan.event.event_id)).toBe(false)
+    f.base.json.clear()
+    f.base.objects.clear()
+    f.credential("cold-observed-acceptance")
+    f.clear()
+    expect((await f.run(reconcileSharedFileAddAcceptance(request))).verified).toBe(true)
+    expect((await f.open(true)).files.some((file) => file.path === plan.path)).toBe(true)
+    expect(f.base.writeCount()).toBe(0)
+    const audit = await f.run(
+      inspectAuditSkill(library, {
+        page_id: skillPage,
+        depth: "content",
+        observed_from: 0,
+        inventory: {
+          skills: [f.base.main],
+          files: f.files,
+          records: [...f.base.records.values()],
+          sources: [],
+          complete: ["skills", "files", "records", "sources"],
+        },
+      }),
+    )
+    expect(audit.findings.some((finding) => finding.code === "OPERATION_OUTCOME_UNOBSERVED")).toBe(
+      false,
+    )
+    expect(audit.findings).toContainEqual(
+      expect.objectContaining({
+        code: "ORIGINAL_FAILURE_INDEPENDENTLY_ACCEPTED",
+        severity: "info",
+      }),
+    )
+    for (const [key, row] of f.base.records)
+      if (
+        text(
+          property(property(row.properties)[library.records.property_ids["Record ID"]!]).rich_text,
+        ) === applied.event.content.object_id
+      )
+        f.base.records.delete(key)
+    f.base.json.clear()
+    f.base.objects.clear()
+    f.credential("cold-missing-observed-body")
+    f.clear()
+    expect((await f.run(Effect.flip(reconcileSharedFileAddAcceptance(request)))).code).toBe(
+      "SHARED_RECORD_UNRESOLVED",
+    )
+    expect(f.base.writeCount()).toBe(0)
+  })
+  test("a new reference resolves a same-owner relative link before its one page create", async () => {
+    const url = `https://app.notion.com/p/${id(11).replaceAll("-", "")}`
+    const f = fixture({
+      readback: (wire) =>
+        wire.replace(/^<h1>([^\n]*)<\/h1>/u, "# $1").replace("](1.md)", "](https://1.md)"),
+    })
+    const snapshot = await f.baseline()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot,
+        action: "add",
+        path: "references/linked.md",
+        markdown: "# Linked\n\n[Policy](1.md)\n",
+      }),
+    )
+    expect(plan.creation_projection?.input_markdown).toContain(url)
+    const result = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+    expect(result.status).toBe("applied")
+    expect(f.fileCreates()).toHaveLength(1)
+    const current = await f.open(true)
+    const file = current.files.find((file) => file.path === plan.path)!
+    const body = await f.run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).readBytes(`objects/${file.sha256}`)
+      }),
+    )
+    expect(new TextDecoder().decode(body)).toContain("[Policy](1.md)")
+    expect(new TextDecoder().decode(body)).not.toContain("https://1.md")
+  })
   test.each([
     "wrong operation",
     "missing original plan",
@@ -754,7 +866,13 @@ describe("shared file lifecycle operations", () => {
       }),
     )
     f.onFileCreate((row) =>
-      f.base.bodies.set(String(row.id), plan.content.markdown.replace("(1.md)", "(https://1.md)")),
+      f.base.bodies.set(
+        String(row.id),
+        plan.content.markdown.replace(
+          `(https://app.notion.com/p/${id(11).replaceAll("-", "")})`,
+          "(https://1.md)",
+        ),
+      ),
     )
     const failure = await f.run(
       Effect.flip(executeSharedFileManagement(library, { plan, mode: "create" })),

@@ -1,6 +1,7 @@
 import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 import { defineCommand } from "../../core/src/command-schema.ts"
+import { databaseId } from "../../core/src/catalog.ts"
 import { decode, fail } from "../../core/src/model.ts"
 import { AuditDepthSchema } from "../../core/src/shared-audit-model.ts"
 import {
@@ -91,7 +92,7 @@ function deliver(
 const run = defineCommand(
   "run",
   {
-    entry: requiredSingleton("entry", "Exact registered Skills database entry"),
+    entry: requiredSingleton("entry", "Exact registered Skills database ID, URL or alias"),
     target: singleton(
       "target",
       "One exact Skill page ID; mutually exclusive with --all and --census",
@@ -151,7 +152,7 @@ const run = defineCommand(
           ),
       })
       const report = yield* runSharedAudit({
-        entry: options.entry,
+        entry: yield* databaseId(options.entry),
         selector: options.census
           ? { kind: "census" }
           : target === undefined
@@ -184,8 +185,9 @@ const resume = defineCommand(
   },
   (options) =>
     Effect.gen(function* () {
+      const selectedEntry = Option.getOrUndefined(options.entry)
       const report = yield* resumeSharedAudit(options.run, {
-        entry: Option.getOrUndefined(options.entry),
+        entry: selectedEntry === undefined ? undefined : yield* databaseId(selectedEntry),
         budget: yield* budget(options),
       })
       yield* deliver(report, options.output)
@@ -208,8 +210,12 @@ const report = defineCommand(
   },
   (options) =>
     Effect.gen(function* () {
+      const selectedEntry = Option.getOrUndefined(options.entry)
       yield* deliver(
-        yield* reportSharedAudit(options.run, Option.getOrUndefined(options.entry)),
+        yield* reportSharedAudit(
+          options.run,
+          selectedEntry === undefined ? undefined : yield* databaseId(selectedEntry),
+        ),
         options.output,
       )
     }),
@@ -232,7 +238,11 @@ const list = defineCommand(
         try: () => integer(options.limit, "--limit"),
         catch: () => fail("INVALID_ARGUMENT", "Use a positive run-list limit from 1 to 1000."),
       })
-      const result = yield* listSharedAudits({ entry: Option.getOrUndefined(options.entry), limit })
+      const selectedEntry = Option.getOrUndefined(options.entry)
+      const result = yield* listSharedAudits({
+        entry: selectedEntry === undefined ? undefined : yield* databaseId(selectedEntry),
+        limit,
+      })
       const destination = Option.getOrUndefined(options.output)
       if (destination !== undefined)
         yield* (yield* Store).output(

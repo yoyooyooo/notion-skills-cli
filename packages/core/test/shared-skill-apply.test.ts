@@ -523,8 +523,8 @@ describe("frozen sequential shared apply", () => {
       await f.run(
         applySharedSkillChanges(snapshot, {
           files: [
-            { path: "SKILL.md", bytes: encode("A".repeat(20_000)) },
-            { path: "references/1.md", bytes: encode("B".repeat(20_000)) },
+            { path: "SKILL.md", bytes: encode("A".repeat(36_000)) },
+            { path: "references/1.md", bytes: encode("B".repeat(36_000)) },
           ],
         }).pipe(Effect.result),
       ),
@@ -532,6 +532,33 @@ describe("frozen sequential shared apply", () => {
     expect(result.code).toBe("SHARED_RECORD_TOO_LARGE")
     expect(f.writeCount()).toBe(0)
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+  })
+
+  test("a parent retains moderate edits without repeating child projection text and can reconcile them", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "SKILL.md", bytes: encode("A".repeat(20_000)) },
+          { path: "references/1.md", bytes: encode("B".repeat(20_000)) },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (preview.kind !== "skill_apply" || preview.status !== "planned")
+      throw new Error("Expected frozen parent")
+    expect(Buffer.byteLength(JSON.stringify(preview.plan))).toBeGreaterThan(65536)
+    expect(
+      (
+        await f.run(
+          withWriter(f, executeSharedSkillApply(library, { plan: preview.plan, mode: "create" })),
+        )
+      ).status,
+    ).toBe("applied")
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, preview.plan))).verified).toBe(true)
+    expect(f.writeCount()).toBe(0)
   })
 
   test("equal bytes plus an explicit removal are not guessed as a move", async () => {
@@ -701,7 +728,30 @@ describe("frozen sequential shared apply", () => {
     },
   )
 
-  test("main plus two mutually referencing files is one parent apply and keeps omitted files", async () => {
+  test.each([true, false])(
+    "links to not-yet-allocated native pages fail before any write, dryRun=%s",
+    async (dryRun) => {
+      const f = sharedSnapshotFixture(),
+        snapshot = await fresh(f)
+      f.clearCalls()
+      const result = await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [
+            { path: "SKILL.md", bytes: encode("# Main\n\n[New](references/new-a.md)\n") },
+            { path: "references/new-a.md", bytes: encode("# A\n\n[B](new-b.md)\n") },
+            { path: "references/new-b.md", bytes: encode("# B\n\n[A](new-a.md)\n") },
+          ],
+          dryRun,
+        }).pipe(Effect.result),
+      )
+      expect(failure(result).code).toBe("SHARED_NATIVE_REFERENCE_UNBOUND")
+      expect(property(failure(result).details).writes_sent).toBe(false)
+      expect(f.writeCount()).toBe(0)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    },
+  )
+
+  test("main plus two unlinked new files is one parent apply and keeps omitted files", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f)
     const beforeIds = f.files.map((file) => file.id)
@@ -715,12 +765,12 @@ describe("frozen sequential shared apply", () => {
             {
               path: "references/new-a.md",
               mode: "100644" as const,
-              bytes: encode("# A\n\nSee [B](new-b.md).\n"),
+              bytes: encode("# A\n\nStage the content before linking a new page.\n"),
             },
             {
               path: "references/new-b.md",
               mode: "100755" as const,
-              bytes: encode("# B\n\nSee [A](new-a.md).\n"),
+              bytes: encode("# B\n\nStage the content before linking a new page.\n"),
             },
           ],
           ...metadata,

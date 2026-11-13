@@ -7,7 +7,7 @@
 | 模型 | 有界状态主权 | 正例证明的合同 |
 | --- | --- | --- |
 | AcknowledgedRecordPrefix | 一个原操作、两个有序 Record 位置、一个已 ACK 前缀和一个未派发后缀 | 原请求与完整载荷绑定 exact ACK GET；前缀无空洞；未知结果不重派发；当前前提和权限复核；独立完成不改写原输入和失败 |
-| IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/adopted/completion 三项不可变事实、五类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
+| IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/[observed body]/adopted/completion 三或四项不可变事实、五或六类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
 | RestoreFeedback | 一次冻结提交、一个原 restore 身份、一轮正文动作和一轮最终业务反馈 | 先核实原身份绑定再派发正文；正文已完成而反馈未发时只补反馈；pending/unknown 不换原操作；历史反馈 ACK 与当前正文/Source 前提分离 |
 | MaintenanceApply | 一个父计划、三个有序子操作，区分派发、响应 ACK、原 outcome 和父进度 | 验证前缀才派发后缀，未知不重放、完整子结果才完成、pending 树不可发布；旧 pin 是固定输入，权限不在模型中 |
 
@@ -120,3 +120,7 @@ bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/
 分别报告有限模型穷举、真实 TypeScript 公共函数回归、实际 guard 对照和冷 Agent 复跑；均不等于生产 Notion、安装 CLI、跨机器 exactly-once 或任意并发编辑证明。GET 与后续写入之间没有 provider CAS；这里只证明复核得到失效/拒绝结果时停止，不证明观察与写入不可分割。
 
 维护入口：[恢复功能地图](../../../.cursor/skills/verify-ntn-skills/features/import-create-recovery-dry-run.md) · [共享 SSOT 地图](../../../.cursor/skills/verify-ntn-skills/features/shared-ssot.md) · [Notion 验证页](https://app.notion.com/p/4125636c236e819bba12c71af9a0c0f5) · [AH-1006 批次](https://linear.app/yoyooyooo/issue/AH-1006)。
+
+### Explicit observed-body acceptance
+
+IndependentAcceptance now covers both the three-Record exact-candidate review and the four-Record explicit observed-body review in the same finite model, without new configuration families. The additional retained body is required before the adopted event and by cold reconciliation. Original failure/identity, per-dispatch revalidation and unknown-request non-replay are unchanged. Exact observed-byte selection, optional approval flag, native link projection and stored-plan codec are implementation regressions, not proven by this abstract model. History and old generated reports keep their original input identity.

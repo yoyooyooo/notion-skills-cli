@@ -108,3 +108,7 @@ omits. That exact acknowledged event can join the fresh history; a conflicting
 same-ID payload must stop completion. Independent reconciliation still requires
 the original complete outcome: a matching current path or event alone never
 settles an unknown original operation.
+
+## Real native split regression
+
+Use the existing `shared-body-write`, `shared-file-management`, `shared-skill-apply` and `shared-maintenance-operations` tests. Cover a ~23 KiB main shortened through the actual bounded operation record, compact/full plan round-trip and corruption, true unique-input overflow before dispatch, existing-target relative links over a service that rewrites bare relative URLs, and explicit observed-body acceptance with old failure preserved and cold retained-body proof. New-file mutual links must refuse before writes until the pages are staged; a permissive fixture must not claim native Notion supports them. The same real mobile-use page/file identities and prior pin are the live continuation, not a replacement fixture.

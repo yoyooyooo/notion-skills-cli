@@ -36,6 +36,10 @@ import { loadPendingSharedObservationPlans } from "./shared-observation-operatio
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import { loadPendingSharedMetadataWrites } from "./shared-metadata-write.ts"
 import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
+import {
+  fileAddAcceptanceReviewsEntity,
+  reconcileSharedFileAddAcceptance,
+} from "./shared-file-add-acceptance.ts"
 import { loadPendingSharedResourceAuthoring } from "./shared-resource-authoring-recovery.ts"
 import { resourceAuthoringOutcomesEntity } from "./shared-resource-authoring-model.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
@@ -962,6 +966,7 @@ export function inspectAuditSkill(
         header.entity_id !== sharedSkillApplyPlansEntity &&
         header.entity_id !== sharedSkillApplyOutcomesEntity &&
         header.entity_id !== nativeRepairEntity &&
+        header.entity_id !== fileAddAcceptanceReviewsEntity &&
         header.entity_id !== sharedCreateManifestEntity &&
         header.entity_id !== sharedCreateOutcomesEntity,
     )
@@ -1006,6 +1011,65 @@ export function inspectAuditSkill(
           )
       }
     } else {
+      for (const header of operations.filter(
+        (value) => value.entity_id === fileAddAcceptanceReviewsEntity,
+      )) {
+        const accepted = yield* Effect.gen(function* () {
+          const rows = yield* querySharedRecords(library, {
+            skillPageId: input.page_id,
+            kind: "operation",
+            recordId: header.record_id,
+            entityId: fileAddAcceptanceReviewsEntity,
+            payloadContainsBody: true,
+          })
+          const review = property(rows[0]?.payload)
+          if (rows.length !== 1 || typeof review.original_operation_id !== "string")
+            return yield* Effect.fail(
+              fail(
+                "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+                "The original acceptance review is incomplete.",
+              ),
+            )
+          const result = yield* reconcileSharedFileAddAcceptance({
+            library,
+            skillPageId: input.page_id,
+            originalOperationId: review.original_operation_id,
+          })
+          if (
+            header.record_id !== "review-" + result.operation_id ||
+            result.review_id !== review.review_id
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+                "The review does not belong to the verified independent acceptance.",
+              ),
+            )
+          return result
+        }).pipe(Effect.result)
+        if (accepted._tag === "Failure")
+          yield* unavailable(
+            "INDEPENDENT_ACCEPTANCE_UNVERIFIED",
+            header.record_id,
+            "operations",
+            accepted.failure,
+          )
+        else
+          add(
+            "ORIGINAL_FAILURE_INDEPENDENTLY_ACCEPTED",
+            accepted.success.original_operation_id,
+            "operations",
+            "A separate current-file decision is verified. The original failed add remains needs_review and its completion stays unproven.",
+            {
+              operation_id: accepted.success.operation_id,
+              original_status: accepted.success.original_status,
+              original_completion: accepted.success.original_completion,
+              review_id: accepted.success.review_id,
+            },
+            "full",
+            "info",
+          )
+      }
       const summaries = (
         plans: readonly { readonly operation_id: string }[],
       ): readonly { readonly operation_id: string; readonly plan: unknown }[] =>
