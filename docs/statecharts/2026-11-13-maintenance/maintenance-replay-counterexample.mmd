@@ -1,0 +1,71 @@
+---
+title: "整树维护的原操作与消费屏障"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 违例
+    lg1: 已完成
+    lg2: 保留并停止
+    lg3: 维护中
+    lg4: Breaks UnknownNeverRepeated
+    lg5: Path to the UnknownNeverRepeated bug
+  }
+  class lg0 pink
+  class lg1 teal
+  class lg2 yellow
+  class lg3 blue
+  class lg4 breaks
+  class lg5 bugPath
+  s0: 完整目标树已规划#65292;尚未写入
+  s1: 当前子操作#65306;复核当前前沿
+  s2: 当前子操作#65306;原意图已留存
+  s3: 当前子操作#65306;原请求已派发一次
+  s4: 当前内容已变化#65307;保留既有结果并停止
+  s5: 当前子操作结果未知#65292;不重发也不越过
+  s6: 当前子操作#65306;服务端已应用
+  s7: 当前子操作#65306;原 ACK 已持久化
+  s8: 重复派发未知写入
+  s9: 当前子操作#65306;原结果已精确验证并留存
+  s10: 当前子操作的原结果已留存#65292;父进度待续接
+  s11: 当前子操作#65306;父操作已记入确认前缀
+  s12: 三个子操作有完整原结果#65307;允许新选择
+  [*] --> s0
+  s0 --> s1: 留存完整父计划并设消费屏障
+  s1 --> s2: 确认前缀后留存下一子意图
+  s1 --> s4: 停止未派发后缀
+  s2 --> s3: 派发原请求
+  s2 --> s5: 进程或响应中断
+  s3 --> s6: 服务端应用请求
+  s3 --> s5: 进程或响应中断
+  s5 --> s3: 错误地重复未知写入
+  s6 --> s7: 保留原响应
+  s6 --> s5: 进程或响应中断
+  s5 --> s8: 错误地重复未知写入
+  s7 --> s9: 核实完整子结果
+  s7 --> s5: 进程或响应中断
+  s9 --> s10: 进程或响应中断
+  s9 --> s11: 确认父进度
+  s10 --> s9: 读取同一原结果
+  s11 --> s1: 进入下一冻结子操作
+  s11 --> s12: 全部验证后完成父操作
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 blue
+  class s0 bugPath
+  class s1 blue
+  class s1 bugPath
+  class s2 blue
+  class s2 bugPath
+  class s3 blue
+  class s3 bugPath
+  class s4 yellow
+  class s5 yellow
+  class s5 bugPath
+  class s6 blue
+  class s7 blue
+  class s8 pink
+  class s8 breaks
+  class s8 bugPath
+  class s9 blue
+  class s10 yellow
+  class s11 blue
+  class s12 teal

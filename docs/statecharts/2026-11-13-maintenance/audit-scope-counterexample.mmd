@@ -1,0 +1,109 @@
+---
+title: "目标审计与全库反向覆盖"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 违例
+    lg1: 报告
+    lg2: 等待续跑
+    lg3: 观察中
+    lg4: Breaks GlobalCoverageNeedsReverse
+    lg5: Path to the GlobalCoverageNeedsReverse bug
+  }
+  class lg0 pink
+  class lg1 teal
+  class lg2 yellow
+  class lg3 blue
+  class lg4 breaks
+  class lg5 bugPath
+  s0: 全库反向#65306;已核对 0/4 项归属事实
+  s1: 目标可达#65306;已核对 0/4 项归属事实
+  s2: 全库反向#65306;已核对 1/4 项归属事实
+  s3: 目标可达#65306;已核对 1/4 项归属事实
+  s4: 全库反向#65306;已核对 2/4 项归属事实
+  s5: 目标可达#65306;已核对 2/4 项归属事实
+  s6: 全库反向#65306;预算耗尽#65292;保留原检查点
+  s7: 目标可达#65306;预算耗尽#65292;保留原检查点
+  s8: 全库反向#65306;已核对 3/4 项归属事实
+  s9: 目标可达#65306;已核对 3/4 项归属事实
+  s10: 全库反向#65306;已核对 4/4 项归属事实
+  s11: 目标可达#65306;已核对 4/4 项归属事实
+  s12: 独立反向查找失去关系的孤儿
+  s13: 目标可达#65306;结束时已复核 0/4 项事实
+  s14: 全库反向#65306;结束时已复核 0/4 项事实
+  s15: 目标可达#65306;结束时已复核 1/4 项事实
+  s16: 全库反向#65306;结束时已复核 1/4 项事实
+  s17: 目标可达#65306;结束时已复核 2/4 项事实
+  s18: 全库反向#65306;结束时已复核 2/4 项事实
+  s19: 目标可达#65306;结束时已复核 3/4 项事实
+  s20: 全库反向#65306;结束时已复核 3/4 项事实
+  s21: 目标可达#65306;结束时已复核 4/4 项事实
+  s22: 全库反向#65306;结束时已复核 4/4 项事实
+  s23: 把目标完整误报成全库完整
+  s24: 目标与全库反向均完整
+  [*] --> s0
+  [*] --> s1
+  s0 --> s2: 读取本页与必要归属行
+  s1 --> s3: 读取本页与必要归属行
+  s2 --> s4: 读取本页与必要归属行
+  s3 --> s5: 读取本页与必要归属行
+  s4 --> s6: 保存原进度
+  s5 --> s7: 保存原进度
+  s6 --> s4: 按原范围继续
+  s7 --> s5: 按原范围继续
+  s4 --> s8: 读取本页与必要归属行
+  s5 --> s9: 读取本页与必要归属行
+  s8 --> s10: 读取本页与必要归属行
+  s9 --> s11: 读取本页与必要归属行
+  s10 --> s12: 目标事实观察结束
+  s11 --> s13: 目标事实观察结束
+  s12 --> s14: 完成独立全库反向盘点
+  s13 --> s15: 复核目标闭包
+  s14 --> s16: 复核目标闭包
+  s15 --> s17: 复核目标闭包
+  s16 --> s18: 复核目标闭包
+  s17 --> s19: 复核目标闭包
+  s18 --> s20: 复核目标闭包
+  s19 --> s21: 复核目标闭包
+  s20 --> s22: 复核目标闭包
+  s21 --> s23: 按实际范围出报告
+  s22 --> s24: 按实际范围出报告
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 blue
+  class s1 blue
+  class s1 bugPath
+  class s2 blue
+  class s3 blue
+  class s3 bugPath
+  class s4 blue
+  class s5 blue
+  class s5 bugPath
+  class s6 yellow
+  class s7 yellow
+  class s7 bugPath
+  class s8 blue
+  class s9 blue
+  class s9 bugPath
+  class s10 blue
+  class s11 blue
+  class s11 bugPath
+  class s12 blue
+  class s13 blue
+  class s13 bugPath
+  class s14 blue
+  class s15 blue
+  class s15 bugPath
+  class s16 blue
+  class s17 blue
+  class s17 bugPath
+  class s18 blue
+  class s19 blue
+  class s19 bugPath
+  class s20 blue
+  class s21 blue
+  class s21 bugPath
+  class s22 blue
+  class s23 pink
+  class s23 breaks
+  class s23 bugPath
+  class s24 teal

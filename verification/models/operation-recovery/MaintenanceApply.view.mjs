@@ -15,12 +15,12 @@ export function state(value) {
   if (s.phase === "complete") return "三个子操作有完整原结果；允许新选择"
   if (s.phase === "unknown")
     return s.outcomes.includes(s.child)
-      ? `子操作 ${s.child} 的原结果已留存，父进度待续接`
-      : `子操作 ${s.child} 结果未知，不重发也不越过`
+      ? "当前子操作的原结果已留存，父进度待续接"
+      : "当前子操作结果未知，不重发也不越过"
   if (s.phase === "stopped") return "当前内容已变化；保留既有结果并停止"
   if (s.phase === "plan") return "完整目标树已规划，尚未写入"
   return (
-    `子操作 ${s.child}：` +
+    "当前子操作：" +
     {
       boundary: "复核当前前沿",
       intent: "原意图已留存",
@@ -32,8 +32,8 @@ export function state(value) {
     }[s.phase]
   )
 }
-export const step = (action) =>
-  ({
+export const step = (action) => {
+  const labels = {
     RetainParent: "留存完整父计划并设消费屏障",
     ExternalEdit: "用户修改当前内容",
     RetainChildIntent: "确认前缀后留存下一子意图",
@@ -48,9 +48,11 @@ export const step = (action) =>
     RepeatUnknown: "错误地重复未知写入",
     NextChild: "进入下一冻结子操作",
     Complete: "全部验证后完成父操作",
-    ObserveCurrent: null,
+    ObserveCurrent: "请求读取当前文件树",
     Stop: null,
-  })[action] ?? action
+  }
+  return Object.hasOwn(labels, action) ? labels[action] : action
+}
 export const group = (value) =>
   faults(value).length
     ? "违例"

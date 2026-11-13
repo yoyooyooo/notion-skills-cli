@@ -43,6 +43,11 @@ Independent installation, real Notion, real Pi with a loopback model and real-mo
 The cold review reproduced two bugs on the frozen product, without mutating its
 guards. Original failure artifacts remain alongside the corrected runs.
 
+The same-model [maintenance atlas](statecharts/2026-11-13-maintenance/README.md)
+shows scope and parent/child recovery without introducing a second state model.
+Its presentation-only child-label aggregation is checked against all six original
+configurations; model states, rules and broken-rule sets remain unchanged.
+
 **Repair query visibility.** An applied identity PATCH with a lost outcome stayed
 blocked while the original plan was query-visible, but a temporary query omission
 let the same Store consume and add observation Records. The corrected gate joins
