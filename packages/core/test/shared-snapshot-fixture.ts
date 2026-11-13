@@ -83,7 +83,10 @@ function matches(row: Record<string, unknown>, condition: unknown): boolean {
   if (Array.isArray(filter.or)) return filter.or.some((part) => matches(row, part))
   const key = filter.property
   if (typeof key !== "string") return false
-  const value = property(property(row.properties)[key])
+  const fields = property(row.properties)
+  const value = property(
+    fields[key] ?? Object.values(fields).find((value) => property(value).id === key),
+  )
   if (property(filter.relation).is_empty === true)
     return Array.isArray(value.relation) && value.relation.length === 0
   if (filter.relation !== undefined)
@@ -298,14 +301,18 @@ export function sharedSnapshotFixture(
               description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
               data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
             })
-          if (pathname === `/v1/data_sources/${library.skills.data_source_id}/query`)
-            return Effect.succeed({
-              object: "list",
-              results: [structuredClone(main)],
-              has_more: false,
-              next_cursor: null,
-            })
+          if (pathname === `/v1/data_sources/${library.skills.data_source_id}/query`) {
+            const filter = property(body).filter
+            const selected =
+              filter === undefined ? [main] : [main].filter((row) => matches(row, filter))
+            return Effect.succeed(list(selected, body))
+          }
           if (pathname === `/v1/pages/${skillPage}`) return Effect.succeed(structuredClone(main))
+          const recordPage =
+            method === "GET"
+              ? [...records.values()].find((row) => pathname === `/v1/pages/${row.id}`)
+              : undefined
+          if (recordPage !== undefined) return Effect.succeed(structuredClone(recordPage))
           const filePage = files.find((file) => pathname === `/v1/pages/${file.id}`)
           if (filePage !== undefined) return Effect.succeed(structuredClone(filePage))
           const markdown = /^\/v1\/pages\/([^/]+)\/markdown$/u.exec(pathname)
@@ -321,8 +328,12 @@ export function sharedSnapshotFixture(
                   unknown_block_ids: [],
                 })
           }
-          if (pathname === `/v1/data_sources/${library.files.data_source_id}/query`)
-            return Effect.succeed(list(files, body))
+          if (pathname === `/v1/data_sources/${library.files.data_source_id}/query`) {
+            const filter = property(body).filter
+            const selected =
+              filter === undefined ? files : files.filter((row) => matches(row, filter))
+            return Effect.succeed(list(selected, body))
+          }
           if (pathname === `/v1/data_sources/${library.records.data_source_id}/query`) {
             const selectedProperties = new Set(url.searchParams.getAll("filter_properties"))
             const results = [...records.values()]
@@ -343,6 +354,29 @@ export function sharedSnapshotFixture(
           if (pathname === "/v1/pages" && method === "POST") {
             const page = id(nextPage++)
             const input = property(body)
+            if (property(input.parent).data_source_id === library.files.data_source_id) {
+              const properties = Object.fromEntries(
+                Object.entries(property(input.properties)).map(([key, value]) => [
+                  key,
+                  responseProperty(key, value),
+                ]),
+              )
+              const row = {
+                object: "page",
+                id: page,
+                last_edited_time: new Date().toISOString(),
+                parent: {
+                  type: "data_source_id",
+                  data_source_id: library.files.data_source_id,
+                  database_id: library.files.database_id,
+                },
+                properties,
+              }
+              ;(files as unknown[]).push(row)
+              if (typeof input.markdown === "string")
+                bodies.set(page, input.markdown.replace(/^<h1>([^\n]*)<\/h1>(?=\n|$)/u, "# $1"))
+              return Effect.succeed(row)
+            }
             const properties = Object.fromEntries(
               Object.entries(property(input.properties)).map(([key, value]) => [
                 key,

@@ -12,6 +12,9 @@ import {
 import { sha256 } from "./store.ts"
 import {
   auditFinding,
+  emptyAuditInventory,
+  type AuditCoverage,
+  type AuditDirectFinding,
   type AuditFinding,
   type AuditInventory,
   type AuditTable,
@@ -148,10 +151,24 @@ function completeRelation(raw: unknown, table: TableBinding, name: string) {
   })
 }
 
-export function readAuditInventory(library: SharedLibrary, kind: AuditTable) {
+export function readAuditInventory(
+  library: SharedLibrary,
+  kind: AuditTable,
+  selection?: { readonly owner_page_id: string },
+) {
   return Effect.gen(function* () {
     const table = library[kind]
     if (table === undefined) return []
+    const owner = selection?.owner_page_id
+    const relationProperty = table.property_ids.Skill
+    if (owner !== undefined && (pageId(owner) !== owner || kind === "skills" || !relationProperty))
+      return yield* Effect.fail(
+        fail(
+          "AUDIT_OWNER_FILTER_UNAVAILABLE",
+          "An owner-scoped inventory requires one exact page and a Skill relation.",
+          { table: kind },
+        ),
+      )
     const parameters = new URLSearchParams()
     for (const [name, id] of Object.entries(table.property_ids))
       if (name !== "Payload") parameters.append("filter_properties", id)
@@ -159,12 +176,17 @@ export function readAuditInventory(library: SharedLibrary, kind: AuditTable) {
     const rows: unknown[] = []
     const cursors = new Set<string>()
     let cursor: string | undefined
+    const filter =
+      owner === undefined
+        ? undefined
+        : { property: relationProperty, relation: { contains: owner } }
     do {
       const response = yield* api.request(
         `v1/data_sources/${table.data_source_id}/query?${parameters}`,
         {
           page_size: 100,
           ...(cursor ? { start_cursor: cursor } : {}),
+          ...(filter === undefined ? {} : { filter }),
         },
       )
       const page = yield* Effect.try({
@@ -225,11 +247,266 @@ export function readAuditInventory(library: SharedLibrary, kind: AuditTable) {
   })
 }
 
+const ownerStatus = (
+  files: AuditCoverage | "unobserved" | "not_configured",
+  records: AuditCoverage | "unobserved" | "not_configured",
+  sources: AuditCoverage | "unobserved" | "not_configured",
+) => ({ files, records, sources })
+
+function directFinding(
+  code: string,
+  objectId: string,
+  location: string,
+  message: string,
+  evidence: unknown,
+  coverage: AuditFinding["coverage"],
+  severity: AuditFinding["severity"] = coverage === "full" ? "error" : "warning",
+): AuditDirectFinding {
+  return { code, severity, object_id: objectId, location, message, evidence, coverage }
+}
+
+/** Selected page, direct Requires and Origin pages, and that page's File and
+ * Record headers. Unfiltered table scans stay on the census path. */
+export function readReachableAudit(
+  library: SharedLibrary,
+  root: string,
+  onRootObserved?: (raw: unknown) => void,
+) {
+  return Effect.gen(function* () {
+    const findings: AuditDirectFinding[] = []
+    const blank = (
+      status: ReturnType<typeof ownerStatus>,
+      dependencies: readonly string[] = [],
+    ): AuditInventory => ({
+      ...emptyAuditInventory(),
+      scope: {
+        kind: "reachable",
+        root_page_id: root,
+        dependencies: [...dependencies],
+        owner_coverage: [{ owner_page_id: root, ...status }],
+        direct_findings: findings,
+      },
+    })
+    if (pageId(root) !== root)
+      return { inventory: blank(ownerStatus("unobserved", "unobserved", "unobserved")) }
+    const api = yield* Notion
+    const loaded = yield* api.request(`v1/pages/${root}`).pipe(Effect.result)
+    if (loaded._tag === "Failure") {
+      if (isAuditPause(loaded.failure)) return yield* Effect.fail(loaded.failure)
+      findings.push(
+        directFinding(
+          "TARGET_PAGE_UNAVAILABLE",
+          root,
+          "target",
+          "The exact target page could not be read. Deletion is not established.",
+          { code: loaded.failure.code, details: loaded.failure.details ?? null },
+          auditFailureCoverage(loaded.failure),
+        ),
+      )
+      return { inventory: blank(ownerStatus("unobserved", "unobserved", "unobserved")) }
+    }
+    let raw = loaded.success
+    const row = property(raw)
+    const parent = property(row.parent).data_source_id
+    if (
+      row.object !== "page" ||
+      auditRowId(raw) !== root ||
+      parent !== library.skills.data_source_id
+    ) {
+      findings.push(
+        directFinding(
+          "TARGET_PAGE_OUTSIDE_LIBRARY",
+          root,
+          "target",
+          "The exact page is not a Skill row in this registered library. No library scan was substituted.",
+          { parent: row.parent ?? null, in_trash: row.in_trash === true || row.archived === true },
+          "full",
+          "error",
+        ),
+      )
+      return { inventory: blank(ownerStatus("unobserved", "unobserved", "unobserved")) }
+    }
+    if (row.in_trash === true || row.archived === true)
+      findings.push(
+        directFinding(
+          "TARGET_PAGE_TRASHED",
+          root,
+          "target",
+          "The exact target page is in trash. Owned rows were not inferred to be deleted.",
+          { in_trash: true },
+          "full",
+          "warning",
+        ),
+      )
+    onRootObserved?.(raw)
+    const relationNames = ["Requires", "Origin", "Members"].filter(
+      (name) => library.skills.property_ids[name] !== undefined,
+    )
+    const relationErrors: unknown[] = []
+    for (const name of relationNames) {
+      const result = yield* completeRelation(raw, library.skills, name).pipe(Effect.result)
+      if (result._tag === "Success") raw = result.success
+      else if (isAuditPause(result.failure)) return yield* Effect.fail(result.failure)
+      else
+        relationErrors.push({
+          property: name,
+          code: result.failure.code,
+          details: result.failure.details ?? null,
+        })
+    }
+    if (relationErrors.length) raw = { ...property(raw), audit_relation_errors: relationErrors }
+    const dependencies = [
+      ...new Set([
+        ...auditRelationIds(raw, library.skills, "Requires"),
+        ...auditRelationIds(raw, library.skills, "Origin"),
+      ]),
+    ]
+      .filter((id) => id !== root)
+      .sort()
+    const skills = [raw]
+    const sources: unknown[] = []
+    let sourceStatus: AuditCoverage | "unobserved" | "not_configured" =
+      library.sources === undefined ? "not_configured" : "full"
+    if (library.sources !== undefined && library.skills.property_ids.Origin === undefined) {
+      sourceStatus = "unobserved"
+      findings.push(
+        directFinding(
+          "SOURCE_RELATION_UNOBSERVED",
+          root,
+          "Origin",
+          "This library has Sources, but the Skill page has no Origin relation to read.",
+          {},
+          "partial",
+        ),
+      )
+    }
+    for (const id of dependencies) {
+      const response = yield* api.request(`v1/pages/${id}`).pipe(Effect.result)
+      if (response._tag === "Failure") {
+        if (isAuditPause(response.failure)) return yield* Effect.fail(response.failure)
+        const coverage = auditFailureCoverage(response.failure)
+        if (coverage === "permission_limited") sourceStatus = "permission_limited"
+        else if (sourceStatus === "full") sourceStatus = "partial"
+        findings.push(
+          directFinding(
+            "DEPENDENCY_PAGE_UNAVAILABLE",
+            id,
+            `dependency/${id}`,
+            "The exact Requires or Origin page could not be read. Deletion is not established.",
+            { code: response.failure.code, details: response.failure.details ?? null },
+            coverage,
+          ),
+        )
+        continue
+      }
+      const dependency = property(response.success)
+      const dataSource = property(dependency.parent).data_source_id
+      const trashed = dependency.in_trash === true || dependency.archived === true
+      if (trashed)
+        findings.push(
+          directFinding(
+            "DEPENDENCY_PAGE_TRASHED",
+            id,
+            `dependency/${id}`,
+            "The exact dependency page is in trash.",
+            { parent: dependency.parent ?? null },
+            "full",
+            "warning",
+          ),
+        )
+      else if (dataSource === library.skills.data_source_id) skills.push(response.success)
+      else if (library.sources !== undefined && dataSource === library.sources.data_source_id)
+        sources.push(response.success)
+      else
+        findings.push(
+          directFinding(
+            "DEPENDENCY_OUTSIDE_LIBRARY",
+            id,
+            `dependency/${id}`,
+            "The exact dependency page belongs to another data source.",
+            { parent: dependency.parent ?? null },
+            "full",
+          ),
+        )
+    }
+    const owned = (kind: "files" | "records") =>
+      readAuditInventory(library, kind, { owner_page_id: root }).pipe(Effect.result)
+    const filesResult = yield* owned("files")
+    const recordsResult = yield* owned("records")
+    const settle = (
+      result: typeof filesResult,
+      table: "files" | "records",
+    ): { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" } => {
+      if (result._tag === "Success") return { rows: result.success, status: "full" }
+      if (isAuditPause(result.failure)) throw result.failure
+      findings.push(
+        directFinding(
+          "OWNER_ROWS_UNOBSERVED",
+          root,
+          table,
+          "The owner-scoped header query did not complete. An empty library census was not substituted.",
+          { code: result.failure.code, details: result.failure.details ?? null },
+          auditFailureCoverage(result.failure),
+        ),
+      )
+      return { rows: [], status: auditFailureCoverage(result.failure) }
+    }
+    let files: { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" }
+    let records: { readonly rows: unknown[]; readonly status: AuditCoverage | "unobserved" }
+    try {
+      files = settle(filesResult, "files")
+      records = settle(recordsResult, "records")
+    } catch (error) {
+      if (error instanceof SkillsError) return yield* Effect.fail(error)
+      return yield* Effect.fail(
+        fail("AUDIT_INVENTORY_INCOMPLETE", "The reachable owner query did not complete."),
+      )
+    }
+    if (relationErrors.length && sourceStatus === "full") sourceStatus = "partial"
+    if (findings.length > 64) {
+      findings.length = 63
+      findings.push(
+        directFinding(
+          "REACHABLE_FINDINGS_TRUNCATED",
+          root,
+          "target",
+          "Additional reachable findings were omitted. This report is not a complete library census.",
+          {},
+          "partial",
+        ),
+      )
+    }
+    return {
+      inventory: {
+        skills,
+        files: files.rows,
+        records: records.rows,
+        sources,
+        complete: [],
+        scope: {
+          kind: "reachable" as const,
+          root_page_id: root,
+          dependencies,
+          owner_coverage: [
+            {
+              owner_page_id: root,
+              files: files.status,
+              records: records.status,
+              sources: sourceStatus,
+            },
+          ],
+          direct_findings: findings,
+        },
+      },
+    }
+  })
+}
+
 function relationErrors(raw: unknown): readonly unknown[] {
   const errors = property(raw).audit_relation_errors
   return Array.isArray(errors) ? errors : []
 }
-const validBusinessId = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value)
+export const validBusinessId = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(value)
 
 /** Directory exclusion is not adoption authority. Check the visible lifecycle
  * before suppressing missing-identity errors for an unfinished draft. */
@@ -335,6 +612,15 @@ export function inspectAuditDraft(library: SharedLibrary, inventory: AuditInvent
     const owned = inventory[table].filter((value) =>
       auditRelationIds(value, library[table], "Skill").includes(entry.page_id),
     )
+    const scoped =
+      inventory.scope?.kind === "reachable"
+        ? inventory.scope.owner_coverage.find((row) => row.owner_page_id === entry.page_id)?.[table]
+        : undefined
+    const observed =
+      scoped !== undefined
+        ? scoped === "full" && !inventory[table].some((value) => relationErrors(value).length)
+        : inventory.complete.includes(table) &&
+          !inventory[table].some((value) => relationErrors(value).length)
     if (owned.length)
       add(
         "UNREGISTERED_LIFECYCLE_BOUND",
@@ -343,16 +629,13 @@ export function inspectAuditDraft(library: SharedLibrary, inventory: AuditInvent
         "Related physical rows remain attached to this unregistered page.",
         { table, page_ids: owned.map(auditRowId) },
       )
-    if (
-      !inventory.complete.includes(table) ||
-      inventory[table].some((value) => relationErrors(value).length)
-    )
+    if (!observed)
       add(
         "UNREGISTERED_LIFECYCLE_UNOBSERVED",
         "warning",
         table,
         "The reverse owner inventory is incomplete; absence of lifecycle history is not established.",
-        { table },
+        { table, owner_query: scoped ?? "unobserved" },
         "partial",
       )
   }
@@ -491,9 +774,11 @@ export function inspectAuditInventory(
           "The retained record does not have one exact owner.",
           { owners, kind: recordKind },
         )
+      const skillsCensusComplete =
+        inventory.complete.includes("skills") && inventory.scope?.kind !== "reachable"
       if (kind !== "skills")
         for (const owner of owners)
-          if (!skills.has(owner))
+          if (!skills.has(owner) && skillsCensusComplete)
             add(
               "OWNER_NOT_IN_INVENTORY",
               raw,
@@ -501,6 +786,15 @@ export function inspectAuditInventory(
               "The owner is absent from the visible Skills census; deletion is not established.",
               { owner_page_id: owner },
               "permission_limited",
+            )
+          else if (!skills.has(owner))
+            add(
+              "OWNER_CENSUS_UNOBSERVED",
+              raw,
+              "Skill",
+              "The owner is outside the observed Skill rows. Deletion is not established, and this is not a complete library census.",
+              { owner_page_id: owner, library_census: "unobserved" },
+              "partial",
             )
       if (identity)
         claim(
@@ -560,6 +854,7 @@ export function inspectAuditInventory(
             ]),
           ),
         ).size === 1
+      const libraryClaim = inventory.scope?.kind !== "reachable"
       for (const raw of rows) {
         if (recordCopies)
           findings.push(
@@ -570,21 +865,30 @@ export function inspectAuditInventory(
               scope_key: "inventory",
               location: key,
               message:
-                "Several physical Records rows share one owner-scoped identity and equal fact headers; this is not a conflicting identity claim.",
+                "Several physical Records rows share one owner-scoped identity and equal fact headers. Equivalence is only possible until full payloads are compared.",
               evidence: {
                 page_ids: rows.map(auditRowId).sort(),
+                equivalence: "possible_equivalent",
                 payload_verification: "not_established_by_metadata_headers",
+                full_payload_required: true,
+                library_census: libraryClaim ? "not_limited_by_target_scope" : "unobserved",
               },
               coverage: "full",
             }),
           )
-        else
+        else if (libraryClaim || rows.length > 1)
           add(
             key.startsWith('["path"') ? "DUPLICATE_FILE_PATH" : "DUPLICATE_BUSINESS_ID",
             raw,
             key,
-            "Several physical rows claim the same stable identity or owner-relative path.",
-            { page_ids: rows.map(auditRowId).sort() },
+            libraryClaim
+              ? "Several physical rows claim the same stable identity or owner-relative path."
+              : "Observed rows conflict. A full-library conflict is not established.",
+            {
+              page_ids: rows.map(auditRowId).sort(),
+              library_census: libraryClaim ? "not_limited_by_target_scope" : "unobserved",
+              ...(key.startsWith('["records"') ? { fact_conflict: true } : {}),
+            },
           )
       }
     }
@@ -610,8 +914,10 @@ export function inspectAuditInventory(
     }
     if (visited.has(id)) return
     visiting.add(id)
+    const skillsCensusComplete =
+      inventory.complete.includes("skills") && inventory.scope?.kind !== "reachable"
     for (const target of requires.get(id) ?? []) {
-      if (!skills.has(target))
+      if (!skills.has(target) && skillsCensusComplete)
         add(
           "REQUIRES_TARGET_UNAVAILABLE",
           skills.get(id),
@@ -620,12 +926,29 @@ export function inspectAuditInventory(
           { target_page_id: target },
           "permission_limited",
         )
+      else if (!skills.has(target))
+        add(
+          "REQUIRES_TARGET_UNOBSERVED",
+          skills.get(id) ?? id,
+          `Requires/${target}`,
+          "The required page was not in this observation. Deletion and a full-library conflict are not established.",
+          { target_page_id: target, library_census: "unobserved" },
+          "partial",
+        )
       else visit(target, [...chain, id])
     }
     visiting.delete(id)
     visited.add(id)
   }
   for (const id of [...requires.keys()].sort()) visit(id, [])
+  if (inventory.scope?.kind === "reachable")
+    for (const direct of inventory.scope.direct_findings)
+      findings.push(
+        auditFinding({
+          ...direct,
+          scope_key: "inventory",
+        }),
+      )
   return findings
 }
 
@@ -657,6 +980,7 @@ export function auditSkillSignature(library: SharedLibrary, inventory: AuditInve
   return sha256(
     canonicalSharedJson({
       library,
+      scope: inventory.scope ?? null,
       skill: auditSemanticRow(inventory.skills.find((raw) => auditRowId(raw) === id) ?? null),
       files: sorted(
         inventory.files.filter((raw) => auditRelationIds(raw, library.files, "Skill").includes(id)),

@@ -53,11 +53,16 @@ export function adoptionChecked<A>(action: () => A) {
   })
 }
 
+/** File identity is the skill plus the canonical path. It does not rotate when the body changes. */
+export function nativeFileIdentity(skillId: string, path: string) {
+  return sha256(canonicalSharedJson([skillId, path])).pipe(Effect.map((digest) => `file-${digest}`))
+}
+
 /** The existing physical page anchors identity; later body or title edits cannot rotate it. */
 export function nativeAdoptionIdentity(libraryId: string, selected: string) {
   return Effect.gen(function* () {
     const skill_id = `skill-${yield* sha256(canonicalSharedJson([1, "native-page", libraryId, selected]))}`
-    const file_id = `file-${yield* sha256(canonicalSharedJson([skill_id, "SKILL.md"]))}`
+    const file_id = yield* nativeFileIdentity(skill_id, "SKILL.md")
     return { skill_id, file_id }
   })
 }

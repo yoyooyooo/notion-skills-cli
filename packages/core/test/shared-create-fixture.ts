@@ -226,7 +226,32 @@ export function sharedCreateFixture(
                   parent === createLibrary.files.data_source_id)
               ) {
                 const kind = parent === createLibrary.skills.data_source_id ? "skill" : "file"
-                if (![...base.json.keys()].some((key) => key.startsWith(dispatch)))
+                const originalFileAdd =
+                  kind === "file" &&
+                  [...base.json.entries()].some(([key, value]) => {
+                    const plan = property(property(value).plan),
+                      properties = property(property(body).properties)
+                    const owner = property(
+                      properties[createLibrary.files.property_ids.Skill!],
+                    ).relation
+                    return (
+                      key.startsWith("operations/shared-observation-pending/") &&
+                      plan.kind === "file_management" &&
+                      plan.action === "add" &&
+                      plan.file_id ===
+                        text(
+                          property(properties[createLibrary.files.property_ids["File ID"]!])
+                            .rich_text,
+                        ) &&
+                      Array.isArray(owner) &&
+                      owner.length === 1 &&
+                      property(owner[0]).id === plan.skill_page_id
+                    )
+                  })
+                if (
+                  ![...base.json.keys()].some((key) => key.startsWith(dispatch)) &&
+                  !originalFileAdd
+                )
                   return Effect.fail(
                     fail("TEST_CREATE_ORDER", "Native create ran before its durable original plan"),
                   )
@@ -311,6 +336,17 @@ export function sharedCreateFixture(
                     fixtureOptions.recovery === true &&
                     Object.keys(changes).length === 1 &&
                     Array.isArray(property(changes[projectionId]).rich_text)
+                  const mainFileId = createLibrary.skills.property_ids["Main File ID"]!
+                  const fileIdentityId = createLibrary.files.property_ids["File ID"]!
+                  const identityFill =
+                    Object.keys(changes).length === 1 &&
+                    ((skills.has(String(selected.id)) &&
+                      Object.hasOwn(changes, mainFileId) &&
+                      text(property(property(selected.properties)[mainFileId]).rich_text) === "") ||
+                      (files.has(String(selected.id)) &&
+                        Object.hasOwn(changes, fileIdentityId) &&
+                        text(property(property(selected.properties)[fileIdentityId]).rich_text) ===
+                          ""))
                   const sourceId = createLibrary.skills.property_ids.Source!
                   const sourceSelection =
                     skills.has(String(selected.id)) &&
@@ -321,7 +357,7 @@ export function sharedCreateFixture(
                     text(property(property(selected.properties)[sourceId]).rich_text) === "" &&
                     text(property(property(selected.properties)[projectionId]).rich_text) === "" &&
                     /^bundle-[a-f0-9]{64}$/u.test(text(property(changes[sourceId]).rich_text))
-                  if (!enable && !projection && !sourceSelection)
+                  if (!enable && !projection && !sourceSelection && !identityFill)
                     return Effect.fail(
                       fail(
                         "TEST_EXISTING_MUTATION",

@@ -21,9 +21,11 @@ existing adoption entry still checks its own complete preconditions.
 
 ## Historical reports keep their original meaning
 
-Current runs use `resource-audit-v2`. Known v1 checkpoints retain their original
-findings and can be read or listed offline. They cannot resume or serve as a v2
-incremental baseline. Unknown versions and damaged checkpoints still fail.
+Current runs use `resource-audit-v3`. Known v1 and v2 checkpoints retain their
+original findings and can be read or listed offline. They cannot resume or serve
+as a v3 incremental baseline. Unknown versions and damaged checkpoints still fail.
+Target runs do not mark a filtered query as a complete reverse census. The
+[maintenance audit contract](maintenance-audit-contract.md) states that boundary.
 Local derived-history retention does not delete these original v1 observations.
 
 ## Verification ownership

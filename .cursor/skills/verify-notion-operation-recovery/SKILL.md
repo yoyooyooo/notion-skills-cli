@@ -16,6 +16,7 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 | 原 ACK、frozen request、exact Record GET、原生恢复前缀或 suffix | AcknowledgedRecordPrefix | shared-create-native-recovery、shared-create-known-recovery |
 | 独立 accept-add、原失败、adopted event、完整冷读证明 | IndependentAcceptance | shared-file-management |
 | 原 restore ID、submitted body/frontier/Source、processing 绑定、反馈丢失与 reconcile | RestoreFeedback | shared-file-request |
+| 整树父计划、完整子前缀、仅未派发后缀、半树消费屏障 | MaintenanceApply | shared-skill-apply、shared-skill-apply-tree、shared-maintenance-operations |
 | 共享 dispatcher、Record 或 source mutation | 三个模型 | 四个回归文件 |
 
 恢复前的 create/import 和既有 continuation 仍读 [verify-notion-resource-lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。HTTP RequestEngine 的 retry/预算/取消归独立 request-engine 验证；Broker consumer/session 归 Broker guardian。不要把原业务 Request 当成 HTTP 请求重试模型。
@@ -45,7 +46,7 @@ OPERATION_RECOVERY_OUT="$(mktemp -d /Users/yoyo/Documents/code/personal/verifica
 /Users/yoyo/.volta/tools/image/node/24.20.0/bin/node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
 ~~~
 
-单模型变化可加 --model AcknowledgedRecordPrefix、IndependentAcceptance 或 RestoreFeedback。共享边界和批次验收运行完整 suite；当前 cases 共 28 项，不能拿子集代替完整运行。
+单模型变化可加 --model AcknowledgedRecordPrefix、IndependentAcceptance、RestoreFeedback 或 MaintenanceApply。共享边界和批次验收运行完整 suite；当前 cases 共 34 项，不能拿子集代替完整运行。整树与修复的实际映射和未建模边界见[维护对应审阅](../../../docs/maintenance-verification-review.md)。
 
 读取输出 summary.json 和每组 report.md，核对 complete、源码/工具/input hashes、完整性质清单和预期反例集合。正例没有 broken；反例只允许 expected_broken 的准确集合。tool error、少跑性质、额外违例、未完成搜索、cut、unexamined 都停止通过结论。失败输出也保留。
 

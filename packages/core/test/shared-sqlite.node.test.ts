@@ -11,6 +11,9 @@ import { trashPath } from "../src/local-locks.ts"
 const core = new URL("../src/", import.meta.url).pathname
 const scope = "a".repeat(64)
 const keys = {
+  repairLocator: `operations/shared-maintenance-repair/${scope}/skill-repair-main-${"3".repeat(64)}/locator.json`,
+  repairPlan: `operations/shared-maintenance-repair/${scope}/skill-repair-file-${"4".repeat(64)}/plan-post.json`,
+  repairOutcome: `operations/shared-maintenance-repair/${scope}/skill-repair-file-${"4".repeat(64)}/outcome-post.json`,
   observations: `cache/shared-file-observations/${"b".repeat(64)}/00000000000000000001.json`,
   page: `cache/shared-page-identities/${scope}/00000000-0000-4000-8000-000000000001.json`,
   github: `cache/shared-github-blobs/${"c".repeat(40)}.json`,
@@ -376,6 +379,9 @@ test("shared cache and typed dispatch addresses persist across real Node restart
         keys.derivedGraph,
       ].sort(),
       dispatch: [
+        keys.repairLocator,
+        keys.repairPlan,
+        keys.repairOutcome,
         keys.observationPending,
         keys.historyPending,
         keys.graphPending,
@@ -608,6 +614,9 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
     expect(result.cache).toEqual([])
     expect(result.dispatch).toEqual(
       [
+        keys.repairLocator,
+        keys.repairPlan,
+        keys.repairOutcome,
         keys.observationPending,
         keys.historyPending,
         keys.graphPending,

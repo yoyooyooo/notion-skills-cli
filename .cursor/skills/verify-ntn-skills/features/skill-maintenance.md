@@ -7,12 +7,12 @@ AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影�
 | 场景 | 实现责任 | 验证入口 | 关键反例 |
 | --- | --- | --- | --- |
 | MNT01 草稿和注册状态 | 目录分类、inventory、目标 inspector | shared-audit-draft、shared-audit、native-adoption | 合法草稿误报；清空身份藏历史；错字段被当空值 |
-| MNT02 目标诊断和全库范围 | 原 audit scheduler、检查点和覆盖 | resource-audit、安装 smoke | 无关行拖慢目标；关系丢失的孤儿被漏报为全库完整 |
+| MNT02 目标诊断和全库范围 | 原 audit scheduler、检查点和覆盖 | resource-audit、安装 smoke | 无关行拖慢目标；关系丢失的孤儿被漏报为全库完整。`--target` 只读可达页和关系过滤头；`--all`/`--census` 才是完整反向表 |
 | MNT03 原页修复和接管 | adoption、identity、operation | authoring、operation-recovery | 无ACK重建、复制身份、部分schema、并发手改 |
 | MNT04 整树计划 | apply planner、文件与引用解析 | apply、resource-lifecycle | 省略当删除、同名猜移动、误改样例、丢未改文件 |
 | MNT05 执行和删除恢复 | 原父子操作与文件状态 | operation-recovery、实际HTTP | unknown重放、半树当完整、恢复新身份、覆盖人类编辑 |
 | MNT06 Agent命令与维护Skill | canonical parser、原操作路由、builtin | help/schema、安装CLI、冷Agent | next.argv猜引用、跨族恢复、说明代替可执行入口 |
-| MNT07 保留原因与增长 | audit/history、同事实复用 | resource-audit、表行和请求 | 无链接当孤儿、同header当同payload、历史pin当垃圾 |
+| MNT07 保留原因与增长 | audit/history、同事实复用 | resource-audit、表行和请求 | 无链接当孤儿、同header当同payload、历史pin当垃圾。同主同 Record 头只记 possible_equivalent；`next.argv` 只指向 help 或 resume |
 | MNT08 跨系统组合 | 现有Pi Mock和integration | 实际CLI、Pi、serializer、Session | 测试插件补正文、半新图、晚回调、效果丢失 |
 | MNT09 安装与日用候选 | 分发产物与owned真实目标 | package smoke、真实Notion、Pi两臂 | 源码代替安装、私有缓存兜底、暖纠错改记冷成功 |
 
@@ -49,3 +49,14 @@ Mock 只替换模型决策或外部服务。参数来自真实可见内容和返
 每个切片更新本地图、相关公开协议及 builtin。通过 Pro 的正式 `ntn` 更新受影响的 Notion 长期页并完整读回，保留历史结论和子页链接。
 
 AuditRun 目前只抽象只读、反向覆盖和续跑，不含具体草稿字段。MNT01 由实现与安装回归证明，不能仅刷新 coverage hash 获得形式化证明。状态协议真正变化时补最小模型和精确反例，Statechart 从同一模型生成。
+
+
+## Joined installed acceptance
+
+The package smoke now calls `checkProgressiveMaintenance` through the existing installed authoring fixture. It must retain one original main and two new references, verify actual raw bodies and stable identities, preserve an old pin, perform explicit move/delete/undelete, and show zero source-row growth for identical current input. `checkMaintenanceRepairHttp` alone remains a source-fixture check; it cannot stand in for the actual installed/live repair evidence.
+
+The primary Linux/Node24 CI lane builds a Broker from its frozen source with this exact CLI candidate, installs both artifacts and Pi 1.5.0, and sets `MNT_VERIFY_PI_REQUIRED=1`. The existing package runner then drives actual Pi, tools, Node CLI, SQLite, source HTTP and normal model serializer. `maintenance-ci.test.ts` fails if that path, pinned version, mandatory flag or original artifact retention is removed. Other lanes report the Pi scope as not_run and still run all installed CLI checks.
+
+`maintenance-pi.test.ts` validates the independent oracle: exact read-only next.argv, original call IDs, full source and effects, complete directory objects and native Session. Paths repeated in authoring output do not count as duplicate generated directories. Mock cannot choose a missing ref from the source oracle or replace an unsupported split with a simpler write. Model usage is not a real-model cost measurement.
+
+Formal source correspondence is recorded in `docs/maintenance-verification-review.md`. AuditScope adds 7 exact positive/negative configurations to lifecycle; MaintenanceApply adds 6 to operation recovery. Full suite totals are 40 and 34 respectively. A new run must preserve its original failure artifacts and complete property inventory.

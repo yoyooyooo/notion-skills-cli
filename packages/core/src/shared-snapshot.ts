@@ -32,6 +32,7 @@ import {
   assertSharedNativeAdoptionComplete,
   reconcileSharedNativeAdoption,
 } from "./shared-native-adoption.ts"
+import { assertSharedRepairPending } from "./shared-native-repair.ts"
 import {
   type CompositionFile,
   type CompositionOverride,
@@ -505,6 +506,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const operationHeaders =
       graphMetadata?.operations ?? (yield* querySharedOperationIndex(input.library, selected))
     yield* assertSharedNativeAdoptionComplete(input.library, selected, operationHeaders)
+    yield* assertSharedRepairPending(input.library, selected, operationHeaders)
     const creates = new Map<string, SharedCreatePlan>()
     for (const plan of yield* pendingSharedCreatePlans(
       input.scope,

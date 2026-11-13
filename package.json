@@ -13,6 +13,7 @@
     "test": "bun scripts/test.ts",
     "test:unit": "bun test ./packages/*/test --timeout 30000 --path-ignore-patterns='**/*.node.test.ts'",
     "test:node": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts && node --test ./.cursor/skills/verify-ntn-skills/scripts/shared-migration-inventory.test.ts",
+    "test:maintenance": "bun test scripts/package-smoke/maintenance-pi.test.ts --timeout 30000",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check": "bun run typecheck && bun run format:check && bun run test && bun run build",

@@ -9,10 +9,14 @@ import { promisify } from "node:util"
 import { Effect, Schema } from "effect"
 import { property } from "../../packages/core/src/model.ts"
 import { Notion } from "../../packages/core/src/notion.ts"
-import { AuditRunSchema, type AuditRun } from "../../packages/core/src/shared-audit-model.ts"
+import {
+  AUDIT_RULES_VERSION,
+  AuditRunSchema,
+  type AuditRun,
+} from "../../packages/core/src/shared-audit-model.ts"
 import { canonicalSharedJson } from "../../packages/core/src/shared-records.ts"
 import { auditFixture } from "../../packages/core/test/shared-audit-fixture.ts"
-import { library, rich, skillPage } from "../../packages/core/test/shared-snapshot-fixture.ts"
+import { id, library, rich, skillPage } from "../../packages/core/test/shared-snapshot-fixture.ts"
 import type { SmokeContext } from "./context.ts"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
@@ -652,7 +656,7 @@ export async function checkAuditDrafts(
       const report = property(JSON.parse(stdout))
       assert.equal(report.ok, true)
       assert.equal(report.execution, "completed")
-      assert.equal(report.rules_version, "resource-audit-v2")
+      assert.equal(report.rules_version, AUDIT_RULES_VERSION)
       assert.ok(
         Array.isArray(report.findings) &&
           report.findings.some((finding) => property(finding).code === item.code),
@@ -706,4 +710,222 @@ export async function checkAuditDrafts(
     }
   }
   return { complete: true, cases: results, evidence: root }
+}
+
+/** Installed Node bin against owned HTTP. Unrelated rows must not add census pages. */
+export async function checkAuditTargetBound(
+  context: Pick<SmokeContext, "scratch" | "runtime" | "executable" | "env">,
+  options: { readonly unrelatedRows?: number; readonly pauseAfterRoot?: boolean } = {},
+) {
+  const unrelatedRows = options.unrelatedRows ?? 120
+  assert.ok(Number.isSafeInteger(unrelatedRows) && unrelatedRows >= 0 && unrelatedRows <= 1000)
+  const location = join(
+    context.scratch,
+    "controlled-audit-target-" + unrelatedRows + (options.pauseAfterRoot ? "-paused" : ""),
+  )
+  await mkdir(location)
+  const fixture = await auditFixture(2)
+  if (options.pauseAfterRoot)
+    property(fixture.main.properties).main_file_id = rich("main_file_id", "")
+  for (let index = 0; index < unrelatedRows; index++) {
+    const page = id(600 + index)
+    fixture.files.push({
+      ...structuredClone(fixture.files[0]!),
+      id: page,
+      properties: {
+        ...structuredClone(fixture.files[0]!.properties),
+        file_id: rich("file_id", `foreign-${index}`),
+        path: rich("path", `foreign/${index}.md`),
+        skill: {
+          id: "skill",
+          type: "relation",
+          relation: [{ id: id(70) }],
+          has_more: false,
+        },
+      },
+    })
+  }
+  const remoteHash = () =>
+    hash(
+      canonicalSharedJson({
+        main: fixture.main,
+        files: fixture.files,
+        bodies: [...fixture.bodies],
+        records: [...fixture.records],
+      }),
+    )
+  const before = remoteHash()
+  const calls: HttpObservation[] = []
+  const queryFilters: unknown[] = []
+  const errors: string[] = []
+  const token = "controlled-target-audit-no-secret"
+  const server = createServer(async (incoming, response) => {
+    const chunks: Buffer[] = []
+    for await (const chunk of incoming) chunks.push(Buffer.from(chunk))
+    const bytes = Buffer.concat(chunks)
+    const path = String(incoming.url).replace(/^\//u, "")
+    const method = String(incoming.method)
+    const call: HttpObservation = {
+      path,
+      method,
+      request_bytes: bytes.length,
+      response_bytes: 0,
+      status: null,
+      withheld: false,
+    }
+    calls.push(call)
+    try {
+      assert.equal(incoming.headers.authorization, `Bearer ${token}`)
+      assert.ok(
+        method === "GET" ||
+          (method === "POST" && /^v1\/(data_sources|databases)\/[^/]+\/query(?:\?|$)/u.test(path)),
+        "Audit attempted a semantic remote write",
+      )
+      const body: unknown = bytes.length ? JSON.parse(bytes.toString()) : undefined
+      if (path.includes("/data_sources/") && path.includes("/query"))
+        queryFilters.push({ path, filter: property(body).filter ?? null })
+      const value = await fixture.run(
+        Effect.flatMap(Notion, (api) => api.request(path, body, { method })),
+      )
+      const data = JSON.stringify(value)
+      call.response_bytes = Buffer.byteLength(data)
+      call.status = 200
+      response.writeHead(200, { "content-type": "application/json" })
+      response.end(data)
+    } catch (error) {
+      errors.push(String(error))
+      call.status = 400
+      const data = JSON.stringify({
+        object: "error",
+        code: "validation_error",
+        message: "Owned target fixture rejected this request",
+      })
+      call.response_bytes = Buffer.byteLength(data)
+      response.writeHead(400, { "content-type": "application/json" })
+      response.end(data)
+    }
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  assert.ok(address && typeof address !== "string")
+  const env = {
+    ...context.env,
+    NTN_SKILLS_DEV_ROOT: undefined,
+    HOME: join(location, "home"),
+    NTN_SKILLS_HOME: join(location, "state"),
+    NTN_SKILLS_CONFIG_HOME: join(location, "config"),
+    NTN_SKILLS_CACHE_HOME: join(location, "cache"),
+    NTN_SKILLS_SCHEDULER_ROOT: join(location, "scheduler"),
+    NTN_SKILLS_NOTION_INTERVAL_MS: "100",
+    NOTION_API_TOKEN: token,
+    NOTION_WORKSPACE_ID: "",
+    NOTION_API_BASE_URL: `http://127.0.0.1:${address.port}`,
+  }
+  const argv = [
+    context.runtime,
+    context.executable,
+    "ctl",
+    "audit",
+    "run",
+    "--entry",
+    library.skills.database_id,
+    "--target",
+    skillPage,
+    "--depth",
+    "metadata",
+    "--max-requests",
+    options.pauseAfterRoot ? "3" : "80",
+    "--duration-ms",
+    "30000",
+  ]
+  let passed = false
+  try {
+    const child = spawn(argv[0]!, argv.slice(1), {
+      cwd: context.scratch,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    let stdout = ""
+    let stderr = ""
+    child.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString()
+    })
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString()
+    })
+    let timeout = false
+    const deadline = setTimeout(() => {
+      timeout = true
+      child.kill("SIGKILL")
+    }, 75000)
+    const terminal = await once(child, "close").finally(() => clearTimeout(deadline))
+    assert.equal(timeout, false, "The actual installed audit exceeded its bounded process deadline")
+    await writeFile(
+      join(location, "command.json"),
+      JSON.stringify(
+        { argv, pid: child.pid, exit: terminal[0], signal: terminal[1], stdout, stderr },
+        null,
+        2,
+      ) + "\n",
+    )
+    assert.equal(terminal[0], options.pauseAfterRoot ? 75 : 0, stdout || stderr)
+    const report = property(JSON.parse(stdout))
+    assert.equal(report.inspection_scope, "reachable_target")
+    assert.equal(report.reverse_table_completeness, "unobserved")
+    assert.equal(report.coverage, options.pauseAfterRoot ? "partial" : "full")
+    if (options.pauseAfterRoot) {
+      assert.equal(report.execution, "paused")
+      assert.ok(
+        Array.isArray(report.findings) &&
+          report.findings.some((value) => property(value).code === "MAIN_FILE_ID_INVALID"),
+        "Already observed identity failure must be visible before the owned queries finish",
+      )
+    }
+    assert.equal(report.remote_writes, 0)
+    assert.equal(report.rules_version, AUDIT_RULES_VERSION)
+    const dataSourceCalls = calls.filter((call) => call.path.includes("/data_sources/"))
+    assert.ok(dataSourceCalls.length < 30)
+    if (!options.pauseAfterRoot) assert.ok(dataSourceCalls.length > 0)
+    assert.ok(queryFilters.length === dataSourceCalls.length)
+    assert.ok(queryFilters.every((entry) => property(entry).filter !== null))
+    assert.equal(
+      calls.some((call) =>
+        call.path.includes(`/data_sources/${library.skills.data_source_id}/query`),
+      ),
+      false,
+    )
+    assert.equal(errors.length, 0, JSON.stringify(errors))
+    assert.equal(remoteHash(), before)
+    passed = true
+    return {
+      passed,
+      requests: calls.length,
+      data_source_requests: dataSourceCalls.length,
+      filtered_queries: queryFilters.length,
+      unrelated_rows: unrelatedRows,
+      first_identity_finding_preserved: options.pauseAfterRoot ?? false,
+      evidence: location,
+    }
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    )
+    await writeFile(
+      join(location, "evidence.json"),
+      JSON.stringify(
+        {
+          passed,
+          calls,
+          query_filters: queryFilters,
+          errors,
+          remote_before_sha256: before,
+          remote_after_sha256: remoteHash(),
+        },
+        null,
+        2,
+      ) + "\n",
+    )
+  }
 }

@@ -130,7 +130,7 @@ ntn-skills read SKILL_PAGE_ID --database LIBRARY_ENTRY --authoring
 
 ### Apply one set of changes
 
-Put changed **existing** files in a separate authoring directory, preserving their logical relative paths. For example, `./changes/SKILL.md` and `./changes/references/checklist.md` can update the main body and an existing resource together:
+Put added or changed native Markdown files in a separate authoring directory, preserving their logical relative paths. For example, `./changes/SKILL.md` and `./changes/references/checklist.md` can update the main body and an existing resource together:
 
 ```bash
 ntn-skills apply 'PINNED_MAIN_REF' --database LIBRARY_ENTRY \
@@ -144,7 +144,11 @@ Omitted files remain unchanged. The pinned version must still match a fresh curr
 
 Success reports `status: "applied"`, `verified: true`, `apply_operation_id`, the changed paths and a new pinned snapshot. Identical input reports `status: "unchanged"`. Dry-run reports a plan and sends no Notion writes.
 
-This batch supports existing bound native files and metadata. A single isolated add or delete is also supported, but mixed or multiple layout changes currently fail with `SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED` before any write. Use the explicit [file commands](#add-delete-or-move-a-file) for those individual changes. Replacing a complete Skill with `replace --target` uses the same shared authoring rules and limits.
+The parent also supports multiple new native files together with main-body and metadata edits. `--changes FILE` explicitly nominates moves, removals and revivals; the complete reference tree is checked before native writes. Raw resource mutations retain their own explicit commands, and omitted resources are preserved. See [the progressive tree contract](maintenance-tree-contract.md) for manifest shape, exact reference spans, original suffix recovery and unsupported path cycles. Replacing a complete Skill with `replace --target` retains its separate explicit omission semantics.
+
+### Repair a historical partial identity
+
+A clean disabled native draft still uses `adopt`. A historical page with a legal Skill ID and blank Main File ID uses `ctl repair plan PAGE --entry historical-missing-main --database LIBRARY_ENTRY --dry-run`, followed by its exact returned apply argv. Managed Files rows use `--entry managed-file --owner PAGE --path PATH`. The plan preserves the original page, URL, body, legal identity, author metadata and Enabled state. It does not clear conflicting fields, follow a missing response with another PATCH, or clone an unbound child page. Original complete body retention precedes the identity patch. See [controlled repair](maintenance-repair-contract.md).
 
 ### Write one complete file
 
@@ -208,18 +212,20 @@ Keep generated snapshot directories as consumption output. Editing one does not 
 
 ## Add, delete or move a file
 
+`ctl file undelete PAGE PATH --entry LIBRARY_ENTRY` restores a native Markdown tombstone using the same File ID and page. It leaves inaccessible or changed retained content unresolved and never recreates the row.
+
 These commands take an exact shared Skill page ID or Notion page URL, followed by the logical file path:
 
 ```bash
-ntn-skills ctl library file add SKILL_PAGE_ID references/new-checklist.md \
+ntn-skills ctl file add SKILL_PAGE_ID references/new-checklist.md \
   --entry LIBRARY_ENTRY --input ./new-checklist.md --dry-run
-ntn-skills ctl library file add SKILL_PAGE_ID references/new-checklist.md \
+ntn-skills ctl file add SKILL_PAGE_ID references/new-checklist.md \
   --entry LIBRARY_ENTRY --input ./new-checklist.md
 
-ntn-skills ctl library file move SKILL_PAGE_ID references/old.md references/new.md \
+ntn-skills ctl file move SKILL_PAGE_ID references/old.md references/new.md \
   --entry LIBRARY_ENTRY --dry-run
 
-ntn-skills ctl library file delete SKILL_PAGE_ID references/obsolete.md \
+ntn-skills ctl file delete SKILL_PAGE_ID references/obsolete.md \
   --entry LIBRARY_ENTRY --dry-run
 ```
 
@@ -262,9 +268,9 @@ ntn-skills ctl library source select apply ./source-selection.json --entry LIBRA
 The CLI writes this plan; keep it unchanged for execution or reconciliation. Use `--native` instead of `--source` when intentionally clearing the Source selection. Source selection changes only the native property. Customized files keep their complete Notion content until explicitly restored to following:
 
 ```bash
-ntn-skills ctl library file restore-follow SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library file restore-follow SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY
 ```
 
@@ -273,13 +279,13 @@ Restore uses the exact source currently selected in Notion, retains the old comp
 To submit a request for later processing, initialize the request fields once, then submit the exact current file:
 
 ```bash
-ntn-skills ctl library file request-schema --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library file request-schema --entry LIBRARY_ENTRY
-ntn-skills ctl library file request SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file request-schema --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl file request-schema --entry LIBRARY_ENTRY
+ntn-skills ctl file request SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --submit --dry-run
-ntn-skills ctl library file request SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file request SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --submit
-ntn-skills ctl library file request SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file request SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --process
 ```
 
@@ -464,7 +470,7 @@ The active library uses Skills, Files, Sources and Records. Sources owns mutable
 
 A retained Source reconstructs its content from checksum-bound Records chunks without the original machine or upstream provider. A fixed Git Source retains the exact commit, paths, hashes and modes; a cold ordinary read verifies the complete directory and Markdown references while fetching other resources when requested. Already retained pinned bytes work offline. A missing pinned resource can be acquired only through that pin's frozen source identity, and `--offline` fails if those bytes are absent. Authoring and full export verify all files. Current reads still verify editable pages and preserve whole-file customizations; changing a Source definition does not move an active pin.
 
-Use the [reviewed inventory import](inventory-import.md) for complete native, unchanged upstream or locally modified upstream input. It freezes the explicit local manifest and reuses the original create journal. Subsequent raw resource changes use `ctl library resource`; their stable Files pages hold management metadata and notes while immutable Records hold exact bytes and executable modes. Management-page Markdown is not the resource payload. Resource operations never execute a script or delete the local input.
+Use the [reviewed inventory import](inventory-import.md) for complete native, unchanged upstream or locally modified upstream input. It freezes the explicit local manifest and reuses the original create journal. Subsequent raw resource changes use `ctl resource`; their stable Files pages hold management metadata and notes while immutable Records hold exact bytes and executable modes. Management-page Markdown is not the resource payload. Resource operations never execute a script or delete the local input.
 
 Library history, original source configurations and original page responses are preserved as archive records and attachments. Original incomplete operations retain their old outcomes. The archive is useful for audit and explicit restoration; it is not an alternative current content source. After complete new-library verification, obsolete database containers can be moved to Notion Trash without permanently deleting their recovery trail. Only the new Skills database should remain registered in the daily CLI/Broker configuration.
 
@@ -480,7 +486,7 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 | Native create | Retain the complete original input and operation. Repeating the same create intent takes its original reconciliation path; it does not blindly repeat a page POST. A partially created Skill remains disabled until verified. |
 | Reviewed migration | `ctl library migration reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID`; add `--target EXACT_NEW_PAGE_ID` only when needed to recover the retained origin on another machine. See the [migration workflow](#review-and-migrate-one-legacy-record). |
 | Reviewed partial-create recovery | `ctl library migration recovery reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID --target EXACT_EXISTING_SKILL_PAGE_ID`; verifies the separate recovery completion while preserving the original failure. |
-| File add, delete or move | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
+| File add, delete or move | `ctl file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | Source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
 | Source selection | `ctl library source select reconcile ./source-selection.json --entry LIBRARY_ENTRY` |
 | Profile revision | Repeat the original complete `profile set` arguments with `--reconcile`. |
@@ -495,14 +501,14 @@ A `needs_review` body write can retain a complete native response that differs f
 The accepted digest is the SHA-256 of the original `response.markdown` string encoded as UTF-8. Preserve its exact bytes, including CRLF and terminal newlines; do not hash normalized content or a JSON wrapper. Preview with the exact original operation and the containing Skill page:
 
 ```bash
-ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+ntn-skills ctl file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
   --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --dry-run
 ```
 
 The preview verifies the retained plan, outcome, complete original observation, current body, file binding, source selection and original parent events. If those facts still match the decision you intend to make, execute the same command without `--dry-run`:
 
 ```bash
-ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+ntn-skills ctl file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
   --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256
 ```
 
@@ -519,7 +525,7 @@ An original body write can have no retained outcome even when its exact adoption
 Use the `body_write_operation_id` returned by the actual failed dispatch. A preceding dry-run may have a different observation identity. Hash the exact current `response.markdown` UTF-8 bytes, and preview the decision with the containing Skill page, including when the changed file is a resource:
 
 ```bash
-ntn-skills ctl library file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+ntn-skills ctl file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
   --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --dry-run
 ```
 

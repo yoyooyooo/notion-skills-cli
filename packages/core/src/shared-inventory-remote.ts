@@ -108,6 +108,14 @@ export const SharedBaselineInventorySchema = Schema.Struct({
   rules_version: Schema.Literal(INVENTORY_RULES),
   plan_id: Schema.String,
   audit_run_id: Schema.String,
+  inspection_scope: Schema.optional(
+    Schema.Literals([
+      "reachable_target",
+      "registered_table_census",
+      "registered_library",
+      "historical_full_table_scan",
+    ]),
+  ),
   library_id: Schema.String,
   entry_id: Schema.String,
   permission_scope: Schema.NullOr(Schema.String),
@@ -542,6 +550,7 @@ export function prepareSharedBaselineInventory(auditRunId: string) {
       rules_version: INVENTORY_RULES,
       library_id: library.library_id,
       entry_id: run.entry_id,
+      inspection_scope: report.inspection_scope,
       permission_scope: run.permission_scope,
       visible_registered_census,
       native_census_sha256,

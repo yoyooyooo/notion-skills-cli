@@ -186,3 +186,7 @@ The runner requires a green baseline, an assertion counterexample after removing
 `node scripts/verify-resource-lifecycle.mjs --out /absolute/new/run` 为原默认入口；`--model AuditRun` 选择整个模型组，包括既有 liveness 配置。新增领域使用 `--suite operation-recovery` 或 `--suite request-engine`，各自有 coverage/README，不能把其结果算作本目录扩大证明范围。`npm run test:formal-contract` 检查结果判定器的失败边界。
 
 维护分工、view/模型/实现三类复验义务及 CI artifact 规则见 [维护合同](../../../docs/formal-verification-maintenance.md)。失败 evidence 保留原目录，新一轮使用新的空绝对目录。
+
+## AH-1024 目标范围合同
+
+新增 AuditScope，不替代原 AuditRun：目标可达覆盖与独立全库反向覆盖分开；预算续跑不能改变原范围或丢失已确认事实。完整 suite 为 40 配置。正负配置、实现保护和排除项见 coverage.json 与 [维护对应审阅](../../../docs/maintenance-verification-review.md)。旧运行保留原结论，新的源码对应需要重新执行。

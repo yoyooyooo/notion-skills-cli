@@ -1,6 +1,6 @@
-import { mkdtemp, readFile, writeFile, realpath } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, writeFile, realpath } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 
 export async function prepareConsumer() {
@@ -18,7 +18,14 @@ export async function prepareConsumer() {
     throw new Error("Select exactly one --archive or --registry input.")
   if (values.registry && !/^ntn-skills@\d+\.\d+\.\d+(?:-[\da-z.-]+)?$/i.test(values.registry))
     throw new Error("--registry must select an exact ntn-skills version.")
-  const scratch = await realpath(await mkdtemp(join(tmpdir(), "ntn-skills-consumer-")))
+  const evidenceRoot = process.env.NTN_SMOKE_EVIDENCE_ROOT
+  if (evidenceRoot) {
+    if (!isAbsolute(evidenceRoot)) throw new Error("NTN_SMOKE_EVIDENCE_ROOT must be absolute")
+    await mkdir(evidenceRoot, { recursive: true, mode: 0o700 })
+  }
+  const scratch = await realpath(
+    await mkdtemp(join(evidenceRoot ?? tmpdir(), "ntn-skills-consumer-")),
+  )
   console.error(JSON.stringify({ consumer_smoke_scratch: scratch }))
   const runtime = values.runtime ? resolve(values.runtime) : Bun.which("node")
   if (!runtime)

@@ -1,4 +1,4 @@
-import { Clock, Context, Effect, Option, Stdio, Stream } from "effect"
+import { Clock, Context, Effect, FileSystem, Option, Path, Schema, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 
 import {
@@ -17,6 +17,8 @@ import {
 } from "@notion-skills-cli/core"
 
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
+import { fail } from "../../core/src/model.ts"
+import { SharedApplyChangesManifestSchema } from "../../core/src/shared-skill-apply-model.ts"
 import { listSkills } from "../../core/src/catalog-consumption.ts"
 
 import {
@@ -368,6 +370,32 @@ export const createCommand = defineCommand(
   ]),
 )
 
+function readChangesManifest(input: string | undefined) {
+  return Effect.gen(function* () {
+    if (input === undefined) return undefined
+    const location = (yield* Path.Path).resolve(input)
+    const text = yield* (yield* FileSystem.FileSystem)
+      .readFileString(location)
+      .pipe(
+        Effect.mapError(() =>
+          fail("INVALID_INPUT", "Could not read the changes manifest.", { input: location }),
+        ),
+      )
+    return yield* Effect.try({
+      try: () =>
+        Schema.decodeUnknownSync(SharedApplyChangesManifestSchema)(JSON.parse(text), {
+          onExcessProperty: "error",
+        }),
+      catch: () =>
+        fail(
+          "INVALID_INPUT",
+          "The changes manifest must be the documented version 1 JSON object.",
+          { input: location },
+        ),
+    })
+  })
+}
+
 export const applyCommand = defineCommand(
   "apply",
   {
@@ -385,6 +413,10 @@ export const applyCommand = defineCommand(
       Flag.withDescription(
         "Exact relative file path to remove from the selected snapshot; repeat for multiple files",
       ),
+    ),
+    changes: singleton(
+      "changes",
+      "Optional JSON manifest of explicit moves, removes, revives and link-rewrite spans. Omitted input files are not deletions.",
     ),
     database: databaseFlag,
     name: singleton("name", "Exact new human title; preserves page identity"),
@@ -410,6 +442,7 @@ export const applyCommand = defineCommand(
         yield* applySkill(config.target, {
           input: Option.getOrUndefined(config.input),
           remove: config.remove,
+          changes: yield* readChangesManifest(Option.getOrUndefined(config.changes)),
           database: Option.getOrUndefined(config.database),
           name: Option.getOrUndefined(config.name),
           description: Option.getOrUndefined(config.description),
@@ -424,7 +457,7 @@ export const applyCommand = defineCommand(
   withConstraints([memberConstraint]),
   Command.withShortDescription("Apply one content change to an exact pinned baseline"),
   Command.withDescription(
-    "Submit changed files in --input and explicit deletions with --remove. Omitted files remain unchanged; deleting the main file is rejected. The target must be a pinned main ref or snapshot ID from a prior read; a stale baseline fails before writing. In a shared library, existing bound UTF-8 body changes and explicitly nominated metadata form one frozen sequential batch. Every proposed input and complete-tree reference is checked before dispatch; the batch is not atomic and a later failure retains earlier verified edits plus the original remaining intent. One isolated add/delete is supported; mixed or multiple layout changes fail before writes. Use ctl library file for individual lifecycle changes. Shared success reports status=applied, verified=true, apply_operation_id and changes.files/changes.removed; identical input reports unchanged. --dry-run sends no Notion writes. Preserve original errors and use a fresh exact current read for shared reconciliation; unknown work is never replayed. Legacy targets retain their existing publication recovery and ctl operation resume OPERATION_ID.",
+    "Submit changed files in --input and explicit deletions with --remove. Omitted files remain unchanged; deleting the main file is rejected. New files in --input are additions. Equal bytes are not a move, and a missing input file is not a deletion. --changes is an optional version 1 JSON manifest with moves, removes, revives and exact link-rewrite spans. The target must be a pinned main ref or snapshot ID from a prior read; a stale baseline fails before writing. In a shared library, body edits, metadata and explicit layout changes form one frozen sequential parent operation. The complete final tree is checked before dispatch. The batch is not atomic. A later failure retains earlier verified edits. Unknown children are not redispatched. Replacement still refuses to infer mixed deletions from omitted files. Shared success reports status=applied, verified=true and apply_operation_id. Identical input reports unchanged. --dry-run sends no Notion writes. Legacy targets retain their existing publication recovery and ctl operation resume OPERATION_ID.",
   ),
 )
 

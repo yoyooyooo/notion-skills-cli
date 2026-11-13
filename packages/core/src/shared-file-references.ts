@@ -324,6 +324,80 @@ export function sharedMarkdownReferences(
   return scanSharedMarkdownReferences(path, markdown, policy)
 }
 
+export type SharedReferenceRewriteSpan = {
+  readonly start: number
+  readonly end: number
+  readonly from: string
+  readonly to: string
+}
+
+/** Replace only explicit spans that are parsed local destinations.
+ * Fenced, inline code, escaped literals, external URLs and foreign owners are not destinations. */
+export function rewriteSharedMarkdownReferenceSpans(
+  path: string,
+  markdown: string,
+  spans: readonly SharedReferenceRewriteSpan[],
+): string {
+  const found: Array<{
+    readonly reference: SharedFileReference
+    readonly start: number
+    readonly end: number
+  }> = []
+  scanSharedMarkdownReferences(path, markdown, 5, (reference, destination) => {
+    if (markdown.slice(destination.start, destination.hrefEnd) !== reference.href)
+      throw fail(
+        "SHARED_REFERENCE_INVALID",
+        "A parsed reference has no exact authored destination.",
+      )
+    found.push({ reference, start: destination.start, end: destination.hrefEnd })
+  })
+  const edits: Array<{ readonly start: number; readonly end: number; readonly text: string }> = []
+  for (const span of spans) {
+    if (
+      !Number.isSafeInteger(span.start) ||
+      !Number.isSafeInteger(span.end) ||
+      span.start < 0 ||
+      span.end <= span.start ||
+      markdown.slice(span.start, span.end) !== span.from
+    )
+      throw fail(
+        "SHARED_APPLY_REWRITE_SPAN",
+        "A link rewrite span does not match the submitted file text.",
+        { path, start: span.start, end: span.end },
+      )
+    const match = found.find(
+      (item) =>
+        item.start === span.start && item.end === span.end && item.reference.href === span.from,
+    )
+    if (match === undefined)
+      throw fail(
+        "SHARED_APPLY_REWRITE_SPAN",
+        "A link rewrite span is not an exact relative Markdown destination. Fenced code, inline code, escaped literals, external URLs and foreign owners are left unchanged.",
+        { path, start: span.start, end: span.end },
+      )
+    if (
+      localTarget(path, span.to) === undefined ||
+      normalizePath(span.to) !== span.to ||
+      span.to.includes(":")
+    )
+      throw fail(
+        "SHARED_APPLY_REWRITE_TARGET",
+        "A rewritten link must stay a canonical relative path inside this Skill.",
+        { path, to: span.to },
+      )
+    if (edits.some((edit) => edit.start === span.start))
+      throw fail("SHARED_APPLY_REWRITE_SPAN", "Two rewrite spans cover the same destination.", {
+        path,
+        start: span.start,
+      })
+    edits.push({ start: span.start, end: span.end, text: span.to })
+  }
+  let result = markdown
+  for (const edit of edits.sort((left, right) => right.start - left.start))
+    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end)
+  return result
+}
+
 /** Edit only the actual parsed destination, never another literal with the same href. */
 export function mapSharedMarkdownReferences(
   path: string,

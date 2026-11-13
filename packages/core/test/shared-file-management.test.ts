@@ -1188,6 +1188,92 @@ describe("shared file lifecycle operations", () => {
     )
   })
 
+  test("native undelete revives the same file id and page and does not create a row", async () => {
+    const f = fixture(),
+      baseline = await f.baseline()
+    const deleted = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot: baseline,
+        action: "delete",
+        fileId: "file-1",
+      }),
+    )
+    await f.run(executeSharedFileManagement(library, { plan: deleted, mode: "create" }))
+    const current = await f.open(true)
+    expect(current.files.some((file) => file.path === "references/1.md")).toBe(false)
+    const rowsBefore = f.files.length
+    f.clear()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot: current,
+        action: "undelete",
+        fileId: "file-1",
+      }),
+    )
+    expect(plan.page_id).toBe(id(11))
+    expect(plan.file_id).toBe("file-1")
+    expect(plan.event.kind).toBe("undeleted")
+    const result = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+    expect(result.status).toBe("applied")
+    expect(result.page_id).toBe(id(11))
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.files).toHaveLength(rowsBefore)
+    expect(f.base.bodies.get(id(11))).toBe("Reference one\n")
+    const state = resolveFileState(
+      "file-1",
+      (await f.events()).filter((event) => event.file_id === "file-1"),
+    )
+    expect(state.ownership.kind).toBe("custom")
+    if (state.ownership.kind !== "custom") throw new Error("Expected custom ownership")
+    expect(state.ownership.content).toEqual(deleted.content.retained)
+    const revived = await f.open(true)
+    expect(revived.files.some((file) => file.path === "references/1.md")).toBe(true)
+    f.clear()
+    const again = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+    expect(again.status).toBe("applied")
+    expect(f.fileCreates()).toHaveLength(0)
+    expect((await f.events()).filter((event) => event.kind === "undeleted")).toHaveLength(1)
+  })
+
+  test("undelete rejects an active file and unavailable bytes before creating a row", async () => {
+    const f = fixture(),
+      snapshot = await f.baseline()
+    const active = await f.run(
+      Effect.flip(
+        prepareSharedFileManagement({
+          library,
+          snapshot,
+          action: "undelete",
+          fileId: "file-1",
+        }),
+      ),
+    )
+    expect(active.code).toBe("SHARED_FILE_NOT_TOMBSTONE")
+    expect(f.fileCreates()).toHaveLength(0)
+    const deleted = await f.run(
+      prepareSharedFileManagement({ library, snapshot, action: "delete", fileId: "file-1" }),
+    )
+    await f.run(executeSharedFileManagement(library, { plan: deleted, mode: "create" }))
+    const current = await f.open(true)
+    f.base.bodies.set(id(11), "rewritten after delete\n")
+    f.clear()
+    const unavailable = await f.run(
+      Effect.flip(
+        prepareSharedFileManagement({
+          library,
+          snapshot: current,
+          action: "undelete",
+          fileId: "file-1",
+        }),
+      ),
+    )
+    expect(unavailable.code).toBe("SHARED_UNDELETE_BYTES_UNAVAILABLE")
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.files).toHaveLength(2)
+  })
+
   test("add projects before freezing while exact postcondition rejects an unplanned trailing newline", async () => {
     const f = fixture(),
       snapshot = await f.baseline()

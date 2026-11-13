@@ -2,7 +2,7 @@
 
 本目录是 [AH-1008](https://linear.app/yoyooyooo/issue/AH-1008) 与 [AH-1009](https://linear.app/yoyooyooo/issue/AH-1009) 的项目验证正本。由 [verify-notion-operation-recovery](../../../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 维护；统一运行器和冻结工具链沿用 [resource-lifecycle](../resource-lifecycle/README.md)。不替换 ImportCreate、CreateRecovery、AcknowledgedContinuation 的既有证明。
 
-## 三个协议
+## 原操作协议
 
 | 模型 | 有界状态主权 | 正例证明的合同 |
 | --- | --- | --- |
@@ -10,7 +10,9 @@
 | IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/adopted/completion 三项不可变事实、五类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
 | RestoreFeedback | 一次冻结提交、一个原 restore 身份、一轮正文动作和一轮最终业务反馈 | 先核实原身份绑定再派发正文；正文已完成而反馈未发时只补反馈；pending/unknown 不换原操作；历史反馈 ACK 与当前正文/Source 前提分离 |
 
-正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：3 个模型，28 个配置，其中 3 个正例、25 个故意反例。
+正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：4 个模型，34 个配置。新增 MaintenanceApply 的实际对应、ACK 抽象和排除项见[维护审阅](../../../docs/maintenance-verification-review.md)。
+
+MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证前缀才允许后缀，unknown 不重放，部分树不进入当前消费，旧 pin 保持。具体正文、引用和 Notion 权限由公共实现及安装回归验证。
 
 ## 原子边界与源码对应
 

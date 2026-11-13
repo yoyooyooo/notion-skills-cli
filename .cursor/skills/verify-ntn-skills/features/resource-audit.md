@@ -63,13 +63,26 @@ evidence before changing model status from proposed to exercised. Controlled tes
 live owned Notion evidence, independent package evidence and human UI observations
 remain distinct. No live/human claim is implied by this contract file.
 
+## Target scope and retention (AH-1026 / AH-1031)
+
+Current rules are `resource-audit-v3`. v1 and v2 reports remain readable and cannot resume.
+`--target` reads one page, its direct Requires and Origin pages, and filtered File and Record
+headers. `inventory.complete` stays an unfiltered census. Reachable runs report
+`inspection_scope: reachable_target`, `reverse_table_completeness: unobserved`, and
+`ownership_coverage`. `--all` and `--census` still scan every registered row, which is what
+makes a cleared owner visible. Same-owner equal Record headers are `possible_equivalent`
+until payloads are compared. Conflicting headers are errors. Cross-owner equal bodies and
+unlinked scripts are not orphans or conflicts. `growth` and `next` describe retention and
+help or resume argv. They do not garbage-collect, merge, repair, or claim live library state.
+The contract is [maintenance-audit-contract.md](../../../../docs/maintenance-audit-contract.md).
+
 ## Exercised evidence
 
 AH-1025 adds `shared-audit-draft.test.ts` and the `checkAuditDrafts` slice in the
 existing installed package smoke. Both directory classification and full audit
 reports must agree on an unfinished disabled draft. Existing bindings and history
 remain findings. Metadata success does not imply content/history verification.
-Current v2 rules reject resuming v1 while retaining its offline reports.
+Current v3 rules reject resuming v1 and v2 while retaining their offline reports.
 See [the source correspondence review](../../../../docs/maintenance-state-verification.md).
 
 - `shared-audit*.test.ts` covers independent census, retained history, exact graph

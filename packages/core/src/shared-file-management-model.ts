@@ -26,9 +26,9 @@ const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const SharedFileManagementPlanV1Schema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("file_management"),
-  action: Schema.Literals(["add", "delete", "move"]),
+  action: Schema.Literals(["add", "delete", "move", "undelete"]),
   operation_id: Schema.String.check(
-    Schema.isPattern(/^file-management-(?:add|delete|move)-[a-f0-9]{64}\.[a-f0-9]{64}$/u),
+    Schema.isPattern(/^file-management-(?:add|delete|move|undelete)-[a-f0-9]{64}\.[a-f0-9]{64}$/u),
   ),
   library_id: Identity,
   skill_page_id: Schema.String,
@@ -52,6 +52,7 @@ const SharedFileManagementPlanV1Schema = Schema.Struct({
   }),
   before: Schema.NullOr(FrozenWriteBodySchema),
   creation_projection: Schema.NullOr(SharedNotionMarkdownProjectionSchema),
+  creation_mode: Schema.optional(Schema.Literals(["100644", "100755"])),
   content: Schema.Struct({ markdown: Schema.String, retained: RetainedContentSchema }),
   event: FileEventSchema,
 })
@@ -140,7 +141,7 @@ function description(plan: Omit<SharedFileManagementPlan, "operation_id">) {
   return { ...plan }
 }
 export function plannedFileManagementEventId(operationId: string): string | undefined {
-  const matched = /^file-management-(add|delete|move)-([a-f0-9]{64})\.[a-f0-9]{64}$/u.exec(
+  const matched = /^file-management-(add|delete|move|undelete)-([a-f0-9]{64})\.[a-f0-9]{64}$/u.exec(
     operationId,
   )
   return matched === null ? undefined : `${matched[1]}-${matched[2]}`
@@ -171,6 +172,8 @@ export function validateSharedFileManagementPlan(input: unknown) {
           "SHARED_FILE_MANAGEMENT_INVALID",
           "File operations require exact canonical Notion identities.",
         )
+      if (plan.action !== "add" && plan.creation_mode !== undefined)
+        throw fail("SHARED_FILE_MANAGEMENT_INVALID", "Only new file creation may nominate a mode.")
       canonicalManagementPath(plan.entrypoint)
       canonicalManagementPath(plan.path)
       if (plan.destination_path !== null) canonicalManagementPath(plan.destination_path)
@@ -275,6 +278,16 @@ export function validateSharedFileManagementPlan(input: unknown) {
             "Deletion records a tombstone without moving the underlying page.",
           )
         if (
+          plan.action === "undelete" &&
+          (plan.destination_path !== null ||
+            plan.event.kind !== "undeleted" ||
+            plan.page_id === null)
+        )
+          throw fail(
+            "SHARED_FILE_MANAGEMENT_INVALID",
+            "Undelete revives the same page and path. It does not create a row, move the file, or replace its bytes.",
+          )
+        if (
           plan.action === "move" &&
           (plan.destination_path === null ||
             plan.destination_path === plan.path ||
@@ -309,6 +322,9 @@ export function validateSharedFileManagementPlan(input: unknown) {
       sha256: hash,
       bytes: new TextEncoder().encode(plan.content.markdown).byteLength,
       ...inputMetadata,
+      ...(plan.action === "add" && plan.creation_mode !== undefined
+        ? { mode: plan.creation_mode }
+        : {}),
     }
     if (
       canonicalSharedJson(retained) !== canonicalSharedJson(plan.content.retained) ||
@@ -324,7 +340,9 @@ export function validateSharedFileManagementPlan(input: unknown) {
     const eventContent =
       plan.event.kind === "adopted"
         ? plan.event.content
-        : plan.event.kind === "deleted" || plan.event.kind === "moved"
+        : plan.event.kind === "deleted" ||
+            plan.event.kind === "moved" ||
+            plan.event.kind === "undeleted"
           ? plan.event.retained
           : undefined
     if (
@@ -371,6 +389,7 @@ export function makeSharedFileManagementPlan(
     readonly event:
       | Omit<Extract<FileEvent, { kind: "adopted" }>, "event_id">
       | Omit<Extract<FileEvent, { kind: "deleted" }>, "event_id">
+      | Omit<Extract<FileEvent, { kind: "undeleted" }>, "event_id">
       | Omit<Extract<FileEvent, { kind: "moved" }>, "event_id">
   },
 ) {

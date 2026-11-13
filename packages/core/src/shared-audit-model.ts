@@ -2,7 +2,8 @@ import { Schema } from "effect"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
-export const AUDIT_RULES_VERSION = "resource-audit-v2"
+export const AUDIT_RULES_VERSION = "resource-audit-v3"
+export const READABLE_AUDIT_RULES = ["resource-audit-v1", "resource-audit-v2"] as const
 export const AuditDepthSchema = Schema.Literals(["metadata", "content", "history"])
 export type AuditDepth = typeof AuditDepthSchema.Type
 export const AuditCoverageSchema = Schema.Literals(["full", "partial", "permission_limited"])
@@ -80,12 +81,48 @@ export const AuditItemSchema = Schema.Struct({
 })
 export type AuditItem = typeof AuditItemSchema.Type
 
+const AuditOwnerStatusSchema = Schema.Literals([
+  "full",
+  "partial",
+  "permission_limited",
+  "unobserved",
+  "not_configured",
+])
+export const AuditDirectFindingSchema = Schema.Struct({
+  code: Schema.String,
+  severity: Schema.Literals(["error", "warning", "info"]),
+  object_id: Schema.String,
+  location: Schema.String,
+  message: Schema.String,
+  evidence: Schema.Unknown,
+  coverage: AuditCoverageSchema,
+})
+export type AuditDirectFinding = typeof AuditDirectFindingSchema.Type
+export const AuditInventoryScopeSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("library") }),
+  Schema.Struct({
+    kind: Schema.Literal("reachable"),
+    root_page_id: Schema.String,
+    dependencies: Schema.Array(Schema.String),
+    owner_coverage: Schema.Array(
+      Schema.Struct({
+        owner_page_id: Schema.String,
+        files: AuditOwnerStatusSchema,
+        records: AuditOwnerStatusSchema,
+        sources: AuditOwnerStatusSchema,
+      }),
+    ),
+    direct_findings: Schema.Array(AuditDirectFindingSchema),
+  }),
+])
+export type AuditInventoryScope = typeof AuditInventoryScopeSchema.Type
 export const AuditInventorySchema = Schema.Struct({
   skills: Schema.Array(Schema.Unknown),
   files: Schema.Array(Schema.Unknown),
   records: Schema.Array(Schema.Unknown),
   sources: Schema.Array(Schema.Unknown),
   complete: Schema.Array(Schema.Literals(["skills", "files", "records", "sources"])),
+  scope: Schema.optional(AuditInventoryScopeSchema),
 })
 export type AuditInventory = typeof AuditInventorySchema.Type
 export type AuditTable = "skills" | "files" | "records" | "sources"
@@ -96,6 +133,11 @@ export const AuditTaskSchema = Schema.Union([
     key: Schema.String,
     kind: Schema.Literal("inventory"),
     table: Schema.Literals(["skills", "files", "records", "sources"]),
+    phase: Schema.Literals(["initial", "final"]),
+  }),
+  Schema.Struct({
+    key: Schema.String,
+    kind: Schema.Literal("reachable"),
     phase: Schema.Literals(["initial", "final"]),
   }),
   Schema.Struct({
@@ -207,13 +249,47 @@ export function fairAuditOrder(
   return [...output]
 }
 
+const requiredAuditTables = (run: AuditRun): readonly AuditTable[] =>
+  run.library?.sources === undefined
+    ? ["skills", "files", "records"]
+    : ["skills", "files", "records", "sources"]
+
+export function auditTablesComplete(run: AuditRun, inventory: AuditInventory) {
+  return requiredAuditTables(run).every((table) => inventory.complete.includes(table))
+}
+
+/** Reachable owner queries never fill `complete`. That array remains an
+ * unfiltered table census only. */
+export function auditReachableReady(inventory: AuditInventory) {
+  const scope = inventory.scope
+  if (scope?.kind !== "reachable") return false
+  const root = scope.owner_coverage.find((row) => row.owner_page_id === scope.root_page_id)
+  if (root === undefined) return false
+  return (
+    root.files === "full" &&
+    root.records === "full" &&
+    (root.sources === "full" || root.sources === "not_configured")
+  )
+}
+
 export function auditReport(run: AuditRun, previous?: AuditRun) {
-  const requiredTables: readonly AuditTable[] =
-    run.library?.sources === undefined
-      ? ["skills", "files", "records"]
-      : ["skills", "files", "records", "sources"]
-  const complete = (inventory: AuditInventory) =>
-    requiredTables.every((table) => inventory.complete.includes(table))
+  const complete = (inventory: AuditInventory) => auditTablesComplete(run, inventory)
+  const scopedTarget = run.inventory.scope?.kind === "reachable"
+  const forwardReady =
+    run.selector.kind === "skill" && scopedTarget
+      ? auditReachableReady(run.inventory) && auditReachableReady(run.census)
+      : complete(run.inventory) && complete(run.census)
+  const inspectionScope =
+    run.selector.kind === "census"
+      ? ("registered_table_census" as const)
+      : scopedTarget
+        ? ("reachable_target" as const)
+        : run.inventory.scope?.kind === "library"
+          ? ("registered_library" as const)
+          : run.selector.kind === "skill"
+            ? ("historical_full_table_scan" as const)
+            : ("registered_library" as const)
+  const reverseComplete = complete(run.inventory) && complete(run.census)
   const findings = [
     ...new Map(
       [...run.findings, ...run.graph_findings, ...run.items.flatMap((item) => item.findings)].map(
@@ -243,7 +319,7 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
     run.items.filter((item) => item.coverage === "full").map((item) => item.scope_key),
   )
   if (
-    complete(run.census) &&
+    (scopedTarget ? auditReachableReady(run.census) : complete(run.census)) &&
     run.findings.every(
       (finding) => finding.scope_key !== "inventory" || finding.coverage === "full",
     )
@@ -256,9 +332,7 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
   )
     checkedScopes.add(`graph:${run.graph_id}`)
   const coverage = auditCoverage([
-    run.execution === "completed" && complete(run.inventory) && complete(run.census)
-      ? "full"
-      : "partial",
+    run.execution === "completed" && forwardReady ? "full" : "partial",
     ...findings.map((finding) => finding.coverage),
     ...run.items.map((item) => item.coverage),
   ])
@@ -281,12 +355,15 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
     endpoint_scope: run.endpoint_scope ?? null,
     selector: run.selector,
     depth: run.depth,
-    ...(run.selector.kind === "census"
-      ? {
-          inspection_scope: "registered_table_census" as const,
-          skill_states: "unobserved" as const,
-        }
-      : {}),
+    inspection_scope: inspectionScope,
+    skill_states: run.selector.kind === "census" ? ("unobserved" as const) : ("observed" as const),
+    reverse_table_completeness: scopedTarget
+      ? ("unobserved" as const)
+      : reverseComplete
+        ? ("complete" as const)
+        : ("partial" as const),
+    ownership_coverage:
+      run.inventory.scope?.kind === "reachable" ? run.inventory.scope.owner_coverage : null,
     pin_id: run.pin_id,
     graph: { graph_id: run.graph_id, result: run.graph_result, history: run.graph_history },
     execution: run.execution,
@@ -306,6 +383,9 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
       sources: run.inventory.sources.length,
       reverse_tables: run.inventory.complete,
       final_census_tables: run.census.complete,
+      library_conflict_claim: reverseComplete
+        ? ("complete_census" as const)
+        : ("not_claimed" as const),
     },
     items: run.items,
     findings: changed,
@@ -334,6 +414,8 @@ export function auditReport(run: AuditRun, previous?: AuditRun) {
       private_session_references: "not_globally_enumerable" as const,
       global_gc_safe: false as const,
       history_limit: run.retain_runs,
+      live_library_state: "not_claimed" as const,
+      remote_gc: "not_performed" as const,
     },
     historical_comparison: comparable
       ? ("available" as const)

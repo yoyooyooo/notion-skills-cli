@@ -382,8 +382,8 @@ export const libraryCommand = defineCommand("library").pipe(
     inspect,
     files,
     state,
-    libraryAuditCommand,
-    libraryResourceCommand,
+    libraryAuditCommand.pipe(Command.unlisted),
+    libraryResourceCommand.pipe(Command.unlisted),
     libraryInventoryCommand,
     libraryCreateCommand,
     sources,
@@ -393,6 +393,6 @@ export const libraryCommand = defineCommand("library").pipe(
     libraryProfilesCommand,
     libraryRelationsCommand,
     libraryGraphCommand,
-    libraryFilesCommand,
+    libraryFilesCommand.pipe(Command.unlisted),
   ]),
 )

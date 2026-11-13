@@ -12,7 +12,7 @@
 | Properties only | `update PINNED_MAIN_REF --name NAME --description TEXT` | Change only the specified allowed properties |
 | Enable or disable a reviewed native Skill | `update PAGE_ID --database LIBRARY --enabled true` or `--enabled false` | Verify the complete current tree and change only nominated properties |
 | Deliberately replace the entire file set | `replace INPUT --target PINNED_MAIN_REF` | Preserve page identity and replace the included file set |
-| One non-document resource | `ctl library resource add/replace PAGE_ID PATH --entry LIBRARY --input FILE` | Exact bytes and executable mode; no resource execution |
+| One non-document resource | `ctl resource add/replace PAGE_ID PATH --entry LIBRARY --input FILE` | Exact bytes and executable mode; no resource execution |
 | Complete reviewed local import | `ctl library inventory prepare-import/apply-import/reconcile-import` | One approved complete inventory entity and its original create operation |
 | Fixed shared snapshot copy | `export PINNED_MAIN_REF --projection snapshot --output NEW_DIRECTORY_OR_ZIP` | Export the chosen complete read view without changing Notion |
 
@@ -33,10 +33,10 @@ An unregistered disabled page can remain under human construction without blocki
 Use the exact Skill page ID and library entry for each individual operation:
 
 ```bash
-ntn-skills ctl library file add SKILL_PAGE_ID references/new.md --entry LIBRARY_ENTRY --input ./new.md
-ntn-skills ctl library file move SKILL_PAGE_ID references/old.md references/new.md --entry LIBRARY_ENTRY
-ntn-skills ctl library file delete SKILL_PAGE_ID references/obsolete.md --entry LIBRARY_ENTRY
-ntn-skills ctl library file restore-follow SKILL_PAGE_ID references/checklist.md --entry LIBRARY_ENTRY
+ntn-skills ctl file add SKILL_PAGE_ID references/new.md --entry LIBRARY_ENTRY --input ./new.md
+ntn-skills ctl file move SKILL_PAGE_ID references/old.md references/new.md --entry LIBRARY_ENTRY
+ntn-skills ctl file delete SKILL_PAGE_ID references/obsolete.md --entry LIBRARY_ENTRY
+ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md --entry LIBRARY_ENTRY
 ```
 
 Each supports `--dry-run`. Add creates a File identity; move keeps the File ID, native page and fixed-source path; delete retains a tombstone and the old page/body. Complete-tree relative references must remain valid, and move does not rewrite links. Main files cannot be moved or deleted. Restore-follow retains the complete custom body before restoring the exact currently selected source; a moved file uses its old source path. It never advances a commit. Local source bytes require an explicit machine/workspace binding plus `--allow-local-archive` to retain that selected body in shared records.
@@ -62,7 +62,7 @@ For example, a Prompt directory contains `.ntn-skills.json` and `PROMPT.md`:
 }
 ```
 
-In a shared library, ordinary Skill folders with `SKILL.md` need no hand-authored manifest. Native creation freezes every UTF-8 input and leaves the new Skill disabled until the complete body set verifies. Ordinary creation rejects unsupported input before page creation. Complete reviewed inventory imports and Source admissions additionally retain non-document resources through the same create journal. Use the inventory workflow for one approved full manifest, and `ctl library resource` for a later explicit resource edit. Omit `--storage` for the shared path. Shared main frontmatter must match current native Name/Description or values explicitly nominated in the same apply, and `notion_page_id` must match the selected Skill. Extra unsupported main fields are rejected. Native authoring normalizes CRLF to LF and terminal line feeds before exact candidate verification.
+In a shared library, ordinary Skill folders with `SKILL.md` need no hand-authored manifest. Native creation freezes every UTF-8 input and leaves the new Skill disabled until the complete body set verifies. Ordinary creation rejects unsupported input before page creation. Complete reviewed inventory imports and Source admissions additionally retain non-document resources through the same create journal. Use the inventory workflow for one approved full manifest, and `ctl resource` for a later explicit resource edit. Omit `--storage` for the shared path. Shared main frontmatter must match current native Name/Description or values explicitly nominated in the same apply, and `notion_page_id` must match the selected Skill. Extra unsupported main fields are rejected. Native authoring normalizes CRLF to LF and terminal line feeds before exact candidate verification.
 
 Router `--member` selects the complete Members relation using exact current Skill identities from the same database. `--clear-members` clears it; omission preserves it. Members and authored Router instructions remain distinct. Default Context is an ordinary checkbox available to Notion Views, not a second host-selection rule.
 
@@ -81,35 +81,35 @@ Commands emit one JSON result. Help/version/schema are offline; operational fail
 | `WRITE_CONFLICT` | Read the current exact item and merge the intended change into a fresh pinned edit |
 | `UPSTREAM_CONTENT_READ_ONLY` | Edit the source or explicitly fork the selected member |
 | Shared body/metadata write, apply or restore-follow is unknown | Read the exact current Skill; obey `read_again` after original facts settle, and retain missing original facts as unresolved |
-| Restore request stopped before final feedback | `ctl library file request TARGET PATH --entry ENTRY --reconcile`; for an older processing receipt missing its ID, add `--operation ORIGINAL` after inspecting the exact original through `ctl library state`. Preview with `--dry-run`; no body write is repeated. A verified `ORIGINAL_NOT_APPLIED` requires explicit new `--submit` before processing |
+| Restore request stopped before final feedback | `ctl file request TARGET PATH --entry ENTRY --reconcile`; for an older processing receipt missing its ID, add `--operation ORIGINAL` after inspecting the exact original through `ctl library state`. Preview with `--dry-run`; no body write is repeated. A verified `ORIGINAL_NOT_APPLIED` requires explicit new `--submit` before processing |
 | Shared create is unknown | Keep the same complete input and original intent; its retry reconciles original creation identities without blindly repeating POSTs |
 | Known ordinary native body mismatch, with the same original main explicitly restored to its exact candidate | `ctl library create recovery review ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN --output REVIEW`; inspect the digest, then `recovery apply ORIGINAL_PLAN --entry LIBRARY --review REVIEW --review-id ID [--dry-run]` |
 | Initial draft adoption is unknown | Preserve `adoption_operation_id` and use the returned `adopt PAGE_ID --database LIBRARY --reconcile`; no current equality or absent record authorizes a replay |
-| Shared add/delete/move is unknown | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
+| Shared add/delete/move is unknown | `ctl file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | An original operation from another retained protocol | Follow its exact returned recovery action and original ID; do not translate it into a new create |
 | Missing access, invalid paths or unsupported content | Fix the actual input/access issue before retrying |
 | Output path conflict | Choose a new destination or review the owned previous output |
 
-Shared operation IDs are not accepted by legacy `ctl operation resume`. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. Historical migration/repair commands live in the separate operator tool and are for an explicitly diagnosed maintenance task.
+Shared operation IDs have one `ctl operation show/reconcile` entry. Only an original apply supports explicit `resume` of its proved-unsent suffix; other families return their own guarded recovery action. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. Historical migration/repair commands live in the separate operator tool and are for an explicitly diagnosed maintenance task.
 
-If an original body write remains unresolved, keep its original plan, response and current complete-body observation. A later matching body or visible file event does not supply a missing original completion. When the returned recovery action permits an explicit current-body decision, inspect the exact full observation and use `ctl library file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --dry-run` before submitting that same decision. This retains an independent acceptance; it does not repeat the body PATCH or change the original unknown outcome into applied. Follow a returned `read_again` with a new current read before authoring again.
+If an original body write remains unresolved, keep its original plan, response and current complete-body observation. A later matching body or visible file event does not supply a missing original completion. When the returned recovery action permits an explicit current-body decision, inspect the exact full observation and use `ctl file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --dry-run` before submitting that same decision. This retains an independent acceptance; it does not repeat the body PATCH or change the original unknown outcome into applied. Follow a returned `read_again` with a new current read before authoring again.
 
 The exact-restoration route requires the original Store, one original main allocation, full original request/ACK set, unchanged metadata/relations and exact complete current Markdown. It never normalizes away an automatic link or patches an existing body. It retains a separate completion while preserving the original `needs_review` outcome. Independent `ctl library create recovery reconcile ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN` proves that historical chain; read current content afterward. Inventory and fixed-source plans keep their own recovery routes.
 
 For an ordinary native file add with the exact retained `SHARED_FILE_MANAGEMENT_BODY_MISMATCH` outcome, a separate current-file acceptance is available after the author explicitly repairs that same bound page to its frozen candidate. Preserve the original plan, Store and failure. This narrow path requires the complete unchanged native tree, exact owner/File/page bindings and event frontier; unknown or invalid page responses are ineligible. Inspect the complete current Markdown and select its SHA-256, then save and inspect the review:
 
 ```sh
-ntn-skills ctl library file accept-add review SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --output REVIEW
-ntn-skills ctl library file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID --dry-run
-ntn-skills ctl library file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID
-ntn-skills ctl library file accept-add reconcile SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY
+ntn-skills ctl file accept-add review SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --output REVIEW
+ntn-skills ctl file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID --dry-run
+ntn-skills ctl file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID
+ntn-skills ctl file accept-add reconcile SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY
 ```
 
 These commands emit JSON and request metrics without extra output flags. Acceptance writes only its complete review, a new adopted event and its own completion. It never creates or patches a native page, emits the old add event, or supplies a missing original request/ACK. The old add remains `needs_review` with unproven completion. Repeated completed acceptance and reconciliation are read-only; unknown new Record dispatches cannot be replayed. Obtain a fresh current read afterward; it may first report `read_again` while retiring a derived local barrier. Source-backed files and changed trees keep their existing author workflows. A relative link changed into an HTTPS link is a real content change and must not be normalized into equality.
 
 ### Reserved creation markers on older pages
 
-An older publication reference page may start with `ntn-skills-create:v1:…`. That reserved paragraph records the original creation identity, parent, logical path and input commitment so interrupted creation can identify the same page. A child page lacks the database property slots used by a publication root, so this older protocol carries its identity in the first physical block. Valid consumer reads exclude it from authored content, and that protocol's writers preserve it. Do not delete, relocate or re-encode it for appearance: current page visibility alone cannot replace its original recovery evidence. Current shared native Skills/Files use registered properties and immutable Records; adding a reference through `ctl library file add` does not require manually creating this marker.
+An older publication reference page may start with `ntn-skills-create:v1:…`. That reserved paragraph records the original creation identity, parent, logical path and input commitment so interrupted creation can identify the same page. A child page lacks the database property slots used by a publication root, so this older protocol carries its identity in the first physical block. Valid consumer reads exclude it from authored content, and that protocol's writers preserve it. Do not delete, relocate or re-encode it for appearance: current page visibility alone cannot replace its original recovery evidence. Current shared native Skills/Files use registered properties and immutable Records; adding a reference through `ctl file add` does not require manually creating this marker.
 
 ## Builtin management
 

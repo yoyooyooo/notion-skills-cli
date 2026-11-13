@@ -18,6 +18,7 @@ import {
   decideObservedBody,
   FileEventSchema,
   normalizeObservedBody,
+  isResourceContent,
   isResourceFollowing,
   resolveFileState,
   nativeMetadataForOwnership,
@@ -41,6 +42,7 @@ import {
 } from "./shared-records.ts"
 import { querySharedSkillIndex, type SharedSkillIndex } from "./shared-skill-index.ts"
 import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
+import { loadSharedApplyReferenceTree } from "./shared-skill-apply-target.ts"
 import {
   pendingFileOperations,
   pendingFileOperationKey,
@@ -50,6 +52,11 @@ import {
 } from "./shared-pending-file-operations.ts"
 import { sha256, Store } from "./store.ts"
 import type { SharedResourceAuthoringPlan } from "./shared-resource-authoring-model.ts"
+import {
+  sharedSkillApplyChildren,
+  validateSharedSkillApplyPlan,
+  type SharedSkillApplyPlan,
+} from "./shared-skill-apply-model.ts"
 import {
   loadPendingSharedResourceAuthoring,
   reconcileSharedResourceAuthoring,
@@ -119,10 +126,17 @@ export type PrepareSharedFileManagementInput = {
   readonly library: SharedLibrary
   /** Must be the actual result of this invocation's complete readOnly builder. */
   readonly snapshot: Snapshot
+  readonly referenceCheck?: SharedFileManagementPlan["reference_check"]
 } & (
-  | { readonly action: "add"; readonly path: string; readonly markdown: string }
+  | {
+      readonly action: "add"
+      readonly path: string
+      readonly markdown: string
+      readonly mode?: "100644" | "100755"
+    }
   | { readonly action: "delete"; readonly fileId: string }
   | { readonly action: "move"; readonly fileId: string; readonly destinationPath: string }
+  | { readonly action: "undelete"; readonly fileId: string }
 )
 
 function scopeFor(scope: string, library: SharedLibrary, skillId: string, skillPageId: string) {
@@ -220,6 +234,9 @@ function resolved(context: Context) {
   }
   return states
 }
+export function readManagedFileBody(page: string) {
+  return readBody(page)
+}
 function readBody(page: string) {
   return Effect.gen(function* () {
     const raw = yield* (yield* Notion).request(`v1/pages/${page}/markdown?markdown_version=v2`)
@@ -276,7 +293,7 @@ function proposedTree(
   },
 ) {
   let candidate: CompositionFile[]
-  if (input.action === "add") {
+  if (input.action === "add" || input.action === "undelete") {
     if (files.some((file) => file.path === input.path))
       throw fail(
         "SHARED_FILE_PATH_CONFLICT",
@@ -329,6 +346,11 @@ function checkSnapshotIdentity(
   context: Context,
   states: ReadonlyMap<string, ResolvedFileState>,
   sourceRevision: string,
+  ownershipOverride?: readonly {
+    readonly file_id: string
+    readonly path: string
+    readonly state: ResolvedFileState | undefined
+  }[],
 ) {
   return Effect.gen(function* () {
     const locator = snapshot.record.locator,
@@ -372,11 +394,13 @@ function checkSnapshotIdentity(
         index.source_reference === ""
           ? null
           : { source_id: index.source_reference, revision: sourceRevision },
-      ownership: bindings(index).map((binding) => ({
-        file_id: binding.file_id,
-        path: binding.path,
-        state: states.get(binding.file_id),
-      })),
+      ownership:
+        ownershipOverride ??
+        bindings(index).map((binding) => ({
+          file_id: binding.file_id,
+          path: binding.path,
+          state: states.get(binding.file_id),
+        })),
     })
     if (version !== snapshot.version_id)
       return yield* Effect.fail(
@@ -626,7 +650,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       return yield* Effect.fail(
         fail(
           "SHARED_MAIN_FILE_PROTECTED",
-          "The main Skill body cannot be moved, deleted or added over.",
+          "The main Skill body cannot be moved, deleted, undeleted or added over.",
         ),
       )
     if (
@@ -637,6 +661,17 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
         fail(
           "SHARED_FILE_PATH_CONFLICT",
           "This path already has a stable File binding, including a retained tombstone.",
+        ),
+      )
+    if (
+      input.action === "undelete" &&
+      context.index.files.some((file) => file.path === path && file.file_id !== input.fileId)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_PATH_CONFLICT",
+          "Undelete cannot revive a path that another stable file already owns.",
+          { path },
         ),
       )
     let before: FrozenWriteBody | null = null
@@ -652,6 +687,43 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       )
       markdown = creationProjection.markdown
       fileId = `file-${yield* sha256(canonicalSharedJson([input.library.library_id, locator.skill_id, input.snapshot.version_id, path, yield* sha256(input.markdown)]))}`
+    } else if (input.action === "undelete") {
+      fileId = input.fileId
+      const binding = bindings(context.index).find((value) => value.file_id === fileId)
+      current = states.get(fileId)
+      if (binding === undefined || current === undefined || current.ownership.kind !== "tombstone")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_FILE_NOT_TOMBSTONE",
+            "Undelete requires one exact native tombstone. An active file is not revived, and restore-follow stays a separate operation.",
+          ),
+        )
+      if (isResourceContent(current.ownership.retained))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_UNDELETE_UNSUPPORTED",
+            "A raw resource tombstone uses its own restore. Markdown undelete does not create a substitute row.",
+          ),
+        )
+      if (input.snapshot.files.some((file) => file.path === path))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_FILE_PATH_CONFLICT",
+            "The tombstone path is already present in the active tree.",
+            { path },
+          ),
+        )
+      before = yield* readBody(binding.page_id)
+      before = { ...before, ...nativeMetadataForOwnership(current.ownership) }
+      if (before.fingerprint.sha256 !== current.ownership.retained.sha256)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_UNDELETE_BYTES_UNAVAILABLE",
+            "The retained original bytes are unavailable or differ. No new file row was created.",
+            { file_id: fileId },
+          ),
+        )
+      markdown = before.markdown
     } else {
       fileId = input.fileId
       const binding = bindings(context.index).find((value) => value.file_id === fileId)
@@ -687,17 +759,22 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       bytes: new TextEncoder().encode(markdown).byteLength,
       ...nativeMetadataForOwnership(current?.ownership),
       ...(supportingHeader === undefined ? {} : { frontmatter: supportingHeader }),
+      ...(input.action === "add" && input.mode !== undefined ? { mode: input.mode } : {}),
     }
     const content = { markdown, retained }
-    const checkedTree = yield* managementChecked(() =>
-      proposedTree(tree, {
-        action: input.action,
-        path,
-        destination_path: destination,
-        content,
-        entrypoint: input.snapshot.entrypoint,
-      }),
-    )
+    const checkedTree =
+      input.referenceCheck === undefined
+        ? yield* managementChecked(() =>
+            proposedTree(tree, {
+              action: input.action,
+              path,
+              destination_path: destination,
+              content,
+              entrypoint: input.snapshot.entrypoint,
+            }),
+          )
+        : { check: input.referenceCheck }
+
     const parents = current?.heads ?? []
     const sourcePath =
       current?.placement !== undefined
@@ -724,16 +801,18 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
         ? { kind: "adopted" as const, file_id: fileId, parents, content: retained }
         : input.action === "delete"
           ? { kind: "deleted" as const, file_id: fileId, parents, retained }
-          : {
-              kind: "moved" as const,
-              file_id: fileId,
-              parents,
-              retained,
-              from_path: path,
-              to_path: destination!,
-              source_path: sourcePath,
-              suppressed_paths: suppressed,
-            }
+          : input.action === "undelete"
+            ? { kind: "undeleted" as const, file_id: fileId, parents, retained }
+            : {
+                kind: "moved" as const,
+                file_id: fileId,
+                parents,
+                retained,
+                from_path: path,
+                to_path: destination!,
+                source_path: sourcePath,
+                suppressed_paths: suppressed,
+              }
     const plan = yield* makeSharedFileManagementPlan({
       action: input.action,
       library_id: input.library.library_id,
@@ -755,6 +834,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       reference_check: checkedTree.check,
       before,
       creation_projection: creationProjection,
+      ...(input.action === "add" && input.mode !== undefined ? { creation_mode: input.mode } : {}),
       ...(input.action === "add" && supportingHeader !== undefined
         ? { creation_input: input.markdown }
         : {}),
@@ -840,14 +920,124 @@ function verifyPlanScope(library: SharedLibrary, plan: SharedFileManagementPlan,
       "The original file operation belongs to another library or authentication scope.",
     )
 }
-function verifyBefore(library: SharedLibrary, plan: SharedFileManagementPlan, context: Context) {
+export type SharedFileManagementBatch = {
+  readonly parent_operation_id: string
+  readonly allowed_operation_ids: readonly string[]
+  readonly prior_events: readonly FileEvent[]
+  readonly prior_file_ids: readonly string[]
+  readonly prior_moves: readonly {
+    readonly file_id: string
+    readonly from: string
+    readonly to: string
+  }[]
+  readonly baseline_membership_sha256: string
+  readonly reference_check: SharedFileManagementPlan["reference_check"]
+  readonly final_files: readonly CompositionFile[]
+}
+
+/** Binding identity without Notion timestamps. Timestamps are not a compare-and-swap. */
+export function sharedFileMembershipShape(index: SharedSkillIndex) {
+  return {
+    skill_id: index.skill_id,
+    page_id: index.page_id,
+    kind: index.kind,
+    name: index.name,
+    description: index.description,
+    enabled: index.enabled,
+    default_context: index.default_context,
+    source_reference: index.source_reference,
+    main: {
+      file_id: index.main.file_id,
+      page_id: index.main.page_id,
+      path: index.main.path,
+    },
+    files: index.files
+      .map((file) => ({
+        file_id: file.file_id,
+        page_id: file.page_id,
+        path: file.path,
+      }))
+      .sort((left, right) =>
+        left.file_id < right.file_id ? -1 : left.file_id > right.file_id ? 1 : 0,
+      ),
+  }
+}
+
+function assertBatchFrontier(
+  context: Context,
+  plan: SharedFileManagementPlan,
+  batch: SharedFileManagementBatch,
+) {
+  return Effect.gen(function* () {
+    const priorIds = new Set(batch.prior_events.map((event) => event.event_id))
+    for (const event of batch.prior_events) {
+      const found = context.events.find((value) => value.event_id === event.event_id)
+      if (found === undefined || canonicalSharedJson(found) !== canonicalSharedJson(event))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_CONCURRENT_EDIT",
+            "A prior child of this apply is missing or differs. Later children stay unsent.",
+            { file_management_operation_id: plan.operation_id },
+          ),
+        )
+    }
+    const baselineEvents = context.events.filter((event) => !priorIds.has(event.event_id))
+    if (
+      context.events.length !== baselineEvents.length + batch.prior_events.length ||
+      (yield* eventDigest(baselineEvents)) !== plan.events_sha256
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_CONCURRENT_EDIT",
+          "The shared file frontier changed outside this apply. Completed children stay; the suffix stops.",
+          { file_management_operation_id: plan.operation_id },
+        ),
+      )
+    const moves = new Map(batch.prior_moves.map((move) => [move.file_id, move]))
+    const files = []
+    for (const file of context.index.files) {
+      if (batch.prior_file_ids.includes(file.file_id)) continue
+      const move = moves.get(file.file_id)
+      if (move !== undefined && file.path !== move.to)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_CONCURRENT_EDIT",
+            "A moved file no longer has the path this apply recorded.",
+            { file_id: file.file_id },
+          ),
+        )
+      files.push({ ...file, path: move?.from ?? file.path })
+    }
+    if (
+      (yield* sha256(
+        canonicalSharedJson(sharedFileMembershipShape({ ...context.index, files })),
+      )) !== batch.baseline_membership_sha256 ||
+      canonicalSharedJson(plan.reference_check) !== canonicalSharedJson(batch.reference_check)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_CONCURRENT_EDIT",
+          "Skill membership or the frozen final reference check changed. No later child is dispatched.",
+          { file_management_operation_id: plan.operation_id },
+        ),
+      )
+  })
+}
+
+function verifyBefore(
+  library: SharedLibrary,
+  plan: SharedFileManagementPlan,
+  context: Context,
+  batch?: SharedFileManagementBatch,
+) {
   return Effect.gen(function* () {
     if (
       context.index.skill_id !== plan.skill_id ||
       context.index.page_id !== plan.skill_page_id ||
       context.index.source_reference !== plan.source_id ||
-      (yield* metadataDigest(context.index)) !== plan.metadata_sha256 ||
-      (yield* eventDigest(context.events)) !== plan.events_sha256
+      (batch === undefined &&
+        ((yield* metadataDigest(context.index)) !== plan.metadata_sha256 ||
+          (yield* eventDigest(context.events)) !== plan.events_sha256))
     )
       return yield* Effect.fail(
         fail(
@@ -855,6 +1045,7 @@ function verifyBefore(library: SharedLibrary, plan: SharedFileManagementPlan, co
           "The complete metadata or shared frontier changed after planning.",
         ),
       )
+    if (batch !== undefined) yield* assertBatchFrontier(context, plan, batch)
     const states = yield* managementChecked(() => resolved(context))
     const snapshot = yield* (yield* Store).readJson(
       `snapshots/${plan.snapshot_id}.json`,
@@ -872,9 +1063,64 @@ function verifyBefore(library: SharedLibrary, plan: SharedFileManagementPlan, co
           "The exact checked complete snapshot is unavailable or differs from the original plan.",
         ),
       )
-    yield* checkSnapshotIdentity(library, snapshot, context, states, plan.source_revision)
-    const tree = yield* snapshotTree(snapshot)
-    const references = yield* managementChecked(() => proposedTree(tree, plan).check)
+    const priorEventIds = new Set(batch?.prior_events.map((event) => event.event_id) ?? [])
+    const ownershipOverride =
+      batch === undefined
+        ? undefined
+        : bindings(context.index).flatMap((binding) => {
+            if (batch.prior_file_ids.includes(binding.file_id)) return []
+            const events = context.events.filter(
+              (event) => event.file_id === binding.file_id && !priorEventIds.has(event.event_id),
+            )
+            const move = batch.prior_moves.find((item) => item.file_id === binding.file_id)
+            return [
+              {
+                file_id: binding.file_id,
+                path: move?.from ?? binding.path,
+                state:
+                  events.length === 0
+                    ? states.get(binding.file_id)
+                    : resolveFileState(binding.file_id, events),
+              },
+            ]
+          })
+    yield* checkSnapshotIdentity(
+      library,
+      snapshot,
+      context,
+      states,
+      plan.source_revision,
+      ownershipOverride,
+    )
+    const standaloneTree = batch === undefined ? yield* snapshotTree(snapshot) : undefined
+    const references =
+      batch === undefined
+        ? yield* managementChecked(() => proposedTree(standaloneTree!, plan).check)
+        : yield* managementChecked(() => assertSharedFileReferences(batch.final_files))
+    if (batch !== undefined) {
+      const expected = batch.final_files.find(
+        (file) => file.path === (plan.destination_path ?? plan.path),
+      )
+      if (plan.action === "delete" ? expected !== undefined : expected === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_FINAL_TREE",
+            "The child's lifecycle does not match the exact retained target manifest.",
+          ),
+        )
+      if (
+        expected !== undefined &&
+        (plan.action === "add" || plan.action === "undelete") &&
+        ((yield* sha256(expected.bytes)) !== plan.content.retained.sha256 ||
+          expected.bytes.byteLength !== plan.content.retained.bytes)
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_FINAL_TREE",
+            "The child's exact native candidate differs from the retained final tree.",
+          ),
+        )
+    }
     if (canonicalSharedJson(references) !== canonicalSharedJson(plan.reference_check))
       return yield* Effect.fail(
         fail(
@@ -1122,12 +1368,147 @@ export function reconcileSharedFileManagement(
   )
 }
 
-export function executeSharedFileManagement(
+function authenticateApplyParent(
   library: SharedLibrary,
-  input: { readonly plan: SharedFileManagementPlan; readonly mode: "create" | "reconcile" },
+  plan: SharedFileManagementPlan,
+  parent: SharedSkillApplyPlan | undefined,
+  completed: readonly string[] | undefined,
+) {
+  return Effect.gen(function* () {
+    if (parent === undefined && completed === undefined) return undefined
+    if (parent === undefined || parent.version !== 2)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_PARENT_REQUIRED",
+          "A layout child inside an apply must cite its retained parent. A forged batch is not accepted.",
+        ),
+      )
+    const validated = yield* validateSharedSkillApplyPlan(parent)
+    if (validated.version !== 2)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_PARENT_REQUIRED",
+          "Only a version 2 parent can authorize a layout child.",
+        ),
+      )
+    const child = validated.layout.find((item) => item.operation_id === plan.operation_id)
+    if (
+      child === undefined ||
+      canonicalSharedJson(child) !== canonicalSharedJson(plan) ||
+      validated.library_id !== library.library_id ||
+      canonicalSharedJson(plan.reference_check) !== canonicalSharedJson(validated.reference_check)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_PARENT_REQUIRED",
+          "The parent does not contain this exact child or its frozen final reference check.",
+        ),
+      )
+    const rows = yield* querySharedRecords(library, {
+      skillPageId: validated.skill_page_id,
+      kind: "operation",
+      entityId: "skill-apply-plans-v1",
+      recordId: validated.operation_id,
+      payloadContainsBody: true,
+    })
+    const stored = rows[0]
+    if (
+      rows.length !== 1 ||
+      stored === undefined ||
+      canonicalSharedJson(stored.payload) !== canonicalSharedJson(validated)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_PARENT_REQUIRED",
+          "The original parent plan is not retained. No layout child is dispatched from a caller-supplied batch.",
+        ),
+      )
+    const done = new Set(completed ?? [])
+    const order = sharedSkillApplyChildren(validated).map((item) => item.operation_id)
+    const position = order.indexOf(plan.operation_id)
+    if (
+      position < 0 ||
+      done.size !== position ||
+      (completed?.length ?? 0) !== position ||
+      order.slice(0, position).some((id) => !done.has(id))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_PARENT_REQUIRED",
+          "Completed children must be the original prefix of this parent.",
+        ),
+      )
+    for (const id of order.slice(0, position)) {
+      const prior = validated.layout.find((value) => value.operation_id === id)
+      if (prior === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_PARENT_REQUIRED",
+            "A file-layout child cannot bypass an unverified prior operation family.",
+          ),
+        )
+      const result = yield* reconcileSharedFileManagement(library, prior)
+      if (result.status !== "applied")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_UNRESOLVED",
+            "The original prior layout child has not applied; its suffix remains unsent.",
+          ),
+        )
+    }
+    return validated
+  })
+}
+
+export function executeSharedFileManagement<R = never>(
+  library: SharedLibrary,
+  input: {
+    readonly plan: SharedFileManagementPlan
+    readonly mode: "create" | "reconcile"
+    readonly parent?: SharedSkillApplyPlan
+    readonly completedChildIds?: readonly string[]
+    readonly beforePlanWrite?: (
+      plan: SharedFileManagementPlan,
+    ) => Effect.Effect<void, SkillsError, R>
+  },
 ) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedFileManagementPlan(input.plan)
+    const parent = yield* authenticateApplyParent(
+      library,
+      plan,
+      input.parent,
+      input.completedChildIds,
+    )
+    const batch =
+      parent === undefined
+        ? undefined
+        : {
+            parent_operation_id: parent.operation_id,
+            allowed_operation_ids: [
+              parent.operation_id,
+              ...sharedSkillApplyChildren(parent).map((child) => child.operation_id),
+            ],
+            prior_events: parent.layout
+              .filter((child) => input.completedChildIds?.includes(child.operation_id))
+              .map((child) => child.event),
+            prior_file_ids: parent.layout
+              .filter(
+                (child) =>
+                  child.action === "add" && input.completedChildIds?.includes(child.operation_id),
+              )
+              .map((child) => child.file_id),
+            prior_moves: parent.layout.flatMap((child) =>
+              child.action === "move" &&
+              child.destination_path !== null &&
+              input.completedChildIds?.includes(child.operation_id)
+                ? [{ file_id: child.file_id, from: child.path, to: child.destination_path }]
+                : [],
+            ),
+            baseline_membership_sha256: parent.membership_sha256,
+            reference_check: parent.reference_check,
+            final_files: yield* loadSharedApplyReferenceTree(parent),
+          }
     if (input.mode === "reconcile") return yield* reconcileSharedFileManagement(library, plan)
     if (input.mode !== "create")
       return yield* Effect.fail(
@@ -1157,16 +1538,24 @@ export function executeSharedFileManagement(
     const remote = yield* withNotionRequestAttribution(pendingRemote(library, context), {
       phase: "author_preflight",
     })
-    if (local.length !== 0 || remote.length !== 0)
+    const allowed = new Set(batch?.allowed_operation_ids ?? [])
+    const blocked =
+      batch === undefined
+        ? local.length !== 0 || remote.length !== 0
+        : local.some((entry) => !allowed.has(entry.plan.operation_id)) ||
+          remote.some((pending) => !allowed.has(pending.operation_id))
+    if (blocked)
       return yield* Effect.fail(
         fail(
           "SHARED_FILE_MANAGEMENT_PENDING",
           "An original shared file operation must be reconciled before this new lifecycle dispatch.",
         ),
       )
-    const before = yield* withNotionRequestAttribution(verifyBefore(library, plan, context), {
-      phase: "author_preflight",
-    })
+    const before = yield* withNotionRequestAttribution(
+      verifyBefore(library, plan, context, batch),
+      { phase: "author_preflight" },
+    )
+    if (input.beforePlanWrite !== undefined) yield* input.beforePlanWrite(plan)
     yield* retainPendingFileOperation(journal, plan)
     yield* invalidateSnapshotCache(sharedSkillId(plan.library_id, plan.skill_id), scope)
     yield* originalRecord(library, plan, "create").pipe(
@@ -1176,7 +1565,7 @@ export function executeSharedFileManagement(
       Effect.mapError((error) => recovery(error, plan, "retained_body")),
     )
     const checked = yield* currentContext(library, plan.skill_page_id).pipe(
-      Effect.flatMap((current) => verifyBefore(library, plan, current)),
+      Effect.flatMap((current) => verifyBefore(library, plan, current, batch)),
       (effect) => withNotionRequestAttribution(effect, { phase: "author_preflight" }),
       Effect.result,
     )
@@ -1191,7 +1580,7 @@ export function executeSharedFileManagement(
       return yield* Effect.fail(recovery(checked.failure, plan, "pre_send"))
     }
     let selectedPage = plan.page_id
-    if (plan.action !== "delete") {
+    if (plan.action !== "delete" && plan.action !== "undelete") {
       const api = yield* Notion
       const field = library.files.property_ids
       const text = (value: string) => ({ rich_text: [{ type: "text", text: { content: value } }] })
@@ -1273,12 +1662,25 @@ export function executeSharedFileManagement(
     const exact = yield* Effect.gen(function* () {
       const after = yield* currentContext(library, plan.skill_page_id)
       const binding = after.index.files.find((file) => file.file_id === plan.file_id)
+      const priorIds = new Set(batch?.prior_events.map((event) => event.event_id) ?? [])
+      const observedPrior = after.events.filter((event) => priorIds.has(event.event_id))
+      const observedBaseline = after.events.filter((event) => !priorIds.has(event.event_id))
+      const frontierMatches =
+        batch === undefined
+          ? (yield* eventDigest(after.events)) === plan.events_sha256
+          : observedPrior.length === batch.prior_events.length &&
+            batch.prior_events.every((event) =>
+              observedPrior.some(
+                (found) => canonicalSharedJson(found) === canonicalSharedJson(event),
+              ),
+            ) &&
+            (yield* eventDigest(observedBaseline)) === plan.events_sha256
       if (
         binding === undefined ||
         binding.page_id !== selectedPage ||
         binding.path !== (plan.destination_path ?? plan.path) ||
         !sameOthers(before.index, after.index, plan) ||
-        (yield* eventDigest(after.events)) !== plan.events_sha256
+        !frontierMatches
       )
         return yield* Effect.fail(
           fail(

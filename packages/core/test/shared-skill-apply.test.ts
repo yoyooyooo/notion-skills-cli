@@ -16,6 +16,7 @@ import {
   executeSharedSkillApply,
   loadPendingSharedSkillApplies,
   reconcileSharedSkillApply,
+  resumeSharedSkillApply,
 } from "../src/shared-skill-apply.ts"
 import { executeSharedBodyWrite } from "../src/shared-body-write.ts"
 import { appendSharedRecord } from "../src/shared-records.ts"
@@ -533,21 +534,292 @@ describe("frozen sequential shared apply", () => {
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
   })
 
-  test("mixed new layout is rejected with zero writes instead of silently rebasing after each child", async () => {
+  test("equal bytes plus an explicit removal are not guessed as a move", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f)
+    const original = snapshot.files.find((file) => file.path === "references/1.md")
+    if (original === undefined) throw new Error("Missing reference")
+    const stored = await f.run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).readBytes(`objects/${original.sha256}`)
+      }),
+    )
     f.clearCalls()
     const result = failure(
       await f.run(
         applySharedSkillChanges(snapshot, {
-          files: [input[0]!, { path: "references/new.md", bytes: encode("new") }],
+          files: [{ path: "references/copy.md", bytes: stored }],
+          remove: ["references/1.md"],
         }).pipe(Effect.result),
       ),
     )
-    expect(result.code).toBe("SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED")
-    expect(property(result.details).writes_sent).toBe(false)
+    expect(result.code).toBe("SHARED_APPLY_IMPLICIT_MOVE")
     expect(f.writeCount()).toBe(0)
-    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    expect(f.files).toHaveLength(2)
+  })
+
+  test("a fenced example is not a link rewrite span", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
+    if (main === undefined) throw new Error("Missing main")
+    const text = new TextDecoder().decode(
+      await f.run(
+        Effect.gen(function* () {
+          return yield* (yield* Store).readBytes(`objects/${main.sha256}`)
+        }),
+      ),
+    )
+    const fenced = `${text}\n\n\`\`\`\n[Example](references/1.md)\n\`\`\`\n`
+    const start = fenced.indexOf("references/1.md")
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [{ path: snapshot.entrypoint, bytes: encode(fenced) }],
+          changes: {
+            version: 1,
+            rewrites: [
+              {
+                path: snapshot.entrypoint,
+                start,
+                end: start + "references/1.md".length,
+                from: "references/1.md",
+                to: "references/2.md",
+              },
+            ],
+          },
+        }).pipe(Effect.result),
+      ),
+    )
+    expect(result.code).toBe("SHARED_APPLY_REWRITE_SPAN")
+    expect(f.writeCount()).toBe(0)
+  })
+
+  test("main plus two mutually referencing files is one parent apply and keeps omitted files", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const beforeIds = f.files.map((file) => file.id)
+    f.clearCalls()
+    const result = await f.run(
+      withWriter(
+        f,
+        applySharedSkillChanges(snapshot, {
+          files: [
+            input[0]!,
+            {
+              path: "references/new-a.md",
+              mode: "100644" as const,
+              bytes: encode("# A\n\nSee [B](new-b.md).\n"),
+            },
+            {
+              path: "references/new-b.md",
+              mode: "100755" as const,
+              bytes: encode("# B\n\nSee [A](new-a.md).\n"),
+            },
+          ],
+          ...metadata,
+        }),
+      ),
+    )
+    expect(result.status).toBe("applied")
+    expect(result.kind).toBe("skill_apply")
+    if (result.kind !== "skill_apply" || result.status !== "applied")
+      throw new Error("Expected one applied parent")
+    expect(result.plan.version).toBe(2)
+    if (result.plan.version !== 2) throw new Error("Expected a version 2 parent")
+    expect(result.plan.stages.map((stage) => stage.name)).toEqual([
+      "allocate",
+      "author",
+      "metadata",
+    ])
+    expect(f.files).toHaveLength(beforeIds.length + 2)
+    expect(f.files.slice(0, beforeIds.length).map((file) => file.id)).toEqual(beforeIds)
+    const current = await fresh(f)
+    expect(current.files.map((file) => file.path).sort()).toEqual([
+      "SKILL.md",
+      "references/1.md",
+      "references/2.md",
+      "references/new-a.md",
+      "references/new-b.md",
+    ])
+    expect(current.files.find((file) => file.path === "references/2.md")?.sha256).toBe(
+      snapshot.files.find((file) => file.path === "references/2.md")?.sha256,
+    )
+    const rows = payloads(f).filter((value) => value.kind === "skill_apply")
+    expect(rows).toHaveLength(1)
+    f.clearCalls()
+    f.json.clear()
+    const stored = rows[0]
+    const recovered = await f.run(
+      reconcileSharedSkillApply(library, stored as SharedSkillApplyPlan),
+    )
+    expect(recovered.status).toBe("applied")
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+    const rowsBeforeRepeat = payloads(f).length
+    const repeatedFiles = await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* Effect.forEach(
+          current.files.filter((file) =>
+            ["SKILL.md", "references/new-a.md", "references/new-b.md"].includes(file.path),
+          ),
+          (file) =>
+            store
+              .readBytes(`objects/${file.sha256}`)
+              .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
+        )
+      }),
+    )
+    const repeated = await f.run(
+      applySharedSkillChanges(current, { files: repeatedFiles, ...metadata }),
+    )
+    expect(repeated.status).toBe("unchanged")
+    expect(payloads(f)).toHaveLength(rowsBeforeRepeat)
+    expect(current.record.name).toBe(metadata.name)
+    expect(current.record.description).toBe(metadata.description)
+    expect(current.files.find((file) => file.path === "references/new-a.md")?.mode).toBe("100644")
+    expect(current.files.find((file) => file.path === "references/new-b.md")?.mode).toBe("100755")
+  })
+
+  test("resume continues only the proved-unsent suffix of the same parent", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const planned = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+          { path: "references/new-b.md", bytes: encode("# B\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (
+      planned.status !== "planned" ||
+      planned.kind !== "skill_apply" ||
+      planned.plan.version !== 2
+    )
+      throw new Error("Expected a frozen parent")
+    expect(planned.plan.layout).toHaveLength(2)
+    const parent = planned.plan,
+      second = parent.layout[1]!
+    let interrupted = false
+    const stopped = await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* executeSharedSkillApply(library, { plan: parent, mode: "create" }).pipe(
+          Effect.provideService(Store, {
+            ...store,
+            writeJson: (key, value) => {
+              if (
+                !interrupted &&
+                key.startsWith("operations/shared-observation-pending/") &&
+                property(property(value).plan).operation_id === second.operation_id
+              ) {
+                interrupted = true
+                return Effect.fail(
+                  fail(
+                    "TEST_STOP_BEFORE_INTENT",
+                    "Process stopped before the second child's durable intent",
+                  ),
+                )
+              }
+              return store.writeJson(key, value)
+            },
+          }),
+        )
+      }).pipe(Effect.result),
+    )
+    expect(stopped).toMatchObject({ _tag: "Failure", failure: { code: "TEST_STOP_BEFORE_INTENT" } })
+    expect(
+      f.files.filter(
+        (file) =>
+          text(property(property(file.properties).file_id).rich_text) === parent.layout[0]!.file_id,
+      ),
+    ).toHaveLength(1)
+    expect(
+      f.files.filter(
+        (file) => text(property(property(file.properties).file_id).rich_text) === second.file_id,
+      ),
+    ).toHaveLength(0)
+    const blocked = await f.run(
+      openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }).pipe(
+        Effect.result,
+      ),
+    )
+    expect(blocked._tag).toBe("Failure")
+    f.clearCalls()
+    const resumed = await f.run(resumeSharedSkillApply(library, parent))
+    expect(resumed.status).toBe("applied")
+    expect(resumed.operation_id).toBe(parent.operation_id)
+    expect(
+      f.files.filter(
+        (file) => text(property(property(file.properties).file_id).rich_text) === second.file_id,
+      ),
+    ).toHaveLength(1)
+    expect(
+      f.calls.filter(
+        (call) =>
+          call.path === "v1/pages" &&
+          property(property(call.body).parent).data_source_id === library.files.data_source_id,
+      ),
+    ).toHaveLength(1)
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, parent))).verified).toBe(true)
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
+  })
+
+  test("a lost first allocation response cannot be replayed or skipped by parent resume", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const planned = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+          { path: "references/new-b.md", bytes: encode("# B\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (planned.status !== "planned" || planned.kind !== "skill_apply")
+      throw new Error("Expected parent")
+    let lost = false
+    const result = await f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* executeSharedSkillApply(library, { plan: planned.plan, mode: "create" }).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) => {
+              if (
+                !lost &&
+                path === "v1/pages" &&
+                property(property(body).parent).data_source_id === library.files.data_source_id
+              ) {
+                lost = true
+                return api
+                  .request(path, body, options)
+                  .pipe(
+                    Effect.flatMap(() =>
+                      Effect.fail(
+                        fail("WRITE_OUTCOME_UNKNOWN", "Original allocation response lost"),
+                      ),
+                    ),
+                  )
+              }
+              return api.request(path, body, options)
+            },
+          }),
+        )
+      }).pipe(Effect.result),
+    )
+    expect(result).toMatchObject({ _tag: "Failure", failure: { code: "WRITE_OUTCOME_UNKNOWN" } })
+    const count = f.files.length
+    f.clearCalls()
+    const resumed = await f.run(resumeSharedSkillApply(library, planned.plan).pipe(Effect.result))
+    expect(resumed).toMatchObject({ _tag: "Failure", failure: { code: "SHARED_APPLY_UNRESOLVED" } })
+    expect(f.files).toHaveLength(count)
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
   })
 })
 

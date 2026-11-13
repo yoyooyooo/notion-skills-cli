@@ -209,6 +209,12 @@ const sharedLocalDomains: readonly {
     address: /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/shared-maintenance-repair",
+    category: "dispatch",
+    address:
+      /^operations\/shared-maintenance-repair\/[a-f0-9]{64}\/skill-repair-(?:main|file)-[a-f0-9]{64}\/(?:locator|plan-post|outcome-post)\.json$/u,
+  },
+  {
     prefix: "operations/shared-observation-pending",
     category: "dispatch",
     address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,

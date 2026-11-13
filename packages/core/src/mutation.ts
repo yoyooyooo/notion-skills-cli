@@ -489,6 +489,7 @@ export interface ApplyOptions extends Omit<WriteOptions, "input" | "path"> {
   /** Sparse changes, rooted at the Skill; omitted paths remain unchanged. */
   readonly input?: string
   readonly remove?: readonly string[]
+  readonly changes?: import("./shared-skill-apply-model.ts").SharedApplyChangesManifest | null
   readonly name?: string
   readonly description?: string
   readonly defaultContext?: boolean
@@ -712,6 +713,7 @@ function applySkillCurrent(inputTarget: string, options: ApplyOptions) {
         {
           ...imported,
           remove: options.remove,
+          ...(options.changes === undefined ? {} : { changes: options.changes }),
           name: options.name,
           description: options.description,
           defaultContext: options.defaultContext,
@@ -720,6 +722,13 @@ function applySkillCurrent(inputTarget: string, options: ApplyOptions) {
         "apply",
       )
     }
+    if (options.changes !== undefined && options.changes !== null)
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "The changes manifest is only available for a shared Skill apply.",
+        ),
+      )
     const portable = yield* snapshotAuthoredPortable(current)
     const loaded = options.input === undefined ? undefined : yield* loadImport(options.input)
     const changes = yield* Effect.try({
@@ -1104,7 +1113,7 @@ function saveDocument(
         current,
         {
           files: changedFiles,
-          remove: removed,
+          inferredRemove: removed,
           ...(portable.relations === undefined ? {} : { portableRelations: portable.relations }),
           ...(changesMetadata ? metadata : {}),
           dryRun: options.dryRun,

@@ -5,11 +5,12 @@ import { sha256, Store } from "./store.ts"
 import { pageId } from "./ref.ts"
 import {
   AUDIT_RULES_VERSION,
+  READABLE_AUDIT_RULES,
   AuditCheckpointSchema,
   AuditRunIdSchema,
-  auditReport,
   type AuditRun,
 } from "./shared-audit-model.ts"
+import { presentAuditReport } from "./shared-audit-growth.ts"
 
 const key = (id: string) => `audit/runs/${id}.json`
 const PointerSchema = Schema.Struct({ run_id: AuditRunIdSchema })
@@ -49,7 +50,12 @@ function readStoredAuditRun(runId: string, entryId?: string) {
           run_id: runId,
         }),
       )
-    if (!["resource-audit-v1", AUDIT_RULES_VERSION].includes(checkpoint.run.rules_version))
+    if (
+      checkpoint.run.rules_version !== AUDIT_RULES_VERSION &&
+      !READABLE_AUDIT_RULES.includes(
+        checkpoint.run.rules_version as (typeof READABLE_AUDIT_RULES)[number],
+      )
+    )
       return yield* Effect.fail(
         fail(
           "AUDIT_RULES_UNSUPPORTED",
@@ -148,7 +154,7 @@ export function reportSharedAudit(runId: string, entryId?: string) {
               () => Effect.succeed(undefined),
             ),
           )
-    return auditReport(run, previous)
+    return presentAuditReport(run, previous)
   })
 }
 
