@@ -27,6 +27,7 @@ Read `verification/models/resource-lifecycle/coverage.json` and `README.md`. The
 | ImportCreate | A reviewed complete input, disabled creation, durable original acknowledgements, bounded continuation and enablement only after all abstract stages verify. | Two retained inputs (document and raw resource) and four stages abstract a single explicitly enabled creation. Actual file formats, immutable-record reconciliation and manual edits require code and installed tests. |
 | CreateRecovery | A separately reviewed v9 creation recovery, one or three original ACK pages, a complete original request set, no unknown-attempt replay and exact Projection authority before the first write. | One abstract missing suffix and three mutable stages. It does not prove Markdown v10, arbitrary request counts, cold-record validation, current-body atomicity, transport permissions or actual Notion behavior. |
 | AcknowledgedContinuation | Complete original request/ACK authority for an allocated tree, fresh body checks before continuation stages, no uncertain redispatch and full shared proofs before cold completion. | Three visible pages and four abstract stages. Exact requests, byte commitments, every immutable Record subrequest, native rendering and edits after a check require implementation evidence. |
+| AuditScope | Target closure versus independent library reverse coverage, read-only progress and bounded resumption. | Four abstract fact classes; actual pagination, permission failures at budget boundaries and repair markers use implementation regressions. |
 
 A passing model is not completion of its linked Issue. Negative controls describe the consequence of removing a guard; classify a production defect only with its current code correspondence or a live reproduction.
 
@@ -36,7 +37,7 @@ Use the README's pinned Pstack and TLC setup outside the checkout. With `PSTACK_
 
 ```sh
 node scripts/verify-resource-lifecycle.mjs --out "$(mktemp -d /tmp/notion-formal.XXXXXX)"
-bun test packages/core/test/shared-file-state.test.ts packages/core/test/shared-file-observer.test.ts packages/core/test/shared-file-observer-readonly.test.ts packages/core/test/shared-inventory-import.test.ts
+bun test packages/core/test/shared-file-state.test.ts packages/core/test/shared-file-observer.test.ts packages/core/test/shared-file-observer-readonly.test.ts packages/core/test/shared-inventory-import.test.ts packages/core/test/shared-audit-target.test.ts packages/core/test/shared-native-repair.test.ts packages/core/test/shared-file-adoption.test.ts
 ```
 
 Read each original `report.md`, `tlc.out`, `summary.json` and `chart.mmd`. Require complete finite exploration in positive safety configurations and exactly the listed broken rules in each negative control. In the fairness case, state the environment assumptions. An unchecked rule, parser failure, timeout or missing chart is not a pass.

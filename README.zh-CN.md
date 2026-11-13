@@ -49,6 +49,8 @@ ntn-skills read 'Release Review'
 
 `ctl library init --parent PAGE_ID` 创建新的四表库；既有三表库用 `ctl library sources init --entry ENTRY` 显式升级。已有两表库继续使用其[订阅命令](docs/usage.md#recurring-upstream-synchronization)。
 
+[源码吃狗粮：复用现有 shim 与 Pi 源码入口，无需先发布](CONTRIBUTING.md#direct-source-dogfooding).
+
 ## 安装
 
 默认 `ntn-skills` 使用 npm 安装包。开发时可对一次命令设置 `NTN_SKILLS_DEV_ROOT=/绝对路径/源码仓库`，通过薄 Bun 入口直接运行 TypeScript 源码，不重新构建；取消变量就回到安装包。源码模式仍由支持的 Node 运行实际 CLI／SQLite，需要本机已安装 Bun，详见[开发入口](CONTRIBUTING.md#development-setup)。

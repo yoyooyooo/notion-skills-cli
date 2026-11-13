@@ -51,6 +51,8 @@ The current shared model uses **Skills / Files / Sources / Records**. Sources ow
 
 New `ctl library init --parent PAGE_ID` creates four full-page tables. An existing three-table library is upgraded explicitly using `ctl library sources init --entry ENTRY`. Existing two-table libraries keep their documented [subscription commands](docs/usage.md#recurring-upstream-synchronization).
 
+[Source dogfooding: use one checkout, the existing CLI shim and Pi source package without a release](CONTRIBUTING.md#direct-source-dogfooding).
+
 ## Installation
 
 Install [Node.js](https://nodejs.org) **22.22.3+ within 22.x, or 24.20.0+**, which includes npm. The package connects directly to the Notion API through its Effect HTTP engine.

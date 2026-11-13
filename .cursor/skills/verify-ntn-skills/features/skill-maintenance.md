@@ -20,6 +20,10 @@ AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影�
 
 默认维护这些入口，不新建总验证 Skill 或 Mock 专属 Skill。新 guardian 只有在独立状态归属、独立不变量和独立可执行反例均成立时才准入。它须说明复用及替代关系、源码对应、工具锁、精确正负性质、真实 guard 反例、结束及清理方式，并由冷 Agent 独立运行。仅有文档时保持 draft。
 
+## 按切片选择现有入口
+
+MNT02/07 见 [resource-audit](resource-audit.md)；MNT03 见 [maintenance-repair](maintenance-repair.md)；MNT04/05 运行 `bun test packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000`；MNT06 使用公开 `ntn-skills schema ctl` 与 `packages/cli/test/maintenance-repair.test.ts` 的命令 schema 回归。MNT08/09 的安装路径见下方 [joined installed acceptance](#joined-installed-acceptance)，实际 Pi 使用 Broker 的 `verify-notion-skills-integration` 维护地图。每次只选择受影响入口，不要求全部切片重跑。
+
 ## MNT01 执行入口
 
 从当前 checkout 执行，不连接生产 Notion：

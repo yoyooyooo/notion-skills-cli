@@ -33,11 +33,6 @@ export function state(v) {
 }
 
 export function step(action, from, to) {
-  // The full report retains the second unknown-result edge after provider apply.
-  // Both edges lead to the same no-ACK state; show its earlier occurrence once.
-  if (action === "RequestUncertain" && from.phase === "response") return null
-  // A changed-body state already has its own stop path; omit the second refusal cause.
-  if (action === "LoseOriginalEvidence" && !from.fresh) return null
   if (action === "VerifyStage")
     return to.phase === "completed" ? "核实最后阶段" : "核实本阶段，进入下一阶段"
   return (

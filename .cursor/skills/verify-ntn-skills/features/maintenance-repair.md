@@ -23,10 +23,9 @@ From the checkout, without production Notion:
 
 ```sh
 bun test packages/core/test/shared-native-repair.test.ts packages/core/test/shared-file-adoption.test.ts packages/core/test/shared-create-dispatch-repair.test.ts packages/cli/test/maintenance-repair.test.ts packages/core/test/shared-native-adoption.test.ts --timeout 60000
-bun -e 'import { checkMaintenanceRepairHttp } from "./scripts/package-smoke/maintenance-repair.ts"; console.log(JSON.stringify(await checkMaintenanceRepairHttp()))'
 ```
 
-The second command reuses the authoring fixture request closure. It is source-function proof. It is not an installed package run and not a live Notion run.
+These are source and public-command fixture regressions, not installed or live Notion proof. For the existing installed HTTP repair route, follow [joined installed acceptance](skill-maintenance.md#joined-installed-acceptance): `prepareConsumer` plus `checkAuthoring(consumer, undefined, { repairOnly: true })`. Do not import the removed `checkMaintenanceRepairHttp` export.
 
 ## Required observations
 

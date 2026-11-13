@@ -17,7 +17,7 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 | 独立 accept-add、原失败、adopted event、完整冷读证明 | IndependentAcceptance | shared-file-management |
 | 原 restore ID、submitted body/frontier/Source、processing 绑定、反馈丢失与 reconcile | RestoreFeedback | shared-file-request |
 | 整树父计划、完整子前缀、仅未派发后缀、半树消费屏障 | MaintenanceApply | shared-skill-apply、shared-skill-apply-tree、shared-maintenance-operations |
-| 共享 dispatcher、Record 或 source mutation | 三个模型 | 四个回归文件 |
+| 共享 dispatcher、Record 或 source mutation | 上述四个模型中实际受影响的组 | 对应公共回归；完整 suite 的七文件列表见下 |
 
 恢复前的 create/import 和既有 continuation 仍读 [verify-notion-resource-lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。HTTP RequestEngine 的 retry/预算/取消归独立 request-engine 验证；Broker consumer/session 归 Broker guardian。不要把原业务 Request 当成 HTTP 请求重试模型。
 
@@ -35,25 +35,25 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 - unknown 不可变 Record 的精确观察可以支持下一个不同 Record；同一 POST 不重派发，不补造原 ACK。
 - metadata ACK 历史结果与当前正文/Source 授权分开。正文变了停止新动作，但不能抹除已知历史结果。
 
-## 在 Pro 冷启动并运行
+## 配置工具并运行
 
-从目标仓库根执行。先实读工具路径和 `verification/models/resource-lifecycle/tool-lock.json`，由运行器核验完整锁。下列是已安装的 Pro 路径；别的机器使用该机器已验证的同版本安装，不放松 lock。
+从目标仓库根执行。先实读工具路径和 `verification/models/resource-lifecycle/tool-lock.json`，由运行器核验完整锁。使用本机同版本工具目录；按 lifecycle README 获取工具，运行器核对 tool-lock，不依赖维护者私有路径。
 
 ~~~sh
-export PSTACK_STATECHART_ROOT=/Users/yoyo/Documents/code/personal/verification-evidence/ah681-20261108/ah922-ah740-recovery-20261111/pinned-pstack-repository/pstack/skills/statechart
-export TLA2TOOLS=/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/formal-planning-20261108-4fx3wnpv/tla2tools-1.7.4.jar
-OPERATION_RECOVERY_OUT="$(mktemp -d /Users/yoyo/Documents/code/personal/verification-evidence/notion-operation-recovery-XXXXXX)"
-/Users/yoyo/.volta/tools/image/node/24.20.0/bin/node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
+export PSTACK_STATECHART_ROOT=/absolute/pstack/pstack/skills/statechart
+export TLA2TOOLS=/absolute/tools/tla2tools-1.7.4.jar
+OPERATION_RECOVERY_OUT="$(mktemp -d /tmp/notion-operation-recovery-XXXXXX)"
+node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
 ~~~
 
 单模型变化可加 --model AcknowledgedRecordPrefix、IndependentAcceptance、RestoreFeedback 或 MaintenanceApply。共享边界和批次验收运行完整 suite；当前 cases 共 34 项，不能拿子集代替完整运行。整树与修复的实际映射和未建模边界见[维护对应审阅](../../../docs/maintenance-verification-review.md)。
 
 读取输出 summary.json 和每组 report.md，核对 complete、源码/工具/input hashes、完整性质清单和预期反例集合。正例没有 broken；反例只允许 expected_broken 的准确集合。tool error、少跑性质、额外违例、未完成搜索、cut、unexamined 都停止通过结论。失败输出也保留。
 
-再执行四个实际公共函数回归；使用 fixture，不连接生产 Notion。
+按影响选择实际公共函数回归；完整 suite 对应七个文件；使用 fixture，不连接生产 Notion。
 
 ~~~sh
-bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts --timeout 60000
+bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000
 ~~~
 
 输出中文图时使用本次 runner 的 chart.mmd 和 report.md，遵循 /statechart 的视图与渲染规则。Pele 的可定位安装和公开渲染命令见 [图形产物复现](../../../docs/formal-verification-maintenance.md#图形产物定位与复现)。正反例都保留，不为展示缩小性质/cfg 或隐藏最短反例动作。

@@ -47,10 +47,10 @@ CI 是否通过以该具体提交的实际 workflow 结果为准，不能由本�
 
 ## 图形产物定位与复现
 
-模型命令输出 `chart.mmd`、`report.md` 和原 TLC；SVG 是独立的 Pele 渲染步骤。使用 `pele@1.9.0` 的已验证外部安装，`PELE_MODULE` 指向它的 `dist/pele.js`，不用更换模型检查器。当前 Pro 已安装路径为：
+模型命令输出 `chart.mmd`、`report.md` 和原 TLC；SVG 是独立的 Pele 渲染步骤。使用 `pele@1.9.0` 的已验证外部安装，`PELE_MODULE` 指向它的 `dist/pele.js`，不用更换模型检查器。设置为本机安装路径（历史 Pro 路径不作为公开前提）：
 
 ```sh
-export PELE_MODULE=/Users/yoyo/Documents/code/personal/verification-evidence/notion-skills/formal-planning-20261108-4fx3wnpv/renderer/node_modules/pele/dist/pele.js
+export PELE_MODULE=/absolute/renderer/node_modules/pele/dist/pele.js
 export FORMAL_CHART=/absolute/current-run/Model-config/chart.mmd
 export FORMAL_SVG=/absolute/new/chart.svg
 ```

@@ -1,4 +1,4 @@
-# CLI 核心状态图（2026-11-12）
+# CLI 核心状态图：历史快照（2026-11-12）
 
 这组图来自现有 TLA+ 模型的真实 TLC 检查与锁定的 Pstack statechart 编译。模型和配置与产品基线 `ee4e712df6cd85fe268fbafe16d9d19a47794666` 的原件完全相同；本次只调整中文 view，并保存生成图、报告和可核对的清单。
 
@@ -8,15 +8,17 @@
 
 项目入口：[Notion Skills](https://app.notion.com/p/4125636c236e81f28894e4bbb4eab711)。正式生成图册与验证策略：[安全性、状态机与验证策略](https://app.notion.com/p/4125636c236e819bba12c71af9a0c0f5)。后续验证 Skill 治理批次：[AH-1006](https://linear.app/yoyooyooo/issue/AH-1006)。
 
+本目录保留历史图面和 manifest，不代表当前源码的新运行。`source_review_commit` 的 `9e8a1ea` 是变基前评审来源，在本分支对应 `d93428d`；不改写原 manifest。当前 continuation 图见 [RV2 局部图件](../review-corrections/README.md)。同一单阶段抽象用于 retained/native 两张图，阶段数差异见下表，不计作两种不同图面。
+
 ## 阅读入口
 
 图中粉色节点是违反性质的状态，蓝色边框标出最短反例路径。每张图下方提供未改写的生成报告、Mermaid 原件与同名 SVG。正文 Mermaid 只把生成器的 title frontmatter 提到章节标题，图体保留原文。
 
 | 图 | 配置 | TLC 状态数 | 图中状态 / 业务箭头 | 结果 |
 | --- | --- | ---: | ---: | --- |
-| [自动投影保护人工编辑](#projection-safe) | `ProjectionRace.cfg` | 7 | 6 / 6 | 全部性质成立 |
+| [自动覆盖的拒绝边界](#projection-safe) | `ProjectionRace.cfg` | 7 | 6 / 6 | 全部性质成立 |
 | [移除保护后覆盖人工编辑](#projection-unsafe) | `ProjectionRace.broken.cfg` | 11 | 10 / 10 | 反例：`HumanEditPreserved` |
-| [完整候选与固定版本消费](#update-safe) | `UpdateCommit.cfg` | 15 | 10 / 10 | 全部性质成立 |
+| [完整候选与一次派发](#update-safe) | `UpdateCommit.cfg` | 15 | 10 / 10 | 全部性质成立 |
 | [未知结果被错误重发](#update-retry) | `UpdateCommit.retry.cfg` | 31 | 11 / 12 | 反例：`AtMostOneDispatch` |
 | [已分配三页的原 ACK 续接](#continuation-retained) | `AcknowledgedContinuation.cfg` | 88 | 14 / 19 | 全部性质成立 |
 | [原主文同页恢复后的续接](#continuation-native) | `AcknowledgedContinuation.native.cfg` | 61 | 14 / 19 | 全部性质成立 |
@@ -27,7 +29,7 @@
 
 ## ACK 两分支的有限阶段
 
-两条正图使用相同的单阶段派发／ACK／核实循环，但模型分别固定以下阶段次序。每阶段只有一次原始派发；没有 ACK 的未知请求不可重发，已经保留精确原 ACK 的读回中断可以继续观察。原页面和原 `needs_review` 历史保持不变，最后得到的是独立续接完成。
+两条正图使用相同的单阶段派发／ACK／核实循环，但模型分别固定以下阶段次序。每阶段只有一次原始派发；没有 ACK 的未知请求不可重发，已经保留精确原 ACK 的读回中断可以继续观察。模型把原页面和原 `needs_review` 历史固定为不变输入，最后得到独立续接完成；真实页面、字节与历史保留由具体回归核对。
 
 | 分支 | 初始有限对象 | 有序阶段 |
 | --- | --- | --- |
@@ -49,7 +51,7 @@ ProjectionRace 只有一个可编辑页面；它表达自动投影拒绝无保�
 
 本批只包含安全性质与有限死锁检查，没有 AuditRun 的公平性／活性配置；未知操作允许等待，不承诺最终完成。Notion 的实际权限、网络、并发编辑、JSON／字节序列化、任意文件数、SQLite 与冷启动代码行为需要其独立证据。
 
-独立 `accept-add`、native inventory 的 Record 前缀恢复、Management 业务 Request／反馈、exact ACK-bound Record GET 仍明确未建模。本次生成新图没有扩大它们的形式化覆盖。
+上述行为不属于本图册的三个历史模型。当前独立接受、Record 前缀及反馈已由 [operation-recovery](../../../verification/models/operation-recovery/README.md) 的对应模型维护；具体请求提交和原生字节仍以其声明的实现边界为准。
 
 ## 复现与原件
 
@@ -63,11 +65,11 @@ node scripts/verify-resource-lifecycle.mjs --model UpdateCommit --out /absolute/
 node scripts/verify-resource-lifecycle.mjs --model AcknowledgedContinuation --out /absolute/new/ack-run
 ```
 
-用 Pele 1.9.0 的 `render(mmd, { limit: 1000000, outputLimit: 8000000, maxEdges: 10000 })` 生成同名 SVG。当前可复现组、每份输入／图／报告哈希及原件清单哈希见 [manifest.json](manifest.json)。证据根为 `/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/`；早期 view 迭代也保留，其结果不混入这次最终 18 配置清单。
+用 Pele 1.9.0 的 `render(mmd, { limit: 1000000, outputLimit: 8000000, maxEdges: 10000 })` 生成同名 SVG。本历史快照的可复现组、每份输入／图／报告哈希及原件清单哈希见 [manifest.json](manifest.json)。证据根为 `/Users/yoyo/Documents/code/personal/verification-evidence/statecharts-20261112/cli/`；早期 view 迭代也保留，其结果不混入这次最终 18 配置清单。
 
 源 view：[ProjectionRace](../../../verification/models/resource-lifecycle/ProjectionRace.view.mjs)、[UpdateCommit](../../../verification/models/resource-lifecycle/UpdateCommit.view.mjs)、[AcknowledgedContinuation](../../../verification/models/resource-lifecycle/AcknowledgedContinuation.view.mjs)。
 
-## 自动投影保护人工编辑
+## 自动覆盖的拒绝边界
 
 <a id="projection-safe"></a>
 
@@ -152,7 +154,7 @@ The shortest path has 4 steps:
 3. 你编辑 Notion 页面: 写入前发生人工编辑
 4. 服务端执行覆盖: 人工内容已被覆盖
 
-## 完整候选与固定版本消费
+## 完整候选与一次派发
 
 <a id="update-safe"></a>
 
