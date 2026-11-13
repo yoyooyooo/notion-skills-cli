@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
+  "synchronized_commit": "2834cc60cfb0283783a4ca4bb1323b697c1be9c8",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
@@ -10,30 +10,31 @@
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
     "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
-    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
-    "packages/core/src/shared-file-management-model.ts": "189a7dbd8581d08a31e46c7459dee81fcd71c4c730081919b6d9437ad8041f4e",
+    "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
+    "packages/core/src/shared-file-management-model.ts": "8c79af06932063c4cffd6f1a1136f73352476a75642cb62d18d3bb410289729c",
     "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
-    "packages/core/test/shared-file-management.test.ts": "c3d44838103181e667da85310e9cdce6c926f0ca0f33641b06d431c81916a8ae",
+    "packages/core/test/shared-file-management.test.ts": "4b33e2117151f7cc24c954b1ff340a5a8452d15f70ff7e1d64aad5826009599a",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
     "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
-    "packages/core/src/shared-skill-apply.ts": "b6910c450acaaeb1b57198def4884b710643f732f0209b3e73f4d89a4510a1b4",
-    "packages/core/src/shared-skill-apply-model.ts": "5346f4b702e2850c6b75c0915e68a7d62693b3c5a8dacdd958212e6a1d1ec825",
+    "packages/core/src/shared-skill-apply.ts": "4023db902844d1e94c4723fcf548daf4003dcdee8bdecc15b628643f5891c5b7",
+    "packages/core/src/shared-skill-apply-model.ts": "7e195525f65aa4d84dadac2cb640a5fc4e4ae5c7d25cdaecbaf6b7fb72ac63fe",
     "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
     "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
-    "packages/core/src/shared-skill-apply-authoring.ts": "84baef66ae05beafde049f2528a428093148a5a83749b4d66b658b910311741e",
-    "packages/core/src/shared-file-management.ts": "662a2c61a04e79999cf30f222992141cbdc7b5c58b86e2cf3ea3630f76dba456",
-    "packages/core/src/shared-snapshot.ts": "8aa8ea16e287d6e845778c0c5d00e7074b319452ea7b8920dc813ae48097e8ef",
+    "packages/core/src/shared-skill-apply-authoring.ts": "a780ee64e8d7b6de3e9feaeb4a9d5c0c9c57fb0bde39ad8026acd03e2d9b8779",
+    "packages/core/src/shared-file-management.ts": "a297eaa8245aa276932964f5ca9351470de433b6d0162514b188b3cc96848529",
+    "packages/core/src/shared-snapshot.ts": "a31efa38d5d7e4af442d5db3c2a68a56bdc6f7a14c46cc1bed6ffd11559900a4",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
-    "packages/core/test/shared-skill-apply.test.ts": "27a1644c0e0924e9d9ba4693b6dc331145ee2787f5ee490799390acdb42eb83a",
+    "packages/core/test/shared-skill-apply.test.ts": "b4ad2488d125b5c591291daeadaaddd66d6f3f6fb14945415a8600ce823744bf",
     "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
-    "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371"
+    "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371",
+    "packages/core/src/shared-plan-storage.ts": "8dd790e4c36120636259e482359eefc9a8ddc17c1979fb7cb2daad4e8c0a9be4"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -64,13 +65,14 @@
         "reconcileSharedFileAddAcceptance",
         "sharedCreateDispatch"
       ],
-      "scope": "One failed original add, one separate acceptance identity, frozen File/owner/frontier, three ordered immutable Records (review/adopted/completion), one attempt per Record, and a cold read of five full shared proof classes. Unknown immutable fact may be exactly observed without inventing an ACK, allowing only the next distinct Record.",
+      "scope": "One failed original add and one independent acceptance identity with frozen File/owner/frontier. The existing configuration family covers exact-candidate acceptance (three ordered Records, five cold proof classes) and explicit observed-body acceptance (four ordered Records including the selected body, six cold proof classes). Every dispatch stays bound to the same reviewed context, unknown writes are not repeated, and neither mode confirms the original failed write.",
       "excluded": [
         "Whole File lifecycle",
         "Arbitrary native byte representation and codec limits",
         "Distributed acceptance writers",
         "Automatic acceptance or repair of unknown original creates",
-        "Cold history proof does not assert current body remains unchanged"
+        "Cold history proof does not assert current body remains unchanged",
+        "Actual approval flag, observed byte hash and lossless plan storage are implementation regressions, not state-model guarantees"
       ]
     },
     "RestoreFeedback": {
