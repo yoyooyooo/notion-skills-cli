@@ -39,6 +39,7 @@ import {
   id,
   encode,
   digest,
+  rich,
 } from "./shared-snapshot-fixture.ts"
 
 function field(key: string, input: unknown) {
@@ -1337,6 +1338,111 @@ describe("shared file lifecycle operations", () => {
       suppressed_paths: ["references/1.md"],
     })
   })
+
+  test.each(["absent", "conflicting"] as const)(
+    "an acknowledged move event and the fresh history query stay consistent over the real transport (%s)",
+    async (visibility) => {
+      const f = fixture(),
+        snapshot = await f.baseline()
+      const plan = await f.run(
+        prepareSharedFileManagement({
+          library,
+          snapshot,
+          action: "move",
+          fileId: "file-1",
+          destinationPath: "notes/one.md",
+        }),
+      )
+      const original = await f.run(Notion)
+      let changedQueries = 0
+      const delayed: Notion["Service"] = {
+        ...original,
+        request: (path, body, options) =>
+          original.request(path, body, options).pipe(
+            Effect.map((raw) => {
+              if (
+                new URL(path, "https://api.notion.com/").pathname !==
+                `/v1/data_sources/${library.records.data_source_id}/query`
+              )
+                return raw
+              const response = property(raw)
+              if (!Array.isArray(response.results)) return raw
+              const results = response.results.flatMap((row) => {
+                const recordId = text(
+                  property(
+                    property(property(row).properties)[library.records.property_ids["Record ID"]!],
+                  ).rich_text,
+                )
+                if (recordId !== plan.event.event_id) return [row]
+                changedQueries += 1
+                if (visibility === "absent") return []
+                const envelope = canonicalSharedJson({
+                  version: 1,
+                  operation_id: plan.event.event_id,
+                  payload: { ...plan.event, to_path: "notes/concurrent.md" },
+                })
+                const payloadId = library.records.property_ids.Payload!
+                const hashId = library.records.property_ids.Hash!
+                return [
+                  {
+                    ...property(row),
+                    properties: {
+                      ...property(property(row).properties),
+                      [payloadId]: rich(payloadId, envelope),
+                      [hashId]: rich(hashId, digest(envelope)),
+                    },
+                  },
+                ]
+              })
+              return { ...response, results }
+            }),
+          ),
+      }
+      await recordedFixtureTransport(delayed, async (api, requests) => {
+        const result = await f.run(
+          executeSharedFileManagement(library, { plan, mode: "create" }).pipe(
+            Effect.provideService(Notion, api),
+            Effect.result,
+          ),
+        )
+        expect(changedQueries).toBe(1)
+        if (visibility === "conflicting") {
+          expect(result._tag).toBe("Failure")
+          if (result._tag !== "Failure") throw new Error("Conflicting history was accepted")
+          expect(result.failure.code).toBe("SHARED_STATE_CONFLICT")
+        } else {
+          expect(result._tag).toBe("Success")
+          if (result._tag !== "Success") throw result.failure
+          expect(result.success.status).toBe("applied")
+          if (!("state" in result.success)) throw new Error("Expected the executed lifecycle state")
+          expect(result.success.state.placement?.path).toBe("notes/one.md")
+        }
+        expect(
+          requests.filter(
+            (request) => request.method === "PATCH" && request.path === `v1/pages/${plan.page_id}`,
+          ),
+        ).toHaveLength(1)
+        for (const recordId of [plan.event.event_id, `outcome-${plan.operation_id}`])
+          expect(
+            requests.filter(
+              (request) =>
+                request.method === "POST" &&
+                request.path === "v1/pages" &&
+                text(
+                  property(
+                    property(property(request.body).properties)[
+                      library.records.property_ids["Record ID"]!
+                    ],
+                  ).rich_text,
+                ) === recordId,
+            ),
+          ).toHaveLength(recordId === plan.event.event_id || visibility === "absent" ? 1 : 0)
+      })
+      expect(f.pending()).toHaveLength(visibility === "absent" ? 0 : 1)
+      if (visibility === "absent")
+        expect((await f.run(reconcileSharedFileManagement(library, plan))).verified).toBe(true)
+    },
+  )
 
   test("following move retains its original source path independently from the Path property", async () => {
     const f = fixture()

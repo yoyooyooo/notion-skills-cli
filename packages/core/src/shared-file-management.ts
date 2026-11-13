@@ -1730,7 +1730,7 @@ export function executeSharedFileManagement<R = never>(
         ),
       )
     }
-    yield* appendSharedRecord(library, {
+    const acknowledgedEvent = yield* appendSharedRecord(library, {
       mode: "create",
       recordId: plan.event.event_id,
       operationId: plan.event.event_id,
@@ -1742,29 +1742,31 @@ export function executeSharedFileManagement<R = never>(
     const events = yield* withNotionRequestAttribution(readEvents(library, plan.skill_page_id), {
       phase: "author_verify",
     })
-    const state = yield* managementChecked(() =>
-      resolveFileState(
-        plan.file_id,
-        events.filter((event) => event.file_id === plan.file_id),
-      ),
-    )
     if (
-      !events.some(
+      events.some(
         (event) =>
           event.event_id === plan.event.event_id &&
-          canonicalSharedJson(event) === canonicalSharedJson(plan.event),
+          canonicalSharedJson(event) !== canonicalSharedJson(acknowledgedEvent.payload),
       )
     )
       return yield* Effect.fail(
         recovery(
           fail(
-            "SHARED_FILE_MANAGEMENT_UNRESOLVED",
-            "The exact lifecycle event is not yet visible in the complete shared history.",
+            "SHARED_STATE_CONFLICT",
+            "The acknowledged lifecycle event differs from the complete shared history.",
           ),
           plan,
           "event",
         ),
       )
+    // The exact append ACK proves this immutable fact even when the query index lags it.
+    // The full fresh history still rejects conflicting heads and missing parents.
+    const state = yield* managementChecked(() =>
+      resolveFileState(plan.file_id, [
+        ...events.filter((event) => event.file_id === plan.file_id),
+        acknowledgedEvent.payload,
+      ]),
+    )
     yield* saveOutcome(
       library,
       plan,
