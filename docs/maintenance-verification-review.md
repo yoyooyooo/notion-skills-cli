@@ -156,3 +156,9 @@ and exact HTTP response retention remain concrete implementation checks. The
 independent review reproducers are rerun by changing only their checkout path;
 their assertions and old failures stay intact. Model source hashes are updated
 only after this correspondence review and the affected real-code checks.
+
+## 真实集合维护：源码对应补充
+
+2026-11 的真实目录上传、整组移除和 Source 归并复用了已有 complete-resource create、原 ACK dispatcher、元数据修改守卫与 SQLite Store。普通 `create` 不再要求 Agent 为脚本/JSON/二进制另走迁移入口。仅生成资源说明标题的同名 HTTP 自动链接按表现差异核对；作者 Markdown、真实脚本字节、hash/mode 与原未知请求仍保留精确检查。历史资源说明误判通过同一创建的原 ACK 前缀续办，并独立保存完成结果，不覆盖原失败。
+
+集合移除、来源归并/改名、对当前观察的失效处理、Notion Trash 属性端点差异及新 Store 地址均不在旧有限域中。这些由真实授权对象、公开 CLI、源码回归和真实 Node SQLite 断言承担；不要把同步 hash 说成新形式化证明。ImportCreate 的抽象顺序与性质未变，只选择原完整模型组复验，其他模型与历史图不重复生成。
