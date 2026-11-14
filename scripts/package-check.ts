@@ -113,6 +113,7 @@ const publicFiles = [
   "skills/ntn-skills/references/integration.md",
   "skills/notion/ntn-skills-maintain/SKILL.md",
   "skills/notion/ntn-skills-maintain/references/operations.md",
+  "skills/notion/ntn-skills-maintain/references/setup.md",
   "skills/notion/ntn-skills-sync/SKILL.md",
   "skills/notion/ntn-skills-sync/references/synchronization.md",
 ]
