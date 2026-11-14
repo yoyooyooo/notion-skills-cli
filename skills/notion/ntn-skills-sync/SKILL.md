@@ -13,7 +13,7 @@ Identify the selected library and record first. A `shared_skill` locator uses sh
 
 ## Manage an active Source definition
 
-For the four-table shared library, use `ctl library sources`, not the retired library's `ctl sync upstream` subscription path. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
+Use `ctl library sources` to manage the four-table shared library. Sources owns provider/location/ref/selection and its Origin/member binding. `Selected Version` is the separate exact content pin; changing a definition alone does not advance it.
 
 ```bash
 ntn-skills ctl library sources list --entry LIBRARY_ENTRY
@@ -29,6 +29,8 @@ ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY
 `check/fetch` are read-only provider operations. `prepare` freezes the complete member plus current ownership and content expectations. Use `--all-bound` instead of `--target` to acquire a Source once and freeze every enabled bound Skill, including the complete membership observation. `apply` uses that exact candidate, preserves whole custom files and old pins, and verifies the resulting directory. Default `--storage auto` uses an unchanged complete public GitHub tree directly when its fixed identities have been verified; other supported inputs use retained source objects. Explicit `--storage fixed-git` does not silently fall back. Use `sources reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` to inspect the original selection without repeating it. Never re-create a frozen plan from current text to make an unknown result look complete.
 
 `put --input DEFINITION --expect FINGERPRINT` changes one full configuration; use the fingerprint from `show` or `absent` for a new stable ID. `bind SOURCE_ID --target SKILL_PAGE_ID --member EXACT_MEMBER --expect-origin CURRENT_SOURCE_PAGE_OR_none --entry LIBRARY_ENTRY` changes only association. Providers include generic Git, registry and explicitly mapped Linear issue/document content. Auth stays on the machine. Shared contributor sets require explicit composition, not a single-source overwrite. See [source decisions](references/synchronization.md#active-sources-definitions) before authoring configurations.
+
+A new Source with zero bound members is a normal first-use state. `run --all-bound` reports `empty_scope` and a read-only next action; it never silently imports or enables every discovered Skill. Use check and explicit admission for the first member. Fixed-version selection and an editable Notion page update are separate effects; follow the [synchronization reference](references/synchronization.md#the-first-member-of-a-new-source).
 
 ## Source names and repository-level management
 
@@ -57,6 +59,8 @@ ntn-skills ctl library sources run-status SOURCE_RUN_ID --output ./original-cand
 Check and prepare modes are remotely read-only. Policy skips disabled Sources, skips provider rediscovery for pinned Sources, prepares manual candidates and applies auto candidates only where verified protection allows. Auto requires an explicit `options.check_interval_ms` of one minute through 366 days. Registered file requests are still processed for enabled Sources when pinned, not due or unchanged. This command performs one bounded invocation; it installs no scheduler or daemon.
 
 Use `--max-requests`, `--max-bytes` and `--duration-ms` to set the invocation budget. Actual HTTP attempts include retries; waits count toward time, and admitted response overshoot is reported. Git subprocess deadlines are separate from HTTP byte counts. Exit 75 pauses, 4 preserves unknown/incomplete outcomes, and 3 identifies review-required results. A completed check or prepared manual candidate is not a content application. Offline run status may show an interrupted running checkpoint; do not infer that its last write was never sent.
+
+For a basic explicit update, prepare and apply the fixed Source candidate, inspect the selected-versus-displayed state, then authorize `ctl file restore-follow TARGET PATH --entry ENTRY` only for the intended following file. Verify its complete native body and ownership afterward. Do not restore custom files merely because another file was updated.
 
 Automatic editable-body replacement remains blocked when no atomic content precondition is available. Report `BODY_REPLACEMENT_UNSAFE` or a missing initial projection as pending work; selecting a revision alone does not prove the Notion page displays it. Source check status, selected revision, displayed revision, custom ancestry and session pin remain distinct. Same-state-root invocations share a local fence; coordinate one management writer per library across machines.
 
@@ -105,4 +109,4 @@ Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --en
 
 If an original result belongs to a different operation family, retain its returned IDs and recovery action. Do not convert it into a Source plan, reconnect the content or infer ownership from a display name.
 
-Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details; do not treat old bindings as already retired or a source-built test as a completed migration.
+Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details; keep the selected Source, actual page content and independently verified consumption separate.

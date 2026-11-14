@@ -1,0 +1,76 @@
+{
+  "kind": "EMPTY MaintenanceApply known reviewed partial completion",
+  "checked_configs": 7,
+  "complete": true,
+  "all_expected_results_matched": true,
+  "runner_sha256": "b9f25a0662ad0f1f00df65d58e01119f7e77d7d78e77af489347aa4b7357ee62",
+  "tool_lock_sha256": "379937f0a64c7086a4d2d950dd0afad7dd37c3adc03e6286c2ace15d8b950cc6",
+  "summary_sha256": "244f76eb0d5d0250238722d7d35cf643707ee56a06e013f73fb8a30b51bd58bb",
+  "renderer_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5",
+  "selected": [
+    {
+      "model": "MaintenanceApply",
+      "config": "cfg",
+      "states": {
+        "distinct": 109,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "inputs": [
+        {
+          "path": "model-inputs/MaintenanceApply.tla",
+          "sha256": "8f8c08a75e04b9c0b30003872d7d20d16dec30420104b7eb5721b0724d261998"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.cfg",
+          "sha256": "234b10baabaaaef29b78b2fcd7cb8728294ee78b260ab065fe439d8ebf0b9e95"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.view.mjs",
+          "sha256": "348e17377c506459f88f65e5dbe4c19ea4b87f674e2acba3b354a53e3087015e"
+        }
+      ],
+      "name": "MaintenanceApply-cfg",
+      "mermaid_sha256": "e85310942e8d7088a1c6b467a0857c285b10f9058726448814fd5900931e04cd",
+      "svg_sha256": "3a128446f76a6847a14fd7885274e1960e3a9351807257b69028521df0f298de",
+      "report_sha256": "d6456f1b2b2e1b4fef0a03fc327248ab6f500ff52975dc4f04888b8555d79346",
+      "width": 1343,
+      "height": 1368
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "unreviewed-partial.cfg",
+      "states": {
+        "distinct": 118,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["PartialRequiresOriginalReview"],
+      "inputs": [
+        {
+          "path": "model-inputs/MaintenanceApply.tla",
+          "sha256": "8f8c08a75e04b9c0b30003872d7d20d16dec30420104b7eb5721b0724d261998"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.unreviewed-partial.cfg",
+          "sha256": "a9cdfd9bde257c396b6e602022eb7369788f7f79a4f563217a9bc1323f7b2247"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.view.mjs",
+          "sha256": "348e17377c506459f88f65e5dbe4c19ea4b87f674e2acba3b354a53e3087015e"
+        }
+      ],
+      "name": "MaintenanceApply-unreviewed-partial-cfg",
+      "mermaid_sha256": "b994b38b30d152c85925dd4716834797583b2bd3dda5016cb206de2d93021ee8",
+      "svg_sha256": "9d4265ac4eeba9b7ebcfd8ab6be2ae663e441c749159b5ffbf7f8592afde11ef",
+      "report_sha256": "a7b6d0ba220cbd5400e8d660e3909b41436f0e84885a1843ce5d8c42aaee8b28",
+      "width": 1932,
+      "height": 1422
+    }
+  ],
+  "model_change": "Known failed child may be independently reviewed; parent can close partial with no suffix dispatch. Partial requires original review and cannot claim full completion.",
+  "scope": "Seven bounded MaintenanceApply configurations. No new network, concurrency, SQLite, permissions or byte-level proof."
+}

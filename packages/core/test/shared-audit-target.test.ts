@@ -360,7 +360,7 @@ test("v1 and v2 checkpoints remain readable and cannot resume under v3", async (
     }),
   )
   const run = await fixture.run(readAuditRun(paused.run_id))
-  for (const rules_version of ["resource-audit-v1", "resource-audit-v2"]) {
+  for (const rules_version of ["resource-audit-v1", "resource-audit-v2", "resource-audit-v3"]) {
     await fixture.run(saveAuditRun({ ...run, rules_version }))
     fixture.clearLedger()
     const report = await fixture.run(reportSharedAudit(paused.run_id))

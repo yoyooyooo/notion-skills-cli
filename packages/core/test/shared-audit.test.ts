@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { Effect, Fiber } from "effect"
-import { property } from "../src/model.ts"
+import { property, text } from "../src/model.ts"
 import {
   runSharedAudit,
   resumeSharedAudit,
@@ -11,8 +11,91 @@ import { readAuditRun, saveAuditRun } from "../src/shared-audit-store.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { sharedCreateManifestEntity } from "../src/shared-create-model.ts"
 import { prepareSharedBaselineInventory } from "../src/shared-inventory-remote.ts"
+import { adoptSharedNative } from "../src/shared-native-adoption.ts"
 import { auditFixture } from "./shared-audit-fixture.ts"
 import { library, rich, skillPage } from "./shared-snapshot-fixture.ts"
+
+test("content audit verifies native adoption completion instead of leaving its known family unobserved", async () => {
+  const f = await auditFixture(1)
+  f.records.clear()
+  f.json.clear()
+  f.objects.clear()
+  const fields = property(f.main.properties)
+  fields.skill_id = rich("skill_id", "")
+  fields.main_file_id = rich("main_file_id", "")
+  property(fields.enabled).checkbox = false
+  f.intercept((path, body) => {
+    if (path !== `v1/pages/${skillPage}` || body === undefined) return undefined
+    return Effect.sync(() => {
+      for (const [key, value] of Object.entries(property(property(body).properties)))
+        fields[key] = { ...property(fields[key]), ...property(value) }
+      return structuredClone(f.main)
+    })
+  })
+  const adopted = await f.run(
+    adoptSharedNative(skillPage, { database: library.skills.database_id }),
+  )
+  expect(adopted.status).toBe("adopted")
+  f.clearLedger()
+  const report = await f.run(
+    runSharedAudit({
+      entry: library.skills.database_id,
+      selector: { kind: "library" },
+      depth: "content",
+    }),
+  )
+  expect(report.execution).toBe("completed")
+  expect(
+    report.findings.filter((finding) => finding.code === "OPERATION_OUTCOME_UNOBSERVED"),
+  ).toEqual([])
+  expect(report.coverage).toBe("full")
+  expect(report.severity.error).toBe(0)
+  expect(f.writeCount()).toBe(0)
+  const outcome = [...f.records].find(([, row]) =>
+    text(property(property(row.properties).record).rich_text).startsWith("outcome-skill-adopt-"),
+  )
+  expect(outcome).toBeDefined()
+  if (outcome === undefined) throw new Error("Missing retained adoption outcome")
+  f.records.delete(outcome[0])
+  f.json.clear()
+  f.clearLedger()
+  const invalid = await f.run(
+    runSharedAudit({
+      entry: library.skills.database_id,
+      selector: { kind: "library" },
+      depth: "content",
+    }),
+  )
+  expect(invalid.coverage).toBe("partial")
+  expect(
+    invalid.findings.some((finding) => finding.code === "NATIVE_ADOPTION_COMPLETION_UNVERIFIED"),
+  ).toBe(true)
+  expect(f.writeCount()).toBe(0)
+})
+
+test("orphan review receipts cannot be hidden as supported completed operations", async () => {
+  const f = await auditFixture(1),
+    operation = "body-review-" + "c".repeat(64)
+  f.seedFact(
+    { version: 1, kind: "body_write_review_receipt", operation_id: operation },
+    "operation",
+    "missing-file",
+    "reviewed-" + operation,
+  )
+  f.clearLedger()
+  const report = await f.run(
+    runSharedAudit({
+      entry: library.skills.database_id,
+      selector: { kind: "library" },
+      depth: "content",
+    }),
+  )
+  expect(report.coverage).toBe("partial")
+  expect(
+    report.findings.some((finding) => finding.code === "INDEPENDENT_BODY_REVIEW_UNVERIFIED"),
+  ).toBe(true)
+  expect(f.writeCount()).toBe(0)
+})
 
 test("census scope retains complete registered metadata without inspecting individual Skill states", async () => {
   const f = await auditFixture()

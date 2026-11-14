@@ -6,7 +6,8 @@ import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
 import { fail, property, SkillsError, text, type Snapshot } from "../src/model.ts"
 import { Notion, withNotionRequestAttribution } from "../src/notion.ts"
-import { Store } from "../src/store.ts"
+import { Store, sha256 } from "../src/store.ts"
+import { reviewSharedBodyWrite } from "../src/shared-body-write-review.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
 import { openSkill } from "../src/snapshot.ts"
 import { applySkill, replaceSkill } from "../src/mutation.ts"
@@ -65,6 +66,7 @@ function withWriter<A, E>(
     readonly unknownBodyAt?: number
     readonly unknownParentPlan?: boolean
     readonly unknownParentOutcome?: boolean
+    readonly renderBody?: (markdown: string, write: number) => string
   } = {},
 ) {
   return Effect.gen(function* () {
@@ -109,7 +111,8 @@ function withWriter<A, E>(
                   notion_code: "validation_error",
                 }),
               )
-            const markdown = raw.replace(changed.old_str, changed.new_str)
+            const replaced = raw.replace(changed.old_str, changed.new_str)
+            const markdown = options.renderBody?.(replaced, bodyCount + 1) ?? replaced
             f.bodies.set(page, markdown)
             const row = page === skillPage ? f.main : f.files.find((file) => file.id === page)
             if (row !== undefined) row.last_edited_time = new Date().toISOString()
@@ -585,6 +588,95 @@ describe("frozen sequential shared apply", () => {
     expect(f.files).toHaveLength(2)
   })
 
+  test("a compact retained parent authorizes the same exact move and linked body children", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const originalIds = f.files.map((file) => file.id)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          {
+            path: "SKILL.md",
+            bytes: encode(
+              "# Long main\n\n" +
+                "Useful unchanged context. ".repeat(850) +
+                "\n\n[One](notes/1.md)\n",
+            ),
+          },
+        ],
+        changes: { version: 1, moves: [{ from: "references/1.md", to: "notes/1.md" }] },
+        dryRun: true,
+      }),
+    )
+    if (
+      preview.kind !== "skill_apply" ||
+      preview.status !== "planned" ||
+      preview.plan.version !== 2
+    )
+      throw new Error("Expected exact frozen move parent")
+    const movedPage = snapshot.file_bindings?.find(
+      (file) => file.path === "references/1.md",
+    )?.page_id
+    if (movedPage === undefined) throw new Error("Missing original moved identity")
+    expect(preview.plan.bodies[0]?.candidate.markdown).toContain(
+      `](https://app.notion.com/p/${movedPage.replaceAll("-", "")})`,
+    )
+    expect(Buffer.byteLength(JSON.stringify(preview.plan))).toBeGreaterThan(65_536)
+    const applied = await f.run(
+      withWriter(f, executeSharedSkillApply(library, { plan: preview.plan, mode: "create" })),
+    )
+    expect(applied.status).toBe("applied")
+    expect(f.files.map((file) => file.id)).toEqual(originalIds)
+    const current = await fresh(f)
+    expect(current.files.some((file) => file.path === "notes/1.md")).toBe(true)
+    expect(current.files.some((file) => file.path === "references/1.md")).toBe(false)
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, preview.plan))).verified).toBe(true)
+    expect(f.writeCount()).toBe(0)
+  })
+
+  test("a move whose links keep the same native target retains read-only body projections without writing them", async () => {
+    const f = sharedSnapshotFixture()
+    const movedPage = f.files[0]!.id
+    const href = `https://app.notion.com/p/${movedPage.replaceAll("-", "")}`
+    f.bodies.set(skillPage, `# Main\n\n[One](${href})`)
+    f.bodies.set(f.files[1]!.id, `# Related\n\n[One](${href})`)
+    const snapshot = await fresh(f)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "SKILL.md", bytes: encode("# Main\n\n[One](notes/1.md)\n") },
+          { path: "references/2.md", bytes: encode("# Related\n\n[One](../notes/1.md)\n") },
+        ],
+        changes: { version: 1, moves: [{ from: "references/1.md", to: "notes/1.md" }] },
+        dryRun: true,
+      }),
+    )
+    if (
+      preview.status !== "planned" ||
+      preview.kind !== "skill_apply" ||
+      preview.plan.version !== 2
+    )
+      throw new Error("Expected move plan")
+    expect(preview.plan.bodies).toHaveLength(0)
+    f.clearCalls()
+    expect(
+      (
+        await f.run(
+          withWriter(f, executeSharedSkillApply(library, { plan: preview.plan, mode: "create" })),
+        )
+      ).status,
+    ).toBe("applied")
+    expect(f.calls.some((call) => call.path.endsWith("/markdown") && call.method === "PATCH")).toBe(
+      false,
+    )
+    const current = await fresh(f)
+    const main = current.files.find((file) => file.path === "SKILL.md")!
+    expect(new TextDecoder().decode(f.objects.get(`objects/${main.sha256}`)!)).toContain(
+      "](notes/1.md)",
+    )
+  })
+
   test("a fenced example is not a link rewrite span", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f)
@@ -835,6 +927,52 @@ describe("frozen sequential shared apply", () => {
     expect(current.record.description).toBe(metadata.description)
     expect(current.files.find((file) => file.path === "references/new-a.md")?.mode).toBe("100644")
     expect(current.files.find((file) => file.path === "references/new-b.md")?.mode).toBe("100755")
+  })
+
+  test("an explicitly reviewed failed final body closes its original parent as partial without replay", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f),
+      plan = await prepared(f, snapshot)
+    const result = await f.run(
+      withWriter(f, executeSharedSkillApply(library, { plan, mode: "create" }), {
+        renderBody: (markdown, write) =>
+          write === 2 ? markdown + "\nExplicitly reviewed native presentation." : markdown,
+      }).pipe(Effect.result),
+    )
+    expect(failure(result).code).toBe("SHARED_BODY_WRITE_REVIEW_REQUIRED")
+    const child = plan.bodies[1]
+    if (child === undefined) throw new Error("Expected second body")
+    const observed = f.bodies.get(child.page_id)
+    if (observed === undefined) throw new Error("Missing complete observed body")
+    const oldOutcomes = payloads(f).filter((value) => value.kind === "body_write_outcome")
+    const review = reviewSharedBodyWrite({
+      library,
+      skillPageId: skillPage,
+      originalOperationId: child.operation_id,
+      acceptedObservedSha256: await f.run(sha256(observed)),
+      scope: snapshot.scope,
+      mode: "create",
+      dryRun: false,
+    })
+    const parentRows = [...f.records].filter(
+      ([, row]) => text(property(property(row.properties).record).rich_text) === plan.operation_id,
+    )
+    expect(parentRows).toHaveLength(1)
+    for (const [key] of parentRows) f.records.delete(key)
+    f.clearCalls()
+    expect(failure(await f.run(review.pipe(Effect.result))).code).toBe("SHARED_PENDING_OPERATION")
+    expect(f.writeCount()).toBe(0)
+    for (const [key, row] of parentRows) f.records.set(key, row)
+    expect((await f.run(review)).status).toBe("reviewed")
+    f.clearCalls()
+    const resumed = await f.run(resumeSharedSkillApply(library, plan))
+    expect(resumed.status).toBe("partial")
+    expect(resumed.verified).toBe(true)
+    expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+    expect(payloads(f).filter((value) => value.kind === "body_write_outcome")).toEqual(oldOutcomes)
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, plan))).status).toBe("partial")
+    expect(f.writeCount()).toBe(0)
   })
 
   test("resume continues only the proved-unsent suffix of the same parent", async () => {

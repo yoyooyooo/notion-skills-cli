@@ -2,8 +2,12 @@ import { Schema } from "effect"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
-export const AUDIT_RULES_VERSION = "resource-audit-v3"
-export const READABLE_AUDIT_RULES = ["resource-audit-v1", "resource-audit-v2"] as const
+export const AUDIT_RULES_VERSION = "resource-audit-v4"
+export const READABLE_AUDIT_RULES = [
+  "resource-audit-v1",
+  "resource-audit-v2",
+  "resource-audit-v3",
+] as const
 export const AuditDepthSchema = Schema.Literals(["metadata", "content", "history"])
 export type AuditDepth = typeof AuditDepthSchema.Type
 export const AuditCoverageSchema = Schema.Literals(["full", "partial", "permission_limited"])

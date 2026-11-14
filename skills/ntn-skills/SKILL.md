@@ -39,7 +39,7 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
 
    Resolve links from the containing file, which may itself be a reference. Use the snapshot ID to enumerate the whole file set, including hashes and known executable modes. A pin rejects `--refresh`/`--max-age` and never selects newer content. Already materialized bytes work offline; a missing shared resource may require access to its frozen acquisition source. Missing bytes without that access stay unavailable. A pin does not establish current permission. Never resolve a relative file by rereading the Skill name and accidentally selecting a newer version.
 
-Use `--json` when version/freshness matters. `list` and `read` retain JSON as their compatibility default while callers migrate. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
+Use `--json` when version/freshness matters. `list` and `read` return JSON by default. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
 
 Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. They fix the complete directory while leaving non-document resource bytes lazy; `files` does not mean every file has been downloaded. `use` loads its selected instruction closure, and resource reads keep those same pins. Full export and authoring reads materialize the complete tree. New fixed Git manifests can use management-verified SHA-256 identities; older Git manifests without them retain the full-read fallback.
 
@@ -51,6 +51,7 @@ Inspect native Views with `ntn-skills ctl views --database LIBRARY_ENTRY`. Selec
 
 | Task | Workflow |
 | --- | --- |
+| First use, no library, or connection to an existing library | Load `ntn-skills-maintain`, then its `references/setup.md`; initialize through the CLI, not by hand-building tables |
 | Execute an existing remote workflow | Select/read as above; no local installation or sync binding is required |
 | Create a Notion Skill, apply a change to a pinned page, or transfer a portable copy | Select `$ntn-skills-maintain@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-maintain` |
 | Select fixed shared sources or Profiles, maintain existing upstream/local bindings, or resolve their original interrupted work | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |

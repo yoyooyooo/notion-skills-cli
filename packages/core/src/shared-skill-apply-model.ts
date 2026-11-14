@@ -82,6 +82,9 @@ const SharedSkillApplyPlanV2Schema = Schema.Struct({
   ),
   changes: Schema.NullOr(SharedApplyChangesManifestSchema),
   layout: Schema.Array(SharedFileManagementPlanSchema),
+  /** Read-only evidence for an explicitly edited logical link whose native
+   * target/body is already identical. These are not dispatched child operations. */
+  unchanged_bodies: Schema.optional(Schema.Array(SharedBodyWritePlanSchema)),
   stages: Schema.Array(
     Schema.Struct({
       name: StageNameSchema,
@@ -278,11 +281,45 @@ export function validateSharedSkillApplyPlan(input: unknown) {
       )
         throw fail("SHARED_APPLY_INVALID", "Apply body operations must use canonical path order.")
       for (const child of children) assertChildScope(plan, child)
-      if (plan.version === 2) assertLayoutStages(plan)
+      if (plan.version === 2) {
+        assertLayoutStages(plan)
+        const projections = plan.unchanged_bodies ?? []
+        const allBodies = [...plan.bodies, ...projections]
+        if (
+          ["path", "page_id", "file_id"].some(
+            (key) =>
+              new Set(
+                allBodies.map((child) =>
+                  key === "path" ? child.path : key === "page_id" ? child.page_id : child.file_id,
+                ),
+              ).size !== allBodies.length,
+          )
+        )
+          throw fail(
+            "SHARED_APPLY_INVALID",
+            "Changed and unchanged body projections must have distinct paths and identities.",
+          )
+        for (const child of projections) {
+          if (
+            child.library_id !== plan.library_id ||
+            child.skill_id !== plan.skill_id ||
+            child.skill_page_id !== plan.skill_page_id ||
+            child.source_id !== plan.source_id ||
+            child.action !== "write" ||
+            child.before.fingerprint.sha256 !== child.candidate.content.sha256
+          )
+            throw fail(
+              "SHARED_APPLY_INVALID",
+              "A read-only body projection must retain exactly the already observed native body.",
+            )
+        }
+      }
     })
     for (const child of plan.bodies) yield* validateSharedBodyWritePlan(child)
-    if (plan.version === 2)
+    if (plan.version === 2) {
       for (const child of plan.layout) yield* validateSharedFileManagementPlan(child)
+      for (const child of plan.unchanged_bodies ?? []) yield* validateSharedBodyWritePlan(child)
+    }
     if (plan.metadata !== undefined) yield* validateSharedMetadataWritePlan(plan.metadata)
     const childrenHash = yield* sha256(
       canonicalSharedJson(children.map((child) => child.operation_id)),

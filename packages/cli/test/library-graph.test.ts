@@ -124,6 +124,10 @@ test("public graph commands retain A and cold independent Node state lazily read
           NODE_EXTRA_CA_CERTS: cert,
           NOTION_API_TOKEN: "controlled-ng17-token",
           NOTION_API_BASE_URL: server.url.origin,
+          // This loopback integration exercises many sequential real Node CLI
+          // processes. Keep the public scheduler, using its supported minimum
+          // interval rather than spending the test budget on production pacing.
+          NTN_SKILLS_NOTION_INTERVAL_MS: "100",
           NTN_SKILLS_HOME: base + "-state",
           NTN_SKILLS_CONFIG_HOME: base + "-config",
           NTN_SKILLS_CACHE_HOME: base + "-cache",

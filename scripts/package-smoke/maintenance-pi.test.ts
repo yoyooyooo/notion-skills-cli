@@ -223,6 +223,24 @@ test("layout unsupported and partial previews never fall back to an unrelated wr
     ]),
   )
   assert.equal(stopped, null)
+  const unbound = json({
+    ok: false,
+    error: {
+      code: "SHARED_NATIVE_REFERENCE_UNBOUND",
+      message: "Allocate native references first.",
+      details: { writes_sent: false },
+    },
+  })
+  assert.equal(
+    selectMaintenanceCall(
+      chain([
+        ...ready.messages.slice(1),
+        ...tool("mnt-apply-dry", "bash", `${unbound}\n\nCommand exited with code 1`, true),
+      ]),
+    ),
+    null,
+    "The Pi selector must not repair an unsupported plan by inventing a different write",
+  )
 })
 
 test("a successful dry-run applies once, then copies show next.argv", () => {

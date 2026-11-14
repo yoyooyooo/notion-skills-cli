@@ -60,7 +60,42 @@ export async function checkInstalledMaintenancePi(consumer: SmokeContext) {
           current &&
             typeof current === "object" &&
             "content" in current &&
-            typeof current.content === "string",
+            typeof current.content === "string" &&
+            "ref" in current &&
+            typeof current.ref === "string",
+        )
+        // Native page IDs are acknowledged by creation, not guessed by an
+        // authoring plan. Prepare existing references through the installed CLI
+        // before Pi starts. Pi still has to read its own fresh pin and perform
+        // the requested main/reference edits as one original parent operation.
+        // The separate progressive-maintenance lane retains the zero-write
+        // unbound-link rejection and proves the public add-then-link workflow.
+        const baseline = await input.directory("pi-native-reference-baseline", {
+          "references/pi-one.md": "# First guide\n\nOriginal first reference.\n",
+          "references/pi-two.md": "# Second guide\n\nOriginal second reference.\n",
+        })
+        const staged = await input.invoke("pi-reference-baseline", [
+          "apply",
+          current.ref,
+          "--input",
+          baseline,
+        ])
+        assert.ok(
+          staged && typeof staged === "object" && "verified" in staged && staged.verified === true,
+        )
+        assert.ok("status" in staged && staged.status === "applied")
+        await writeFile(
+          join(scratch, "fixture-stage.json"),
+          JSON.stringify(
+            {
+              scope: "public_installed_cli_reference_allocation_before_pi",
+              autonomous_model_action: false,
+              result: staged,
+            },
+            null,
+            2,
+          ) + "\n",
+          { mode: 0o600, flag: "wx" },
         )
         const directory = await input.directory("requested-input", {
           "SKILL.md":

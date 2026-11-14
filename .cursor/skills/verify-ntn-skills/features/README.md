@@ -1,5 +1,7 @@
 # ntn-skills verification map
 
+New-user acceptance starts at [EMPTY: initialize a real empty library, then maintain its objects](empty-library.md). Do not substitute pre-seeded schema or author caches for this starting condition.
+
 These recipes describe current executable entry points and are not records of completed acceptance. Sync/cache commands, read policies and exact-target replacement are implemented. Read the matching recipe before driving a feature; preserve command/result evidence and distinguish deterministic, live and installed-consumer proof.
 
 Shared-library verification covers the managed layout, ownership, fixed manifests, history restoration, View metadata, Router directories and authorized migration operations. Use the shared recipe and [architecture](../../../../docs/shared-ssot-architecture.md) to identify the relevant boundary. Record live, installed-host and release outcomes in the external run ledger; do not carry an older result into a changed candidate.

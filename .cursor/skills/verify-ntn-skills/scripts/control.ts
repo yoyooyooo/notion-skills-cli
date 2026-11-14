@@ -157,6 +157,8 @@ const { values, positionals } = parseArgs({
     plan: { type: "string" },
     database: { type: "string" },
     target: { type: "string" },
+    stage: { type: "string" },
+    parent: { type: "string" },
     "installed-bin": { type: "string" },
     input: { type: "string", multiple: true },
   },
@@ -164,7 +166,7 @@ const { values, positionals } = parseArgs({
   strict: true,
 })
 const usage =
-  "Usage: bun .cursor/skills/verify-ntn-skills/scripts/control.ts MODE --run ABSOLUTE_DIRECTORY [--live] [--plan ABSOLUTE_JSON] [-- CLI_ARGS]\nModes: init, doctor, cli, package, consumption, prepare, import, verify, reuse, cleanup\nDoctor is offline by default; --live explicitly runs the project direct-HTTP doctor. Help never initializes a run or starts a child."
+  "Usage: bun .cursor/skills/verify-ntn-skills/scripts/control.ts MODE --run ABSOLUTE_DIRECTORY [--live] [--plan ABSOLUTE_JSON] [-- CLI_ARGS]\nModes: init, doctor, cli, package, consumption, prepare, import, verify, reuse, empty, cleanup\nEmpty: --stage init --parent AUTHORIZED_TEST_CONTAINER, or --stage census. Doctor is offline by default; --live explicitly runs the project direct-HTTP doctor. Help never initializes a run or starts a child."
 if (values.help || positionals[0] === "help") {
   console.log(usage)
   process.exit(0)
@@ -511,6 +513,37 @@ async function main() {
     identity.repo === repo && identity.root === root && identity.scratch === scratch,
     "Run ownership differs",
   )
+  if (mode === "empty") {
+    check(
+      (await realpath(scratch)) === join(await realpath(root), "scratch"),
+      "Scratch directory must belong to this run and not be a symlink",
+    )
+    const { runEmptyLibrary } = await import("./empty-library.ts")
+    return await runEmptyLibrary({
+      root,
+      stage: values.stage ?? "init",
+      container: values.parent,
+      argv: split < 0 ? [] : process.argv.slice(split + 1),
+      drive: (args) => command([...sourceLaunch, ...args]),
+      probe: async (request) => {
+        const inputFile = join(evidence, "empty-library", `probe-${randomUUID()}.json`)
+        await save(inputFile, request)
+        const result = await command([
+          "node",
+          "--import",
+          join(repo, "scripts/source-loader.ts"),
+          join(repo, ".cursor/skills/verify-ntn-skills/scripts/empty-library.ts"),
+          "--probe",
+          inputFile,
+        ])
+        check(
+          result.exit === 0 && result.output !== null && typeof result.output === "object",
+          `Independent Node observation failed; inspect ${result.record}`,
+        )
+        return result.output
+      },
+    })
+  }
   if (mode === "cleanup") {
     const logs = await readdir(join(evidence, "commands")).catch(() => [])
     const temporary = new Set<string>()
@@ -1230,7 +1263,7 @@ try {
       at: new Date().toISOString(),
     })
     console.error(
-      `Verification failed; evidence retained at ${evidence}. Run cleanup after the failed attempt, then use a new run for a corrected attempt.`,
+      `Verification failed; evidence retained at ${evidence}. Preserve scratch while an original write still needs it; inspect that original result before cleanup or a new run.`,
     )
   } else console.error(error instanceof Error ? error.message : "Verification failed")
   process.exitCode = 1

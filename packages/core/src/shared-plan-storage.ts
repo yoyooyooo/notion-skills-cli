@@ -10,7 +10,7 @@ import { SHARED_FACT_ENVELOPE_BYTES } from "./shared-record-codec.ts"
 
 const storage = "derived-text-v1"
 const ProjectionInput = Schema.Struct({
-  version: Schema.Literals([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]),
+  version: Schema.Literals([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
   input_markdown: Schema.String,
   purpose: Schema.optional(Schema.Literals(["body_write", "data_source_create"])),
 })
@@ -48,6 +48,10 @@ function transform(value: unknown, expand: boolean): Record<string, unknown> {
     if (plan.version === 2) {
       if (!Array.isArray(plan.layout)) throw invalid()
       plan.layout = plan.layout.map((child) => transform(child, expand))
+      if (plan.unchanged_bodies !== undefined) {
+        if (!Array.isArray(plan.unchanged_bodies)) throw invalid()
+        plan.unchanged_bodies = plan.unchanged_bodies.map((child) => transform(child, expand))
+      }
     }
     return plan
   }

@@ -65,7 +65,7 @@ remain distinct. No live/human claim is implied by this contract file.
 
 ## Target scope and retention (AH-1026 / AH-1031)
 
-Current rules are `resource-audit-v3`. v1 and v2 reports remain readable and cannot resume.
+Current rules are `resource-audit-v4`. v1–v3 reports remain readable and cannot resume. Content/history depth validates native-adoption completion and independent body-review ancestry through the same product readers. Missing outcomes or orphan review receipts remain partial; a verified independent review is informational and does not rewrite the original failed write. Metadata depth still leaves these body-bearing facts unobserved. This classification uses implementation regressions and real table evidence, not a new claim about the AuditScope finite model.
 `--target` reads one page, its direct Requires and Origin pages, and filtered File and Record
 headers. `inventory.complete` stays an unfiltered census. Reachable runs report
 `inspection_scope: reachable_target`, `reverse_table_completeness: unobserved`, and

@@ -78,6 +78,13 @@ export const SourceUpdateRunSchema = Schema.Struct({
   request_results: Schema.Array(Schema.Unknown),
   source_feedback: Schema.Unknown,
   error: Schema.NullOr(RunErrorSchema),
+  empty_scope: Schema.optional(
+    Schema.Struct({
+      reason: Schema.Literals(["no_bound_members", "no_enabled_members"]),
+      bound_members: Schema.Number,
+      next: Schema.Struct({ read_only: Schema.Literal(true), argv: Schema.Array(Schema.String) }),
+    }),
+  ),
   budget: Schema.Unknown,
   deployment: Schema.Literal(
     "one_writer_per_shared_library; local_fence_requires_the_same_state_root",
@@ -295,13 +302,32 @@ export function runSourceUpdate(
         const target = input.scope.kind === "skill" ? input.scope.target : undefined
         const targets =
           target === undefined ? eligible : eligible.filter((item) => item.page_id === target)
-        if (targets.length === 0 || (input.scope.kind === "skill" && targets.length !== 1))
+        if (input.scope.kind === "skill" && targets.length !== 1)
           return yield* Effect.fail(
-            fail(
-              "SOURCE_RUN_SCOPE",
-              "Choose an exact enabled Skill in this Source, or a nonempty all-bound scope.",
-            ),
+            fail("SOURCE_RUN_SCOPE", "Choose an exact enabled Skill bound to this Source."),
           )
+        if (targets.length === 0) {
+          yield* checkpoint({
+            empty_scope: {
+              reason: members.items.length === 0 ? "no_bound_members" : "no_enabled_members",
+              bound_members: members.items.length,
+              next: {
+                read_only: true,
+                argv: [
+                  "ntn-skills",
+                  "ctl",
+                  "library",
+                  "sources",
+                  members.items.length === 0 ? "check" : "members",
+                  definition.page_id,
+                  "--entry",
+                  library.skills.database_id,
+                ],
+              },
+            },
+          })
+          if (mode !== "check") return
+        }
         if (decision.kind === "check") {
           yield* checkpoint({ phase: "checking" })
           if (mode === "check") {
@@ -401,6 +427,7 @@ export function runSourceUpdate(
             }
           }
         }
+        if (targets.length === 0) return
         yield* checkpoint({ phase: "requests" })
         const { listSharedFileRequests, processSharedFileRequest, readSharedFileRequest } =
           yield* Effect.promise(() => import("./shared-file-request.ts"))

@@ -885,3 +885,13 @@ The canonical management surface is `ctl audit`, `ctl file`, `ctl resource`, `ct
 Audit v3 reports `inspection_scope`, owner observation coverage and reverse-table completeness separately. Filtered target rows never fill the global reverse-census denominator. An observed root identity failure is saved before the remaining owner queries, so a budget pause does not hide it. Original v1/v2 receipts remain readable offline, not resumable under v3. Growth details are bounded and owner-scoped; equal header hashes do not prove equal bodies, an unlinked script is not an orphan, and private pins remain unenumerated. The report's `next.argv` is a concrete read-only recommendation; broader alternatives are separate and not automatically executed.
 
 [Controlled original-page repair](maintenance-repair-contract.md) fills an explicitly missing identity without clearing legal IDs or replacing pages. Exact original plan, complete body retention, scoped dispatch/ACK and outcome facts remain distinct. Pending repair blocks only its owner. [Progressive tree maintenance](maintenance-tree-contract.md) extends the original apply parent with ordered native layout children, a frozen full target tree and guarded suffix continuation. Neither protocol claims Notion compare-and-swap or an atomic multi-page commit. A fixed old pin is a historical selection, not proof that current content or permissions are unchanged.
+
+### Selected Git blob acquisition
+
+A fixed Git discovery negotiates the standard `blob:none` filter, reads the full
+tree roster without requesting every blob's size, and materializes only selected
+member files and explicitly declared external resources. Unsupported servers can
+fall back through Git's normal negotiation. Full OID, bytes, modes and size/deadline
+checks still apply; observed repository object bytes are not a wire-byte estimate.
+A failed acquisition performs no source application and does not authorize
+repeating a Notion mutation.

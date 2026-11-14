@@ -731,6 +731,12 @@ function gitSnapshot(
           ),
         )
       yield* git(repo, ["init", "--bare", "--template=", "."])
+      // One validated remote also services missing selected blobs. Negotiated
+      // filtering avoids downloading unrelated repository assets just to find
+      // Skill roots; servers without filter support keep Git's normal fallback.
+      yield* git(repo, ["remote", "add", "origin", url])
+      yield* git(repo, ["config", "remote.origin.promisor", "true"])
+      yield* git(repo, ["config", "remote.origin.partialclonefilter", "blob:none"])
       let finish:
         | ReturnType<ReturnType<typeof createRequestMetrics>["beginSourceAcquisition"]>
         | undefined
@@ -757,24 +763,29 @@ function gitSnapshot(
           })
         }),
       )
-      yield* git(repo, ["fetch", "--depth=1", "--no-tags", "--", url, ref], undefined, {
-        start: () => {
-          fetchStarted = performance.now()
-          const configuredTransport: SourceAcquisition["configured_transport"] = url.startsWith(
-            "https://",
-          )
-            ? "https"
-            : url.startsWith("http://")
-              ? "http"
-              : url.startsWith("/") || url.startsWith("file:")
-                ? "file"
-                : "ssh"
-          finish = options.metrics?.beginSourceAcquisition({
-            provider: market ? "skills.sh" : "git",
-            configured_transport: configuredTransport,
-          })
+      yield* git(
+        repo,
+        ["fetch", "--filter=blob:none", "--depth=1", "--no-tags", "--", "origin", ref],
+        undefined,
+        {
+          start: () => {
+            fetchStarted = performance.now()
+            const configuredTransport: SourceAcquisition["configured_transport"] = url.startsWith(
+              "https://",
+            )
+              ? "https"
+              : url.startsWith("http://")
+                ? "http"
+                : url.startsWith("/") || url.startsWith("file:")
+                  ? "file"
+                  : "ssh"
+            finish = options.metrics?.beginSourceAcquisition({
+              provider: market ? "skills.sh" : "git",
+              configured_transport: configuredTransport,
+            })
+          },
         },
-      }).pipe(
+      ).pipe(
         Effect.onExit(() =>
           Effect.sync(() => {
             if (fetchStarted !== undefined) fetchMilliseconds = performance.now() - fetchStarted
@@ -810,7 +821,10 @@ function gitSnapshot(
           throw sourceError("INVALID_REF", "The fixed Git commit has no valid committer date.")
         return new Date(date).toISOString()
       })
-      const rawTree = yield* git(repo, ["ls-tree", "-r", "-l", "-z", revision], 16 * 1024 * 1024)
+      // Asking ls-tree for every blob's size (-l) would fetch every missing
+      // object and defeat the filter. Enumerate the full roster from tree
+      // metadata, then size/materialize only selected or explicitly linked blobs.
+      const rawTree = yield* git(repo, ["ls-tree", "-r", "-z", revision], 16 * 1024 * 1024)
       const entries = yield* attempt(() => {
         const text = decoder.decode(rawTree)
         if (text && !text.endsWith("\0"))
@@ -819,17 +833,34 @@ function gitSnapshot(
         if (rows.length > 100_000)
           throw sourceError("LIMIT", "Source repository contains too many tree entries.")
         return rows.map((row) => {
-          const match = /^(\d{6}) (blob|commit) ([a-f0-9]{40,64}) +([\d-]+)\t([\s\S]+)$/.exec(row)
+          const match = /^(\d{6}) (blob|commit) ([a-f0-9]{40,64})\t([\s\S]+)$/.exec(row)
           if (!match) throw sourceError("INVALID_TREE", "Git returned an invalid tree entry.")
           return {
             mode: match[1]!,
             type: match[2]!,
             oid: match[3]!,
-            size: Number(match[4]),
-            path: safePath(match[5]!),
+            path: safePath(match[4]!),
           }
         })
       })
+      const sizes = new Map<string, number>()
+      const sizeOf = (entry: (typeof entries)[number]) =>
+        Effect.gen(function* () {
+          if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
+            return { ...entry, size: 0 }
+          const cached = sizes.get(entry.oid)
+          if (cached !== undefined) return { ...entry, size: cached }
+          const raw = decoder.decode(yield* git(repo, ["cat-file", "-s", entry.oid], 128)).trim()
+          const size = yield* attempt(() => {
+            if (!/^\d+$/u.test(raw) || !Number.isSafeInteger(Number(raw)))
+              throw sourceError("INVALID_TREE", "Git returned an invalid selected blob size.", {
+                path: entry.path,
+              })
+            return Number(raw)
+          })
+          sizes.set(entry.oid, size)
+          return { ...entry, size }
+        })
       const candidates = entries
         .filter((entry) => entry.path === "SKILL.md" || entry.path.endsWith("/SKILL.md"))
         .map((entry) => (entry.path === "SKILL.md" ? "." : entry.path.slice(0, -9)))
@@ -856,7 +887,10 @@ function gitSnapshot(
       let materializedFiles = 0
       const members: SourceMember[] = []
       for (const key of keys) {
-        const selected = entries.filter((entry) => under(entry.path, key))
+        const selected = yield* Effect.forEach(
+          entries.filter((entry) => under(entry.path, key)),
+          sizeOf,
+        )
         yield* attempt(() => {
           for (const entry of selected) {
             if (entry.type === "commit" || entry.mode === "160000")
@@ -949,7 +983,7 @@ function gitSnapshot(
         sourceExternalResourceTargets(members, entries, (entry) => unavailable.push(entry)),
       )
       for (const target of externalTargets) {
-        const entry = entries.find((entry) => entry.path === target.source_path)!
+        const entry = yield* sizeOf(entries.find((entry) => entry.path === target.source_path)!)
         totalBytes += entry.size
         totalFiles++
         if (totalBytes > MAX_BYTES || totalFiles > MAX_FILES)

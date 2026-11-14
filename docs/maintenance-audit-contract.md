@@ -12,7 +12,7 @@ A full-library conflict is claimed only from a completed unfiltered census. Two 
 
 A bad page id or an unreadable target becomes `TARGET_PAGE_UNAVAILABLE` or `TARGET_PAGE_OUTSIDE_LIBRARY`. An invalid main file id is `MAIN_FILE_ID_INVALID` even when the tree cannot be built (`SKILL_TREE_UNAVAILABLE`). The run does not collapse those into an undifferentiated execution failure.
 
-Current rules are `resource-audit-v3`. v1 and v2 checkpoints stay readable offline and cannot resume. Budgets, cancellation, checkpoints, zero remote writes, and offline report are unchanged.
+Current rules are `resource-audit-v4`. v1–v3 checkpoints stay readable offline and cannot resume. Budgets, cancellation, checkpoints, zero remote writes, and offline report are unchanged. Content/history audits now verify known native-adoption completion and independent body-review chains instead of classifying them as unknown operation families. A missing or mismatched completion stays partial. A completed independent review preserves the original needs_review outcome and is reported as information; metadata-only runs do not acquire this stronger proof.
 
 Both the initial and final reachable observations publish each received owner result before starting the next query. If Files access is denied and the following Records request exhausts the budget, the paused online and offline reports retain the permission finding and its owner coverage. Resume replays the confirmed denial within that original task; a separate final observation may establish that access has since changed, while the original denied response remains in the run's evidence. Budget exhaustion is an additional fact, not a replacement for an already received failure.
 

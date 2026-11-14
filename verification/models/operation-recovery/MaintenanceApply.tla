@@ -1,13 +1,13 @@
 --------------------------- MODULE MaintenanceApply ---------------------------
 EXTENDS Naturals, FiniteSets
-CONSTANTS SkipPrefix, ReplayUnknown, PublishPartial, ReadPending, IgnoreDrift
+CONSTANTS SkipPrefix, ReplayUnknown, PublishPartial, ReadPending, IgnoreDrift, AcceptUnreviewed
 VARIABLE s
 vars == <<s>>
 Children == 1..3
 Prefix(n) == {i \in Children : i < n}
 Init == s = [phase |-> "plan", child |-> 1, pending |-> FALSE,
              attempts |-> [i \in Children |-> 0], applied |-> {}, acks |-> {},
-             outcomes |-> {}, verified |-> {}, drift |-> FALSE,
+             outcomes |-> {}, verified |-> {}, failed |-> {}, reviewed |-> {}, drift |-> FALSE,
              prefixBeforeSend |-> TRUE, frozenBeforeSend |-> TRUE,
              currentRead |-> "old", oldPin |-> "old"]
 RetainParent ==
@@ -55,21 +55,34 @@ NextChild ==
 Complete ==
   /\ s.phase = "verified" /\ (s.verified = Children \/ PublishPartial)
   /\ s' = [s EXCEPT !.phase = "complete", !.pending = FALSE]
+RecordKnownFailure ==
+  /\ s.phase = "ack" /\ s.child \in s.acks
+  /\ s' = [s EXCEPT !.phase = "known_failed", !.failed = @ \cup {s.child}]
+ReviewKnownFailure ==
+  /\ s.phase = "known_failed" /\ s.child \in s.failed
+  /\ s' = [s EXCEPT !.phase = "reviewed_failure", !.reviewed = @ \cup {s.child}]
+SettlePartial ==
+  /\ s.phase \in {"known_failed", "reviewed_failure"}
+  /\ s.child \in s.failed /\ Prefix(s.child) \subseteq s.verified
+  /\ (s.child \in s.reviewed \/ AcceptUnreviewed)
+  /\ s' = [s EXCEPT !.phase = "partial", !.pending = FALSE]
 ObserveCurrent ==
   /\ s.phase # "plan"
   /\ s' = [s EXCEPT !.currentRead = IF s.pending /\ ~ReadPending THEN "blocked" ELSE "new"]
 Stop ==
-  /\ s.phase \in {"stopped", "complete", "unknown"}
+  /\ s.phase \in {"stopped", "complete", "unknown", "known_failed", "reviewed_failure", "partial"}
   /\ UNCHANGED vars
 Next == RetainParent \/ ExternalEdit \/ RetainChildIntent \/ RejectDrift \/ Send
         \/ ServiceApplies \/ RetainAck \/ VerifyOutcome \/ CheckpointChild \/ Interrupt
-        \/ ReconcileOriginal \/ RepeatUnknown \/ NextChild \/ Complete \/ ObserveCurrent \/ Stop
+        \/ ReconcileOriginal \/ RepeatUnknown \/ NextChild \/ Complete \/ RecordKnownFailure
+        \/ ReviewKnownFailure \/ SettlePartial \/ ObserveCurrent \/ Stop
 Spec == Init /\ [][Next]_vars
 
 TypeOK ==
-  /\ s.child \in Children /\ s.phase \in {"plan", "boundary", "intent", "sent", "response", "ack", "outcome", "verified", "unknown", "stopped", "complete"}
+  /\ s.child \in Children /\ s.phase \in {"plan", "boundary", "intent", "sent", "response", "ack", "outcome", "verified", "unknown", "stopped", "complete", "known_failed", "reviewed_failure", "partial"}
   /\ s.attempts \in [Children -> 0..2]
   /\ s.applied \subseteq Children /\ s.acks \subseteq Children /\ s.outcomes \subseteq Children /\ s.verified \subseteq Children
+  /\ s.failed \subseteq Children /\ s.reviewed \subseteq s.failed
   /\ s.currentRead \in {"old", "blocked", "new"} /\ s.oldPin = "old"
   /\ \A key \in {"pending", "drift", "prefixBeforeSend", "frozenBeforeSend"} : s[key] \in BOOLEAN
 ConfirmedPrefixBeforeSuffix == s.prefixBeforeSend
@@ -78,5 +91,7 @@ CompletionNeedsAllChildren == s.phase = "complete" => s.verified = Children
 PendingTreeNotPublished == s.pending => s.currentRead # "new"
 ObservedDriftStopsDispatch == s.frozenBeforeSend
 OriginalOutcomeAuthority == s.verified \subseteq s.outcomes /\ s.outcomes \subseteq s.acks /\ s.acks \subseteq s.applied
+PartialRequiresOriginalReview == s.phase = "partial" => s.child \in s.reviewed /\ s.child \in s.failed
+PartialTailNeverSent == s.phase = "partial" => \A i \in Children : i > s.child => s.attempts[i] = 0
 OldPinPreserved == s.oldPin = "old"
 =============================================================================

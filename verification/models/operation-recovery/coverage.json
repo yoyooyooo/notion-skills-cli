@@ -20,21 +20,21 @@
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
     "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
-    "packages/core/src/shared-skill-apply.ts": "4023db902844d1e94c4723fcf548daf4003dcdee8bdecc15b628643f5891c5b7",
-    "packages/core/src/shared-skill-apply-model.ts": "7e195525f65aa4d84dadac2cb640a5fc4e4ae5c7d25cdaecbaf6b7fb72ac63fe",
-    "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
+    "packages/core/src/shared-skill-apply.ts": "5b94f54da33b842de2f9fa3c80b0a011cb92eb6995c50b38247d36438eb90cdd",
+    "packages/core/src/shared-skill-apply-model.ts": "78771f79fe99934669c57314f81df8df87275804561c62bd9a5c01e5a0199bb7",
+    "packages/core/src/shared-skill-apply-target.ts": "1a72c1db5d94539b34d8be0e629de27a8b2fbb10aa928021d2da1ac912f05dab",
     "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
-    "packages/core/src/shared-skill-apply-authoring.ts": "a780ee64e8d7b6de3e9feaeb4a9d5c0c9c57fb0bde39ad8026acd03e2d9b8779",
-    "packages/core/src/shared-file-management.ts": "a297eaa8245aa276932964f5ca9351470de433b6d0162514b188b3cc96848529",
+    "packages/core/src/shared-skill-apply-authoring.ts": "adc8391fd52b8476ab4444e60281a07468d8f2aa5933f29f54dcb8d2a4587afc",
+    "packages/core/src/shared-file-management.ts": "847289c7d8b05130582bb96e5e3af73ed65443c80a4060bcdd9c6fe7ec0a0001",
     "packages/core/src/shared-snapshot.ts": "a31efa38d5d7e4af442d5db3c2a68a56bdc6f7a14c46cc1bed6ffd11559900a4",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
-    "packages/core/test/shared-skill-apply.test.ts": "b4ad2488d125b5c591291daeadaaddd66d6f3f6fb14945415a8600ce823744bf",
+    "packages/core/test/shared-skill-apply.test.ts": "a3e29ba1f4830fdd05c4e195326873e46589b2dece2ca8e05163e93676a01643",
     "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371",
-    "packages/core/src/shared-plan-storage.ts": "8dd790e4c36120636259e482359eefc9a8ddc17c1979fb7cb2daad4e8c0a9be4"
+    "packages/core/src/shared-plan-storage.ts": "0f75d7f76b47ac944809e2533d126c1b2e97c0adf62fe37d72d15ab5609e16be"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -104,7 +104,7 @@
         "reconcileSharedSkillApply",
         "loadPendingSharedSkillApplies"
       ],
-      "scope": "Three ordered children; original dispatch, received response, retained verified outcome and parent progress remain distinct. Current pending tree is not published. Original local authority is required for an unsent suffix. No CAS, atomic multi-page write or eventual-progress claim.",
+      "scope": "Three ordered children; original dispatch, received response, retained verified outcome and parent progress remain distinct. Current pending tree is not published. Original local authority is required for an unsent suffix. No CAS, atomic multi-page write or eventual-progress claim. A known failed original child may be explicitly reviewed and close the parent as partial without dispatching its tail; partial is never full success.",
       "excluded": [
         "Every native POST/PATCH/Record subrequest; narrower recovery models apply only to their named protocols",
         "Same-execution lifecycle-event ACK/query union, provider index visibility and per-Record crash persistence",
@@ -112,7 +112,8 @@
         "Notion atomic transactions or revision compare-and-swap",
         "An edit after a completed pre-dispatch observation; real readback and failure tests remain required",
         "Raw Markdown/bytes, resource formats, reference rewrite parsing and permissions",
-        "Arbitrary plan length, all provider scopes and subsequent legitimate author changes after completion"
+        "Arbitrary plan length, all provider scopes and subsequent legitimate author changes after completion",
+        "The explicit body-review proof documents, byte hashes, compact plan storage and logical/native link projections are guarded by implementation regressions, not represented as string state."
       ]
     }
   },
@@ -607,6 +608,8 @@
         "PendingTreeNotPublished",
         "ObservedDriftStopsDispatch",
         "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
         "OldPinPreserved",
         "NoDeadlock"
       ]
@@ -623,6 +626,8 @@
         "PendingTreeNotPublished",
         "ObservedDriftStopsDispatch",
         "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
         "OldPinPreserved",
         "NoDeadlock"
       ]
@@ -639,6 +644,8 @@
         "PendingTreeNotPublished",
         "ObservedDriftStopsDispatch",
         "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
         "OldPinPreserved",
         "NoDeadlock"
       ]
@@ -655,6 +662,8 @@
         "PendingTreeNotPublished",
         "ObservedDriftStopsDispatch",
         "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
         "OldPinPreserved",
         "NoDeadlock"
       ]
@@ -671,6 +680,8 @@
         "PendingTreeNotPublished",
         "ObservedDriftStopsDispatch",
         "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
         "OldPinPreserved",
         "NoDeadlock"
       ]
@@ -687,6 +698,26 @@
         "PendingTreeNotPublished",
         "ObservedDriftStopsDispatch",
         "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "unreviewed-partial.cfg",
+      "expected_broken": ["PartialRequiresOriginalReview"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "PartialRequiresOriginalReview",
+        "PartialTailNeverSent",
         "OldPinPreserved",
         "NoDeadlock"
       ]

@@ -178,6 +178,52 @@ test("readonly check and prepare expose separate complete candidates without pub
   }
 })
 
+test.each(["check", "prepare", "policy"] as const)(
+  "a newly registered empty Source has a normal explicit first-admission route in %s mode",
+  async (mode) => {
+    const f = await fixture()
+    property(property(f.main.properties).origin).relation = []
+    const result = await f.execute({ mode })
+    expect(result.execution).toBe("completed")
+    expect(result.error).toBeNull()
+    expect(result.application).toHaveLength(0)
+    expect(result.plan).toBeNull()
+    expect(property(result).empty_scope).toMatchObject({
+      reason: "no_bound_members",
+      bound_members: 0,
+      next: {
+        read_only: true,
+        argv: [
+          "ntn-skills",
+          "ctl",
+          "library",
+          "sources",
+          "check",
+          id(82),
+          "--entry",
+          library.skills.database_id,
+        ],
+      },
+    })
+    expect(result.check.status).toBe(mode === "check" ? "completed" : "not_started")
+    expect(f.acquisitions()).toBe(mode === "check" ? 1 : 0)
+    expect(f.writeCount()).toBe(0)
+  },
+)
+
+test("all-disabled members are distinct from an empty Source and an incorrect explicit target remains an error", async () => {
+  const f = await fixture()
+  property(property(f.main.properties).enabled).checkbox = false
+  const empty = await f.execute({ mode: "policy" })
+  expect(property(empty).empty_scope).toMatchObject({
+    reason: "no_enabled_members",
+    bound_members: 1,
+  })
+  const wrong = await f.execute({ scope: { kind: "skill", target: id(999) } })
+  expect(wrong.error?.code).toBe("SOURCE_RUN_SCOPE")
+  expect(f.writeCount()).toBe(0)
+})
+
 for (const [stage, from] of [
   ["current_snapshot", "SKILL.md"],
   ["candidate_file_references", "guide.md"],

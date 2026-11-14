@@ -5,6 +5,8 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
+For a new-user journey, start with [EMPTY: fresh library and progressive maintenance](features/empty-library.md), AH-1040–AH-1047. Its initializer must create the real remote schema from an empty authorized parent; clearing local caches around a prebuilt fixture does not prove that starting condition. Reuse this Skill's isolated launcher and record every action's table delta independently.
+
 AH-1024 渐进维护先读 [完整 Skill 维护矩阵](features/skill-maintenance.md)。草稿、半注册、目录资格、audit 覆盖与原操作状态分别核对。MNT01 反例同时经过目录分类和完整审计，不能靠忽略空字段获得通过。每个子票维护自身回归和公开入口，再由原 Broker integration 验证管理到实际消费。
 
 ## 有限模型维护路由

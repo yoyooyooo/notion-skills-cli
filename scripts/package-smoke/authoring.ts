@@ -18,6 +18,7 @@ import {
   checkInstalledMaintenanceRepair,
   seedMaintenanceRepairFixture,
 } from "./maintenance-repair.ts"
+import { emptyLibraryServer } from "./empty-library-server.ts"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 type HttpObservation = {
@@ -52,9 +53,16 @@ export type AuthoringContinuation = {
 
 /** The fixture owns only the loopback service; every consumer action uses the installed Node bin. */
 export async function checkAuthoring(
-  context: SmokeContext,
+  context: Pick<
+    SmokeContext,
+    "scratch" | "runtime" | "executable" | "cli" | "evidence" | "installed" | "run"
+  >,
   continuation?: (input: AuthoringContinuation) => Promise<unknown>,
-  options: { readonly maintenanceOnly?: boolean; readonly repairOnly?: boolean } = {},
+  options: {
+    readonly maintenanceOnly?: boolean
+    readonly repairOnly?: boolean
+    readonly emptyLibraryOnly?: boolean
+  } = {},
 ) {
   const root = join(context.scratch, "controlled-authoring")
   await mkdir(root)
@@ -69,6 +77,7 @@ export async function checkAuthoring(
   const resourceChildren = new Map<string, string[]>()
   let nextResourceId = 95_000
   const original = sharedCreateFixture()
+  const empty = options.emptyLibraryOnly ? emptyLibraryServer() : undefined
   const ownedPages = new Set<string>()
   original.onCreate((row) => ownedPages.add(String(row.id)))
   // Model a page authored directly in Notion, not a CLI-created identity or
@@ -87,8 +96,16 @@ export async function checkAuthoring(
   const originalDraftBody = "# Native draft\n\nKeep the original native page."
   original.base.bodies.set(draftPage, originalDraftBody)
   ownedPages.add(draftPage)
+  if (empty) {
+    original.skills.clear()
+    original.files.clear()
+    original.base.records.clear()
+    original.base.bodies.clear()
+    ownedPages.clear()
+  }
   let editedAt = Date.now()
   let loseOutcome = false
+  let loseNativeAllocation = false
   let loseMaintenanceOutcome: string | undefined
   let pendingExternalAppend: { page: string; text: string } | undefined
   const externalEvents: {
@@ -104,7 +121,9 @@ export async function checkAuthoring(
   const view = id(90_001)
   const writes = (values: readonly HttpObservation[]) =>
     values.filter(
-      (call) => call.method === "PATCH" || (call.method === "POST" && call.path === "v1/pages"),
+      (call) =>
+        call.method === "PATCH" ||
+        (call.method === "POST" && ["v1/pages", "v1/databases"].includes(call.path)),
     )
 
   // Preserve the original fixture's durable-before-create oracle. The observer
@@ -113,11 +132,29 @@ export async function checkAuthoring(
   function observeOriginalCreatePlan(body: unknown) {
     const database = new Database(join(state, "state.sqlite"), { readonly: true })
     try {
-      const rows = database
+      const candidates = database
         .query(
           "SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-native-create/%'",
         )
         .all()
+      const properties = property(property(body).properties),
+        parent = property(property(body).parent).data_source_id
+      const rows = candidates.filter((raw) => {
+        const row = property(raw),
+          plan = property(property(JSON.parse(String(row.payload))).plan)
+        if (parent === createLibrary.skills.data_source_id)
+          return (
+            text(property(properties[createLibrary.skills.property_ids["Skill ID"]!]).rich_text) ===
+            plan.skill_id
+          )
+        const fileId = text(
+          property(properties[createLibrary.files.property_ids["File ID"]!]).rich_text,
+        )
+        return [
+          ...(Array.isArray(plan.files) ? plan.files : []),
+          ...(Array.isArray(plan.resources) ? plan.resources : []),
+        ].some((file) => property(file).file_id === fileId)
+      })
       if (
         rows.length === 0 &&
         property(property(body).parent).data_source_id === createLibrary.files.data_source_id
@@ -243,6 +280,8 @@ export async function checkAuthoring(
   }
 
   const request = async (path: string, body: unknown, method: "GET" | "POST" | "PATCH") => {
+    const initialized = empty?.request(path, body, method)
+    if (initialized) return initialized.value
     const url = new URL(path, "http://127.0.0.1")
     if (url.pathname === "/v1/users/me") {
       assert.equal(method, "GET")
@@ -472,6 +511,17 @@ export async function checkAuthoring(
       assert.ok(method === "GET" || method === "POST" || method === "PATCH")
       const body: unknown = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
       const result = await request(path, body, method)
+      if (
+        loseNativeAllocation &&
+        method === "POST" &&
+        path === "v1/pages" &&
+        property(property(body).parent).data_source_id === createLibrary.skills.data_source_id
+      ) {
+        loseNativeAllocation = false
+        observed.response_lost = true
+        incoming.socket.destroy()
+        return
+      }
       const record = text(property(property(property(body).properties).record).rich_text)
       if (
         loseMaintenanceOutcome !== undefined &&
@@ -653,6 +703,140 @@ export async function checkAuthoring(
   }
   let completed = false
   try {
+    if (empty) {
+      assert.equal(empty.count(), 0)
+      const initialized = await invoke("empty-library-init", [
+        "ctl",
+        "library",
+        "init",
+        "--parent",
+        empty.parent,
+      ])
+      assert.equal(initialized.source_management_ready, true)
+      assert.equal(empty.count(), 4)
+      assert.equal(original.skills.size, 0)
+      assert.equal(original.files.size, 0)
+      assert.equal(original.base.records.size, 0)
+      const repeat = await noWrites("empty-library-repeat", [
+        "ctl",
+        "library",
+        "init",
+        "--parent",
+        empty.parent,
+      ])
+      assert.deepEqual(repeat.library, initialized.library)
+      const folder = await directory("first-empty-upload", {
+        "SKILL.md":
+          "---\nname: Empty HTTP first\ndescription: Public initialization and exact original operations\n---\n\n# Main\n\n[Guide](references/guide.md)\n",
+        "references/guide.md": "# Guide\n\nEMPTY-HTTP-V1\n",
+      })
+      await noWrites("empty-create-preview", [
+        "create",
+        folder,
+        "--database",
+        createLibrary.skills.database_id,
+        "--dry-run",
+      ])
+      const first = await invoke("empty-first-create", [
+        "create",
+        folder,
+        "--database",
+        createLibrary.skills.database_id,
+      ])
+      assert.equal(first.verified, true)
+      const before = {
+        skills: original.skills.size,
+        files: original.files.size,
+        records: original.base.records.size,
+      }
+      assert.equal(
+        (
+          await noWrites("empty-first-repeat", [
+            "create",
+            folder,
+            "--database",
+            createLibrary.skills.database_id,
+          ])
+        ).reused,
+        true,
+      )
+      assert.deepEqual(
+        {
+          skills: original.skills.size,
+          files: original.files.size,
+          records: original.base.records.size,
+        },
+        before,
+      )
+      const unknownFolder = await directory("unknown-native-allocation", {
+        "SKILL.md":
+          "---\nname: Empty HTTP unknown\ndescription: Preserve one unknown original allocation\n---\n\n# Unknown original\n",
+      })
+      loseNativeAllocation = true
+      await invoke(
+        "empty-native-response-lost",
+        ["create", unknownFolder, "--database", createLibrary.skills.database_id],
+        1,
+      )
+      const allocated = original.skills.size
+      const writesBefore = writes(calls).length
+      await noWrites(
+        "empty-unknown-not-recreated",
+        ["create", unknownFolder, "--database", createLibrary.skills.database_id],
+        1,
+      )
+      assert.equal(original.skills.size, allocated)
+      assert.equal(writes(calls).length, writesBefore)
+      const ackFolder = await directory("known-native-prefix", {
+        "SKILL.md":
+          "---\nname: Empty HTTP original ACK\ndescription: Exact allocation and lost completion response\n---\n\n# Original ACK\n",
+      })
+      loseMaintenanceOutcome = "outcome-skill-create-"
+      await invoke(
+        "empty-completion-response-lost",
+        ["create", ackFolder, "--database", createLibrary.skills.database_id],
+        1,
+      )
+      const known = original.skills.size
+      const recovered = await invoke("empty-acknowledged-prefix-recovered", [
+        "create",
+        ackFolder,
+        "--database",
+        createLibrary.skills.database_id,
+      ])
+      assert.equal(recovered.verified, true)
+      assert.equal(original.skills.size, known)
+      assert.equal(
+        (
+          await noWrites("empty-recovered-repeat", [
+            "create",
+            ackFolder,
+            "--database",
+            createLibrary.skills.database_id,
+          ])
+        ).reused,
+        true,
+      )
+      completed = true
+      const result = {
+        proof: "public_initializer_and_actual_node_with_empty_controlled_notion",
+        runtime: context.runtime,
+        executable: context.executable,
+        cli_sha256: hash(await readFile(context.executable)),
+        schema_created_by_public_init: true,
+        initial_business_rows: 0,
+        table_count: empty.count(),
+        same_unknown_allocation: true,
+        exact_ack_prefix_recovered: true,
+        known_error_and_original_failure_retained: true,
+        no_duplicate_native_pages: true,
+        command_count: commands.length,
+        server_received_requests: calls.length,
+        receipt: join(root, "evidence.json"),
+      }
+      context.evidence.controlled_empty_library = result
+      return result
+    }
     if (options.repairOnly) {
       const maintenanceRepair = await repair()
       completed = true

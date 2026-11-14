@@ -34,6 +34,10 @@ import { fileRecord, type FileRecord } from "./skill-file-index.ts"
 import { sha256, Store } from "./store.ts"
 import { loadPendingSharedObservationPlans } from "./shared-observation-operation.ts"
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
+import { assertSharedNativeAdoptionComplete } from "./shared-native-adoption.ts"
+import { nativeAdoptionEntity } from "./shared-native-adoption-model.ts"
+import { reconcileSharedBodyWriteReview } from "./shared-body-write-review.ts"
+import { validateSharedBodyWriteReviewPlan } from "./shared-body-write-review-model.ts"
 import { loadPendingSharedMetadataWrites } from "./shared-metadata-write.ts"
 import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
 import {
@@ -955,8 +959,21 @@ export function inspectAuditSkill(
     const operations = yield* querySharedOperationIndex(library, input.page_id)
     const pending: Array<{ operation_id: string; plan: unknown }> = []
     const completedEvents = new Set(events.map((event) => event.event_id))
+    const bodyReviewIds = new Set(
+      operations.flatMap((header) => {
+        const found = /^(?:reviewed-)?(body-review-[a-f0-9]{64})$/u.exec(header.record_id)
+        return found?.[1] === undefined ? [] : [found[1]]
+      }),
+    )
+    const nativeAdoptions = operations.filter(
+      (header) =>
+        header.entity_id === nativeAdoptionEntity &&
+        /^skill-adopt-[a-f0-9]{64}$/u.test(header.record_id),
+    )
     const unclassified = operations.filter(
       (header) =>
+        !nativeAdoptions.includes(header) &&
+        !bodyReviewIds.has(header.record_id.replace(/^reviewed-/u, "")) &&
         !(
           header.entity_id === sharedCreateRestorationOutcomesEntity &&
           header.record_id.startsWith("resource-note-outcome-") &&
@@ -1021,6 +1038,70 @@ export function inspectAuditSkill(
           )
       }
     } else {
+      if (nativeAdoptions.length > 0) {
+        const completed = yield* assertSharedNativeAdoptionComplete(
+          library,
+          input.page_id,
+          nativeAdoptions,
+        ).pipe(Effect.result)
+        if (completed._tag === "Failure")
+          yield* unavailable(
+            "NATIVE_ADOPTION_COMPLETION_UNVERIFIED",
+            input.page_id,
+            "operations",
+            completed.failure,
+          )
+      }
+      for (const operationId of bodyReviewIds) {
+        const completed = yield* Effect.gen(function* () {
+          const rows = yield* querySharedRecords(library, {
+            skillPageId: input.page_id,
+            kind: "operation",
+            recordId: operationId,
+            payloadContainsBody: true,
+          })
+          if (rows.length !== 1)
+            return yield* Effect.fail(
+              fail(
+                "SHARED_BODY_REVIEW_INELIGIBLE",
+                "The original review plan must be present; a receipt alone is not completion.",
+              ),
+            )
+          const row = rows[0]!,
+            plan = yield* validateSharedBodyWriteReviewPlan(row.payload)
+          if (
+            row.operation_id !== operationId ||
+            row.entity_id !== plan.file_id ||
+            plan.operation_id !== operationId ||
+            plan.library_id !== library.library_id ||
+            plan.skill_page_id !== input.page_id
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_BODY_REVIEW_INVALID",
+                "The audit review belongs to another original operation or scope.",
+              ),
+            )
+          return yield* reconcileSharedBodyWriteReview(library, plan)
+        }).pipe(Effect.result)
+        if (completed._tag === "Failure")
+          yield* unavailable(
+            "INDEPENDENT_BODY_REVIEW_UNVERIFIED",
+            operationId,
+            "operations",
+            completed.failure,
+          )
+        else
+          add(
+            "ORIGINAL_BODY_WRITE_INDEPENDENTLY_REVIEWED",
+            operationId,
+            "operations",
+            "The original body write remains needs_review. Its separate accepted observation and complete review ancestry are verified without writes.",
+            completed.success,
+            "full",
+            "info",
+          )
+      }
       for (const header of operations.filter(
         (value) => value.entity_id === fileAddAcceptanceReviewsEntity,
       )) {

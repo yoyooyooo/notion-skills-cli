@@ -46,6 +46,11 @@ import {
 } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { sha256, Store } from "./store.ts"
+import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
+import {
+  sharedSkillApplyChildren,
+  validateSharedSkillApplyPlan,
+} from "./shared-skill-apply-model.ts"
 
 const OutcomeSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -697,7 +702,65 @@ export function reviewSharedBodyWrite(input: {
     let result: ReturnType<typeof reviewed>
     if (recovery) result = yield* verifyChain(input.library, plan, facts)
     else {
-      const other = local.find((entry) => entry.plan.operation_id !== plan.original_operation_id)
+      const allowed = new Set([plan.original_operation_id])
+      const parents = local.filter((entry) => entry.plan.kind === "skill_apply")
+      if (parents.length === 1) {
+        const parent = yield* validateSharedSkillApplyPlan(parents[0]!.plan)
+        const children = sharedSkillApplyChildren(parent)
+        const index = children.findIndex((child) => child.operation_id === original.operation_id)
+        if (
+          index >= 0 &&
+          parent.library_id === original.library_id &&
+          parent.skill_page_id === original.skill_page_id &&
+          canonicalSharedJson(children[index]) === canonicalSharedJson(original)
+        ) {
+          const retainedParents = yield* querySharedRecords(input.library, {
+            skillPageId: original.skill_page_id,
+            kind: "operation",
+            entityId: "skill-apply-plans-v1",
+            recordId: parent.operation_id,
+            payloadContainsBody: true,
+          })
+          if (
+            retainedParents.length === 1 &&
+            canonicalSharedJson(retainedParents[0]!.payload) ===
+              canonicalSharedJson(storedSharedOperationPlan(parent))
+          ) {
+            allowed.add(parent.operation_id)
+            // Only already-applied original prefix facts may coexist with this
+            // review. No unrelated or unknown child gains write authority.
+            for (const child of children.slice(0, index)) {
+              const plans = yield* querySharedRecords(input.library, {
+                skillPageId: original.skill_page_id,
+                kind: "operation",
+                recordId: child.operation_id,
+                payloadContainsBody: true,
+              })
+              const results = yield* querySharedRecords(input.library, {
+                skillPageId: original.skill_page_id,
+                kind: "operation",
+                recordId: `outcome-${child.operation_id}`,
+              })
+              const localChild = local.find(
+                (entry) => entry.plan.operation_id === child.operation_id,
+              )
+              const result = property(results[0]?.payload)
+              if (
+                plans.length === 1 &&
+                results.length === 1 &&
+                result.operation_id === child.operation_id &&
+                result.status === "applied" &&
+                canonicalSharedJson(plans[0]!.payload) ===
+                  canonicalSharedJson(storedSharedOperationPlan(child)) &&
+                (localChild === undefined ||
+                  canonicalSharedJson(localChild.plan) === canonicalSharedJson(child))
+              )
+                allowed.add(child.operation_id)
+            }
+          }
+        }
+      }
+      const other = local.find((entry) => !allowed.has(entry.plan.operation_id))
       if (other !== undefined)
         return yield* Effect.fail(
           fail(

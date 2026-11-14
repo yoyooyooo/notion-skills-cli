@@ -42,6 +42,14 @@ export async function checkBuiltinLifecycle(context: SmokeContext) {
     "--path",
     "references/operations.md",
   ])
+  const setupReference = await cli([
+    "ctl",
+    "builtin",
+    "read",
+    officialId,
+    "--path",
+    "references/setup.md",
+  ])
   const officialOutput = join(scratch, "official-maintain")
   const officialExport = await cli([
     "ctl",
@@ -63,6 +71,7 @@ export async function checkBuiltinLifecycle(context: SmokeContext) {
   for (const [path, response] of [
     ["SKILL.md", officialRead],
     ["references/operations.md", officialReference],
+    ["references/setup.md", setupReference],
   ] as const) {
     const source = await readFile(
       join(installed, "skills/notion/ntn-skills-maintain", path),

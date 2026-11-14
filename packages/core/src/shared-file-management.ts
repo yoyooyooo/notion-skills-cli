@@ -1458,7 +1458,8 @@ function authenticateApplyParent(
     if (
       rows.length !== 1 ||
       stored === undefined ||
-      canonicalSharedJson(stored.payload) !== canonicalSharedJson(validated)
+      canonicalSharedJson(stored.payload) !==
+        canonicalSharedJson(storedSharedOperationPlan(validated))
     )
       return yield* Effect.fail(
         fail(

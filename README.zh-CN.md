@@ -69,6 +69,8 @@ ntn-skills --help
 
 需要自行生成安装包时，按[贡献指南中的开发与构建步骤](CONTRIBUTING.md#development-setup) 操作。Bun 用于安装依赖和构建；开发 CLI 与真实 SQLite 消费者均由 Node.js 执行。
 
+首次使用可直接把[初始化指引](skills/notion/ntn-skills-maintain/references/setup.md)交给 Agent。用户提供已安全配置的凭据和授权父页面，CLI 创建并验证四表，只需保留一个库入口。
+
 ## 快速开始
 
 ### 1. 连接 Notion

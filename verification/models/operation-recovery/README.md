@@ -124,3 +124,11 @@ bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/
 ### Explicit observed-body acceptance
 
 IndependentAcceptance now covers both the three-Record exact-candidate review and the four-Record explicit observed-body review in the same finite model, without new configuration families. The additional retained body is required before the adopted event and by cold reconciliation. Original failure/identity, per-dispatch revalidation and unknown-request non-replay are unchanged. Exact observed-byte selection, optional approval flag, native link projection and stored-plan codec are implementation regressions, not proven by this abstract model. History and old generated reports keep their original input identity.
+
+### Reviewed partial parents
+
+MaintenanceApply now includes a known failed original child, explicit review and a partial parent outcome. Partial releases its pending barrier without sending the remaining children, and is distinct from full completion. `unreviewed-partial.cfg` breaks `PartialRequiresOriginalReview`; the positive run also checks `PartialTailNeverSent`. Concrete compact-plan storage, full observation hashes and native versus logical links remain implementation regression obligations. This does not make generic unknown requests recoverable or prove atomic Notion updates. Earlier generated charts retain their historical identities; the current runner renders these new states from the current model/view.
+
+### Reviewed partial parent state
+
+[Selected generated diagrams](../../../docs/statecharts/maintenance-reviewed-partial/README.md) show the existing MaintenanceApply workflow with one explicit known-review branch. A reviewed original failure can close the parent as partial without dispatching the remaining children. An unknown original does not become reviewed through a fresh observation alone. The negative configuration `unreviewed-partial` breaks only `PartialRequiresOriginalReview`; the other six configurations retain their named positive or negative outcomes.

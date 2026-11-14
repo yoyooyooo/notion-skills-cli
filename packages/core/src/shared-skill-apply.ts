@@ -452,6 +452,7 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
     const children = sharedSkillApplyChildren(plan)
     const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
     let prefix = 0
+    let stoppedChild: SharedSkillApplyChild | undefined
     for (const child of children) {
       const childRows = yield* querySharedRecords(library, {
         skillPageId: plan.skill_page_id,
@@ -476,17 +477,14 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
           ),
         )
       const recovered = yield* reconcileChild(library, child)
-      if (recovered.status !== "applied")
-        return yield* Effect.fail(
-          fail(
-            "SHARED_APPLY_UNRESOLVED",
-            "A visible child is not applied. Resume does not infer it was unsent.",
-            { child_operation_id: child.operation_id },
-          ),
-        )
+      if (recovered.status !== "applied") {
+        stoppedChild = child
+        break
+      }
       prefix += 1
     }
-    for (const child of children.slice(prefix)) {
+    const suffixStart = prefix + (stoppedChild === undefined ? 0 : 1)
+    for (const child of children.slice(suffixStart)) {
       const childRows = yield* querySharedRecords(library, {
         skillPageId: plan.skill_page_id,
         kind: "operation",
@@ -521,6 +519,30 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
           { operation_id: plan.operation_id },
         ),
       )
+    if (stoppedChild !== undefined) {
+      // Explicit review settles the known child without making its old failed
+      // write successful. Close the parent as partial; never dispatch its tail.
+      const completed: Outcome["children"] = [
+        ...children
+          .slice(0, prefix)
+          .map((child) => ({ operation_id: child.operation_id, status: "applied" as const })),
+        { operation_id: stoppedChild.operation_id, status: "not_applied" },
+        ...children
+          .slice(suffixStart)
+          .map((child) => ({ operation_id: child.operation_id, status: "not_sent" as const })),
+      ]
+      yield* saveOutcome(library, plan, completed, "ORIGINAL_CHILD_VERIFIED_NOT_APPLIED")
+      yield* retireVerified(plan, journal)
+      return {
+        status: "partial" as const,
+        operation_id: plan.operation_id,
+        verified: true as const,
+        completed_child_operations: children.slice(0, prefix).map((child) => child.operation_id),
+        verification: "original_outcomes_and_explicit_review" as const,
+        requires_fresh_read: true as const,
+        protection: sharedSkillApplyProtection,
+      }
+    }
     return yield* continueSharedSkillApply(library, plan, journal, children.slice(prefix))
   })
 }

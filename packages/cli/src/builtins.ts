@@ -7,6 +7,9 @@ import maintain from "../../../skills/notion/ntn-skills-maintain/SKILL.md" with 
 import operations from "../../../skills/notion/ntn-skills-maintain/references/operations.md" with {
   type: "text",
 }
+import setup from "../../../skills/notion/ntn-skills-maintain/references/setup.md" with {
+  type: "text",
+}
 import sync from "../../../skills/notion/ntn-skills-sync/SKILL.md" with { type: "text" }
 import synchronization from "../../../skills/notion/ntn-skills-sync/references/synchronization.md" with {
   type: "text",
@@ -23,6 +26,7 @@ export const builtins = [
   defineBuiltin("notion/ntn-skills-maintain", version, [
     { path: "SKILL.md", bytes: encoder.encode(maintain) },
     { path: "references/operations.md", bytes: encoder.encode(operations) },
+    { path: "references/setup.md", bytes: encoder.encode(setup) },
   ]),
   defineBuiltin("notion/ntn-skills-sync", version, [
     { path: "SKILL.md", bytes: encoder.encode(sync) },

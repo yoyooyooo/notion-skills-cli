@@ -70,7 +70,17 @@ export function loadSharedApplyReferenceTree(plan: Extract<SharedSkillApplyPlan,
         }
       }
     }
-    for (const child of plan.bodies) {
+    for (const child of [...plan.bodies, ...(plan.unchanged_bodies ?? [])]) {
+      if (plan.unchanged_bodies?.includes(child)) {
+        const bound = snapshot.file_bindings?.find((binding) => binding.file_id === child.file_id)
+        if (!bound || bound.page_id !== child.page_id || bound.path !== child.path)
+          return yield* Effect.fail(
+            fail(
+              "SHARED_APPLY_FINAL_TREE",
+              "A read-only body projection is not the original unique snapshot binding.",
+            ),
+          )
+      }
       const before = tree.get(child.path)
       if (before === undefined)
         return yield* Effect.fail(

@@ -160,10 +160,19 @@ function applyMaintenanceTree(
           },
         )
     })
+    // Existing pages keep their identity across a move. Resolve authored links
+    // against the declared final paths, never the pre-move path index.
+    const targetBindings = (snapshot.file_bindings ?? [])
+      .filter((binding) => !classified.removes.includes(binding.path))
+      .map((binding) => ({
+        ...binding,
+        path: classified.moves.find((move) => move.from === binding.path)?.to ?? binding.path,
+      }))
+    const projectionSnapshot = { ...snapshot, file_bindings: targetBindings }
     const project = (file: (typeof classified.edits)[number], currentBytes?: Uint8Array) =>
       applyChecked(() =>
         projectSharedNotionMarkdown(
-          sharedAuthoringMarkdown(snapshot, file.path, file.bytes, {
+          sharedAuthoringMarkdown(projectionSnapshot, file.path, file.bytes, {
             name: input.name,
             description: input.description,
             ...(currentBytes === undefined ? {} : { currentBytes }),
@@ -192,7 +201,7 @@ function applyMaintenanceTree(
             new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
           )
           return projectSharedNotionMarkdown(
-            restoreSharedNativeFileLinks(document.body, file.path, snapshot.file_bindings ?? []),
+            restoreSharedNativeFileLinks(document.body, file.path, targetBindings),
             { purpose: "data_source_create" },
           )
         }),
@@ -322,6 +331,7 @@ function applyMaintenanceTree(
     }
     const layout = preparedLayout
     const bodies = []
+    const unchangedBodies = []
     for (const entry of edited) {
       const bindings = inspected.evidence.files.filter((file) => file.path === entry.file.path)
       if (bindings.length !== 1 || bindings[0] === undefined)
@@ -343,6 +353,7 @@ function applyMaintenanceTree(
         expected: { heads: bindings[0].heads, body_sha256: bindings[0].body_sha256 },
       })
       if (plan.before.fingerprint.sha256 !== plan.candidate.content.sha256) bodies.push(plan)
+      else unchangedBodies.push(plan)
     }
     const hasMetadata =
       input.name !== undefined ||
@@ -462,6 +473,7 @@ function applyMaintenanceTree(
       final_files: finalFiles,
       changes: input.changes ?? null,
       bodies,
+      ...(unchangedBodies.length ? { unchanged_bodies: unchangedBodies } : {}),
       layout,
       ...(metadataPlan === undefined ? {} : { metadata: metadataPlan }),
       stages,

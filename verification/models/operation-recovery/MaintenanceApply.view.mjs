@@ -6,6 +6,7 @@ function faults({ s }) {
     ...(s.phase === "complete" && s.verified.length !== 3 ? ["半套文件树被标为完成"] : []),
     ...(s.pending && s.currentRead === "new" ? ["未决文件树进入当前消费"] : []),
     ...(!s.frozenBeforeSend ? ["已知人工变更后仍派发"] : []),
+    ...(s.phase === "partial" && !s.reviewed.includes(s.child) ? ["未审阅原失败却解除屏障"] : []),
   ]
 }
 export function state(value) {
@@ -13,6 +14,9 @@ export function state(value) {
     bad = faults(value)
   if (bad.length) return bad.join("；")
   if (s.phase === "complete") return "三个子操作有完整原结果；允许新选择"
+  if (s.phase === "known_failed") return "原响应已确认但结果需审阅；后缀未派发"
+  if (s.phase === "reviewed_failure") return "原失败已明确审阅；不把原写入改为成功"
+  if (s.phase === "partial") return "父操作部分完成；未发后缀保持未发，重新读取当前内容"
   if (s.phase === "unknown")
     return s.outcomes.includes(s.child)
       ? "当前子操作的原结果已留存，父进度待续接"
@@ -48,6 +52,9 @@ export const step = (action) => {
     RepeatUnknown: "错误地重复未知写入",
     NextChild: "进入下一冻结子操作",
     Complete: "全部验证后完成父操作",
+    RecordKnownFailure: "记录有原响应的已知失败",
+    ReviewKnownFailure: "显式审阅原失败和完整当前观察",
+    SettlePartial: "按原事实结为部分完成，不派发后缀",
     ObserveCurrent: "请求读取当前文件树",
     Stop: null,
   }
@@ -58,7 +65,9 @@ export const group = (value) =>
     ? "违例"
     : value.s.phase === "complete"
       ? "已完成"
-      : ["stopped", "unknown"].includes(value.s.phase)
+      : ["stopped", "unknown", "known_failed", "reviewed_failure", "partial"].includes(
+            value.s.phase,
+          )
         ? "保留并停止"
         : "维护中"
 export const colors = { 违例: "pink", 已完成: "teal", 保留并停止: "yellow", 维护中: "blue" }

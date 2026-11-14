@@ -10,6 +10,7 @@ import {
 } from "./shared-notion-document-spacing.ts"
 import { projectNativeTextBreaks } from "./shared-notion-text-breaks.ts"
 import { projectNativeHeadingLiterals } from "./shared-notion-literal-text.ts"
+import { projectNativeTableHostnames } from "./shared-notion-table-hostnames.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import { compatibleImportMarkdown } from "./shared-import-markdown.ts"
 import {
@@ -109,6 +110,10 @@ const ProjectionV14Schema = Schema.Struct({
   ...ProjectionV13Schema.fields,
   version: Schema.Literal(14),
 })
+const ProjectionV15Schema = Schema.Struct({
+  ...ProjectionV13Schema.fields,
+  version: Schema.Literal(15),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
@@ -124,10 +129,11 @@ export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV12Schema,
   ProjectionV13Schema,
   ProjectionV14Schema,
+  ProjectionV15Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
-export const currentSharedNotionMarkdownVersion = 13
+export const currentSharedNotionMarkdownVersion = 15
 
 export const SharedNotionMarkdownPolicySchema = Schema.Union([
   Schema.Struct({
@@ -227,6 +233,13 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(15),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
 /** Retained policies keep their exact bytes. New writes predict independently
@@ -293,7 +306,8 @@ export function projectSharedNotionMarkdown(
           literalEscapes: version >= 10 ? "markdown" : version >= 7 ? "underscores" : "none",
         })
       : projected.markdown
-  const body = version >= 11 ? projectNativeHeadingLiterals(text) : text
+  const heading = version >= 11 ? projectNativeHeadingLiterals(text) : text
+  const body = version >= 15 ? projectNativeTableHostnames(heading) : heading
   return {
     version,
     ...common,

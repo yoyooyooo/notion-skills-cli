@@ -22,6 +22,7 @@ describe("native Markdown projection v13 creation lists", () => {
 
   test("predicts the observed native81 list fragment with generic text and unchanged wire", () => {
     const projection = projectSharedNotionMarkdown(native81.input_markdown, {
+      version: 13,
       purpose: "data_source_create",
     })
     expect(projection.version).toBe(13)

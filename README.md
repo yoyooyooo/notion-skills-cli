@@ -71,6 +71,8 @@ The executable defaults to this npm installation. Developers may set `NTN_SKILLS
 
 To produce a package yourself, follow [the contributor setup and build instructions](CONTRIBUTING.md#development-setup). Bun installs dependencies and builds the package; development and real SQLite consumers execute on Node.js.
 
+For first use with an authorized empty parent, follow the [Agent setup reference](skills/notion/ntn-skills-maintain/references/setup.md). The CLI creates and validates the four-table library; users keep one entry ID.
+
 ## Quick start
 
 ### 1. Connect Notion

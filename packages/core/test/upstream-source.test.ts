@@ -4,7 +4,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Exit, Layer } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/process"
 import { execFileSync } from "node:child_process"
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { access, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
@@ -79,6 +79,58 @@ function discover(input: DiscoverSourceInput) {
 function result(input: DiscoverSourceInput) {
   return Effect.runPromise(discoverSource(input).pipe(Effect.result, Effect.provide(services)))
 }
+
+test("a filtered Git acquisition retains selected and referenced blobs without downloading an unrelated large asset", async () => {
+  await repository(async (directory) => {
+    git(directory, ["config", "uploadpack.allowFilter", "true"])
+    git(directory, ["config", "uploadpack.allowAnySHA1InWant", "true"])
+    const main = skill(
+      "small",
+      "Read [shared notes](../../shared/notes.md), without loading the unselected workflow.",
+    )
+    await put(directory, "skills/small/SKILL.md", main)
+    await put(directory, "skills/small/run", "#!/bin/sh\necho not-executed\n")
+    await put(directory, "skills/unselected/SKILL.md", skill("unselected", "Not selected."))
+    const external = "# Exact shared notes\n"
+    await put(directory, "shared/notes.md", external)
+    await put(directory, "unselected/large.bin", randomBytes(2 * 1024 * 1024))
+    const revision = commit(directory),
+      metrics = createRequestMetrics()
+    const snapshot = await Effect.runPromise(
+      discoverSource(
+        input(directory, {
+          source: { type: "git", url: `file://${directory}`, ref: revision },
+          roots: ["skills/small"],
+        }),
+        { metrics },
+      ).pipe(Effect.provide(services)),
+    )
+    expect(snapshot.revision).toBe(revision)
+    expect(snapshot.members.map((member) => member.member_key)).toEqual(["skills/small"])
+    expect(
+      snapshot.members[0]!.portable.files.find((file) => file.path === "SKILL.md")?.bytes,
+    ).toEqual(utf8.encode(main))
+    expect(snapshot.external_resources).toMatchObject([
+      {
+        source_path: "shared/notes.md",
+        sha256: createHash("sha256").update(external).digest("hex"),
+      },
+    ])
+    const observed = metrics.snapshot().source_acquisitions!
+    expect(observed.outcomes.success).toBe(1)
+    expect(observed.repository_object_bytes).toBeLessThan(256 * 1024)
+    expect(observed.cat_file_bytes).toBe(
+      utf8.encode(main + "#!/bin/sh\necho not-executed\n" + external).byteLength,
+    )
+    const all = await discover(
+      input(directory, { source: { type: "git", url: `file://${directory}`, ref: revision } }),
+    )
+    expect(all.members.map((member) => member.member_key)).toEqual([
+      "skills/small",
+      "skills/unselected",
+    ])
+  })
+}, 30000)
 
 test("formal Git discovery reports real fetch/storage/blob costs without changing fixed content identity", async () => {
   await repository(async (directory) => {

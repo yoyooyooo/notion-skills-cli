@@ -65,10 +65,31 @@ Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_E
 | Source selection | `ctl library source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` |
 | Profile revision | Repeat the exact complete `profile set` intent with `--reconcile` |
 
-Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. These source and Profile operations use their returned reconciliation actions. Unified `ctl operation resume` can continue only an original shared apply's proved-unsent suffix after its verified prefix, under the original local journal; it does not resume the operations in this table. Legacy Publication IDs retain their separate resume protocol. A verified recovery proves its reported status, not necessarily completion of the intended change.
+Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. These source and Profile operations use their returned reconciliation actions. Unified `ctl operation resume` can continue only an original shared apply's proved-unsent suffix after its verified prefix, under the original local journal; it does not resume the operations in this table. A verified recovery proves its reported status, not necessarily completion of the intended change.
 
 ## Unresolved original results
 
 A verified recovery proves its reported outcome, not necessarily completion of the intended change. Keep successful participants, blocked items and unknown requests separate. Resolve stale unused plans by preparing again; retain a dispatched original plan for reconciliation. Missing access is not deletion. Source failure does not authorize another provider, local copy or latest-branch fallback.
 
 An operation from another retained protocol uses its own returned recovery action and exact original IDs. Its current page, original history and local receipts remain relevant; this Sources workflow does not convert, retire or replace them.
+
+## The first member of a new Source
+
+A registered Source can legitimately have no bound members. `sources run SOURCE --entry ENTRY --all-bound --mode policy` or prepare returns a completed no-op with `empty_scope` and a read-only next action. It does not imply that content was imported. Check mode can still discover the first candidate; use an exact returned member key with `admit` and `admit-apply`. Admission stays disabled unless explicitly enabled. A Source with bound but disabled members reports that different reason. An incorrect explicit --target still fails.
+
+A source refresh selects a complete immutable version; its `body_writes: 0` and `projection_writeback: false` do not claim the editable Notion page changed. When the user authorizes a specific page to return to the currently selected upstream text, use `ctl file restore-follow` for that exact file. Retain native customizations elsewhere. Automatic policy still refuses an unsafe native body replacement rather than treating a version selection as a page update. External schedules call these finite capabilities; the CLI does not install a scheduler.
+
+## Selected Git acquisition and first update
+
+Git discovery enumerates the complete pinned tree metadata, negotiating
+`blob:none` with the server. It reads blob sizes and bytes only for the selected
+members and their declared external resources. A server without filtering can
+use Git's standard full-object fallback; actual wire bytes are not inferred from
+local object size. Commit/OID, content hashes, executable modes, supported links
+and acquisition budgets remain checked. No repository hooks or Skill scripts run.
+
+Preparing or applying a selected revision does not prove Notion's editable page
+already displays it. Inspect `ctl library state ... --observe`; a basic explicit
+update uses `restore-follow` for each approved following file and checks the full
+native readback. Keep custom files and old pins intact. The normal finite `run`
+does not gain permission to overwrite human edits or accept every new member.
