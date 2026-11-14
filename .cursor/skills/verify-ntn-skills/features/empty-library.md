@@ -147,6 +147,12 @@ baseline through the installed public CLI and records that fixture setup before
 starting Pi. Pi must then perform its own authoring read and the requested
 joint edits. This lane does not claim autonomous new-page allocation; the
 progressive-maintenance lane proves new-page staging and the zero-write refusal.
+For main-body assertions, retain the raw native body and separately derive the
+portable representation from the independently observed owner's exact File/page
+bindings. Only explicit bound link destinations may change; literal code, HTML
+and foreign pages remain untouched. The posthoc check must not call the product's
+writer/reader projection or replace a failed original grade. Retained original
+source, Session and HTTP inputs may support a separate read-only re-evaluation.
 
 The live Source journey intentionally distinguishes a verified version selection
 from a verified editable-body update. Existing automatic policy still refuses an

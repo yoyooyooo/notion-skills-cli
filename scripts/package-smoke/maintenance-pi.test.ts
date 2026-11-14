@@ -7,6 +7,7 @@ import { test } from "node:test"
 import { resolveConsumerRuntime } from "./consumer.ts"
 import {
   acceptanceFailures,
+  oracleProjection,
   verifyMaintenanceResource,
   toolCallsFrom,
   decodedWireModelText,
@@ -29,6 +30,40 @@ const task: MaintenanceTask = {
   input_dir: "/tmp/mnt-input",
   current_main_file: "/tmp/mnt-current-main.md",
 }
+
+test("posthoc main oracle resolves only observed owned native links and retains literal or foreign spans", () => {
+  const target = "00000000-0000-4000-8000-000000000001"
+  const page = "00000000-0000-4000-8000-000000000002"
+  const foreign = "00000000-0000-4000-8000-000000000003"
+  const url = `https://app.notion.com/p/${page.replaceAll("-", "")}`
+  const outside = `https://app.notion.com/p/${foreign.replaceAll("-", "")}`
+  const body = `# Main\n\n[Guide](${url})\n\n\`[literal](${url})\`\n\n<code>[literal](${url})</code>\n\n[Foreign](${outside})\n\n\`\`\`text\n[example](${url})\n\`\`\``
+  const row = (id: string, owner: string, path: string) => ({
+    id,
+    properties: {
+      skill: { relation: [{ id: owner }] },
+      path: { rich_text: [{ plain_text: path }] },
+    },
+  })
+  const observed: ReturnType<AuthoringContinuation["observe"]> = {
+    skills: [],
+    records: [],
+    calls: [],
+    bodies: [[target, body]],
+    files: [
+      row(page, target, "references/guide.md"),
+      row(foreign, "another-owner", "references/foreign.md"),
+    ],
+  }
+  const actual = oracleProjection(observed, target)
+  assert.equal(actual.nativeBody, body)
+  assert.equal(actual.body, body.replace(`[Guide](${url})`, "[Guide](references/guide.md)"))
+  assert.deepEqual(actual.directoryPaths, ["references/guide.md"])
+  assert.throws(
+    () => oracleProjection({ ...observed, files: [...observed.files, observed.files[0]] }, target),
+    /ORACLE_NATIVE_BINDING_AMBIGUOUS/,
+  )
+})
 
 test("the installed consumer resolves a home-dependent Node launcher before Pi isolation", {
   skip: process.platform === "win32",

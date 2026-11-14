@@ -3,6 +3,7 @@ import { spawn } from "node:child_process"
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+import { SourceLexer } from "../../packages/markdown/src/index.ts"
 
 import type { AuthoringContinuation } from "./authoring.ts"
 export type { AuthoringContinuation } from "./authoring.ts"
@@ -774,6 +775,7 @@ export function oracleProjection(
   target: string,
 ): {
   body?: string
+  nativeBody?: string
   directoryPaths: string[]
   reason?: string
 } {
@@ -789,7 +791,53 @@ export function oracleProjection(
     return { directoryPaths, reason: "oracle_body_missing" }
   if (directoryPaths.length === 0)
     return { body, directoryPaths, reason: "oracle_files_unreadable" }
-  return { body, directoryPaths }
+  // Observe native state independently of the consumer. A relative author link
+  // is stored as an exact acknowledged Notion page URL, while the portable read
+  // presents the selected owner's logical path. Normalize only explicit link
+  // destinations bound by these independently observed owned File rows.
+  // This does not call the production projection/consumption implementation.
+  const bindings = new Map<string, string>()
+  for (const value of related) {
+    const file = asRecord(value)
+    const path = richPlain(asRecord(file?.properties)?.path)
+    const id = typeof file?.id === "string" ? file.id.replaceAll("-", "").toLowerCase() : ""
+    if (!/^[a-f\d]{32}$/u.test(id) || !path || bindings.has(id))
+      throw new Error("ORACLE_NATIVE_BINDING_AMBIGUOUS")
+    bindings.set(id, path)
+  }
+  const render = (token: ReturnType<typeof SourceLexer.lex>[number]): string => {
+    if (token.type === "code" || token.type === "codespan" || token.type === "html")
+      return token.raw
+    if (token.type === "link") {
+      const match =
+        /^https:\/\/(?:app\.notion\.com\/p\/|(?:www\.)?notion\.so\/)([a-f\d-]{32,36})$/iu.exec(
+          token.href,
+        )
+      const path = match ? bindings.get(match[1]!.replaceAll("-", "").toLowerCase()) : undefined
+      const marker = `](${token.href})`
+      const at = token.raw.lastIndexOf(marker)
+      return path !== undefined && at >= 0
+        ? token.raw.slice(0, at + 2) + path + token.raw.slice(at + 2 + token.href.length)
+        : token.raw
+    }
+    if ("tokens" in token && Array.isArray(token.tokens) && token.tokens.length > 0) {
+      // Mixed inline HTML is outside this fixture oracle's normalization scope.
+      // Preserve the complete span instead of rewriting a literal HTML child.
+      if (token.tokens.some((child) => child.type === "html")) return token.raw
+      const before = token.tokens.map((child) => child.raw).join("")
+      const after = token.tokens.map(render).join("")
+      if (before === after) return token.raw
+      const at = token.raw.indexOf(before)
+      if (at < 0 || token.raw.indexOf(before, at + before.length) >= 0)
+        throw new Error("ORACLE_NATIVE_LINK_SPAN_AMBIGUOUS")
+      return token.raw.slice(0, at) + after + token.raw.slice(at + before.length)
+    }
+    return token.raw
+  }
+  const tokens = SourceLexer.lex(body)
+  if (tokens.map((token) => token.raw).join("") !== body)
+    throw new Error("ORACLE_NATIVE_BODY_SPANS_INCOMPLETE")
+  return { body: tokens.map(render).join(""), nativeBody: body, directoryPaths }
 }
 
 export function verifyMaintenanceResource(input: {
@@ -1140,6 +1188,7 @@ export async function checkPinsOutsideMock(
     authoring_sha256: hash(authoringBody),
     oracle_used_for_selection: false,
   }
+  const oracle = oracleProjection(input.observe(), input.target)
   if (progress.refs.applied && progress.refs.applied !== authoringRef) {
     const fresh = asRecord(
       await input.noWrites("mnt-pi-new-pin", [
@@ -1154,7 +1203,7 @@ export async function checkPinsOutsideMock(
     report.new_pin_differs = fresh?.content !== authoringBody
     const oldLocation = new URL(authoringRef),
       newLocation = new URL(progress.refs.applied)
-    const currentBody = input.observe().bodies.find((pair) => pair[0] === input.target)?.[1]
+    const currentBody = oracle.body
     if (
       oldLocation.hostname !== newLocation.hostname ||
       oldLocation.pathname !== newLocation.pathname ||
@@ -1169,8 +1218,9 @@ export async function checkPinsOutsideMock(
   } else {
     report.status = "failed"
   }
-  const oracle = input.observe().bodies.find((pair) => pair[0] === input.target)?.[1]
-  report.oracle_body_sha256 = typeof oracle === "string" ? hash(oracle) : null
+  report.oracle_body_sha256 = typeof oracle.body === "string" ? hash(oracle.body) : null
+  report.native_oracle_body_sha256 =
+    typeof oracle.nativeBody === "string" ? hash(oracle.nativeBody) : report.oracle_body_sha256
   return report
 }
 
@@ -1482,6 +1532,11 @@ export async function runMaintenancePi(
       pins,
       resource,
       oracle: oracle.reason ?? "posthoc_only",
+      source_observation: {
+        native_body_sha256: oracle.nativeBody ? hash(oracle.nativeBody) : null,
+        portable_body_sha256: oracle.body ? hash(oracle.body) : null,
+        representation: "observed_owned_native_link_destinations" as const,
+      },
       tool_calls: toolCalls.map((call) => ({
         id: call.id,
         name: call.name,
