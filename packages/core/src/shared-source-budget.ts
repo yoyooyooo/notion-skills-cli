@@ -1,6 +1,6 @@
 import { Crypto, Effect } from "effect"
 import { HttpClient } from "effect/http"
-import { fail, type SkillsError } from "./model.ts"
+import { fail, property, type SkillsError } from "./model.ts"
 import { makeRequestBudget, RequestBudget, type RequestBudgetLimits } from "./request-budget.ts"
 import { requestBudgetHttpClient } from "./request-budget-http.ts"
 
@@ -27,6 +27,9 @@ export function withSourceCommandBudget<A, R>(
       return yield* Effect.fail(
         fail(outcome.failure.code, outcome.failure.message, {
           original_details: outcome.failure.details ?? null,
+          ...(property(outcome.failure.details).next === undefined
+            ? {}
+            : { next: property(outcome.failure.details).next }),
           budget: usage,
           recovery:
             "Keep the exact frozen plan and inspect its original operations; do not start a replacement dispatch.",

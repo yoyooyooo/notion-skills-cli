@@ -1,4 +1,10 @@
 import { sourceRecoveryCommand } from "./commands-library-source-recovery.ts"
+import { databaseId } from "../../core/src/catalog.ts"
+import {
+  sourceRenameCommand,
+  sourceRemoveCommand,
+  sourceConsolidateCommand,
+} from "./commands-library-source-management.ts"
 import {
   attachSourceLibrary,
   initializeSourceLibrary,
@@ -59,7 +65,7 @@ import {
 const entry = requiredSingleton("entry", "Exact shared Skills database with Sources attached")
 const list = defineCommand("list", { entry }, ({ entry }) =>
   Effect.gen(function* () {
-    const library = yield* loadSharedLibrary(entry)
+    const library = yield* loadSharedLibrary(yield* databaseId(entry))
     yield* emit({
       items: yield* listSourceDefinitions(library),
       metadata_only: true,
@@ -77,7 +83,10 @@ const show = defineCommand(
   ({ source, entry }) =>
     Effect.gen(function* () {
       yield* emit({
-        definition: yield* readSourceDefinition(yield* loadSharedLibrary(entry), source),
+        definition: yield* readSourceDefinition(
+          yield* loadSharedLibrary(yield* databaseId(entry)),
+          source,
+        ),
       })
     }),
 ).pipe(
@@ -90,7 +99,9 @@ const members = defineCommand(
   { source: Argument.String("source"), entry },
   ({ source, entry }) =>
     Effect.gen(function* () {
-      yield* emit(yield* listSourceMembers(yield* loadSharedLibrary(entry), source))
+      yield* emit(
+        yield* listSourceMembers(yield* loadSharedLibrary(yield* databaseId(entry)), source),
+      )
     }),
 ).pipe(
   Command.withDescription(
@@ -112,7 +123,7 @@ const put = defineCommand(
     Effect.gen(function* () {
       const raw = yield* input(args.input)
       const definition = yield* sourceChecked(() => validateSourceDefinition(raw))
-      const library = yield* loadSharedLibrary(args.entry)
+      const library = yield* loadSharedLibrary(yield* databaseId(args.entry))
       const action = putSourceDefinition(library, definition, args.expected, args.dryRun)
       yield* emit(
         yield* withSourceUpdateLock(
@@ -138,7 +149,7 @@ const bind = defineCommand(
   },
   (args) =>
     Effect.gen(function* () {
-      const library = yield* loadSharedLibrary(args.entry)
+      const library = yield* loadSharedLibrary(yield* databaseId(args.entry))
       const action = bindSourceDefinition(library, args)
       yield* emit(
         yield* withSourceUpdateLock(
@@ -157,7 +168,7 @@ const check = defineCommand(
   { source: Argument.String("source"), entry },
   ({ source, entry }) =>
     Effect.gen(function* () {
-      const library = yield* loadSharedLibrary(entry)
+      const library = yield* loadSharedLibrary(yield* databaseId(entry))
       const definition = yield* readSourceDefinition(library, source)
       const snapshot = yield* discoverSourceDefinition(definition, {
         metrics: (yield* Notion).metrics,
@@ -195,7 +206,10 @@ const fetch = defineCommand(
   },
   ({ source, entry, member, output }) =>
     Effect.gen(function* () {
-      const definition = yield* readSourceDefinition(yield* loadSharedLibrary(entry), source),
+      const definition = yield* readSourceDefinition(
+          yield* loadSharedLibrary(yield* databaseId(entry)),
+          source,
+        ),
         snapshot = yield* discoverSourceDefinition(definition, {
           metrics: (yield* Notion).metrics,
         }),
@@ -252,7 +266,7 @@ const prepare = defineCommand(
         return yield* Effect.fail(
           fail("INVALID_ARGUMENT", "Choose auto, fixed-git, or retained storage."),
         )
-      const library = yield* loadSharedLibrary(entry)
+      const library = yield* loadSharedLibrary(yield* databaseId(entry))
       const plan = allBound
         ? yield* prepareSourceRefreshBatch(library, source, undefined, policy)
         : yield* prepareSourceRefresh(library, source, selected ?? "", undefined, policy)
@@ -321,7 +335,7 @@ const apply = defineCommand(
       const limits = yield* parseSourceBudget(args)
       const { result, budget } = yield* withSourceCommandBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(args.entry)
+          const library = yield* loadSharedLibrary(yield* databaseId(args.entry))
           if (property(frozen).kind === "source_refresh_batch") {
             const result = yield* withSourceUpdateLock(
               library,
@@ -354,7 +368,7 @@ const apply = defineCommand(
 )
 const init = defineCommand("init", { entry }, ({ entry }) =>
   Effect.gen(function* () {
-    yield* emit(yield* initializeSourceLibrary(yield* loadSharedLibrary(entry)))
+    yield* emit(yield* initializeSourceLibrary(yield* loadSharedLibrary(yield* databaseId(entry))))
   }),
 ).pipe(
   Command.withDescription(
@@ -389,7 +403,7 @@ const reconcile = defineCommand(
       const limits = yield* parseSourceBudget(args)
       const { result, budget } = yield* withSourceCommandBudget(
         Effect.gen(function* () {
-          const library = yield* loadSharedLibrary(args.entry)
+          const library = yield* loadSharedLibrary(yield* databaseId(args.entry))
           if (property(frozen).kind === "source_refresh_batch")
             return yield* runSourceRefreshBatch(library, frozen, { mode: "reconcile" })
           return yield* reconcileSourceRefresh(library, frozen)
@@ -416,6 +430,9 @@ export const librarySourceDefinitionsCommand = defineCommand("sources").pipe(
     show,
     members,
     put,
+    sourceRenameCommand,
+    sourceRemoveCommand,
+    sourceConsolidateCommand,
     bind,
     check,
     fetch,

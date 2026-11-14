@@ -44,6 +44,7 @@ import { loadPendingSharedResourceAuthoring } from "./shared-resource-authoring-
 import { resourceAuthoringOutcomesEntity } from "./shared-resource-authoring-model.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
 import { loadPendingSharedCreates } from "./shared-create.ts"
+import { sharedCreateRestorationOutcomesEntity } from "./shared-create-restoration.ts"
 import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
 import {
   sharedSkillApplyPlansEntity,
@@ -956,6 +957,15 @@ export function inspectAuditSkill(
     const completedEvents = new Set(events.map((event) => event.event_id))
     const unclassified = operations.filter(
       (header) =>
+        !(
+          header.entity_id === sharedCreateRestorationOutcomesEntity &&
+          header.record_id.startsWith("resource-note-outcome-") &&
+          operations.some(
+            (original) =>
+              original.entity_id === sharedCreateManifestEntity &&
+              original.record_id === header.record_id.slice("resource-note-outcome-".length),
+          )
+        ) &&
         !header.record_id.startsWith("observe-") &&
         !header.record_id.startsWith("body-write-") &&
         !header.record_id.startsWith("file-management-") &&

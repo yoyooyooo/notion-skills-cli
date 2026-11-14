@@ -46,7 +46,10 @@ import {
   loadSharedResourceContent,
   prepareSharedResourceContent,
 } from "./shared-resource-content.ts"
-import { sharedCreateResourceDescription } from "./shared-create-resources.ts"
+import {
+  sharedCreateResourceDescription,
+  equivalentResourceNote,
+} from "./shared-create-resources.ts"
 import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
 import { resolveSharedCreateSource } from "./shared-create-source.ts"
 import {
@@ -61,6 +64,7 @@ import {
 } from "./shared-create-retained.ts"
 import {
   decodeSharedCreateOutcome as decodeOutcome,
+  SharedCreateOutcomeSchema,
   sharedCreateOutcomeId as outcomeId,
   sharedCreateManifestRecordHash as createManifestRecordHash,
   type SharedCreateOutcome as Outcome,
@@ -642,7 +646,12 @@ function pageReceipt(raw: unknown): string {
     )
   return row.id
 }
-function assertBody(page: string, expected: string, importPresentation = false) {
+function assertBody(
+  page: string,
+  expected: string,
+  importPresentation = false,
+  generatedResourceNote = false,
+) {
   return Effect.gen(function* () {
     const raw = yield* (yield* Notion).request(`v1/pages/${page}/markdown?markdown_version=v2`)
     const body = yield* createChecked(() => decode(MarkdownSchema, raw))
@@ -661,13 +670,197 @@ function assertBody(page: string, expected: string, importPresentation = false) 
     const actual = yield* createChecked(() => normalizeObservedBody(body.markdown))
     if (importPresentation)
       return yield* createChecked(() => assertImportedMarkdownContent(expected, actual))
-    if (actual !== expected)
+    if (actual !== expected && !(generatedResourceNote && equivalentResourceNote(actual, expected)))
       return yield* Effect.fail(
         fail(
           "SHARED_CREATE_BODY_MISMATCH",
           "The complete native body differs from the candidate projected before dispatch. Other Notion formatting transformations are not accepted by a loose comparison.",
         ),
       )
+  })
+}
+
+const ResourceNoteCompletion = Schema.Struct({
+  version: Schema.Literal(1),
+  kind: Schema.Literal("skill_create_resource_note_outcome"),
+  policy: Schema.Literal("generated_resource_autolink_v1"),
+  original_plan_sha256: Schema.String,
+  original_failure_sha256: Schema.String,
+  outcome: SharedCreateOutcomeSchema,
+})
+const resourceNoteRecordId = (operation: string) => "resource-note-outcome-" + operation
+function resourceNotePrefix(plan: SharedCreatePlan, failed: Outcome): boolean {
+  if (
+    plan.version !== 1 ||
+    plan.complete_resources !== 1 ||
+    plan.source_projection !== undefined ||
+    plan.files.length !== 1 ||
+    failed.version !== 1 ||
+    failed.status !== "needs_review" ||
+    failed.reason_code !== "SHARED_CREATE_BODY_MISMATCH" ||
+    failed.operation_id !== plan.operation_id ||
+    failed.skill_id !== plan.skill_id ||
+    failed.source_projection !== undefined ||
+    failed.bindings.length < 2
+  )
+    return false
+  const files = [plan.files[0]!, ...(plan.resources ?? [])]
+  return (
+    failed.bindings.length <= files.length &&
+    new Set(failed.bindings.map((binding) => binding.page_id)).size === failed.bindings.length &&
+    failed.bindings[0]?.page_id === failed.skill_page_id &&
+    failed.bindings.every(
+      (binding, index) =>
+        binding.file_id === files[index]?.file_id &&
+        binding.path === files[index]?.path &&
+        binding.event_id === files[index]?.event.event_id,
+    )
+  )
+}
+
+function resourceCreateRequest(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  page: string,
+  resource: NonNullable<SharedCreatePlan["resources"]>[number],
+) {
+  const ids = library.files.property_ids,
+    rich = (value: string) => ({ rich_text: spans(value) })
+  const description = projectSharedNotionMarkdown(sharedCreateResourceDescription(resource), {
+    version: sharedCreateProjectionVersion(plan.files),
+    purpose: "data_source_create",
+  })
+  return {
+    parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
+    properties: {
+      [ids.Name!]: { title: spans(resource.path.split("/").at(-1) ?? resource.path) },
+      [ids["File ID"]!]: rich(resource.file_id),
+      [ids.Path!]: rich(resource.path),
+      [ids.Projection!]: rich(""),
+      [ids.Status!]: {
+        select: { name: resource.event.kind === "deleted" ? "tombstone" : "custom" },
+      },
+      [ids.Skill!]: { relation: [{ id: page }] },
+    },
+    markdown: sharedNotionMarkdownWire(description),
+    markdown_version: "v2",
+  }
+}
+
+/** An old verifier may reject a generated .sh heading's automatic hyperlink.
+ * Only the exact acknowledged resource-note prefix is eligible. User-authored
+ * Markdown and retained resource bytes keep their independent exact checks. */
+function inspectResourceNoteFailure(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  dispatch: Effect.Success<ReturnType<typeof sharedCreateDispatch>>,
+) {
+  return Effect.gen(function* () {
+    if (
+      plan.version !== 1 ||
+      plan.complete_resources !== 1 ||
+      plan.source_projection !== undefined ||
+      plan.files.length !== 1
+    )
+      return undefined
+    const found = (yield* inventory(library, plan.name)).filter(
+      (item) => item.record.locator.skill_id === plan.skill_id,
+    )
+    if (found.length !== 1) return undefined
+    const page = found[0]!.record.locator.page_id
+    const rows = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "operation",
+      entityId: sharedCreateOutcomesEntity,
+      recordId: outcomeId(plan.operation_id),
+    })
+    if (rows.length !== 1) return undefined
+    const row = rows[0]!,
+      failed = yield* createChecked(() => decodeOutcome(row))
+    if (!resourceNotePrefix(plan, failed) || failed.skill_page_id !== page) return undefined
+    yield* verifyIndex(library, plan, page, failed.bindings, false, true)
+    for (const binding of failed.bindings) {
+      const file = plan.files.find((item) => item.file_id === binding.file_id)
+      const resource = plan.resources?.find((item) => item.file_id === binding.file_id)
+      const request = file
+        ? sharedCreateMainRequest(plan.library, plan)
+        : resourceCreateRequest(plan.library, plan, page, resource!)
+      if (!(yield* dispatch.acknowledged("v1/pages", request, "POST"))) return undefined
+      const expected =
+        file?.projection.markdown ??
+        projectSharedNotionMarkdown(sharedCreateResourceDescription(resource!), {
+          version: sharedCreateProjectionVersion(plan.files),
+          purpose: "data_source_create",
+        }).markdown
+      yield* assertBody(binding.page_id, expected, false, resource !== undefined)
+      if (resource)
+        yield* loadSharedResourceContent(library, {
+          skillPageId: page,
+          content: resource.prepared.content,
+        })
+    }
+    return { page, failure_hash: row.hash, bindings: failed.bindings }
+  }).pipe(withReadOnlyNotion)
+}
+
+function readResourceNoteCompletion(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  page: string,
+  failed: Outcome,
+  failureHash: string,
+) {
+  return Effect.gen(function* () {
+    const rows = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "operation",
+      entityId: sharedCreateRestorationOutcomesEntity,
+      recordId: resourceNoteRecordId(plan.operation_id),
+    })
+    if (!rows.length) return undefined
+    const row = rows[0]!,
+      payload = yield* createChecked(() =>
+        Schema.decodeUnknownSync(ResourceNoteCompletion)(row.payload, {
+          onExcessProperty: "error",
+        }),
+      )
+    const outcome = payload.outcome,
+      all = sharedCreateFiles(plan)
+    if (
+      rows.length !== 1 ||
+      !resourceNotePrefix(plan, failed) ||
+      payload.original_plan_sha256 !== (yield* sha256(canonicalSharedJson(plan))) ||
+      payload.original_failure_sha256 !== failureHash ||
+      row.operation_id !== "resource-note-" + (yield* sha256(canonicalSharedJson(payload))) ||
+      outcome.version !== 1 ||
+      outcome.status !== "applied" ||
+      outcome.operation_id !== plan.operation_id ||
+      outcome.skill_id !== plan.skill_id ||
+      outcome.skill_page_id !== page ||
+      outcome.source_projection !== undefined ||
+      outcome.bindings.length !== all.length ||
+      new Set(outcome.bindings.map((binding) => binding.page_id)).size !== all.length ||
+      !failed.bindings.every((binding) =>
+        outcome.bindings.some(
+          (current) => canonicalSharedJson(current) === canonicalSharedJson(binding),
+        ),
+      ) ||
+      !all.every((file) =>
+        outcome.bindings.some(
+          (binding) =>
+            binding.file_id === file.file_id &&
+            binding.path === file.path &&
+            binding.event_id === file.event.event_id,
+        ),
+      )
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_INVALID",
+          "The resource-note continuation does not preserve its complete original failure, inputs and allocations.",
+        ),
+      )
+    return outcome
   })
 }
 function manifestRecord(
@@ -1400,6 +1593,9 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
     if (outcome.status === "needs_review") {
       const restored = yield* readSharedCreateRestoration(library, plan, page, outcome, row.hash)
       if (restored !== undefined) outcome = restored.outcome
+      else
+        outcome =
+          (yield* readResourceNoteCompletion(library, plan, page, outcome, row.hash)) ?? outcome
     }
     if (outcome.status !== "applied")
       return yield* Effect.fail(
@@ -1625,15 +1821,24 @@ export function executeSharedCreate(
         : plan,
       beforeDispatch,
     )
+    let resourceNoteRecovery: Effect.Success<ReturnType<typeof inspectResourceNoteFailure>>
     if (original) {
       const reconciled = yield* reconcileSharedCreate(library, plan).pipe(Effect.result)
       if (reconciled._tag === "Success") return reconciled.success
+      if (
+        resumable &&
+        reconciled.failure.code === "SHARED_CREATE_REVIEW_REQUIRED" &&
+        (yield* dispatch.canResume)
+      )
+        resourceNoteRecovery = yield* inspectResourceNoteFailure(library, plan, dispatch)
       if (
         !resumable ||
         ![
           "SHARED_CREATE_UNRESOLVED",
           "SHARED_RECORD_UNRESOLVED",
-          ...(restoration === undefined ? [] : ["SHARED_CREATE_REVIEW_REQUIRED"]),
+          ...(restoration === undefined && resourceNoteRecovery === undefined
+            ? []
+            : ["SHARED_CREATE_REVIEW_REQUIRED"]),
         ].includes(reconciled.failure.code) ||
         !(yield* dispatch.canResume)
       )
@@ -1740,7 +1945,7 @@ export function executeSharedCreate(
                 purpose: "data_source_create",
               }),
             )
-            yield* assertBody(binding.page_id, description.markdown, acceptReadback)
+            yield* assertBody(binding.page_id, description.markdown, acceptReadback, true)
           }
         }
       })
@@ -1860,21 +2065,7 @@ export function executeSharedCreate(
         })
         const rawFile = yield* api.request(
           "v1/pages",
-          {
-            parent: { type: "data_source_id", data_source_id: library.files.data_source_id },
-            properties: {
-              [ids.Name!]: { title: spans(file.path.split("/").at(-1) ?? file.path) },
-              [ids["File ID"]!]: rich(file.file_id),
-              [ids.Path!]: rich(file.path),
-              [ids.Projection!]: rich(""),
-              [ids.Status!]: {
-                select: { name: file.event.kind === "deleted" ? "tombstone" : "custom" },
-              },
-              [ids.Skill!]: { relation: [{ id: skillPage }] },
-            },
-            markdown: sharedNotionMarkdownWire(description),
-            markdown_version: "v2",
-          },
+          resourceCreateRequest(library, plan, skillPage, file),
           { method: "POST" },
         )
         const page = yield* createChecked(() => pageReceipt(rawFile))
@@ -1884,7 +2075,7 @@ export function executeSharedCreate(
           page_id: page,
           event_id: file.event.event_id,
         })
-        yield* assertBody(page, description.markdown, acceptReadback)
+        yield* assertBody(page, description.markdown, acceptReadback, true)
       }
       if (acceptReadback) {
         stage = "retained_inputs"
@@ -1935,7 +2126,34 @@ export function executeSharedCreate(
       stage = "outcome"
       if (restoration !== undefined)
         yield* saveSharedCreateRestorationCompletion(library, plan, restoration, bindings)
-      else
+      else if (resourceNoteRecovery !== undefined) {
+        const payload = {
+          version: 1 as const,
+          kind: "skill_create_resource_note_outcome" as const,
+          policy: "generated_resource_autolink_v1" as const,
+          original_plan_sha256: yield* sha256(canonicalSharedJson(plan)),
+          original_failure_sha256: resourceNoteRecovery.failure_hash,
+          outcome: {
+            version: 1 as const,
+            kind: "skill_create_outcome" as const,
+            operation_id: plan.operation_id,
+            skill_id: plan.skill_id,
+            skill_page_id: skillPage,
+            status: "applied" as const,
+            reason_code: "GENERATED_RESOURCE_NOTE_AND_EXACT_RESOURCES_VERIFIED",
+            bindings,
+          },
+        }
+        yield* appendSharedRecord(library, {
+          mode: "create",
+          recordId: resourceNoteRecordId(plan.operation_id),
+          operationId: "resource-note-" + (yield* sha256(canonicalSharedJson(payload))),
+          skillPageId: skillPage,
+          kind: "operation",
+          entityId: sharedCreateRestorationOutcomesEntity,
+          payload,
+        })
+      } else
         yield* saveOutcome(
           library,
           plan,
@@ -2000,6 +2218,7 @@ export function executeSharedCreate(
           // transport result never triggers another POST, PATCH, rollback or retry.
           if (
             restoration === undefined &&
+            resourceNoteRecovery === undefined &&
             skillPage !== undefined &&
             [
               "BODY_INCOMPLETE",
@@ -2083,6 +2302,15 @@ export function loadPendingSharedCreates(
           input.events,
         )
         if (restored !== undefined) terminal = restored.outcome
+        else
+          terminal =
+            (yield* readResourceNoteCompletion(
+              library,
+              plan,
+              input.skillPageId,
+              terminal,
+              outcomeHashes.get(header.record_id)!,
+            )) ?? terminal
       }
       if (terminal?.status === "applied") {
         if (terminal.version === 2 && terminal.manifest_record_hash !== header.hash)

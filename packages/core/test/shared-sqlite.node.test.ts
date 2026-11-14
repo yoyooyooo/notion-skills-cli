@@ -26,6 +26,7 @@ const keys = {
   graphComplete: `operations/shared-graph-history/${scope}/graph-${"f".repeat(64)}/complete.json`,
   bodyCurrentAcceptance: `operations/shared-body-current-acceptance/${scope}/accept-current-${"f".repeat(64)}/plan.json`,
   sourceReceipt: `operations/shared-sources/${scope}/source-receipt-${"b".repeat(64)}.json`,
+  libraryManagement: `operations/library-management/${scope}/library-manage-${"c".repeat(64)}.json`,
   sourceSelection: `operations/shared-sources/${scope}/source-selection-${"c".repeat(64)}.json`,
   sourceDefinition: `operations/shared-sources/${scope}/source-op-${"a".repeat(64)}.json`,
   sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
@@ -379,6 +380,7 @@ test("shared cache and typed dispatch addresses persist across real Node restart
         keys.derivedGraph,
       ].sort(),
       dispatch: [
+        keys.libraryManagement,
         keys.repairLocator,
         keys.repairPlan,
         keys.repairOutcome,
@@ -614,6 +616,7 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
     expect(result.cache).toEqual([])
     expect(result.dispatch).toEqual(
       [
+        keys.libraryManagement,
         keys.repairLocator,
         keys.repairPlan,
         keys.repairOutcome,

@@ -249,6 +249,11 @@ const sharedLocalDomains: readonly {
       /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection|ack)-[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/library-management",
+    category: "dispatch",
+    address: /^operations\/library-management\/[a-f0-9]{64}\/library-manage-[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-source-registration",
     category: "dispatch",
     address:

@@ -30,6 +30,20 @@ ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY
 
 `put --input DEFINITION --expect FINGERPRINT` changes one full configuration; use the fingerprint from `show` or `absent` for a new stable ID. `bind SOURCE_ID --target SKILL_PAGE_ID --member EXACT_MEMBER --expect-origin CURRENT_SOURCE_PAGE_OR_none --entry LIBRARY_ENTRY` changes only association. Providers include generic Git, registry and explicitly mapped Linear issue/document content. Auth stays on the machine. Shared contributor sets require explicit composition, not a single-source overwrite. See [source decisions](references/synchronization.md#active-sources-definitions) before authoring configurations.
 
+## Source names and repository-level management
+
+A Source is a provider location plus its chosen ref/policy/options, not one row per discovered Skill. A compatible repository can select multiple exact roots; each Skill retains its own Source Member and selected immutable version. Separate configurations for different branches, filters, credentials policies or transformation options must not be merged merely because the URL matches.
+
+The Source title is an editable display label. Stable Source ID and native page relations own identity; repository paths remain in Location. Renaming in Notion or through the CLI preserves members and selected content. Because the full configuration fingerprint includes the title, an older prepared configuration change may require a fresh preview.
+
+```bash
+ntn-skills ctl library sources rename SOURCE_ID nowledge --entry LIBRARY
+ntn-skills ctl library sources consolidate --source KEEP_SOURCE_ID --name nowledge --entry LIBRARY --dry-run
+ntn-skills ctl library sources remove --source SOURCE_ID --entry LIBRARY --dry-run
+```
+
+Inspect the returned exact plan and use its `next.argv` to execute. Consolidation unions compatible roots on the retained Source, preserves member keys and selected versions, rebinds Skills/Records Origin, then moves now-empty duplicate Source pages to Trash. No body, fixed source payload or upstream repository is edited. Removal operates on an exact Source's member closure, not a title substring; outside Requires and ambiguous shared ownership refuse or preserve rows. Saved `--operation` continues only the original scope. Neither operation claims cross-machine atomicity or permanent deletion of private historical copies.
+
 ## Run finite policy and review member changes
 
 ```bash

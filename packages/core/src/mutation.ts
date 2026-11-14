@@ -1152,6 +1152,7 @@ function saveDocument(
       })
       const result = yield* createSharedNative(selectedSource.shared_library, {
         portable,
+        completeResources: true,
         ...(options.defaultContext === undefined ? {} : { defaultContext: options.defaultContext }),
         ...relations,
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),

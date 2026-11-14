@@ -92,7 +92,7 @@ ntn-skills create ./release-review --database LIBRARY_ENTRY
 
 The CLI creates the stable Skill and File identities and shared records. Ordinary Skill folders do not need a hand-authored portable manifest. A single Markdown file is also accepted; supply `--description` if its frontmatter has no Description. `--name` and `--description` explicitly override input metadata.
 
-In a shared library, creation uses native Skills and Files pages. The new Skill stays disabled until its complete file set has passed verification. Binary or unsupported input fails before page creation; it is never silently omitted. Keep binaries in a fixed source when consuming a mixed file tree. Omit `--storage` for this shared path; the older `--storage markdown_files` mode is rejected for a shared library.
+In a shared library, ordinary creation uses the existing complete-resource journal. Markdown becomes editable native content; scripts, JSON, images and other resources retain exact bytes and executable modes, with Files pages for management notes. Only Finder `.DS_Store` files are omitted from directory imports; other dotfiles remain content. The new Skill stays disabled until the complete file set verifies. Unsupported input is refused, not silently dropped. Omit `--storage` for this shared path; the older `--storage markdown_files` mode is rejected for a shared library.
 
 Success returns the exact record, a verified snapshot and `create_operation_id`. A matching existing name is never permission to overwrite another Skill. If the result is unknown, preserve the exact input and original operation; see [interrupted operations](#handle-an-interrupted-operation).
 
@@ -470,6 +470,22 @@ Use `ctl library sources list --entry ENTRY`, `show SOURCE --entry ENTRY`, and `
 
 `put --input DEFINITION_JSON --expect FINGERPRINT` uses the last `show` fingerprint; use `absent` only for a new stable Source ID. `bind SOURCE --target SKILL_PAGE --member MEMBER --expect-origin PAGE_OR_NONE` changes only Origin/member, not content. Sources may represent generic Git/GitLab or exact Linear content without a GitHub-specific database schema. Read the [source management guide](sources-management.md) before choosing providers, creating native content from fetched files, or proceeding after an unknown operation. `sources reconcile PLAN --entry ENTRY` observes the exact original selection without retrying its write.
 
+## Source labels, consolidation and complete removal
+
+Source Name is editable display metadata. Source ID and native page relations retain identity; the repository URL remains in Location. A title edit changes the configuration fingerprint, so old prepared configuration mutations need fresh previews. It does not alter a Skill's fixed selected version.
+
+```sh
+ntn-skills ctl library sources rename SOURCE_ID nowledge --entry skills
+ntn-skills ctl library sources consolidate --source KEEP_SOURCE_ID --name nowledge --entry skills --dry-run
+ntn-skills ctl library sources remove --source SOURCE_ID --entry skills --dry-run
+```
+
+Execute the returned exact `next.argv` after reviewing its counts and IDs. Consolidation groups only identical provider location/ref/policy/options/filter configurations, unions exact roots and preserves Source Member keys. Skills and Records Origin are rebound to one retained Source; immutable payloads and content pins are not rewritten. Different configurations and ambiguous duplicate member bindings remain separate or are refused.
+
+Whole-source removal moves selected Skills, exclusive Files/Records and the Source to Notion Trash. Outside Router Members are detached; outside Requires blocks removal, and shared Record owners are preserved. A retained `--operation` continues the original scope after interruption. A recovered all-ACK operation verifies the complete active metadata tables instead of fetching hundreds of already-trashed property endpoints. This is not permanent erasure, cross-machine atomicity or revocation of private old pins. Ordinary file delete continues to mean its separate tombstone lifecycle.
+
+One-time migrations must not infer that one prior per-Skill registration equals one repository-level Source. The November 2026 `setup-sources.py` preserved old rows one-to-one; compatible duplicates are now explicitly consolidated through the public command rather than silently renamed into apparently unique identities.
+
 ## Complete directories and raw resources
 
 The active library uses Skills, Files, Sources and Records. Sources owns mutable provider configuration and the Origin/member relationship; Records continues to own the exact selected content version. Skills pages remain the main editing surface; editable supporting pages stay in Files with a stable Skill relation and logical path. Existing scripts, binary assets and source-only resources may be preserved in a complete immutable Notion-resident bundle in Records. They need not acquire invented native Markdown pages. Ordinary `list`, `read`, pinned resource reads and directory `export` use the same public interface for these bundles.
@@ -549,3 +565,7 @@ Ordinary `create` retains its UTF-8 native input limits. Shared `apply` supports
 New authoring and native-create plans use Markdown projection policy 13. It preserves the earlier rules and adds the observed native-create serialization of a supported loose ordered list with continuation paragraphs. Literal underscore escaping and the observed canonicalization of bare `https://www.notion.so/COMPACT_PAGE_ID` links to `https://app.notion.com/p/COMPACT_PAGE_ID` remain versioned rules. Code literals, external links and URL forms outside that exact rule remain unchanged. The original input, wire request and expected readback stay separately frozen; normalization of observed bodies remains CRLF-to-LF only. Existing policies 1–12 keep their original bytes and meaning. Unverified table alignment, unaccounted spans or unsupported nested link styling are rejected or fail exact readback rather than being silently normalized away.
 
 Inline code containing a literal backtick remains rejected because the observed native conversion can merge adjacent paragraphs. This applies to both Markdown code spans and native `<code>` content, including visible nested text. Fenced code may contain literal backticks. The CLI leaves the input unchanged; it does not silently convert inline code into a fence. Retained policy 1–7 plans continue to validate against their original renderer, expected bytes and operation identity. Migration reconstruction carries the exact policy recorded by every saved file; a new policy requires a new candidate and review digest. A policy 4 operation that stopped for a body mismatch remains bound to policy 4; installing the new renderer does not authorize replay or mark that operation successful.
+
+### Generated resource note presentation
+
+Resource page descriptions are generated management text, never executable file payloads. Notion may auto-link a filename such as `a.sh` in that generated heading. Only an exact `http(s)://` link whose target repeats the displayed filename can be compared as heading presentation; every remaining note byte, declared hash/length/mode and retained resource is still checked. Authored Markdown is not normalized this way. A known earlier note mismatch can continue only from the same frozen create, full original native ACK prefix and complete current verification; a separate completion preserves the old `needs_review` outcome. Unknown native creates remain blocked, and no duplicate replacement Skill is made.

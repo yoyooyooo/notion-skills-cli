@@ -186,6 +186,9 @@ export function loadImport(input: string) {
         return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Directory contains too many entries."))
       let total = 0
       for (const name of names.sort()) {
+        // Finder's directory-view cache is not authored Skill content. Keep all
+        // other dotfiles, provider settings, executable files and raw resources.
+        if (name.split(path.sep).at(-1) === ".DS_Store") continue
         const stat = yield* fs.stat(path.join(full, name))
         if (stat.type === "Directory") continue
         if (stat.type !== "File")
