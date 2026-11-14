@@ -16,7 +16,7 @@
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
-    "packages/core/test/shared-file-management.test.ts": "4b33e2117151f7cc24c954b1ff340a5a8452d15f70ff7e1d64aad5826009599a",
+    "packages/core/test/shared-file-management.test.ts": "35bb54f572073874fc42486d0087be6e4abb65ea44a253917cb3b814424ab874",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
     "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
@@ -732,7 +732,7 @@
     "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
   },
   "maintenance_review": {
-    "batch": "AH-1024 / MNT02–09",
+    "batch": "AH-1024 / MNT02\u201309",
     "baseline": "6c38e747a9e40186fdf9d4ecda033eb5b413561c",
     "document": "docs/maintenance-verification-review.md",
     "claim": "Source correspondence reviewed; this metadata itself is not a new run. Exact result scope is the final runner summary plus concrete original artifacts.",
@@ -805,5 +805,12 @@
     ],
     "properties_and_bounds_changed": false,
     "evidence_scope": "Original independent B1/B2 reproductions passed; initial/final Files-denial checkpoints, exact original outcome barriers and no-extra-auth cancellation checked in concrete tests. AuditScope does not model real query visibility/permission classification. No new actual Notion or model completion claimed by this metadata."
+  },
+  "fresh_creation_policy_test_review": {
+    "issue": "AH-1047",
+    "scope": "Fresh creation plans now use the declared v15 policy. Only the fresh-plan version assertions changed; all independently captured wire/body equality, create counts, purpose checks and historical v13 immutability tests remain.",
+    "updated_tests": ["packages/core/test/shared-file-management.test.ts"],
+    "domain_regression_result": "234 passed, 0 failed across 8 create/recovery files",
+    "model_semantics_changed": false
   }
 }

@@ -1114,7 +1114,9 @@ describe("shared file lifecycle operations", () => {
         markdown: input,
       }),
     )
-    expect(plan.creation_projection?.version).toBe(13)
+    // A fresh plan uses the current policy; retained v13 records are exercised
+    // separately and must never be relabeled during original recovery.
+    expect(plan.creation_projection?.version).toBe(15)
     expect(plan.creation_projection?.input_markdown).toBe(input)
     expect(plan.content.markdown).toBe(observed)
     expect(plan.content.retained.sha256).toBe(digest(observed))
