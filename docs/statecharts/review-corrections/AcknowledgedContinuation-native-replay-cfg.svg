@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pele pele-state" viewBox="0 0 1168 874" width="1168" height="874" style="max-width:100%;height:auto;--_bg:var(--pele-bg,#fff);--_fg:var(--pele-fg,#1f1f1f);--_m:var(--pele-muted,#6e6e6e);--_l:var(--pele-line,#1f1f1f);--_s:var(--pele-surface,#f3f3f3);--_a:var(--pele-surface-alt,#e6e6e6);--_b:var(--pele-border,#8a8a8a);--_c:var(--pele-accent,#5b7bd5);color:var(--_fg);--_tw:var(--pele-title-weight,bold);--_fm:var(--pele-font-mono,monospace);font:16px sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;font-family:var(--pele-font,sans-serif)" fill="var(--_fg)" role="graphics-document document" aria-roledescription="state"><style>
+.pele {
+  --pele-bg: #ffffff;
+  --pele-fg: #1c1c1c;
+  --pele-muted: #656565;
+  --pele-line: #808080;
+  --pele-surface: #fcfcfc;
+  --pele-surface-alt: #f1f1f1;
+  --pele-border: #c9c9c9;
+}
+.pele .blue rect { fill: #c3e0ff; }
+.pele .orange rect { fill: #f0d3bf; }
+.pele .purple rect { fill: #e3d5ff; }
+.pele .yellow rect { fill: #f0dcbf; }
+.pele .teal rect { fill: #bfe3df; }
+.pele .tan rect { fill: #e5d9ce; }
+.pele .pink rect { fill: #ffcbe6; }
+.pele .breaks rect {
+  fill: #ffecee !important;
+  stroke: #e72e3b !important;
+  stroke-width: 2.5px !important;
+}
+.pele .breaks text {
+  fill: #cd2834 !important;
+}
+.pele .mayBreak rect {
+  fill: #fff3e6 !important;
+  stroke: #e8730c !important;
+  stroke-width: 2.5px !important;
+}
+.pele .mayBreak text {
+  fill: #b85a06 !important;
+}
+.pele .bugPath rect {
+  stroke: #1680f3 !important;
+  stroke-width: 2.5px !important;
+}
+.pele .repeats rect {
+  stroke: #9b35d6 !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 3;
+}
+@media (prefers-color-scheme: dark) {
+  .pele {
+    --pele-bg: #1f1f1f;
+    --pele-fg: #f5f5f5;
+    --pele-muted: #acacac;
+    --pele-line: #939393;
+    --pele-surface: #121212;
+    --pele-surface-alt: #2c2c2c;
+    --pele-border: #4e4e4e;
+  }
+  .pele .blue rect { fill: #1b3857; }
+  .pele .orange rect { fill: #573117; }
+  .pele .purple rect { fill: #3c2e57; }
+  .pele .yellow rect { fill: #573d17; }
+  .pele .teal rect { fill: #174641; }
+  .pele .tan rect { fill: #3d3127; }
+  .pele .pink rect { fill: #57233e; }
+  .pele .breaks rect {
+    fill: #2e2021 !important;
+    stroke: #cf2b35 !important;
+  }
+  .pele .breaks text {
+    fill: #ff6463 !important;
+  }
+  .pele .mayBreak rect {
+    fill: #2e2619 !important;
+    stroke: #d0700f !important;
+  }
+  .pele .mayBreak text {
+    fill: #ffa257 !important;
+  }
+  .pele .bugPath rect {
+    stroke: #116dd2 !important;
+  }
+  .pele .repeats rect {
+    stroke: #9a3fcf !important;
+  }
+}
+</style><text class="pele-title" font-weight="var(--_tw)" text-anchor="middle" xml:space="preserve"><tspan x="584" y="25.6">原 ACK 续接与同页恢复的验证边界</tspan></text><g transform="translate(0,36)"><g class="pele-clusters"><g class="pele-cluster pele-state-composite" data-id="legend"><rect x="167" y="8" width="992.19" height="151" rx="10" fill="var(--_a)" fill-opacity="0.5" stroke="var(--_b)"/><path d="M167,44H1159.19" fill="none" stroke="var(--_b)"/><text class="pele-cluster-label" x="663.1" y="31.6" text-anchor="middle">Legend</text></g></g><g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round"><g class="pele-edge pele-transition" data-id="edge0"><path d="M120,159L120,196"/><path class="pele-marker" d="M120,203L116.64,195L123.36,195Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge1"><path d="M120,247L120,309"/><path class="pele-marker" d="M120,316L116.64,308L123.36,308Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge2"><path d="M120,360L120,422"/><path class="pele-marker" d="M120,429L116.64,421L123.36,421Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge3"><path d="M120,473L120,535"/><path class="pele-marker" d="M120,542L116.64,534L123.36,534Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge4"><path d="M120,586L120,648"/><path class="pele-marker" d="M120,655L116.64,647L123.36,647Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge5"><path d="M120,699L120,761"/><path class="pele-marker" d="M120,768L116.64,760L123.36,760Z" fill="var(--_l)" stroke="none"/></g></g><g class="pele-edge-labels" font-size="14"><g class="pele-edge-label" data-id="edge1"><rect x="29.66" y="267.5" width="180.68" height="21" rx="3" fill="var(--_bg)"/><text x="120" y="282.9" text-anchor="middle">核对完整原请求与持久 ACK</text></g><g class="pele-edge-label" data-id="edge2"><rect x="39" y="380.5" width="162" height="21" rx="3" fill="var(--_bg)"/><text x="120" y="395.9" text-anchor="middle">执行前复核精确原事实集</text></g><g class="pele-edge-label" data-id="edge3"><rect x="39" y="493.5" width="162" height="21" rx="3" fill="var(--_bg)"/><text x="120" y="508.9" text-anchor="middle">派发一次已授权续接请求</text></g><g class="pele-edge-label" data-id="edge4"><rect x="46" y="606.5" width="148" height="21" rx="3" fill="var(--_bg)"/><text x="120" y="621.9" text-anchor="middle">响应或读回变得不确定</text></g><g class="pele-edge-label" data-id="edge5"><rect x="46" y="719.5" width="148" height="21" rx="3" fill="var(--_bg)"/><text x="120" y="734.9" text-anchor="middle">错误地重发未知原请求</text></g></g><g class="pele-nodes"><g class="pele-node pele-state blue bugPath" data-id="s0" transform="translate(120,225)"><rect x="-98.67" y="-22" width="197.34" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">核对原请求和完整 ACK</text></g><g class="pele-node pele-state blue bugPath" data-id="s1" transform="translate(120,338)"><rect x="-88" y="-22" width="176" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">独立续接决定已审阅</text></g><g class="pele-node pele-state blue bugPath" data-id="s2" transform="translate(120,451)"><rect x="-64" y="-22" width="128" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">本阶段待派发</text></g><g class="pele-node pele-state blue bugPath" data-id="s3" transform="translate(120,564)"><rect x="-80" y="-22" width="160" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">本阶段已派发一次</text></g><g class="pele-node pele-state yellow bugPath" data-id="s4" transform="translate(120,677)"><rect x="-98.67" y="-22" width="197.34" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">没有原 ACK，结果未知</text></g><g class="pele-node pele-state pink breaks bugPath" data-id="s5" transform="translate(120,799)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)" style="fill:#ffecee;stroke:#e72e3b;stroke-width:2.5px;"/><text class="pele-label" style="fill:#cd2834;" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">违反：未知续接请求被重复</tspan><tspan x="0" y="16.1">派发</tspan></text></g><g class="pele-node pele-state-start" data-id="root_start" transform="translate(120,152)"><circle r="7" fill="var(--_l)"/></g><g class="pele-node pele-state pink" data-id="lg0" transform="translate(215,101.5)"><rect x="-32" y="-22" width="64" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">违例</text></g><g class="pele-node pele-state yellow" data-id="lg1" transform="translate(351,101.5)"><rect x="-64" y="-22" width="128" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">已停止或等待</text></g><g class="pele-node pele-state blue" data-id="lg2" transform="translate(495,101.5)"><rect x="-40" y="-22" width="80" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">执行中</text></g><g class="pele-node pele-state breaks" data-id="lg3" transform="translate(707.05,101.5)"><rect x="-132.05" y="-31" width="264.1" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)" style="fill:#ffecee;stroke:#e72e3b;stroke-width:2.5px;"/><text class="pele-label" style="fill:#cd2834;" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">Breaks</tspan><tspan x="0" y="16.1">AtMostOneContinuationDispatch</tspan></text></g><g class="pele-node pele-state bugPath" data-id="lg4" transform="translate(1011.14,101.5)"><rect x="-132.05" y="-41.5" width="264.1" height="83" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-15.4">Path to the</tspan><tspan x="0" y="5.6">AtMostOneContinuationDispatch</tspan><tspan x="0" y="26.6">bug</tspan></text></g></g></g></svg>

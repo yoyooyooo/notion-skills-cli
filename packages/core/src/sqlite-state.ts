@@ -209,6 +209,12 @@ const sharedLocalDomains: readonly {
     address: /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/shared-maintenance-repair",
+    category: "dispatch",
+    address:
+      /^operations\/shared-maintenance-repair\/[a-f0-9]{64}\/skill-repair-(?:main|file)-[a-f0-9]{64}\/(?:locator|plan-post|outcome-post)\.json$/u,
+  },
+  {
     prefix: "operations/shared-observation-pending",
     category: "dispatch",
     address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
@@ -241,6 +247,11 @@ const sharedLocalDomains: readonly {
     category: "dispatch",
     address:
       /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection|ack)-[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/library-management",
+    category: "dispatch",
+    address: /^operations\/library-management\/[a-f0-9]{64}\/library-manage-[a-f0-9]{64}\.json$/u,
   },
   {
     prefix: "operations/shared-source-registration",

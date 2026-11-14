@@ -141,6 +141,11 @@ export const FileEventSchema = Schema.Union([
   Schema.Struct({ ...Common, kind: Schema.Literal("deleted"), retained: RetainedContentSchema }),
   Schema.Struct({
     ...Common,
+    kind: Schema.Literal("undeleted"),
+    retained: RetainedContentSchema,
+  }),
+  Schema.Struct({
+    ...Common,
     kind: Schema.Literal("moved"),
     from_path: Schema.String,
     to_path: Schema.String,
@@ -192,6 +197,19 @@ function stateAfter(event: FileEvent, parents: readonly FileOwnership[] = []): F
       return { kind: "custom", content: event.content }
     case "deleted":
       return { kind: "tombstone", retained: event.retained }
+    case "undeleted": {
+      if (
+        parents.length === 0 ||
+        parents.some(
+          (parent) => parent.kind !== "tombstone" || !contentEqual(parent.retained, event.retained),
+        )
+      )
+        throw fail(
+          "OWNERSHIP_TRANSITION_INVALID",
+          "Undelete revives only an exact tombstone and its retained original bytes.",
+        )
+      return { kind: "custom", content: event.retained }
+    }
     case "moved": {
       const parent = parents[0]
       if (
@@ -429,6 +447,24 @@ export function resolveFileState(fileId: string, input: readonly unknown[]): Res
           throw fail(
             "OWNERSHIP_TRANSITION_INVALID",
             "Following a raw source must preserve the exact prior retained resource.",
+          )
+      }
+    }
+    if (event.kind === "undeleted") {
+      if (!parents.length)
+        throw fail(
+          "OWNERSHIP_TRANSITION_INVALID",
+          "Undelete requires the exact tombstone frontier.",
+        )
+      for (const state of parentStates) {
+        if (
+          state.kind !== "tombstone" ||
+          isResourceContent(event.retained) ||
+          !contentEqual(event.retained, state.retained)
+        )
+          throw fail(
+            "OWNERSHIP_TRANSITION_INVALID",
+            "Undelete must revive the same retained Markdown bytes. It is not restore-follow, historical source restore, or a new file row.",
           )
       }
     }

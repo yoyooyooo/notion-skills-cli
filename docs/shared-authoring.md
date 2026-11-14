@@ -92,7 +92,7 @@ ntn-skills create ./release-review --database LIBRARY_ENTRY
 
 The CLI creates the stable Skill and File identities and shared records. Ordinary Skill folders do not need a hand-authored portable manifest. A single Markdown file is also accepted; supply `--description` if its frontmatter has no Description. `--name` and `--description` explicitly override input metadata.
 
-In a shared library, creation uses native Skills and Files pages. The new Skill stays disabled until its complete file set has passed verification. Binary or unsupported input fails before page creation; it is never silently omitted. Keep binaries in a fixed source when consuming a mixed file tree. Omit `--storage` for this shared path; the older `--storage markdown_files` mode is rejected for a shared library.
+In a shared library, ordinary creation uses the existing complete-resource journal. Markdown becomes editable native content; scripts, JSON, images and other resources retain exact bytes and executable modes, with Files pages for management notes. Only Finder `.DS_Store` files are omitted from directory imports; other dotfiles remain content. The new Skill stays disabled until the complete file set verifies. Unsupported input is refused, not silently dropped. Omit `--storage` for this shared path; the older `--storage markdown_files` mode is rejected for a shared library.
 
 Success returns the exact record, a verified snapshot and `create_operation_id`. A matching existing name is never permission to overwrite another Skill. If the result is unknown, preserve the exact input and original operation; see [interrupted operations](#handle-an-interrupted-operation).
 
@@ -100,7 +100,11 @@ Prompt and Router input still uses the existing portable v2 kind declaration. Co
 
 ## Adopt a draft created in Notion
 
-A manually created page can remain disabled and unregistered while you draft it. It stays outside the consumer directory and does not prevent other valid Skills from being listed. To register that existing page, complete its native Name and Description, set Kind to `skill`, and keep Enabled unchecked:
+A manually created page can remain disabled and unregistered while you draft it. It stays outside the consumer directory and does not prevent other valid Skills from being listed.
+
+A metadata audit reports an unregistered draft without treating its missing identities as corruption. It still reports retained Main File ID, Source, Projection, References, managed relations, Files or Records. An audit result does not grant adoption permission. Content and history remain unverified until the registered file lifecycle can be inspected. Invalid property types and incomplete reverse observations stay explicit rather than becoming empty fields.
+
+To register the original page, complete its native Name and Description, set Kind to `skill`, and keep Enabled unchecked:
 
 ```bash
 ntn-skills adopt SKILL_PAGE_ID --database LIBRARY_ENTRY --dry-run
@@ -126,7 +130,7 @@ ntn-skills read SKILL_PAGE_ID --database LIBRARY_ENTRY --authoring
 
 ### Apply one set of changes
 
-Put changed **existing** files in a separate authoring directory, preserving their logical relative paths. For example, `./changes/SKILL.md` and `./changes/references/checklist.md` can update the main body and an existing resource together:
+Put added or changed native Markdown files in a separate authoring directory, preserving their logical relative paths. For example, `./changes/SKILL.md` and `./changes/references/checklist.md` can update the main body and an existing resource together:
 
 ```bash
 ntn-skills apply 'PINNED_MAIN_REF' --database LIBRARY_ENTRY \
@@ -140,7 +144,11 @@ Omitted files remain unchanged. The pinned version must still match a fresh curr
 
 Success reports `status: "applied"`, `verified: true`, `apply_operation_id`, the changed paths and a new pinned snapshot. Identical input reports `status: "unchanged"`. Dry-run reports a plan and sends no Notion writes.
 
-This batch supports existing bound native files and metadata. A single isolated add or delete is also supported, but mixed or multiple layout changes currently fail with `SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED` before any write. Use the explicit [file commands](#add-delete-or-move-a-file) for those individual changes. Replacing a complete Skill with `replace --target` uses the same shared authoring rules and limits.
+The parent also supports multiple new native files together with main-body and metadata edits. `--changes FILE` explicitly nominates moves, removals and revivals; the complete reference tree is checked before native writes. Raw resource mutations retain their own explicit commands, and omitted resources are preserved. See [the progressive tree contract](maintenance-tree-contract.md) for manifest shape, exact reference spans, original suffix recovery and unsupported path cycles. Replacing a complete Skill with `replace --target` retains its separate explicit omission semantics.
+
+### Repair a historical partial identity
+
+A clean disabled native draft still uses `adopt`. A historical page with a legal Skill ID and blank Main File ID uses `ctl repair plan PAGE --entry historical-missing-main --database LIBRARY_ENTRY --dry-run`, followed by its exact returned apply argv. Managed Files rows use `--entry managed-file --owner PAGE --path PATH`. The plan preserves the original page, URL, body, legal identity, author metadata and Enabled state. It does not clear conflicting fields, follow a missing response with another PATCH, or clone an unbound child page. Original complete body retention precedes the identity patch. See [controlled repair](maintenance-repair-contract.md).
 
 ### Write one complete file
 
@@ -152,6 +160,12 @@ ntn-skills write 'PINNED_FILE_REF' --database LIBRARY_ENTRY --input ./edited-fil
 Submit the complete replacement file. A returned file ref already contains its logical path, so omit `--path`. If selecting a page or main ref without a resource path, use `--path references/checklist.md` for the supporting file.
 
 Main frontmatter may restate the current Name and Description, or values explicitly supplied to the same `apply`. Changing those fields inside `write` alone is rejected; additional unsupported main frontmatter is also rejected rather than discarded. A supplied `notion_page_id` must identify the exact selected Skill. Router bodies retain their generated Members index; change membership through the native relation or `update --member`.
+
+A normal native split has two short phases: `ctl file add` creates each new supporting page, then a fresh authoring read supplies the pin for one `apply` of the revised main and existing references. Relative links to already bound same-owner pages are translated before creation or body writes and become relative paths again when consumed. Links to not-yet-created pages in the same batch are rejected before any write; this includes mutual new-file references. Earlier permissive fixture tests did not model Notion's conversion of a bare local filename to HTTPS. Do not rely on that behavior or invent a future page ID.
+
+Large write plans omit only text deterministically derivable from their exact retained inputs and frozen projection version. The stored envelope stays within the existing 64 KiB fact limit; decoding must reconstruct the original full plan and pass its unchanged identity digest. Old unmarked plans keep their original representation. This reduces repeated raw/normalized/candidate/projection copies without compression, additional object rows or increased payload limits. Truly oversized unique inputs still fail before a dispatch receipt or write.
+
+For a known failed native file add, an explicit `ctl file accept-add review ... --accept-current --accept-observed-sha256 HASH` may retain the reviewed observation as an independent baseline. The old operation stays `needs_review` and unproven. The exact current File/page/owner/frontier and all other frozen content must still match; the complete selected body is separately retained before adoption. Cold reconciliation requires that body as well as the original failure and independent review/event/completion. Correct a wrong link afterward through normal pinned `write`, not by changing the original failed plan. This path cannot accept an unknown create.
 
 Native authoring plans freeze the original input, the request Markdown and the expected native readback separately. Policies 1–13 retain their exact-readback contract for existing authoring and recovery operations. New [inventory imports](inventory-import.md) use policy 14 for native Skills, fixed Git, mixed local Git overrides and supported retained-source members. They accept presentation differences and record the complete first Notion readback as the page baseline. Native and custom consumers use that Notion content; following files still come from their fixed source. Mixed imports preserve their source ancestors and pre-deletion content. This import policy does not authorize overwriting an existing body or reinterpret an older operation.
 
@@ -204,18 +218,20 @@ Keep generated snapshot directories as consumption output. Editing one does not 
 
 ## Add, delete or move a file
 
+`ctl file undelete PAGE PATH --entry LIBRARY_ENTRY` restores a native Markdown tombstone using the same File ID and page. It leaves inaccessible or changed retained content unresolved and never recreates the row.
+
 These commands take an exact shared Skill page ID or Notion page URL, followed by the logical file path:
 
 ```bash
-ntn-skills ctl library file add SKILL_PAGE_ID references/new-checklist.md \
+ntn-skills ctl file add SKILL_PAGE_ID references/new-checklist.md \
   --entry LIBRARY_ENTRY --input ./new-checklist.md --dry-run
-ntn-skills ctl library file add SKILL_PAGE_ID references/new-checklist.md \
+ntn-skills ctl file add SKILL_PAGE_ID references/new-checklist.md \
   --entry LIBRARY_ENTRY --input ./new-checklist.md
 
-ntn-skills ctl library file move SKILL_PAGE_ID references/old.md references/new.md \
+ntn-skills ctl file move SKILL_PAGE_ID references/old.md references/new.md \
   --entry LIBRARY_ENTRY --dry-run
 
-ntn-skills ctl library file delete SKILL_PAGE_ID references/obsolete.md \
+ntn-skills ctl file delete SKILL_PAGE_ID references/obsolete.md \
   --entry LIBRARY_ENTRY --dry-run
 ```
 
@@ -258,9 +274,9 @@ ntn-skills ctl library source select apply ./source-selection.json --entry LIBRA
 The CLI writes this plan; keep it unchanged for execution or reconciliation. Use `--native` instead of `--source` when intentionally clearing the Source selection. Source selection changes only the native property. Customized files keep their complete Notion content until explicitly restored to following:
 
 ```bash
-ntn-skills ctl library file restore-follow SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library file restore-follow SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY
 ```
 
@@ -269,13 +285,13 @@ Restore uses the exact source currently selected in Notion, retains the old comp
 To submit a request for later processing, initialize the request fields once, then submit the exact current file:
 
 ```bash
-ntn-skills ctl library file request-schema --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library file request-schema --entry LIBRARY_ENTRY
-ntn-skills ctl library file request SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file request-schema --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl file request-schema --entry LIBRARY_ENTRY
+ntn-skills ctl file request SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --submit --dry-run
-ntn-skills ctl library file request SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file request SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --submit
-ntn-skills ctl library file request SKILL_PAGE_ID references/checklist.md \
+ntn-skills ctl file request SKILL_PAGE_ID references/checklist.md \
   --entry LIBRARY_ENTRY --process
 ```
 
@@ -454,13 +470,29 @@ Use `ctl library sources list --entry ENTRY`, `show SOURCE --entry ENTRY`, and `
 
 `put --input DEFINITION_JSON --expect FINGERPRINT` uses the last `show` fingerprint; use `absent` only for a new stable Source ID. `bind SOURCE --target SKILL_PAGE --member MEMBER --expect-origin PAGE_OR_NONE` changes only Origin/member, not content. Sources may represent generic Git/GitLab or exact Linear content without a GitHub-specific database schema. Read the [source management guide](sources-management.md) before choosing providers, creating native content from fetched files, or proceeding after an unknown operation. `sources reconcile PLAN --entry ENTRY` observes the exact original selection without retrying its write.
 
+## Source labels, consolidation and complete removal
+
+Source Name is editable display metadata. Source ID and native page relations retain identity; the repository URL remains in Location. A title edit changes the configuration fingerprint, so old prepared configuration mutations need fresh previews. It does not alter a Skill's fixed selected version.
+
+```sh
+ntn-skills ctl library sources rename SOURCE_ID nowledge --entry skills
+ntn-skills ctl library sources consolidate --source KEEP_SOURCE_ID --name nowledge --entry skills --dry-run
+ntn-skills ctl library sources remove --source SOURCE_ID --entry skills --dry-run
+```
+
+Execute the returned exact `next.argv` after reviewing its counts and IDs. Consolidation groups only identical provider location/ref/policy/options/filter configurations, unions exact roots and preserves Source Member keys. Skills and Records Origin are rebound to one retained Source; immutable payloads and content pins are not rewritten. Different configurations and ambiguous duplicate member bindings remain separate or are refused.
+
+Whole-source removal moves selected Skills, exclusive Files/Records and the Source to Notion Trash. Outside Router Members are detached; outside Requires blocks removal, and shared Record owners are preserved. A retained `--operation` continues the original scope after interruption. A recovered all-ACK operation verifies the complete active metadata tables instead of fetching hundreds of already-trashed property endpoints. This is not permanent erasure, cross-machine atomicity or revocation of private old pins. Ordinary file delete continues to mean its separate tombstone lifecycle.
+
+One-time migrations must not infer that one prior per-Skill registration equals one repository-level Source. The November 2026 `setup-sources.py` preserved old rows one-to-one; compatible duplicates are now explicitly consolidated through the public command rather than silently renamed into apparently unique identities.
+
 ## Complete directories and raw resources
 
 The active library uses Skills, Files, Sources and Records. Sources owns mutable provider configuration and the Origin/member relationship; Records continues to own the exact selected content version. Skills pages remain the main editing surface; editable supporting pages stay in Files with a stable Skill relation and logical path. Existing scripts, binary assets and source-only resources may be preserved in a complete immutable Notion-resident bundle in Records. They need not acquire invented native Markdown pages. Ordinary `list`, `read`, pinned resource reads and directory `export` use the same public interface for these bundles.
 
 A retained Source reconstructs its content from checksum-bound Records chunks without the original machine or upstream provider. A fixed Git Source retains the exact commit, paths, hashes and modes; a cold ordinary read verifies the complete directory and Markdown references while fetching other resources when requested. Already retained pinned bytes work offline. A missing pinned resource can be acquired only through that pin's frozen source identity, and `--offline` fails if those bytes are absent. Authoring and full export verify all files. Current reads still verify editable pages and preserve whole-file customizations; changing a Source definition does not move an active pin.
 
-Use the [reviewed inventory import](inventory-import.md) for complete native, unchanged upstream or locally modified upstream input. It freezes the explicit local manifest and reuses the original create journal. Subsequent raw resource changes use `ctl library resource`; their stable Files pages hold management metadata and notes while immutable Records hold exact bytes and executable modes. Management-page Markdown is not the resource payload. Resource operations never execute a script or delete the local input.
+Use the [reviewed inventory import](inventory-import.md) for complete native, unchanged upstream or locally modified upstream input. It freezes the explicit local manifest and reuses the original create journal. Subsequent raw resource changes use `ctl resource`; their stable Files pages hold management metadata and notes while immutable Records hold exact bytes and executable modes. Management-page Markdown is not the resource payload. Resource operations never execute a script or delete the local input.
 
 Library history, original source configurations and original page responses are preserved as archive records and attachments. Original incomplete operations retain their old outcomes. The archive is useful for audit and explicit restoration; it is not an alternative current content source. After complete new-library verification, obsolete database containers can be moved to Notion Trash without permanently deleting their recovery trail. Only the new Skills database should remain registered in the daily CLI/Broker configuration.
 
@@ -472,17 +504,18 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 
 | Operation | Supported next step |
 | --- | --- |
-| Shared body write, apply or restore-follow | Read the exact current Skill. The reader checks retained original operations before adopting new bodies. If it reports `read_again`, read once more. Missing original facts remain unresolved. |
+| Shared body write or restore-follow | Read the exact current Skill. The reader checks retained original operations before adopting new bodies. If it reports `read_again`, read once more. Missing original facts remain unresolved. |
+| Shared apply | Inspect its original ID with `ctl operation show ORIGINAL --target PAGE --entry ENTRY`; use `reconcile` for read-only outcome verification. Explicit `resume` requires the original local journal, a verified prefix and a proved-unsent suffix. An unknown child stops the suffix without replay. |
 | Native create | Retain the complete original input and operation. Repeating the same create intent takes its original reconciliation path; it does not blindly repeat a page POST. A partially created Skill remains disabled until verified. |
 | Reviewed migration | `ctl library migration reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID`; add `--target EXACT_NEW_PAGE_ID` only when needed to recover the retained origin on another machine. See the [migration workflow](#review-and-migrate-one-legacy-record). |
 | Reviewed partial-create recovery | `ctl library migration recovery reconcile --entry LIBRARY_ENTRY --operation ORIGINAL_SKILL_CREATE_OPERATION_ID --target EXACT_EXISTING_SKILL_PAGE_ID`; verifies the separate recovery completion while preserving the original failure. |
-| File add, delete or move | `ctl library file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
+| File add, delete or move | `ctl file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | Source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
 | Source selection | `ctl library source select reconcile ./source-selection.json --entry LIBRARY_ENTRY` |
 | Profile revision | Repeat the original complete `profile set` arguments with `--reconcile`. |
 | Shared snapshot archive | Repeat `ctl library snapshot save ORIGINAL_SNAPSHOT_ID --entry LIBRARY_ENTRY --reconcile`. |
 
-These shared IDs are distinct from older Publication IDs. Do not pass them to the legacy `ctl operation resume` workflow. An empty independent machine may be unable to distinguish an invisible first request from one never sent; preserve the original machine's pending operation instead of recreating it elsewhere.
+The unified `ctl operation` entry preserves each original operation family. Only an original shared apply supports explicit `resume` of its proved-unsent suffix under the original local journal; other shared families use their returned recovery actions. Older Publication IDs retain their separate resume protocol. An empty independent machine may be unable to distinguish an invisible first request from one never sent; preserve the original machine's pending operation instead of recreating it elsewhere.
 
 ### Review a retained body mismatch
 
@@ -491,14 +524,14 @@ A `needs_review` body write can retain a complete native response that differs f
 The accepted digest is the SHA-256 of the original `response.markdown` string encoded as UTF-8. Preserve its exact bytes, including CRLF and terminal newlines; do not hash normalized content or a JSON wrapper. Preview with the exact original operation and the containing Skill page:
 
 ```bash
-ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+ntn-skills ctl file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
   --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --dry-run
 ```
 
 The preview verifies the retained plan, outcome, complete original observation, current body, file binding, source selection and original parent events. If those facts still match the decision you intend to make, execute the same command without `--dry-run`:
 
 ```bash
-ntn-skills ctl library file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+ntn-skills ctl file review SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
   --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256
 ```
 
@@ -515,7 +548,7 @@ An original body write can have no retained outcome even when its exact adoption
 Use the `body_write_operation_id` returned by the actual failed dispatch. A preceding dry-run may have a different observation identity. Hash the exact current `response.markdown` UTF-8 bytes, and preview the decision with the containing Skill page, including when the changed file is a resource:
 
 ```bash
-ntn-skills ctl library file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
+ntn-skills ctl file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
   --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --dry-run
 ```
 
@@ -527,8 +560,12 @@ An uncertain decision write retains its dispatch. Use the same command with `--r
 
 Automatic source projection updates that would change an existing editable Markdown body still stop with `BODY_REPLACEMENT_UNSAFE`: the current Notion API boundary supplies no proven page-revision precondition. An explicit restore can replace a different body through one complete, nonempty old-string match, after retaining the exact preimage and candidate. It requires the complete returned body and an independent full readback to match before recording following. A concurrent append or other mismatch remains `needs_review`; string matching does not provide page-revision CAS. Explicit author writes retain their own pinned-baseline, preflight and original-operation protocol. Original unknown operations remain barriers to new writes.
 
-Ordinary `create` and mixed `apply` retain their existing input limits. Complete reviewed inventory imports and Source admissions preserve all supported Markdown, raw resources, modes and main frontmatter through the same original create kernel. Mixed or multiple layout changes in one `apply` and arbitrary lossless Markdown rendering remain unsupported. New native plans reject Setext headings before writes. Supporting Markdown may include a complete YAML header: native creation and file-add retain that exact header separately from the editable body, and complete snapshots and exports reconstruct it. Source ancestry and known file modes remain attached to the retained state. An explicit edit may submit the complete unchanged header or body-only text; it cannot change extra metadata through a body write. Excessive resource or operation-envelope size also fails before dispatch. HTTP/local composition requires a reviewed fixed plan. No unsupported file may be omitted to make an import appear complete.
+Ordinary `create` retains its UTF-8 native input limits. Shared `apply` supports native file additions and edits together with explicit moves, removals, revivals and nominated metadata under the [complete-tree contract](maintenance-tree-contract.md); omitted files remain unchanged. Complete reviewed inventory imports and Source admissions preserve all supported Markdown, raw resources, modes and main frontmatter through the same original create kernel. Mixed or multiple deletions inferred by `replace` remain unsupported; express them explicitly through `apply`. Arbitrary lossless Markdown rendering remains unsupported. New native plans reject Setext headings before writes. Supporting Markdown may include a complete YAML header: native creation and file-add retain that exact header separately from the editable body, and complete snapshots and exports reconstruct it. Source ancestry and known file modes remain attached to the retained state. An explicit edit may submit the complete unchanged header or body-only text; it cannot change extra metadata through a body write. Excessive resource or operation-envelope size also fails before dispatch. HTTP/local composition requires a reviewed fixed plan. No unsupported file may be omitted to make an import appear complete.
 
 New authoring and native-create plans use Markdown projection policy 13. It preserves the earlier rules and adds the observed native-create serialization of a supported loose ordered list with continuation paragraphs. Literal underscore escaping and the observed canonicalization of bare `https://www.notion.so/COMPACT_PAGE_ID` links to `https://app.notion.com/p/COMPACT_PAGE_ID` remain versioned rules. Code literals, external links and URL forms outside that exact rule remain unchanged. The original input, wire request and expected readback stay separately frozen; normalization of observed bodies remains CRLF-to-LF only. Existing policies 1–12 keep their original bytes and meaning. Unverified table alignment, unaccounted spans or unsupported nested link styling are rejected or fail exact readback rather than being silently normalized away.
 
 Inline code containing a literal backtick remains rejected because the observed native conversion can merge adjacent paragraphs. This applies to both Markdown code spans and native `<code>` content, including visible nested text. Fenced code may contain literal backticks. The CLI leaves the input unchanged; it does not silently convert inline code into a fence. Retained policy 1–7 plans continue to validate against their original renderer, expected bytes and operation identity. Migration reconstruction carries the exact policy recorded by every saved file; a new policy requires a new candidate and review digest. A policy 4 operation that stopped for a body mismatch remains bound to policy 4; installing the new renderer does not authorize replay or mark that operation successful.
+
+### Generated resource note presentation
+
+Resource page descriptions are generated management text, never executable file payloads. Notion may auto-link a filename such as `a.sh` in that generated heading. Only an exact `http(s)://` link whose target repeats the displayed filename can be compared as heading presentation; every remaining note byte, declared hash/length/mode and retained resource is still checked. Authored Markdown is not normalized this way. A known earlier note mismatch can continue only from the same frozen create, full original native ACK prefix and complete current verification; a separate completion preserves the old `needs_review` outcome. Unknown native creates remain blocked, and no duplicate replacement Skill is made.

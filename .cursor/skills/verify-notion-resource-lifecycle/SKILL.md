@@ -9,6 +9,8 @@ Use the existing `verify-ntn-skills` Skill for live Notion, public CLI, installe
 
 ## Select the maintenance owner
 
+AH-1024 的具体维护场景由 [Skill 维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) 持有。AuditRun 不含草稿字段的分类规则；MNT01 需要目录与完整审计的实现回归及安装入口。不要为每个feature创建重复guardian，或把源码hash同步当成新性质证明。
+
 The default suite remains `lifecycle`. For exact acknowledged Record prefixes, independent acceptance and restore feedback, use [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md) and `--suite operation-recovery`. Those models now own these narrower boundaries; the six lifecycle models retain their original bounds. Request ownership, cancellation and deadline changes use the existing [RequestEngine formal feature](../verify-ntn-skills/features/request-engine-formal.md) and `--suite request-engine`.
 
 Read the [maintenance contract](../../../docs/formal-verification-maintenance.md). CI runs every reviewed config in the affected repository suites. The independent `cases.expected_rules` inventory must remain complete; a removed property, extra/unchecked rule, changed tool byte, unexpected negative, incomplete or cut result fails. `--model` selects a whole model group without changing this contract. Output must be new or pre-created empty and absolute.
@@ -25,6 +27,7 @@ Read `verification/models/resource-lifecycle/coverage.json` and `README.md`. The
 | ImportCreate | A reviewed complete input, disabled creation, durable original acknowledgements, bounded continuation and enablement only after all abstract stages verify. | Two retained inputs (document and raw resource) and four stages abstract a single explicitly enabled creation. Actual file formats, immutable-record reconciliation and manual edits require code and installed tests. |
 | CreateRecovery | A separately reviewed v9 creation recovery, one or three original ACK pages, a complete original request set, no unknown-attempt replay and exact Projection authority before the first write. | One abstract missing suffix and three mutable stages. It does not prove Markdown v10, arbitrary request counts, cold-record validation, current-body atomicity, transport permissions or actual Notion behavior. |
 | AcknowledgedContinuation | Complete original request/ACK authority for an allocated tree, fresh body checks before continuation stages, no uncertain redispatch and full shared proofs before cold completion. | Three visible pages and four abstract stages. Exact requests, byte commitments, every immutable Record subrequest, native rendering and edits after a check require implementation evidence. |
+| AuditScope | Target closure versus independent library reverse coverage, read-only progress and bounded resumption. | Four abstract fact classes; actual pagination, permission failures at budget boundaries and repair markers use implementation regressions. |
 
 A passing model is not completion of its linked Issue. Negative controls describe the consequence of removing a guard; classify a production defect only with its current code correspondence or a live reproduction.
 
@@ -34,7 +37,7 @@ Use the README's pinned Pstack and TLC setup outside the checkout. With `PSTACK_
 
 ```sh
 node scripts/verify-resource-lifecycle.mjs --out "$(mktemp -d /tmp/notion-formal.XXXXXX)"
-bun test packages/core/test/shared-file-state.test.ts packages/core/test/shared-file-observer.test.ts packages/core/test/shared-file-observer-readonly.test.ts packages/core/test/shared-inventory-import.test.ts
+bun test packages/core/test/shared-file-state.test.ts packages/core/test/shared-file-observer.test.ts packages/core/test/shared-file-observer-readonly.test.ts packages/core/test/shared-inventory-import.test.ts packages/core/test/shared-audit-target.test.ts packages/core/test/shared-native-repair.test.ts packages/core/test/shared-file-adoption.test.ts
 ```
 
 Read each original `report.md`, `tlc.out`, `summary.json` and `chart.mmd`. Require complete finite exploration in positive safety configurations and exactly the listed broken rules in each negative control. In the fairness case, state the environment assumptions. An unchecked rule, parser failure, timeout or missing chart is not a pass.
@@ -80,6 +83,6 @@ When code changes, apply `/maintain-formal-verification-skill`: decide whether a
 
 When only one reviewed model group changes, run that selected group and retain the exact prior receipts for unchanged groups. Record source, runner, model/config/view hashes and the reviewed correspondence; inherited evidence is not a new execution. A projection serialization change does not by itself require changing ProjectionRace or UpdateCommit. A new first-write authority branch requires its own code-level counterexample and explicit mapping.
 
-For changes explicitly outside every model, synchronize the actual source hashes and unmodeled scope without relabeling prior model results as fresh runs. Preserve all six models' existing bounds and receipts; use the relevant code and installed/live evidence for the new path.
+For changes explicitly outside every model, synchronize reviewed source correspondence without relabeling earlier model results as new runs. Preserve the original six models. AuditScope adds seven configurations for target closure versus full reverse coverage; the full suite has 40 configurations. See the [maintenance correspondence review](../../../docs/maintenance-verification-review.md). Exact bytes, repair eligibility and installed/live behavior require concrete checks.
 
 Performance, arbitrary data sizes, source parsing, actual permissions, concurrent Notion edits, multiple writers, machine-bound local access and complete historical retention need their own tests or additional models. A finite pass does not authorize production imports, host installation, cleanup or changes to the editing protocol.

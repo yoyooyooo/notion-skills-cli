@@ -1,0 +1,317 @@
+{
+  "product_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
+  "source_gate_commit": "03f2b217742106a3baee7989ff2d36aebb0a1105",
+  "view_only_followup": true,
+  "model_rules_and_bounds_unchanged": true,
+  "charts": [
+    {
+      "name": "audit-target",
+      "model": "AuditScope",
+      "config": "cfg",
+      "states": {
+        "distinct": 292,
+        "initial": 2,
+        "complete": true,
+        "cut": false
+      },
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AuditReadOnly",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "TargetCoverageNeedsOwnerFacts",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "GlobalCoverageNeedsReverse",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ConfirmedEvidenceMonotone",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalScopePreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "broken": [],
+      "expected": [],
+      "inputs": [
+        {
+          "path": "model-inputs/AuditScope.tla",
+          "sha256": "68f6fb893e78202c93c71f42a0ad2f99a920d4d0ed233e6dd1536bc12a6d79db"
+        },
+        {
+          "path": "model-inputs/AuditScope.cfg",
+          "sha256": "57b6b02c030b4e31f5658dbaebbadaccafbd6685e3ae5cfe192e6a6a39a09327"
+        },
+        {
+          "path": "model-inputs/AuditScope.view.mjs",
+          "sha256": "7f36a35a75b33813219fae9f4c52cd357e4aabd347b323a4bf5aa2ce60f52936"
+        }
+      ],
+      "mermaid_sha256": "e836b9a965ff2c7cf00178afbc42c69c805c737a6c27e6b5599b8a6f260a0fb7",
+      "report_sha256": "f705afd1acec794744b2c8bbdf6e2b8680bfe4b0117399324b90672d82ba2334",
+      "run_summary_sha256": "f524b781c2b1ef4013fda5436fc10b8ebaf1cfc5bb7456c8c211652b6cb6cd5a",
+      "svg_sha256": "d6ab28d4e525426acbaccdf1d2b93ddd9d97bed4b541e18807a0b503ff8c85cb",
+      "width": 1031,
+      "height": 1693,
+      "stylesheet_sha256": "badd8b23686ba7d66ae36659ed8e520eb1d1c3f82daf2a67cc6f38b047a43304"
+    },
+    {
+      "name": "audit-scope-counterexample",
+      "model": "AuditScope",
+      "config": "target-as-global.cfg",
+      "states": {
+        "distinct": 292,
+        "initial": 2,
+        "complete": true,
+        "cut": false
+      },
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "AuditReadOnly",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "TargetCoverageNeedsOwnerFacts",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "GlobalCoverageNeedsReverse",
+          "kind": "invariant",
+          "outcome": "broken"
+        },
+        {
+          "name": "ConfirmedEvidenceMonotone",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalScopePreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "broken": ["GlobalCoverageNeedsReverse"],
+      "expected": ["GlobalCoverageNeedsReverse"],
+      "inputs": [
+        {
+          "path": "model-inputs/AuditScope.tla",
+          "sha256": "68f6fb893e78202c93c71f42a0ad2f99a920d4d0ed233e6dd1536bc12a6d79db"
+        },
+        {
+          "path": "model-inputs/AuditScope.target-as-global.cfg",
+          "sha256": "d7473665a2071dc482ec929423a637eccaf6ca712f568a489010f7694f62e673"
+        },
+        {
+          "path": "model-inputs/AuditScope.view.mjs",
+          "sha256": "7f36a35a75b33813219fae9f4c52cd357e4aabd347b323a4bf5aa2ce60f52936"
+        }
+      ],
+      "mermaid_sha256": "265c61ebcc7ae77352fb1d1e9b73c71e2d97b3c9c1cb5ddffbb4e78a1b184a92",
+      "report_sha256": "68bfc972aa342a6f7c0b7eb019454557574390c2ee95cbebaa9e8ec85cad5a32",
+      "run_summary_sha256": "f524b781c2b1ef4013fda5436fc10b8ebaf1cfc5bb7456c8c211652b6cb6cd5a",
+      "svg_sha256": "07dab33d2392f99923b4456debca7b1106d560cd6579b56383ac86f85681555e",
+      "width": 1490,
+      "height": 1732,
+      "stylesheet_sha256": "badd8b23686ba7d66ae36659ed8e520eb1d1c3f82daf2a67cc6f38b047a43304"
+    },
+    {
+      "name": "maintenance",
+      "model": "MaintenanceApply",
+      "config": "cfg",
+      "states": {
+        "distinct": 88,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ConfirmedPrefixBeforeSuffix",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "UnknownNeverRepeated",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "CompletionNeedsAllChildren",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "PendingTreeNotPublished",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ObservedDriftStopsDispatch",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalOutcomeAuthority",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OldPinPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "broken": [],
+      "expected": [],
+      "inputs": [
+        {
+          "path": "model-inputs/MaintenanceApply.tla",
+          "sha256": "124ad116bc9218b8fc6bb5a76b69e747d5c4d9a162bf042cdd4530710cb085e9"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.cfg",
+          "sha256": "4c84ce935314a723c2382ef035f80b8abd26a9790242bb6a7bd5a48d24eeca35"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.view.mjs",
+          "sha256": "15d7fc2047f113fc7aaafc927e6e8efe825817a5f062836e412aa8aa44250ec5"
+        }
+      ],
+      "mermaid_sha256": "04de97c8c452befbf440a12282cda63de72a577acb137f0d27ab7c1702a0cd3d",
+      "report_sha256": "2bd24f50279a4bd530e6c8e6e46693aa667a8d6b8df03f42487fcbae52d5f812",
+      "run_summary_sha256": "6765cab451702a62cd597d4117aad9a536266ce0b29e0f74d11ef71c6b49ecb5",
+      "svg_sha256": "b85b8819d6daec8fe3c374707110d172f5da0737a585d26cb5303f22216ccc67",
+      "width": 1131,
+      "height": 1282,
+      "stylesheet_sha256": "badd8b23686ba7d66ae36659ed8e520eb1d1c3f82daf2a67cc6f38b047a43304"
+    },
+    {
+      "name": "maintenance-replay-counterexample",
+      "model": "MaintenanceApply",
+      "config": "replay-unknown.cfg",
+      "states": {
+        "distinct": 389,
+        "initial": 1,
+        "complete": true,
+        "cut": false
+      },
+      "rules": [
+        {
+          "name": "TypeOK",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ConfirmedPrefixBeforeSuffix",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "UnknownNeverRepeated",
+          "kind": "invariant",
+          "outcome": "broken"
+        },
+        {
+          "name": "CompletionNeedsAllChildren",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "PendingTreeNotPublished",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "ObservedDriftStopsDispatch",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OriginalOutcomeAuthority",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "OldPinPreserved",
+          "kind": "invariant",
+          "outcome": "holds"
+        },
+        {
+          "name": "NoDeadlock",
+          "kind": "deadlock",
+          "outcome": "holds"
+        }
+      ],
+      "broken": ["UnknownNeverRepeated"],
+      "expected": ["UnknownNeverRepeated"],
+      "inputs": [
+        {
+          "path": "model-inputs/MaintenanceApply.tla",
+          "sha256": "124ad116bc9218b8fc6bb5a76b69e747d5c4d9a162bf042cdd4530710cb085e9"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.replay-unknown.cfg",
+          "sha256": "ba60a79b32b2ef5f3cd758a5db07585f5e303a1a81bd0727cce7cf25a09a71fb"
+        },
+        {
+          "path": "model-inputs/MaintenanceApply.view.mjs",
+          "sha256": "15d7fc2047f113fc7aaafc927e6e8efe825817a5f062836e412aa8aa44250ec5"
+        }
+      ],
+      "mermaid_sha256": "549ac0ac7475f34f7a9596ac23a5bef7a76223520d5fee6b6cb964a46620b9bf",
+      "report_sha256": "500218d6c845d1e08265588105ee7a2b173d2a13f4b7d7e6292788f8ba6f2459",
+      "run_summary_sha256": "6765cab451702a62cd597d4117aad9a536266ce0b29e0f74d11ef71c6b49ecb5",
+      "svg_sha256": "0b0a966ad904ff4481333de71cf66f9fd08eee7511b8969e7e7989df27f5a546",
+      "width": 1659,
+      "height": 1367,
+      "stylesheet_sha256": "badd8b23686ba7d66ae36659ed8e520eb1d1c3f82daf2a67cc6f38b047a43304"
+    }
+  ],
+  "renderer": {
+    "name": "pele",
+    "version": "1.9.0",
+    "module_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5"
+  }
+}

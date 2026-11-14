@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Crypto, Effect, FileSystem, Path } from "effect"
@@ -16,6 +16,7 @@ import {
   executeSharedSkillApply,
   loadPendingSharedSkillApplies,
   reconcileSharedSkillApply,
+  resumeSharedSkillApply,
 } from "../src/shared-skill-apply.ts"
 import { executeSharedBodyWrite } from "../src/shared-body-write.ts"
 import { appendSharedRecord } from "../src/shared-records.ts"
@@ -522,8 +523,8 @@ describe("frozen sequential shared apply", () => {
       await f.run(
         applySharedSkillChanges(snapshot, {
           files: [
-            { path: "SKILL.md", bytes: encode("A".repeat(20_000)) },
-            { path: "references/1.md", bytes: encode("B".repeat(20_000)) },
+            { path: "SKILL.md", bytes: encode("A".repeat(36_000)) },
+            { path: "references/1.md", bytes: encode("B".repeat(36_000)) },
           ],
         }).pipe(Effect.result),
       ),
@@ -533,21 +534,447 @@ describe("frozen sequential shared apply", () => {
     expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
   })
 
-  test("mixed new layout is rejected with zero writes instead of silently rebasing after each child", async () => {
+  test("a parent retains moderate edits without repeating child projection text and can reconcile them", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "SKILL.md", bytes: encode("A".repeat(20_000)) },
+          { path: "references/1.md", bytes: encode("B".repeat(20_000)) },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (preview.kind !== "skill_apply" || preview.status !== "planned")
+      throw new Error("Expected frozen parent")
+    expect(Buffer.byteLength(JSON.stringify(preview.plan))).toBeGreaterThan(65536)
+    expect(
+      (
+        await f.run(
+          withWriter(f, executeSharedSkillApply(library, { plan: preview.plan, mode: "create" })),
+        )
+      ).status,
+    ).toBe("applied")
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, preview.plan))).verified).toBe(true)
+    expect(f.writeCount()).toBe(0)
+  })
+
+  test("equal bytes plus an explicit removal are not guessed as a move", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const original = snapshot.files.find((file) => file.path === "references/1.md")
+    if (original === undefined) throw new Error("Missing reference")
+    const stored = await f.run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).readBytes(`objects/${original.sha256}`)
+      }),
+    )
     f.clearCalls()
     const result = failure(
       await f.run(
         applySharedSkillChanges(snapshot, {
-          files: [input[0]!, { path: "references/new.md", bytes: encode("new") }],
+          files: [{ path: "references/copy.md", bytes: stored }],
+          remove: ["references/1.md"],
         }).pipe(Effect.result),
       ),
     )
-    expect(result.code).toBe("SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED")
-    expect(property(result.details).writes_sent).toBe(false)
+    expect(result.code).toBe("SHARED_APPLY_IMPLICIT_MOVE")
     expect(f.writeCount()).toBe(0)
-    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    expect(f.files).toHaveLength(2)
+  })
+
+  test("a fenced example is not a link rewrite span", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)
+    if (main === undefined) throw new Error("Missing main")
+    const text = new TextDecoder().decode(
+      await f.run(
+        Effect.gen(function* () {
+          return yield* (yield* Store).readBytes(`objects/${main.sha256}`)
+        }),
+      ),
+    )
+    const fenced = `${text}\n\n\`\`\`\n[Example](references/1.md)\n\`\`\`\n`
+    const start = fenced.indexOf("references/1.md")
+    f.clearCalls()
+    const result = failure(
+      await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [{ path: snapshot.entrypoint, bytes: encode(fenced) }],
+          changes: {
+            version: 1,
+            rewrites: [
+              {
+                path: snapshot.entrypoint,
+                start,
+                end: start + "references/1.md".length,
+                from: "references/1.md",
+                to: "references/2.md",
+              },
+            ],
+          },
+        }).pipe(Effect.result),
+      ),
+    )
+    expect(result.code).toBe("SHARED_APPLY_REWRITE_SPAN")
+    expect(f.writeCount()).toBe(0)
+  })
+
+  test.each(["100644", "100755", undefined] as const)(
+    "complete apply revives the same native file with retained mode %s",
+    async (mode) => {
+      const f = sharedSnapshotFixture(),
+        snapshot = await fresh(f)
+      const path = "references/restore-mode.md"
+      await f.run(
+        withWriter(
+          f,
+          applySharedSkillChanges(snapshot, {
+            files: [
+              { path, bytes: encode("# Retained body\n"), ...(mode === undefined ? {} : { mode }) },
+              { path: "references/unchanged.md", bytes: encode("# Unchanged body\n") },
+            ],
+          }),
+        ),
+      )
+      const added = await fresh(f)
+      const original = added.files.find((file) => file.path === path)
+      expect(original?.mode).toBe(mode)
+      const sourceRows = structuredClone(f.files)
+      await f.run(
+        withWriter(
+          f,
+          applySharedSkillChanges(added, {
+            files: [],
+            changes: { version: 1, removes: [path] },
+          }),
+        ),
+      )
+      const deleted = await fresh(f)
+      expect(deleted.files.some((file) => file.path === path)).toBe(false)
+      f.clearCalls()
+      const preview = await f.run(
+        applySharedSkillChanges(deleted, {
+          files: [],
+          changes: { version: 1, revives: [{ path }] },
+          dryRun: true,
+        }),
+      )
+      if (
+        preview.status !== "planned" ||
+        preview.kind !== "skill_apply" ||
+        preview.plan.version !== 2
+      )
+        throw new Error("Expected a complete revival parent")
+      expect(f.writeCount()).toBe(0)
+      expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+      const revived = await f.run(
+        withWriter(
+          f,
+          executeSharedSkillApply(library, {
+            plan: preview.plan,
+            mode: "create",
+          }),
+        ),
+      )
+      expect(revived.status).toBe("applied")
+      expect(preview.plan.final_files.find((file) => file.path === path)?.mode).toBe(mode)
+      const current = await fresh(f)
+      expect(current.files.find((file) => file.path === path)).toEqual(original)
+      expect(f.files.map((file) => file.id)).toEqual(sourceRows.map((file) => file.id))
+      expect(deleted.files.some((file) => file.path === path)).toBe(false)
+    },
+  )
+
+  test.each([true, false])(
+    "complete tree reconstruction rejects unavailable retained bytes before writes, dryRun=%s",
+    async (dryRun) => {
+      const f = sharedSnapshotFixture(),
+        snapshot = await fresh(f)
+      const preview = await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [
+            { path: "references/complete-tree.md", bytes: encode("# Added\n"), mode: "100644" },
+            { path: "references/second-added.md", bytes: encode("# Second added\n") },
+          ],
+          dryRun: true,
+        }),
+      )
+      if (
+        preview.status !== "planned" ||
+        preview.kind !== "skill_apply" ||
+        preview.plan.version !== 2
+      )
+        throw new Error("Expected a complete layout parent")
+      const retained = snapshot.files.find((file) => file.path === "references/2.md")
+      if (retained === undefined) throw new Error("Missing untouched file")
+      f.objects.delete(`objects/${retained.sha256}`)
+      f.clearCalls()
+      const result = await f.run(
+        executeSharedSkillApply(library, {
+          plan: preview.plan,
+          mode: "create",
+          dryRun,
+        }).pipe(Effect.result),
+      )
+      expect(f.writeCount()).toBe(0)
+      expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+      expect(failure(result).code).toBe("SNAPSHOT_MISSING")
+    },
+  )
+
+  test.each([true, false])(
+    "links to not-yet-allocated native pages fail before any write, dryRun=%s",
+    async (dryRun) => {
+      const f = sharedSnapshotFixture(),
+        snapshot = await fresh(f)
+      f.clearCalls()
+      const result = await f.run(
+        applySharedSkillChanges(snapshot, {
+          files: [
+            { path: "SKILL.md", bytes: encode("# Main\n\n[New](references/new-a.md)\n") },
+            { path: "references/new-a.md", bytes: encode("# A\n\n[B](new-b.md)\n") },
+            { path: "references/new-b.md", bytes: encode("# B\n\n[A](new-a.md)\n") },
+          ],
+          dryRun,
+        }).pipe(Effect.result),
+      )
+      expect(failure(result).code).toBe("SHARED_NATIVE_REFERENCE_UNBOUND")
+      expect(property(failure(result).details).writes_sent).toBe(false)
+      expect(f.writeCount()).toBe(0)
+      expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+    },
+  )
+
+  test("main plus two unlinked new files is one parent apply and keeps omitted files", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const beforeIds = f.files.map((file) => file.id)
+    f.clearCalls()
+    const result = await f.run(
+      withWriter(
+        f,
+        applySharedSkillChanges(snapshot, {
+          files: [
+            input[0]!,
+            {
+              path: "references/new-a.md",
+              mode: "100644" as const,
+              bytes: encode("# A\n\nStage the content before linking a new page.\n"),
+            },
+            {
+              path: "references/new-b.md",
+              mode: "100755" as const,
+              bytes: encode("# B\n\nStage the content before linking a new page.\n"),
+            },
+          ],
+          ...metadata,
+        }),
+      ),
+    )
+    expect(result.status).toBe("applied")
+    expect(result.kind).toBe("skill_apply")
+    if (result.kind !== "skill_apply" || result.status !== "applied")
+      throw new Error("Expected one applied parent")
+    expect(result.plan.version).toBe(2)
+    if (result.plan.version !== 2) throw new Error("Expected a version 2 parent")
+    expect(result.plan.stages.map((stage) => stage.name)).toEqual([
+      "allocate",
+      "author",
+      "metadata",
+    ])
+    expect(f.files).toHaveLength(beforeIds.length + 2)
+    expect(f.files.slice(0, beforeIds.length).map((file) => file.id)).toEqual(beforeIds)
+    const current = await fresh(f)
+    expect(current.files.map((file) => file.path).sort()).toEqual([
+      "SKILL.md",
+      "references/1.md",
+      "references/2.md",
+      "references/new-a.md",
+      "references/new-b.md",
+    ])
+    expect(current.files.find((file) => file.path === "references/2.md")?.sha256).toBe(
+      snapshot.files.find((file) => file.path === "references/2.md")?.sha256,
+    )
+    const rows = payloads(f).filter((value) => value.kind === "skill_apply")
+    expect(rows).toHaveLength(1)
+    f.clearCalls()
+    f.json.clear()
+    const stored = rows[0]
+    const recovered = await f.run(
+      reconcileSharedSkillApply(library, stored as SharedSkillApplyPlan),
+    )
+    expect(recovered.status).toBe("applied")
+    expect(f.calls.some((call) => call.method === "PATCH" || call.path === "v1/pages")).toBe(false)
+    const rowsBeforeRepeat = payloads(f).length
+    const repeatedFiles = await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* Effect.forEach(
+          current.files.filter((file) =>
+            ["SKILL.md", "references/new-a.md", "references/new-b.md"].includes(file.path),
+          ),
+          (file) =>
+            store
+              .readBytes(`objects/${file.sha256}`)
+              .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
+        )
+      }),
+    )
+    const repeated = await f.run(
+      applySharedSkillChanges(current, { files: repeatedFiles, ...metadata }),
+    )
+    expect(repeated.status).toBe("unchanged")
+    expect(payloads(f)).toHaveLength(rowsBeforeRepeat)
+    expect(current.record.name).toBe(metadata.name)
+    expect(current.record.description).toBe(metadata.description)
+    expect(current.files.find((file) => file.path === "references/new-a.md")?.mode).toBe("100644")
+    expect(current.files.find((file) => file.path === "references/new-b.md")?.mode).toBe("100755")
+  })
+
+  test("resume continues only the proved-unsent suffix of the same parent", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const planned = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+          { path: "references/new-b.md", bytes: encode("# B\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (
+      planned.status !== "planned" ||
+      planned.kind !== "skill_apply" ||
+      planned.plan.version !== 2
+    )
+      throw new Error("Expected a frozen parent")
+    expect(planned.plan.layout).toHaveLength(2)
+    const parent = planned.plan,
+      second = parent.layout[1]!
+    let interrupted = false
+    const stopped = await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* executeSharedSkillApply(library, { plan: parent, mode: "create" }).pipe(
+          Effect.provideService(Store, {
+            ...store,
+            writeJson: (key, value) => {
+              if (
+                !interrupted &&
+                key.startsWith("operations/shared-observation-pending/") &&
+                property(property(value).plan).operation_id === second.operation_id
+              ) {
+                interrupted = true
+                return Effect.fail(
+                  fail(
+                    "TEST_STOP_BEFORE_INTENT",
+                    "Process stopped before the second child's durable intent",
+                  ),
+                )
+              }
+              return store.writeJson(key, value)
+            },
+          }),
+        )
+      }).pipe(Effect.result),
+    )
+    expect(stopped).toMatchObject({ _tag: "Failure", failure: { code: "TEST_STOP_BEFORE_INTENT" } })
+    expect(
+      f.files.filter(
+        (file) =>
+          text(property(property(file.properties).file_id).rich_text) === parent.layout[0]!.file_id,
+      ),
+    ).toHaveLength(1)
+    expect(
+      f.files.filter(
+        (file) => text(property(property(file.properties).file_id).rich_text) === second.file_id,
+      ),
+    ).toHaveLength(0)
+    const blocked = await f.run(
+      openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }).pipe(
+        Effect.result,
+      ),
+    )
+    expect(blocked._tag).toBe("Failure")
+    f.clearCalls()
+    const resumed = await f.run(resumeSharedSkillApply(library, parent))
+    expect(resumed.status).toBe("applied")
+    expect(resumed.operation_id).toBe(parent.operation_id)
+    expect(
+      f.files.filter(
+        (file) => text(property(property(file.properties).file_id).rich_text) === second.file_id,
+      ),
+    ).toHaveLength(1)
+    expect(
+      f.calls.filter(
+        (call) =>
+          call.path === "v1/pages" &&
+          property(property(call.body).parent).data_source_id === library.files.data_source_id,
+      ),
+    ).toHaveLength(1)
+    f.clearCalls()
+    expect((await f.run(reconcileSharedSkillApply(library, parent))).verified).toBe(true)
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
+  })
+
+  test("a lost first allocation response cannot be replayed or skipped by parent resume", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const planned = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+          { path: "references/new-b.md", bytes: encode("# B\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (planned.status !== "planned" || planned.kind !== "skill_apply")
+      throw new Error("Expected parent")
+    let lost = false
+    const result = await f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* executeSharedSkillApply(library, { plan: planned.plan, mode: "create" }).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) => {
+              if (
+                !lost &&
+                path === "v1/pages" &&
+                property(property(body).parent).data_source_id === library.files.data_source_id
+              ) {
+                lost = true
+                return api
+                  .request(path, body, options)
+                  .pipe(
+                    Effect.flatMap(() =>
+                      Effect.fail(
+                        fail("WRITE_OUTCOME_UNKNOWN", "Original allocation response lost"),
+                      ),
+                    ),
+                  )
+              }
+              return api.request(path, body, options)
+            },
+          }),
+        )
+      }).pipe(Effect.result),
+    )
+    expect(result).toMatchObject({ _tag: "Failure", failure: { code: "WRITE_OUTCOME_UNKNOWN" } })
+    const count = f.files.length
+    f.clearCalls()
+    const resumed = await f.run(resumeSharedSkillApply(library, planned.plan).pipe(Effect.result))
+    expect(resumed).toMatchObject({ _tag: "Failure", failure: { code: "SHARED_APPLY_UNRESOLVED" } })
+    expect(f.files).toHaveLength(count)
+    expect(f.calls.some((call) => call.path === "v1/pages" || call.method === "PATCH")).toBe(false)
   })
 })
 
@@ -641,6 +1068,56 @@ describe("public shared apply and replace routing", () => {
       expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
     })
   }
+
+  test.each(["100644", "100755", undefined] as const)(
+    "public pinned apply preserves isolated added file mode %s",
+    async (mode) => {
+      const f = sharedSnapshotFixture(),
+        baseline = await fresh(f)
+      const directory = mkdtempSync(join(tmpdir(), "shared-public-add-mode-"))
+      const path = "single-added.md",
+        markdown = "# Single supporting file\n\nOriginal added body.\n"
+      const inputPath = join(directory, path)
+      writeFileSync(inputPath, markdown)
+      if (mode !== undefined) chmodSync(inputPath, mode === "100755" ? 0o755 : 0o644)
+      // A bare Markdown input has no imported mode; directories retain stat metadata.
+      const options = { input: mode === undefined ? inputPath : directory }
+      const ref = fileRef(baseline.record.id, baseline.entrypoint, baseline.snapshot_id)
+      const beforeIds = f.files.map((file) => file.id)
+      try {
+        f.clearCalls()
+        const preview = await f.run(applySkill(ref, { ...options, dryRun: true }))
+        expect(property(preview).status).toBe("planned")
+        expect(f.writeCount()).toBe(0)
+        expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
+        expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+        const result = await f.run(withWriter(f, applySkill(ref, options)))
+        expect(result.operation).toBe("apply")
+        expect(property(result).status).toBe("applied")
+        expect(property(result).verified).toBe(true)
+        expect(property(result).changes).toEqual({ files: [path], removed: [] })
+        const current = await fresh(f)
+        const added = current.files.find((file) => file.path === path)
+        if (added === undefined) throw new Error("Missing isolated added file")
+        expect(added.mode).toBe(mode)
+        expect(new TextDecoder().decode(f.objects.get(`objects/${added.sha256}`)).trimEnd()).toBe(
+          markdown.trimEnd(),
+        )
+        expect(current.files.filter((file) => file.path !== path)).toEqual([...baseline.files])
+        expect(f.files).toHaveLength(beforeIds.length + 1)
+        expect(f.files.slice(0, beforeIds.length).map((file) => file.id)).toEqual(beforeIds)
+        const plans = payloads(f).filter(
+          (value) => value.kind === "file_management" && value.action === "add",
+        )
+        expect(plans).toHaveLength(1)
+        expect(plans[0]?.creation_mode).toBe(mode)
+        expect(property(property(plans[0]?.content).retained).mode).toBe(mode)
+        expect(payloads(f).some((value) => value.kind === "skill_apply")).toBe(false)
+      } finally {
+        if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+      }
+    },
+  )
 
   test("one public pinned apply maintains main, resource and metadata despite an unrelated broken source", async () => {
     const f = sharedSnapshotFixture(),

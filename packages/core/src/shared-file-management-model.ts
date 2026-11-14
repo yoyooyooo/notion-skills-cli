@@ -1,3 +1,4 @@
+import { expandSharedOperationPlan, storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
@@ -20,15 +21,16 @@ import {
   validateSharedNotionMarkdownProjection,
 } from "./shared-notion-projection.ts"
 import { splitNativeSupportingMarkdown } from "./shared-native-file-metadata.ts"
+import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const SharedFileManagementPlanV1Schema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("file_management"),
-  action: Schema.Literals(["add", "delete", "move"]),
+  action: Schema.Literals(["add", "delete", "move", "undelete"]),
   operation_id: Schema.String.check(
-    Schema.isPattern(/^file-management-(?:add|delete|move)-[a-f0-9]{64}\.[a-f0-9]{64}$/u),
+    Schema.isPattern(/^file-management-(?:add|delete|move|undelete)-[a-f0-9]{64}\.[a-f0-9]{64}$/u),
   ),
   library_id: Identity,
   skill_page_id: Schema.String,
@@ -52,6 +54,7 @@ const SharedFileManagementPlanV1Schema = Schema.Struct({
   }),
   before: Schema.NullOr(FrozenWriteBodySchema),
   creation_projection: Schema.NullOr(SharedNotionMarkdownProjectionSchema),
+  creation_mode: Schema.optional(Schema.Literals(["100644", "100755"])),
   content: Schema.Struct({ markdown: Schema.String, retained: RetainedContentSchema }),
   event: FileEventSchema,
 })
@@ -62,6 +65,18 @@ export const SharedFileManagementPlanSchema = Schema.Union([
     version: Schema.Literal(2),
     action: Schema.Literal("add"),
     creation_input: Schema.String,
+  }),
+  Schema.Struct({
+    ...SharedFileManagementPlanV1Schema.fields,
+    version: Schema.Literal(3),
+    action: Schema.Literal("add"),
+    creation_input: Schema.String,
+    creation_bindings: Schema.Array(
+      Schema.Struct({
+        page_id: Schema.String,
+        path: Schema.String,
+      }),
+    ),
   }),
 ])
 export type SharedFileManagementPlan = typeof SharedFileManagementPlanSchema.Type
@@ -140,7 +155,7 @@ function description(plan: Omit<SharedFileManagementPlan, "operation_id">) {
   return { ...plan }
 }
 export function plannedFileManagementEventId(operationId: string): string | undefined {
-  const matched = /^file-management-(add|delete|move)-([a-f0-9]{64})\.[a-f0-9]{64}$/u.exec(
+  const matched = /^file-management-(add|delete|move|undelete)-([a-f0-9]{64})\.[a-f0-9]{64}$/u.exec(
     operationId,
   )
   return matched === null ? undefined : `${matched[1]}-${matched[2]}`
@@ -158,7 +173,7 @@ export function retainedFileManagementPayload(markdown: string) {
 export function validateSharedFileManagementPlan(input: unknown) {
   return Effect.gen(function* () {
     const plan = yield* managementChecked(() =>
-      Schema.decodeUnknownSync(SharedFileManagementPlanSchema)(input, {
+      Schema.decodeUnknownSync(SharedFileManagementPlanSchema)(expandSharedOperationPlan(input), {
         onExcessProperty: "error",
       }),
     )
@@ -171,6 +186,8 @@ export function validateSharedFileManagementPlan(input: unknown) {
           "SHARED_FILE_MANAGEMENT_INVALID",
           "File operations require exact canonical Notion identities.",
         )
+      if (plan.action !== "add" && plan.creation_mode !== undefined)
+        throw fail("SHARED_FILE_MANAGEMENT_INVALID", "Only new file creation may nominate a mode.")
       canonicalManagementPath(plan.entrypoint)
       canonicalManagementPath(plan.path)
       if (plan.destination_path !== null) canonicalManagementPath(plan.destination_path)
@@ -275,6 +292,16 @@ export function validateSharedFileManagementPlan(input: unknown) {
             "Deletion records a tombstone without moving the underlying page.",
           )
         if (
+          plan.action === "undelete" &&
+          (plan.destination_path !== null ||
+            plan.event.kind !== "undeleted" ||
+            plan.page_id === null)
+        )
+          throw fail(
+            "SHARED_FILE_MANAGEMENT_INVALID",
+            "Undelete revives the same page and path. It does not create a row, move the file, or replace its bytes.",
+          )
+        if (
           plan.action === "move" &&
           (plan.destination_path === null ||
             plan.destination_path === plan.path ||
@@ -290,18 +317,22 @@ export function validateSharedFileManagementPlan(input: unknown) {
     })
     const hash = yield* sha256(plan.content.markdown)
     const inputMetadata =
-      plan.version === 2
+      plan.version >= 2 && "creation_input" in plan
         ? yield* managementChecked(() => {
             const input = splitNativeSupportingMarkdown(plan.creation_input)
+            const expected =
+              plan.version === 3
+                ? restoreSharedNativeFileLinks(input.body, plan.path, plan.creation_bindings)
+                : input.body
             if (
-              input.frontmatter === undefined ||
-              input.body !== plan.creation_projection?.input_markdown
+              (plan.version === 2 && input.frontmatter === undefined) ||
+              expected !== plan.creation_projection?.input_markdown
             )
               throw fail(
                 "SHARED_FILE_MANAGEMENT_INVALID",
                 "The original supporting file must reconstruct its exact YAML header and projected body input.",
               )
-            return { frontmatter: input.frontmatter }
+            return input.frontmatter === undefined ? {} : { frontmatter: input.frontmatter }
           })
         : nativeFileMetadata(plan.before ?? {})
     const retained = {
@@ -309,6 +340,9 @@ export function validateSharedFileManagementPlan(input: unknown) {
       sha256: hash,
       bytes: new TextEncoder().encode(plan.content.markdown).byteLength,
       ...inputMetadata,
+      ...(plan.action === "add" && plan.creation_mode !== undefined
+        ? { mode: plan.creation_mode }
+        : {}),
     }
     if (
       canonicalSharedJson(retained) !== canonicalSharedJson(plan.content.retained) ||
@@ -324,7 +358,9 @@ export function validateSharedFileManagementPlan(input: unknown) {
     const eventContent =
       plan.event.kind === "adopted"
         ? plan.event.content
-        : plan.event.kind === "deleted" || plan.event.kind === "moved"
+        : plan.event.kind === "deleted" ||
+            plan.event.kind === "moved" ||
+            plan.event.kind === "undeleted"
           ? plan.event.retained
           : undefined
     if (
@@ -351,7 +387,7 @@ export function validateSharedFileManagementPlan(input: unknown) {
         ),
       )
     yield* managementChecked(() => {
-      validateSharedRecordEnvelope(plan.operation_id, plan)
+      validateSharedRecordEnvelope(plan.operation_id, storedSharedOperationPlan(plan))
       validateSharedRecordEnvelope(
         `retain-${hash}`,
         retainedFileManagementPayload(plan.content.markdown),
@@ -368,9 +404,11 @@ export function makeSharedFileManagementPlan(
     "operation_id" | "event" | "version" | "kind"
   > & {
     readonly creation_input?: string
+    readonly creation_bindings?: readonly { readonly page_id: string; readonly path: string }[]
     readonly event:
       | Omit<Extract<FileEvent, { kind: "adopted" }>, "event_id">
       | Omit<Extract<FileEvent, { kind: "deleted" }>, "event_id">
+      | Omit<Extract<FileEvent, { kind: "undeleted" }>, "event_id">
       | Omit<Extract<FileEvent, { kind: "moved" }>, "event_id">
   },
 ) {
@@ -379,7 +417,12 @@ export function makeSharedFileManagementPlan(
     const eventHash = yield* sha256(canonicalSharedJson(eventDescription(provisional)))
     const frozen = {
       ...input,
-      version: input.creation_input === undefined ? (1 as const) : (2 as const),
+      version:
+        input.creation_bindings !== undefined
+          ? (3 as const)
+          : input.creation_input === undefined
+            ? (1 as const)
+            : (2 as const),
       kind: "file_management" as const,
       event: { ...input.event, event_id: `${input.action}-${eventHash}` },
     }

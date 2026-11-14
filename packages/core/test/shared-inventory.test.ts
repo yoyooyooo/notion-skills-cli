@@ -443,11 +443,22 @@ test("known native mode permits complete current equality while an uninspected c
   )
   expect(target.coverage).toBe("full")
   const broader = await f.run(prepareSharedBaselineInventory(target.run_id))
-  expect(broader.resources).toHaveLength(2)
-  expect(broader.coverage).toBe("partial")
-  expect(broader.visible_registered_census?.coverage).toBe("full")
+  expect(broader.resources).toHaveLength(1)
+  expect(broader.inspection_scope).toBe("reachable_target")
+  expect(broader.coverage).toBe("full")
+  expect(broader.visible_registered_census?.coverage).toBe("partial")
   expect(broader.visible_registered_census?.required_tables).toEqual(["skills", "files", "records"])
-  expect(broader.resources.find((resource) => resource.page_id === id(90))?.reasons).toContain(
+  expect(broader.visible_registered_census?.reasons).toContain("initial_census_incomplete")
+  expect(broader.resources.some((resource) => resource.page_id === id(90))).toBe(false)
+  const census = await f.run(
+    runSharedAudit({ entry: library.skills.database_id, selector: { kind: "census" } }),
+  )
+  const all = await f.run(prepareSharedBaselineInventory(census.run_id))
+  expect(all.inspection_scope).toBe("registered_table_census")
+  expect(all.resources).toHaveLength(2)
+  expect(all.coverage).toBe("partial")
+  expect(all.visible_registered_census?.coverage).toBe("full")
+  expect(all.resources.find((resource) => resource.page_id === id(90))?.reasons).toContain(
     "resource_coverage_incomplete",
   )
 })

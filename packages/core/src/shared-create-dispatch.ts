@@ -11,8 +11,22 @@ import {
   verifySharedRecordPage,
 } from "./shared-records.ts"
 import { isCoalescibleNotionRead } from "./shared-read-coalescing.ts"
+import { blankRepairBinding } from "./shared-native-repair-model.ts"
 import { sha256, Store } from "./store.ts"
 
+type RepairBinding =
+  | {
+      readonly kind: "historical_missing_main"
+      readonly skill_page_id: string
+      readonly file_id: string
+    }
+  | {
+      readonly kind: "managed_file"
+      readonly file_page_id: string
+      readonly skill_page_id: string
+      readonly file_id: string
+      readonly path: string
+    }
 type CreateIdentity = {
   readonly operation_id: string
   readonly skill_id: string
@@ -23,6 +37,8 @@ type CreateIdentity = {
     readonly skill_page_id: string
     readonly projection: string
   }[]
+  /** Set only by the maintenance repair journal. Creation plans omit it. */
+  readonly repair_binding?: RepairBinding
 }
 type Options = NonNullable<Parameters<Notion["Service"]["request"]>[2]>
 
@@ -40,6 +56,150 @@ function fieldValue(field: Record<string, unknown>, requested: Record<string, un
   return undefined
 }
 
+function completeRich(row: unknown, id: string) {
+  const field = sourceField(row, id)
+  if (field.type !== "rich_text" || !Array.isArray(field.rich_text) || field.has_more === true)
+    return Effect.fail(
+      fail("SHARED_CREATE_SCOPE", "Repair identity text is incomplete.", { property_id: id }),
+    )
+  return Effect.succeed(text(field.rich_text))
+}
+
+/** Repair binds one blank identity. It never creates a page and never resends a lost POST. */
+function observeRepairBinding(
+  library: SharedLibrary,
+  plan: CreateIdentity,
+  path: string,
+  body: unknown,
+  method: "POST" | "PATCH",
+) {
+  return Effect.gen(function* () {
+    const binding = plan.repair_binding
+    if (binding === undefined) return undefined
+    if (plan.recovery_file_projections !== undefined)
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_SCOPE", "Repair cannot share a creation projection dispatch."),
+      )
+    if (method === "POST")
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_SCOPE", "Repair does not create a page or repeat a missing POST.", {
+          operation_id: plan.operation_id,
+        }),
+      )
+    const request = property(body)
+    const props = property(request.properties)
+    if (Object.keys(request).length !== 1 || !Object.hasOwn(request, "properties"))
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_SCOPE", "Repair may send only the exact identity property."),
+      )
+    const api = yield* Notion
+    if (binding.kind === "historical_missing_main") {
+      const mainId = library.skills.property_ids["Main File ID"]!
+      if (
+        path !== `v1/pages/${binding.skill_page_id}` ||
+        Object.keys(props).length !== 1 ||
+        !Object.hasOwn(props, mainId) ||
+        text(property(props[mainId]).rich_text) !== binding.file_id
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CREATE_SCOPE",
+            "Repair may fill only the blank Main File ID on the exact original Skill page.",
+            { page_id: binding.skill_page_id, operation_id: plan.operation_id },
+          ),
+        )
+      const row = property(yield* api.request(path))
+      if (
+        row.id !== binding.skill_page_id ||
+        row.archived === true ||
+        row.is_archived === true ||
+        row.in_trash === true ||
+        property(row.parent).data_source_id !== library.skills.data_source_id ||
+        (yield* completeRich(row, library.skills.property_ids["Skill ID"]!)) !== plan.skill_id
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CREATE_SCOPE",
+            "The original Skill page no longer matches the frozen repair binding.",
+            { page_id: binding.skill_page_id, operation_id: plan.operation_id },
+          ),
+        )
+      const current = yield* completeRich(row, mainId)
+      if (current === binding.file_id) return row
+      if (!blankRepairBinding(current))
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CREATE_SCOPE",
+            "Repair will not replace a Main File ID that is already bound.",
+            { page_id: binding.skill_page_id, operation_id: plan.operation_id },
+          ),
+        )
+      return undefined
+    }
+    const fileId = library.files.property_ids["File ID"]!
+    if (
+      path !== `v1/pages/${binding.file_page_id}` ||
+      Object.keys(props).length !== 1 ||
+      !Object.hasOwn(props, fileId) ||
+      text(property(props[fileId]).rich_text) !== binding.file_id
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_SCOPE",
+          "Managed-file repair may fill only the blank File ID on the exact Files row.",
+          { page_id: binding.file_page_id, operation_id: plan.operation_id },
+        ),
+      )
+    const row = property(yield* api.request(path))
+    const ids = library.files.property_ids
+    const relation = sourceField(row, ids.Skill!)
+    if (
+      row.id !== binding.file_page_id ||
+      row.archived === true ||
+      row.is_archived === true ||
+      row.in_trash === true ||
+      property(row.parent).data_source_id !== library.files.data_source_id ||
+      relation.type !== "relation" ||
+      relation.has_more === true ||
+      !Array.isArray(relation.relation) ||
+      relation.relation.length !== 1 ||
+      property(relation.relation[0]).id !== binding.skill_page_id ||
+      (yield* completeRich(row, ids.Path!)) !== binding.path
+    )
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_SCOPE", "The Files row no longer has the frozen owner and path.", {
+          page_id: binding.file_page_id,
+          operation_id: plan.operation_id,
+        }),
+      )
+    const owner = property(yield* api.request(`v1/pages/${binding.skill_page_id}`))
+    if (
+      owner.id !== binding.skill_page_id ||
+      owner.archived === true ||
+      owner.in_trash === true ||
+      owner.is_archived === true ||
+      property(owner.parent).data_source_id !== library.skills.data_source_id ||
+      (yield* completeRich(owner, library.skills.property_ids["Skill ID"]!)) !== plan.skill_id
+    )
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_SCOPE", "The Files row owner is no longer the frozen Skill.", {
+          page_id: binding.skill_page_id,
+          file_page_id: binding.file_page_id,
+        }),
+      )
+    const current = yield* completeRich(row, fileId)
+    if (current === binding.file_id) return row
+    if (!blankRepairBinding(current))
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_SCOPE", "Repair will not replace a File ID that is already bound.", {
+          page_id: binding.file_page_id,
+          operation_id: plan.operation_id,
+        }),
+      )
+    return undefined
+  })
+}
+
 /** Original page acknowledgements and exact immutable Record facts have different authority. */
 function observeMutation(
   library: SharedLibrary,
@@ -50,6 +210,8 @@ function observeMutation(
   acknowledgedPageId?: string,
 ) {
   return Effect.gen(function* () {
+    if (plan.repair_binding !== undefined)
+      return yield* observeRepairBinding(library, plan, path, body, method)
     const api = yield* Notion,
       request = property(body),
       props = property(request.properties)
@@ -308,6 +470,12 @@ export function sharedCreateDispatch(
               "SHARED_CREATE_SCOPE",
               "Original creation supports only its frozen page mutations.",
             ),
+          )
+        if (plan.repair_binding !== undefined && method === "POST")
+          return yield* Effect.fail(
+            fail("SHARED_CREATE_SCOPE", "Repair does not create a page or repeat a missing POST.", {
+              operation_id: plan.operation_id,
+            }),
           )
         // Mutable metadata authority is checked before the first transport write as well
         // as after its ACK. The durable guard's current observation is a postcondition.

@@ -1,6 +1,7 @@
 import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 import { defineCommand } from "../../core/src/command-schema.ts"
+import { databaseId } from "../../core/src/catalog.ts"
 import { decode, fail } from "../../core/src/model.ts"
 import { AuditDepthSchema } from "../../core/src/shared-audit-model.ts"
 import {
@@ -91,7 +92,7 @@ function deliver(
 const run = defineCommand(
   "run",
   {
-    entry: requiredSingleton("entry", "Exact registered Skills database entry"),
+    entry: requiredSingleton("entry", "Exact registered Skills database ID, URL or alias"),
     target: singleton(
       "target",
       "One exact Skill page ID; mutually exclusive with --all and --census",
@@ -151,7 +152,7 @@ const run = defineCommand(
           ),
       })
       const report = yield* runSharedAudit({
-        entry: options.entry,
+        entry: yield* databaseId(options.entry),
         selector: options.census
           ? { kind: "census" }
           : target === undefined
@@ -167,7 +168,7 @@ const run = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Read-only resource audit with a stable run ID and durable local checkpoint. Metadata checks complete identity/file manifests, ownership facts and relations without loading all Records Payloads or bodies. Content additionally verifies current native bodies and effective fixed-file bytes and deterministic references. History additionally checks retained snapshot/custom/bundle objects remotely; cached availability and remote verification stay distinct. Complete unfiltered registered-table pagination includes malformed physical rows. The report separates execution, coverage and severity, records a non-atomic observation interval and never declares unknown or unobserved scope healthy. Requests include actual retries; time includes waits; byte budget permits one admitted response overshoot, reported exactly. No adoption, repair, operation replay, scripts, arbitrary websites or remote writes. Exit 0: completed/full/no error findings; 3: completed/full/error findings; 4: incomplete coverage; 75: paused/resumable; 1: execution failure; 2: invalid arguments.",
+    "Read-only resource audit with a stable run ID and durable local checkpoint. --target reads that Skill page, its direct Requires and Origin pages, and its File and Record headers through relation filters. It does not scan unrelated library rows, and it does not claim a complete reverse census. --all and --census keep independent unfiltered scans so a cleared owner remains visible. Metadata checks identity, ownership facts and relations without loading all Records Payloads or bodies. Disabled unregistered drafts are metadata states, not missing-identity failures; surviving bindings remain findings and draft content/history stay unverified. Content additionally verifies current native bodies and effective fixed-file bytes and deterministic references. History additionally checks retained snapshot/custom/bundle objects remotely; cached availability and remote verification stay distinct. Depth does not change the census boundary. Complete unfiltered registered-table pagination includes malformed physical rows. The report separates execution, coverage, inspection scope and severity, records a non-atomic observation interval and never declares unknown or unobserved scope healthy. Requests include actual retries; time includes waits; byte budget permits one admitted response overshoot, reported exactly. No adoption, repair, operation replay, garbage collection, merging, scripts, arbitrary websites or remote writes. Exit 0: completed/full/no error findings; 3: completed/full/error findings; 4: incomplete coverage; 75: paused/resumable; 1: execution failure; 2: invalid arguments.",
   ),
 )
 
@@ -184,8 +185,9 @@ const resume = defineCommand(
   },
   (options) =>
     Effect.gen(function* () {
+      const selectedEntry = Option.getOrUndefined(options.entry)
       const report = yield* resumeSharedAudit(options.run, {
-        entry: Option.getOrUndefined(options.entry),
+        entry: selectedEntry === undefined ? undefined : yield* databaseId(selectedEntry),
         budget: yield* budget(options),
       })
       yield* deliver(report, options.output)
@@ -208,14 +210,18 @@ const report = defineCommand(
   },
   (options) =>
     Effect.gen(function* () {
+      const selectedEntry = Option.getOrUndefined(options.entry)
       yield* deliver(
-        yield* reportSharedAudit(options.run, Option.getOrUndefined(options.entry)),
+        yield* reportSharedAudit(
+          options.run,
+          selectedEntry === undefined ? undefined : yield* databaseId(selectedEntry),
+        ),
         options.output,
       )
     }),
 ).pipe(
   Command.withDescription(
-    "Read one exact retained audit report entirely offline. No Notion/provider calls or credential refresh occur. Missing, wrong-scope, corrupt or unsupported-version checkpoints are errors. Reports preserve execution/coverage/severity independently, stable added/persistent/recovered findings and the original observation interval. An offline historical report is not a new current health check.",
+    "Read one exact retained audit report entirely offline. No Notion/provider calls or credential refresh occur. Missing, wrong-scope, corrupt or unsupported-version checkpoints are errors. Reports preserve execution/coverage/severity independently, stable added/persistent/recovered findings and the original observation interval. Known v1 reports retain their original findings, while only current rules can resume. An offline historical report is not a new current health check.",
   ),
 )
 
@@ -232,7 +238,11 @@ const list = defineCommand(
         try: () => integer(options.limit, "--limit"),
         catch: () => fail("INVALID_ARGUMENT", "Use a positive run-list limit from 1 to 1000."),
       })
-      const result = yield* listSharedAudits({ entry: Option.getOrUndefined(options.entry), limit })
+      const selectedEntry = Option.getOrUndefined(options.entry)
+      const result = yield* listSharedAudits({
+        entry: selectedEntry === undefined ? undefined : yield* databaseId(selectedEntry),
+        limit,
+      })
       const destination = Option.getOrUndefined(options.output)
       if (destination !== undefined)
         yield* (yield* Store).output(
@@ -243,7 +253,7 @@ const list = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "List retained local audit run IDs entirely offline, including interrupted runs without a final stdout receipt. Unreadable checkpoint IDs remain visible separately. This does not contact Notion or refresh old observations.",
+    "List retained local audit run IDs entirely offline, including interrupted runs without a final stdout receipt. Each summary names its rules version and whether those rules are current. Unreadable checkpoint IDs remain visible separately. This does not contact Notion or refresh old observations.",
   ),
 )
 

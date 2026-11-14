@@ -7,16 +7,23 @@ const faults = (s) => [
   ...(s.replayed || Object.values(s.attempts).some((n) => n > 1)
     ? ["违反未知接受请求禁止重派发"]
     : []),
-  ...(s.accepted && ![1, 2, 3].every((r) => s.confirmed.includes(r))
-    ? ["违反完整 review adopted completion 顺序"]
+  ...(s.accepted &&
+  !Array.from({ length: s.recordCount }, (_, index) => index + 1).every((r) =>
+    s.confirmed.includes(r),
+  )
+    ? ["违反 review 可选正文 adopted completion 的完整顺序"]
     : []),
-  ...(s.coldVerified && s.coldAvailable.length !== 5 ? ["违反完整共享证明冷读"] : []),
+  ...(s.coldVerified && s.coldAvailable.length !== s.recordCount + 2
+    ? ["违反完整共享证明冷读"]
+    : []),
 ]
 export function state({ s }) {
   const bad = faults(s)
   if (bad.length) return bad.join(" / ")
   if (s.phase === "cold read")
-    return s.coldAvailable.length === 5 ? "五项完整共享证明可读" : "共享原事实或独立接受证明缺失"
+    return s.coldAvailable.length === s.recordCount + 2
+      ? "完整共享证明和所选正文可读"
+      : "共享原事实或独立接受证明缺失"
   if (s.phase === "unknown dispatch")
     return s.acks.includes(s.record)
       ? "本 Record 原 ACK 已留存但读回中断"
@@ -47,7 +54,6 @@ export function state({ s }) {
 }
 export function step(action, from) {
   if (action === "Done") return null
-  if (action === "Interrupt" && from.s.phase === "response") return null
   return (
     {
       FreezeReview: "冻结独立 review 和身份",
@@ -68,7 +74,7 @@ export function step(action, from) {
       SkipAdoptedFact: "错误地跳过 adopted 事件",
       CompleteIndependentDecision: "保留原失败并完成独立接受",
       ColdRead: "空本地 Store 读取共享证明",
-      VerifyCold: "核实五项完整证明",
+      VerifyCold: "核实本次接受的完整证明",
       RejectCold: "拒绝任何缺失证明",
     }[action] ?? action
   )

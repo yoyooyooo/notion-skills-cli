@@ -5,14 +5,49 @@ import { checkBuiltinLifecycle } from "./package-smoke/builtin-lifecycle.ts"
 import { prepareMigrationFixture } from "./package-smoke/migration-fixture.ts"
 import { checkMigrationConsumption } from "./package-smoke/migration-consumption.ts"
 import { checkAuthoring } from "./package-smoke/authoring.ts"
-import { checkAuditRecovery } from "./package-smoke/audit.ts"
+import { checkProgressiveMaintenance } from "./package-smoke/maintenance.ts"
+import { checkInstalledMaintenancePi } from "./package-smoke/maintenance-pi-gate.ts"
+import {
+  checkAuditRecovery,
+  checkAuditDrafts,
+  checkAuditTargetBound,
+} from "./package-smoke/audit.ts"
 
 const consumer = await prepareConsumer()
+if (consumer.stage === "maintenance") {
+  const authoring = await checkAuthoring(consumer, checkProgressiveMaintenance, {
+    maintenanceOnly: true,
+  })
+  console.log(
+    JSON.stringify({
+      name: consumer.manifest.name,
+      version: consumer.manifest.version,
+      runtime: (await consumer.run([consumer.runtime, "--version"])).trim(),
+      executable: consumer.executable,
+      consumer_bin: consumer.consumerBin,
+      proof: "installed_progressive_maintenance_only",
+      stage: consumer.stage,
+      authoring,
+      scratch: consumer.scratch,
+    }),
+  )
+  process.exit(0)
+}
 await checkCommandContract(consumer)
 await checkBuiltinLifecycle(consumer)
 await checkStorageRoots(consumer)
-const authoring = await checkAuthoring(consumer)
+const authoring = await checkAuthoring(consumer, checkProgressiveMaintenance)
+const maintenancePi = await checkInstalledMaintenancePi(consumer)
 const auditRecovery = await checkAuditRecovery(consumer)
+const auditDrafts = await checkAuditDrafts(consumer)
+const auditTarget = await checkAuditTargetBound(consumer, { unrelatedRows: 120 })
+const auditTargetSmall = await checkAuditTargetBound(consumer, { unrelatedRows: 0 })
+if (auditTarget.requests !== auditTargetSmall.requests)
+  throw new Error("Unrelated inventory changed the actual target request count")
+const auditEarlyFinding = await checkAuditTargetBound(consumer, {
+  unrelatedRows: 120,
+  pauseAfterRoot: true,
+})
 const fixture = await prepareMigrationFixture(consumer)
 const { trashCheck } = await checkMigrationConsumption(consumer, fixture)
 const { manifest, runtime, run, executable, consumerBin, scratch } = consumer
@@ -25,12 +60,20 @@ console.log(
     consumer_bin: consumerBin,
     proof: "installed_consumer_with_controlled_notion_authoring",
     authoring,
+    maintenance_pi: maintenancePi,
     audit_recovery: auditRecovery,
+    audit_drafts: auditDrafts,
+    audit_target: auditTarget,
+    audit_target_small: auditTargetSmall,
+    audit_early_finding: auditEarlyFinding,
     trash_check: trashCheck,
     checks: [
       "installed_bin",
       "controlled_installed_author_lifecycle_and_original_outcome_recovery",
+      "installed_identity_repair_preserves_native_pages_and_reuses_original_operation",
       "installed_audit_sigint_sigkill_original_run_continuation",
+      "installed_audit_drafts_partial_registration_and_retained_lifecycle",
+      "installed_target_audit_ignores_unrelated_rows",
       "version",
       "all_offline_help",
       "independent_historical_operator_installed_bin_and_offline_help",

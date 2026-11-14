@@ -39,7 +39,7 @@ The archive filename follows the package version. Consumers install that tarball
 
 `check` runs type checking, formatting checks, both test hosts and the Node.js distribution build. `bun run test` runs the Bun suites and the real SQLite/configuration and sync-consumer suites on Node through official `@effect/vitest` 4.0.5 and its Vitest 5 runner; `test:unit` and `test:node` select those lanes individually. Existing database assertions, competing processes, crash rollback, backups and fences execute against the same official SQLite driver as production. The sync suite uses a Node HTTP fixture with the production Node platform and resource finalizers. CLI tests launch Node children. `package:check` validates documentation links, packs the CLI and installs it with npm in a fresh consuming project, then executes the installed binary with Node.js. CI covers Node.js 22 and 24 on Linux and macOS. Run both checks before proposing a pull request or release. Tests must not depend on personal credentials or mutate a live Notion workspace. Keep live verification separate and disclose the environment and authorization used. Modeled domain and argument failures produce JSON; implementation defects retain their Effect cause and Node runtime diagnostics.
 
-CI uses Ubuntu and macOS 15 with Node.js 22.22.3 and 24.20.0. Every job runs the complete deterministic suite, then drives package verification through `control.ts init/package`; successful runs retain the installed-consumer outputs and exact tarball. Per-matrix evidence is uploaded for seven days, including available failure records. macOS jobs require `/usr/bin/trash`, exercise real cache retirement and recycle owned scratch. Linux consumers verify `RETENTION_UNAVAILABLE` and unchanged cached bytes; Linux scratch remains on the disposable runner because no recycle capability is implemented. These checks require no live Notion credentials. Before integration, inspect all four checks for the PR's current head, not an earlier main run.
+CI uses Ubuntu and macOS 15 with Node.js 22.22.3 and 24.20.0. Each job runs `bun run check` and `bun scripts/package-check.ts`, not the local Skill's `control.ts init/package` wrapper. The actual uploads are `ntn-package-check.json`, controlled-authoring and maintenance-pi. A summary's SQLite logical-retirement marker is not proof of physical system Trash. Inspect the relevant workflow results for the exact change; local wrapper outputs and prior cleanup checks retain their own scopes. These deterministic checks require no live Notion credentials.
 
 The compact `packages/core/test/fixtures/router-original/.ntn-skills.json` manifest is a byte-preservation golden input for independent Router round trips. Its original bytes, including whitespace and final newline, are part of the fixture contract. Biome disables formatting for that exact file only; the containing fixture directory, tests and production sources remain in the normal root check.
 
@@ -56,6 +56,36 @@ Edit Skill and documentation sources at the repository root. `packages/cli/build
 Builtin installation has one writer under the XDG data root, with default shared links and optional additional Agent destinations. Keep version-2 tree receipts and distribution ownership outside transient host profiles; profile receipt-v1 support is a guarded migration input, not another installation path. Exercise default installation, multiple targets, update through links, foreign-target/local-edit protection, status without writes and interrupted migration. Use isolated data/HOME and preserve all replaced bytes through the existing retention capability.
 
 Add behavior tests for plausible consumer-visible failures: ambiguity, pagination, partial discovery, file boundaries, version consistency and permission failure. Avoid asserting implementation text or internal call wiring. A pull request should explain the user-visible problem, resulting behavior and checks actually run. Keep unrelated changes separate.
+
+## Direct source dogfooding
+
+Use one checkout and the existing source-selection shim; no release, dated install directory or upgrade/rollback service is required. Existing global `ntn-skills` users set `NTN_SKILLS_DEV_ROOT` to this checkout. Without that launcher, the equivalent entry is `bun run /absolute/notion-skills-cli/scripts/dev.ts` followed by the same arguments; neither route depends on a maintainer's cache.
+
+Start with your own Notion connection and an owned parent page shared with that connection. Authoring and library creation need write capabilities, while strictly read-only consumption keeps its documented refusal boundary. Store a token through `ctl config set-token --stdin` from a trusted secret source, or set `NOTION_API_TOKEN`; do not put credentials in Broker config or public issue reports.
+
+```sh
+export NTN_SKILLS_DEV_ROOT=/absolute/notion-skills-cli
+ntn-skills ctl library init --parent YOUR_OWNED_PARENT_PAGE_ID
+# Copy the returned entry/database ID; do not hand-build the library tables.
+ntn-skills create ./my-skill --database ENTRY_FROM_INIT
+ntn-skills list --database ENTRY_FROM_INIT --query my-skill
+ntn-skills use REF_FROM_LIST --database ENTRY_FROM_INIT
+```
+
+`./my-skill/SKILL.md` needs normal name/description frontmatter and your instructions; supporting files can live in `references/`. Create/read return exact refs for later `write` or `apply`; copy those refs instead of guessing IDs. See [shared authoring](docs/shared-authoring.md) for editing and pending-operation handling.
+
+For Pi, build this CLI once, then build the existing Broker against it. The CLI shim does **not** automatically replace the Broker's embedded SDK:
+
+```sh
+cd /absolute/notion-skills-cli
+bun run build
+cd /absolute/pi-context-broker
+bun install --frozen-lockfile
+NTN_SKILLS_BUILD_ENTRY=/absolute/notion-skills-cli/packages/cli/dist/ntn-skills.js bun run build:broker
+pi install /absolute/pi-context-broker/packages/context-broker
+```
+
+Keep only one Broker package entry in Pi; use `pi remove OLD_BROKER_SOURCE` for a previous entry, preserving other extensions. Configure its Notion source with your entry ID as in the [Broker quick start](https://github.com/yoyooyooo/pi-context-broker#quick-start), then open a new Pi session. Existing sessions are not restarted by editing this configuration. When CLI/SDK implementation changes, rebuild the CLI and `build:broker` at the same paths; source-only CLI invocation needs no rebuild. Test the changed path and inspect the actual Session when integration changes, rather than rerunning every host/model or preparing a new release.
 
 ## Documentation and verification records
 

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pele pele-state" viewBox="0 0 1131 1282" width="1131" height="1282" style="max-width:100%;height:auto;--_bg:var(--pele-bg,#fff);--_fg:var(--pele-fg,#1f1f1f);--_m:var(--pele-muted,#6e6e6e);--_l:var(--pele-line,#1f1f1f);--_s:var(--pele-surface,#f3f3f3);--_a:var(--pele-surface-alt,#e6e6e6);--_b:var(--pele-border,#8a8a8a);--_c:var(--pele-accent,#5b7bd5);color:var(--_fg);--_tw:var(--pele-title-weight,bold);--_fm:var(--pele-font-mono,monospace);font:16px sans-serif;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;font-family:var(--pele-font,sans-serif)" fill="var(--_fg)" role="graphics-document document" aria-roledescription="state"><style>
+.pele {
+  --pele-bg: #ffffff;
+  --pele-fg: #1c1c1c;
+  --pele-muted: #656565;
+  --pele-line: #808080;
+  --pele-surface: #fcfcfc;
+  --pele-surface-alt: #f1f1f1;
+  --pele-border: #c9c9c9;
+}
+.pele .blue rect { fill: #c3e0ff; }
+.pele .orange rect { fill: #f0d3bf; }
+.pele .purple rect { fill: #e3d5ff; }
+.pele .yellow rect { fill: #f0dcbf; }
+.pele .teal rect { fill: #bfe3df; }
+.pele .tan rect { fill: #e5d9ce; }
+.pele .pink rect { fill: #ffcbe6; }
+.pele .breaks rect {
+  fill: #ffecee !important;
+  stroke: #e72e3b !important;
+  stroke-width: 2.5px !important;
+}
+.pele .breaks text {
+  fill: #cd2834 !important;
+}
+.pele .mayBreak rect {
+  fill: #fff3e6 !important;
+  stroke: #e8730c !important;
+  stroke-width: 2.5px !important;
+}
+.pele .mayBreak text {
+  fill: #b85a06 !important;
+}
+.pele .bugPath rect {
+  stroke: #1680f3 !important;
+  stroke-width: 2.5px !important;
+}
+.pele .repeats rect {
+  stroke: #9b35d6 !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: 6 3;
+}
+@media (prefers-color-scheme: dark) {
+  .pele {
+    --pele-bg: #1f1f1f;
+    --pele-fg: #f5f5f5;
+    --pele-muted: #acacac;
+    --pele-line: #939393;
+    --pele-surface: #121212;
+    --pele-surface-alt: #2c2c2c;
+    --pele-border: #4e4e4e;
+  }
+  .pele .blue rect { fill: #1b3857; }
+  .pele .orange rect { fill: #573117; }
+  .pele .purple rect { fill: #3c2e57; }
+  .pele .yellow rect { fill: #573d17; }
+  .pele .teal rect { fill: #174641; }
+  .pele .tan rect { fill: #3d3127; }
+  .pele .pink rect { fill: #57233e; }
+  .pele .breaks rect {
+    fill: #2e2021 !important;
+    stroke: #cf2b35 !important;
+  }
+  .pele .breaks text {
+    fill: #ff6463 !important;
+  }
+  .pele .mayBreak rect {
+    fill: #2e2619 !important;
+    stroke: #d0700f !important;
+  }
+  .pele .mayBreak text {
+    fill: #ffa257 !important;
+  }
+  .pele .bugPath rect {
+    stroke: #116dd2 !important;
+  }
+  .pele .repeats rect {
+    stroke: #9a3fcf !important;
+  }
+}
+</style><text class="pele-title" font-weight="var(--_tw)" text-anchor="middle" xml:space="preserve"><tspan x="565.5" y="25.6">整树维护的原操作与消费屏障</tspan></text><g transform="translate(0,36)"><g class="pele-clusters"><g class="pele-cluster pele-state-composite" data-id="legend"><rect x="738.95" y="8" width="384" height="112" rx="10" fill="var(--_a)" fill-opacity="0.5" stroke="var(--_b)"/><path d="M738.95,44H1122.95" fill="none" stroke="var(--_b)"/><text class="pele-cluster-label" x="930.95" y="31.6" text-anchor="middle">Legend</text></g></g><g class="pele-edges" fill="none" stroke="var(--_l)" stroke-linecap="round"><g class="pele-edge pele-transition" data-id="edge0"><path d="M691.95,120L691.95,157"/><path class="pele-marker" d="M691.95,164L688.59,156L695.31,156Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge1"><path d="M691.95,226L691.95,288"/><path class="pele-marker" d="M691.95,295L688.59,287L695.31,287Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge2"><path d="M631.95,339L631.95,347.09C631.95,349.7 460.45,354.9 460.45,357.5L460.45,410"/><path class="pele-marker" d="M460.45,417L457.09,409L463.81,409Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge3"><path d="M757.7,339L757.7,347.09C757.7,352.3 779.45,352.3 779.45,357.5L779.45,401"/><path class="pele-marker" d="M779.45,408L776.09,400L782.81,400Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge4"><path d="M390.45,461L390.45,532"/><path class="pele-marker" d="M390.45,539L387.09,531L393.81,531Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge5"><path d="M520.45,461C520.45,500 671.95,500 671.95,539L671.95,845C671.95,873 628.45,873 628.45,901L628.45,907"/><path class="pele-marker" d="M628.45,914L625.09,906L631.81,906Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge6"><path d="M292.95,601L292.95,663"/><path class="pele-marker" d="M292.95,670L289.59,662L296.31,662Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge7"><path d="M487.95,601L487.95,845C487.95,873 517.61,873 517.61,901L517.61,907"/><path class="pele-marker" d="M517.61,914L514.25,906L520.97,906Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge8"><path d="M197,714L197,776"/><path class="pele-marker" d="M197,783L193.64,775L200.36,775Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge9"><path d="M388.9,714L388.9,845C388.9,873 501.61,873 501.61,901L501.61,907"/><path class="pele-marker" d="M501.61,914L498.25,906L504.97,906Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge10"><path d="M134,845L134,907"/><path class="pele-marker" d="M134,914L130.64,906L137.36,906Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge11"><path d="M260,845L260,888.5C260,891.97 485.61,898.91 485.61,902.38L485.61,907"/><path class="pele-marker" d="M485.61,914L482.25,906L488.97,906Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge12"><path d="M63,976L63,1038"/><path class="pele-marker" d="M63,1045L59.64,1037L66.36,1037Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge13"><path d="M199.5,976L199.5,985.63C199.5,988.72 873.45,994.91 873.45,998L873.45,1038"/><path class="pele-marker" d="M873.45,1045L870.09,1037L876.81,1037Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge14"><path d="M189,1045L189,998C189,992.38 183.5,992.38 183.5,986.75L183.5,983"/><path class="pele-marker" d="M183.5,976L186.86,984L180.14,984Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge15"><path d="M922.45,1045L922.45,363.75C922.45,358.98 773.7,355.2 773.7,350.44L773.7,346"/><path class="pele-marker" d="M773.7,339L777.06,347L770.34,347Z" fill="var(--_l)" stroke="none"/></g><g class="pele-edge pele-transition" data-id="edge16"><path d="M914.45,1107L914.45,1169"/><path class="pele-marker" d="M914.45,1176L911.09,1168L917.81,1168Z" fill="var(--_l)" stroke="none"/></g></g><g class="pele-edge-labels" font-size="14"><g class="pele-edge-label" data-id="edge1"><rect x="596.95" y="246.5" width="190" height="21" rx="3" fill="var(--_bg)"/><text x="691.95" y="261.9" text-anchor="middle">留存完整父计划并设消费屏障</text></g><g class="pele-edge-label" data-id="edge2"><rect x="372.45" y="359.5" width="176" height="21" rx="3" fill="var(--_bg)"/><text x="460.45" y="374.9" text-anchor="middle">确认前缀后留存下一子意图</text></g><g class="pele-edge-label" data-id="edge3"><rect x="726.45" y="359.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="779.45" y="374.9" text-anchor="middle">停止未派发后缀</text></g><g class="pele-edge-label" data-id="edge4"><rect x="351.45" y="490.5" width="78" height="21" rx="3" fill="var(--_bg)"/><text x="390.45" y="505.9" text-anchor="middle">派发原请求</text></g><g class="pele-edge-label" data-id="edge5"><rect x="618.95" y="681.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="671.95" y="696.9" text-anchor="middle">进程或响应中断</text></g><g class="pele-edge-label" data-id="edge6"><rect x="239.95" y="621.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="292.95" y="636.9" text-anchor="middle">服务端应用请求</text></g><g class="pele-edge-label" data-id="edge7"><rect x="434.95" y="681.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="487.95" y="696.9" text-anchor="middle">进程或响应中断</text></g><g class="pele-edge-label" data-id="edge8"><rect x="158" y="734.5" width="78" height="21" rx="3" fill="var(--_bg)"/><text x="197" y="749.9" text-anchor="middle">保留原响应</text></g><g class="pele-edge-label" data-id="edge9"><rect x="335.9" y="803.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="388.9" y="818.9" text-anchor="middle">进程或响应中断</text></g><g class="pele-edge-label" data-id="edge10"><rect x="81" y="865.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="134" y="880.9" text-anchor="middle">核实完整子结果</text></g><g class="pele-edge-label" data-id="edge11"><rect x="207" y="865.5" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="260" y="880.9" text-anchor="middle">进程或响应中断</text></g><g class="pele-edge-label" data-id="edge12"><rect x="10" y="1000" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="63" y="1015.4" text-anchor="middle">进程或响应中断</text></g><g class="pele-edge-label" data-id="edge13"><rect x="834.45" y="1000" width="78" height="21" rx="3" fill="var(--_bg)"/><text x="873.45" y="1015.4" text-anchor="middle">确认父进度</text></g><g class="pele-edge-label" data-id="edge14"><rect x="136" y="1000" width="106" height="21" rx="3" fill="var(--_bg)"/><text x="189" y="1015.4" text-anchor="middle">读取同一原结果</text></g><g class="pele-edge-label" data-id="edge15"><rect x="855.45" y="681.5" width="134" height="21" rx="3" fill="var(--_bg)"/><text x="922.45" y="696.9" text-anchor="middle">进入下一冻结子操作</text></g><g class="pele-edge-label" data-id="edge16"><rect x="840.45" y="1127.5" width="148" height="21" rx="3" fill="var(--_bg)"/><text x="914.45" y="1142.9" text-anchor="middle">全部验证后完成父操作</text></g></g><g class="pele-nodes"><g class="pele-node pele-state blue" data-id="s0" transform="translate(691.95,195)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">完整目标树已规划，尚未写</tspan><tspan x="0" y="16.1">入</tspan></text></g><g class="pele-node pele-state blue" data-id="s1" transform="translate(691.95,317)"><rect x="-112" y="-22" width="224" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">当前子操作：复核当前前沿</text></g><g class="pele-node pele-state blue" data-id="s2" transform="translate(460.45,439)"><rect x="-112" y="-22" width="224" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">当前子操作：原意图已留存</text></g><g class="pele-node pele-state blue" data-id="s3" transform="translate(390.45,570)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前子操作：原请求已派发</tspan><tspan x="0" y="16.1">一次</tspan></text></g><g class="pele-node pele-state yellow" data-id="s4" transform="translate(779.45,439)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前内容已变化；保留既有</tspan><tspan x="0" y="16.1">结果并停止</tspan></text></g><g class="pele-node pele-state yellow" data-id="s5" transform="translate(568.45,945)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前子操作结果未知，不重</tspan><tspan x="0" y="16.1">发也不越过</tspan></text></g><g class="pele-node pele-state blue" data-id="s6" transform="translate(292.95,692)"><rect x="-112" y="-22" width="224" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">当前子操作：服务端已应用</text></g><g class="pele-node pele-state blue" data-id="s7" transform="translate(197,814)"><rect x="-108.9" y="-31" width="217.79" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前子操作：原 ACK 已持</tspan><tspan x="0" y="16.1">久化</tspan></text></g><g class="pele-node pele-state blue" data-id="s8" transform="translate(134,945)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前子操作：原结果已精确</tspan><tspan x="0" y="16.1">验证并留存</tspan></text></g><g class="pele-node pele-state yellow" data-id="s9" transform="translate(126,1076)"><rect x="-104" y="-31" width="208" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前子操作的原结果已留</tspan><tspan x="0" y="16.1">存，父进度待续接</tspan></text></g><g class="pele-node pele-state blue" data-id="s10" transform="translate(914.45,1076)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">当前子操作：父操作已记入</tspan><tspan x="0" y="16.1">确认前缀</tspan></text></g><g class="pele-node pele-state teal" data-id="s11" transform="translate(914.45,1207)"><rect x="-112" y="-31" width="224" height="62" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" text-anchor="middle" xml:space="preserve"><tspan x="0" y="-4.9">三个子操作有完整原结果；</tspan><tspan x="0" y="16.1">允许新选择</tspan></text></g><g class="pele-node pele-state-start" data-id="root_start" transform="translate(691.95,113)"><circle r="7" fill="var(--_l)"/></g><g class="pele-node pele-state teal" data-id="lg0" transform="translate(794.95,82)"><rect x="-40" y="-22" width="80" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">已完成</text></g><g class="pele-node pele-state yellow" data-id="lg1" transform="translate(930.95,82)"><rect x="-56" y="-22" width="112" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">保留并停止</text></g><g class="pele-node pele-state blue" data-id="lg2" transform="translate(1066.95,82)"><rect x="-40" y="-22" width="80" height="44" rx="10" fill="var(--_s)" stroke="var(--_b)"/><text class="pele-label" x="0" y="5.6" text-anchor="middle">维护中</text></g></g></g></svg>

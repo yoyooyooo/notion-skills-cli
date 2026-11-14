@@ -94,7 +94,7 @@ test("census drift stays incomplete instead of replacing the first observation w
   expect(f.writeCount()).toBe(0)
 })
 
-test("metadata audit independently inventories all three tables without bodies or object Payloads", async () => {
+test("target metadata reads reachable headers without an unfiltered library census or Payloads", async () => {
   const f = await auditFixture()
   const before = canonicalSharedJson([...f.records.values()])
   const report = await f.run(
@@ -105,19 +105,38 @@ test("metadata audit independently inventories all three tables without bodies o
   )
   expect(report.execution).toBe("completed")
   expect(report.coverage).toBe("full")
-  expect(report.inventory.reverse_tables).toEqual(["skills", "files", "records"])
+  expect(report.inspection_scope).toBe("reachable_target")
+  expect(report.reverse_table_completeness).toBe("unobserved")
+  expect(report.inventory.reverse_tables).toEqual([])
+  expect(report.inventory.library_conflict_claim).toBe("not_claimed")
+  expect(report.ownership_coverage).toEqual([
+    expect.objectContaining({
+      owner_page_id: skillPage,
+      files: "full",
+      records: "full",
+      sources: "not_configured",
+    }),
+  ])
   expect(report.items[0]?.tree).toHaveLength(3)
   expect(report.items[0]?.tree.every((file) => file.byte_status === "unobserved")).toBe(true)
   expect(f.readBodyCount()).toBe(0)
   expect(f.writeCount()).toBe(0)
   expect(canonicalSharedJson([...f.records.values()])).toBe(before)
-  const census = f.ledger.filter(
-    (call) =>
-      call.path.includes(`/data_sources/${library.records.data_source_id}/query`) &&
-      property(call.body).filter === undefined,
+  const queries = f.ledger.filter(
+    (call) => call.path.includes("/data_sources/") && call.path.includes("/query"),
   )
-  expect(census).toHaveLength(2)
-  expect(census.every((call) => !call.path.includes("filter_properties=payload"))).toBe(true)
+  expect(queries.length).toBeGreaterThan(0)
+  expect(queries.every((call) => property(call.body).filter !== undefined)).toBe(true)
+  const headerQueries = queries.filter(
+    (call) => property(property(call.body).filter).relation !== undefined,
+  )
+  expect(headerQueries.length).toBeGreaterThan(0)
+  expect(headerQueries.every((call) => !call.path.includes("filter_properties=payload"))).toBe(true)
+  expect(
+    f.ledger.some((call) =>
+      call.path.includes(`/data_sources/${library.skills.data_source_id}/query`),
+    ),
+  ).toBe(false)
 })
 
 test("one-attempt budgets resume inside one Skill without resetting confirmed progress", async () => {

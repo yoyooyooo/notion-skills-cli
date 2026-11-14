@@ -419,6 +419,47 @@ function failure<A>(
 }
 
 describe("explicit shared whole-body writes", () => {
+  test("a 23 KiB main can be shortened without duplicating its derived text in the operation record", async () => {
+    const old = "# Existing\n\n" + "Existing paragraph.\n".repeat(1200)
+    const input = "# Smaller\n\n" + "Keep this paragraph.\n".repeat(500)
+    const projection = projectSharedNotionMarkdown(input)
+    const shared = remote(old),
+      api = client(shared, { readback: () => projection.markdown })
+    const plan = await api.run(
+      prepareSharedBodyWrite({
+        library,
+        skillPageId: skillPage,
+        fileId,
+        action: "write",
+        candidateMarkdown: projection.markdown,
+        inputProjection: projection,
+        authoredInputSha256: hash(input),
+      }),
+    )
+    expect(Buffer.byteLength(canonicalSharedJson(plan))).toBeGreaterThan(65536)
+    expect((await api.run(executeSharedBodyWrite(library, { plan, mode: "create" }))).status).toBe(
+      "applied",
+    )
+    expect(shared.markdown).toBe(projection.markdown)
+    const row = [...shared.rows.values()].find(
+      (row) =>
+        text(property(property(row.properties)[r["Record ID"]]).rich_text) === plan.operation_id,
+    )
+    const envelope = text(property(property(row?.properties)[r.Payload]).rich_text)
+    expect(Buffer.byteLength(envelope)).toBeLessThanOrEqual(65536)
+    const restored = await api.run(
+      validateSharedBodyWritePlan(property(JSON.parse(envelope)).payload),
+    )
+    expect(restored).toEqual(plan)
+    expect(restored.before.raw_markdown).toBe(old)
+    const damaged = structuredClone(property(JSON.parse(envelope)).payload)
+    property(property(damaged).before).raw_markdown = old + "External edit"
+    expect(
+      failure(await api.run(validateSharedBodyWritePlan(damaged).pipe(Effect.result))).code,
+    ).toBe("SHARED_BODY_WRITE_INVALID")
+    expect((await api.run(reconcileSharedBodyWrite(library, restored))).status).toBe("applied")
+    expect(patches(api)).toHaveLength(1)
+  })
   test("v2 body write sends authored Markdown and verifies the separately frozen native candidate", async () => {
     const input = "# Updated\n\n**bold `code` bold**.\n"
     const wire = "# Updated\n\n**bold `code` bold**."
@@ -634,10 +675,10 @@ describe("explicit shared whole-body writes", () => {
   })
 
   test("empty old body and oversized plans fail before dispatch journalling", async () => {
-    for (const initial of ["", "x".repeat(30_000)]) {
+    for (const initial of ["", "x".repeat(40_000)]) {
       const shared = remote(initial),
         api = client(shared)
-      const error = failure(await api.run(prepare("y".repeat(30_000)).pipe(Effect.result)))
+      const error = failure(await api.run(prepare("y".repeat(40_000)).pipe(Effect.result)))
       expect(["SHARED_BODY_WRITE_UNSUPPORTED", "SHARED_RECORD_TOO_LARGE"]).toContain(error.code)
       expect(creates(api)).toHaveLength(0)
       expect(patches(api)).toHaveLength(0)

@@ -41,6 +41,10 @@ const review = defineCommand(
       "accept-observed-sha256",
       "SHA-256 of the exact complete currently observed target Markdown being independently accepted",
     ),
+    acceptCurrent: switchFlag(
+      "accept-current",
+      "Explicitly retain the reviewed current file as a new independent baseline, even when it differs from the failed add candidate. The original failure stays unproven; no body is patched.",
+    ),
     output: requiredSingleton("output", "Save the complete independent review for inspection"),
     ...sourceRequestBudgets,
   },
@@ -56,6 +60,7 @@ const review = defineCommand(
               skillPageId,
               originalOperationId: args.originalOperation,
               acceptedObservedSha256: args.acceptedObservedSha256,
+              acceptCurrent: args.acceptCurrent,
             })
           }),
           {
@@ -82,7 +87,7 @@ const review = defineCommand(
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Review an independent current-file acceptance for one ordinary native add retained as needs_review after a complete-body mismatch. Requires the original full plan, known exact page reference, original Store/snapshot and unchanged complete native tree/frontier. The author must first repair the same page to the exact frozen candidate and explicitly select its full observed hash. No writes occur. The old add has no retained complete request/ACK and remains needs_review; this is not its completion or a create retry.",
+    "Review an independent current-file acceptance for one ordinary native add retained as needs_review after a complete-body mismatch. Requires the original full plan, exact page, original Store/snapshot and unchanged other files, metadata and frontier. By default the target must match the frozen candidate. --accept-current explicitly selects its complete observed body as a separate new baseline, bound by --accept-observed-sha256; later edits use ordinary write. No writes occur during review. The old add remains needs_review and unproven; neither path supplies its original ACK or retries creation.",
   ),
 )
 

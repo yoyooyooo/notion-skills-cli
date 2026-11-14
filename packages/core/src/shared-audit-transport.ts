@@ -70,7 +70,9 @@ export function auditJournalNotion(
         (["REQUEST_BUDGET_EXHAUSTED", "AUTH_REQUIRED", "RATE_LIMITED"].includes(
           result.failure.code,
         ) ||
-          (!taskKey.startsWith("skill:") && !/^v1\/(?:pages|blocks)\//u.test(path)))
+          (!taskKey.startsWith("skill:") &&
+            !taskKey.startsWith("reachable:") &&
+            !/^v1\/(?:pages|blocks)\//u.test(path)))
       )
         return yield* Effect.fail(result.failure)
       const value =

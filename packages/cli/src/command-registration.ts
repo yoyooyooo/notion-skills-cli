@@ -37,6 +37,10 @@ import {
 import { configCommand } from "./commands-configuration.ts"
 import { databaseCommand } from "./commands-database.ts"
 import { libraryCommand } from "./commands-library.ts"
+import { libraryAuditCommand } from "./commands-library-audit.ts"
+import { libraryFilesCommand } from "./commands-library-files.ts"
+import { libraryResourceCommand } from "./commands-library-resource.ts"
+import { repairCommand } from "./commands-maintenance-repair.ts"
 import { syncLocalCommand } from "./commands-local-sync.ts"
 import { cacheCommand } from "./commands-cache.ts"
 import { builtinCommand } from "./commands-builtin.ts"
@@ -80,6 +84,10 @@ const ctlCommand = defineCommand("ctl").pipe(
   ),
   Command.withSubcommands([
     withRuntime(libraryCommand, live),
+    withRuntime(libraryAuditCommand, live),
+    withRuntime(libraryFilesCommand, live),
+    withRuntime(libraryResourceCommand, live),
+    withRuntime(repairCommand, live),
     withRuntime(databaseCommand, upstreamLive),
     withRuntime(configCommand, upstreamLive),
     withRuntime(cacheCommand, upstreamLive),

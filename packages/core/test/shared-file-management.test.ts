@@ -14,6 +14,7 @@ import {
   reconcileSharedFileAddAcceptance,
 } from "../src/shared-file-add-acceptance.ts"
 import { recordedFixtureTransport } from "./notion-http-fixture.ts"
+import { inspectAuditSkill } from "../src/shared-audit-inspect.ts"
 import { sharedSnapshotVersion } from "../src/shared-snapshot-identity.ts"
 import { openSharedSnapshot, type FixedSharedSource } from "../src/shared-snapshot.ts"
 import {
@@ -39,6 +40,7 @@ import {
   id,
   encode,
   digest,
+  rich,
 } from "./shared-snapshot-fixture.ts"
 
 function field(key: string, input: unknown) {
@@ -423,6 +425,117 @@ async function failedNativeAdd(prepare?: (f: ReturnType<typeof fixture>) => void
 }
 
 describe("shared file lifecycle operations", () => {
+  test("explicit observed-file acceptance unblocks a known failed add without claiming its old write succeeded", async () => {
+    const { f, plan, page, request } = await failedNativeAdd()
+    const observed = plan.content.markdown + "\n\nObserved link needing an ordinary edit."
+    f.base.bodies.set(page, observed)
+    const selected = { ...request, acceptedObservedSha256: digest(encode(observed)) }
+    expect((await f.run(Effect.flip(reviewSharedFileAddAcceptance(selected)))).code).toBe(
+      "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+    )
+    expect(
+      (
+        await f.run(
+          Effect.flip(
+            reviewSharedFileAddAcceptance({
+              ...selected,
+              acceptCurrent: true,
+              acceptedObservedSha256: "0".repeat(64),
+            }),
+          ),
+        )
+      ).code,
+    ).toBe("SHARED_FILE_ADD_ACCEPTANCE_REQUIRED")
+    const review = await f.run(reviewSharedFileAddAcceptance({ ...selected, acceptCurrent: true }))
+    expect(review.version).toBe(2)
+    expect(f.base.writeCount()).toBe(0)
+    const applied = await f.run(
+      applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+    )
+    expect(applied.original_status).toBe("needs_review")
+    expect(applied.original_completion).toBe("unproven")
+    expect(applied.event.kind).toBe("adopted")
+    if (applied.event.kind !== "adopted") throw new Error("Expected independent adoption")
+    expect(applied.event.content.sha256).toBe(digest(encode(observed)))
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.pathPatches()).toHaveLength(0)
+    expect((await f.events()).some((event) => event.event_id === plan.event.event_id)).toBe(false)
+    f.base.json.clear()
+    f.base.objects.clear()
+    f.credential("cold-observed-acceptance")
+    f.clear()
+    expect((await f.run(reconcileSharedFileAddAcceptance(request))).verified).toBe(true)
+    expect((await f.open(true)).files.some((file) => file.path === plan.path)).toBe(true)
+    expect(f.base.writeCount()).toBe(0)
+    const audit = await f.run(
+      inspectAuditSkill(library, {
+        page_id: skillPage,
+        depth: "content",
+        observed_from: 0,
+        inventory: {
+          skills: [f.base.main],
+          files: f.files,
+          records: [...f.base.records.values()],
+          sources: [],
+          complete: ["skills", "files", "records", "sources"],
+        },
+      }),
+    )
+    expect(audit.findings.some((finding) => finding.code === "OPERATION_OUTCOME_UNOBSERVED")).toBe(
+      false,
+    )
+    expect(audit.findings).toContainEqual(
+      expect.objectContaining({
+        code: "ORIGINAL_FAILURE_INDEPENDENTLY_ACCEPTED",
+        severity: "info",
+      }),
+    )
+    for (const [key, row] of f.base.records)
+      if (
+        text(
+          property(property(row.properties)[library.records.property_ids["Record ID"]!]).rich_text,
+        ) === applied.event.content.object_id
+      )
+        f.base.records.delete(key)
+    f.base.json.clear()
+    f.base.objects.clear()
+    f.credential("cold-missing-observed-body")
+    f.clear()
+    expect((await f.run(Effect.flip(reconcileSharedFileAddAcceptance(request)))).code).toBe(
+      "SHARED_RECORD_UNRESOLVED",
+    )
+    expect(f.base.writeCount()).toBe(0)
+  })
+  test("a new reference resolves a same-owner relative link before its one page create", async () => {
+    const url = `https://app.notion.com/p/${id(11).replaceAll("-", "")}`
+    const f = fixture({
+      readback: (wire) =>
+        wire.replace(/^<h1>([^\n]*)<\/h1>/u, "# $1").replace("](1.md)", "](https://1.md)"),
+    })
+    const snapshot = await f.baseline()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot,
+        action: "add",
+        path: "references/linked.md",
+        markdown: "# Linked\n\n[Policy](1.md)\n",
+      }),
+    )
+    expect(plan.creation_projection?.input_markdown).toContain(url)
+    const result = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+    expect(result.status).toBe("applied")
+    expect(f.fileCreates()).toHaveLength(1)
+    const current = await f.open(true)
+    const file = current.files.find((file) => file.path === plan.path)!
+    const body = await f.run(
+      Effect.gen(function* () {
+        return yield* (yield* Store).readBytes(`objects/${file.sha256}`)
+      }),
+    )
+    expect(new TextDecoder().decode(body)).toContain("[Policy](1.md)")
+    expect(new TextDecoder().decode(body)).not.toContain("https://1.md")
+  })
   test.each([
     "wrong operation",
     "missing original plan",
@@ -753,7 +866,13 @@ describe("shared file lifecycle operations", () => {
       }),
     )
     f.onFileCreate((row) =>
-      f.base.bodies.set(String(row.id), plan.content.markdown.replace("(1.md)", "(https://1.md)")),
+      f.base.bodies.set(
+        String(row.id),
+        plan.content.markdown.replace(
+          `(https://app.notion.com/p/${id(11).replaceAll("-", "")})`,
+          "(https://1.md)",
+        ),
+      ),
     )
     const failure = await f.run(
       Effect.flip(executeSharedFileManagement(library, { plan, mode: "create" })),
@@ -1188,6 +1307,92 @@ describe("shared file lifecycle operations", () => {
     )
   })
 
+  test("native undelete revives the same file id and page and does not create a row", async () => {
+    const f = fixture(),
+      baseline = await f.baseline()
+    const deleted = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot: baseline,
+        action: "delete",
+        fileId: "file-1",
+      }),
+    )
+    await f.run(executeSharedFileManagement(library, { plan: deleted, mode: "create" }))
+    const current = await f.open(true)
+    expect(current.files.some((file) => file.path === "references/1.md")).toBe(false)
+    const rowsBefore = f.files.length
+    f.clear()
+    const plan = await f.run(
+      prepareSharedFileManagement({
+        library,
+        snapshot: current,
+        action: "undelete",
+        fileId: "file-1",
+      }),
+    )
+    expect(plan.page_id).toBe(id(11))
+    expect(plan.file_id).toBe("file-1")
+    expect(plan.event.kind).toBe("undeleted")
+    const result = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+    expect(result.status).toBe("applied")
+    expect(result.page_id).toBe(id(11))
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.files).toHaveLength(rowsBefore)
+    expect(f.base.bodies.get(id(11))).toBe("Reference one\n")
+    const state = resolveFileState(
+      "file-1",
+      (await f.events()).filter((event) => event.file_id === "file-1"),
+    )
+    expect(state.ownership.kind).toBe("custom")
+    if (state.ownership.kind !== "custom") throw new Error("Expected custom ownership")
+    expect(state.ownership.content).toEqual(deleted.content.retained)
+    const revived = await f.open(true)
+    expect(revived.files.some((file) => file.path === "references/1.md")).toBe(true)
+    f.clear()
+    const again = await f.run(executeSharedFileManagement(library, { plan, mode: "create" }))
+    expect(again.status).toBe("applied")
+    expect(f.fileCreates()).toHaveLength(0)
+    expect((await f.events()).filter((event) => event.kind === "undeleted")).toHaveLength(1)
+  })
+
+  test("undelete rejects an active file and unavailable bytes before creating a row", async () => {
+    const f = fixture(),
+      snapshot = await f.baseline()
+    const active = await f.run(
+      Effect.flip(
+        prepareSharedFileManagement({
+          library,
+          snapshot,
+          action: "undelete",
+          fileId: "file-1",
+        }),
+      ),
+    )
+    expect(active.code).toBe("SHARED_FILE_NOT_TOMBSTONE")
+    expect(f.fileCreates()).toHaveLength(0)
+    const deleted = await f.run(
+      prepareSharedFileManagement({ library, snapshot, action: "delete", fileId: "file-1" }),
+    )
+    await f.run(executeSharedFileManagement(library, { plan: deleted, mode: "create" }))
+    const current = await f.open(true)
+    f.base.bodies.set(id(11), "rewritten after delete\n")
+    f.clear()
+    const unavailable = await f.run(
+      Effect.flip(
+        prepareSharedFileManagement({
+          library,
+          snapshot: current,
+          action: "undelete",
+          fileId: "file-1",
+        }),
+      ),
+    )
+    expect(unavailable.code).toBe("SHARED_UNDELETE_BYTES_UNAVAILABLE")
+    expect(f.fileCreates()).toHaveLength(0)
+    expect(f.files).toHaveLength(2)
+  })
+
   test("add projects before freezing while exact postcondition rejects an unplanned trailing newline", async () => {
     const f = fixture(),
       snapshot = await f.baseline()
@@ -1251,6 +1456,111 @@ describe("shared file lifecycle operations", () => {
       suppressed_paths: ["references/1.md"],
     })
   })
+
+  test.each(["absent", "conflicting"] as const)(
+    "an acknowledged move event and the fresh history query stay consistent over the real transport (%s)",
+    async (visibility) => {
+      const f = fixture(),
+        snapshot = await f.baseline()
+      const plan = await f.run(
+        prepareSharedFileManagement({
+          library,
+          snapshot,
+          action: "move",
+          fileId: "file-1",
+          destinationPath: "notes/one.md",
+        }),
+      )
+      const original = await f.run(Notion)
+      let changedQueries = 0
+      const delayed: Notion["Service"] = {
+        ...original,
+        request: (path, body, options) =>
+          original.request(path, body, options).pipe(
+            Effect.map((raw) => {
+              if (
+                new URL(path, "https://api.notion.com/").pathname !==
+                `/v1/data_sources/${library.records.data_source_id}/query`
+              )
+                return raw
+              const response = property(raw)
+              if (!Array.isArray(response.results)) return raw
+              const results = response.results.flatMap((row) => {
+                const recordId = text(
+                  property(
+                    property(property(row).properties)[library.records.property_ids["Record ID"]!],
+                  ).rich_text,
+                )
+                if (recordId !== plan.event.event_id) return [row]
+                changedQueries += 1
+                if (visibility === "absent") return []
+                const envelope = canonicalSharedJson({
+                  version: 1,
+                  operation_id: plan.event.event_id,
+                  payload: { ...plan.event, to_path: "notes/concurrent.md" },
+                })
+                const payloadId = library.records.property_ids.Payload!
+                const hashId = library.records.property_ids.Hash!
+                return [
+                  {
+                    ...property(row),
+                    properties: {
+                      ...property(property(row).properties),
+                      [payloadId]: rich(payloadId, envelope),
+                      [hashId]: rich(hashId, digest(envelope)),
+                    },
+                  },
+                ]
+              })
+              return { ...response, results }
+            }),
+          ),
+      }
+      await recordedFixtureTransport(delayed, async (api, requests) => {
+        const result = await f.run(
+          executeSharedFileManagement(library, { plan, mode: "create" }).pipe(
+            Effect.provideService(Notion, api),
+            Effect.result,
+          ),
+        )
+        expect(changedQueries).toBe(1)
+        if (visibility === "conflicting") {
+          expect(result._tag).toBe("Failure")
+          if (result._tag !== "Failure") throw new Error("Conflicting history was accepted")
+          expect(result.failure.code).toBe("SHARED_STATE_CONFLICT")
+        } else {
+          expect(result._tag).toBe("Success")
+          if (result._tag !== "Success") throw result.failure
+          expect(result.success.status).toBe("applied")
+          if (!("state" in result.success)) throw new Error("Expected the executed lifecycle state")
+          expect(result.success.state.placement?.path).toBe("notes/one.md")
+        }
+        expect(
+          requests.filter(
+            (request) => request.method === "PATCH" && request.path === `v1/pages/${plan.page_id}`,
+          ),
+        ).toHaveLength(1)
+        for (const recordId of [plan.event.event_id, `outcome-${plan.operation_id}`])
+          expect(
+            requests.filter(
+              (request) =>
+                request.method === "POST" &&
+                request.path === "v1/pages" &&
+                text(
+                  property(
+                    property(property(request.body).properties)[
+                      library.records.property_ids["Record ID"]!
+                    ],
+                  ).rich_text,
+                ) === recordId,
+            ),
+          ).toHaveLength(recordId === plan.event.event_id || visibility === "absent" ? 1 : 0)
+      })
+      expect(f.pending()).toHaveLength(visibility === "absent" ? 0 : 1)
+      if (visibility === "absent")
+        expect((await f.run(reconcileSharedFileManagement(library, plan))).verified).toBe(true)
+    },
+  )
 
   test("following move retains its original source path independently from the Path property", async () => {
     const f = fixture()

@@ -2,15 +2,18 @@
 
 本目录是 [AH-1008](https://linear.app/yoyooyooo/issue/AH-1008) 与 [AH-1009](https://linear.app/yoyooyooo/issue/AH-1009) 的项目验证正本。由 [verify-notion-operation-recovery](../../../.cursor/skills/verify-notion-operation-recovery/SKILL.md) 维护；统一运行器和冻结工具链沿用 [resource-lifecycle](../resource-lifecycle/README.md)。不替换 ImportCreate、CreateRecovery、AcknowledgedContinuation 的既有证明。
 
-## 三个协议
+## 原操作协议
 
 | 模型 | 有界状态主权 | 正例证明的合同 |
 | --- | --- | --- |
 | AcknowledgedRecordPrefix | 一个原操作、两个有序 Record 位置、一个已 ACK 前缀和一个未派发后缀 | 原请求与完整载荷绑定 exact ACK GET；前缀无空洞；未知结果不重派发；当前前提和权限复核；独立完成不改写原输入和失败 |
-| IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/adopted/completion 三项不可变事实、五类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
+| IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/[observed body]/adopted/completion 三或四项不可变事实、五或六类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
 | RestoreFeedback | 一次冻结提交、一个原 restore 身份、一轮正文动作和一轮最终业务反馈 | 先核实原身份绑定再派发正文；正文已完成而反馈未发时只补反馈；pending/unknown 不换原操作；历史反馈 ACK 与当前正文/Source 前提分离 |
+| MaintenanceApply | 一个父计划、三个有序子操作，区分派发、响应 ACK、原 outcome 和父进度 | 验证前缀才派发后缀，未知不重放、完整子结果才完成、pending 树不可发布；旧 pin 是固定输入，权限不在模型中 |
 
-正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：3 个模型，28 个配置，其中 3 个正例、25 个故意反例。
+正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：4 个模型，34 个配置。新增 MaintenanceApply 的实际对应、ACK 抽象和排除项见[维护审阅](../../../docs/maintenance-verification-review.md)。
+
+MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证前缀才允许后缀，unknown 不重放，部分树不进入当前消费。`oldPin` 固定为旧值是建模假设，不能独立证明实际 pin 字节或权限保护。原 outcome 存在的 unknown 可 `ReconcileOriginal`；只有 ACK 而无原 outcome 不自动获得继续后缀的权限。具体正文、引用和 Notion 权限由公共实现及安装回归验证。
 
 ## 原子边界与源码对应
 
@@ -33,6 +36,10 @@
 | ReplaceOriginal、PublishInvalidOutcome、GuessOriginalSuccess | unreconciledRestore、assertRequestRestorePlan、verifiedFeedback 与 reconcile 原结果分支 | 故意坏分支：pending/unknown 不能新 submit 替代；取消/superseded/failed/当前相等不能冒充原 applied |
 
 源码文件位于 `packages/core/src/`。准确 SHA256 与同步源码基线在 `coverage.json`；运行器先比对再运行，不能只更新 hash 使检查转绿。这是经过源码审查的有界抽象，不是机器证明的 TypeScript refinement。
+
+### MaintenanceApply 的范围
+
+`RetainAck` 记录收到原响应，`VerifyOutcome` 和 `CheckpointChild` 才分别建立原结果与父进度。`OriginalOutcomeAuthority` 检查这几个集合的包含关系；没有独立负配置不等于它是固定输入。`OldPinPreserved` 则是固定字段。已知 partial/not_applied、字节完整性和跨 Store 权限由 `shared-skill-apply` / `shared-maintenance-operations` 等具体回归负责，本模型不承诺 unknown 最终解除。
 
 ## 性质和反例
 
@@ -90,7 +97,7 @@
 ~~~sh
 node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
 node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --model AcknowledgedRecordPrefix --out "$OPERATION_PREFIX_OUT"
-bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts --timeout 60000
+bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000
 ~~~
 
 输出目录必须是新的绝对路径，位于 checkout 外；先配置锁定的 PSTACK_STATECHART_ROOT 和 TLA2TOOLS。source hash 漂移、未知性质、少跑性质、额外反例、不完整搜索、tool error、cut 或 unexamined 都不算通过。
@@ -113,3 +120,7 @@ bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/
 分别报告有限模型穷举、真实 TypeScript 公共函数回归、实际 guard 对照和冷 Agent 复跑；均不等于生产 Notion、安装 CLI、跨机器 exactly-once 或任意并发编辑证明。GET 与后续写入之间没有 provider CAS；这里只证明复核得到失效/拒绝结果时停止，不证明观察与写入不可分割。
 
 维护入口：[恢复功能地图](../../../.cursor/skills/verify-ntn-skills/features/import-create-recovery-dry-run.md) · [共享 SSOT 地图](../../../.cursor/skills/verify-ntn-skills/features/shared-ssot.md) · [Notion 验证页](https://app.notion.com/p/4125636c236e819bba12c71af9a0c0f5) · [AH-1006 批次](https://linear.app/yoyooyooo/issue/AH-1006)。
+
+### Explicit observed-body acceptance
+
+IndependentAcceptance now covers both the three-Record exact-candidate review and the four-Record explicit observed-body review in the same finite model, without new configuration families. The additional retained body is required before the adopted event and by cold reconciliation. Original failure/identity, per-dispatch revalidation and unknown-request non-replay are unchanged. Exact observed-byte selection, optional approval flag, native link projection and stored-plan codec are implementation regressions, not proven by this abstract model. History and old generated reports keep their original input identity.

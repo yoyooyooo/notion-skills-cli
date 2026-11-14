@@ -1,0 +1,42 @@
+---
+title: "原 ACK 续接与同页恢复的验证边界"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: 违例
+    lg1: 已停止或等待
+    lg2: 执行中
+    lg3: Breaks AtMostOneContinuationDispatch
+    lg4: Path to the AtMostOneContinuationDispatch bug
+  }
+  class lg0 pink
+  class lg1 yellow
+  class lg2 blue
+  class lg3 breaks
+  class lg4 bugPath
+  s0: 核对原请求和完整 ACK
+  s1: 独立续接决定已审阅
+  s2: 本阶段待派发
+  s3: 本阶段已派发一次
+  s4: 没有原 ACK#65292;结果未知
+  s5: 违反#65306;未知续接请求被重复派发
+  [*] --> s0
+  s0 --> s1: 核对完整原请求与持久 ACK
+  s1 --> s2: 执行前复核精确原事实集
+  s2 --> s3: 派发一次已授权续接请求
+  s3 --> s4: 响应或读回变得不确定
+  s4 --> s5: 错误地重发未知原请求
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 blue
+  class s0 bugPath
+  class s1 blue
+  class s1 bugPath
+  class s2 blue
+  class s2 bugPath
+  class s3 blue
+  class s3 bugPath
+  class s4 yellow
+  class s4 bugPath
+  class s5 pink
+  class s5 breaks
+  class s5 bugPath

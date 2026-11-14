@@ -5,6 +5,8 @@ description: "Verify ntn-skills source and installed Node.js CLI behavior: share
 
 # Verify ntn-skills
 
+AH-1024 渐进维护先读 [完整 Skill 维护矩阵](features/skill-maintenance.md)。草稿、半注册、目录资格、audit 覆盖与原操作状态分别核对。MNT01 反例同时经过目录分类和完整审计，不能靠忽略空字段获得通过。每个子票维护自身回归和公开入口，再由原 Broker integration 验证管理到实际消费。
+
 ## 有限模型维护路由
 
 AH-1006 使用 [维护合同](../../../docs/formal-verification-maintenance.md)。资源生命周期继续走 `verify-notion-resource-lifecycle`；原 ACK/Records 前缀、独立接受与业务反馈走 [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md)；FV07 / AH-1013 请求引擎走 [request-engine-formal](features/request-engine-formal.md)。三组复用 `scripts/verify-resource-lifecycle.mjs --suite lifecycle|operation-recovery|request-engine`，`--model` 选择完整模型组。默认生命周期入口不变，模型通过与真实 CLI/安装/Notion 验收分别记账。
@@ -25,6 +27,8 @@ AH-561 直连请求与跨 Skill 图使用 [request-engine](features/request-engi
 The primary surface is the JSON CLI. Use the repository's TypeScript dev entrypoint for live Notion operations and its existing npm consumer smoke for the built Node.js package. Read [the feature map](features/README.md) first; a passing convenient path does not prove the other mapped entrypoints.
 
 The same package smoke also drives the [shared author lifecycle](features/import-create-recovery-dry-run.md#independent-installed-author-lifecycle) through an independently installed Node bin and an owned loopback service: create/readback, body-only write, sparse metadata update, apply/replace, old pins and an actually lost original-outcome response. Keep its command/HTTP ledger and strict negative cases separate from seeded offline snapshots and real Notion authorization. The fixture service reuses existing core fixtures; it never writes consumer state to manufacture a result.
+
+Its [maintenance repair stage](features/skill-maintenance.md#joined-installed-acceptance) drives public plan/apply/show/reconcile/repeat commands for an original historical main and a hand-created File. The installed bin must preserve each native page, body and untouched property, refuse the unsupported ordinary-child entry, and reuse the original operation without more writes. The existing authoring adapter's `repairOnly` option selects this same stage for focused verification; it is not a separate service or a real Notion claim.
 
 For AH-498 shared-library work, follow [shared SSOT verification](features/shared-ssot.md), cases SS01–SS13. Drive `ctl library` and root `list/read/files` through helper `cli`; the existing References import/consumption harness does not prove the shared layout. Include fixed `--manifest` registration, read-only migration review and Router Members when those paths change. Record current-body, retained-body, metadata, write and provider costs separately. Keep unfinished original-operation state until reconciliation; a recipe or selected test count is not epic completion.
 
@@ -96,7 +100,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts package --run "$RUN"
 
 This delegates the existing package checker, which builds and packs the independent migration/operator artifact and passes its archive to consumer smoke with `--migration-archive`. Its operator entry retains historical actions outside daily help/schema; it is not a prerequisite for current reads, pinned apply or connect/run. Smoke installs the normal CLI and migration tool separately, imports the historical fixture through the migration executable, then drives the installed CLI with Node.js. It checks offline snapshot consumption, relative/ranged reads, file listing, export reuse, configuration sanitization and corruption rejection. The seeded snapshots are fixtures for the offline contract, not proof of a live import.
 
-CI runs `init/package` on Ubuntu and macOS 15 with Node.js 22.22.3 and 24.20.0, after the full deterministic suite. Package mode retains `installed-consumer.json` and both integrity-checked tarballs under evidence before scratch retirement. macOS CI exercises system Trash and cleanup; Linux verifies the explicit unavailable-retention error and unchanged cache bytes, then retains scratch on the disposable runner. CI uploads per-matrix evidence for seven days. See [Contributing](../../../CONTRIBUTING.md#development-setup).
+CI runs `bun run check` and then `bun scripts/package-check.ts` on Ubuntu and macOS 15 with Node.js 22.22.3 and 24.20.0. It does not invoke this Skill's `control.ts init/package` wrapper. The workflow uploads `ntn-package-check.json`, controlled-authoring evidence and maintenance-pi evidence for seven days. `installed-consumer.json` and the wrapper's retained archives belong to an explicit local `control.ts package` run, not these CI artifacts. The package summary's SQLite logical-retirement marker is not evidence that system Trash ran. Verify physical Trash/cleanup only through its affected recipe. See [Contributing](../../../CONTRIBUTING.md#development-setup).
 
 The historical read-only migration inventory collector specifically requires Node.js 24. Its successful input/backup contract runs there; other Node runtimes run the explicit `NODE_24_REQUIRED` rejection and pure argument tests. This collector boundary does not remove the CLI/SDK's supported Node.js 22 product gate.
 

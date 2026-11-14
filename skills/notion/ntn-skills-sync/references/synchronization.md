@@ -65,7 +65,7 @@ Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_E
 | Source selection | `ctl library source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` |
 | Profile revision | Repeat the exact complete `profile set` intent with `--reconcile` |
 
-Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. Do not send these shared IDs to legacy `ctl operation resume`. A verified recovery proves its reported status, not necessarily completion of the intended change.
+Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. These source and Profile operations use their returned reconciliation actions. Unified `ctl operation resume` can continue only an original shared apply's proved-unsent suffix after its verified prefix, under the original local journal; it does not resume the operations in this table. Legacy Publication IDs retain their separate resume protocol. A verified recovery proves its reported status, not necessarily completion of the intended change.
 
 ## Unresolved original results
 

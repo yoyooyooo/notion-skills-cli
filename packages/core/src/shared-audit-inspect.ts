@@ -36,10 +36,22 @@ import { loadPendingSharedObservationPlans } from "./shared-observation-operatio
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import { loadPendingSharedMetadataWrites } from "./shared-metadata-write.ts"
 import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
+import {
+  fileAddAcceptanceReviewsEntity,
+  reconcileSharedFileAddAcceptance,
+} from "./shared-file-add-acceptance.ts"
 import { loadPendingSharedResourceAuthoring } from "./shared-resource-authoring-recovery.ts"
 import { resourceAuthoringOutcomesEntity } from "./shared-resource-authoring-model.ts"
 import { querySharedOperationIndex } from "./shared-operation-index.ts"
 import { loadPendingSharedCreates } from "./shared-create.ts"
+import { sharedCreateRestorationOutcomesEntity } from "./shared-create-restoration.ts"
+import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
+import {
+  sharedSkillApplyPlansEntity,
+  sharedSkillApplyOutcomesEntity,
+} from "./shared-skill-apply-model.ts"
+import { loadPendingSharedRepairs } from "./shared-native-repair.ts"
+import { nativeRepairEntity } from "./shared-native-repair-model.ts"
 import { sharedCreateManifestEntity, sharedCreateOutcomesEntity } from "./shared-create-model.ts"
 import { sharedMetadataEntity } from "./shared-metadata-write-model.ts"
 import {
@@ -58,7 +70,9 @@ import {
   auditRich,
   auditRowId,
   auditSkillSignature,
+  inspectAuditDraft,
   isAuditPause,
+  validBusinessId,
 } from "./shared-audit-inventory.ts"
 import { auditRetainedHistory } from "./shared-audit-history.ts"
 import { AuditEvidence } from "./shared-audit-evidence.ts"
@@ -146,9 +160,91 @@ export function inspectAuditSkill(
           "warning",
         )
       })
-    const raw =
-      input.inventory.skills.find((row) => auditRowId(row) === input.page_id) ??
-      (yield* api.request(`v1/pages/${input.page_id}`))
+    const supplied = input.inventory.skills.find((row) => auditRowId(row) === input.page_id)
+    const loaded =
+      supplied !== undefined
+        ? { _tag: "Success" as const, success: supplied }
+        : yield* api.request(`v1/pages/${input.page_id}`).pipe(Effect.result)
+    if (loaded._tag === "Failure") {
+      if (isAuditPause(loaded.failure)) return yield* Effect.fail(loaded.failure)
+      add(
+        "TARGET_PAGE_UNAVAILABLE",
+        input.page_id,
+        "target",
+        loaded.failure.message,
+        { code: loaded.failure.code, details: loaded.failure.details ?? null },
+        auditFailureCoverage(loaded.failure),
+        "warning",
+      )
+      return {
+        scope_key,
+        page_id: input.page_id,
+        skill_id: null,
+        signature: yield* auditSkillSignature(library, input.inventory, input.page_id),
+        checked_at: yield* Clock.currentTimeMillis,
+        observed_from: input.observed_from,
+        coverage: auditCoverage(findings.map((finding) => finding.coverage)),
+        findings,
+        tree: [],
+        history: [],
+        requires: [],
+        state: { tree: "unobserved", adoption: "not_evaluated" },
+        reused_from: null,
+      } satisfies AuditItem
+    }
+    const raw = loaded.success
+    const draft = yield* checked(() => inspectAuditDraft(library, input.inventory, raw))
+    if (draft) {
+      findings.push(...draft.findings)
+      if (input.depth !== "metadata")
+        add(
+          "UNREGISTERED_CONTENT_UNVERIFIED",
+          input.page_id,
+          input.depth,
+          "A draft has no registered file tree. Content and retained-history verification remain unobserved.",
+          { depth: input.depth, adoption: "not_evaluated" },
+          "partial",
+          "warning",
+        )
+      return {
+        scope_key,
+        page_id: input.page_id,
+        skill_id: null,
+        signature: yield* auditSkillSignature(library, input.inventory, input.page_id),
+        checked_at: yield* Clock.currentTimeMillis,
+        observed_from: input.observed_from,
+        coverage: auditCoverage(findings.map((finding) => finding.coverage)),
+        findings,
+        tree: [],
+        history: [],
+        requires: auditRelationIds(raw, library.skills, "Requires"),
+        state: draft.state,
+        reused_from: null,
+      } satisfies AuditItem
+    }
+    try {
+      const main = auditRich(raw, library.skills, "Main File ID")
+      if (!validBusinessId(main))
+        add(
+          "MAIN_FILE_ID_INVALID",
+          input.page_id,
+          "Main File ID",
+          "The main body has no stable File identity.",
+          { value: main },
+          "full",
+          "error",
+        )
+    } catch (error) {
+      add(
+        "MAIN_FILE_ID_INVALID",
+        input.page_id,
+        "Main File ID",
+        "The main file identity could not be read before the file tree was constructed.",
+        { code: error instanceof SkillsError ? error.code : "INVALID_RESPONSE" },
+        "partial",
+        "warning",
+      )
+    }
     const files: FileRecord[] = []
     for (const row of input.inventory.files.filter((row) =>
       auditRelationIds(row, library.files, "Skill").includes(input.page_id),
@@ -165,7 +261,37 @@ export function inspectAuditSkill(
           parsed.failure,
         )
     }
-    const index = yield* querySharedSkillIndex(library, input.page_id, raw, files)
+    const indexed = yield* querySharedSkillIndex(library, input.page_id, raw, files).pipe(
+      Effect.result,
+    )
+    if (indexed._tag === "Failure") {
+      if (isAuditPause(indexed.failure)) return yield* Effect.fail(indexed.failure)
+      add(
+        "SKILL_TREE_UNAVAILABLE",
+        input.page_id,
+        "skill",
+        "The file tree was not constructed. The main-file identity finding above still stands.",
+        { code: indexed.failure.code, details: indexed.failure.details ?? null },
+        "partial",
+        "warning",
+      )
+      return {
+        scope_key,
+        page_id: input.page_id,
+        skill_id: null,
+        signature: yield* auditSkillSignature(library, input.inventory, input.page_id),
+        checked_at: yield* Clock.currentTimeMillis,
+        observed_from: input.observed_from,
+        coverage: auditCoverage(findings.map((finding) => finding.coverage)),
+        findings,
+        tree: [],
+        history: [],
+        requires: auditRelationIds(raw, library.skills, "Requires"),
+        state: { tree: "unobserved", adoption: "not_evaluated" },
+        reused_from: null,
+      } satisfies AuditItem
+    }
+    const index = indexed.success
     const sourceContext = yield* readSharedFileSourceContext(library, input.page_id, raw).pipe(
       Effect.result,
     )
@@ -265,7 +391,9 @@ export function inspectAuditSkill(
             events.filter((event) => event.file_id === id),
           ),
         ).pipe(Effect.result)
-        if (resolved._tag === "Failure" || resolved.success.ownership.kind !== "tombstone")
+        if (resolved._tag === "Success" && resolved.success.ownership.kind === "tombstone")
+          states.set(id, resolved.success)
+        else
           add(
             "ACTIVE_FILE_BINDING_UNOBSERVED",
             id,
@@ -758,12 +886,16 @@ export function inspectAuditSkill(
             inventory: {
               skills: {
                 data_source_id: library.skills.data_source_id,
-                complete: true,
+                complete:
+                  input.inventory.scope?.kind !== "reachable" &&
+                  input.inventory.complete.includes("skills"),
                 pages: input.inventory.skills,
               },
               files: {
                 data_source_id: library.files.data_source_id,
-                complete: true,
+                complete:
+                  input.inventory.scope?.kind !== "reachable" &&
+                  input.inventory.complete.includes("files"),
                 pages: input.inventory.files,
               },
             },
@@ -790,14 +922,32 @@ export function inspectAuditSkill(
             )
           else {
             const row = property(target.success)
+            const parent = property(row.parent).data_source_id
+            const inLibrary =
+              parent === library.skills.data_source_id || parent === library.files.data_source_id
+            const trashed = row.in_trash === true || row.archived === true
+            const censusComplete =
+              input.inventory.scope?.kind !== "reachable" &&
+              input.inventory.complete.includes("skills") &&
+              input.inventory.complete.includes("files")
             add(
-              row.in_trash === true || row.archived === true
+              trashed
                 ? "NATIVE_REFERENCE_TRASHED"
-                : "NATIVE_REFERENCE_OUTSIDE_LIBRARY",
+                : !inLibrary
+                  ? "NATIVE_REFERENCE_OUTSIDE_LIBRARY"
+                  : censusComplete
+                    ? "NATIVE_REFERENCE_CENSUS_MISMATCH"
+                    : "NATIVE_REFERENCE_UNREACHED_IN_LIBRARY",
               reference.page_id,
               `${reference.from}:${reference.href}`,
-              "The explicit native target is not an available managed identity in this exact library.",
+              trashed
+                ? "The explicit native target is in trash."
+                : !inLibrary
+                  ? "The explicit native target is not an available managed identity in this exact library."
+                  : "The native target is in this library but outside the completed observation. Deletion is not established.",
               { parent: row.parent, in_trash: row.in_trash ?? false },
+              trashed || !inLibrary ? "full" : "partial",
+              trashed || !inLibrary ? "error" : "warning",
             )
           }
         }
@@ -807,6 +957,15 @@ export function inspectAuditSkill(
     const completedEvents = new Set(events.map((event) => event.event_id))
     const unclassified = operations.filter(
       (header) =>
+        !(
+          header.entity_id === sharedCreateRestorationOutcomesEntity &&
+          header.record_id.startsWith("resource-note-outcome-") &&
+          operations.some(
+            (original) =>
+              original.entity_id === sharedCreateManifestEntity &&
+              original.record_id === header.record_id.slice("resource-note-outcome-".length),
+          )
+        ) &&
         !header.record_id.startsWith("observe-") &&
         !header.record_id.startsWith("body-write-") &&
         !header.record_id.startsWith("file-management-") &&
@@ -814,6 +973,10 @@ export function inspectAuditSkill(
         !header.record_id.startsWith("outcome-") &&
         header.entity_id !== sharedMetadataEntity &&
         header.entity_id !== resourceAuthoringOutcomesEntity &&
+        header.entity_id !== sharedSkillApplyPlansEntity &&
+        header.entity_id !== sharedSkillApplyOutcomesEntity &&
+        header.entity_id !== nativeRepairEntity &&
+        header.entity_id !== fileAddAcceptanceReviewsEntity &&
         header.entity_id !== sharedCreateManifestEntity &&
         header.entity_id !== sharedCreateOutcomesEntity,
     )
@@ -858,11 +1021,77 @@ export function inspectAuditSkill(
           )
       }
     } else {
+      for (const header of operations.filter(
+        (value) => value.entity_id === fileAddAcceptanceReviewsEntity,
+      )) {
+        const accepted = yield* Effect.gen(function* () {
+          const rows = yield* querySharedRecords(library, {
+            skillPageId: input.page_id,
+            kind: "operation",
+            recordId: header.record_id,
+            entityId: fileAddAcceptanceReviewsEntity,
+            payloadContainsBody: true,
+          })
+          const review = property(rows[0]?.payload)
+          if (rows.length !== 1 || typeof review.original_operation_id !== "string")
+            return yield* Effect.fail(
+              fail(
+                "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+                "The original acceptance review is incomplete.",
+              ),
+            )
+          const result = yield* reconcileSharedFileAddAcceptance({
+            library,
+            skillPageId: input.page_id,
+            originalOperationId: review.original_operation_id,
+          })
+          if (
+            header.record_id !== "review-" + result.operation_id ||
+            result.review_id !== review.review_id
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED",
+                "The review does not belong to the verified independent acceptance.",
+              ),
+            )
+          return result
+        }).pipe(Effect.result)
+        if (accepted._tag === "Failure")
+          yield* unavailable(
+            "INDEPENDENT_ACCEPTANCE_UNVERIFIED",
+            header.record_id,
+            "operations",
+            accepted.failure,
+          )
+        else
+          add(
+            "ORIGINAL_FAILURE_INDEPENDENTLY_ACCEPTED",
+            accepted.success.original_operation_id,
+            "operations",
+            "A separate current-file decision is verified. The original failed add remains needs_review and its completion stays unproven.",
+            {
+              operation_id: accepted.success.operation_id,
+              original_status: accepted.success.original_status,
+              original_completion: accepted.success.original_completion,
+              review_id: accepted.success.review_id,
+            },
+            "full",
+            "info",
+          )
+      }
       const summaries = (
         plans: readonly { readonly operation_id: string }[],
       ): readonly { readonly operation_id: string; readonly plan: unknown }[] =>
         plans.map((plan) => ({ operation_id: plan.operation_id, plan }))
       const families = [
+        loadPendingSharedSkillApplies(library, {
+          skillPageId: input.page_id,
+          headers: operations,
+        }).pipe(Effect.map(summaries)),
+        loadPendingSharedRepairs(library, { skillPageId: input.page_id, headers: operations }).pipe(
+          Effect.map(summaries),
+        ),
         loadPendingSharedObservationPlans(library, {
           skillPageId: input.page_id,
           events,
@@ -975,6 +1204,18 @@ export function inspectAuditSkill(
         source_context: sourceContext._tag === "Success" ? sourceContext.success : null,
         selected: selected?._tag === "Success" ? selected.success : null,
         files: descriptions,
+        retained_files: [...states]
+          .filter(([, state]) => state.ownership.kind === "tombstone")
+          .map(([file_id, state]) => {
+            const binding = bindings.find((value) => value.file_id === file_id)
+            return {
+              file_id,
+              page_id: binding?.page_id ?? null,
+              path: binding?.path ?? null,
+              ownership: "tombstone",
+              heads: state.heads,
+            }
+          }),
         operations: operations.map((operation) => ({
           record_id: operation.record_id,
           page_id: operation.page_id,

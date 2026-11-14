@@ -1,0 +1,74 @@
+{
+  "kind": "RV2 display-only correction",
+  "checked_configs": 10,
+  "complete": true,
+  "all_expected_results_matched": true,
+  "runner_sha256": "b9f25a0662ad0f1f00df65d58e01119f7e77d7d78e77af489347aa4b7357ee62",
+  "tool_lock_sha256": "379937f0a64c7086a4d2d950dd0afad7dd37c3adc03e6286c2ace15d8b950cc6",
+  "summary_sha256": "cd8034564bd3a738a1a8160b76881309726a87b5318fbb743ffb8fc859e1e9b0",
+  "renderer_sha256": "7c40a25eeaf4370fb56c03d9d8f6780051c9c39b6c6ca36d53239075117097f5",
+  "selected": [
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "cfg",
+      "states": {
+        "distinct": 88,
+        "initial": 16,
+        "complete": true,
+        "cut": false
+      },
+      "broken": [],
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedContinuation.tla",
+          "sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571"
+        },
+        {
+          "path": "model-inputs/AcknowledgedContinuation.cfg",
+          "sha256": "a6f647aa13e29ca179c1de86ca17861d7616d5a3faebbc015aa9abfbe56b98a7"
+        },
+        {
+          "path": "model-inputs/AcknowledgedContinuation.view.mjs",
+          "sha256": "9235c7e294b4ea7f4e2ef1e51fc9bcd1845a5eee92b07e692233c81565bcca3e"
+        }
+      ],
+      "name": "AcknowledgedContinuation-cfg",
+      "mermaid_sha256": "3bdc5374a123d044e9e864060686fc82e1e8c4776dcc7d619791bb17b5690cf7",
+      "svg_sha256": "c3d7cf029cad71af2adf5284a0136da2e35d73227d1986e020275b483724a0cd",
+      "report_sha256": "d695236536eafe29c852f73d28e812043284410d3747c6654f7cbb4ef60b1212",
+      "width": 1446,
+      "height": 1228
+    },
+    {
+      "model": "AcknowledgedContinuation",
+      "config": "native.replay.cfg",
+      "states": {
+        "distinct": 698,
+        "initial": 4,
+        "complete": true,
+        "cut": false
+      },
+      "broken": ["AtMostOneContinuationDispatch"],
+      "inputs": [
+        {
+          "path": "model-inputs/AcknowledgedContinuation.tla",
+          "sha256": "088b8d600ac65a4e84f30030e014e9b4a96e5ed7acf4e474d61719da6df6d571"
+        },
+        {
+          "path": "model-inputs/AcknowledgedContinuation.native.replay.cfg",
+          "sha256": "5e8da35bdd6579e3172e60266df70abc0d5d2a232528f5bf3d19c931b54e4b05"
+        },
+        {
+          "path": "model-inputs/AcknowledgedContinuation.view.mjs",
+          "sha256": "9235c7e294b4ea7f4e2ef1e51fc9bcd1845a5eee92b07e692233c81565bcca3e"
+        }
+      ],
+      "name": "AcknowledgedContinuation-native-replay-cfg",
+      "mermaid_sha256": "028e1e7acb890aa6be50d28f68a6e2c5a658a858449f0449087a5327affee8c9",
+      "svg_sha256": "b1a3259b45c9086f5d5020ff6b5a29dede74cbddeca7766ed96be20aa2b6786a",
+      "report_sha256": "3e73fd2be09cde90ad898e679f38d48f612a65f90aa7975f2bcbac06e62c46c0",
+      "width": 1168,
+      "height": 874
+    }
+  ]
+}

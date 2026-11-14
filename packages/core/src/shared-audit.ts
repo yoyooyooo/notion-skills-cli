@@ -15,6 +15,7 @@ import {
   emptyAuditInventory,
   fairAuditOrder,
   type AuditDepth,
+  type AuditInventory,
   type AuditRun,
   type AuditSelector,
   type AuditTask,
@@ -26,7 +27,9 @@ import {
   auditSkillSignature,
   inspectAuditInventory,
   readAuditInventory,
+  readReachableAudit,
 } from "./shared-audit-inventory.ts"
+import { presentAuditReport } from "./shared-audit-growth.ts"
 import { inspectAuditSkill } from "./shared-audit-inspect.ts"
 import {
   publishAuditSummary,
@@ -177,7 +180,9 @@ export function runSharedAudit(input: StartSharedAuditInput) {
       tasks: [
         { key: "library", kind: "library" },
         { key: "identity", kind: "identity" },
-        ...inventoryTasks("initial"),
+        ...(input.selector.kind === "skill"
+          ? [{ key: "reachable:initial", kind: "reachable" as const, phase: "initial" as const }]
+          : inventoryTasks("initial")),
         { key: "plan", kind: "plan" },
       ],
       completed_tasks: [],
@@ -378,7 +383,7 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
         switch (task.kind) {
           case "library": {
             patch({ library: yield* loadSharedLibrary(current.entry_id) })
-            if (library().sources !== undefined)
+            if (library().sources !== undefined && current.selector.kind !== "skill")
               patch({
                 tasks: current.tasks.flatMap((next): readonly AuditTask[] =>
                   next.kind === "plan"
@@ -429,8 +434,28 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
                 ...observed,
                 [task.table]: rows,
                 complete: [...new Set([...observed.complete, task.table])],
+                scope: { kind: "library" },
               },
             })
+            return
+          }
+          case "reachable": {
+            if (current.selector.kind !== "skill")
+              return yield* Effect.fail(
+                fail("AUDIT_CHECKPOINT_CORRUPT", "A reachable audit has no exact target."),
+              )
+            const field = task.phase === "initial" ? "inventory" : "census"
+            const root = current.selector.page_id
+            const read = yield* readReachableAudit(library(), root, (inventory) => {
+              patch({
+                [field]: inventory,
+                findings: [
+                  ...current.findings.filter((finding) => finding.scope_key !== "inventory"),
+                  ...inspectAuditInventory(library(), inventory),
+                ],
+              })
+            })
+            patch({ [field]: read.inventory })
             return
           }
           case "plan": {
@@ -448,10 +473,24 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
             const work: Array<{ page_id: string; changed: boolean; checked_at: number }> = []
             const reused: AuditRun["items"][number][] = []
             const now = yield* Clock.currentTimeMillis
+            const reachable =
+              current.inventory.scope?.kind === "reachable"
+                ? current.inventory.scope.owner_coverage
+                : undefined
             for (const id of pages) {
               const signature = yield* auditSkillSignature(library(), current.inventory, id)
               const prior = baseline?.items.find((item) => item.page_id === id)
+              const ownerReady =
+                reachable === undefined ||
+                reachable.some(
+                  (row) =>
+                    row.owner_page_id === id &&
+                    row.files === "full" &&
+                    row.records === "full" &&
+                    (row.sources === "full" || row.sources === "not_configured"),
+                )
               const valid =
+                ownerReady &&
                 current.depth !== "history" &&
                 prior !== undefined &&
                 prior.signature === signature &&
@@ -476,7 +515,15 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
                 ...(current.graph_id === null
                   ? []
                   : [{ key: `graph:${current.graph_id}`, kind: "graph" as const }]),
-                ...inventoryTasks("final", 0, library().sources !== undefined),
+                ...(current.selector.kind === "skill"
+                  ? [
+                      {
+                        key: "reachable:final:0",
+                        kind: "reachable" as const,
+                        phase: "final" as const,
+                      },
+                    ]
+                  : inventoryTasks("final", 0, library().sources !== undefined)),
                 { key: "finish:0", kind: "finish" },
               ],
             })
@@ -690,7 +737,15 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
                       page_id: id,
                     }),
                   ),
-                  ...inventoryTasks("final", round, library().sources !== undefined),
+                  ...(current.selector.kind === "skill"
+                    ? [
+                        {
+                          key: `reachable:final:${round}`,
+                          kind: "reachable" as const,
+                          phase: "final" as const,
+                        },
+                      ]
+                    : inventoryTasks("final", round, library().sources !== undefined)),
                   { key: `finish:${round}`, kind: "finish" },
                 ],
               })
@@ -805,6 +860,6 @@ function continueSharedAudit(initial: AuditRun, limits: RequestBudgetLimits) {
     }
     yield* finalize(false)
     if (current.execution === "completed") yield* publishAuditSummary(current)
-    return auditReport(current, baseline)
+    return presentAuditReport(current, baseline)
   })
 }

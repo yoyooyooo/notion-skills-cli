@@ -4,10 +4,11 @@ CONSTANT IgnoreOriginal, IgnoreFrozenContext, ReuseOriginalId,
          InferOldSuccess, ReplayUncertain, SkipColdProof, SkipAdoption
 VARIABLE s
 vars == <<s>>
-Records == 1..3
-Proofs == {"original plan", "original outcome", "review", "adopted event", "completion"}
+Records == 1..4
+Proofs == {"original plan", "original outcome", "review", "selected body", "adopted event", "completion"}
+RequiredProofs == IF s.recordCount = 4 THEN Proofs ELSE Proofs \ {"selected body"}
 Scenarios == {"known failure", "unknown original", "changed File", "changed owner", "changed frontier", "reused identity"}
-Init == \E scenario \in Scenarios :
+Init == \E scenario \in Scenarios, count \in {3, 4} :
   s = [phase |-> "inspect original", scenario |-> scenario,
        originalOperation |-> "original", originalInput |-> "frozen",
        originalStatus |-> IF scenario = "unknown original" THEN "unknown" ELSE "needs_review",
@@ -17,7 +18,7 @@ Init == \E scenario \in Scenarios :
        currentFile |-> IF scenario = "changed File" THEN "other File" ELSE "File",
        currentOwner |-> IF scenario = "changed owner" THEN "other owner" ELSE "owner",
        currentFrontier |-> IF scenario = "changed frontier" THEN "other frontier" ELSE "frontier",
-       authorized |-> FALSE, record |-> 1,
+       authorized |-> FALSE, record |-> 1, recordCount |-> count,
        attempts |-> [r \in Records |-> 0], retained |-> {}, applied |-> {},
        acks |-> {}, confirmed |-> {}, replayed |-> FALSE,
        sentAgainstFrozen |-> TRUE, accepted |-> FALSE,
@@ -70,29 +71,30 @@ ReplayUnknown ==
   /\ ReplayUncertain /\ s.phase = "unknown dispatch" /\ s.attempts[s.record] < 2
   /\ s' = [s EXCEPT !.phase = "inflight", !.attempts[s.record] = @ + 1, !.replayed = TRUE]
 NextFact ==
-  /\ s.phase = "record verified" /\ s.record < 3
+  /\ s.phase = "record verified" /\ s.record < s.recordCount
   /\ s' = [s EXCEPT !.record = @ + 1, !.phase = "before dispatch"]
 SkipAdoptedFact ==
   /\ SkipAdoption /\ s.phase = "record verified" /\ s.record = 1
-  /\ s' = [s EXCEPT !.record = 3, !.phase = "before dispatch"]
+  /\ s' = [s EXCEPT !.record = s.recordCount, !.phase = "before dispatch"]
 CompleteIndependentDecision ==
-  /\ s.phase = "record verified" /\ s.record = 3
+  /\ s.phase = "record verified" /\ s.record = s.recordCount
   /\ s' = [s EXCEPT !.phase = "accepted", !.accepted = TRUE,
        !.oldCompletion = IF InferOldSuccess THEN "applied" ELSE s.oldCompletion]
 AvailableProofs ==
   {"original plan", "original outcome"} \cup
   (IF 1 \in s.confirmed THEN {"review"} ELSE {}) \cup
-  (IF 2 \in s.confirmed THEN {"adopted event"} ELSE {}) \cup
-  (IF 3 \in s.confirmed THEN {"completion"} ELSE {})
+  (IF s.recordCount = 4 /\ 2 \in s.confirmed THEN {"selected body"} ELSE {}) \cup
+  (IF (s.recordCount - 1) \in s.confirmed THEN {"adopted event"} ELSE {}) \cup
+  (IF s.recordCount \in s.confirmed THEN {"completion"} ELSE {})
 ColdRead ==
   /\ s.phase = "accepted"
   /\ \E available \in {AvailableProofs} \cup {AvailableProofs \ {proof} : proof \in AvailableProofs} :
        s' = [s EXCEPT !.phase = "cold read", !.coldAvailable = available]
 VerifyCold ==
-  /\ s.phase = "cold read" /\ (s.coldAvailable = Proofs \/ SkipColdProof)
+  /\ s.phase = "cold read" /\ (s.coldAvailable = RequiredProofs \/ SkipColdProof)
   /\ s' = [s EXCEPT !.phase = "cold verified", !.coldVerified = TRUE]
 RejectCold ==
-  /\ s.phase = "cold read" /\ s.coldAvailable # Proofs
+  /\ s.phase = "cold read" /\ s.coldAvailable # RequiredProofs
   /\ s' = [s EXCEPT !.phase = "cold proof incomplete"]
 Done ==
   /\ s.phase \in {"original unresolved", "identity conflict", "stale review", "unknown dispatch",
@@ -105,7 +107,7 @@ Next == FreezeReview \/ RejectOriginal \/ RejectIdentity \/ Revalidate \/ Reject
 Spec == Init /\ [][Next]_vars
 
 TypeOK ==
-  /\ s.scenario \in Scenarios /\ s.record \in Records
+  /\ s.scenario \in Scenarios /\ s.recordCount \in {3, 4} /\ s.record \in 1..s.recordCount
   /\ s.phase \in {"inspect original", "before dispatch", "ready", "intent retained", "inflight",
        "response", "ACK", "record verified", "unknown dispatch", "accepted", "cold read",
        "cold verified", "cold proof incomplete", "original unresolved", "identity conflict", "stale review"}
@@ -119,7 +121,7 @@ IndependentIdentity == s.authorized => s.acceptanceOperation # s.originalOperati
 OriginalFactsPreserved ==
   s.originalOperation = "original" /\ s.originalInput = "frozen" /\ s.oldCompletion = "unproven" /\ ~s.oldAck
 UnknownNeverRedispatched == ~s.replayed /\ \A r \in Records : s.attempts[r] <= 1
-CompletionNeedsAdoption == s.accepted => {1, 2, 3} \subseteq s.confirmed
-ColdRecoveryNeedsCompleteProof == s.coldVerified => s.coldAvailable = Proofs /\ s.accepted
+CompletionNeedsAdoption == s.accepted => (1..s.recordCount) \subseteq s.confirmed
+ColdRecoveryNeedsCompleteProof == s.coldVerified => s.coldAvailable = RequiredProofs /\ s.accepted
 =============================================================================
 

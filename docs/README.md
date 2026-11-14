@@ -4,6 +4,7 @@ Start with the repository README in [English](../README.md) or [简体中文](..
 
 - [Usage guide](usage.md): installation, authentication, discovery, fixed/current reads, one pinned apply for file/metadata changes, source/local connection and recurring runs, publication progress and original-operation recovery, cache policy, upgrade and uninstall.
 - [Shared library authoring](shared-authoring.md): ordinary native creation, pinned body/resources/metadata apply, individual file lifecycle, fixed source selection, Profile/View defaults and matching original-operation recovery.
+- [Progressive file maintenance](maintenance-tree-contract.md), [target audit and retention](maintenance-audit-contract.md), [original-page repair](maintenance-repair-contract.md), and the [Notion editing template](maintenance-template.md): exact intent, stable identities, truthful coverage and original-operation recovery.
 - [Source management](sources-management.md): active provider-neutral Sources, exact Skill/member relationships, Git/GitLab and Linear acquisition, frozen prepare/apply and original-operation reconciliation. Mutable configuration stays separate from fixed content pins.
 - [Audit and reviewed inventory import](inventory-import.md): bounded read-only audit/resume/report, explicit local scopes, exact ownership reconciliation, and complete native or upstream imports through the original create kernel.
 - [CLI and ref contract](protocol.md): identities, selectors, fixed snapshots, JSON responses, storage, synchronization/recovery, cache boundaries and errors.

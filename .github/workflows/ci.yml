@@ -32,13 +32,33 @@ jobs:
           mkdir -p "$HOME/.Trash"
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - name: Prepare pinned Pi maintenance gate
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24.20.0'
+        run: |
+          git clone --filter=blob:none https://github.com/yoyooyooo/pi-context-broker.git "$RUNNER_TEMP/mnt-broker-source"
+          git -C "$RUNNER_TEMP/mnt-broker-source" checkout --detach d8bef63eb486bde0b6abcf8c3f3d0efd712f33a9
+          test "$(git -C "$RUNNER_TEMP/mnt-broker-source" rev-parse HEAD)" = d8bef63eb486bde0b6abcf8c3f3d0efd712f33a9
+          cd "$RUNNER_TEMP/mnt-broker-source"
+          bun install --frozen-lockfile
+          NTN_SKILLS_BUILD_ENTRY="$GITHUB_WORKSPACE/packages/cli/dist/ntn-skills.js" bun scripts/pack.mjs --target broker --out-dir "$RUNNER_TEMP/mnt-broker-archive"
+          npm install --prefix "$RUNNER_TEMP/mnt-host" --ignore-scripts --no-audit --no-fund "$RUNNER_TEMP"/mnt-broker-archive/*.tgz @earendil-works/pi-coding-agent@1.5.0
+          echo "MNT_VERIFY_PI_REQUIRED=1" >> "$GITHUB_ENV"
+          echo "MNT_VERIFY_BROKER_ROOT=$RUNNER_TEMP/mnt-broker-source" >> "$GITHUB_ENV"
+          echo "MNT_VERIFY_BROKER_PACKAGE=$RUNNER_TEMP/mnt-host/node_modules/pi-context-broker" >> "$GITHUB_ENV"
+          echo "MNT_VERIFY_PI=$RUNNER_TEMP/mnt-host/node_modules/.bin/pi" >> "$GITHUB_ENV"
       - name: Pack and test a fresh consumer
+        env:
+          NTN_SMOKE_EVIDENCE_ROOT: ${{ runner.temp }}/ntn-consumer-evidence
         run: bun scripts/package-check.ts > "$RUNNER_TEMP/ntn-package-check.json"
       - name: Upload consumer verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: consumer-${{ matrix.os }}-node-${{ matrix.node }}
-          path: ${{ runner.temp }}/ntn-package-check.json
+          path: |
+            ${{ runner.temp }}/ntn-package-check.json
+            ${{ runner.temp }}/ntn-consumer-evidence/**/controlled-authoring/**
+            ${{ runner.temp }}/ntn-consumer-evidence/**/maintenance-pi/**
+            !${{ runner.temp }}/ntn-consumer-evidence/**/node_modules/**
           if-no-files-found: ignore
           retention-days: 7

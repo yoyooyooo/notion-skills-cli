@@ -14,6 +14,10 @@ import {
 } from "../../packages/core/test/shared-create-fixture.ts"
 import { id, rich } from "../../packages/core/test/shared-snapshot-fixture.ts"
 import type { SmokeContext } from "./context.ts"
+import {
+  checkInstalledMaintenanceRepair,
+  seedMaintenanceRepairFixture,
+} from "./maintenance-repair.ts"
 
 const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
 type HttpObservation = {
@@ -25,8 +29,33 @@ type HttpObservation = {
   response_lost?: boolean
 }
 
+export type AuthoringContinuation = {
+  readonly root: string
+  readonly context: Pick<SmokeContext, "runtime" | "executable">
+  readonly env: Readonly<Record<string, string>>
+  readonly target: string
+  readonly database: string
+  readonly invoke: (label: string, args: string[], expectedExit?: number) => Promise<unknown>
+  readonly noWrites: (label: string, args: string[], expectedExit?: number) => Promise<unknown>
+  readonly directory: (name: string, files: Record<string, string>) => Promise<string>
+  readonly observe: () => {
+    skills: unknown[]
+    files: unknown[]
+    records: unknown[]
+    bodies: [string, string][]
+    calls: HttpObservation[]
+  }
+  readonly externalEdit: (page: string, markdown: string) => void
+  readonly appendBeforeNextPatch: (page: string, text: string) => void
+  readonly loseNextOutcome: (prefix: string) => void
+}
+
 /** The fixture owns only the loopback service; every consumer action uses the installed Node bin. */
-export async function checkAuthoring(context: SmokeContext) {
+export async function checkAuthoring(
+  context: SmokeContext,
+  continuation?: (input: AuthoringContinuation) => Promise<unknown>,
+  options: { readonly maintenanceOnly?: boolean; readonly repairOnly?: boolean } = {},
+) {
   const root = join(context.scratch, "controlled-authoring")
   await mkdir(root)
   const state = join(root, "state")
@@ -60,6 +89,14 @@ export async function checkAuthoring(context: SmokeContext) {
   ownedPages.add(draftPage)
   let editedAt = Date.now()
   let loseOutcome = false
+  let loseMaintenanceOutcome: string | undefined
+  let pendingExternalAppend: { page: string; text: string } | undefined
+  const externalEvents: {
+    page: string
+    before_sha256: string
+    after_sha256: string
+    boundary: string
+  }[] = []
   let lostOperation: string | undefined
   let loseResourceOutcome = false
   let lostResourceOperation: string | undefined
@@ -73,7 +110,7 @@ export async function checkAuthoring(context: SmokeContext) {
   // Preserve the original fixture's durable-before-create oracle. The observer
   // copies only a real retained dispatch from the owned consumer SQLite store;
   // it never seeds or edits consumer state, snapshots, receipts or credentials.
-  function observeOriginalCreatePlan() {
+  function observeOriginalCreatePlan(body: unknown) {
     const database = new Database(join(state, "state.sqlite"), { readonly: true })
     try {
       const rows = database
@@ -81,6 +118,49 @@ export async function checkAuthoring(context: SmokeContext) {
           "SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-native-create/%'",
         )
         .all()
+      if (
+        rows.length === 0 &&
+        property(property(body).parent).data_source_id === createLibrary.files.data_source_id
+      ) {
+        const properties = property(property(body).properties)
+        const fileId = text(
+          property(properties[createLibrary.files.property_ids["File ID"]!]).rich_text,
+        )
+        const path = text(property(properties[createLibrary.files.property_ids.Path!]).rich_text)
+        const owners = property(properties[createLibrary.files.property_ids.Skill!]).relation
+        const pending = database
+          .query(
+            "SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-observation-pending/%'",
+          )
+          .all()
+          .map(property)
+          .filter((row) => {
+            const plan = property(property(JSON.parse(String(row.payload))).plan)
+            return (
+              plan.kind === "file_management" &&
+              plan.action === "add" &&
+              plan.file_id === fileId &&
+              plan.path === path &&
+              Array.isArray(owners) &&
+              owners.length === 1 &&
+              property(owners[0]).id === plan.skill_page_id
+            )
+          })
+        assert.equal(
+          pending.length,
+          1,
+          "A supporting-page POST must have one exact durable original File add",
+        )
+        const row = pending[0]!,
+          payload = String(row.payload),
+          key = String(row.key)
+        const plan = property(property(JSON.parse(payload)).plan)
+        assert.equal(property(body).markdown, property(plan.creation_projection).wire_markdown)
+        assert.equal(property(body).markdown_version, "v2")
+        retainedPlans.set(key, payload)
+        original.base.json.set(key, JSON.parse(payload))
+        return
+      }
       assert.equal(rows.length, 1, "One real original native-create dispatch must precede POST")
       for (const raw of rows) {
         const row = property(raw)
@@ -193,6 +273,26 @@ export async function checkAuthoring(context: SmokeContext) {
         url: `https://notion.so/${createLibrary.skills.database_id}?v=${view}`,
       }
     }
+    if (url.pathname === `/v1/views/${view}/queries`) {
+      assert.equal(method, "POST")
+      assert.equal(url.searchParams.size, 0)
+      assert.deepEqual(body, { page_size: 100 })
+      const rows = [...original.skills.values()].filter(
+        (row) => row.archived !== true && row.in_trash !== true,
+      )
+      assert.ok(rows.length <= 100, "This small owned View fixture must not hide pagination")
+      return {
+        object: "list",
+        id: id(90_002),
+        view_id: view,
+        expires_at: new Date(Date.now() + 900000).toISOString(),
+        total_count: rows.length,
+        results: rows.map((row) => ({ object: "page", id: row.id })),
+        has_more: false,
+        next_cursor: null,
+        request_status: { type: "complete", incomplete_reason: null },
+      }
+    }
     const parent = property(property(body).parent).data_source_id
     const raw = property(body)
     if (
@@ -273,7 +373,7 @@ export async function checkAuthoring(context: SmokeContext) {
         String(parent),
       )
     )
-      observeOriginalCreatePlan()
+      observeOriginalCreatePlan(body)
     const matched = /^v1\/pages\/([^/]+)(\/markdown)?$/u.exec(url.pathname.slice(1))
     const page = matched?.[1]
     const selected =
@@ -307,6 +407,19 @@ export async function checkAuthoring(context: SmokeContext) {
       selected !== undefined
     ) {
       if (matched?.[2] === "/markdown") {
+        if (pendingExternalAppend?.page === page) {
+          const before = original.base.bodies.get(page)
+          assert.equal(typeof before, "string")
+          const after = String(before) + pendingExternalAppend.text
+          original.base.bodies.set(page, after)
+          externalEvents.push({
+            page,
+            before_sha256: hash(String(before)),
+            after_sha256: hash(after),
+            boundary: "native_patch_received_before_application",
+          })
+          pendingExternalAppend = undefined
+        }
         const current = original.base.bodies.get(page)
         const updates = property(property(body).update_content).content_updates
         assert.equal(typeof current, "string")
@@ -360,6 +473,17 @@ export async function checkAuthoring(context: SmokeContext) {
       const body: unknown = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
       const result = await request(path, body, method)
       const record = text(property(property(property(body).properties).record).rich_text)
+      if (
+        loseMaintenanceOutcome !== undefined &&
+        method === "POST" &&
+        path === "v1/pages" &&
+        record.startsWith(loseMaintenanceOutcome)
+      ) {
+        loseMaintenanceOutcome = undefined
+        observed.response_lost = true
+        incoming.socket.destroy()
+        return
+      }
       if (
         loseOutcome &&
         method === "POST" &&
@@ -477,8 +601,76 @@ export async function checkAuthoring(context: SmokeContext) {
     }
     return location
   }
+  const continuationInput = (target: string): AuthoringContinuation => ({
+    root,
+    context,
+    env,
+    target,
+    database: createLibrary.skills.database_id,
+    invoke,
+    noWrites,
+    directory,
+    observe: () => ({
+      skills: structuredClone([...original.skills.values()]),
+      files: structuredClone([...original.files.values()]),
+      records: structuredClone([...original.base.records.values()]),
+      bodies: structuredClone([...original.base.bodies]),
+      calls: structuredClone(calls),
+    }),
+    externalEdit: (page, markdown) => {
+      assert.ok(ownedPages.has(page), "External edit must select this run's owned page")
+      const row = original.skills.get(page) ?? original.files.get(page)
+      assert.ok(row)
+      const before = original.base.bodies.get(page)
+      assert.equal(typeof before, "string")
+      original.base.bodies.set(page, markdown)
+      editedAt = Math.max(editedAt + 1, Date.now())
+      row.last_edited_time = new Date(editedAt).toISOString()
+      externalEvents.push({
+        page,
+        before_sha256: hash(String(before)),
+        after_sha256: hash(markdown),
+        boundary: "explicit_external_edit",
+      })
+    },
+    appendBeforeNextPatch: (page, text) => {
+      assert.ok(ownedPages.has(page))
+      assert.equal(pendingExternalAppend, undefined)
+      assert.ok(text.length > 0)
+      pendingExternalAppend = { page, text }
+    },
+    loseNextOutcome: (prefix) => {
+      assert.match(prefix, /^outcome-[a-z][a-z0-9-]+-$/u)
+      assert.equal(loseMaintenanceOutcome, undefined)
+      loseMaintenanceOutcome = prefix
+    },
+  })
+  const repair = async () => {
+    const targets = seedMaintenanceRepairFixture(original)
+    ownedPages.add(targets.mainPage)
+    ownedPages.add(targets.filePage)
+    return checkInstalledMaintenanceRepair(continuationInput(targets.mainPage), targets)
+  }
   let completed = false
   try {
+    if (options.repairOnly) {
+      const maintenanceRepair = await repair()
+      completed = true
+      const result = {
+        proof: "independent_installed_node_with_controlled_notion",
+        scope: "maintenance_repair_only",
+        runtime: context.runtime,
+        executable: context.executable,
+        cli_sha256: hash(await readFile(context.executable)),
+        maintenance_repair: maintenanceRepair,
+        command_count: commands.length,
+        server_received_requests: calls.length,
+        writes: writes(calls).length,
+        receipt: join(root, "evidence.json"),
+      }
+      context.evidence.controlled_installed_maintenance_repair = result
+      return result
+    }
     const initial = {
       "SKILL.md":
         "---\nname: Installed author\ndescription: Independent installed author fixture\n---\n\n# Installed author\n\nInitial main.\n",
@@ -505,6 +697,37 @@ export async function checkAuthoring(context: SmokeContext) {
     const owner = String(created.record.id)
     const originalRef = String(created.ref)
     const originalSnapshot = String(created.snapshot_id)
+    if (options.maintenanceOnly) {
+      assert.ok(continuation, "Maintenance-only validation requires an explicit scenario")
+      const target = String(created.record.locator.page_id)
+      assert.ok(
+        ownedPages.has(target),
+        "Only this run's newly created native page may be maintained",
+      )
+      const maintenance = await continuation(continuationInput(target))
+      completed = true
+      const result = {
+        proof: "independent_installed_node_with_controlled_notion",
+        scope: "progressive_maintenance_only",
+        runtime: context.runtime,
+        executable: context.executable,
+        cli_sha256: hash(await readFile(context.executable)),
+        original_snapshot: originalSnapshot,
+        source: {
+          library_id: createLibrary.library_id,
+          database_id: db,
+          page_id: target,
+          origin: env.NOTION_API_BASE_URL,
+        },
+        maintenance,
+        command_count: commands.length,
+        server_received_requests: calls.length,
+        writes: writes(calls).length,
+        receipt: join(root, "evidence.json"),
+      }
+      context.evidence.controlled_installed_maintenance = result
+      return result
+    }
     const current = async (label: string) =>
       invoke(label, ["read", owner, "--database", db, "--refresh", "--json"])
     const read = await current("created-current")
@@ -1084,6 +1307,9 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
       "--json",
     ])
     assert.equal(preservedDraft.content, draftRead.content)
+    const maintenance =
+      continuation === undefined ? undefined : await continuation(continuationInput(draftPage))
+    const maintenanceRepair = await repair()
     completed = true
     const result = {
       proof: "independent_installed_node_with_controlled_notion",
@@ -1113,6 +1339,8 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
       },
       original_outcome_count: outcomes.length,
       raw_resource_lifecycle: resourceEvidence,
+      maintenance_repair: maintenanceRepair,
+      ...(maintenance === undefined ? {} : { maintenance }),
       command_count: commands.length,
       server_received_requests: calls.length,
       request_observation: "loopback_service; transport totals reconciled when returned by the CLI",
@@ -1122,6 +1350,19 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
     context.evidence.controlled_installed_authoring = result
     return result
   } finally {
+    await writeFile(
+      join(root, "source-terminal.json"),
+      JSON.stringify(
+        {
+          skills: [...original.skills.values()],
+          files: [...original.files.values()],
+          records: [...original.base.records.values()],
+          bodies: [...original.base.bodies],
+        },
+        null,
+        2,
+      ) + "\n",
+    )
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
     await writeFile(
@@ -1132,6 +1373,7 @@ console.log(JSON.stringify({consumed,directory,selected,missing,cold,after,metri
           commands,
           calls,
           errors,
+          external_events: externalEvents,
           retained_create_plans: [...retainedPlans].map(([key, value]) => ({
             key,
             sha256: hash(value),

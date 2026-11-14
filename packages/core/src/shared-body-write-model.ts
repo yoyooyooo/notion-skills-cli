@@ -1,3 +1,4 @@
+import { expandSharedOperationPlan, storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
@@ -149,7 +150,9 @@ function description(plan: Omit<SharedBodyWritePlan, "operation_id">) {
 export function validateSharedBodyWritePlan(input: unknown) {
   return Effect.gen(function* () {
     const plan = yield* bodyWriteChecked(() =>
-      Schema.decodeUnknownSync(SharedBodyWritePlanSchema)(input, { onExcessProperty: "error" }),
+      Schema.decodeUnknownSync(SharedBodyWritePlanSchema)(expandSharedOperationPlan(input), {
+        onExcessProperty: "error",
+      }),
     )
     yield* bodyWriteChecked(() => {
       for (const id of [plan.skill_page_id, plan.page_id, plan.before.page_id])
@@ -320,7 +323,7 @@ export function validateSharedBodyWritePlan(input: unknown) {
         ),
       )
     yield* bodyWriteChecked(() => {
-      validateSharedRecordEnvelope(plan.operation_id, plan)
+      validateSharedRecordEnvelope(plan.operation_id, storedSharedOperationPlan(plan))
       validateSharedRecordEnvelope(
         `retain-${previousHash}`,
         retainedMarkdownPayload(plan.before.markdown),

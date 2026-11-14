@@ -1,25 +1,40 @@
 {
   "version": 1,
-  "synchronized_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "synchronized_commit": "2834cc60cfb0283783a4ca4bb1323b697c1be9c8",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
     "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
-    "packages/core/src/shared-create-dispatch.ts": "ffa937e567c1bf23f5de66a6266eeb6ae16ec64c2bcdbb3232f024a663318cf5",
+    "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
     "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
     "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
-    "packages/core/src/shared-file-add-acceptance.ts": "9f500629e490e1f2d1b7a9304c37c563b62558fed06205d858d5c41ccf5bdd3d",
-    "packages/core/src/shared-file-management-model.ts": "1e87d80fd5f34828c41e9444cb3234598841a5cdace48f394aadf3239cc2442d",
+    "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
+    "packages/core/src/shared-file-management-model.ts": "8c79af06932063c4cffd6f1a1136f73352476a75642cb62d18d3bb410289729c",
     "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
     "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
     "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
-    "packages/core/test/shared-file-management.test.ts": "9ff24ac090ca96de59a16b3bf68fdefaaaebb1a1e646084f618c62535e98258f",
+    "packages/core/test/shared-file-management.test.ts": "4b33e2117151f7cc24c954b1ff340a5a8452d15f70ff7e1d64aad5826009599a",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
-    "packages/core/test/shared-snapshot-fixture.ts": "8dd55082681ef323f1fdc7b54626f7af19a3c48d900aa7e7bfc7c37b3e840826"
+    "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
+    "packages/core/src/shared-skill-apply.ts": "4023db902844d1e94c4723fcf548daf4003dcdee8bdecc15b628643f5891c5b7",
+    "packages/core/src/shared-skill-apply-model.ts": "7e195525f65aa4d84dadac2cb640a5fc4e4ae5c7d25cdaecbaf6b7fb72ac63fe",
+    "packages/core/src/shared-skill-apply-target.ts": "bba8b77247ff3918b70f4dcec3f90a3530283c23c4e07c2e1138bd5afb609b31",
+    "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
+    "packages/core/src/shared-skill-apply-authoring.ts": "a780ee64e8d7b6de3e9feaeb4a9d5c0c9c57fb0bde39ad8026acd03e2d9b8779",
+    "packages/core/src/shared-file-management.ts": "a297eaa8245aa276932964f5ca9351470de433b6d0162514b188b3cc96848529",
+    "packages/core/src/shared-snapshot.ts": "a31efa38d5d7e4af442d5db3c2a68a56bdc6f7a14c46cc1bed6ffd11559900a4",
+    "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
+    "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
+    "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
+    "packages/core/test/shared-skill-apply.test.ts": "b4ad2488d125b5c591291daeadaaddd66d6f3f6fb14945415a8600ce823744bf",
+    "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
+    "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
+    "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371",
+    "packages/core/src/shared-plan-storage.ts": "8dd790e4c36120636259e482359eefc9a8ddc17c1979fb7cb2daad4e8c0a9be4"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -50,13 +65,14 @@
         "reconcileSharedFileAddAcceptance",
         "sharedCreateDispatch"
       ],
-      "scope": "One failed original add, one separate acceptance identity, frozen File/owner/frontier, three ordered immutable Records (review/adopted/completion), one attempt per Record, and a cold read of five full shared proof classes. Unknown immutable fact may be exactly observed without inventing an ACK, allowing only the next distinct Record.",
+      "scope": "One failed original add and one independent acceptance identity with frozen File/owner/frontier. The existing configuration family covers exact-candidate acceptance (three ordered Records, five cold proof classes) and explicit observed-body acceptance (four ordered Records including the selected body, six cold proof classes). Every dispatch stays bound to the same reviewed context, unknown writes are not repeated, and neither mode confirms the original failed write.",
       "excluded": [
         "Whole File lifecycle",
         "Arbitrary native byte representation and codec limits",
         "Distributed acceptance writers",
         "Automatic acceptance or repair of unknown original creates",
-        "Cold history proof does not assert current body remains unchanged"
+        "Cold history proof does not assert current body remains unchanged",
+        "Actual approval flag, observed byte hash and lossless plan storage are implementation regressions, not state-model guarantees"
       ]
     },
     "RestoreFeedback": {
@@ -76,6 +92,27 @@
         "Original processing metadata PATCH transport internals (modeled at retained ACK and exact readback boundary)",
         "Provider CAS or exclusion of edits between the final observation and dispatch",
         "Unconditional progress while results remain unknown"
+      ]
+    },
+    "MaintenanceApply": {
+      "kind": "bounded_original_parent_and_verified_child_prefix",
+      "symbols": [
+        "loadSharedApplyReferenceTree",
+        "authenticateApplyParent",
+        "executeSharedSkillApply",
+        "resumeSharedSkillApply",
+        "reconcileSharedSkillApply",
+        "loadPendingSharedSkillApplies"
+      ],
+      "scope": "Three ordered children; original dispatch, received response, retained verified outcome and parent progress remain distinct. Current pending tree is not published. Original local authority is required for an unsent suffix. No CAS, atomic multi-page write or eventual-progress claim.",
+      "excluded": [
+        "Every native POST/PATCH/Record subrequest; narrower recovery models apply only to their named protocols",
+        "Same-execution lifecycle-event ACK/query union, provider index visibility and per-Record crash persistence",
+        "Known versus unknown native file modes, exact byte reconstruction and dry-run preview validation",
+        "Notion atomic transactions or revision compare-and-swap",
+        "An edit after a completed pre-dispatch observation; real readback and failure tests remain required",
+        "Raw Markdown/bytes, resource formats, reference rewrite parsing and permissions",
+        "Arbitrary plan length, all provider scopes and subsequent legitimate author changes after completion"
       ]
     }
   },
@@ -557,6 +594,102 @@
         "HistoricalAckPreserved",
         "NoDeadlock"
       ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "cfg",
+      "expected_broken": [],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "skip-prefix.cfg",
+      "expected_broken": ["ConfirmedPrefixBeforeSuffix"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "replay-unknown.cfg",
+      "expected_broken": ["UnknownNeverRepeated"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "partial-completion.cfg",
+      "expected_broken": ["CompletionNeedsAllChildren"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "publish-pending.cfg",
+      "expected_broken": ["PendingTreeNotPublished"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "MaintenanceApply",
+      "config": "ignore-drift.cfg",
+      "expected_broken": ["ObservedDriftStopsDispatch"],
+      "expected_rules": [
+        "TypeOK",
+        "ConfirmedPrefixBeforeSuffix",
+        "UnknownNeverRepeated",
+        "CompletionNeedsAllChildren",
+        "PendingTreeNotPublished",
+        "ObservedDriftStopsDispatch",
+        "OriginalOutcomeAuthority",
+        "OldPinPreserved",
+        "NoDeadlock"
+      ]
     }
   ],
   "maintenance": {
@@ -566,5 +699,80 @@
     "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
     "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
     "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
+  },
+  "maintenance_review": {
+    "batch": "AH-1024 / MNT02–09",
+    "baseline": "6c38e747a9e40186fdf9d4ecda033eb5b413561c",
+    "document": "docs/maintenance-verification-review.md",
+    "claim": "Source correspondence reviewed; this metadata itself is not a new run. Exact result scope is the final runner summary plus concrete original artifacts.",
+    "reviewed_paths": [
+      "packages/core/src/shared-create-dispatch.ts",
+      "packages/core/src/shared-file-management-model.ts",
+      "packages/core/test/shared-file-management.test.ts",
+      "packages/core/test/shared-snapshot-fixture.ts",
+      "packages/core/src/shared-skill-apply.ts",
+      "packages/core/src/shared-skill-apply-model.ts",
+      "packages/core/src/shared-skill-apply-target.ts",
+      "packages/core/src/shared-skill-apply-tree.ts",
+      "packages/core/src/shared-skill-apply-authoring.ts",
+      "packages/core/src/shared-file-management.ts",
+      "packages/core/src/shared-snapshot.ts",
+      "packages/core/src/shared-native-repair.ts",
+      "packages/core/src/shared-native-repair-model.ts",
+      "packages/core/src/shared-maintenance-operations.ts",
+      "packages/core/test/shared-skill-apply.test.ts",
+      "packages/core/test/shared-skill-apply-tree.test.ts",
+      "packages/core/test/shared-native-repair.test.ts",
+      "packages/core/test/shared-maintenance-operations.test.ts"
+    ],
+    "product_commit": "15706379dfd4d619beb7f577577c0fead79c1d64",
+    "format_only_followup": "After the semantic review, Biome normalized formatting; the exact resulting source bytes are recorded here.",
+    "event_ack_followup": {
+      "source_commit": "dafa00d5d781dcc44071a0092001e01ae829dfb6",
+      "document": "docs/maintenance-verification-review.md#same-execution-lifecycle-event-verification",
+      "model_contract": "MaintenanceApply still separates response receipt, retained original outcome and parent progress. Its interrupted acknowledgement-to-outcome state cannot reconcile without that original outcome. AcknowledgedRecordPrefix retains its exact original ACK and complete-census requirements; IndependentAcceptance and RestoreFeedback protocols are unchanged.",
+      "unmodeled": "The current file-management execution may join its already verified immutable event fact into a fresh complete query that omits it. Exact envelope validation, conflicting same-ID payloads and individual event/outcome subrequests remain concrete checks. The returned fact is not a durable journal, cannot settle an earlier operation and supplies no unknown-write replay authority.",
+      "tests": ["packages/core/test/shared-file-management.test.ts"],
+      "properties_and_bounds_changed": false
+    },
+    "revival_mode_followup": {
+      "source_commit": "2e5b3ac9e6fc16a35863657237257ea380e534b8",
+      "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
+      "model_contract": "MaintenanceApply still begins with valid ordered child intent and preserves original dispatch, acknowledgement, outcome and parent-prefix boundaries. Its variables do not represent native modes, exact retained byte reconstruction or dry-run results.",
+      "unmodeled": "Tombstones, revivals and final manifests retain known native modes without inventing historical unknown values. The unchanged strict full-tree reconstruction now runs before both planned preview and local parent retention. An invalid original revival was rejected before any parent Record or child dispatch; the correction adds no recovery authority.",
+      "tests": [
+        "packages/core/test/shared-skill-apply-tree.test.ts",
+        "packages/core/test/shared-skill-apply.test.ts"
+      ],
+      "properties_and_bounds_changed": false,
+      "evidence_scope": "The 40/34 complete model runs and 85/186 domain regressions retained for dafa00d predate this follow-up. The new ten-case red/green and 38 affected source regressions establish the concrete metadata/preflight correction. Those earlier model runs are not a new execution of this source commit."
+    },
+    "single_add_mode_followup": {
+      "source_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
+      "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
+      "unmodeled": "The existing isolated add route forwards optional input mode to the already supported file-management plan fields. Known modes and historical absence keep their existing meanings; no retained operation, phase or recovery authority changes. This native metadata routing is outside the finite models.",
+      "tests": ["packages/core/test/shared-skill-apply.test.ts"],
+      "properties_and_bounds_changed": false,
+      "evidence_scope": "Three public applySkill cases use actual filesystem input: directory modes 100644/100755 and a bare Markdown input with unknown mode. The original one-pass/two-failure result becomes three passes. This is concrete source evidence; the prior dafa00d formal runs keep their original identity."
+    }
+  },
+  "independent_review_corrections": {
+    "source_commit": "d5159127d0ca927a5f3540b79423ec9b11bc98ea",
+    "previous_frozen": "9e4cefb74ec67155a61c64270add2edf85c0e219",
+    "document": "docs/maintenance-verification-review.md",
+    "changes": [
+      {
+        "file": "packages/core/src/shared-native-repair.ts",
+        "before": "6b25eb65488bc44128b5d219dafe885ec39a2eddf1d1a62a43bff92cae3ca017",
+        "after": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1"
+      },
+      {
+        "file": "packages/core/test/shared-native-repair.test.ts",
+        "before": "37bf27977f313ab10f1b6aaaaa6bcc8f807e544ffeef3caad3a7566a37ba5034",
+        "after": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50"
+      }
+    ],
+    "properties_and_bounds_changed": false,
+    "evidence_scope": "Original independent B1/B2 reproductions passed; initial/final Files-denial checkpoints, exact original outcome barriers and no-extra-auth cancellation checked in concrete tests. AuditScope does not model real query visibility/permission classification. No new actual Notion or model completion claimed by this metadata."
   }
 }

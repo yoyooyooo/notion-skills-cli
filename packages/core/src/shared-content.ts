@@ -78,6 +78,10 @@ function readableText(value: Record<string, unknown>, type: "title" | "rich_text
   return text(parts)
 }
 
+export function sharedSkillTextProperty(row: unknown, library: SharedLibrary, name: string) {
+  return readableText(sharedSkillProperty(row, library, name), "rich_text", name)
+}
+
 function checkbox(value: Record<string, unknown>, name: string) {
   if (value.type !== "checkbox" || typeof value.checkbox !== "boolean")
     throw invalid(`${name} must be a checkbox.`)
@@ -114,16 +118,8 @@ function sharedPageMetadata(raw: unknown, source: Source, dataSourceId: string) 
     throw invalid("The shared Skill belongs to another source.", { page_id: page })
 
   const name = readableText(sharedSkillProperty(row, library, "Name"), "title", "Name")
-  const description = readableText(
-    sharedSkillProperty(row, library, "Description"),
-    "rich_text",
-    "Description",
-  )
-  const skillIdValue = readableText(
-    sharedSkillProperty(row, library, "Skill ID"),
-    "rich_text",
-    "Skill ID",
-  )
+  const description = sharedSkillTextProperty(row, library, "Description")
+  const skillIdValue = sharedSkillTextProperty(row, library, "Skill ID")
   const kindField = sharedSkillProperty(row, library, "Kind")
   if (kindField.type !== "select") throw invalid("Kind must be a select property.")
   const kind =

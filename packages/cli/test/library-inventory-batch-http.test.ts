@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { beforeAll, expect, test } from "bun:test"
 import { Database } from "bun:sqlite"
 import { mkdtemp, mkdir, readFile, realpath, writeFile, cp } from "node:fs/promises"
 import { join } from "node:path"
@@ -16,6 +16,20 @@ import { json } from "../../core/test/notion-http-fixture.ts"
 const main =
   process.env.NTN_SKILLS_TEST_EXECUTABLE ??
   new URL("../dist/ntn-skills.js", import.meta.url).pathname
+beforeAll(async () => {
+  if (process.env.NTN_SKILLS_TEST_EXECUTABLE !== undefined) return
+  const build = Bun.spawn(["bun", "run", "build"], {
+    cwd: new URL("../../../", import.meta.url).pathname,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(build.stdout).text(),
+    new Response(build.stderr).text(),
+    build.exited,
+  ])
+  if (exit !== 0) throw new Error(`Production CLI build failed: ${stdout}\n${stderr}`)
+}, 120_000)
 const field = (value: Record<string, unknown>, name: string) => {
   const result = value[name]
   if (typeof result !== "string") throw new Error(`Expected ${name} in the public CLI response`)
@@ -160,11 +174,11 @@ test("public Node batch imports two complete native Skills over HTTP and repeats
       new Response(child.stderr).text(),
       child.exited,
     ])
+    expect(errors, stderr + stdout).toEqual([])
+    expect(exits, stderr + stdout).toContain(exit)
     const output = property(JSON.parse(stdout))
     commands.push({ args, exit, output, stderr })
     await writeFile(join(directory, "commands.json"), JSON.stringify(commands, null, 2))
-    expect(errors, stderr + stdout).toEqual([])
-    expect(exits, stderr + stdout).toContain(exit)
     expect(output.ok, stdout).toBe(true)
     return output
   }

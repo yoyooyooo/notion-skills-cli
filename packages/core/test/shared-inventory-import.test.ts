@@ -1440,7 +1440,9 @@ test("existing verification checks its complete target while retaining unaudited
     )
   expect(audit.coverage).toBe("full")
   const baseline = await f.run(prepareSharedBaselineInventory(audit.run_id))
-  expect(baseline.coverage).toBe("partial")
+  expect(baseline.coverage).toBe("full")
+  expect(baseline.inspection_scope).toBe("reachable_target")
+  expect(baseline.visible_registered_census?.coverage).toBe("partial")
   const target = baseline.resources.find((item) => item.page_id === created.skill_page_id)!
   expect(target.files).toHaveLength(5)
   expect(

@@ -1,3 +1,4 @@
+import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
@@ -7,6 +8,11 @@ import { sharedSkillId } from "./shared-content.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { executeSharedBodyWrite, reconcileSharedBodyWrite } from "./shared-body-write.ts"
+import {
+  executeSharedFileManagement,
+  reconcileSharedFileManagement,
+} from "./shared-file-management.ts"
+import { loadSharedApplyReferenceTree } from "./shared-skill-apply-target.ts"
 import {
   executeSharedMetadataWrite,
   reconcileSharedMetadataWrite,
@@ -128,7 +134,7 @@ function originalRecord(
     skillPageId: plan.skill_page_id,
     kind: "operation",
     entityId: sharedSkillApplyPlansEntity,
-    payload: plan,
+    payload: storedSharedOperationPlan(plan),
     payloadContainsBody: true,
   }).pipe(Effect.mapError((error) => recovery(error, plan, "plan")))
 }
@@ -269,13 +275,21 @@ function verifyOutcomeHeaders(outcome: Outcome, headers: readonly SharedOperatio
 }
 
 function reconcileChild(library: SharedLibrary, child: SharedSkillApplyChild) {
+  const aligned = (status: string, operationId: string) => ({
+    status: status === "applied" ? ("applied" as const) : ("not_applied" as const),
+    operation_id: operationId,
+  })
   return child.kind === "body_write"
     ? reconcileSharedBodyWrite(library, child).pipe(
-        Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
+        Effect.map((result) => aligned(result.status, result.operation_id)),
       )
-    : reconcileSharedMetadataWrite(library, child).pipe(
-        Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
-      )
+    : child.kind === "metadata_write"
+      ? reconcileSharedMetadataWrite(library, child).pipe(
+          Effect.map((result) => aligned(result.status, result.operation_id)),
+        )
+      : reconcileSharedFileManagement(library, child).pipe(
+          Effect.map((result) => aligned(result.status, result.operation_id)),
+        )
 }
 
 function allChildrenApplied(library: SharedLibrary, plan: SharedSkillApplyPlan) {
@@ -390,6 +404,311 @@ export function reconcileSharedSkillApply(library: SharedLibrary, input: SharedS
   )
 }
 
+/** Explicit continuation of one frozen parent. Reconcile stays read-only. */
+export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkillApplyPlan) {
+  return Effect.gen(function* () {
+    const plan = yield* validateSharedSkillApplyPlan(input)
+    const scope = yield* authScope
+    if (scope !== plan.snapshot_scope)
+      return yield* Effect.fail(
+        fail(
+          "SNAPSHOT_CONFLICT",
+          "The original apply belongs to another authenticated snapshot scope.",
+        ),
+      )
+    yield* verifyScope(library, plan)
+    const journal = yield* journalScope(scope, plan)
+    const local = yield* pendingFileOperations(journal)
+    const retained = local.find((entry) => entry.plan.operation_id === plan.operation_id)
+    if (retained !== undefined && canonicalSharedJson(retained.plan) !== canonicalSharedJson(plan))
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "The retained apply receipt differs from the requested parent."),
+      )
+    const rows = yield* querySharedRecords(library, {
+      skillPageId: plan.skill_page_id,
+      kind: "operation",
+      entityId: sharedSkillApplyPlansEntity,
+      recordId: plan.operation_id,
+      payloadContainsBody: true,
+    })
+    if (
+      rows.length !== 1 ||
+      rows[0] === undefined ||
+      canonicalSharedJson(rows[0].payload) !== canonicalSharedJson(storedSharedOperationPlan(plan))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_UNRESOLVED",
+          "Resume requires the exact retained parent. A missing parent is not an unsent suffix.",
+        ),
+      )
+    const outcomes = yield* querySharedRecords(library, {
+      skillPageId: plan.skill_page_id,
+      kind: "operation",
+      entityId: sharedSkillApplyOutcomesEntity,
+      recordId: sharedSkillApplyOutcomeId(plan.operation_id),
+    })
+    if (outcomes.length !== 0) return yield* reconcileSharedSkillApply(library, plan)
+    const children = sharedSkillApplyChildren(plan)
+    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    let prefix = 0
+    for (const child of children) {
+      const childRows = yield* querySharedRecords(library, {
+        skillPageId: plan.skill_page_id,
+        kind: "operation",
+        recordId: child.operation_id,
+        payloadContainsBody: true,
+      })
+      const outcomeRows = yield* querySharedRecords(library, {
+        skillPageId: plan.skill_page_id,
+        kind: "operation",
+        recordId: `outcome-${child.operation_id}`,
+      })
+      const localChild = local.find((entry) => entry.plan.operation_id === child.operation_id)
+      const visible = childRows.length > 0 || outcomeRows.length > 0 || localChild !== undefined
+      if (!visible) break
+      if (childRows.length !== 1 || outcomeRows.length !== 1)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_UNRESOLVED",
+            "A child has a local or remote fact without both its plan and outcome. The suffix stays frozen.",
+            { child_operation_id: child.operation_id },
+          ),
+        )
+      const recovered = yield* reconcileChild(library, child)
+      if (recovered.status !== "applied")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_UNRESOLVED",
+            "A visible child is not applied. Resume does not infer it was unsent.",
+            { child_operation_id: child.operation_id },
+          ),
+        )
+      prefix += 1
+    }
+    for (const child of children.slice(prefix)) {
+      const childRows = yield* querySharedRecords(library, {
+        skillPageId: plan.skill_page_id,
+        kind: "operation",
+        recordId: child.operation_id,
+      })
+      const outcomeRows = yield* querySharedRecords(library, {
+        skillPageId: plan.skill_page_id,
+        kind: "operation",
+        recordId: `outcome-${child.operation_id}`,
+      })
+      const indexed = headers.some(
+        (header) =>
+          header.record_id === child.operation_id ||
+          header.record_id === `outcome-${child.operation_id}`,
+      )
+      const localChild = local.find((entry) => entry.plan.operation_id === child.operation_id)
+      if (childRows.length !== 0 || outcomeRows.length !== 0 || indexed || localChild !== undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_APPLY_UNRESOLVED",
+            "The suffix is not a proved-unsent tail. Missing query visibility alone does not authorize dispatch.",
+            { child_operation_id: child.operation_id },
+          ),
+        )
+    }
+    if (prefix === children.length) return yield* reconcileSharedSkillApply(library, plan)
+    if (retained === undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_APPLY_UNSENT_PROOF_UNAVAILABLE",
+          "The original local parent journal is unavailable. Remote query absence cannot prove an undispatched suffix on another Store.",
+          { operation_id: plan.operation_id },
+        ),
+      )
+    return yield* continueSharedSkillApply(library, plan, journal, children.slice(prefix))
+  })
+}
+
+function continueSharedSkillApply(
+  library: SharedLibrary,
+  plan: SharedSkillApplyPlan,
+  journal: SharedPendingFileScope,
+  remaining: readonly SharedSkillApplyChild[],
+) {
+  return Effect.gen(function* () {
+    const children = sharedSkillApplyChildren(plan)
+    const completed: Outcome["children"][number][] = children
+      .slice(0, children.length - remaining.length)
+      .map((child) => ({ operation_id: child.operation_id, status: "applied" as const }))
+    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    for (let offset = 0; offset < remaining.length; offset++) {
+      const child = remaining[offset]!
+      const index = children.length - remaining.length + offset
+      let prepared = false
+      const before = (value: SharedSkillApplyChild) =>
+        retainPendingFileOperation(journal, value).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              prepared = true
+            }),
+          ),
+        )
+      const action = dispatchChild(library, plan, child, before, completed)
+      const result = yield* action.pipe(Effect.result)
+      if (result._tag === "Failure") {
+        if (result.failure.code === "WRITE_OUTCOME_UNKNOWN")
+          return yield* Effect.fail(
+            recovery(
+              result.failure,
+              plan,
+              "child",
+              completed.map((value) => value.operation_id),
+            ),
+          )
+        return yield* stopChild(
+          library,
+          plan,
+          journal,
+          headers,
+          children,
+          index,
+          prepared,
+          result.failure,
+          completed,
+        )
+      }
+      if (result.success.status !== "applied")
+        return yield* Effect.fail(
+          recovery(
+            fail(
+              "SHARED_APPLY_UNRESOLVED",
+              "The resumed child did not return an exact applied outcome.",
+            ),
+            plan,
+            "child",
+            completed.map((value) => value.operation_id),
+          ),
+        )
+      completed.push({ operation_id: child.operation_id, status: "applied" })
+    }
+    yield* saveOutcome(library, plan, completed, "ALL_ORIGINAL_CHILDREN_VERIFIED")
+    yield* retireVerified(plan, journal)
+    return {
+      status: "applied" as const,
+      operation_id: plan.operation_id,
+      verified: true as const,
+      completed_child_operations: completed.map((child) => child.operation_id),
+      requires_fresh_read: true as const,
+      protection: sharedSkillApplyProtection,
+    }
+  })
+}
+
+function dispatchChild(
+  library: SharedLibrary,
+  plan: SharedSkillApplyPlan,
+  child: SharedSkillApplyChild,
+  before: (
+    value: SharedSkillApplyChild,
+  ) => Effect.Effect<void, SkillsError, Store | import("effect").Crypto.Crypto>,
+  completed: readonly Outcome["children"][number][],
+) {
+  return child.kind === "body_write"
+    ? executeSharedBodyWrite(library, {
+        plan: child,
+        mode: "create",
+        beforePlanWrite: before,
+      }).pipe(
+        Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
+      )
+    : child.kind === "metadata_write"
+      ? executeSharedMetadataWrite(library, {
+          plan: child,
+          mode: "create",
+          beforePlanWrite: before,
+        }).pipe(
+          Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
+        )
+      : executeSharedFileManagement(library, {
+          plan: child,
+          mode: "create",
+          beforePlanWrite: before,
+          ...(plan.version === 2
+            ? { parent: plan, completedChildIds: completed.map((value) => value.operation_id) }
+            : {}),
+        }).pipe(
+          Effect.map((result) => ({
+            status: result.status === "applied" ? ("applied" as const) : result.status,
+            operation_id: result.operation_id,
+          })),
+        )
+}
+
+function stopChild(
+  library: SharedLibrary,
+  plan: SharedSkillApplyPlan,
+  journal: SharedPendingFileScope,
+  headers: readonly SharedOperationHeader[],
+  children: readonly SharedSkillApplyChild[],
+  index: number,
+  prepared: boolean,
+  error: SkillsError,
+  completed: readonly Outcome["children"][number][],
+) {
+  return Effect.gen(function* () {
+    const child = children[index]!
+    let terminal: "not_sent" | "not_applied" | undefined
+    const existed = headers.some(
+      (header) =>
+        header.record_id === child.operation_id ||
+        header.record_id === `outcome-${child.operation_id}`,
+    )
+    const preflightConflict =
+      error.code === "SHARED_BODY_WRITE_STALE" ||
+      error.code === "WRITE_CONFLICT" ||
+      error.code === "SHARED_APPLY_CONCURRENT_EDIT"
+    if (
+      !prepared &&
+      !existed &&
+      preflightConflict &&
+      property(error.details).recovery === undefined
+    )
+      terminal = "not_sent"
+    else {
+      const recovered = yield* reconcileChild(library, child).pipe(Effect.result)
+      if (recovered._tag === "Success" && recovered.success.status === "not_applied")
+        terminal = "not_applied"
+    }
+    if (terminal === undefined)
+      return yield* Effect.fail(
+        recovery(
+          error,
+          plan,
+          "child",
+          completed.map((value) => value.operation_id),
+        ),
+      )
+    const summary: Outcome["children"] = [
+      ...completed,
+      { operation_id: child.operation_id, status: terminal },
+      ...children.slice(index + 1).map((remaining) => ({
+        operation_id: remaining.operation_id,
+        status: "not_sent" as const,
+      })),
+    ]
+    yield* saveOutcome(library, plan, summary, error.code)
+    yield* retireVerified(plan, journal)
+    return yield* Effect.fail(
+      recovery(
+        fail(
+          "SHARED_APPLY_PARTIAL",
+          "The sequential apply stopped at a verified failure. Earlier completed edits remain; the exact remaining intent is retained.",
+          { cause_code: error.code, children: summary, requires_fresh_read: true },
+        ),
+        plan,
+        "partial",
+        completed.map((value) => value.operation_id),
+      ),
+    )
+  })
+}
+
 export function executeSharedSkillApply(
   library: SharedLibrary,
   input: {
@@ -448,6 +767,7 @@ export function executeSharedSkillApply(
           apply_operation_id: pending[0]!.operation_id,
         }),
       )
+    if (plan.version === 2) yield* loadSharedApplyReferenceTree(plan)
     if (input.dryRun)
       return {
         status: "planned" as const,
@@ -460,129 +780,7 @@ export function executeSharedSkillApply(
     yield* invalidateSnapshotCache(sharedSkillId(plan.library_id, plan.skill_id), scope)
     yield* originalRecord(library, plan, "create")
     const children = sharedSkillApplyChildren(plan)
-    const completed: Outcome["children"][number][] = []
-    for (let index = 0; index < children.length; index++) {
-      const child = children[index]!
-      let prepared = false
-      const before = (value: SharedSkillApplyChild) =>
-        retainPendingFileOperation(journal, value).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              prepared = true
-            }),
-          ),
-        )
-      const action =
-        child.kind === "body_write"
-          ? executeSharedBodyWrite(library, {
-              plan: child,
-              mode: "create",
-              beforePlanWrite: before,
-            }).pipe(
-              Effect.map((result) => ({
-                status: result.status,
-                operation_id: result.operation_id,
-              })),
-            )
-          : executeSharedMetadataWrite(library, {
-              plan: child,
-              mode: "create",
-              beforePlanWrite: before,
-            }).pipe(
-              Effect.map((result) => ({
-                status: result.status,
-                operation_id: result.operation_id,
-              })),
-            )
-      const result = yield* action.pipe(Effect.result)
-      if (result._tag === "Failure") {
-        // Unknown stops immediately, including an unknown terminal-fact POST.
-        if (result.failure.code === "WRITE_OUTCOME_UNKNOWN")
-          return yield* Effect.fail(
-            recovery(
-              result.failure,
-              plan,
-              "child",
-              completed.map((value) => value.operation_id),
-            ),
-          )
-        let terminal: "not_sent" | "not_applied" | undefined
-        const existed = headers.some(
-          (header) =>
-            header.record_id === child.operation_id ||
-            header.record_id === `outcome-${child.operation_id}`,
-        )
-        const preflightConflict =
-          result.failure.code === "SHARED_BODY_WRITE_STALE" ||
-          result.failure.code === "WRITE_CONFLICT"
-        if (
-          !prepared &&
-          !existed &&
-          preflightConflict &&
-          property(result.failure.details).recovery === undefined
-        )
-          terminal = "not_sent"
-        else {
-          const recovered = yield* reconcileChild(library, child).pipe(Effect.result)
-          if (recovered._tag === "Success" && recovered.success.status === "not_applied")
-            terminal = "not_applied"
-        }
-        if (terminal === undefined)
-          return yield* Effect.fail(
-            recovery(
-              result.failure,
-              plan,
-              "child",
-              completed.map((value) => value.operation_id),
-            ),
-          )
-        const summary: Outcome["children"] = [
-          ...completed,
-          { operation_id: child.operation_id, status: terminal },
-          ...children.slice(index + 1).map((remaining) => ({
-            operation_id: remaining.operation_id,
-            status: "not_sent" as const,
-          })),
-        ]
-        yield* saveOutcome(library, plan, summary, result.failure.code)
-        yield* retireVerified(plan, journal)
-        return yield* Effect.fail(
-          recovery(
-            fail(
-              "SHARED_APPLY_PARTIAL",
-              "The sequential apply stopped at a verified failure. Earlier completed edits remain; the exact remaining intent is retained. Read the current Skill before preparing a new apply.",
-              { cause_code: result.failure.code, children: summary, requires_fresh_read: true },
-            ),
-            plan,
-            "partial",
-            completed.map((value) => value.operation_id),
-          ),
-        )
-      }
-      if (result.success.status !== "applied")
-        return yield* Effect.fail(
-          recovery(
-            fail(
-              "SHARED_APPLY_UNRESOLVED",
-              "The original child did not return an exact applied outcome; stop without dispatching another child.",
-            ),
-            plan,
-            "child",
-            completed.map((value) => value.operation_id),
-          ),
-        )
-      completed.push({ operation_id: child.operation_id, status: "applied" })
-    }
-    yield* saveOutcome(library, plan, completed, "ALL_ORIGINAL_CHILDREN_VERIFIED")
-    yield* retireVerified(plan, journal)
-    return {
-      status: "applied" as const,
-      operation_id: plan.operation_id,
-      verified: true as const,
-      completed_child_operations: completed.map((child) => child.operation_id),
-      requires_fresh_read: true as const,
-      protection: sharedSkillApplyProtection,
-    }
+    return yield* continueSharedSkillApply(library, plan, journal, children)
   }).pipe((effect) =>
     withNotionRequestAttribution(effect, {
       phase: "author_apply",

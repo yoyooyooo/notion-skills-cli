@@ -56,12 +56,16 @@ function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
 function inventory(
   library: SharedLibrary,
   kind: "skills" | "files",
-  supplied?: NativeMetadataInventory,
+  supplied?: {
+    readonly data_source_id: string
+    readonly complete: boolean
+    readonly pages: readonly unknown[]
+  },
 ) {
   return Effect.gen(function* () {
     const source = library[kind]
     if (supplied !== undefined) {
-      if (supplied.data_source_id !== source.data_source_id || supplied.complete !== true)
+      if (supplied.data_source_id !== source.data_source_id)
         return yield* Effect.fail(
           fail("SHARED_REFERENCE_SCOPE", "The reference inventory belongs to another data source."),
         )
@@ -140,8 +144,16 @@ export function compileSharedNativeReferences(input: {
   readonly bindings: readonly SharedBodyBinding[]
   readonly relations: unknown
   readonly inventory?: {
-    readonly skills?: NativeMetadataInventory
-    readonly files?: NativeMetadataInventory
+    readonly skills?: {
+      readonly data_source_id: string
+      readonly complete: boolean
+      readonly pages: readonly unknown[]
+    }
+    readonly files?: {
+      readonly data_source_id: string
+      readonly complete: boolean
+      readonly pages: readonly unknown[]
+    }
   }
 }) {
   return Effect.gen(function* () {

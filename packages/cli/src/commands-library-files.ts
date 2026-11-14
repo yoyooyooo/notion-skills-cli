@@ -15,6 +15,7 @@ import {
   type SharedFileManagementPlan,
 } from "../../core/src/shared-file-management.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
+import { querySharedSkillIndex } from "../../core/src/shared-skill-index.ts"
 import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
 import { libraryFileRestoreCommand } from "./commands-library-file-restore.ts"
 import { libraryFileReviewCommand } from "./commands-library-file-review.ts"
@@ -236,6 +237,40 @@ const move = defineCommand(
   ),
 )
 
+const undelete = defineCommand("undelete", { target, path, entry, dryRun }, (options) =>
+  withSharedAuthoringRequest(
+    options.target,
+    Effect.gen(function* () {
+      const selected = yield* fresh(options.entry, options.target)
+      const locator = selected.snapshot.record.locator
+      if (locator.type !== "shared_skill")
+        return yield* Effect.fail(
+          fail("CONTENT_NOT_MUTABLE", "Undelete requires an exact shared Skill."),
+        )
+      const index = yield* querySharedSkillIndex(selected.library, locator.page_id)
+      const matches = index.files.filter((file) => file.path === options.path)
+      if (matches.length !== 1 || matches[0] === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_FILE_NOT_TOMBSTONE",
+            "Undelete needs one stable supporting file at this path.",
+            { path: options.path },
+          ),
+        )
+      const plan = yield* prepareSharedFileManagement({
+        ...selected,
+        action: "undelete",
+        fileId: matches[0].file_id,
+      })
+      yield* emit(yield* dispatch(selected.library, plan, options.dryRun))
+    }),
+  ),
+).pipe(
+  Command.withDescription(
+    "Revive one tombstoned native Markdown file on its original File ID and page, using the retained original bytes. This does not create a row, follow a source, or restore a historical projection. The main entrypoint, a path owned by another file, and unavailable bytes fail before writes. --dry-run emits the frozen plan without remote writes.",
+  ),
+)
+
 const reconcile = defineCommand(
   "reconcile",
   { target, operation: Argument.String("operation-id"), entry },
@@ -272,6 +307,7 @@ export const libraryFilesCommand = defineCommand("file").pipe(
     add,
     remove,
     move,
+    undelete,
     reconcile,
     libraryFileRestoreCommand,
     libraryFileTakeoverCommand,

@@ -1,7 +1,18 @@
-import { mkdtemp, readFile, writeFile, realpath } from "node:fs/promises"
+import { execFileSync } from "node:child_process"
+import { mkdir, mkdtemp, readFile, writeFile, realpath } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
+
+export function resolveConsumerRuntime(command: string): string {
+  const runtime = execFileSync(command, ["--print", "process.execPath"], {
+    encoding: "utf8",
+    timeout: 10_000,
+  }).trim()
+  if (!isAbsolute(runtime))
+    throw new Error("The consumer Node runtime must report an absolute executable path.")
+  return runtime
+}
 
 export async function prepareConsumer() {
   const { values } = parseArgs({
@@ -11,20 +22,33 @@ export async function prepareConsumer() {
       registry: { type: "string" },
       runtime: { type: "string" },
       "migration-archive": { type: "string" },
+      stage: { type: "string" },
     },
     strict: true,
   })
+  const stage = values.stage ?? "all"
+  if (stage !== "all" && stage !== "maintenance")
+    throw new Error("--stage must be all or maintenance.")
   if (Boolean(values.archive) === Boolean(values.registry))
     throw new Error("Select exactly one --archive or --registry input.")
   if (values.registry && !/^ntn-skills@\d+\.\d+\.\d+(?:-[\da-z.-]+)?$/i.test(values.registry))
     throw new Error("--registry must select an exact ntn-skills version.")
-  const scratch = await realpath(await mkdtemp(join(tmpdir(), "ntn-skills-consumer-")))
+  const evidenceRoot = process.env.NTN_SMOKE_EVIDENCE_ROOT
+  if (evidenceRoot) {
+    if (!isAbsolute(evidenceRoot)) throw new Error("NTN_SMOKE_EVIDENCE_ROOT must be absolute")
+    await mkdir(evidenceRoot, { recursive: true, mode: 0o700 })
+  }
+  const scratch = await realpath(
+    await mkdtemp(join(evidenceRoot ?? tmpdir(), "ntn-skills-consumer-")),
+  )
   console.error(JSON.stringify({ consumer_smoke_scratch: scratch }))
-  const runtime = values.runtime ? resolve(values.runtime) : Bun.which("node")
-  if (!runtime)
+  const runtimeCommand = values.runtime ? resolve(values.runtime) : Bun.which("node")
+  if (!runtimeCommand)
     throw new Error(
       "Node.js 22.22.3+ within 22.x, or Node.js 24.20.0+, must be installed for consumer checks.",
     )
+  // Resolve version-manager shims before the consumer and Pi receive isolated homes.
+  const runtime = resolveConsumerRuntime(runtimeCommand)
   const dependency = values.archive
     ? `file:${resolve(values.archive)}`
     : values.registry!.split("@")[1]!
@@ -34,6 +58,7 @@ export async function prepareConsumer() {
   )
   const env = {
     ...process.env,
+    NTN_SKILLS_DEV_ROOT: undefined,
     PATH: `${dirname(runtime)}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
     NOTION_API_TOKEN: "",
     NOTION_WORKSPACE_ID: "",
@@ -165,6 +190,7 @@ export async function prepareConsumer() {
   }
   const evidence: Record<string, unknown> = {}
   return {
+    stage,
     scratch,
     runtime,
     env,

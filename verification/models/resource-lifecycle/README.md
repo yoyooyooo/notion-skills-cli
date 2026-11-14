@@ -1,6 +1,10 @@
 # Resource lifecycle models
 
-These bounded models check selected lifecycle contracts. Product implementation, installed-package behavior and live service acceptance require their separate evidence. The six TLA+ modules have independent negative controls and use the actual Pstack `statechart` checker and graph compiler, pinned at `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`, and TLC 1.7.4.
+These bounded models check selected lifecycle contracts. Product implementation, installed-package behavior and live service acceptance require their separate evidence. The seven TLA+ modules have model-specific negative controls and use the actual Pstack `statechart` checker and graph compiler, pinned at `c742dd61706fbacc1b95f1a20b7b988cf096ce6c`, and TLC 1.7.4.
+
+## Assumptions versus checked behavior
+
+Fixed original pages/history in CreateRecovery and AcknowledgedContinuation are input-preservation assumptions: their fields remain unchanged by construction. They do not independently establish preservation of real Notion pages or old failure records; the mapped recovery tests do. Other ACK/enable/completion invariants inspect reachable state relations even where no separate negative configuration targets that single rule. Count negative controls by the actual coverage inventory, not by assuming every invariant has its own mutation. ProjectionRace intentionally checks automatic replacement refusal; successful explicit restore is a separate implementation path.
 
 ## Run
 
@@ -26,6 +30,7 @@ Broken configurations are expected to fail their named properties. The runner is
 | ImportCreate | Complete approved input before dispatch, one original mutable-page request per stage, durable ACK before confirmation, whole-tree verification before explicit enablement. | Four abstract stages for one explicitly enabled create: root, Files/resources, metadata/selection, enablement. Exact immutable Record reconciliation is separate from mutable-page ACK authority. Disabled creation, arbitrary files, codec normalization and concurrent user edits need product tests. |
 | CreateRecovery | Complete original evidence, separate original/recovery histories, no uncertain-stage redispatch and exact Projection authority before transport. | One or three original ACK pages, one abstract suffix and three mutable stages. Full payloads, arbitrary cardinality, cold completion and provider behavior require product tests. |
 | AcknowledgedContinuation | Complete original request/ACK authority, fresh body checks, ACK-only interrupted readback, no uncertain redispatch and complete shared proofs before a cold result. | The retained branch has three allocated pages/four stages; native restoration has one original main, one original suffix reference/five stages. Exact JSON/bytes, arbitrary file counts, intermediate Record writes and edits after a check require product tests. |
+| AuditScope | Target closure versus independent library reverse coverage, read-only progress and bounded resumption. | Four abstract fact classes; actual pagination, permission failures at budget boundaries and repair markers use implementation regressions. |
 
 Safety configurations exhaust their finite reachable state spaces. Liveness is checked only in `AuditRun.liveness.cfg` and `AuditRun.reset.cfg`. It assumes weak fairness of progress steps and that the modeled resumptions are supplied. It does not promise completion when a caller never resumes, permission never returns, or providers never answer. Unknown update outcomes intentionally permit waiting without claiming progress.
 
@@ -186,3 +191,7 @@ The runner requires a green baseline, an assertion counterexample after removing
 `node scripts/verify-resource-lifecycle.mjs --out /absolute/new/run` 为原默认入口；`--model AuditRun` 选择整个模型组，包括既有 liveness 配置。新增领域使用 `--suite operation-recovery` 或 `--suite request-engine`，各自有 coverage/README，不能把其结果算作本目录扩大证明范围。`npm run test:formal-contract` 检查结果判定器的失败边界。
 
 维护分工、view/模型/实现三类复验义务及 CI artifact 规则见 [维护合同](../../../docs/formal-verification-maintenance.md)。失败 evidence 保留原目录，新一轮使用新的空绝对目录。
+
+## AH-1024 目标范围合同
+
+新增 AuditScope，不替代原 AuditRun：目标可达覆盖与独立全库反向覆盖分开；预算续跑不能改变原范围或丢失已确认事实。完整 suite 为 40 配置。正负配置、实现保护和排除项见 coverage.json 与 [维护对应审阅](../../../docs/maintenance-verification-review.md)。旧运行保留原结论，新的源码对应需要重新执行。

@@ -174,7 +174,7 @@ export function validateSharedObservationPlan(input: unknown) {
   })
 }
 
-function retainedObservationBody(body: FrozenObservationBody) {
+export function retainedObservationBody(body: FrozenObservationBody) {
   return body.native_body_completion === undefined
     ? {
         version: 1 as const,

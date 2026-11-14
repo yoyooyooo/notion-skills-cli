@@ -25,3 +25,21 @@ export function sharedCreateResourceDescription(resource: SharedCreateResource):
   const content = resource.prepared.content
   return `# ${resource.path}\n\nThis page manages an exact retained resource. Its description is editable; the file bytes are retained separately.\n\nSHA-256: ${content.sha256}\n\nBytes: ${content.bytes}\n\nMode: ${content.mode ?? "unknown"}\n`
 }
+
+/** Only the generated resource-note heading is eligible. Resource bytes are
+ * retained separately; no authored Markdown or link is normalized here. */
+export function equivalentResourceNote(actual: string, expected: string): boolean {
+  if (actual === expected) return true
+  const newline = actual.indexOf("\n"),
+    expectedNewline = expected.indexOf("\n")
+  if (newline < 0 || expectedNewline < 0 || !actual.startsWith("# ")) return false
+  const heading = actual
+    .slice(0, newline)
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\n]+)\)/gu, (whole, label: string, href: string) =>
+      href === `http://${label}` || href === `https://${label}` ? label : whole,
+    )
+  return (
+    heading === expected.slice(0, expectedNewline) &&
+    actual.slice(newline) === expected.slice(expectedNewline)
+  )
+}
