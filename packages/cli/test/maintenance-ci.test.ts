@@ -7,6 +7,8 @@ const packageCheck = readFileSync(
   new URL("../../../scripts/package-check.ts", import.meta.url),
   "utf8",
 )
+const frozenBrokerCommit = "95238840bf2d6955bb8024e39d2b93b9ea3c114a"
+const frozenPiVersion = "1.5.2"
 function verify(text: string, entry: string, distribution: string) {
   const begin = text.indexOf("      - name: Prepare pinned Pi maintenance gate")
   const end = text.indexOf("      - name: Pack and test a fresh consumer", begin)
@@ -19,11 +21,11 @@ function verify(text: string, entry: string, distribution: string) {
   const artifact = text.slice(text.indexOf("      - name: Upload consumer verification evidence"))
   const required = [
     "if: matrix.os == 'ubuntu-latest' && matrix.node == '24.20.0'",
-    "checkout --detach d8bef63eb486bde0b6abcf8c3f3d0efd712f33a9",
+    `checkout --detach ${frozenBrokerCommit}`,
     'NTN_SKILLS_BUILD_ENTRY="$GITHUB_WORKSPACE/packages/cli/dist/ntn-skills.js"',
     "bun scripts/pack.mjs --target broker",
     "npm install --prefix",
-    "@earendil-works/pi-coding-agent@1.5.0",
+    `@earendil-works/pi-coding-agent@${frozenPiVersion}`,
     "MNT_VERIFY_PI_REQUIRED=1",
     "MNT_VERIFY_BROKER_PACKAGE=",
     "MNT_VERIFY_PI=",
@@ -53,12 +55,23 @@ test("the primary installed package lane requires real Pi, candidate SDK and ret
   expect(() => verify(workflow, runner, packageCheck)).not.toThrow()
 })
 test("missing, softened or disconnected maintenance gates fail the independent workflow contract", () => {
+  expect(() => verify(workflow, runner, packageCheck)).not.toThrow()
   for (const change of [
     (text: string) => text.replace("MNT_VERIFY_PI_REQUIRED=1", "MNT_VERIFY_PI_REQUIRED=0"),
     (text: string) =>
       text.replace(
-        "@earendil-works/pi-coding-agent@1.5.0",
+        `@earendil-works/pi-coding-agent@${frozenPiVersion}`,
         "@earendil-works/pi-coding-agent@latest",
+      ),
+    (text: string) =>
+      text.replace(
+        `@earendil-works/pi-coding-agent@${frozenPiVersion}`,
+        "@earendil-works/pi-coding-agent@1.5.0",
+      ),
+    (text: string) =>
+      text.replace(
+        `checkout --detach ${frozenBrokerCommit}`,
+        "checkout --detach d8bef63eb486bde0b6abcf8c3f3d0efd712f33a9",
       ),
     (text: string) => text.replace("--target broker", "--target other"),
     (text: string) =>
@@ -68,8 +81,11 @@ test("missing, softened or disconnected maintenance gates fail the independent w
       ),
     (text: string) => text.replace("**/maintenance-pi/**", "**/unrelated/**"),
     (text: string) => text.replace("NTN_SKILLS_BUILD_ENTRY", "UNUSED_CLI_ENTRY"),
-  ])
-    expect(() => verify(change(workflow), runner, packageCheck)).toThrow()
+  ]) {
+    const changed = change(workflow)
+    expect(changed).not.toBe(workflow)
+    expect(() => verify(changed, runner, packageCheck)).toThrow()
+  }
   expect(() =>
     verify(
       workflow,
