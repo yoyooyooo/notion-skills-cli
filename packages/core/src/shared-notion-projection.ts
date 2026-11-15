@@ -13,6 +13,7 @@ import { projectNativeHeadingLiterals } from "./shared-notion-literal-text.ts"
 import { projectNativeTableHostnames } from "./shared-notion-table-hostnames.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import { compatibleImportMarkdown } from "./shared-import-markdown.ts"
+import { escapeImportTablePlus, protectImportTablePlus } from "./shared-import-table-literals.ts"
 import {
   projectNotionMarkdownV2,
   projectNotionMarkdownV4,
@@ -114,6 +115,14 @@ const ProjectionV15Schema = Schema.Struct({
   ...ProjectionV13Schema.fields,
   version: Schema.Literal(15),
 })
+const ProjectionV16Schema = Schema.Struct({
+  ...ProjectionV14Schema.fields,
+  version: Schema.Literal(16),
+})
+const ProjectionV17Schema = Schema.Struct({
+  ...ProjectionV14Schema.fields,
+  version: Schema.Literal(17),
+})
 export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV1Schema,
   ProjectionV2Schema,
@@ -130,6 +139,8 @@ export const SharedNotionMarkdownProjectionSchema = Schema.Union([
   ProjectionV13Schema,
   ProjectionV14Schema,
   ProjectionV15Schema,
+  ProjectionV16Schema,
+  ProjectionV17Schema,
 ])
 export type SharedNotionMarkdownProjection = typeof SharedNotionMarkdownProjectionSchema.Type
 export type SharedNotionMarkdownVersion = SharedNotionMarkdownProjection["version"]
@@ -240,6 +251,20 @@ export const SharedNotionMarkdownPolicySchema = Schema.Union([
     removed_terminal_lfs: Schema.Number,
     purpose: Schema.Literals(["body_write", "data_source_create"]),
   }),
+  Schema.Struct({
+    version: Schema.Literal(16),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
+  Schema.Struct({
+    version: Schema.Literal(17),
+    format: Schema.Literal("notion_markdown_v2"),
+    normalization_version: Schema.Literal(1),
+    removed_terminal_lfs: Schema.Number,
+    purpose: Schema.Literals(["body_write", "data_source_create"]),
+  }),
 ])
 
 /** Retained policies keep their exact bytes. New writes predict independently
@@ -271,7 +296,7 @@ export function projectSharedNotionMarkdown(
   } as const
   if (options.version === 1) return { version: 1, ...common }
   const version = options.version ?? currentSharedNotionMarkdownVersion
-  if (version === 14) {
+  if (version === 14 || version === 16 || version === 17) {
     if (options.purpose !== "data_source_create")
       throw fail(
         "SHARED_MARKDOWN_PROJECTION_INVALID",
@@ -281,7 +306,13 @@ export function projectSharedNotionMarkdown(
       version,
       ...common,
       purpose: "data_source_create",
-      wire_markdown: compatibleImportMarkdown(markdown),
+      wire_markdown: compatibleImportMarkdown(
+        version === 17
+          ? protectImportTablePlus(markdown).markdown
+          : version === 16
+            ? escapeImportTablePlus(markdown).markdown
+            : markdown,
+      ),
     }
   }
   if (version >= 3) assertNotionInlineBoundary(markdown)

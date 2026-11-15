@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "synchronized_commit": "5387e438ca41a500c98cd6d4f7bb3c0475fed857",
+  "synchronized_commit": "31513ecfedfe7691a9395ee17a0bf67aba4fab92",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
-    "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
+    "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
     "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
@@ -48,13 +48,18 @@
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
-    "packages/cli/test/library-source-members-http.test.ts": "5fd08e765734184250b3a52b52cbae5655c8e227aaddf1c069b1dcea31cae265",
+    "packages/cli/test/library-source-members-http.test.ts": "304753490931a0a2cef542ef21dd70e9540f1a9b6d608064a6cfde32b53da324",
     "packages/core/test/shared-import-markdown.test.ts": "2d061ffe12a1abda4abf5f0fe459ae81ee92a48fceff187ee944c2870af6bd9c",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
-    "packages/core/src/shared-create-retained-recovery.ts": "a620461a5b8b915bb668ea2d31eedc713ff3032a301c526f3e8c1cdc59640671",
+    "packages/core/src/shared-create-retained-recovery.ts": "ade0245944dbed2c0ddef6c0690ae51abca77cbeabcb34a737ff3698798c1bd8",
     "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
     "packages/core/test/shared-create-retained-recovery.test.ts": "5455614219721838509ed265ccd55515890496850107eb35c6c4b4785df15854",
-    "packages/cli/src/commands-library-source-recovery.ts": "43dae072c6ca22746e08f2f8a4ba9d57ac0f717b0b0deeaa7cf4edc619d947bf"
+    "packages/cli/src/commands-library-source-recovery.ts": "121ad64f3a3eaab4f7e26bc82e8f6a856777873b8071ddeb4a33bc01118677fb",
+    "packages/core/src/shared-import-table-literals.ts": "f52bfa236248a5c504304f5331b1497aa9738d2b9635799b05cc5e03aa601649",
+    "packages/core/src/shared-source-projection-repair.ts": "78950823300dfde11c4552d3e9be681000fe08876ae9226eaa8dec28e3b2fd90",
+    "packages/core/test/shared-import-table-literals.test.ts": "4cc45fc5ba4643e8d1b292aaf0a1d594c46d631557b4655367befb2f684e26ca",
+    "packages/core/test/shared-source-projection-repair.test.ts": "09c45eecd802f36f1b0932c889d06b2b6d23c793fabfc4edcadd40913d809416",
+    "packages/cli/src/commands-library-source-projection-repair.ts": "cb544e29a32c2b133b3f94d616b81a5759521bc7515da719c6d4b09c1228423d"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -973,6 +978,51 @@
         "IndependentAcceptance: known failure, separate explicit decision, immutable prior facts, full cold proof"
       ],
       "scope": "Retained Source v2 native import policy14 adds a separately authorized review of a known persisted semantic rejection, while executing the original child dispatcher and preserving original failure/page/input/wire. Full old native ACKs, frozen hashes and observed prefix plus complete immutable events verify independent completion; metadata-only audit classification does not prove success. Unknown or definitively rejected native writes remain unreplayed. CLI/SDK error projection removes complete original plans, retains exact operation/file and offers original read-only reconcile. Concrete Source-v2 schema/bytes, Markdown semantics, library permissions and audit-family parsing are outside unchanged finite TLA domains. No model/config/expected_rules changes; all concrete gates and installation results remain separate. See docs/maintenance-verification-review.md retained recovery mapping."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "source_main_table_literal_repair_and_original_pending_barrier",
+      "files": [
+        "packages/cli/src/commands-library-source-projection-repair.ts",
+        "packages/cli/src/commands-library-source-recovery.ts",
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/src/shared-create-recovery-native-authority.ts",
+        "packages/core/src/shared-create-retained-recovery.ts",
+        "packages/core/src/shared-import-table-literals.ts",
+        "packages/core/src/shared-source-projection-repair.ts",
+        "packages/core/test/shared-import-table-literals.test.ts",
+        "packages/core/test/shared-source-projection-repair.test.ts"
+      ],
+      "symbols": [
+        "reviewSharedSourceProjectionRepair",
+        "applySharedSourceProjectionRepair",
+        "assertOriginalSourceProjectionRepairComplete",
+        "assertImportedTablePlusRepairable",
+        "maskImportTablePlus",
+        "originalNativeMainAllocation",
+        "sourceProjectionRepairOriginal"
+      ],
+      "scope": "Explicit sole-main pre-manifest repair keeps the original v14 create plan, disabled page and genuine native allocation ACK. Opt-in v16 escapes only original ordinary table-plus text; a separate review-only comparison checks optional plus-to-bullet changes at those positions while normal import acceptance remains strict. One exact whole-preimage PATCH uses the existing durable guard, with retained full before/review/main proof and separate body ACK/completion. Unknown repair blocks direct original apply; original completion commits full repair proof hashes checked by cold consumers. Old outcomes remain readable and do not gain invented repair facts. The cross-command coupled pending barrier, concrete Markdown tokens, provider syntax, proof codecs and audit-v6 header classification are outside the unchanged finite TLA domains. Their actual negative core tests and installed real Git/Node/SQLite journey are separate proof tiers. Source hashes are reviewed correspondence, not a new model theorem. See docs/maintenance-verification-review.md AH-1100."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "known_unchanged_v16_ack_to_explicit_v17_repair",
+      "files": [
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/src/shared-import-table-literals.ts",
+        "packages/core/src/shared-source-projection-repair.ts",
+        "packages/core/test/shared-import-table-literals.test.ts",
+        "packages/core/test/shared-source-projection-repair.test.ts",
+        "packages/cli/src/commands-library-source-projection-repair.ts"
+      ],
+      "symbols": [
+        "inspectPreviousAttempt",
+        "verifyPreviousAttempt",
+        "compactUnchangedAck",
+        "expandUnchangedAck",
+        "protectImportTablePlus"
+      ],
+      "scope": "The previous v16 escape wire failed to change the complete actual Notion body; its authentic ACK and old review remain immutable. Actual isolated public creates verified HTML bold plus presentation before introducing explicit v17. A v2 successor review is either no predecessor or one fully acknowledged exact unchanged v16 response, never unknown, changed body, old success or general retry. Full earlier review, original local dispatch/ACK, frozen preimage and new wire are verified before a distinct PATCH. Cold proof requires prior review hash and exact ACK reconstructed losslessly from retained identical Markdown and response metadata. The existing 64 KiB envelope limit stays; the failed oversized candidate is preserved. Cross-generation authority, text rendering and the exact codec are outside unchanged finite TLA models; core negative tests, independent installed CLI/SDK, and actual Notion observations remain separate evidence tiers. All original model/config/expected_rules inventories are unchanged."
     }
   ],
   "retained_recovery_journey_budget_review": {

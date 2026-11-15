@@ -50,6 +50,7 @@ import { querySharedOperationIndex } from "./shared-operation-index.ts"
 import { loadPendingSharedCreates } from "./shared-create.ts"
 import { sharedCreateRestorationOutcomesEntity } from "./shared-create-restoration.ts"
 import { retainedImportRecoveryOriginal } from "./shared-create-retained-recovery.ts"
+import { sourceProjectionRepairOriginal } from "./shared-source-projection-repair.ts"
 import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
 import {
   sharedSkillApplyPlansEntity,
@@ -976,6 +977,7 @@ export function inspectAuditSkill(
         !nativeAdoptions.includes(header) &&
         !bodyReviewIds.has(header.record_id.replace(/^reviewed-/u, "")) &&
         retainedImportRecoveryOriginal(header, operations) === undefined &&
+        sourceProjectionRepairOriginal(header, operations) === undefined &&
         !(
           header.entity_id === sharedCreateRestorationOutcomesEntity &&
           header.record_id.startsWith("resource-note-outcome-") &&

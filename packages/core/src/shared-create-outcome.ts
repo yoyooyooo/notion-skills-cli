@@ -25,10 +25,17 @@ const OutcomeFields = {
     }),
   ),
 }
+export const SharedCreateProjectionRepairProofSchema = Schema.Struct({
+  review_id: Schema.String.check(Schema.isPattern(/^source-projection-repair-[a-f0-9]{64}$/u)),
+  review_record_hash: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+  outcome_record_hash: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+})
+export type SharedCreateProjectionRepairProof = typeof SharedCreateProjectionRepairProofSchema.Type
 export const SharedCreateOutcomeSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(1),
     ...OutcomeFields,
+    projection_repair: Schema.optionalKey(SharedCreateProjectionRepairProofSchema),
     source_projection: Schema.optional(
       Schema.Struct({
         source_id: Schema.String,

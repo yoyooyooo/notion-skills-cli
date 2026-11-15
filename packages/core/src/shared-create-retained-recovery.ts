@@ -18,6 +18,7 @@ import {
   sharedCreateManifestRecordHash,
   type SharedCreateBinding,
   type SharedCreateOutcome,
+  type SharedCreateProjectionRepairProof,
 } from "./shared-create-outcome.ts"
 import {
   executeSharedCreate,
@@ -515,6 +516,7 @@ export function saveSharedRetainedImportCompletion(
   plan: SharedCreatePlan,
   review: SharedRetainedImportRecoveryReview,
   bindings: readonly SharedCreateBinding[],
+  projectionRepair?: SharedCreateProjectionRepairProof,
 ) {
   return Effect.gen(function* () {
     const selection = (yield* resolveSharedCreateSource(plan, review.skill_page_id)).selection!
@@ -527,6 +529,7 @@ export function saveSharedRetainedImportCompletion(
       status: "applied",
       reason_code: "retained_import_readback_verified",
       bindings,
+      ...(projectionRepair === undefined ? {} : { projection_repair: projectionRepair }),
       source_projection: {
         source_id: selection.source_id,
         revision: selection.revision,

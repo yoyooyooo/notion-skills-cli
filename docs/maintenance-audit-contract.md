@@ -12,7 +12,7 @@ A full-library conflict is claimed only from a completed unfiltered census. Two 
 
 A bad page id or an unreadable target becomes `TARGET_PAGE_UNAVAILABLE` or `TARGET_PAGE_OUTSIDE_LIBRARY`. An invalid main file id is `MAIN_FILE_ID_INVALID` even when the tree cannot be built (`SKILL_TREE_UNAVAILABLE`). The run does not collapse those into an undifferentiated execution failure.
 
-Current rules are `resource-audit-v5`. v1–v4 checkpoints stay readable offline and cannot resume. Budgets, cancellation, checkpoints, zero remote writes, and offline report are unchanged. Content/history audits now verify known native-adoption completion and independent body-review chains instead of classifying them as unknown operation families. A missing or mismatched completion stays partial. A completed independent review preserves the original needs_review outcome and is reported as information; metadata-only runs do not acquire this stronger proof.
+Current rules are `resource-audit-v6`. v1–v5 checkpoints stay readable offline and cannot resume. Budgets, cancellation, checkpoints, zero remote writes, and offline report are unchanged. Content/history audits now verify known native-adoption completion and independent body-review chains instead of classifying them as unknown operation families. A missing or mismatched completion stays partial. A completed independent review preserves the original needs_review outcome and is reported as information; metadata-only runs do not acquire this stronger proof.
 
 Both the initial and final reachable observations publish each received owner result before starting the next query. If Files access is denied and the following Records request exhausts the budget, the paused online and offline reports retain the permission finding and its owner coverage. Resume replays the confirmed denial within that original task; a separate final observation may establish that access has since changed, while the original denied response remains in the run's evidence. Budget exhaustion is an additional fact, not a replacement for an already received failure.
 
@@ -30,3 +30,6 @@ A healthy target's default next action reports that same retained run. The broad
 
 
 Retained native-import recovery review/completion headers are classified only when they name an exact existing original create manifest. Content/history checks still validate the complete independent proof through the original create reader; metadata leaves payloads unobserved. Orphan or malformed recovery headers remain unclassified. Rule v5 does not turn a current page or a completion label into an original ACK.
+
+
+Rule v6 routes an exact source-projection main-repair review/completion to the original create only when that manifest exists. Its applied outcome commits the full repair proof hashes; content and cold consumers verify original main ACK, independent body ACK, retained review and completion. A review alone or current body equality cannot bypass the pending repair. Older rule reports remain readable and are not silently resumed under v6.

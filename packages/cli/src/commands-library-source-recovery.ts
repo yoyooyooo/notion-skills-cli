@@ -16,6 +16,7 @@ import { emit, requiredSingleton, singleton, switchFlag } from "./command-option
 import { readSourceJson } from "./command-source-input.ts"
 import { parseSourceBudget, sourceRequestBudgets } from "./commands-library-source-run.ts"
 import { sourceContinuationCommand } from "./commands-library-source-continuation.ts"
+import { sourceProjectionRepairCommand } from "./commands-library-source-projection-repair.ts"
 
 const planArg = Argument.String("plan")
 const entry = requiredSingleton("entry", "Exact original shared library")
@@ -231,5 +232,11 @@ export const sourceRecoveryCommand = defineCommand("recovery").pipe(
   Command.withDescription(
     "Review, apply or reconcile an exact acknowledged Source-admission prefix or known failure",
   ),
-  Command.withSubcommands([review, apply, reconcile, sourceContinuationCommand]),
+  Command.withSubcommands([
+    review,
+    apply,
+    reconcile,
+    sourceContinuationCommand,
+    sourceProjectionRepairCommand,
+  ]),
 )

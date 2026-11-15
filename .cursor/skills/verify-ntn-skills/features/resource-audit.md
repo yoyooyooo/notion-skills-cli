@@ -67,7 +67,7 @@ remain distinct. No live/human claim is implied by this contract file.
 
 ## Target scope and retention (AH-1026 / AH-1031)
 
-Current rules are `resource-audit-v5`. v1–v4 reports remain readable and cannot resume. Content/history depth validates native-adoption completion and independent body-review ancestry through the same product readers. Missing outcomes or orphan review receipts remain partial; a verified independent review is informational and does not rewrite the original failed write. Metadata depth still leaves these body-bearing facts unobserved. This classification uses implementation regressions and real table evidence, not a new claim about the AuditScope finite model.
+Current rules are `resource-audit-v6`. v1–v5 reports remain readable and cannot resume. Content/history depth validates native-adoption completion and independent body-review ancestry through the same product readers. Missing outcomes or orphan review receipts remain partial; a verified independent review is informational and does not rewrite the original failed write. Metadata depth still leaves these body-bearing facts unobserved. This classification uses implementation regressions and real table evidence, not a new claim about the AuditScope finite model.
 `--target` reads one page, its direct Requires and Origin pages, and filtered File and Record
 headers. `inventory.complete` stays an unfiltered census. Reachable runs report
 `inspection_scope: reachable_target`, `reverse_table_completeness: unobserved`, and
@@ -133,3 +133,6 @@ is recorded. A prepared recipe alone is not an exercised pass.
 
 
 Retained native-import recovery review/completion headers are classified only when they name an exact existing original create manifest. Content/history checks still validate the complete independent proof through the original create reader; metadata leaves payloads unobserved. Orphan or malformed recovery headers remain unclassified. Rule v5 does not turn a current page or a completion label into an original ACK.
+
+
+Rule v6 routes an exact source-projection main-repair review/completion to the original create only when that manifest exists. Its applied outcome commits the full repair proof hashes; content and cold consumers verify original main ACK, independent body ACK, retained review and completion. A review alone or current body equality cannot bypass the pending repair. Older rule reports remain readable and are not silently resumed under v6.

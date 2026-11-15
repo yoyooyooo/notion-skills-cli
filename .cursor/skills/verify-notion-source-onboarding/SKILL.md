@@ -58,6 +58,10 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 `packages/cli/test/source-onboarding-navigation.test.ts` 与原安装HTTP旅程。
 已持久化的保留型语义失败另运行 `packages/core/test/shared-create-retained-recovery.test.ts`：
 原父计划精确选子、明确review、零写preview、同producer后缀、独立冷读；不以普通apply跳过终局。
+原主页面table-plus修复由 `packages/core/test/shared-source-projection-repair.test.ts` 和
+`packages/core/test/shared-import-table-literals.test.ts` 验证。原安装旅程增加公开CLI审阅、
+同包SDK一次原页修复、原create继续及冷读取；修复未知时改走original apply也必须拒绝。
+这不授权重放400拒绝文件或省略不支持资源，具体分支见管理native-import子模块。
 
 ## Evidence
 

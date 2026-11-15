@@ -40,6 +40,18 @@ node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/
 
 确定性保存/校验先于派发；原操作执行后独立冷客户端读取完整资源；正反例、原ACK/unknown和重复无增长都实测。源测试、独立安装、真实Notion读回、恢复可用性分别记录。结构检查和单次成功不构成全库完结。
 
+## 原主页面的有限字面量修复
+
+执行 `bun test packages/core/test/shared-import-table-literals.test.ts packages/core/test/shared-source-projection-repair.test.ts --timeout 60000`。
+policy17只改显式修复wire，旧policy14与默认15不变；审阅识别原表格普通文本加号的部分
+`+ → •`变化，原代码/链接/其他文字必须一致。该诊断不能进入普通import成功判断。
+
+原主POST/ACK和未建manifest的原journal授权独立review；一次完整preimage PATCH
+只改原正文。测试必须覆盖：两种unknown可见性、从另一个original apply入口绕过的尝试、
+缺ACK/日志、源/owner/正文漂移、同计划重复无写，以及冷消费者缺review/完成仍拒绝。
+原create完成绑定独立修复证据hash，不能只由当前值变正确就放行。已经持久化的终局或
+明确未应用的文件POST是不同授权分支，不为了跑完测试而复用这个修复。
+
 
 ## 保留型来源的明确终局审阅
 
@@ -59,3 +71,9 @@ SDK与CLI必须共用原计划选择、锁、请求预算和producer。原安装
 同核错误投影保留HTTP分类、原operation与具体file/path，但不重复完整父/子计划或资源字节。
 CLI返回exact只读reconcile，不以“参数帮助”或新计划替代原操作。安装包与真实服务的
 失败回执分别保留，实际服务未提供详细原因时只声明已知状态和文件。
+
+原v16转义在实库未生效，其真实ACK完整正文等于原前像。新v17必须保留原review，并
+只在精确持久ACK证明该no-op时生成独立审阅。回归覆盖缺ACK/unknown两种可见性、
+正文漂移、篡改ACK、冷读缺旧review；原输入和旧wire逐字不变。实际Notion验证的
+加粗表示与受控fixture分开记录，受控fixture必须重放已观察到的v16无效行为，不能
+继续假定反斜线转义有效。原apply的错误不是旧操作完成；不能改断言来接受圆点。

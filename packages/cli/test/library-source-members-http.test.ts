@@ -79,7 +79,7 @@ test("installed source member commands admit, explicitly remap and retain real G
   }
   await put(
     "skills/base/SKILL.md",
-    "---\nname: existing-candidate\ndescription: Never implicitly admitted\n---\n\n# Base\n\n[Original](references/a-original.md) and [later](references/b-later.md).\n",
+    "---\nname: existing-candidate\ndescription: Never implicitly admitted\n---\n\n# Base\n\n[Original](references/a-original.md) and [later](references/b-later.md).\n\n| Action | Input |\n| --- | --- |\n| New | `brief` + `content` |\n",
   )
   await put("skills/base/references/a-original.md", "## Original\n\n- \n")
   await put(
@@ -112,6 +112,8 @@ test("installed source member commands admit, explicitly remap and retain real G
         .replace(/<h1>(.*?)<\/h1>/u, "### $1")
         .replaceAll(canonicalUrl, `[${canonicalUrl}](${canonicalUrl})`)
         .replace("<!-- canonical:", "\\<!-- canonical:")
+        .replace("| New | `brief` + `content` |", "| New | `brief` • `content` |")
+        .replace("| New | `brief` \\+ `content` |", "| New | `brief` • `content` |")
         .replace("\n- \n", "\n<ul>\n<li></li>\n</ul>\n") + "\n",
   })
   f.skills.clear()
@@ -206,6 +208,32 @@ test("installed source member commands admit, explicitly remap and retain real G
       const page = url.pathname.startsWith("/v1/pages/")
         ? f.skills.get(url.pathname.slice(10))
         : undefined
+      const bodyPage = /^\/v1\/pages\/([^/]+)\/markdown$/u.exec(url.pathname)?.[1]
+      if (method === "PATCH" && bodyPage !== undefined && f.base.bodies.has(bodyPage)) {
+        const updates = property(property(body).update_content).content_updates
+        if (
+          property(body).type !== "update_content" ||
+          property(body).markdown_version !== "v2" ||
+          !Array.isArray(updates) ||
+          updates.length !== 1
+        )
+          throw new Error("Expected one complete original-body update")
+        const change = property(updates[0])
+        if (change.old_str !== f.base.bodies.get(bodyPage) || typeof change.new_str !== "string")
+          throw new Error("The reviewed full preimage changed")
+        const observed =
+          change.new_str
+            .replace("| New | `brief` + `content` |", "| New | `brief` • `content` |")
+            .replace("| New | `brief` \\+ `content` |", "| New | `brief` • `content` |") + "\n"
+        f.base.bodies.set(bodyPage, observed)
+        return json(response, 200, {
+          object: "page_markdown",
+          id: bodyPage,
+          markdown: observed,
+          truncated: false,
+          unknown_block_ids: [],
+        })
+      }
       const changes = property(property(body).properties)
       if (
         method === "PATCH" &&
@@ -315,7 +343,20 @@ test("installed source member commands admit, explicitly remap and retain real G
     expect(errors, stdout + stderr).toEqual([])
     expect(exits, stdout + stderr).toContain(exit)
     const output = property(JSON.parse(stdout))
-    commands.push({ args, exit, cold, output, stderr })
+    // Bun 1.4 nested asymmetric toMatchObject currently mutates matched objects.
+    // Keep the transport receipt and later argv/identity observations outside
+    // that mutable matcher input, even when a test checks a deep partial shape.
+    const commandIndex = String(commands.length + 1).padStart(3, "0")
+    await writeFile(join(directory, `command-${commandIndex}.stdout.json`), stdout)
+    commands.push({
+      args,
+      exit,
+      cold,
+      output: structuredClone(output),
+      stderr,
+      stdout_file: `command-${commandIndex}.stdout.json`,
+      stdout_sha256: hash(new TextEncoder().encode(stdout)),
+    })
     await writeFile(join(directory, "commands.json"), JSON.stringify(commands, null, 2) + "\n")
     return output
   }
@@ -523,7 +564,7 @@ test("installed source member commands admit, explicitly remap and retain real G
     const originalPlanBytes = await readFile(onboard)
     rejectOnboardingMainReadback = true
     const refusedMain = await invoke([...sources, "onboard-apply", onboard, ...entry], [3])
-    expect(refusedMain).toMatchObject({
+    expect(structuredClone(refusedMain)).toMatchObject({
       status: "partial",
       results: [
         expect.objectContaining({
@@ -540,7 +581,8 @@ test("installed source member commands admit, explicitly remap and retain real G
     )
     expect(allocatedBase).toBeDefined()
     const allocatedBaseId = String(allocatedBase!.id)
-    const originalBaseBody = f.base.bodies.get(allocatedBaseId)
+    const originalCorruptedBase = f.base.bodies.get(allocatedBaseId)
+    expect(originalCorruptedBase).toContain("•")
     const stoppedWrites = writes().length
     rejectOnboardingMainReadback = false
     const incomplete = await invoke([...sources, "onboard-reconcile", onboard, ...entry], [3])
@@ -558,6 +600,103 @@ test("installed source member commands admit, explicitly remap and retain real G
     })
     await invoke(exactArgs.slice(1))
     expect(writes()).toHaveLength(stoppedWrites)
+    const mainResults = refusedMain.results
+    if (!Array.isArray(mainResults) || mainResults.length !== 1)
+      throw new Error("Expected one original main refusal")
+    const repairOperation = field(mainResults[0], "operation_id")
+    const repairFile = join(directory, "main-projection-repair.json")
+    const mainReview = await invoke([
+      ...sources,
+      "recovery",
+      "repair",
+      "review",
+      onboard,
+      "--operation",
+      repairOperation,
+      "--target",
+      allocatedBaseId,
+      ...entry,
+      "--output",
+      repairFile,
+    ])
+    const repairId = field(mainReview, "review_id")
+    expect(property(mainReview.candidate).policy).toBe(17)
+    expect(mainReview.remote_writes).toBe(0)
+    expect(Object.hasOwn(mainReview, "review")).toBe(false)
+    await invoke([
+      ...sources,
+      "recovery",
+      "repair",
+      "apply",
+      onboard,
+      "--operation",
+      repairOperation,
+      ...entry,
+      "--review",
+      repairFile,
+      "--review-id",
+      repairId,
+      "--dry-run",
+    ])
+    expect(writes()).toHaveLength(stoppedWrites)
+    const repairProbe = join(directory, "repair-sdk.mjs")
+    await writeFile(
+      repairProbe,
+      `
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {applySourceProjectionRepair,reconcileSourceProjectionRepair} from ${JSON.stringify(pathToFileURL(join(dirname(executable), "sdk.js")).href)};
+const plan=JSON.parse(await readFile(${JSON.stringify(onboard)},"utf8"));
+const review=JSON.parse(await readFile(${JSON.stringify(repairFile)},"utf8"));
+const input={entry:${JSON.stringify(library.skills.database_id)},plan,operationId:${JSON.stringify(repairOperation)},review,reviewId:${JSON.stringify(repairId)}};
+const applied=await applySourceProjectionRepair(input);assert.equal(applied.result.verified,true);assert.equal(applied.result.original_creation_completed,false);
+const repeated=await applySourceProjectionRepair(input);assert.equal(repeated.result.remote_writes,0);
+const coldEnv={...process.env,NTN_SKILLS_HOME:${JSON.stringify(join(directory, "repair-cold-state"))},NTN_SKILLS_CACHE_HOME:${JSON.stringify(join(directory, "repair-cold-cache"))},NTN_SKILLS_DATA_HOME:${JSON.stringify(join(directory, "repair-cold-data"))}};
+const metrics=[];const cold=await reconcileSourceProjectionRepair(input,{env:coldEnv,onRequestMetrics:m=>metrics.push(m)});
+assert.equal(cold.result.verified,true);assert.ok(metrics.every(m=>m.requests.notion_write===0));
+console.log(JSON.stringify({applied,repeated,cold,metrics,originalAuthorStoreCopied:false}));
+`,
+    )
+    const repairChild = Bun.spawn([node, repairProbe], {
+      env,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [repairOut, repairErr, repairExit] = await Promise.all([
+      new Response(repairChild.stdout).text(),
+      new Response(repairChild.stderr).text(),
+      repairChild.exited,
+    ])
+    expect(repairExit, repairOut + repairErr).toBe(0)
+    const repairProof = property(JSON.parse(repairOut))
+    await writeFile(join(directory, "repair-sdk.json"), JSON.stringify(repairProof, null, 2))
+    expect(
+      (
+        await invoke([
+          ...sources,
+          "recovery",
+          "repair",
+          "reconcile",
+          onboard,
+          "--operation",
+          repairOperation,
+          ...entry,
+          "--review",
+          repairFile,
+          "--review-id",
+          repairId,
+        ])
+      ).verified,
+    ).toBe(true)
+    expect(
+      calls.filter(
+        (call) => call.method === "PATCH" && call.path === `/v1/pages/${allocatedBaseId}/markdown`,
+      ),
+    ).toHaveLength(1)
+    const originalBaseBody = f.base.bodies.get(allocatedBaseId)
+    expect(originalBaseBody).not.toContain("•")
+    expect(await readFile(onboard)).toEqual(originalPlanBytes)
     rejectOnboardingReferenceReadback = true
     const refusedReference = await invoke([...sources, "onboard-apply", onboard, ...entry], [3])
     const failures = refusedReference.results
@@ -570,7 +709,7 @@ test("installed source member commands admit, explicitly remap and retain real G
     })
     rejectOnboardingReferenceReadback = false
     const terminal = await invoke([...sources, "onboard-apply", onboard, ...entry], [3])
-    expect(terminal).toMatchObject({
+    expect(structuredClone(terminal)).toMatchObject({
       results: [
         expect.objectContaining({
           error: expect.objectContaining({ code: "SHARED_CREATE_REVIEW_REQUIRED" }),
@@ -725,6 +864,11 @@ console.log(JSON.stringify({ applied, originalResult, reconciled, reviewed, repe
               cli_preview: true,
               rejected_main_original_page_resumed: allocatedBaseId,
               original_plan_bytes_preserved: true,
+              original_table_literal_repair: {
+                review_id: repairId,
+                one_original_page_patch: true,
+                sdk: repairProof,
+              },
               reconcile_routes_to_readonly_original_preview: true,
               known_terminal_explicitly_reviewed: recoveryId,
               original_failed_operation: originalOperation,

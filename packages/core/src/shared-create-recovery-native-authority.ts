@@ -3,7 +3,11 @@ import { authScope } from "./catalog.ts"
 import { property, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
-import { createChecked, SharedCreateJournalSchema } from "./shared-create-model.ts"
+import {
+  createChecked,
+  SharedCreateJournalSchema,
+  type SharedCreatePlan,
+} from "./shared-create-model.ts"
 import {
   sharedCreateJournalKey,
   sharedCreateMainRequest,
@@ -36,7 +40,7 @@ const hash = (value: unknown) => sha256(canonicalSharedJson(value))
 const refusal = (message: string) => Effect.fail(prefixRecoveryRequired(message))
 
 /** The original dispatcher and ACK, not a later page GET, establish allocation. */
-export function originalNativeMainAllocation(plan: Plan, page: string) {
+export function originalNativeMainAllocation(plan: SharedCreatePlan, page: string) {
   return Effect.gen(function* () {
     const store = yield* Store,
       scope = yield* authScope,
@@ -110,7 +114,8 @@ export function originalNativeMainAllocation(plan: Plan, page: string) {
       return yield* refusal(
         "The original main lacks its durable ACK; current equality cannot replace it.",
       )
-    const file = plan.files[0]!
+    const file = plan.files.find((file) => file.path === plan.entrypoint)
+    if (file === undefined) return yield* refusal("The original main file is missing.")
     const binding = {
       file_id: file.file_id,
       path: file.path,

@@ -2,6 +2,7 @@ import { SourceLexer } from "@notion-skills-cli/markdown"
 import type { Token } from "marked"
 import { fail } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
+import { maskImportTablePlus } from "./shared-import-table-literals.ts"
 
 /** Presentation may change at import. Keep text, code and explicit destinations
  * as separate checks rather than predicting Notion's Markdown serialization. */
@@ -104,6 +105,13 @@ function importContent(markdown: string) {
 export function assertImportedMarkdownContent(expected: string, actual: string): void {
   const before = importContent(expected)
   const after = importContent(actual)
+  assertMeaning(before, after)
+}
+
+function assertMeaning(
+  before: ReturnType<typeof importContent>,
+  after: ReturnType<typeof importContent>,
+) {
   const mismatch = (component: "text" | "code" | "links"): never => {
     throw fail(
       "SHARED_CREATE_BODY_MISMATCH",
@@ -122,6 +130,37 @@ export function assertImportedMarkdownContent(expected: string, actual: string):
     observed.push(link.href)
   }
   if (JSON.stringify(required) !== JSON.stringify(observed)) mismatch("links")
+}
+
+/** Review-only diagnosis, not successful import acceptance. Recognize an
+ * optional + → • change only at original ordinary table-text source positions;
+ * all other text, code and authored destinations keep the exact existing check. */
+export function assertImportedTablePlusRepairable(expected: string, actual: string): number {
+  if (actual.includes("\uE000"))
+    throw fail("SOURCE_PROJECTION_REPAIR_REQUIRED", "Reserved comparison marker in current body.")
+  const masked = importContent(maskImportTablePlus(expected).markdown)
+  const before = importContent(expected),
+    after = importContent(actual)
+  if (masked.text.length !== before.text.length || after.text.length !== before.text.length)
+    throw fail(
+      "SOURCE_PROJECTION_REPAIR_REQUIRED",
+      "The current text has changes beyond original table plus literals.",
+    )
+  let changed = 0
+  const normalized = Array.from({ length: after.text.length }, (_, at) => {
+    if (masked.text[at] !== "\uE000") return after.text[at]!
+    if (before.text[at] !== "+" || (after.text[at] !== "+" && after.text[at] !== "•"))
+      throw fail(
+        "SOURCE_PROJECTION_REPAIR_REQUIRED",
+        "A reviewed table position is not the known original plus mutation.",
+      )
+    if (after.text[at] === "•") changed++
+    return "+"
+  }).join("")
+  assertMeaning(before, { ...after, text: normalized })
+  if (changed === 0)
+    throw fail("SOURCE_PROJECTION_REPAIR_REQUIRED", "The complete body needs no table-plus repair.")
+  return changed
 }
 
 export function compatibleImportMarkdown(markdown: string): string {

@@ -13,6 +13,11 @@ import type {
 import type { RequestBudgetLimits } from "../../core/src/request-budget.ts"
 import type { SourceMemberStorage } from "../../core/src/shared-source-member.ts"
 import {
+  reviewSharedSourceProjectionRepair as coreReviewSourceProjectionRepair,
+  applySharedSourceProjectionRepair as coreApplySourceProjectionRepair,
+  reconcileSharedSourceProjectionRepair as coreReconcileSourceProjectionRepair,
+} from "../../core/src/shared-source-projection-repair.ts"
+import {
   reviewSharedSourceRecovery as coreReviewSourceRecovery,
   applySharedSourceRecovery as coreApplySourceRecovery,
   reconcileSharedSourceRecovery as coreReconcileSourceRecovery,
@@ -253,6 +258,46 @@ export function reconcileSourceRecovery(
 }
 
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "onEffects">
+
+export function reviewSourceProjectionRepair(
+  input: Parameters<typeof coreReviewSourceProjectionRepair>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreReviewSourceProjectionRepair(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+export function applySourceProjectionRepair(
+  input: Parameters<typeof coreApplySourceProjectionRepair>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreApplySourceProjectionRepair(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+export function reconcileSourceProjectionRepair(
+  input: Parameters<typeof coreReconcileSourceProjectionRepair>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreReconcileSourceProjectionRepair(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
 export type ReadSkillOptions = SdkOptions & Omit<ReadOptions, "onEffects">
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
 export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreListSkill>[1]>

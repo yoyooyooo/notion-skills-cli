@@ -222,6 +222,50 @@ Git 子进程字节未测量，不算零。含受阻项的结果退出 3，原�
 
 ### 明确审阅保留型来源的已知失败
 
+#### 原主页面的表格字面量修复
+
+原主页面已经得到真实POST/ACK，但在首个共享manifest建立前，其普通表格加号被提供方
+改为圆点时，使用独立的原页修复决定。它不清除旧日志、不修改原policy14/原计划，
+也不接管其他正文改动：
+
+```bash
+ntn-skills ctl library sources recovery repair review original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --target ORIGINAL_MAIN_PAGE --entry ENTRY --output repair.json
+ntn-skills ctl library sources recovery repair apply original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --entry ENTRY --review repair.json --review-id REVIEW_ID --dry-run
+ntn-skills ctl library sources recovery repair apply original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --entry ENTRY --review repair.json --review-id REVIEW_ID
+ntn-skills ctl library sources recovery repair reconcile original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --entry ENTRY --review repair.json --review-id REVIEW_ID
+```
+
+审阅确认原完整输入和实际原页只在已识别的普通表格加号位置发生 `+ → •`，包括仅部分
+位置改变的情况；代码、明确链接、其他文字和已有圆点均不能被归一化接受。新policy17
+只用于显式修复提交，以已验证的HTML加粗span保护这些普通表格加号；不改变默认作者
+policy15、旧导入policy14或已冻结但在真实服务中未生效的policy16转义候选。
+原SDK入口为 `reviewSourceProjectionRepair`、`applySourceProjectionRepair`、
+`reconcileSourceProjectionRepair`，与CLI使用同一核心。
+
+明确apply只对原页面进行一次完整old-string匹配的正文替换，保留原身份、所有属性和禁用
+状态。先保留完整review/前像与原allocation证明，再由既有durable guard处理该独立PATCH，
+完整响应ACK与完成事实另存。whole-preimage匹配不是Notion原子CAS或跨机器锁。
+
+修复完成不代表原导入完成：先核对同一原计划，再明确继续原onboard-apply。原创建的最终
+结果绑定修复review与完成的精确hash，冷客户端缺任一证据都会拒绝。修复响应unknown时，
+即使页面当前字面量正确，原导入也被pending屏障阻止，不能换命令绕过。同一原操作的每个
+已支持修复版本只有一个独立决定，不能覆盖未知决定；原已持久化终局、额外原派发、
+人工改文、缺原ACK或明确400拒绝不属于
+这个原主页面修复分支，不能用新repair来制造权限。
+
+仅有一个受限的版本接续：原v16请求已有真实持久ACK，且完整响应与该次原前像、
+当前前像逐字节相同，才能审阅新的v17请求。旧v16的review/request/ACK保持不变，不
+生成虚构完成；新的review v2绑定旧review的hash和完整原ACK，使用独立v17记录身份。
+没有ACK、响应未知、实际正文变动、旧成功完成或其他版本不满足此分支。明确新apply
+前再次核对本机原派发/ACK，独立冷消费则验证共享完整前任review及其绑定的真实ACK，
+缺前任证据也拒绝。此规则不授权Guizang的400拒绝文件或一般重试。
+
+#### 已知语义终局的续接
+
 已记录 `needs_review` 的保留型来源导入不能由普通 `onboard-apply` 自动越过。
 在当前已分配页面仍完整、语义与原输入一致时，复用原 Sources recovery 命令族：
 

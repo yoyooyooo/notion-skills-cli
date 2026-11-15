@@ -397,3 +397,78 @@ receipt记录此值和未变的100毫秒请求调度；不修改产品请求预�
 负例断言或任何业务恢复门槛。改变时限后的运行是新候选证据，不改判旧超时。
 该测试单文件只影响对应source hash，模型与产品语义、已执行原TLC输入均不变；当前
 最终候选的形式化证据按各次输入hash分别记录，不能把旧head自动当成新head通过。
+
+
+## AH-1100：原主页面的独立字面量修复
+
+选择一个有限的真实状态，而非给所有失败创建新增统一重试器：retained Source v2、原
+policy14、初始disabled、唯一原main POST/ACK、manifest和file_event尚不存在。原父/子
+计划不改。原页面只在普通表格文字的加号位置可出现+到圆点的变化，其余文本、code、
+显式目标严格保持。真实Kami有9个原普通表格加号，其中8个变圆点；固定“全部变圆点”
+的早期假设被完整原件比对否定。新的review-only位置匹配支持该部分变化，正常导入
+语义校验继续拒绝+到圆点，不向成功条件加入模糊归一化。
+
+原policy14和默认作者policy15不变。新policy16仅用于明确修复wire，对识别出的原表格
+普通文本加号加反斜线；links、code、HTML code、非表格文本、原义与原UTF-8输入不动。
+新的review冻结完整前像、原plan/hash、原main ACK以及候选wire。先用现有immutable
+记录producer保留review/原ACK，再调用同一guardedSourceMutation、repeat:never执行
+一次完整old_str匹配的PATCH。其请求、ACK与完成事实独立于原创建，没有改旧journal。
+全前像匹配不提供跨机器CAS，后续仍要求原单writer和完整当前guard。
+
+受控负例发现并保留了一处真实组合漏洞：修复PATCH的响应丢失但服务端已生效，原
+onboard-apply原本可绕过repair的未知结果而继续。新增assertOriginalSourceProjectionRepairComplete
+在原创建续接前验证完整修复；completed create outcome还绑定review/outcome的精确hash，
+冷消费与内容审计缺任何证明均拒绝。可见性不代替ACK，换命令不能制造权限。审阅记录
+按原operation只有一个稳定记录身份，漂移review不能建立另一份权限替代未知决定。
+旧无repair的创建outcome不获得虚构附加证明，旧policy和历史消费合同保持。
+
+历史completion核对使用原main分配证明、完整review、实际PATCH响应ACK和独立完成，
+不重读当前body来推断历史成功。修复成功与原导入完成分别报告；original create仍要
+从同一个原plan续接，它自己的输入、成员、Source与页面guard继续工作。Unknown修复
+阻断原导入，缺原ACK/日志、body/owner/Source改变、原terminal、额外原请求都写前拒绝。
+恢复结果含固定原页和原operation，不发布目录、不启用Skill、不丢弃未表示资源。
+
+代码与有限模型的对应：原allocation/ACK前缀约束复用AcknowledgedRecordPrefix；独立
+决定的先审阅、完整前像、未知不重放、冷证明保全分别由既有模型的相应规则提供抽象
+参照。本轮新增的“repair与original create跨入口组合屏障”、Markdown位置解析、
+Notion全文替换、proof编解码和audit-v6家族分类并不在旧有限域内，由专门实现反例、
+完整原件比对及同包安装旅程负责；不因为更新source hash声称原TLA已证明该新组合。
+TLA模型、配置及expected_rules保持原样，guardian重跑仍只声明原有限模型范围。
+
+验证入口继续归管理native-import子模块与来源接手Skill，消费补冷证明缺失拒绝，
+无需新增平台/常驻服务。安装旅程复用已有Git/Node/SQLite驱动：真实已分配main出现
+普通table-plus改义，CLI review/dry-run、同包SDK修复和独立冷核对，然后原onboarding
+继续、后续终局审阅与完整冷读取都保留。曾发现Bun 1.4的嵌套asymmetric toMatchObject
+会把入参字段删空；最小复现保留，命令ledger保存独立clone与原始stdout/hash，断言使用
+副本，不将被断言污染的对象作为原操作证据。原失败日志不改判。
+
+
+### 真实v16失败与明确v17接续
+
+实际Kami的v16 whole-preimage PATCH得到真实ACK，但提供方完整输出逐字等于修复前，
+8个圆点仍存在。严格语义校验保留失败，未发布repair完成，也未继续原导入；原页属性
+仅自动last_edited_time变化。先前受控fixture把反斜线看作有效，与实际服务不同；原
+受控通过和实库失败均保留，fixture补充该真实无效行为，不将它泛化为生产成功。
+
+随后在原隔离验证库通过正式create/dry-run创建最小表格原件，Markdown strong和
+字面HTML <b>+</b>两种表示都由实际Notion完整读回验证。新policy17只采用HTML表示，
+旧policy16及其失败review字节/解释保持。新review v2为none或acknowledged_unchanged_v16
+两个离散状态。后者必须有共享完整原review、作者本机原PATCH与真正持久ACK，响应完整
+正文必须逐字等于原前像和当前前像；缺ACK、unknown、不同正文或旧成功都不能授权。
+
+新的v17 review/outcome使用各自稳定记录ID，不覆写旧v16记录。原创建续接屏障改为
+验证唯一最终完成及其精确review；若承接旧v16，则完整两份review和旧ACK一起核验，
+最终原create结果仍承诺最终review/outcome的hash。旧review hash由新review承诺，因此
+冷客户端缺任一代都拒绝。新review写前重新核实本机旧ACK，不能通过手构新决定制造权限。
+这只是已验证旧请求确切no-op后的一个有限新提交分支，不是无限重试/重写历史的框架。
+
+新增组合状态继续由真实代码反例、独立安装和实际服务验证。旧TLA有限域未扩张，
+模型/配置/expected_rules不改，不用形式化旧结果掩盖提供方表示失败或新接续的未模型化部分。
+
+
+前任no-op证明还需要避免将相同完整正文重复放进普通记录。初次v2审阅在派发前因64KiB
+上限拒绝；原失败保留。现用有界无损ACK表示：保留所有原ACK哈希、时刻及response中
+除markdown外的原字段，完整markdown从已验证的原review前像重建，再核原response_hash。
+作者派发前仍读取真正本机ACK，不能用重建后的对象伪造author权限；冷读仍要求共享
+完整前任review及其精确hash。没有扩大普通事实/清单限制或省略正文；实际私有review
+约61KiB，完整逻辑封装仍在64KiB内。实际新preview与原输入hash分别保存。

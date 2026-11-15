@@ -28,6 +28,11 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 具体恢复复用AcknowledgedRecordPrefix的原ACK/前缀/后缀边界及独立接受的保留事实原则，
 新增retained v2字节/解析条件仍只由实际实现与安装回归证明，不改原模型有限域。
 
+表格字面量的独立原页修复由 `shared-source-projection-repair.test.ts` 覆盖：原主ACK、完整
+前像和独立PATCH ACK分开；original apply不能绕过repair的unknown。原创建完成还需绑定
+独立修复的review/outcome hash，冷消费缺证据拒绝。具体Markdown与组合状态由实际回归
+负责，模型的原ACK/前缀、独立决定和unknown边界仍保持，不宣称有限模型证明提供方文本行为。
+
 恢复前的 create/import 和既有 continuation 仍读 [verify-notion-resource-lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。HTTP RequestEngine 的 retry/预算/取消归独立 request-engine 验证；Broker consumer/session 归 Broker guardian。不要把原业务 Request 当成 HTTP 请求重试模型。
 
 ## 核对源码对应

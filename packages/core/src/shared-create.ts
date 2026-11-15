@@ -1,5 +1,7 @@
 import { Crypto, Effect, Schema } from "effect"
 import { retainNotionReadbackMismatch } from "./shared-notion-readback-diagnostic.ts"
+import { assertOriginalSourceProjectionRepairComplete } from "./shared-source-projection-repair.ts"
+import type { SharedCreateProjectionRepairProof } from "./shared-create-outcome.ts"
 import {
   retainSharedCreateText,
   readSharedCreateTextPayload,
@@ -972,6 +974,7 @@ function saveOutcome(
   status: Outcome["status"],
   reason: string,
   bindings: readonly Binding[],
+  projectionRepair?: SharedCreateProjectionRepairProof,
 ) {
   return Effect.gen(function* () {
     const resolved = yield* resolveSharedCreateSource(plan, page)
@@ -995,6 +998,7 @@ function saveOutcome(
         : {
             ...fields,
             version: 1,
+            ...(projectionRepair === undefined ? {} : { projection_repair: projectionRepair }),
             ...(plan.source_projection === undefined
               ? {}
               : {
@@ -1615,6 +1619,13 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
           page,
         ),
       )
+    if (outcome.version === 1 && outcome.projection_repair !== undefined)
+      yield* assertOriginalSourceProjectionRepairComplete(
+        library,
+        plan,
+        page,
+        outcome.projection_repair,
+      )
     if (acceptsNativeImportReadback(plan))
       facts = yield* restoreNativeImportReadbacks(facts, page, outcome.bindings)
     const expected = sharedCreateFiles(facts)
@@ -1891,6 +1902,9 @@ export function executeSharedCreate(
         method: "POST",
       })
       skillPage = yield* createChecked(() => pageReceipt(raw))
+      const projectionRepair = original
+        ? yield* assertOriginalSourceProjectionRepairComplete(library, plan, skillPage)
+        : undefined
       const resolved = yield* resolveSharedCreateSource(plan, skillPage)
       let facts: SharedCreatePlan = resolved.facts
       const acceptReadback = acceptsNativeImportReadback(plan)
@@ -2179,7 +2193,13 @@ export function executeSharedCreate(
       if (restoration !== undefined)
         yield* saveSharedCreateRestorationCompletion(library, plan, restoration, bindings)
       else if (retainedRecovery !== undefined)
-        yield* saveSharedRetainedImportCompletion(library, plan, retainedRecovery, bindings)
+        yield* saveSharedRetainedImportCompletion(
+          library,
+          plan,
+          retainedRecovery,
+          bindings,
+          projectionRepair,
+        )
       else if (resourceNoteRecovery !== undefined) {
         const payload = {
           version: 1 as const,
@@ -2217,6 +2237,7 @@ export function executeSharedCreate(
             ? "IMPORTED_READBACK_AND_RESOURCES_VERIFIED"
             : "EXACT_NATIVE_TREE_AND_EVENTS_VERIFIED",
           bindings,
+          projectionRepair,
         )
       yield* retire(plan, scope, bindings)
       const current = yield* api.request(`v1/pages/${skillPage}`)
@@ -2376,6 +2397,18 @@ export function loadPendingSharedCreates(
             terminal
       }
       if (terminal?.status === "applied") {
+        if (terminal.version === 1 && terminal.projection_repair !== undefined) {
+          const original = yield* loadSharedCreatePlan(library, {
+            skillPageId: input.skillPageId,
+            operationId: header.record_id,
+          })
+          yield* assertOriginalSourceProjectionRepairComplete(
+            library,
+            original,
+            input.skillPageId,
+            terminal.projection_repair,
+          )
+        }
         if (terminal.version === 2 && terminal.manifest_record_hash !== header.hash)
           return yield* Effect.fail(
             fail(
