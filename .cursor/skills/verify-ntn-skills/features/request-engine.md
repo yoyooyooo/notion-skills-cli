@@ -1,5 +1,7 @@
 # 直连请求引擎
 
+主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 ## AH-1050 NXT09：固定资源的 pending producer
 
 固定 GitHub source 物化复用现有只共享 pending 的 Effect coalescer。键含同一 Store/HTTP client、完整 source URL、commit/tree/source path、Git oid、声明 bytes/SHA/mode 和 local-content restriction 集合；不同版本、客户端或限制不能共享。只合并当前在途获取，不缓存完成 response，不合并写入、整次 consume 或未知 ACK。一个 waiter 取消不会中止其他 waiter，最后 waiter 取消沿原 producer 生命周期回收；原 retries 与实际 HTTP/bytes 仍只在传输边界计数。

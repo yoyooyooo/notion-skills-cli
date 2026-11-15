@@ -1,5 +1,7 @@
 # Portable export and package consumption
 
+主要验证入口：[verify-ntn-skills](../../verify-ntn-skills/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Users export a complete Skill, Router or Prompt as a deterministic ZIP or directory, preserve its portable manifest for reimport and consume the built `ntn-skills` package through Node.js.
 
 The [command map](README.md#accepted-design-coverage), [matrix](sync-cache-verification-plan.md) and [protocol](../../../../docs/protocol.md#portable-export-contract) route export policy/XDG/installed-consumer acceptance. Consumer smoke isolates config/state/cache and XDG bases. These recipes and smoke descriptions do not claim a passing result; main verifier records actual installed entry points, runtime and evidence.

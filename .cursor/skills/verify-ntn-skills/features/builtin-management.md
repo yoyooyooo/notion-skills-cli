@@ -1,5 +1,7 @@
 # Built-in Skill installation and updates
 
+主要验证入口：[verify-ntn-skills](../../verify-ntn-skills/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 This recipe covers explicit local copies. Broker exposes the three bundled Skills through ordinary `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` selection on Pi/OMP/Tern without central installation or a Notion source. The Broker artifact verifier consumes the packaged bodies and references offline; the installation lifecycle below is relevant when changing explicit install/update behavior.
 
 ## Sub-features

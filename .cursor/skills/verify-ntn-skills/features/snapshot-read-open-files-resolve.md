@@ -1,5 +1,7 @@
 # Snapshots, reading, files and relative resolution
 
+主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Users obtain a complete immutable Skill, Router or Prompt version, read only the requested file, browse supporting paths and follow relative links without drifting to a newer version.
 
 Current-target reads use bounded cache policy, while pinned targets remain immutable/offline. [Cache cases](sync-cache-verification-plan.md#cache-time-and-identity-matrix), [command coverage](README.md#accepted-design-coverage) and [protocol](../../../../docs/protocol.md#success) own detailed acceptance/contracts. Explicit --refresh protects every fresh live observation below; adding this recipe is not a passing result.

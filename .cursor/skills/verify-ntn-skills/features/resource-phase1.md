@@ -1,5 +1,7 @@
 # Resource state and editable-page protection
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Use this map for AH-686, AH-687 and AH-688 before changing their implementation. Start from the actual product commit and package identity; the formal planning branch is an input, not the product baseline. Keep raw evidence outside the checkout.
 
 | Feature | Public observation | Positive case | Failure or counterexample | Evidence |

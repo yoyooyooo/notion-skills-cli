@@ -1,5 +1,7 @@
 # Bidirectional sync and read-cache verification plan
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Status: acceptance matrix for the implemented CLI, updated 2026-10-28. Daily pinned `apply` and sync `connect/run` use the existing mutation, binding, plan and recovery contracts below. Advanced plan/apply/reconcile and read-policy flags remain available. [Protocol](../../../../docs/protocol.md) owns executable semantics; the [CLI design](../../../../docs/sync-cache-cli-design.md) records rationale. This document defines cases, not passing results; select the cases affected by the change and record actual outcomes in the external run ledger.
 
 This plan applies Lauren Poteto Rules: exercise the user interface, inspect resulting state, preserve evidence, and distinguish deterministic regression proof from live-provider proof. The existing [verification Skill](../SKILL.md) owns launch, evidence and cleanup procedures. No live mutation is authorized merely by this plan.

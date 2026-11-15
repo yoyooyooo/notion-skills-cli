@@ -1,5 +1,7 @@
 # Pinned changes, reference pages and version conflicts
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Users read editable Notion content as Markdown and apply one change against a pinned main ref or snapshot. `apply PINNED --input CHANGED_DIRECTORY` merges only the supplied files; repeated `--remove PATH` and explicit metadata flags join the same publication. Untouched files and page identity remain, main deletion is refused, and stale pins fail before effects. Use the existing dry-run, property-preservation and stale-conflict cases below for this public entry. `write` remains available when only one logical file should change.
 
 Stable manual edits to a committed Notion page are visible through `read PAGE_ID --refresh` without an inspect/accept operation. The old pinned read stays immutable; a write against that old pin still fails. Reading current content does not accept it as the outcome of an unfinished original publication or change a tracked/local baseline.

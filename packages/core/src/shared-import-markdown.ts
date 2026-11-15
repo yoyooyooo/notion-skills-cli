@@ -42,10 +42,14 @@ function importContent(markdown: string) {
           }
           links.push(link)
           inline(token.text, token.tokens)
+          const label = text.slice(labelStart).join("")
           link.automatic =
             token.type !== "image" &&
-            token.href.replace(/^https?:\/\//u, "").replace(/\/$/u, "") ===
-              text.slice(labelStart).join("")
+            // Native import also auto-links full URL labels in preserved
+            // literal comment text. The label must identify the exact href;
+            // authored destinations in the input remain required below.
+            (token.href === label ||
+              token.href.replace(/^https?:\/\//u, "").replace(/\/$/u, "") === label)
           break
         }
         case "html":

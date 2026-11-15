@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "domains": [
+    {
+      "id": "verify-ntn-skills",
+      "skill": ".cursor/skills/verify-ntn-skills/SKILL.md",
+      "features": [
+        "builtin-management.md",
+        "discovery-config-auth-doctor.md",
+        "portable-export-package-consumption.md"
+      ],
+      "regressions": [
+        "packages/cli/test/verification-skill-map.test.ts",
+        "packages/cli/test/maintenance-ci.test.ts"
+      ],
+      "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",
+      "excludes": ["管理行为独立证明", "消费或模型通过"]
+    },
+    {
+      "id": "verify-notion-management",
+      "skill": ".cursor/skills/verify-notion-management/SKILL.md",
+      "features": [
+        "empty-library.md",
+        "import-create-recovery-dry-run.md",
+        "maintenance-repair.md",
+        "nxt-delivery.md",
+        "reference-write-version-conflict.md",
+        "resource-audit.md",
+        "resource-authoring.md",
+        "resource-inventory.md",
+        "resource-phase1.md",
+        "shared-ssot.md",
+        "skill-maintenance.md",
+        "sync-cache-verification-plan.md",
+        "upstream-subscriptions.md"
+      ],
+      "regressions": [
+        "packages/core/test/shared-skill-apply-tree.test.ts",
+        "packages/core/test/shared-maintenance-operations.test.ts",
+        "packages/core/test/shared-audit-target.test.ts",
+        "packages/core/test/shared-native-repair.test.ts"
+      ],
+      "installed_recipe": ".cursor/skills/verify-ntn-skills/features/skill-maintenance.md",
+      "excludes": ["消费资格和缓存", "宿主投递/自然模型"]
+    },
+    {
+      "id": "verify-notion-consumption",
+      "skill": ".cursor/skills/verify-notion-consumption/SKILL.md",
+      "features": [
+        "broker-consumption.md",
+        "request-engine-formal.md",
+        "request-engine.md",
+        "skill-consumption.md",
+        "skill-dependency-graph.md",
+        "snapshot-read-open-files-resolve.md"
+      ],
+      "regressions": [
+        "packages/core/test/shared-freshness-consumer.test.ts",
+        "packages/core/test/fixed-snapshot-files.test.ts",
+        "packages/core/test/resource-read.test.ts",
+        "packages/core/test/consumer-effects.test.ts",
+        "packages/cli/test/sdk.test.ts"
+      ],
+      "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",
+      "excludes": ["原作者写入权限", "实际Pi/自然模型通过"]
+    },
+    {
+      "id": "verify-notion-source-onboarding",
+      "skill": ".cursor/skills/verify-notion-source-onboarding/SKILL.md",
+      "features": ["resource-sources.md"],
+      "regressions": [
+        "packages/core/test/shared-source-onboarding.test.ts",
+        "packages/core/test/shared-source-definitions.test.ts",
+        "packages/core/test/upstream-source-batch.test.ts",
+        "packages/core/test/shared-source-projection-retained.test.ts",
+        "packages/core/test/shared-import-markdown.test.ts"
+      ],
+      "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",
+      "excludes": ["已绑定正文自动更新", "部分报告替代全库分母"]
+    }
+  ]
+}

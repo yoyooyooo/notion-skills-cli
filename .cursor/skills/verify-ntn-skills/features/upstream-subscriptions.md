@@ -1,5 +1,7 @@
 # Upstream subscriptions: fixed sources, accepted deltas and published Router
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 This recipe exercises the installed `ntn-skills ctl sync upstream` official CLI tree. Record CLI/version/hash, Effect exact version, separate config/state/cache roots, exact native content/subscription database and data source IDs, operation IDs, saved plan hashes, page IDs and pinned resource refs. Use an owned temporary Git repository and owned test Notion tables; the actual Agent Kit checkout and its tracked contents remain read-only.
 
 Prepare one source containing two complete Skills, references, script, lock file and a binary asset. Start through `ctl sync upstream connect SOURCE --database CONTENT_DATABASE`: default Git ref is `HEAD`, root is `.`, and include/exclude patterns select member directory paths. Verify a complete initial run, then repeat the same connection and require the same subscription with its saved name/configuration. `ctl sync upstream list` returns `{ok:true,items:[...]}`.

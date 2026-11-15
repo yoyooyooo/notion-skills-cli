@@ -1,5 +1,7 @@
 # AH-681 来源批次与固定资源验证
 
+主要验证入口：[verify-notion-source-onboarding](../../verify-notion-source-onboarding/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 这里定义 NR11/NR14 的公开观察点。执行结果、真实页面、安装包 hash 和原始请求账本保存在 checkout 外；本文不把规程当成通过记录。
 
 ## SRC 来源接手（AH-1064）

@@ -1,5 +1,7 @@
 # Create, replace, dry-run and recovery
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Users submit a local Skill folder, ZIP or Markdown file to a selected database. `create` refuses an existing invocation name; `replace --target` requires an exact existing page identity and reuses identical content or replaces that page's complete file set.
 
 For daily changes to an existing page, use one pinned `apply` with sparse files/removals and explicit properties; [the pinned-change recipe](reference-write-version-conflict.md) maps it to the existing conflict and recovery cases. This document retains complete create/replace and publication regressions.

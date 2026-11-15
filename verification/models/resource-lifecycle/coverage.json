@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "74bf2471cf110cbb909d09579459100801314ec1",
+  "synchronized_commit": "8319c418b8de19ffc3ab69ba09ed32f167948c17",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
@@ -93,7 +93,7 @@
     "packages/core/src/shared-create-import-readback.ts": "8afee64ab43ed52daf2788e208ecdeab80e4602d7983cb7abceff7a7a7049d23",
     "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
     "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
-    "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621",
+    "packages/core/src/shared-import-markdown.ts": "825f52b4cb96feed2838251724e004979fa8ed087ca23df64c6ca2f4cc45f0f6",
     "packages/core/src/shared-create-restoration.ts": "96a94b5bcb994edd08ce1ad229ace568b72850a758795220f46b7dbc20d62c49",
     "packages/core/src/consumption-effects.ts": "630d530d5acccfc55109be28f904378a3903d0104d1a5caa5e6b9fc0b95a1035",
     "packages/core/src/notion.ts": "dad3f5e5f5d47dfcc89c81b6291a498ca9f0647dbf129e9fe6f50b306f64a85c",
@@ -132,7 +132,8 @@
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
-    "packages/cli/test/library-source-members-http.test.ts": "3dd4a2ba0500eba3715c439efe6dca20cd3b73bcc43453ed8966b18e85bb96a1"
+    "packages/cli/test/library-source-members-http.test.ts": "fefeced850eb2e2ad5254ae0ce06a865f4f9eeb0610f2ecb5df7f316d802d8a8",
+    "packages/core/test/shared-import-markdown.test.ts": "e9b41a0d3f41323b77dd8234a66d80d439d92b3dacd70af39a3628051c3b22ed"
   },
   "models": {
     "ProjectionRace": {
@@ -980,6 +981,17 @@
         "sourceOnboardingError"
       ],
       "scope": "Read-only native Selection v1 envelope normalization, explicit per-member scope and Router classification; original-plan recovery projection omits repeated text. New ordinary create input/body facts reuse bounded exact_bytes chunks while retaining complete original checksums, original operation identities and existing journals. Small v1 facts and native wire/readback policy remain unchanged. The retained bundle/source-projection-v2 manifest codec uses the existing bounded manifest limits; ordinary facts remain 64 KiB. These byte layouts, size bounds and Source-to-member classification are outside the existing finite model domains; no new temporal property is inferred. All TLA models, configs and expected_rules are unchanged. See docs/maintenance-verification-review.md SRC supplemental review."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "import_exact_full_url_autolink_classification",
+      "files": [
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/src/shared-import-markdown.ts",
+        "packages/core/test/shared-import-markdown.test.ts"
+      ],
+      "symbols": ["assertImportedMarkdownContent", "importContent"],
+      "scope": "Exact full href/visible-label equality recognizes native automatic links in preserved literal comment text. Authored input destinations and image targets remain required, and text/code equality is unchanged. Native wire, frozen projection policies, original dispatch/ACK/journal and recovery rights are unchanged. The existing finite models do not enumerate Markdown tokens or provider rendering. The installed source journey reproduces this native formatting over its original real Git/Node/SQLite route; it does not prove real service recovery. Existing failed original source-v2 creation remains failed until separately authorized recovery. See docs/maintenance-verification-review.md AH-1068."
     }
   ],
   "cases": [

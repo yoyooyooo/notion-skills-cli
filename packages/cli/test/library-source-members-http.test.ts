@@ -89,17 +89,23 @@ test("installed source member commands admit, explicitly remap and retain real G
         `Instruction ${index}: preserve the complete source, quoted \"text\", 中文 and all reference content.\n\n`,
     ).join("")
   expect(Buffer.byteLength(originalGuide)).toBeGreaterThan(100 * 1024)
+  const canonicalUrl = "https://example.test/source-fixture"
   const originalBinary = new Uint8Array([0, 255, 13, 10, 17])
   await put(
     "skills/fresh/SKILL.md",
-    "---\nname: explicit-member\ndescription: Explicit source admission\nlicense: MIT\n---\n\n# New member\n\n##### Detailed instruction\n\nRead [guide](references/guide.md) and retain [bytes](assets/data.bin).\n",
+    "---\nname: explicit-member\ndescription: Explicit source admission\nlicense: MIT\n---\n\n# New member\n\n##### Detailed instruction\n\nRead [guide](references/guide.md) and retain [bytes](assets/data.bin).\n" +
+      `\nSource ${canonicalUrl}.\n\n<!-- canonical: ${canonicalUrl} -->\n`,
   )
   await put("skills/fresh/references/guide.md", originalGuide)
   await put("skills/fresh/assets/data.bin", originalBinary)
   const firstRevision = commit()
   const f = fixture([], {
     recovery: true,
-    readback: (wire) => wire.replace(/<h1>(.*?)<\/h1>/u, "### $1") + "\n",
+    readback: (wire) =>
+      wire
+        .replace(/<h1>(.*?)<\/h1>/u, "### $1")
+        .replaceAll(canonicalUrl, `[${canonicalUrl}](${canonicalUrl})`)
+        .replace("<!-- canonical:", "\\<!-- canonical:") + "\n",
   })
   f.skills.clear()
   f.files.clear()

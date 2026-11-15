@@ -1,5 +1,7 @@
 # Broker consumption
 
+主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 This map owns the CLI boundary used by the `pi-context-broker` Notion source adapter provided in its separate repository. It is a recipe, not a completed acceptance result. Broker installation, host registration, default catalogs, Read interception, `$` selection and native skill commands belong to the broker's separate verification maps.
 
 For the daily Tern/OMP installation boundary, use the broker repository's [daily installation and native UI map](https://github.com/yoyooyooo/pi-context-broker/blob/main/.agents/skills/verify-notion-skills-integration/features/daily-installation-ui.md) and `node scripts/verify-daily-notion-ui.mjs` from that checkout. It verifies the installed broker and companion against the actual daily source configuration and a selected existing Notion page. `captured` observes live Notion instructions at a controlled provider boundary; `model` requires an authorized real model and task prompt. CLI consumption here does not substitute for the slash menu, dollar chips, manual picker, or model response evidence.

@@ -1,5 +1,7 @@
 # ntn-skills verification map
 
+领域导航：[管理](../../verify-notion-management/SKILL.md) · [消费](../../verify-notion-consumption/SKILL.md) · [来源接手](../../verify-notion-source-onboarding/SKILL.md)。完整唯一归属由 [skill-domains.json](../../../../verification/skill-domains.json) 和常规测试检查。
+
 New-user acceptance starts at [EMPTY: initialize a real empty library, then maintain its objects](empty-library.md). Do not substitute pre-seeded schema or author caches for this starting condition.
 
 AH-1050 continues that same journey through the [NXT delivery and verification contract](nxt-delivery.md). Freeze the complete inputs and budgets with the existing EMPTY extension `scripts/nxt-journey.ts freeze --run RUN --bin EXACT_BASELINE_BIN`; use its scoped `command` driver to retain candidate argv, binary hash, original outcome and measured product requests. The run's original initializer and census remain owned by `control.ts empty`. Baseline evidence is immutable and is not a new-feature pass.

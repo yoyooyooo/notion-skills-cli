@@ -1,5 +1,7 @@
 # EMPTY: start with a new library, then maintain the same objects
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Owner: AH-1040 and AH-1041–AH-1047. This is a new entry in the existing
 `verify-ntn-skills` workflow, not a replacement verification system.
 

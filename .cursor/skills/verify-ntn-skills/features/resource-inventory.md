@@ -1,5 +1,7 @@
 # Exact resource inventories: AH-711 / AH-716
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 ## Daily directory entry and representative acceptance
 
 The user accepts a small representative set imported through the formal CLI with

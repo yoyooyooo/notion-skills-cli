@@ -1,5 +1,7 @@
 # Skill 依赖图
 
+主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 跨 Skill 图复用既有 CLI 与 Broker 验证链。先读同目录 [request-engine](request-engine.md) 的 Launch/Doctor/Drive/Evidence/Cleanup，再使用 Broker 的 `.agents/skills/verify-notion-skills-integration/features/skill-dependency-graph.md`；后者定义 observer trace/oracle 合同。AH-560 单 Skill 与资源的旧 pass 不覆盖本地图。
 
 ## 后续切片的稳定 feature ID

@@ -4,11 +4,18 @@ AH-1006 把现有有限模型接入持续维护。仓库中的 TLA/config/view�
 
 ## 领域所有权与运行路由
 
+实现层验证由 [管理](../.cursor/skills/verify-notion-management/SKILL.md)、
+[消费](../.cursor/skills/verify-notion-consumption/SKILL.md) 和
+[来源接手](../.cursor/skills/verify-notion-source-onboarding/SKILL.md) 分域，
+[总入口](../.cursor/skills/verify-ntn-skills/SKILL.md) 仅路由及复用隔离设施。
+单一功能归属表 `verification/skill-domains.json` 由常规测试检查；这三项是可执行回归入口，
+没有新增状态模型、证明权威或测试服务。实际宿主交接仍归 Broker 的原 integration。
+
 | 领域 | 所有者 | 原运行器套件 | 触发边界 |
 | --- | --- | --- | --- |
 | CLI 资源生命周期 | verify-notion-resource-lifecycle | lifecycle | 正文归属、导入、原操作选择、只读审计 |
 | CLI 原操作恢复与独立接受 | verify-notion-operation-recovery | operation-recovery | ACK/Records 前缀、未知原操作、独立接受、业务反馈 |
-| CLI 请求引擎 | verify-ntn-skills 的 request-engine-formal feature | request-engine | producer ownership、取消、共享身份、queue/operation/attempt 预算与重试 |
+| CLI 请求引擎 | verify-notion-consumption 路由的原 request-engine-formal feature | request-engine | producer ownership、取消、共享身份、queue/operation/attempt 预算与重试 |
 | Broker 当前资格与交付 | verify-notion-consumer-state | observations、consumer-state | 观察时间与资格、固定图、会话/取消、真实交付证明边界 |
 | 跨系统交接与 effects | verify-notion-skills-integration | flows | 完整管理回执、两来源部分失败、累计效果、严格只读、受控报告 |
 

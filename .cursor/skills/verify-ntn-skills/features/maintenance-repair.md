@@ -1,5 +1,7 @@
 # MNT03 original-page repair
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Use this map for the controlled historical repair and one selected Files-row adoption. Native draft adoption stays on `adopt`. This page does not record a live or installed pass.
 
 ## Public shape

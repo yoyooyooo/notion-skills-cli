@@ -1,5 +1,7 @@
 # Non-document resource authoring
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 AH-704 adds and replaces one explicitly selected supporting resource through the public CLI. Markdown authoring remains the editable-body path. Resource bytes use the existing Notion Records exact-byte chunks; Files pages display ownership, path, immutable version and a retained-object entry. Their explanatory body is not the resource content.
 
 AH-703/705/707 use the same effective tree and retained history for raw resources. A `resource_followed` baseline records exact source bytes, mode and source path; following reads still select the current fixed source. The recorded C2 baseline must not replace current C3 bytes or turn management notes into a native projection.

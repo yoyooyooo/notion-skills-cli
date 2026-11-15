@@ -1,5 +1,7 @@
 # Discovery, configuration, authentication and doctor
 
+主要验证入口：[verify-ntn-skills](../../verify-ntn-skills/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Users discover available databases and Skill metadata, register a precise local database alias, choose creation preferences and check existing authentication without starting a login flow.
 
 This recipe covers catalog policy, cache inspection/retirement and cache-policy configuration. [Command coverage](README.md#accepted-design-coverage) and [cache/parameter cases](sync-cache-verification-plan.md#cache-time-and-identity-matrix) own the wider matrix; [protocol](../../../../docs/protocol.md) owns exact result semantics. Product Doctor remains an online probe; helper Doctor defaults to offline readiness and requires `--live` for that probe. Recipes are unrun until the main verifier records evidence.

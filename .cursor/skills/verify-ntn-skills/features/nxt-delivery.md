@@ -1,5 +1,7 @@
 # NXT delivery and verification contract
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Use this extension of the existing EMPTY journey for AH-1050. Read the owning Linear ticket and existing feature recipe before changing a behavior. The CLI baseline is `4580b7d6d692013091d5c66e90d703d51fd5fb10`; Broker is `2d8e112ed7b6b7e0b55372eb3284f1692bc5d12f`.
 
 ## Working recipe

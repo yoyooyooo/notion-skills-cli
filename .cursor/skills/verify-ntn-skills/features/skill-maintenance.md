@@ -1,5 +1,7 @@
 # 完整 Skill 的渐进维护
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影响的合同和失败用例，再改实现。未运行的场景不能记为通过。
 
 ## 责任与可失败场景
@@ -18,7 +20,7 @@ AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影�
 
 `verify-notion-resource-lifecycle` 负责身份、归属、删除和审计范围的有限合同。`verify-notion-operation-recovery` 负责原请求、ACK、部分完成和未知结果。Broker 的 consumer-state 与 integration 负责管理结果进入固定图、实际请求及回执的交接。
 
-默认维护这些入口，不新建总验证 Skill 或 Mock 专属 Skill。新 guardian 只有在独立状态归属、独立不变量和独立可执行反例均成立时才准入。它须说明复用及替代关系、源码对应、工具锁、精确正负性质、真实 guard 反例、结束及清理方式，并由冷 Agent 独立运行。仅有文档时保持 draft。
+领域执行入口由 verify-notion-management、verify-notion-consumption 与 verify-notion-source-onboarding 分担，复用本矩阵和现有驱动；不新建总验证平台或 Mock 专属 Skill。新 guardian 只有在独立状态归属、独立不变量和独立可执行反例均成立时才准入。它须说明复用及替代关系、源码对应、工具锁、精确正负性质、真实 guard 反例、结束及清理方式，并由冷 Agent 独立运行。仅有文档时保持 draft。
 
 ## 按切片选择现有入口
 

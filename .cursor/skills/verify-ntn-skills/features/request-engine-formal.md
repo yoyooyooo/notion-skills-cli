@@ -1,5 +1,7 @@
 # FV07：RequestEngine 有限合同
 
+主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 适用 Issue：AH-1013、AH-1050 / AH-1058。它为现有请求引擎补充模型与真实源码守护，关联原 [request-engine 地图](request-engine.md) 的 SC15、NG-RE-03、NG-RE-04；不替代它们的真实 SQLite、多进程、HTTP 或已安装产物验收。
 
 ## 快速入口

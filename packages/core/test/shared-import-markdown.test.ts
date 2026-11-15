@@ -68,6 +68,29 @@ test("automatically linked styled labels retain their visible text without repla
     expect(() => assertImportedMarkdownContent(before!, after!)).toThrow()
 })
 
+test("self-labelled URL autolinks in preserved comment text do not add an authored destination", () => {
+  const url = "https://example.test/canonical"
+  const before = `Source ${url}.\n\n<!-- canonical: ${url} | do not copy -->`
+  const after = `Source [${url}](${url}).\n\n\\<!-- canonical: [${url}](${url}) \\| do not copy -->`
+  expect(() => assertImportedMarkdownContent(before, after)).not.toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(before, after.replace(`](${url})`, "](https://wrong.example/)")),
+  ).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(`[${url}](${url})`, `[${url}](http://example.test/canonical)`),
+  ).toThrow()
+})
+
+test("table plus signs are content, not interchangeable native list bullets", () => {
+  const before = "| Action | Contract |\n| --- | --- |\n| New document | brief + content |\n"
+  expect(() => assertImportedMarkdownContent(before, before.replace(" + ", " • "))).toThrow()
+  const code = "Use `brief + content`."
+  expect(() =>
+    assertImportedMarkdownContent(code, "Use <code>brief + content</code>."),
+  ).not.toThrow()
+  expect(() => assertImportedMarkdownContent(code, "Use <code>brief • content</code>.")).toThrow()
+})
+
 test("import compatibility does not rewrite fences or raw resources and keeps historical projection policies", () => {
   const input =
     "##### Deep heading\n\n| A | B |\n| :--- | ---: |\n| pipe \\| literal | value |\n\n```md\n###### Keep literal\n```"

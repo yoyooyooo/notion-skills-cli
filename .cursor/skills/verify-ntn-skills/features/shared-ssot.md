@@ -1,5 +1,7 @@
 # Shared Notion SSOT verification
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 Verify shared-library behavior through `ctl library`, ordinary `list/read/files` and native `create/apply/write/update`. The [shared authoring guide](../../../../docs/shared-authoring.md) provides the user workflow; SS12 covers migration review/execution, and SS14–SS16 below cover file lifecycle, fixed composition and authoring. The [protocol](../../../../docs/protocol.md#shared-notion-library) owns command semantics; the [architecture](../../../../docs/shared-ssot-architecture.md) explains authority and recovery boundaries. This recipe defines acceptance work; store actual run outcomes separately.
 
 ## Scope and preparation

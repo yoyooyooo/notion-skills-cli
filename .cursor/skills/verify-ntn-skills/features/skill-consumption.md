@@ -1,5 +1,7 @@
 # Skill 消费链
 
+主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 ## AH-1050 NXT08–11：共享新鲜度与可重建缓存
 
 `ctl library profile set` 的 `--freshness-json` 随原 Profile revision 共享保存，结构为 `{default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,...}]}`。两个 duration 均可省略，已提供的值为非负安全整数毫秒；`skills` 必须存在且每个稳定 Skill ID 唯一。显示名不参与身份。替换完整 revision 时移除某条 override 即恢复继承；`ctl library profile freshness PROFILE --entry ENTRY --skill STABLE_ID` 返回具体生效值和原 revision。单次 max-age、逐 Skill、Profile default、产品 default 依次解析。Source 定期检查只使用自己的 source_check_max_age_ms，多个选定成员取最短上界，不能延长 Notion 正文观测策略。

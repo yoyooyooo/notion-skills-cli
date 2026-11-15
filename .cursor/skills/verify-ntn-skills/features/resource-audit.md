@@ -1,5 +1,7 @@
 # Resource audit: AH-690–AH-695
 
+主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+
 AH-1024 adds the [maintenance matrix](skill-maintenance.md). A disabled unregistered draft is not a corrupt managed Skill. Its metadata classification does not authorize adoption, prove empty history, or establish content availability. Preserve reverse-table findings when its identities are missing.
 
 ## User contract and boundaries
