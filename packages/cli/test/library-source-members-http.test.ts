@@ -81,7 +81,14 @@ test("installed source member commands admit, explicitly remap and retain real G
     "---\nname: existing-candidate\ndescription: Never implicitly admitted\n---\n\n# Base\n",
   )
   commit()
-  const originalGuide = "# Original guide\n\nKeep the fixed source.\n"
+  const originalGuide =
+    "# Original guide\n\nKeep the fixed source.\n\n" +
+    Array.from(
+      { length: 1400 },
+      (_, index) =>
+        `Instruction ${index}: preserve the complete source, quoted \"text\", 中文 and all reference content.\n\n`,
+    ).join("")
+  expect(Buffer.byteLength(originalGuide)).toBeGreaterThan(100 * 1024)
   const originalBinary = new Uint8Array([0, 255, 13, 10, 17])
   await put(
     "skills/fresh/SKILL.md",

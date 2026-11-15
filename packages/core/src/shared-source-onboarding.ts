@@ -3,7 +3,7 @@ import { authScope } from "./catalog.ts"
 import { aliasFor, fail, property, text, type SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
-import { pageId } from "./ref.ts"
+import { normalizePath, pageId } from "./ref.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedMetadataInventory } from "./shared-metadata-inventory.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
@@ -193,6 +193,35 @@ const errorValue = (error: SkillsError) => ({
   message: error.message,
   ...(error.details === undefined ? {} : { details: error.details }),
 })
+
+/** The frozen parent already retains complete child inputs. Do not copy those
+ * bytes into an Agent-facing error while preserving original recovery IDs. */
+export function sourceOnboardingError(error: SkillsError, action: SourceOnboardingAction) {
+  const details = property(error.details)
+  const recovery = property(details.recovery)
+  if (!Object.hasOwn(recovery, "plan"))
+    return { ...errorValue(error), details: error.details ?? null }
+  const { plan: originalPlan, ...rest } = recovery
+  const original = property(originalPlan)
+  return {
+    code: error.code,
+    message: error.message,
+    details: {
+      ...details,
+      recovery: {
+        ...rest,
+        original_plan: {
+          operation_id: original.operation_id ?? null,
+          skill_id: original.skill_id ?? null,
+          retained_in_parent_plan:
+            action.kind === "create" &&
+            canonicalSharedJson(originalPlan) === canonicalSharedJson(action.plan),
+          full_input_omitted: true,
+        },
+      },
+    },
+  }
+}
 const alias = (name: string) => (name.trim() ? aliasFor(name) : "")
 
 export interface SourceOnboardingReviewOptions {
@@ -225,6 +254,17 @@ function inspect(
     const scope = yield* sourceChecked(() =>
       Schema.decodeUnknownSync(SourceOnboardingScopeSchema)(input, { onExcessProperty: "error" }),
     )
+    const requested = scope.kind === "source" ? scope.members : undefined
+    if (
+      requested !== undefined &&
+      (requested.length === 0 ||
+        requested.length > 100 ||
+        new Set(requested).size !== requested.length ||
+        requested.some((member) => !member || (member !== "." && normalizePath(member) !== member)))
+    )
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "Select one to 100 unique exact provider member keys."),
+      )
     const sourceTimeout = options.sourceTimeoutMs ?? (scope.kind === "all" ? 30_000 : 120_000)
     if (!Number.isSafeInteger(sourceTimeout) || sourceTimeout <= 0 || sourceTimeout > 3_600_000)
       return yield* Effect.fail(
@@ -273,6 +313,18 @@ function inspect(
             fail(
               "SOURCE_REFRESH_INCOMPLETE",
               "Provider discovery has unresolved resources; no absence or admission is inferred.",
+            ),
+          )
+        const absent =
+          requested?.filter(
+            (key) => !snapshot.members.some((member) => member.member_key === key),
+          ) ?? []
+        if (absent.length > 0)
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_MEMBER_UNAVAILABLE",
+              "The complete configured discovery did not return all explicitly requested members.",
+              { members: absent },
             ),
           )
         if (
@@ -366,6 +418,7 @@ function inspect(
       }
       const members: SourceOnboardingMember[] = []
       for (const candidate of snapshot.members) {
+        if (requested !== undefined && !requested.includes(candidate.member_key)) continue
         const common = { member_key: candidate.member_key, name: candidate.portable.name }
         const skillId = yield* identity(library, definition.page_id, candidate.member_key)
         const original = pending.filter(
@@ -440,6 +493,11 @@ function inspect(
         else members.push({ ...common, kind: "admit" })
       }
       const unresolved = bindings
+        .filter((row) => requested === undefined || requested.includes(row.member))
+        // A source directory Router owns an authored member index, not an
+        // upstream SKILL.md member. Preserve and report it without inventing a
+        // Source Member key or counting it as an incomplete Skill binding.
+        .filter((row) => row.kind !== "router" || row.member !== "")
         .filter((row) => !snapshot.members.some((candidate) => candidate.member_key === row.member))
         .filter(
           (row) =>
@@ -456,6 +514,7 @@ function inspect(
         }))
       source.members = members
       source.unresolved_bindings = unresolved
+      source.source_routers = bindings.filter((row) => row.kind === "router" && row.member === "")
     }
     // Multiple discovered members must not race to create the same public name, including across Sources.
     const all = sources.flatMap((source) => source.members.map((member) => ({ source, member })))
@@ -692,12 +751,14 @@ function validatePlan(library: SharedLibrary, value: unknown) {
         fail("SOURCE_ONBOARDING_INVALID", "The frozen onboarding plan, library or digest differs."),
       )
     const seen = new Set<string>()
+    const requested = plan.report.scope.kind === "source" ? plan.report.scope.members : undefined
     for (const action of plan.actions) {
       const key = `${action.source.page_id}:${action.member}`
       if (
         seen.has(key) ||
         !action.member ||
-        pageId(action.source.page_id) !== action.source.page_id
+        pageId(action.source.page_id) !== action.source.page_id ||
+        (requested !== undefined && !requested.includes(action.member))
       )
         return yield* Effect.fail(
           fail("SOURCE_ONBOARDING_INVALID", "A frozen action has a duplicate or invalid member."),
@@ -913,9 +974,12 @@ export function executeSourceOnboarding(
           member: action.member,
           kind: action.kind,
           verified: false,
-          page_id: action.kind === "bind" ? action.before.page_id : null,
+          page_id:
+            action.kind === "bind"
+              ? action.before.page_id
+              : (pageId(String(property(executed.failure.details).skill_page_id ?? "")) ?? null),
           operation_id: action.kind === "create" ? action.plan.operation_id : null,
-          error: { ...errorValue(executed.failure), details: executed.failure.details ?? null },
+          error: sourceOnboardingError(executed.failure, action),
         })
         if (executed.failure.code === "REQUEST_BUDGET_EXHAUSTED") break
       } else

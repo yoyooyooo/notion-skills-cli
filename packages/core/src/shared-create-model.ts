@@ -4,6 +4,7 @@ import {
   ContentKindSchema,
   entrypointFor,
   fail,
+  property,
   SkillsError,
   validateDescription,
   validateDisplayName,
@@ -51,6 +52,7 @@ import {
   type SharedSourceProjection,
 } from "./shared-source-projection-model.ts"
 import { sharedCreateBodyPayload, sharedCreateInputPayload } from "./shared-create-objects.ts"
+import { prepareSharedCreateText } from "./shared-create-text-retention.ts"
 import { sharedCreateLocalManifest, validateSharedCreateLocal } from "./shared-create-local.ts"
 import {
   sharedCreateRetainedManifest,
@@ -1050,17 +1052,7 @@ export function makeSharedCreatePlan(
           plan.source_projection.binding,
           "source",
         )
-      for (const file of files) {
-        validateSharedRecordEnvelope(
-          `retain-input-${file.input.sha256}`,
-          sharedCreateInputPayload(file.input.text),
-        )
-        validateSharedRecordEnvelope(
-          `retain-${file.content.sha256}`,
-          sharedCreateBodyPayload(file.projection.markdown),
-        )
-        validateSharedRecordEnvelope(file.event.event_id, file.event)
-      }
+      for (const file of files) validateSharedRecordEnvelope(file.event.event_id, file.event)
       for (const file of sharedCreateFiles(plan)) {
         for (const event of [...(file.ancestors ?? []), file.event])
           validateSharedRecordEnvelope(event.event_id, event)
@@ -1068,6 +1060,28 @@ export function makeSharedCreatePlan(
           resolveFileState(file.file_id, [...(file.ancestors ?? []), file.event])
       }
     })
+    for (const file of files) {
+      yield* prepareSharedCreateText(file.input.text, "input").pipe(
+        Effect.mapError((error) =>
+          fail(error.code, error.message, {
+            ...property(error.details),
+            path: file.path,
+            preparation_stage: "original_input_retention",
+          }),
+        ),
+      )
+      yield* prepareSharedCreateText(file.projection.markdown, "body").pipe(
+        Effect.mapError((error) =>
+          fail(error.code, error.message, {
+            ...property(error.details),
+            path: file.path,
+            preparation_stage: "projected_body_retention",
+          }),
+        ),
+      )
+      if (file.baseline_body !== undefined)
+        yield* prepareSharedCreateText(file.baseline_body.markdown, "body")
+    }
     return plan
   })
 }

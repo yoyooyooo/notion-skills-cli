@@ -53,6 +53,27 @@ const rich = (id: string, content: string) => ({
   type: "rich_text",
   rich_text: [{ type: "text", plain_text: content, text: { content } }],
 })
+
+test("native Selection v1 envelopes preserve exact selection and reject unknown fields or versions", () => {
+  const page = row(sourceDefinitionPropertiesFor(library, input))
+  const original = structuredClone(page)
+  page.properties[sourceIds.Selection!] = rich(
+    sourceIds.Selection!,
+    JSON.stringify({ version: 1, ...input.selection }),
+  )
+  const before = structuredClone(page)
+  expect(decodeSourceDefinition(library, page)).toEqual(decodeSourceDefinition(library, original))
+  expect(page).toEqual(before)
+  for (const selection of [
+    { version: 2, ...input.selection },
+    { version: "1", ...input.selection },
+    { version: 1, ...input.selection, follow_all: true },
+  ]) {
+    page.properties[sourceIds.Selection!] = rich(sourceIds.Selection!, JSON.stringify(selection))
+    expect(() => decodeSourceDefinition(library, page)).toThrow()
+  }
+})
+
 function row(properties: Record<string, unknown>, page = id(82)) {
   const props: Record<string, unknown> = {}
   for (const [name, value] of Object.entries(layout)) {

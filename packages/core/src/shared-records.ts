@@ -259,11 +259,16 @@ export function canonicalSharedJson(value: unknown): string {
 function isFixedManifest(kind: SharedRecordKind | undefined, payload: SharedJson): boolean {
   const value = property(payload)
   if (value.version !== 1) return false
-  if (kind === "source") return value.kind === "git"
+  if (kind === "source") return value.kind === "git" || value.kind === "retained_bundle"
   if (kind === "snapshot") return value.kind === "fixed_snapshot"
   if (kind !== "operation" || value.kind !== "skill_create_manifest") return false
   const projection = property(value.source_projection)
-  return projection.version === 1 && property(projection.binding).kind === "git"
+  return (
+    (projection.version === 1 && property(projection.binding).kind === "git") ||
+    (projection.version === 2 &&
+      property(property(projection.retained).archive).format === "zip" &&
+      Array.isArray(property(projection.retained).files))
+  )
 }
 
 function boundedEnvelope(value: unknown, kind?: SharedRecordKind) {

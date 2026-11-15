@@ -19,6 +19,12 @@ import { sourceRequestBudgets, parseSourceBudget } from "./commands-library-sour
 const selection = {
   entry: requiredSingleton("entry", "Exact shared Skills database with Sources attached"),
   source: singleton("source", "Exact Source ID or page; exclusive with --all"),
+  member: Flag.String("member").pipe(
+    Flag.atLeast(0),
+    Flag.withDescription(
+      "Only these exact provider member keys; repeat to scope one Source without changing its shared Selection",
+    ),
+  ),
   all: switchFlag(
     "all",
     "Explicitly review all registered Sources, including disabled definitions",
@@ -29,18 +35,27 @@ const selection = {
   ),
   ...sourceRequestBudgets,
 }
-function selected(args: { source: Option.Option<string>; all: boolean }) {
+function selected(args: {
+  source: Option.Option<string>
+  all: boolean
+  member: readonly string[]
+}) {
   return Effect.try({
     try: (): SourceOnboardingScope => {
       const source = Option.getOrUndefined(args.source)
-      if ((source !== undefined) === args.all)
+      if ((source !== undefined) === args.all || (args.all && args.member.length > 0))
         throw fail("INVALID_ARGUMENT", "Choose exactly one of --source or --all.")
-      return source === undefined ? { kind: "all" } : { kind: "source", source }
+      return source === undefined
+        ? { kind: "all" }
+        : { kind: "source", source, ...(args.member.length === 0 ? {} : { members: args.member }) }
     },
     catch: () => fail("INVALID_ARGUMENT", "Choose exactly one of --source or --all."),
   })
 }
-const selectedConstraints = [{ kind: "exactly_one", flags: ["source", "all"] }] as const
+const selectedConstraints = [
+  { kind: "exactly_one", flags: ["source", "all"] },
+  { kind: "requires_absent", flag: "all", absent: ["member"] },
+] as const
 function reviewOptions(value: Option.Option<string>) {
   const raw = Option.getOrUndefined(value)
   return raw === undefined ? {} : { sourceTimeoutMs: /^\d+$/u.test(raw) ? Number(raw) : NaN }
@@ -73,6 +88,9 @@ export const sourceReviewCommand = defineCommand("review", selection, (args) =>
           "--entry",
           args.entry,
           ...(scope.kind === "all" ? ["--all"] : ["--source", scope.source]),
+          ...(scope.kind === "source"
+            ? (scope.members ?? []).flatMap((key) => ["--member", key])
+            : []),
           "--help",
         ],
         read_only: true,

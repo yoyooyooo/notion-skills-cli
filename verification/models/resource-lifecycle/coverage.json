@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "4be7add6bc52588744cd6211c9f5b3146ac093f9",
+  "synchronized_commit": "74bf2471cf110cbb909d09579459100801314ec1",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
@@ -35,13 +35,13 @@
     "packages/core/src/shared-audit-store.ts": "b23d196e7f3bece7396174fb7719fccddc87baafd3297d110f41763cd77bfd67",
     "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
-    "packages/core/src/shared-create.ts": "68feebee5050b328c1b6ae78ee4cfc680f964905921b90ee6a818a3c04c2aa57",
-    "packages/core/src/shared-create-model.ts": "30135bd28144fe0001a01445275eb182426d90f6c27fed49e968a3289f7ebcc8",
+    "packages/core/src/shared-create.ts": "f1248a282d89c644dfbd977c224169aee69d99902746ee1878b218f9082516f2",
+    "packages/core/src/shared-create-model.ts": "8e9a76a0762f3bc47702288d375f369b22a0be652ced2b1e5427882510527ee0",
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "a25b4cd0c3dcd3fed8b7241a813c3303548e54c62de0305138e731cfa255e52e",
-    "packages/core/src/shared-source-definitions.ts": "01a938480c7a7158e8d002813b52a44d367e42913aff7f9217105a8c828320d4",
-    "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
+    "packages/core/src/shared-source-definitions.ts": "83abc51023fb800f077fc2a447af64dea772cb791ce826c13f528ec54b697ed4",
+    "packages/core/src/shared-records.ts": "967ba25a903520b32efef83e3050cae192b1a47e3883aa2ba0f917efea230312",
     "packages/core/src/shared-record-codec.ts": "e4a0944a24007ae04fbe33a5b36a3a99fda9fdd42e2193a4d706bc9602971264",
     "packages/core/src/shared-snapshot-history.ts": "1799a7eca2eb74244ba7c2b57dfc998cbcb804e502228ba31a2bed700d9f1ccd",
     "packages/core/src/shared-notion-projection.ts": "4303d135da294c11ad35edda4e38ba111dc490ade9660d8f3737df813bc3a378",
@@ -90,7 +90,7 @@
     "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
     "packages/core/src/shared-file-request.ts": "12571d8ed6e46cbc29a5e7b84ae3c1d2aa12ec28003b401e960e73138e083a11",
     "packages/cli/src/commands-library-file-request.ts": "0aef3dbd6ca32c48d9036f4672dcf4dbd6ff5ae04c16522f6482a0f0146e9736",
-    "packages/core/src/shared-create-import-readback.ts": "b69e01814df63d3cf5459245a0769d6997699b368322ab9c047ab8519d25f8a4",
+    "packages/core/src/shared-create-import-readback.ts": "8afee64ab43ed52daf2788e208ecdeab80e4602d7983cb7abceff7a7a7049d23",
     "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
     "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
     "packages/core/src/shared-import-markdown.ts": "49440a53705f296af47ea2c8f53ea091df2d84371ee999b9d242d8fea1abb621",
@@ -122,11 +122,17 @@
     "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
-    "packages/core/src/shared-source-onboarding.ts": "62a3ef0cf4a51bfef97f9d2a6b6f5afe343f70d11f3b946508a78ea3313a5b42",
-    "packages/core/src/shared-source-onboarding-model.ts": "d534ac5fb057a21061efd4c54317010fe6f8f0009dc96419d4de2fcfd82c8c38",
-    "packages/cli/src/commands-library-source-onboarding.ts": "5ba4280ab60922cb0b2888ffe89c3370e3c458927f72ab04ac62bd914f8618ba",
+    "packages/core/src/shared-source-onboarding.ts": "30a813b24da267e48c6bf70df2cc698a149ced68b02419989222696c1a89740d",
+    "packages/core/src/shared-source-onboarding-model.ts": "6d66ea886d8c37a6e72d6eded51c8d58fca3c2eda1e66106427b3752275bbea9",
+    "packages/cli/src/commands-library-source-onboarding.ts": "66e49014f51228a87b653b484fb509012b1e1fc4df5063b0584316bba032086a",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "cf9580a2c61b8d531016ee9ac3f707c4da7971350de96ff01ac24334b4ea031e"
+    "packages/core/test/shared-source-onboarding.test.ts": "d2916b85b01a588e88df3836151cd144df8951a62739138ef77cd0843573bd7b",
+    "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
+    "packages/core/test/shared-source-projection-retained.test.ts": "2bf7be2ca83d700a308a90292db986800391ab65d6e399dc1a8e97bd7d633dc4",
+    "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
+    "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
+    "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
+    "packages/cli/test/library-source-members-http.test.ts": "3dd4a2ba0500eba3715c439efe6dca20cd3b73bcc43453ed8966b18e85bb96a1"
   },
   "models": {
     "ProjectionRace": {
@@ -945,6 +951,35 @@
         "packages/cli/test/sdk.test.ts",
         "packages/cli/test/library-source-members-http.test.ts"
       ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "source_onboarding_bounded_text_and_native_selection",
+      "files": [
+        "packages/cli/src/commands-library-source-onboarding.ts",
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/src/shared-create-import-readback.ts",
+        "packages/core/src/shared-create-model.ts",
+        "packages/core/src/shared-create-text-retention.ts",
+        "packages/core/src/shared-create.ts",
+        "packages/core/src/shared-records.ts",
+        "packages/core/src/shared-retained-source.ts",
+        "packages/core/src/shared-source-definitions.ts",
+        "packages/core/src/shared-source-onboarding-model.ts",
+        "packages/core/src/shared-source-onboarding.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-record-codec.node.test.ts",
+        "packages/core/test/shared-source-onboarding.test.ts",
+        "packages/core/test/shared-source-projection-retained.test.ts"
+      ],
+      "symbols": [
+        "prepareSharedCreateText",
+        "retainSharedCreateText",
+        "readSharedCreateTextPayload",
+        "decodeSourceDefinition",
+        "sourceOnboardingError"
+      ],
+      "scope": "Read-only native Selection v1 envelope normalization, explicit per-member scope and Router classification; original-plan recovery projection omits repeated text. New ordinary create input/body facts reuse bounded exact_bytes chunks while retaining complete original checksums, original operation identities and existing journals. Small v1 facts and native wire/readback policy remain unchanged. The retained bundle/source-projection-v2 manifest codec uses the existing bounded manifest limits; ordinary facts remain 64 KiB. These byte layouts, size bounds and Source-to-member classification are outside the existing finite model domains; no new temporal property is inferred. All TLA models, configs and expected_rules are unchanged. See docs/maintenance-verification-review.md SRC supplemental review."
     }
   ],
   "cases": [

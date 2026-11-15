@@ -292,6 +292,19 @@ export function decodeSourceDefinition(
       ...(rich("Ref") ? { version: rich("Ref") } : {}),
     }
   else adapter = { type, url: rich("Location"), ref: rich("Ref") }
+  // Some native source rows retain the explicit v1 selection envelope. It
+  // carries the same four fields, not permission to ignore unknown options or
+  // later versions. Normalize only this validated representation, with no page
+  // write; all existing unversioned definitions keep their exact fingerprint.
+  const storedSelection = Schema.decodeUnknownSync(
+    Schema.Union([
+      SourceDefinitionInputSchema.fields.selection,
+      Schema.Struct({
+        version: Schema.Literal(1),
+        ...SourceDefinitionInputSchema.fields.selection.fields,
+      }),
+    ]),
+  )(JSON.parse(rich("Selection")), { onExcessProperty: "error" })
   return validateSourceDefinition({
     version: 1,
     source_id: rich("Source ID"),
@@ -300,7 +313,12 @@ export function decodeSourceDefinition(
     enabled: value("Enabled").checkbox,
     policy: selected("Policy"),
     adapter,
-    selection: JSON.parse(rich("Selection")),
+    selection: {
+      roots: storedSelection.roots,
+      include: storedSelection.include,
+      exclude: storedSelection.exclude,
+      mapping: storedSelection.mapping,
+    },
     options: options.settings,
   })
 }

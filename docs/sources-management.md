@@ -25,6 +25,9 @@ Sources 单独保存可编辑配置，Records 保留不可变历史。普通 Ski
 
 本机认证与共享配置分离。Linear 使用 LINEAR_API_KEY，Git 使用本机正常认证。Shared JSON 不接受 token/password/authorization/header；不保存凭据，不执行脚本，不让 Notion 配置指定任意命令或本机文件路径。
 
+原生 Selection 接受既有四字段对象，也接受含 `version: 1` 的同结构封装；两者具有相同
+语义指纹，读取不改写页面。未知版本、额外字段及无效路径仍拒绝，不能借版本字段忽略过滤条件。
+
 ## 工作流
 
 `ctl library sources list/show` 查询可编辑来源；`put --expect FINGERPRINT` 保存完整配置；`bind` 将一个精确 Skill/member 关联来源且不改变当前 pin。`check` 执行只读发现，`fetch` 导出指定成员的完整目录。显式 prepare/apply 将经过核对的版本冻结到 Records 后选择它；用户 custom 正文、旧 pin 和未结清操作不被来源更新覆盖。
@@ -157,6 +160,28 @@ ntn-skills ctl library sources onboard-reconcile ./onboarding.json --entry ENTRY
 复用该完整观察。Skills 正向元数据完整分页，包括禁用条目；不依赖 View 或 Sources
 反向关系的内联数量。`registered` 只表示已登记的当前身份和关联，正文健康仍为未观察。
 重复成员、同名不同身份、未决创建、来源不可访问和不完整输入分别报告，不作为空库。
+
+只处理一个来源中的指定成员时，重复传入 `--member EXACT_KEY`。它收窄本次对账与动作，
+不修改 Notion 的共享 Selection；不能与 `--all` 混用。提供方仍取得完整配置范围，
+不存在于该完整发现结果的成员明确失败。可将它与 `--bind EXACT_KEY=PAGE_ID` 组合，
+只修复已审阅的旧页关联，不顺带接纳同一仓库的其他新成员。
+没有 Source Member 的来源目录 Router 单独列在 `source_routers`，保留其作者管理的
+Members，不冒充一个缺失上游 Skill。真正的 Skill 缺键仍须明确绑定决定。
+
+固定 Git、保留包及其创建清单共用既有有界清单编码：完整逻辑清单上限 1 MiB，压缩封装
+上限 180 KiB；文件内容继续使用既有独立对象与分块。普通事件、正文事实和未知记录仍受
+64 KiB 上限约束，不通过截断文件目录或放大所有记录来让大 Skill 导入成功。
+
+新的普通创建/来源接纳还可保留超过单条事实大小的完整 Markdown。原输入和阅读页基线
+各自按既有 32 KiB 精确字节对象分块，每份文本最多 8 MiB；原始 CRLF/UTF-8 字节与
+规范化页面正文分别校验，不合并为一份摘要。小文本继续使用原 v1 内联对象；新输入
+分块头为 v2 `chunked_utf8_input`，正文复用既有 v2 `chunked_normalized_markdown` 读取协议。
+块、整文与根记录均保持原 hash/长度/归属约束，缺块、篡改或未知派发不能由当前页面补造。
+这不放宽 Notion 页面内容接纳，也不修改旧观察、正文更新和迁移操作的冻结政策。
+
+失败输出不重复携带完整子计划正文。`recovery.original_plan` 保留原 operation/skill
+身份，并说明完整输入是否在本次父计划中；执行与核对仍使用原私有计划文件。创建后失败
+会单独报告已知原页面 ID，不能把该页面的存在或当前值相等当作成功回执。
 
 `onboard` 输出完整冻结计划与逐项摘要。缺失成员通过原创建事务接纳，默认保持禁用；
 已有页面只有在其不可变固定 Git 来源能证明相同仓库和 member 时，才生成补绑定动作。

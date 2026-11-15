@@ -112,7 +112,7 @@ export function validateRetainedSource(
     }
     if (archiveBytes !== source.archive.bytes)
       throw fail("RETAINED_SOURCE_INVALID", "The retained archive chunks are incomplete.")
-    validateSharedRecordEnvelope("retain-bundle", source)
+    validateSharedRecordEnvelope("retain-bundle", source, "source")
     return source
   })
 }

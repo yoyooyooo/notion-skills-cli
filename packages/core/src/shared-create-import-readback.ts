@@ -5,6 +5,7 @@ import type { SharedCreatePlan } from "./shared-create-model.ts"
 import type { SharedCreateBinding } from "./shared-create-outcome.ts"
 import { FileEventSchema, normalizeObservedBody } from "./shared-file-state.ts"
 import { loadRetainedBody } from "./shared-file-observer.ts"
+import { readSharedCreateTextPayload } from "./shared-create-text-retention.ts"
 import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
 import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
@@ -192,25 +193,12 @@ export function restoreNativeImportReadbacks(
                         "The original reading-page baseline is unavailable.",
                       ),
                     )
-                  const payload = yield* checked(() =>
-                    decode(
-                      Schema.Struct({
-                        version: Schema.Literal(1),
-                        kind: Schema.Literal("normalized_markdown"),
-                        normalization_version: Schema.Literal(1),
-                        markdown: Schema.String,
-                      }),
-                      body.payload,
-                    ),
+                  return yield* readSharedCreateTextPayload(
+                    plan.library,
+                    skillPage,
+                    { kind: "body", sha256: event.projection.sha256 },
+                    body.payload,
                   )
-                  if ((yield* sha256(payload.markdown)) !== event.projection.sha256)
-                    return yield* Effect.fail(
-                      fail(
-                        "RETAINED_BODY_INVALID",
-                        "The retained reading-page baseline differs from its initial fingerprint.",
-                      ),
-                    )
-                  return payload.markdown
                 })
         const resolved = yield* withObservedBody(file, markdown)
         if (canonicalSharedJson(resolved.event) !== canonicalSharedJson(event))

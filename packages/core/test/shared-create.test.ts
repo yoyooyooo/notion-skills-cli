@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { authScope } from "../src/catalog.ts"
+import { prepareSharedCreateText } from "../src/shared-create-text-retention.ts"
 import { decode, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { recordedFixtureTransport } from "./notion-http-fixture.ts"
@@ -487,9 +488,17 @@ describe("native shared creation", () => {
         { path: "large.md", bytes: encode("x".repeat(65_536)) },
       ],
     })
+    const chunked = await f.run(makeSharedCreatePlan(createLibrary, { portable: oversized }))
+    expect(encode(canonicalSharedJson(sharedCreateManifest(chunked))).length).toBeLessThan(
+      64 * 1024,
+    )
+    const text = await f.run(prepareSharedCreateText("x".repeat(65_536), "input"))
+    expect(text.payload.kind).toBe("chunked_utf8_input")
+    expect(text.objects).toHaveLength(1) // identical chunks share one immutable object
     expect(
-      (await f.run(Effect.flip(makeSharedCreatePlan(createLibrary, { portable: oversized })))).code,
-    ).toBe("SHARED_RECORD_TOO_LARGE")
+      (await f.run(Effect.flip(prepareSharedCreateText("x".repeat(8 * 1024 * 1024 + 1), "input"))))
+        .code,
+    ).toBe("SHARED_RESOURCE_TOO_LARGE")
     expect(f.writes()).toHaveLength(0)
   })
 

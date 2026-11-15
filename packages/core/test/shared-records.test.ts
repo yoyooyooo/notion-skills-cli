@@ -157,6 +157,29 @@ describe("append-only shared Records", () => {
       [
         { kind: "source" as const, payload: binding },
         {
+          kind: "source" as const,
+          payload: {
+            version: 1,
+            kind: "retained_bundle",
+            files: binding.files,
+            archive: { format: "zip", sha256: digest("archive"), bytes: 100, chunks: [] },
+          },
+        },
+        {
+          kind: "operation" as const,
+          payload: {
+            version: 1,
+            kind: "skill_create_manifest",
+            source_projection: {
+              version: 2,
+              retained: {
+                files: binding.files,
+                archive: { format: "zip", sha256: digest("archive"), bytes: 100, chunks: [] },
+              },
+            },
+          },
+        },
+        {
           kind: "operation" as const,
           payload: {
             version: 1,
@@ -216,6 +239,18 @@ describe("append-only shared Records", () => {
       { version: 1, kind: "file_observation", body: "x".repeat(70_000) },
       { version: 1, kind: "skill_apply", body: "x".repeat(70_000) },
       { version: 1, kind: "graph_release", nodes: "x".repeat(70_000) },
+      {
+        version: 1,
+        kind: "skill_create_manifest",
+        source_projection: { version: 3, retained: { files: [], archive: { format: "zip" } } },
+        body: "x".repeat(70_000),
+      },
+      {
+        version: 1,
+        kind: "skill_create_manifest",
+        source_projection: { version: 2, retained: { files: [], archive: { format: "tar" } } },
+        body: "x".repeat(70_000),
+      },
     ]) {
       const api = client([])
       await expect(

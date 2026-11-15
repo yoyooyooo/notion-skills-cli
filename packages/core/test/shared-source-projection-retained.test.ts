@@ -4,6 +4,7 @@ import { authScope } from "../src/catalog.ts"
 import { decode, fail, property, text, type SkillsError } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
+import { withSharedAuthoringTarget } from "../src/shared-authoring-context.ts"
 import {
   executeSharedCreate,
   loadSharedCreatePlan,
@@ -72,6 +73,166 @@ function retainedFixture(
 }
 
 describe("retained initial source projection in the original create kernel", () => {
+  test("a complete 100 KiB Markdown reference retains bounded input and body chunks and reconstructs the original plan cold", async () => {
+    const originalText =
+      "# Complete long reference\r\n\r\n" +
+      Array.from(
+        { length: 1400 },
+        (_, index) =>
+          `Paragraph ${index}: preserve 中文, quotes \"original\", slash \\ and every instruction without truncation.\r\n\r\n`,
+      ).join("")
+    const bytes = new TextEncoder().encode(originalText)
+    expect(bytes.length).toBeGreaterThan(100 * 1024)
+    const f = fixture([{ path: "references/large.md", bytes, mode: "100644" }], {
+      markdownImport: true,
+      recovery: true,
+    })
+    const plan = await f.run(
+      Effect.gen(function* () {
+        return yield* prepareSharedSourceProjection({
+          library,
+          definition: yield* readSourceDefinition(library, f.source.id),
+          acquired: f.snapshot,
+          member: "skills/demo",
+          skillId: "long-retained-reference",
+          enabled: false,
+          markdownImport: true,
+          storage: "retained",
+        })
+      }),
+    )
+    expect(f.writes()).toHaveLength(0)
+    const result = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    expect(result.verified).toBe(true)
+    const original = plan.files.find((file) => file.path === "references/large.md")!
+    const inputs = await f.run(
+      querySharedRecords(library, {
+        skillPageId: result.skill_page_id,
+        kind: "object",
+        entityId: original.input.object_id,
+      }),
+    )
+    expect(inputs[0]?.payload).toMatchObject({
+      version: 2,
+      kind: "chunked_utf8_input",
+      bytes: bytes.length,
+      sha256: original.input.sha256,
+    })
+    expect(new TextEncoder().encode(canonicalSharedJson(inputs[0]?.payload)).length).toBeLessThan(
+      65536,
+    )
+    f.base.objects.clear()
+    f.base.json.clear()
+    f.clear()
+    expect(
+      await f.run(
+        loadSharedCreatePlan(library, {
+          skillPageId: result.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      ),
+    ).toEqual(plan)
+    expect((await f.run(reconcileSharedCreate(library, plan))).verified).toBe(true)
+    const cold = await f.run(
+      withSharedAuthoringTarget(
+        result.skill_page_id,
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library,
+            target: result.skill_page_id,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            readOnly: true,
+          })
+        }),
+      ),
+    )
+    const large = cold.files.find((file) => file.path === "references/large.md")!
+    expect(f.base.objects.get(`objects/${large.sha256}`)).toEqual(bytes)
+    expect(f.writes()).toHaveLength(0)
+    const chunks = property(inputs[0]?.payload).chunks
+    if (!Array.isArray(chunks)) throw new Error("Expected retained input byte chunks")
+    const chunk = property(chunks[0]).object_id
+    for (const [id, row] of f.base.records)
+      if (text(property(property(row.properties).record).rich_text) === chunk)
+        f.base.records.delete(id)
+    f.base.objects.clear()
+    f.base.json.clear()
+    await expect(
+      f.run(
+        loadSharedCreatePlan(library, {
+          skillPageId: result.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      ),
+    ).rejects.toBeDefined()
+    expect(f.writes()).toHaveLength(0)
+  })
+
+  test("a large retained member uses bounded manifest storage without dropping resources", async () => {
+    const extra = Array.from({ length: 402 }, (_, index) => ({
+      path: `assets/complete/${String(index).padStart(4, "0")}/${"retained-path-".repeat(6)}.json`,
+      bytes: new TextEncoder().encode(JSON.stringify({ index, original: true }) + "\n"),
+      mode: "100644" as const,
+    }))
+    const f = fixture(extra, { markdownImport: true, recovery: true })
+    const plan = await f.run(
+      Effect.gen(function* () {
+        return yield* prepareSharedSourceProjection({
+          library,
+          definition: yield* readSourceDefinition(library, f.source.id),
+          acquired: f.snapshot,
+          member: "skills/demo",
+          skillId: "large-retained-member",
+          enabled: false,
+          markdownImport: true,
+          storage: "retained",
+        })
+      }),
+    )
+    expect(
+      new TextEncoder().encode(canonicalSharedJson(sharedCreateManifest(plan))).length,
+    ).toBeGreaterThan(64 * 1024)
+    expect(await f.run(validateSharedCreatePlan(plan))).toEqual(plan)
+    const result = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    expect(result.verified).toBe(true)
+    f.base.objects.clear()
+    f.base.json.clear()
+    f.clear()
+    const cold = await f.run(
+      Effect.gen(function* () {
+        return yield* withSharedAuthoringTarget(
+          result.skill_page_id,
+          openSharedConsumer({
+            library,
+            target: result.skill_page_id,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            readOnly: true,
+          }),
+        )
+      }),
+    )
+    expect(cold.files).toHaveLength(407)
+    for (const file of extra) {
+      const actual = cold.files.find((item) => item.path === file.path)!
+      expect(f.base.objects.get(`objects/${actual.sha256}`)).toEqual(file.bytes)
+      expect(actual.mode).toBe(file.mode)
+    }
+    expect(
+      await f.run(
+        loadSharedCreatePlan(library, {
+          skillPageId: result.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      ),
+    ).toEqual(plan)
+    expect((await f.run(reconcileSharedCreate(library, plan))).verified).toBe(true)
+    expect(f.writes()).toHaveLength(0)
+  })
+
   test("explicit retained admission keeps a complete public Git member without an anonymous retrieval proof", async () => {
     const f = fixture()
     const plan = await f.run(

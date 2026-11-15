@@ -15,6 +15,7 @@ import {
   prepareSourceOnboarding,
   reviewSourceOnboarding,
   executeSourceOnboarding,
+  sourceOnboardingError,
 } from "../src/shared-source-onboarding.ts"
 import { fixture, library, ids } from "./shared-source-projection-fixture.ts"
 import { id, rich } from "./shared-snapshot-fixture.ts"
@@ -120,6 +121,64 @@ test("a source-only row becomes one disabled complete Skill through the same fro
   expect(again.report.sources[0]?.members[0]?.kind).toBe("registered")
 })
 
+test("a source directory Router is preserved separately from missing Skill members", async () => {
+  const f = setup()
+  const router = f.seedSkill(id(8765), "source-directory", "Source directory", "router", true)
+  const props = property(router.properties)
+  props.origin = {
+    id: "origin",
+    type: "relation",
+    relation: [{ id: f.source.id }],
+    has_more: false,
+  }
+  props.source_member = rich("source_member", "")
+  const before = structuredClone(router)
+  const review = await f.run(reviewSourceOnboarding(library, f.scope, f.acquire))
+  expect(review.sources[0]?.unresolved_bindings).toEqual([])
+  expect(review.sources[0]?.source_routers).toMatchObject([
+    { page_id: router.id, kind: "router", member: "" },
+  ])
+  expect(review.sources[0]?.members[0]?.kind).toBe("admit")
+  expect(router).toEqual(before)
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("explicit member scope freezes only that member without editing the Source selection", async () => {
+  const f = setup()
+  const original = structuredClone(f.source)
+  const second = structuredClone(f.snapshot.members[0]!)
+  Object.assign(second, {
+    member_key: "skills/other",
+    portable: { ...second.portable, name: "Other workflow" },
+  })
+  Object.assign(f.snapshot, { members: [...f.snapshot.members, second] })
+  const scope = { ...f.scope, members: ["skills/demo"] }
+  const plan = await f.run(prepareSourceOnboarding(library, scope, {}, f.acquire))
+  expect(plan.report.scope).toEqual(scope)
+  expect(plan.report.sources[0]?.members).toHaveLength(1)
+  expect(plan.actions.map((action) => action.member)).toEqual(["skills/demo"])
+  expect(f.source).toEqual(original)
+  expect(f.writes()).toHaveLength(0)
+  const missing = await f.run(
+    prepareSourceOnboarding(library, { ...f.scope, members: ["skills/absent"] }, {}, f.acquire),
+  )
+  expect(missing.actions).toHaveLength(0)
+  expect(missing.report.sources[0]?.error).toMatchObject({
+    code: "SOURCE_MEMBER_UNAVAILABLE",
+    details: { members: ["skills/absent"] },
+  })
+  await expect(
+    f.run(
+      prepareSourceOnboarding(
+        library,
+        { ...f.scope, members: ["skills/demo", "skills/demo"] },
+        {},
+        f.acquire,
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
+})
+
 test("source drift and tampered parent plans cannot dispatch a child", async () => {
   const f = setup()
   const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
@@ -151,6 +210,40 @@ test("unknown creation remains on its original operation and is never replaced",
     kind: "blocked",
     reason: "original_creation_pending",
   })
+})
+
+test("a child failure keeps original recovery identity without echoing the complete plan", async () => {
+  const f = setup()
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const action = plan.actions[0]!
+  if (action.kind !== "create") throw new Error("Expected an original creation")
+  const original = structuredClone(action.plan)
+  const error = fail("SHARED_CREATE_BODY_MISMATCH", "Known semantic mismatch", {
+    component: "links",
+    native_create_operation_id: original.operation_id,
+    skill_page_id: id(99),
+    recovery: { mode: "reconcile", plan: original },
+  })
+  const projected = sourceOnboardingError(error, action)
+  expect(projected).toMatchObject({
+    code: error.code,
+    details: {
+      component: "links",
+      recovery: {
+        mode: "reconcile",
+        original_plan: {
+          operation_id: original.operation_id,
+          skill_id: original.skill_id,
+          retained_in_parent_plan: true,
+          full_input_omitted: true,
+        },
+      },
+    },
+  })
+  expect(Object.hasOwn(property(property(projected.details).recovery), "plan")).toBe(false)
+  expect(JSON.stringify(projected).length).toBeLessThan(2000)
+  expect(action.plan).toEqual(original)
+  expect(property(property(error.details).recovery).plan).toEqual(original)
 })
 
 test("missing discovery bindings reuse a proven fixed-source page and preserve custom bodies and eligibility", async () => {

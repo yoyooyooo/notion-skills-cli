@@ -1,5 +1,9 @@
 import { Crypto, Effect, Schema } from "effect"
 import { retainNotionReadbackMismatch } from "./shared-notion-readback-diagnostic.ts"
+import {
+  retainSharedCreateText,
+  readSharedCreateTextPayload,
+} from "./shared-create-text-retention.ts"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.ts"
 import {
@@ -131,11 +135,6 @@ const MarkdownSchema = Schema.Struct({
   truncated: Schema.Boolean,
   unknown_block_ids: Schema.Array(Schema.String),
   warnings: Schema.optional(Schema.Array(Schema.Unknown)),
-})
-const InputObjectSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  kind: Schema.Literal("utf8_input"),
-  text: Schema.String,
 })
 type Inventory = readonly { readonly raw: unknown; readonly record: SharedSkillRecord }[]
 
@@ -908,26 +907,10 @@ function retainInputs(
 ) {
   return Effect.gen(function* () {
     for (const file of plan.files) {
-      yield* appendSharedRecord(library, {
-        mode,
-        recordId: file.input.object_id,
-        operationId: `retain-input-${file.input.sha256}`,
-        skillPageId: page,
-        kind: "object",
-        entityId: file.input.object_id,
-        payload: sharedCreateInputPayload(file.input.text),
-      })
+      yield* retainSharedCreateText(library, page, file.input.text, "input", mode)
       if (!acceptsNativeImportReadback(plan)) yield* retainCreatedBody(library, file, page, mode)
       if (file.baseline_body !== undefined)
-        yield* appendSharedRecord(library, {
-          mode,
-          recordId: file.baseline_body.content.object_id,
-          operationId: `retain-${file.baseline_body.content.sha256}`,
-          skillPageId: page,
-          kind: "object",
-          entityId: file.baseline_body.content.object_id,
-          payload: sharedCreateBodyPayload(file.baseline_body.markdown),
-        })
+        yield* retainSharedCreateText(library, page, file.baseline_body.markdown, "body", mode)
     }
     if (plan.version === 2) {
       const retained = yield* sharedMigrationOriginObjects(plan.origin.candidate)
@@ -973,15 +956,7 @@ function retainCreatedBody(
   page: string,
   mode: "create" | "reconcile",
 ) {
-  return appendSharedRecord(library, {
-    mode,
-    recordId: file.content.object_id,
-    operationId: `retain-${file.content.sha256}`,
-    skillPageId: page,
-    kind: "object",
-    entityId: file.content.object_id,
-    payload: sharedCreateBodyPayload(file.projection.markdown),
-  })
+  return retainSharedCreateText(library, page, file.projection.markdown, "body", mode)
 }
 function saveOutcome(
   library: SharedLibrary,
@@ -1281,15 +1256,12 @@ function readRetainedCreateInput(
       return yield* Effect.fail(
         fail("SHARED_CREATE_UNRESOLVED", "An exact retained original input object is unavailable."),
       )
-    const body = yield* createChecked(() =>
-      Schema.decodeUnknownSync(InputObjectSchema)(object.payload, { onExcessProperty: "error" }),
+    return yield* readSharedCreateTextPayload(
+      library,
+      page,
+      { ...expected, kind: "input" },
+      object.payload,
     )
-    const bytes = new TextEncoder().encode(body.text)
-    if (bytes.length !== expected.bytes || (yield* sha256(bytes)) !== expected.sha256)
-      return yield* Effect.fail(
-        fail("SHARED_CREATE_INVALID", "An original input object failed its immutable checksum."),
-      )
-    return body.text
   })
 }
 

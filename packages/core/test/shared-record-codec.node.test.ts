@@ -5,6 +5,34 @@ import { decodeSharedRecordStorage, encodeSharedRecordStorage } from "../src/sha
 import { canonicalSharedRecordEnvelope } from "../src/shared-records.ts"
 
 describe("fixed-manifest storage on the supported Node runtime", () => {
+  test("retained bundle and retained creation manifests use the same bounded canonical codec", () => {
+    const files = Array.from({ length: 407 }, (_, index) => ({
+      path: `assets/${index}/${"bounded-resource-".repeat(7)}.json`,
+      sha256: createHash("sha256").update(String(index)).digest("hex"),
+      bytes: 27,
+      mode: "100644",
+    }))
+    const retained = {
+      files,
+      archive: { format: "zip", sha256: "a".repeat(64), bytes: 123, chunks: [] },
+    }
+    for (const [kind, payload] of [
+      ["source", { version: 1, kind: "retained_bundle", ...retained }],
+      [
+        "operation",
+        { version: 1, kind: "skill_create_manifest", source_projection: { version: 2, retained } },
+      ],
+    ] as const) {
+      const original = { version: 1, operation_id: "retained-original", payload }
+      const logical = JSON.stringify(original)
+      expect(Buffer.byteLength(logical)).toBeGreaterThan(65536)
+      const encoded = encodeSharedRecordStorage(logical)
+      expect(Buffer.byteLength(encoded)).toBeLessThanOrEqual(180 * 1024)
+      expect(JSON.parse(canonicalSharedRecordEnvelope(kind, encoded))).toEqual(original)
+      expect(() => canonicalSharedRecordEnvelope("file_event", encoded)).toThrow()
+    }
+  })
+
   test("the pinned encoder keeps request bytes stable across runtimes and leaves small records unchanged", () => {
     const small = '{"operation_id":"original","payload":{},"version":1}'
     expect(encodeSharedRecordStorage(small)).toBe(small)

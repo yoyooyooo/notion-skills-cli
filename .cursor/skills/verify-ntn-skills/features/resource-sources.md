@@ -21,6 +21,14 @@ Git 批取同时运行 `upstream-source-batch.test.ts` 的 commit、branch、tag
 negotiation，不改变初始 ref 解析或下载整仓；每组检查完整字节、固定 revision、批请求数量
 以及未选大对象未获取。历史失败保留，不靠改上游分支配置绕过产品缺陷。
 
+SRC 追加反例：Selection version:1 与未封装四字段语义一致，未知版本/字段失败；
+来源目录 Router 单列而不伪造Member；`--member`冻结明确范围、缺失请求键失败。
+`shared-source-projection-retained.test.ts` 的407文件清单和100 KiBMarkdown分别验证清单
+编码、完整输入/正文的字节分块、冷加载原计划与缺块拒绝；不要将两者混为同一个大小限制。
+`shared-record-codec.node.test.ts`在实际Node验证压缩/逻辑上限；普通事件仍拒绝大记录。
+安装包HTTP旅程的原guide扩大到100 KiB，保持原创建/改绑/保留/旧pin回归，并继续调用同包SDK。
+真实失败的完整计划保存在私有文件；公开错误投影只交付恢复身份和原计划指向。
+
 ## 既有来源与恢复矩阵
 
 | Case | 公开入口和合同 | 必须失败的反例 |

@@ -3,7 +3,11 @@ import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { SharedCreatePlanSchema } from "./shared-create-model.ts"
 
 export const SourceOnboardingScopeSchema = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("source"), source: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("source"),
+    source: Schema.String,
+    members: Schema.optionalKey(Schema.Array(Schema.String)),
+  }),
   Schema.Struct({ kind: Schema.Literal("all") }),
 ])
 export type SourceOnboardingScope = typeof SourceOnboardingScopeSchema.Type
@@ -73,6 +77,7 @@ export const SourceOnboardingReportSchema = Schema.Struct({
       provider_revision: Schema.NullOr(Schema.String),
       status: Schema.Literals(["reviewed", "disabled", "unavailable"]),
       members: Schema.Array(SourceOnboardingMemberSchema),
+      source_routers: Schema.optionalKey(Schema.Array(SourceOnboardingBindingSchema)),
       unresolved_bindings: Schema.Array(
         Schema.Struct({
           page_id: Schema.String,
