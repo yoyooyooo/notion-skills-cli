@@ -61,7 +61,7 @@ export type MaintenanceProgress = {
 
 const TASK_START = "<mnt08-task>"
 const TASK_END = "</mnt08-task>"
-const SUPPORTED_PI = ["1.4.0", "1.5.0"] as const
+const SUPPORTED_PI = ["1.4.0", "1.5.0", "1.5.2"] as const
 const PINNED_PI = "1.5.0"
 const PASSTHROUGH = [
   "NOTION_API_TOKEN",
@@ -845,6 +845,8 @@ export function verifyMaintenanceResource(input: {
   entity: string
   observed: ReturnType<AuthoringContinuation["observe"]>
   target: string
+  /** Original public readonly main, frozen before Pi runs; never selector input. */
+  authoringBaseline?: Record<string, unknown>
 }) {
   const calls = input.messages
     .filter((message) => message.role === "assistant")
@@ -928,8 +930,114 @@ export function verifyMaintenanceResource(input: {
       model_sha256: hash(textOf(found[0]?.content)),
     }
   })
-  if (countOf(decodedWireModelText(input.entity), body) !== 1)
-    throw new Error("MNT_RESOURCE_BODY_NOT_UNIQUE")
+  const rawBodyOccurrences = countOf(decodedWireModelText(input.entity), body)
+  let containedOldMain: {
+    tool_call_id: string
+    owner: string
+    snapshot_id: string
+    file_id: string
+    ref: string
+    body_sha256: string
+    original_result_sha256: string
+    occurrences: number
+  } | null = null
+  const baseline = input.authoringBaseline
+  if (baseline && typeof baseline.content === "string" && countOf(baseline.content, body) > 0) {
+    const original = exactResult("mnt-authoring-read")
+    const originalText = textOf(original.content)
+    const authoring = parseExactlyOneJsonObject(originalText)
+    const authoringRecord = asRecord(authoring.record)
+    const authoringLocator = asRecord(authoringRecord?.locator)
+    const task = taskFromUserText(userText(input.messages))
+    const originalCalls = calls.filter((call) => call?.id === "mnt-authoring-read")
+    const wireResults = projected.filter(
+      (message) => message?.tool_call_id === "mnt-authoring-read",
+    )
+    const applied = parseExactlyOneJsonObject(textOf(exactResult("mnt-apply").content))
+    const oldBindings = Array.isArray(authoring.file_bindings)
+      ? authoring.file_bindings.map(asRecord)
+      : []
+    const mainBindings = oldBindings.filter((binding) => binding?.path === "SKILL.md")
+    const newBindings = Array.isArray(applied.file_bindings)
+      ? applied.file_bindings.map(asRecord)
+      : []
+    if (
+      task.target !== input.target ||
+      authoringLocator?.page_id !== input.target ||
+      authoringLocator.database_id !== task.entry ||
+      authoring.path !== "SKILL.md" ||
+      authoring.ok !== true ||
+      typeof authoring.ref !== "string" ||
+      typeof authoring.snapshot_id !== "string" ||
+      typeof authoring.content !== "string" ||
+      typeof authoringRecord?.id !== "string" ||
+      authoring.ref !== baseline.ref ||
+      authoring.snapshot_id !== baseline.snapshot_id ||
+      authoring.content !== baseline.content ||
+      authoringRecord.id !== asRecord(baseline.record)?.id ||
+      JSON.stringify(authoring.file_bindings) !== JSON.stringify(baseline.file_bindings) ||
+      applied.snapshot_id === authoring.snapshot_id ||
+      typeof applied.snapshot_id !== "string" ||
+      asRecord(applied.record)?.id !== authoringRecord.id ||
+      mainBindings.length !== 1 ||
+      mainBindings[0]?.page_id !== input.target ||
+      typeof mainBindings[0]?.file_id !== "string" ||
+      oldBindings.some(
+        (binding) =>
+          binding?.page_id === rows[0]!.id ||
+          binding?.file_id === richPlain(asRecord(rows[0]!.properties)?.file_id),
+      ) ||
+      newBindings.filter(
+        (binding) =>
+          binding !== undefined &&
+          binding.page_id === rows[0]!.id &&
+          binding.path === path &&
+          binding.file_id === richPlain(asRecord(rows[0]!.properties)?.file_id),
+      ).length !== 1 ||
+      originalCalls.length !== 1 ||
+      originalCalls[0]?.name !== "bash" ||
+      asRecord(originalCalls[0].arguments)?.command !==
+        quoteArgv([
+          ...task.cli,
+          "read",
+          input.target,
+          "--database",
+          task.entry,
+          "--authoring",
+          "--json",
+          "--read-only",
+        ]) ||
+      wireResults.length !== 1 ||
+      textOf(wireResults[0]?.content) !== originalText
+    )
+      throw new Error("MNT_RESOURCE_AUTHORING_BASELINE_CHANGED")
+    const pinned = new URL(authoring.ref)
+    if (
+      pinned.protocol !== "skill:" ||
+      decodeURIComponent(pinned.hostname) !== authoringRecord.id ||
+      pinned.pathname !== "/SKILL.md" ||
+      pinned.searchParams.get("snapshot") !== authoring.snapshot_id ||
+      pinned.searchParams.get("file_id") !== mainBindings[0].file_id
+    )
+      throw new Error("MNT_RESOURCE_AUTHORING_IDENTITY_CHANGED")
+    const occurrences = countOf(authoring.content, body)
+    if (
+      countOf(decodedWireModelText(JSON.stringify({ messages: wireResults })), body) !== occurrences
+    )
+      throw new Error("MNT_RESOURCE_AUTHORING_EXTRA_CONTENT")
+    containedOldMain = {
+      tool_call_id: "mnt-authoring-read",
+      owner: authoringRecord.id,
+      snapshot_id: authoring.snapshot_id,
+      file_id: mainBindings[0].file_id,
+      ref: authoring.ref,
+      body_sha256: hash(authoring.content),
+      original_result_sha256: hash(originalText),
+      occurrences,
+    }
+  }
+  const currentResourceOccurrences = rawBodyOccurrences - (containedOldMain?.occurrences ?? 0)
+  if (currentResourceOccurrences !== 1) throw new Error("MNT_RESOURCE_BODY_NOT_UNIQUE")
   return {
     path,
     page_id: rows[0].id,
@@ -937,6 +1045,9 @@ export function verifyMaintenanceResource(input: {
     source_sha256: hash(body),
     source_bytes: Buffer.byteLength(body),
     complete_copies: 1,
+    raw_complete_body_occurrences: rawBodyOccurrences,
+    contained_old_main: containedOldMain,
+    current_resource_copies: currentResourceOccurrences,
     original_full_results: 2,
     effects: outcomes,
   }
@@ -1240,6 +1351,7 @@ export async function runMaintenancePi(
   const serializer = await broker.resolveInstalledPiSerializer(pi.packageRoot, pi.version)
   const currentMain = options.currentMainFile ?? join(output, "current-main.md")
   let staged: { sha256: string; bytes: number } | undefined
+  let authoringBaseline: Record<string, unknown> | undefined
   if (!options.currentMainFile) {
     const read = asRecord(
       await input.noWrites("mnt-pi-stage-current-main", [
@@ -1256,6 +1368,7 @@ export async function runMaintenancePi(
       throw new Error("CURRENT_MAIN_UNREADABLE")
     await writeFile(currentMain, read.content, { mode: 0o600 })
     staged = { sha256: hash(read.content), bytes: Buffer.byteLength(read.content) }
+    authoringBaseline = read
   }
   const task: MaintenanceTask = {
     cli: [input.context.runtime, input.context.executable],
@@ -1482,6 +1595,7 @@ export async function runMaintenancePi(
           entity: finalEntity,
           observed: input.observe(),
           target: input.target,
+          authoringBaseline,
         }),
       }
     } catch (error) {
@@ -1527,6 +1641,7 @@ export async function runMaintenancePi(
       chain: progress.chain,
       consumption: progress.consumption,
       split_applied: progress.chain === "apply",
+      operation_id: progress.operationId ?? null,
       stop_reason: progress.stopReason ?? promptError ?? oracle.reason ?? null,
       acceptance,
       pins,
@@ -1582,7 +1697,7 @@ export async function runMaintenancePi(
   return result
 }
 
-function messageFromSessionLine(value: unknown): VisibleMessage | undefined {
+export function messageFromSessionLine(value: unknown): VisibleMessage | undefined {
   const record = asRecord(value)
   if (!record) return undefined
   const message = asRecord(record.message) ?? (typeof record.role === "string" ? record : undefined)
@@ -1590,10 +1705,13 @@ function messageFromSessionLine(value: unknown): VisibleMessage | undefined {
   return message as VisibleMessage
 }
 
-export function toolCallsFrom(
-  messages: readonly VisibleMessage[],
-): { id: string; name: string; resultText: string | null }[] {
-  const calls: { id: string; name: string }[] = []
+export function toolCallsFrom(messages: readonly VisibleMessage[]): {
+  id: string
+  name: string
+  arguments: Record<string, unknown> | null
+  resultText: string | null
+}[] {
+  const calls: { id: string; name: string; arguments: Record<string, unknown> | null }[] = []
   for (const message of messages) {
     if (message.role !== "assistant" || !Array.isArray(message.content)) continue
     for (const block of message.content) {
@@ -1603,7 +1721,11 @@ export function toolCallsFrom(
         typeof record.id === "string" &&
         typeof record.name === "string"
       )
-        calls.push({ id: record.id, name: record.name })
+        calls.push({
+          id: record.id,
+          name: record.name,
+          arguments: asRecord(record.arguments) ?? null,
+        })
     }
   }
   const results = resultsById(messages)

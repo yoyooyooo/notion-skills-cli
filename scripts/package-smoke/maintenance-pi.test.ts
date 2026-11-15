@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 import { resolveConsumerRuntime } from "./consumer.ts"
+import { maintenancePiInitialMain, prepareMaintenancePiIntent } from "./maintenance-pi-gate.ts"
 import {
   acceptanceFailures,
   oracleProjection,
@@ -30,6 +31,118 @@ const task: MaintenanceTask = {
   input_dir: "/tmp/mnt-input",
   current_main_file: "/tmp/mnt-current-main.md",
 }
+
+test("the current Pi fixture leaves both new refs unallocated and splits every original paragraph", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mnt-single-intent-"))
+  const directories = new Map<string, Record<string, string>>()
+  const reads: string[][] = []
+  let writes = 0
+  const prepared = await prepareMaintenancePiIntent(
+    {
+      target: "page-target",
+      database: "db-entry",
+      noWrites: async (_label, args) => {
+        reads.push(args)
+        return {
+          ref: "skill://page-target/SKILL.md?snapshot=original",
+          snapshot_id: "original",
+          content: maintenancePiInitialMain,
+          file_bindings: [{ path: "SKILL.md", page_id: "page-target", file_id: "main" }],
+        }
+      },
+      invoke: async () => {
+        writes += 1
+        throw new Error("New references must be created by Pi's one apply")
+      },
+      directory: async (name, files) => {
+        directories.set(name, files)
+        return join(root, name)
+      },
+    },
+    root,
+  )
+  assert.equal(writes, 0)
+  assert.equal(reads.length, 1)
+  assert.ok(reads[0]?.includes("--refresh"))
+  assert.deepEqual([...directories.keys()], ["requested-input"])
+  assert.ok(Buffer.byteLength(maintenancePiInitialMain) > 5_000)
+  const overview = prepared.files["SKILL.md"].split("\n\n[First guide]")[0]
+  assert.equal(
+    [overview, prepared.files["references/pi-one.md"], prepared.files["references/pi-two.md"]].join(
+      "\n\n",
+    ),
+    maintenancePiInitialMain.trimEnd(),
+  )
+  const stage = JSON.parse(await readFile(join(root, "fixture-stage.json"), "utf8"))
+  assert.equal(stage.preallocated_references, false)
+  assert.equal(stage.legacy_result, null)
+  assert.equal(stage.original_file_bindings.length, 1)
+  assert.equal(stage.requested_files.length, 3)
+})
+
+test("the former preallocated Pi fixture stays explicit and cannot masquerade as single apply", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mnt-legacy-intent-"))
+  const writes: string[][] = []
+  const directories: string[] = []
+  await prepareMaintenancePiIntent(
+    {
+      target: "page-target",
+      database: "db-entry",
+      noWrites: async () => ({
+        ref: "skill://page-target/SKILL.md?snapshot=original",
+        snapshot_id: "original",
+        content: maintenancePiInitialMain,
+        file_bindings: [{ path: "SKILL.md" }],
+      }),
+      invoke: async (_label, args) => {
+        writes.push(args)
+        return { verified: true, status: "applied" }
+      },
+      directory: async (name) => {
+        directories.push(name)
+        return join(root, name)
+      },
+    },
+    root,
+    "legacy-preallocated",
+  )
+  assert.deepEqual(directories, ["pi-native-reference-baseline", "requested-input"])
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0]?.[0], "apply")
+  const stage = JSON.parse(await readFile(join(root, "fixture-stage.json"), "utf8"))
+  assert.equal(stage.mode, "legacy-preallocated")
+  assert.equal(stage.preallocated_references, true)
+  assert.equal(stage.scope, "public_installed_cli_reference_allocation_before_pi")
+})
+
+test("an already allocated reference rejects the current Pi fixture before any write", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mnt-invalid-intent-"))
+  let calls = 0
+  await assert.rejects(
+    prepareMaintenancePiIntent(
+      {
+        target: "page-target",
+        database: "db-entry",
+        noWrites: async () => ({
+          ref: "skill://page-target/SKILL.md?snapshot=original",
+          snapshot_id: "original",
+          content: maintenancePiInitialMain,
+          file_bindings: [{ path: "references/pi-one.md" }],
+        }),
+        invoke: async () => {
+          calls += 1
+        },
+        directory: async () => {
+          calls += 1
+          return root
+        },
+      },
+      root,
+    ),
+    /PI_REFERENCE_ALREADY_ALLOCATED/,
+  )
+  assert.equal(calls, 0)
+})
 
 test("posthoc main oracle resolves only observed owned native links and retains literal or foreign spans", () => {
   const target = "00000000-0000-4000-8000-000000000001"
@@ -547,7 +660,7 @@ test("real Pi smoke captures wire and session or records the candidate limit", {
   assert.equal(result.split_applied, false)
   assert.equal(result.boundaries.real_notion, false)
   assert.equal(result.boundaries.real_model, false)
-  assert.equal(result.boundaries.real_pi, "1.5.0")
+  assert.ok(["1.4.0", "1.5.0", "1.5.2"].includes(result.boundaries.real_pi))
   assert.ok(result.http.some((item) => (item.bytes ?? 0) > 0 && item.sse_bytes > 0))
   assert.ok(result.sessions.some((item) => item.bytes > 0))
   assert.ok(result.acceptance.includes("missing_body_source") || result.chain === "incomplete")
@@ -759,5 +872,156 @@ test("actual resource source and each operation effects survive once-only outgoi
     const broken = resourceCase()
     change(broken)
     assert.throws(() => verifyMaintenanceResource(broken))
+  }
+})
+
+function splitResourceCase() {
+  const input = resourceCase()
+  const body = input.observed.bodies[0]![1]
+  const originalTask = { ...task, target: input.target }
+  const record = {
+    id: "shared_skill:library:owned",
+    locator: { page_id: input.target, database_id: task.entry },
+  }
+  const baseline = {
+    ok: true,
+    path: "SKILL.md",
+    snapshot_id: "old",
+    ref: "skill://shared_skill%3Alibrary%3Aowned/SKILL.md?snapshot=old&file_id=main-file",
+    record,
+    content: "# Original main\n\n" + body,
+    file_bindings: [{ path: "SKILL.md", page_id: input.target, file_id: "main-file" }],
+  }
+  const original = JSON.stringify(baseline)
+  const authoring = tool("mnt-authoring-read", "bash", original)
+  authoring[0]!.content = [
+    {
+      type: "toolCall",
+      id: "mnt-authoring-read",
+      name: "bash",
+      arguments: {
+        command: quoteArgv([
+          ...task.cli,
+          "read",
+          input.target,
+          "--database",
+          task.entry,
+          "--authoring",
+          "--json",
+          "--read-only",
+        ]),
+      },
+    },
+  ]
+  input.messages.unshift(
+    user(maintenanceTaskText(originalTask)),
+    ...authoring,
+    ...tool(
+      "mnt-apply",
+      "bash",
+      JSON.stringify({
+        ok: true,
+        verified: true,
+        snapshot_id: "new",
+        record,
+        file_bindings: [
+          ...baseline.file_bindings,
+          { path: "references/guide.md", page_id: "owned-file", file_id: "stable-file" },
+        ],
+      }),
+    ),
+  )
+  const wire = JSON.parse(input.entity)
+  wire.messages.unshift({ role: "tool", tool_call_id: "mnt-authoring-read", content: original })
+  return { ...input, entity: JSON.stringify(wire), authoringBaseline: baseline }
+}
+
+test("a split reference reports its original-main occurrence separately without changing raw counts", () => {
+  const proof = verifyMaintenanceResource(splitResourceCase())
+  assert.equal(proof.raw_complete_body_occurrences, 2)
+  assert.equal(proof.contained_old_main?.occurrences, 1)
+  assert.equal(proof.contained_old_main?.snapshot_id, "old")
+  assert.equal(proof.contained_old_main?.file_id, "main-file")
+  assert.equal(proof.current_resource_copies, 1)
+  assert.equal(proof.complete_copies, 1)
+})
+
+test("old-main attribution rejects changed source, identity, command and unexplained duplicates", () => {
+  type Input = ReturnType<typeof splitResourceCase>
+  const changeAuthoring = (input: Input, change: (parsed: Record<string, unknown>) => void) => {
+    const result = input.messages.find(
+      (message) => message.role === "toolResult" && message.toolCallId === "mnt-authoring-read",
+    )!
+    const parsed = JSON.parse(String(result.content))
+    change(parsed)
+    result.content = JSON.stringify(parsed)
+    const wire = JSON.parse(input.entity)
+    wire.messages.find(
+      (message: { tool_call_id: string }) => message.tool_call_id === "mnt-authoring-read",
+    ).content = result.content
+    input.entity = JSON.stringify(wire)
+  }
+  for (const mutate of [
+    (input: Input) =>
+      changeAuthoring(input, (value) => {
+        value.content += "changed"
+      }),
+    (input: Input) =>
+      changeAuthoring(input, (value) => {
+        value.ref = String(value.ref).replace("snapshot=old", "snapshot=wrong")
+      }),
+    (input: Input) =>
+      changeAuthoring(input, (value) => {
+        value.snapshot_id = "wrong"
+      }),
+    (input: Input) => {
+      input.authoringBaseline.content += "changed"
+    },
+    (input: Input) => {
+      const message = input.messages.find(
+        (value) =>
+          value.role === "assistant" &&
+          JSON.stringify(value.content).includes("mnt-authoring-read"),
+      )!
+      message.content = [
+        {
+          type: "toolCall",
+          id: "mnt-authoring-read",
+          name: "bash",
+          arguments: { command: "forged" },
+        },
+      ]
+    },
+    (input: Input) => {
+      const wire = JSON.parse(input.entity)
+      wire.messages[0].content += "changed"
+      input.entity = JSON.stringify(wire)
+    },
+    (input: Input) => {
+      const wire = JSON.parse(input.entity)
+      wire.messages.push({ role: "assistant", content: input.observed.bodies[0]![1] })
+      input.entity = JSON.stringify(wire)
+    },
+    (input: Input) => {
+      const wire = JSON.parse(input.entity)
+      wire.messages.push({
+        role: "tool",
+        tool_call_id: "unknown-source",
+        content: input.observed.bodies[0]![1],
+      })
+      input.entity = JSON.stringify(wire)
+    },
+    (input: Input) => {
+      const wire = JSON.parse(input.entity)
+      const repeat = wire.messages.find(
+        (message: { tool_call_id: string }) => message.tool_call_id === "mnt-read-repeat",
+      )
+      repeat.content = repeat.content.replace("Already available.", input.observed.bodies[0]![1])
+      input.entity = JSON.stringify(wire)
+    },
+  ]) {
+    const input = splitResourceCase()
+    mutate(input)
+    assert.throws(() => verifyMaintenanceResource(input))
   }
 })

@@ -60,10 +60,16 @@ export async function checkAuthoring(
   continuation?: (input: AuthoringContinuation) => Promise<unknown>,
   options: {
     readonly maintenanceOnly?: boolean
+    /** A complete long main for the maintenance-only split fixture. */
+    readonly maintenanceMain?: string
     readonly repairOnly?: boolean
     readonly emptyLibraryOnly?: boolean
   } = {},
 ) {
+  assert.ok(
+    options.maintenanceMain === undefined || options.maintenanceOnly === true,
+    "An explicit maintenance main belongs only to the maintenance fixture",
+  )
   const root = join(context.scratch, "controlled-authoring")
   await mkdir(root)
   const state = join(root, "state")
@@ -857,6 +863,7 @@ export async function checkAuthoring(
     }
     const initial = {
       "SKILL.md":
+        options.maintenanceMain ??
         "---\nname: Installed author\ndescription: Independent installed author fixture\n---\n\n# Installed author\n\nInitial main.\n",
       "references/a.md": "# A\n\nOriginal A.\n",
       "references/b.md": "# B\n\nOriginal B.\n",
