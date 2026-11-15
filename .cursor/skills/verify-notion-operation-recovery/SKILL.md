@@ -121,3 +121,10 @@ python3 "$OPERATION_CANDIDATE_ROOT/scripts/check-operation-recovery-mutations.py
 独立冷 Agent 只给此 skill 路径、目标 checkout、任务范围和新输出根，由它读原件并运行。回执包括实际命令、配置数量、完整性质判据、源码/工具/input hashes、失败原件和恢复结果。未实际跑过时保持“未验证”，不能以读过文档替代。
 
 回链：[恢复地图](../verify-ntn-skills/features/import-create-recovery-dry-run.md) · [共享 SSOT](../verify-ntn-skills/features/shared-ssot.md)。更新覆盖边界时保留原六模型历史范围。通过不表示任意长度前缀、跨机器 exactly-once、provider CAS 或无条件进度。
+
+### 原创建与独立文件修复的组合
+
+shared-source-file-repair.test.ts验证独立row ACK与原create ACK分开核对：原恢复review
+绑定file-repair集合，unknown和缺冷证据不能跨入口绕过。未扩大原有限TLA域；物理
+表格/代码解析、完整前像和具体proof codec仍由实现、安装及真实服务层证明。安全诊断
+只扩充观测，不改变原拒绝的操作权限。

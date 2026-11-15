@@ -77,3 +77,26 @@ CLI返回exact只读reconcile，不以“参数帮助”或新计划替代原操
 正文漂移、篡改ACK、冷读缺旧review；原输入和旧wire逐字不变。实际Notion验证的
 加粗表示与受控fixture分开记录，受控fixture必须重放已观察到的v16无效行为，不能
 继续假定反斜线转义有效。原apply的错误不是旧操作完成；不能改断言来接受圆点。
+
+## 已分配支持文件的物理代码修复
+
+运行 `bun test packages/core/test/shared-import-code-padding.test.ts packages/core/test/shared-source-file-repair.test.ts --timeout 60000`。
+完整语义检查先证明只有一个表格代码标记补空格，再读真实table-row确认物理正文，
+不把serializer猜测当根因。修复仅改原行的单个code span，其他富文本与父链保持，
+不重写整页或覆盖旧失败。必须复验完整Markdown、未受影响前缀、原ACK和独立完成。
+
+覆盖零写preview、一次row PATCH、丢响应的可见/不可见结果、跨original recovery
+入口绕过、row/body/parent/Source漂移、缺原ACK及冷读缺完整review/正文。正常import
+仍拒绝代码空白变化，多处或其他代码变化仍拒绝。原安装Git/Node/SQLite旅程实际走
+CLI review、同包SDK apply、CLI reconcile和独立冷读，不直接填入产品状态。
+
+新诊断运行notion-http.test.ts与shared-source-definitions.test.ts：真实HTTP只保留
+有限类别、公开字段、数值位置和安全request ID，不泄露message或凭据，不增加重试，
+原never-repeat继续拒绝重放。旧缺诊断事实不重写或补造。
+
+
+物理修复后的自动裸主机根斜杠仅在原href已绑定、原文无该明确URL且修复行外字节完全
+不变时可按新的完成policy接受。保留“明确URL后还有同名自动URL”的负例，后者不能
+替代前者。原PATCH真实ACK存在而completion缺失时，reconcile和dry-run须报告0次row
+更新；后续apply只补immutable证明，测试整个过程中PATCH总数仍为1。未知ACK两种
+可见性继续拒绝。实际原件差异与受控安装的同场景分别留证。

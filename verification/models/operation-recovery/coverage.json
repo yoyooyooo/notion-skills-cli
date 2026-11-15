@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "31513ecfedfe7691a9395ee17a0bf67aba4fab92",
+  "synchronized_commit": "413e0bf8a68032f13238d7a00915d265b4cf54b8",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
@@ -8,7 +8,7 @@
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
-    "packages/core/src/shared-source-definitions.ts": "ca9ce89f39e865f83ada90f4e8851b9b4688076d8402ed84b62887b1fb98ed5a",
+    "packages/core/src/shared-source-definitions.ts": "56304c7529dc025b8d505dabfb932714b4e8926430e5c2dfbda82a9a09aa8366",
     "packages/core/src/shared-records.ts": "967ba25a903520b32efef83e3050cae192b1a47e3883aa2ba0f917efea230312",
     "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
     "packages/core/src/shared-file-management-model.ts": "8c79af06932063c4cffd6f1a1136f73352476a75642cb62d18d3bb410289729c",
@@ -40,7 +40,7 @@
     "packages/core/src/shared-source-run.ts": "b53a2e2d41b7da696003eaf526a9cc35c153fc882f8c5ba4c8d34093117c5bb1",
     "packages/core/src/shared-source-display.ts": "8c4038bd728472617a41fc6bcf038bcdf203711f154b4c52993da5b92d9e389c",
     "packages/core/src/shared-source-refresh.ts": "f9c466fc40f91ca658fc47b54d28bf87050a73746f838db7992ed4f1bb2a8733",
-    "packages/core/test/shared-source-definitions.test.ts": "c31358f2bb5ee7dc356e5470684b3ef773ef4442a9361c2f54c85730443efaef",
+    "packages/core/test/shared-source-definitions.test.ts": "2a51eb051ec313fdfe88f3962188931d55c717f68e494e12b48c8dfe14bf7814",
     "packages/core/test/shared-source-run.test.ts": "98a1660fd155d627956476db329dfce3162b7956670d3f39fd643d3307eabee3",
     "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
@@ -48,18 +48,26 @@
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
-    "packages/cli/test/library-source-members-http.test.ts": "304753490931a0a2cef542ef21dd70e9540f1a9b6d608064a6cfde32b53da324",
+    "packages/cli/test/library-source-members-http.test.ts": "4777361f63c88f413119f9e6c414419d10cd4e0f4d6784ab451036b2b83d04e8",
     "packages/core/test/shared-import-markdown.test.ts": "2d061ffe12a1abda4abf5f0fe459ae81ee92a48fceff187ee944c2870af6bd9c",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
-    "packages/core/src/shared-create-retained-recovery.ts": "ade0245944dbed2c0ddef6c0690ae51abca77cbeabcb34a737ff3698798c1bd8",
+    "packages/core/src/shared-create-retained-recovery.ts": "8c251fddefda4d3eeda9263a21b35fa4c338c3a01115c03d939ed54d4162b0c3",
     "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
     "packages/core/test/shared-create-retained-recovery.test.ts": "5455614219721838509ed265ccd55515890496850107eb35c6c4b4785df15854",
-    "packages/cli/src/commands-library-source-recovery.ts": "121ad64f3a3eaab4f7e26bc82e8f6a856777873b8071ddeb4a33bc01118677fb",
+    "packages/cli/src/commands-library-source-recovery.ts": "a2f9006cca2d82b364ff711325cfacb8fffde5e5bb643c7312a4c90656cce31b",
     "packages/core/src/shared-import-table-literals.ts": "f52bfa236248a5c504304f5331b1497aa9738d2b9635799b05cc5e03aa601649",
     "packages/core/src/shared-source-projection-repair.ts": "78950823300dfde11c4552d3e9be681000fe08876ae9226eaa8dec28e3b2fd90",
     "packages/core/test/shared-import-table-literals.test.ts": "4cc45fc5ba4643e8d1b292aaf0a1d594c46d631557b4655367befb2f684e26ca",
     "packages/core/test/shared-source-projection-repair.test.ts": "09c45eecd802f36f1b0932c889d06b2b6d23c793fabfc4edcadd40913d809416",
-    "packages/cli/src/commands-library-source-projection-repair.ts": "cb544e29a32c2b133b3f94d616b81a5759521bc7515da719c6d4b09c1228423d"
+    "packages/cli/src/commands-library-source-projection-repair.ts": "cb544e29a32c2b133b3f94d616b81a5759521bc7515da719c6d4b09c1228423d",
+    "packages/core/src/notion-validation-diagnostic.ts": "30121a3d8998123f9d6a6d056ba52758d83f4bc07de8439d8c1b7b6e1e44bd28",
+    "packages/core/src/shared-native-table-code-repair.ts": "77f39d59bbd709303f83796b7a818bf26eb5bda4986d3026d535e3745ed74500",
+    "packages/core/src/shared-source-file-repair.ts": "8f5f9561df7ab77b7dbfe89af2dff6b7235403457c18a20fc5a7eb73d5f33aff",
+    "packages/core/test/shared-source-file-repair.test.ts": "a33e9ec5af4f03ab3cd9cb1381ca081f0ec5ad487471462429cfbe8baa2167d2",
+    "packages/core/test/shared-import-code-padding.test.ts": "8ec0a660172144e1c3eb66a8c6a97e47d866f147546739af8416c34c9f70f31a",
+    "packages/cli/src/commands-library-source-file-repair.ts": "ba49f50e678c6be1f00671ddfbd7e193f020092e02123dc649d306b0a18abd63",
+    "packages/core/src/notion-http.ts": "f233e802bd37aa80d5f15e2efff22a6dbfaec58bb9b4fad5131f63e2b26c6cc5",
+    "packages/core/test/notion-http.test.ts": "44c01030e204c5bb6b198e4ab1f183aa8525746328a196f1307ad24054533d43"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -1023,6 +1031,56 @@
         "protectImportTablePlus"
       ],
       "scope": "The previous v16 escape wire failed to change the complete actual Notion body; its authentic ACK and old review remain immutable. Actual isolated public creates verified HTML bold plus presentation before introducing explicit v17. A v2 successor review is either no predecessor or one fully acknowledged exact unchanged v16 response, never unknown, changed body, old success or general retry. Full earlier review, original local dispatch/ACK, frozen preimage and new wire are verified before a distinct PATCH. Cold proof requires prior review hash and exact ACK reconstructed losslessly from retained identical Markdown and response metadata. The existing 64 KiB envelope limit stays; the failed oversized candidate is preserved. Cross-generation authority, text rendering and the exact codec are outside unchanged finite TLA models; core negative tests, independent installed CLI/SDK, and actual Notion observations remain separate evidence tiers. All original model/config/expected_rules inventories are unchanged."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "physical_supporting_table_code_repair_and_safe_validation_observation",
+      "files": [
+        "packages/cli/src/commands-library-source-file-repair.ts",
+        "packages/cli/src/commands-library-source-recovery.ts",
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/src/notion-http.ts",
+        "packages/core/src/notion-validation-diagnostic.ts",
+        "packages/core/src/shared-create-retained-recovery.ts",
+        "packages/core/src/shared-native-table-code-repair.ts",
+        "packages/core/src/shared-source-definitions.ts",
+        "packages/core/src/shared-source-file-repair.ts",
+        "packages/core/test/notion-http.test.ts",
+        "packages/core/test/shared-import-code-padding.test.ts",
+        "packages/core/test/shared-source-definitions.test.ts",
+        "packages/core/test/shared-source-file-repair.test.ts"
+      ],
+      "symbols": [
+        "inspectRetainedImportFileRepairPrefix",
+        "reviewSharedSourceFileRepair",
+        "applySharedSourceFileRepair",
+        "assertSourceFileRepairsComplete",
+        "deriveImportedTableCodePaddingRepair",
+        "nativeRepairTableRow",
+        "notionValidationDiagnostic",
+        "retainedNotionRejectionDiagnostics"
+      ],
+      "scope": "One separately reviewed exact physical table-row code correction on an already acknowledged supporting file of the original retained known-failure import. Original full manifest/failed outcome/native ACK prefix and untouched bodies remain; the existing durable mutation guard retains actual row ACK and complete before/after bytes. Original recovery commits the independent file proof set; unknown writes and missing cold proofs cannot be bypassed by current equality or another command. API validation diagnostics retain only bounded categories/public fields/numeric locations and safe request ID, never raw provider messages or credentials; retry authority is unchanged and old failures are not enriched retroactively. These concrete block semantics, coupled pending barrier, bounded text parser and proof codec are outside unchanged TLA domains. Their actual unit/HTTP/privacy/installed/production evidence is separate. No model/config/expected_rules changed. See docs/maintenance-verification-review.md AH-1100."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "acknowledged_physical_row_completion_and_scoped_url_readback",
+      "files": [
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/src/shared-native-table-code-repair.ts",
+        "packages/core/src/shared-source-file-repair.ts",
+        "packages/core/test/shared-source-file-repair.test.ts",
+        "packages/core/test/shared-import-code-padding.test.ts",
+        "packages/cli/src/commands-library-source-file-repair.ts"
+      ],
+      "symbols": [
+        "localRowAcknowledgement",
+        "verifiedAfterBody",
+        "assertPhysicalCodeRepairReadback",
+        "applySharedSourceFileRepair",
+        "reconcileSharedSourceFileRepair"
+      ],
+      "scope": "Actual native row repair preserved the exact original physical href while serialized Markdown gained its root slash. New completion facts declare physical_row_root_url_v1, restricted to the single repaired row and original-source-absent bare-host URL; all outside-row bytes and original text/code/explicit destinations stay checked. Earlier completion policy remains exact bytes. A genuine retained request/ACK with missing final proof is observed, never inferred or dispatched again: read-only completion_pending/preview reports zero row patches, and explicit apply publishes only missing immutable evidence. Unknown ACK remains blocked. The original shared guard is unchanged. Concrete parser/alias/coupled completion logic is outside the unchanged TLA models and has dedicated negative tests plus actual-service evidence; old failed checks are preserved."
     }
   ],
   "retained_recovery_journey_budget_review": {

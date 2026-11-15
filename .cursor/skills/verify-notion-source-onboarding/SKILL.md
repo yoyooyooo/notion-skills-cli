@@ -76,3 +76,14 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 ## Cleanup
 
 复用 [harness cleanup](../verify-ntn-skills/references/harness.md#cleanup)。保留旧失败、原输入、ACK和已分配页面；原unknown未结清不能清理Store或换计划。导入脚本只做字节校验，不运行。独立冷Agent仅按该Skill的执行评估尚未完成时明确not_run。
+
+### 支持文件物理代码修复交接
+
+shared-source-file-repair.test.ts与shared-import-code-padding.test.ts覆盖原已ACK文件的
+局部代码修复。原安装旅程须实际走repair-file→SDK→original recovery→冷读取；
+未知row响应不能凭当前正文或另一入口放行。API拒绝的有限诊断仅服务定位，不提供
+新的原生请求权限；长正文保留复用现有chunk codec，不扩大普通事实限额。
+
+```sh
+bun test packages/core/test/shared-source-file-repair.test.ts packages/core/test/shared-import-code-padding.test.ts packages/core/test/notion-http.test.ts --timeout 60000
+```

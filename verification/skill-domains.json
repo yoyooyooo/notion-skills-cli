@@ -77,7 +77,10 @@
         "packages/cli/test/source-onboarding-navigation.test.ts",
         "packages/core/test/shared-create-retained-recovery.test.ts",
         "packages/core/test/shared-source-projection-repair.test.ts",
-        "packages/core/test/shared-import-table-literals.test.ts"
+        "packages/core/test/shared-import-table-literals.test.ts",
+        "packages/core/test/shared-source-file-repair.test.ts",
+        "packages/core/test/shared-import-code-padding.test.ts",
+        "packages/core/test/notion-http.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",
       "excludes": ["已绑定正文自动更新", "部分报告替代全库分母"]

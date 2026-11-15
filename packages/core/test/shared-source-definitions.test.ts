@@ -281,6 +281,60 @@ test("an exact validation rejection stays recorded while a later explicit invoca
   ).toEqual(rejectedRecords)
 })
 
+test("native never-repeat rejection retains bounded original diagnostics without repeating the request", async () => {
+  const f = fixture()
+  const validation = {
+    version: 1,
+    category: "body_schema",
+    fields: ["markdown"],
+    raw_message_retained: false,
+  }
+  f.reject(
+    fail("NOTION_REQUEST_FAILED", "Untrusted raw message must not be retained", {
+      phase: "definitive_rejection",
+      http_status: 400,
+      notion_code: "validation_error",
+      request_id: "req.native-original",
+      validation,
+      untrusted_message: "private-resource-body",
+    }),
+  )
+  const action = guardedSourceMutation(
+    library,
+    {
+      identity: "original-native-diagnostic",
+      path: "v1/pages/" + id(100),
+      method: "PATCH",
+      repeat: "never",
+      body: { properties: sourceDefinitionPropertiesFor(library, input) },
+    },
+    Effect.succeed(undefined),
+  )
+  const first = await f.run(action.pipe(Effect.flip))
+  expect(first.code).toBe("SOURCE_WRITE_NOT_APPLIED")
+  expect(first.details).toMatchObject({
+    request_id: "req.native-original",
+    validation,
+    native_retry_allowed: false,
+  })
+  const retained = [...f.local.records.entries()].filter(([key]) =>
+    key.includes("/source-rejection-"),
+  )
+  expect(retained).toHaveLength(1)
+  expect(JSON.stringify(retained)).not.toContain("private-resource-body")
+  const posts = f.calls.filter((call) => call.method === "PATCH").length
+  const second = await f.run(action.pipe(Effect.flip))
+  expect(second.details).toMatchObject({
+    request_id: "req.native-original",
+    validation,
+    native_retry_allowed: false,
+  })
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(posts)
+  expect(
+    [...f.local.records.entries()].filter(([key]) => key.includes("/source-rejection-")),
+  ).toEqual(retained)
+})
+
 test.each([
   { phase: "definitive_rejection", http_status: 429, notion_code: "rate_limited" },
   { phase: "definitive_rejection", http_status: 408, notion_code: "validation_error" },

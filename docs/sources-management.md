@@ -264,6 +264,45 @@ policy15、旧导入policy14或已冻结但在真实服务中未生效的policy1
 前再次核对本机原派发/ACK，独立冷消费则验证共享完整前任review及其绑定的真实ACK，
 缺前任证据也拒绝。此规则不授权Guizang的400拒绝文件或一般重试。
 
+#### 已分配支持文件的局部表格代码修复
+
+对已经保存原needs_review的保留型来源导入，原文件可能实际出现表格行内代码
+`•` 被补为 `  • `。普通导入比较继续逐字核对代码，不能将空白一律忽略。
+`sources recovery repair-file review ORIGINAL_PLAN --operation ORIGINAL_CREATE_ID --target ORIGINAL_MAIN_PAGE --path CHEATSHEET.md --entry ENTRY --output FILE_REPAIR.json`
+读取原清单、失败、所有已分配页面的真实ACK、完整当前前缀及目标文件的物理表格。
+只有整个文件仅有一个已识别的表格代码标记变动，且原表格行和其他富文本保持时才形成审阅。
+
+沿返回的repair-file apply命令，以保存的review/review-id做dry-run，再明确执行。
+它通过既有durable guard只PATCH原table-row的cells，除唯一代码span正文外保留全部
+文字、注释、链接和格式；不重新提交完整Markdown，不创建替代File或Skill，不改原
+源文件/policy/旧失败。原行所有字段及完整页前像在派发前重新核对；该局部guard不
+宣称Notion原子CAS。完整前像、独立review及原分配证明先保留，真实row响应ACK、
+完整页复验结果和独立完成后保留；长正文仍复用既有分块协议。
+
+repair-file reconcile只读验证历史证据。修复完成后另行执行原sources recovery review。
+原恢复review绑定完整file-repair证明hash集合；缺ACK、未知结果、缺完整正文或更换
+命令都不能跳过。独立冷消费核验同样证据，不依赖作者Store。多处标记、其他代码
+改变、错误父块、缺原ACK及未分配文件均写前拒绝。SDK同核入口为
+reviewSourceFileRepair、applySourceFileRepair、reconcileSourceFileRepair。
+
+物理更新后，提供方可能仅将该行已存在的裸主机自动链接序列化成带根斜杠的形式。
+`physical_row_root_url_v1`完成策略要求原物理href不变、全文件原语义一致、修复行以外
+逐字不变；作者原文存在明确URL时不适用该容差。旧无此策略的完成事实继续要求精确
+候选字节。该规则不允许协议/路径变化、代码空白变化或行外格式变化。
+
+当原row PATCH已有完整真实ACK、但后续读回或完成记录中断时，repair-file reconcile
+返回completion_pending及同一计划的只读preview；preview明确table_row_patches=0。
+下一次明确apply仅补写该原ACK支持的缺失不可变证明，不再经过行更新调用。缺ACK或
+未知派发仍拒绝，当前页面相等不能制造完成权限，完整前像/review若丢失也不能重建代证。
+
+
+#### 有界的API拒绝诊断
+
+新400 validation_error回执保留已净化request ID和有限结构提示：公开body-schema
+字段名、Markdown语法分类及可识别的行/列位置。原提供方message、用户属性名、正文、
+签名URL和凭据均不保留。提示只用于定位，不改变明确拒绝/unknown或重发权限；来源
+层包装及原拒绝journal保留同一安全信息。旧拒绝缺字段时保持未知，不补猜或为取诊断重发。
+
 #### 已知语义终局的续接
 
 已记录 `needs_review` 的保留型来源导入不能由普通 `onboard-apply` 自动越过。

@@ -472,3 +472,61 @@ TLA模型、配置及expected_rules保持原样，guardian重跑仍只声明原�
 作者派发前仍读取真正本机ACK，不能用重建后的对象伪造author权限；冷读仍要求共享
 完整前任review及其精确hash。没有扩大普通事实/清单限制或省略正文；实际私有review
 约61KiB，完整逻辑封装仍在64KiB内。实际新preview与原输入hash分别保存。
+
+
+## 支持文件物理代码修复与安全拒绝诊断（AH-1100）
+
+实际Kami的v17主文修复完整确认后，原onboarding继续到CHEATSHEET.md。全文text相同，
+134个code片段中一个由单个圆点变为带两前一后空格的圆点；物理table_row的code=true
+rich_text也包含空格，排除了仅Markdown serializer的解释。普通import code比较保持
+严格，不能为了“通过”而trim全部code或只看可见文字。
+
+方案比较：重新提交整个大Markdown会再次触发提供方对所有结构的解释；直接放宽code
+比较会接受真实改义。选择独立明确的原行修复：原known-failure、manifest、完整分配
+POST/ACK前缀与未发布ownership仍由原retained恢复核心核验；目标仅一个已ACK支持
+文件。其他所有已分配正文需保持完整语义和固定观察，原目标需只存在一个有限表格
+代码padding缺陷。真实块遍历确认唯一原table-row与精确file父链。只PATCH该行cells，
+唯一code span恢复原值，其他富文本、链接、注释/格式和原页身份保持，不建替代页。
+
+review保留完整前像的内容地址、原失败hash、原ACK证明引用、原journal和其他前缀
+观察、精确物理row前像。私有plan保留完整正文；共享正文复用既有chunk codec和内容
+地址，不提高64KiB普通事实上限。新PATCH走既有guardedSourceMutation repeat:never；
+先保留完整前像/原分配证明/review，后核真实row响应ACK、全部目标正文和其他前缀，
+再保留完整结果与独立completion。全前像核查与本地writer锁不等于Notion原子CAS。
+
+原import的后续独立恢复review绑定file-repair的精确review/outcome hash集合；unknown
+repair即使已应用也无法从另一个original recovery入口绕过。旧review无该字段时仍保留
+原解释/原digest；一旦存在新独立repair，不能让旧权限自动继承。冷客户端要求原失败、
+完整原allocation ACK、物理row ACK及完整pre/post字节，不能只靠成功标签或作者Store。
+audit-v7将精确归属原manifest的file-repair头分类，内容审计仍核全部证据，metadata不
+因此证明完成。源码反例覆盖漂移的row/body/parent/Source、缺ACK、篡改review、两种
+未知可见性与冷读缺共享review；安装旅程复用原Git/Node/SQLite及同包CLI/SDK。
+
+另修复拒绝诊断丢失：transport从实际400 validation_error只生成有限诊断类别、公开
+schema字段和有界数值位置，保留净化的request ID；不输出原message、私有属性名、
+正文、URL或凭据。source mutation在新的not_applied回执及后续错误中保留同一安全
+信息。旧回执字段可缺且不补造，retry/unknown/definitive-rejection的既有权限判定完全
+不使用这些提示，repeat:never仍不增加派发。真实HTTP负例保留原修复前失败并验证隐私。
+
+形式化对应仍限于现有ACK前缀、独立决定、未知不重放和冷证明原则。新增物理row协议、
+跨file-repair与original recovery的组合屏障、具体code解析、诊断解析以及proof codec
+未被旧TLA域枚举，由实现反例、独立安装和实际服务证明。模型/配置/expected_rules
+不变；coverage的源码hash是审阅后的对应，不宣称新的全系统性质。
+
+
+### 原ACK后的完整读回与记录续接
+
+实际CHEATSHEET局部row PATCH成功返回，物理row与候选完全相同，完整原text/code/
+links通过；初版exact-after比较拒绝了同一行自动production.md链接的根斜杠表示。
+原物理href此前即有根斜杠，原请求并未修改该链接。旧失败原件保留且没有重复PATCH。
+新完成记录显式physical_row_root_url_v1：仅该修复行内、已绑定原物理href、原文无该
+URL的生成链接允许根斜杠表示；行外每字节与完整原语义保持。作者明确URL、协议/
+路径/代码变化均拒绝。新增负例还检查同名后续自动链接不能掩盖前面的明确目标变更。
+旧未声明该策略的完成事实不被重新解释。
+
+另一个真实恢复缺口由控制器反例证明：row ACK已持久化但后续readback中断时，原
+mutation守卫返回已观察结果，与首次派发的verified结果不同。调用方错误地将它当
+未知。修复选择直接验证和复用原request/ACK，而不新调mutation后再伪造verified标记。
+只读reconcile和dry-run检验全文件、原前像/review及真实ACK，报告completion_pending
+和table_row_patches=0；明确apply仅留存缺失完整结果和completion，PATCH总数仍是1。
+这未修改原guardedSourceMutation的重放规则，没有通过当前值猜ACK或生成新的原操作。

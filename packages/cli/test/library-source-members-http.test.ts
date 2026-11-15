@@ -81,7 +81,10 @@ test("installed source member commands admit, explicitly remap and retain real G
     "skills/base/SKILL.md",
     "---\nname: existing-candidate\ndescription: Never implicitly admitted\n---\n\n# Base\n\n[Original](references/a-original.md) and [later](references/b-later.md).\n\n| Action | Input |\n| --- | --- |\n| New | `brief` + `content` |\n",
   )
-  await put("skills/base/references/a-original.md", "## Original\n\n- \n")
+  await put(
+    "skills/base/references/a-original.md",
+    "## Original\n\n- \n\n| Kind | Value |\n| --- | --- |\n| Bullet | Use `•` and `a+b` (production.md). |\n",
+  )
   await put(
     "skills/base/references/b-later.md",
     "## Later\n\nRetain this complete original suffix.\n",
@@ -114,6 +117,8 @@ test("installed source member commands admit, explicitly remap and retain real G
         .replace("<!-- canonical:", "\\<!-- canonical:")
         .replace("| New | `brief` + `content` |", "| New | `brief` • `content` |")
         .replace("| New | `brief` \\+ `content` |", "| New | `brief` • `content` |")
+        .replace("`•`", "<code>  • </code>")
+        .replace("(production.md)", "([production.md](http://production.md))")
         .replace("\n- \n", "\n<ul>\n<li></li>\n</ul>\n") + "\n",
   })
   f.skills.clear()
@@ -125,6 +130,46 @@ test("installed source member commands admit, explicitly remap and retain real G
   let gitRequests = 0
   let rejectOnboardingMainReadback = false
   let rejectOnboardingReferenceReadback = false
+  const physicalTableId = id(850),
+    physicalRowId = id(851)
+  let physicalMarker = "  • "
+  const richSpan = (content: string, code = false, url: string | null = null) => ({
+    type: "text",
+    text: { content, link: url === null ? null : { url } },
+    plain_text: content,
+    href: url,
+    annotations: {
+      bold: false,
+      italic: false,
+      strikethrough: false,
+      underline: false,
+      code,
+      color: "default",
+    },
+  })
+  const fileRow = () => ({
+    object: "block",
+    id: physicalRowId,
+    type: "table_row",
+    has_children: false,
+    archived: false,
+    in_trash: false,
+    parent: { type: "block_id", block_id: physicalTableId },
+    table_row: {
+      cells: [
+        [richSpan("Bullet")],
+        [
+          richSpan("Use "),
+          richSpan(physicalMarker, true),
+          richSpan(" and "),
+          richSpan("a+b", true),
+          richSpan(" ("),
+          richSpan("production.md", false, "http://production.md/"),
+          richSpan(")."),
+        ],
+      ],
+    },
+  })
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1")
@@ -185,6 +230,63 @@ test("installed source member commands admit, explicitly remap and retain real G
           bot: { workspace_id: id(100) },
         })
       const parent = property(property(body).parent).data_source_id
+      const referencePage = [...f.files.values()].find(
+        (value) =>
+          text(property(property(value.properties).path).rich_text) === "references/a-original.md",
+      )
+      if (referencePage !== undefined && url.pathname.startsWith("/v1/blocks/")) {
+        const table = {
+          object: "block",
+          id: physicalTableId,
+          type: "table",
+          has_children: true,
+          archived: false,
+          in_trash: false,
+          parent: { type: "page_id", page_id: referencePage.id },
+          table: { table_width: 2, has_column_header: true, has_row_header: false },
+        }
+        const listed = (results: unknown[]) => ({
+          object: "list",
+          results,
+          has_more: false,
+          next_cursor: null,
+        })
+        if (method === "GET" && url.pathname === `/v1/blocks/${referencePage.id}/children`)
+          return json(response, 200, listed([table]))
+        if (method === "GET" && url.pathname === `/v1/blocks/${physicalTableId}/children`)
+          return json(response, 200, listed([fileRow()]))
+        if (method === "GET" && url.pathname === `/v1/blocks/${physicalTableId}`)
+          return json(response, 200, table)
+        if (method === "GET" && url.pathname === `/v1/blocks/${physicalRowId}`)
+          return json(response, 200, fileRow())
+        if (method === "PATCH" && url.pathname === `/v1/blocks/${physicalRowId}`) {
+          const cells = property(property(body).table_row).cells
+          if (!Array.isArray(cells) || cells.length !== 2 || !Array.isArray(cells[1]))
+            throw new Error("Expected complete exact original row cells")
+          const marker = property(property(cells[1][1]).text).content
+          if (marker !== "•" || physicalMarker !== "  • ")
+            throw new Error("Only the frozen original code marker is repairable once")
+          const before = fileRow().table_row.cells.map((cell) =>
+            cell.map(({ plain_text: _text, href: _href, ...span }) => span),
+          )
+          const desired = structuredClone(before)
+          desired[1]![1]!.text.content = "•"
+          if (JSON.stringify(cells) !== JSON.stringify(desired))
+            throw new Error("Another physical rich-text field changed")
+          physicalMarker = "•"
+          f.base.bodies.set(
+            String(referencePage.id),
+            f.base.bodies
+              .get(String(referencePage.id))!
+              .replace("<code>  • </code>", "<code>•</code>")
+              .replace(
+                "[production.md](http://production.md)",
+                "[production.md](http://production.md/)",
+              ),
+          )
+          return json(response, 200, fileRow())
+        }
+      }
       if (
         url.pathname === "/v1/pages" &&
         method === "POST" &&
@@ -716,6 +818,102 @@ console.log(JSON.stringify({applied,repeated,cold,metrics,originalAuthorStoreCop
         }),
       ],
     })
+    const fileRepairPath = join(directory, "file-code-repair.json")
+    const beforeFileRepair = writes().length
+    const reviewedFile = await invoke([
+      ...sources,
+      "recovery",
+      "repair-file",
+      "review",
+      onboard,
+      "--operation",
+      originalOperation,
+      ...entry,
+      "--target",
+      allocatedBaseId,
+      "--path",
+      "references/a-original.md",
+      "--output",
+      fileRepairPath,
+    ])
+    const fileRepairId = field(reviewedFile, "review_id")
+    expect(reviewedFile.remote_writes).toBe(0)
+    expect(Object.hasOwn(reviewedFile, "repair")).toBe(false)
+    await invoke([
+      ...sources,
+      "recovery",
+      "repair-file",
+      "apply",
+      onboard,
+      "--operation",
+      originalOperation,
+      ...entry,
+      "--review",
+      fileRepairPath,
+      "--review-id",
+      fileRepairId,
+      "--dry-run",
+    ])
+    expect(writes()).toHaveLength(beforeFileRepair)
+    const fileRepairProbe = join(directory, "file-repair-sdk.mjs")
+    await writeFile(
+      fileRepairProbe,
+      `
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {applySourceFileRepair,reconcileSourceFileRepair} from ${JSON.stringify(pathToFileURL(join(dirname(executable), "sdk.js")).href)};
+const input={entry:${JSON.stringify(library.skills.database_id)},plan:JSON.parse(await readFile(${JSON.stringify(onboard)},"utf8")),operationId:${JSON.stringify(originalOperation)},
+  repair:JSON.parse(await readFile(${JSON.stringify(fileRepairPath)},"utf8")),reviewId:${JSON.stringify(fileRepairId)}};
+const applied=await applySourceFileRepair(input);assert.equal(applied.result.verified,true);assert.equal(applied.result.original_creation_completed,false);
+const metrics=[];const repeated=await applySourceFileRepair(input,{onRequestMetrics:m=>metrics.push(m)});assert.equal(repeated.result.remote_writes,0);
+assert.ok(metrics.every(m=>m.requests.notion_write===0));
+const env={...process.env,NTN_SKILLS_HOME:${JSON.stringify(join(directory, "file-repair-cold-state"))},NTN_SKILLS_CACHE_HOME:${JSON.stringify(join(directory, "file-repair-cold-cache"))},NTN_SKILLS_DATA_HOME:${JSON.stringify(join(directory, "file-repair-cold-data"))}};
+const cold=await reconcileSourceFileRepair(input,{env});assert.equal(cold.result.verified,true);
+console.log(JSON.stringify({applied,repeated,cold,metrics,originalAuthorStoreCopied:false}));
+`,
+    )
+    const fileRepairChild = Bun.spawn([node, fileRepairProbe], {
+      env,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [fileRepairOut, fileRepairErr, fileRepairExit] = await Promise.all([
+      new Response(fileRepairChild.stdout).text(),
+      new Response(fileRepairChild.stderr).text(),
+      fileRepairChild.exited,
+    ])
+    expect(fileRepairExit, fileRepairOut + fileRepairErr).toBe(0)
+    const fileRepairProof = property(JSON.parse(fileRepairOut))
+    await writeFile(
+      join(directory, "file-repair-sdk.json"),
+      JSON.stringify(fileRepairProof, null, 2),
+    )
+    expect(
+      (
+        await invoke([
+          ...sources,
+          "recovery",
+          "repair-file",
+          "reconcile",
+          onboard,
+          "--operation",
+          originalOperation,
+          ...entry,
+          "--review",
+          fileRepairPath,
+          "--review-id",
+          fileRepairId,
+        ])
+      ).verified,
+    ).toBe(true)
+    expect(
+      calls.filter(
+        (call) => call.method === "PATCH" && call.path === `/v1/blocks/${physicalRowId}`,
+      ),
+    ).toHaveLength(1)
+    expect(physicalMarker).toBe("•")
+    expect(await readFile(onboard)).toEqual(originalPlanBytes)
     const beforeReview = writes().length
     const recoveryFile = join(directory, "retained-recovery-review.json")
     const reviewedRecovery = await invoke([
@@ -868,6 +1066,11 @@ console.log(JSON.stringify({ applied, originalResult, reconciled, reviewed, repe
                 review_id: repairId,
                 one_original_page_patch: true,
                 sdk: repairProof,
+              },
+              original_file_code_repair: {
+                review_id: fileRepairId,
+                one_original_row_patch: true,
+                sdk: fileRepairProof,
               },
               reconcile_routes_to_readonly_original_preview: true,
               known_terminal_explicitly_reviewed: recoveryId,

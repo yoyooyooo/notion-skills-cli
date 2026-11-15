@@ -246,6 +246,80 @@ test("malicious diagnostic fields cannot echo the current credential", async () 
   )
 })
 
+test("native validation failures expose bounded structural hints without copying provider messages", async () => {
+  const cases = [
+    {
+      message: `body failed validation: body.markdown should be defined, instead was ${fixtureToken}. https://private.example/?signature=secret`,
+      expected: {
+        version: 1,
+        category: "body_schema",
+        fields: ["markdown"],
+        raw_message_retained: false,
+      },
+    },
+    {
+      message: `Unable to parse markdown at line 12, column 3: private paragraph ${fixtureToken}`,
+      expected: {
+        version: 1,
+        category: "markdown_syntax",
+        fields: ["markdown"],
+        line: 12,
+        column: 3,
+        raw_message_retained: false,
+      },
+    },
+    {
+      message: `Unknown provider detail ${fixtureToken}; source text body.privateCustomerName should never be copied`,
+      expected: { version: 1, category: "unclassified", fields: [], raw_message_retained: false },
+    },
+  ]
+  for (const item of cases) {
+    let attempts = 0
+    await localServer(
+      (_request, response) => {
+        attempts++
+        json(response, 400, {
+          object: "error",
+          code: "validation_error",
+          message: item.message,
+          request_id: "req.validation-fixture",
+        })
+      },
+      async (origin) => {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.flatMap(Notion, (api) =>
+              api
+                .request("v1/pages", { markdown: "Private source input" }, { method: "POST" })
+                .pipe(Effect.result),
+            ),
+          ).pipe(Effect.provide(runtime(origin))),
+        )
+        expect(result._tag).toBe("Failure")
+        if (result._tag !== "Failure") throw new Error("Expected original validation failure")
+        expect(result.failure.code).toBe("NOTION_REQUEST_FAILED")
+        expect(result.failure.details).toMatchObject({
+          request_id: "req.validation-fixture",
+          phase: "definitive_rejection",
+          validation: item.expected,
+        })
+        const rendered = JSON.stringify(result)
+        for (const sensitive of [
+          fixtureToken,
+          "private.example",
+          "signature",
+          "private paragraph",
+          "privateCustomerName",
+          "Private source input",
+        ])
+          expect(rendered).not.toContain(sensitive)
+        expect(rendered.length).toBeLessThan(1500)
+      },
+    )
+    expect(attempts).toBe(1)
+  }
+})
+
 test("saved-write 503 retains only bounded reconciliation identities and known guidance", async () => {
   const id = "11111111-2222-4333-8444-555555555555"
   await localServer(

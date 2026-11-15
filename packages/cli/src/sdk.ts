@@ -18,6 +18,11 @@ import {
   reconcileSharedSourceProjectionRepair as coreReconcileSourceProjectionRepair,
 } from "../../core/src/shared-source-projection-repair.ts"
 import {
+  reviewSharedSourceFileRepair as coreReviewSourceFileRepair,
+  applySharedSourceFileRepair as coreApplySourceFileRepair,
+  reconcileSharedSourceFileRepair as coreReconcileSourceFileRepair,
+} from "../../core/src/shared-source-file-repair.ts"
+import {
   reviewSharedSourceRecovery as coreReviewSourceRecovery,
   applySharedSourceRecovery as coreApplySourceRecovery,
   reconcileSharedSourceRecovery as coreReconcileSourceRecovery,
@@ -258,6 +263,40 @@ export function reconcileSourceRecovery(
 }
 
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "onEffects">
+
+export function reviewSourceFileRepair(
+  input: Parameters<typeof coreReviewSourceFileRepair>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(coreReviewSourceFileRepair(input), sourceManagementBudget(options)),
+    options,
+  )
+}
+export function applySourceFileRepair(
+  input: Parameters<typeof coreApplySourceFileRepair>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(coreApplySourceFileRepair(input), sourceManagementBudget(options)),
+    options,
+  )
+}
+export function reconcileSourceFileRepair(
+  input: Parameters<typeof coreReconcileSourceFileRepair>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreReconcileSourceFileRepair(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
 
 export function reviewSourceProjectionRepair(
   input: Parameters<typeof coreReviewSourceProjectionRepair>[0],

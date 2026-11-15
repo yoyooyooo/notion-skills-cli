@@ -163,6 +163,49 @@ export function assertImportedTablePlusRepairable(expected: string, actual: stri
   return changed
 }
 
+/** Review-only repair proposal for the observed native table/list-code defect.
+ * This never changes successful import equivalence or trims arbitrary code. */
+export function deriveImportedTableCodePaddingRepair(expected: string, actual: string) {
+  const tokens = SourceLexer.lex(actual)
+  if (tokens.map((token) => token.raw).join("") !== actual)
+    throw fail(
+      "SOURCE_FILE_REPAIR_UNSUPPORTED",
+      "The complete native Markdown cannot be located without rewriting other content.",
+    )
+  let changes = 0
+  const markdown = tokens
+    .map((token) =>
+      token.type !== "table"
+        ? token.raw
+        : token.raw
+            .split("\n")
+            .map((line) => {
+              const parts = splitNativeInlineCode(line)
+              if (parts === undefined)
+                throw fail(
+                  "SOURCE_FILE_REPAIR_UNSUPPORTED",
+                  "A native table has ambiguous code boundaries.",
+                )
+              return parts
+                .map((part) => {
+                  if (!part.code || part.raw !== "<code>  • </code>") return part.raw
+                  changes++
+                  return "<code>•</code>"
+                })
+                .join("")
+            })
+            .join("\n"),
+    )
+    .join("")
+  if (changes !== 1)
+    throw fail(
+      "SOURCE_FILE_REPAIR_UNSUPPORTED",
+      "Select exactly one known padded table code marker; general code whitespace is not repair authority.",
+    )
+  assertImportedMarkdownContent(expected, markdown)
+  return { markdown, before_code: "  • " as const, after_code: "•" as const, changes: 1 as const }
+}
+
 export function compatibleImportMarkdown(markdown: string): string {
   const tokens = SourceLexer.lex(markdown)
   if (tokens.map((token) => token.raw).join("") !== markdown) return markdown

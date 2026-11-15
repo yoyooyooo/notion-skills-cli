@@ -1,6 +1,7 @@
 import { Config, Effect, FileSystem, Path, Redacted, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import { fail, property, SkillsError } from "./model.ts"
+import { notionValidationDiagnostic } from "./notion-validation-diagnostic.ts"
 import type { NotionCredential } from "./notion-credential.ts"
 import { notionRequestTarget } from "./request-metrics.ts"
 
@@ -281,9 +282,14 @@ export function notionResponseDetails(response: NotionHttpResponse, credential: 
     ...(guidance?.length ? { retry_guidance: guidance } : {}),
   }
   const limited = response.status === 429 || response.status === 529
+  const validation =
+    response.status === 400 && value.code === "validation_error"
+      ? notionValidationDiagnostic(value.message)
+      : undefined
   return {
     http_status: response.status,
     ...(safe(requestId) ? { request_id: requestId } : {}),
+    ...(validation !== undefined && safe(JSON.stringify(validation)) ? { validation } : {}),
     ...(limited || headerDelay !== undefined || bodyDelay !== undefined
       ? {
           retry_after_seconds: Math.max(

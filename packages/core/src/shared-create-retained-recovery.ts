@@ -60,6 +60,11 @@ import {
 import { Store, sha256 } from "./store.ts"
 import type { SharedOperationHeader } from "./shared-operation-index.ts"
 import { sharedCreateManifestEntity } from "./shared-create-model.ts"
+import { sharedCreateManifest } from "./shared-create-model.ts"
+import { querySharedSkillIndex } from "./shared-skill-index.ts"
+import { observeSharedCreatePrefixBody } from "./shared-create-recovery-prefix-model.ts"
+import { SourceFileRepairProofSchema } from "./shared-native-table-code-repair.ts"
+import { assertSourceFileRepairsComplete } from "./shared-source-file-repair.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const ReviewId = Schema.String.check(Schema.isPattern(/^retained-readback-[a-f0-9]{64}$/u))
@@ -89,6 +94,7 @@ const ReviewSchema = Schema.Struct({
       event_id: Schema.String,
     }),
   ),
+  file_repair_proofs: Schema.optionalKey(Schema.Array(SourceFileRepairProofSchema)),
 })
 export type SharedRetainedImportRecoveryReview = typeof ReviewSchema.Type
 const CompletionSchema = Schema.Struct({
@@ -309,6 +315,128 @@ function observePrefix(
   }).pipe(withReadOnlyNotion)
 }
 
+/** Read the original known-failure authority for one already allocated file.
+ * Every other allocated prefix member must remain semantically intact. The
+ * target's actual full body is returned without pretending it already passed.
+ * A later acknowledged suffix is allowed, but never a missing/unknown native
+ * allocation, a replacement page, or published ownership events. */
+export function inspectRetainedImportFileRepairPrefix(
+  library: SharedLibrary,
+  input: unknown,
+  page: string,
+  filePath: string,
+) {
+  return Effect.gen(function* () {
+    const plan = yield* retainedPlan(input)
+    if (!preservesSharedLibraryBindings(plan.library, library))
+      return yield* refusal("The original library binding changed.")
+    const original = yield* readOriginalFailure(library, plan, page)
+    const manifests = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "operation",
+      entityId: sharedCreateManifestEntity,
+      recordId: plan.operation_id,
+    })
+    if (
+      manifests.length !== 1 ||
+      manifests[0]!.hash !== (yield* sharedCreateManifestRecordHash(plan)) ||
+      !same(manifests[0]!.payload, sharedCreateManifest(plan)) ||
+      (yield* querySharedRecords(library, { skillPageId: page, kind: "file_event" })).length !== 0
+    )
+      return yield* refusal(
+        "This file repair requires the complete original manifest and an unpublished initial tree.",
+      )
+    const journal = yield* originalJournal(plan)
+    yield* verifySharedCreateRecoveryScope(library, plan, page)
+    const index = yield* querySharedSkillIndex(library, page)
+    const allocated = [index.main, ...index.files]
+    const ordered = [
+      plan.files.find((file) => file.path === plan.entrypoint)!,
+      ...plan.files.filter((file) => file.path !== plan.entrypoint),
+    ]
+    if (allocated.length < original.outcome.bindings.length || allocated.length > ordered.length)
+      return yield* refusal("The current allocation is not one original file prefix.")
+    const bindings: SharedCreateBinding[] = []
+    for (const file of ordered.slice(0, allocated.length)) {
+      const matches = allocated.filter(
+        (row) => row.file_id === file.file_id && row.path === file.path,
+      )
+      if (matches.length !== 1)
+        return yield* refusal("The exact original file allocation is missing or ambiguous.")
+      const prior = original.outcome.bindings.find((row) => row.file_id === file.file_id)
+      if (prior !== undefined && prior.page_id !== matches[0]!.page_id)
+        return yield* refusal("An original acknowledged page was replaced.")
+      bindings.push(
+        prior ?? {
+          file_id: file.file_id,
+          path: file.path,
+          page_id: matches[0]!.page_id,
+          event_id: file.event.event_id,
+        },
+      )
+    }
+    const target = bindings.find((binding) => binding.path === filePath)
+    if (!target || target.page_id === page)
+      return yield* refusal(
+        "Select one already acknowledged supporting file, not the original main or an unissued suffix.",
+      )
+    const files = [...original.resolved.facts.files]
+    const observations: SharedRetainedImportRecoveryReview["observations"][number][] = []
+    const proofs = []
+    for (const binding of bindings) {
+      const at = files.findIndex((file) => file.file_id === binding.file_id)
+      const native = original.resolved.facts.files.find((file) => file.file_id === binding.file_id)!
+      proofs.push(yield* allocationProof(plan, page, binding, native))
+      if (binding.file_id === target.file_id) continue
+      const observed = yield* observeNativeImportFile(
+        original.resolved.facts,
+        native,
+        journal.scope,
+        page,
+        binding.page_id,
+        { retainObservation: false },
+      )
+      files[at] = observed
+      observations.push({
+        file_id: binding.file_id,
+        page_id: binding.page_id,
+        body_sha256: observed.content.sha256,
+        body_bytes: observed.content.bytes,
+        event_id: observed.event.event_id,
+      })
+    }
+    yield* verifySharedCreateRecoveryIndex(
+      library,
+      { ...original.resolved.facts, files },
+      page,
+      bindings,
+      false,
+      true,
+      undefined,
+      original.resolved.facts,
+    )
+    const raw = yield* (yield* Notion).request(
+      `v1/pages/${target.page_id}/markdown?markdown_version=v2`,
+    )
+    const body = yield* observeSharedCreatePrefixBody(target.file_id, target.page_id, raw)
+    const markdown = property(raw).markdown
+    if (typeof markdown !== "string")
+      return yield* refusal("The original supporting body is incomplete.")
+    return {
+      plan,
+      original,
+      journal,
+      target,
+      bindings,
+      proofs,
+      observations,
+      markdown,
+      body,
+      file: original.resolved.facts.files.find((file) => file.file_id === target.file_id)!,
+    }
+  }).pipe(withReadOnlyNotion)
+}
+
 export function validateSharedRetainedImportRecoveryReview(
   input: unknown,
   planInput: unknown,
@@ -393,6 +521,7 @@ export function reviewSharedRetainedImportRecovery(input: {
     if (!preservesSharedLibraryBindings(plan.library, library))
       return yield* refusal("The frozen plan belongs to another registered library.")
     const original = yield* readOriginalFailure(library, plan, page)
+    const fileRepairProofs = yield* assertSourceFileRepairsComplete(library, plan, page)
     if (
       (yield* querySharedRecords(library, { skillPageId: page, kind: "file_event" })).length !== 0
     )
@@ -451,6 +580,7 @@ export function reviewSharedRetainedImportRecovery(input: {
       bindings: original.outcome.bindings,
       allocations: proofs.map((proof) => proof.reference),
       observations: observed.observations,
+      ...(fileRepairProofs.length === 0 ? {} : { file_repair_proofs: fileRepairProofs }),
     }
     const review = { ...fields, review_id: "retained-readback-" + (yield* hash(fields)) }
     yield* validateSharedRetainedImportRecoveryReview(review, plan)
@@ -466,6 +596,12 @@ export function assertSharedRetainedImportRecovery(
   review: SharedRetainedImportRecoveryReview,
 ) {
   return Effect.gen(function* () {
+    yield* assertSourceFileRepairsComplete(
+      library,
+      plan,
+      review.skill_page_id,
+      review.file_repair_proofs ?? [],
+    )
     const local = yield* originalJournal(plan)
     if (
       local.scope !== review.permission_scope ||
@@ -629,6 +765,7 @@ export function readSharedRetainedImportCompletion(
       return yield* refusal(
         "The recovery completion does not preserve its original failure, source, exact page prefix and complete file tree.",
       )
+    yield* assertSourceFileRepairsComplete(library, plan, page, review.file_repair_proofs ?? [])
     yield* readSharedNativeAllocationProofs(
       library,
       plan,

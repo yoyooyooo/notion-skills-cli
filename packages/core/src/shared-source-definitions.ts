@@ -13,6 +13,11 @@ import {
   type SourceDefinition,
 } from "./shared-sources-model.ts"
 import { validateGitSource, validateSourceSelection } from "./upstream-source.ts"
+import {
+  NotionSafeRequestIdSchema,
+  NotionValidationDiagnosticSchema,
+  retainedNotionRejectionDiagnostics,
+} from "./notion-validation-diagnostic.ts"
 
 export const sourceChecked = <A>(run: () => A) =>
   Effect.try({
@@ -78,6 +83,8 @@ const SourceMutationRejectionSchema = Schema.Struct({
   http_status: Schema.Literal(400),
   notion_code: Schema.Literal("validation_error"),
   status: Schema.Literal("not_applied"),
+  request_id: Schema.optionalKey(NotionSafeRequestIdSchema),
+  validation: Schema.optionalKey(NotionValidationDiagnosticSchema),
 })
 function observedSourceMutation(
   operation: string,
@@ -633,6 +640,7 @@ export function guardedSourceMutation<R, R2 = never>(
                 notion_code: rejected.notion_code,
                 phase: "definitive_rejection",
                 native_retry_allowed: false,
+                ...retainedNotionRejectionDiagnostics(rejected),
               },
             ),
           )
@@ -767,6 +775,7 @@ export function guardedSourceMutation<R, R2 = never>(
             http_status: 400,
             notion_code: "validation_error",
             status: "not_applied",
+            ...retainedNotionRejectionDiagnostics(details),
           })
           .pipe(
             Effect.mapError((cause) =>
@@ -789,6 +798,7 @@ export function guardedSourceMutation<R, R2 = never>(
               notion_code: "validation_error",
               native_retry_allowed: false,
               explicit_new_generation_allowed: input.repeat !== "never",
+              ...retainedNotionRejectionDiagnostics(details),
             },
           ),
         )

@@ -17,6 +17,7 @@ import { readSourceJson } from "./command-source-input.ts"
 import { parseSourceBudget, sourceRequestBudgets } from "./commands-library-source-run.ts"
 import { sourceContinuationCommand } from "./commands-library-source-continuation.ts"
 import { sourceProjectionRepairCommand } from "./commands-library-source-projection-repair.ts"
+import { sourceFileRepairCommand } from "./commands-library-source-file-repair.ts"
 
 const planArg = Argument.String("plan")
 const entry = requiredSingleton("entry", "Exact original shared library")
@@ -238,5 +239,6 @@ export const sourceRecoveryCommand = defineCommand("recovery").pipe(
     reconcile,
     sourceContinuationCommand,
     sourceProjectionRepairCommand,
+    sourceFileRepairCommand,
   ]),
 )
