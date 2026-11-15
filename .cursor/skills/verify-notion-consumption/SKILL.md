@@ -51,3 +51,11 @@ bun test packages/core/test/shared-freshness-consumer.test.ts packages/core/test
 ## 维护与分层
 
 状态改变由Broker `verify-notion-consumer-state`和现有request-engine formal按实际owner处理；纯说明或链接不扩大模型域。源测试/安装/实际Notion/Pi/自然模型/物理第二机分别标passed、failed、blocked或not_run。新入口本身的冷Agent评估也单列。
+
+
+### 原模板字节与阅读页表示
+
+Notion阅读页可折叠仅class的div/span排版，但固定来源的模板文件仍须保留原HTML、
+frontmatter和完整原字节。复用来源域shared-source-projection-retained.test.ts的独立
+冷读反例及原安装HTTP旅程的SDK readResources全文比对；不能仅凭阅读页语义相同、
+文件名或目录条目证明原模板仍可用，也不能把阅读投影重新存成固定源版本。

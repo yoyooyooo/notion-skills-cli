@@ -19,6 +19,28 @@ test("import accepts presentation changes without requiring Markdown roundtrip e
   ).not.toThrow()
 })
 
+test("class-only div and span presentation can flatten while code and authored destinations remain strict", () => {
+  const source =
+    '<div class="c2"><div>Visible <span class="eyebrow">heading</span></div><div class="meta">Read [guide](guide.md).</div></div>'
+  expect(() =>
+    assertImportedMarkdownContent(source, "Visible heading\n\nRead [guide](guide.md)."),
+  ).not.toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(source, "Visible\n\nRead [guide](guide.md)."),
+  ).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(source, "Visible heading\n\nRead [guide](wrong.md)."),
+  ).toThrow()
+  for (const input of [
+    '<span data-policy="retain">Visible</span>',
+    '<div id="original">Visible</div>',
+    '<span aria-label="do not remove">Visible</span>',
+    '<div style="display:none">Visible</div>',
+    '`<div class="meta">Visible</div>`',
+  ])
+    expect(() => assertImportedMarkdownContent(input, "Visible")).toThrow()
+})
+
 test("import does not mistake missing text, code mutations or changed explicit targets for formatting", () => {
   for (const [expected, actual] of [
     ["Do not delete data.", "Delete data."],
@@ -51,6 +73,25 @@ test("generated domain links do not hide an explicit target and known Notion pag
       `[page](https://app.notion.com/p/${id})`,
     ),
   ).not.toThrow()
+})
+
+test("a later automatic URL cannot supply the destination of an earlier changed authored link", () => {
+  const source = "[example.com](https://example.com) then example.com."
+  const changed = "[example.com](http://example.com) then [example.com](https://example.com)."
+  expect(() => assertImportedMarkdownContent(source, changed)).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(
+      source,
+      "[example.com](https://example.com) then [example.com](http://example.com).",
+    ),
+  ).not.toThrow()
+  const unrelated = "[public.example](https://safe.example) then safe.example."
+  expect(() =>
+    assertImportedMarkdownContent(
+      unrelated,
+      "[public.example](https://public.example) then [safe.example](https://safe.example).",
+    ),
+  ).toThrow()
 })
 
 test("automatically linked styled labels retain their visible text without replacing authored destinations", () => {

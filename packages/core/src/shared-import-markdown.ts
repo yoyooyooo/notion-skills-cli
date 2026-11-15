@@ -9,10 +9,21 @@ import { maskImportTablePlus } from "./shared-import-table-literals.ts"
 function importContent(markdown: string) {
   const text: string[] = []
   const code: string[] = []
-  const links: Array<{ href: string; automatic: boolean; authored: boolean }> = []
+  const links: Array<{
+    href: string
+    automatic: boolean
+    authored: boolean
+    start: number
+    end: number
+  }> = []
+  let textOffset = 0
+  const visible = (value: string) => {
+    text.push(value)
+    textOffset += value.replace(/\s+/gu, "").length
+  }
   const literal = (value: string, block = false) => {
     code.push(JSON.stringify([block, value.replace(/\r\n/g, "\n")]))
-    text.push(value)
+    visible(value)
   }
   const inline = (raw: string, parsed?: readonly Token[]): void => {
     const parts = splitNativeInlineCode(raw)
@@ -40,10 +51,13 @@ function importContent(markdown: string) {
             ),
             automatic: false,
             authored: token.type === "image" || /^[\[<]/u.test(token.raw),
+            start: textOffset,
+            end: textOffset,
           }
           links.push(link)
           inline(token.text, token.tokens)
           const label = text.slice(labelStart).join("")
+          link.end = textOffset
           link.automatic =
             token.type !== "image" &&
             // Native import also auto-links full URL labels in preserved
@@ -57,14 +71,20 @@ function importContent(markdown: string) {
           if (
             !/^<\/?(?:b|strong|i|em|s|del|p|h[1-6]|table|tr|td|th|thead|tbody|br|ul|ol|li)(?:\s[^>]*)?\s*\/?>$/iu.test(
               token.raw,
+            ) &&
+            // Native reading pages can flatten class-only layout wrappers.
+            // Preserve other attributes as semantic text; code tokens never
+            // enter this branch and retained source bytes are unchanged.
+            !/^(?:<(?:div|span)(?:\s+class=(?:"[^"<>\r\n]*"|'[^'<>\r\n]*'))?\s*>|<\/(?:div|span)\s*>)$/iu.test(
+              token.raw,
             )
           )
-            text.push(token.raw)
+            visible(token.raw)
           break
         case "br":
           break
         default:
-          text.push("text" in token && typeof token.text === "string" ? token.text : token.raw)
+          visible("text" in token && typeof token.text === "string" ? token.text : token.raw)
       }
     }
   }
@@ -121,15 +141,16 @@ function assertMeaning(
   }
   for (const component of ["text", "code"] as const)
     if (JSON.stringify(before[component]) !== JSON.stringify(after[component])) mismatch(component)
-  const required = before.links
-    .filter((link) => link.authored || !link.automatic)
-    .map((link) => link.href)
-  const observed: string[] = []
+  const required = before.links.filter((link) => link.authored || !link.automatic)
+  let matched = 0
   for (const link of after.links) {
-    if (link.automatic && link.href !== required[observed.length]) continue
-    observed.push(link.href)
+    const original = required[matched]
+    if (original !== undefined && link.start === original.start && link.end === original.end) {
+      if (link.href !== original.href) mismatch("links")
+      matched++
+    } else if (!link.automatic) mismatch("links")
   }
-  if (JSON.stringify(required) !== JSON.stringify(observed)) mismatch("links")
+  if (matched !== required.length) mismatch("links")
 }
 
 /** Review-only diagnosis, not successful import acceptance. Recognize an

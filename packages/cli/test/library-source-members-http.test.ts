@@ -85,10 +85,9 @@ test("installed source member commands admit, explicitly remap and retain real G
     "skills/base/references/a-original.md",
     "## Original\n\n- \n\n| Kind | Value |\n| --- | --- |\n| Bullet | Use `•` and `a+b` (production.md). |\n",
   )
-  await put(
-    "skills/base/references/b-later.md",
-    "## Later\n\nRetain this complete original suffix.\n",
-  )
+  const originalLayoutReference =
+    '## Later\n\n<div class="layout"><span class="eyebrow">Retain this complete original suffix.</span></div>\n'
+  await put("skills/base/references/b-later.md", originalLayoutReference)
   commit()
   const originalGuide =
     "# Original guide\n\nKeep the fixed source.\n\n" +
@@ -119,6 +118,10 @@ test("installed source member commands admit, explicitly remap and retain real G
         .replace("| New | `brief` \\+ `content` |", "| New | `brief` • `content` |")
         .replace("`•`", "<code>  • </code>")
         .replace("(production.md)", "([production.md](http://production.md))")
+        .replace(
+          '<div class="layout"><span class="eyebrow">Retain this complete original suffix.</span></div>',
+          "Retain this complete original suffix.",
+        )
         .replace("\n- \n", "\n<ul>\n<li></li>\n</ul>\n") + "\n",
   })
   f.skills.clear()
@@ -953,7 +956,7 @@ console.log(JSON.stringify({applied,repeated,cold,metrics,originalAuthorStoreCop
       `
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { applySourceRecovery, reconcileSourceRecovery, reconcileSourceOnboarding, reviewSources, prepareSourceOnboarding, readSkill, listSkill } from ${JSON.stringify(sdkPath)};
+import { applySourceRecovery, reconcileSourceRecovery, reconcileSourceOnboarding, reviewSources, prepareSourceOnboarding, readSkill, listSkill, readResources } from ${JSON.stringify(sdkPath)};
 const entry = ${JSON.stringify(library.skills.database_id)};
 const plan = JSON.parse(await readFile(${JSON.stringify(onboard)}, "utf8"));
 const review = JSON.parse(await readFile(${JSON.stringify(recoveryFile)}, "utf8"));
@@ -976,9 +979,12 @@ const cold=await readSkill(${JSON.stringify(allocatedBaseId)}, { env:coldEnv, da
 const files=await listSkill(cold.snapshot_id,{env:coldEnv,offline:true});
 assert.equal(files.files.length,3);
 assert.equal(cold.record.enabled,false);
+const template=files.files.find(file=>file.path==="references/b-later.md");assert.ok(template);
+const rawTemplate=await readResources({version:1,refs:[template.ref]},{env:coldEnv,readOnly:true,onRequestMetrics:m=>metrics.push(m)});
+assert.equal(rawTemplate.status,"ready");assert.equal(rawTemplate.files[0].content,${JSON.stringify(originalLayoutReference)});
 assert.ok(metrics.every(m=>m && m.requests.notion_write===0));
 console.log(JSON.stringify({ applied, originalResult, reconciled, reviewed, repeatedActions: repeated.result.actions.length,
-  cold:{snapshot_id:cold.snapshot_id,files:files.files,metrics,originalAuthorStoreCopied:false} }));
+  cold:{snapshot_id:cold.snapshot_id,files:files.files,metrics,originalAuthorStoreCopied:false,layoutOriginalBytesVerified:true} }));
 `,
     )
     const sdkChild = Bun.spawn([node, sdkProbe], {

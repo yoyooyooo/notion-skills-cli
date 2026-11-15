@@ -530,3 +530,25 @@ mutation守卫返回已观察结果，与首次派发的verified结果不同。�
 只读reconcile和dry-run检验全文件、原前像/review及真实ACK，报告completion_pending
 和table_row_patches=0；明确apply仅留存缺失完整结果和completion，PATCH总数仍是1。
 这未修改原guardedSourceMutation的重放规则，没有通过当前值猜ACK或生成新的原操作。
+
+
+### Marp阅读包装与原文件消费
+
+Kami原恢复在已ACK的assets/templates/marp/slides-marp-en.md停住。完整原件对比的
+28处差异全部是class-only div/span包装被折叠，全部可见文字、code和明确目标保持。
+这与原import_readback_v1“表示可变化，text/code/destination不可变化”的目的相符；
+比较器漏列这两个已知纯展示包装。修复仅允许无其他属性或仅class的div/span，id、
+data-policy、aria-label、style以及code里的HTML仍保留为需核对内容。原plan/policy/wire
+及失败记录均不修改，也不再次写已ACK页面。
+
+Marp的原文件功能依赖HTML class/CSS，不能把折叠后的阅读页当模板。新增源码冷读与
+独立安装同包SDK readResources核对原文件完整字节，包括frontmatter和class标签。
+管理验证判断阅读投影，消费验证判断固定原字节，两者不能互代。原实际完整读回在
+修复后的比较器通过；全Skill的实库完成仍需沿同一原操作继续和独立冷验收。
+
+
+完整链接核对另补了一条相邻负例：原明确链接的目标被改动，后面同名自动URL不能替它
+提供正确href。旧算法只比较必需URL序列，可能跳过错误自动分类后匹配后续同名URL。
+新算法把每个明确链接绑定到相同的规范化可见文本起止位置，仍保留Notion自动加链的
+合法表示变化，不接受换位置的目标代证。该变更只加强比较器，不改原输入/wire/policy，
+不赋予任何新写权限；修复前实际失败用例与全部相邻正反例、完整真实读回比较均留存。

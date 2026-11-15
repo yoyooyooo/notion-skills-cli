@@ -100,3 +100,15 @@ CLI review、同包SDK apply、CLI reconcile和独立冷读，不直接填入产
 替代前者。原PATCH真实ACK存在而completion缺失时，reconcile和dry-run须报告0次row
 更新；后续apply只补immutable证明，测试整个过程中PATCH总数仍为1。未知ACK两种
 可见性继续拒绝。实际原件差异与受控安装的同场景分别留证。
+
+
+仅class的div/span是阅读页排版包装，可在严格text/code/明确目标一致时折叠；id、
+data-*、aria-*、style等其他属性和code内的HTML仍不得忽略。原模板功能依赖的HTML/
+CSS与frontmatter必须由固定源文件逐字节保留。shared-import-markdown.test.ts与
+shared-source-projection-retained.test.ts同时覆盖此边界，安装旅程再以独立冷SDK的
+readResources核对原模板全文，不能把Notion展示文本当作源文件交给Agent。
+
+
+明确链接按原规范化可见文本位置与href同时核验；必须保留“前面明确链接换目标、后面
+同名自动URL仍正确”的负例，不能让后者代证前者。自动加链、HTML样式标签和已知Notion
+页别名仍应通过相邻正例。此语义检查不改变派发、原ACK或独立恢复权限。

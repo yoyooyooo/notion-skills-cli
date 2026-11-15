@@ -75,6 +75,69 @@ function retainedFixture(
 }
 
 describe("retained initial source projection in the original create kernel", () => {
+  test("flattened presentation wrappers never replace retained raw template bytes in cold consumption", async () => {
+    const source =
+      '---\nmarp: true\ntheme: original\n---\n\n# Template\n\n<div class="c2"><span class="eyebrow">Keep layout</span></div>\n\nUse `<div class="meta">` literally.\n'
+    const bytes = new TextEncoder().encode(source)
+    const f = fixture([{ path: "assets/template.md", bytes, mode: "100644" }], {
+      markdownImport: true,
+      recovery: true,
+      readback: (wire) =>
+        wire.replace(
+          '<div class="c2"><span class="eyebrow">Keep layout</span></div>',
+          "Keep layout",
+        ),
+    })
+    const plan = await f.run(
+      Effect.gen(function* () {
+        return yield* prepareSharedSourceProjection({
+          library,
+          definition: yield* readSourceDefinition(library, f.source.id),
+          acquired: f.snapshot,
+          member: "skills/demo",
+          skillId: "layout-template-original",
+          enabled: false,
+          markdownImport: true,
+          storage: "retained",
+        })
+      }),
+    )
+    const created = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    expect(created.verified).toBe(true)
+    const file = [...f.files.values()].find(
+      (row) => text(property(property(row.properties).path).rich_text) === "assets/template.md",
+    )!
+    expect(f.base.bodies.get(String(file.id))).not.toContain('<div class="c2">')
+    f.base.objects.clear()
+    f.base.json.clear()
+    f.clear()
+    const cold = await f.run(
+      withSharedAuthoringTarget(
+        created.skill_page_id,
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library,
+            target: created.skill_page_id,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            readOnly: true,
+          })
+        }),
+      ),
+    )
+    const template = cold.files.find((file) => file.path === "assets/template.md")!
+    expect(f.base.objects.get("objects/" + template.sha256)).toEqual(bytes)
+    expect(f.writes()).toHaveLength(0)
+    expect(
+      await f.run(
+        loadSharedCreatePlan(library, {
+          skillPageId: created.skill_page_id,
+          operationId: plan.operation_id,
+        }),
+      ),
+    ).toEqual(plan)
+  })
   test("an acknowledged main with rejected pre-manifest readback resumes the exact retained plan without another main POST", async () => {
     const f = retainedFixture(adapters[1], { markdownImport: true })
     const plan = await f.prepare(false)

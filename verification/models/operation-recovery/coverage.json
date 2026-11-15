@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "413e0bf8a68032f13238d7a00915d265b4cf54b8",
+  "synchronized_commit": "e48027bf8cf6f3d65ee4de027debb3f043be4aec",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
@@ -44,12 +44,12 @@
     "packages/core/test/shared-source-run.test.ts": "98a1660fd155d627956476db329dfce3162b7956670d3f39fd643d3307eabee3",
     "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
-    "packages/core/test/shared-source-projection-retained.test.ts": "a73467d4044cc3be4bc83e6ca77f52cab63604c918759f2ba9643c362a10ea5d",
+    "packages/core/test/shared-source-projection-retained.test.ts": "67c5d4e097e2153bc21c7c0d8d5a9ed72e4cde661a9a1b56dcf1d8a88e645624",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
-    "packages/cli/test/library-source-members-http.test.ts": "4777361f63c88f413119f9e6c414419d10cd4e0f4d6784ab451036b2b83d04e8",
-    "packages/core/test/shared-import-markdown.test.ts": "2d061ffe12a1abda4abf5f0fe459ae81ee92a48fceff187ee944c2870af6bd9c",
+    "packages/cli/test/library-source-members-http.test.ts": "43c190ad3660609f1d61c7e88fafc186f4cca9c7b1258114497961cee584935f",
+    "packages/core/test/shared-import-markdown.test.ts": "125349b27b5e02d2cb6dc97c5601d26f7695525d0e4b5616391e497d2825d0b0",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
     "packages/core/src/shared-create-retained-recovery.ts": "8c251fddefda4d3eeda9263a21b35fa4c338c3a01115c03d939ed54d4162b0c3",
     "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
@@ -67,7 +67,8 @@
     "packages/core/test/shared-import-code-padding.test.ts": "8ec0a660172144e1c3eb66a8c6a97e47d866f147546739af8416c34c9f70f31a",
     "packages/cli/src/commands-library-source-file-repair.ts": "ba49f50e678c6be1f00671ddfbd7e193f020092e02123dc649d306b0a18abd63",
     "packages/core/src/notion-http.ts": "f233e802bd37aa80d5f15e2efff22a6dbfaec58bb9b4fad5131f63e2b26c6cc5",
-    "packages/core/test/notion-http.test.ts": "44c01030e204c5bb6b198e4ab1f183aa8525746328a196f1307ad24054533d43"
+    "packages/core/test/notion-http.test.ts": "44c01030e204c5bb6b198e4ab1f183aa8525746328a196f1307ad24054533d43",
+    "packages/core/src/shared-import-markdown.ts": "92778d665ad334d2fb7fd587678eebc8961fa8f8dba4be57a16ee18e3f352af9"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -1081,6 +1082,27 @@
         "reconcileSharedSourceFileRepair"
       ],
       "scope": "Actual native row repair preserved the exact original physical href while serialized Markdown gained its root slash. New completion facts declare physical_row_root_url_v1, restricted to the single repaired row and original-source-absent bare-host URL; all outside-row bytes and original text/code/explicit destinations stay checked. Earlier completion policy remains exact bytes. A genuine retained request/ACK with missing final proof is observed, never inferred or dispatched again: read-only completion_pending/preview reports zero row patches, and explicit apply publishes only missing immutable evidence. Unknown ACK remains blocked. The original shared guard is unchanged. Concrete parser/alias/coupled completion logic is outside the unchanged TLA models and has dedicated negative tests plus actual-service evidence; old failed checks are preserved."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "class_only_reading_layout_preserves_original_template_bytes",
+      "files": [
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/core/test/shared-import-markdown.test.ts",
+        "packages/core/test/shared-source-projection-retained.test.ts"
+      ],
+      "symbols": ["assertImportedMarkdownContent", "importContent"],
+      "scope": "The complete actual Marp readback differs only by class-only div/span presentation wrappers, not visible text, code or destinations. The semantic parser now recognizes only those wrappers; extra id/data/aria/style attributes and literal HTML code remain checked. Original v14 wire/plan/input and old failure facts are unchanged; there is no new native write or recovery permission. A dedicated cold source test and the independent installed CLI/SDK resource read require exact original template bytes, including frontmatter and layout classes. Markdown parsing and raw-resource materialization are outside unchanged finite TLA domains. Previous scoped formal results remain separate; model/config/expected_rules inventories are unchanged."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "explicit_destination_matches_original_visible_text_position",
+      "files": [
+        "packages/core/src/shared-import-markdown.ts",
+        "packages/core/test/shared-import-markdown.test.ts"
+      ],
+      "symbols": ["importContent", "assertMeaning"],
+      "scope": "The source semantic guard now binds every required authored link to its exact normalized visible-text interval as well as destination, rejecting a later automatic URL as substitute proof for an earlier changed explicit target. Existing presentation/code/source-byte and recovery/ACK authority are unchanged. The prior red regression, neighboring automatic-link positives and full actual-page comparisons are preserved. Markdown text-position parsing is outside unchanged TLA domains; reviewed source correspondence is not a new model theorem. All original model/config/expected_rules inventories remain identical."
     }
   ],
   "retained_recovery_journey_budget_review": {
