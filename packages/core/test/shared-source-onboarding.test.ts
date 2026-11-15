@@ -376,6 +376,34 @@ test("provider failures retain exact error diagnostics and cannot prepare an emp
   expect(f.writes()).toHaveLength(0)
 })
 
+test("incomplete provider references retain bounded actionable provenance without admitting partial members", async () => {
+  const f = setup()
+  const unavailable = Array.from({ length: 23 }, (_, index) => ({
+    reason: "outside_source_root" as const,
+    from_path: `notes/${index}.md`,
+    href: "../../outside/HANDOFF.md",
+  }))
+  const observed = { ...f.snapshot, unavailable }
+  const plan = await f.run(
+    prepareSourceOnboarding(library, f.scope, {}, () => Effect.succeed(observed)),
+  )
+  expect(plan.report.coverage).toBe("partial")
+  expect(plan.actions).toHaveLength(0)
+  expect(plan.report.sources[0]?.members).toHaveLength(0)
+  expect(plan.report.sources[0]?.error).toMatchObject({
+    code: "SOURCE_REFRESH_INCOMPLETE",
+    details: {
+      source_id: "initial-source",
+      source_page_id: f.source.id,
+      provider_revision: observed.revision,
+      unavailable_count: 23,
+      unavailable: unavailable.slice(0, 20),
+      unavailable_truncated: true,
+    },
+  })
+  expect(f.writes()).toHaveLength(0)
+})
+
 test("a lost binding response is not promoted to success from current equality", async () => {
   const f = setup()
   const original = await f.run(

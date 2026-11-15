@@ -27,6 +27,8 @@ import type { SourceDefinitionInput } from "../src/shared-sources-model.ts"
 import type { SourceSnapshot } from "../src/upstream-source.ts"
 import { fixture, library, input } from "./shared-source-projection-fixture.ts"
 
+const skillPropertyIds: Readonly<Record<string, string>> = library.skills.property_ids
+
 const adapters: readonly SourceDefinitionInput["adapter"][] = [
   { type: "git", url: "https://git.example.test/team/private", ref: "v1" },
   {
@@ -73,6 +75,214 @@ function retainedFixture(
 }
 
 describe("retained initial source projection in the original create kernel", () => {
+  test("an acknowledged main with rejected pre-manifest readback resumes the exact retained plan without another main POST", async () => {
+    const f = retainedFixture(adapters[1], { markdownImport: true })
+    const plan = await f.prepare(false)
+    const frozen = canonicalSharedJson(plan)
+    let rejected = true
+    const run = () =>
+      f.run(
+        Effect.gen(function* () {
+          const api = yield* Notion
+          return yield* executeSharedCreate(library, { plan, mode: "create" }).pipe(
+            Effect.provideService(Notion, {
+              ...api,
+              request: (path, body, options) =>
+                api
+                  .request(path, body, options)
+                  .pipe(
+                    Effect.flatMap((result) =>
+                      rejected && path.includes("/markdown?")
+                        ? Effect.fail(
+                            fail(
+                              "SHARED_CREATE_BODY_MISMATCH",
+                              "Controlled previous validator rejected this unchanged readback.",
+                              { component: "links" },
+                            ),
+                          )
+                        : Effect.succeed(result),
+                    ),
+                  ),
+            }),
+          )
+        }),
+      )
+    await expect(run()).rejects.toMatchObject({
+      code: "SHARED_CREATE_BODY_MISMATCH",
+      details: { stage: "manifest" },
+    })
+    const mainPage = [...f.skills.values()].find(
+      (row) => text(property(property(row.properties).skill_id).rich_text) === plan.skill_id,
+    )
+    expect(mainPage).toBeDefined()
+    const page = String(mainPage!.id)
+    expect(f.nativeCreates()).toHaveLength(1)
+    expect(f.base.records.size).toBe(0)
+    const actual = f.base.bodies.get(page)
+    f.clear()
+    rejected = false
+    const result = await run()
+    expect(result).toMatchObject({
+      verified: true,
+      skill_page_id: page,
+      operation_id: plan.operation_id,
+    })
+    expect(
+      f
+        .nativeCreates()
+        .filter(
+          (call) =>
+            property(property(call.body).parent).data_source_id === library.skills.data_source_id,
+        ),
+    ).toHaveLength(0)
+    expect(f.base.bodies.get(page)).toBe(actual)
+    expect(
+      f
+        .writes()
+        .filter(
+          (call) =>
+            call.method === "PATCH" &&
+            property(property(property(call.body).properties)[skillPropertyIds.Enabled!])
+              .checkbox === true,
+        ),
+    ).toHaveLength(0)
+    expect(canonicalSharedJson(plan)).toBe(frozen)
+    f.clear()
+    expect((await run()).verified).toBe(true)
+    expect(f.writes()).toHaveLength(0)
+    f.base.json.clear()
+    f.base.objects.clear()
+    const cold = await f.run(
+      withSharedAuthoringTarget(
+        page,
+        Effect.gen(function* () {
+          return yield* openSharedConsumer({
+            library,
+            target: page,
+            scope: yield* authScope,
+            startedAt: Date.now(),
+            forceFull: true,
+            readOnly: true,
+          })
+        }),
+      ),
+    )
+    expect(cold.files.map((file) => file.path)).toEqual(
+      f.snapshot.members[0]!.portable.files.map((file) => file.path),
+    )
+    expect(f.writes()).toHaveLength(0)
+  })
+
+  test.each(["main_ack", "original_journal", "current_body"] as const)(
+    "pre-manifest continuation refuses a missing or changed %s without any new write",
+    async (guard) => {
+      const f = retainedFixture(adapters[1], { markdownImport: true })
+      const plan = await f.prepare(false)
+      const rejected = await f.run(
+        Effect.gen(function* () {
+          const api = yield* Notion
+          return yield* Effect.flip(executeSharedCreate(library, { plan, mode: "create" })).pipe(
+            Effect.provideService(Notion, {
+              ...api,
+              request: (path, body, options) =>
+                api
+                  .request(path, body, options)
+                  .pipe(
+                    Effect.flatMap((result) =>
+                      path.includes("/markdown?")
+                        ? Effect.fail(
+                            fail(
+                              "SHARED_CREATE_BODY_MISMATCH",
+                              "Original main readback was refused.",
+                            ),
+                          )
+                        : Effect.succeed(result),
+                    ),
+                  ),
+            }),
+          )
+        }),
+      )
+      const page = String(property(rejected.details).skill_page_id)
+      expect(f.skills.has(page)).toBe(true)
+      expect(f.base.records.size).toBe(0)
+      if (guard === "main_ack") {
+        const key = [...f.base.json.keys()].find(
+          (key) =>
+            key.includes("/source-ack-") &&
+            property(property(f.base.json.get(key)).response).id === page,
+        )
+        expect(key).toBeDefined()
+        f.base.json.delete(key!)
+      } else if (guard === "original_journal") {
+        const key = [...f.base.json.keys()].find(
+          (key) =>
+            key.startsWith("operations/shared-native-create/") &&
+            key.endsWith(`/${plan.operation_id}.json`),
+        )
+        expect(key).toBeDefined()
+        f.base.json.delete(key!)
+      } else f.base.bodies.set(page, "# A different user-authored main\n")
+      f.clear()
+      const failure = await f.run(
+        Effect.flip(executeSharedCreate(library, { plan, mode: "create" })),
+      )
+      expect(failure.code).toMatch(/SHARED_RECORD_UNRESOLVED|SHARED_CREATE_BODY_MISMATCH/)
+      expect(f.writes()).toHaveLength(0)
+      expect(f.nativeCreates()).toHaveLength(0)
+    },
+  )
+
+  test("an immutable post-manifest failure stays review-required even after its body looks valid", async () => {
+    const f = retainedFixture(adapters[1], { markdownImport: true })
+    const plan = await f.prepare(false)
+    f.onCreate((row, kind) => {
+      if (kind === "file") f.base.bodies.set(String(row.id), "# Semantic damage in a reference\n")
+    })
+    const rejected = await f.run(
+      Effect.flip(executeSharedCreate(library, { plan, mode: "create" })),
+    )
+    expect(rejected.code).toBe("SHARED_CREATE_BODY_MISMATCH")
+    expect(String(property(rejected.details).stage)).toStartWith("body:")
+    const page = String(property(rejected.details).skill_page_id)
+    const rejectedFile = plan.files.find((file) => file.path !== plan.entrypoint)!
+    const actualFilePage = [...f.files.values()].find(
+      (row) => text(property(property(row.properties).file_id).rich_text) === rejectedFile.file_id,
+    )
+    expect(property(rejected.details)).toMatchObject({
+      file_id: rejectedFile.file_id,
+      path: rejectedFile.path,
+      body_page_id: String(actualFilePage?.id),
+      owner_page_id: page,
+    })
+    expect(JSON.stringify(rejected.details)).not.toContain("Semantic damage in a reference")
+    // Use the declared original outcome entity rather than current page equality.
+    const rows = await f.run(querySharedRecords(library, { skillPageId: page, kind: "operation" }))
+    const failed = rows.find((row) => property(row.payload).kind === "skill_create_outcome")
+    expect(failed).toBeDefined()
+    expect(property(failed!.payload).status).toBe("needs_review")
+    const preserved = canonicalSharedJson(failed)
+    for (const file of f.files.values()) {
+      const path = text(property(property(file.properties).path).rich_text)
+      const original = plan.files.find((item) => item.path === path)
+      if (original !== undefined) f.base.bodies.set(String(file.id), original.projection.markdown)
+    }
+    f.onCreate(() => {})
+    f.clear()
+    expect(
+      (await f.run(Effect.flip(executeSharedCreate(library, { plan, mode: "create" })))).code,
+    ).toBe("SHARED_CREATE_REVIEW_REQUIRED")
+    expect(f.writes()).toHaveLength(0)
+    const current = await f.run(
+      querySharedRecords(library, {
+        skillPageId: page,
+        kind: "operation",
+        recordId: failed!.record_id,
+      }),
+    )
+    expect(canonicalSharedJson(current[0])).toBe(preserved)
+  })
+
   test("a complete 100 KiB Markdown reference retains bounded input and body chunks and reconstructs the original plan cold", async () => {
     const originalText =
       "# Complete long reference\r\n\r\n" +

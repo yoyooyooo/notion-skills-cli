@@ -12,6 +12,11 @@ import type {
 } from "../../core/src/shared-source-onboarding-model.ts"
 import type { RequestBudgetLimits } from "../../core/src/request-budget.ts"
 import type { SourceMemberStorage } from "../../core/src/shared-source-member.ts"
+import {
+  reviewSharedSourceRecovery as coreReviewSourceRecovery,
+  applySharedSourceRecovery as coreApplySourceRecovery,
+  reconcileSharedSourceRecovery as coreReconcileSourceRecovery,
+} from "../../core/src/shared-source-recovery.ts"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import { version } from "../package.json"
 import {
@@ -212,6 +217,37 @@ export function reconcileSourceOnboarding(
         }),
         sourceManagementBudget(options),
       ),
+    options,
+  )
+}
+
+/** Review and execute the selected original child using the same CLI recovery
+ * authority. No subprocess, new admission plan or implicit enablement. */
+export function reviewSourceRecovery(
+  input: Parameters<typeof coreReviewSourceRecovery>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () => withSourceCommandBudget(coreReviewSourceRecovery(input), sourceManagementBudget(options)),
+    options,
+  )
+}
+export function applySourceRecovery(
+  input: Parameters<typeof coreApplySourceRecovery>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () => withSourceCommandBudget(coreApplySourceRecovery(input), sourceManagementBudget(options)),
+    options,
+  )
+}
+export function reconcileSourceRecovery(
+  input: Parameters<typeof coreReconcileSourceRecovery>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(coreReconcileSourceRecovery(input), sourceManagementBudget(options)),
     options,
   )
 }

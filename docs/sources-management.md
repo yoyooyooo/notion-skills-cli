@@ -160,6 +160,9 @@ ntn-skills ctl library sources onboard-reconcile ./onboarding.json --entry ENTRY
 复用该完整观察。Skills 正向元数据完整分页，包括禁用条目；不依赖 View 或 Sources
 反向关系的内联数量。`registered` 只表示已登记的当前身份和关联，正文健康仍为未观察。
 重复成员、同名不同身份、未决创建、来源不可访问和不完整输入分别报告，不作为空库。
+提供方已给出的不可取得资源/跨根引用不会被丢成一个泛化错误：失败details保留Source、
+provider revision、原始from_path/href/reason、总数及前20项。截断标记说明诊断未全量展示，
+不表示完整发现或允许接纳；可用原sources check读取完整提供方结果。
 
 只处理一个来源中的指定成员时，重复传入 `--member EXACT_KEY`。它收窄本次对账与动作，
 不修改 Notion 的共享 Selection；不能与 `--all` 混用。提供方仍取得完整配置范围，
@@ -183,6 +186,17 @@ Members，不冒充一个缺失上游 Skill。真正的 Skill 缺键仍须明确
 身份，并说明完整输入是否在本次父计划中；执行与核对仍使用原私有计划文件。创建后失败
 会单独报告已知原页面 ID，不能把该页面的存在或当前值相等当作成功回执。
 
+一次 CLI 错误不等于已持久化的 `needs_review` 终局。原生创建先取得主页面 POST/ACK，
+再验证其完整读回，之后才保留清单与完整源对象。首次读回在清单前被拒绝时，原页面
+可能已经存在，而共享清单仍不存在。修复校验器后，先用原 `onboard-reconcile` 定位
+阶段；对精确绑定原计划的缺 manifest/outcome，`next.argv` 指向同一文件的
+`onboard-apply --dry-run`，而非要求不断重复只读核对。
+
+该预览不授予继续写入的权限。明确应用仍由原 dispatcher 核验同一凭据作用域的完整
+原 journal 和 native ACK，复用原页面响应，只处理尚未派发的后缀；原正文变化、缺ACK、
+unknown native写入或已记录的终局拒绝仍阻止继续。真正的 `needs_review` 要走支持该
+原计划类型的独立恢复，不得通过换计划、重建主页面、当前值相等或反复重试清除。
+
 `onboard` 输出完整冻结计划与逐项摘要。缺失成员通过原创建事务接纳，默认保持禁用；
 已有页面只有在其不可变固定 Git 来源能证明相同仓库和 member 时，才生成补绑定动作。
 名字、字节相等或描述文字不足以取得身份。原生/保留型内容没有来源证明时保留待审阅，
@@ -205,6 +219,56 @@ Git 子进程字节未测量，不算零。含受阻项的结果退出 3，原�
 30 秒。慢仓库、请求失败和总预算内未观察的来源分别留在部分报告中，不记为零成员。
 失败成员保留原错误的 code/message/details；零可执行动作的计划不会建议直接应用。
 这些限额限制一次调用，不表示该仓库永久不可用或完整文件验证可被跳过。
+
+### 明确审阅保留型来源的已知失败
+
+已记录 `needs_review` 的保留型来源导入不能由普通 `onboard-apply` 自动越过。
+在当前已分配页面仍完整、语义与原输入一致时，复用原 Sources recovery 命令族：
+
+```bash
+ntn-skills ctl library sources recovery review original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --target ORIGINAL_MAIN_PAGE --entry ENTRY --output recovery-review.json
+ntn-skills ctl library sources recovery apply original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --entry ENTRY --review recovery-review.json \
+  --review-id EXACT_RETURNED_REVIEW_ID --dry-run
+ntn-skills ctl library sources recovery apply original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --entry ENTRY --review recovery-review.json \
+  --review-id EXACT_RETURNED_REVIEW_ID
+ntn-skills ctl library sources recovery reconcile original-onboarding.json \
+  --operation ORIGINAL_CREATE_ID --target ORIGINAL_MAIN_PAGE --entry ENTRY
+```
+
+不需要 Agent 抽取、重写或重新生成子计划；`--operation` 从完整冻结父计划选择唯一原创建。
+单独原 admission plan 也保留原调用方式。命令会核对父/子摘要、来源、成员和库绑定。
+普通 `onboard-reconcile` 仅在唯一精确的已知保留型语义失败时，提供原计划的只读review
+下一步；unknown、非语义失败、错scope或多个混合失败不会获得自动执行权限。
+
+本分支限定为原 v1 create、保留型 source_projection v2、native import policy14、初始
+禁用且尚未发布任何文件归属事件的已知语义失败。先核对原失败事实、完整保留源/输入、
+原本机journal及每个前缀页面的真实POST/ACK，再冻结原页实际完整读回与语义等价的审阅。
+review/dry-run零业务写；明确apply仍由原创建执行器完成，只发送已审阅原计划的未派发
+后缀。不PATCH已有正文，不换page/File ID、不解除禁用，不用当前值相等补造ACK。
+
+新审阅和独立完成事实分开保存，原失败仍原样存在。冷客户端需核完整原失败、review、
+原native ACK事实、所有文件事件、保留正文/资源和完整完成关系，才放行普通固定消费；
+某条完成标签、当前页面或作者缓存不能单独构成成功。未知后缀不重发；精确可见的
+不可变完成记录可只读核实。源码仍不承诺Notion CAS或跨机器exactly-once。
+
+SDK 对应 `reviewSourceRecovery`、`applySourceRecovery`、`reconcileSourceRecovery`，
+参数使用同一 `entry/plan/operationId/target/review/reviewId` 合同及已有凭据、取消和预算。
+普通native restoration与旧fixed-Git恢复保持原版本边界。真正正文已改义、缺原ACK、
+已有未知请求、变更来源或不支持的历史类型均拒绝；不能用新review“接受”丢失的原事实。
+
+恢复过程中的新拒绝也保持原状态：某个尚未派发文件的 native POST 收到明确
+`400 validation_error` 后，本次原创建不会自动重发或改写wire。该拒绝不是已确认的
+成功页面，也不能用另一个review清除。错误返回原provider operation、完整创建operation、
+文件身份/path、HTTP分类和 `native_retry_allowed:false`；不附带原文、资源base64或整份
+大计划。旧回执没有保留的提供方说明不能补猜。需要改变该原输入的提交形式时，必须另有
+支持该原计划类型的审阅/明确新请求合同，不能直接修改已有私有journal。
+
+`recovery apply` 的错误与已执行结果都给出原计划/原主页面的只读reconcile argv；成功
+dry-run才提供同一review的明确apply argv。argv按数组传递，路径含空格或特殊字符也不
+拼成shell。只读预览、原状态确认和继续派发仍是三个独立决定。
 
 SDK 的四个 Promise 入口直接调用同一 Core 和运行环境，不启动 CLI 子进程：
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "8319c418b8de19ffc3ab69ba09ed32f167948c17",
+  "synchronized_commit": "5387e438ca41a500c98cd6d4f7bb3c0475fed857",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "30897b3905ba04f6614256f1604705b3dad0a5880fb3f9011ea76ad3cfc9400b",
@@ -8,7 +8,7 @@
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
-    "packages/core/src/shared-source-definitions.ts": "83abc51023fb800f077fc2a447af64dea772cb791ce826c13f528ec54b697ed4",
+    "packages/core/src/shared-source-definitions.ts": "ca9ce89f39e865f83ada90f4e8851b9b4688076d8402ed84b62887b1fb98ed5a",
     "packages/core/src/shared-records.ts": "967ba25a903520b32efef83e3050cae192b1a47e3883aa2ba0f917efea230312",
     "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
     "packages/core/src/shared-file-management-model.ts": "8c79af06932063c4cffd6f1a1136f73352476a75642cb62d18d3bb410289729c",
@@ -44,12 +44,17 @@
     "packages/core/test/shared-source-run.test.ts": "98a1660fd155d627956476db329dfce3162b7956670d3f39fd643d3307eabee3",
     "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
-    "packages/core/test/shared-source-projection-retained.test.ts": "2bf7be2ca83d700a308a90292db986800391ab65d6e399dc1a8e97bd7d633dc4",
+    "packages/core/test/shared-source-projection-retained.test.ts": "a73467d4044cc3be4bc83e6ca77f52cab63604c918759f2ba9643c362a10ea5d",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
-    "packages/cli/test/library-source-members-http.test.ts": "fefeced850eb2e2ad5254ae0ce06a865f4f9eeb0610f2ecb5df7f316d802d8a8",
-    "packages/core/test/shared-import-markdown.test.ts": "e9b41a0d3f41323b77dd8234a66d80d439d92b3dacd70af39a3628051c3b22ed"
+    "packages/cli/test/library-source-members-http.test.ts": "5fd08e765734184250b3a52b52cbae5655c8e227aaddf1c069b1dcea31cae265",
+    "packages/core/test/shared-import-markdown.test.ts": "2d061ffe12a1abda4abf5f0fe459ae81ee92a48fceff187ee944c2870af6bd9c",
+    "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
+    "packages/core/src/shared-create-retained-recovery.ts": "a620461a5b8b915bb668ea2d31eedc713ff3032a301c526f3e8c1cdc59640671",
+    "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
+    "packages/core/test/shared-create-retained-recovery.test.ts": "5455614219721838509ed265ccd55515890496850107eb35c6c4b4785df15854",
+    "packages/cli/src/commands-library-source-recovery.ts": "43dae072c6ca22746e08f2f8a4ba9d57ac0f717b0b0deeaa7cf4edc619d947bf"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -923,6 +928,64 @@
       ],
       "symbols": ["assertImportedMarkdownContent", "importContent"],
       "scope": "Exact full href/visible-label equality recognizes native automatic links in preserved literal comment text. Authored input destinations and image targets remain required, and text/code equality is unchanged. Native wire, frozen projection policies, original dispatch/ACK/journal and recovery rights are unchanged. The existing finite models do not enumerate Markdown tokens or provider rendering. The installed source journey reproduces this native formatting over its original real Git/Node/SQLite route; it does not prove real service recovery. Existing failed original source-v2 creation remains failed until separately authorized recovery. See docs/maintenance-verification-review.md AH-1068."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "original_pre_manifest_observation_and_readonly_navigation",
+      "files": [
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/cli/test/source-onboarding-navigation.test.ts",
+        "packages/core/test/shared-source-projection-retained.test.ts"
+      ],
+      "symbols": [
+        "sourceOnboardingNext",
+        "executeSharedCreate",
+        "inspectSharedCreateDispatch",
+        "sharedCreateDispatch"
+      ],
+      "scope": "The existing producer resumes an acknowledged main when first readback failed before manifest retention; no new dispatcher, action authority, ACK inference or journal mutation was added. Tests distinguish missing manifest from immutable needs_review, refuse missing original ACK/journal or changed body, and exercise exact-plan CLI-to-SDK continuation over real Git/Node/SQLite with one main POST. CLI reconciliation routes only exact original missing-record errors to a read-only preview; preview is not write authority. Provider unavailability diagnostics preserve at most 20 original reasons with total count and truncation. Navigation and provider diagnostic payloads are outside the finite models; all models/configs/expected_rules and original mutation guards remain unchanged. See docs/maintenance-verification-review.md original failure-stage correction."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "retained_native_import_explicit_recovery",
+      "files": [
+        "packages/cli/src/commands-library-source-recovery.ts",
+        "packages/cli/test/library-source-members-http.test.ts",
+        "packages/cli/test/source-onboarding-navigation.test.ts",
+        "packages/core/src/shared-create-retained-recovery.ts",
+        "packages/core/src/shared-source-definitions.ts",
+        "packages/core/src/shared-source-recovery.ts",
+        "packages/core/test/shared-create-retained-recovery.test.ts",
+        "packages/core/test/shared-import-markdown.test.ts",
+        "packages/core/test/shared-source-projection-retained.test.ts"
+      ],
+      "symbols": [
+        "reviewSharedRetainedImportRecovery",
+        "assertSharedRetainedImportRecovery",
+        "applySharedRetainedImportRecovery",
+        "readSharedRetainedImportCompletion",
+        "retainedImportRecoveryOriginal",
+        "sourceRecoveryError",
+        "sourceRecoveryReconcileNext"
+      ],
+      "abstract_correspondence": [
+        "AcknowledgedRecordPrefix: original ACK, exact prefix, current scope and only undispatched suffix",
+        "IndependentAcceptance: known failure, separate explicit decision, immutable prior facts, full cold proof"
+      ],
+      "scope": "Retained Source v2 native import policy14 adds a separately authorized review of a known persisted semantic rejection, while executing the original child dispatcher and preserving original failure/page/input/wire. Full old native ACKs, frozen hashes and observed prefix plus complete immutable events verify independent completion; metadata-only audit classification does not prove success. Unknown or definitively rejected native writes remain unreplayed. CLI/SDK error projection removes complete original plans, retains exact operation/file and offers original read-only reconcile. Concrete Source-v2 schema/bytes, Markdown semantics, library permissions and audit-family parsing are outside unchanged finite TLA domains. No model/config/expected_rules changes; all concrete gates and installation results remain separate. See docs/maintenance-verification-review.md retained recovery mapping."
     }
-  ]
+  ],
+  "retained_recovery_journey_budget_review": {
+    "scope": "controlled installed Git/Node/SQLite joined journey only",
+    "test": "packages/cli/test/library-source-members-http.test.ts",
+    "previous_sha256": "6f4c5369456c9f4b8a75687ed80a0539d68eeecaa775a7f8cdffb7306ed0df12",
+    "current_sha256": "5fd08e765734184250b3a52b52cbae5655c8e227aaddf1c069b1dcea31cae265",
+    "prior_timeout_ms": 180000,
+    "current_timeout_ms": 300000,
+    "request_interval_ms": 100,
+    "product_or_model_budgets_changed": false,
+    "assertions_or_stages_removed": false,
+    "prior_failed_run_preserved": true,
+    "model_configs_expected_rules_changed": false
+  }
 }

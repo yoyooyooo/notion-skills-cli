@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect"
-import { decode, fail, SkillsError } from "./model.ts"
+import { decode, fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import type { SharedCreatePlan } from "./shared-create-model.ts"
 import type { SharedCreateBinding } from "./shared-create-outcome.ts"
@@ -85,6 +85,7 @@ export function observeNativeImportFile(
   scope: string,
   skillPage: string,
   page: string,
+  options: { readonly retainObservation?: boolean } = {},
 ) {
   return Effect.gen(function* () {
     const store = yield* Store
@@ -122,9 +123,20 @@ export function observeNativeImportFile(
         ),
       )
     const resolved = yield* withObservedBody(file, markdown)
-    if (saved === undefined) yield* store.writeJson(key, observation)
+    if (saved === undefined && options.retainObservation !== false)
+      yield* store.writeJson(key, observation)
     return resolved
-  })
+  }).pipe(
+    Effect.mapError((error) =>
+      fail(error.code, error.message, {
+        ...property(error.details),
+        file_id: file.file_id,
+        path: file.path,
+        body_page_id: page,
+        owner_page_id: skillPage,
+      }),
+    ),
+  )
 }
 
 /** A completed import resolves from shared body/event facts, never today's page

@@ -6,6 +6,12 @@
 
 ## SRC 来源接手（AH-1064）
 
+错误阶段需区分返回异常与持久化终局。现有retained回归覆盖清单前main读回拒绝后的
+原ACK继续、缺ACK/原journal/正文漂移零写拒绝，以及真正已知终局不可被重试清除。
+`source-onboarding-navigation.test.ts` 检查缺清单只路由到原plan只读preview，不给写权限；
+原安装HTTP旅程通过实际CLI故障→reconcile返回的argv→同包SDK继续→重复零写，
+确认唯一主POST、同原页、同冻结输入。不要为本可由原dispatcher继续的状态新建恢复器。
+
 `sources review --source SOURCE | --all` 使用完整正向 Skills 元数据与配置范围内的上游成员；
 `onboard --output PLAN` 冻结同核动作，`onboard-apply` / `onboard-reconcile` 复用原创建与绑定 journal。
 SDK 的 `reviewSources`、`prepareSourceOnboarding`、`applySourceOnboarding`、`reconcileSourceOnboarding`

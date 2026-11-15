@@ -313,6 +313,14 @@ function inspect(
             fail(
               "SOURCE_REFRESH_INCOMPLETE",
               "Provider discovery has unresolved resources; no absence or admission is inferred.",
+              {
+                source_id: definition.source_id,
+                source_page_id: definition.page_id,
+                provider_revision: snapshot.revision || null,
+                unavailable_count: snapshot.unavailable?.length ?? 0,
+                unavailable: (snapshot.unavailable ?? []).slice(0, 20),
+                unavailable_truncated: (snapshot.unavailable?.length ?? 0) > 20,
+              },
             ),
           )
         const absent =

@@ -19,6 +19,15 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 | 整树父计划、完整子前缀、仅未派发后缀、半树消费屏障；原新页分配结果与动态正文绑定 | MaintenanceApply | shared-skill-apply、shared-skill-apply-tree、shared-maintenance-operations |
 | 共享 dispatcher、Record 或 source mutation | 上述四个模型中实际受影响的组 | 对应公共回归；完整 suite 的九文件列表见下 |
 
+保留型 native import 的已知终局审阅复用同一原producer与ACK事实，具体回归为
+`shared-create-retained-recovery.test.ts`。独立review及完成不覆盖原失败；真正unknown仍不重发。
+原生正文解析、保留包字节与具体Source版本不在有限模型中；不能仅靠模型通过放行实库。
+
+本分支的400明确拒绝与响应未知都不能通过当前页面或新review重发同一native创建。
+审阅记录、原已知失败、独立完成与完整消费证据分开；内容审计继续报告未完成原操作。
+具体恢复复用AcknowledgedRecordPrefix的原ACK/前缀/后缀边界及独立接受的保留事实原则，
+新增retained v2字节/解析条件仍只由实际实现与安装回归证明，不改原模型有限域。
+
 恢复前的 create/import 和既有 continuation 仍读 [verify-notion-resource-lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。HTTP RequestEngine 的 retry/预算/取消归独立 request-engine 验证；Broker consumer/session 归 Broker guardian。不要把原业务 Request 当成 HTTP 请求重试模型。
 
 ## 核对源码对应

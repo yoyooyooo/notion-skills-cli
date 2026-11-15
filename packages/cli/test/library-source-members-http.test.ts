@@ -33,6 +33,7 @@ beforeAll(async () => {
   if (exit !== 0) throw new Error(`Production CLI build failed: ${stdout}\n${stderr}`)
 }, 120_000)
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+const skillPropertyIds: Readonly<Record<string, string>> = library.skills.property_ids
 const field = (value: unknown, key: string) => {
   const result = property(value)[key]
   if (typeof result !== "string") throw new Error(`Expected ${key}`)
@@ -78,7 +79,12 @@ test("installed source member commands admit, explicitly remap and retain real G
   }
   await put(
     "skills/base/SKILL.md",
-    "---\nname: existing-candidate\ndescription: Never implicitly admitted\n---\n\n# Base\n",
+    "---\nname: existing-candidate\ndescription: Never implicitly admitted\n---\n\n# Base\n\n[Original](references/a-original.md) and [later](references/b-later.md).\n",
+  )
+  await put("skills/base/references/a-original.md", "## Original\n\n- \n")
+  await put(
+    "skills/base/references/b-later.md",
+    "## Later\n\nRetain this complete original suffix.\n",
   )
   commit()
   const originalGuide =
@@ -94,7 +100,7 @@ test("installed source member commands admit, explicitly remap and retain real G
   await put(
     "skills/fresh/SKILL.md",
     "---\nname: explicit-member\ndescription: Explicit source admission\nlicense: MIT\n---\n\n# New member\n\n##### Detailed instruction\n\nRead [guide](references/guide.md) and retain [bytes](assets/data.bin).\n" +
-      `\nSource ${canonicalUrl}.\n\n<!-- canonical: ${canonicalUrl} -->\n`,
+      `\nSource ${canonicalUrl}.\n\n<!-- canonical: ${canonicalUrl} -->\n\n## Empty summary\n\n- \n`,
   )
   await put("skills/fresh/references/guide.md", originalGuide)
   await put("skills/fresh/assets/data.bin", originalBinary)
@@ -105,7 +111,8 @@ test("installed source member commands admit, explicitly remap and retain real G
       wire
         .replace(/<h1>(.*?)<\/h1>/u, "### $1")
         .replaceAll(canonicalUrl, `[${canonicalUrl}](${canonicalUrl})`)
-        .replace("<!-- canonical:", "\\<!-- canonical:") + "\n",
+        .replace("<!-- canonical:", "\\<!-- canonical:")
+        .replace("\n- \n", "\n<ul>\n<li></li>\n</ul>\n") + "\n",
   })
   f.skills.clear()
   f.files.clear()
@@ -114,6 +121,8 @@ test("installed source member commands admit, explicitly remap and retain real G
   const errors: string[] = []
   const commands: unknown[] = []
   let gitRequests = 0
+  let rejectOnboardingMainReadback = false
+  let rejectOnboardingReferenceReadback = false
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1")
@@ -212,15 +221,39 @@ test("installed source member commands admit, explicitly remap and retain real G
         }
         return json(response, 200, page)
       }
-      return json(
-        response,
-        200,
-        await f.run(
-          Effect.flatMap(Notion, (api) =>
-            api.request(url.pathname.slice(1) + url.search, body, { method }),
-          ),
+      const result = await f.run(
+        Effect.flatMap(Notion, (api) =>
+          api.request(url.pathname.slice(1) + url.search, body, { method }),
         ),
       )
+      const observedPage = f.skills.get(
+        url.pathname.replace(/^\/v1\/pages\//u, "").replace(/\/markdown$/u, ""),
+      )
+      if (
+        rejectOnboardingMainReadback &&
+        method === "GET" &&
+        url.pathname.endsWith("/markdown") &&
+        text(property(property(observedPage?.properties).title).title) === "existing-candidate"
+      )
+        return json(response, 200, {
+          ...property(result),
+          markdown: "# Controlled rejected main observation\n",
+        })
+      const observedFile = f.files.get(
+        url.pathname.replace(/^\/v1\/pages\//u, "").replace(/\/markdown$/u, ""),
+      )
+      if (
+        rejectOnboardingReferenceReadback &&
+        method === "GET" &&
+        url.pathname.endsWith("/markdown") &&
+        text(property(property(observedFile?.properties).path).rich_text) ===
+          "references/a-original.md"
+      )
+        return json(response, 200, {
+          ...property(result),
+          markdown: "# Controlled previous reference readback rejection\n",
+        })
+      return json(response, 200, result)
     } catch (error) {
       errors.push(String(error))
       json(response, 400, { object: "error", code: "validation_error", message: String(error) })
@@ -477,6 +510,8 @@ test("installed source member commands admit, explicitly remap and retain real G
       ...entry,
       "--output",
       onboard,
+      "--storage",
+      "retained",
     ])
     expect(prepared.actions).toEqual([
       expect.objectContaining({ kind: "create", member: "skills/base", enabled: false }),
@@ -485,6 +520,95 @@ test("installed source member commands admit, explicitly remap and retain real G
       (await invoke([...sources, "onboard-apply", onboard, ...entry, "--dry-run"])).status,
     ).toBe("previewed")
     expect(writes()).toHaveLength(beforeCold)
+    const originalPlanBytes = await readFile(onboard)
+    rejectOnboardingMainReadback = true
+    const refusedMain = await invoke([...sources, "onboard-apply", onboard, ...entry], [3])
+    expect(refusedMain).toMatchObject({
+      status: "partial",
+      results: [
+        expect.objectContaining({
+          verified: false,
+          error: expect.objectContaining({
+            code: "SHARED_CREATE_BODY_MISMATCH",
+            details: expect.objectContaining({ stage: "manifest" }),
+          }),
+        }),
+      ],
+    })
+    const allocatedBase = [...f.skills.values()].find(
+      (row) => text(property(property(row.properties).title).title) === "existing-candidate",
+    )
+    expect(allocatedBase).toBeDefined()
+    const allocatedBaseId = String(allocatedBase!.id)
+    const originalBaseBody = f.base.bodies.get(allocatedBaseId)
+    const stoppedWrites = writes().length
+    rejectOnboardingMainReadback = false
+    const incomplete = await invoke([...sources, "onboard-reconcile", onboard, ...entry], [3])
+    const next = property(incomplete.next)
+    expect(next).toMatchObject({
+      read_only: true,
+      argv: ["ntn-skills", ...sources, "onboard-apply", onboard, ...entry, "--dry-run"],
+    })
+    const route = next.argv
+    if (!Array.isArray(route)) throw new Error("Expected exact original preview argv")
+    const exactArgs = route.map((item) => {
+      if (typeof item !== "string")
+        throw new Error("Expected a string argv without shell interpolation")
+      return item
+    })
+    await invoke(exactArgs.slice(1))
+    expect(writes()).toHaveLength(stoppedWrites)
+    rejectOnboardingReferenceReadback = true
+    const refusedReference = await invoke([...sources, "onboard-apply", onboard, ...entry], [3])
+    const failures = refusedReference.results
+    if (!Array.isArray(failures) || failures.length !== 1)
+      throw new Error("Expected the original base operation")
+    const originalOperation = field(failures[0], "operation_id")
+    expect(property(property(failures[0]).error)).toMatchObject({
+      code: "SHARED_CREATE_BODY_MISMATCH",
+      details: expect.objectContaining({ path: "references/a-original.md" }),
+    })
+    rejectOnboardingReferenceReadback = false
+    const terminal = await invoke([...sources, "onboard-apply", onboard, ...entry], [3])
+    expect(terminal).toMatchObject({
+      results: [
+        expect.objectContaining({
+          error: expect.objectContaining({ code: "SHARED_CREATE_REVIEW_REQUIRED" }),
+        }),
+      ],
+    })
+    const beforeReview = writes().length
+    const recoveryFile = join(directory, "retained-recovery-review.json")
+    const reviewedRecovery = await invoke([
+      ...sources,
+      "recovery",
+      "review",
+      onboard,
+      "--operation",
+      originalOperation,
+      "--target",
+      allocatedBaseId,
+      ...entry,
+      "--output",
+      recoveryFile,
+    ])
+    const recoveryId = field(reviewedRecovery, "review_id")
+    expect(writes()).toHaveLength(beforeReview)
+    await invoke([
+      ...sources,
+      "recovery",
+      "apply",
+      onboard,
+      "--operation",
+      originalOperation,
+      ...entry,
+      "--review",
+      recoveryFile,
+      "--review-id",
+      recoveryId,
+      "--dry-run",
+    ])
+    expect(writes()).toHaveLength(beforeReview)
     const sdkPath = pathToFileURL(join(dirname(executable), "sdk.js")).href
     const sdkProbe = join(directory, "onboarding-sdk.mjs")
     await writeFile(
@@ -492,11 +616,15 @@ test("installed source member commands admit, explicitly remap and retain real G
       `
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { applySourceOnboarding, reconcileSourceOnboarding, reviewSources, prepareSourceOnboarding } from ${JSON.stringify(sdkPath)};
+import { applySourceRecovery, reconcileSourceRecovery, reconcileSourceOnboarding, reviewSources, prepareSourceOnboarding, readSkill, listSkill } from ${JSON.stringify(sdkPath)};
 const entry = ${JSON.stringify(library.skills.database_id)};
 const plan = JSON.parse(await readFile(${JSON.stringify(onboard)}, "utf8"));
-const applied = await applySourceOnboarding({ entry, plan });
-assert.equal(applied.result.status, "completed");
+const review = JSON.parse(await readFile(${JSON.stringify(recoveryFile)}, "utf8"));
+const operationId = ${JSON.stringify(originalOperation)};
+const applied = await applySourceRecovery({ entry, plan, operationId, review, reviewId: ${JSON.stringify(recoveryId)} });
+assert.equal(applied.result.verified, true);
+const originalResult = await reconcileSourceRecovery({ entry, plan, operationId, target: ${JSON.stringify(allocatedBaseId)} });
+assert.equal(originalResult.result.verified, true);
 const reconciled = await reconcileSourceOnboarding({ entry, plan });
 assert.equal(reconciled.result.status, "completed");
 const input = { entry, scope: { kind: "source", source: ${JSON.stringify(f.source.id)} } };
@@ -504,7 +632,16 @@ const reviewed = await reviewSources(input);
 assert.equal(reviewed.result.sources[0].members[0].kind, "registered");
 const repeated = await prepareSourceOnboarding(input);
 assert.equal(repeated.result.actions.length, 0);
-console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: repeated.result.actions.length }));
+const coldEnv = { ...process.env, NTN_SKILLS_HOME: ${JSON.stringify(join(directory, "cold-sdk-state"))},
+  NTN_SKILLS_CACHE_HOME: ${JSON.stringify(join(directory, "cold-sdk-cache"))}, NTN_SKILLS_DATA_HOME: ${JSON.stringify(join(directory, "cold-sdk-data"))} };
+const metrics=[];
+const cold=await readSkill(${JSON.stringify(allocatedBaseId)}, { env:coldEnv, database:entry, authoring:true, readOnly:true, onRequestMetrics:m=>metrics.push(m) });
+const files=await listSkill(cold.snapshot_id,{env:coldEnv,offline:true});
+assert.equal(files.files.length,3);
+assert.equal(cold.record.enabled,false);
+assert.ok(metrics.every(m=>m && m.requests.notion_write===0));
+console.log(JSON.stringify({ applied, originalResult, reconciled, reviewed, repeatedActions: repeated.result.actions.length,
+  cold:{snapshot_id:cold.snapshot_id,files:files.files,metrics,originalAuthorStoreCopied:false} }));
 `,
     )
     const sdkChild = Bun.spawn([node, sdkProbe], {
@@ -523,6 +660,18 @@ console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: rep
     const sdkResult = property(JSON.parse(sdkOut))
     await writeFile(join(directory, "onboarding-sdk.json"), JSON.stringify(sdkResult, null, 2))
     expect(f.skills.size).toBe(2)
+    expect(f.skills.has(allocatedBaseId)).toBe(true)
+    expect(f.base.bodies.get(allocatedBaseId)).toBe(originalBaseBody)
+    expect(await readFile(onboard)).toEqual(originalPlanBytes)
+    expect(
+      calls.filter(
+        (call) =>
+          call.method === "POST" &&
+          call.path === "/v1/pages" &&
+          text(property(property(property(call.body).properties)[skillPropertyIds.Name!]).title) ===
+            "existing-candidate",
+      ),
+    ).toHaveLength(1)
     const basePage = [...f.skills.values()].find(
       (row) => text(property(property(row.properties).title).title) === "existing-candidate",
     )
@@ -534,6 +683,21 @@ console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: rep
     expect((await invoke([...sources, "onboard-apply", onboard, ...entry])).status).toBe(
       "completed",
     )
+    expect(
+      (
+        await invoke([
+          ...sources,
+          "recovery",
+          "reconcile",
+          onboard,
+          "--operation",
+          originalOperation,
+          "--target",
+          allocatedBaseId,
+          ...entry,
+        ])
+      ).verified,
+    ).toBe(true)
     expect(writes()).toHaveLength(afterOnboarding)
     expect(preserved()).toEqual(metadata)
     for (const [page, body] of bodies) expect(f.base.bodies.get(page)).toBe(body)
@@ -546,6 +710,8 @@ console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: rep
           {
             kind: "public_node_cli_real_git_controlled_notion",
             actual_notion: false,
+            controlled_journey_deadline_ms: 300_000,
+            controlled_notion_interval_ms: 100,
             cli_sha256: hash(await readFile(executable)),
             command_directory: directory,
             revisions: [firstRevision, secondRevision, thirdRevision],
@@ -557,6 +723,11 @@ console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: rep
             late_reads_writes: legacyLateReadWrites,
             onboarding: {
               cli_preview: true,
+              rejected_main_original_page_resumed: allocatedBaseId,
+              original_plan_bytes_preserved: true,
+              reconcile_routes_to_readonly_original_preview: true,
+              known_terminal_explicitly_reviewed: recoveryId,
+              original_failed_operation: originalOperation,
               sdk_same_plan: true,
               repeated_writes: writes().length - afterOnboarding,
               sdk: sdkResult,
@@ -576,4 +747,8 @@ console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: rep
       server.close((error) => (error ? reject(error) : resolve())),
     )
   }
-}, 180_000)
+  // This joined journey now contains original admission, failed-main continuation,
+  // persisted-terminal review, SDK recovery, cold read and repeated reconciliation.
+  // Keep all stages and the real 100 ms scheduler; this is a harness wall-time
+  // ceiling, not a change to product request or natural-model budgets.
+}, 300_000)

@@ -1,7 +1,8 @@
 import { Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
-import { fail } from "../../core/src/model.ts"
+import { fail, property } from "../../core/src/model.ts"
+import { pageId } from "../../core/src/ref.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
 import {
@@ -225,6 +226,99 @@ export const sourceOnboardCommand = defineCommand(
   ),
 )
 
+type OnboardingResult = Effect.Success<ReturnType<typeof executeSourceOnboarding>>
+
+/** Read-only routing is not continuation authority. Original dispatch guards
+ * still own every write when the same frozen plan is explicitly applied. */
+export function sourceOnboardingNext(input: {
+  readonly mode: OnboardingResult["mode"]
+  readonly results: readonly Pick<
+    OnboardingResult["results"][number],
+    "verified" | "operation_id" | "error"
+  >[]
+  readonly plan: string
+  readonly entry: string
+}) {
+  const incomplete = input.results.filter((item) => !item.verified)
+  const originalFailure = incomplete.length === 1 ? incomplete[0] : undefined
+  const failureDetails = property(originalFailure?.error?.details)
+  const failurePlan = property(property(failureDetails.recovery).original_plan)
+  const failurePage =
+    typeof failureDetails.skill_page_id === "string"
+      ? pageId(failureDetails.skill_page_id)
+      : undefined
+  if (
+    input.mode === "reconcile" &&
+    originalFailure?.error?.code === "SHARED_CREATE_REVIEW_REQUIRED" &&
+    failureDetails.original_status === "needs_review" &&
+    failureDetails.original_reason_code === "SHARED_CREATE_BODY_MISMATCH" &&
+    failureDetails.source_projection_version === 2 &&
+    failurePage &&
+    typeof originalFailure.operation_id === "string" &&
+    /^skill-create-[a-f0-9]{64}$/u.test(originalFailure.operation_id) &&
+    failureDetails.native_create_operation_id === originalFailure.operation_id &&
+    failurePlan.operation_id === originalFailure.operation_id &&
+    failurePlan.retained_in_parent_plan === true
+  )
+    return {
+      argv: [
+        "ntn-skills",
+        "ctl",
+        "library",
+        "sources",
+        "recovery",
+        "review",
+        input.plan,
+        "--operation",
+        originalFailure.operation_id,
+        "--target",
+        failurePage,
+        "--entry",
+        input.entry,
+        "--output",
+        `${input.plan}.${originalFailure.operation_id}.review.json`,
+      ],
+      read_only: true,
+      reason:
+        "Review this exact known retained-source failure and complete original ACK prefix without writes. Current semantic equivalence alone cannot erase its immutable failure; inspect the returned independent review before any apply.",
+    }
+  const originalPreview =
+    input.mode === "reconcile" &&
+    incomplete.length > 0 &&
+    incomplete.every((item) => {
+      const details = property(item.error?.details)
+      const original = property(property(details.recovery).original_plan)
+      return (
+        (item.error?.code === "SHARED_RECORD_UNRESOLVED" ||
+          item.error?.code === "SHARED_CREATE_UNRESOLVED") &&
+        (details.stage === "manifest" || details.stage === "outcome") &&
+        typeof item.operation_id === "string" &&
+        details.native_create_operation_id === item.operation_id &&
+        original.operation_id === item.operation_id &&
+        original.retained_in_parent_plan === true
+      )
+    })
+  return {
+    argv: [
+      "ntn-skills",
+      "ctl",
+      "library",
+      "sources",
+      input.mode === "dry-run" || originalPreview ? "onboard-apply" : "onboard-reconcile",
+      input.plan,
+      "--entry",
+      input.entry,
+      ...(originalPreview ? ["--dry-run"] : []),
+    ],
+    read_only: input.mode !== "dry-run",
+    reason: originalPreview
+      ? "A missing original manifest or completion is not a persisted rejection. Preview this same saved plan; an explicit apply still requires its original journal and native acknowledgements and refuses unknown writes. Do not generate a replacement plan."
+      : input.mode === "dry-run"
+        ? "Apply only the reviewed frozen actions; unresolved members remain separate. Preview alone does not establish continuation authority."
+        : "Read the original child outcomes without provider rediscovery or blind replay. Run review separately for current member coverage.",
+  }
+}
+
 function executionCommand(name: "onboard-apply" | "onboard-reconcile") {
   return defineCommand(
     name,
@@ -258,23 +352,12 @@ function executionCommand(name: "onboard-apply" | "onboard-reconcile") {
           ...result,
           budget,
           completion_scope: "frozen_actions",
-          next: {
-            argv: [
-              "ntn-skills",
-              "ctl",
-              "library",
-              "sources",
-              mode === "dry-run" ? "onboard-apply" : "onboard-reconcile",
-              args.plan,
-              "--entry",
-              args.entry,
-            ],
-            read_only: mode !== "dry-run",
-            reason:
-              mode === "dry-run"
-                ? "Apply only the reviewed frozen actions; unresolved members remain separate."
-                : "Read the original child outcomes without provider rediscovery or blind replay. Run review separately for current member coverage.",
-          },
+          next: sourceOnboardingNext({
+            mode,
+            results: result.results,
+            plan: args.plan,
+            entry: args.entry,
+          }),
         })
         if (result.status === "partial") process.exitCode = 3
       }),

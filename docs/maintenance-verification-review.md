@@ -333,3 +333,67 @@ policy、原journal/ACK/恢复权威没有变化。
 对应。旧needs_review事实没有被改写；retained Source v2原失败的正式恢复入口仍是
 另一个明确产品缺口，不能套用仅支持普通native或旧fixed-Git的恢复命令。各原计划和
 页面继续保留，实际库存完成数未因校验器修复而增加。
+
+
+## 原失败阶段的纠正与原计划继续（AH-1067 / AH-1068）
+
+进一步读取原只读reconcile及执行顺序，纠正上一节对Guizang恢复状态的推断：它在
+main POST/ACK后的首次读回阶段被旧校验器拒绝，尚未保存manifest或不可变终局。
+因此“CLI曾返回失败”不能写成“已有needs_review事实”。原producer已经支持由原journal
+和完整native ACK继续未派发后缀，不需要新增retained-v2恢复器。真正已持久化的
+needs_review及unknown仍走原拒绝/独立恢复规则，没有改变其权威。
+
+本轮只调整onboarding命令的下一步导航：原reconcile报告精确绑定同plan的manifest/outcome
+缺失时，返回同plan只读preview；一旦混有终局拒绝、unknown或无法关联的错误，仍保留
+只读核对路线。preview本身不授予写权限，后续明确apply仍由原dispatcher检查所有原证据。
+增加原main拒绝后继续、缺ACK、缺journal、正文漂移和已终局拒绝五个真实核心回归；
+安装HTTP旅程增加原主观察被拒绝→reconcile→实际返回argv→SDK同plan完成→重复零写。
+此处没有新增状态转换、放开重发、改变模型/配置/expected_rules或拷贝作者缓存。
+
+另将provider原unavailable原因通过来源review的有界20项诊断透传，保留真实Source和
+revision、精确from_path/href及截断计数。Clip To Kami的实际发现包含CHANGELOG中
+越过仓库根的链接；诊断不删链接、不改变根、不让不完整发现成为可应用计划。
+上述投影和新增测试列为现有模型之外的实现上下文；测试通过与真实库存完成分别记录。
+
+
+## 保留型已知终局的明确审阅与原producer（AH-1067）
+
+上节的清单前纠正只适用于该原失败阶段：原plan继续后若支持页面的完整读回被拒绝，
+执行器会保存不可变needs_review。这时不能再把“缺manifest可继续”当成全程权限。
+新增retained v2分支限定初始disabled、完整原source/input、policy14和未发布归属事件的
+已知语义拒绝；原失败保持原样。用户审阅独立digest，原journal/POST/ACK/owner/Source
+与完整native前缀均须吻合，再由同一个executeSharedCreate继续原未派发后缀。
+
+实际代码边界：readOriginalFailure核原终局与有序页前缀，originalJournal核凭据/计划和
+original dispatcher canResume；allocationProof复用既有完整native响应证明；observePrefix
+只读核完整当前语义且不制造新观察缓存；review绑定原计划、manifest、失败和前缀正文。
+明确apply持有同库本地锁，在每个原派发阶段重新核验原事实。新的review和完成记录使用
+独立记录身份，原失败不改写；普通reconcile/冷消费者需完整review、原ACK证明、前缀
+hash和全部不可变file事件才能解析独立完成。当前页面相等或仅一条完成标签不能代证。
+
+这与AcknowledgedRecordPrefix的原ACK/精确绑定/前缀/新鲜前提/未派发后缀抽象相接，
+与IndependentAcceptance的已知失败、独立决定、旧事实保留及冷证明完备原则相接。
+原TLA模型、配置、expected_rules不变；它们没有枚举retained v2字节、Markdown语法、
+实际凭据/Notion分页或audit家族分类。具体review schema/记录编解码、metadata审计归类、
+Source选择与CLI/SDK参数由真实实现回归及独立安装承担，不宣称新的全系统形式化性质。
+
+若恢复的新native POST明确400拒绝，同一original dispatcher仍禁止重发。受控回归移除
+拒绝响应后再次调用也零native写，旧失败和前缀正文不变，content audit继续保留未完成。
+HTTP分类与原operation/file/path通过错误投影返回；原计划与资源base64留在原私有文件，
+不再次塞入Agent。明确metadata反馈的新一代权限与同一native请求重发权限分别表达。
+
+本轮实库原拒绝仅保留400 validation_error及README.en.md身份，传输未保存细化说明；
+不能根据文件HTML或外链猜测服务拒绝原因。原真实请求不为补诊断而重复发送。只读
+reconcile/dry-run与后续明确执行分开，所有公开next.argv绑定原计划、operation和页面。
+恢复数据产生新的辅助Records，audit-v5将精确关联原manifest的review/completion头归到
+原创建家族；metadata仍标payload未观察，content仍需原完成验证，不隐藏原失败。
+
+
+### 安装旅程时限与原件边界
+
+同一安装HTTP旅程新增清单前拒绝、持久终局审阅、SDK恢复与独立冷读后，原180秒
+总时限已经接近正常执行时长；该上限的超时结果保留。受控旅程总时限明确调整为300秒，
+receipt记录此值和未变的100毫秒请求调度；不修改产品请求预算、模型次数/输出预算、
+负例断言或任何业务恢复门槛。改变时限后的运行是新候选证据，不改判旧超时。
+该测试单文件只影响对应source hash，模型与产品语义、已执行原TLC输入均不变；当前
+最终候选的形式化证据按各次输入hash分别记录，不能把旧head自动当成新head通过。

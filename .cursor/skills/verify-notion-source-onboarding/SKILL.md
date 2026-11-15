@@ -32,10 +32,14 @@ bun test packages/core/test/shared-source-onboarding.test.ts packages/core/test/
 
 ```sh
 # INSTALLED_BIN来自本轮独立安装的package.json bin；EVIDENCE为新私有目录。
-NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EVIDENCE"   bun test packages/cli/test/library-source-members-http.test.ts --timeout 180000
+NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EVIDENCE"   bun test packages/cli/test/library-source-members-http.test.ts --timeout 300000
 ```
 
 未设精确安装bin时不得报告安装证明。该测试使用真实Git HTTP、实际Node/SQLite及同包SDK，但服务为受控Notion；不证明实际Notion导入。
+
+扩展后的同一旅程包含清单前失败、终局审阅、SDK恢复、冷读及重复核对，受控总时限为
+300秒并写入receipt；原100毫秒请求调度和产品预算保持。旧短时限超时原件不能改判为通过，
+调整时限后的独立运行须保存新证据，不能用总时限变化掩盖未知写入或省略冷读阶段。
 
 | 子模块 | 正例 | 关键反例 |
 | --- | --- | --- |
@@ -46,7 +50,20 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 
 实库沿review → onboard → dry-run → 同plan apply → 原reconcile → 独立read。--member只限本次动作；--bind是新的明确关联决定，不能冒充历史证明。跨Skill引用应保留待审查，不删链接或放开路径逃逸。
 
+错误返回、已分配主页面、原ACK、manifest和不可变终局是不同事实。清单前读回被拒绝，
+但原主ACK和journal完整时，已有apply可复用原页并继续未派发后缀；不需要重建或新恢复器。
+`onboard-reconcile` 对精确绑定的缺manifest/outcome结果会指向同plan的只读preview，
+而非无限重复reconcile；unknown、终局拒绝、其他owner或无法关联的错误不因此获得续写权限。
+核对 [原生导入分支表](../verify-notion-management/references/native-import.md)，并运行
+`packages/cli/test/source-onboarding-navigation.test.ts` 与原安装HTTP旅程。
+已持久化的保留型语义失败另运行 `packages/core/test/shared-create-retained-recovery.test.ts`：
+原父计划精确选子、明确review、零写preview、同producer后缀、独立冷读；不以普通apply跳过终局。
+
 ## Evidence
+
+已审阅恢复的后缀被明确拒绝也不能自动重派发；`shared-create-retained-recovery.test.ts`
+保留该反例及未完成审计。恢复错误应只带原operation/file/path与只读精确next.argv，
+不能把整份source包或大计划重复返回给Agent。review通过不证明后续每份Markdown均被提供方接纳。
 
 每个来源保存配置指纹、范围、revision、观察区间、成员分母、registered/admit/bind/blocked、原操作及原页。一次全库观察可能跨越其他写入；记录时间区间，最终再对账，不把旧pending覆盖成当前事实。
 

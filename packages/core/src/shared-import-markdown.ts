@@ -54,7 +54,7 @@ function importContent(markdown: string) {
         }
         case "html":
           if (
-            !/^<\/?(?:b|strong|i|em|s|del|p|h[1-6]|table|tr|td|th|thead|tbody|br)(?:\s[^>]*)?\s*\/?>$/iu.test(
+            !/^<\/?(?:b|strong|i|em|s|del|p|h[1-6]|table|tr|td|th|thead|tbody|br|ul|ol|li)(?:\s[^>]*)?\s*\/?>$/iu.test(
               token.raw,
             )
           )

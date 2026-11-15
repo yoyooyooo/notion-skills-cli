@@ -85,6 +85,13 @@ import {
   sharedCreateRestorationOutcomesEntity,
   type SharedCreateRestorationReview,
 } from "./shared-create-restoration.ts"
+import {
+  validateSharedRetainedImportRecoveryReview,
+  assertSharedRetainedImportRecovery,
+  saveSharedRetainedImportCompletion,
+  readSharedRetainedImportCompletion,
+  type SharedRetainedImportRecoveryReview,
+} from "./shared-create-retained-recovery.ts"
 import { saveSharedCreateOwnership } from "./shared-create-ownership.ts"
 import {
   validateRetainedMigrationConversion,
@@ -1587,7 +1594,9 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       if (restored !== undefined) outcome = restored.outcome
       else
         outcome =
-          (yield* readResourceNoteCompletion(library, plan, page, outcome, row.hash)) ?? outcome
+          (yield* readResourceNoteCompletion(library, plan, page, outcome, row.hash)) ??
+          (yield* readSharedRetainedImportCompletion(library, plan, page, outcome, row.hash)) ??
+          outcome
     }
     if (outcome.status !== "applied")
       return yield* Effect.fail(
@@ -1595,6 +1604,11 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
           fail(
             "SHARED_CREATE_REVIEW_REQUIRED",
             "This original native creation requires review; keep its original files, created pages and exact plan.",
+            {
+              original_status: outcome.status,
+              original_reason_code: outcome.reason_code,
+              source_projection_version: plan.source_projection?.version ?? null,
+            },
           ),
           plan,
           "outcome",
@@ -1744,6 +1758,7 @@ export function executeSharedCreate(
     readonly mode: "create" | "reconcile"
     readonly migrationInput?: unknown
     readonly restoration?: SharedCreateRestorationReview
+    readonly retainedImportRecovery?: SharedRetainedImportRecoveryReview
   },
 ) {
   return Effect.gen(function* () {
@@ -1752,6 +1767,15 @@ export function executeSharedCreate(
       input.restoration === undefined
         ? undefined
         : (yield* validateSharedCreateRestorationReview(input.restoration, plan)).review
+    const retainedRecovery =
+      input.retainedImportRecovery === undefined
+        ? undefined
+        : (yield* validateSharedRetainedImportRecoveryReview(input.retainedImportRecovery, plan))
+            .review
+    if (restoration !== undefined && retainedRecovery !== undefined)
+      return yield* Effect.fail(
+        fail("SHARED_CREATE_RECOVERY_REQUIRED", "Select exactly one original recovery authority."),
+      )
     if (input.mode === "reconcile") return yield* reconcileSharedCreate(library, plan)
     if (input.mode !== "create")
       return yield* Effect.fail(
@@ -1793,6 +1817,8 @@ export function executeSharedCreate(
         yield* createChecked(() => checkInventory(plan, fresh))
         yield* assertSourceProjectionDefinition(library, plan, skillPage)
         yield* allocatedCheck
+        if (retainedRecovery !== undefined)
+          yield* assertSharedRetainedImportRecovery(library, plan, retainedRecovery)
       }
       lastCheckedStage = stage
     }).pipe(withReadOnlyNotion)
@@ -1828,16 +1854,20 @@ export function executeSharedCreate(
         ![
           "SHARED_CREATE_UNRESOLVED",
           "SHARED_RECORD_UNRESOLVED",
-          ...(restoration === undefined && resourceNoteRecovery === undefined
+          ...(restoration === undefined &&
+          resourceNoteRecovery === undefined &&
+          retainedRecovery === undefined
             ? []
             : ["SHARED_CREATE_REVIEW_REQUIRED"]),
         ].includes(reconciled.failure.code) ||
         !(yield* dispatch.canResume)
       )
         return yield* Effect.fail(reconciled.failure)
+      if (retainedRecovery !== undefined)
+        yield* assertSharedRetainedImportRecovery(library, plan, retainedRecovery)
     }
     const store = yield* Store
-    if (restoration !== undefined && !original)
+    if ((restoration !== undefined || retainedRecovery !== undefined) && !original)
       return yield* Effect.fail(
         fail(
           "SHARED_CREATE_RESTORATION_REQUIRED",
@@ -2148,6 +2178,8 @@ export function executeSharedCreate(
       stage = "outcome"
       if (restoration !== undefined)
         yield* saveSharedCreateRestorationCompletion(library, plan, restoration, bindings)
+      else if (retainedRecovery !== undefined)
+        yield* saveSharedRetainedImportCompletion(library, plan, retainedRecovery, bindings)
       else if (resourceNoteRecovery !== undefined) {
         const payload = {
           version: 1 as const,
@@ -2240,6 +2272,7 @@ export function executeSharedCreate(
           // transport result never triggers another POST, PATCH, rollback or retry.
           if (
             restoration === undefined &&
+            retainedRecovery === undefined &&
             resourceNoteRecovery === undefined &&
             skillPage !== undefined &&
             [
@@ -2332,7 +2365,15 @@ export function loadPendingSharedCreates(
               input.skillPageId,
               terminal,
               outcomeHashes.get(header.record_id)!,
-            )) ?? terminal
+            )) ??
+            (yield* readSharedRetainedImportCompletion(
+              library,
+              plan,
+              input.skillPageId,
+              terminal,
+              outcomeHashes.get(header.record_id)!,
+            )) ??
+            terminal
       }
       if (terminal?.status === "applied") {
         if (terminal.version === 2 && terminal.manifest_record_hash !== header.hash)

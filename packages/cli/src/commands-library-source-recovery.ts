@@ -1,29 +1,60 @@
-import { Effect } from "effect"
+import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 import { defineCommand } from "../../core/src/command-schema.ts"
-import { property } from "../../core/src/model.ts"
+import { fail, property } from "../../core/src/model.ts"
+import { pageId } from "../../core/src/ref.ts"
 import { Notion } from "../../core/src/notion.ts"
 import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
-import { validateSharedCreatePlan } from "../../core/src/shared-create-model.ts"
 import {
-  applySharedCreateRecovery,
-  reconcileSharedCreateRecovery,
-  reviewSharedCreateRecovery,
-} from "../../core/src/shared-create-recovery.ts"
+  applySharedSourceRecovery,
+  reconcileSharedSourceRecovery,
+  reviewSharedSourceRecovery,
+} from "../../core/src/shared-source-recovery.ts"
 import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
-import { withSourceUpdateLock } from "../../core/src/shared-source-policy.ts"
 import { Store } from "../../core/src/store.ts"
-import { emit, requiredSingleton, switchFlag } from "./command-options.ts"
+import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
 import { readSourceJson } from "./command-source-input.ts"
 import { parseSourceBudget, sourceRequestBudgets } from "./commands-library-source-run.ts"
 import { sourceContinuationCommand } from "./commands-library-source-continuation.ts"
 
 const planArg = Argument.String("plan")
 const entry = requiredSingleton("entry", "Exact original shared library")
+const operation = singleton(
+  "operation",
+  "Exact original child operation ID; required when plan is a saved onboarding parent",
+)
 const target = requiredSingleton(
   "target",
   "Existing main page with the original durable create ACK",
 )
+
+export function sourceRecoveryReconcileNext(input: {
+  readonly plan: string
+  readonly entry: string
+  readonly operationId?: string
+  readonly target: unknown
+}) {
+  if (typeof input.target !== "string" || pageId(input.target) !== input.target) return undefined
+  return {
+    argv: [
+      "ntn-skills",
+      "ctl",
+      "library",
+      "sources",
+      "recovery",
+      "reconcile",
+      input.plan,
+      ...(input.operationId === undefined ? [] : ["--operation", input.operationId]),
+      "--entry",
+      input.entry,
+      "--target",
+      input.target,
+    ],
+    read_only: true,
+    reason:
+      "Inspect this exact original recovery. A refused or unknown suffix is not permission to repeat a native write.",
+  }
+}
 
 const review = defineCommand(
   "review",
@@ -31,19 +62,18 @@ const review = defineCommand(
     plan: planArg,
     entry,
     target,
+    operation,
     output: requiredSingleton("output", "New or identical recovery review JSON"),
     ...sourceRequestBudgets,
   },
   (args) =>
     Effect.gen(function* () {
-      const plan = yield* validateSharedCreatePlan(
-        yield* readSourceJson(args.plan, 192 * 1024 * 1024),
-      )
+      const plan = yield* readSourceJson(args.plan, 192 * 1024 * 1024)
       const limits = yield* parseSourceBudget(args)
       const { result, budget } = yield* withSourceCommandBudget(
-        reviewSharedCreateRecovery({
+        reviewSharedSourceRecovery({
           entry: args.entry,
-          operationId: plan.operation_id,
+          operationId: Option.getOrUndefined(args.operation),
           target: args.target,
           plan,
         }),
@@ -61,11 +91,33 @@ const review = defineCommand(
         remote_writes: 0,
         budget,
         request_metrics: (yield* Notion).requestMetrics?.(),
+        next: {
+          argv: [
+            "ntn-skills",
+            "ctl",
+            "library",
+            "sources",
+            "recovery",
+            "apply",
+            args.plan,
+            ...(Option.isSome(args.operation) ? ["--operation", args.operation.value] : []),
+            "--entry",
+            args.entry,
+            "--review",
+            args.output,
+            "--review-id",
+            result.review_id,
+            "--dry-run",
+          ],
+          read_only: true,
+          reason:
+            "Preview only this saved independently reviewed original recovery before authorizing its unissued suffix.",
+        },
       })
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Review an exact original v1 fixed Git admission: an acknowledged main before its manifest (v8 to v9, v9 to v10, or v10 to v11), or a known v9/v10 body-mismatch failure with an acknowledged page prefix. Each saved version retains its fixed projection meaning. Require the original local journal, exact dispatches and ACKs, disabled ownership, complete bodies matching the fixed new projection and unchanged Source. Save and inspect the explicit recovery digest.",
+    "Review an exact original fixed Git admission under its existing versioned recovery rules, or a known retained-source native-import failure whose complete current prefix is semantically unchanged. Retained import keeps policy 14 and never patches a body. A saved onboarding parent requires --operation to select its exact original child, without editing or regenerating the plan. Require original local journal, native POST/ACKs, complete retained input, disabled ownership and unchanged Source; inspect the explicit recovery digest.",
   ),
 )
 
@@ -74,6 +126,7 @@ const apply = defineCommand(
   {
     plan: planArg,
     entry,
+    operation,
     review: requiredSingleton("review", "Saved complete recovery review"),
     reviewId: requiredSingleton("review-id", "Independently inspected recovery digest"),
     dryRun: switchFlag(
@@ -84,26 +137,59 @@ const apply = defineCommand(
   },
   (args) =>
     Effect.gen(function* () {
-      const plan = yield* validateSharedCreatePlan(
-        yield* readSourceJson(args.plan, 192 * 1024 * 1024),
-      )
+      const plan = yield* readSourceJson(args.plan, 192 * 1024 * 1024)
       const saved = yield* readSourceJson(args.review, 192 * 1024 * 1024)
+      const savedReview = property(saved).review ?? saved
+      const reconcileNext = sourceRecoveryReconcileNext({
+        plan: args.plan,
+        entry: args.entry,
+        operationId: Option.getOrUndefined(args.operation),
+        target: property(savedReview).skill_page_id,
+      })
       const limits = yield* parseSourceBudget(args)
-      const operation = applySharedCreateRecovery({
+      const action = applySharedSourceRecovery({
         entry: args.entry,
         plan,
-        review: property(saved).review ?? saved,
+        operationId: Option.getOrUndefined(args.operation),
+        review: savedReview,
         reviewId: args.reviewId,
         dryRun: args.dryRun,
       })
-      const { result, budget } = yield* withSourceCommandBudget(
-        withSourceUpdateLock(
-          plan.library,
-          args.dryRun ? operation.pipe(withReadOnlyNotion) : operation,
+      const { result, budget } = yield* withSourceCommandBudget(action, limits).pipe(
+        Effect.mapError((error) =>
+          reconcileNext === undefined
+            ? error
+            : fail(error.code, error.message, { ...property(error.details), next: reconcileNext }),
         ),
-        limits,
       )
-      yield* emit({ ...result, budget, request_metrics: (yield* Notion).requestMetrics?.() })
+      yield* emit({
+        ...result,
+        budget,
+        request_metrics: (yield* Notion).requestMetrics?.(),
+        next: args.dryRun
+          ? {
+              argv: [
+                "ntn-skills",
+                "ctl",
+                "library",
+                "sources",
+                "recovery",
+                "apply",
+                args.plan,
+                ...(Option.isSome(args.operation) ? ["--operation", args.operation.value] : []),
+                "--entry",
+                args.entry,
+                "--review",
+                args.review,
+                "--review-id",
+                args.reviewId,
+              ],
+              read_only: false,
+              reason:
+                "Explicitly apply only this unchanged reviewed recovery. The original dispatcher still enforces every native ACK and unsent suffix.",
+            }
+          : reconcileNext,
+      })
     }),
 ).pipe(
   Command.withDescription(
@@ -117,18 +203,17 @@ const reconcile = defineCommand(
     plan: planArg,
     entry,
     target,
+    operation,
     ...sourceRequestBudgets,
   },
   (args) =>
     Effect.gen(function* () {
-      const plan = yield* validateSharedCreatePlan(
-        yield* readSourceJson(args.plan, 192 * 1024 * 1024),
-      )
+      const plan = yield* readSourceJson(args.plan, 192 * 1024 * 1024)
       const limits = yield* parseSourceBudget(args)
       const { result, budget } = yield* withSourceCommandBudget(
-        reconcileSharedCreateRecovery({
+        reconcileSharedSourceRecovery({
           entry: args.entry,
-          operationId: plan.operation_id,
+          operationId: Option.getOrUndefined(args.operation),
           target: args.target,
           plan,
         }),

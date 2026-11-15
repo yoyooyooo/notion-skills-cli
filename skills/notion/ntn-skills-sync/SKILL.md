@@ -50,6 +50,8 @@ For a selected subset, repeat `--member EXACT_KEY` with one `--source`; the save
 
 Follow the exact saved plan and returned `next.argv`. Apply delegates to the original create/bind journals; it never updates existing bodies, user Members/Requires or selected versions. Reconcile is read-only and current equality never supplies a lost ACK. A partial result can contain verified actions and unresolved members; keep both. Do not regenerate a plan to evade an unknown operation. After applying, use a fresh review for current coverage and an explicit authoring read for disabled content. The existing `sources run` workflow takes over subsequent authorized updates.
 
+A CLI failure is not necessarily a persisted terminal rejection. Main creation can have its original ACK while the first readback fails before manifest retention. For an exact missing manifest/completion, reconciliation may return the same saved plan's read-only `onboard-apply --dry-run`. Follow that preview without changing the plan. An explicitly authorized apply still checks the original journal, native ACKs and current content before continuing unissued steps; preview alone grants no continuation authority. Unknown writes, missing ACKs and recorded `needs_review` remain blocked. Never invent a replacement operation or patch the original page by hand.
+
 For a reviewed `existing_identity_needs_review` candidate, a single-Source onboarding can receive `--bind MEMBER=PAGE_ID` (repeat for exact candidates). This is an explicit **new association decision**, not historical provenance inferred from a name. Only the reviewed same-library, uniquely identified, currently unbound target qualifies; unknown operations and foreign owners remain blocked. The plan labels this proof `explicit_binding_decision` and preserves existing custom content and Selected Version. Never use a copied page or new duplicate to evade the decision.
 
 ## Source names and repository-level management
@@ -136,3 +138,10 @@ Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --en
 If an original result belongs to a different operation family, retain its returned IDs and recovery action. Do not convert it into a Source plan, reconnect the content or infer ownership from a display name.
 
 Report verified changed/unchanged results, conflicts and unresolved items separately. Use [source and synchronization decisions](references/synchronization.md) for scoped recovery details; keep the selected Source, actual page content and independently verified consumption separate.
+
+
+### Review a known retained import failure
+
+For a verified known semantic readback failure, use the existing `sources recovery review ORIGINAL_PLAN --operation ORIGINAL_CREATE_ID --target ORIGINAL_MAIN_PAGE --entry ENTRY --output REVIEW_FILE`. A saved onboarding parent needs the exact child operation; do not extract or edit it yourself. Follow the returned read-only preview with the saved `--review` and exact `--review-id`, then explicitly apply that reviewed original operation and reconcile it. Unknown requests and missing original ACKs remain blocked.
+
+This retained path preserves policy14, original input/source, native pages, failed outcome and disabled state. It requires no published ownership events yet, a complete original journal/ACK prefix and current complete semantically equal bodies. It retains independent review/completion proofs and creates only unissued original files through the same producer; existing bodies are never replaced. A changed body or Source invalidates the approval. Cross-machine cold readers require the complete shared proof, not author caches or a success label.

@@ -626,7 +626,14 @@ export function guardedSourceMutation<R, R2 = never>(
             fail(
               "SOURCE_WRITE_NOT_APPLIED",
               "The exact original source request was rejected before application. Its operation remains unchanged.",
-              { operation_id: operation, identity: input.identity },
+              {
+                operation_id: operation,
+                identity: input.identity,
+                http_status: rejected.http_status,
+                notion_code: rejected.notion_code,
+                phase: "definitive_rejection",
+                native_retry_allowed: false,
+              },
             ),
           )
         // A later explicit invocation may prepare a new generation only after
@@ -774,7 +781,15 @@ export function guardedSourceMutation<R, R2 = never>(
           fail(
             "SOURCE_WRITE_NOT_APPLIED",
             "The original source request was rejected by API validation before application.",
-            { operation_id: operation, cause_code: error.code, phase: "definitive_rejection" },
+            {
+              operation_id: operation,
+              cause_code: error.code,
+              phase: "definitive_rejection",
+              http_status: 400,
+              notion_code: "validation_error",
+              native_retry_allowed: false,
+              explicit_new_generation_allowed: input.repeat !== "never",
+            },
           ),
         )
       }

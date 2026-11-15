@@ -46,6 +46,25 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
+  test("explicit Source recovery retains the direct SDK cancellation boundary", async () => {
+    const reports: unknown[] = []
+    const options = {
+      env: {},
+      signal: AbortSignal.abort(),
+      onRequestMetrics: (value: unknown) => reports.push(value),
+    }
+    const request = { entry: input.targets[0]!, target: input.targets[0]!, plan: {} }
+    await expect(publicSdk.reviewSourceRecovery(request, options)).rejects.toMatchObject({
+      code: "CANCELLED",
+    })
+    await expect(
+      publicSdk.applySourceRecovery({ ...request, review: {}, reviewId: "unstarted" }, options),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(publicSdk.reconcileSourceRecovery(request, options)).rejects.toMatchObject({
+      code: "CANCELLED",
+    })
+    expectUnstartedMetrics(reports, 3)
+  })
   test("Source handoff methods share the SDK pre-abort boundary without acquiring transport", async () => {
     const options = { env: {}, signal: AbortSignal.abort() }
     const reports: unknown[] = []

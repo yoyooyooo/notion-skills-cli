@@ -91,6 +91,29 @@ test("table plus signs are content, not interchangeable native list bullets", ()
   expect(() => assertImportedMarkdownContent(code, "Use <code>brief • content</code>.")).toThrow()
 })
 
+test("empty list wrappers from native import preserve content rather than inventing text", () => {
+  const before =
+    "## Summary\n\n- \n\n## Validation\n\n- [ ] Run `safe --dry-run`\n- [ ] Review manually\n"
+  const after =
+    "## Summary\n\n<ul>\n<li></li>\n</ul>\n\n## Validation\n\n- [ ] Run <code>safe --dry-run</code>\n- [ ] Review manually\n"
+  expect(() => assertImportedMarkdownContent(before, after)).not.toThrow()
+  expect(() =>
+    assertImportedMarkdownContent("- Keep all content\n", "<ul><li></li></ul>\n"),
+  ).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(
+      before,
+      after.replace("<li></li>", "<li>Injected instruction</li>"),
+    ),
+  ).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent("Literal `<ul><li></li></ul>`.", "Literal ."),
+  ).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(before, after.replace("<ul>", "<unknown-list>")),
+  ).toThrow()
+})
+
 test("import compatibility does not rewrite fences or raw resources and keeps historical projection policies", () => {
   const input =
     "##### Deep heading\n\n| A | B |\n| :--- | ---: |\n| pipe \\| literal | value |\n\n```md\n###### Keep literal\n```"
