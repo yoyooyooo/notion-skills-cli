@@ -17,6 +17,7 @@ Init == \E scenario \in Scenarios :
        bodyAttempts |-> 0, bodyApplied |-> FALSE, bodyCurrentEqual |-> FALSE,
        bodySentWithPremise |-> TRUE, bodySentWithBinding |-> TRUE,
        feedbackAttempts |-> 0, feedbackApplied |-> FALSE, feedbackReplayed |-> FALSE,
+       feedbackGeneration |-> 0, generationAttempts |-> [g \in 0..1 |-> 0], rejectedGenerations |-> {},
        feedbackAck |-> FALSE, historicalAck |-> FALSE, published |-> FALSE,
        pendingReplaced |-> FALSE]
 
@@ -78,14 +79,26 @@ RepeatBody ==
   /\ s.bodyAttempts < 2
   /\ s' = [s EXCEPT !.phase = "before body"]
 ExistingFeedbackRemainsUnknown ==
-  /\ s.phase = "feedback ready" /\ s.feedbackAttempts > 0
+  /\ s.phase = "feedback ready" /\ s.generationAttempts[s.feedbackGeneration] > 0
   /\ s' = [s EXCEPT !.phase = "feedback unknown"]
 RetainFeedbackIntent ==
-  /\ s.phase = "feedback ready" /\ s.feedbackAttempts = 0
+  /\ s.phase = "feedback ready" /\ s.generationAttempts[s.feedbackGeneration] = 0 /\ s.feedbackAttempts < 2
   /\ s' = [s EXCEPT !.phase = "feedback intent"]
 FeedbackDispatch ==
-  /\ s.phase = "feedback intent" /\ s.feedbackAttempts = 0
-  /\ s' = [s EXCEPT !.phase = "feedback inflight", !.feedbackAttempts = 1]
+  /\ s.phase = "feedback intent" /\ s.generationAttempts[s.feedbackGeneration] = 0 /\ s.feedbackAttempts < 2
+  /\ s' = [s EXCEPT !.phase = "feedback inflight", !.feedbackAttempts = @ + 1,
+       !.generationAttempts[s.feedbackGeneration] = @ + 1]
+FeedbackValidationRejection ==
+  /\ s.phase = "feedback inflight"
+  /\ s' = [s EXCEPT !.phase = "feedback rejection response"]
+RetainFeedbackRejection ==
+  /\ s.phase = "feedback rejection response"
+  /\ s' = [s EXCEPT !.phase = "feedback rejected", !.rejectedGenerations = @ \cup {s.feedbackGeneration}]
+ContinueRejectedFeedback ==
+  /\ s.phase = "feedback rejected" /\ s.feedbackGeneration = 0 /\ 0 \in s.rejectedGenerations
+  /\ s.originalOutcome = "applied" /\ s.currentPremise /\ s.bindingIdentity = s.originalOperation
+  /\ s.feedbackAttempts < 2
+  /\ s' = [s EXCEPT !.phase = "feedback ready", !.feedbackGeneration = 1]
 FeedbackProviderApplies ==
   /\ s.phase = "feedback inflight"
   /\ s' = [s EXCEPT !.phase = "feedback response", !.feedbackApplied = TRUE]
@@ -102,7 +115,7 @@ RejectLateDrift ==
   /\ s.phase = "feedback ACK" /\ ~s.currentPremise
   /\ s' = [s EXCEPT !.phase = "needs review"]
 FeedbackUnknown ==
-  /\ s.phase \in {"feedback intent", "feedback inflight", "feedback response", "feedback ACK"}
+  /\ s.phase \in {"feedback intent", "feedback inflight", "feedback response", "feedback ACK", "feedback rejection response"}
   /\ s' = [s EXCEPT !.phase = "feedback unknown"]
 ObserveHistoricalAck ==
   /\ s.phase = "feedback unknown" /\ s.feedbackAck
@@ -112,7 +125,11 @@ GuessFeedbackAck ==
   /\ s' = [s EXCEPT !.phase = "published", !.feedbackAck = TRUE, !.published = TRUE]
 RedispatchFeedback ==
   /\ ReplayFeedback /\ s.phase = "feedback unknown" /\ s.feedbackAttempts < 2
-  /\ s' = [s EXCEPT !.phase = "feedback inflight", !.feedbackAttempts = @ + 1, !.feedbackReplayed = TRUE]
+  /\ s' = [s EXCEPT !.phase = "feedback inflight", !.feedbackAttempts = @ + 1, !.feedbackReplayed = TRUE,
+       !.generationAttempts[s.feedbackGeneration] = @ + 1]
+GuessFeedbackRejection ==
+  /\ ReplayFeedback /\ s.phase = "feedback unknown" /\ s.feedbackGeneration = 0 /\ s.feedbackAttempts < 2
+  /\ s' = [s EXCEPT !.phase = "feedback ready", !.feedbackGeneration = 1]
 ReplaceOriginal ==
   /\ ReplacePendingOriginal /\ s.phase \in {"binding unknown", "body unknown", "feedback unknown"}
   /\ s' = [s EXCEPT !.phase = "needs review", !.originalOperation = "replacement", !.pendingReplaced = TRUE]
@@ -126,13 +143,14 @@ ForgetHistoricalAck ==
   /\ DropHistoricalAck /\ s.historicalAck /\ ~s.currentPremise /\ s.feedbackAck
   /\ s' = [s EXCEPT !.feedbackAck = FALSE]
 Done ==
-  /\ s.phase \in {"binding unknown", "body unknown", "feedback unknown", "original blocked", "needs review", "published"}
+  /\ s.phase \in {"binding unknown", "body unknown", "feedback unknown", "feedback rejected", "original blocked", "needs review", "published"}
   /\ UNCHANGED vars
 Next == RetainOriginalPlan \/ InvalidPremise \/ ProcessingAck \/ ProcessingReadback
         \/ BindingLost \/ BindingConflict \/ IgnoreUnverifiedBinding \/ CheckBodyPremise
         \/ RejectBodyPremise \/ BodyDispatch \/ BodyProviderApplies \/ RetainOriginalOutcome
         \/ BodyUnknown \/ PrepareFeedback \/ FeedbackBudgetExhausted \/ ReconcileOriginal
         \/ RejectReconcilePremise \/ RepeatBody \/ ExistingFeedbackRemainsUnknown \/ RetainFeedbackIntent \/ FeedbackDispatch
+        \/ FeedbackValidationRejection \/ RetainFeedbackRejection \/ ContinueRejectedFeedback \/ GuessFeedbackRejection
         \/ FeedbackProviderApplies \/ RetainFeedbackAck \/ VerifyFeedback \/ FeedbackDrift
         \/ RejectLateDrift \/ FeedbackUnknown \/ ObserveHistoricalAck \/ GuessFeedbackAck
         \/ RedispatchFeedback \/ ReplaceOriginal \/ PublishInvalidOutcome \/ GuessOriginalSuccess
@@ -143,9 +161,10 @@ TypeOK ==
   /\ s.scenario \in Scenarios
   /\ s.phase \in {"inspect", "binding retained", "binding ACK", "binding unknown", "before body",
        "body ready", "body inflight", "body response", "body known", "body unknown", "feedback ready",
-       "feedback intent", "feedback inflight", "feedback response", "feedback ACK", "feedback unknown",
+       "feedback intent", "feedback inflight", "feedback response", "feedback ACK", "feedback unknown", "feedback rejection response", "feedback rejected",
        "needs reconcile", "original blocked", "needs review", "published"}
   /\ s.bodyAttempts \in 0..2 /\ s.feedbackAttempts \in 0..2
+  /\ s.feedbackGeneration \in 0..1 /\ s.generationAttempts \in [0..1 -> 0..2] /\ s.rejectedGenerations \subseteq 0..1
   /\ s.originalOutcome \in {"unresolved", "applied"}
   /\ \A key \in {"currentPremise", "bindingVerified", "bodyApplied", "bodyCurrentEqual",
        "bodySentWithPremise", "bodySentWithBinding", "feedbackApplied", "feedbackReplayed", "feedbackAck",
@@ -154,7 +173,8 @@ BodyNeedsBoundOriginal == s.bodySentWithBinding
 BodyNeedsCurrentPremise == s.bodySentWithPremise
 FeedbackNeverRepeatsBody == s.bodyAttempts <= 1
 FeedbackRequiresRealAck == s.published => s.historicalAck
-UnknownFeedbackNeverRedispatched == ~s.feedbackReplayed /\ s.feedbackAttempts <= 1
+UnknownFeedbackNeverRedispatched == ~s.feedbackReplayed /\ (\A g \in 0..1 : s.generationAttempts[g] <= 1)
+NewFeedbackGenerationNeedsRejection == s.feedbackGeneration = 1 => 0 \in s.rejectedGenerations
 OriginalRequestPreserved ==
   s.originalOperation = "original" /\ s.frozenInput = "submitted body and frontier" /\ ~s.pendingReplaced
 SuccessNeedsAppliedOriginal ==

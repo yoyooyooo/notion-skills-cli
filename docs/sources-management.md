@@ -102,19 +102,23 @@ ntn-skills ctl library sources run SOURCE --entry ENTRY --all-bound --mode polic
   --max-requests 2000 --max-bytes 134217728 --duration-ms 300000
 ntn-skills ctl library sources run-list
 ntn-skills ctl library sources run-status SOURCE_RUN_ID --output ./original-candidate.json
+ntn-skills ctl library sources run SOURCE --entry ENTRY --all-bound --update-following
+ntn-skills ctl library sources run-resume SOURCE_RUN_ID --update-following
 ```
 
-每次 `run` 都有确定终点和本地 run ID。`check` 只检查，`prepare` 形成只读候选，`policy` 按来源配置执行：禁用来源跳过；`pinned` 不重新发现上游；`manual` 保留待确认候选；`auto` 只推进满足当前保护条件的候选。`--due` 以 `options.check_interval_ms` 判断是否到期，最小一分钟，最大 366 天；`auto` 配置必须明确提供该间隔。
+每次 `run` 都有确定终点和本地 run ID。`check` 只检查，`prepare` 形成只读候选，`policy` 按来源配置执行：禁用来源跳过；`pinned` 不重新发现上游；`manual` 保留待确认候选；`auto` 只推进满足当前保护条件的候选。`--due` 使用所选共享 Profile 对这些成员的来源检查周期；有多个成员时取最短上界，未配置的成员回退到 `options.check_interval_ms`。Source 自身间隔最小一分钟，最大 366 天；`auto` 必须明确提供它。此周期与 Notion 正文读取 TTL 分开。未带 `--due` 的明确检查不受周期拦截，仍遵守禁用和 pinned 策略。
 
 启用来源中的已登记文件请求，即使没有新 commit、尚未到期或策略为 pinned，仍会在 `policy` 运行中处理。请求和结果分别保留；受保护条件阻塞的请求不会消失。来源检查不会安装定时器、守护进程或 webhook。
 
 默认预算为 2,000 次实际 HTTP 尝试、128 MiB HTTP payload 和五分钟总时长。重试计入次数，排队与等待计入时长；已放行响应造成的字节超额会如实报告。Git 子进程受超时和整次调用期限约束，其传输字节不冒充 HTTP 计量。相同 state root 内同库使用本地写锁；跨机器仍须安排单一管理写入者，这不是 Notion 原子事务或跨机器锁。
 
-`run-status` / `run-list` 完全离线。仍处于 running 的 checkpoint 可能是运行中或被中断；请求计量仅是最近持久 checkpoint 的下界。预算暂停保留已冻结计划和逐项结果。恢复先导出原计划并 `reconcile`，不能将新运行当作原未知请求未派发的证明。
+`run-status` / `run-list` 完全离线。仍处于 running 的 checkpoint 可能是运行中或被中断；请求计量仅是最近持久 checkpoint 的下界。`outcome` 分别给出完成类别、任务是否完成、证明范围、作者内容影响和远端保留影响；逐项错误、请求反馈未核实或未知结果不会被包装成完整成功。手动候选的 `needs_decision` 返回准确的 `run-resume` argv。
+
+`run-resume` 继续同一个本地、同凭据范围的原任务。它复用冻结候选、Source 指纹、原选择和请求身份，不重新发现浮动上游；固定版本的缺失资源仍可按同一固定身份读取。原正文 operation 已存在时只核对它，不重新生成正文请求。已完成步骤不会重复写入，原失败和预算保留在 `continuations`；checkpoint 失败后的已知正文 ID 前缀也要保存。缺少原 journal、原 plan 或完整请求清单时保持受阻。来源、成员、文件或请求身份变化不能扩展原任务范围。
 
 准备候选时，结构化 `SHARED_REFERENCE_INVALID` 错误保留原 `code`、`message`、`details.from` 和 `details.href`，并在 `details` 标明 `target_page_id`、`source_member` 与 `preparation_stage`。阶段 `current_snapshot` 表示读取当前完整文件树时失败；`candidate_file_references` 表示合成候选与保留内容后的最终引用检查失败。这些字段随原 run 错误保存，可通过离线 `run-status` 回读；引用失败仍不生成可应用计划。旧 run 没有记录的成员或阶段不能据此补推。
 
-| 退出码 | `sources run` / `run-status` 含义 |
+| 退出码 | `sources run` / `run-status` / `run-resume` 含义 |
 | --- | --- |
 | 0 | 调用完成，没有阻塞或未知工作；检查或手动候选完成不表示已应用 |
 | 3 | 有需要审阅、阻塞或失败的逐项结果 |
@@ -124,6 +128,14 @@ ntn-skills ctl library sources run-status SOURCE_RUN_ID --output ./original-cand
 | 2 | 参数错误 |
 
 现有 Notion API 没有已证实的正文原子前置条件。自动运行遇到需要替换的可编辑正文时返回 `BODY_REPLACEMENT_UNSAFE`；需要建立的新 Markdown 页面返回 `INITIAL_PROJECTION_REQUIRED`。这类项不能报告为“Notion 页面已同步”。选择版本、实际页面表示、自定义基线与会话 pin 是不同状态，可用 `ctl library state` 核对。
+
+### 一次显式来源维护
+
+`run --update-following` 是本次任务的有限授权，仅用于 `policy` 模式。它先冻结完整候选和原 still-following 文件的 File/page/path、body hash、frontier、选定版本，再验证选择并逐文件使用现有 restore-follow 写入。每个正文只使用一次完整旧正文匹配，派发前必须仍是原 following 身份与前沿。最后新鲜读取完整文件树，核对固定候选与保留的 custom 字节。新 Markdown 没有已存在的原生页时仍受阻；此入口不负责接纳新成员或建立新页。
+
+custom 即使字节恰好等于上游也保持 custom，不通过此标志解除。完整旧正文匹配缩小了覆盖窗口，但观察与 Notion 写入之间没有原子 CAS；默认自动策略仍拒绝正文替换。`run-resume RUN --update-following` 可对已保留的手动或只读 prepared 候选作同样明确决定，候选本身不换版。
+
+同一来源任务也会处理已通过公开 `ctl file request ... --submit` 冻结的请求。Notion 下拉字段仅表达意图；没有原完整提交基线时不会擅自覆盖 custom。提交后的 request ID 固定，取消、改Source、改文件身份或改正文前沿都必须重新核对。正文成功但反馈失败时，下一次 `run` 或同一 `run-resume` 先核对原 restore ID，再仅补反馈。只有原 API 明确返回 `400 validation_error`、已分类为 definitive rejection 且负回执成功持久化，才允许随后显式调用开启新的反馈代。429、408、网关错误、未知代码和无响应保持未知；当前反馈字段相等不能补造原 ACK。
 
 ### 显式接纳和成员变化
 
@@ -246,6 +258,6 @@ Linear 来源明确把 issue/document 映射成文件，主入口必须有 `SKIL
 
 ## 原始计划的版本
 
-固定 Git refresh v4 保存完整固定清单；保留源继续使用 v3。两者都绑定精确 Source 选择、`member_review` 和同一来源审计，执行复用现有共享元数据日志。保存的 v1/v2/v3 计划继续按原语义核对，不为旧计划制造历史成员基线；失败或未知结果不会因新版本发布被改写。所有原计划分别留证，不把当前 pin 可见当作旧请求成功。候选清单、来源审计和字节块在远端派发前检查单记录限额；长资源使用已有有界分块。
+固定 Git refresh v4 保存完整固定清单；保留源继续使用 v3。两者都绑定精确 Source 选择、`member_review` 和同一来源审计，执行复用现有共享元数据日志。新准备的计划另冻结可选 `display_baseline`，只包含原 following 文件的选定版本、身份、完整正文 hash 和前沿。旧计划没有此基线时仍可按原语义核对选择，但不能从当前页面补造旧正文授权。保存的 v1/v2/v3 计划不获得虚构的历史成员基线；失败或未知结果不会因新版本发布被改写。候选清单、来源审计和字节块在远端派发前检查单记录限额；长资源使用已有有界分块。
 
 新操作把原请求、成功响应 ACK 和验证结果分别持久化。收到并保存原 ACK 后发生读回失败，可以在后续精确核对中确认原结果。没有原 ACK 的旧未知操作仍保持未知；当前布局或属性相等不能补造回执。

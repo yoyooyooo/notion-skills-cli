@@ -4,7 +4,12 @@ const faults = (s) => [
   ...(!s.bodySentWithPremise ? ["违反当前正文和 Source 前提"] : []),
   ...(s.bodyAttempts > 1 ? ["违反反馈失败不得重做正文"] : []),
   ...(s.published && !s.historicalAck ? ["错误地将当前反馈相等视为原 ACK"] : []),
-  ...(s.feedbackReplayed || s.feedbackAttempts > 1 ? ["违反未知反馈不得重派发"] : []),
+  ...(s.feedbackReplayed || Object.values(s.generationAttempts).some((attempts) => attempts > 1)
+    ? ["违反未知反馈不得重派发"]
+    : []),
+  ...(s.feedbackGeneration === 1 && !s.rejectedGenerations.includes(0)
+    ? ["未知反馈被当成已拒绝而替换"]
+    : []),
   ...(s.pendingReplaced || s.originalOperation !== "original"
     ? ["违反 pending 原操作身份保留"]
     : []),
@@ -34,6 +39,8 @@ export function state({ s }) {
     "feedback ready": "仅业务反馈待派发",
     "feedback intent": "反馈冻结意图已保留",
     "feedback inflight": "反馈已派发一次",
+    "feedback rejection response": "API明确拒绝本代反馈；负回执尚未留存",
+    "feedback rejected": "本代反馈未应用的原负回执已留存",
     "feedback response": "服务端已应用反馈",
     "feedback ACK": "历史反馈 ACK 已留存",
     published: "原恢复和业务反馈分别核实",
@@ -67,6 +74,10 @@ export function step(action, from) {
       ExistingFeedbackRemainsUnknown: "既有反馈意图仍未解决",
       RetainFeedbackIntent: "留存反馈意图",
       FeedbackDispatch: "派发一次反馈",
+      FeedbackValidationRejection: "API明确验证拒绝且未应用",
+      RetainFeedbackRejection: "持久保留本代原拒绝",
+      ContinueRejectedFeedback: "核对同一原恢复后仅开始新反馈代",
+      GuessFeedbackRejection: "错误地将未知当成明确未应用",
       FeedbackProviderApplies: "服务端应用反馈",
       RetainFeedbackAck: "持久留存反馈 ACK",
       VerifyFeedback: "核实反馈和当前前提",

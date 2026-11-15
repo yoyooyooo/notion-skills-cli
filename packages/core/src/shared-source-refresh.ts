@@ -153,6 +153,20 @@ const RefreshFields = {
   member: Schema.String,
   previous_pin: Schema.String,
   current_snapshot: Schema.String,
+  display_baseline: Schema.optional(
+    Schema.Struct({
+      selected_version: Schema.String,
+      files: Schema.Array(
+        Schema.Struct({
+          file_id: Schema.String,
+          page_id: Schema.String,
+          path: Schema.String,
+          heads: Schema.Array(Schema.String),
+          body_sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+        }),
+      ),
+    }),
+  ),
   provider_revision: Schema.String,
   provider_committed_at: Schema.optional(Schema.String),
   created_at: Schema.Number,
@@ -476,6 +490,22 @@ function projectCandidate(
     )
     return {
       current_snapshot: current.snapshot_id,
+      display_baseline: {
+        selected_version: selected.index.source_reference,
+        files: current.shared_authoring.files
+          .filter(
+            (file) =>
+              states.find((item) => item.file_id === file.file_id)?.state.ownership.kind ===
+              "following",
+          )
+          .map(({ file_id, page_id, path, heads, body_sha256 }) => ({
+            file_id,
+            page_id,
+            path,
+            heads,
+            body_sha256,
+          })),
+      },
       projected_files: projected,
       custom_files_preserved: custom.sort(),
     }
@@ -760,6 +790,25 @@ export function validateSourceRefresh(library: SharedLibrary, input: unknown) {
     )
       return yield* Effect.fail(
         fail("SOURCE_REFRESH_INVALID", "Refresh plan identity or library scope differs."),
+      )
+    if (
+      plan.display_baseline !== undefined &&
+      (plan.display_baseline.selected_version !== plan.previous_pin ||
+        new Set(plan.display_baseline.files.map((file) => file.file_id)).size !==
+          plan.display_baseline.files.length ||
+        new Set(plan.display_baseline.files.map((file) => file.path)).size !==
+          plan.display_baseline.files.length ||
+        plan.display_baseline.files.some(
+          (file) =>
+            pageId(file.page_id) !== file.page_id ||
+            plan.custom_files_preserved.includes(file.path),
+        ))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_REFRESH_INVALID",
+          "The frozen following display baseline differs from the original selection or file identities.",
+        ),
       )
     if (plan.selection)
       yield* checkedSelection(library, plan, {

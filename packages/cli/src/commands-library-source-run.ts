@@ -4,6 +4,7 @@ import { defineCommand, withConstraints } from "../../core/src/command-schema.ts
 import { fail, property } from "../../core/src/model.ts"
 import {
   runSourceUpdate,
+  resumeSourceUpdateRun,
   reportSourceUpdateRun,
   listSourceUpdateRuns,
   type SourceUpdateRun,
@@ -93,6 +94,10 @@ export const sourceRunCommand = defineCommand(
       "due",
       "Discover only when native check_interval_ms is due; explicit file requests are still processed in policy mode",
     ),
+    updateFollowing: switchFlag(
+      "update-following",
+      "Explicitly select this fixed candidate and update existing still-following native files using complete old-body matches; preserve custom files. No atomic page CAS is claimed.",
+    ),
     storage: singleton("storage", "auto, fixed-git, or retained; default auto"),
     output: singleton(
       "output",
@@ -121,6 +126,7 @@ export const sourceRunCommand = defineCommand(
         scope: target === undefined ? { kind: "all_bound" } : { kind: "skill", target },
         mode,
         dueOnly: args.due,
+        updateFollowing: args.updateFollowing,
         storage,
         output: Option.getOrUndefined(args.output),
         budget: yield* parseSourceBudget(args),
@@ -165,6 +171,32 @@ export const sourceRunStatusCommand = defineCommand(
 ).pipe(
   Command.withDescription(
     "Read the exact original source invocation entirely offline; optionally export its frozen plan. No Notion/provider call, operation dispatch or automatic resume occurs. Retained in-progress/unknown state remains unresolved until the original operation is reconciled.",
+  ),
+)
+
+export const sourceRunResumeCommand = defineCommand(
+  "run-resume",
+  {
+    run: Argument.String("run-id"),
+    updateFollowing: switchFlag(
+      "update-following",
+      "Authorize this original fixed candidate and its still-following native files; custom content stays preserved",
+    ),
+    ...sourceRequestBudgets,
+  },
+  (args) =>
+    Effect.gen(function* () {
+      const result = yield* resumeSourceUpdateRun({
+        runId: args.run,
+        updateFollowing: args.updateFollowing,
+        budget: yield* parseSourceBudget(args),
+      })
+      yield* emit(result)
+      process.exitCode = exitCode(result)
+    }),
+).pipe(
+  Command.withDescription(
+    "Continue the exact original source run from this authenticated state root. No provider discovery or new candidate. Known original body operations are reconciled; unknown requests are never replayed. --update-following is a bounded explicit decision, not a change to automatic Source policy.",
   ),
 )
 

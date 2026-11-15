@@ -40,6 +40,10 @@ export const sourceAdmitCommand = defineCommand(
     output,
     member: requiredSingleton("member", "Exact reviewed new provider member key"),
     skillId: requiredSingleton("skill-id", "New stable Skill business identity"),
+    storage: singleton(
+      "storage",
+      "auto, fixed-git, or retained; default auto. Retained keeps the complete acquired files and does not require anonymous GitHub retrieval.",
+    ),
     enable: switchFlag(
       "enable",
       "Explicitly enable this new Skill only after its complete initial projection is verified",
@@ -48,6 +52,11 @@ export const sourceAdmitCommand = defineCommand(
   },
   (args) =>
     Effect.gen(function* () {
+      const storage = Option.getOrElse(args.storage, () => "auto")
+      if (storage !== "auto" && storage !== "fixed-git" && storage !== "retained")
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "Use auto, fixed-git, or retained storage."),
+        )
       const limits = yield* parseSourceBudget(args)
       const { result: plan, budget } = yield* withSourceCommandBudget(
         Effect.gen(function* () {
@@ -68,6 +77,7 @@ export const sourceAdmitCommand = defineCommand(
             skillId: args.skillId,
             enabled: args.enable,
             markdownImport: true,
+            storage,
           })
         }),
         limits,
@@ -89,8 +99,11 @@ export const sourceAdmitCommand = defineCommand(
       })
     }).pipe(withReadOnlyNotion),
 ).pipe(
+  withConstraints([
+    { kind: "allowed_values", flag: "storage", values: ["auto", "fixed-git", "retained"] },
+  ]),
   Command.withDescription(
-    "Freeze one complete exact provider member, its resources and new native Markdown pages. New Skills stay disabled unless --enable is explicit. This prepares the existing original create operation without remote writes.",
+    "Freeze one complete exact provider member, its resources and new native Markdown pages. New Skills stay disabled unless --enable is explicit. This prepares the existing original create operation without remote writes. Explicit retained storage keeps all fixed bytes and modes; auto and fixed-git never silently fall back after a failed public retrieval proof.",
   ),
 )
 

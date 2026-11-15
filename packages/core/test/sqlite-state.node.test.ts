@@ -640,6 +640,7 @@ it.live("official Node driver owns migrations, record schema and typed SQL failu
       { migration_id: 8, name: "view_observations" },
       { migration_id: 9, name: "shared_local_records" },
       { migration_id: 10, name: "local_content_restrictions" },
+      { migration_id: 11, name: "cache_admissions" },
     ])
     expect(inspect.wal).toEqual([{ journal_mode: "wal" }])
     expect(inspect.synchronous).toEqual([{ synchronous: 2 }])

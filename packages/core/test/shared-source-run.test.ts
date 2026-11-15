@@ -11,6 +11,7 @@ import {
   reportSourceUpdateRun,
   listSourceUpdateRuns,
   runSourceUpdate,
+  resumeSourceUpdateRun,
   type SourceUpdateInput,
 } from "../src/shared-source-run.ts"
 import { readSourceDefinition, validateSourceDefinition } from "../src/shared-source-definitions.ts"
@@ -32,6 +33,11 @@ async function fixture(
   requests = false,
 ) {
   const root = await mkdtemp(join(tmpdir(), "ntn-source-run-"))
+  const taskHooks = {
+    loseBodyResponse: false,
+    rejectVerifiedFeedback: false,
+    rejectDisplayCheckpoint: false,
+  }
   const f = await sourceRefreshFixture({
     definition: {
       ...definition,
@@ -78,6 +84,25 @@ async function fixture(
         const api: Notion["Service"] = {
           ...original,
           request: (path, body, options) => {
+            if (
+              taskHooks.rejectVerifiedFeedback &&
+              path === `v1/pages/${skillPage}` &&
+              options?.method === "PATCH"
+            ) {
+              const receipt = text(
+                property(property(property(body).properties).management_receipt).rich_text,
+              )
+              if (receipt.includes('"status":"verified_applied"')) {
+                taskHooks.rejectVerifiedFeedback = false
+                return Effect.fail(
+                  fail("NOTION_REQUEST_FAILED", "Controlled feedback rejection", {
+                    http_status: 400,
+                    notion_code: "validation_error",
+                    phase: "definitive_rejection",
+                  }),
+                )
+              }
+            }
             if (requests && path === `v1/databases/${library.skills.database_id}`)
               return original.request(path, body, options).pipe(
                 Effect.map((value) => ({
@@ -109,6 +134,13 @@ async function fixture(
                     throw fail("TEST_RESTORE_MATCH", "The complete original body no longer matches")
                   const markdown = before.replace(change.old_str, change.new_str)
                   f.bodies.set(skillPage, markdown)
+                  if (taskHooks.loseBodyResponse) {
+                    taskHooks.loseBodyResponse = false
+                    throw fail(
+                      "WRITE_OUTCOME_UNKNOWN",
+                      "Controlled lost source display body response",
+                    )
+                  }
                   return { id: skillPage, markdown, truncated: false, unknown_block_ids: [] }
                 },
                 catch: (error) =>
@@ -120,7 +152,32 @@ async function fixture(
           },
         }
         return yield* action.pipe(
-          Effect.provideService(Store, { ...store, root }),
+          Effect.provideService(Store, {
+            ...store,
+            root,
+            writeJson: (key, value) => {
+              if (
+                taskHooks.rejectDisplayCheckpoint &&
+                key.startsWith("operations/shared-source-runs/") &&
+                Array.isArray(property(value).application) &&
+                (property(value).application as unknown[]).some(
+                  (entry) =>
+                    Array.isArray(property(entry).display) &&
+                    (property(entry).display as unknown[]).some(
+                      (file) =>
+                        property(file).status === "applied" &&
+                        typeof property(file).operation_id === "string",
+                    ),
+                )
+              ) {
+                taskHooks.rejectDisplayCheckpoint = false
+                return Effect.fail(
+                  fail("LOCAL_IO_ERROR", "Controlled display checkpoint interruption"),
+                )
+              }
+              return store.writeJson(key, value)
+            },
+          }),
           Effect.provideService(Notion, api),
         )
       }),
@@ -141,8 +198,169 @@ async function fixture(
         () => Effect.succeed(activeLibrary),
       ),
     )
-  return { ...f, run, execute, activeLibrary }
+  return { ...f, run, execute, activeLibrary, taskHooks }
 }
+
+async function followingMain() {
+  const f = await fixture("auto", true, true)
+  await f.execute()
+  await f.run(
+    submitSharedFileRequest({ library: f.activeLibrary, skillPageId: skillPage, path: "SKILL.md" }),
+  )
+  await f.execute({ dueOnly: true })
+  property(property(f.main.properties).management_request).select = { name: "none" }
+  const beforeCustom = new Map(f.bodies)
+  f.replaceSnapshot({
+    ...f.snapshot,
+    revision: "b".repeat(40),
+    members: f.snapshot.members.map((member) => ({
+      ...member,
+      upstream_hash: "c".repeat(64),
+      content_hash: "d".repeat(64),
+      portable: {
+        ...member.portable,
+        files: member.portable.files.map((file) =>
+          file.path === "SKILL.md"
+            ? {
+                ...file,
+                bytes: new TextEncoder().encode(
+                  "---\nname: source\ndescription: upstream\nlicense: MIT\n---\n\nNew fixed B following main\n",
+                ),
+              }
+            : file,
+        ),
+      },
+    })),
+  })
+  f.clearCalls()
+  return { f, beforeCustom }
+}
+
+test("one explicit source task updates an existing following body and preserves custom files", async () => {
+  const { f, beforeCustom } = await followingMain()
+  const run = await f.execute({ updateFollowing: true })
+  expect(run.execution).toBe("completed")
+  expect(run.application.filter((item) => item.status !== "confirmed")).toEqual([])
+  expect(run.application.map((item) => item.status)).toEqual(["confirmed"])
+  expect(run.application[0]?.display?.find((file) => file.path === "SKILL.md")?.status).toBe(
+    "applied",
+  )
+  expect(f.bodies.get(skillPage)).toBe("New fixed B following main")
+  for (const [page, content] of beforeCustom)
+    if (page !== skillPage) expect(f.bodies.get(page)).toBe(content)
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(1)
+  const acquisitions = f.acquisitions()
+  f.clearCalls()
+  const repeated = await f.run(
+    resumeSourceUpdateRun({ runId: run.run_id }, () => Effect.succeed(f.activeLibrary)),
+  )
+  expect(repeated.application).toEqual(run.application)
+  expect(f.acquisitions()).toBe(acquisitions)
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(0)
+})
+
+test("an unknown original display request cannot become a new body request when the source task resumes", async () => {
+  const { f } = await followingMain()
+  f.taskHooks.loseBodyResponse = true
+  const run = await f.execute({ updateFollowing: true })
+  expect(run.application[0]?.status).toBe("unknown")
+  expect(run.next.argv.slice(0, 4)).toEqual(["ntn-skills", "ctl", "operation", "show"])
+  expect(run.next.read_only).toBe(true)
+  expect(
+    run.application[0]?.display?.find((file) => file.path === "SKILL.md")?.operation_id,
+  ).toMatch(/^body-write-follow-/u)
+  f.clearCalls()
+  const resumed = await f.run(
+    resumeSourceUpdateRun({ runId: run.run_id }, () => Effect.succeed(f.activeLibrary)),
+  )
+  expect(resumed.application[0]?.status).not.toBe("confirmed")
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(0)
+})
+
+test("the next source invocation reconciles a recorded restore and only repairs its failed feedback", async () => {
+  const f = await fixture("auto", true, true)
+  await f.execute()
+  await f.run(
+    submitSharedFileRequest({ library: f.activeLibrary, skillPageId: skillPage, path: "SKILL.md" }),
+  )
+  f.taskHooks.rejectVerifiedFeedback = true
+  const first = await f.execute({ dueOnly: true })
+  expect(first.request_results.some((item) => property(item).error !== undefined)).toBe(true)
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(1)
+  f.clearCalls()
+  const resumed = await f.execute({ dueOnly: true })
+  expect(resumed.request_results.filter((item) => property(item).error !== undefined)).toEqual([])
+  expect(resumed.request_results.map((item) => property(item).result)).toContainEqual(
+    expect.objectContaining({ status: "verified_applied" }),
+  )
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(0)
+})
+
+test("same source run repairs rejected request feedback with its frozen request identity", async () => {
+  const f = await fixture("auto", true, true)
+  await f.execute()
+  await f.run(
+    submitSharedFileRequest({ library: f.activeLibrary, skillPageId: skillPage, path: "SKILL.md" }),
+  )
+  f.taskHooks.rejectVerifiedFeedback = true
+  const first = await f.execute({ dueOnly: true })
+  expect(first.outcome.task_completed).toBe(false)
+  expect(first.request_scope?.[0]?.request_id).toMatch(/^file-request-/u)
+  expect(first.next.argv).toEqual([
+    "ntn-skills",
+    "ctl",
+    "library",
+    "sources",
+    "run-resume",
+    first.run_id,
+  ])
+  expect(first.next.read_only).toBe(false)
+  f.clearCalls()
+  const resumed = await f.run(
+    resumeSourceUpdateRun({ runId: first.run_id }, () => Effect.succeed(f.activeLibrary)),
+  )
+  expect(resumed.request_results.filter((item) => property(item).error !== undefined)).toEqual([])
+  expect(resumed.request_results.map((item) => property(item).result)).toContainEqual(
+    expect.objectContaining({ status: "verified_applied" }),
+  )
+  expect(resumed.outcome.task_completed).toBe(true)
+  expect(resumed.continuations?.[0]?.request_results).toEqual(first.request_results)
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(0)
+})
+
+test("display checkpoint interruption preserves the acknowledged original body for same-run recovery", async () => {
+  const { f } = await followingMain()
+  f.taskHooks.rejectDisplayCheckpoint = true
+  const first = await f.execute({ updateFollowing: true })
+  const body = first.application[0]?.display?.find((file) => file.path === "SKILL.md")
+  expect(body?.operation_id).toMatch(/^body-write-follow-/u)
+  expect(body?.status).toBe("applied")
+  expect(first.outcome.task_completed).toBe(false)
+  f.clearCalls()
+  const resumed = await f.run(
+    resumeSourceUpdateRun({ runId: first.run_id }, () => Effect.succeed(f.activeLibrary)),
+  )
+  expect(resumed.application.map((item) => item.status)).toEqual(["confirmed"])
+  expect(
+    resumed.application[0]?.display?.find((file) => file.path === "SKILL.md")?.operation_id,
+  ).toBe(body?.operation_id)
+  expect(resumed.outcome.task_completed).toBe(true)
+  expect(
+    f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+  ).toHaveLength(0)
+})
 
 test("policy and interval are explicit native configuration; disabled and pinned skip provider discovery", async () => {
   expect(() => validateSourceDefinition({ ...definition, policy: "auto" })).toThrow(

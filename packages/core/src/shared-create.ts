@@ -1,4 +1,5 @@
 import { Crypto, Effect, Schema } from "effect"
+import { retainNotionReadbackMismatch } from "./shared-notion-readback-diagnostic.ts"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.ts"
 import {
@@ -647,10 +648,12 @@ function pageReceipt(raw: unknown): string {
   return row.id
 }
 function assertBody(
+  operationId: string,
   page: string,
   expected: string,
   importPresentation = false,
   generatedResourceNote = false,
+  projectionVersion?: number,
 ) {
   return Effect.gen(function* () {
     const raw = yield* (yield* Notion).request(`v1/pages/${page}/markdown?markdown_version=v2`)
@@ -675,6 +678,16 @@ function assertBody(
         fail(
           "SHARED_CREATE_BODY_MISMATCH",
           "The complete native body differs from the candidate projected before dispatch. Other Notion formatting transformations are not accepted by a loose comparison.",
+          {
+            readback: yield* retainNotionReadbackMismatch({
+              operationId,
+              pageId: page,
+              expected,
+              observed: actual,
+              rawObserved: body.markdown,
+              projectionVersion,
+            }),
+          },
         ),
       )
   })
@@ -792,7 +805,14 @@ function inspectResourceNoteFailure(
           version: sharedCreateProjectionVersion(plan.files),
           purpose: "data_source_create",
         }).markdown
-      yield* assertBody(binding.page_id, expected, false, resource !== undefined)
+      yield* assertBody(
+        plan.operation_id,
+        binding.page_id,
+        expected,
+        false,
+        resource !== undefined,
+        file?.projection.version ?? sharedCreateProjectionVersion(plan.files),
+      )
       if (resource)
         yield* loadSharedResourceContent(library, {
           skillPageId: page,
@@ -1926,9 +1946,12 @@ export function executeSharedCreate(
           const native = facts.files.find((file) => file.file_id === binding.file_id)
           if (native !== undefined)
             yield* assertBody(
+              plan.operation_id,
               binding.page_id,
               native.projection.markdown,
               acceptReadback && native.event.kind === "deleted",
+              false,
+              native.projection.version,
             )
           else {
             const resource = plan.resources?.find((file) => file.file_id === binding.file_id)
@@ -1945,7 +1968,14 @@ export function executeSharedCreate(
                 purpose: "data_source_create",
               }),
             )
-            yield* assertBody(binding.page_id, description.markdown, acceptReadback, true)
+            yield* assertBody(
+              plan.operation_id,
+              binding.page_id,
+              description.markdown,
+              acceptReadback,
+              true,
+              description.version,
+            )
           }
         }
       })
@@ -2003,7 +2033,14 @@ export function executeSharedCreate(
         })
       }
       stage = "main_body"
-      yield* assertBody(skillPage, resolvedMain.projection.markdown)
+      yield* assertBody(
+        plan.operation_id,
+        skillPage,
+        resolvedMain.projection.markdown,
+        false,
+        false,
+        resolvedMain.projection.version,
+      )
       if (plan.source_projection?.version === 2) {
         stage = "retained_source_selection"
         yield* verifySharedCreateRetained(library, skillPage, plan.source_projection.retained)
@@ -2049,9 +2086,12 @@ export function executeSharedCreate(
         const observedFile = yield* observe(file, page)
         binding.event_id = observedFile.event.event_id
         yield* assertBody(
+          plan.operation_id,
           page,
           observedFile.projection.markdown,
           acceptReadback && observedFile.event.kind === "deleted",
+          false,
+          observedFile.projection.version,
         )
         yield* publishReadingBaseline(observedFile, page)
       }
@@ -2075,7 +2115,14 @@ export function executeSharedCreate(
           page_id: page,
           event_id: file.event.event_id,
         })
-        yield* assertBody(page, description.markdown, acceptReadback, true)
+        yield* assertBody(
+          plan.operation_id,
+          page,
+          description.markdown,
+          acceptReadback,
+          true,
+          description.version,
+        )
       }
       if (acceptReadback) {
         stage = "retained_inputs"
@@ -2102,9 +2149,12 @@ export function executeSharedCreate(
       yield* verifyFacts(library, facts, skillPage)
       for (const file of facts.files)
         yield* assertBody(
+          plan.operation_id,
           bindings.find((binding) => binding.file_id === file.file_id)!.page_id,
           file.projection.markdown,
           acceptReadback && file.event.kind === "deleted",
+          false,
+          file.projection.version,
         )
       for (const file of plan.resources ?? [])
         yield* loadSharedResourceContent(library, {

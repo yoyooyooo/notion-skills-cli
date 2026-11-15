@@ -79,7 +79,7 @@ Resolve the selected Node launcher's `process.execPath` before creating isolated
 
 `maintenance-pi.test.ts` validates the independent oracle: exact read-only next.argv, original call IDs, full source and effects, complete directory objects and native Session. Paths repeated in authoring output do not count as duplicate generated directories. Mock cannot choose a missing ref from the source oracle or replace an unsupported split with a simpler write. Model usage is not a real-model cost measurement.
 
-Formal source correspondence is recorded in `docs/maintenance-verification-review.md`. AuditScope adds 7 exact positive/negative configurations to lifecycle; MaintenanceApply adds 6 to operation recovery. Full suite totals are 40 and 34 respectively. A new run must preserve its original failure artifacts and complete property inventory.
+Formal source correspondence is recorded in `docs/maintenance-verification-review.md`. AuditScope has 7 exact positive/negative configurations in lifecycle; MaintenanceApply has 7 in operation recovery, including the later unreviewed-partial negative. The checked inventories contain 40 and 35 cases respectively. A new run must preserve its original failure artifacts and complete property inventory.
 
 ## Independent-review regressions
 
@@ -112,6 +112,14 @@ settles an unknown original operation.
 ## Real native split regression
 
 Use the existing `shared-body-write`, `shared-file-management`, `shared-skill-apply` and `shared-maintenance-operations` tests. Cover a ~23 KiB main shortened through the actual bounded operation record, compact/full plan round-trip and corruption, true unique-input overflow before dispatch, existing-target relative links over a service that rewrites bare relative URLs, and explicit observed-body acceptance with old failure preserved and cold retained-body proof. New-file mutual links must refuse before writes until the pages are staged; a permissive fixture must not claim native Notion supports them. The same real mobile-use page/file identities and prior pin are the live continuation, not a replacement fixture.
+
+## NXT02–05 complete maintenance task
+
+Use one public `apply --input` for an existing main that links to two new references. The v2 parent freezes the complete logical tree before allocation, including fixed-width native URL capacity. Only verified original allocation outcomes supply page IDs; the immutable binding then supplies one exact original body plan. Cover interruption after both allocation ACKs, original body unknown, rehashed replacement page IDs, preserved old pin/modes and public directory-input output. New-file-to-new-file dependencies still refuse before any write. The public `operation show` may propose the exact original `resume` only for a verified prefix and proved-unissued suffix with the original local parent journal; it must never turn a missing or unknown outcome into an unsent step.
+
+For Source A→B, use `sources run --update-following` and same-run `run-resume` over an existing following file plus a custom file. Verify selection, visible body, ownership and final complete tree separately. Include unknown body response, Source/file/request drift, failed request feedback and a failed display checkpoint after an original body success. The latter must retain the body operation ID and repair only feedback/progress; a new upstream discovery or body PATCH is a failure. Ordinary auto runs keep their conservative body guard. No native CAS is claimed.
+
+Run the eight focused source files: `shared-skill-apply`, `shared-skill-apply-tree`, `shared-maintenance-operations`, `shared-source-run`, `shared-source-refresh`, `shared-source-definitions`, `shared-file-request`, `shared-file-restore`. Two maintained formal models and six isolated real-guard mutations cover their declared bounds. Actual owned Notion and installed CLI/Pi/model runs remain separate required layers; fixture success alone cannot close these tickets.
 
 ## Real collection maintenance regressions
 

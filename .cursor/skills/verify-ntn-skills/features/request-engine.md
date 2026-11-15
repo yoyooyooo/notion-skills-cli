@@ -1,5 +1,24 @@
 # 直连请求引擎
 
+## AH-1050 NXT09：固定资源的 pending producer
+
+固定 GitHub source 物化复用现有只共享 pending 的 Effect coalescer。键含同一 Store/HTTP client、完整 source URL、commit/tree/source path、Git oid、声明 bytes/SHA/mode 和 local-content restriction 集合；不同版本、客户端或限制不能共享。只合并当前在途获取，不缓存完成 response，不合并写入、整次 consume 或未知 ACK。一个 waiter 取消不会中止其他 waiter，最后 waiter 取消沿原 producer 生命周期回收；原 retries 与实际 HTTP/bytes 仍只在传输边界计数。
+
+派生映射存在但本地 object 缺失时，只能从原 frozen source 恢复，并重新验证原 length、Git oid 与 SHA。损坏对象不能退回 provider 覆盖；恢复不探测当前 branch/tree，不写新映射，不续 validated_at。原 Notion 读取 key 的 credential/body/queue 和 read-only 资格均保留。
+
+公开 Promise SDK 每次调用有独立 runtime。固定 native resource 的 `readResources` 在每个调用各自完成原 pin、当前 owner 与权限检查后，只共享 `loadSharedResourceContent` 的固定 manifest + chunk 网络读取和 checksum 验证。键包含真实 Store 根、opaque credential/endpoint/API version、请求 timeout/并发/调度配置、library/owner/snapshot、resource object/hash/length/mode、resource budget 与 read-only；不同 key 不合并。显式 RequestBudget 或注入的自定义 transport 不进入这个跨 runtime 层。producer 冻结已解析凭据，重建自己的只读 Fetch/scheduler Scope，不持有调用方 Store；creator 的 SDK Scope 结束不能破坏其他 waiter。每个 caller 独立验证和发布 object，资格检查期间另一个 caller 已完成时可重读本地 exact object。
+
+跨 runtime 表只保留在途项，准入上限为 64 个 producer、声明原始 bytes 合计 16 MiB；超额走原独立读取，已完成成功/失败不保留为全局结果缓存。最后 waiter 离开即停止吸引新 waiter，网络 finalizer 完成后释放容量；慢 cleanup 不能误删替代 producer。该上限不是 HTTP 编码、运行时或机器内存的物理硬上限。取消时的 SDK metrics 是该调用结束瞬间的观察：共享 producer 尚在运行时仍可显示 in-flight/未知字节；取消验证需对照独立 HTTP ledger，不能把部分观察当作完整流量。
+
+```bash
+bun test packages/core/test/shared-read-coalescing.test.ts packages/core/test/shared-immutable-read.test.ts packages/core/test/shared-source-materialization.test.ts --timeout 30000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts
+```
+
+受控两并发同 source 的 producer 请求数应为 1，两个不同 fixed revision 或 client 的请求各自保留；暖访问仍为 0。实际 SDK/Pi 比较必须固定同一资源 pin 和相同 client 初态，逐次留存 provider/Notion HTTP 与传输字节，不能以逻辑 read 次数或更长 TTL 代替下降证明。正文冷/暖路径若无下降，应明确报告无回退而非优化收益。
+
+`scripts/nxt-resource-cost.mjs --root OWNED_NXT_ROOT --sdk ABSOLUTE_DIST_SDK --label UNIQUE_LABEL` 直接 import 明确 SDK 文件并冻结 sha256；不经过 `NTN_SKILLS_DEV_ROOT` launcher。两臂各从空客户端做相同公开 main bootstrap，bootstrap 成本单列，目录 ref 去除 main pathname/file_id 后选择同一 lazy supporting file，随后并发两次同 pin/预算的公开 readResources。报告与失败使用不可覆盖文件，Store 不复制；运行中 SDK hash 改变直接失败。控制测试额外覆盖 creator/全部 waiter 取消、慢 finalizer、不同预算/Store、不同凭据拒绝。
+
 这份地图覆盖 AH-561 的请求层；产品名 `ntn-skills` 保留。当前生产、包和验收链不得调用官方 ntn、使用其登录/Keychain 格式或 stderr 协议。历史记录只标明当时实现，不改写成新引擎的证据。
 
 ## 功能与证明边界

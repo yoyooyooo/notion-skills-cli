@@ -34,6 +34,7 @@ export class NotionReadOnly extends Context.Service<
 export function readOnlyNotion(api: Notion["Service"]): Notion["Service"] {
   return {
     ...api,
+    readOnly: true,
     request: (path, body, options) =>
       Effect.suspend(() => {
         const method = options?.method ?? (body === undefined ? "GET" : "POST")

@@ -8,33 +8,41 @@
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
-    "packages/core/src/shared-source-definitions.ts": "094071c50fd00454d943ec254ebe7c628c76df6e8ba9dcbd8da8e37eba83756c",
+    "packages/core/src/shared-source-definitions.ts": "01a938480c7a7158e8d002813b52a44d367e42913aff7f9217105a8c828320d4",
     "packages/core/src/shared-records.ts": "575f1df71a30c862b47f623431492309e0d6312cb29aa918c818b8155bfa663d",
     "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
     "packages/core/src/shared-file-management-model.ts": "8c79af06932063c4cffd6f1a1136f73352476a75642cb62d18d3bb410289729c",
-    "packages/core/src/shared-file-request.ts": "772ad6229369842c17b5c800cc05de3c18b724eeeac687b0a137006778eb6b77",
-    "packages/core/src/shared-file-restore.ts": "672f6e0d51485aa5f1eec77a2d9a36876b199e0eaedd166ccc649277b3502a24",
+    "packages/core/src/shared-file-request.ts": "12571d8ed6e46cbc29a5e7b84ae3c1d2aa12ec28003b401e960e73138e083a11",
+    "packages/core/src/shared-file-restore.ts": "54448fcba5dce1bb19ccea2e044256cb7177121debac6da57eaa4599d5c70fe6",
     "packages/core/test/shared-create-native-recovery.test.ts": "4ff912823659a71b082021ac167ca9bc875f1c5a3c49af3b463454eb97a5b236",
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
-    "packages/core/test/shared-file-management.test.ts": "35bb54f572073874fc42486d0087be6e4abb65ea44a253917cb3b814424ab874",
+    "packages/core/test/shared-file-management.test.ts": "ecdced69dbd400671e93467be3638b563ba5dde953698915c21c9f21b6c01cfe",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
     "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
-    "packages/core/test/shared-snapshot-fixture.ts": "c5d2726f4df8f1309ec451a19e4f90b2380c76c1176a7b689f2dcb9055122bb0",
-    "packages/core/src/shared-skill-apply.ts": "5b94f54da33b842de2f9fa3c80b0a011cb92eb6995c50b38247d36438eb90cdd",
-    "packages/core/src/shared-skill-apply-model.ts": "78771f79fe99934669c57314f81df8df87275804561c62bd9a5c01e5a0199bb7",
-    "packages/core/src/shared-skill-apply-target.ts": "1a72c1db5d94539b34d8be0e629de27a8b2fbb10aa928021d2da1ac912f05dab",
+    "packages/core/test/shared-snapshot-fixture.ts": "7b95df133d6ed562f8b4e4248e57750c45451a3b5a773aebcbee3e13ccbfec20",
+    "packages/core/src/shared-skill-apply.ts": "a660c8a2a591eb1f48414ad278ad4870543875a9ef7f89b99c7a520f6fc6763f",
+    "packages/core/src/shared-skill-apply-model.ts": "b46fa76c208efbf0cb4f94d673f0857ce826299a8e96790cf81513bca0bf2456",
+    "packages/core/src/shared-skill-apply-target.ts": "1e92a4913189efcb04201ae5ff487284dc1aa210f313707b8073ae869058af2a",
     "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
-    "packages/core/src/shared-skill-apply-authoring.ts": "adc8391fd52b8476ab4444e60281a07468d8f2aa5933f29f54dcb8d2a4587afc",
-    "packages/core/src/shared-file-management.ts": "847289c7d8b05130582bb96e5e3af73ed65443c80a4060bcdd9c6fe7ec0a0001",
-    "packages/core/src/shared-snapshot.ts": "a31efa38d5d7e4af442d5db3c2a68a56bdc6f7a14c46cc1bed6ffd11559900a4",
+    "packages/core/src/shared-skill-apply-authoring.ts": "cc18512bd136918551dc76484c74031c5157f270c8fb540dfcaa592adb40645c",
+    "packages/core/src/shared-file-management.ts": "f7329f279fbc682db81d878e25183b7be885f82c3abc1ea5473fea1a7816cead",
+    "packages/core/src/shared-snapshot.ts": "80e5011f64bf68cd90951d5994d7c3aa6568b5f15b230e7a928e2343c4a8584d",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
-    "packages/core/src/shared-maintenance-operations.ts": "dd7d766cd620572c65a3e83944318896f19c08b269d6a1acc73138b735e504ff",
-    "packages/core/test/shared-skill-apply.test.ts": "a3e29ba1f4830fdd05c4e195326873e46589b2dece2ca8e05163e93676a01643",
+    "packages/core/src/shared-maintenance-operations.ts": "10925e80b097d23f9543420413f43b5305e4c09d39745c66907e7eda929c09a7",
+    "packages/core/test/shared-skill-apply.test.ts": "a06b0ee14d903c48300495fcf54e82faf989cac5507fa934eddf0fcb02831286",
     "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371",
-    "packages/core/src/shared-plan-storage.ts": "0f75d7f76b47ac944809e2533d126c1b2e97c0adf62fe37d72d15ab5609e16be"
+    "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
+    "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
+    "packages/core/src/shared-maintenance-result.ts": "690a839c98ec87a71a896de3153145a729f1637349696e558222c029ebfe7710",
+    "packages/core/src/shared-source-run.ts": "b53a2e2d41b7da696003eaf526a9cc35c153fc882f8c5ba4c8d34093117c5bb1",
+    "packages/core/src/shared-source-display.ts": "8c4038bd728472617a41fc6bcf038bcdf203711f154b4c52993da5b92d9e389c",
+    "packages/core/src/shared-source-refresh.ts": "f9c466fc40f91ca658fc47b54d28bf87050a73746f838db7992ed4f1bb2a8733",
+    "packages/core/test/shared-source-definitions.test.ts": "7ec2358a09b35196a1668c192ed3ca4d7ef6216814c4383a1d7eeb19634be9e0",
+    "packages/core/test/shared-source-run.test.ts": "98a1660fd155d627956476db329dfce3162b7956670d3f39fd643d3307eabee3",
+    "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -83,15 +91,19 @@
         "writeFeedback",
         "processSharedFileRequest",
         "restoreSelectedSharedFile",
-        "reconcileSelectedSharedFileRestore"
+        "reconcileSelectedSharedFileRestore",
+        "guardedSourceMutation",
+        "resumeSourceUpdateRun"
       ],
-      "scope": "One frozen submitted request, one exact original restore identity, verified processing binding, one body dispatch and one final business feedback dispatch. Body outcome, current equality, feedback application, durable metadata ACK and current eligibility remain separate. Reconcile after body completion only advances undispatched feedback; pending and unknown cannot be replaced by a new submit.",
+      "scope": "One submitted request and original restore identity, one body dispatch, and at most two distinct feedback generations. A later generation requires a durably retained original API validation rejection proving earlier feedback not applied, with the same request and current premise. Each generation has at most one dispatch. Unknown errors, current equality and changed input cannot replace unresolved requests. Body result, metadata ACK, negative receipt and current eligibility remain separate.",
       "excluded": [
         "HTTP RequestEngine retries and Broker process state",
         "Whole business workflow or arbitrary notification retries",
         "Original processing metadata PATCH transport internals (modeled at retained ACK and exact readback boundary)",
         "Provider CAS or exclusion of edits between the final observation and dispatch",
-        "Unconditional progress while results remain unknown"
+        "Unconditional progress while results remain unknown",
+        "Exact HTTP400 validation_error classification, hashes and credential-scoped receipt encoding require source regressions; the finite model starts at an authoritative rejection response.",
+        "Unbounded feedback history; this model uses two generations."
       ]
     },
     "MaintenanceApply": {
@@ -102,9 +114,13 @@
         "executeSharedSkillApply",
         "resumeSharedSkillApply",
         "reconcileSharedSkillApply",
-        "loadPendingSharedSkillApplies"
+        "loadPendingSharedSkillApplies",
+        "bindSharedApplyBody",
+        "loadSharedApplyBodyBinding",
+        "executeSharedApplyBodyBinding",
+        "inspectSharedSkillApplyProgress"
       ],
-      "scope": "Three ordered children; original dispatch, received response, retained verified outcome and parent progress remain distinct. Current pending tree is not published. Original local authority is required for an unsent suffix. No CAS, atomic multi-page write or eventual-progress claim. A known failed original child may be explicitly reviewed and close the parent as partial without dispatching its tail; partial is never full success.",
+      "scope": "Three ordered children represent two native reference allocations and one bound body. Binding dispatch, provider application, durable ACK and exact original allocation verification precede the body. Child dispatch, response, outcome and parent progress remain separate. Original local authority and a completely unissued suffix are required; unknown bindings and bodies are never replayed. No CAS or atomic multi-page claim. Known original failures settle as partial only after review.",
       "excluded": [
         "Every native POST/PATCH/Record subrequest; narrower recovery models apply only to their named protocols",
         "Same-execution lifecycle-event ACK/query union, provider index visibility and per-Record crash persistence",
@@ -437,6 +453,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -454,6 +471,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -471,6 +489,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -488,6 +507,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -505,6 +525,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -522,6 +543,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -539,6 +561,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -556,6 +579,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -573,6 +597,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -582,7 +607,10 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-unknown-feedback.cfg",
-      "expected_broken": ["UnknownFeedbackNeverRedispatched"],
+      "expected_broken": [
+        "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -590,6 +618,7 @@
         "FeedbackNeverRepeatsBody",
         "FeedbackRequiresRealAck",
         "UnknownFeedbackNeverRedispatched",
+        "NewFeedbackGenerationNeedsRejection",
         "OriginalRequestPreserved",
         "SuccessNeedsAppliedOriginal",
         "HistoricalAckPreserved",
@@ -603,6 +632,7 @@
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -617,10 +647,14 @@
     {
       "model": "MaintenanceApply",
       "config": "skip-prefix.cfg",
-      "expected_broken": ["ConfirmedPrefixBeforeSuffix"],
+      "expected_broken": [
+        "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -639,6 +673,7 @@
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -657,6 +692,7 @@
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -675,6 +711,7 @@
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -693,6 +730,7 @@
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -711,6 +749,7 @@
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
+        "NativeBodyNeedsOriginalAllocationBinding",
         "UnknownNeverRepeated",
         "CompletionNeedsAllChildren",
         "PendingTreeNotPublished",
@@ -732,7 +771,7 @@
     "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
   },
   "maintenance_review": {
-    "batch": "AH-1024 / MNT02\u201309",
+    "batch": "AH-1024 / MNT02–09",
     "baseline": "6c38e747a9e40186fdf9d4ecda033eb5b413561c",
     "document": "docs/maintenance-verification-review.md",
     "claim": "Source correspondence reviewed; this metadata itself is not a new run. Exact result scope is the final runner summary plus concrete original artifacts.",
@@ -785,6 +824,37 @@
       "tests": ["packages/core/test/shared-skill-apply.test.ts"],
       "properties_and_bounds_changed": false,
       "evidence_scope": "Three public applySkill cases use actual filesystem input: directory modes 100644/100755 and a bare Markdown input with unknown mode. The original one-pass/two-failure result becomes three passes. This is concrete source evidence; the prior dafa00d formal runs keep their original identity."
+    },
+    "nxt_original_binding_and_feedback": {
+      "baseline": "4580b7d6d692013091d5c66e90d703d51fd5fb10",
+      "scope": "AH-1052 through AH-1055; reviewed worktree bytes. The integration owner records the final serialized product commit.",
+      "document": "docs/maintenance-verification-review.md#nxt-native-reference-binding-and-source-task-continuation",
+      "model_changes": [
+        "MaintenanceApply adds binding intent, dispatch, application, ACK, verification and interruption before the third child; original allocation identities remain necessary.",
+        "RestoreFeedback counts immutable feedback generations separately. Only a durable not-applied rejection can authorize the second generation. Unknown and body replay remain forbidden."
+      ],
+      "rule_changes": [
+        "NativeBodyNeedsOriginalAllocationBinding checked in all seven MaintenanceApply configs; skip-prefix also violates it.",
+        "UnknownFeedbackNeverRedispatched counts each immutable generation. NewFeedbackGenerationNeedsRejection checked in all ten RestoreFeedback configs; repeat-unknown-feedback also treats unknown as rejected."
+      ],
+      "concrete_guards": [
+        "Complete frozen logical input and fixed-width capacity preflight; load binding checks original allocation plan/outcome/page ID; all later suffix facts checked before body dispatch.",
+        "Source tasks freeze selection, following body/frontier and request identity. Checkpoint failure retains original body IDs; continuation never acquires a new provider candidate.",
+        "Only exact NOTION_REQUEST_FAILED + definitive_rejection + HTTP400 + validation_error is a negative receipt. 429/408/gateway/unrecognized/unclassified errors remain unknown."
+      ],
+      "peer_reviewed_changes": [
+        "shared-snapshot freshness/cache changes and explicit apply_body_binding pending refusal add no recovery authority.",
+        "shared-file-management mismatch diagnostics and local complete raw readback retention preserve comparison, original ACK and failure semantics; diagnostic encoding is unmodeled."
+      ],
+      "evidence_scope": "Before-maintenance runners stopped on stale protected-source hashes. Eight-file focused regressions passed 150/150; new public apply, original-allocation substitution and rejection classification tests passed separately. Formal and isolated mutation results belong to their own artifacts, not this mapping. No live Notion or Pi claim.",
+      "navigation_projection_followup": "Public output now sends a verified recoverable partial to the same run-resume, unknown native bodies to exact original operation show, and refuses to advertise parent resume without its verified original shared parent and matching library. These are projections of existing recovery guards, not new dispatch authority. Focused public navigation regressions passed after this refinement.",
+      "public_apply_result_followup": {
+        "owner": "packages/core/src/mutation.ts::sharedApplyResult",
+        "change": "Project verified complete, unchanged no-op and preflight-only outcomes at the public Core/CLI apply boundary. The safe next action reads the exact retained ref; it never resumes a successful operation. Existing dispatch and verification calls are unchanged.",
+        "modeled_transition_change": false,
+        "regression": "Four public apply cases passed 63 assertions, including dry-run effects, full completion and a repeated identical input with zero new remote writes.",
+        "evidence": "The earlier 35-config and six-mutation run remains tied to its original source hashes; this projection is separately reviewed and its current source/test bytes are now covered."
+      }
     }
   },
   "independent_review_corrections": {

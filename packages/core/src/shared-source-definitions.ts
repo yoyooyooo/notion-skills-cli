@@ -70,6 +70,15 @@ const SourceMutationReceiptSchema = Schema.Struct({
   acknowledged_at: Schema.Number,
   verified: Schema.Literal(true),
 })
+const SourceMutationRejectionSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  operation_id: Schema.String,
+  request_hash: Schema.String,
+  rejected_at: Schema.Number,
+  http_status: Schema.Literal(400),
+  notion_code: Schema.Literal("validation_error"),
+  status: Schema.Literal("not_applied"),
+})
 function observedSourceMutation(
   operation: string,
   current: unknown,
@@ -522,6 +531,7 @@ export function guardedSourceMutation<R, R2 = never>(
     let key = ""
     let receiptKey = ""
     let acknowledgementKey = ""
+    let rejectionKey = ""
     let frozen: { version: number; operation: string } & typeof request
     // A previously VERIFIED A->B does not forbid a later explicitly guarded
     // A->B after B->A. Unacknowledged attempts remain immutable replay barriers.
@@ -536,6 +546,7 @@ export function guardedSourceMutation<R, R2 = never>(
       key = `${root}${operation}.json`
       receiptKey = `${root}source-receipt-${operation.slice("source-op-".length)}.json`
       acknowledgementKey = `${root}source-ack-${operation.slice("source-op-".length)}.json`
+      rejectionKey = `${root}source-rejection-${operation.slice("source-op-".length)}.json`
       frozen = { version: 1, operation, ...request }
       const pending = yield* store.readJson(key, Schema.Unknown)
       const completion = yield* store.readJson(receiptKey, Schema.Unknown)
@@ -543,8 +554,9 @@ export function guardedSourceMutation<R, R2 = never>(
         acknowledgementKey,
         SourceMutationAcknowledgementSchema,
       )
+      const rejected = yield* store.readJson(rejectionKey, SourceMutationRejectionSchema)
       if (pending === undefined) {
-        if (completion !== undefined || acknowledged !== undefined)
+        if (completion !== undefined || acknowledged !== undefined || rejected !== undefined)
           return yield* Effect.fail(
             fail("SOURCE_OPERATION_CONFLICT", "Source completion has no original dispatch."),
           )
@@ -576,6 +588,34 @@ export function guardedSourceMutation<R, R2 = never>(
         return yield* Effect.fail(
           fail("SOURCE_OPERATION_CONFLICT", "Frozen source mutation changed."),
         )
+      if (rejected !== undefined) {
+        if (
+          acknowledged !== undefined ||
+          completion !== undefined ||
+          rejected.operation_id !== operation ||
+          rejected.request_hash !== (yield* sha256(canonicalSharedJson(frozen))) ||
+          !Number.isSafeInteger(rejected.rejected_at) ||
+          rejected.rejected_at < 0
+        )
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_OPERATION_CONFLICT",
+              "The original validation rejection does not match its frozen dispatch.",
+            ),
+          )
+        if (input.repeat === "never")
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_WRITE_NOT_APPLIED",
+              "The exact original source request was rejected before application. Its operation remains unchanged.",
+              { operation_id: operation, identity: input.identity },
+            ),
+          )
+        // A later explicit invocation may prepare a new generation only after
+        // the original API validation rejection was durably recorded.
+        operation = `source-op-${yield* sha256(canonicalSharedJson([operation, rejected]))}`
+        continue
+      }
       if (
         acknowledged &&
         (acknowledged.operation_id !== operation ||
@@ -651,7 +691,24 @@ export function guardedSourceMutation<R, R2 = never>(
         otherKey.replace("/source-op-", "/source-receipt-"),
         Schema.Unknown,
       )
-      if (acknowledged === undefined)
+      const rejected = yield* store.readJson(
+        otherKey.replace("/source-op-", "/source-rejection-"),
+        SourceMutationRejectionSchema,
+      )
+      if (
+        rejected !== undefined &&
+        (rejected.operation_id !== other.operation ||
+          rejected.request_hash !== (yield* sha256(canonicalSharedJson(other))) ||
+          !Number.isSafeInteger(rejected.rejected_at) ||
+          rejected.rejected_at < 0)
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_OPERATION_CONFLICT",
+            "A previous source rejection differs from its frozen request.",
+          ),
+        )
+      if (acknowledged === undefined && rejected === undefined)
         return yield* Effect.fail(
           fail(
             "SOURCE_WRITE_PENDING",
@@ -664,17 +721,54 @@ export function guardedSourceMutation<R, R2 = never>(
       return { status: "planned", dry_run: true, operation_id: operation, request: input.body }
     if (input.beforeDispatch !== undefined) yield* input.beforeDispatch
     yield* store.writeJson(key, frozen)
-    const response = yield* api
+    const dispatched = yield* api
       .request(input.path, input.body, { method: input.method })
-      .pipe(
-        Effect.mapError((error) =>
+      .pipe(Effect.result)
+    if (dispatched._tag === "Failure") {
+      const error = dispatched.failure
+      const details = property(error.details)
+      if (
+        error.code === "NOTION_REQUEST_FAILED" &&
+        details.phase === "definitive_rejection" &&
+        details.http_status === 400 &&
+        details.notion_code === "validation_error"
+      ) {
+        yield* store
+          .writeJson(rejectionKey, {
+            version: 1,
+            operation_id: operation,
+            request_hash: yield* sha256(canonicalSharedJson(frozen!)),
+            rejected_at: yield* Clock.currentTimeMillis,
+            http_status: 400,
+            notion_code: "validation_error",
+            status: "not_applied",
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              fail(
+                "SOURCE_WRITE_UNKNOWN",
+                "The original rejection could not be durably retained; do not repeat this request.",
+                { operation_id: operation, cause_code: cause.code },
+              ),
+            ),
+          )
+        return yield* Effect.fail(
           fail(
-            "SOURCE_WRITE_UNKNOWN",
-            "Source request did not produce a verified result; inspect the original operation.",
-            { operation_id: operation, cause_code: error.code },
+            "SOURCE_WRITE_NOT_APPLIED",
+            "The original source request was rejected by API validation before application.",
+            { operation_id: operation, cause_code: error.code, phase: "definitive_rejection" },
           ),
+        )
+      }
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_WRITE_UNKNOWN",
+          "Source request did not produce a verified result; inspect the original operation.",
+          { operation_id: operation, cause_code: error.code },
         ),
       )
+    }
+    const response = dispatched.success
     const acknowledgement = yield* Effect.gen(function* () {
       const proof = {
         version: 1 as const,

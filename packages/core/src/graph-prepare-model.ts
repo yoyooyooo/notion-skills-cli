@@ -79,6 +79,10 @@ const Freshness = Schema.Struct({
   max_age_ms: Schema.optional(Schema.Number),
   stale: Schema.optional(Schema.Boolean),
   validation: Schema.optional(Schema.Literal("metadata")),
+  policy_source: Schema.optional(Schema.Literals(["explicit", "skill", "profile", "product"])),
+  profile_revision_id: Schema.optional(Schema.String),
+  full_body_max_age_ms: Schema.optional(Natural),
+  current_eligibility_max_age_ms: Schema.optional(Natural),
 })
 export const PreparedNodeSchema = Schema.Struct({
   ...NodeIdentity,

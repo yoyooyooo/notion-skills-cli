@@ -23,8 +23,15 @@ import { reconcileSharedFileManagement } from "./shared-file-management.ts"
 import {
   validateSharedSkillApplyPlan,
   sharedSkillApplyPlansEntity,
+  validateSharedApplyBodyBinding,
 } from "./shared-skill-apply-model.ts"
-import { reconcileSharedSkillApply, resumeSharedSkillApply } from "./shared-skill-apply.ts"
+import { reconcileSharedApplyBodyBinding } from "./shared-apply-body-binding.ts"
+import {
+  reconcileSharedSkillApply,
+  resumeSharedSkillApply,
+  inspectSharedSkillApplyProgress,
+} from "./shared-skill-apply.ts"
+import { maintenanceResult, maintenanceOperationArgv } from "./shared-maintenance-result.ts"
 import {
   validateSharedNativeAdoptionPlan,
   nativeAdoptionEntity,
@@ -41,7 +48,7 @@ import {
 } from "./shared-observation-operation.ts"
 
 export const isSharedMaintenanceOperation = (id: string) =>
-  /^(?:(?:metadata-write|skill-adopt|body-review)-[a-f0-9]{64}|(?:observe|body-write-(?:adopt|follow)|file-management-(?:add|delete|move|undelete)|skill-apply|resource-authoring-(?:add|replace|delete|move|restore|undelete))-[a-f0-9]{64}\.[a-f0-9]{64})$/u.test(
+  /^(?:(?:metadata-write|skill-adopt|body-review|apply-body-binding)-[a-f0-9]{64}|(?:observe|body-write-(?:adopt|follow)|file-management-(?:add|delete|move|undelete)|skill-apply|resource-authoring-(?:add|replace|delete|move|restore|undelete))-[a-f0-9]{64}\.[a-f0-9]{64})$/u.test(
     id,
   )
 
@@ -62,6 +69,8 @@ function validateOriginal(input: unknown) {
         return yield* validateSharedFileManagementPlan(input)
       case "skill_apply":
         return yield* validateSharedSkillApplyPlan(input)
+      case "apply_body_binding":
+        return yield* validateSharedApplyBodyBinding(input)
       case "native_adoption":
         return yield* validateSharedNativeAdoptionPlan(input)
       case "resource_authoring":
@@ -313,7 +322,33 @@ function contextArgv(input: SharedMaintenanceSelection, target: string) {
 
 export function showSharedMaintenanceOperation(input: SharedMaintenanceSelection) {
   return Effect.gen(function* () {
-    const { plan, library, library_id, evidence } = yield* selectedOriginal(input)
+    const { plan, library: selectedLibrary, library_id, evidence } = yield* selectedOriginal(input)
+    const library =
+      selectedLibrary ??
+      (plan.kind === "skill_apply"
+        ? yield* loadSharedLibrary(
+            (yield* resolveSharedMaintenanceTarget(plan.skill_page_id)).entry,
+          )
+        : undefined)
+    if (library !== undefined && library.library_id !== library_id)
+      return yield* Effect.fail(
+        fail(
+          "OPERATION_SCOPE_MISMATCH",
+          "The original operation no longer belongs to this exact page's library.",
+        ),
+      )
+    const entry = library?.skills.database_id ?? input.entry
+    const progress =
+      plan.kind === "skill_apply"
+        ? yield* inspectSharedSkillApplyProgress(
+            library ??
+              (yield* loadSharedLibrary(
+                (yield* resolveSharedMaintenanceTarget(plan.skill_page_id)).entry,
+              )),
+            plan,
+          )
+        : undefined
+    const nextAction = progress?.resume_supported ? ("resume" as const) : ("reconcile" as const)
     return {
       domain: "shared_maintenance" as const,
       family: plan.kind,
@@ -321,24 +356,33 @@ export function showSharedMaintenanceOperation(input: SharedMaintenanceSelection
       target: { page_id: plan.skill_page_id, library_id, file_id: plan.file_id },
       state: "original_intent_recorded" as const,
       verified: false,
-      resume_supported: false,
+      resume_supported: progress?.resume_supported ?? false,
+      ...(progress === undefined ? {} : { progress }),
+      outcome: maintenanceResult({
+        completion: progress?.completion ?? "unknown",
+        verifiedScope: progress?.complete ? "original_operation" : "not_verified",
+        authorContent: progress?.steps.some((step) => step.state === "applied")
+          ? "confirmed"
+          : progress?.steps.every((step) => step.state === "not_sent")
+            ? "none"
+            : "unknown",
+        retainedRemote:
+          evidence === "original_shared_intent" ||
+          progress?.steps.some((step) => step.state === "applied")
+            ? "confirmed"
+            : "unknown",
+        message: progress?.resume_supported
+          ? "The original applied prefix is verified. Only its proved-unissued suffix may resume."
+          : "This inspection performs no remote writes. Original intent alone does not prove completion.",
+      }),
       coverage: { original_intent: evidence, terminal_outcome: "not_checked" as const },
       remote_writes: 0,
       next: {
-        argv: [
-          "ntn-skills",
-          "ctl",
-          "operation",
-          "reconcile",
-          plan.operation_id,
-          ...contextArgv(
-            { ...input, entry: library?.skills.database_id ?? input.entry },
-            plan.skill_page_id,
-          ),
-        ],
-        read_only: true,
-        reason:
-          "Observe the original outcome at its exact page. This does not replay a write or complete an unsent suffix.",
+        argv: maintenanceOperationArgv(nextAction, plan.operation_id, plan.skill_page_id, entry),
+        read_only: nextAction !== "resume",
+        reason: progress?.resume_supported
+          ? "Continue only the original proved-unissued suffix with the original local journal."
+          : "Observe the original outcome at its exact page. This does not replay a write or complete an unsent suffix.",
       },
     }
   }).pipe(withReadOnlyNotion)
@@ -373,6 +417,8 @@ export function reconcileSharedMaintenanceOperation(input: SharedMaintenanceSele
             return yield* reconcileSharedFileManagement(library, plan)
           case "skill_apply":
             return yield* reconcileSharedSkillApply(library, plan)
+          case "apply_body_binding":
+            return { ...(yield* reconcileSharedApplyBodyBinding(library, plan)), verified: true }
           case "native_adoption":
             return yield* reconcileSharedNativeAdoption(plan)
           case "resource_authoring":
@@ -401,6 +447,19 @@ export function reconcileSharedMaintenanceOperation(input: SharedMaintenanceSele
       verified: result.verified,
       result,
       remote_writes: 0,
+      outcome: maintenanceResult({
+        completion:
+          result.status === "applied"
+            ? "complete"
+            : result.status === "partial"
+              ? "partial"
+              : "read_again",
+        verifiedScope: "original_operation",
+        authorContent: "none",
+        retainedRemote: "none",
+        message:
+          "Verification describes the original operation; this reconciliation sent no remote writes.",
+      }),
       next: {
         argv: [
           "ntn-skills",
@@ -463,6 +522,14 @@ export function resumeSharedMaintenanceOperation(input: SharedMaintenanceSelecti
       state: result.status,
       verified: result.verified,
       result,
+      outcome: maintenanceResult({
+        completion: result.status === "applied" ? "complete" : "partial",
+        verifiedScope: "original_operation",
+        authorContent: "unknown",
+        retainedRemote: "unknown",
+        message:
+          "The original apply outcome is verified. Read the complete current tree before new intent; this receipt does not infer current ownership from historical success.",
+      }),
       next: {
         argv: [
           "ntn-skills",

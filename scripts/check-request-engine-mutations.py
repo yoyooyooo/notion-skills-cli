@@ -18,11 +18,13 @@ for name, expected in coverage["files"].items():
 
 fixture = out / "fixture"
 fixture.mkdir()
-for name in ["package.json", "tsconfig.json", "bun.lock"]:
+for name in ["package.json", "tsconfig.json", "bun.lock", "vitest.config.ts"]:
     if (repo / name).exists():
         shutil.copy2(repo / name, fixture / name)
 shutil.copytree(repo / "packages", fixture / "packages",
                 ignore=shutil.ignore_patterns("node_modules", "dist", ".cache", ".DS_Store"), symlinks=True)
+(fixture / "scripts").mkdir()
+shutil.copy2(repo / "scripts/sdk-source-fixture.mjs", fixture / "scripts/sdk-source-fixture.mjs")
 modules = fixture / "node_modules"
 modules.mkdir()
 shutil.copytree((repo / "node_modules/effect").resolve(), modules / "effect", symlinks=False)
@@ -59,6 +61,10 @@ shared_test = "packages/core/test/shared-read-coalescing.test.ts"
 notion_test = "packages/core/test/notion.test.ts"
 budget_test = "packages/core/test/request-budget.test.ts"
 contract_test = "packages/core/test/request-engine-contract.test.ts"
+immutable = "packages/core/src/shared-immutable-read.ts"
+immutable_test = "packages/core/test/shared-immutable-read.test.ts"
+fixed_resource = "packages/core/src/shared-fixed-resource-read.ts"
+sdk_test = "packages/core/test/sdk-immutable-read.node.test.ts"
 
 cases = [
     ("surviving-waiter", cache,
@@ -90,6 +96,17 @@ cases = [
     ("late-cleanup-entry-identity", cache,
      [("if (Option.isSome(current) && current.value === entry) {", "if (Option.isSome(current)) {")],
      shared_test, "abandoned producer", "ReplacementSurvivesOldCleanup"),
+    ("immutable-runtime-scope", fixed_resource,
+     [("import { Effect, FileSystem, Option }", "import { Crypto, Effect, FileSystem, Option }"),
+      ("detached.run(read),", "read.pipe(Effect.provideService(Notion, api), Effect.provideService(Crypto.Crypto, yield* Crypto.Crypto)),")],
+     sdk_test, "two public SDK runtimes", "SurvivingWaiterKeepsProducer"),
+    ("immutable-admission-capacity", immutable,
+     [("active >= limits.entries ||", "false ||"),
+      ("admittedBytes + bytes > limits.bytes", "false")],
+     immutable_test, "admission bounds new shared producers", "SharedAdmissionBounded"),
+    ("immutable-cleanup-capacity", immutable,
+     [("if (!selected.started) finish()", "finish()")],
+     immutable_test, "a cancelled producer holds its capacity", "SharedAdmissionBounded"),
     ("cooldown-admission", scheduler,
      [("if (!decision.admitted) {", "if (false && !decision.admitted) {")],
      contract_test, "FV07 cooled queue", "CooldownBeforeAdmission"),
@@ -129,10 +146,11 @@ summary = {
     "verifier_sha256": sha(Path(__file__).read_bytes()),
     "coverage_sha256": sha((repo / "verification/models/request-engine/coverage.json").read_bytes()),
     "runtime": {"bun": subprocess.check_output(["bun", "--version"], text=True).strip(),
+                "node": subprocess.check_output(["node", "--version"], text=True).strip(),
                 "python": sys.version.split()[0]},
     "source_hashes": coverage["files"],
     "dependency": {"effect": "4.0.5", "file": cache, "sha256": coverage["files"][cache]},
-    "scope": "Controlled public Notion service/coalescer/scheduler code, no remote HTTP or real Notion mutations.",
+    "scope": "Controlled public Notion service/coalescer/scheduler and SDK code. The immutable runtime case uses an owned local HTTP server, independent public SDK runtimes and a frozen fixture; no real credentials or remote Notion mutations.",
     "results": results,
 }
 def save():
@@ -144,15 +162,34 @@ def failure_hook(kind, error, traceback):
 sys.excepthook = failure_hook
 def run(label, test, pattern):
     started = time.monotonic()
+    node = test.endswith(".node.test.ts")
+    report = out / (label + ".json")
+    command = (["node", "node_modules/vitest/vitest.mjs", "run", "--config", "vitest.config.ts",
+                test, "-t", pattern, "--reporter=json", "--outputFile=" + str(report)] if node else
+               ["bun", "test", test, "-t", pattern, "--timeout", "10000"])
     try:
-        p = subprocess.run(["bun", "test", test, "-t", pattern, "--timeout", "10000"],
-                           cwd=fixture, text=True, capture_output=True, timeout=25)
+        p = subprocess.run(command, cwd=fixture, text=True, capture_output=True,
+                           timeout=120 if node else 25)
     except subprocess.TimeoutExpired as error:
         content = (error.stdout or b"") + (error.stderr or b"")
         (out / (label + ".log")).write_bytes(content + b"\nHARNESS TIMEOUT\n")
         raise
     (out / (label + ".log")).write_text(p.stdout + p.stderr)
+    if node:
+        assert report.exists(), (label, "missing structured Vitest result", p.stdout, p.stderr)
+        data = json.loads(report.read_text())
+        assertions = [a for file in data["testResults"] for a in file["assertionResults"]]
+        p.real_assertions = [a for a in assertions if a["status"] in ["passed", "failed"]]
+        p.assertion_failures = [message for a in p.real_assertions if a["status"] == "failed"
+                                for message in a.get("failureMessages", [])]
     return p, round(time.monotonic() - started, 3)
+def passed_test(p):
+    return (any(a["status"] == "passed" for a in p.real_assertions)
+            if hasattr(p, "real_assertions") else "(pass)" in p.stdout + p.stderr)
+def failed_assertion(p):
+    return (any("AssertionError" in message for message in p.assertion_failures)
+            if hasattr(p, "assertion_failures") else
+            "(fail)" in p.stdout + p.stderr and "expect(" in p.stdout + p.stderr)
 save()
 for name, filename, replacements, test, pattern, rule in cases:
     target = fixture / filename
@@ -166,20 +203,20 @@ for name, filename, replacements, test, pattern, rule in cases:
     (originals / (name + ".mutant")).write_bytes(mutated)
     baseline, baseline_seconds = run(name + "-baseline", test, pattern)
     assert baseline.returncode == 0, (name, "baseline failed", baseline.stderr)
-    assert "(pass)" in baseline.stdout + baseline.stderr, (name, "no baseline test ran")
+    assert passed_test(baseline), (name, "no baseline test ran")
     target.write_bytes(mutated)
     try:
         broken, broken_seconds = run(name + "-mutant", test, pattern)
         output = broken.stdout + broken.stderr
         assert broken.returncode != 0, (name, "real mutation escaped")
-        assert "(fail)" in output and "expect(" in output, (name, "not an assertion failure", output)
+        assert failed_assertion(broken), (name, "not an assertion failure", output)
         assert "error: Cannot find" not in output and "SyntaxError:" not in output, (name, "tool error")
     finally:
         assert target.read_bytes() == mutated, (name, "concurrent fixture modification")
         target.write_bytes(original)
     restored, restored_seconds = run(name + "-restored", test, pattern)
     assert restored.returncode == 0, (name, "restored failed", restored.stderr)
-    assert "(pass)" in restored.stdout + restored.stderr, (name, "no restored test ran")
+    assert passed_test(restored), (name, "no restored test ran")
     assert target.read_bytes() == original
     row = {
         "case": name, "rule": rule, "file": filename,

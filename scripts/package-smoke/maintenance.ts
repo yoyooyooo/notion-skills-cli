@@ -91,57 +91,37 @@ export async function checkProgressiveMaintenance(input: AuthoringContinuation) 
   await chmod(join(changes, firstPath), 0o644)
   await chmod(join(changes, secondPath), 0o755)
   const before = snapshot("before-split")
-  // The native page IDs do not exist yet. Preserve the documented zero-write
-  // rejection, then prove the separate supported add-and-link workflow.
+  // A newly allocated reference cannot itself depend on an unallocated peer.
+  // The normal existing-main-to-new-references intent below is one operation.
+  const unresolvedPeers = await directory("maintenance-unresolved-peers", {
+    "SKILL.md": splitMain,
+    [firstPath]: referenceOne + "\n[Second](maintenance-two.md)\n",
+    [secondPath]: referenceTwo,
+  })
   const rejected = property(
     await noWrites(
-      "mnt-unbound-linked-tree",
-      ["apply", originalRef, "--input", changes, "--dry-run"],
+      "mnt-unbound-new-peer-tree",
+      ["apply", originalRef, "--input", unresolvedPeers, "--dry-run"],
       1,
     ),
   )
   assert.equal(property(rejected.error).code, "SHARED_NATIVE_REFERENCE_UNBOUND")
   assert.equal(property(property(rejected.error).details).writes_sent, false)
   assert.equal(snapshot("after-unbound-rejection").source_sha256, before.source_sha256)
-  const referencesInput = await directory("maintenance-references-input", {
-    [firstPath]: referenceOne,
-    [secondPath]: referenceTwo,
-  })
-  await chmod(join(referencesInput, firstPath), 0o644)
-  await chmod(join(referencesInput, secondPath), 0o755)
   const preview = property(
-    await noWrites("mnt-references-preview", [
+    await noWrites("mnt-single-intent-preview", [
       "apply",
       originalRef,
       "--input",
-      referencesInput,
+      changes,
       "--dry-run",
     ]),
   )
   assert.equal(preview.dry_run, true)
   assert.equal(snapshot("after-preview").source_sha256, before.source_sha256)
-  const referencesResult = property(
-    await invoke("mnt-references-apply", ["apply", originalRef, "--input", referencesInput]),
+  const result = property(
+    await invoke("mnt-single-intent-apply", ["apply", originalRef, "--input", changes]),
   )
-  assert.equal(referencesResult.verified, true)
-  const freshReferences = property(
-    await noWrites("mnt-references-current", [
-      "read",
-      target,
-      "--database",
-      database,
-      "--authoring",
-      "--json",
-      "--read-only",
-    ]),
-  )
-  const linkInput = await directory("maintenance-link-input", { "SKILL.md": splitMain })
-  const linkPin = string(freshReferences.ref, "Fresh post-add authoring pin")
-  const linkPreview = property(
-    await noWrites("mnt-split-preview", ["apply", linkPin, "--input", linkInput, "--dry-run"]),
-  )
-  assert.equal(linkPreview.dry_run, true)
-  const result = property(await invoke("mnt-split-apply", ["apply", linkPin, "--input", linkInput]))
   assert.equal(result.verified, true)
   const first = fileIdentity(firstPath),
     second = fileIdentity(secondPath)

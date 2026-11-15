@@ -140,6 +140,10 @@ export interface Freshness {
   readonly max_age_ms?: number
   readonly stale?: boolean
   readonly validation?: "metadata"
+  readonly policy_source?: "explicit" | "skill" | "profile" | "product"
+  readonly profile_revision_id?: string
+  readonly full_body_max_age_ms?: number
+  readonly current_eligibility_max_age_ms?: number
 }
 export interface ObservedSnapshot extends Snapshot {
   readonly shared_body_valid_until?: number

@@ -311,7 +311,12 @@ export const SharedProfileBindingSchema = Schema.Struct({
   profile_id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u)),
 })
 export type SharedProfileBinding = typeof SharedProfileBindingSchema.Type
+export const CacheCapacitySchema = Schema.Struct({
+  max_bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  retention_ms: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+})
 export const ConfigSchema = Schema.Struct({
+  cache_capacity: Schema.optional(CacheCapacitySchema),
   source_resources: Schema.optional(SourceResourceConfigurationSchema),
   sources: Schema.optional(Schema.Array(SourceSchema)),
   shared_profile: Schema.optional(SharedProfileBindingSchema),

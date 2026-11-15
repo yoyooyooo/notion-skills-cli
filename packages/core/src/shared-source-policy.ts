@@ -11,9 +11,63 @@ import {
   sourceTable,
 } from "./shared-source-definitions.ts"
 import type { SourceDefinition } from "./shared-sources-model.ts"
-import { Store } from "./store.ts"
+import { configuration, Store } from "./store.ts"
+import { loadSharedProfileEntryCached } from "./shared-profile.ts"
+import { resolveSharedFreshness } from "./shared-freshness-policy.ts"
 
 export type SourceRunMode = "check" | "prepare" | "policy"
+
+/** A source is acquired once for its selected members. The shortest applicable
+ * interval satisfies every member's upper bound; it grants no body-write permission. */
+export function sharedSourceCheckPolicy(
+  library: SharedLibrary,
+  definition: SourceDefinition,
+  skillIds: readonly string[],
+) {
+  return Effect.gen(function* () {
+    const binding = (yield* configuration).shared_profile
+    if (binding === undefined || binding.library_entry !== library.skills.database_id)
+      return undefined
+    const selected = yield* loadSharedProfileEntryCached(binding.library_entry, binding.profile_id)
+    if (!selected.profile.enabled)
+      return yield* Effect.fail(
+        fail("SHARED_PROFILE_DISABLED", "The selected source freshness Profile is disabled."),
+      )
+    if (selected.profile.freshness === undefined) return undefined
+    const members = (skillIds.length === 0 ? [undefined] : [...new Set(skillIds)].sort()).map(
+      (skillId) => {
+        const resolved = resolveSharedFreshness({
+          ...(skillId === undefined ? {} : { skillId }),
+          ...(selected.profile.freshness === undefined
+            ? {}
+            : { policy: selected.profile.freshness }),
+          productReadMaxAge: 300_000,
+        })
+        const fallback = definition.options.check_interval_ms
+        return {
+          skill_id: skillId ?? null,
+          interval_ms:
+            resolved.source_check_max_age_ms ?? (typeof fallback === "number" ? fallback : null),
+          source: resolved.source_policy_source,
+        }
+      },
+    )
+    if (members.every((row) => row.source === "source_definition")) return undefined
+    const intervals = members
+      .filter((row) => row.source !== "source_definition" || (row.interval_ms ?? -1) >= 60_000)
+      .map((row) => row.interval_ms)
+      .filter(
+        (value): value is number => value !== null && Number.isSafeInteger(value) && value >= 0,
+      )
+    return {
+      interval_ms: intervals.length === 0 ? null : Math.min(...intervals),
+      profile_id: selected.profile.profile_id,
+      profile_revision_id: selected.profile.revision_id,
+      members,
+      aggregation: "shortest_selected_member_upper_bound" as const,
+    }
+  })
+}
 
 /** Scheduling reads native policy; it never turns a display field into a write fence. */
 export function sourceRunDecision(
@@ -21,14 +75,17 @@ export function sourceRunDecision(
   now: number,
   mode: SourceRunMode,
   dueOnly: boolean,
+  sharedPolicy?: Effect.Success<ReturnType<typeof sharedSourceCheckPolicy>>,
 ) {
   if (!definition.enabled) return { kind: "skip" as const, reason: "disabled" as const }
   if (mode === "policy" && definition.policy === "pinned")
     return { kind: "skip" as const, reason: "pinned" as const }
-  const interval = definition.options.check_interval_ms
+  const interval = sharedPolicy?.interval_ms ?? definition.options.check_interval_ms
   if (
     dueOnly &&
-    (typeof interval !== "number" || !Number.isSafeInteger(interval) || interval < 60_000)
+    (typeof interval !== "number" ||
+      !Number.isSafeInteger(interval) ||
+      interval < (sharedPolicy === undefined ? 60_000 : 0))
   )
     return { kind: "skip" as const, reason: "no_check_interval" as const }
   const dueAt =
@@ -36,11 +93,17 @@ export function sourceRunDecision(
       ? null
       : definition.last_checked + interval
   if (dueOnly && dueAt !== null && dueAt > now && definition.last_checked! <= now)
-    return { kind: "skip" as const, reason: "not_due" as const, due_at: dueAt }
+    return {
+      kind: "skip" as const,
+      reason: "not_due" as const,
+      due_at: dueAt,
+      ...(sharedPolicy === undefined ? {} : { freshness_policy: sharedPolicy }),
+    }
   return {
     kind: "check" as const,
     apply: mode === "policy" && definition.policy === "auto",
     due_at: dueAt,
+    ...(sharedPolicy === undefined ? {} : { freshness_policy: sharedPolicy }),
   }
 }
 

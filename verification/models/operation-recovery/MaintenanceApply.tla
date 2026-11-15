@@ -8,18 +8,47 @@ Prefix(n) == {i \in Children : i < n}
 Init == s = [phase |-> "plan", child |-> 1, pending |-> FALSE,
              attempts |-> [i \in Children |-> 0], applied |-> {}, acks |-> {},
              outcomes |-> {}, verified |-> {}, failed |-> {}, reviewed |-> {}, drift |-> FALSE,
+             bindingAttempts |-> 0, bindingApplied |-> FALSE, bindingAck |-> FALSE,
+             bindingVerified |-> FALSE, boundAllocations |-> {}, nativeBodyBoundBeforeSend |-> TRUE,
              prefixBeforeSend |-> TRUE, frozenBeforeSend |-> TRUE,
              currentRead |-> "old", oldPin |-> "old"]
 RetainParent ==
   /\ s.phase = "plan"
   /\ s' = [s EXCEPT !.phase = "boundary", !.pending = TRUE]
 ExternalEdit ==
-  /\ s.phase = "boundary" /\ ~s.drift
+  /\ s.phase \in {"boundary", "binding intent", "binding sent", "binding response", "binding ACK"} /\ ~s.drift
   /\ s' = [s EXCEPT !.drift = TRUE]
 RetainChildIntent ==
   /\ s.phase = "boundary" /\ (Prefix(s.child) \subseteq s.verified \/ SkipPrefix)
+  /\ (s.child # 3 \/ s.bindingVerified \/ SkipPrefix)
   /\ (~s.drift \/ IgnoreDrift)
   /\ s' = [s EXCEPT !.phase = "intent"]
+RetainNativeBindingIntent ==
+  /\ s.phase = "boundary" /\ s.child = 3 /\ s.bindingAttempts = 0
+  /\ Prefix(s.child) \subseteq s.verified /\ (~s.drift \/ IgnoreDrift)
+  /\ s' = [s EXCEPT !.phase = "binding intent", !.boundAllocations = s.outcomes \cap {1, 2}]
+SendNativeBinding ==
+  /\ s.phase = "binding intent" /\ s.bindingAttempts = 0
+  /\ s' = [s EXCEPT !.phase = "binding sent", !.bindingAttempts = 1]
+NativeBindingApplies ==
+  /\ s.phase = "binding sent"
+  /\ s' = [s EXCEPT !.phase = "binding response", !.bindingApplied = TRUE]
+RetainNativeBindingAck ==
+  /\ s.phase = "binding response"
+  /\ s' = [s EXCEPT !.phase = "binding ACK", !.bindingAck = TRUE]
+VerifyNativeBinding ==
+  /\ s.phase = "binding ACK" /\ s.bindingApplied /\ s.bindingAck
+  /\ s.boundAllocations = {1, 2} /\ s.boundAllocations \subseteq s.outcomes
+  /\ s' = [s EXCEPT !.phase = "boundary", !.bindingVerified = TRUE]
+InterruptNativeBinding ==
+  /\ s.phase \in {"binding intent", "binding sent", "binding response", "binding ACK"}
+  /\ s' = [s EXCEPT !.phase = "binding unknown"]
+ReconcileNativeBinding ==
+  /\ s.phase = "binding unknown" /\ s.bindingAck /\ s.bindingApplied
+  /\ s' = [s EXCEPT !.phase = "binding ACK"]
+RepeatUnknownBinding ==
+  /\ ReplayUnknown /\ s.phase = "binding unknown" /\ ~s.bindingAck /\ s.bindingAttempts < 2
+  /\ s' = [s EXCEPT !.phase = "binding sent", !.bindingAttempts = @ + 1]
 RejectDrift ==
   /\ s.phase = "boundary" /\ s.drift
   /\ s' = [s EXCEPT !.phase = "stopped"]
@@ -27,6 +56,7 @@ Send ==
   /\ s.phase = "intent" /\ s.attempts[s.child] = 0
   /\ s' = [s EXCEPT !.phase = "sent", !.attempts[s.child] = 1,
        !.prefixBeforeSend = s.prefixBeforeSend /\ Prefix(s.child) \subseteq s.verified,
+       !.nativeBodyBoundBeforeSend = s.nativeBodyBoundBeforeSend /\ (s.child # 3 \/ (s.bindingVerified /\ s.boundAllocations = {1, 2} /\ s.boundAllocations \subseteq s.outcomes)),
        !.frozenBeforeSend = s.frozenBeforeSend /\ ~s.drift]
 ServiceApplies ==
   /\ s.phase = "sent"
@@ -70,23 +100,27 @@ ObserveCurrent ==
   /\ s.phase # "plan"
   /\ s' = [s EXCEPT !.currentRead = IF s.pending /\ ~ReadPending THEN "blocked" ELSE "new"]
 Stop ==
-  /\ s.phase \in {"stopped", "complete", "unknown", "known_failed", "reviewed_failure", "partial"}
+  /\ s.phase \in {"stopped", "complete", "unknown", "binding unknown", "known_failed", "reviewed_failure", "partial"}
   /\ UNCHANGED vars
 Next == RetainParent \/ ExternalEdit \/ RetainChildIntent \/ RejectDrift \/ Send
+        \/ RetainNativeBindingIntent \/ SendNativeBinding \/ NativeBindingApplies \/ RetainNativeBindingAck
+        \/ VerifyNativeBinding \/ InterruptNativeBinding \/ ReconcileNativeBinding \/ RepeatUnknownBinding
         \/ ServiceApplies \/ RetainAck \/ VerifyOutcome \/ CheckpointChild \/ Interrupt
         \/ ReconcileOriginal \/ RepeatUnknown \/ NextChild \/ Complete \/ RecordKnownFailure
         \/ ReviewKnownFailure \/ SettlePartial \/ ObserveCurrent \/ Stop
 Spec == Init /\ [][Next]_vars
 
 TypeOK ==
-  /\ s.child \in Children /\ s.phase \in {"plan", "boundary", "intent", "sent", "response", "ack", "outcome", "verified", "unknown", "stopped", "complete", "known_failed", "reviewed_failure", "partial"}
+  /\ s.child \in Children /\ s.phase \in {"plan", "boundary", "intent", "sent", "response", "ack", "outcome", "verified", "unknown", "stopped", "complete", "known_failed", "reviewed_failure", "partial", "binding intent", "binding sent", "binding response", "binding ACK", "binding unknown"}
   /\ s.attempts \in [Children -> 0..2]
+  /\ s.bindingAttempts \in 0..2 /\ s.boundAllocations \subseteq {1, 2}
   /\ s.applied \subseteq Children /\ s.acks \subseteq Children /\ s.outcomes \subseteq Children /\ s.verified \subseteq Children
   /\ s.failed \subseteq Children /\ s.reviewed \subseteq s.failed
   /\ s.currentRead \in {"old", "blocked", "new"} /\ s.oldPin = "old"
-  /\ \A key \in {"pending", "drift", "prefixBeforeSend", "frozenBeforeSend"} : s[key] \in BOOLEAN
+  /\ \A key \in {"pending", "drift", "prefixBeforeSend", "frozenBeforeSend", "bindingApplied", "bindingAck", "bindingVerified", "nativeBodyBoundBeforeSend"} : s[key] \in BOOLEAN
 ConfirmedPrefixBeforeSuffix == s.prefixBeforeSend
-UnknownNeverRepeated == \A child \in Children : s.attempts[child] <= 1
+NativeBodyNeedsOriginalAllocationBinding == s.nativeBodyBoundBeforeSend
+UnknownNeverRepeated == (\A child \in Children : s.attempts[child] <= 1) /\ s.bindingAttempts <= 1
 CompletionNeedsAllChildren == s.phase = "complete" => s.verified = Children
 PendingTreeNotPublished == s.pending => s.currentRead # "new"
 ObservedDriftStopsDispatch == s.frozenBeforeSend

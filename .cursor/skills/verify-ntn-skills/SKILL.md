@@ -36,7 +36,7 @@ For AH-498 shared-library work, follow [shared SSOT verification](features/share
 
 For Broker missing-reference changes, follow [the consumption boundary recipe](features/broker-consumption.md#missing-reference-boundary). Broker soft misses preserve ordinary user text; this does not change CLI error JSON or genuine selected-record access/integrity failures. Host/provider acceptance belongs to the separate Broker recipes, not a CLI-only pass.
 
-This is a developer/regression workflow. Daily work uses current reads, one pinned `apply`, and `ctl sync upstream/local connect` followed by `run`. For an authorized ordinary content change, exit 0 with `ok: true`, `verified: true` and no `dry_run: true` is sufficient; the CLI owns saved-content readback. Do not run the detailed matrix or repeat per-file/export checks for every imported Skill. Use them when developing the CLI, diagnosing a discrepancy or fulfilling an explicit audit request.
+This is a developer/regression workflow. Daily work uses current reads, one pinned `apply`, and the four-table `ctl library sources` commands for source definitions, checks and updates. Follow the returned original-operation route after interruption. A verified substep does not establish completion of its parent task; inspect the complete result and its per-item effects. Do not run the detailed matrix or repeat per-file/export checks for every imported Skill. Use them when developing the CLI, diagnosing a discrepancy or fulfilling an explicit audit request. Retained `ctl sync` procedures apply only to their explicitly identified older local/upstream bindings, never as the new-library route.
 
 ## Accepted design and readiness
 

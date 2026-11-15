@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise four real operation-recovery guards in an isolated linked worktree."""
+"""Exercise six real operation-recovery guards in an isolated linked worktree."""
 import argparse
 import hashlib
 import json
@@ -93,6 +93,30 @@ cases = [
         "tests": 1,
         "meaning": "Later body drift stops new body authority but must not turn an exact acknowledged metadata receipt into an unknown or mismatched operation.",
     },
+    {
+        "name": "native-body-binding-needs-original-allocation",
+        "model": "MaintenanceApply",
+        "rule": "NativeBodyNeedsOriginalAllocationBinding",
+        "file": "packages/core/src/shared-apply-body-binding.ts",
+        "pattern": r'if\s*\(\s*outcome\.status !== "applied" \|\|\s*!value\.bindings\.some\(\s*\(bound\) => bound\.path === allocation\.path && bound\.page_id === outcome\.page_id,\s*\)\s*\)',
+        "replace": "if (false)",
+        "test_file": "packages/core/test/shared-skill-apply.test.ts",
+        "test": "a coherently rehashed native binding cannot replace its original allocated page identity",
+        "tests": 1,
+        "meaning": "A complete rehashed binding and body plan cannot substitute another native page for the exact original allocation outcome.",
+    },
+    {
+        "name": "unknown-source-feedback-is-not-a-validation-rejection",
+        "model": "RestoreFeedback",
+        "rule": "NewFeedbackGenerationNeedsRejection",
+        "file": "packages/core/src/shared-source-definitions.ts",
+        "pattern": r'error\.code === "NOTION_REQUEST_FAILED" &&\s*details\.phase === "definitive_rejection" &&\s*details\.http_status === 400 &&\s*details\.notion_code === "validation_error"',
+        "replace": 'error.code === "NOTION_REQUEST_FAILED"',
+        "test_file": "packages/core/test/shared-source-definitions.test.ts",
+        "test": "a non-authoritative rejection cannot authorize another source request",
+        "tests": 5,
+        "meaning": "429, 408, gateway, unrecognized and unclassified errors cannot manufacture a not-applied receipt or authorize another mutation generation.",
+    },
 ]
 
 def digest(value):
@@ -139,7 +163,7 @@ summary = {
     "coverage_sha256": digest(coverage_path.read_bytes()),
     "source_binding_verified": coverage["files"],
     "cases": [], "passed": False,
-    "claim": "Four actual source guards with independent public-function regressions. These are source tests, not live Notion or cross-machine exactly-once evidence.",
+    "claim": "Six actual source guards with independent public-function regressions. These are source tests, not live Notion or cross-machine exactly-once evidence.",
 }
 try:
     for case in cases:

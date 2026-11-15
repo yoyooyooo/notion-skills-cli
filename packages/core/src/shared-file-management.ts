@@ -1,4 +1,5 @@
 import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
+import { retainNotionReadbackMismatch } from "./shared-notion-readback-diagnostic.ts"
 import { Clock, Effect, Schema } from "effect"
 import {
   completedSharedFileAddAcceptance,
@@ -1741,6 +1742,16 @@ export function executeSharedFileManagement<R = never>(
           fail(
             "SHARED_FILE_MANAGEMENT_BODY_MISMATCH",
             "The resulting complete file body differs from the frozen content. The page remains intact for review.",
+            {
+              readback: yield* retainNotionReadbackMismatch({
+                operationId: plan.operation_id,
+                pageId: binding.page_id,
+                expected: plan.content.markdown,
+                observed: body.markdown,
+                rawObserved: body.raw_markdown,
+                projectionVersion: plan.creation_projection?.version,
+              }),
+            },
           ),
         )
       yield* managementChecked(() =>
@@ -1767,7 +1778,11 @@ export function executeSharedFileManagement<R = never>(
           fail(
             "SHARED_FILE_MANAGEMENT_REVIEW_REQUIRED",
             "The exact lifecycle postcondition was not verified. Original bytes and the native page remain retained; no rollback or replacement was attempted.",
-            { cause_code: exact.failure.code, page_id: selectedPage },
+            {
+              cause_code: exact.failure.code,
+              page_id: selectedPage,
+              ...property(exact.failure.details),
+            },
           ),
           plan,
           "postcondition",

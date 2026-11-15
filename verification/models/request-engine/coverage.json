@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "synchronized_commit": "1feacd3d133b5c6a0de8254439ef6bac5f78275c",
+  "synchronized_commit": "4580b7d6d692013091d5c66e90d703d51fd5fb10",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
-  "review_basis": "AH-1013 source inspection of the existing Notion service, Effect 4.0.5 Cache and shared scheduler; no runtime changes. New contract tests have their own exact hash.",
+  "review_basis": "AH-1050 / NXT09 review from 1feacd3d133b5c6a0de8254439ef6bac5f78275c to checkout 4580b7d6d692013091d5c66e90d703d51fd5fb10 and exact uncommitted source hashes below. The service-local generic extraction preserves the old domain; a second, bounded immutable-byte domain shares across standard Node SDK runtimes using an independently scoped read-only transport. SharedProducer now models both domains, capacity admission, creator cancellation and slow-finalizer occupancy. RequestAdmission code and semantic model are unchanged.",
   "files": {
-    "packages/core/src/shared-read-coalescing.ts": "5d7a783658e242c82bcc65dad4848dbe324d243a895d5203fe031f1cb65b86b4",
-    "packages/core/src/notion.ts": "bcafcc958b9cf3f3f9b96e81c90640343bf99b3f16a57f540e50f409d480ca71",
+    "packages/core/src/shared-read-coalescing.ts": "2acc82857362bcd982c3f0b5043fa05a251e433656269c594f30e54df832bbfc",
+    "packages/core/src/notion.ts": "dad3f5e5f5d47dfcc89c81b6291a498ca9f0647dbf129e9fe6f50b306f64a85c",
     "packages/core/src/notion-request-scheduler.ts": "4258d1aeded6bb81f7712ea2ba582ec46732e0094ed72d452287d22f229ba03c",
     "packages/core/src/request-budget.ts": "06bfeb2265fddac57e34ee61c251324e15d1d9a37f615879f2ffa675d4597860",
     "packages/core/src/notion-write-policy.ts": "9a1ef3007f7a43091c647e80dbe1676c36a3284e3feb0bc33fa6e763271ef5b9",
@@ -18,20 +18,36 @@
     "packages/core/test/notion-scheduler-multiprocess.node.test.ts": "c8f0a75d2969d347e4578e768ae797a5947b12672ceae7bf3b8bf28de5ddf7cd",
     "packages/core/package.json": "ac30318d9593be57d80d803f89f9c7a2cb933b5e690823d10849828223ce59b6",
     "bun.lock": "359d60c207746e8fca1cf3fa7a7733c7454ac844ab2d375a895d0b271cb3020c",
-    "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c"
+    "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c",
+    "packages/core/src/shared-immutable-read.ts": "e99cb0238e19486ad3d56c7063a38df0655183669ac56b92693810bbae924ca9",
+    "packages/core/src/shared-fixed-resource-read.ts": "91e7d839ebd7935543e770bf7b97936b92eaf77423102d8ca655bee2d4c467df",
+    "packages/core/src/shared-fixed-acquisition.ts": "fb4207ead2fe239a8b9f3641915260517da50faa0341676119f2600f1c3f7e70",
+    "packages/core/src/resource-read.ts": "6ada172071a1b0a8c212696525b16aba888c6ef437eeb2f6481e697afdf97b44",
+    "packages/core/src/notion-readonly.ts": "c618f4bd7b0ed5e19c92a028e0a433e19a746e85e8238fbb266f27df866e0c41",
+    "packages/cli/src/runtime.ts": "0b195fdc2749e4f2ec0c0cc2f12d646c7976bdcc0b64b9a87008ff407d1ba408",
+    "packages/core/test/shared-immutable-read.test.ts": "0c7610fa197cb1a891a48ca4c92217b1c37d61a6f31c7e7bf3a5617592c77e5c",
+    "packages/core/test/sdk-immutable-read.node.test.ts": "c8c707951038f6c5fc457105ecf3da1c0ed0e9589a1baacd6e72cd60e767c16d",
+    "scripts/sdk-source-fixture.mjs": "f909762187dff3624666675eafcd17764b0ab4aa8bf14077285659504b8d6dd7",
+    "vitest.config.ts": "256f9ec59266045da294333da99df854450b52ebe3297f85b0223039f676bcda"
   },
   "models": {
     "SharedProducer": {
-      "kind": "bounded_service_local_ownership",
+      "kind": "bounded_transport_and_immutable_ownership",
       "symbols": [
         "makeSharedReadCoalescer",
+        "makeSharedResultCoalescer",
         "ReadKey",
         "NotionTransport.request requestKey",
+        "makeBoundedImmutableReadCoalescer",
+        "NotionTransport.detachedReadContext",
+        "readFixedResourceBytes",
+        "materializeSharedFixedAcquisition",
+        "readResources ImmutableByteReadPolicy",
         "Cache.EntryImpl.await",
         "Cache.removeEntry"
       ],
-      "bounds": "Two concurrent waiters, one shared or two separate producers, one replacement; equality abstracts complete credential/origin/content/service and queue/invocation budget identities.",
-      "scope": "One Notion service; no cross-process content sharing. Effect dependency guard scope is reference counting and entry-identity removal only."
+      "bounds": "Two concurrent waiters, one shared or two separate producers, one replacement; transport and immutable domains; five contexts; immutable registry limit 1 or 2 with unit-weight producers. This bounds admitted unfinished shared producers, including slow finalizers, not all independent fallback requests. Equality abstracts the complete credential/origin/version/physical Store/fixed owner+snapshot+content/read-only/policy/timeout/scheduler identity.",
+      "scope": "Transport coalescers remain service local. Only exact immutable network bytes in one Node process may cross standard SDK runtime boundaries. Each caller independently qualifies its original pin/current owner and persists to its own Store; the producer owns its own read-only transport Scope and no Store. Custom transports and opt-in RequestBudget bypass cross-runtime sharing. No cross-process content sharing. Effect dependency scope is reference counting and entry-identity removal only."
     },
     "RequestAdmission": {
       "kind": "bounded_admission_and_retry",
@@ -61,6 +77,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -78,6 +95,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -95,6 +113,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -112,6 +131,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -129,6 +149,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -146,6 +167,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -163,6 +185,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -180,6 +203,7 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -197,6 +221,61 @@
         "ServiceIsolated",
         "SettledResultNotReused",
         "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "runtime.cfg",
+      "expected_broken": ["SurvivingWaiterKeepsProducer"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "capacity.cfg",
+      "expected_broken": ["SharedAdmissionBounded"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
+        "NoDeadlock"
+      ]
+    },
+    {
+      "model": "SharedProducer",
+      "config": "cleanup-capacity.cfg",
+      "expected_broken": ["SharedAdmissionBounded"],
+      "expected_rules": [
+        "TypeOK",
+        "SurvivingWaiterKeepsProducer",
+        "LastWaiterReleasesProducer",
+        "ScopeIsolated",
+        "BudgetIsolated",
+        "QueueBudgetIsolated",
+        "ServiceIsolated",
+        "SettledResultNotReused",
+        "ReplacementSurvivesOldCleanup",
+        "SharedAdmissionBounded",
         "NoDeadlock"
       ]
     },
@@ -350,7 +429,7 @@
       "version": "4.0.5",
       "guard_file": "node_modules/effect/dist/Cache.js",
       "source_hash_field": "files",
-      "scope": "Only the Cache guards called by makeSharedReadCoalescer; not whole-library verification."
+      "scope": "Only the pending Cache reference-counting and current-entry cleanup guards called by makeSharedResultCoalescer and the service-local wrapper; not whole-library verification."
     }
   },
   "test_signature_review": {
@@ -364,5 +443,25 @@
     "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
     "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
     "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
+  },
+  "nxt_semantic_review": {
+    "issue": "AH-1050 / AH-1058",
+    "previous_service_rule": "joined implies the two service instances are equal",
+    "current_service_rule": "transport-domain joined implies equal service instances; immutable-domain joined may cross runtimes only under the same complete fixed-byte identity",
+    "intent_evidence": [
+      "packages/core/src/shared-fixed-resource-read.ts readFixedResourceBytes",
+      "packages/core/src/notion.ts detachedReadContext",
+      "packages/core/test/sdk-immutable-read.node.test.ts public SDK creator cancellation and identity isolation"
+    ],
+    "unchanged": [
+      "RequestAdmission safety rules and bounds",
+      "transport service isolation",
+      "scope, budget and queue identity isolation",
+      "no completed cache results",
+      "per-caller eligibility and Store publication"
+    ],
+    "new_lifecycle": "Last waiter removes the entry from new joins before interrupting the producer; the registry charge remains until producer finalization. Full registry falls back to an independent caller-owned producer.",
+    "limitations": "Unit-weight registry limit 1/2 is an abstraction of entry and declared-byte bounds; weighted byte arithmetic is tested in the actual implementation. The model tracks the first producer in detail; the independent second producer terminates only for isolation observation. It does not prove fairness, arbitrary waiters/generations, real HTTP byte totals, all authorization boundaries, or local object persistence.",
+    "review_checkpoint": "Model and source correspondence reviewed before verification; actual outcomes are retained in the run summaries and chart manifest."
   }
 }

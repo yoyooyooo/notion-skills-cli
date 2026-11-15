@@ -1,5 +1,5 @@
 import { Crypto, Effect, Schema } from "effect"
-import type { HttpClient } from "effect/http"
+import { HttpClient } from "effect/http"
 import { markLocalContentRestriction } from "./content-restrictions.ts"
 import { fail, SkillsError } from "./model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
@@ -13,6 +13,7 @@ import {
   type FixedGithubSource,
 } from "./shared-github-source.ts"
 import { sha256, Store } from "./store.ts"
+import { makeSharedResultCoalescer, type SharedResultCoalescer } from "./shared-read-coalescing.ts"
 
 const BlobCacheSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -46,7 +47,7 @@ const corrupt = () =>
     "The derived GitHub blob cache is missing or corrupt; it cannot substitute bytes for the fixed source.",
   )
 
-function materializeBlob(
+function acquireBlob(
   source: FixedGithubSource,
   entry: FixedGithubFile,
   options: MaterializationOptions,
@@ -67,13 +68,17 @@ function materializeBlob(
       ) {
         return yield* Effect.fail(corrupt())
       }
-      const bytes = yield* store
-        .readBytes(`objects/${cached.sha256}`)
-        .pipe(
-          Effect.mapError((error) =>
-            error.code === "SNAPSHOT_MISSING" || error.code === "STATE_CORRUPT" ? corrupt() : error,
-          ),
+      const retained = yield* store.readBytes(`objects/${cached.sha256}`).pipe(Effect.result)
+      if (retained._tag === "Failure" && retained.failure.code !== "SNAPSHOT_MISSING")
+        return yield* Effect.fail(
+          retained.failure.code === "STATE_CORRUPT" ? corrupt() : retained.failure,
         )
+      // A lost local object may be recovered only from the original fixed URL,
+      // commit and blob. Keep the saved mapping and verify its exact SHA again.
+      const bytes =
+        retained._tag === "Success"
+          ? retained.success
+          : yield* fetchFixedGithubFile(source, entry, options)
       if (
         bytes.byteLength !== cached.bytes ||
         (yield* sha256(bytes)) !== cached.sha256 ||
@@ -87,6 +92,7 @@ function materializeBlob(
       })
       if (options.localContentHashes?.has(cached.sha256))
         yield* markLocalContentRestriction(cached.sha256)
+      if (retained._tag === "Failure") yield* store.writeBytes(`objects/${cached.sha256}`, bytes)
       return { git_oid: entry.git_oid, sha256: cached.sha256, bytes }
     }
     let bytes: Uint8Array | undefined
@@ -126,6 +132,48 @@ function materializeBlob(
       bytes: bytes.byteLength,
     })
     return { git_oid: entry.git_oid, sha256: hash, bytes }
+  })
+}
+
+const pendingSources = new WeakMap<
+  Store["Service"],
+  WeakMap<HttpClient.HttpClient, SharedResultCoalescer<MaterializedBlob>>
+>()
+
+function materializeBlob(
+  source: FixedGithubSource,
+  entry: FixedGithubFile,
+  options: MaterializationOptions,
+) {
+  return Effect.gen(function* () {
+    const store = yield* Store
+    const client = yield* HttpClient.HttpClient
+    let byClient = pendingSources.get(store)
+    if (byClient === undefined) {
+      byClient = new WeakMap()
+      pendingSources.set(store, byClient)
+    }
+    let pending = byClient.get(client)
+    if (pending === undefined) {
+      pending = yield* makeSharedResultCoalescer<MaterializedBlob>(options.metrics)
+      byClient.set(client, pending)
+    }
+    const identity = JSON.stringify([
+      source.url,
+      source.commit,
+      source.tree,
+      entry.source_path,
+      entry.git_oid,
+      entry.bytes,
+      entry.sha256 ?? null,
+      entry.mode ?? null,
+      [...(options.localContentHashes ?? [])].sort(),
+    ])
+    const context = yield* Effect.context<Store | Crypto.Crypto | HttpClient.HttpClient>()
+    return yield* pending.run(
+      identity,
+      acquireBlob(source, entry, options).pipe(Effect.provide(context)),
+    )
   })
 }
 

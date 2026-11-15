@@ -5,6 +5,7 @@ import { pageId } from "./ref.ts"
 import {
   SharedBodyWritePlanSchema,
   validateSharedBodyWritePlan,
+  makeSharedBodyWritePlan,
 } from "./shared-body-write-model.ts"
 import {
   SharedFileManagementPlanSchema,
@@ -17,6 +18,8 @@ import {
 } from "./shared-metadata-write-model.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
+import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
+import { projectSharedNotionMarkdown } from "./shared-notion-projection.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
@@ -50,6 +53,29 @@ const StageNameSchema = Schema.Literals([
   "author",
   "metadata",
 ])
+export const SharedApplyBodyBindingSchema = Schema.Struct({
+  version: Schema.Literal(1),
+  kind: Schema.Literal("apply_body_binding"),
+  operation_id: Schema.String.check(Schema.isPattern(/^apply-body-binding-[a-f0-9]{64}$/u)),
+  library_id: Identity,
+  skill_id: Identity,
+  skill_page_id: Schema.String,
+  file_id: Identity,
+  page_id: Schema.String,
+  path: Schema.String,
+  source_id: Schema.String,
+  /** This logical body is never sent to Notion. Its old body and frontier stay frozen. */
+  template: SharedBodyWritePlanSchema,
+  existing_bindings: Schema.Array(Schema.Struct({ page_id: Schema.String, path: Schema.String })),
+  allocations: Schema.Array(
+    Schema.Struct({
+      operation_id: Schema.String,
+      file_id: Identity,
+      path: Schema.String,
+    }),
+  ).check(Schema.isMinLength(1)),
+})
+export type SharedApplyBodyBinding = typeof SharedApplyBodyBindingSchema.Type
 const SharedSkillApplyPlanV1Schema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("skill_apply"),
@@ -85,6 +111,7 @@ const SharedSkillApplyPlanV2Schema = Schema.Struct({
   /** Read-only evidence for an explicitly edited logical link whose native
    * target/body is already identical. These are not dispatched child operations. */
   unchanged_bodies: Schema.optional(Schema.Array(SharedBodyWritePlanSchema)),
+  deferred_bodies: Schema.optional(Schema.Array(SharedApplyBodyBindingSchema)),
   stages: Schema.Array(
     Schema.Struct({
       name: StageNameSchema,
@@ -101,6 +128,7 @@ export type SharedSkillApplyChild =
   | SharedSkillApplyPlan["bodies"][number]
   | NonNullable<SharedSkillApplyPlan["metadata"]>
   | SharedFileManagementPlan
+  | SharedApplyBodyBinding
 export const sharedSkillApplyPlansEntity = "skill-apply-plans-v1"
 export const sharedSkillApplyOutcomesEntity = "skill-apply-outcomes-v1"
 export const sharedSkillApplyOutcomeId = (operationId: string) => `outcome-${operationId}`
@@ -137,12 +165,14 @@ export function sharedSkillApplyChildren(plan: {
   readonly metadata?: SharedSkillApplyPlan["metadata"]
   readonly layout?: Extract<SharedSkillApplyPlan, { version: 2 }>["layout"]
   readonly stages?: Extract<SharedSkillApplyPlan, { version: 2 }>["stages"]
+  readonly deferred_bodies?: readonly SharedApplyBodyBinding[]
 }): readonly SharedSkillApplyChild[] {
   if (plan.version !== 2 || plan.layout === undefined || plan.stages === undefined)
     return [...plan.bodies, ...(plan.metadata === undefined ? [] : [plan.metadata])]
   const byId = new Map<string, SharedSkillApplyChild>()
   for (const child of plan.layout) byId.set(child.operation_id, child)
   for (const child of plan.bodies) byId.set(child.operation_id, child)
+  for (const child of plan.deferred_bodies ?? []) byId.set(child.operation_id, child)
   if (plan.metadata !== undefined) byId.set(plan.metadata.operation_id, plan.metadata)
   return plan.stages.flatMap((stage) =>
     stage.operation_ids.map((id) => {
@@ -219,7 +249,8 @@ function assertLayoutStages(plan: Extract<SharedSkillApplyPlan, { version: 2 }>)
         (stage.name === "retire" &&
           child.kind === "file_management" &&
           child.action === "delete") ||
-        (stage.name === "author" && child.kind === "body_write") ||
+        (stage.name === "author" &&
+          (child.kind === "body_write" || child.kind === "apply_body_binding")) ||
         (stage.name === "metadata" && child.kind === "metadata_write")
       if (!matches)
         throw fail(
@@ -233,6 +264,7 @@ function assertLayoutStages(plan: Extract<SharedSkillApplyPlan, { version: 2 }>)
   for (const child of [
     ...plan.layout,
     ...plan.bodies,
+    ...(plan.deferred_bodies ?? []),
     ...(plan.metadata === undefined ? [] : [plan.metadata]),
   ])
     if (!covered.has(child.operation_id))
@@ -284,7 +316,7 @@ export function validateSharedSkillApplyPlan(input: unknown) {
       if (plan.version === 2) {
         assertLayoutStages(plan)
         const projections = plan.unchanged_bodies ?? []
-        const allBodies = [...plan.bodies, ...projections]
+        const allBodies = [...plan.bodies, ...projections, ...(plan.deferred_bodies ?? [])]
         if (
           ["path", "page_id", "file_id"].some(
             (key) =>
@@ -319,6 +351,30 @@ export function validateSharedSkillApplyPlan(input: unknown) {
     if (plan.version === 2) {
       for (const child of plan.layout) yield* validateSharedFileManagementPlan(child)
       for (const child of plan.unchanged_bodies ?? []) yield* validateSharedBodyWritePlan(child)
+      for (const child of plan.deferred_bodies ?? []) {
+        yield* validateSharedApplyBodyBinding(child)
+        yield* applyChecked(() => {
+          if (child.source_id !== plan.source_id || child.template.action !== "write")
+            throw fail(
+              "SHARED_APPLY_INVALID",
+              "A deferred body must preserve the parent's source and authoring intent.",
+            )
+          for (const allocation of child.allocations) {
+            const original = plan.layout.find(
+              (item) => item.operation_id === allocation.operation_id,
+            )
+            if (
+              original?.action !== "add" ||
+              original.file_id !== allocation.file_id ||
+              original.path !== allocation.path
+            )
+              throw fail(
+                "SHARED_APPLY_INVALID",
+                "A deferred native link must name an exact frozen allocation in its parent.",
+              )
+          }
+        })
+      }
     }
     if (plan.metadata !== undefined) yield* validateSharedMetadataWritePlan(plan.metadata)
     const childrenHash = yield* sha256(
@@ -339,6 +395,114 @@ export function validateSharedSkillApplyPlan(input: unknown) {
       validateSharedRecordEnvelope(plan.operation_id, storedSharedOperationPlan(plan)),
     )
     return plan
+  })
+}
+
+export function validateSharedApplyBodyBinding(input: unknown) {
+  return Effect.gen(function* () {
+    const binding = yield* applyChecked(() =>
+      Schema.decodeUnknownSync(SharedApplyBodyBindingSchema)(input, { onExcessProperty: "error" }),
+    )
+    yield* validateSharedBodyWritePlan(binding.template)
+    const { operation_id, ...description } = binding
+    if (operation_id !== `apply-body-binding-${yield* sha256(canonicalSharedJson(description))}`)
+      return yield* Effect.fail(
+        fail("SHARED_APPLY_INVALID", "The deferred body differs from its frozen logical intent."),
+      )
+    yield* applyChecked(() => {
+      for (const key of [
+        "library_id",
+        "skill_id",
+        "skill_page_id",
+        "file_id",
+        "page_id",
+        "path",
+        "source_id",
+      ] as const)
+        if (binding[key] !== binding.template[key])
+          throw fail(
+            "SHARED_APPLY_INVALID",
+            "The deferred body and its exact original template disagree.",
+          )
+      if (
+        binding.template.action !== "write" ||
+        new Set(binding.allocations.map((value) => value.path)).size !== binding.allocations.length
+      )
+        throw fail(
+          "SHARED_APPLY_INVALID",
+          "Deferred bindings require distinct allocated paths and a normal authoring write.",
+        )
+    })
+    // Capacity only: UUID destinations have fixed encoded width. These temporary
+    // identities are never retained, exposed or dispatched as page allocations.
+    const capacityBindings = [
+      ...binding.existing_bindings,
+      ...binding.allocations.map((allocation, index) => ({
+        path: allocation.path,
+        page_id: `ffffffff-ffff-4fff-8fff-${index.toString(16).padStart(12, "0")}`,
+      })),
+    ]
+    const capacityPlan = yield* bindSharedApplyBody(binding, capacityBindings)
+    yield* applyChecked(() =>
+      validateSharedRecordEnvelope(binding.operation_id, {
+        version: 1,
+        kind: "apply_body_binding_record",
+        intent_sha256: "f".repeat(64),
+        bindings: capacityBindings,
+        body_plan: storedSharedOperationPlan(capacityPlan),
+      }),
+    )
+    return binding
+  })
+}
+
+export function bindSharedApplyBody(
+  child: SharedApplyBodyBinding,
+  bindings: readonly { readonly page_id: string; readonly path: string }[],
+) {
+  return Effect.gen(function* () {
+    const template = child.template
+    const projection = yield* applyChecked(() =>
+      projectSharedNotionMarkdown(
+        restoreSharedNativeFileLinks(
+          template.input_projection?.input_markdown ?? template.candidate.markdown,
+          child.path,
+          bindings,
+        ),
+        template.input_projection === undefined
+          ? {}
+          : { version: template.input_projection.version },
+      ),
+    )
+    return yield* makeSharedBodyWritePlan({
+      library_id: child.library_id,
+      skill_id: child.skill_id,
+      skill_page_id: child.skill_page_id,
+      file_id: child.file_id,
+      page_id: child.page_id,
+      path: child.path,
+      source_id: child.source_id,
+      action: "write",
+      before: template.before,
+      parents: template.event.parents,
+      candidateMarkdown: projection.markdown,
+      input_projection: projection,
+      ...(template.authored_input_sha256 === undefined
+        ? {}
+        : { authored_input_sha256: template.authored_input_sha256 }),
+    })
+  })
+}
+
+export function makeSharedApplyBodyBinding(
+  input: Omit<SharedApplyBodyBinding, "version" | "kind" | "operation_id">,
+) {
+  return Effect.gen(function* () {
+    const description = { version: 1 as const, kind: "apply_body_binding" as const, ...input }
+    return yield* validateSharedApplyBodyBinding({
+      ...description,
+      operation_id: `apply-body-binding-${yield* sha256(canonicalSharedJson(description))}`,
+    })
   })
 }
 

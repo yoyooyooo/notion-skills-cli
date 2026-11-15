@@ -367,16 +367,48 @@ describe("fixed GitHub source materialization", () => {
     expect(f.requests).toHaveLength(1)
   })
 
-  test("does not treat a missing immutable object as a reason to replace a stored source fact", async () => {
+  test("recovers a missing immutable object from its fixed source without replacing its stored mapping", async () => {
     const bytes = encode("fixed\n")
     const file = entry("SKILL.md", bytes)
     const source = makeSource([file])
     const f = fixture(new Map([[file.source_path, bytes]]))
     await f.materialize(source)
+    const mapping = structuredClone(f.json.get(key(file.git_oid)))
+    const priorWrites = f.writes.filter((path) => path.startsWith("cache/")).length
     f.objects.clear()
-    expect((await f.rejected(source)).code).toBe("SOURCE_CACHE_CORRUPT")
-    expect(f.requests).toHaveLength(1)
+    const recovered = await f.materialize(source)
+    expect(recovered[0]?.bytes).toEqual(bytes)
+    expect(f.requests).toHaveLength(2)
     expect(f.json.size).toBe(1)
+    expect(f.json.get(key(file.git_oid))).toEqual(mapping)
+    expect(f.writes.filter((path) => path.startsWith("cache/")).length).toBe(priorWrites)
+  })
+
+  test("two simultaneous consumers of one fixed source share the actual bytes request", async () => {
+    const bytes = encode("same fixed requested bytes\n")
+    const file = entry("SKILL.md", bytes)
+    const source = makeSource([file])
+    const f = fixture(new Map([[file.source_path, bytes]]), true)
+    const [first, second] = await Promise.all([f.materialize(source), f.materialize(source)])
+    expect(first).toEqual(second)
+    expect(first[0]?.bytes).toEqual(bytes)
+    expect(f.requests).toHaveLength(1)
+    expect(f.metrics.snapshot().total_requests).toBe(1)
+  })
+
+  test("different fixed revisions and HTTP clients do not share a pending source fetch", async () => {
+    const bytes = encode("same content, separate authority\n")
+    const file = entry("SKILL.md", bytes)
+    const source = makeSource([file])
+    const f = fixture(new Map([[file.source_path, bytes]]), true)
+    const g = fixture(new Map([[file.source_path, bytes]]), true)
+    await Promise.all([
+      f.materialize(source),
+      f.materialize({ ...source, commit: "3".repeat(40) }),
+      g.materialize(source),
+    ])
+    expect(f.requests).toHaveLength(2)
+    expect(g.requests).toHaveLength(1)
   })
 
   test.each(["git_oid", "sha256", "bytes", "version"])(

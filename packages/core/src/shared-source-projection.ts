@@ -8,7 +8,7 @@ import { createChecked } from "./shared-create-model.ts"
 import { prepareSharedCreateLocal, validateSharedCreateLocal } from "./shared-create-local.ts"
 import { prepareSharedCreateRetained } from "./shared-create-retained.ts"
 import { readSourceDefinition, listSourceMembers } from "./shared-source-definitions.ts"
-import { prepareSourceMember } from "./shared-source-member.ts"
+import { prepareSourceMember, type SourceMemberStorage } from "./shared-source-member.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
   portableRelationSelection,
@@ -28,6 +28,7 @@ export interface SharedSourceProjectionInput {
   readonly skillId?: string
   readonly enabled?: boolean
   readonly markdownImport?: true
+  readonly storage?: SourceMemberStorage
   readonly local?: {
     readonly baseline: SourceSnapshot
     readonly files: PortableSkill["files"]
@@ -57,7 +58,12 @@ export function prepareSharedSourceProjection(input: SharedSourceProjectionInput
           "The exact Source member already has an enabled or disabled Skill; admission cannot create a second binding.",
         ),
       )
-    const prepared = yield* prepareSourceMember(current, input.acquired, input.member)
+    const prepared = yield* prepareSourceMember(
+      current,
+      input.acquired,
+      input.member,
+      input.storage,
+    )
     const files = prepared.files.filter(
       (file) => file.path === prepared.member.portable.main || /\.(md|markdown)$/iu.test(file.path),
     )

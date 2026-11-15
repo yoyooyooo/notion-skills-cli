@@ -2,7 +2,10 @@ export const title = "整树维护的原操作与消费屏障"
 function faults({ s }) {
   return [
     ...(!s.prefixBeforeSend ? ["前缀未确认却派发后缀"] : []),
-    ...(Object.values(s.attempts).some((value) => value > 1) ? ["重复派发未知写入"] : []),
+    ...(!s.nativeBodyBoundBeforeSend ? ["未按原分配结果绑定正文引用"] : []),
+    ...(Object.values(s.attempts).some((value) => value > 1) || s.bindingAttempts > 1
+      ? ["重复派发未知写入"]
+      : []),
     ...(s.phase === "complete" && s.verified.length !== 3 ? ["半套文件树被标为完成"] : []),
     ...(s.pending && s.currentRead === "new" ? ["未决文件树进入当前消费"] : []),
     ...(!s.frozenBeforeSend ? ["已知人工变更后仍派发"] : []),
@@ -17,6 +20,7 @@ export function state(value) {
   if (s.phase === "known_failed") return "原响应已确认但结果需审阅；后缀未派发"
   if (s.phase === "reviewed_failure") return "原失败已明确审阅；不把原写入改为成功"
   if (s.phase === "partial") return "父操作部分完成；未发后缀保持未发，重新读取当前内容"
+  if (s.phase === "binding unknown") return "原引用绑定结果未知；正文尚未派发"
   if (s.phase === "unknown")
     return s.outcomes.includes(s.child)
       ? "当前子操作的原结果已留存，父进度待续接"
@@ -33,6 +37,10 @@ export function state(value) {
       ack: "原 ACK 已持久化",
       outcome: "原结果已精确验证并留存",
       verified: "父操作已记入确认前缀",
+      "binding intent": "按两个原分配结果冻结引用绑定",
+      "binding sent": "原引用绑定记录已派发一次",
+      "binding response": "服务端已保留引用绑定",
+      "binding ACK": "原引用绑定 ACK 已留存",
     }[s.phase]
   )
 }
@@ -41,6 +49,14 @@ export const step = (action) => {
     RetainParent: "留存完整父计划并设消费屏障",
     ExternalEdit: "用户修改当前内容",
     RetainChildIntent: "确认前缀后留存下一子意图",
+    RetainNativeBindingIntent: "从原分配结果绑定最终正文",
+    SendNativeBinding: "留存一次原引用绑定",
+    NativeBindingApplies: "服务端保留原绑定",
+    RetainNativeBindingAck: "持久保留原绑定 ACK",
+    VerifyNativeBinding: "核对原分配身份和绑定",
+    InterruptNativeBinding: "绑定派发或响应中断",
+    ReconcileNativeBinding: "仅依原绑定 ACK 核对",
+    RepeatUnknownBinding: "错误地重派发未知绑定",
     RejectDrift: "停止未派发后缀",
     Send: "派发原请求",
     ServiceApplies: "服务端应用请求",
@@ -65,9 +81,14 @@ export const group = (value) =>
     ? "违例"
     : value.s.phase === "complete"
       ? "已完成"
-      : ["stopped", "unknown", "known_failed", "reviewed_failure", "partial"].includes(
-            value.s.phase,
-          )
+      : [
+            "stopped",
+            "unknown",
+            "binding unknown",
+            "known_failed",
+            "reviewed_failure",
+            "partial",
+          ].includes(value.s.phase)
         ? "保留并停止"
         : "维护中"
 export const colors = { 违例: "pink", 已完成: "teal", 保留并停止: "yellow", 维护中: "blue" }

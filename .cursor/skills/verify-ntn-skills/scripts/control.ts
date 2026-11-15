@@ -218,6 +218,8 @@ const env: Record<string, string | undefined> & {
   XDG_CACHE_HOME: join(scratch, "xdg", "cache"),
   XDG_DATA_HOME: join(scratch, "xdg", "data"),
 }
+// A package invocation must not inherit the shell's optional source checkout launcher.
+delete env.NTN_SKILLS_DEV_ROOT
 // The project's direct HTTP engine consumes inherited token configuration in place.
 async function command(args: string[], cwd = repo, childEnv = env) {
   if (args.includes("set-token") || args.some((arg) => /^(?:Bearer |secret_|ntn_)/.test(arg)))

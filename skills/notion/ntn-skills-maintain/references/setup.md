@@ -27,7 +27,7 @@ create database fields or enter four separate database IDs.
 ntn-skills ctl library init --parent AUTHORIZED_PARENT_PAGE
 ```
 
-Keep the returned `library.skills.database_id` as `ENTRY`. The command creates
+Keep the returned `entry` or `library.skills.database_id` as `ENTRY`. The command creates
 Skills, Files, Records and Sources, including their stable field identities and
 relationships. Their description markers own the mapping; do not edit those
 markers or copy them to another database. Display titles can change.
@@ -37,6 +37,14 @@ partial setup, not a fully ready result. Follow its returned `next.argv` to
 complete the existing library. Do not initialize a replacement parent to hide a
 failed attempt. Preserve original operation IDs after interruption. An unknown
 creation is not permission to send another POST.
+
+The result reports separate observations. `onboarding.remote.status` is
+`ready_empty` for a newly created four-table library, `ready` for a verified
+existing library, or `core_ready_source_pending` when Sources is missing.
+`onboarding.local` reports existing aliases without registering one.
+`onboarding.pi.status: not_observed` and `body_read: not_observed` mean the CLI
+has not verified a Pi connection or a delivered body. Follow `next.argv` for
+the exact entry; a successful initialization alone is not completed onboarding.
 
 For an existing registered library, validate its real schema and relationships:
 
@@ -86,6 +94,31 @@ read before declaring onboarding complete. A Source is not required for a
 native local Skill. Adding the first upstream member is a separate explicit
 `sources check` / `admit` task owned by `ntn-skills-sync`; a registered Source
 with no members is not proof that content has been imported.
+
+## Connect the selected Pi source
+
+In a Pi session with Context Broker installed, preview one named source and the
+same `ENTRY` in an explicitly chosen configuration file:
+
+```text
+/context-broker connect SOURCE ENTRY --config /absolute/config.json
+```
+
+Use a source name chosen for this library. The preview returns a fingerprint
+and the exact command containing `--apply PREVIEW_SHA256`. Execute that returned
+command only when the user has authorized this configuration change. It adds
+the selected source while preserving other settings; it refuses a conflicting
+source or a duplicate library identity. A matching existing source is a no-op.
+When `CONTEXT_BROKER_CONFIG` already selects that file, `--config` may be omitted.
+
+Start Pi with the same `CONTEXT_BROKER_CONFIG=/absolute/config.json`, or reload
+the session already using it, then inspect Broker doctor and discover the
+library through `notion_list`. Read the exact selected Skill and one needed
+reference, or use it when the task calls for executing its workflow. Confirm
+the returned owner/snapshot and the actual delivered body. Saving configuration
+reports `configuration_saved` and `reload_required`; it does not establish
+connection, activation or model delivery. Do not load unselected scripts or
+binary resources to prove that discovery works.
 
 ## Test without using the daily library
 

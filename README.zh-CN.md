@@ -71,6 +71,8 @@ ntn-skills --help
 
 首次使用可直接把[初始化指引](skills/notion/ntn-skills-maintain/references/setup.md)交给 Agent。用户提供已安全配置的凭据和授权父页面，CLI 创建并验证四表，只需保留一个库入口。
 
+初始化结果分别报告远端库状态、本机已有别名和尚未观察的 Pi 交付状态，`next.argv` 绑定实际入口。在 Pi 中使用 `/context-broker connect SOURCE ENTRY --config /绝对路径/config.json` 预览一个明确的来源连接，再按返回的指纹命令确认保存。用同一配置重载并实际读取所选 Skill，才完成从建库到消费的闭环。
+
 ## 快速开始
 
 ### 1. 连接 Notion

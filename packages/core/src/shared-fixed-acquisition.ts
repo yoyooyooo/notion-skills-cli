@@ -7,7 +7,7 @@ import {
   assertSharedHistoryIdentity,
 } from "./shared-history-workflow.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
-import { loadSharedResourceContent } from "./shared-resource-content.ts"
+import { readFixedResourceBytes } from "./shared-fixed-resource-read.ts"
 import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import { sha256, Store } from "./store.ts"
 
@@ -134,8 +134,16 @@ export function materializeSharedFixedAcquisition(
       const expected = snapshot.files.find((file) => file.path === route.path)!
       let bytes = resources.get(route.object_id)
       if (bytes === undefined) {
-        const loaded = yield* loadSharedResourceContent(library, {
+        // Another authorized consumer can finish while this caller checks current
+        // owner eligibility. Recheck the exact immutable object before networking.
+        const local = yield* store.readBytes(`objects/${expected.sha256}`).pipe(Effect.result)
+        if (local._tag === "Success") bytes = local.success
+        else if (local.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(local.failure)
+      }
+      if (bytes === undefined) {
+        bytes = yield* readFixedResourceBytes(library, {
           skillPageId: page,
+          snapshotId: snapshot.snapshot_id,
           content: {
             kind: "resource",
             object_id: route.object_id,
@@ -144,7 +152,6 @@ export function materializeSharedFixedAcquisition(
             mode: expected.mode ?? null,
           },
         })
-        bytes = loaded.bytes
         resources.set(route.object_id, bytes)
       }
       if (bytes.length !== expected.bytes || (yield* sha256(bytes)) !== expected.sha256)

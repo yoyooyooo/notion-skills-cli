@@ -47,6 +47,7 @@ import { Notion } from "../../core/src/notion.ts"
 import {
   sourceRunCommand,
   sourceRunStatusCommand,
+  sourceRunResumeCommand,
   sourceRunListCommand,
   sourceRequestBudgets,
   parseSourceBudget,
@@ -441,6 +442,7 @@ export const librarySourceDefinitionsCommand = defineCommand("sources").pipe(
     reconcile,
     sourceRunCommand,
     sourceRunStatusCommand,
+    sourceRunResumeCommand,
     sourceRunListCommand,
     sourceAdmitCommand,
     sourceAdmitApplyCommand,

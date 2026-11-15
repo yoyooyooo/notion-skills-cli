@@ -52,6 +52,13 @@ function transform(value: unknown, expand: boolean): Record<string, unknown> {
         if (!Array.isArray(plan.unchanged_bodies)) throw invalid()
         plan.unchanged_bodies = plan.unchanged_bodies.map((child) => transform(child, expand))
       }
+      if (plan.deferred_bodies !== undefined) {
+        if (!Array.isArray(plan.deferred_bodies)) throw invalid()
+        plan.deferred_bodies = plan.deferred_bodies.map((child) => ({
+          ...property(child),
+          template: transform(property(child).template, expand),
+        }))
+      }
     }
     return plan
   }

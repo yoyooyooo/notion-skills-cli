@@ -88,6 +88,14 @@ export function loadSharedApplyReferenceTree(plan: Extract<SharedSkillApplyPlan,
         )
       tree.set(child.path, { ...before, bytes: encode.encode(child.candidate.markdown) })
     }
+    for (const child of plan.deferred_bodies ?? []) {
+      const before = tree.get(child.path)
+      if (before === undefined)
+        return yield* Effect.fail(
+          fail("SHARED_APPLY_FINAL_TREE", "A deferred body names a path outside the final layout."),
+        )
+      tree.set(child.path, { ...before, bytes: encode.encode(child.template.candidate.markdown) })
+    }
     const files = yield* Effect.try({
       try: () =>
         composeSharedFiles({

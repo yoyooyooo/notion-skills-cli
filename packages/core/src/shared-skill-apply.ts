@@ -14,6 +14,11 @@ import {
 } from "./shared-file-management.ts"
 import { loadSharedApplyReferenceTree } from "./shared-skill-apply-target.ts"
 import {
+  executeSharedApplyBodyBinding,
+  reconcileSharedApplyBodyBinding,
+} from "./shared-apply-body-binding.ts"
+import { maintenanceResult, maintenanceOperationArgv } from "./shared-maintenance-result.ts"
+import {
   executeSharedMetadataWrite,
   reconcileSharedMetadataWrite,
 } from "./shared-metadata-write.ts"
@@ -76,6 +81,24 @@ function recovery(
     completed_child_operations: completed,
     protection: sharedSkillApplyProtection,
     recovery: { version: 1, mode: "reconcile", plan },
+    outcome: maintenanceResult({
+      completion:
+        error.code === "WRITE_OUTCOME_UNKNOWN"
+          ? "unknown"
+          : completed.length > 0
+            ? "partial"
+            : "unknown",
+      verifiedScope: "not_verified",
+      authorContent: completed.length > 0 ? "confirmed" : "unknown",
+      retainedRemote: "unknown",
+      message:
+        "Preserve the original operation. Confirmed children remain complete; an unknown dispatch is never replayed.",
+    }),
+    next: {
+      argv: maintenanceOperationArgv("show", plan.operation_id, plan.skill_page_id),
+      read_only: true,
+      reason: "Inspect each original child and the exact safe next action before continuing.",
+    },
     ...(stage === "plan" && error.code === "WRITE_OUTCOME_UNKNOWN"
       ? {
           first_plan_visibility_boundary: true,
@@ -279,17 +302,19 @@ function reconcileChild(library: SharedLibrary, child: SharedSkillApplyChild) {
     status: status === "applied" ? ("applied" as const) : ("not_applied" as const),
     operation_id: operationId,
   })
-  return child.kind === "body_write"
-    ? reconcileSharedBodyWrite(library, child).pipe(
-        Effect.map((result) => aligned(result.status, result.operation_id)),
-      )
-    : child.kind === "metadata_write"
-      ? reconcileSharedMetadataWrite(library, child).pipe(
+  return child.kind === "apply_body_binding"
+    ? reconcileSharedApplyBodyBinding(library, child)
+    : child.kind === "body_write"
+      ? reconcileSharedBodyWrite(library, child).pipe(
           Effect.map((result) => aligned(result.status, result.operation_id)),
         )
-      : reconcileSharedFileManagement(library, child).pipe(
-          Effect.map((result) => aligned(result.status, result.operation_id)),
-        )
+      : child.kind === "metadata_write"
+        ? reconcileSharedMetadataWrite(library, child).pipe(
+            Effect.map((result) => aligned(result.status, result.operation_id)),
+          )
+        : reconcileSharedFileManagement(library, child).pipe(
+            Effect.map((result) => aligned(result.status, result.operation_id)),
+          )
 }
 
 function allChildrenApplied(library: SharedLibrary, plan: SharedSkillApplyPlan) {
@@ -314,6 +339,73 @@ function allChildrenApplied(library: SharedLibrary, plan: SharedSkillApplyPlan) 
       verified.push(child.operation_id)
     }
     return verified
+  })
+}
+
+/** Inspect the original sequence without dispatch or inferred ACKs. */
+export function inspectSharedSkillApplyProgress(
+  library: SharedLibrary,
+  plan: SharedSkillApplyPlan,
+) {
+  return Effect.gen(function* () {
+    const journal = yield* journalScope(yield* authScope, plan)
+    const local = yield* pendingFileOperations(journal)
+    const ownsOriginal = local.some(
+      (item) =>
+        item.plan.operation_id === plan.operation_id &&
+        canonicalSharedJson(item.plan) === canonicalSharedJson(plan),
+    )
+    const originalParent = yield* originalRecord(library, plan, "reconcile").pipe(Effect.result)
+    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    let prefix = true
+    let unknown = originalParent._tag === "Failure"
+    let failed = false
+    const steps: {
+      operation_id: string
+      kind: string
+      path: string | null
+      state: "applied" | "not_applied" | "not_sent" | "unknown"
+    }[] = []
+    for (const child of sharedSkillApplyChildren(plan)) {
+      const hasPlan = headers.some((item) => item.record_id === child.operation_id)
+      const hasOutcome = headers.some((item) => item.record_id === `outcome-${child.operation_id}`)
+      const pending = local.some((item) => item.plan.operation_id === child.operation_id)
+      let state: (typeof steps)[number]["state"] = "unknown"
+      if (hasPlan && hasOutcome) {
+        const result = yield* reconcileChild(library, child).pipe(Effect.result)
+        if (result._tag === "Success") state = result.success.status
+      } else if (!hasPlan && !hasOutcome && !pending && ownsOriginal && !unknown && !failed) {
+        state = "not_sent"
+      }
+      if (state === "unknown") unknown = true
+      if (state === "not_applied") failed = true
+      if (state !== "applied") prefix = false
+      else if (!prefix) unknown = true
+      steps.push({
+        operation_id: child.operation_id,
+        kind: child.kind,
+        path: "path" in child ? child.path : null,
+        state,
+      })
+    }
+    const complete = !unknown && steps.every((item) => item.state === "applied")
+    return {
+      steps,
+      complete,
+      resume_supported:
+        ownsOriginal && !unknown && !failed && steps.some((item) => item.state === "not_sent"),
+      missing_evidence: [
+        ...(!ownsOriginal && !complete ? ["original_local_parent_journal"] : []),
+        ...(originalParent._tag === "Failure" ? ["verified_original_shared_parent"] : []),
+      ],
+      completion: complete
+        ? ("complete" as const)
+        : unknown
+          ? ("unknown" as const)
+          : failed
+            ? ("partial" as const)
+            : ("partial" as const),
+    }
   })
 }
 
@@ -453,6 +545,7 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
     const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
     let prefix = 0
     let stoppedChild: SharedSkillApplyChild | undefined
+    let pendingBinding = false
     for (const child of children) {
       const childRows = yield* querySharedRecords(library, {
         skillPageId: plan.skill_page_id,
@@ -468,6 +561,17 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
       const localChild = local.find((entry) => entry.plan.operation_id === child.operation_id)
       const visible = childRows.length > 0 || outcomeRows.length > 0 || localChild !== undefined
       if (!visible) break
+      if (
+        child.kind === "apply_body_binding" &&
+        childRows.length === 1 &&
+        outcomeRows.length === 0 &&
+        retained !== undefined
+      ) {
+        // The binding may still have a proved-unissued body. Check the entire
+        // later suffix before allowing the normal continuation to dispatch it.
+        pendingBinding = true
+        break
+      }
       if (childRows.length !== 1 || outcomeRows.length !== 1)
         return yield* Effect.fail(
           fail(
@@ -483,7 +587,7 @@ export function resumeSharedSkillApply(library: SharedLibrary, input: SharedSkil
       }
       prefix += 1
     }
-    const suffixStart = prefix + (stoppedChild === undefined ? 0 : 1)
+    const suffixStart = prefix + (stoppedChild === undefined && !pendingBinding ? 0 : 1)
     for (const child of children.slice(suffixStart)) {
       const childRows = yield* querySharedRecords(library, {
         skillPageId: plan.skill_page_id,
@@ -631,35 +735,37 @@ function dispatchChild(
   ) => Effect.Effect<void, SkillsError, Store | import("effect").Crypto.Crypto>,
   completed: readonly Outcome["children"][number][],
 ) {
-  return child.kind === "body_write"
-    ? executeSharedBodyWrite(library, {
-        plan: child,
-        mode: "create",
-        beforePlanWrite: before,
-      }).pipe(
-        Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
-      )
-    : child.kind === "metadata_write"
-      ? executeSharedMetadataWrite(library, {
+  return child.kind === "apply_body_binding"
+    ? executeSharedApplyBodyBinding(library, plan, child, before)
+    : child.kind === "body_write"
+      ? executeSharedBodyWrite(library, {
           plan: child,
           mode: "create",
           beforePlanWrite: before,
         }).pipe(
           Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
         )
-      : executeSharedFileManagement(library, {
-          plan: child,
-          mode: "create",
-          beforePlanWrite: before,
-          ...(plan.version === 2
-            ? { parent: plan, completedChildIds: completed.map((value) => value.operation_id) }
-            : {}),
-        }).pipe(
-          Effect.map((result) => ({
-            status: result.status === "applied" ? ("applied" as const) : result.status,
-            operation_id: result.operation_id,
-          })),
-        )
+      : child.kind === "metadata_write"
+        ? executeSharedMetadataWrite(library, {
+            plan: child,
+            mode: "create",
+            beforePlanWrite: before,
+          }).pipe(
+            Effect.map((result) => ({ status: result.status, operation_id: result.operation_id })),
+          )
+        : executeSharedFileManagement(library, {
+            plan: child,
+            mode: "create",
+            beforePlanWrite: before,
+            ...(plan.version === 2
+              ? { parent: plan, completedChildIds: completed.map((value) => value.operation_id) }
+              : {}),
+          }).pipe(
+            Effect.map((result) => ({
+              status: result.status === "applied" ? ("applied" as const) : result.status,
+              operation_id: result.operation_id,
+            })),
+          )
 }
 
 function stopChild(

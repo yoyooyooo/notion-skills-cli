@@ -1,3 +1,4 @@
+import { sharedReadFreshness } from "./shared-read-freshness.ts"
 import {
   localContentRestrictedHashes,
   markLocalContentRestriction,
@@ -164,6 +165,7 @@ export type OpenSharedSnapshotInput = {
   readonly skillsMetadata?: SharedSkillMetadataObservation
   readonly startedAt: number
   readonly forceFull?: boolean
+  readonly maxAge?: number
   readonly fixedSource?: FixedSharedSource | PlannedSharedSource
   readonly routerMembers?: readonly SharedRouterMember[]
   readonly relations?: {
@@ -568,6 +570,14 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         skillApplies.set(entry.plan.operation_id, entry.plan)
         continue
       }
+      if (entry.plan.kind === "apply_body_binding")
+        return yield* Effect.fail(
+          fail(
+            "SHARED_OPERATION_PENDING",
+            "The original apply has unresolved native reference bindings; reconcile that operation before current consumption.",
+            { operation_id: entry.plan.operation_id, read_again: true },
+          ),
+        )
       if (entry.plan.kind === "body_write") {
         bodyWrites.set(entry.plan.operation_id, entry.plan)
         continue
@@ -1099,12 +1109,19 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       })
     const metadataObservedAt = yield* Clock.currentTimeMillis
     const cachePolicy = yield* effectiveCachePolicy
+    const metadataMaxAge =
+      input.forceFull || input.readOnly
+        ? cachePolicy.read_max_age_ms
+        : (yield* sharedReadFreshness(
+            record,
+            input.maxAge === undefined ? {} : { maxAge: input.maxAge },
+          )).read_max_age_ms
     const plan = yield* checked(() =>
       planFileValidation({
         files: metadata,
         observations,
         now: metadataObservedAt,
-        metadataTtlMs: cachePolicy.read_max_age_ms,
+        metadataTtlMs: metadataMaxAge,
         fullBodyMaxAgeMs: SHARED_FULL_BODY_MAX_AGE_MS,
         forceFull: input.forceFull,
         availableObjectHashes: new Set(cachedBodies.keys()),

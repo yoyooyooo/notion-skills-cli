@@ -23,6 +23,7 @@ import {
 import { sharedFileSourcePath } from "./shared-file-placement.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedRecords } from "./shared-records.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { sha256, Store } from "./store.ts"
@@ -52,6 +53,13 @@ export function restoreSelectedSharedFile<R = never>(input: {
   readonly path: string
   readonly dryRun?: boolean
   readonly allowLocalArchive?: boolean
+  /** A bounded source task may update only the exact still-following baseline it froze. */
+  readonly expectedFollowing?: {
+    readonly file_id: string
+    readonly heads: readonly string[]
+    readonly body_sha256: string
+    readonly selected_version: string
+  }
   readonly beforeRestoreDispatch?: Effect.Effect<void, SkillsError, R>
   readonly afterRestorePlanRetained?: (
     plan: SharedBodyWritePlan,
@@ -136,6 +144,20 @@ export function restoreSelectedSharedFile<R = never>(input: {
           ? state.ownership.content.sha256
           : state.ownership.projection.sha256,
     }
+    if (
+      input.expectedFollowing !== undefined &&
+      (state.ownership.kind !== "following" ||
+        binding.file_id !== input.expectedFollowing.file_id ||
+        index.source_reference !== input.expectedFollowing.selected_version ||
+        expected.body_sha256 !== input.expectedFollowing.body_sha256 ||
+        canonicalSharedJson(expected.heads) !== canonicalSharedJson(input.expectedFollowing.heads))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_DISPLAY_CHANGED",
+          "The frozen following file, ownership, frontier or selected version changed. Preserve the current content; no display write was authorized.",
+        ),
+      )
     const sourcePath = yield* checked(() => sharedFileSourcePath(binding.path, state))
     const source = yield* resolveSelectedSharedSource(
       input.library,

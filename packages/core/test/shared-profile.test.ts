@@ -448,6 +448,43 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
 }
 
 describe("library-owned Profile management", () => {
+  test("freshness is shared revision content, survives a fresh client and is cleared by a new complete revision", async () => {
+    const f = fixture()
+    const policy = {
+      default: { read_max_age_ms: 60_000 },
+      skills: [
+        { skill_id: "alpha", read_max_age_ms: 86_400_000 },
+        { skill_id: "beta", read_max_age_ms: 0 },
+      ],
+    }
+    const plan = await f.run(
+      prepareSharedProfileChange(library, {
+        profile: { ...initial, freshness: policy },
+        expectedRevision: null,
+      }),
+    )
+    await f.run(
+      saveSharedProfile(library, {
+        profile: { ...initial, freshness: policy },
+        expectedRevision: null,
+      }),
+    )
+    const cold = fixture()
+    cold.seed(plan)
+    expect((await cold.run(loadSharedProfile(library, initial.profile_id))).freshness).toEqual(
+      policy,
+    )
+    expect(cold.json.size).toBe(0)
+    const cleared = await f.run(
+      saveSharedProfile(library, {
+        profile: { ...initial, name: "Renamed" },
+        expectedRevision: plan.revision_id,
+      }),
+    )
+    expect((await f.run(loadSharedProfile(library, initial.profile_id))).freshness).toBeUndefined()
+    expect(cleared).toBeDefined()
+    expect(plan.payload.freshness).toEqual(policy)
+  })
   test("saves one immutable empty-Skill Profile only after its original plan is durable", async () => {
     const f = fixture()
     f.onCreate(() => {

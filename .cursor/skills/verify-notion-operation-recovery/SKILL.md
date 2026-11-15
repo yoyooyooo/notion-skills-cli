@@ -15,9 +15,9 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 | --- | --- | --- |
 | 原 ACK、frozen request、exact Record GET、原生恢复前缀或 suffix | AcknowledgedRecordPrefix | shared-create-native-recovery、shared-create-known-recovery |
 | 独立 accept-add、原失败、adopted event、完整冷读证明 | IndependentAcceptance | shared-file-management |
-| 原 restore ID、submitted body/frontier/Source、processing 绑定、反馈丢失与 reconcile | RestoreFeedback | shared-file-request |
-| 整树父计划、完整子前缀、仅未派发后缀、半树消费屏障 | MaintenanceApply | shared-skill-apply、shared-skill-apply-tree、shared-maintenance-operations |
-| 共享 dispatcher、Record 或 source mutation | 上述四个模型中实际受影响的组 | 对应公共回归；完整 suite 的七文件列表见下 |
+| 原 restore ID、submitted body/frontier/Source、processing 绑定、反馈丢失与 reconcile；明确400 validation负回执后的独立反馈代 | RestoreFeedback | shared-file-request、shared-source-definitions、shared-source-run |
+| 整树父计划、完整子前缀、仅未派发后缀、半树消费屏障；原新页分配结果与动态正文绑定 | MaintenanceApply | shared-skill-apply、shared-skill-apply-tree、shared-maintenance-operations |
+| 共享 dispatcher、Record 或 source mutation | 上述四个模型中实际受影响的组 | 对应公共回归；完整 suite 的九文件列表见下 |
 
 恢复前的 create/import 和既有 continuation 仍读 [verify-notion-resource-lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。HTTP RequestEngine 的 retry/预算/取消归独立 request-engine 验证；Broker consumer/session 归 Broker guardian。不要把原业务 Request 当成 HTTP 请求重试模型。
 
@@ -46,14 +46,14 @@ OPERATION_RECOVERY_OUT="$(mktemp -d /tmp/notion-operation-recovery-XXXXXX)"
 node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
 ~~~
 
-单模型变化可加 --model AcknowledgedRecordPrefix、IndependentAcceptance、RestoreFeedback 或 MaintenanceApply。共享边界和批次验收运行完整 suite；当前 cases 共 34 项，不能拿子集代替完整运行。整树与修复的实际映射和未建模边界见[维护对应审阅](../../../docs/maintenance-verification-review.md)。
+单模型变化可加 --model AcknowledgedRecordPrefix、IndependentAcceptance、RestoreFeedback 或 MaintenanceApply。共享边界和批次验收运行完整 suite；当前 cases 共 35 项，不能拿子集代替完整运行。整树与修复的实际映射和未建模边界见[维护对应审阅](../../../docs/maintenance-verification-review.md)。
 
 读取输出 summary.json 和每组 report.md，核对 complete、源码/工具/input hashes、完整性质清单和预期反例集合。正例没有 broken；反例只允许 expected_broken 的准确集合。tool error、少跑性质、额外违例、未完成搜索、cut、unexamined 都停止通过结论。失败输出也保留。
 
-按影响选择实际公共函数回归；完整 suite 对应七个文件；使用 fixture，不连接生产 Notion。
+按影响选择实际公共函数回归；完整 suite 对应九个文件；使用 fixture，不连接生产 Notion。
 
 ~~~sh
-bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000
+bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts packages/core/test/shared-source-definitions.test.ts packages/core/test/shared-source-run.test.ts --timeout 60000
 ~~~
 
 输出中文图时使用本次 runner 的 chart.mmd 和 report.md，遵循 /statechart 的视图与渲染规则。Pele 的可定位安装和公开渲染命令见 [图形产物复现](../../../docs/formal-verification-maintenance.md#图形产物定位与复现)。正反例都保留，不为展示缩小性质/cfg 或隐藏最短反例动作。
@@ -65,13 +65,13 @@ bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/
 1. 在隔离树安装自己的 frozen-lockfile 依赖，不链接外部 node_modules，不启动生产应用。
 2. 让候选包含产品树 coverage.json.files 的准确版本与当前 mutation 脚本；脚本逐项核查 source/test hashes 相同。
 3. 在候选执行脚本，传真实产品绝对路径和新的树外输出目录。可绑定为环境变量：`python3 scripts/check-operation-recovery-mutations.py --protected-worktree "$OPERATION_PRODUCT_ROOT" --out "$OPERATION_MUTATION_OUT"`。
-4. 四组 baseline → mutant → restored 中，baseline/restored 执行准确测试数且通过，mutant 为真实断言失败；语法或依赖错误不计。
+4. 六组 baseline → mutant → restored 中，baseline/restored 执行准确测试数且通过，mutant 为真实断言失败；语法或依赖错误不计。新增两组分别删除原allocation-page匹配和错误地把不确定反馈归为明确拒绝。
 5. 核对 complete_source_and_modes_restored、protected_source_unchanged 与前后完整快照。并发变化时保留文件并报告，不覆盖他人更改。原件保留，不永久清理。
 
 真实 guard 变化后若旧 mutation 不再精确定位，先审查新边界再更新对照。hash 检查失败不能冒充真实安全回归被抓住。
 
 
-当前 mutation 入口固定执行四组，不接受单 guard 选择；模型切片可以用 `--model`，不要将真实回放四组误报为只执行一组。下面的准备配方保留当前尚未提交的 Git 可见文件，依赖仍在候选内独立安装。先暂停候选的其他写入者，所有目录必须是本次新建的：
+当前 mutation 入口固定执行六组，不接受单 guard 选择；模型切片可以用 `--model`，不要将真实回放六组误报为只执行一组。下面的准备配方保留当前尚未提交的 Git 可见文件，依赖仍在候选内独立安装。先暂停候选的其他写入者，所有目录必须是本次新建的：
 
 ~~~sh
 export OPERATION_PRODUCT_ROOT="$PWD"

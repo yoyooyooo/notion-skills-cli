@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { createHash } from "node:crypto"
 import { authScope } from "./catalog.ts"
 import { validateSnapshot } from "./cache.ts"
 import { fail, property, snapshotMembers, type Snapshot } from "./model.ts"
@@ -42,6 +43,8 @@ import { loadSharedLibrary } from "./shared-library.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import {
   makeSharedSkillApplyPlan,
+  makeSharedApplyBodyBinding,
+  type SharedApplyBodyBinding,
   applyChecked,
   sharedSkillApplyProtection,
   type SharedSkillApplyPlan,
@@ -120,12 +123,24 @@ function applyMaintenanceTree(
         changes: input.changes ?? null,
       }),
     )
-    // New Notion pages have no page IDs until their allocation is acknowledged.
-    // Never send a local URL that the service can reinterpret as an HTTPS host.
-    // Stage references first, then submit linked bodies against the fresh pin.
+    // Existing files may link to the new pages after their original allocation ACKs.
+    // New-to-new links still need a different creation protocol and refuse before writes.
+    const addedPaths = new Set(classified.adds.map((file) => file.path))
+    const deferredPaths = new Set(
+      classified.edits
+        .filter((file) =>
+          sharedMarkdownReferences(
+            file.path,
+            new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
+          ).some(
+            (ref) =>
+              addedPaths.has(ref.target) && !ref.href.startsWith("#") && !ref.href.startsWith("?"),
+          ),
+        )
+        .map((file) => file.path),
+    )
     yield* applyChecked(() => {
-      const addedPaths = new Set(classified.adds.map((file) => file.path))
-      const unresolved = [...classified.adds, ...classified.edits].flatMap((file) =>
+      const unresolved = classified.adds.flatMap((file) =>
         sharedMarkdownReferences(
           file.path,
           new TextDecoder("utf-8", { fatal: true }).decode(file.bytes),
@@ -139,7 +154,7 @@ function applyMaintenanceTree(
       if (unresolved.length)
         throw fail(
           "SHARED_NATIVE_REFERENCE_UNBOUND",
-          "A linked new file has no native page yet. Add the reference files first, read the current Skill again, then apply the linked main/files. No writes were sent.",
+          "A new file links to another unallocated new file. This creation dependency is unsupported in one apply; no writes were sent. Existing main/files may link to new references in one apply.",
           {
             references: unresolved,
             writes_sent: false,
@@ -175,6 +190,7 @@ function applyMaintenanceTree(
           sharedAuthoringMarkdown(projectionSnapshot, file.path, file.bytes, {
             name: input.name,
             description: input.description,
+            deferNativeLinks: deferredPaths.has(file.path),
             ...(currentBytes === undefined ? {} : { currentBytes }),
           }),
         ),
@@ -332,6 +348,7 @@ function applyMaintenanceTree(
     const layout = preparedLayout
     const bodies = []
     const unchangedBodies = []
+    const deferredBodies: SharedApplyBodyBinding[] = []
     for (const entry of edited) {
       const bindings = inspected.evidence.files.filter((file) => file.path === entry.file.path)
       if (bindings.length !== 1 || bindings[0] === undefined)
@@ -352,7 +369,28 @@ function applyMaintenanceTree(
         authoredInputSha256: yield* sha256(entry.file.bytes),
         expected: { heads: bindings[0].heads, body_sha256: bindings[0].body_sha256 },
       })
-      if (plan.before.fingerprint.sha256 !== plan.candidate.content.sha256) bodies.push(plan)
+      if (deferredPaths.has(entry.file.path)) {
+        deferredBodies.push(
+          yield* makeSharedApplyBodyBinding({
+            library_id: plan.library_id,
+            skill_id: plan.skill_id,
+            skill_page_id: plan.skill_page_id,
+            file_id: plan.file_id,
+            page_id: plan.page_id,
+            path: plan.path,
+            source_id: plan.source_id,
+            template: plan,
+            existing_bindings: targetBindings.map(({ page_id, path }) => ({ page_id, path })),
+            allocations: layout
+              .filter((child) => child.action === "add")
+              .map((child) => ({
+                operation_id: child.operation_id,
+                file_id: child.file_id,
+                path: child.path,
+              })),
+          }),
+        )
+      } else if (plan.before.fingerprint.sha256 !== plan.candidate.content.sha256) bodies.push(plan)
       else unchangedBodies.push(plan)
     }
     const hasMetadata =
@@ -391,7 +429,12 @@ function applyMaintenanceTree(
       classified.moves.map((move) => ({ from: move.from, to: move.to })),
       classified.revives.map((file) => file.path),
     )
-    if (layout.length === 0 && bodies.length === 0 && metadataPlan === undefined)
+    if (
+      layout.length === 0 &&
+      bodies.length === 0 &&
+      deferredBodies.length === 0 &&
+      metadataPlan === undefined
+    )
       return {
         status: "unchanged" as const,
         kind: "skill_apply" as const,
@@ -440,12 +483,12 @@ function applyMaintenanceTree(
             },
           ]
         : []),
-      ...(bodies.length === 0
+      ...(bodies.length + deferredBodies.length === 0
         ? []
         : [
             {
               name: "author" as const,
-              operation_ids: bodies.map((plan) => plan.operation_id),
+              operation_ids: [...bodies, ...deferredBodies].map((plan) => plan.operation_id),
             },
           ]),
       ...(metadataPlan === undefined
@@ -474,6 +517,7 @@ function applyMaintenanceTree(
       changes: input.changes ?? null,
       bodies,
       ...(unchangedBodies.length ? { unchanged_bodies: unchangedBodies } : {}),
+      ...(deferredBodies.length ? { deferred_bodies: deferredBodies } : {}),
       layout,
       ...(metadataPlan === undefined ? {} : { metadata: metadataPlan }),
       stages,
@@ -894,6 +938,38 @@ export function verifySharedAppliedSnapshot(snapshot: Snapshot, plan: SharedSkil
       candidate_sha256: body.candidate.content.sha256,
       operation_id: body.operation_id,
     })
+  if (plan.version === 2) {
+    for (const child of plan.deferred_bodies ?? []) {
+      const bindings = snapshot.file_bindings ?? []
+      for (const allocation of child.allocations) {
+        if (
+          !bindings.some(
+            (binding) => binding.file_id === allocation.file_id && binding.path === allocation.path,
+          )
+        )
+          throw fail(
+            "WRITE_VERIFICATION_FAILED",
+            "A newly bound reference no longer has its original identity in the complete snapshot.",
+            { apply_operation_id: plan.operation_id, path: allocation.path },
+          )
+      }
+      const projection = projectSharedNotionMarkdown(
+        restoreSharedNativeFileLinks(
+          child.template.input_projection?.input_markdown ?? child.template.candidate.markdown,
+          child.path,
+          bindings,
+        ),
+        child.template.input_projection === undefined
+          ? {}
+          : { version: child.template.input_projection.version },
+      )
+      verifySharedAuthoredSnapshot(snapshot, {
+        file_id: child.file_id,
+        candidate_sha256: createHash("sha256").update(projection.markdown).digest("hex"),
+        operation_id: child.operation_id,
+      })
+    }
+  }
   if (plan.version === 2)
     for (const child of plan.layout) {
       if (child.action === "add" || child.action === "undelete")

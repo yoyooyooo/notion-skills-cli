@@ -20,6 +20,8 @@ import {
 } from "../../core/src/shared-github-source.ts"
 import { registerSourceBinding } from "../../core/src/shared-source-binding.ts"
 import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
+import { libraryOnboarding } from "../../core/src/shared-library-onboarding.ts"
+import { configuration } from "../../core/src/store.ts"
 import { notionWriteCapabilities } from "../../core/src/shared-file-state.ts"
 import { inspectSharedResourceState } from "../../core/src/shared-resource-state.ts"
 import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
@@ -57,9 +59,17 @@ const initialize = defineCommand(
       // Explicit attachment/reconciliation is read-only. A newly created
       // library completes the current four-table layout before returning.
       const result = !base.reused ? yield* initializeSourceLibrary(base.library) : base
+      const configured = yield* configuration
       yield* emit({
         ...result,
         source_management_ready: result.library.sources !== undefined,
+        ...libraryOnboarding({
+          library: result.library,
+          created: !base.reused,
+          localAliases: (configured.sources ?? [])
+            .filter((source) => source.database_id === result.library.skills.database_id)
+            .map((source) => source.alias),
+        }),
         ...(result.library.sources
           ? {}
           : {

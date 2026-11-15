@@ -21,13 +21,15 @@ async function isolated() {
   const directory = await mkdtemp(join(tmpdir(), "ntn-sources-surface-"))
   const invoke = async (args: string[]) => {
     const requestsBefore = http.calls()
+    const environment = { ...process.env }
+    delete environment.NTN_SKILLS_DEV_ROOT
     const child = Bun.spawn([node, main, ...args], {
       cwd: directory,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
       env: {
-        ...process.env,
+        ...environment,
         HOME: join(directory, "home"),
         NOTION_API_TOKEN: "controlled-offline-probe-token",
         NOTION_API_BASE_URL: http.origin,
@@ -87,6 +89,7 @@ test("all current Sources subcommands expose help without probing authentication
     "run",
     "run-list",
     "run-status",
+    "run-resume",
     "admit",
     "admit-apply",
     "admit-reconcile",
@@ -108,6 +111,46 @@ test("Sources schema is available offline and prepare requires an explicit targe
   expect(result.stdout).toContain("target")
   expect(result.stdout).toContain("output")
 })
+
+test("explicit following updates and original run continuation have public offline contracts", async () => {
+  const f = await isolated()
+  for (const command of ["run", "run-resume"]) {
+    const schema = await f.invoke(["schema", "ctl", "library", "sources", command])
+    expect(schema.exit, schema.stderr).toBe(0)
+    expect(schema.online).toBe(false)
+    expect(schema.stdout).toContain("update-following")
+    const help = await f.invoke(["ctl", "library", "sources", command, "--help"])
+    expect(help.exit, help.stderr).toBe(0)
+    expect(help.stdout).toContain("--update-following")
+    expect(help.online).toBe(false)
+  }
+  const missing = await f.invoke([
+    "ctl",
+    "library",
+    "sources",
+    "run-resume",
+    "source-run-00000000-0000-4000-8000-000000000001",
+  ])
+  expect(missing.exit).not.toBe(0)
+  expect(missing.stdout).toContain("SOURCE_RUN_NOT_FOUND")
+  expect(missing.online).toBe(false)
+  const readonly = await f.invoke([
+    "ctl",
+    "library",
+    "sources",
+    "run",
+    "source",
+    "--entry",
+    "00000000-0000-4000-8000-000000000001",
+    "--all-bound",
+    "--mode",
+    "check",
+    "--update-following",
+  ])
+  expect(readonly.exit).not.toBe(0)
+  expect(readonly.stdout).toContain("INVALID_ARGUMENT")
+  expect(readonly.online).toBe(false)
+}, 60_000)
 
 test("acknowledged Source continuation has explicit offline review, apply and original reconciliation contracts", async () => {
   const f = await isolated()

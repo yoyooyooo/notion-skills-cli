@@ -99,6 +99,7 @@ function fixture(initial: SourceDefinitionInput[] = [input], memberCount = 0) {
       Effect.sync(() => [...local.records.keys()].filter((key) => key.startsWith(prefix)).sort()),
   }
   let lose: "before" | "after" | undefined
+  let rejected: SkillsError | undefined
   const skill = {
     object: "page",
     id: id(1),
@@ -117,6 +118,11 @@ function fixture(initial: SourceDefinitionInput[] = [input], memberCount = 0) {
       Effect.suspend((): Effect.Effect<unknown, SkillsError> => {
         const method = opts?.method ?? (body ? "POST" : "GET")
         calls.push({ path, method, body })
+        if (method === "PATCH" && rejected !== undefined) {
+          const error = rejected
+          rejected = undefined
+          return Effect.fail(error)
+        }
         if (path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`)) {
           const all = Array.from({ length: memberCount }, (_, index) => ({
             object: "page",
@@ -213,6 +219,9 @@ function fixture(initial: SourceDefinitionInput[] = [input], memberCount = 0) {
     skill,
     local,
     api,
+    reject: (error: SkillsError) => {
+      rejected = error
+    },
     lose: (mode: "before" | "after") => {
       lose = mode
     },
@@ -223,6 +232,55 @@ test("Source definitions model GitLab as Git without provider-specific domain id
   expect(sourceDefinitionPropertiesFor(library, input)[sourceIds.Provider!]).toEqual({
     select: { name: "git" },
   })
+})
+test("an exact validation rejection stays recorded while a later explicit invocation creates a new feedback generation", async () => {
+  const f = fixture()
+  const current = await f.run(readSourceDefinition(library, id(100)))
+  f.reject(
+    fail("NOTION_REQUEST_FAILED", "Controlled validation rejection", {
+      phase: "definitive_rejection",
+      http_status: 400,
+      notion_code: "validation_error",
+    }),
+  )
+  const changed = { ...input, description: "Explicit replacement after known rejection" }
+  const first = await f.run(
+    putSourceDefinition(library, changed, current.fingerprint).pipe(Effect.result),
+  )
+  expect(first).toMatchObject({ _tag: "Failure", failure: { code: "SOURCE_WRITE_NOT_APPLIED" } })
+  const rejectedRecords = [...f.local.records.entries()].filter(([key]) =>
+    key.includes("/source-rejection-"),
+  )
+  expect(rejectedRecords).toHaveLength(1)
+  const next = await f.run(putSourceDefinition(library, changed, current.fingerprint))
+  expect(next.status).toBe("applied")
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(2)
+  expect(
+    [...f.local.records.entries()].filter(([key]) => key.includes("/source-rejection-")),
+  ).toEqual(rejectedRecords)
+})
+
+test.each([
+  { phase: "definitive_rejection", http_status: 429, notion_code: "rate_limited" },
+  { phase: "definitive_rejection", http_status: 408, notion_code: "validation_error" },
+  { phase: "outcome_unknown", http_status: 502, notion_code: "bad_gateway" },
+  { phase: "definitive_rejection", http_status: 400, notion_code: "unrecognized" },
+  { http_status: 400, notion_code: "validation_error" },
+])("a non-authoritative rejection cannot authorize another source request: %j", async (details) => {
+  const f = fixture()
+  const current = await f.run(readSourceDefinition(library, id(100)))
+  f.reject(fail("NOTION_REQUEST_FAILED", "Controlled uncertain response", details))
+  const changed = { ...input, description: "Uncertain replacement" }
+  const first = await f.run(
+    putSourceDefinition(library, changed, current.fingerprint).pipe(Effect.result),
+  )
+  expect(first).toMatchObject({ _tag: "Failure", failure: { code: "SOURCE_WRITE_UNKNOWN" } })
+  const repeated = await f.run(
+    putSourceDefinition(library, changed, current.fingerprint).pipe(Effect.result),
+  )
+  expect(repeated).toMatchObject({ _tag: "Failure", failure: { code: "SOURCE_WRITE_UNKNOWN" } })
+  expect(f.calls.filter((call) => call.method === "PATCH")).toHaveLength(1)
+  expect([...f.local.records.keys()].some((key) => key.includes("/source-rejection-"))).toBe(false)
 })
 test("complete source definition roundtrip preserves selection and long transformation options", () => {
   const value = {

@@ -142,6 +142,8 @@ test("one state result keeps frozen C2, selected C1, recorded C1 and custom N1 a
     ),
   )
   const current = await f.open({ fixedSource: f.fixedSource })
+  const following = current.shared_authoring?.files.find((file) => file.file_id === "file-main")
+  if (following === undefined) throw new Error("Missing original following display baseline")
   const fields = property(f.main.properties)
   for (const key of ["origin", "source_member", "members", "requires"])
     fields[key] = structuredClone(property(upstream.main.properties)[key])
@@ -164,6 +166,21 @@ test("one state result keeps frozen C2, selected C1, recorded C1 and custom N1 a
           ...frozen,
           previous_pin: f.source.binding.source_id,
           current_snapshot: current.snapshot_id,
+          // The candidate archive comes from the upstream fixture, but its
+          // authorizing display preimage belongs to this exact C1 file frontier.
+          display_baseline: {
+            selected_version: f.source.binding.source_id,
+            files: [
+              {
+                file_id: following.file_id,
+                page_id: following.page_id,
+                path: following.path,
+                heads: following.heads,
+                body_sha256: following.body_sha256,
+              },
+            ],
+          },
+          custom_files_preserved: ["references/1.md"],
           selection,
         }
         const candidate = {

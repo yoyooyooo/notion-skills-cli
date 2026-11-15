@@ -1,5 +1,6 @@
 import { Clock, Effect, Stream } from "effect"
 import { HttpClient } from "effect/http"
+import { sharedReadFreshness } from "./shared-read-freshness.ts"
 import {
   withConsumptionEffects,
   type ConsumptionObservationOptions,
@@ -233,6 +234,7 @@ function openSnapshot(
         scope: yield* authScope,
         startedAt,
         forceFull: Boolean(options.refresh) || options.maxAge === 0,
+        maxAge: options.maxAge,
         readOnly: options.sharedReadOnly,
         ...selectedFiles,
       })
@@ -276,6 +278,7 @@ function openSnapshot(
           scope,
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
+          maxAge: options.maxAge,
           readOnly: options.sharedReadOnly,
           ...selectedFiles,
         })
@@ -323,6 +326,7 @@ function openSnapshot(
           scope,
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
+          maxAge: options.maxAge,
           readOnly: options.sharedReadOnly,
           ...selectedFiles,
         })
@@ -918,7 +922,9 @@ function acquireTargetSnapshot(
       }
       files = selected.files
     } else {
-      const maxAge = options.maxAge ?? (yield* effectiveCachePolicy).read_max_age_ms
+      const currentEligibilityMaxAge = (yield* effectiveCachePolicy).read_max_age_ms
+      let maxAge = options.maxAge ?? currentEligibilityMaxAge
+      let resolvedPolicy: Effect.Success<ReturnType<typeof sharedReadFreshness>> | undefined
       const scopeResult = yield* locallySelectedScope(Boolean(options.offline)).pipe(Effect.result)
       if (scopeResult._tag === "Failure" && options.offline)
         return yield* Effect.fail(scopeResult.failure)
@@ -954,6 +960,10 @@ function acquireTargetSnapshot(
       if (observedResult?._tag === "Failure" && options.offline)
         return yield* Effect.fail(observedResult.failure)
       const observed = observedResult?._tag === "Success" ? observedResult.success : undefined
+      if (observed?.snapshot.record.locator.type === "shared_skill") {
+        resolvedPolicy = yield* sharedReadFreshness(observed.snapshot.record, options)
+        maxAge = resolvedPolicy.read_max_age_ms
+      }
       const now = yield* Clock.currentTimeMillis
       const age = observed ? now - observed.validated_at : NaN
       const bodyFresh =
@@ -973,7 +983,14 @@ function acquireTargetSnapshot(
       let useObserved =
         observed !== undefined &&
         (options.offline ||
-          (Number.isFinite(age) && age >= 0 && age < maxAge && bodyFresh && !pending))
+          (Number.isFinite(age) &&
+            age >= 0 &&
+            age <
+              (locator?.type === "shared_skill"
+                ? Math.min(maxAge, currentEligibilityMaxAge)
+                : maxAge) &&
+            bodyFresh &&
+            !pending))
       let materialization: ObservedSnapshot["materialization"]
       if (observed && useObserved) {
         if (
@@ -1040,6 +1057,16 @@ function acquireTargetSnapshot(
           source: "local_cache",
           freshness: {
             ...freshness(options, observed.validated_at, now, maxAge, observed.metadata_only),
+            ...(resolvedPolicy === undefined
+              ? {}
+              : {
+                  policy_source: resolvedPolicy.read_policy_source,
+                  full_body_max_age_ms: resolvedPolicy.full_body_max_age_ms,
+                  current_eligibility_max_age_ms: resolvedPolicy.current_eligibility_max_age_ms,
+                  ...(resolvedPolicy.profile === null
+                    ? {}
+                    : { profile_revision_id: resolvedPolicy.profile.revision_id }),
+                }),
             ...(observed.invalidated ? { stale: true } : {}),
           },
         }
@@ -1109,16 +1136,35 @@ function acquireTargetSnapshot(
         const validatedAt = online.freshness?.validated_at
           ? Date.parse(online.freshness.validated_at)
           : yield* Clock.currentTimeMillis
+        if (online.record.locator.type === "shared_skill") {
+          resolvedPolicy = yield* sharedReadFreshness(online.record, {
+            ...(options.offline ? { offline: true } : {}),
+            ...(options.maxAge === undefined ? {} : { maxAge: options.maxAge }),
+          })
+          maxAge = resolvedPolicy.read_max_age_ms
+        }
         snapshot = {
           ...online,
           source: "notion",
-          freshness: freshness(
-            options,
-            validatedAt,
-            yield* Clock.currentTimeMillis,
-            maxAge,
-            online.freshness?.validation === "metadata",
-          ),
+          freshness: {
+            ...freshness(
+              options,
+              validatedAt,
+              yield* Clock.currentTimeMillis,
+              maxAge,
+              online.freshness?.validation === "metadata",
+            ),
+            ...(resolvedPolicy === undefined
+              ? {}
+              : {
+                  policy_source: resolvedPolicy.read_policy_source,
+                  full_body_max_age_ms: resolvedPolicy.full_body_max_age_ms,
+                  current_eligibility_max_age_ms: resolvedPolicy.current_eligibility_max_age_ms,
+                  ...(resolvedPolicy.profile === null
+                    ? {}
+                    : { profile_revision_id: resolvedPolicy.profile.revision_id }),
+                }),
+          },
         }
         if (access !== "all" && snapshot.record.locator.type === "shared_skill") {
           const selected = yield* openFixedSnapshotFiles(snapshot, select, options)

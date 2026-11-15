@@ -69,6 +69,7 @@ import { createSharedNative } from "./shared-create.ts"
 import { consumeSharedCreation } from "./shared-create-consumption.ts"
 import { updateSharedSkillMetadata } from "./shared-metadata-authoring.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import { maintenanceResult } from "./shared-maintenance-result.ts"
 import {
   applySharedSkillChanges,
   verifySharedAppliedSnapshot,
@@ -538,6 +539,32 @@ function sharedApplyResult(
     if (result.status === "planned" || result.status === "unchanged")
       return mutationOutcome({
         ...snapshotInfo(current),
+        ...maintenanceResult({
+          completion: result.status === "planned" ? "needs_decision" : "no_op",
+          verifiedScope: result.status === "planned" ? "preflight" : "current_observation",
+          authorContent: "none",
+          retainedRemote: "none",
+          message:
+            result.status === "planned"
+              ? "The complete candidate passed preflight. No changes were applied."
+              : "The complete requested tree is already current. No author content or remote history was changed.",
+        }),
+        next: {
+          argv: [
+            "ntn-skills",
+            "read",
+            snapshotInfo(current).ref,
+            "--database",
+            locator.database_id,
+            "--read-only",
+            "--json",
+          ],
+          read_only: true,
+          reason:
+            result.status === "planned"
+              ? "Inspect the retained baseline while reviewing the preview before an explicit apply."
+              : "Read the exact verified version when its content is needed.",
+        },
         operation,
         status: result.status,
         changes: result.changes,
@@ -589,6 +616,27 @@ function sharedApplyResult(
     })
     return mutationOutcome({
       ...snapshotInfo(after),
+      ...maintenanceResult({
+        completion: "complete",
+        verifiedScope: "current_observation",
+        authorContent: "confirmed",
+        retainedRemote: "confirmed",
+        message: "The original maintenance completed and its complete current tree was verified.",
+      }),
+      next: {
+        argv: [
+          "ntn-skills",
+          "read",
+          snapshotInfo(after).ref,
+          "--database",
+          locator.database_id,
+          "--read-only",
+          "--json",
+        ],
+        read_only: true,
+        reason:
+          "Read the exact verified version when its content is needed; no recovery is required.",
+      },
       operation,
       status: "applied" as const,
       changes: result.changes,

@@ -1,4 +1,4 @@
-export const title = "共享读取的所有权与取消"
+export const title = "共享读取的所有权、取消与容量"
 export const state = (v) => {
   const active = v.active.length
   const cancelled = [v.status[1], v.status[2]].filter((s) => s === "cancelled").length
@@ -10,7 +10,14 @@ export const state = (v) => {
     !v.stopped
       ? "最后等待者离开但 producer 未释放"
       : null,
-    v.joined && v.context !== "same" ? "错误共享 " + v.context : null,
+    v.joined &&
+    (v.context === "scope" ||
+      v.context === "budget" ||
+      v.context === "queue" ||
+      (v.domain === "transport" && v.context === "service"))
+      ? "错误共享 " + v.context
+      : null,
+    v.domain === "immutable" && v.admitted > v.limit ? "未完成的共享 producer 超过容量" : null,
     v.phase === "replacement" && v.calls !== (v.joined ? 2 : 3) ? "复用了已完成的旧结果" : null,
     v.phase === "cleanup" && !v.replacementAlive ? "旧清理误删了新 producer" : null,
   ].filter(Boolean)
@@ -18,28 +25,30 @@ export const state = (v) => {
   if (v.phase === "ready") return "尚无读取"
   if (v.phase === "first") return "首个等待者启动 producer"
   if (v.phase === "shared") {
-    if (cancelled === 2) return "所有等待者退出且 producer 已释放"
+    if (cancelled === 2) return "所有等待者退出并请求中断"
     if (cancelled === 1)
       return v.joined ? "一个等待者退出其余继续" : "独立请求只取消自己的 producer"
-    return v.joined ? "兼容等待者共享 producer" : "身份或预算不同各自执行"
+    return v.joined ? "完整身份相同共享在途 producer" : "身份或预算不同各自执行"
   }
   return {
     settled: "仅存活等待者取得结果",
     replacement: "再次读取启动新 producer",
     independent: "独立请求取得独立结果",
-    cancelled: "取消完成原请求保留中断",
-    restarted: "原 key 已启动替代 producer",
+    cancelled: "原请求已取消，等待旧清理",
+    restarted: v.replacementShared
+      ? "原 key 已启动替代共享 producer"
+      : "容量仍被占用，新读取独立执行",
     cleanup: "旧清理不影响替代 producer",
   }[v.phase]
 }
 const steps = {
   StartFirst: "发起首个读取",
-  StartSecond: "核对完整共享身份",
+  StartSecond: "核对身份、共享域和容量",
   Cancel: "一个调用者取消",
   Complete: "producer 返回",
   CompleteIndependent: "独立 producer 返回",
   RestartAfterSettlement: "再次读取同一 key",
-  FinishCancelled: "核实所有等待者退出",
+  FinishCancelled: "核实所有等待者已退出",
   RestartAfterCancellation: "以原 key 发起新读取",
   LateOldCleanup: "已取消旧 producer 的清理迟到",
   Done: null,

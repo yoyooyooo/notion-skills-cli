@@ -1,4 +1,4 @@
-import { Context, Crypto, Effect, FileSystem, Layer, Path, Schema } from "effect"
+import { Clock, Context, Crypto, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
 import { fail, property, SkillsError } from "./model.ts"
 import type { Base, SyncBinding, SyncReceipt } from "./sync.ts"
@@ -9,6 +9,13 @@ import {
 } from "./publication-integrity-state.ts"
 import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
 import { sharedSkillId } from "./shared-content.ts"
+import {
+  cacheCapacity,
+  DEFAULT_CACHE_CAPACITY,
+  rebuildableCacheKey,
+  type CacheCapacity,
+} from "./cache-retention-model.ts"
+import { trashPath } from "./local-locks.ts"
 
 const migrations = {
   "0001_local_state": Effect.gen(function* () {
@@ -83,6 +90,10 @@ const migrations = {
   "0010_local_content_restrictions": Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
     yield* sql`CREATE TABLE local_content_restrictions (sha256 TEXT PRIMARY KEY CHECK(length(sha256)=64), payload TEXT NOT NULL CHECK(json_valid(payload)))`
+  }),
+  "0011_cache_admissions": Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql`CREATE TABLE cache_admissions (key TEXT PRIMARY KEY REFERENCES shared_local_records(key) ON DELETE CASCADE, admitted_at INTEGER NOT NULL CHECK(admitted_at>=0))`
   }),
 }
 
@@ -246,7 +257,7 @@ const sharedLocalDomains: readonly {
     prefix: "operations/shared-sources",
     category: "dispatch",
     address:
-      /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection|ack)-[a-f0-9]{64}\.json$/u,
+      /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection|ack|rejection)-[a-f0-9]{64}\.json$/u,
   },
   {
     prefix: "operations/library-management",
@@ -415,8 +426,23 @@ function storageError(error: unknown): SkillsError {
     details,
   )
 }
-export function sqliteState(root: string, fs: FileSystem.FileSystem, importing = false) {
+export function sqliteState(
+  root: string,
+  fs: FileSystem.FileSystem,
+  importing = false,
+  capacityInput: CacheCapacity = DEFAULT_CACHE_CAPACITY,
+) {
   return Effect.gen(function* () {
+    const capacity = cacheCapacity(capacityInput)
+    const crypto = yield* Crypto.Crypto
+    const digest = (text: string) =>
+      crypto
+        .digest("SHA-256", new TextEncoder().encode(text))
+        .pipe(
+          Effect.map((bytes) =>
+            Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""),
+          ),
+        )
     yield* probeSqliteRuntime
     const { SqliteClient, SqliteMigrator } = yield* Effect.promise(
       () => import("@effect/sql-sqlite-node"),
@@ -724,6 +750,24 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                           { key },
                         ),
                 })
+                if (rebuildableCacheKey(key)) {
+                  // Acquire the SQLite writer slot before reading the shared total.
+                  // Concurrent processes cannot both admit against the same spare bytes.
+                  yield* sql`UPDATE cache_admissions SET admitted_at=admitted_at WHERE key=${key}`
+                  const existing = yield* sql<{
+                    payload: string
+                  }>`SELECT payload FROM shared_local_records WHERE key=${key}`
+                  if (existing[0] === undefined) {
+                    const totals = yield* sql<{
+                      bytes: number
+                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-record-payloads/%' OR key LIKE 'cache/shared-derived-graphs/%')`
+                    if (
+                      (totals[0]?.bytes ?? 0) + new TextEncoder().encode(payload).length >
+                      capacity.max_bytes
+                    )
+                      return
+                  }
+                }
                 if (parts[1] === "shared-file-observations" && parts[3] === "latest.json") {
                   const owner = yield* Effect.try({
                     try: () => sharedFileObservationOwner(value),
@@ -831,6 +875,10 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
                 // Disposable immutable lookups can be rebuilt from the same exact payload.
                 if (sharedCategory === "cache" && previous.retired === 1)
                   yield* sql`UPDATE shared_local_records SET retired=0 WHERE key=${key} AND category='cache'`
+                if (rebuildableCacheKey(key)) {
+                  const now = yield* Clock.currentTimeMillis
+                  yield* sql`INSERT INTO cache_admissions(key,admitted_at) VALUES(${key},${now}) ON CONFLICT(key) DO NOTHING`
+                }
               } else if (parts[0] === "database-init") {
                 if (parts.length !== 3 || !/^(0|[1-9][0-9]*)\.json$/.test(parts[2]!))
                   return yield* Effect.fail(
@@ -1064,6 +1112,113 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
           return yield* Effect.forEach(rows, (r) => parse(r.payload))
         }),
       )
+    const rebuildableCacheRecords = () =>
+      run(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient
+          return yield* sql<{
+            key: string
+            payload: string
+            retired: number
+            admitted_at: number | null
+          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-record-payloads/%' OR r.key LIKE 'cache/shared-derived-graphs/%') ORDER BY r.key`
+        }),
+      )
+    const reclaimDerived = (
+      entries: readonly { readonly key: string; readonly sha256: string }[],
+    ) =>
+      run(
+        Effect.gen(function* () {
+          if (entries.length === 0) return { reclaimed: [], archive: null }
+          if (
+            new Set(entries.map((entry) => entry.key)).size !== entries.length ||
+            entries.some(
+              (entry) => !rebuildableCacheKey(entry.key) || !/^[a-f0-9]{64}$/u.test(entry.sha256),
+            )
+          )
+            return yield* Effect.fail(
+              fail(
+                "INVALID_ARGUMENT",
+                "Only exact previewed rebuildable cache rows may be reclaimed.",
+              ),
+            )
+          const sql = yield* SqlClient.SqlClient
+          const records: Array<{
+            key: string
+            payload: string
+            retired: number
+            admitted_at: number | null
+          }> = []
+          for (const entry of entries) {
+            const rows = yield* sql<{
+              payload: string
+              retired: number
+              admitted_at: number | null
+            }>`SELECT r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE r.key=${entry.key} AND category='cache'`
+            const row = rows[0]
+            if (row === undefined || (yield* digest(row.payload)) !== entry.sha256)
+              return yield* Effect.fail(
+                fail("CACHE_RECLAIM_STALE", "A previewed cache record changed before retention.", {
+                  key: entry.key,
+                }),
+              )
+            records.push({ key: entry.key, ...row })
+          }
+          const directory = `${root}/cache-recovery`
+          yield* fs.makeDirectory(directory, { recursive: true, mode: 0o700 })
+          const originalPath = `${directory}/ntn-cache-recovery-${yield* crypto.randomUUIDv4()}.json`
+          const payload = JSON.stringify({
+            version: 1,
+            kind: "rebuildable_cache_retention",
+            records,
+          })
+          const checksum = yield* digest(payload)
+          yield* fs.writeFileString(originalPath, payload, { flag: "wx", mode: 0o600 })
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const handle = yield* fs.open(originalPath, { flag: "r" })
+              yield* handle.sync
+              const parent = yield* fs.open(directory, { flag: "r" })
+              yield* parent.sync
+            }),
+          )
+          if ((yield* digest(yield* fs.readFileString(originalPath))) !== checksum)
+            return yield* Effect.fail(
+              fail(
+                "RETENTION_FAILED",
+                "The exact cache archive could not be verified; original rows remain.",
+              ),
+            )
+          yield* trashPath(originalPath)
+          if (yield* fs.exists(originalPath))
+            return yield* Effect.fail(
+              fail(
+                "RETENTION_FAILED",
+                "System Trash did not retire the verified archive; original rows remain.",
+              ),
+            )
+          const reclaimed = yield* sql.withTransaction(
+            Effect.gen(function* () {
+              const result: string[] = []
+              for (const row of records) {
+                const deleted = yield* sql<{
+                  key: string
+                }>`DELETE FROM shared_local_records WHERE key=${row.key} AND category='cache' AND payload=${row.payload} AND retired=${row.retired} AND (SELECT admitted_at FROM cache_admissions WHERE key=${row.key}) IS ${row.admitted_at} RETURNING key`
+                for (const item of deleted) result.push(item.key)
+              }
+              return result
+            }),
+          )
+          return {
+            reclaimed,
+            archive: {
+              original_path: originalPath,
+              sha256: checksum,
+              trash_confirmed: true as const,
+            },
+          }
+        }),
+      )
     const registerBindingWithBase = (binding: SyncBinding, base: Base) =>
       run(
         Effect.gen(function* () {
@@ -1153,6 +1308,8 @@ export function sqliteState(root: string, fs: FileSystem.FileSystem, importing =
       list,
       reserve,
       retire,
+      reclaimDerived,
+      rebuildableCacheRecords,
       bindings,
       registerBindingWithBase,
       advanceBaseAndReceipt,

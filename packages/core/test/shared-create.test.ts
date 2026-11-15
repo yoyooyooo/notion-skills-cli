@@ -211,10 +211,18 @@ describe("native shared creation", () => {
     const input = portable({ files: [{ path: "SKILL.md", bytes: encode(main) }] })
     const old = await f.run(makeSharedCreatePlan(createLibrary, { portable: input }, 1))
     const original = canonicalSharedJson(old)
-    expect(
-      (await f.run(Effect.flip(executeSharedCreate(createLibrary, { plan: old, mode: "create" }))))
-        .code,
-    ).toBe("SHARED_CREATE_BODY_MISMATCH")
+    const failed = await f.run(
+      Effect.flip(executeSharedCreate(createLibrary, { plan: old, mode: "create" })),
+    )
+    expect(failed.code).toBe("SHARED_CREATE_BODY_MISMATCH")
+    const diagnostic = property(property(failed.details).readback)
+    expect(diagnostic.original_observation_preserved).toBe(true)
+    const bytes = f.base.objects.get(String(property(diagnostic.observation).key))
+    expect(bytes).toBeDefined()
+    const observation = JSON.parse(new TextDecoder().decode(bytes))
+    expect(observation.operation_id).toBe(old.operation_id)
+    expect(observation.raw_observed_markdown).toBe("Read <code>references/guide.md</code>.")
+    expect(diagnostic.projection_version).toBe(1)
     expect(canonicalSharedJson(await f.run(validateSharedCreatePlan(old)))).toBe(original)
     expect(old.files[0]!.projection.markdown).toBe(main)
     expect(sharedNotionMarkdownWire(old.files[0]!.projection)).toBe(main)

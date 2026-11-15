@@ -1,4 +1,5 @@
 import { publicSourceResourceConfiguration } from "./shared-source-config-model.ts"
+import { cacheCapacity, DEFAULT_CACHE_CAPACITY } from "./cache-retention-model.ts"
 import { Config, Context, Crypto, Effect, FileSystem, Layer, Option, Path, Schema } from "effect"
 import { ConfigSchema, SnapshotSchema, decode, fail, property, SkillsError } from "./model.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
@@ -22,6 +23,28 @@ export class Store extends Context.Service<
     readonly retireKeys: (
       keys: readonly string[],
     ) => Effect.Effect<readonly { key: string; retention_path: string }[], SkillsError>
+    readonly reclaimDerived?: (
+      entries: readonly { readonly key: string; readonly sha256: string }[],
+    ) => Effect.Effect<
+      {
+        readonly reclaimed: readonly string[]
+        readonly archive: {
+          readonly original_path: string
+          readonly sha256: string
+          readonly trash_confirmed: true
+        } | null
+      },
+      SkillsError
+    >
+    readonly rebuildableCacheRecords?: () => Effect.Effect<
+      readonly {
+        readonly key: string
+        readonly payload: string
+        readonly retired: number
+        readonly admitted_at: number | null
+      }[],
+      SkillsError
+    >
     readonly readJson: <S extends Schema.ConstraintDecoder<unknown>>(
       key: string,
       schema: S,
@@ -81,8 +104,16 @@ export const StoreLive = Layer.effect(
     const root = yield* resolveRoot(settings.state, settings.xdgState, [".local", "state"])
     const configRoot = yield* resolveRoot(settings.config, settings.xdgConfig, [".config"])
     const cacheRoot = yield* resolveRoot(settings.cache, settings.xdgCache, [".cache"])
+    let capacity = DEFAULT_CACHE_CAPACITY
     if (yield* fs.exists(path.join(configRoot, "config.json"))) {
       const rawConfig = yield* fs.readFileString(path.join(configRoot, "config.json"))
+      capacity = yield* Effect.try({
+        try: () => cacheCapacity(property(JSON.parse(rawConfig)).cache_capacity),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("STATE_CORRUPT", "Cache capacity configuration is invalid."),
+      })
       const oldBindings = yield* Effect.try({
         try: () => property(JSON.parse(rawConfig)).sync_bindings,
         catch: () => fail("STATE_CORRUPT", "Configuration JSON is corrupt."),
@@ -96,7 +127,7 @@ export const StoreLive = Layer.effect(
         )
     }
     const { sqliteState } = yield* Effect.promise(() => import("./sqlite-state.ts"))
-    const state = yield* sqliteState(root, fs)
+    const state = yield* sqliteState(root, fs, false, capacity)
     const location = (key: string) =>
       key === "config.json" ? path.join(configRoot, key) : path.join(root, key)
     // Sync every ancestor, including existing directories: another publisher may have
@@ -263,6 +294,8 @@ export const StoreLive = Layer.effect(
       reserveCacheGeneration: state.reserve,
       listKeys: state.list,
       retireKeys: state.retire,
+      reclaimDerived: state.reclaimDerived,
+      rebuildableCacheRecords: state.rebuildableCacheRecords,
       registerBindingWithBase: state.registerBindingWithBase,
       advanceBaseAndReceipt: state.advanceBaseAndReceipt,
       backup: state.backup,

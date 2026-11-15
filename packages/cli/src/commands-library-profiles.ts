@@ -3,6 +3,11 @@ import { Argument, Command } from "effect/cli"
 import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { fail } from "../../core/src/model.ts"
+import {
+  normalizeSharedFreshness,
+  resolveSharedFreshness,
+} from "../../core/src/shared-freshness-policy.ts"
+import { effectiveCachePolicy } from "../../core/src/cache.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { bindSharedProfile, unbindSharedProfile } from "../../core/src/shared-profile-config.ts"
 import {
@@ -59,6 +64,10 @@ const set = defineCommand(
       "default-view",
       "Default View ID or Notion URL; omitting this field removes the prior default",
     ),
+    freshness: singleton(
+      "freshness-json",
+      "Full shared freshness rules: default durations and stable Skill-ID overrides; omitted removes prior rules",
+    ),
     reconcile: switchFlag(
       "reconcile",
       "Only reconcile this original rule revision; never submit another POST",
@@ -78,6 +87,18 @@ const set = defineCommand(
           ),
         )
       const defaultView = Option.getOrUndefined(options.defaultView)
+      const rawFreshness = Option.getOrUndefined(options.freshness)
+      const freshness =
+        rawFreshness === undefined
+          ? undefined
+          : yield* Effect.try({
+              try: () => normalizeSharedFreshness(JSON.parse(rawFreshness)),
+              catch: () =>
+                fail(
+                  "INVALID_ARGUMENT",
+                  "--freshness-json must contain valid shared freshness rules with unique stable Skill IDs.",
+                ),
+            })
       yield* emit(
         yield* saveSharedProfile(yield* library(options.entry), {
           profile: {
@@ -85,6 +106,7 @@ const set = defineCommand(
             name: options.name,
             enabled: options.enabled === "true",
             ...(defaultView === undefined ? {} : { default_view_id: defaultView }),
+            ...(freshness === undefined ? {} : { freshness }),
           },
           expectedRevision: options.base === "new" ? null : options.base,
           mode: options.reconcile ? "reconcile" : "create",
@@ -93,7 +115,7 @@ const set = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Save a full immutable Profile rule revision. --name, --enabled and --base are required; omitted --default-view means no default. Use show to review the exact current revision before updating. The original plan is retained before at most one POST. Repeating an unresolved revision or using --reconcile only checks its original shared fact and never replays an uncertain write. Concurrent heads require explicit review; a View never grants access.",
+    "Save a full immutable Profile rule revision. --name, --enabled and --base are required; omitted --default-view or --freshness-json removes those prior rules. Freshness JSON accepts {default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,read_max_age_ms,source_check_max_age_ms}]}; each duration is optional nonnegative integer milliseconds. Stable Skill IDs survive renames. Explicit read max-age wins, then Skill override, Profile default and product default. Source checking and Notion body observation are separate; long read TTL discloses a matching visibility delay and never extends the independent full-body deadline or authoring preflight. Use show to review the exact current revision before updating. The original plan is retained before at most one POST. Repeating an unresolved revision or using --reconcile only checks its original shared fact and never replays an uncertain write. Concurrent heads require explicit review; a View never grants access.",
   ),
   Command.withExamples([
     {
@@ -121,6 +143,35 @@ const bind = defineCommand("bind", { profile, entry }, (options) =>
   ),
 )
 
+const freshness = defineCommand(
+  "freshness",
+  {
+    profile,
+    entry,
+    skill: singleton("skill", "Exact stable Skill ID; omit to inspect Profile defaults"),
+  },
+  (options) =>
+    Effect.gen(function* () {
+      const selected = yield* loadSharedProfile(yield* library(options.entry), options.profile)
+      const product = yield* effectiveCachePolicy
+      yield* emit({
+        profile_id: selected.profile_id,
+        profile_revision_id: selected.revision_id,
+        effective: resolveSharedFreshness({
+          skillId: Option.getOrUndefined(options.skill),
+          policy: selected.freshness,
+          productReadMaxAge: product.read_max_age_ms,
+        }),
+        shared_rules: selected.freshness ?? null,
+        metadata_only: true,
+      })
+    }),
+).pipe(
+  Command.withDescription(
+    "Resolve shared freshness inheritance for one stable Skill ID. This reads Profile rules only, never changes content or selected source versions. Update or clear overrides with profile set --freshness-json and the exact base revision.",
+  ),
+)
+
 const unbind = defineCommand("unbind", {}, () =>
   Effect.gen(function* () {
     yield* emit(yield* unbindSharedProfile())
@@ -135,5 +186,5 @@ export const libraryProfilesCommand = defineCommand("profile").pipe(
   Command.withDescription(
     "Manage durable shared Profile rules and an optional machine binding for default discovery. Profiles and Views are not access-control boundaries.",
   ),
-  Command.withSubcommands([list, show, set, bind, unbind]),
+  Command.withSubcommands([list, show, set, freshness, bind, unbind]),
 )

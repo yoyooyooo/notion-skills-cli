@@ -1,5 +1,24 @@
 # Skill 消费链
 
+## AH-1050 NXT08–11：共享新鲜度与可重建缓存
+
+`ctl library profile set` 的 `--freshness-json` 随原 Profile revision 共享保存，结构为 `{default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,...}]}`。两个 duration 均可省略，已提供的值为非负安全整数毫秒；`skills` 必须存在且每个稳定 Skill ID 唯一。显示名不参与身份。替换完整 revision 时移除某条 override 即恢复继承；`ctl library profile freshness PROFILE --entry ENTRY --skill STABLE_ID` 返回具体生效值和原 revision。单次 max-age、逐 Skill、Profile default、产品 default 依次解析。Source 定期检查只使用自己的 source_check_max_age_ms，多个选定成员取最短上界，不能延长 Notion 正文观测策略。
+
+较长 read 策略不会续期 immutable bytes、当前资格或完整正文校验。当前 eligibility 仍受原产品 read deadline 限制，完整正文独立上限仍为 24h；作者 preflight 和强制 refresh 继续走原检查。warm 命中不改变原 validated_at，offline 明示 stale，已知拒绝和未决原 operation 不能被策略绕过。`shared-freshness-consumer` 必须经实际当前读取及 consume/strict proof decoder，防止只更新返回值却遗漏公共 schema；Requires 各节点走同一个 resolver。
+
+`ctl cache retention` 是纯本地诊断，分别列出 active/retired 的可重建 SQL payload、原操作与快照保护、唯一 object hash/bytes、SQLite/WAL/SHM 文件大小与分配字节。身份缺失、外部 Broker Session 与未观察到的引用保持 unknown。`ctl audit report` 的 growth 只呈现原已保留审计范围、各 owner coverage、verified content 子集和多个保留原因，header payload/远端物理总大小仍为 null；报告本身不扩展远端读取或删除。
+
+`ctl cache capacity [--max-bytes N] [--retention 7d]` 仅管理三种可重建索引：Git blob 映射、record payload 解码、derived graph。默认 64 MiB logical payload / 7d；下一 runtime 的同一 SQLite 事务先取得 writer slot，再按 active+retired 总量准入。超限跳过新可选索引，不驱逐原始 bytes、历史 pin、current eligibility、授权事实或原操作。该范围不是主机总缓存或 SQLite 物理磁盘上限；保护集合可以超限。首次准入时间独立保存，命中不续期，旧数据无时间证据仍 unknown。
+
+`ctl cache reclaim` 默认只预览；`--apply --plan PLAN_ID` 必须与当前精确候选集相符。执行先将原 SQL payload/retired/准入时间写入独立恢复归档，fsync/hash 验证后调用系统 Trash，确认源路径消失，再按 key/category/原 payload 条件删除。Trash 不可用、归档失败或预览变化均不删除原行；归档后的并发不同 payload 留存。没有 rm fallback、VACUUM、自动删除或远端 GC。SQLite logical payload 下降不代表文件立即缩小；原固定 objects/快照仍可直接读取，索引可按同身份重建。
+
+```bash
+bun test packages/core/test/shared-freshness-policy.test.ts packages/core/test/shared-freshness-consumer.test.ts packages/core/test/shared-profile.test.ts packages/core/test/cache-retention-model.test.ts --timeout 30000
+node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/cache-retention.node.test.ts
+```
+
+Node 项使用真实 SQLite、两个独立写进程、实际系统 Trash，以及 Trash 不可用和归档后并发替换故障。成本仍需在相同 frozen pin/内容/权限/新鲜度下区分冷、暖、过期、缺对象与单 reference 变化；本地门禁不代替独立安装包、真实 Notion、真实 Pi 或模型证据。
+
 ## AH-953：当前消费效果与严格只读
 
 先保留 `consumer-effects.test.ts` 的原行为失败，再验证同一公开 `consume/readSkill` 路径。当前读取的历史留存与作者正文修改分别报告；根和 Requires 的留存绑定原 Skill page、File ID、operation。固定/暖读取的确实零写、部分完成后失败、响应丢失与取消不能混成同一结果。语义 POST query 属于读，不能按 HTTP 方法粗算写入。

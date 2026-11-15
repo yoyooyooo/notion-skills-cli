@@ -20,9 +20,16 @@ import {
   resumeSharedSkillApply,
 } from "../src/shared-skill-apply.ts"
 import { executeSharedBodyWrite } from "../src/shared-body-write.ts"
-import { appendSharedRecord } from "../src/shared-records.ts"
+import { appendSharedRecord, canonicalSharedJson } from "../src/shared-records.ts"
+import { loadSharedApplyBodyBinding } from "../src/shared-apply-body-binding.ts"
+import { storedSharedOperationPlan } from "../src/shared-plan-storage.ts"
+import {
+  showSharedMaintenanceOperation,
+  resumeSharedMaintenanceOperation,
+} from "../src/shared-maintenance-operations.ts"
 import {
   validateSharedSkillApplyPlan,
+  bindSharedApplyBody,
   type SharedSkillApplyPlan,
 } from "../src/shared-skill-apply-model.ts"
 import { sharedSnapshotFixture, library, skillPage, encode, id } from "./shared-snapshot-fixture.ts"
@@ -378,6 +385,10 @@ describe("frozen sequential shared apply", () => {
       ).code,
     ).toBe("WRITE_OUTCOME_UNKNOWN")
     expect(payloads(f).some((value) => value.kind === "skill_apply")).toBe(false)
+    const shown = await f.run(showSharedMaintenanceOperation({ operationId: plan.operation_id }))
+    expect(shown.resume_supported).toBe(false)
+    expect(shown.progress?.missing_evidence).toContain("verified_original_shared_parent")
+    expect(shown.next.read_only).toBe(true)
     f.bodies.set(skillPage, "A later body cannot resolve an invisible original plan")
     f.clearCalls()
     const result = failure(
@@ -843,6 +854,293 @@ describe("frozen sequential shared apply", () => {
     },
   )
 
+  test("one apply allocates two references before binding the original main body and preserves its old pin", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const files = [
+      {
+        path: "SKILL.md",
+        bytes: encode("# Short main\n\n[A](references/new-a.md) and [B](references/new-b.md)\n"),
+      },
+      {
+        path: "references/new-a.md",
+        mode: "100644" as const,
+        bytes: encode("# A\n\nComplete A.\n"),
+      },
+      {
+        path: "references/new-b.md",
+        mode: "100755" as const,
+        bytes: encode("# B\n\nComplete B.\n"),
+      },
+    ]
+    f.clearCalls()
+    const preview = await f.run(applySharedSkillChanges(snapshot, { files, dryRun: true }))
+    expect(preview.status).toBe("planned")
+    expect(f.writeCount()).toBe(0)
+    if (
+      preview.kind !== "skill_apply" ||
+      preview.status !== "planned" ||
+      preview.plan.version !== 2
+    )
+      throw new Error("Expected a frozen original apply")
+    expect(preview.plan.deferred_bodies).toHaveLength(1)
+    const oldHash = snapshot.files.find((file) => file.path === "SKILL.md")!.sha256
+    const oldBytes = await f.run(
+      Store.pipe(Effect.flatMap((store) => store.readBytes(`objects/${oldHash}`))),
+    )
+    const result = await f.run(
+      withWriter(f, executeSharedSkillApply(library, { plan: preview.plan, mode: "create" })),
+    )
+    expect(result.status).toBe("applied")
+    const current = await fresh(f)
+    const added = current.file_bindings!.filter((file) =>
+      ["references/new-a.md", "references/new-b.md"].includes(file.path),
+    )
+    expect(added).toHaveLength(2)
+    for (const file of added)
+      expect(f.bodies.get(skillPage)).toContain(file.page_id.replaceAll("-", ""))
+    expect(f.bodies.get(skillPage)).not.toContain("](references/")
+    expect(current.files.find((file) => file.path === "references/new-b.md")?.mode).toBe("100755")
+    expect(
+      await f.run(Store.pipe(Effect.flatMap((store) => store.readBytes(`objects/${oldHash}`)))),
+    ).toEqual(oldBytes)
+    f.clearCalls()
+    const reconciled = await f.run(reconcileSharedSkillApply(library, preview.plan))
+    expect(reconciled.status).toBe("applied")
+    expect(f.writeCount()).toBe(0)
+    expect(payloads(f).filter((row) => row.kind === "apply_body_binding_record")).toHaveLength(1)
+  })
+
+  test("an unknown bound main write keeps allocated reference identities and never replays the PATCH", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "SKILL.md", bytes: encode("# Main\n\n[New](references/new-a.md)\n") },
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (preview.kind !== "skill_apply" || preview.status !== "planned")
+      throw new Error("Expected parent")
+    const first = await f.run(
+      withWriter(
+        f,
+        executeSharedSkillApply(library, { plan: preview.plan, mode: "create" }).pipe(
+          Effect.result,
+        ),
+        { unknownBodyAt: 1 },
+      ),
+    )
+    expect(failure(first).code).toBe("WRITE_OUTCOME_UNKNOWN")
+    const ids = f.files.map((file) => file.id)
+    f.clearCalls()
+    const shown = await f.run(
+      showSharedMaintenanceOperation({
+        operationId: preview.plan.operation_id,
+        target: skillPage,
+        entry: library.skills.database_id,
+      }),
+    )
+    expect(shown.resume_supported).toBe(false)
+    expect(shown.outcome.completion).toBe("unknown")
+    expect(shown.next.read_only).toBe(true)
+    const resumed = await f.run(
+      withWriter(f, resumeSharedSkillApply(library, preview.plan).pipe(Effect.result)),
+    )
+    expect(resumed._tag).toBe("Failure")
+    expect(f.files.map((file) => file.id)).toEqual(ids)
+    expect(
+      f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+    ).toHaveLength(0)
+  })
+
+  test("public operation navigation resumes two original allocation ACKs and only the unissued bound main", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          {
+            path: "SKILL.md",
+            bytes: encode("# Main\n\n[A](references/new-a.md) [B](references/new-b.md)\n"),
+          },
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+          { path: "references/new-b.md", bytes: encode("# B\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (
+      preview.kind !== "skill_apply" ||
+      preview.status !== "planned" ||
+      preview.plan.version !== 2
+    )
+      throw new Error("Expected parent")
+    let stopped = false
+    const interrupted = await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* executeSharedSkillApply(library, { plan: preview.plan, mode: "create" }).pipe(
+          Effect.provideService(Store, {
+            ...store,
+            writeJson: (key, value) => {
+              if (
+                !stopped &&
+                key.startsWith("operations/shared-observation-pending/") &&
+                property(property(value).plan).kind === "apply_body_binding"
+              ) {
+                stopped = true
+                return Effect.fail(
+                  fail("TEST_STOP_BEFORE_BINDING", "Stopped before the original binding intent"),
+                )
+              }
+              return store.writeJson(key, value)
+            },
+          }),
+        )
+      }).pipe(Effect.result),
+    )
+    expect(failure(interrupted).code).toBe("TEST_STOP_BEFORE_BINDING")
+    const selection = {
+      operationId: preview.plan.operation_id,
+      target: skillPage,
+      entry: library.skills.database_id,
+    }
+    const identities = f.files.map((file) => file.id)
+    f.clearCalls()
+    const shown = await f.run(showSharedMaintenanceOperation(selection))
+    expect(shown.progress?.steps.map((step) => step.state)).toEqual([
+      "applied",
+      "applied",
+      "not_sent",
+    ])
+    expect(shown.resume_supported).toBe(true)
+    expect(shown.outcome).toMatchObject({
+      completion: "partial",
+      task_completed: false,
+      effects: { author_content: "confirmed", retained_remote: "confirmed" },
+    })
+    expect(shown.next.argv).toEqual([
+      "ntn-skills",
+      "ctl",
+      "operation",
+      "resume",
+      preview.plan.operation_id,
+      "--target",
+      skillPage,
+      "--entry",
+      library.skills.database_id,
+    ])
+    expect(f.writeCount()).toBe(0)
+    const resumed = await f.run(withWriter(f, resumeSharedMaintenanceOperation(selection)))
+    expect(resumed.state).toBe("applied")
+    expect(f.files.map((file) => file.id)).toEqual(identities)
+    expect(
+      f.calls.filter((call) => call.method === "PATCH" && call.path.endsWith("/markdown")),
+    ).toHaveLength(1)
+    expect(
+      f.calls.filter(
+        (call) =>
+          call.path === "v1/pages" &&
+          property(property(call.body).parent).data_source_id === library.files.data_source_id,
+      ),
+    ).toHaveLength(0)
+  })
+
+  test("native link expansion capacity is refused before allocating any reference", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    f.clearCalls()
+    const result = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          {
+            path: "SKILL.md",
+            bytes: encode(
+              "# Main\n\n" +
+                Array.from({ length: 1200 }, () => "[A](references/new-a.md)").join("\n"),
+            ),
+          },
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+        ],
+      }).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Failure")
+    expect(f.writeCount()).toBe(0)
+    expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
+  })
+
+  test("a coherently rehashed native binding cannot replace its original allocated page identity", async () => {
+    const f = sharedSnapshotFixture(),
+      snapshot = await fresh(f)
+    const preview = await f.run(
+      applySharedSkillChanges(snapshot, {
+        files: [
+          { path: "SKILL.md", bytes: encode("# Main\n\n[New](references/new-a.md)\n") },
+          { path: "references/new-a.md", bytes: encode("# A\n") },
+        ],
+        dryRun: true,
+      }),
+    )
+    if (
+      preview.kind !== "skill_apply" ||
+      preview.status !== "planned" ||
+      preview.plan.version !== 2
+    )
+      throw new Error("Expected parent")
+    const child = preview.plan.deferred_bodies?.[0]
+    if (child === undefined) throw new Error("Expected bound body")
+    await f.run(
+      Effect.gen(function* () {
+        const store = yield* Store
+        return yield* executeSharedSkillApply(library, { plan: preview.plan, mode: "create" }).pipe(
+          Effect.provideService(Store, {
+            ...store,
+            writeJson: (key, value) =>
+              key.startsWith("operations/shared-observation-pending/") &&
+              property(property(value).plan).kind === "apply_body_binding"
+                ? Effect.fail(fail("TEST_STOP_BEFORE_BINDING", "Keep original allocation"))
+                : store.writeJson(key, value),
+          }),
+          Effect.result,
+        )
+      }),
+    )
+    const bindings = [
+      ...child.existing_bindings,
+      { page_id: id(9999), path: "references/new-a.md" },
+    ]
+    const wrongBody = await f.run(bindSharedApplyBody(child, bindings))
+    await f.run(
+      appendSharedRecord(library, {
+        mode: "create",
+        recordId: child.operation_id,
+        operationId: child.operation_id,
+        skillPageId: skillPage,
+        kind: "operation",
+        entityId: "apply-body-bindings-v1",
+        payload: {
+          version: 1,
+          kind: "apply_body_binding_record",
+          intent_sha256: await f.run(sha256(canonicalSharedJson(child))),
+          bindings,
+          body_plan: storedSharedOperationPlan(wrongBody),
+        },
+        payloadContainsBody: true,
+      }),
+    )
+    f.clearCalls()
+    const result = await f.run(loadSharedApplyBodyBinding(library, child).pipe(Effect.result))
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "SHARED_APPLY_BINDING_UNRESOLVED" },
+    })
+    expect(f.writeCount()).toBe(0)
+  })
+
   test("main plus two unlinked new files is one parent apply and keeps omitted files", async () => {
     const f = sharedSnapshotFixture(),
       snapshot = await fresh(f)
@@ -1226,6 +1524,13 @@ describe("public shared apply and replace routing", () => {
         f.clearCalls()
         const preview = await f.run(applySkill(ref, { ...options, dryRun: true }))
         expect(property(preview).status).toBe("planned")
+        expect(property(preview)).toMatchObject({
+          completion: "needs_decision",
+          task_completed: false,
+          verified_scope: "preflight",
+          effects: { author_content: "none", retained_remote: "none" },
+          next: { read_only: true },
+        })
         expect(f.writeCount()).toBe(0)
         expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
         expect([...f.json.keys()].some((key) => key.startsWith("operations/"))).toBe(false)
@@ -1256,6 +1561,83 @@ describe("public shared apply and replace routing", () => {
       }
     },
   )
+
+  test("one public pinned apply returns the complete new reference tree from a directory input", async () => {
+    const f = sharedSnapshotFixture(),
+      baseline = await fresh(f)
+    const directory = mkdtempSync(join(tmpdir(), "shared-public-bound-apply-"))
+    mkdirSync(join(directory, "references"))
+    writeFileSync(
+      join(directory, "SKILL.md"),
+      "# Main\n\n[A](references/new-a.md) [B](references/new-b.md)\n",
+    )
+    writeFileSync(join(directory, "references/new-a.md"), "# A\n\nComplete first reference.\n")
+    writeFileSync(join(directory, "references/new-b.md"), "# B\n\nComplete second reference.\n")
+    try {
+      const result = await f.run(
+        withWriter(
+          f,
+          applySkill(fileRef(baseline.record.id, baseline.entrypoint, baseline.snapshot_id), {
+            input: directory,
+          }),
+        ),
+      )
+      expect(result.operation).toBe("apply")
+      expect(property(result)).toMatchObject({
+        status: "applied",
+        verified: true,
+        completion: "complete",
+        task_completed: true,
+        verified_scope: "current_observation",
+        effects: { author_content: "confirmed", retained_remote: "confirmed" },
+      })
+      const verifiedRef = property(result).ref
+      if (typeof verifiedRef !== "string") throw new Error("Missing verified apply ref")
+      expect(property(result).next).toMatchObject({
+        argv: [
+          "ntn-skills",
+          "read",
+          verifiedRef,
+          "--database",
+          library.skills.database_id,
+          "--read-only",
+          "--json",
+        ],
+        read_only: true,
+      })
+      const current = await fresh(f)
+      expect(current.files.map((file) => file.path)).toEqual(
+        expect.arrayContaining([
+          "SKILL.md",
+          "references/new-a.md",
+          "references/new-b.md",
+          "references/1.md",
+          "references/2.md",
+        ]),
+      )
+      const main = current.files.find((file) => file.path === "SKILL.md")!
+      expect(new TextDecoder().decode(f.objects.get(`objects/${main.sha256}`))).toContain(
+        "[A](references/new-a.md)",
+      )
+      expect(new TextDecoder().decode(f.objects.get(`objects/${main.sha256}`))).toContain(
+        "[B](references/new-b.md)",
+      )
+      expect(payloads(f).filter((item) => item.kind === "skill_apply")).toHaveLength(1)
+      const writes = f.writeCount()
+      const repeated = await f.run(applySkill(verifiedRef, { input: directory }))
+      expect(property(repeated)).toMatchObject({
+        status: "unchanged",
+        completion: "no_op",
+        task_completed: true,
+        verified_scope: "current_observation",
+        effects: { author_content: "none", retained_remote: "none" },
+        next: { read_only: true },
+      })
+      expect(f.writeCount()).toBe(writes)
+    } finally {
+      if (process.platform === "darwin") await Effect.runPromise(trashPath(directory))
+    }
+  })
 
   test("one public pinned apply maintains main, resource and metadata despite an unrelated broken source", async () => {
     const f = sharedSnapshotFixture(),

@@ -21,6 +21,7 @@ import {
 } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 import { retrieveView, viewId } from "./views.ts"
+import { SharedFreshnessPolicySchema, normalizeSharedFreshness } from "./shared-freshness-policy.ts"
 
 const stableId = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u
 const revisionId = /^profile-[a-f0-9]{64}$/u
@@ -31,6 +32,7 @@ export const SharedProfileRulesSchema = Schema.Struct({
   name: Schema.String,
   enabled: Schema.Boolean,
   default_view_id: Schema.optional(Schema.String),
+  freshness: Schema.optional(SharedFreshnessPolicySchema),
 })
 export type SharedProfileRules = typeof SharedProfileRulesSchema.Type
 export const SharedProfileRevisionSchema = Schema.Struct({
@@ -94,6 +96,7 @@ function rules(payload: SharedProfileRules): SharedProfileRules {
     name: payload.name,
     enabled: payload.enabled,
     ...(payload.default_view_id === undefined ? {} : { default_view_id: payload.default_view_id }),
+    ...(payload.freshness === undefined ? {} : { freshness: payload.freshness }),
   }
 }
 function normalizedRules(input: unknown): SharedProfileRules {
@@ -114,6 +117,9 @@ function normalizedRules(input: unknown): SharedProfileRules {
     ...(value.default_view_id === undefined
       ? {}
       : { default_view_id: viewId(value.default_view_id) }),
+    ...(value.freshness === undefined
+      ? {}
+      : { freshness: normalizeSharedFreshness(value.freshness) }),
   }
 }
 

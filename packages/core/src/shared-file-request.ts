@@ -516,6 +516,14 @@ export function processSharedFileRequest(
     readonly allowLocalArchive?: boolean
     readonly reconcile?: boolean
     readonly operationId?: string
+    /** Source task continuation may settle its recorded request, never renew its authorization. */
+    readonly reconcileRecorded?: boolean
+    readonly expectedRequest?: {
+      readonly request_id: string
+      readonly file_id: string
+      readonly page_id: string
+      readonly skill_id: string
+    }
   },
 ) {
   return Effect.gen(function* () {
@@ -531,6 +539,19 @@ export function processSharedFileRequest(
         ),
       )
     const frozen = yield* observeRequest(input)
+    if (
+      input.expectedRequest !== undefined &&
+      (input.expectedRequest.request_id !== frozen.request_id ||
+        input.expectedRequest.file_id !== frozen.context.file_id ||
+        input.expectedRequest.page_id !== frozen.context.page_id ||
+        input.expectedRequest.skill_id !== frozen.context.skill_id)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_REQUEST_CHANGED",
+          "The exact request or File identity frozen by this source task changed; no replacement request was authorized.",
+        ),
+      )
     if (frozen.context.intent === "none")
       return { status: "no_request" as const, remote_writes: 0 as const }
     const previous = frozen.feedback
@@ -554,7 +575,12 @@ export function processSharedFileRequest(
         remote_writes: 0 as const,
         feedback: frozen.feedback,
       }
-    if (input.reconcile) {
+    if (
+      input.reconcile ||
+      (input.reconcileRecorded &&
+        unreconciledRestore(previous) &&
+        previous.original_operation_id !== null)
+    ) {
       const operationId = input.operationId ?? previous?.original_operation_id
       if (!previous || !operationId)
         return yield* Effect.fail(

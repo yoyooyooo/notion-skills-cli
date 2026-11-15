@@ -106,6 +106,8 @@ export function sharedAuthoringMarkdown(
     readonly name?: string
     readonly description?: string
     readonly currentBytes?: Uint8Array
+    /** Only a frozen apply intent may defer native links until allocation ACKs. */
+    readonly deferNativeLinks?: boolean
   },
 ): string {
   const locator = snapshot.record.locator
@@ -142,6 +144,7 @@ export function sharedAuthoringMarkdown(
         )
       markdown = submitted.body
     }
+    if (metadata?.deferNativeLinks) return normalizeObservedBody(markdown)
     return restoreSharedNativeFileLinks(
       normalizeObservedBody(markdown),
       path,
@@ -242,7 +245,9 @@ export function sharedAuthoringMarkdown(
       )
     markdown = trimmed.slice(0, -footer.length)
   }
-  return restoreSharedNativeFileLinks(markdown, path, snapshot.file_bindings ?? [])
+  return metadata?.deferNativeLinks
+    ? markdown
+    : restoreSharedNativeFileLinks(markdown, path, snapshot.file_bindings ?? [])
 }
 
 function pendingScope(scope: string, library: SharedLibrary, skillId: string, skillPageId: string) {

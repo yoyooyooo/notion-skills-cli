@@ -29,7 +29,7 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
    ```
 
    Require exit 0. `use` loads the root and its complete Requires once; unselected Member bodies stay lazy. Compact text is the default; `--json` returns the complete structured result and machine evidence. Prepared content does not attest model delivery or activation. Reading a Skill to inspect, summarize or edit it does not activate its workflow. Apply instructions only when selected for the current task.
-3. Retain returned canonical refs and, with JSON, the selected page, snapshot, source and freshness. Ordinary reads may reuse content validated within five minutes; catalog metadata defaults to 60 seconds. When the task needs current remote validation, refresh the current unpinned target. A running workflow stays on its selected version until deliberately switching.
+3. Retain returned canonical refs and, with JSON, the selected page, snapshot, source and freshness. Without an explicit or shared rule, ordinary reads may reuse content validated within five minutes; catalog metadata defaults to 60 seconds. Explicit request policy takes precedence over the stable Skill's shared Profile rule, its shared default and the product default. The result identifies the applied rule and original validation time. When the task needs current remote validation, refresh the current unpinned target. TTL expiry does not erase fixed content or switch a running workflow's selected version.
 4. Load only needed supporting files from that version:
 
    ```bash
@@ -40,6 +40,8 @@ For a shared library, copy `record.id`, `record.ref` and the `shared_skill` loca
    Resolve links from the containing file, which may itself be a reference. Use the snapshot ID to enumerate the whole file set, including hashes and known executable modes. A pin rejects `--refresh`/`--max-age` and never selects newer content. Already materialized bytes work offline; a missing shared resource may require access to its frozen acquisition source. Missing bytes without that access stay unavailable. A pin does not establish current permission. Never resolve a relative file by rereading the Skill name and accidentally selecting a newer version.
 
 Use `--json` when version/freshness matters. `list` and `read` return JSON by default. `read --raw` omits that metadata. Binary files need `--output NEW_PATH` and a suitable viewer. Reading or exporting scripts does not authorize executing them. A host adapter may manage snapshots and paths for you; preserve its identity and freshness results rather than creating another local copy.
+
+With Context Broker, a complete visible main body is enough for an introduction or summary. Use `notion_read` for inspection and `notion_use` only when applying the workflow. Read named references from that fixed main instead of rereading the main by name. When several requested resources share an owner and snapshot, use the native read tool's `refs` batch. Do not silently batch different owners or versions. A truncated or failed result does not count as complete content.
 
 Shared current reads batch flat file metadata and retained ownership facts before reusing unchanged bodies. They fix the complete directory while leaving non-document resource bytes lazy; `files` does not mean every file has been downloaded. `use` loads its selected instruction closure, and resource reads keep those same pins. Full export and authoring reads materialize the complete tree. New fixed Git manifests can use management-verified SHA-256 identities; older Git manifests without them retain the full-read fallback.
 
@@ -54,7 +56,7 @@ Inspect native Views with `ntn-skills ctl views --database LIBRARY_ENTRY`. Selec
 | First use, no library, or connection to an existing library | Load `ntn-skills-maintain`, then its `references/setup.md`; initialize through the CLI, not by hand-building tables |
 | Execute an existing remote workflow | Select/read as above; no local installation or sync binding is required |
 | Create a Notion Skill, apply a change to a pinned page, or transfer a portable copy | Select `$ntn-skills-maintain@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-maintain` |
-| Select fixed shared sources or Profiles, maintain existing upstream/local bindings, or resolve their original interrupted work | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |
+| Manage active Sources, select fixed versions or shared Profiles, or resolve their original interrupted work | Select `$ntn-skills-sync@builtin`; otherwise load `ntn-skills ctl builtin read notion/ntn-skills-sync` |
 | Audit a library, reconcile approved local inventory, or import a complete local Skill | Load `ntn-skills-maintain`; use its read-only inventory and frozen import workflow |
 | Inspect, install or update package-supplied Skills | Use `ctl builtin list/read/status/install/update`; installation is central with shared links by default, and optional Agent roots add links. See [local management](references/commands.md#local-builtins) |
 | Missing workflow, failed load or old content | Follow [diagnosis](references/integration.md#diagnose-discovery-and-loading) before changing configuration or clearing caches |

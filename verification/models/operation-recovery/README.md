@@ -8,10 +8,10 @@
 | --- | --- | --- |
 | AcknowledgedRecordPrefix | 一个原操作、两个有序 Record 位置、一个已 ACK 前缀和一个未派发后缀 | 原请求与完整载荷绑定 exact ACK GET；前缀无空洞；未知结果不重派发；当前前提和权限复核；独立完成不改写原输入和失败 |
 | IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/[observed body]/adopted/completion 三或四项不可变事实、五或六类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
-| RestoreFeedback | 一次冻结提交、一个原 restore 身份、一轮正文动作和一轮最终业务反馈 | 先核实原身份绑定再派发正文；正文已完成而反馈未发时只补反馈；pending/unknown 不换原操作；历史反馈 ACK 与当前正文/Source 前提分离 |
-| MaintenanceApply | 一个父计划、三个有序子操作，区分派发、响应 ACK、原 outcome 和父进度 | 验证前缀才派发后缀，未知不重放、完整子结果才完成、pending 树不可发布；旧 pin 是固定输入，权限不在模型中 |
+| RestoreFeedback | 一次冻结提交、一个原 restore 身份、一轮正文、最多两个独立反馈代 | 原身份和当前前提核实后才派发正文；只有持久化明确未应用的负回执才可启动第二反馈代，每代最多一次派发；unknown 不换原操作或反馈代；历史 ACK 与当前前提分开 |
+| MaintenanceApply | 一个父计划、两个引用分配和一个绑定正文；绑定自身的派发、应用、ACK、核对也分开 | 验证原分配前缀和精确绑定才派发正文；未知不重放、完整子结果才完成、pending 树不可发布；旧 pin 是固定输入，权限不在模型中 |
 
-正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：4 个模型，34 个配置。新增 MaintenanceApply 的实际对应、ACK 抽象和排除项见[维护审阅](../../../docs/maintenance-verification-review.md)。
+正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：4 个模型，35 个配置（10+8+10+7）。先前文字的34未计入后来增加的 unreviewed-partial；本轮没有增加配置族。实际对应、ACK 抽象和排除项见[维护审阅](../../../docs/maintenance-verification-review.md)。
 
 MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证前缀才允许后缀，unknown 不重放，部分树不进入当前消费。`oldPin` 固定为旧值是建模假设，不能独立证明实际 pin 字节或权限保护。原 outcome 存在的 unknown 可 `ReconcileOriginal`；只有 ACK 而无原 outcome 不自动获得继续后缀的权限。具体正文、引用和 Notion 权限由公共实现及安装回归验证。
 
@@ -33,6 +33,8 @@ MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证
 | ProcessingReadback、BodyDispatch | `shared-file-request.ts` 的 assertRequestRestorePlan、afterRestorePlanRetained | 精确原 restore ID 先进入 processing receipt 并读回，再允许正文动作。此处从 processing ACK / exact readback 边界建模，不展开这次前置 PATCH 的整个 HTTP 传输 |
 | RetainOriginalOutcome、ReconcileOriginal | restoreSelectedSharedFile、reconcileSelectedSharedFileRestore、processSharedFileRequest(reconcile) | 业务反馈引用原操作既有结果；不重新选择 Source，不替换冻结提交，不重新调用正文写入 |
 | RetainFeedbackAck、VerifyFeedback、FeedbackDrift | writeFeedback | 先单独核实同一 native 对象的精确 metadata PATCH，再核对当前上下文。后续正文/Source 变化停止新正文授权，但不抹除历史 ACK |
+| FeedbackValidationRejection、RetainFeedbackRejection、ContinueRejectedFeedback | guardedSourceMutation 的原请求错误分类 → source-rejection Store → 下一显式调用；processSharedFileRequest 的原restore核对 | 仅明确400 validation_error且成功保存匹配原request hash的负回执，才允许后续新反馈代。错误码细节不在模型中，实际5类不确定响应回归负责。负回执不改写原请求，不代替正文ACK |
+| RetainNativeBindingIntent、SendNativeBinding、RetainNativeBindingAck、VerifyNativeBinding | bindSharedApplyBody、executeSharedApplyBodyBinding、loadSharedApplyBodyBinding | 完整逻辑意图在原父计划内；新页ID来自原allocation plan/outcome，绑定不可变记录独立保留，再派发同一旧正文基线的真实body plan。已存绑定回读再次核对原分配ID |
 | ReplaceOriginal、PublishInvalidOutcome、GuessOriginalSuccess | unreconciledRestore、assertRequestRestorePlan、verifiedFeedback 与 reconcile 原结果分支 | 故意坏分支：pending/unknown 不能新 submit 替代；取消/superseded/failed/当前相等不能冒充原 applied |
 
 源码文件位于 `packages/core/src/`。准确 SHA256 与同步源码基线在 `coverage.json`；运行器先比对再运行，不能只更新 hash 使检查转绿。这是经过源码审查的有界抽象，不是机器证明的 TypeScript refinement。
@@ -40,6 +42,8 @@ MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证
 ### MaintenanceApply 的范围
 
 `RetainAck` 记录收到原响应，`VerifyOutcome` 和 `CheckpointChild` 才分别建立原结果与父进度。`OriginalOutcomeAuthority` 检查这几个集合的包含关系；没有独立负配置不等于它是固定输入。`OldPinPreserved` 则是固定字段。已知 partial/not_applied、字节完整性和跨 Store 权限由 `shared-skill-apply` / `shared-maintenance-operations` 等具体回归负责，本模型不承诺 unknown 最终解除。
+
+NXT将三个子位置具体化为两次原分配和一次绑定正文。`NativeBodyNeedsOriginalAllocationBinding` 在原正文派发时要求两个原allocation outcome和已核实的原绑定；`skip-prefix` 同时展示越过原前缀和绕过绑定的违例。绑定POST自身可在意图、派发、应用、ACK处中断；未知不重发，原ACK只允许精确核对同一绑定。完整输入字节、URL固定宽度容量、真实UUID/record hash和Notion正文比较仍由实现回归负责。
 
 ## 性质和反例
 
@@ -84,11 +88,12 @@ MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证
 | FeedbackNeverRepeatsBody | repeat-body-after-feedback-loss | 原正文已完成后预算耗尽，只补原反馈，正文总共写一次 |
 | FeedbackRequiresRealAck | equal-feedback-is-ack | 当前反馈字段一致不能证明丢失的 metadata ACK |
 | UnknownFeedbackNeverRedispatched | repeat-unknown-feedback | unknown metadata 原请求不重派发 |
+| NewFeedbackGenerationNeedsRejection | repeat-unknown-feedback | unknown不能误当明确未应用；429/408/网关/未知代码/未分类响应均不能产生负回执 |
 | OriginalRequestPreserved | replace-pending-original | pending/unknown 不能被新 submit 或显式 legacy ID 替换 |
 | SuccessNeedsAppliedOriginal | invalid-original-is-success；equal-current-is-original-success | cancelled/not_applied 只解除旧 barrier；current equal 不能制造缺失原 outcome |
 | HistoricalAckPreserved | forget-historical-ack | ACK 后读回前正文变化：保留已知 metadata 历史事实，拒绝新正文动作 |
 
-用例在 `shared-file-request.test.ts`。feedbackAck 表示原 metadata ACK 支持的已知历史结果；故障 DropHistoricalAck 表示把后续正文变化错误地当成历史 metadata 结果未知，不宣称产品会删除原 ACK 字节。
+用例在 `shared-file-request.test.ts`、`shared-source-definitions.test.ts` 和 `shared-source-run.test.ts`。feedbackAck 表示原 metadata ACK 支持的已知历史结果；故障 DropHistoricalAck 表示把后续正文变化错误地当成历史 metadata 结果未知，不宣称产品会删除原 ACK 字节。`UnknownFeedbackNeverRedispatched` 从“所有反馈总共不超过一次”细化为“每个不可变反馈代不超过一次”；这是明确拒绝后的新授权能力，不允许重发未知代。新增性质要求第二代有原负回执，正文仍只写一次。
 
 ## 可执行验证
 
@@ -97,12 +102,12 @@ MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证
 ~~~sh
 node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
 node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --model AcknowledgedRecordPrefix --out "$OPERATION_PREFIX_OUT"
-bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000
+bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts packages/core/test/shared-source-definitions.test.ts packages/core/test/shared-source-run.test.ts --timeout 60000
 ~~~
 
 输出目录必须是新的绝对路径，位于 checkout 外；先配置锁定的 PSTACK_STATECHART_ROOT 和 TLA2TOOLS。source hash 漂移、未知性质、少跑性质、额外反例、不完整搜索、tool error、cut 或 unexamined 都不算通过。
 
-真实源码负对照由 `scripts/check-operation-recovery-mutations.py` 执行。只允许在单独 linked candidate worktree 运行，必须传入 --protected-worktree 与新的 --out。脚本校验候选与产品全部覆盖源文件/测试 hash 相同，依赖不得逃出候选树。四处 guard 的 baseline 必须执行预期数量测试并通过；mutant 必须导致真实断言失败，语法或依赖错误不计；最后恢复原字节、文件模式及完整候选树快照，并复跑通过。
+真实源码负对照由 `scripts/check-operation-recovery-mutations.py` 执行。只允许在单独 linked candidate worktree 运行，必须传入 --protected-worktree 与新的 --out。脚本校验候选与产品全部覆盖源文件/测试 hash 相同，依赖不得逃出候选树。六处 guard 的 baseline 必须执行预期数量测试并通过；mutant 必须导致真实断言失败，语法或依赖错误不计；最后恢复原字节、文件模式及完整候选树快照，并复跑通过。
 
 | 实际 guard 对照 | 真实变化 | 独立 oracle |
 | --- | --- | --- |
@@ -110,6 +115,8 @@ bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/
 | 每项 suffix 复核 | 去掉 observeNativeMainRecovery beforeDispatch | 第二个 Record 后正文变化，写入数量越过允许的 2 项 |
 | 独立 completion 绑定 | 去掉 same(completion, expected) 检查 | 自洽重新计算 Record hash 但 review/event hash 错的冷读由拒绝变接受 |
 | metadata ACK 与当前正文分离 | 错把完整 current context 纳入 metadata ACK 验证 | 正文变化后精确 metadata ACK 被误判，原历史反馈断言失败 |
+| 原分配页与动态正文绑定 | 去掉绑定page ID和原allocation outcome的匹配 | 自洽重哈希的替代页ID由拒绝变为接受 |
+| 明确拒绝和unknown分离 | 把任意NOTION_REQUEST_FAILED当成负回执 | 429、408、网关、未知代码、未分类响应的5个真实断言失败 |
 
 ## 生成图和证据边界
 

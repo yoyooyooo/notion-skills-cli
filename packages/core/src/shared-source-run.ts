@@ -1,6 +1,8 @@
 import { Clock, Crypto, Effect, Schema } from "effect"
 import { HttpClient } from "effect/http"
-import { fail, SnapshotSchema, type SkillsError } from "./model.ts"
+import { fail, property, SnapshotSchema, type SkillsError } from "./model.ts"
+import { authScope } from "./catalog.ts"
+import { maintenanceResult } from "./shared-maintenance-result.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { makeRequestBudget, RequestBudget, type RequestBudgetLimits } from "./request-budget.ts"
@@ -11,6 +13,7 @@ import { listSourceMembers, readSourceDefinition } from "./shared-source-definit
 import { prepareSourceRefreshBatch, SourceRefreshBatchSchema } from "./shared-source-batch.ts"
 import {
   applySourceRefresh,
+  reconcileSourceRefresh,
   prepareSourceRefresh,
   reviewSourceMembers,
   SourceRefreshPlanSchema,
@@ -19,11 +22,17 @@ import {
 } from "./shared-source-refresh.ts"
 import {
   publishSourceCheck,
+  sharedSourceCheckPolicy,
   sourceRunDecision,
   withSourceUpdateLock,
   type SourceRunMode,
 } from "./shared-source-policy.ts"
 import { Store } from "./store.ts"
+import {
+  SourceDisplayFileSchema,
+  sourceDisplayComplete,
+  updateSourceDisplay,
+} from "./shared-source-display.ts"
 
 const FrozenPlanSchema = Schema.Union([SourceRefreshPlanSchema, SourceRefreshBatchSchema])
 const RunErrorSchema = Schema.Struct({
@@ -36,7 +45,19 @@ const ApplicationSchema = Schema.Struct({
   plan_id: Schema.String,
   status: Schema.Literals(["confirmed", "blocked", "unknown", "failed"]),
   details: Schema.Unknown,
+  display: Schema.optional(Schema.Array(SourceDisplayFileSchema)),
 })
+const RequestScopeSchema = Schema.Array(
+  Schema.Struct({
+    skill_page_id: Schema.String,
+    skill_id: Schema.String,
+    file_id: Schema.String,
+    page_id: Schema.String,
+    path: Schema.String,
+    kind: Schema.Literals(["main", "supporting"]),
+    request_id: Schema.String,
+  }),
+)
 export const SourceUpdateRunSchema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("source_update_run"),
@@ -47,6 +68,8 @@ export const SourceUpdateRunSchema = Schema.Struct({
   source_page_id: Schema.NullOr(Schema.String),
   source_fingerprint: Schema.NullOr(Schema.String),
   mode: Schema.Literals(["check", "prepare", "policy"]),
+  update_following: Schema.optional(Schema.Boolean),
+  auth_scope: Schema.optional(Schema.String),
   scope: Schema.Union([
     Schema.Struct({ kind: Schema.Literal("all_bound") }),
     Schema.Struct({ kind: Schema.Literal("skill"), target: Schema.String }),
@@ -76,8 +99,24 @@ export const SourceUpdateRunSchema = Schema.Struct({
   plan: Schema.NullOr(FrozenPlanSchema),
   application: Schema.Array(ApplicationSchema),
   request_results: Schema.Array(Schema.Unknown),
+  request_scope: Schema.optional(RequestScopeSchema),
   source_feedback: Schema.Unknown,
   error: Schema.NullOr(RunErrorSchema),
+  continuations: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        updated_at: Schema.Number,
+        execution: Schema.String,
+        phase: Schema.String,
+        mode: Schema.String,
+        error: Schema.NullOr(RunErrorSchema),
+        application: Schema.Array(ApplicationSchema),
+        request_results: Schema.Array(Schema.Unknown),
+        source_feedback: Schema.Unknown,
+        budget: Schema.Unknown,
+      }),
+    ),
+  ),
   empty_scope: Schema.optional(
     Schema.Struct({
       reason: Schema.Literals(["no_bound_members", "no_enabled_members"]),
@@ -105,6 +144,7 @@ export type SourceUpdateInput = {
     | { readonly kind: "skill"; readonly target: string }
   readonly mode?: SourceRunMode
   readonly dueOnly?: boolean
+  readonly updateFollowing?: boolean
   readonly storage?: SourceRefreshStorage
   readonly output?: string
   readonly budget?: Partial<RequestBudgetLimits>
@@ -123,6 +163,155 @@ const errorDetails = (error: SkillsError) => ({
   ...(error.details === undefined ? {} : { details: error.details }),
 })
 const runKey = (runId: string) => `operations/shared-source-runs/${runId}.json`
+
+export function sourceRunResult(run: SourceUpdateRun) {
+  const requests = run.request_results
+    .map(property)
+    .filter((item) => item.result !== undefined || item.error !== undefined)
+  const unknown =
+    run.execution === "running" ||
+    run.execution === "paused" ||
+    run.application.some((item) => item.status === "unknown") ||
+    requests.some(
+      (item) =>
+        ["unknown", "processing"].includes(String(property(item.result).status)) ||
+        unknownCodes.has(String(property(item.error).code)),
+    ) ||
+    property(run.source_feedback).original_outcome === "unknown" ||
+    (run.error !== null && unknownCodes.has(run.error.code))
+  const blocked =
+    run.application.some((item) => item.status === "blocked" || item.status === "failed") ||
+    requests.some(
+      (item) =>
+        item.error !== undefined ||
+        ["blocked", "needs_review"].includes(String(property(item.result).status)),
+    )
+  const pendingCandidate =
+    run.plan !== null && run.application.length === 0 && run.mode === "policy"
+  const completion = unknown
+    ? "unknown"
+    : run.execution === "failed" || blocked
+      ? "partial"
+      : pendingCandidate
+        ? "needs_decision"
+        : run.plan === null && requests.length === 0 && run.check.status === "not_started"
+          ? "no_op"
+          : "complete"
+  const readOnly = run.mode === "check" || run.mode === "prepare"
+  const changedDisplay =
+    run.application.some((item) => item.display?.some((file) => file.status === "applied")) ||
+    requests.some((item) => property(item.result).status === "verified_applied")
+  const frozenContinuation =
+    run.auth_scope !== undefined &&
+    (run.plan !== null || run.request_scope !== undefined) &&
+    !readOnly &&
+    run.execution !== "running"
+  const recoverablePartial =
+    frozenContinuation &&
+    completion === "partial" &&
+    (run.error?.code === "SOURCE_WRITE_NOT_APPLIED" ||
+      requests.some((item) => property(item.error).code === "SOURCE_WRITE_NOT_APPLIED") ||
+      run.application.some(
+        (item) =>
+          item.status !== "confirmed" &&
+          item.display !== undefined &&
+          item.display.length > 0 &&
+          item.display.every((file) =>
+            ["applied", "unchanged", "custom_preserved"].includes(file.status),
+          ),
+      ))
+  const resume = {
+    argv: ["ntn-skills", "ctl", "library", "sources", "run-resume", run.run_id],
+    read_only: false,
+    reason:
+      "Continue this exact frozen task. Existing body requests are reconciled, never replayed; original scope and current premises are checked again.",
+  }
+  const unknownBody = run.application.flatMap((item) =>
+    (item.display ?? [])
+      .filter((file) => file.status === "unknown" && file.operation_id !== null)
+      .map((file) => ({ target: item.target_page_id, operation_id: file.operation_id! })),
+  )[0]
+  const next = recoverablePartial
+    ? resume
+    : unknownBody !== undefined
+      ? {
+          argv: [
+            "ntn-skills",
+            "ctl",
+            "operation",
+            "show",
+            unknownBody.operation_id,
+            "--target",
+            unknownBody.target,
+            "--entry",
+            run.entry,
+          ],
+          read_only: true,
+          reason:
+            "Inspect the exact original body operation. The source task has not completed and current equality cannot authorize replay.",
+        }
+      : (run.empty_scope?.next ?? {
+          argv: ["ntn-skills", "ctl", "library", "sources", "run-status", run.run_id],
+          read_only: true,
+          reason: "Inspect this original frozen task; unknown requests must not be recreated.",
+        })
+  return {
+    ...run,
+    outcome: maintenanceResult({
+      completion,
+      verifiedScope:
+        completion === "complete"
+          ? readOnly
+            ? "current_observation"
+            : "original_operation"
+          : "not_verified",
+      authorContent:
+        readOnly || completion === "no_op"
+          ? "none"
+          : changedDisplay
+            ? "confirmed"
+            : unknown
+              ? "unknown"
+              : "none",
+      retainedRemote:
+        readOnly || completion === "no_op"
+          ? "none"
+          : run.application.some((item) => item.status === "confirmed")
+            ? "confirmed"
+            : "unknown",
+      message: pendingCandidate
+        ? "The fixed candidate is prepared. Selection and native display updates still need an explicit decision."
+        : "Check, selection, native display and file-request feedback have separate results; a selected version alone does not prove display completion.",
+    }),
+    next,
+    ...(frozenContinuation &&
+    !pendingCandidate &&
+    completion !== "complete" &&
+    completion !== "no_op"
+      ? { continuation: { ...resume, original_outcomes_may_remain_unknown: unknown } }
+      : {}),
+    ...(pendingCandidate
+      ? {
+          decision: {
+            original: run.decision,
+            argv: [
+              "ntn-skills",
+              "ctl",
+              "library",
+              "sources",
+              "run-resume",
+              run.run_id,
+              "--update-following",
+            ],
+            requires_decision: true,
+            read_only: false,
+            reason:
+              "Authorize the already retained candidate and only its still-following native files.",
+          },
+        }
+      : {}),
+  }
+}
 
 /** Readable native projections need a proven overwrite primitive before auto refresh. */
 export function automaticSourceStops(plan: SourceRefreshPlan) {
@@ -173,7 +362,7 @@ export function reportSourceUpdateRun(runId: string) {
         ),
       )
     return {
-      ...result,
+      ...sourceRunResult(result),
       offline: true,
       remote_writes: 0,
       checkpoint_status:
@@ -233,6 +422,13 @@ export function runSourceUpdate(
     const store = yield* Store
     const runId = `source-run-${yield* (yield* Crypto.Crypto).randomUUIDv4().pipe(Effect.mapError(() => fail("CRYPTO_ERROR", "Cannot identify this source invocation.")))}`
     const mode = input.mode ?? "policy"
+    if (input.updateFollowing && mode !== "policy")
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "Explicit display updates require policy mode; check and prepare remain read-only.",
+        ),
+      )
     const limits = {
       requests: input.budget?.requests ?? 2000,
       bytes: input.budget?.bytes ?? 128 * 1024 * 1024,
@@ -251,6 +447,8 @@ export function runSourceUpdate(
       source_page_id: null,
       source_fingerprint: null,
       mode,
+      ...(input.updateFollowing ? { update_following: true } : {}),
+      auth_scope: yield* authScope,
       scope: input.scope,
       execution: "running",
       phase: "resolving",
@@ -285,7 +483,7 @@ export function runSourceUpdate(
       yield* checkpoint({ library_id: library.library_id })
       const execute = Effect.gen(function* () {
         const definition = yield* readSourceDefinition(library, input.source)
-        const decision = sourceRunDecision(
+        let decision = sourceRunDecision(
           definition,
           yield* Clock.currentTimeMillis,
           mode,
@@ -306,6 +504,20 @@ export function runSourceUpdate(
           return yield* Effect.fail(
             fail("SOURCE_RUN_SCOPE", "Choose an exact enabled Skill bound to this Source."),
           )
+        if (input.dueOnly) {
+          decision = sourceRunDecision(
+            definition,
+            yield* Clock.currentTimeMillis,
+            mode,
+            true,
+            yield* sharedSourceCheckPolicy(
+              library,
+              definition,
+              targets.map((item) => item.skill_id),
+            ),
+          )
+          yield* checkpoint({ decision })
+        }
         if (targets.length === 0) {
           yield* checkpoint({
             empty_scope: {
@@ -386,12 +598,15 @@ export function runSourceUpdate(
                 input.output,
                 new TextEncoder().encode(JSON.stringify(plan, null, 2) + "\n"),
               )
-            if (decision.apply) {
+            if (decision.apply || input.updateFollowing) {
               yield* checkpoint({ phase: "applying" })
               const plans = plan.kind === "source_refresh_batch" ? plan.plans : [plan]
               for (const member of plans) {
                 yield* budget.check
-                const stops = yield* automaticSourceStops(member)
+                const automaticStops = yield* automaticSourceStops(member)
+                const stops = input.updateFollowing
+                  ? automaticStops.filter((stop) => stop.code !== "BODY_REPLACEMENT_UNSAFE")
+                  : automaticStops
                 let item: typeof ApplicationSchema.Type
                 if (stops.length > 0)
                   item = {
@@ -422,6 +637,44 @@ export function runSourceUpdate(
                           details: applied.success,
                         }
                 }
+                if (input.updateFollowing && item.status === "confirmed") {
+                  const currentItem = item
+                  const prefix = [...receipt.application]
+                  const display = yield* updateSourceDisplay({
+                    library,
+                    plan: member,
+                    checkpoint: (display) =>
+                      checkpoint({
+                        application: [...prefix, { ...currentItem, status: "unknown", display }],
+                      }),
+                  }).pipe(Effect.result)
+                  const retainedDisplay = receipt.application.find(
+                    (entry) => entry.plan_id === member.plan_id,
+                  )?.display
+                  item =
+                    display._tag === "Failure"
+                      ? {
+                          ...currentItem,
+                          ...(retainedDisplay === undefined ? {} : { display: retainedDisplay }),
+                          status: unknownCodes.has(display.failure.code) ? "unknown" : "blocked",
+                          details: {
+                            selection: currentItem.details,
+                            display_error: errorDetails(display.failure),
+                          },
+                        }
+                      : {
+                          ...currentItem,
+                          display: display.success,
+                          status: display.success.some(
+                            (file) => file.status === "unknown" || file.status === "pending",
+                          )
+                            ? "unknown"
+                            : display.success.some((file) => file.status === "blocked")
+                              ? "blocked"
+                              : "confirmed",
+                        }
+                  receipt = { ...receipt, application: prefix }
+                }
                 yield* checkpoint({ application: [...receipt.application, item] })
               }
             }
@@ -435,13 +688,27 @@ export function runSourceUpdate(
           library,
           targets.map((item) => item.page_id),
         )
-        yield* checkpoint({ request_results: [{ inventory: requests }] })
-        for (const request of requests.requests) {
+        const requestScope = yield* Effect.forEach(requests.requests, (request) =>
+          readSharedFileRequest({
+            library,
+            skillPageId: request.skill_page_id,
+            path: request.path,
+          }).pipe(Effect.map((observed) => ({ ...request, request_id: observed.request_id }))),
+        )
+        yield* checkpoint({
+          request_scope: requestScope,
+          request_results: [{ inventory: requests }],
+        })
+        for (const request of requestScope) {
           yield* budget.check
           const requestInput = { library, skillPageId: request.skill_page_id, path: request.path }
           const result =
             mode === "policy"
-              ? yield* processSharedFileRequest(requestInput).pipe(Effect.result)
+              ? yield* processSharedFileRequest({
+                  ...requestInput,
+                  reconcileRecorded: true,
+                  expectedRequest: request,
+                }).pipe(Effect.result)
               : yield* readSharedFileRequest(requestInput).pipe(Effect.result)
           yield* checkpoint({
             request_results: [
@@ -464,7 +731,7 @@ export function runSourceUpdate(
                 : [receipt.plan]
           const confirmed = receipt.application.filter((item) => item.status === "confirmed").length
           const application =
-            decision.kind !== "check" || !decision.apply
+            decision.kind !== "check" || (!decision.apply && !input.updateFollowing)
               ? "awaiting_confirmation"
               : confirmed === plans.length
                 ? "applied"
@@ -506,6 +773,295 @@ export function runSourceUpdate(
         error: errorDetails(outcome.failure),
       })
     } else yield* checkpoint({ execution: "completed", phase: "completed" })
-    return receipt
+    return sourceRunResult(receipt)
+  })
+}
+
+/** Continue the same frozen task, without provider discovery or a new candidate. */
+export function resumeSourceUpdateRun(
+  input: {
+    readonly runId: string
+    readonly updateFollowing?: boolean
+    readonly budget?: Partial<RequestBudgetLimits>
+  },
+  resolveLibrary: typeof loadSharedLibrary = loadSharedLibrary,
+) {
+  return Effect.gen(function* () {
+    const store = yield* Store
+    // Report validates the ID while leaving the saved original checkpoint untouched.
+    yield* reportSourceUpdateRun(input.runId)
+    const saved = yield* store.readJson(runKey(input.runId), SourceUpdateRunSchema)
+    if (
+      saved === undefined ||
+      (saved.plan === null && saved.request_scope === undefined) ||
+      saved.mode === "check"
+    )
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_PLAN_UNAVAILABLE",
+          "This original run has no complete fixed candidate or request inventory to continue.",
+        ),
+      )
+    let receipt: SourceUpdateRun = saved
+    if (receipt.auth_scope !== (yield* authScope))
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_RUN_SCOPE",
+          "The original authenticated run journal is unavailable in this scope. Inspect it without inferring an unsent request.",
+        ),
+      )
+    const authorization = receipt.update_following === true || input.updateFollowing === true
+    const original = receipt
+    if (original.mode === "prepare" && !authorization)
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_RUN_DECISION_REQUIRED",
+          "Continuing a read-only prepared candidate requires the explicit --update-following decision.",
+        ),
+      )
+    if (
+      sourceRunResult(original).outcome.task_completed &&
+      !(input.updateFollowing && !original.update_following)
+    )
+      return sourceRunResult(original)
+    if ((original.continuations?.length ?? 0) >= 64)
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_RUN_CONTINUATION_LIMIT",
+          "This task reached its bounded continuation history; preserve it and inspect the original operations.",
+        ),
+      )
+    const library = yield* resolveLibrary(original.entry)
+    const budget = yield* makeRequestBudget(`${original.run_id}:resume`, {
+      requests: input.budget?.requests ?? 2000,
+      bytes: input.budget?.bytes ?? 128 * 1024 * 1024,
+      duration_ms: input.budget?.duration_ms ?? 300_000,
+    })
+    const client = yield* HttpClient.HttpClient
+    const checkpoint = (patch: Partial<SourceUpdateRun>) =>
+      Effect.gen(function* () {
+        receipt = {
+          ...original,
+          ...receipt,
+          ...patch,
+          updated_at: yield* Clock.currentTimeMillis,
+          budget: yield* budget.snapshot,
+        }
+        yield* store.writeJson(runKey(original.run_id), receipt)
+      })
+    const work = Effect.gen(function* () {
+      const definition = yield* readSourceDefinition(
+        library,
+        original.source_page_id ?? original.source,
+      )
+      if (
+        !definition.enabled ||
+        definition.fingerprint !== original.source_fingerprint ||
+        library.library_id !== original.library_id
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_DEFINITION_CHANGED",
+            "The original source scope changed; no retained task may widen or rebind itself.",
+          ),
+        )
+      const plan = original.plan
+      const members =
+        plan === null ? [] : plan.kind === "source_refresh_batch" ? plan.plans : [plan]
+      const applications: SourceUpdateRun["application"][number][] = []
+      yield* checkpoint({
+        execution: "running",
+        phase: "applying",
+        mode: "policy",
+        error: null,
+        update_following: authorization,
+        continuations: [
+          ...(original.continuations ?? []),
+          {
+            updated_at: original.updated_at,
+            execution: original.execution,
+            phase: original.phase,
+            mode: original.mode,
+            error: original.error,
+            application: original.application,
+            request_results: original.request_results,
+            source_feedback: original.source_feedback,
+            budget: original.budget,
+          },
+        ],
+      })
+      for (const member of members) {
+        yield* budget.check
+        const prior = original.application.find((item) => item.plan_id === member.plan_id)
+        if (
+          prior?.status === "confirmed" &&
+          (!authorization || sourceDisplayComplete(member, prior.display))
+        ) {
+          applications.push(prior)
+          continue
+        }
+        const stops = yield* automaticSourceStops(member)
+        const refused = authorization
+          ? stops.filter((stop) => stop.code !== "BODY_REPLACEMENT_UNSAFE")
+          : stops
+        if (refused.length || (!authorization && prior === undefined)) {
+          applications.push({
+            target_page_id: member.target_page_id,
+            plan_id: member.plan_id,
+            status: "blocked",
+            details: {
+              stops: refused,
+              reason:
+                "Explicit bounded display authorization is required for this retained candidate.",
+            },
+          })
+          continue
+        }
+        const selection =
+          prior?.status === "unknown" || prior?.display !== undefined
+            ? yield* reconcileSourceRefresh(library, member).pipe(Effect.result)
+            : yield* applySourceRefresh(library, member, false, false).pipe(Effect.result)
+        if (selection._tag === "Failure") {
+          applications.push({
+            target_page_id: member.target_page_id,
+            plan_id: member.plan_id,
+            status: unknownCodes.has(selection.failure.code) ? "unknown" : "blocked",
+            details: errorDetails(selection.failure),
+            ...(prior?.display === undefined ? {} : { display: prior.display }),
+          })
+          yield* checkpoint({ application: [...applications] })
+          continue
+        }
+        let item: typeof ApplicationSchema.Type = {
+          target_page_id: member.target_page_id,
+          plan_id: member.plan_id,
+          status: "confirmed",
+          details: selection.success,
+        }
+        const selectionVerified =
+          "verified" in selection.success
+            ? selection.success.verified === true
+            : ["applied", "unchanged"].includes(
+                String(property(property(selection.success).selection).status),
+              )
+        if (!selectionVerified) item = { ...item, status: "unknown" }
+        else if (authorization) {
+          const base = item
+          const display = yield* updateSourceDisplay({
+            library,
+            plan: member,
+            prior: prior?.display,
+            checkpoint: (display) =>
+              checkpoint({
+                application: [...applications, { ...base, status: "unknown", display }],
+              }),
+          }).pipe(Effect.result)
+          const retainedDisplay = receipt.application.find(
+            (entry) => entry.plan_id === member.plan_id,
+          )?.display
+          item =
+            display._tag === "Failure"
+              ? {
+                  ...base,
+                  ...(retainedDisplay === undefined ? {} : { display: retainedDisplay }),
+                  status: "unknown",
+                  details: {
+                    selection: base.details,
+                    display_error: errorDetails(display.failure),
+                  },
+                }
+              : {
+                  ...base,
+                  display: display.success,
+                  status: display.success.some(
+                    (file) => file.status === "pending" || file.status === "unknown",
+                  )
+                    ? "unknown"
+                    : display.success.some((file) => file.status === "blocked")
+                      ? "blocked"
+                      : "confirmed",
+                }
+        }
+        applications.push(item)
+        yield* checkpoint({ application: [...applications] })
+      }
+      yield* checkpoint({ application: applications, phase: "requests" })
+      const { listSharedFileRequests, processSharedFileRequest, readSharedFileRequest } =
+        yield* Effect.promise(() => import("./shared-file-request.ts"))
+      let requestScope = original.request_scope
+      if (requestScope === undefined) {
+        const inventory = yield* listSharedFileRequests(
+          library,
+          members.map((member) => member.target_page_id),
+        )
+        requestScope = yield* Effect.forEach(inventory.requests, (request) =>
+          readSharedFileRequest({
+            library,
+            skillPageId: request.skill_page_id,
+            path: request.path,
+          }).pipe(Effect.map((observed) => ({ ...request, request_id: observed.request_id }))),
+        )
+        yield* checkpoint({ request_scope: requestScope, request_results: [{ inventory }] })
+      } else
+        yield* checkpoint({
+          request_results: original.request_results.filter(
+            (item) => property(item).inventory !== undefined,
+          ),
+        })
+      for (const request of requestScope) {
+        yield* budget.check
+        const result = yield* processSharedFileRequest({
+          library,
+          skillPageId: request.skill_page_id,
+          path: request.path,
+          reconcileRecorded: true,
+          expectedRequest: request,
+        }).pipe(Effect.result)
+        yield* checkpoint({
+          request_results: [
+            ...receipt.request_results,
+            {
+              ...request,
+              ...(result._tag === "Success"
+                ? { result: result.success }
+                : { error: errorDetails(result.failure) }),
+            },
+          ],
+        })
+      }
+      if (original.check.status === "completed") {
+        const confirmed = applications.filter((item) => item.status === "confirmed").length
+        const feedback = yield* publishSourceCheck(library, definition, {
+          run_id: original.run_id,
+          checked_at: original.check.checked_at,
+          revision: original.check.revision,
+          committed_at: original.check.committed_at,
+          scope: original.scope,
+          candidate_id: original.plan?.plan_id ?? null,
+          application:
+            confirmed === members.length ? "applied" : confirmed === 0 ? "blocked" : "partial",
+          confirmed,
+          total: members.length,
+          custom_files_preserved: [
+            ...new Set(members.flatMap((member) => member.custom_files_preserved)),
+          ].sort(),
+        })
+        yield* checkpoint({ source_feedback: feedback })
+      }
+      yield* checkpoint({ execution: "completed", phase: "completed" })
+    })
+    const result = yield* withSourceUpdateLock(library, work).pipe(
+      Effect.provideService(RequestBudget, budget),
+      Effect.provideService(HttpClient.HttpClient, requestBudgetHttpClient(client, budget)),
+      Effect.timeout(input.budget?.duration_ms ?? 300_000),
+      Effect.catchTag("TimeoutError", () => Effect.fail(budget.exhaust("duration"))),
+      Effect.result,
+    )
+    if (result._tag === "Failure")
+      yield* checkpoint({
+        execution: (yield* budget.snapshot).exhausted !== null ? "paused" : "failed",
+        error: errorDetails(result.failure),
+      })
+    return sourceRunResult(receipt)
   })
 }

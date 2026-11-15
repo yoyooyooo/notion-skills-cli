@@ -39,6 +39,7 @@ import {
 } from "./shared-body-write-model.ts"
 import { sha256 } from "./store.ts"
 import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
+import { describeNotionReadbackMismatch } from "./shared-notion-readback-diagnostic.ts"
 import { completedSharedBodyWriteReview } from "./shared-body-write-review.ts"
 import { completedSharedBodyCurrentAcceptance } from "./shared-body-current-acceptance.ts"
 import { readSharedFileSourceContext } from "./shared-file-source-context.ts"
@@ -860,6 +861,16 @@ export function executeSharedBodyWrite<R = never>(
           fail(
             "SHARED_BODY_WRITE_MISMATCH",
             "The whole response differs from the exact frozen candidate; preserve all unmatched text.",
+            {
+              readback: {
+                ...describeNotionReadbackMismatch({
+                  expected: plan.candidate.markdown,
+                  observed: body.markdown,
+                  projectionVersion: plan.input_projection?.version,
+                }),
+                original_observation_preserved: true,
+              },
+            },
           ),
         )
       const current = yield* withNotionRequestAttribution(verifyCurrent(library, plan, false), {
@@ -881,6 +892,7 @@ export function executeSharedBodyWrite<R = never>(
             {
               cause_code: exact.failure.code,
               observation_id: bodyWriteObservationId(plan.operation_id),
+              ...property(exact.failure.details),
             },
           ),
           plan,

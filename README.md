@@ -73,6 +73,8 @@ To produce a package yourself, follow [the contributor setup and build instructi
 
 For first use with an authorized empty parent, follow the [Agent setup reference](skills/notion/ntn-skills-maintain/references/setup.md). The CLI creates and validates the four-table library; users keep one entry ID.
 
+Initialization reports remote readiness, existing local aliases and unobserved Pi delivery separately. Its `next.argv` uses the exact entry. In Pi, `/context-broker connect SOURCE ENTRY --config /absolute/config.json` previews an explicit source connection and returns the fingerprint-bound apply command. Reload with that same configuration and read the selected Skill before treating setup as complete; see the setup reference for the full sequence.
+
 ## Quick start
 
 ### 1. Connect Notion

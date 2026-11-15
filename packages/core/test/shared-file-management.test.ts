@@ -413,6 +413,16 @@ async function failedNativeAdd(prepare?: (f: ReturnType<typeof fixture>) => void
   )
   expect(failure.code).toBe("SHARED_FILE_MANAGEMENT_REVIEW_REQUIRED")
   const page = String(property(failure.details).page_id)
+  const diagnostic = property(property(failure.details).readback)
+  expect(diagnostic.original_observation_preserved).toBe(true)
+  const retained = await f.run(
+    Store.pipe(
+      Effect.flatMap((store) => store.readBytes(String(property(diagnostic.observation).key))),
+    ),
+  )
+  const observation = JSON.parse(new TextDecoder().decode(retained))
+  expect(observation.operation_id).toBe(plan.operation_id)
+  expect(observation.raw_observed_markdown).toBe(plan.content.markdown + "\nUnaccepted body")
   f.base.bodies.set(page, plan.content.markdown)
   f.clear()
   const request = {

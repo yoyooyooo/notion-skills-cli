@@ -3,6 +3,7 @@ import { databaseId as resolveDatabaseId } from "./catalog.ts"
 import { validateSnapshotManifest } from "./cache.ts"
 import type { VerifiedManifest } from "./consumer-model.ts"
 import { aliasFor, entrypointFor, fail, property, SkillsError, type Snapshot } from "./model.ts"
+import { ImmutableByteReadPolicy } from "./shared-immutable-read.ts"
 import {
   withConsumptionEffects,
   type ConsumptionObservationOptions,
@@ -423,6 +424,15 @@ export function readResources(value: unknown, options: ResourceReadOptions = {})
       const work = checked(() => decodeResourceReadInput(value)).pipe(
         Effect.flatMap((input) =>
           readReady(input, options).pipe(
+            Effect.provideService(
+              ImmutableByteReadPolicy,
+              JSON.stringify([
+                "resources",
+                budgetFor(input),
+                options.offline === true,
+                options.readOnly === true,
+              ]),
+            ),
             Effect.timeout(budgetFor(input).timeBudgetMs),
             Effect.mapError((error) =>
               error instanceof SkillsError

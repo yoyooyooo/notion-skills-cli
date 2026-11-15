@@ -91,6 +91,38 @@ export function auditGrowthDiagnostic(run: AuditRun) {
   }
   const crossOwnerGroups = [...byHash.values()].filter((owners) => owners.size > 1).length
   const bodyFacts = headers.filter((row) => row.kind === "object")
+  const verifiedBytes = new Map<string, number | null>()
+  for (const file of items.flatMap((item) => item.tree)) {
+    if (file.sha256 === null || file.bytes === null || file.byte_status !== "verified") continue
+    const previous = verifiedBytes.get(file.sha256)
+    verifiedBytes.set(
+      file.sha256,
+      previous === undefined || previous === file.bytes ? file.bytes : null,
+    )
+  }
+  for (const object of [...items.flatMap((item) => item.history), ...run.graph_history]) {
+    if (object.sha256 === null || object.bytes === null || object.remote_status !== "verified")
+      continue
+    const previous = verifiedBytes.get(object.sha256)
+    verifiedBytes.set(
+      object.sha256,
+      previous === undefined || previous === object.bytes ? object.bytes : null,
+    )
+  }
+  const protection = headers.map((row) => ({
+    ...row,
+    bytes: null,
+    byte_status: "unobserved_header_payload" as const,
+    protected_by: [
+      ...(row.kind === "snapshot" ? ["historical_snapshot"] : []),
+      ...(row.kind === "operation" || row.kind === "plan"
+        ? ["original_operation_or_pending_intent"]
+        : []),
+      ...(row.owners.length > 1 ? ["multiple_owners"] : []),
+      "private_pins_and_external_sessions_unobserved",
+    ],
+    reclaimable: false,
+  }))
   const bounded = <A>(values: readonly A[]) => ({
     count: values.length,
     entries: values.slice(0, 100),
@@ -100,6 +132,30 @@ export function auditGrowthDiagnostic(run: AuditRun) {
     depth: run.depth,
     payload_policy: "headers_only" as const,
     live_library_state: "not_claimed" as const,
+    coverage: {
+      scope: run.inventory.scope ?? { kind: "unobserved" as const },
+      completed_tables: run.inventory.complete,
+      completed_census_tables: run.census.complete,
+      items: items.map((item) => ({
+        skill_id: item.skill_id,
+        owner_page_id: item.page_id,
+        coverage: item.coverage,
+      })),
+      permission_limited: items.some((item) => item.coverage === "permission_limited"),
+    },
+    retained_records: bounded(protection),
+    sizes: {
+      unique_verified_content_bytes: [...verifiedBytes.values()].reduce<number>(
+        (sum, bytes) => sum + (bytes ?? 0),
+        0,
+      ),
+      unique_verified_hashes: [...verifiedBytes.values()].filter((bytes) => bytes !== null).length,
+      conflicting_hash_sizes: [...verifiedBytes.values()].filter((bytes) => bytes === null).length,
+      header_payload_bytes: null,
+      remote_physical_bytes: null,
+      total_library_bytes: null,
+      basis: "retained_verified_content_only; unknown_is_not_zero" as const,
+    },
     active_files: bounded(active_files),
     tombstones: bounded(tombstones),
     original_operations: bounded(operations),

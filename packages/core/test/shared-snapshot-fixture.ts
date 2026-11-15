@@ -216,7 +216,13 @@ export function sharedSnapshotFixture(
     retireKeys: (keys) =>
       Effect.sync(() =>
         keys.map((key) => {
-          if (!key.startsWith("operations/shared-observation-pending/"))
+          if (
+            ![
+              "operations/shared-observation-pending/",
+              "operations/shared-profile-pending/",
+              "cache/views/",
+            ].some((prefix) => key.startsWith(prefix))
+          )
             throw new Error("Unexpected fixture retirement")
           json.delete(key)
           return { key, retention_path: `retired/${key}` }

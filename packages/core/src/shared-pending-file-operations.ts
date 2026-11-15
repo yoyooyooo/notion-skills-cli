@@ -30,6 +30,9 @@ import {
   SharedSkillApplyPlanSchema,
   validateSharedSkillApplyPlan,
   type SharedSkillApplyPlan,
+  SharedApplyBodyBindingSchema,
+  validateSharedApplyBodyBinding,
+  type SharedApplyBodyBinding,
 } from "./shared-skill-apply-model.ts"
 import { sha256, Store } from "./store.ts"
 import {
@@ -50,6 +53,7 @@ export type SharedPendingFilePlan =
   | SharedMetadataWritePlan
   | SharedFileManagementPlan
   | SharedSkillApplyPlan
+  | SharedApplyBodyBinding
   | SharedNativeAdoptionPlan
   | SharedResourceAuthoringPlan
 export type SharedPendingFileScope = {
@@ -73,6 +77,7 @@ const PendingFileOperationSchema = Schema.Struct({
     SharedMetadataWritePlanSchema,
     SharedFileManagementPlanSchema,
     SharedSkillApplyPlanSchema,
+    SharedApplyBodyBindingSchema,
     SharedNativeAdoptionPlanSchema,
     SharedResourceAuthoringPlanSchema,
   ]),
@@ -126,6 +131,10 @@ function validatePlan(plan: SharedPendingFilePlan) {
       )
     case "skill_apply":
       return validateSharedSkillApplyPlan(plan).pipe(
+        Effect.map((value): SharedPendingFilePlan => value),
+      )
+    case "apply_body_binding":
+      return validateSharedApplyBodyBinding(plan).pipe(
         Effect.map((value): SharedPendingFilePlan => value),
       )
   }

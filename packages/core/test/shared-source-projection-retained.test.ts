@@ -72,6 +72,53 @@ function retainedFixture(
 }
 
 describe("retained initial source projection in the original create kernel", () => {
+  test("explicit retained admission keeps a complete public Git member without an anonymous retrieval proof", async () => {
+    const f = fixture()
+    const plan = await f.run(
+      Effect.gen(function* () {
+        return yield* prepareSharedSourceProjection({
+          library,
+          definition: yield* readSourceDefinition(library, f.source.id),
+          acquired: f.snapshot,
+          member: "skills/demo",
+          skillId: "explicit-retained-public-member",
+          enabled: true,
+          storage: "retained",
+        })
+      }),
+    )
+    expect(f.providerReads()).toBe(0)
+    expect(plan.source_projection?.version).toBe(2)
+    const created = await f.run(executeSharedCreate(library, { plan, mode: "create" }))
+    expect(created.expected_source_projection?.source_id).toMatch(/^bundle-[a-f0-9]{64}$/u)
+    expect(created.verified).toBe(true)
+    f.base.objects.clear()
+    f.base.json.clear()
+    const cold = await f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: created.skill_page_id,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+          readOnly: true,
+        })
+      }),
+    )
+    expect(cold.files.map((file) => file.path)).toEqual(
+      f.snapshot.members[0]!.portable.files.map((file) => file.path),
+    )
+    for (const original of f.snapshot.members[0]!.portable.files.filter(
+      (file) => file.path !== "SKILL.md",
+    )) {
+      const actual = cold.files.find((file) => file.path === original.path)!
+      expect(actual.mode).toBe(original.mode)
+      expect(f.base.objects.get(`objects/${actual.sha256}`)).toEqual(original.bytes)
+    }
+    expect(f.providerReads()).toBe(0)
+  })
+
   for (const adapter of adapters)
     test(`${adapter.type} import accepts reading-page formatting while cold consumers keep the retained source`, async () => {
       const f = retainedFixture(adapter, {
