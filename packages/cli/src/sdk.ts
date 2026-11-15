@@ -1,4 +1,17 @@
 import { resolve } from "node:path"
+import { loadSharedLibrary } from "../../core/src/shared-library.ts"
+import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
+import {
+  reviewSourceOnboarding as coreReviewSources,
+  prepareSourceOnboarding as corePrepareSourceOnboarding,
+  executeSourceOnboarding as coreExecuteSourceOnboarding,
+} from "../../core/src/shared-source-onboarding.ts"
+import type {
+  SourceOnboardingScope,
+  SourceOnboardingBindingDecision,
+} from "../../core/src/shared-source-onboarding-model.ts"
+import type { RequestBudgetLimits } from "../../core/src/request-budget.ts"
+import type { SourceMemberStorage } from "../../core/src/shared-source-member.ts"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import { version } from "../package.json"
 import {
@@ -94,6 +107,113 @@ export interface SdkOptions {
   readonly metrics?: boolean
   /** Called once after cleanup; unacquired transport has zero attempts, absent acquired metrics are null. */
   readonly onRequestMetrics?: (snapshot: RequestMetricsSnapshot | null) => void
+}
+
+export type {
+  SourceOnboardingScope,
+  SourceOnboardingReport,
+  SourceOnboardingPlan,
+  SourceOnboardingBindingDecision,
+} from "../../core/src/shared-source-onboarding-model.ts"
+export type SourceManagementOptions = SdkOptions & { readonly budget?: RequestBudgetLimits }
+const sourceManagementBudget = (options: SourceManagementOptions): RequestBudgetLimits =>
+  options.budget ?? { requests: 2000, bytes: 134217728, duration_ms: 300000 }
+
+/** Direct Core management, not a CLI subprocess. All observations remain remotely read-only. */
+export function reviewSources(
+  input: {
+    readonly entry: string
+    readonly scope: SourceOnboardingScope
+    readonly sourceTimeoutMs?: number
+  },
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        Effect.gen(function* () {
+          return yield* coreReviewSources(
+            yield* loadSharedLibrary(input.entry),
+            input.scope,
+            undefined,
+            { sourceTimeoutMs: input.sourceTimeoutMs },
+          )
+        }),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+
+/** The caller must retain the returned full plan before an explicit apply. */
+export function prepareSourceOnboarding(
+  input: {
+    readonly entry: string
+    readonly scope: SourceOnboardingScope
+    readonly storage?: SourceMemberStorage
+    readonly bindings?: readonly SourceOnboardingBindingDecision[]
+    readonly sourceTimeoutMs?: number
+  },
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        Effect.gen(function* () {
+          return yield* corePrepareSourceOnboarding(
+            yield* loadSharedLibrary(input.entry),
+            input.scope,
+            {
+              storage: input.storage,
+              sourceTimeoutMs: input.sourceTimeoutMs,
+              bindings: input.bindings,
+            },
+          )
+        }),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+
+export function applySourceOnboarding(
+  input: { readonly entry: string; readonly plan: unknown; readonly dryRun?: boolean },
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        Effect.gen(function* () {
+          return yield* coreExecuteSourceOnboarding(
+            yield* loadSharedLibrary(input.entry),
+            input.plan,
+            input.dryRun ? "dry-run" : "apply",
+          )
+        }),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+
+export function reconcileSourceOnboarding(
+  input: { readonly entry: string; readonly plan: unknown },
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        Effect.gen(function* () {
+          return yield* coreExecuteSourceOnboarding(
+            yield* loadSharedLibrary(input.entry),
+            input.plan,
+            "reconcile",
+          )
+        }),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
 }
 
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "onEffects">

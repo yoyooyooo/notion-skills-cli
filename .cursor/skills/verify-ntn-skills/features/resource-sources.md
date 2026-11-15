@@ -2,6 +2,22 @@
 
 这里定义 NR11/NR14 的公开观察点。执行结果、真实页面、安装包 hash 和原始请求账本保存在 checkout 外；本文不把规程当成通过记录。
 
+## SRC 来源接手（AH-1064）
+
+`sources review --source SOURCE | --all` 使用完整正向 Skills 元数据与配置范围内的上游成员；
+`onboard --output PLAN` 冻结同核动作，`onboard-apply` / `onboard-reconcile` 复用原创建与绑定 journal。
+SDK 的 `reviewSources`、`prepareSourceOnboarding`、`applySourceOnboarding`、`reconcileSourceOnboarding`
+必须来自同包且直接进入 Core。原逐成员命令和历史计划不改解释。
+
+`shared-source-onboarding.test.ts` 覆盖 source-only→disabled 新建、重复应用零新增、分页后同名冲突、
+固定来源缺关系保原页、custom/启用状态/选定 pin 保留、来源漂移、篡改计划、unknown 创建和绑定不重放。
+新增原生写仅由产品 producer 产生，观察器不能插入成功 ACK 或修复业务行。当前关联正确和原写已确认分开。
+`library-source-members-http.test.ts` 的既有真实 Git/Node/SQLite 入口验证新 CLI 与 SDK 交接。
+实库先用独立产物对 schpet/linear-cli 预览→应用→原操作核对，再以相同能力处理其他安全候选；
+只读报告、应用原件、旧内容/关系哨兵和未覆盖来源分别保存。测试规程不代表实库已完成。
+
+## 既有来源与恢复矩阵
+
 | Case | 公开入口和合同 | 必须失败的反例 |
 | --- | --- | --- |
 | NR11-schema | `ctl library init` / `sources init` 的 Files Origin 按实际 Notion rollup 合同核对：外层属性 ID 保留 URL 编码，嵌套 relation/rollup ID 与其一次解码后的值相等，function 必须为 `show_unique`；原 ACK 后读回误差沿同一 journal 补本地 receipt，不重写已创建字段 | 真正不同的关系、目标属性、function 或重复解码不得通过；仅当前值相等但原 ACK 缺失仍 unknown，不追加完成 descriptor |

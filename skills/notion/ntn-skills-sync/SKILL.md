@@ -30,7 +30,25 @@ ntn-skills ctl library sources apply ./refresh.json --entry LIBRARY_ENTRY
 
 `put --input DEFINITION --expect FINGERPRINT` changes one full configuration; use the fingerprint from `show` or `absent` for a new stable ID. `bind SOURCE_ID --target SKILL_PAGE_ID --member EXACT_MEMBER --expect-origin CURRENT_SOURCE_PAGE_OR_none --entry LIBRARY_ENTRY` changes only association. Providers include generic Git, registry and explicitly mapped Linear issue/document content. Auth stays on the machine. Shared contributor sets require explicit composition, not a single-source overwrite. See [source decisions](references/synchronization.md#active-sources-definitions) before authoring configurations.
 
-A new Source with zero bound members is a normal first-use state. `run --all-bound` reports `empty_scope` and a read-only next action; it never silently imports or enables every discovered Skill. Use check and explicit admission for the first member. Fixed-version selection and an editable Notion page update are separate effects; follow the [synchronization reference](references/synchronization.md#the-first-member-of-a-new-source).
+A new Source with zero bound members is a normal first-use state. `run --all-bound` reports `empty_scope`; it never silently imports or enables discovered Skills. To take over a manually added Source or fill missing members, use the handoff below. Fixed-version selection and an editable Notion page update remain separate effects; follow the [synchronization reference](references/synchronization.md#the-first-member-of-a-new-source).
+
+## Take over a Source and fill member gaps
+
+```bash
+ntn-skills ctl library sources review --source SOURCE_ID --entry LIBRARY_ENTRY
+ntn-skills ctl library sources onboard --source SOURCE_ID --entry LIBRARY_ENTRY --output ./onboarding.json
+ntn-skills ctl library sources onboard-apply ./onboarding.json --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library sources onboard-apply ./onboarding.json --entry LIBRARY_ENTRY
+ntn-skills ctl library sources onboard-reconcile ./onboarding.json --entry LIBRARY_ENTRY
+```
+
+Use `--all` instead of `--source` only for an explicitly requested library-wide review or onboarding. Review includes disabled Skills and complete forward identities, not a filtered View or the first 25 reverse relations. `registered` proves a current association, not full content health or a past write acknowledgement. A Source's `ready` label does not mean all its members exist.
+
+`onboard` freezes the configured provider revision and full child creation plans. It generates stable Skill IDs; do not invent IDs, pre-create pages or patch relations by hand. New Skills remain disabled. A missing binding can reuse an existing page only when its selected immutable Git source proves the repository/member identity. Same-name native or retained content remains `existing_identity_needs_review`, not a new duplicate or automatic rebind. Preserve the returned blocked members and original operation IDs.
+
+Follow the exact saved plan and returned `next.argv`. Apply delegates to the original create/bind journals; it never updates existing bodies, user Members/Requires or selected versions. Reconcile is read-only and current equality never supplies a lost ACK. A partial result can contain verified actions and unresolved members; keep both. Do not regenerate a plan to evade an unknown operation. After applying, use a fresh review for current coverage and an explicit authoring read for disabled content. The existing `sources run` workflow takes over subsequent authorized updates.
+
+For a reviewed `existing_identity_needs_review` candidate, a single-Source onboarding can receive `--bind MEMBER=PAGE_ID` (repeat for exact candidates). This is an explicit **new association decision**, not historical provenance inferred from a name. Only the reviewed same-library, uniquely identified, currently unbound target qualifies; unknown operations and foreign owners remain blocked. The plan labels this proof `explicit_binding_decision` and preserves existing custom content and Selected Version. Never use a copied page or new duplicate to evade the decision.
 
 ## Source names and repository-level management
 

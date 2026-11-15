@@ -139,6 +139,69 @@ custom 即使字节恰好等于上游也保持 custom，不通过此标志解除
 
 ### 显式接纳和成员变化
 
+#### 从手工追加的 Source 接手
+
+在 Sources 中登记一个有效的来源配置，只建立发现范围，不会自动建立 Skills。
+`Status=ready` 不代表所有成员均已入库。使用同一 CLI/SDK 纳管入口完成缺口对账，
+不用手写稳定 Skill ID、预分配页面或直接补关系：
+
+```bash
+ntn-skills ctl library sources review --source SOURCE --entry ENTRY
+ntn-skills ctl library sources onboard --source SOURCE --entry ENTRY --output ./onboarding.json
+ntn-skills ctl library sources onboard-apply ./onboarding.json --entry ENTRY --dry-run
+ntn-skills ctl library sources onboard-apply ./onboarding.json --entry ENTRY
+ntn-skills ctl library sources onboard-reconcile ./onboarding.json --entry ENTRY
+```
+
+明确全库范围时用 `--all` 替换 `--source SOURCE`。每个被选来源只发现一次，准备时各成员
+复用该完整观察。Skills 正向元数据完整分页，包括禁用条目；不依赖 View 或 Sources
+反向关系的内联数量。`registered` 只表示已登记的当前身份和关联，正文健康仍为未观察。
+重复成员、同名不同身份、未决创建、来源不可访问和不完整输入分别报告，不作为空库。
+
+`onboard` 输出完整冻结计划与逐项摘要。缺失成员通过原创建事务接纳，默认保持禁用；
+已有页面只有在其不可变固定 Git 来源能证明相同仓库和 member 时，才生成补绑定动作。
+名字、字节相等或描述文字不足以取得身份。原生/保留型内容没有来源证明时保留待审阅，
+不会新建一个同名替代品。原定制正文、历史 pin、Members/Requires 和启用状态保持不变。
+
+审阅一个确切的已有页面并决定建立新的发现关联时，单 Source 的 `onboard` 可重复传入
+`--bind MEMBER=PAGE_ID`。SDK 对应 `bindings: [{member, target}]`。目标必须是本次报告中的
+`existing_identity_needs_review` 候选，具有完整唯一身份且尚未绑定其他来源；未知操作、
+缺失成员和不完整身份仍不能覆盖。计划明确标记 `explicit_binding_decision`，表示本次
+新的关联决定，不伪造历史上游归属。应用只补 Origin/Source Member，原自定义内容和
+Selected Version 不变；后续更新仍须按原 custom/following 规则单独授权。
+
+应用使用操作级 journal、写前来源指纹和目标前像检查；未宣称多页事务或跨机器锁。
+同一主库的不同机器仍须安排单一管理写入者。`onboard-reconcile` 不发现新版本，也不
+重发原写。部分完成保留每个子操作和原失败，执行结果的完成范围仅为冻结动作；最终
+成员覆盖通过新的 `review` 核对。命令使用现有请求/字节/时长预算，返回实际用量；
+Git 子进程字节未测量，不算零。含受阻项的结果退出 3，原计划和所有成功项仍保留。
+
+`--source-timeout-ms` 限制每个来源的发现时间：单个 Source 默认 120 秒，`--all` 默认
+30 秒。慢仓库、请求失败和总预算内未观察的来源分别留在部分报告中，不记为零成员。
+失败成员保留原错误的 code/message/details；零可执行动作的计划不会建议直接应用。
+这些限额限制一次调用，不表示该仓库永久不可用或完整文件验证可被跳过。
+
+SDK 的四个 Promise 入口直接调用同一 Core 和运行环境，不启动 CLI 子进程：
+
+```ts
+import { reviewSources, prepareSourceOnboarding, applySourceOnboarding,
+  reconcileSourceOnboarding } from "ntn-skills/sdk"
+import { writeFile } from "node:fs/promises"
+
+const input = { entry, scope: { kind: "source" as const, source } }
+const review = await reviewSources(input)
+const { result: plan, budget } = await prepareSourceOnboarding(input)
+await writeFile("onboarding.json", JSON.stringify(plan), { flag: "wx", mode: 0o600 })
+await applySourceOnboarding({ entry, plan, dryRun: true })
+// Only after reviewing the exact actions:
+await applySourceOnboarding({ entry, plan })
+await reconcileSourceOnboarding({ entry, plan })
+```
+
+各入口的第二参数沿用 SDK 的 `env`、`cwd`、`signal`、请求 metrics，并可设置 `budget`。
+计划含原始输入，必须存入自有私密目录；不上传到公共仓库。下方逐成员 `admit` 仍用于
+明确的单成员、高级来源或已有原操作处理；一般来源接手无需由 Agent 手工编排它们。
+
 ```bash
 ntn-skills ctl library sources admit SOURCE --entry ENTRY --member EXACT_MEMBER \
   --skill-id NEW_STABLE_ID --output ./admission.json

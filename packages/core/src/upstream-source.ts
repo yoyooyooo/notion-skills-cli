@@ -237,7 +237,12 @@ function git(
   repo: string,
   args: readonly string[],
   limit = 8 * 1024 * 1024,
-  observe: { readonly start?: () => void; readonly stdoutBytes?: (bytes: number) => void } = {},
+  observe: {
+    readonly start?: () => void
+    readonly stdoutBytes?: (bytes: number) => void
+    readonly stdin?: Uint8Array
+    readonly noLazyFetch?: boolean
+  } = {},
 ) {
   return Effect.scoped(
     Effect.gen(function* () {
@@ -274,7 +279,7 @@ function git(
             ...args,
           ],
           {
-            stdin: "ignore",
+            stdin: observe.stdin === undefined ? "ignore" : Stream.make(observe.stdin),
             stdout: "pipe",
             stderr: "pipe",
             detached: false,
@@ -294,6 +299,7 @@ function git(
               GIT_TRACE2_EVENT: "0",
               GIT_TRACE2_PERF: "0",
               GIT_NO_REPLACE_OBJECTS: "1",
+              GIT_NO_LAZY_FETCH: observe.noLazyFetch ? "1" : undefined,
               GIT_DIR: undefined,
               GIT_WORK_TREE: undefined,
               GIT_INDEX_FILE: undefined,
@@ -844,6 +850,95 @@ function gitSnapshot(
         })
       })
       const sizes = new Map<string, number>()
+      // Probe only this exact selected object set locally. In a partial clone,
+      // cat-file -s per file would otherwise start one network fetch per blob.
+      const localBlobSizes = (oids: readonly string[]) =>
+        Effect.gen(function* () {
+          if (oids.length === 0) return [] as string[]
+          const bytes = yield* git(
+            repo,
+            ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+            oids.length * 128,
+            { stdin: encoder.encode(oids.join("\n") + "\n"), noLazyFetch: true },
+          )
+          return yield* attempt(() => {
+            const output = decoder.decode(bytes)
+            const lines = output.endsWith("\n") ? output.slice(0, -1).split("\n") : []
+            if (lines.length !== oids.length)
+              throw sourceError("INVALID_TREE", "Selected Git object metadata is incomplete.")
+            const missing: string[] = []
+            for (let at = 0; at < oids.length; at++) {
+              const oid = oids[at]!,
+                line = lines[at]!
+              if (line === `${oid} missing`) {
+                missing.push(oid)
+                continue
+              }
+              const match = /^([a-f0-9]{40,64}) blob (\d+)$/u.exec(line)
+              if (match?.[1] !== oid || !Number.isSafeInteger(Number(match[2])))
+                throw sourceError(
+                  "INVALID_TREE",
+                  "Selected Git metadata differs from its exact blob identity.",
+                )
+              sizes.set(oid, Number(match[2]))
+            }
+            return missing
+          })
+        })
+      const prefetch = (selected: readonly (typeof entries)[number][]) =>
+        Effect.gen(function* () {
+          yield* attempt(() => {
+            if (selected.length > MAX_FILES)
+              throw sourceError("LIMIT", "Selected source exceeds 10,000 files.")
+            for (const entry of selected) {
+              if (entry.type === "commit" || entry.mode === "160000")
+                throw sourceError(
+                  "GIT_LINK_SUBMODULE",
+                  "Git resources cannot contain submodules.",
+                  { path: entry.path },
+                )
+              if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
+                throw sourceError(
+                  "UNSAFE_FILE",
+                  "Selected Git resource is not a regular file or contained link.",
+                  { path: entry.path, mode: entry.mode },
+                )
+            }
+          })
+          const oids = [...new Set(selected.map((entry) => entry.oid))].filter(
+            (oid) => !sizes.has(oid),
+          )
+          const missing = yield* localBlobSizes(oids)
+          // Bound argv and server requests; never replace this set with a whole
+          // repository fetch. Ref and tree were frozen before this acquisition.
+          for (let at = 0; at < missing.length; at += 128) {
+            const batch = missing.slice(at, at + 128)
+            const started = performance.now()
+            yield* git(repo, [
+              "fetch",
+              "--filter=blob:none",
+              "--no-tags",
+              "--no-write-fetch-head",
+              "--recurse-submodules=no",
+              "--",
+              "origin",
+              ...batch,
+            ]).pipe(
+              Effect.onExit(() =>
+                Effect.sync(() => {
+                  fetchMilliseconds += performance.now() - started
+                }),
+              ),
+            )
+            if ((yield* localBlobSizes(batch)).length > 0)
+              return yield* Effect.fail(
+                sourceError(
+                  "INVALID_TREE",
+                  "The exact selected Git blobs remain unavailable after their batch fetch.",
+                ),
+              )
+          }
+        })
       const sizeOf = (entry: (typeof entries)[number]) =>
         Effect.gen(function* () {
           if (entry.type !== "blob" || !["100644", "100755", "120000"].includes(entry.mode))
@@ -881,6 +976,7 @@ function gitSnapshot(
           entries.map((entry) => entry.path),
         )
       })
+      yield* prefetch(entries.filter((entry) => keys.some((key) => under(entry.path, key))))
       let totalBytes = 0
       let totalFiles = 0
       let materializedBytes = 0
@@ -981,6 +1077,11 @@ function gitSnapshot(
       const unavailable: { reason: "outside_source_root"; from_path: string; href: string }[] = []
       const externalTargets = yield* attempt(() =>
         sourceExternalResourceTargets(members, entries, (entry) => unavailable.push(entry)),
+      )
+      yield* prefetch(
+        externalTargets.map(
+          (target) => entries.find((entry) => entry.path === target.source_path)!,
+        ),
       )
       for (const target of externalTargets) {
         const entry = yield* sizeOf(entries.find((entry) => entry.path === target.source_path)!)

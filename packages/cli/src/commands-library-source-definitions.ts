@@ -1,4 +1,10 @@
 import { sourceRecoveryCommand } from "./commands-library-source-recovery.ts"
+import {
+  sourceReviewCommand,
+  sourceOnboardCommand,
+  sourceOnboardApplyCommand,
+  sourceOnboardReconcileCommand,
+} from "./commands-library-source-onboarding.ts"
 import { databaseId } from "../../core/src/catalog.ts"
 import {
   sourceRenameCommand,
@@ -436,6 +442,10 @@ export const librarySourceDefinitionsCommand = defineCommand("sources").pipe(
     sourceConsolidateCommand,
     bind,
     check,
+    sourceReviewCommand,
+    sourceOnboardCommand,
+    sourceOnboardApplyCommand,
+    sourceOnboardReconcileCommand,
     fetch,
     prepare,
     apply,

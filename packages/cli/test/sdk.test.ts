@@ -46,6 +46,25 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
+  test("Source handoff methods share the SDK pre-abort boundary without acquiring transport", async () => {
+    const options = { env: {}, signal: AbortSignal.abort() }
+    const reports: unknown[] = []
+    const measured = { ...options, onRequestMetrics: (value: unknown) => reports.push(value) }
+    const source = { entry: input.targets[0]!, scope: { kind: "all" as const } }
+    await expect(publicSdk.reviewSources(source, measured)).rejects.toMatchObject({
+      code: "CANCELLED",
+    })
+    await expect(publicSdk.prepareSourceOnboarding(source, measured)).rejects.toMatchObject({
+      code: "CANCELLED",
+    })
+    await expect(
+      publicSdk.applySourceOnboarding({ entry: source.entry, plan: {} }, measured),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(
+      publicSdk.reconcileSourceOnboarding({ entry: source.entry, plan: {} }, measured),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    expectUnstartedMetrics(reports, 4)
+  })
   test("name resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
     expect(() =>
       resolveCatalogReference("skill://missing/SKILL.md", {

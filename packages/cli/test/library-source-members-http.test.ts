@@ -5,7 +5,8 @@ import { createHash } from "node:crypto"
 import { spawn, execFileSync } from "node:child_process"
 import { createServer } from "node:http"
 import { mkdtemp, mkdir, readFile, writeFile, rename, realpath } from "node:fs/promises"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { tmpdir } from "node:os"
 import { Notion } from "../../core/src/notion.ts"
 import { property, text } from "../../core/src/model.ts"
@@ -229,8 +230,9 @@ test("installed source member commands admit, explicitly remap and retain real G
   }
   for (const [key, value] of Object.entries(sourceDefinitionPropertiesFor(library, definition)))
     f.source.properties[key] = { ...property(f.source.properties[key]), ...property(value) }
-  const node = Bun.which("node")
-  if (node === null) throw new Error("Node is required")
+  const nodeShim = Bun.which("node")
+  if (nodeShim === null) throw new Error("Node is required")
+  const node = execFileSync(nodeShim, ["--print", "process.execPath"], { encoding: "utf8" }).trim()
   const env = {
     ...gitEnv,
     HOME: join(directory, "home"),
@@ -243,6 +245,7 @@ test("installed source member commands admit, explicitly remap and retain real G
     NTN_SKILLS_DATA_HOME: join(directory, "data"),
     NTN_SKILLS_SCHEDULER_ROOT: join(directory, "scheduler"),
     NTN_SKILLS_NOTION_INTERVAL_MS: "100",
+    NTN_SKILLS_DEV_ROOT: undefined,
   }
   const invoke = async (args: string[], exits = [0], cold = false) => {
     const child = Bun.spawn([node, executable, ...args], {
@@ -439,6 +442,88 @@ test("installed source member commands admit, explicitly remap and retain real G
     expect((await invoke([...sources, "member-reconcile", retain, ...entry])).verified).toBe(true)
     expect(writes()).toHaveLength(beforeCold)
     expect(gitRequests).toBe(beforeColdGit)
+    const legacyLateReadWrites = writes().length - beforeCold
+
+    // Reuse the real Git + Node/SQLite harness for the new public handoff. The
+    // originally unselected base member is still absent; no observer seeds it.
+    const onboard = join(directory, "onboarding.json")
+    const reviewed = await invoke([...sources, "review", "--source", f.source.id, ...entry])
+    expect(reviewed.remote_writes).toBe(0)
+    expect(reviewed.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          members: [expect.objectContaining({ kind: "admit", member_key: "skills/base" })],
+        }),
+      ]),
+    )
+    const prepared = await invoke([
+      ...sources,
+      "onboard",
+      "--source",
+      f.source.id,
+      ...entry,
+      "--output",
+      onboard,
+    ])
+    expect(prepared.actions).toEqual([
+      expect.objectContaining({ kind: "create", member: "skills/base", enabled: false }),
+    ])
+    expect(
+      (await invoke([...sources, "onboard-apply", onboard, ...entry, "--dry-run"])).status,
+    ).toBe("previewed")
+    expect(writes()).toHaveLength(beforeCold)
+    const sdkPath = pathToFileURL(join(dirname(executable), "sdk.js")).href
+    const sdkProbe = join(directory, "onboarding-sdk.mjs")
+    await writeFile(
+      sdkProbe,
+      `
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { applySourceOnboarding, reconcileSourceOnboarding, reviewSources, prepareSourceOnboarding } from ${JSON.stringify(sdkPath)};
+const entry = ${JSON.stringify(library.skills.database_id)};
+const plan = JSON.parse(await readFile(${JSON.stringify(onboard)}, "utf8"));
+const applied = await applySourceOnboarding({ entry, plan });
+assert.equal(applied.result.status, "completed");
+const reconciled = await reconcileSourceOnboarding({ entry, plan });
+assert.equal(reconciled.result.status, "completed");
+const input = { entry, scope: { kind: "source", source: ${JSON.stringify(f.source.id)} } };
+const reviewed = await reviewSources(input);
+assert.equal(reviewed.result.sources[0].members[0].kind, "registered");
+const repeated = await prepareSourceOnboarding(input);
+assert.equal(repeated.result.actions.length, 0);
+console.log(JSON.stringify({ applied, reconciled, reviewed, repeatedActions: repeated.result.actions.length }));
+`,
+    )
+    const sdkChild = Bun.spawn([node, sdkProbe], {
+      env,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [sdkOut, sdkErr, sdkExit] = await Promise.all([
+      new Response(sdkChild.stdout).text(),
+      new Response(sdkChild.stderr).text(),
+      sdkChild.exited,
+    ])
+    expect(sdkExit, sdkOut + sdkErr).toBe(0)
+    expect(errors).toEqual([])
+    const sdkResult = property(JSON.parse(sdkOut))
+    await writeFile(join(directory, "onboarding-sdk.json"), JSON.stringify(sdkResult, null, 2))
+    expect(f.skills.size).toBe(2)
+    const basePage = [...f.skills.values()].find(
+      (row) => text(property(property(row.properties).title).title) === "existing-candidate",
+    )
+    expect(property(property(basePage?.properties).enabled).checkbox).toBe(false)
+    const afterOnboarding = writes().length
+    expect((await invoke([...sources, "onboard-reconcile", onboard, ...entry])).status).toBe(
+      "completed",
+    )
+    expect((await invoke([...sources, "onboard-apply", onboard, ...entry])).status).toBe(
+      "completed",
+    )
+    expect(writes()).toHaveLength(afterOnboarding)
+    expect(preserved()).toEqual(metadata)
+    for (const [page, body] of bodies) expect(f.base.bodies.get(page)).toBe(body)
     const evidence = process.env.NTN_SOURCE_MEMBERS_EVIDENCE_DIR
     if (evidence) {
       await mkdir(evidence, { recursive: true })
@@ -456,7 +541,13 @@ test("installed source member commands admit, explicitly remap and retain real G
             raw_resource_sha256: hash(originalBinary),
             custom_preserved: true,
             original_pin_preserved: true,
-            late_reads_writes: writes().length - beforeCold,
+            late_reads_writes: legacyLateReadWrites,
+            onboarding: {
+              cli_preview: true,
+              sdk_same_plan: true,
+              repeated_writes: writes().length - afterOnboarding,
+              sdk: sdkResult,
+            },
             native_pages_created: f.nativeCreates().length,
             total_commands: commands.length,
             git_http_requests: gitRequests,
