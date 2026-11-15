@@ -257,3 +257,30 @@ only after this correspondence review and the affected real-code checks.
 2026-11 的真实目录上传、整组移除和 Source 归并复用了已有 complete-resource create、原 ACK dispatcher、元数据修改守卫与 SQLite Store。普通 `create` 不再要求 Agent 为脚本/JSON/二进制另走迁移入口。仅生成资源说明标题的同名 HTTP 自动链接按表现差异核对；作者 Markdown、真实脚本字节、hash/mode 与原未知请求仍保留精确检查。历史资源说明误判通过同一创建的原 ACK 前缀续办，并独立保存完成结果，不覆盖原失败。
 
 集合移除、来源归并/改名、对当前观察的失效处理、Notion Trash 属性端点差异及新 Store 地址均不在旧有限域中。这些由真实授权对象、公开 CLI、源码回归和真实 Node SQLite 断言承担；不要把同步 hash 说成新形式化证明。ImportCreate 的抽象顺序与性质未变，只选择原完整模型组复验，其他模型与历史图不重复生成。
+
+## SRC 来源接手：SDK 与原操作对应审阅
+
+2026-11-15 的 `4be7add` 在现有 Promise SDK 上增加四个来源管理入口。
+逐段比较确认 `runOperation`、`consume`、`readSkill`、`readResources` 的行为未变；
+新增入口直接进入 Core，沿用凭据作用域、取消、请求预算和同库本地写锁。
+`review` 与计划准备受 `withReadOnlyNotion` 限制，正式应用由明确的 `onboard-apply` 授权。
+来源已登记、成员已关联、内容已验证和原操作已确认仍是不同事实。
+
+创建动作持有原 `SharedCreatePlan` 并调用 `executeSharedCreate`，不建立另一套派发器。
+缺关系的固定 Git 旧页使用不可变来源证明；没有历史来源证明的同名原生/保留型内容
+只能由单来源的显式 `--bind MEMBER=PAGE_ID` 决定新的发现关联。该决定冻结原页面、
+业务身份、原关系与 Selected Version，不能清除另一个来源、绕过原 unknown 或覆写正文。
+绑定使用 `guardedSourceMutation` 的 `repeat: never`，当前关系相等仍不能补造丢失的 ACK。
+原创建、绑定和独立接管决定各自保留，不以主任务完成标签代替逐项结果。
+
+来源成员分类、多成员协调、派生 Skill ID、Provider 超时、参数和错误投影均不在既有
+七个生命周期模型的有限域中。对应记录将这些文件作为明确未建模的实现上下文，
+保持全部 TLA 模型、配置、视图与 expected_rules 不变。原 CI 的源码对应失败保留；
+更新 hash 本身不代表新模型性质或实库全量成功。源码回归与独立安装 CLI→SDK→CLI
+真实 Git/受控 Notion 入口分别覆盖新协调行为，实库仍由原始运行回执和独立读取验证。
+
+真实全库试用另揭示 Git 部分克隆的分支批取缺陷：仅用 commit 的测试未覆盖已有远端
+分支引用时的协商行为。相同受控 HTTP 仓库改用 main 可复现失败。精确缺失 blob 的
+批取关闭 commit negotiation，初始 ref 获取保持原行为。新增 commit、branch、tag
+三组分别检查固定 revision、完整选中文件、一次批取及未选大对象不下载；这属于提供方
+传输实现回归，不扩展生命周期或请求引擎的形式化结论。

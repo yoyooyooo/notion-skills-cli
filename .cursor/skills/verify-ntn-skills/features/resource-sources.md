@@ -16,6 +16,11 @@ SDK 的 `reviewSources`、`prepareSourceOnboarding`、`applySourceOnboarding`、
 实库先用独立产物对 schpet/linear-cli 预览→应用→原操作核对，再以相同能力处理其他安全候选；
 只读报告、应用原件、旧内容/关系哨兵和未覆盖来源分别保存。测试规程不代表实库已完成。
 
+Git 批取同时运行 `upstream-source-batch.test.ts` 的 commit、branch、tag 三组。
+不能只用固定 commit 证明 main/ref 的首次发现可用。选中对象预取只关闭该次 commit
+negotiation，不改变初始 ref 解析或下载整仓；每组检查完整字节、固定 revision、批请求数量
+以及未选大对象未获取。历史失败保留，不靠改上游分支配置绕过产品缺陷。
+
 ## 既有来源与恢复矩阵
 
 | Case | 公开入口和合同 | 必须失败的反例 |

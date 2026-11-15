@@ -242,6 +242,7 @@ function git(
     readonly stdoutBytes?: (bytes: number) => void
     readonly stdin?: Uint8Array
     readonly noLazyFetch?: boolean
+    readonly noNegotiation?: boolean
   } = {},
 ) {
   return Effect.scoped(
@@ -274,6 +275,12 @@ function git(
             "maintenance.auto=false",
             "-c",
             "gc.auto=0",
+            // Missing blobs in a partial clone are not reachable locally even
+            // when their commit is. Advertising that commit as a negotiation
+            // common point can make the server omit the explicitly wanted
+            // blobs. Keep the ordinary ref fetch unchanged; only the exact
+            // selected-object acquisition opts out of commit negotiation.
+            ...(observe.noNegotiation ? ["-c", "fetch.negotiationAlgorithm=noop"] : []),
             "-C",
             repo,
             ...args,
@@ -914,16 +921,21 @@ function gitSnapshot(
           for (let at = 0; at < missing.length; at += 128) {
             const batch = missing.slice(at, at + 128)
             const started = performance.now()
-            yield* git(repo, [
-              "fetch",
-              "--filter=blob:none",
-              "--no-tags",
-              "--no-write-fetch-head",
-              "--recurse-submodules=no",
-              "--",
-              "origin",
-              ...batch,
-            ]).pipe(
+            yield* git(
+              repo,
+              [
+                "fetch",
+                "--filter=blob:none",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "--recurse-submodules=no",
+                "--",
+                "origin",
+                ...batch,
+              ],
+              undefined,
+              { noNegotiation: true },
+            ).pipe(
               Effect.onExit(() =>
                 Effect.sync(() => {
                   fetchMilliseconds += performance.now() - started

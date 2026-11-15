@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "2f8bd8baf6a7171bc1af3e78f027d70bdd2b0d14",
+  "synchronized_commit": "4be7add6bc52588744cd6211c9f5b3146ac093f9",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
@@ -103,9 +103,9 @@
     "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
     "packages/core/src/resource-read.ts": "6ada172071a1b0a8c212696525b16aba888c6ef437eeb2f6481e697afdf97b44",
     "packages/core/src/resource-read-model.ts": "26842f8115c6940196e8c3586fb7b8f69f776dd5b43d22a1b51eb4ebbcd8b62b",
-    "packages/cli/src/sdk.ts": "2efb65b67ced6fd262828471db1346a9db06955fdb4c3164f61ab4d900eee02f",
+    "packages/cli/src/sdk.ts": "be1e8e22871e148dc886ad6fa309eefcc3a6010f7afd133bce162d458ade714b",
     "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
-    "packages/cli/test/sdk.test.ts": "a5eadb696fbb73c25855f9815266befbf696996a0f7edc7d00745dcbcdce9765",
+    "packages/cli/test/sdk.test.ts": "4ce41a7d9652f8b5dd802e2c8b49f1737f90f63006e9f45e3124f25bb4729516",
     "packages/core/src/shared-content.ts": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f",
     "packages/core/src/shared-audit-inspect.ts": "dc50068cc15d08817aba742fcf0e4d53f8d5b2ee9d0ffc736288085661c2f16d",
     "packages/core/src/shared-audit-growth.ts": "8def4d06a20b2bc5118155987dcd14205319ae2e2ca663f8da21a127ef7ec2c9",
@@ -121,7 +121,12 @@
     "packages/core/test/shared-file-adoption.test.ts": "64dec2552982ef2209b2c0491e57f9226d5ddd60944eb0d122e0f94e0cc65d3b",
     "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
-    "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b"
+    "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
+    "packages/core/src/shared-source-onboarding.ts": "62a3ef0cf4a51bfef97f9d2a6b6f5afe343f70d11f3b946508a78ea3313a5b42",
+    "packages/core/src/shared-source-onboarding-model.ts": "d534ac5fb057a21061efd4c54317010fe6f8f0009dc96419d4de2fcfd82c8c38",
+    "packages/cli/src/commands-library-source-onboarding.ts": "5ba4280ab60922cb0b2888ffe89c3370e3c458927f72ab04ac62bd914f8618ba",
+    "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
+    "packages/core/test/shared-source-onboarding.test.ts": "cf9580a2c61b8d531016ee9ac3f707c4da7971350de96ff01ac24334b4ea031e"
   },
   "models": {
     "ProjectionRace": {
@@ -911,7 +916,36 @@
       "counterexample": "Original shared directory classifies a disabled empty-ID page as unregistered while full audit reports both missing identities and incomplete managed inspection. Four of the five initial tests fail before production edits."
     },
     "Real complete-folder creation now routes through the existing complete-resource journal. Generated resource-note autolinks and its original-ACK continuation, repository-level remove/consolidate/rename metadata plans, current-observation retirement and their typed SQLite addresses are checked by concrete regressions and real authorized operations, not new finite-model properties. Authored Markdown, raw resource bytes and unknown-original refusal remain separate exact boundaries.",
-    "EMPTY real-library follow-up: Git standard blob filtering with complete tree/selected-file verification, forward-only native table localhost projection v15, and audit v4 classification of verified native-adoption and independent body-review completion are implementation contracts. Tests exercise exact bytes, immutable old policies, missing/orphan receipts and read-only reverse census. AuditScope and ImportCreate abstract phases, not these parser/classifier details; no added finite proof is claimed."
+    "EMPTY real-library follow-up: Git standard blob filtering with complete tree/selected-file verification, forward-only native table localhost projection v15, and audit v4 classification of verified native-adoption and independent body-review completion are implementation contracts. Tests exercise exact bytes, immutable old policies, missing/orphan receipts and read-only reverse census. AuditScope and ImportCreate abstract phases, not these parser/classifier details; no added finite proof is claimed.",
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "source_onboarding_cli_sdk_handoff",
+      "files": [
+        "packages/cli/src/sdk.ts",
+        "packages/cli/test/sdk.test.ts",
+        "packages/core/src/shared-source-onboarding.ts",
+        "packages/core/src/shared-source-onboarding-model.ts",
+        "packages/cli/src/commands-library-source-onboarding.ts",
+        "packages/core/src/shared-metadata-inventory.ts",
+        "packages/core/test/shared-source-onboarding.test.ts"
+      ],
+      "symbols": [
+        "reviewSources",
+        "prepareSourceOnboarding",
+        "applySourceOnboarding",
+        "reconcileSourceOnboarding",
+        "reviewSourceOnboarding",
+        "executeSourceOnboarding",
+        "guardedSourceMutation",
+        "executeSharedCreate"
+      ],
+      "scope": "Source onboarding composes complete forward inventory, fixed provider discovery, reviewed creation plans and guarded discovery-only bindings. Source-to-member classification, explicit retained/native binding decisions, multi-member orchestration, provider timeouts, generated identities and SDK argument dispatch are outside the existing finite lifecycle domains. Original creation and binding journals retain their dispatch/ACK/unknown authority. New members stay disabled and the coordinator does not overwrite existing bodies, selections, Members or Requires. SDK additions use the unchanged runOperation boundary; existing consume/readResources/readSkill effect semantics are unchanged. Updating correspondence does not establish a new model property or prove a complete real inventory.",
+      "tests": [
+        "packages/core/test/shared-source-onboarding.test.ts",
+        "packages/cli/test/sdk.test.ts",
+        "packages/cli/test/library-source-members-http.test.ts"
+      ]
+    }
   ],
   "cases": [
     {
@@ -1523,7 +1557,7 @@
     "proof_boundary": "Existing AuditRun six-case check plus independent concrete regressions; no new field invariant is inferred from a source hash."
   },
   "maintenance_review": {
-    "batch": "AH-1024 / MNT02\u201309",
+    "batch": "AH-1024 / MNT02–09",
     "baseline": "6c38e747a9e40186fdf9d4ecda033eb5b413561c",
     "document": "docs/maintenance-verification-review.md",
     "claim": "Source correspondence reviewed; this metadata itself is not a new run. Exact result scope is the final runner summary plus concrete original artifacts.",
