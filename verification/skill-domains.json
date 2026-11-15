@@ -59,7 +59,9 @@
         "packages/core/test/fixed-snapshot-files.test.ts",
         "packages/core/test/resource-read.test.ts",
         "packages/core/test/consumer-effects.test.ts",
-        "packages/cli/test/sdk.test.ts"
+        "packages/cli/test/sdk.test.ts",
+        "packages/core/test/shared-fixed-git-transport.test.ts",
+        "packages/core/test/shared-source-materialization.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",
       "excludes": ["原作者写入权限", "实际Pi/自然模型通过"]
@@ -80,7 +82,9 @@
         "packages/core/test/shared-import-table-literals.test.ts",
         "packages/core/test/shared-source-file-repair.test.ts",
         "packages/core/test/shared-import-code-padding.test.ts",
-        "packages/core/test/notion-http.test.ts"
+        "packages/core/test/notion-http.test.ts",
+        "packages/core/test/shared-source-storage.test.ts",
+        "packages/cli/test/library-source-storage-http.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/resource-sources.md",
       "excludes": ["已绑定正文自动更新", "部分报告替代全库分母"]

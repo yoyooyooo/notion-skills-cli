@@ -102,11 +102,12 @@ import {readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
 import {prepareSourceRefreshBatch,runSourceRefreshBatch} from ${JSON.stringify(core + "shared-source-batch.ts")};
-import {sourceRefreshFixture,library} from ${JSON.stringify(fixtures + "shared-source-refresh-fixture.ts")};
+import {sourceRefreshFixture,library,definition} from ${JSON.stringify(fixtures + "shared-source-refresh-fixture.ts")};
 import {id} from ${JSON.stringify(fixtures + "shared-snapshot-fixture.ts")};
 const root=${JSON.stringify(root)},mode=${JSON.stringify(mode)};
 process.env.NTN_SKILLS_HOME=root+'/state';process.env.NTN_SKILLS_CONFIG_HOME=root+'/config';process.env.NTN_SKILLS_CACHE_HOME=root+'/cache';
-const fixture=await sourceRefreshFixture();
+// This existing SQLite recovery fixture explicitly owns retained storage.
+const fixture=await sourceRefreshFixture({definition:{...definition,options:{storage:'retained'}}});
 let saved;try{saved=JSON.parse(await readFile(root+'/remote-fixture.json','utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
 if(saved){Object.assign(fixture.main,saved.main);Object.assign(fixture.source,saved.source);fixture.files.splice(0,fixture.files.length,...saved.files);fixture.relatedPages.splice(0,fixture.relatedPages.length,...saved.relatedPages);fixture.records.clear();for(const [key,value]of saved.records)fixture.records.set(key,value);fixture.bodies.clear();for(const [key,value]of saved.bodies)fixture.bodies.set(key,value);}
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');

@@ -6,6 +6,21 @@
 
 ## SRC 来源接手（AH-1064）
 
+### SRC08 外部直取与已有版本对齐
+
+`sources storage review/prepare/apply/reconcile`复用固定源与已有v4选择合同；不能为减少
+Notion字节而改变上游commit、删除旧包、覆盖custom或替代原页面。源代码回归为
+`shared-source-storage.test.ts`，独立安装入口为`library-source-storage-http.test.ts`。
+其结果应记录原/新pin、完整相同清单、仅Selected Version的业务属性变更、零正文/新
+字节对象、原metadata操作ACK、重复零写及冷资源全文。source列表元数据分类只表示
+选择方式，不宣称所有bound行已完成。
+
+实际Git通道由`shared-fixed-git-transport.test.ts`及`shared-source-materialization.test.ts`
+验证，既有缓存所有者与source_id不变。auto不可验证输入须显式存储决定，不以rawCDN
+不可达或既有转换当完整归档授权。历史无法证明原commit、未结清创建和显式retention
+逐项保留，不能将当前分支候选伪装成旧内容。跨Skill映射/逐文件差量如尚无正式合同，
+必须留待后续能力，而非用手工表编辑或完整ZIP回退补齐。
+
 错误阶段需区分返回异常与持久化终局。现有retained回归覆盖清单前main读回拒绝后的
 原ACK继续、缺ACK/原journal/正文漂移零写拒绝，以及真正已知终局不可被重试清除。
 `source-onboarding-navigation.test.ts` 检查缺清单只路由到原plan只读preview，不给写权限；

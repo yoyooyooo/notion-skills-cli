@@ -56,6 +56,7 @@ import {
 } from "./shared-metadata-write-model.ts"
 import { prepareSharedMetadataWrite } from "./shared-metadata-write.ts"
 import { sha256, Store } from "./store.ts"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 
 export const MemberReviewSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -244,7 +245,7 @@ function binding(library: SharedLibrary, sourcePage: string, target: string, mem
         fail("SOURCE_MEMBER_CHANGED", "Target's exact Source Member does not match this plan."),
       )
     const index = yield* querySharedSkillIndex(library, id, raw)
-    if (index.kind !== "skill" || !index.enabled)
+    if (index.kind !== "skill" || (!index.enabled && !(yield* isSharedAuthoringTarget(id))))
       return yield* Effect.fail(
         fail(
           "SOURCE_TARGET_INVALID",

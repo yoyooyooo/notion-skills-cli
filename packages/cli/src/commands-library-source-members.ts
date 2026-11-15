@@ -42,7 +42,7 @@ export const sourceAdmitCommand = defineCommand(
     skillId: requiredSingleton("skill-id", "New stable Skill business identity"),
     storage: singleton(
       "storage",
-      "auto, fixed-git, or retained; default auto. Retained keeps the complete acquired files and does not require anonymous GitHub retrieval.",
+      "auto, fixed-git, or retained; default auto. Retained is an explicit full-byte copy; auto never authorizes one because direct retrieval is unavailable.",
     ),
     enable: switchFlag(
       "enable",
@@ -103,7 +103,7 @@ export const sourceAdmitCommand = defineCommand(
     { kind: "allowed_values", flag: "storage", values: ["auto", "fixed-git", "retained"] },
   ]),
   Command.withDescription(
-    "Freeze one complete exact provider member, its resources and new native Markdown pages. New Skills stay disabled unless --enable is explicit. This prepares the existing original create operation without remote writes. Explicit retained storage keeps all fixed bytes and modes; auto and fixed-git never silently fall back after a failed public retrieval proof.",
+    "Freeze one complete exact provider member, its resources and new native Markdown pages. New Skills stay disabled unless --enable is explicit. This prepares the existing original create operation without remote writes. Auto prefers exact GitHub file identities and never silently archives transformed or unsupported inputs. Explicit retained storage keeps all fixed bytes and modes. The fixed-byte consumer can use raw HTTP or trusted machine Git transport without changing the shared content identity.",
   ),
 )
 

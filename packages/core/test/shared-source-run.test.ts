@@ -48,7 +48,12 @@ async function fixture(
         url: "https://gitlab.com/org/repo.git",
         ref: policy === "pinned" ? "a".repeat(40) : "main",
       },
-      options: policy === "auto" ? { check_interval_ms: 60_000 } : {},
+      // This existing GitLab fixture exercises retained compatibility and
+      // recovery. Retention is now an explicit source decision, not an auto fallback.
+      options:
+        policy === "auto"
+          ? { check_interval_ms: 60_000, storage: "retained" }
+          : { storage: "retained" },
     },
   })
   f.clearCalls()

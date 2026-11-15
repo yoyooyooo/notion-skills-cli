@@ -46,6 +46,30 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
+  test("storage inspection and alignment share direct SDK cancellation without acquiring the provider", async () => {
+    const reports: unknown[] = [],
+      options = {
+        env: {},
+        signal: AbortSignal.abort(),
+        onRequestMetrics: (value: unknown) => reports.push(value),
+      }
+    await expect(
+      publicSdk.reviewSourceStorage({ entry: input.targets[0]!, scope: { kind: "all" } }, options),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(
+      publicSdk.prepareSourceStorageAlignment(
+        { entry: input.targets[0]!, source: "original", target: input.targets[0]! },
+        options,
+      ),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(
+      publicSdk.applySourceStorageAlignment({ plan: {} }, options),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(
+      publicSdk.reconcileSourceStorageAlignment({ plan: {} }, options),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    expectUnstartedMetrics(reports, 4)
+  })
   test("explicit Source recovery retains the direct SDK cancellation boundary", async () => {
     const reports: unknown[] = []
     const options = {

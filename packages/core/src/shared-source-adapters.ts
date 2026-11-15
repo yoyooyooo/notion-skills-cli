@@ -51,6 +51,7 @@ export function sourceDiscoveryInput(input: SourceDefinitionInput): DiscoverSour
     throw fail("SOURCE_ADAPTER_INVALID", "Linear does not use Git selection.")
   const options = definition.options
   const permitted = new Set([
+    "storage",
     "patch",
     "member_patches",
     "require_all_included",

@@ -552,3 +552,47 @@ Marp的原文件功能依赖HTML class/CSS，不能把折叠后的阅读页当�
 新算法把每个明确链接绑定到相同的规范化可见文本起止位置，仍保留Notion自动加链的
 合法表示变化，不接受换位置的目标代证。该变更只加强比较器，不改原输入/wire/policy，
 不赋予任何新写权限；修复前实际失败用例与全部相邻正反例、完整真实读回比较均留存。
+
+## SRC08：外部固定字节优先与同内容存储对齐
+
+用户确认Notion负责管理与可读入口、未修改上游文件由CLI固定版本直取。实际只读复查
+Kami原commit时，Git成功取得123个文件、无补丁或链接物化，但raw.githubusercontent.com
+请求超时；curl同一原URL也超时。完整来源清单与原 retained 文件长度相同。这是获取
+通道问题，不能将它解释为全量ZIP上传的业务必要性。根因观察及旧超时原件保留。
+
+方案复用已有immutable source binding、固定资源校验/缓存及source-refresh v4选择。
+没有增加新的共享缓存、同步平台或数据表。auto优先固定Git；只有明确retained参数或
+Source options.storage决定才复制完整字节，其他未支持/转换输入给可解释的受阻结果。
+旧创建/恢复计划语义不改变，不通过新默认配置解除原needs_review/unknown。
+
+新增Git对象通道由标准Node CLI/同包SDK提供，机器配置auto/http/git不进入共享来源
+身份。Git使用临时bare仓库、无checkout，核精确commit/tree/path/blob/mode，按选定
+对象批取；OID、SHA-256、长度都通过原缓存所有者验证后才发布。本机Git认证配置不
+进入Notion，不执行任何仓库脚本。批量Git暂时不可用可回精确HTTP，HTTP纯传输失败
+可回同一固定Git；身份/哈希错误不回退，显式通道不切换。warm缓存无Provider调用，
+缓存损坏不自愈。未知Git wire bytes继续报告unknown，不从HTTP账本假称零传输。
+
+新storage review只做全量正向metadata分类。prepare从原不可变创建/refresh记录解析
+实际原revision，逐项比对完整path/hash/length/mode后包装原v4选择计划。apply再核原
+不可变来源与治理前像，复用原metadata journal，只改Selected Version；custom、Enabled、
+Default Context、Members/Requires、原页、正文和旧pin/包保持。当前Source状态看似相等
+不能代替原ACK；未知选择的两种可见性、变更Enabled或源字节、明确retention都写前
+拒绝。disabled的操作只在精确显式authoring目标范围内开放，不影响普通消费资格。
+
+实际7个已完成Skill的28份来源文件通过同版本选择对齐，零新ZIP/二进制对象、零正文
+改写；独立原操作reconcile与全新state/cache/data的冷SDK读取核完整有效主文与支持
+资源原字节及模式。每个目标实际发生一次Git acquisition，warm后续不重取provider，
+所有消费为Notion零写。全库分类保留未确认项目；历史无法证明原commit的案例受阻，
+Kami/Guizang原未完成操作没有被改计划、新建替代页或删历史来“切换成功”。这些实际
+观察记录在私有原件；文档本身不替代最终逐项结果或新候选的门禁。
+
+既有retained批次/周期/SQLite/原创建回归改为明确retention授权以保留其原反例用途，
+另加默认不归档的决策测试，不删除未知写入、原页/历史保护条件。源码Bun与Node/Vitest
+专用测试分开运行；误用混合glob的失败与中断日志留存，未把runner错误改判为通过。
+独立安装用真实Git、实际Node/SQLite、受控Notion、同包SDK和无作者Store复制的冷读，
+实际库另立证明，不拿fixture代证生产库全部切换。
+
+形式化对应用于原immutable source身份、metadata选择、ACK/unknown和缓存原则。新的
+传输程序、默认存储策略、同版本对齐wrapper与真实Git行为不在旧有限TLA域中，由
+实现反例、独立安装和实际服务证明。原模型、配置与expected_rules不扩大；维护源码
+hash是经审阅的关联，不能声称旧模型已证明新协议或整个Git网络。

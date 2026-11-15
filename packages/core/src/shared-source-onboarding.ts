@@ -117,7 +117,7 @@ function bindingFromRow(library: SharedLibrary, input: unknown): SourceOnboardin
   }
 }
 
-function readInventory(library: SharedLibrary) {
+export function readSourceOnboardingInventory(library: SharedLibrary) {
   return Effect.gen(function* () {
     const observation = yield* querySharedMetadataInventory(
       library,
@@ -270,7 +270,7 @@ function inspect(
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "sourceTimeoutMs must be an integer from 1 to 3600000."),
       )
-    const rows = yield* readInventory(library)
+    const rows = yield* readSourceOnboardingInventory(library)
     const pending = yield* pendingSharedCreatePlans(yield* authScope, library.library_id)
     const choices =
       scope.kind === "all"
@@ -849,7 +849,7 @@ function executeBinding(
             "The target, selected immutable provenance or Source changed before binding.",
           ),
         )
-      const others = (yield* readInventory(library)).filter(
+      const others = (yield* readSourceOnboardingInventory(library)).filter(
         (row) =>
           row.origin === action.source.page_id &&
           row.member === action.member &&

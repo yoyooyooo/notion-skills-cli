@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "e48027bf8cf6f3d65ee4de027debb3f043be4aec",
+  "synchronized_commit": "e4d9e081fb8f028f3f7cda6977ae4323c09aac79",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
@@ -8,7 +8,7 @@
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-completion.ts": "78f0e3663158a43becc12e9611a82844bf69d6f9be64c67f0c9f6ad7f213d40f",
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
-    "packages/core/src/shared-source-definitions.ts": "56304c7529dc025b8d505dabfb932714b4e8926430e5c2dfbda82a9a09aa8366",
+    "packages/core/src/shared-source-definitions.ts": "607e98a2f747de62a0cb6a518b190b00affaad61ecb24d9eeafd05d8c26494c5",
     "packages/core/src/shared-records.ts": "967ba25a903520b32efef83e3050cae192b1a47e3883aa2ba0f917efea230312",
     "packages/core/src/shared-file-add-acceptance.ts": "90fdb150067b18e862e7e56bdeaa228e3667690a9fd13e40cbcd8a0efa8702a7",
     "packages/core/src/shared-file-management-model.ts": "8c79af06932063c4cffd6f1a1136f73352476a75642cb62d18d3bb410289729c",
@@ -39,12 +39,12 @@
     "packages/core/src/shared-maintenance-result.ts": "690a839c98ec87a71a896de3153145a729f1637349696e558222c029ebfe7710",
     "packages/core/src/shared-source-run.ts": "b53a2e2d41b7da696003eaf526a9cc35c153fc882f8c5ba4c8d34093117c5bb1",
     "packages/core/src/shared-source-display.ts": "8c4038bd728472617a41fc6bcf038bcdf203711f154b4c52993da5b92d9e389c",
-    "packages/core/src/shared-source-refresh.ts": "f9c466fc40f91ca658fc47b54d28bf87050a73746f838db7992ed4f1bb2a8733",
+    "packages/core/src/shared-source-refresh.ts": "4d848c663274dbc7544af3e751b2f1ce68ba4d8e19d962aad3836704ec2936f2",
     "packages/core/test/shared-source-definitions.test.ts": "2a51eb051ec313fdfe88f3962188931d55c717f68e494e12b48c8dfe14bf7814",
-    "packages/core/test/shared-source-run.test.ts": "98a1660fd155d627956476db329dfce3162b7956670d3f39fd643d3307eabee3",
+    "packages/core/test/shared-source-run.test.ts": "f78b6d8b506fec1de15998fb3064250244f6974361362dde7465e9d37c7b7892",
     "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
-    "packages/core/test/shared-source-projection-retained.test.ts": "67c5d4e097e2153bc21c7c0d8d5a9ed72e4cde661a9a1b56dcf1d8a88e645624",
+    "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
@@ -68,7 +68,19 @@
     "packages/cli/src/commands-library-source-file-repair.ts": "ba49f50e678c6be1f00671ddfbd7e193f020092e02123dc649d306b0a18abd63",
     "packages/core/src/notion-http.ts": "f233e802bd37aa80d5f15e2efff22a6dbfaec58bb9b4fad5131f63e2b26c6cc5",
     "packages/core/test/notion-http.test.ts": "44c01030e204c5bb6b198e4ab1f183aa8525746328a196f1307ad24054533d43",
-    "packages/core/src/shared-import-markdown.ts": "92778d665ad334d2fb7fd587678eebc8961fa8f8dba4be57a16ee18e3f352af9"
+    "packages/core/src/shared-import-markdown.ts": "92778d665ad334d2fb7fd587678eebc8961fa8f8dba4be57a16ee18e3f352af9",
+    "packages/core/src/shared-fixed-git-transport.ts": "cd83e2412e1b476a96dd549b352b558e6c100f51d3b85246b268468b79a041f7",
+    "packages/core/src/shared-source-storage.ts": "11b8921a2d883433dd6c5786d0659c0a3d0592f399e7fb64edba8a381ad24fe7",
+    "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
+    "packages/core/test/shared-source-storage.test.ts": "1dafd44ac557d0a378502472d7569e41edb5267434cc871cf54ffb7676dcd01e",
+    "packages/cli/src/commands-library-source-storage.ts": "84628ce643dcc96fa8e37fceee6544bd2ff5ba5b7dd8a24aa96577ba5ff2aa2b",
+    "packages/cli/test/library-source-storage-http.test.ts": "b6ecc510dfd1b2b2882d9afef058380b68bcbced7020e1c37853d722d85e6b2d",
+    "packages/core/src/shared-source-member.ts": "b4a07644dc23667c412c5e1a725c61cacd6fbbe97e06628587ec04193373a902",
+    "packages/core/src/shared-source-materialization.ts": "c7e7fa2bac3e021b4e3a821e8f536643067013bc586bb25ee3d4bc8a85c2bc6c",
+    "packages/core/src/upstream-source.ts": "c680765a7a0864226528853dc60e6c546cde219496493070cba64ccf1461e306",
+    "packages/core/test/shared-source-materialization.test.ts": "923eea86aa8eb512bbfbd3abbce9ec960dbf5ebd5f80ef496566dbee8f396747",
+    "packages/core/test/shared-source-batch.test.ts": "614b702cd6eedcff9a6c789ab150e2ddfc88eee8afc1e249e661878f9be3802a",
+    "packages/core/test/shared-source-batch-sqlite.node.test.ts": "a07874e4e4c1e2a6738f57a70be8cc006ece4d6c7a6869ab412c7a70fb5f2394"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -1103,6 +1115,38 @@
       ],
       "symbols": ["importContent", "assertMeaning"],
       "scope": "The source semantic guard now binds every required authored link to its exact normalized visible-text interval as well as destination, rejecting a later automatic URL as substitute proof for an earlier changed explicit target. Existing presentation/code/source-byte and recovery/ACK authority are unchanged. The prior red regression, neighboring automatic-link positives and full actual-page comparisons are preserved. Markdown text-position parsing is outside unchanged TLA domains; reviewed source correspondence is not a new model theorem. All original model/config/expected_rules inventories remain identical."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "external_first_policy_same_version_alignment_and_exact_git_transfer",
+      "files": [
+        "packages/cli/src/commands-library-source-storage.ts",
+        "packages/cli/test/library-source-storage-http.test.ts",
+        "packages/core/src/shared-fixed-git-transport.ts",
+        "packages/core/src/shared-source-definitions.ts",
+        "packages/core/src/shared-source-materialization.ts",
+        "packages/core/src/shared-source-member.ts",
+        "packages/core/src/shared-source-refresh.ts",
+        "packages/core/src/shared-source-storage.ts",
+        "packages/core/src/upstream-source.ts",
+        "packages/core/test/shared-fixed-git-transport.test.ts",
+        "packages/core/test/shared-source-batch-sqlite.node.test.ts",
+        "packages/core/test/shared-source-batch.test.ts",
+        "packages/core/test/shared-source-materialization.test.ts",
+        "packages/core/test/shared-source-projection-retained.test.ts",
+        "packages/core/test/shared-source-run.test.ts",
+        "packages/core/test/shared-source-storage.test.ts"
+      ],
+      "symbols": [
+        "sourceMemberStorageDecision",
+        "FixedGitObjectReader",
+        "readFixedGitObjects",
+        "materializeFixedGithubSource",
+        "prepareSourceStorageAlignment",
+        "applySourceStorageAlignment",
+        "reconcileSourceStorageAlignment"
+      ],
+      "scope": "External-first auto policy blocks unsupported/transformed implicit full-byte retention; explicit retained source/caller decisions and old frozen plans retain their semantics. Standard Node CLI/SDK can retrieve exact pinned commit/tree/path/OID/hash/mode through optional machine Git or existing raw HTTP, sharing original content-addressed cache ownership. No checkout or resource execution, no wrong-hash fallback, unknown Git wire bytes stay unknown. Existing-library alignment wraps the original source-refresh v4 metadata selection and ACK journal after same-original-revision/all-file identity and governance proof; it preserves original pages, custom/tombstone/eligibility/relations/history, adds no binary objects, and unknown selection is not replayed from current equality. Disabled authoring is exact-target only. Concrete Git transport, storage-choice policy and the new proof wrapper are outside unchanged finite TLA domains; dedicated real Git, cold cache, original unknown/custom tests, independent installed CLI/SDK and actual-library evidence remain separate. Existing retained fixtures make their prior storage choice explicit, without dropping negative guards. All model/config/expected_rules inventories remain unchanged. See docs/maintenance-verification-review.md SRC08."
     }
   ],
   "retained_recovery_journey_budget_review": {

@@ -47,7 +47,11 @@ function retainedFixture(
 ) {
   const f = fixture([], { ...options, recovery: options.markdownImport === true })
   for (const [key, value] of Object.entries(
-    sourceDefinitionPropertiesFor(library, { ...input, adapter }),
+    sourceDefinitionPropertiesFor(library, {
+      ...input,
+      adapter,
+      options: { ...input.options, storage: "retained" },
+    }),
   ))
     f.source.properties[key] = { ...property(f.source.properties[key]), ...property(value) }
   const { git_manifest: _git, ...member } = f.snapshot.members[0]!
@@ -67,6 +71,9 @@ function retainedFixture(
           member: "skills/demo",
           skillId: "retained-initial-skill",
           enabled,
+          // This suite owns the explicit retained compatibility/recovery path.
+          // Default non-Git/converted input now needs a separate storage decision.
+          storage: "retained",
           ...(options.markdownImport === true ? { markdownImport: true as const } : {}),
         })
       }),

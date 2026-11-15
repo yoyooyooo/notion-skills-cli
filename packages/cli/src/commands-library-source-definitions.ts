@@ -1,4 +1,5 @@
 import { sourceRecoveryCommand } from "./commands-library-source-recovery.ts"
+import { sourceStorageCommand } from "./commands-library-source-storage.ts"
 import {
   sourceReviewCommand,
   sourceOnboardCommand,
@@ -257,7 +258,7 @@ const prepare = defineCommand(
     allBound: switchFlag("all-bound", "Freeze every enabled Skill bound to this exact Source"),
     storage: singleton(
       "storage",
-      "auto, fixed-git, or retained; auto uses unchanged complete public GitHub trees directly",
+      "auto, fixed-git, or retained; auto uses exact unchanged GitHub files and requires explicit retention for other inputs",
     ),
     output: requiredSingleton("output", "New or identical frozen plan JSON"),
   },
@@ -458,6 +459,7 @@ export const librarySourceDefinitionsCommand = defineCommand("sources").pipe(
     sourceAdmitApplyCommand,
     sourceAdmitReconcileCommand,
     sourceRecoveryCommand,
+    sourceStorageCommand,
     sourceMemberPrepareCommand,
     sourceMemberApplyCommand,
     sourceMemberReconcileCommand,

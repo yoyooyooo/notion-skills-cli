@@ -1,4 +1,4 @@
-import { Crypto, Effect, Schema } from "effect"
+import { Crypto, Effect, Option, Schema } from "effect"
 import { HttpClient } from "effect/http"
 import { markLocalContentRestriction } from "./content-restrictions.ts"
 import { fail, SkillsError } from "./model.ts"
@@ -14,6 +14,7 @@ import {
 } from "./shared-github-source.ts"
 import { sha256, Store } from "./store.ts"
 import { makeSharedResultCoalescer, type SharedResultCoalescer } from "./shared-read-coalescing.ts"
+import { FixedGitObjectReader, fixedGitTransport } from "./shared-fixed-git-transport.ts"
 
 const BlobCacheSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -51,6 +52,7 @@ function acquireBlob(
   source: FixedGithubSource,
   entry: FixedGithubFile,
   options: MaterializationOptions,
+  fetchOriginal: typeof fetchFixedGithubFile = fetchFixedGithubFile,
 ): Effect.Effect<MaterializedBlob, SkillsError, Store | Crypto.Crypto | HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const store = yield* Store
@@ -78,7 +80,7 @@ function acquireBlob(
       const bytes =
         retained._tag === "Success"
           ? retained.success
-          : yield* fetchFixedGithubFile(source, entry, options)
+          : yield* fetchOriginal(source, entry, options)
       if (
         bytes.byteLength !== cached.bytes ||
         (yield* sha256(bytes)) !== cached.sha256 ||
@@ -112,7 +114,7 @@ function acquireBlob(
         bytes = known.success
       } else if (known.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(known.failure)
     }
-    bytes ??= yield* fetchFixedGithubFile(source, entry, options)
+    bytes ??= yield* fetchOriginal(source, entry, options)
     const hash = yield* sha256(bytes)
     if (entry.sha256 !== undefined && hash !== entry.sha256)
       return yield* Effect.fail(
@@ -292,11 +294,75 @@ export function materializeFixedGithubSource(
     })
     const unique = new Map<string, FixedGithubFile>()
     for (const entry of selected) if (!unique.has(entry.git_oid)) unique.set(entry.git_oid, entry)
-    const blobs = yield* Effect.forEach(
+    const raw = Effect.forEach(
       [...unique.values()],
       (entry) => materializeBlob(source, entry, options),
       { concurrency: 4 },
     )
+    const transport = yield* fixedGitTransport
+    const gitReader = yield* Effect.serviceOption(FixedGitObjectReader)
+    const git = Effect.gen(function* () {
+      if (Option.isNone(gitReader))
+        return yield* Effect.fail(
+          fail(
+            "FIXED_GIT_TRANSPORT_UNAVAILABLE",
+            "The selected Git object transport is unavailable in this runtime; use the standard CLI/SDK or explicitly choose http.",
+          ),
+        )
+      const hits = new Map<string, MaterializedBlob>(),
+        missing: FixedGithubFile[] = []
+      for (const file of unique.values()) {
+        const result = yield* acquireBlob(source, file, options, () =>
+          Effect.fail(fail("FIXED_GIT_CACHE_MISS", "Exact local blob absent.")),
+        ).pipe(Effect.result)
+        if (result._tag === "Success") hits.set(file.git_oid, result.success)
+        else if (result.failure.code === "FIXED_GIT_CACHE_MISS") missing.push(file)
+        else return yield* Effect.fail(result.failure)
+      }
+      if (missing.length > 0) {
+        const bytes = yield* gitReader.value.read({
+          source,
+          files: missing,
+          metrics: options.metrics,
+        })
+        // The existing checksum/cache owner validates all supplied bytes. The
+        // Git backend cannot publish a different mapping or heal corrupt cache.
+        for (const file of missing) {
+          const result = yield* acquireBlob(source, file, options, (_source, entry) => {
+            const value = bytes.get(entry.git_oid)
+            return value === undefined
+              ? Effect.fail(
+                  fail(
+                    "SOURCE_MATERIALIZATION_INCOMPLETE",
+                    "The fixed Git batch omitted a selected blob.",
+                  ),
+                )
+              : Effect.succeed(value)
+          })
+          hits.set(file.git_oid, result)
+        }
+      }
+      return [...hits.values()]
+    })
+    const blobs = yield* transport === "git"
+      ? git
+      : transport === "auto" && Option.isSome(gitReader) && unique.size > 4
+        ? git.pipe(
+            Effect.catch((error) =>
+              error.code === "UPSTREAM_GIT_FAILED" || error.code === "UPSTREAM_TIMEOUT"
+                ? raw
+                : Effect.fail(error),
+            ),
+          )
+        : raw.pipe(
+            Effect.catch((error) =>
+              transport === "auto" &&
+              Option.isSome(gitReader) &&
+              error.code === "GITHUB_REQUEST_FAILED"
+                ? git
+                : Effect.fail(error),
+            ),
+          )
     const byOid = new Map(blobs.map((blob) => [blob.git_oid, blob]))
     return yield* Effect.try({
       try: () =>

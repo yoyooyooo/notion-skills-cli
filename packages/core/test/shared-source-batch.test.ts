@@ -11,11 +11,20 @@ import {
   runSourceRefreshBatch,
   validateSourceRefreshBatch,
 } from "../src/shared-source-batch.ts"
-import { sourceRefreshFixture, library, relatedSkill } from "./shared-source-refresh-fixture.ts"
+import {
+  sourceRefreshFixture,
+  library,
+  relatedSkill,
+  definition,
+} from "./shared-source-refresh-fixture.ts"
 import { digest, id, skillPage } from "./shared-snapshot-fixture.ts"
 
 async function fixture() {
-  const f = await sourceRefreshFixture()
+  // These original batch tests deliberately exercise the retained protocol.
+  // Unsupported external origins now require an explicit retention choice.
+  const f = await sourceRefreshFixture({
+    definition: { ...definition, options: { storage: "retained" } },
+  })
   const targets = [skillPage, id(91), id(92)]
   for (const [offset, page] of targets.slice(1).entries()) {
     const member = `skills/member-${offset + 2}`

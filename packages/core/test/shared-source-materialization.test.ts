@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Effect, Schema } from "effect"
-import { HttpClient, HttpClientResponse } from "effect/http"
+import { ConfigProvider, Effect, Schema } from "effect"
+import { HttpClient, HttpClientResponse, HttpClientError } from "effect/http"
 import { fail, property, SkillsError } from "../src/model.ts"
 import { createRequestMetrics } from "../src/request-metrics.ts"
 import type { FixedGithubFile, FixedGithubSource } from "../src/shared-github-source.ts"
 import { materializeFixedGithubSource } from "../src/shared-source-materialization.ts"
 import { Store } from "../src/store.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { FixedGitObjectReader } from "../src/shared-fixed-git-transport.ts"
 
 const encode = (value: string) => new TextEncoder().encode(value)
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -30,7 +31,15 @@ const makeSource = (files: readonly FixedGithubFile[]): FixedGithubSource => ({
 })
 const key = (oid: string) => `cache/shared-github-blobs/${oid}.json`
 
-function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
+function fixture(
+  bodyByPath: ReadonlyMap<string, Uint8Array>,
+  delay = false,
+  transport?: {
+    mode: "auto" | "http" | "git"
+    reader?: FixedGitObjectReader["Service"]
+    networkFailure?: boolean
+  },
+) {
   const json = new Map<string, unknown>()
   const objects = new Map<string, Uint8Array>()
   const writes: string[] = []
@@ -103,6 +112,15 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
   const client = HttpClient.make((request, url) =>
     Effect.gen(function* () {
       requests.push(url.toString())
+      if (transport?.networkFailure)
+        return yield* Effect.fail(
+          new HttpClientError.HttpClientError({
+            reason: new HttpClientError.TransportError({
+              request,
+              cause: new Error("Controlled exact raw transport unavailable"),
+            }),
+          }),
+        )
       active += 1
       peak = Math.max(peak, active)
       return yield* Effect.gen(function* () {
@@ -125,9 +143,23 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
     }),
   )
   const metrics = createRequestMetrics()
+  const operation = (source: FixedGithubSource, paths?: readonly string[]) => {
+    let action = materializeFixedGithubSource(source, { metrics }, paths)
+    if (transport?.reader)
+      action = action.pipe(Effect.provideService(FixedGitObjectReader, transport.reader))
+    return transport === undefined
+      ? action
+      : action.pipe(
+          Effect.provide(
+            ConfigProvider.layer(
+              ConfigProvider.fromUnknown({ NTN_SKILLS_FIXED_GIT_TRANSPORT: transport.mode }),
+            ),
+          ),
+        )
+  }
   const materialize = (source: FixedGithubSource, paths?: readonly string[]) =>
     Effect.runPromise(
-      materializeFixedGithubSource(source, { metrics }, paths).pipe(
+      operation(source, paths).pipe(
         Effect.provideService(Store, store),
         Effect.provideService(HttpClient.HttpClient, client),
         Effect.provide(NodeServices.layer),
@@ -135,7 +167,7 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
     )
   const rejected = (source: FixedGithubSource, paths?: readonly string[]) =>
     Effect.runPromise(
-      Effect.flip(materializeFixedGithubSource(source, { metrics }, paths)).pipe(
+      Effect.flip(operation(source, paths)).pipe(
         Effect.provideService(Store, store),
         Effect.provideService(HttpClient.HttpClient, client),
         Effect.provide(NodeServices.layer),
@@ -154,6 +186,74 @@ function fixture(bodyByPath: ReadonlyMap<string, Uint8Array>, delay = false) {
     peak: () => peak,
   }
 }
+
+test("auto transport can read the same frozen bytes through Git after raw-network failure; warm reads stay provider-free", async () => {
+  const bytes = encode("same original bytes"),
+    file = entry("only.txt", bytes),
+    source = makeSource([file])
+  const requested: string[][] = []
+  const f = fixture(new Map(), false, {
+    mode: "auto",
+    networkFailure: true,
+    reader: {
+      read: (input) =>
+        Effect.sync(() => {
+          expect(input.source.commit).toBe(source.commit)
+          requested.push(input.files.map((file) => file.path))
+          return new Map([[file.git_oid, bytes]])
+        }),
+    },
+  })
+  expect((await f.materialize(source))[0]!.bytes).toEqual(bytes)
+  expect(requested).toEqual([["only.txt"]])
+  expect(f.requests).toHaveLength(1)
+  await f.materialize(source)
+  expect(requested).toHaveLength(1)
+  expect(f.requests).toHaveLength(1)
+  f.objects.set("objects/" + digest(bytes), encode("corrupt"))
+  expect((await f.rejected(source)).code).toBe("SOURCE_CACHE_CORRUPT")
+  expect(requested).toHaveLength(1)
+})
+
+test("auto batch transfer falls back to exact HTTP only for Git transport failures, never for Git identity failures", async () => {
+  const bodies = new Map(
+    Array.from(
+      { length: 5 },
+      (_, i) => [`skills/demo/file-${i}.txt`, encode("content-" + i)] as const,
+    ),
+  )
+  const source = makeSource(
+    [...bodies].map(([path, bytes]) => entry(path.slice("skills/demo/".length), bytes)),
+  )
+  let transfers = 0
+  const f = fixture(bodies, false, {
+    mode: "auto",
+    reader: {
+      read: () => {
+        transfers++
+        return Effect.fail(fail("UPSTREAM_GIT_FAILED", "Controlled missing git transport"))
+      },
+    },
+  })
+  expect(await f.materialize(source)).toHaveLength(5)
+  expect(transfers).toBe(1)
+  expect(f.requests).toHaveLength(5)
+  await f.materialize(source)
+  expect(transfers).toBe(1)
+  expect(f.requests).toHaveLength(5)
+  const corrupt = fixture(bodies, false, {
+    mode: "auto",
+    reader: { read: () => Effect.fail(fail("FIXED_GIT_TREE_MISMATCH", "Wrong original tree")) },
+  })
+  expect((await corrupt.rejected(source)).code).toBe("FIXED_GIT_TREE_MISMATCH")
+  expect(corrupt.requests).toHaveLength(0)
+  const forced = fixture(bodies, false, {
+    mode: "git",
+    reader: { read: () => Effect.fail(fail("UPSTREAM_GIT_FAILED", "Controlled unavailable git")) },
+  })
+  expect((await forced.rejected(source)).code).toBe("UPSTREAM_GIT_FAILED")
+  expect(forced.requests).toHaveLength(0)
+})
 
 describe("fixed GitHub source materialization", () => {
   test("a manager-verified SHA reuses equivalent bytes already read through another transport", async () => {

@@ -94,7 +94,58 @@ ntn-skills ctl library sources reconcile ./source-batch.json --entry ENTRY
 
 批次保存来源配置指纹、成员清单、每项原选择与原操作。结果逐项报告；一项未知不会把其他项改成成功，也不会重建整批。来源状态反馈和内容推进是两个独立结果。`reconcile` 只核对原操作；当前 Source 值恰好等于目标值，不能证明响应丢失的请求已成功。
 
-`--storage auto` 默认将未转换、完整且可公开直接读取的 GitHub 树保存为固定 Git 清单；它包含精确 commit/tree、Git blob OID、字节数、已验证的 SHA-256 和执行模式。其他已支持输入使用保留源。`--storage fixed-git` 要求满足直接读取条件，失败时不会悄悄改策略；`--storage retained` 明确保留完整资源。LFS 指针、子模块、不可读取对象或不完整成员不能形成完整候选。
+`--storage auto` 默认外部直取：未转换、完整且经固定字节校验的 GitHub 树只保存精确
+commit/tree、路径、Git blob OID、长度、SHA-256 和执行模式；脚本、图片及其他资源不
+因为出现在成员树中就上传Notion。Notion保留管理状态、归属、可读文档与实际custom，
+源文件实体仍由固定上游提供。普通消费不追逐HEAD。
+
+非GitHub来源、显式补丁、Git链接展开或不完整固定清单会返回带原因的
+`SOURCE_STORAGE_REVIEW_REQUIRED`，不再自动打包。确需完整保留时明确使用
+`--storage retained`，或在Sources配置 `options.storage="retained"`；显式fixed-git和retained
+参数覆盖本次auto选路，source级显式retention不会被存储对齐命令偷偷撤销。LFS指针、
+子模块、缺资源、校验失败、网络暂时不可用均不构成归档或放宽校验的授权。旧冻结保留
+计划、旧pin和历史字节依原合同读取，发布新默认策略不会重解释旧操作。
+
+### 获取通道与内容身份分离
+
+标准Node CLI及同包SDK可以通过原raw HTTP或本机Git读取同一固定来源。机器环境变量
+`NTN_SKILLS_FIXED_GIT_TRANSPORT=auto|http|git` 不进入共享内容身份或Source配置。
+auto按选定规模选择通道，单文件HTTP传输失败时可切到同一commit/tree/blob的Git，
+批量Git传输不可用时可用精确HTTP；哈希、树或权限错误不会被通道切换掩盖。显式git/http
+不切换通道。没有Git服务的嵌入式核心继续走原HTTP能力，显式git则明确失败。
+
+Git通道使用临时bare仓库、完整commit/tree校验和选定blob批取，无checkout、不执行仓库
+脚本；验证长度/Git OID/SHA-256/模式后才写入已有本机内容地址缓存。未请求的资源不因
+元数据树读取而自动成为消费内容，warm本地对象不重新访问Provider。Git网络传输字节
+未计量时报告unknown，不把它伪装成HTTP零成本。Git认证和可信本机URL重写只属于本机，
+不复制到Notion；冷机器需具备自己的获取权限和通道。
+
+### 对齐现有库的来源存储
+
+```bash
+ntn-skills ctl library sources storage review --all --entry ENTRY
+ntn-skills ctl library sources storage prepare --source SOURCE --target SKILL_PAGE_ID --entry ENTRY --output storage.json
+ntn-skills ctl library sources storage apply storage.json --dry-run
+ntn-skills ctl library sources storage apply storage.json
+ntn-skills ctl library sources storage reconcile storage.json
+```
+
+review只读取完整正向元数据清单，分开报告fixed_git、retained_bundle、Router和未证明
+状态；不把已选bundle或目录存在当作原创建完成。prepare从不可变原创建/refresh证据
+解析原commit，逐文件验证旧清单与该commit的path/hash/bytes/mode完全一致，再冻结
+原v4 source selection计划。无原commit、源树内容不同、显式retention或原操作未完成
+时逐项受阻，不以当前main替代，也不重建同名页面。
+
+apply复用原来源选择journal和库内单writer锁，只改Selected Version并添加必要的来源/
+操作证明，不写正文、不启用条目、不改Members/Requires或其他业务属性，不新增ZIP/
+二进制对象、不删除旧保留包。custom/tombstone按原归属层保留，过去的pin仍可读取。
+原metadata响应unknown时重复apply不重发，reconcile只核原回执。显式disabled目标仅
+在该条作者操作范围内可验证，不扩大普通Agent目录资格。
+
+SDK同核入口为reviewSourceStorage、prepareSourceStorageAlignment、applySourceStorageAlignment、
+reconcileSourceStorageAlignment。每个计划是一个原对象的存储选择，不替代来源版本更新。
+完整迁移后应再执行独立冷消费并逐字核对源资源；历史包仍保留，所以物理Notion存储量
+不会因选中pin变化立即下降。历史垃圾清理是另一项需要明确保留策略的操作。
 
 ### 有限运行与策略
 

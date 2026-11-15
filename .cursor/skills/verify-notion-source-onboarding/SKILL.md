@@ -65,6 +65,23 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 
 ## Evidence
 
+### 外部直取优先与旧库存储对齐
+
+```sh
+bun test packages/core/test/shared-source-storage.test.ts packages/core/test/shared-source-member-url.test.ts packages/core/test/shared-source-batch.test.ts packages/core/test/shared-source-run.test.ts --timeout 60000
+NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_STORAGE_EVIDENCE="$EVIDENCE" bun test packages/cli/test/library-source-storage-http.test.ts --timeout 180000
+```
+
+新的storage review只读完整元数据，不把retained选择当作完成；prepare冻结原commit和
+完整path/hash/bytes/mode一致的选择，apply复用原v4metadata journal。正例须保留disabled、
+custom、原页、原正文和旧包；负例须覆盖变更原文件/Enabled、丢选择响应的两种可见性、
+明确retention、无历史commit及未完成原创建。已证明可Git直取不等于可删除旧历史。
+
+新auto不得因非GitHub、补丁或物化失败静默上传完整包。旧GitLab/转换型的保留路径测试
+明确选择retained，继续覆盖原守卫而不偷换它们的目的。安装验收必须实际走CLI审阅/
+preview、同包SDKapply、CLIreconcile和独立冷SDK原资源校验；实际Notion另记，不手填
+成功记录。Git通道与字节/执行安全交给消费入口，不在此复制新的下载或缓存平台。
+
 已审阅恢复的后缀被明确拒绝也不能自动重派发；`shared-create-retained-recovery.test.ts`
 保留该反例及未完成审计。恢复错误应只带原operation/file/path与只读精确next.argv，
 不能把整份source包或大计划重复返回给Agent。review通过不证明后续每份Markdown均被提供方接纳。

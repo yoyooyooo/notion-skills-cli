@@ -344,6 +344,9 @@ function git(
     ),
   )
 }
+/** Shared no-checkout process boundary for exact commit/blob consumption.
+ * Callers must validate their fixed origin and object selection before use. */
+export { git as runSourceGit }
 function digest(bytes: Uint8Array) {
   return Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto

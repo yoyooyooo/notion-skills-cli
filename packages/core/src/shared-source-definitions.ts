@@ -127,6 +127,16 @@ export function validateSourceDefinition(value: unknown): SourceDefinitionInput 
   if (result.description.length > 12000)
     throw fail("SOURCE_DEFINITION_TOO_LARGE", "Description exceeds 12000 characters.")
   rejectCredentials(result)
+  if (
+    result.options.storage !== undefined &&
+    result.options.storage !== "auto" &&
+    result.options.storage !== "fixed-git" &&
+    result.options.storage !== "retained"
+  )
+    throw fail(
+      "SOURCE_STORAGE_POLICY_INVALID",
+      "Source options.storage must be auto, fixed-git or retained.",
+    )
   const interval = result.options.check_interval_ms
   if (
     (result.policy === "auto" && interval === undefined) ||

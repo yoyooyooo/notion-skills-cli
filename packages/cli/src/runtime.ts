@@ -5,6 +5,7 @@ import { NotionLive } from "../../core/src/notion.ts"
 import { StoreLive } from "../../core/src/store.ts"
 import { SyncLocalLive } from "../../core/src/sync-local.ts"
 import { IndependentByteReadRuntime } from "../../core/src/shared-immutable-read.ts"
+import { FixedGitObjectReaderLive } from "../../core/src/shared-fixed-git-transport.ts"
 
 /** CLI and SDK use the same services. A captured cwd belongs to one SDK operation. */
 export function nodeRuntime(cwd?: string) {
@@ -30,6 +31,7 @@ export function nodeRuntime(cwd?: string) {
     NodeHttpClient.layerFetch,
     Layer.succeed(IndependentByteReadRuntime, true),
     SyncLocalLive.pipe(Layer.provide(local)),
+    FixedGitObjectReaderLive.pipe(Layer.provide(local)),
   )
   return { local, store, live: NotionLive.pipe(Layer.provideMerge(platform)) }
 }

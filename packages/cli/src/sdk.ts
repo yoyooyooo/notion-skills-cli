@@ -1,4 +1,10 @@
 import { resolve } from "node:path"
+import {
+  reviewSourceStorage as coreReviewSourceStorage,
+  prepareSourceStorageAlignment as corePrepareSourceStorageAlignment,
+  applySourceStorageAlignment as coreApplySourceStorageAlignment,
+  reconcileSourceStorageAlignment as coreReconcileSourceStorageAlignment,
+} from "../../core/src/shared-source-storage.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
 import {
@@ -133,6 +139,55 @@ export type {
 export type SourceManagementOptions = SdkOptions & { readonly budget?: RequestBudgetLimits }
 const sourceManagementBudget = (options: SourceManagementOptions): RequestBudgetLimits =>
   options.budget ?? { requests: 2000, bytes: 134217728, duration_ms: 300000 }
+
+export function reviewSourceStorage(
+  input: Parameters<typeof coreReviewSourceStorage>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () => withSourceCommandBudget(coreReviewSourceStorage(input), sourceManagementBudget(options)),
+    options,
+  )
+}
+export function prepareSourceStorageAlignment(
+  input: Parameters<typeof corePrepareSourceStorageAlignment>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        corePrepareSourceStorageAlignment(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+export function applySourceStorageAlignment(
+  input: Parameters<typeof coreApplySourceStorageAlignment>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreApplySourceStorageAlignment(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+export function reconcileSourceStorageAlignment(
+  input: Parameters<typeof coreReconcileSourceStorageAlignment>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreReconcileSourceStorageAlignment(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
 
 /** Direct Core management, not a CLI subprocess. All observations remain remotely read-only. */
 export function reviewSources(

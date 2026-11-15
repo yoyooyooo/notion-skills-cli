@@ -40,6 +40,23 @@ bun test packages/core/test/shared-freshness-consumer.test.ts packages/core/test
 
 ## Evidence
 
+### 固定Git传输与缓存
+
+```sh
+bun test packages/core/test/shared-fixed-git-transport.test.ts packages/core/test/shared-source-materialization.test.ts --timeout 60000
+```
+
+内容身份仍是原repository/commit/tree/path/blob/sha256/mode，机器auto/http/git只选择
+获取通道。真实Git隔离测试须证明旧commit不被新HEAD替代、请求文件范围、错tree/hash/
+mode拒绝和无checkout/脚本执行。HTTP网络失效可以读取相同Git对象；完整性失败不借
+另一个通道掩盖，强制git不可用时明确失败，auto批取的Git传输不可用可回精确HTTP。
+暖缓存不访问Provider，损坏缓存拒绝；缺本机字节只按原固定身份补取，不回Notion整包。
+
+storage alignment的独立安装入口归来源Skill。实库冷消费新state/cache/data不得复制
+作者Store，分别验证主文有效投影和支持资源原字节；Notion元数据权限检查不能省略。
+Git fetch/cat-file数据按真实计量留证，未知wire bytes不记0。纯元数据storage review
+不得加载源ZIP/二进制块；切换当前pin不等于清理历史文件，也不改变旧pin语义。
+
 保留exact owner/page/file、scope、snapshot/version、原观察时间与资格、输入文件及完整实际字节。分别记录metadata/current-body/retained-body/provider/write的次数和实际bytes；缺失/截断账本不得声称零请求。cold/warm、正常/失败/取消、共享Requires、重复read和增长上界分别记录，不能把延迟平均值当正确性。
 
 管理到消费交接必须逐层检查：原操作完成 → 当前目录资格 → 固定图准备 → 全文交付 → provider接受 → turn完成 → 持久化。已有pin不代表当前仍授权，provider收包不代表任务完成，摘要/标题不证明全文送入上下文。
