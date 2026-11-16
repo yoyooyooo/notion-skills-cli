@@ -224,9 +224,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "missing-ack.cfg",
-      "expected_broken": [
-        "PrefixNeedsOriginalAck"
-      ],
+      "expected_broken": ["PrefixNeedsOriginalAck"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -244,9 +242,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "mismatched-binding.cfg",
-      "expected_broken": [
-        "ExactRecordBinding"
-      ],
+      "expected_broken": ["ExactRecordBinding"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -264,9 +260,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "noncontiguous-prefix.cfg",
-      "expected_broken": [
-        "PrefixMustBeContiguous"
-      ],
+      "expected_broken": ["PrefixMustBeContiguous"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -284,9 +278,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "repeat-unknown.cfg",
-      "expected_broken": [
-        "UnknownNeverRedispatched"
-      ],
+      "expected_broken": ["UnknownNeverRedispatched"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -304,9 +296,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "query-authority.cfg",
-      "expected_broken": [
-        "AckLookupIndependentOfQuery"
-      ],
+      "expected_broken": ["AckLookupIndependentOfQuery"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -324,9 +314,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "stale-premise.cfg",
-      "expected_broken": [
-        "DispatchNeedsFreshPremise"
-      ],
+      "expected_broken": ["DispatchNeedsFreshPremise"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -344,9 +332,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "permission.cfg",
-      "expected_broken": [
-        "DispatchNeedsPermission"
-      ],
+      "expected_broken": ["DispatchNeedsPermission"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -364,9 +350,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "overwrite-original.cfg",
-      "expected_broken": [
-        "OriginalFactsPreserved"
-      ],
+      "expected_broken": ["OriginalFactsPreserved"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -384,9 +368,7 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "skip-verification.cfg",
-      "expected_broken": [
-        "CompletionNeedsVerification"
-      ],
+      "expected_broken": ["CompletionNeedsVerification"],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -420,9 +402,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "accept-unknown-original.cfg",
-      "expected_broken": [
-        "KnownFailureRequired"
-      ],
+      "expected_broken": ["KnownFailureRequired"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -438,9 +418,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "stale-context.cfg",
-      "expected_broken": [
-        "FrozenIdentityRequired"
-      ],
+      "expected_broken": ["FrozenIdentityRequired"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -456,9 +434,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "reuse-original-id.cfg",
-      "expected_broken": [
-        "IndependentIdentity"
-      ],
+      "expected_broken": ["IndependentIdentity"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -474,9 +450,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "equal-current-is-old-success.cfg",
-      "expected_broken": [
-        "OriginalFactsPreserved"
-      ],
+      "expected_broken": ["OriginalFactsPreserved"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -492,9 +466,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "repeat-unknown.cfg",
-      "expected_broken": [
-        "UnknownNeverRedispatched"
-      ],
+      "expected_broken": ["UnknownNeverRedispatched"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -510,9 +482,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "incomplete-cold-proof.cfg",
-      "expected_broken": [
-        "ColdRecoveryNeedsCompleteProof"
-      ],
+      "expected_broken": ["ColdRecoveryNeedsCompleteProof"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -528,9 +498,7 @@
     {
       "model": "IndependentAcceptance",
       "config": "skip-adopted-event.cfg",
-      "expected_broken": [
-        "CompletionNeedsAdoption"
-      ],
+      "expected_broken": ["CompletionNeedsAdoption"],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -564,9 +532,7 @@
     {
       "model": "RestoreFeedback",
       "config": "unverified-binding.cfg",
-      "expected_broken": [
-        "BodyNeedsBoundOriginal"
-      ],
+      "expected_broken": ["BodyNeedsBoundOriginal"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -584,9 +550,7 @@
     {
       "model": "RestoreFeedback",
       "config": "stale-body.cfg",
-      "expected_broken": [
-        "BodyNeedsCurrentPremise"
-      ],
+      "expected_broken": ["BodyNeedsCurrentPremise"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -604,9 +568,7 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-body-after-feedback-loss.cfg",
-      "expected_broken": [
-        "FeedbackNeverRepeatsBody"
-      ],
+      "expected_broken": ["FeedbackNeverRepeatsBody"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -624,9 +586,7 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-feedback-is-ack.cfg",
-      "expected_broken": [
-        "FeedbackRequiresRealAck"
-      ],
+      "expected_broken": ["FeedbackRequiresRealAck"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -644,9 +604,7 @@
     {
       "model": "RestoreFeedback",
       "config": "replace-pending-original.cfg",
-      "expected_broken": [
-        "OriginalRequestPreserved"
-      ],
+      "expected_broken": ["OriginalRequestPreserved"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -664,9 +622,7 @@
     {
       "model": "RestoreFeedback",
       "config": "invalid-original-is-success.cfg",
-      "expected_broken": [
-        "SuccessNeedsAppliedOriginal"
-      ],
+      "expected_broken": ["SuccessNeedsAppliedOriginal"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -684,9 +640,7 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-current-is-original-success.cfg",
-      "expected_broken": [
-        "SuccessNeedsAppliedOriginal"
-      ],
+      "expected_broken": ["SuccessNeedsAppliedOriginal"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -704,9 +658,7 @@
     {
       "model": "RestoreFeedback",
       "config": "forget-historical-ack.cfg",
-      "expected_broken": [
-        "HistoricalAckPreserved"
-      ],
+      "expected_broken": ["HistoricalAckPreserved"],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -786,9 +738,7 @@
     {
       "model": "MaintenanceApply",
       "config": "replay-unknown.cfg",
-      "expected_broken": [
-        "UnknownNeverRepeated"
-      ],
+      "expected_broken": ["UnknownNeverRepeated"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -807,9 +757,7 @@
     {
       "model": "MaintenanceApply",
       "config": "partial-completion.cfg",
-      "expected_broken": [
-        "CompletionNeedsAllChildren"
-      ],
+      "expected_broken": ["CompletionNeedsAllChildren"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -828,9 +776,7 @@
     {
       "model": "MaintenanceApply",
       "config": "publish-pending.cfg",
-      "expected_broken": [
-        "PendingTreeNotPublished"
-      ],
+      "expected_broken": ["PendingTreeNotPublished"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -849,9 +795,7 @@
     {
       "model": "MaintenanceApply",
       "config": "ignore-drift.cfg",
-      "expected_broken": [
-        "ObservedDriftStopsDispatch"
-      ],
+      "expected_broken": ["ObservedDriftStopsDispatch"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -870,9 +814,7 @@
     {
       "model": "MaintenanceApply",
       "config": "unreviewed-partial.cfg",
-      "expected_broken": [
-        "PartialRequiresOriginalReview"
-      ],
+      "expected_broken": ["PartialRequiresOriginalReview"],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -929,9 +871,7 @@
       "document": "docs/maintenance-verification-review.md#same-execution-lifecycle-event-verification",
       "model_contract": "MaintenanceApply still separates response receipt, retained original outcome and parent progress. Its interrupted acknowledgement-to-outcome state cannot reconcile without that original outcome. AcknowledgedRecordPrefix retains its exact original ACK and complete-census requirements; IndependentAcceptance and RestoreFeedback protocols are unchanged.",
       "unmodeled": "The current file-management execution may join its already verified immutable event fact into a fresh complete query that omits it. Exact envelope validation, conflicting same-ID payloads and individual event/outcome subrequests remain concrete checks. The returned fact is not a durable journal, cannot settle an earlier operation and supplies no unknown-write replay authority.",
-      "tests": [
-        "packages/core/test/shared-file-management.test.ts"
-      ],
+      "tests": ["packages/core/test/shared-file-management.test.ts"],
       "properties_and_bounds_changed": false
     },
     "revival_mode_followup": {
@@ -950,9 +890,7 @@
       "source_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
       "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
       "unmodeled": "The existing isolated add route forwards optional input mode to the already supported file-management plan fields. Known modes and historical absence keep their existing meanings; no retained operation, phase or recovery authority changes. This native metadata routing is outside the finite models.",
-      "tests": [
-        "packages/core/test/shared-skill-apply.test.ts"
-      ],
+      "tests": ["packages/core/test/shared-skill-apply.test.ts"],
       "properties_and_bounds_changed": false,
       "evidence_scope": "Three public applySkill cases use actual filesystem input: directory modes 100644/100755 and a bare Markdown input with unknown mode. The original one-pass/two-failure result becomes three passes. This is concrete source evidence; the prior dafa00d formal runs keep their original identity."
     },
@@ -1010,9 +948,7 @@
   "fresh_creation_policy_test_review": {
     "issue": "AH-1047",
     "scope": "Fresh creation plans now use the declared v15 policy. Only the fresh-plan version assertions changed; all independently captured wire/body equality, create counts, purpose checks and historical v13 immutability tests remain.",
-    "updated_tests": [
-      "packages/core/test/shared-file-management.test.ts"
-    ],
+    "updated_tests": ["packages/core/test/shared-file-management.test.ts"],
     "domain_regression_result": "234 passed, 0 failed across 8 create/recovery files",
     "model_semantics_changed": false
   },
@@ -1047,10 +983,7 @@
         "packages/cli/test/library-source-members-http.test.ts",
         "packages/core/test/shared-import-markdown.test.ts"
       ],
-      "symbols": [
-        "assertImportedMarkdownContent",
-        "importContent"
-      ],
+      "symbols": ["assertImportedMarkdownContent", "importContent"],
       "scope": "Exact full href/visible-label equality recognizes native automatic links in preserved literal comment text. Authored input destinations and image targets remain required, and text/code equality is unchanged. Native wire, frozen projection policies, original dispatch/ACK/journal and recovery rights are unchanged. The existing finite models do not enumerate Markdown tokens or provider rendering. The installed source journey reproduces this native formatting over its original real Git/Node/SQLite route; it does not prove real service recovery. Existing failed original source-v2 creation remains failed until separately authorized recovery. See docs/maintenance-verification-review.md AH-1068."
     },
     {
@@ -1201,10 +1134,7 @@
         "packages/core/test/shared-import-markdown.test.ts",
         "packages/core/test/shared-source-projection-retained.test.ts"
       ],
-      "symbols": [
-        "assertImportedMarkdownContent",
-        "importContent"
-      ],
+      "symbols": ["assertImportedMarkdownContent", "importContent"],
       "scope": "The complete actual Marp readback differs only by class-only div/span presentation wrappers, not visible text, code or destinations. The semantic parser now recognizes only those wrappers; extra id/data/aria/style attributes and literal HTML code remain checked. Original v14 wire/plan/input and old failure facts are unchanged; there is no new native write or recovery permission. A dedicated cold source test and the independent installed CLI/SDK resource read require exact original template bytes, including frontmatter and layout classes. Markdown parsing and raw-resource materialization are outside unchanged finite TLA domains. Previous scoped formal results remain separate; model/config/expected_rules inventories are unchanged."
     },
     {
@@ -1214,10 +1144,7 @@
         "packages/core/src/shared-import-markdown.ts",
         "packages/core/test/shared-import-markdown.test.ts"
       ],
-      "symbols": [
-        "importContent",
-        "assertMeaning"
-      ],
+      "symbols": ["importContent", "assertMeaning"],
       "scope": "The source semantic guard now binds every required authored link to its exact normalized visible-text interval as well as destination, rejecting a later automatic URL as substitute proof for an earlier changed explicit target. Existing presentation/code/source-byte and recovery/ACK authority are unchanged. The prior red regression, neighboring automatic-link positives and full actual-page comparisons are preserved. Markdown text-position parsing is outside unchanged TLA domains; reviewed source correspondence is not a new model theorem. All original model/config/expected_rules inventories remain identical."
     },
     {
