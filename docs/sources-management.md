@@ -110,15 +110,58 @@ commit/tree、路径、Git blob OID、长度、SHA-256 和执行模式；脚本�
 
 标准Node CLI及同包SDK可以通过原raw HTTP或本机Git读取同一固定来源。机器环境变量
 `NTN_SKILLS_FIXED_GIT_TRANSPORT=auto|http|git` 不进入共享内容身份或Source配置。
-auto按选定规模选择通道，单文件HTTP传输失败时可切到同一commit/tree/blob的Git，
-批量Git传输不可用时可用精确HTTP；哈希、树或权限错误不会被通道切换掩盖。显式git/http
-不切换通道。没有Git服务的嵌入式核心继续走原HTTP能力，显式git则明确失败。
+auto优先显式配置的API或标准运行时可复用的GitHub认证；没有这类API选择时才按选定
+规模使用Git批取。未显式配置API的HTTP传输失败可切到同一commit/tree/blob的Git，
+批量Git传输不可用时可用精确HTTP；哈希、树、权限和限流错误不换通道。显式git/http
+不切换通道，显式API失败也不会偷偷改用别的入口。没有Git服务的嵌入式核心继续走HTTP，
+显式git则明确失败。
 
 Git通道使用临时bare仓库、完整commit/tree校验和选定blob批取，无checkout、不执行仓库
 脚本；验证长度/Git OID/SHA-256/模式后才写入已有本机内容地址缓存。未请求的资源不因
 元数据树读取而自动成为消费内容，warm本地对象不重新访问Provider。Git网络传输字节
 未计量时报告unknown，不把它伪装成HTTP零成本。Git认证和可信本机URL重写只属于本机，
 不复制到Notion；冷机器需具备自己的获取权限和通道。
+
+### GitHub API 与已有 gh 登录态
+
+API地址与认证由本机环境选择，CLI和SDK使用相同核心。它们不写入Source配置、来源ID、
+固定文件清单、Records或导出文件。完整SDK `env`决定本次操作的配置与gh子进程环境，
+不会因缺少环境字段而读取另一个宿主HOME/账号的凭据。
+
+| 环境变量 | 语义 |
+| --- | --- |
+| `NTN_SKILLS_GITHUB_API_URL` | 完整REST API基址，可含路径前缀；缺省官方API。只接受无凭据/查询/fragment的HTTPS，loopback测试可HTTP |
+| `NTN_SKILLS_GITHUB_TOKEN` | 为本次所选API明确提供的专用token；不保存到配置或共享存储 |
+| `GH_TOKEN`、`GITHUB_TOKEN` | 只对官方GitHub API有效，按此顺序优先于gh已有登录态 |
+| `NTN_SKILLS_GITHUB_AUTH` | `auto`默认；`anonymous`明确禁用环境通用token和gh复用，与专用token同时设置会报冲突 |
+
+未配置自定义API时，认证顺序为专用token → GH_TOKEN → GITHUB_TOKEN → 已有
+`gh auth token --hostname github.com`活动账号 → 无gh/未登录时的公共匿名访问。
+gh查找只读、无交互、五秒上限，每次操作懒执行一次并复用；warm内容缓存命中不启动gh。
+不会执行login、refresh、setup-git，也不读写gh凭据文件或修改全局Git认证。
+
+自定义API只使用专用token或匿名网关，不把GitHub官方登录态发送给另一域名。网关若
+自己持有公共只读凭据，客户端不需要token。示例仅设置该次命令，不修改任何全局环境：
+
+```bash
+NTN_SKILLS_GITHUB_API_URL='https://gateway.example/v1/github' \
+  ntn-skills read 'SKILL_REF'
+
+# 独立固定版本元数据核对：access只返回API地址及认证来源类别，无凭据值。
+ntn-skills ctl library source inspect 'https://github.com/OWNER/REPO' \
+  --commit FULL_40_HEX_COMMIT --root PATH_IN_REPOSITORY
+```
+
+自定义API同时用于commit/tree与精确Git blob读取。兼容固定返回JSON的公共Broker：
+解码标准base64 blob信封，验证sha、长度、编码与实际Git OID；不跟随返回的url或
+download_url。官方已认证API使用raw blob媒体类型，无需把token发到raw CDN。
+所有路径仍验证原SHA-256/模式并复用已有本机对象缓存，不改变固定来源身份。
+
+重定向一律拒绝，token不跨域。401、权限403与带配额证据的403/429分开报告；保留安全
+Retry-After/reset信息，不轮换账号、降为匿名或换通道来规避限流。缓存/请求合并按本次
+配置和认证服务隔离；已验证相同内容地址可以复用，未完成请求不能跨环境混为一次。
+自定义网关本身可能有更小的响应上限和共享配额；客户端不能宣称已配置网关就无额度限制。
+Git发现/clone仍是独立Git通道，API地址不改写remote，也不改变Source的管理策略。
 
 ### 对齐现有库的来源存储
 

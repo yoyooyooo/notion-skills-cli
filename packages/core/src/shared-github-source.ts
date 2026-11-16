@@ -1,9 +1,10 @@
-import { Crypto, Effect, Exit, Schema, Stream } from "effect"
+import { Crypto, Effect, Exit, Redacted, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/http"
 import { fail, SkillsError } from "./model.ts"
 import { normalizePath } from "./ref.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
+import { resolveGithubApiAccess, type GithubApiAccess } from "./github-api-access.ts"
 
 type RequestMetrics = ReturnType<typeof createRequestMetrics>
 
@@ -260,10 +261,20 @@ function getBytes(
     readonly limit: number
     readonly expected?: number
     readonly metrics?: RequestMetrics
+    readonly access?: GithubApiAccess
+    readonly accept?: string
   },
 ): Effect.Effect<Uint8Array, SkillsError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const timeoutMs = yield* requestTimeoutMs
+    const access = options.access
+    if (access !== undefined && !url.startsWith(access.base + "/"))
+      return yield* Effect.fail(
+        fail(
+          "GITHUB_REQUEST_SCOPE_CHANGED",
+          "The GitHub credential is not authorized for this request destination.",
+        ),
+      )
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const client = HttpClient.withScope(yield* HttpClient.HttpClient)
@@ -272,19 +283,29 @@ function getBytes(
           path: new URL(url).pathname,
           method: "GET",
           provider: "github",
-          key: options.key,
+          key: JSON.stringify([
+            options.key,
+            access?.base ?? "raw-public",
+            access?.authentication.kind ?? "anonymous",
+          ]),
           requestBytes: 0,
         })
         return yield* Effect.gen(function* () {
           const response = yield* client.get(url, {
             headers: {
               accept:
-                options.expected === undefined
+                options.accept ??
+                (options.expected === undefined
                   ? "application/vnd.github+json"
-                  : "application/octet-stream",
+                  : "application/octet-stream"),
               "accept-encoding": "identity",
               "user-agent": "ntn-skills",
-              ...(options.expected === undefined ? { "x-github-api-version": "2022-11-28" } : {}),
+              ...(options.expected === undefined || access !== undefined
+                ? { "x-github-api-version": "2022-11-28" }
+                : {}),
+              ...(access !== undefined && access.authentication.kind !== "anonymous"
+                ? { authorization: "Bearer " + Redacted.value(access.authentication.token) }
+                : {}),
             },
           })
           yield* checked(() => {
@@ -293,6 +314,7 @@ function getBytes(
             if (
               actual.origin !== expected.origin ||
               actual.pathname !== expected.pathname ||
+              actual.search !== expected.search ||
               actual.username !== "" ||
               actual.password !== ""
             ) {
@@ -306,7 +328,7 @@ function getBytes(
             return yield* Effect.fail(
               fail(
                 "GITHUB_REDIRECT_REFUSED",
-                "GitHub source redirects are not followed; configure the final public repository URL explicitly.",
+                "GitHub API/file redirects are not followed; configure the final endpoint explicitly. Credentials are not forwarded.",
               ),
             )
           }
@@ -331,12 +353,17 @@ function getBytes(
             )
           }
           if (response.status !== 200) {
+            const authenticated = access !== undefined && access.authentication.kind !== "anonymous"
             return yield* Effect.fail(
               fail(
-                [401, 403, 404].includes(response.status)
-                  ? "GITHUB_PUBLIC_SOURCE_UNAVAILABLE"
-                  : "GITHUB_HTTP_ERROR",
-                "The fixed public GitHub source could not be read. Private repositories and authenticated provider access are not supported by this reader.",
+                authenticated && response.status === 401
+                  ? "GITHUB_AUTHENTICATION_FAILED"
+                  : authenticated && response.status === 403
+                    ? "GITHUB_ACCESS_FORBIDDEN"
+                    : [401, 403, 404].includes(response.status)
+                      ? "GITHUB_PUBLIC_SOURCE_UNAVAILABLE"
+                      : "GITHUB_HTTP_ERROR",
+                "The fixed GitHub source could not be read using the selected API and authentication. No credential switch or anonymous retry was performed.",
                 { status: response.status },
               ),
             )
@@ -549,7 +576,8 @@ export function inspectFixedGithubSource(
 ): Effect.Effect<FixedGithubSource, SkillsError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const source = yield* checked(() => fixedInput(input))
-    const api = `https://api.github.com/repos/${source.owner}/${source.repository}/git`
+    const access = yield* resolveGithubApiAccess
+    const api = `${access.base}/repos/${source.owner}/${source.repository}/git`
     const scope = [
       "github-public",
       source.owner.toLowerCase(),
@@ -559,6 +587,7 @@ export function inspectFixedGithubSource(
     const commitBytes = yield* getBytes(`${api}/commits/${source.commit}`, {
       key: JSON.stringify([...scope, "commit"]),
       limit: 2 * 1024 * 1024,
+      access,
       ...(input.metrics === undefined ? {} : { metrics: input.metrics }),
     })
     const commit = yield* json(commitBytes, Schema.decodeUnknownSync(CommitSchema))
@@ -579,6 +608,7 @@ export function inspectFixedGithubSource(
       key: JSON.stringify([...scope, "tree", commit.tree.sha, "recursive"]),
       // GitHub documents a 7 MB recursive-tree limit. Leave room for JSON framing, then reject truncation explicitly.
       limit: 8 * 1024 * 1024,
+      access,
       ...(input.metrics === undefined ? {} : { metrics: input.metrics }),
     })
     const tree = yield* json(treeBytes, Schema.decodeUnknownSync(TreeSchema))
@@ -650,8 +680,16 @@ export function fetchFixedGithubFile(
       checkedPath(entry.source_path, "GITHUB_FILE_NOT_SELECTED")
     })
     const encodedPath = entry.source_path.split("/").map(encodeURIComponent).join("/")
-    const bytes = yield* getBytes(
-      `https://raw.githubusercontent.com/${fixed.owner}/${fixed.repository}/${fixed.commit}/${encodedPath}`,
+    const access = yield* resolveGithubApiAccess
+    const useApi = access.explicit || access.authentication.kind !== "anonymous"
+    // Public-read brokers may intentionally fix Accept to GitHub JSON and
+    // refuse to forward client headers. Decode that standard blob envelope;
+    // never follow the response's URL/download_url to another credential host.
+    const jsonBlob = useApi && access.custom
+    const wire = yield* getBytes(
+      useApi
+        ? `${access.base}/repos/${fixed.owner}/${fixed.repository}/git/blobs/${entry.git_oid}`
+        : `https://raw.githubusercontent.com/${fixed.owner}/${fixed.repository}/${fixed.commit}/${encodedPath}`,
       {
         key: JSON.stringify([
           "github-public",
@@ -661,11 +699,53 @@ export function fetchFixedGithubFile(
           "blob",
           entry.source_path,
         ]),
-        limit: entry.bytes,
-        expected: entry.bytes,
+        limit: jsonBlob
+          ? Math.ceil(entry.bytes / 3) * 4 + Math.ceil(entry.bytes / 45) * 2 + 16384
+          : entry.bytes,
+        ...(jsonBlob ? {} : { expected: entry.bytes }),
+        ...(useApi
+          ? {
+              access,
+              accept: jsonBlob ? "application/vnd.github+json" : "application/vnd.github.raw+json",
+            }
+          : {}),
         ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
       },
     )
+    const bytes = jsonBlob
+      ? yield* checked(() => {
+          const blob = Schema.decodeUnknownSync(
+            Schema.Struct({
+              sha: Schema.String,
+              size: Schema.Number,
+              encoding: Schema.Literal("base64"),
+              content: Schema.String,
+            }),
+          )(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(wire)))
+          if (blob.sha !== entry.git_oid)
+            throw fail(
+              "GITHUB_BLOB_MISMATCH",
+              "The API blob identity differs from the selected Git object.",
+            )
+          if (blob.size !== entry.bytes)
+            throw fail(
+              "GITHUB_SIZE_MISMATCH",
+              "The API blob size differs from the selected file length.",
+            )
+          const encoded = blob.content.replace(/[\r\n]/gu, "")
+          if (encoded.length % 4 !== 0 || /[^A-Za-z0-9+/=]/u.test(encoded))
+            throw fail("GITHUB_INVALID_RESPONSE", "The API blob contains malformed base64.")
+          const decoded = Buffer.from(encoded, "base64")
+          if (decoded.toString("base64") !== encoded)
+            throw fail("GITHUB_INVALID_RESPONSE", "The API blob base64 encoding is not canonical.")
+          if (decoded.length !== entry.bytes)
+            throw fail(
+              "GITHUB_SIZE_MISMATCH",
+              "The decoded API blob length differs from the selected file length.",
+            )
+          return new Uint8Array(decoded)
+        })
+      : wire
     const oid = yield* gitBlobOid(bytes)
     if (oid !== entry.git_oid) {
       return yield* Effect.fail(

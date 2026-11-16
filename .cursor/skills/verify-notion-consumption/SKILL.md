@@ -57,6 +57,23 @@ storage alignment的独立安装入口归来源Skill。实库冷消费新state/c
 Git fetch/cat-file数据按真实计量留证，未知wire bytes不记0。纯元数据storage review
 不得加载源ZIP/二进制块；切换当前pin不等于清理历史文件，也不改变旧pin语义。
 
+### GitHub API路由与认证
+
+```sh
+bun test packages/core/test/github-api-access.test.ts packages/core/test/shared-github-routing.test.ts packages/core/test/shared-github-source.test.ts packages/core/test/shared-source-materialization.test.ts --timeout 60000
+```
+
+custom API的commit/tree/blob必须共用完整prefix；受控JSON Broker须验证base64原字节、
+大小/OID/哈希以及不跟随返回url。默认官方链验证专用token→GH_TOKEN→GITHUB_TOKEN→
+gh活动账号→无登录公共读取，custom不得继承官方凭据。gh通过真实隔离子进程验证精确
+host、一次懒调用、完整SDK env、缺程序/未登录和错误输出脱敏；不读取用户实际secret
+来制造fixture。重定向/401/配额403/429/错内容的负例必须没有降级换路或新缓存。
+
+同Store/client跨配置和gh身份的在途请求不可合并；暖内容读取不启动gh或Provider。
+安装层复用来源域library-source-storage-http.test.ts，其新增API前缀检查、SDK冷读5份
+资源、同快照、热读零Provider和官方凭据哨兵无泄漏与原Git路径分别留证。真实公共Broker
+健康、实际CLI树读取及SDK字节读取另立证据，不以memory历史ready或受控服务通过代证。
+
 保留exact owner/page/file、scope、snapshot/version、原观察时间与资格、输入文件及完整实际字节。分别记录metadata/current-body/retained-body/provider/write的次数和实际bytes；缺失/截断账本不得声称零请求。cold/warm、正常/失败/取消、共享Requires、重复read和增长上界分别记录，不能把延迟平均值当正确性。
 
 管理到消费交接必须逐层检查：原操作完成 → 当前目录资格 → 固定图准备 → 全文交付 → provider接受 → turn完成 → 持久化。已有pin不代表当前仍授权，provider收包不代表任务完成，摘要/标题不证明全文送入上下文。

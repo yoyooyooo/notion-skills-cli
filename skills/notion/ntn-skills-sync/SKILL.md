@@ -100,6 +100,12 @@ Original unknown/incomplete creates, missing original revision, transformed byte
 
 `NTN_SKILLS_FIXED_GIT_TRANSPORT=auto|http|git` is trusted machine configuration for the standard CLI/SDK; it is not stored in Source content. Git fetches exact pinned objects into existing local caches without checkout or execution. A new machine needs its own access; a Notion link alone does not provide offline bytes. Report Git wire bytes as unknown when not measured, never as free traffic.
 
+For a read-only GitHub API broker, set machine-local `NTN_SKILLS_GITHUB_API_URL` to its complete REST prefix. Both metadata and fixed blob reads use it; standard JSON/base64 blobs are checked against original OID/length/hash, never followed to a download URL. Custom gateways receive only an explicit `NTN_SKILLS_GITHUB_TOKEN`, or no client credential. Never copy the official gh/GH_TOKEN credential to a gateway or put these settings in Notion.
+
+Without a custom API, authentication precedence is the dedicated token, GH_TOKEN, GITHUB_TOKEN, then the existing `gh` active session for github.com. The lookup is lazy, bounded, noninteractive and cached within an operation. Do not run login/refresh/setup-git to make verification pass. `NTN_SKILLS_GITHUB_AUTH=anonymous` opts out; an explicitly isolated SDK env cannot borrow another HOME or host token. `source inspect` reports only API and authentication-source metadata.
+
+Auto transport prefers configured/authenticated API; an explicitly chosen API failure does not silently switch hosts. Rate limits and permission/integrity failures stop with safe diagnostics, not credential rotation or anonymous retries. No setting here enables sources, completes an old partial import, or changes a fixed version. Existing user-owned public brokers remain opt-in and obey their own shared budgets.
+
 Use `member-prepare SOURCE_ID --entry LIBRARY_ENTRY --target PAGE_ID --member EXACT_NEW_MEMBER --output PLAN` for an explicit path rebind, or replace `--member` with `--retain-removed` to detach a confirmed removed member while preserving its selected bytes and custom content. Execute with `member-apply`; inspect with `member-reconcile`. These decisions preserve user relations and old pins, do not infer renames, and do not automatically select a new revision.
 
 ## Select a fixed shared source

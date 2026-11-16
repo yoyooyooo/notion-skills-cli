@@ -1,4 +1,4 @@
-import { Crypto, Effect, Option, Schema } from "effect"
+import { ConfigProvider, Crypto, Effect, Option, Schema } from "effect"
 import { HttpClient } from "effect/http"
 import { markLocalContentRestriction } from "./content-restrictions.ts"
 import { fail, SkillsError } from "./model.ts"
@@ -15,6 +15,7 @@ import {
 import { sha256, Store } from "./store.ts"
 import { makeSharedResultCoalescer, type SharedResultCoalescer } from "./shared-read-coalescing.ts"
 import { FixedGitObjectReader, fixedGitTransport } from "./shared-fixed-git-transport.ts"
+import { GhCredential, githubApiConfiguration, preferGithubApi } from "./github-api-access.ts"
 
 const BlobCacheSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -139,7 +140,10 @@ function acquireBlob(
 
 const pendingSources = new WeakMap<
   Store["Service"],
-  WeakMap<HttpClient.HttpClient, SharedResultCoalescer<MaterializedBlob>>
+  WeakMap<
+    HttpClient.HttpClient,
+    WeakMap<object, WeakMap<object, SharedResultCoalescer<MaterializedBlob>>>
+  >
 >()
 
 function materializeBlob(
@@ -155,10 +159,23 @@ function materializeBlob(
       byClient = new WeakMap()
       pendingSources.set(store, byClient)
     }
-    let pending = byClient.get(client)
+    let byAccess = byClient.get(client)
+    if (byAccess === undefined) {
+      byAccess = new WeakMap()
+      byClient.set(client, byAccess)
+    }
+    const gh = yield* Effect.serviceOption(GhCredential)
+    const configuration = yield* ConfigProvider.ConfigProvider
+    let byCredential = byAccess.get(configuration)
+    if (byCredential === undefined) {
+      byCredential = new WeakMap()
+      byAccess.set(configuration, byCredential)
+    }
+    const accessScope = Option.isSome(gh) ? gh.value : configuration
+    let pending = byCredential.get(accessScope)
     if (pending === undefined) {
       pending = yield* makeSharedResultCoalescer<MaterializedBlob>(options.metrics)
-      byClient.set(client, pending)
+      byCredential.set(accessScope, pending)
     }
     const identity = JSON.stringify([
       source.url,
@@ -300,6 +317,8 @@ export function materializeFixedGithubSource(
       { concurrency: 4 },
     )
     const transport = yield* fixedGitTransport
+    const apiPolicy = yield* githubApiConfiguration
+    const preferApi = transport === "git" ? false : yield* preferGithubApi
     const gitReader = yield* Effect.serviceOption(FixedGitObjectReader)
     const git = Effect.gen(function* () {
       if (Option.isNone(gitReader))
@@ -346,7 +365,7 @@ export function materializeFixedGithubSource(
     })
     const blobs = yield* transport === "git"
       ? git
-      : transport === "auto" && Option.isSome(gitReader) && unique.size > 4
+      : transport === "auto" && !preferApi && Option.isSome(gitReader) && unique.size > 4
         ? git.pipe(
             Effect.catch((error) =>
               error.code === "UPSTREAM_GIT_FAILED" || error.code === "UPSTREAM_TIMEOUT"
@@ -357,6 +376,7 @@ export function materializeFixedGithubSource(
         : raw.pipe(
             Effect.catch((error) =>
               transport === "auto" &&
+              !apiPolicy.explicit &&
               Option.isSome(gitReader) &&
               error.code === "GITHUB_REQUEST_FAILED"
                 ? git

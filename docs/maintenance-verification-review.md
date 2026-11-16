@@ -596,3 +596,39 @@ Kami/Guizang原未完成操作没有被改计划、新建替代页或删历史�
 传输程序、默认存储策略、同版本对齐wrapper与真实Git行为不在旧有限TLA域中，由
 实现反例、独立安装和实际服务证明。原模型、配置与expected_rules不扩大；维护源码
 hash是经审阅的关联，不能声称旧模型已证明新协议或整个Git网络。
+
+## SRC09：自定义GitHub API与现有gh登录态
+
+本轮从实际nmem服务卡找到既有公共只读Broker，再读其拥有者README与源码确认：服务
+有自己的公共读取凭据、缓存/配额和JSON Accept策略，不转发客户端认证或任意Header。
+客户端因而同时路由commit/tree和精确blob，custom使用标准JSON/base64信封；仅修改
+metadata域名或假设raw媒体类型能够穿透Broker都不足。既有服务保持不变、不重启、
+不取出PAT分发。协议/受控fixture不硬编码用户部署域名，实际部署原件另存。
+
+NTN_SKILLS_GITHUB_API_URL和专用token属于本机transport。未选custom时按专用token、
+GH_TOKEN、GITHUB_TOKEN、gh已有github.com活动会话、公共匿名读取排序；custom只收
+专用token或无token，绝不继承官方会话。gh能力是标准Node runtime的可选服务，精确
+非交互token子命令、五秒期限和有界输出；捕获的ConfigProvider完整决定PATH/HOME/
+GH_CONFIG_DIR等子环境，每操作懒查询一次，不从空SDK env逃逸到宿主隐式登录。
+不执行login、refresh或setup-git，token只在Redacted内存，不存共享配置/内容身份。
+
+同Store/HTTP client的在途字节合并进一步隔离ConfigProvider与gh服务实例；不把两个
+认证上下文的并发请求互相代证。原内容地址缓存校验所有者不变，已验证相同字节仍能
+本机复用。显式API在auto优先，故障不擅自换入口；权限/认证/配额/重定向和OID/内容
+错误分别停止。旧公共匿名raw路径保留，认证不发raw CDN，JSON回应的url也不被跟随。
+
+先在原代码上保留3项红例（custom域名与blob未路由、环境认证未使用），再通过真实隔离
+gh子进程、API前缀/403/429/重定向/大base64/错内容/冷暖/跨环境合并等正负例。独立
+安装的既有storage旅程新增完整API树、5个blob与warm零Provider校验，和Git同快照，
+官方凭据哨兵0泄漏。Bun与Node/Vitest按原runner归属运行，不将假服务当实际服务证明。
+
+实际官方CLI元数据访问报告authentication=gh；实际自定义Broker报告客户端anonymous，
+均取得相同原commit/tree/file清单。实际5文件冷SDK读取中，官方路径通过；Broker首次
+返回上游502，保留失败且没有隐式降级。另一次独立冷目录复核Broker通过，和官方得到
+同一快照，原支持资源hash/模式与有效主文一致，Notion写入0、Git获取0、warm Provider0。
+这不说明任何Broker无额度/响应上限，也不把一次成功改写为此前失败已完成。
+
+新API路由、gh会话与真实网络未进入旧有限TLA模型。原源身份、缓存、调度/预算与
+metadata/ACK性质保持原配置和expected_rules；源码hash关联只标记已审阅实现，新的
+边界由上述源码/真实子进程/安装/实际服务证据承担。原未完成Skill和旧历史不因本功能
+获得新的纳管完成/写权限。默认Broker仍由用户显式选择，不修改全局认证或日用安装。

@@ -597,6 +597,11 @@ Independent migration can retain a `domain=review`, `state=unknown` operation wh
 | `NTN_SKILLS_DATA_HOME` | Full application data directory for installed builtins, distributions and installation recovery |
 | `XDG_DATA_HOME` | Base for the `ntn-skills` builtin data directory; default `~/.local/share` |
 | `NOTION_API_BASE_URL` | Trusted HTTPS API origin, default `https://api.notion.com`; loopback HTTP is allowed for controlled tests; URL credentials, paths and queries are rejected |
+| `NTN_SKILLS_GITHUB_API_URL` | Machine-local GitHub-compatible REST base including an optional path prefix; applies to fixed commit/tree/blob reads. HTTPS required except loopback; no URL credentials, query, fragment or traversal |
+| `NTN_SKILLS_GITHUB_TOKEN` | Explicit credential for the selected GitHub API; held redacted in memory, never persisted to shared records. A custom gateway does not inherit other official GitHub credentials |
+| `GH_TOKEN`, `GITHUB_TOKEN` | Official GitHub API credentials, in that order before the existing `gh auth token --hostname github.com` session; not forwarded to custom APIs or raw CDN |
+| `NTN_SKILLS_GITHUB_AUTH` | `auto` (default) or `anonymous`; anonymous opts out of gh and ambient official tokens and conflicts with an explicit dedicated token |
+| `NTN_SKILLS_FIXED_GIT_TRANSPORT` | `auto` (default), `http` or `git`; explicit API/authenticated HTTP takes precedence in auto. Explicit choices do not change shared fixed-source identities |
 | `NTN_SKILLS_SCHEDULER_ROOT` | Optional private absolute coordination root; defaults to the real OS user's `.local/state/ntn-skills/request-engine`, independently of content roots |
 | `NTN_SKILLS_NOTION_QUEUE_LIMIT` | Per-connection waiting queue limit, default 256, accepted range 1–4096 |
 | `NTN_SKILLS_NOTION_INTERVAL_MS` | Conservative request-start interval, default 350 ms, accepted range 100–60000 ms |
@@ -611,6 +616,8 @@ State defaults to `~/.local/state/ntn-skills`, selected by `NTN_SKILLS_HOME` > `
 Cache retirement updates selected SQL generation fences and retires observations in one short transaction. Reserved but unpublished generations are included, so delayed publishers fail with `CACHE_INVALIDATED`. The latest explicit access denial and its necessary scope association survive clearing; neutral cleanup cannot grant access. A later successful validation supersedes that denial, and a subsequent clear cannot resurrect an older one. It requires no filesystem deletion or Trash capability.
 
 The CLI sends no analytics or telemetry requests. Its Effect HTTP engine handles API requests, upload allocation/send, and signed downloads. Local access covers configuration/state/cache, supplied inputs, requested outputs and explicitly bound destinations. Imported scripts are never executed. See [SECURITY](../SECURITY.md) for trust/retention boundaries and [uninstall guidance](usage.md#upgrade-and-uninstall) for cleanup.
+
+The optional standard-runtime gh adapter is a read-only, noninteractive, five-second credential lookup, lazy and memoized per operation. SDK `env` is complete: its configured PATH/HOME/GH_CONFIG_DIR own the child environment; absent credential locations do not borrow the host's implicit session. No login, refresh or setup-git command runs. API redirects, authentication/permission failures, rate limits and content-identity mismatches cannot become anonymous retries or credential rotation. `ctl library source inspect` exposes only API-base and authentication-source metadata. [GitHub API access](sources-management.md#github-api-与已有-gh-登录态) defines route priority and JSON/base64 broker compatibility.
 
 ## Mutation contract
 

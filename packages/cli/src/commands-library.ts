@@ -18,6 +18,7 @@ import {
   inspectFixedGithubSource,
   validateFixedGithubSource,
 } from "../../core/src/shared-github-source.ts"
+import { resolveGithubApiAccess } from "../../core/src/github-api-access.ts"
 import { registerSourceBinding } from "../../core/src/shared-source-binding.ts"
 import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { libraryOnboarding } from "../../core/src/shared-library-onboarding.ts"
@@ -198,9 +199,15 @@ const sourceInspect = defineCommand(
     Effect.gen(function* () {
       const startedAt = yield* Clock.currentTimeMillis
       const api = yield* Notion
+      const access = yield* resolveGithubApiAccess
       const source = yield* inspectFixedGithubSource({ url, commit, root, metrics: api.metrics })
       yield* emit({
         source,
+        access: {
+          api_base: access.base,
+          authentication: access.authentication.kind,
+          custom_api: access.custom,
+        },
         metadata_only: true,
         elapsed_ms: (yield* Clock.currentTimeMillis) - startedAt,
         request_metrics: api.requestMetrics?.(),
@@ -208,7 +215,7 @@ const sourceInspect = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Inspect one explicitly fixed public GitHub commit and complete selected file tree. Does not download blob bodies, execute files, or select a newer commit. Truncated trees, symlinks and submodules in scope fail explicitly.",
+    "Inspect one explicitly fixed GitHub commit and complete selected file tree. Uses a machine-local NTN_SKILLS_GITHUB_API_URL when configured; otherwise reuses explicit tokens or the existing official gh session. Prints only credential-source metadata, never tokens. Does not download blob bodies, execute files, or select a newer commit. Truncated trees, symlinks and submodules in scope fail explicitly.",
   ),
 )
 const sourceRegister = defineCommand(

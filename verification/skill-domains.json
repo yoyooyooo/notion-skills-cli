@@ -61,6 +61,8 @@
         "packages/core/test/consumer-effects.test.ts",
         "packages/cli/test/sdk.test.ts",
         "packages/core/test/shared-fixed-git-transport.test.ts",
+        "packages/core/test/github-api-access.test.ts",
+        "packages/core/test/shared-github-routing.test.ts",
         "packages/core/test/shared-source-materialization.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/portable-export-package-consumption.md",

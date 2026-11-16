@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { ConfigProvider, Effect, Schema } from "effect"
-import { HttpClient, HttpClientResponse, HttpClientError } from "effect/http"
+import { ConfigProvider, Effect, Schema, Redacted } from "effect"
+import {
+  HttpClient,
+  HttpClientResponse,
+  HttpClientError,
+  type HttpClientRequest,
+} from "effect/http"
 import { fail, property, SkillsError } from "../src/model.ts"
 import { createRequestMetrics } from "../src/request-metrics.ts"
 import type { FixedGithubFile, FixedGithubSource } from "../src/shared-github-source.ts"
@@ -10,6 +15,7 @@ import { materializeFixedGithubSource } from "../src/shared-source-materializati
 import { Store } from "../src/store.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { FixedGitObjectReader } from "../src/shared-fixed-git-transport.ts"
+import { GhCredential } from "../src/github-api-access.ts"
 
 const encode = (value: string) => new TextEncoder().encode(value)
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -38,6 +44,7 @@ function fixture(
     mode: "auto" | "http" | "git"
     reader?: FixedGitObjectReader["Service"]
     networkFailure?: boolean
+    response?: (request: HttpClientRequest.HttpClientRequest, url: URL) => Response
   },
 ) {
   const json = new Map<string, unknown>()
@@ -125,6 +132,8 @@ function fixture(
       peak = Math.max(peak, active)
       return yield* Effect.gen(function* () {
         if (delay) yield* Effect.sleep("5 millis")
+        if (transport?.response)
+          return HttpClientResponse.fromWeb(request, transport.response(request, url))
         const sourcePath = decodeURIComponent(url.pathname.split("/").slice(4).join("/"))
         const bytes = bodyByPath.get(sourcePath)
         if (bytes === undefined)
@@ -173,6 +182,24 @@ function fixture(
         Effect.provide(NodeServices.layer),
       ),
     )
+  const configured = (
+    source: FixedGithubSource,
+    env: Record<string, string>,
+    gh?: GhCredential["Service"],
+  ) => {
+    let program = materializeFixedGithubSource(source, { metrics }).pipe(Effect.result)
+    if (gh !== undefined) program = program.pipe(Effect.provideService(GhCredential, gh))
+    if (transport?.reader !== undefined)
+      program = program.pipe(Effect.provideService(FixedGitObjectReader, transport.reader))
+    return Effect.runPromise(
+      program.pipe(
+        Effect.provideService(Store, store),
+        Effect.provideService(HttpClient.HttpClient, client),
+        Effect.provide(NodeServices.layer),
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env))),
+      ),
+    )
+  }
   return {
     json,
     objects,
@@ -183,9 +210,110 @@ function fixture(
     metrics,
     materialize,
     rejected,
+    configured,
     peak: () => peak,
   }
 }
+
+test("concurrent API identities do not coalesce across complete configuration scopes on the same Store/client", async () => {
+  const bytes = encode("shared exact source"),
+    file = entry("only.txt", bytes),
+    source = makeSource([file])
+  const tokens: string[] = [],
+    f = fixture(new Map(), true, {
+      mode: "http",
+      response: (request) => {
+        const token = request.headers.authorization ?? ""
+        tokens.push(token)
+        return token === "Bearer allowed-session"
+          ? new Response(bytes)
+          : new Response(null, { status: 403, headers: { "x-ratelimit-remaining": "20" } })
+      },
+    })
+  const [allowed, denied] = await Promise.all([
+    f.configured(source, { GH_TOKEN: "allowed-session" }),
+    f.configured(source, { GH_TOKEN: "denied-session" }),
+  ])
+  expect(allowed._tag).toBe("Success")
+  expect(denied._tag).toBe("Failure")
+  if (denied._tag === "Success") throw new Error("Expected independent access failure")
+  expect(denied.failure.code).toBe("GITHUB_ACCESS_FORBIDDEN")
+  expect(tokens.sort()).toEqual(["Bearer allowed-session", "Bearer denied-session"])
+})
+
+test("custom API wins auto batch selection and warm reads neither query gh nor transfer Git objects", async () => {
+  const bodies = Array.from({ length: 6 }, (_, index) => encode("original-" + index)),
+    files = bodies.map((bytes, index) => entry("file-" + index + ".bin", bytes)),
+    source = makeSource(files)
+  let ghCalls = 0,
+    gitCalls = 0
+  const f = fixture(new Map(), false, {
+    mode: "auto",
+    reader: {
+      read: () => {
+        gitCalls++
+        return Effect.die("Custom API must not choose Git")
+      },
+    },
+    response: (request, url) => {
+      expect(request.headers.authorization).toBeUndefined()
+      const file = files.find((file) => url.pathname.endsWith("/" + file.git_oid))!
+      const bytes = bodies[files.indexOf(file)]!
+      return Response.json({
+        sha: file.git_oid,
+        size: bytes.length,
+        encoding: "base64",
+        content: Buffer.from(bytes).toString("base64"),
+      })
+    },
+  })
+  const gh = {
+    resolve: Effect.sync(() => {
+      ghCalls++
+      return Redacted.make("never-send-official-session")
+    }),
+  }
+  const env = {
+    NTN_SKILLS_GITHUB_API_URL: "https://gateway.example.test/api",
+    GH_TOKEN: "not-for-gateway",
+  }
+  expect((await f.configured(source, env, gh))._tag).toBe("Success")
+  expect(f.requests).toHaveLength(6)
+  expect(ghCalls).toBe(0)
+  expect(gitCalls).toBe(0)
+  expect((await f.configured(source, env, gh))._tag).toBe("Success")
+  expect(f.requests).toHaveLength(6)
+  expect(ghCalls).toBe(0)
+  expect(gitCalls).toBe(0)
+})
+
+test("a custom API rate limit cannot become a Git fallback or a cache publication", async () => {
+  const file = entry("one.txt", encode("original")),
+    source = makeSource([file])
+  let gitCalls = 0
+  const f = fixture(new Map(), false, {
+    mode: "auto",
+    reader: {
+      read: () => {
+        gitCalls++
+        return Effect.die("No fallback on rate limit")
+      },
+    },
+    response: () => new Response(null, { status: 429, headers: { "retry-after": "15" } }),
+  })
+  const result = await f.configured(source, {
+    NTN_SKILLS_GITHUB_API_URL: "https://gateway.example.test/api",
+  })
+  expect(result._tag).toBe("Failure")
+  if (result._tag === "Success") throw new Error("Expected rate limit")
+  expect(result.failure).toMatchObject({
+    code: "GITHUB_RATE_LIMITED",
+    details: { retry_after: 15 },
+  })
+  expect(gitCalls).toBe(0)
+  expect(f.requests).toHaveLength(1)
+  expect(f.writes).toHaveLength(0)
+})
 
 test("auto transport can read the same frozen bytes through Git after raw-network failure; warm reads stay provider-free", async () => {
   const bytes = encode("same original bytes"),

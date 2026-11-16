@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "e4d9e081fb8f028f3f7cda6977ae4323c09aac79",
+  "synchronized_commit": "7217f2c7b2de7debe494588389f63c0fa87f918e",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "review_basis": "AH-1050 / NXT09 review from 1feacd3d133b5c6a0de8254439ef6bac5f78275c to checkout 4580b7d6d692013091d5c66e90d703d51fd5fb10 and exact uncommitted source hashes below. The service-local generic extraction preserves the old domain; a second, bounded immutable-byte domain shares across standard Node SDK runtimes using an independently scoped read-only transport. SharedProducer now models both domains, capacity admission, creator cancellation and slow-finalizer occupancy. RequestAdmission code and semantic model are unchanged.",
   "files": {
@@ -24,15 +24,21 @@
     "packages/core/src/shared-fixed-acquisition.ts": "fb4207ead2fe239a8b9f3641915260517da50faa0341676119f2600f1c3f7e70",
     "packages/core/src/resource-read.ts": "6ada172071a1b0a8c212696525b16aba888c6ef437eeb2f6481e697afdf97b44",
     "packages/core/src/notion-readonly.ts": "c618f4bd7b0ed5e19c92a028e0a433e19a746e85e8238fbb266f27df866e0c41",
-    "packages/cli/src/runtime.ts": "204bbf98498fd3db92a58a8db1b8afa6e7bb86cbbf547b350edb991b95537baa",
+    "packages/cli/src/runtime.ts": "49495db4fa9b101eef963d4e3c9aabef307f875a8c2573bc73bdfa90e735ff9d",
     "packages/core/test/shared-immutable-read.test.ts": "0c7610fa197cb1a891a48ca4c92217b1c37d61a6f31c7e7bf3a5617592c77e5c",
     "packages/core/test/sdk-immutable-read.node.test.ts": "c8c707951038f6c5fc457105ecf3da1c0ed0e9589a1baacd6e72cd60e767c16d",
     "scripts/sdk-source-fixture.mjs": "f909762187dff3624666675eafcd17764b0ab4aa8bf14077285659504b8d6dd7",
     "vitest.config.ts": "256f9ec59266045da294333da99df854450b52ebe3297f85b0223039f676bcda",
     "packages/core/src/shared-fixed-git-transport.ts": "cd83e2412e1b476a96dd549b352b558e6c100f51d3b85246b268468b79a041f7",
-    "packages/core/src/shared-source-materialization.ts": "c7e7fa2bac3e021b4e3a821e8f536643067013bc586bb25ee3d4bc8a85c2bc6c",
+    "packages/core/src/shared-source-materialization.ts": "a08c1db21fbb9c5f0742b093dcad42057bb8daa4e546559c6e361eff43e953ae",
     "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
-    "packages/core/test/shared-source-materialization.test.ts": "923eea86aa8eb512bbfbd3abbce9ec960dbf5ebd5f80ef496566dbee8f396747"
+    "packages/core/test/shared-source-materialization.test.ts": "b98bb16f09ced63ecf6809d6a7c3f05e38d4acc763e5a2946150e3261f9f2be4",
+    "packages/core/src/github-api-access.ts": "5a862834eaf149de3e1ee416e8b66428723c814437b21ba661f57a782bb2527b",
+    "packages/core/src/shared-github-source.ts": "7fea4ab43c40a93e67bd6cf2fc7fd1dcd7d6acdc34e3b28ae06827fa025ea359",
+    "packages/cli/src/commands-library.ts": "b7dc4e4be43196a16d4e1b0faeca5c4c46fcdab6b4c05e316f122f397e0629e6",
+    "packages/core/test/github-api-access.test.ts": "9bab088971fc7f975d73dae20bd3dd4aeeb353ffcd88c68529708e612d8f3ba0",
+    "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
+    "packages/cli/test/library-source-storage-http.test.ts": "be519cebc8a5b1dc4114c594fbb3ef298037c860273bdaf92ba48563dd2f2d21"
   },
   "models": {
     "SharedProducer": {
@@ -489,6 +495,29 @@
         "reconcileSourceStorageAlignment"
       ],
       "scope": "External-first auto policy blocks unsupported/transformed implicit full-byte retention; explicit retained source/caller decisions and old frozen plans retain their semantics. Standard Node CLI/SDK can retrieve exact pinned commit/tree/path/OID/hash/mode through optional machine Git or existing raw HTTP, sharing original content-addressed cache ownership. No checkout or resource execution, no wrong-hash fallback, unknown Git wire bytes stay unknown. Existing-library alignment wraps the original source-refresh v4 metadata selection and ACK journal after same-original-revision/all-file identity and governance proof; it preserves original pages, custom/tombstone/eligibility/relations/history, adds no binary objects, and unknown selection is not replayed from current equality. Disabled authoring is exact-target only. Concrete Git transport, storage-choice policy and the new proof wrapper are outside unchanged finite TLA domains; dedicated real Git, cold cache, original unknown/custom tests, independent installed CLI/SDK and actual-library evidence remain separate. Existing retained fixtures make their prior storage choice explicit, without dropping negative guards. All model/config/expected_rules inventories remain unchanged. See docs/maintenance-verification-review.md SRC08."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "machine_github_api_and_readonly_gh_authentication",
+      "files": [
+        "packages/cli/src/commands-library.ts",
+        "packages/cli/src/runtime.ts",
+        "packages/cli/test/library-source-storage-http.test.ts",
+        "packages/core/src/github-api-access.ts",
+        "packages/core/src/shared-github-source.ts",
+        "packages/core/src/shared-source-materialization.ts",
+        "packages/core/test/github-api-access.test.ts",
+        "packages/core/test/shared-github-routing.test.ts",
+        "packages/core/test/shared-source-materialization.test.ts"
+      ],
+      "symbols": [
+        "resolveGithubApiAccess",
+        "GhCredentialLive",
+        "inspectFixedGithubSource",
+        "fetchFixedGithubFile",
+        "materializeFixedGithubSource"
+      ],
+      "scope": "Machine-local GitHub API prefixes route commit/tree and exact blobs without changing shared source IDs. Official environment credentials or an existing gh github.com session are isolated from custom APIs; only explicit dedicated credentials may reach a custom gateway. The standard optional gh service is lazy/memoized per operation, bounded/noninteractive, captures the complete SDK ConfigProvider child environment, never logs/stores tokens, and performs no login/refresh/setup-git. Custom JSON/base64 blobs are size/OID/hash validated; redirects, returned URLs, auth failures and rate limits do not authorize credential rotation or alternate-host fallback. In-flight immutable byte coalescing is additionally scoped to ConfigProvider and gh service; verified content-addressed cache ownership and existing permissions remain unchanged. Real isolated gh, safe failure/large payload/cache/concurrency tests, independent installed CLI/SDK and separate actual Broker/official-gh evidence cover the added behavior. Initial actual Broker 502 remains a failed original; a later independent cold success is separate evidence. These transport/auth procedures and external network behavior are NOT enumerated in unchanged finite TLA domains. Original model/config/cases/expected_rules are unchanged; hash correspondence is not a new theorem. See docs/maintenance-verification-review.md SRC09."
     }
   ]
 }

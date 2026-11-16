@@ -140,6 +140,8 @@ test("independent CLI and SDK align an original disabled retained tree to identi
     `[url "${pathToFileURL(repository).href}"]\n\tinsteadOf = https://github.com/example/storage-alignment.git\n`,
   )
   const calls: { path: string; method: string; body: unknown }[] = []
+  let githubReads = 0,
+    githubCredentialLeaks = 0
   let loseSelection = false
   const server = createServer(async (request, response) => {
     try {
@@ -150,6 +152,45 @@ test("independent CLI and SDK align an original disabled retained tree to identi
       const bytes = Buffer.concat(chunks),
         body = bytes.length === 0 ? undefined : JSON.parse(bytes.toString("utf8"))
       calls.push({ path: url.pathname, method, body })
+      if (url.pathname.startsWith("/github-api/")) {
+        githubReads++
+        if (request.headers.authorization !== undefined || request.headers.cookie !== undefined)
+          githubCredentialLeaks++
+        const prefix = "/github-api/repos/example/storage-alignment/git/"
+        let github: unknown
+        if (url.pathname === prefix + "commits/" + commit)
+          github = { sha: commit, tree: { sha: tree } }
+        else if (url.pathname === prefix + "trees/" + tree && url.search === "?recursive=1")
+          github = {
+            sha: tree,
+            truncated: false,
+            tree: [
+              { path: "skills/demo", mode: "040000", type: "tree", sha: "c".repeat(40) },
+              ...manifest.map((file) => ({
+                path: file.source_path,
+                mode: file.mode,
+                type: "blob",
+                sha: file.git_oid,
+                size: file.bytes,
+              })),
+            ],
+          }
+        else {
+          const file = manifest.find((file) => url.pathname === prefix + "blobs/" + file.git_oid)
+          if (file) {
+            const original = m.portable.files.find((value) => value.path === file.path)!
+            github = {
+              sha: file.git_oid,
+              size: file.bytes,
+              encoding: "base64",
+              content: Buffer.from(original.bytes).toString("base64") + "\n",
+            }
+          }
+        }
+        response.writeHead(github === undefined ? 404 : 200, { "content-type": "application/json" })
+        response.end(JSON.stringify(github ?? { error: "not_selected" }))
+        return
+      }
       if (url.pathname === "/v1/users/me") {
         response.writeHead(200, { "content-type": "application/json" })
         response.end(
@@ -225,9 +266,9 @@ test("independent CLI and SDK align an original disabled retained tree to identi
   }
   delete env.NTN_SKILLS_DEV_ROOT
   const commands: unknown[] = []
-  const invoke = async (args: string[], exit = 0) => {
+  const invoke = async (args: string[], exit = 0, selectedEnv = env) => {
     const child = Bun.spawn([node, executable, ...args], {
-      env,
+      env: selectedEnv,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -371,6 +412,69 @@ assert.ok(metrics.every(m=>m.requests.notion_write===0));console.log(JSON.string
     expect(coldExit, coldOut + coldErr).toBe(0)
     await writeFile(join(root, "cold-sdk.json"), coldOut)
     expect(writes()).toHaveLength(afterWrites)
+    const gatewayEnv = {
+      ...env,
+      NTN_SKILLS_FIXED_GIT_TRANSPORT: "auto",
+      NTN_SKILLS_GITHUB_API_URL: `http://127.0.0.1:${address.port}/github-api`,
+      NTN_SKILLS_GITHUB_TOKEN: "",
+      NTN_SKILLS_GITHUB_AUTH: "auto",
+      GH_TOKEN: "official-session-must-not-leak",
+      NTN_SKILLS_HOME: join(root, "gateway-state"),
+      NTN_SKILLS_CACHE_HOME: join(root, "gateway-cache"),
+      NTN_SKILLS_DATA_HOME: join(root, "gateway-data"),
+    }
+    const inspect = await invoke(
+      [
+        "ctl",
+        "library",
+        "source",
+        "inspect",
+        definition.adapter.url,
+        "--commit",
+        commit,
+        "--root",
+        "skills/demo",
+      ],
+      0,
+      gatewayEnv,
+    )
+    expect(property(inspect.source).commit).toBe(commit)
+    expect(githubReads).toBe(2)
+    const gateway = Bun.spawn([node, coldScript], {
+      env: gatewayEnv,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [gatewayOut, gatewayErr, gatewayExit] = await Promise.all([
+      new Response(gateway.stdout).text(),
+      new Response(gateway.stderr).text(),
+      gateway.exited,
+    ])
+    expect(gatewayExit, gatewayOut + gatewayErr).toBe(0)
+    await writeFile(join(root, "gateway-cold-sdk.json"), gatewayOut)
+    expect(githubReads).toBe(7)
+    expect(githubCredentialLeaks).toBe(0)
+    expect(writes()).toHaveLength(afterWrites)
+    expect(property(JSON.parse(gatewayOut)).snapshot_id).toBe(
+      property(JSON.parse(coldOut)).snapshot_id,
+    )
+    const gatewayWarm = Bun.spawn([node, coldScript], {
+      env: gatewayEnv,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [warmOut, warmErr, warmExit] = await Promise.all([
+      new Response(gatewayWarm.stdout).text(),
+      new Response(gatewayWarm.stderr).text(),
+      gatewayWarm.exited,
+    ])
+    expect(warmExit, warmOut + warmErr).toBe(0)
+    expect(githubReads).toBe(7)
+    expect(githubCredentialLeaks).toBe(0)
+    expect(writes()).toHaveLength(afterWrites)
+    await writeFile(join(root, "gateway-warm-sdk.json"), warmOut)
     const receipt = {
       kind: "independent_cli_sdk_fixed_git_storage_alignment",
       directory: root,
@@ -390,6 +494,13 @@ assert.ok(metrics.every(m=>m.requests.notion_write===0));console.log(JSON.string
       actualNotion: false,
       realGit: true,
       realNodeSqlite: true,
+      customGithubApi: {
+        metadata_reads: 2,
+        blob_reads: 5,
+        warm_provider_reads: 0,
+        official_credential_leaks: githubCredentialLeaks,
+        same_snapshot: true,
+      },
       cli_sha256: digest(await readFile(executable)),
       sdk_sha256: digest(await readFile(join(dirname(executable), "sdk.js"))),
     }

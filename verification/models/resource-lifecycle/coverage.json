@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "e4d9e081fb8f028f3f7cda6977ae4323c09aac79",
+  "synchronized_commit": "7217f2c7b2de7debe494588389f63c0fa87f918e",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
@@ -157,13 +157,19 @@
     "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
     "packages/core/test/shared-source-storage.test.ts": "1dafd44ac557d0a378502472d7569e41edb5267434cc871cf54ffb7676dcd01e",
     "packages/cli/src/commands-library-source-storage.ts": "84628ce643dcc96fa8e37fceee6544bd2ff5ba5b7dd8a24aa96577ba5ff2aa2b",
-    "packages/cli/test/library-source-storage-http.test.ts": "b6ecc510dfd1b2b2882d9afef058380b68bcbced7020e1c37853d722d85e6b2d",
+    "packages/cli/test/library-source-storage-http.test.ts": "be519cebc8a5b1dc4114c594fbb3ef298037c860273bdaf92ba48563dd2f2d21",
     "packages/core/src/shared-source-member.ts": "b4a07644dc23667c412c5e1a725c61cacd6fbbe97e06628587ec04193373a902",
-    "packages/core/src/shared-source-materialization.ts": "c7e7fa2bac3e021b4e3a821e8f536643067013bc586bb25ee3d4bc8a85c2bc6c",
+    "packages/core/src/shared-source-materialization.ts": "a08c1db21fbb9c5f0742b093dcad42057bb8daa4e546559c6e361eff43e953ae",
     "packages/core/src/upstream-source.ts": "c680765a7a0864226528853dc60e6c546cde219496493070cba64ccf1461e306",
-    "packages/core/test/shared-source-materialization.test.ts": "923eea86aa8eb512bbfbd3abbce9ec960dbf5ebd5f80ef496566dbee8f396747",
+    "packages/core/test/shared-source-materialization.test.ts": "b98bb16f09ced63ecf6809d6a7c3f05e38d4acc763e5a2946150e3261f9f2be4",
     "packages/core/test/shared-source-batch.test.ts": "614b702cd6eedcff9a6c789ab150e2ddfc88eee8afc1e249e661878f9be3802a",
-    "packages/core/test/shared-source-batch-sqlite.node.test.ts": "a07874e4e4c1e2a6738f57a70be8cc006ece4d6c7a6869ab412c7a70fb5f2394"
+    "packages/core/test/shared-source-batch-sqlite.node.test.ts": "a07874e4e4c1e2a6738f57a70be8cc006ece4d6c7a6869ab412c7a70fb5f2394",
+    "packages/core/src/github-api-access.ts": "5a862834eaf149de3e1ee416e8b66428723c814437b21ba661f57a782bb2527b",
+    "packages/core/src/shared-github-source.ts": "7fea4ab43c40a93e67bd6cf2fc7fd1dcd7d6acdc34e3b28ae06827fa025ea359",
+    "packages/cli/src/runtime.ts": "49495db4fa9b101eef963d4e3c9aabef307f875a8c2573bc73bdfa90e735ff9d",
+    "packages/cli/src/commands-library.ts": "b7dc4e4be43196a16d4e1b0faeca5c4c46fcdab6b4c05e316f122f397e0629e6",
+    "packages/core/test/github-api-access.test.ts": "9bab088971fc7f975d73dae20bd3dd4aeeb353ffcd88c68529708e612d8f3ba0",
+    "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892"
   },
   "models": {
     "ProjectionRace": {
@@ -1242,6 +1248,29 @@
         "reconcileSourceStorageAlignment"
       ],
       "scope": "External-first auto policy blocks unsupported/transformed implicit full-byte retention; explicit retained source/caller decisions and old frozen plans retain their semantics. Standard Node CLI/SDK can retrieve exact pinned commit/tree/path/OID/hash/mode through optional machine Git or existing raw HTTP, sharing original content-addressed cache ownership. No checkout or resource execution, no wrong-hash fallback, unknown Git wire bytes stay unknown. Existing-library alignment wraps the original source-refresh v4 metadata selection and ACK journal after same-original-revision/all-file identity and governance proof; it preserves original pages, custom/tombstone/eligibility/relations/history, adds no binary objects, and unknown selection is not replayed from current equality. Disabled authoring is exact-target only. Concrete Git transport, storage-choice policy and the new proof wrapper are outside unchanged finite TLA domains; dedicated real Git, cold cache, original unknown/custom tests, independent installed CLI/SDK and actual-library evidence remain separate. Existing retained fixtures make their prior storage choice explicit, without dropping negative guards. All model/config/expected_rules inventories remain unchanged. See docs/maintenance-verification-review.md SRC08."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "machine_github_api_and_readonly_gh_authentication",
+      "files": [
+        "packages/cli/src/commands-library.ts",
+        "packages/cli/src/runtime.ts",
+        "packages/cli/test/library-source-storage-http.test.ts",
+        "packages/core/src/github-api-access.ts",
+        "packages/core/src/shared-github-source.ts",
+        "packages/core/src/shared-source-materialization.ts",
+        "packages/core/test/github-api-access.test.ts",
+        "packages/core/test/shared-github-routing.test.ts",
+        "packages/core/test/shared-source-materialization.test.ts"
+      ],
+      "symbols": [
+        "resolveGithubApiAccess",
+        "GhCredentialLive",
+        "inspectFixedGithubSource",
+        "fetchFixedGithubFile",
+        "materializeFixedGithubSource"
+      ],
+      "scope": "Machine-local GitHub API prefixes route commit/tree and exact blobs without changing shared source IDs. Official environment credentials or an existing gh github.com session are isolated from custom APIs; only explicit dedicated credentials may reach a custom gateway. The standard optional gh service is lazy/memoized per operation, bounded/noninteractive, captures the complete SDK ConfigProvider child environment, never logs/stores tokens, and performs no login/refresh/setup-git. Custom JSON/base64 blobs are size/OID/hash validated; redirects, returned URLs, auth failures and rate limits do not authorize credential rotation or alternate-host fallback. In-flight immutable byte coalescing is additionally scoped to ConfigProvider and gh service; verified content-addressed cache ownership and existing permissions remain unchanged. Real isolated gh, safe failure/large payload/cache/concurrency tests, independent installed CLI/SDK and separate actual Broker/official-gh evidence cover the added behavior. Initial actual Broker 502 remains a failed original; a later independent cold success is separate evidence. These transport/auth procedures and external network behavior are NOT enumerated in unchanged finite TLA domains. Original model/config/cases/expected_rules are unchanged; hash correspondence is not a new theorem. See docs/maintenance-verification-review.md SRC09."
     }
   ],
   "cases": [

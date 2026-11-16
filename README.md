@@ -165,12 +165,22 @@ An ordinary Skill folder needs no hand-authored manifest. Ordinary `create` acce
 
 A draft already created in Notion can stay disabled while being edited. Complete its Name and Description and set Kind to `skill`, then run `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` to retain its original page/body and establish stable identities. Use `read SKILL_PAGE_ID --authoring` for a fresh editable pin; normal writes preserve the disabled state until `update SKILL_PAGE_ID --enabled true` verifies and enables the complete tree. An unfinished disabled draft remains outside consumer discovery without blocking other Skills. To add a reference and link it from the main body in one edit, submit both files in one sparse `apply`; the [complete-tree guide](docs/maintenance-tree-contract.md) covers this path. For an individual `ctl library file add`, the [reference guide](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill) explains the subsequent fresh-pin main edit.
 
-Fixed public GitHub source inspection takes an exact commit and root:
+Fixed GitHub source inspection takes an exact commit and root:
 
 ```bash
 ntn-skills ctl library source inspect 'https://github.com/OWNER/REPOSITORY' --commit 'FULL_40_HEX_COMMIT' --root 'PATH_IN_REPOSITORY'
 ntn-skills ctl library source register 'SKILL_PAGE_ID' --entry 'ENTRY_DATABASE_ID' --url 'https://github.com/OWNER/REPOSITORY' --commit 'FULL_40_HEX_COMMIT' --root 'PATH_IN_REPOSITORY'
 ```
+
+GitHub reads use existing machine authentication: an explicit
+`NTN_SKILLS_GITHUB_TOKEN`, then `GH_TOKEN` / `GITHUB_TOKEN`, then the active
+`gh` session for `github.com`. No login or credential-file changes are made.
+Set `NTN_SKILLS_GITHUB_AUTH=anonymous` to opt out. A custom
+`NTN_SKILLS_GITHUB_API_URL=https://gateway.example/api-prefix` routes both
+metadata and fixed blob reads through that API. Custom gateways do not inherit
+official GitHub credentials; only the dedicated token is eligible there.
+These settings stay local and never enter shared source IDs or Notion records.
+See [GitHub API access](docs/sources-management.md#github-api-与已有-gh-登录态).
 
 Inspection reads the fixed tree without downloading file bodies. Save its complete JSON response as `fixed-source.json`, or supply a bare fixed manifest, to register the exact inspected candidate without another provider request:
 
