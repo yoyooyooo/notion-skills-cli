@@ -122,11 +122,11 @@
     "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
-    "packages/core/src/shared-source-onboarding.ts": "ef4b441479917922a185bc9b02148cb1122d18493a64df659c4fcade811c818b",
+    "packages/core/src/shared-source-onboarding.ts": "bf88efb7104dec612b25655539e83f6caf6db521d0034ad63e6b706b1016bec7",
     "packages/core/src/shared-source-onboarding-model.ts": "0ab4f2cba816c0931a266671efa5ea50a6f682635548cbce63992af474c1cad6",
     "packages/cli/src/commands-library-source-onboarding.ts": "0b05ec37444a1cba08f78c4ab8fda3fbb7a6c189f7d17298ce11c7ed53b28cc3",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "7454f9302e34fa8c298272df42e47fec1b14a148d1354ad195955d4adc75239b",
+    "packages/core/test/shared-source-onboarding.test.ts": "3756f975ec7f98eb37d40c8ac882caca557337d5cd4e867e8ed598dceecfa4c9",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -160,7 +160,7 @@
     "packages/cli/test/library-source-storage-http.test.ts": "022217e367cdeb44860abe3b5b26d0220f5227d5cfdbe32f64009ffb9d378a4e",
     "packages/core/src/shared-source-member.ts": "b4a07644dc23667c412c5e1a725c61cacd6fbbe97e06628587ec04193373a902",
     "packages/core/src/shared-source-materialization.ts": "a08c1db21fbb9c5f0742b093dcad42057bb8daa4e546559c6e361eff43e953ae",
-    "packages/core/src/upstream-source.ts": "c680765a7a0864226528853dc60e6c546cde219496493070cba64ccf1461e306",
+    "packages/core/src/upstream-source.ts": "3001c63ee2868dcc8499f197325d8438c3ea4b159c2266a5db5c5e64418e195a",
     "packages/core/test/shared-source-materialization.test.ts": "b98bb16f09ced63ecf6809d6a7c3f05e38d4acc763e5a2946150e3261f9f2be4",
     "packages/core/test/shared-source-batch.test.ts": "614b702cd6eedcff9a6c789ab150e2ddfc88eee8afc1e249e661878f9be3802a",
     "packages/core/test/shared-source-batch-sqlite.node.test.ts": "a07874e4e4c1e2a6738f57a70be8cc006ece4d6c7a6869ab412c7a70fb5f2394",
@@ -2237,5 +2237,22 @@
     "finite_model_change": false,
     "models_configs_views_cases_expected_rules_changed": false,
     "claims_excluded": "not a fresh formal execution, complete provider review, or natural agent success"
+  },
+  "src16_exact_git_member_scope_review": {
+    "issue": "AH-1067",
+    "document": "docs/maintenance-verification-review.md",
+    "changed_existing_hash_bindings": [
+      "packages/core/src/shared-source-onboarding.ts",
+      "packages/core/test/shared-source-onboarding.test.ts",
+      "packages/core/src/upstream-source.ts"
+    ],
+    "semantics": "Runtime-only exact Git member selection is validated against the complete configured commit/tree before provider blob acquisition. HTTPS GitHub Git uses HTTP/1.1 in only its temporary bare repository after an observed HTTP/2 framing failure; host configuration, source definitions, writer authority and immutable journals remain unchanged.",
+    "finite_model_change": false,
+    "models_configs_views_cases_expected_rules_changed": false,
+    "regressions": [
+      "packages/core/test/upstream-source.test.ts",
+      "packages/core/test/shared-source-onboarding.test.ts"
+    ],
+    "claims_excluded": "No single-member lazy-resource assertion, no Notion Files/Records full-copy requirement, no natural Agent success claim."
   }
 }

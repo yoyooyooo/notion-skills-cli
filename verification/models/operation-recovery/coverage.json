@@ -77,7 +77,7 @@
     "packages/cli/test/library-source-storage-http.test.ts": "022217e367cdeb44860abe3b5b26d0220f5227d5cfdbe32f64009ffb9d378a4e",
     "packages/core/src/shared-source-member.ts": "b4a07644dc23667c412c5e1a725c61cacd6fbbe97e06628587ec04193373a902",
     "packages/core/src/shared-source-materialization.ts": "a08c1db21fbb9c5f0742b093dcad42057bb8daa4e546559c6e361eff43e953ae",
-    "packages/core/src/upstream-source.ts": "c680765a7a0864226528853dc60e6c546cde219496493070cba64ccf1461e306",
+    "packages/core/src/upstream-source.ts": "3001c63ee2868dcc8499f197325d8438c3ea4b159c2266a5db5c5e64418e195a",
     "packages/core/test/shared-source-materialization.test.ts": "b98bb16f09ced63ecf6809d6a7c3f05e38d4acc763e5a2946150e3261f9f2be4",
     "packages/core/test/shared-source-batch.test.ts": "614b702cd6eedcff9a6c789ab150e2ddfc88eee8afc1e249e661878f9be3802a",
     "packages/core/test/shared-source-batch-sqlite.node.test.ts": "a07874e4e4c1e2a6738f57a70be8cc006ece4d6c7a6869ab412c7a70fb5f2394",
@@ -1374,5 +1374,18 @@
     "finite_model_change": false,
     "models_configs_views_cases_expected_rules_changed": false,
     "claims_excluded": "not a fresh formal execution, complete provider review, or natural agent success"
+  },
+  "src16_exact_git_member_scope_review": {
+    "issue": "AH-1067",
+    "document": "docs/maintenance-verification-review.md",
+    "changed_existing_hash_bindings": ["packages/core/src/upstream-source.ts"],
+    "semantics": "Runtime-only exact Git member selection is validated against the complete configured commit/tree before provider blob acquisition. HTTPS GitHub Git uses HTTP/1.1 in only its temporary bare repository after an observed HTTP/2 framing failure; host configuration, source definitions, writer authority and immutable journals remain unchanged.",
+    "finite_model_change": false,
+    "models_configs_views_cases_expected_rules_changed": false,
+    "regressions": [
+      "packages/core/test/upstream-source.test.ts",
+      "packages/core/test/shared-source-onboarding.test.ts"
+    ],
+    "claims_excluded": "No single-member lazy-resource assertion, no Notion Files/Records full-copy requirement, no natural Agent success claim."
   }
 }

@@ -343,7 +343,11 @@ export function discoverLinearSource(
 }
 export function discoverSourceDefinition(
   input: SourceDefinitionInput,
-  options: { readonly metrics?: ReturnType<typeof createRequestMetrics> } = {},
+  options: {
+    readonly metrics?: ReturnType<typeof createRequestMetrics>
+    /** Narrow explicit member discovery before acquiring resource bytes; no Source mutation. */
+    readonly onlyMembers?: readonly string[]
+  } = {},
 ) {
   return Effect.gen(function* () {
     const definition = yield* sourceChecked(() => sourceConfiguration(input))

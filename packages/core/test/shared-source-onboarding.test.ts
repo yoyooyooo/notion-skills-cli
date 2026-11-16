@@ -11,6 +11,7 @@ import { Store } from "../src/store.ts"
 import { Notion } from "../src/notion.ts"
 import { executeSharedCreate } from "../src/shared-create.ts"
 import { bindSourceDefinition } from "../src/shared-source-definitions.ts"
+import { discoverSourceDefinition } from "../src/shared-source-adapters.ts"
 import {
   prepareSourceOnboarding,
   reviewSourceOnboarding,
@@ -138,6 +139,27 @@ test("an explicit Source subset shares one inventory, retains order and never cl
   expect(plan.report.coverage).toBe("partial")
   expect(plan.actions).toHaveLength(1)
   expect(plan.actions[0]?.kind).toBe("create")
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("an exact Git --member is pushed into acquisition before unrelated member bodies are requested", async () => {
+  const f = setup()
+  const key = f.snapshot.members[0]!.member_key
+  const seen: (readonly string[] | undefined)[] = []
+  const acquired = (...args: Parameters<typeof discoverSourceDefinition>) => {
+    seen.push(args[1]?.onlyMembers)
+    return f.acquire()
+  }
+  const report = await f.run(
+    reviewSourceOnboarding(library, { ...f.scope, members: [key] }, acquired),
+  )
+  expect(report.coverage).toBe("complete")
+  expect(report.sources[0]?.members.map((item) => item.member_key)).toEqual([key])
+  expect(seen).toEqual([[key]])
+  expect(f.writes()).toHaveLength(0)
+  const broad = await f.run(reviewSourceOnboarding(library, f.scope, acquired))
+  expect(broad.coverage).toBe("complete")
+  expect(seen).toEqual([[key], undefined])
   expect(f.writes()).toHaveLength(0)
 })
 

@@ -19,9 +19,13 @@ Sources 是第四张独立全页面 Database。它拥有来源身份、Provider�
 
 Sources 单独保存可编辑配置，Records 保留不可变历史。普通 Skill 消费只依赖当前 pin、文件与已确认归属，不扫描 Sources，也不重新发现分支或成员。缺少所需字节时可以按冻结的 acquisition 位置读取精确 Git 对象、HTTP 资源或保留对象；只有来源管理命令读取可编辑配置并启动候选发现。
 
+**有上游 GitHub 的默认消费路径：固定 Git 内容为数据面，Notion 是授权、身份和接管控制面。** 普通 `read/use/files` 读取所选 commit 的原始文件与本机内容缓存；不可为了让管理表显得完整，就把全部上游主文、图片、脚本和附件搬到 Notion Files/Records。当前不可变 Source 绑定和已有作者 custom/历史原操作仍遵循原有权限与证据合同；这里的“不复制资源”不表示可以删除这些必要的历史记录。新创建/保留型作者操作如果仍涉及原生 Markdown 页面，应将该费用与 Git 消费分账，不把整包原生导入当作固定 Git 日用的前置验收。
+
 ## 来源适配
 
 适配器输出统一的完整文件集合、member key 与解析后的 revision。通用 Git acquisition 使用精确 commit/tree，支持 GitHub、GitLab 和自托管 HTTPS/SSH Git，不以 GitHub API 作为领域模型。Registry 复用已有明确版本的资源读取。Linear 使用只读 GraphQL issue/document 到文件的显式映射；updatedAt 加实际字节摘要固定一次观测，并不冒充可回溯的服务端历史版本。
+
+显式 `sources review/onboard --source SOURCE --member EXACT_KEY` 会把目标成员传给 Git 发现器，在完整配置选路、完整 commit/tree 和成员身份核对之后，仅批取指定成员的 blob 及必要来源引用。此选路不修改 Sources 配置、不覆盖其他成员，也不把所选成员的完整性误记为全 Source 的完整性。单个成员本身有大量文件时，此优化仍需按冻结范围验证它的完整文件树；它不声称解决单成员整包拉取成本，也不授权创建 Notion 原生副本。非 Git 适配器保持已有审阅行为。
 
 本机认证与共享配置分离。Linear 使用 LINEAR_API_KEY，Git 使用本机正常认证。Shared JSON 不接受 token/password/authorization/header；不保存凭据，不执行脚本，不让 Notion 配置指定任意命令或本机文件路径。
 
@@ -121,6 +125,12 @@ Git通道使用临时bare仓库、完整commit/tree校验和选定blob批取，�
 元数据树读取而自动成为消费内容，warm本地对象不重新访问Provider。Git网络传输字节
 未计量时报告unknown，不把它伪装成HTTP零成本。Git认证和可信本机URL重写只属于本机，
 不复制到Notion；冷机器需具备自己的获取权限和通道。
+
+对于GitHub HTTPS的Git发现，临时bare仓库限定本次Git HTTP版本为1.1，避免已观测到
+的代理链HTTP/2 framing失败；该设置不修改全局Git或FlClash配置，也不影响GitLab/本机
+Git来源。GitHub固定commit的元数据检查可优先用既有`ctl library source inspect`
+直接取得完整GitHub tree/OID/size，而不下载body；需要主文时再使用相同固定版本
+的按文件获取内核。上游大Skill不以重建Notion原生支持页作为消费前置。
 
 ### GitHub API 与已有 gh 登录态
 

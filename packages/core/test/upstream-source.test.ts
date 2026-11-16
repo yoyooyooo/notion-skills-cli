@@ -132,6 +132,52 @@ test("a filtered Git acquisition retains selected and referenced blobs without d
   })
 }, 30000)
 
+test("a runtime-only exact member selection reads the pinned Git tree without fetching other member bytes", async () => {
+  await repository(async (directory) => {
+    const selected = skill("selected", "Only this original Skill is needed.")
+    const unrelated = randomBytes(2 * 1024 * 1024)
+    await put(directory, "skills/selected/SKILL.md", selected)
+    await put(directory, "skills/other/SKILL.md", skill("other", "Keep this independent."))
+    await put(directory, "skills/other/assets/large.bin", unrelated)
+    const revision = commit(directory)
+    const gitInput = input(directory, {
+      source: { type: "git", url: `file://${directory}`, ref: revision },
+    })
+    const metrics = createRequestMetrics()
+    const scoped = await Effect.runPromise(
+      discoverSource(gitInput, { onlyMembers: ["skills/selected"], metrics }).pipe(
+        Effect.provide(services),
+      ),
+    )
+    expect(scoped.revision).toBe(revision)
+    expect(scoped.members.map((item) => item.member_key)).toEqual(["skills/selected"])
+    expect(scoped.members[0]?.portable.files[0]?.bytes).toEqual(utf8.encode(selected))
+    expect(metrics.snapshot().source_acquisitions?.cat_file_bytes).toBe(
+      utf8.encode(selected).length,
+    )
+    const complete = await discover(gitInput)
+    expect(complete.members.map((item) => item.member_key)).toEqual([
+      "skills/other",
+      "skills/selected",
+    ])
+    await expect(
+      Effect.runPromise(
+        discoverSource(gitInput, { onlyMembers: ["skills/missing"] }).pipe(
+          Effect.provide(services),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "UPSTREAM_MEMBER_UNAVAILABLE" })
+    for (const onlyMembers of [[], ["skills/selected", "skills/selected"], ["../escape"]]) {
+      await expect(
+        Effect.runPromise(discoverSource(gitInput, { onlyMembers }).pipe(Effect.provide(services))),
+      ).rejects.toMatchObject({ code: expect.stringMatching(/^UPSTREAM_/u) })
+    }
+    expect(await readFile(join(directory, "skills/other/assets/large.bin"))).toEqual(
+      Buffer.from(unrelated),
+    )
+  })
+}, 30000)
+
 test("formal Git discovery reports real fetch/storage/blob costs without changing fixed content identity", async () => {
   await repository(async (directory) => {
     const main = skill("measured", "Read the fixed resource.")
@@ -153,25 +199,30 @@ test("formal Git discovery reports real fetch/storage/blob costs without changin
       policy: "manual" as const,
       adapter: {
         type: "git" as const,
-        url: "https://source-fixture.example/repository.git",
+        url: "https://github.com/source-fixture/repository.git",
         ref: revision,
       },
       selection: { roots: ["skills"], include: [], exclude: [], mapping: {} },
       options: {},
     }
+    let scopedGithubHttp11 = 0
     const acquire = () =>
       Effect.runPromise(
         Effect.gen(function* () {
           const real = yield* ChildProcessSpawner.ChildProcessSpawner
           const routed = ChildProcessSpawner.make((command) =>
             command._tag === "StandardCommand"
-              ? real.spawn(
-                  ChildProcess.make(
-                    command.command,
-                    command.args.map((arg) => (arg === definition.adapter.url ? directory : arg)),
-                    command.options,
-                  ),
-                )
+              ? (() => {
+                  if (command.args.slice(-3).join("|") === "config|http.version|HTTP/1.1")
+                    scopedGithubHttp11++
+                  return real.spawn(
+                    ChildProcess.make(
+                      command.command,
+                      command.args.map((arg) => (arg === definition.adapter.url ? directory : arg)),
+                      command.options,
+                    ),
+                  )
+                })()
               : real.spawn(command),
           )
           return yield* discoverSourceDefinition(definition, { metrics }).pipe(
@@ -181,6 +232,7 @@ test("formal Git discovery reports real fetch/storage/blob costs without changin
       )
     const first = await acquire()
     const second = await acquire()
+    expect(scopedGithubHttp11).toBe(2)
     expect(second).toEqual(first)
     expect(first.revision).toBe(revision)
     expect(

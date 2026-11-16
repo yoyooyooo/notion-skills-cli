@@ -327,7 +327,14 @@ function inspect(
             ),
           )
         if (!definition.enabled) return { definition, snapshot: null }
-        const snapshot = yield* acquire(definition, { metrics: (yield* Notion).metrics })
+        const snapshot = yield* acquire(definition, {
+          metrics: (yield* Notion).metrics,
+          // The Source selection is validated against its complete pinned Git
+          // tree; --member avoids downloading every unrelated member's files.
+          ...(requested !== undefined && ["git", "github-market"].includes(definition.adapter.type)
+            ? { onlyMembers: requested }
+            : {}),
+        })
         if (!snapshot.revision || (snapshot.unavailable?.length ?? 0) > 0)
           return yield* Effect.fail(
             fail(

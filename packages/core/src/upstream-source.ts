@@ -44,6 +44,9 @@ export const DiscoverSourceInputSchema = Schema.Struct({
 export type DiscoverSourceInput = typeof DiscoverSourceInputSchema.Type
 export type SourceDiscoveryOptions = {
   readonly metrics?: ReturnType<typeof createRequestMetrics>
+  /** Runtime-only exact Git member scope. The configured full tree is still
+   * validated, but unrelated blobs are never acquired for this observation. */
+  readonly onlyMembers?: readonly string[]
 }
 const PortableSkillSchema = Schema.Struct({
   kind: Schema.Literal("skill"),
@@ -685,6 +688,20 @@ export function validateGitSource(url: string, ref: string) {
     throw sourceError("INVALID_REF", "Invalid Git source ref.")
 }
 
+function githubHttpsSource(url: string) {
+  try {
+    const address = new URL(url)
+    return (
+      address.protocol === "https:" &&
+      address.hostname === "github.com" &&
+      !address.username &&
+      !address.password
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Diagnostic only: bounded metadata reads inside this call's new bare object directory. */
 function repositoryObjectSize(fs: FileSystem.FileSystem, root: string) {
   return Effect.gen(function* () {
@@ -751,6 +768,11 @@ function gitSnapshot(
       // filtering avoids downloading unrelated repository assets just to find
       // Skill roots; servers without filter support keep Git's normal fallback.
       yield* git(repo, ["remote", "add", "origin", url])
+      // GitHub smart-HTTP/2 can fail in host proxy chains with a framing
+      // error even while the pinned GitHub REST API is healthy. Keep this
+      // transport choice inside the disposable bare repository; never edit
+      // the user's Git configuration or any non-GitHub remote.
+      if (githubHttpsSource(url)) yield* git(repo, ["config", "http.version", "HTTP/1.1"])
       yield* git(repo, ["config", "remote.origin.promisor", "true"])
       yield* git(repo, ["config", "remote.origin.partialclonefilter", "blob:none"])
       let finish:
@@ -985,11 +1007,20 @@ function gitSnapshot(
               { slug: market.slug, candidates: roster },
             )
         }
-        return selectMembers(
+        const configured = selectMembers(
           input,
           roster,
           entries.map((entry) => entry.path),
         )
+        if (options.onlyMembers === undefined) return configured
+        for (const key of options.onlyMembers)
+          if (!configured.includes(key))
+            throw sourceError(
+              "MEMBER_UNAVAILABLE",
+              "The exact member is not in the configured pinned Git tree; no other member is substituted.",
+              { member_key: key },
+            )
+        return configured.filter((key) => options.onlyMembers!.includes(key))
       })
       yield* prefetch(entries.filter((entry) => keys.some((key) => under(entry.path, key))))
       let totalBytes = 0
@@ -1402,6 +1433,17 @@ export function discoverSource(input: DiscoverSourceInput, options: SourceDiscov
   return Effect.gen(function* () {
     const decoded = yield* attempt(() => Schema.decodeUnknownSync(DiscoverSourceInputSchema)(input))
     yield* attempt(() => validateSourceSelection(decoded))
+    yield* attempt(() => {
+      if (options.onlyMembers === undefined) return
+      if (
+        decoded.source.type === "registry" ||
+        options.onlyMembers.length === 0 ||
+        options.onlyMembers.length > 100 ||
+        new Set(options.onlyMembers).size !== options.onlyMembers.length
+      )
+        throw sourceError("MEMBER_SCOPE_INVALID", "Choose one to 100 unique exact Git members.")
+      for (const key of options.onlyMembers) safePath(key, true)
+    })
     const snapshot: SourceSnapshot =
       decoded.source.type === "registry"
         ? yield* registrySnapshot(decoded, decoded.source, options)
