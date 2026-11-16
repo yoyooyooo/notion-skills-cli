@@ -95,6 +95,33 @@ NXT将三个子位置具体化为两次原分配和一次绑定正文。`NativeB
 
 用例在 `shared-file-request.test.ts`、`shared-source-definitions.test.ts` 和 `shared-source-run.test.ts`。feedbackAck 表示原 metadata ACK 支持的已知历史结果；故障 DropHistoricalAck 表示把后续正文变化错误地当成历史 metadata 结果未知，不宣称产品会删除原 ACK 字节。`UnknownFeedbackNeverRedispatched` 从“所有反馈总共不超过一次”细化为“每个不可变反馈代不超过一次”；这是明确拒绝后的新授权能力，不允许重发未知代。新增性质要求第二代有原负回执，正文仍只写一次。
 
+## 明确拒绝后的独立文件提交
+
+`sources recovery resubmit-file` 是 retained import 的独立分支。它要求原 native POST
+已有匹配完整 request 的 `400 validation_error / not_applied` 负回执、没有原 ACK 或
+receipt，以及完整当前已分配前缀。原请求和负回执保持原样。`native_image_blocks_v1`
+仅在顶层纯图片段落的图片之间插入换行；源文件、链接、旧 projection policy 和计划不变。
+
+| 实际阶段 | 必需证据与禁止动作 |
+| --- | --- |
+| 独立 review | 完整原计划、原 wire/负回执、原 retained review、当前完整 ACK 前缀及正文；只读 |
+| 新 native POST | 独立 review 身份、冻结候选、再次核对当前前提；仍经过 `repeat: never` dispatcher |
+| 新 ACK 后 | 完整 ACK、精确页面身份和完整语义读回；中断后只发布缺少的证明，不重复 native POST |
+| 原 producer 继续 | 显式选择新 ACK；旧 POST 不进入发送路径，旧 ACK 不被补造；新增前缀及替代页发生漂移则首次新写前拒绝 |
+| 冷完成 | v2 父 completion 的外层 operation identity 绑定完整 proof references；原 wire、新 ACK、前缀与正文链缺一即拒绝，删索引不能使其降为 v1 |
+
+历史冷完成只核不可变事实；今日正文另由写入前资格检查负责。SQLite 的新 review slot
+是严格地址的不可变 dispatch 数据，跨进程重启和 cache clear 不能将它变成新的请求。
+Skills 全局 name/alias 准入仍在每次调用首个新写入前执行；后续阶段查询原 Skill 和冻结
+关系身份，完整分页及 Files census、owner、Source、正文检查不变，缺少精确身份可见性
+时回到完整 census。默认时间、请求数与响应字节预算保持原值。
+
+新分支复用原 ACK、独立接受、明确负回执和 unknown 不重放的边界；上述组合状态、
+图片语法、proof codec、SQLite domain 与查询成本不在原四个有限模型中。
+`shared-source-file-resubmission.test.ts`、`shared-native-image-layout.test.ts`、
+`shared-create-scope-cost.test.ts` 和真实 Node/SQLite、安装 HTTP 旅程分别核验实际行为，
+不能以原 35 个配置通过推断新分支或真实 Notion 已完成。源码维护记录见 SRC11。
+
 ## 可执行验证
 
 从仓库根执行。工具链配置和冷启动步骤见项目 skill；基础安装与 hash 锁见 `../resource-lifecycle/tool-lock.json`。

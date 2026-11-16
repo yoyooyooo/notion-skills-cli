@@ -63,6 +63,22 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 同包SDK一次原页修复、原create继续及冷读取；修复未知时改走original apply也必须拒绝。
 这不授权重放400拒绝文件或省略不支持资源，具体分支见管理native-import子模块。
 
+### 明确拒绝文件的独立提交
+
+原400负回执只允许评审一个独立新请求；原POST和失败事实保持原样。完整当前前缀、
+新ACK和共享proof核验后，原producer显式采用新分配继续；unknown不换身份或重复发送。
+单文件完成仍不是整个Skill完成。先读恢复guardian的对应边界，并运行：
+
+```sh
+bun test packages/core/test/shared-source-file-resubmission.test.ts packages/core/test/shared-native-image-layout.test.ts packages/core/test/shared-create-scope-cost.test.ts packages/cli/test/source-file-resubmission-navigation.test.ts --timeout 60000
+NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_FILE_RESUBMISSION_EVIDENCE_DIR="$EVIDENCE" bun test packages/cli/test/library-source-file-resubmission-http.test.ts --timeout 300000
+```
+
+安装旅程使用真实Node CLI、同包SDK、真实SQLite和独立空状态冷读；核对完整原内容及
+原POST/新POST各自次数。父completion版本必须绑定完整proof集合；同时降版本和丢索引
+仍应拒绝。首次全局准入与后续精确范围检查分开，预算维持默认值。实库接口拒绝、
+受控提供方通过和真实页面完成分别记证据，不能互相替代。
+
 ## Evidence
 
 ### 外部直取优先与旧库存储对齐

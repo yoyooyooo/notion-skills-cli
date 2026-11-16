@@ -677,3 +677,111 @@ refresh 在故意无效 DEV_ROOT 哨兵下1测试/34断言通过，保留原120�
 模块、原消费者及原生导入回归。字段定义和执行逻辑的原样移动已独立比对，模型、配置、
 view、cases 与 expected_rules 保持。模块初始化、测试入口和明确存储选择不构成新增
 有限模型性质。最终构建、安装产物与精确后续提交的 CI 回执在同一 PR 和实施任务中记录。
+
+SRC10 最终候选 1e488d9016bcaf9254ff44658f0188822b0e05bc 的四矩阵 CI
+43796910664 和三组 Formal 43796910836 已全部通过；下载原件核对96份配置、SDK
+22项及实际 Pi 1.5.2 受控维护门禁。CI 与本机独立归档和执行 CLI 的 SHA-256 相同。
+Pi 使用受控 Notion/模型，真实 API 五文件证据另列；未将其计作自然模型任务成功。
+
+## SRC11：明确拒绝后的新文件提交与有界原操作续接
+
+Guizang 的原 README.en.md POST 有匹配完整 frozen request 的400 validation_error /
+not_applied 负回执，没有原 ACK。原 retained review 绑定两项页面；随后实际原 ACK
+前缀已有第三项 CONTRIBUTING.md。新审阅必须核对当前完整前缀，不能把旧 review 的
+两项当作本次完整 census，也不能从 raw plan file 重建一个丢失 Projection/Status 的
+请求冒称原 wire。原请求、原计划、原失败及旧审阅始终保留。
+
+新的显式 native_image_blocks_v1 只对完全由图片、单图片外层链接与空白构成的顶层
+paragraph 插入图片分隔空行。原 image/link token.raw、普通文字、代码、表格和 HTML
+不变。实际原 wire 的10张 badge 只增加9个 LF，候选完整语义与原输入一致；这一事实
+不能证明旧400的具体原因，真实接纳和完整链接读回仍须另验。旧 policy14 和默认15
+不改变，也不在失败后自动选择此表示。
+
+| 边界 | 必要事实与动作 |
+| --- | --- |
+| 只读审阅 | 精确原 journal/manifest/失败、完整匹配的负回执、无原 ACK/receipt、当前完整原 ACK 前缀、Source/owner/正文与候选完整哈希 |
+| 独立提交 | 新 review 与 request identity；原 dispatcher 保存新意图并最多派发一次，旧 POST 的 never-repeat 保持 |
+| 新分配完成 | 新真实 ACK、精确原 File ID/path/owner、完整语义读回和独立完成证明；新响应未知不能借可见页面补造 ACK |
+| 原 producer 续写 | 显式接收已验证 substitution，file loop 采用其新分配；旧 dispatcher.run 不将新 ACK 当作旧请求 ACK |
+| 冷完成 | version2 completion 必须绑定完整 resubmission refs，逐项读取原负回执、新 review、新 ACK 与历史正文；缺证明或降格到旧格式拒绝 |
+
+历史完成核对留存的原事实，不要求今天正文仍等于当时读回；后续合法编辑不抹掉历史。
+当前 Source、owner、完整前像及实际本地派发证据属于再次续写前的资格。当前值相等、
+review存在或部分文件成功都不能代替这些证据。原结果与新独立决定不会覆盖彼此。
+
+Kami 的1e488d9公开只读 dry-run 为35请求、2,808,933响应字节，完整70条安全 trace、
+0远端写。Skills查询11次占2,366,600 B（84.25%），retained body三次占214,611 B；
+原300秒 apply没有逐端点 trace，不能把其总流量归因于某一热点。优化限定为原页面已
+分配后的后缀检查：每次调用首次新写前保留完整 name/alias 准入，后续按精确原身份及
+可证明的冻结关系完整分页，仍逐步检查 owner/Source/已确认正文/ACK。未能精确约束的
+关系继续全查；其他修复入口默认保留完整准入。默认时间、请求数和字节预算不扩大。
+
+本分支复用现有模型的原 ACK、未知不重放、明确负回执、新独立身份和完整冷证明边界；
+具体图片布局、拒绝后新分配与原 producer 的组合、查询过滤和页面语义由实际正反例
+及安装/真实服务回归负责。维护源码对应不代表既有有限模型已枚举这些具体组合。原模型
+配置、预期违例与历史失败不因新实现改写；最终候选及分层回执按原 PR/实施票独立记录。
+
+### SRC11 实施与分层证据
+
+产品提交为 `fece257be9a51ca25cd6fbbd93e286afcb8dee0b`。公开 CLI 新增
+`sources recovery resubmit-file review/apply/reconcile`，同核 SDK 对应三个直接入口。
+review 文件保存完整计划、原 wire 和负回执，stdout 只返回有界摘要；apply/reconcile
+原样传完整评审。新 ACK 后读回中断可只补缺失证明，next.argv 区分该状态与新 native POST。
+
+独立审查实际复现了一处组合缺口：把父 completion 改为 v1、删 refs 并重算 payload
+hash，同时丢失两类 resubmission 索引，旧读者会错误接受。现将 v2 外层 operation ID
+绑定 review 与完整 refs；保留/删除索引两种降级反例都拒绝，历史 v1 codec 不变。
+安装 HTTP 首轮又发现新 slot 未登记 SQLite domain；现只增加精确地址的 immutable
+dispatch 登记。真实 Node 重启、同键冲突、cache clear 保留和错误地址矩阵5项通过。
+原失败输出均保留，没有将内存 fixture 的成功当作真实持久化的成功。
+
+当前直接回归：新 resubmission20项与历史 retained16项共36测试/342断言；相关修复与
+布局原回归保持。共享恢复九文件264测试/2142断言通过；原生 Node 独立入口及恢复28项
+通过。CLI 导航、SDK、builtin 与生产 help/schema 合计27测试/270断言通过。
+最终全树 typecheck 和992文件格式检查通过；验证入口映射2测试/6断言通过。
+
+独立 npm 安装的新 HTTP 旅程1测试/68断言通过，132.52秒，11个进程阶段合计1144请求、
+2,636,060响应字节。新 native POST 仅1次，原400 POST仍仅1次；原 producer 完成，
+独立空 state/config/cache/data 核实两类proof及全部8文件完整hash，没有复制作者Store。
+主 fixture 使用既有 canonical main 格式；执行后仅收窄一处深相等断言的TypeScript
+类型，未移除运行时检查，原执行版与差异分别留存。此受控结果不是实际 Notion 接纳证明。
+
+执行 CLI SHA256 为 `b40747f036ec3793c12946085a0ad503c828bd9c59fce054dfa6aab54e671809`，
+SDK 为 `40e4a6b3d91a3c4db34e6ba89c36a6fa8bfe10a576d16c76f7bf9320acec42b3`。
+安装归档 SHA256 为 `56d07b7d81edd68c7e91561f5f9ae67448447233d9d7d945e9a0af0bf6039e3d`。
+单次完整 `package:check` 已 exit 0：独立安装 CLI smoke 48 项、SDK all 22 项均通过，
+Node v24.20.0，耗时14分31.162秒。归档、构建产物与两套独立安装的字节和hash一致；
+执行时清除DEV_ROOT，使用受控Notion源，没有全局安装或修改现有配置。
+
+Kami 的受控成本例保持260个无关Skill和5次native分配。已分配阶段完整查询30→3，
+新增精确查询9，响应4,307,939 B→445,535 B，减少89.66%。首次全局准入和最终完整普查
+仍保留；相关四文件51测试/324断言通过。实际只读基线中的两轮完整分页为10请求、
+2,364,138 B（84.16%）；全部Skills查询11次的84.25%是更宽的统计口径。trace没有
+phase attribution，调用位置归因来自源码控制流，不冒称trace直接提供了阶段标签。
+
+实库新命令的两次CLI只读review均因非JSON响应停止；两次同安装SDK诊断确认首次
+Notion元数据GET为HTTP403、4546字节非JSON响应，账本为1 metadata request、0 write、0 retry。
+最后一次只观察原fetch元数据的诊断确认路径为注册库 `v1/databases/{entry}`，响应
+content-type为`text/html; charset=UTF-8`、server为`cloudflare`；没有改URL、凭据或请求。
+没有为此更换凭据、修改配置、发 native POST 或修改原 journal/回执。Guizang真实新review未
+生成，新的图片表示是否被提供方接纳仍未知；Kami新候选的真实预算与123文件冷读也未
+完成。AH-1100/1101及父库存继续保持未完成，本轮不增加7个完整Skill/15条关联的旧计数。
+
+证据分别保留在本轮 `src11-rejected-file-g65_p1wb` 与
+`kami-cost-dryrun-kvwy1iyw/resubmission-http-installed-02` 私有原件根。操作恢复与
+lifecycle原检查先因已变源码hash而拒绝，维护后只更新审阅过的对应；request-engine
+的35个源文件hash未变，原21配置完整通过。首次错误的lifecycle suite参数调用保留为
+工具调用失败，不计模型结果。所有旧模型、配置、view、cases和expected_rules保持。
+
+在产品提交 `fece257be9a51ca25cd6fbbd93e286afcb8dee0b` 上，维护后本地 lifecycle 40配置、
+operation-recovery 35配置全部完成；连同未变的request-engine 21配置，共96配置按各自
+正反例预期完成。对应核验186/105/35个源码文件hash，新增具体组合继续标明unmodeled，
+不将旧有限模型结果扩展为新表示、codec、SQLite或真实服务完成的证明。
+
+恢复守卫在独立候选工作树完成固定6组及新增v2外层identity共7组实际源码变异：
+基线和恢复各13测试通过，故意移除守卫时出现12个预期真实断言失败；v2组的另一反例
+在变异后仍正确拒绝。候选1311个Git可见文件及mode完整恢复，产品树105个绑定文件、
+coverage和原变异脚本均未改。变异receipt SHA256为
+`618fecc18efb53ad10b2dabc542342e38c366e0c24c834580df056189d196c63`。
+完整package摘要、三组formal summary和变异原件保留在本轮证据根。验证维护与产品提交
+分开提交；现有PR的最终head及远端CI回执另在PR和Linear按实际运行结果记账。

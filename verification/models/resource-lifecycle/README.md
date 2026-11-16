@@ -70,6 +70,17 @@ Native inventory recovery review v5/outcome v7 is a separate unmodeled branch fo
 
 Exact Source batch run keys are now registered in SQLite. Their mutable checkpoints are separate from immutable original member requests and ACKs. Cross-process Node tests exercise dry/apply/reconcile and retirement; no lifecycle model claims to prove SQLite persistence.
 
+The separately reviewed rejected-file resubmission branch preserves the original definitive
+negative receipt and never creates an original ACK. It uses a new native request, complete
+shared proof and explicit allocation selection by the original retained producer. Its v2
+parent completion binds proof references in both payload and outer operation identity;
+removing those references and their indexes cannot downgrade it to the historical v1 codec.
+Historical cold proof remains separate from current body/owner qualification before writes.
+The concrete composition, image-only paragraph transform, immutable SQLite slot and scoped
+metadata-query cost are explicitly unmodeled; see the state boundaries in
+[operation-recovery](../operation-recovery/README.md#明确拒绝后的独立文件提交) and SRC11 in the
+maintenance review. Existing model/config/property inventories and product budgets are unchanged.
+
 ## Code correspondence and mutation replay
 
 ### Reviewed v9 creation recovery

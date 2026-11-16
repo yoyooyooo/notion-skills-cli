@@ -128,3 +128,15 @@ shared-source-file-repair.test.ts验证独立row ACK与原create ACK分开核对
 绑定file-repair集合，unknown和缺冷证据不能跨入口绕过。未扩大原有限TLA域；物理
 表格/代码解析、完整前像和具体proof codec仍由实现、安装及真实服务层证明。安全诊断
 只扩充观测，不改变原拒绝的操作权限。
+
+### 明确拒绝后的独立文件提交
+
+`resubmit-file` 只接受完整原400负回执，使用独立review与新request身份。旧native POST
+保持不可重放；原producer只可显式采用有完整新ACK和共享proof的分配结果。
+先读模型README的对应状态边界；执行 `shared-source-file-resubmission.test.ts`，核对
+unknown可见/不可见、原负回执冲突、当前新增前缀/替代页漂移、ACK后仅补proof和冷证明缺失。
+v2父completion必须在外层operation identity绑定proof集合；降v1并同时删除两类索引也要拒绝。
+SQLite slot由 `shared-sqlite.node.test.ts` 的跨重启/不可变/cache-clear/地址拒绝矩阵验证，
+安装入口由 `library-source-file-resubmission-http.test.ts` 走真实Node CLI、同一SDK和冷客户端。
+`shared-create-scope-cost.test.ts` 核后续精确查询完整分页、坏行和关系漂移；每次首个新写入
+前的完整name/alias准入与默认300秒/2000请求/128MiB预算不变。实际新组合不继承旧有限域证明。
