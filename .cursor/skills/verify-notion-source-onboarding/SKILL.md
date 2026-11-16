@@ -23,6 +23,8 @@ bun test packages/cli/test/verification-skill-map.test.ts
 `scope.kind=sources` 中的 `complete` 只覆盖该批，不能冒充全库绿色。
 Provider不可用、缺原输入、无完整cursor或认证不明分别报告，不作为空库。
 
+真实GitHub超时时必须把Git智能HTTP链路与GitHub API、DNS/直连和宿主代理分别诊断。macOS系统代理已开启但Git子进程不继承时，先验证宿主可用回环HTTP代理及GitHub域名；仅在本次CLI进程的可信机器环境中设置`HTTPS_PROXY="$VERIFIED_HOST_HTTP_PROXY"`，按原固定Scope/commit和预算重测。不要变更Source URL、上游仓库或全局FlClash配置来造成功。区分`coverage=complete`的单Source子集与`admit`待接纳、已正式接纳和可消费。每次保存请求/字节/时间/0写账本，不因代理恢复而回写历史失败成成功。
+
 固定 Git 内容消费走上游 commit/tree/blob 与本机缓存，Notion 只维护授权身份、接管和必要历史。针对多成员上游，验证 `review/onboard --source SOURCE --member KEY` 在源码层把范围下推到 Git blob 获取之前；必须仍核对完整配置选路与 commit/tree、只取得所选成员及必要引用的原字节、保留其余成员/正文/原pin、零 Notion 写入。单成员的完整原资源仍按原合同读取；不得将“免拉其他成员”冒充“单成员 123 文件零下载”。普通 Git 日用不要求先补满 Notion Files/Records，也不以历史 retained/native 创建恢复作为发布前置。
 
 ## Drive

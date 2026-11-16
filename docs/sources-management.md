@@ -132,6 +132,14 @@ Git来源。GitHub固定commit的元数据检查可优先用既有`ctl library s
 直接取得完整GitHub tree/OID/size，而不下载body；需要主文时再使用相同固定版本
 的按文件获取内核。上游大Skill不以重建Notion原生支持页作为消费前置。
 
+若宿主已启用系统HTTP代理但CLI内部Git子进程仍直连`github.com`超时，先在该机器上
+分别验证直连、通过已确认的本机代理访问同一GitHub域名和Git智能HTTP端点。可只对
+单次命令设置`HTTPS_PROXY="$VERIFIED_HOST_HTTP_PROXY"`，不改系统代理、不写Source
+配置、不扩大默认预算。Pro真实Firecrawl的精确单成员`review`在未带代理时返回
+`SOURCE_REVIEW_TIMEOUT`；使用已验证可用的FlClash回环代理后，20秒内完整发现
+`skills/firecrawl-deep-research`为`admit`候选（10次HTTP元数据请求、零业务写）。这只证明
+Git提供方发现与候选分类，不构成已完成的普通`read/use`或Notion原生导入。
+
 ### GitHub API 与已有 gh 登录态
 
 API地址与认证由本机环境选择，CLI和SDK使用相同核心。它们不写入Source配置、来源ID、
