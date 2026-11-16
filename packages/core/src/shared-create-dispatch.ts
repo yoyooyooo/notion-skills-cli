@@ -13,6 +13,11 @@ import {
 import { isCoalescibleNotionRead } from "./shared-read-coalescing.ts"
 import { blankRepairBinding } from "./shared-native-repair-model.ts"
 import { sha256, Store } from "./store.ts"
+import {
+  SourceMutationAcknowledgementSchema,
+  SourceMutationRejectionSchema,
+} from "./shared-sources-model.ts"
+import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
 
 type RepairBinding =
   | {
@@ -457,6 +462,7 @@ export function sharedCreateDispatch(
   library: SharedLibrary,
   plan: CreateIdentity,
   beforeDispatch?: Effect.Effect<void, SkillsError, Notion | Store | Crypto.Crypto>,
+  substitutions: readonly VerifiedNativeFileSubstitution[] = [],
 ) {
   return Effect.gen(function* () {
     const api = yield* Notion,
@@ -612,6 +618,68 @@ export function sharedCreateDispatch(
             key.replace("/source-op-", "/source-ack-"),
             Schema.Unknown,
           )
+          const replacements = substitutions.filter(
+            (item) => item.original_dispatch.operation === pending.operation,
+          )
+          if (replacements.length > 0) {
+            const replacement = replacements[0]!
+            const rejected = yield* store.readJson(
+              key.replace("/source-op-", "/source-rejection-"),
+              SourceMutationRejectionSchema,
+            )
+            const completion = yield* store.readJson(
+              key.replace("/source-op-", "/source-receipt-"),
+              Schema.Unknown,
+            )
+            const nextKey =
+              key.slice(0, key.lastIndexOf("/") + 1) + replacement.new_dispatch.operation + ".json"
+            const nextDispatch = yield* store.readJson(nextKey, Schema.Unknown)
+            const nextAck = yield* store.readJson(
+              nextKey.replace("/source-op-", "/source-ack-"),
+              SourceMutationAcknowledgementSchema,
+            )
+            const nextRejection = yield* store.readJson(
+              nextKey.replace("/source-op-", "/source-rejection-"),
+              Schema.Unknown,
+            )
+            const same = (left: unknown, right: unknown) =>
+              canonicalSharedJson(left) === canonicalSharedJson(right)
+            const digest = (value: unknown) => sha256(canonicalSharedJson(value))
+            if (
+              replacements.length !== 1 ||
+              replacement.original_operation_id !== plan.operation_id ||
+              pending.method !== "POST" ||
+              pending.path !== "v1/pages" ||
+              property(property(pending.body).parent).data_source_id !==
+                library.files.data_source_id ||
+              !same(pending, replacement.original_dispatch) ||
+              acknowledged !== undefined ||
+              rejected === undefined ||
+              completion !== undefined ||
+              !same(rejected, replacement.original_rejection) ||
+              rejected.operation_id !== pending.operation ||
+              rejected.request_hash !== (yield* digest(pending)) ||
+              !Number.isSafeInteger(rejected.rejected_at) ||
+              rejected.rejected_at < 0 ||
+              replacement.new_dispatch.operation === pending.operation ||
+              !replacement.new_dispatch.identity.startsWith(replacement.review_id + ":") ||
+              !same(nextDispatch, replacement.new_dispatch) ||
+              nextAck === undefined ||
+              nextRejection !== undefined ||
+              !same(nextAck, replacement.new_acknowledgement) ||
+              nextAck.operation_id !== replacement.new_dispatch.operation ||
+              nextAck.request_hash !== (yield* digest(replacement.new_dispatch)) ||
+              nextAck.response_hash !== (yield* digest(nextAck.response)) ||
+              !Number.isSafeInteger(nextAck.acknowledged_at) ||
+              nextAck.acknowledged_at < 0 ||
+              property(nextAck.response).id !== replacement.page_id
+            )
+              return false
+            // This only permits the producer to continue past one proven old
+            // rejection. run() still rejects that original POST; the producer
+            // explicitly selects the independently acknowledged allocation.
+            continue
+          }
           if (acknowledged !== undefined) continue
           // An exact immutable original Record is the existing reconcile contract;
           // mutable native pages require their actual original POST/PATCH ACK.

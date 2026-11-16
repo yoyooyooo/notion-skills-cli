@@ -390,6 +390,33 @@ reviewSourceFileRepair、applySourceFileRepair、reconcileSourceFileRepair。
 未知派发仍拒绝，当前页面相等不能制造完成权限，完整前像/review若丢失也不能重建代证。
 
 
+#### 明确拒绝文件的独立新提交
+
+原支持文件的 native POST 已明确返回 `400 validation_error`、完整负回执与原冻结请求
+匹配且没有分配ACK时，可使用独立的审阅入口：
+
+```bash
+ntn-skills ctl library sources recovery resubmit-file review ORIGINAL_PLAN \
+  --operation ORIGINAL_CREATE_ID --target ORIGINAL_MAIN_PAGE --path EXACT_FILE \
+  --entry ENTRY --output FILE_RESUBMISSION.json
+```
+
+完整review文件保留原dispatch、负回执与候选承诺；公开结果只给身份、hash和改动计数。
+跟随返回的 `resubmit-file apply --dry-run`，核对后明确apply，再只读reconcile。
+当前仅支持显式 `native_image_blocks_v1`：将纯图片段落中的相邻图片分为独立段落，
+原image和外层链接token、完整文字/代码/明确目标保留。混合正文、列表、表格、代码与
+HTML不改；旧policy14和默认15不变。不能手动改review或旧wire来扩张提交形式。
+
+新请求有独立身份与真实ACK，不重发原拒绝POST、不把新ACK填入旧操作。缺完整负回执、
+原ACK状态不明、原输入/Source/owner/确认前缀漂移均拒绝。未知新请求只能只读核对，
+不能换review或命令重发。单文件完成后先只读核对原创建与保存的恢复审阅，再继续剩余工作，
+不计为全Skill完成；不要求重新生成已有的原恢复审阅。
+真实新ACK已存在但完成凭据尚未发布时，reconcile返回 `completion_pending`，下一步
+仍先dry-run。预演结果的 `native_pages_to_create: 0` 表示后续apply只补完成凭据，
+不再执行native POST；未知请求仍拒绝进入这一分支。
+SDK同核入口为 `reviewSourceFileResubmission`、`applySourceFileResubmission`、
+`reconcileSourceFileResubmission`；apply/reconcile的 `review` 参数接收完整保存文件对象。
+
 #### 有界的API拒绝诊断
 
 新400 validation_error回执保留已净化request ID和有限结构提示：公开body-schema

@@ -184,6 +184,12 @@ const sharedLocalDomains: readonly {
       /^operations\/shared-native-readbacks\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "operations/shared-native-resubmissions",
+    category: "dispatch",
+    address:
+      /^operations\/shared-native-resubmissions\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "cache/shared-file-observations",
     category: "cache",
     address: /^cache\/shared-file-observations\/[a-f0-9]{64}\/(?:[0-9]{20}|latest)\.json$/u,

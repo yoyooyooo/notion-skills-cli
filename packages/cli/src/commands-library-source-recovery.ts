@@ -18,6 +18,7 @@ import { parseSourceBudget, sourceRequestBudgets } from "./commands-library-sour
 import { sourceContinuationCommand } from "./commands-library-source-continuation.ts"
 import { sourceProjectionRepairCommand } from "./commands-library-source-projection-repair.ts"
 import { sourceFileRepairCommand } from "./commands-library-source-file-repair.ts"
+import { sourceFileResubmissionCommand } from "./commands-library-source-file-resubmission.ts"
 
 const planArg = Argument.String("plan")
 const entry = requiredSingleton("entry", "Exact original shared library")
@@ -240,5 +241,6 @@ export const sourceRecoveryCommand = defineCommand("recovery").pipe(
     sourceContinuationCommand,
     sourceProjectionRepairCommand,
     sourceFileRepairCommand,
+    sourceFileResubmissionCommand,
   ]),
 )

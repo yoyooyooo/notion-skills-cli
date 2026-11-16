@@ -58,6 +58,7 @@ import {
   equivalentResourceNote,
 } from "./shared-create-resources.ts"
 import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
+import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
 import { resolveSharedCreateSource } from "./shared-create-source.ts"
 import {
   acceptsNativeImportReadback,
@@ -265,8 +266,12 @@ function verifyLibrary(library: SharedLibrary, plan?: SharedCreatePlan) {
     return current
   })
 }
-/** One paginated metadata inventory: duplicate identity/name and members, no bodies. */
-function inventory(library: SharedLibrary, creatingName: string) {
+/** Complete pagination for either admission's whole catalog or exact allocated identities. */
+function inventory(
+  library: SharedLibrary,
+  creatingName: string,
+  skillIds?: readonly [string, ...string[]],
+) {
   return Effect.gen(function* () {
     const api = yield* Notion,
       output: Array<Inventory[number]> = [],
@@ -275,14 +280,32 @@ function inventory(library: SharedLibrary, creatingName: string) {
     const query = new URLSearchParams()
     for (const name of ["Name", "Description", "Kind", "Skill ID", "Enabled", "Default Context"])
       query.append("filter_properties", library.skills.property_ids[name]!)
+    const condition = (skillId: string) => ({
+      property: library.skills.property_ids["Skill ID"]!,
+      rich_text: { equals: skillId },
+    })
+    const filter =
+      skillIds === undefined
+        ? undefined
+        : skillIds.length === 1
+          ? condition(skillIds[0])
+          : { or: skillIds.map(condition) }
     let cursor: string | undefined
     do {
       const raw = yield* api.request(
         `v1/data_sources/${library.skills.data_source_id}/query?${query}`,
-        { page_size: 100, ...(cursor === undefined ? {} : { start_cursor: cursor }) },
+        {
+          page_size: 100,
+          ...(filter === undefined ? {} : { filter }),
+          ...(cursor === undefined ? {} : { start_cursor: cursor }),
+        },
       )
       const page = yield* createChecked(() => {
-        if (property(raw).object !== "list")
+        if (
+          property(raw).object !== "list" ||
+          (property(raw).request_status !== undefined &&
+            property(property(raw).request_status).type !== "complete")
+        )
           throw fail(
             "SHARED_CREATE_INCOMPLETE",
             "Creation requires a complete same-library metadata inventory.",
@@ -293,6 +316,13 @@ function inventory(library: SharedLibrary, creatingName: string) {
         const entry = yield* createChecked(() =>
           sharedMetadataEntryFromPage(row, sourceFor(library), library.skills.data_source_id),
         )
+        if (
+          skillIds !== undefined &&
+          (entry.state !== "registered" || !skillIds.includes(entry.record.locator.skill_id))
+        )
+          return yield* Effect.fail(
+            fail("SHARED_CREATE_SCOPE", "The exact identity query returned an unrelated Skill."),
+          )
         const pageId = entry.state === "registered" ? entry.record.locator.page_id : entry.page_id
         if (pages.has(pageId))
           return yield* Effect.fail(
@@ -331,6 +361,34 @@ function inventory(library: SharedLibrary, creatingName: string) {
       }
     } while (cursor !== undefined)
     return output
+  })
+}
+/** A remaining file/fact does not allocate another Skill identity. Keep fresh
+ * checks for the original owner and every frozen relation, without repeatedly
+ * downloading unrelated names. Whole-catalog name/alias admission remains a
+ * separate requirement before this invocation's first new write. */
+function allocatedInventory(library: SharedLibrary, plan: SharedCreatePlan) {
+  return Effect.gen(function* () {
+    const related: string[] = []
+    for (const page of new Set([...plan.members, ...(plan.requires ?? [])])) {
+      const binding = plan.relation_bindings?.find((item) => item.page_id === page)
+      // Historical plans without exact relation identities retain their original census.
+      if (binding === undefined) return yield* inventory(library, plan.name)
+      related.push(binding.skill_id)
+    }
+    const identities: readonly [string, ...string[]] = [
+      plan.skill_id,
+      ...new Set(related.filter((identity) => identity !== plan.skill_id)),
+    ]
+    if (identities.length > 80) return yield* inventory(library, plan.name)
+    const records = yield* inventory(library, plan.name, identities)
+    const counts = identities.map(
+      (identity) => records.filter(({ record }) => record.locator.skill_id === identity).length,
+    )
+    // Preserve conflicts already observed in the bounded query. Missing filtered
+    // visibility is not a missing ACK: the existing complete census can resolve it.
+    if (counts.some((count) => count > 1) || counts.every((count) => count === 1)) return records
+    return yield* inventory(library, plan.name)
   })
 }
 function resolveMembers(
@@ -1770,6 +1828,7 @@ export function executeSharedCreate(
     readonly migrationInput?: unknown
     readonly restoration?: SharedCreateRestorationReview
     readonly retainedImportRecovery?: SharedRetainedImportRecoveryReview
+    readonly fileResubmissions?: readonly VerifiedNativeFileSubstitution[]
   },
 ) {
   return Effect.gen(function* () {
@@ -1786,6 +1845,29 @@ export function executeSharedCreate(
     if (restoration !== undefined && retainedRecovery !== undefined)
       return yield* Effect.fail(
         fail("SHARED_CREATE_RECOVERY_REQUIRED", "Select exactly one original recovery authority."),
+      )
+    const fileResubmissions = input.fileResubmissions ?? []
+    if (
+      fileResubmissions.length > 0 &&
+      (retainedRecovery === undefined ||
+        new Set(fileResubmissions.map((item) => item.file_id)).size !== fileResubmissions.length ||
+        new Set(fileResubmissions.map((item) => item.page_id)).size !== fileResubmissions.length ||
+        fileResubmissions.some(
+          (item) =>
+            item.original_operation_id !== plan.operation_id ||
+            !plan.files.some(
+              (file) =>
+                file.file_id === item.file_id &&
+                file.path === item.path &&
+                file.path !== plan.entrypoint,
+            ),
+        ))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CREATE_RECOVERY_REQUIRED",
+          "Independent file acknowledgements require the exact original retained recovery and unique supporting files.",
+        ),
       )
     if (input.mode === "reconcile") return yield* reconcileSharedCreate(library, plan)
     if (input.mode !== "create")
@@ -1805,7 +1887,8 @@ export function executeSharedCreate(
     const { scope, key, original, resumable } = yield* inspectSharedCreateDispatch(library, plan)
     let stage = "create_skill",
       skillPage: string | undefined,
-      lastCheckedStage: string | undefined
+      lastCheckedStage: string | undefined,
+      admitted = false
     const bindings: Binding[] = []
     let allocatedCheck: Effect.Effect<void, SkillsError, Notion | Store | Crypto.Crypto> =
       Effect.void
@@ -1824,12 +1907,21 @@ export function executeSharedCreate(
       // page/metadata stage and the first new write of a resumed invocation gets
       // fresh scope, definition, relation and acknowledged-allocation checks.
       if (stage !== "review_outcome") {
-        const fresh = yield* inventory(library, plan.name)
+        const fresh = yield* admitted && skillPage !== undefined
+          ? allocatedInventory(library, plan)
+          : inventory(library, plan.name)
         yield* createChecked(() => checkInventory(plan, fresh))
         yield* assertSourceProjectionDefinition(library, plan, skillPage)
         yield* allocatedCheck
         if (retainedRecovery !== undefined)
-          yield* assertSharedRetainedImportRecovery(library, plan, retainedRecovery)
+          yield* assertSharedRetainedImportRecovery(
+            library,
+            plan,
+            retainedRecovery,
+            fileResubmissions,
+            "allocated",
+          )
+        admitted = true
       }
       lastCheckedStage = stage
     }).pipe(withReadOnlyNotion)
@@ -1849,6 +1941,7 @@ export function executeSharedCreate(
         ? { ...plan, recovery_file_projections: readingProjections }
         : plan,
       beforeDispatch,
+      fileResubmissions,
     )
     let resourceNoteRecovery: Effect.Success<ReturnType<typeof inspectResourceNoteFailure>>
     if (original) {
@@ -1875,7 +1968,12 @@ export function executeSharedCreate(
       )
         return yield* Effect.fail(reconciled.failure)
       if (retainedRecovery !== undefined)
-        yield* assertSharedRetainedImportRecovery(library, plan, retainedRecovery)
+        yield* assertSharedRetainedImportRecovery(
+          library,
+          plan,
+          retainedRecovery,
+          fileResubmissions,
+        )
     }
     const store = yield* Store
     if ((restoration !== undefined || retainedRecovery !== undefined) && !original)
@@ -2085,11 +2183,24 @@ export function executeSharedCreate(
       }
       for (const file of facts.files.filter((file) => file.path !== facts.entrypoint)) {
         stage = `create_file:${file.file_id}`
-        const rawFile = yield* api.request(
-          "v1/pages",
-          sharedCreateFileRequest(library, skillPage, file),
-          { method: "POST" },
+        const request = sharedCreateFileRequest(library, skillPage, file)
+        const replacement = fileResubmissions.find((item) => item.file_id === file.file_id)
+        if (
+          replacement !== undefined &&
+          canonicalSharedJson(replacement.original_dispatch.body) !== canonicalSharedJson(request)
         )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_SCOPE",
+              "The independently acknowledged file does not bind this exact original request.",
+            ),
+          )
+        // The rejected original POST is never sent or turned into an ACK. This
+        // producer explicitly adopts the independently verified new allocation.
+        const rawFile =
+          replacement === undefined
+            ? yield* api.request("v1/pages", request, { method: "POST" })
+            : replacement.new_acknowledgement.response
         const page = yield* createChecked(() => pageReceipt(rawFile))
         const binding = {
           file_id: file.file_id,
@@ -2100,6 +2211,19 @@ export function executeSharedCreate(
         bindings.push(binding)
         stage = `body:${file.file_id}`
         const observedFile = yield* observe(file, page)
+        if (
+          replacement !== undefined &&
+          (observedFile.content.sha256 !== replacement.observation.body_sha256 ||
+            observedFile.content.bytes !== replacement.observation.body_bytes ||
+            observedFile.event.event_id !== replacement.observation.event_id)
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_CREATE_BODY_MISMATCH",
+              "The independently acknowledged file changed after its complete readback proof.",
+              { file_id: file.file_id, path: file.path, page_id: page },
+            ),
+          )
         binding.event_id = observedFile.event.event_id
         yield* assertBody(
           plan.operation_id,
@@ -2199,6 +2323,7 @@ export function executeSharedCreate(
           retainedRecovery,
           bindings,
           projectionRepair,
+          fileResubmissions,
         )
       else if (resourceNoteRecovery !== undefined) {
         const payload = {
@@ -2522,10 +2647,13 @@ export function verifySharedCreateRecoveryScope(
   library: SharedLibrary,
   plan: SharedCreatePlan,
   page: string,
+  scope: "full" | "allocated" = "full",
 ) {
   return Effect.gen(function* () {
     yield* verifyLibrary(library, plan)
-    const records = yield* inventory(library, plan.name)
+    const records = yield* scope === "allocated"
+      ? allocatedInventory(library, plan)
+      : inventory(library, plan.name)
     const found = yield* createChecked(() => checkInventory(plan, records))
     if (found?.record.locator.page_id !== page)
       return yield* Effect.fail(

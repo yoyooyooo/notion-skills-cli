@@ -8,16 +8,13 @@ import { sha256, Store } from "./store.ts"
 import {
   SourceDefinitionInputSchema,
   SourceMutationAcknowledgementSchema,
+  SourceMutationRejectionSchema,
   sourceDefinitionProperties,
   type SourceDefinitionInput,
   type SourceDefinition,
 } from "./shared-sources-model.ts"
 import { validateGitSource, validateSourceSelection } from "./upstream-source.ts"
-import {
-  NotionSafeRequestIdSchema,
-  NotionValidationDiagnosticSchema,
-  retainedNotionRejectionDiagnostics,
-} from "./notion-validation-diagnostic.ts"
+import { retainedNotionRejectionDiagnostics } from "./notion-validation-diagnostic.ts"
 
 export const sourceChecked = <A>(run: () => A) =>
   Effect.try({
@@ -74,17 +71,6 @@ const SourceMutationReceiptSchema = Schema.Struct({
   response_hash: Schema.String,
   acknowledged_at: Schema.Number,
   verified: Schema.Literal(true),
-})
-const SourceMutationRejectionSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  operation_id: Schema.String,
-  request_hash: Schema.String,
-  rejected_at: Schema.Number,
-  http_status: Schema.Literal(400),
-  notion_code: Schema.Literal("validation_error"),
-  status: Schema.Literal("not_applied"),
-  request_id: Schema.optionalKey(NotionSafeRequestIdSchema),
-  validation: Schema.optionalKey(NotionValidationDiagnosticSchema),
 })
 function observedSourceMutation(
   operation: string,

@@ -325,6 +325,57 @@ test("sync exposes local and upstream paths without a root upstream alias", asyn
   }
 }, 30000)
 
+test("rejected-file resubmission help and schemas stay explicit and offline", async () => {
+  const path = ["ctl", "library", "sources", "recovery", "resubmit-file"]
+  for (const action of ["review", "apply", "reconcile"]) {
+    const result = await invoke(["schema", ...path, action], {
+      inaccessible: true,
+      traceOnline: true,
+    })
+    expect(result.exit).toBe(0)
+    expect(result.onlineCalled).toBe(false)
+    const output = JSON.parse(result.stdout)
+    expect(output.command).toEqual([...path, action])
+    for (const name of [
+      "plan",
+      "entry",
+      ...(action === "review" ? ["target", "path", "output"] : ["review", "review-id"]),
+    ])
+      expect(output.schema.parameters).toContainEqual(
+        expect.objectContaining({ name, required: true, max_occurrences: 1 }),
+      )
+    expect(output.schema.parameters).toContainEqual(
+      expect.objectContaining({ name: "operation", required: false, max_occurrences: 1 }),
+    )
+    const help = await invoke([...path, action, "--help"], {
+      inaccessible: true,
+      traceOnline: true,
+    })
+    expect(help.exit).toBe(0)
+    expect(help.onlineCalled).toBe(false)
+    expect(help.stdout).toContain("resubmit-file")
+    expect(help.stdout).toContain(
+      action === "review"
+        ? "native_image_blocks_v1"
+        : action === "apply"
+          ? "separate real ACK"
+          : "never dispatches",
+    )
+  }
+  await invalid([
+    ...path,
+    "reconcile",
+    "unread-original.json",
+    "--entry",
+    "unread-library",
+    "--review",
+    "unread-review.json",
+    "--review-id",
+    "unread-id",
+    "--dry-run",
+  ])
+}, 45000)
+
 test("export projection schema defaults to source and rejects unsupported or repeated values offline", async () => {
   const result = await invoke(["schema", "export"], { inaccessible: true, traceOnline: true })
   expect(result.exit).toBe(0)

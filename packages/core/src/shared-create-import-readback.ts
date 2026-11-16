@@ -44,7 +44,7 @@ export function acceptsNativeImportReadback(plan: SharedCreatePlan): boolean {
   )
 }
 
-function withObservedBody(file: NativeFile, markdown: string) {
+export function withObservedBody(file: NativeFile, markdown: string) {
   return Effect.gen(function* () {
     if (
       file.event.kind !== "adopted" &&

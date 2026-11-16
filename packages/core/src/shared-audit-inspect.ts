@@ -52,6 +52,7 @@ import { sharedCreateRestorationOutcomesEntity } from "./shared-create-restorati
 import { retainedImportRecoveryOriginal } from "./shared-create-retained-recovery.ts"
 import { sourceProjectionRepairOriginal } from "./shared-source-projection-repair.ts"
 import { sourceFileRepairOriginal } from "./shared-source-file-repair.ts"
+import { sourceFileResubmissionOriginal } from "./shared-source-file-resubmission.ts"
 import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
 import {
   sharedSkillApplyPlansEntity,
@@ -980,6 +981,7 @@ export function inspectAuditSkill(
         retainedImportRecoveryOriginal(header, operations) === undefined &&
         sourceProjectionRepairOriginal(header, operations) === undefined &&
         sourceFileRepairOriginal(header, operations) === undefined &&
+        sourceFileResubmissionOriginal(header, operations) === undefined &&
         !(
           header.entity_id === sharedCreateRestorationOutcomesEntity &&
           header.record_id.startsWith("resource-note-outcome-") &&

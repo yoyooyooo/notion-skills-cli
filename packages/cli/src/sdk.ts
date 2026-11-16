@@ -29,6 +29,11 @@ import {
   reconcileSharedSourceFileRepair as coreReconcileSourceFileRepair,
 } from "../../core/src/shared-source-file-repair.ts"
 import {
+  reviewSharedSourceFileResubmission as coreReviewSourceFileResubmission,
+  applySharedSourceFileResubmission as coreApplySourceFileResubmission,
+  reconcileSharedSourceFileResubmission as coreReconcileSourceFileResubmission,
+} from "../../core/src/shared-source-file-resubmission.ts"
+import {
   reviewSharedSourceRecovery as coreReviewSourceRecovery,
   applySharedSourceRecovery as coreApplySourceRecovery,
   reconcileSharedSourceRecovery as coreReconcileSourceRecovery,
@@ -347,6 +352,47 @@ export function reconcileSourceFileRepair(
     () =>
       withSourceCommandBudget(
         coreReconcileSourceFileRepair(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+
+/** An independently reviewed new file request, never replay authority for the rejected POST. */
+export function reviewSourceFileResubmission(
+  input: Parameters<typeof coreReviewSourceFileResubmission>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreReviewSourceFileResubmission(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+export function applySourceFileResubmission(
+  input: Parameters<typeof coreApplySourceFileResubmission>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreApplySourceFileResubmission(input),
+        sourceManagementBudget(options),
+      ),
+    options,
+  )
+}
+export function reconcileSourceFileResubmission(
+  input: Parameters<typeof coreReconcileSourceFileResubmission>[0],
+  options: SourceManagementOptions = {},
+) {
+  return runOperation(
+    () =>
+      withSourceCommandBudget(
+        coreReconcileSourceFileResubmission(input),
         sourceManagementBudget(options),
       ),
     options,

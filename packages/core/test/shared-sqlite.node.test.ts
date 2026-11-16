@@ -32,6 +32,7 @@ const keys = {
   sourceRejection: `operations/shared-sources/${scope}/source-rejection-${"a".repeat(64)}.json`,
   sourceRegistration: `operations/shared-source-registration/${scope}/source-plan-${"7".repeat(64)}.json`,
   nativeCreate: `operations/shared-native-create/${scope}/skill-create-${"8".repeat(64)}.json`,
+  nativeResubmission: `operations/shared-native-resubmissions/${scope}/skill-create-${"8".repeat(64)}/${"9".repeat(64)}.json`,
   nativeOwnership: `operations/shared-native-create-owned/${scope}/skill-create-${"8".repeat(64)}.json`,
   relationSchema: `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-schema.json`,
   relationDescriptor: `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-descriptor.json`,
@@ -397,6 +398,7 @@ test("shared cache and typed dispatch addresses persist across real Node restart
         keys.sourceSelection,
         keys.sourceRegistration,
         keys.nativeCreate,
+        keys.nativeResubmission,
         keys.nativeOwnership,
         keys.relationSchema,
         keys.relationDescriptor,
@@ -421,33 +423,37 @@ test("shared cache and typed dispatch addresses persist across real Node restart
   })
 }, 30_000)
 
-test("a frozen key is idempotent across processes and rejects different content without overwriting", async () => {
-  await isolated(async (root) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await child(
+test.each([keys.observationPending, keys.nativeResubmission])(
+  "a frozen key %s is idempotent across processes and rejects different content without overwriting",
+  async (key) => {
+    await isolated(async (root) => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = await child(
+          root,
+          `yield* state.write(${JSON.stringify(key)},${JSON.stringify(pendingPayload)})`,
+        )
+        expect(result.exit, result.stderr).toBe(0)
+      }
+      const conflicting = await child(
         root,
-        `yield* state.write(${JSON.stringify(keys.observationPending)},${JSON.stringify(pendingPayload)})`,
+        `yield* state.write(${JSON.stringify(key)},${JSON.stringify({ ...pendingPayload, operation_id: "replacement-operation" })})`,
       )
-      expect(result.exit, result.stderr).toBe(0)
-    }
-    const conflicting = await child(
-      root,
-      `yield* state.write(${JSON.stringify(keys.observationPending)},${JSON.stringify({ ...pendingPayload, operation_id: "replacement-operation" })})`,
-    )
-    expect(conflicting.exit).not.toBe(0)
-    expect(conflicting.stderr).toContain("cannot be overwritten")
-    const retained = await child(
-      root,
-      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(keys.observationPending)})));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT count(*) AS count FROM shared_local_records\`))}))`,
-    )
-    expect(retained.exit, retained.stderr).toBe(0)
-    const output = retained.stdout
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line))
-    expect(output).toEqual([pendingPayload, [{ count: 1 }]])
-  })
-}, 30_000)
+      expect(conflicting.exit).not.toBe(0)
+      expect(conflicting.stderr).toContain("cannot be overwritten")
+      const retained = await child(
+        root,
+        `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})));yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify(yield* sql\`SELECT count(*) AS count FROM shared_local_records\`))}))`,
+      )
+      expect(retained.exit, retained.stderr).toBe(0)
+      const output = retained.stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+      expect(output).toEqual([pendingPayload, [{ count: 1 }]])
+    })
+  },
+  30_000,
+)
 
 test("competing real processes cannot replace one dispatch key with two different plans", async () => {
   await isolated(async (root) => {
@@ -634,6 +640,7 @@ Effect.runPromise(Effect.gen(function*(){const store=yield* Store;for(const key 
         keys.sourceSelection,
         keys.sourceRegistration,
         keys.nativeCreate,
+        keys.nativeResubmission,
         keys.nativeOwnership,
         keys.relationSchema,
         keys.relationDescriptor,
@@ -728,6 +735,9 @@ test("unregistered shared namespaces, traversal and malformed known keys cannot 
       `operations/shared-native-create/${scope}/skill-create-invalid.json`,
       `operations/shared-native-create/${scope}/../skill-create-${"8".repeat(64)}.json`,
       `operations/shared-native-create-owned/${scope}/skill-create-invalid.json`,
+      `operations/shared-native-resubmissions/${scope}/skill-create-${"8".repeat(64)}/invalid.json`,
+      `operations/shared-native-resubmissions/foreign/skill-create-${"8".repeat(64)}/${"9".repeat(64)}.json`,
+      `operations/shared-native-resubmissions/${scope}/../skill-create-${"8".repeat(64)}/${"9".repeat(64)}.json`,
       `operations/shared-relation-schema/${scope}/relations-schema-${"8".repeat(64)}-other.json`,
       `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001/../00000000000000000000.json`,
       `operations/owned-page-archive/${scope}/p_owned-archive-test/00000000-0000-4000-8000-000000000001.json`,

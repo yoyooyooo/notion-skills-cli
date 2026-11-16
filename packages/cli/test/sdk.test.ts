@@ -114,7 +114,22 @@ describe("Promise SDK boundary", () => {
         options,
       ),
     ).rejects.toMatchObject({ code: "CANCELLED" })
-    expectUnstartedMetrics(reports, 9)
+    await expect(
+      publicSdk.reviewSourceFileResubmission({ ...request, path: "README.en.md" }, options),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(
+      publicSdk.applySourceFileResubmission(
+        { ...request, review: {}, reviewId: "unstarted" },
+        options,
+      ),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    await expect(
+      publicSdk.reconcileSourceFileResubmission(
+        { ...request, review: {}, reviewId: "unstarted" },
+        options,
+      ),
+    ).rejects.toMatchObject({ code: "CANCELLED" })
+    expectUnstartedMetrics(reports, 12)
   })
   test("Source handoff methods share the SDK pre-abort boundary without acquiring transport", async () => {
     const options = { env: {}, signal: AbortSignal.abort() }

@@ -65,6 +65,11 @@ import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { observeSharedCreatePrefixBody } from "./shared-create-recovery-prefix-model.ts"
 import { SourceFileRepairProofSchema } from "./shared-native-table-code-repair.ts"
 import { assertSourceFileRepairsComplete } from "./shared-source-file-repair.ts"
+import {
+  SourceFileResubmissionCompletionReferenceSchema,
+  type VerifiedNativeFileSubstitution,
+} from "./shared-source-file-resubmission-model.ts"
+import { loadCompletedSourceFileResubmissions } from "./shared-source-file-resubmission.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const ReviewId = Schema.String.check(Schema.isPattern(/^retained-readback-[a-f0-9]{64}$/u))
@@ -97,13 +102,20 @@ const ReviewSchema = Schema.Struct({
   file_repair_proofs: Schema.optionalKey(Schema.Array(SourceFileRepairProofSchema)),
 })
 export type SharedRetainedImportRecoveryReview = typeof ReviewSchema.Type
-const CompletionSchema = Schema.Struct({
-  version: Schema.Literal(1),
+const CompletionFields = {
   kind: Schema.Literal("retained_create_readback_completion"),
   review_id: ReviewId,
   original_failure_sha256: Hash,
   outcome: SharedCreateOutcomeSchema,
-})
+}
+const CompletionSchema = Schema.Union([
+  Schema.Struct({ version: Schema.Literal(1), ...CompletionFields }),
+  Schema.Struct({
+    version: Schema.Literal(2),
+    ...CompletionFields,
+    file_resubmissions: Schema.Array(SourceFileResubmissionCompletionReferenceSchema),
+  }),
+])
 export const retainedImportRecoveryReviewsEntity = "retained-create-readback-reviews-v1"
 const reviewRecordId = (operation: string) => "retained-readback-review-" + operation
 const completionRecordId = (operation: string) => "retained-readback-outcome-" + operation
@@ -131,6 +143,20 @@ export function retainedImportRecoveryOriginal(
 }
 const same = (a: unknown, b: unknown) => canonicalSharedJson(a) === canonicalSharedJson(b)
 const hash = (value: unknown) => sha256(canonicalSharedJson(value))
+function completionOperationId(completion: typeof CompletionSchema.Type) {
+  return Effect.gen(function* () {
+    if (completion.version === 1) return completion.review_id
+    // The parent fact itself records that independent allocation proof is mandatory.
+    // Removing the other proof indexes cannot turn this envelope into a legacy completion.
+    return (
+      "retained-readback-resubmitted-" +
+      (yield* hash({
+        review_id: completion.review_id,
+        file_resubmissions: completion.file_resubmissions,
+      }))
+    )
+  })
+}
 const refusal = (message: string) =>
   Effect.fail(fail("SHARED_CREATE_RETAINED_REVIEW_REQUIRED", message))
 
@@ -209,7 +235,7 @@ function readOriginalFailure(library: SharedLibrary, plan: SharedCreatePlan, pag
   })
 }
 
-function originalJournal(plan: SharedCreatePlan) {
+function readOriginalJournal(plan: SharedCreatePlan) {
   return Effect.gen(function* () {
     const scope = yield* authScope,
       store = yield* Store
@@ -226,12 +252,22 @@ function originalJournal(plan: SharedCreatePlan) {
       return yield* refusal(
         "The original credential-scoped journal and unchanged full plan are required.",
       )
-    const dispatch = yield* sharedCreateDispatch(plan.library, plan)
+    return { scope, journal }
+  })
+}
+
+function originalJournal(
+  plan: SharedCreatePlan,
+  substitutions: readonly VerifiedNativeFileSubstitution[] = [],
+) {
+  return Effect.gen(function* () {
+    const original = yield* readOriginalJournal(plan)
+    const dispatch = yield* sharedCreateDispatch(plan.library, plan, undefined, substitutions)
     if (!(yield* dispatch.canResume))
       return yield* refusal(
         "An original native write lacks its durable acknowledgement; do not replay it.",
       )
-    return { scope, journal, dispatch }
+    return { ...original, dispatch }
   })
 }
 
@@ -282,9 +318,10 @@ function observePrefix(
   plan: SharedCreatePlan,
   page: string,
   bindings: readonly SharedCreateBinding[],
+  inspectionScope: "full" | "allocated" = "full",
 ) {
   return Effect.gen(function* () {
-    yield* verifySharedCreateRecoveryScope(library, plan, page)
+    yield* verifySharedCreateRecoveryScope(library, plan, page, inspectionScope)
     const resolved = yield* resolveSharedCreateSource(plan, page),
       scope = yield* authScope
     const files = [...resolved.facts.files],
@@ -508,6 +545,206 @@ export function validateSharedRetainedImportRecoveryReview(
   })
 }
 
+/** Immutable authority shared by rejected-file review and cold completion readers.
+ * Reading the original journal never grants permission to replay its rejected POST. */
+export function readRetainedImportResubmissionAuthority(
+  library: SharedLibrary,
+  input: unknown,
+  page: string,
+) {
+  return Effect.gen(function* () {
+    const plan = yield* retainedPlan(input)
+    if (!preservesSharedLibraryBindings(plan.library, library))
+      return yield* refusal("The original library binding changed.")
+    const original = yield* readOriginalFailure(library, plan, page)
+    const manifests = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "operation",
+      entityId: sharedCreateManifestEntity,
+      recordId: plan.operation_id,
+    })
+    const reviews = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "operation",
+      entityId: retainedImportRecoveryReviewsEntity,
+      recordId: reviewRecordId(plan.operation_id),
+    })
+    if (
+      manifests.length !== 1 ||
+      manifests[0]!.hash !== (yield* sharedCreateManifestRecordHash(plan)) ||
+      !same(manifests[0]!.payload, sharedCreateManifest(plan)) ||
+      reviews.length !== 1
+    )
+      return yield* refusal(
+        "The complete original manifest and authorized retained review are required.",
+      )
+    const validated = yield* validateSharedRetainedImportRecoveryReview(reviews[0]!.payload, plan)
+    const review = validated.review
+    if (
+      reviews[0]!.operation_id !== review.review_id ||
+      review.skill_page_id !== page ||
+      review.original_failure_sha256 !== original.row.hash ||
+      !same(review.bindings, original.outcome.bindings)
+    )
+      return yield* refusal("The retained recovery review does not preserve the original failure.")
+    yield* assertSourceFileRepairsComplete(library, plan, page, review.file_repair_proofs ?? [])
+    yield* readSharedNativeAllocationProofs(
+      library,
+      plan,
+      page,
+      review.bindings,
+      review.allocations,
+      (binding) => ({
+        attemptId: plan.operation_id,
+        file: original.resolved.facts.files.find((file) => file.file_id === binding.file_id)!,
+      }),
+    )
+    return { plan, original, review, reviewRecord: reviews[0]! }
+  }).pipe(withReadOnlyNotion)
+}
+
+/** Inspect a rejected, unallocated next file, or the exact independently ACKed
+ * replacement while publishing its proof. The original dispatcher stays closed. */
+export function inspectRetainedImportFileResubmissionPrefix(
+  library: SharedLibrary,
+  input: unknown,
+  page: string,
+  filePath: string,
+  allocatedPage?: string,
+) {
+  return Effect.gen(function* () {
+    const authority = yield* readRetainedImportResubmissionAuthority(library, input, page)
+    const { plan, original, review } = authority
+    if (
+      (yield* querySharedRecords(library, { skillPageId: page, kind: "file_event" })).length !==
+        0 ||
+      (yield* querySharedRecords(library, {
+        skillPageId: page,
+        kind: "operation",
+        entityId: sharedCreateRestorationOutcomesEntity,
+        recordId: completionRecordId(plan.operation_id),
+      })).length !== 0
+    )
+      return yield* refusal(
+        "Rejected-file resubmission requires an unpublished, incomplete original import.",
+      )
+    const journal = yield* readOriginalJournal(plan)
+    const key = yield* sharedCreateRecoveryJournalKey(
+      journal.scope,
+      library.library_id,
+      plan.operation_id,
+    )
+    if (
+      journal.scope !== review.permission_scope ||
+      (yield* hash(journal.journal)) !== review.bootstrap.original_journal_sha256 ||
+      !same(yield* (yield* Store).readJson(key, Schema.Unknown), {
+        version: 6,
+        scope: journal.scope,
+        library_id: library.library_id,
+        original_operation_id: plan.operation_id,
+        review,
+      })
+    )
+      return yield* refusal(
+        "The original scoped recovery journal must retain the exact prior authorization.",
+      )
+    yield* verifySharedCreateRecoveryScope(library, plan, page)
+    const index = yield* querySharedSkillIndex(library, page)
+    const ordered = [
+      original.resolved.facts.files.find((file) => file.path === plan.entrypoint)!,
+      ...original.resolved.facts.files.filter((file) => file.path !== plan.entrypoint),
+    ]
+    const file = ordered.find((file) => file.path === filePath)
+    if (!file || file.path === plan.entrypoint)
+      return yield* refusal("Select one original supporting file.")
+    const targetRows = index.files.filter(
+      (row) => row.file_id === file.file_id || row.path === file.path,
+    )
+    if (
+      allocatedPage === undefined
+        ? targetRows.length !== 0
+        : targetRows.length !== 1 ||
+          targetRows[0]!.page_id !== allocatedPage ||
+          targetRows[0]!.file_id !== file.file_id ||
+          targetRows[0]!.path !== file.path
+    )
+      return yield* refusal(
+        "The target allocation differs from its exact independent native acknowledgement.",
+      )
+    const allocated = [index.main, ...index.files.filter((row) => row.page_id !== allocatedPage)]
+    if (
+      allocated.length < original.outcome.bindings.length ||
+      ordered[allocated.length]?.file_id !== file.file_id ||
+      new Set(allocated.map((row) => row.page_id)).size !== allocated.length
+    )
+      return yield* refusal(
+        "Only the next rejected file after the complete original acknowledged prefix is eligible.",
+      )
+    const bindings: SharedCreateBinding[] = []
+    const proofs = []
+    for (const native of ordered.slice(0, allocated.length)) {
+      const matches = allocated.filter(
+        (row) => row.file_id === native.file_id && row.path === native.path,
+      )
+      const prior = original.outcome.bindings.find((row) => row.file_id === native.file_id)
+      if (matches.length !== 1 || (prior !== undefined && prior.page_id !== matches[0]!.page_id))
+        return yield* refusal("An original prefix page is missing, duplicated or replaced.")
+      const binding = prior ?? {
+        file_id: native.file_id,
+        path: native.path,
+        page_id: matches[0]!.page_id,
+        event_id: native.event.event_id,
+      }
+      bindings.push(binding)
+      proofs.push(yield* allocationProof(plan, page, binding, native))
+    }
+    const observed = yield* observePrefix(library, plan, page, bindings, "allocated")
+    if (review.observations.some((old) => !observed.observations.some((now) => same(old, now))))
+      return yield* refusal("An originally reviewed complete prefix body changed.")
+    const allBindings = [...bindings]
+    let allocatedFile: Effect.Success<ReturnType<typeof observeNativeImportFile>> | undefined
+    if (allocatedPage !== undefined) {
+      allocatedFile = yield* observeNativeImportFile(
+        original.resolved.facts,
+        file,
+        journal.scope,
+        page,
+        allocatedPage,
+        { retainObservation: false },
+      )
+      observed.facts.files[
+        observed.facts.files.findIndex((item) => item.file_id === file.file_id)
+      ] = allocatedFile
+      allBindings.push({
+        file_id: file.file_id,
+        path: file.path,
+        page_id: allocatedPage,
+        event_id: allocatedFile.event.event_id,
+      })
+    }
+    yield* verifySharedCreateRecoveryIndex(
+      library,
+      observed.facts,
+      page,
+      allBindings,
+      false,
+      true,
+      undefined,
+      original.resolved.facts,
+    )
+    return {
+      ...authority,
+      journal,
+      file,
+      bindings,
+      proofs,
+      observations: observed.observations,
+      facts: observed.facts,
+      allocatedFile,
+    }
+  }).pipe(withReadOnlyNotion)
+}
+
 export function reviewSharedRetainedImportRecovery(input: {
   readonly entry: string
   readonly plan: unknown
@@ -594,6 +831,8 @@ export function assertSharedRetainedImportRecovery(
   library: SharedLibrary,
   plan: SharedCreatePlan,
   review: SharedRetainedImportRecoveryReview,
+  substitutions: readonly VerifiedNativeFileSubstitution[] = [],
+  inspectionScope: "full" | "allocated" = "full",
 ) {
   return Effect.gen(function* () {
     yield* assertSourceFileRepairsComplete(
@@ -602,7 +841,7 @@ export function assertSharedRetainedImportRecovery(
       review.skill_page_id,
       review.file_repair_proofs ?? [],
     )
-    const local = yield* originalJournal(plan)
+    const local = yield* originalJournal(plan, substitutions)
     if (
       local.scope !== review.permission_scope ||
       (yield* hash(local.journal)) !== review.bootstrap.original_journal_sha256
@@ -632,7 +871,13 @@ export function assertSharedRetainedImportRecovery(
       !same(original.outcome.bindings, review.bindings)
     )
       return yield* refusal("The original known failure or allocation prefix changed.")
-    const observed = yield* observePrefix(library, plan, review.skill_page_id, review.bindings)
+    const observed = yield* observePrefix(
+      library,
+      plan,
+      review.skill_page_id,
+      review.bindings,
+      inspectionScope,
+    )
     if (!same(observed.observations, review.observations))
       return yield* refusal(
         "A reviewed complete native body changed; preserve the original review and pages.",
@@ -644,6 +889,100 @@ export function assertSharedRetainedImportRecovery(
         binding,
         observed.original.files.find((file) => file.file_id === binding.file_id)!,
       )
+    if (substitutions.length > 0) {
+      const index = yield* querySharedSkillIndex(library, review.skill_page_id)
+      const checks = new Map<
+        string,
+        {
+          readonly observation: SharedRetainedImportRecoveryReview["observations"][number]
+        }
+      >()
+      for (const replacement of substitutions) {
+        if (
+          replacement.original_operation_id !== plan.operation_id ||
+          replacement.prefix_bindings.length !== replacement.prefix_observations.length
+        )
+          return yield* refusal(
+            "A file substitution changed its original operation or acknowledged prefix.",
+          )
+        for (const [at, binding] of replacement.prefix_bindings.entries()) {
+          const body = replacement.prefix_observations[at]!
+          if (body.file_id !== binding.file_id || body.page_id !== binding.page_id)
+            return yield* refusal(
+              "The independent prefix body belongs to another original allocation.",
+            )
+          if (review.bindings.some((old) => old.file_id === binding.file_id)) continue
+          const native = observed.original.files.find(
+            (file) => file.file_id === binding.file_id && file.path === binding.path,
+          )
+          if (!native)
+            return yield* refusal("The later acknowledged prefix is not an original file.")
+          yield* allocationProof(plan, review.skill_page_id, binding, native)
+          checks.set(binding.file_id, { observation: body })
+        }
+        checks.set(replacement.file_id, { observation: replacement.observation })
+      }
+      for (const [fileId, check] of checks) {
+        const native = observed.original.files.find((file) => file.file_id === fileId)
+        if (!native || native.path === plan.entrypoint)
+          return yield* refusal(
+            "Only exact supporting files may use independent resubmission evidence.",
+          )
+        const matching = index.files.filter(
+          (row) =>
+            row.file_id === fileId ||
+            row.path === native.path ||
+            row.page_id === check.observation.page_id,
+        )
+        const row = matching[0]
+        if (
+          matching.length !== 1 ||
+          row?.file_id !== fileId ||
+          row.path !== native.path ||
+          row.page_id !== check.observation.page_id
+        )
+          return yield* refusal(
+            "An independently reviewed native file changed its exact owner, path or page.",
+          )
+        const current = yield* observeNativeImportFile(
+          original.resolved.facts,
+          native,
+          local.scope,
+          review.skill_page_id,
+          check.observation.page_id,
+          { retainObservation: false },
+        )
+        if (
+          current.content.sha256 !== check.observation.body_sha256 ||
+          current.content.bytes !== check.observation.body_bytes ||
+          current.event.event_id !== check.observation.event_id
+        )
+          return yield* refusal(
+            "A later acknowledged prefix or independently created body changed before continuation.",
+          )
+        const baseline =
+          current.event.kind === "projected"
+            ? { ...current.event.projection, source_revision: current.event.source_revision }
+            : null
+        const originalBaseline =
+          native.event.kind === "projected"
+            ? { ...native.event.projection, source_revision: native.event.source_revision }
+            : null
+        if (
+          (!same(row.baseline ?? null, baseline) &&
+            !same(row.baseline ?? null, originalBaseline)) ||
+          row.display_status !==
+            (current.event.kind === "projected"
+              ? "following"
+              : current.event.kind === "deleted"
+                ? "tombstone"
+                : "custom")
+        )
+          return yield* refusal(
+            "The reviewed native file no longer has its original or observed reading baseline.",
+          )
+      }
+    }
   }).pipe(withReadOnlyNotion)
 }
 
@@ -653,6 +992,7 @@ export function saveSharedRetainedImportCompletion(
   review: SharedRetainedImportRecoveryReview,
   bindings: readonly SharedCreateBinding[],
   projectionRepair?: SharedCreateProjectionRepairProof,
+  substitutions: readonly VerifiedNativeFileSubstitution[] = [],
 ) {
   return Effect.gen(function* () {
     const selection = (yield* resolveSharedCreateSource(plan, review.skill_page_id)).selection!
@@ -672,20 +1012,27 @@ export function saveSharedRetainedImportCompletion(
         manifest_record_hash: yield* sharedCreateManifestRecordHash(plan),
       },
     }
-    const payload = {
-      version: 1 as const,
+    const fields = {
       kind: "retained_create_readback_completion" as const,
       review_id: review.review_id,
       original_failure_sha256: review.original_failure_sha256,
       outcome,
     }
+    const payload =
+      substitutions.length === 0
+        ? { version: 1 as const, ...fields }
+        : {
+            version: 2 as const,
+            ...fields,
+            file_resubmissions: substitutions.map((item) => item.completion_reference),
+          }
     return yield* appendSharedRecord(library, {
       mode: "create",
       kind: "operation",
       skillPageId: review.skill_page_id,
       recordId: completionRecordId(plan.operation_id),
       entityId: sharedCreateRestorationOutcomesEntity,
-      operationId: review.review_id,
+      operationId: yield* completionOperationId(payload),
       payload,
     })
   })
@@ -737,7 +1084,7 @@ export function readSharedRetainedImportCompletion(
       !same(original.outcome, failed) ||
       !same(review.bindings, failed.bindings) ||
       review.skill_page_id !== page ||
-      row.operation_id !== review.review_id ||
+      row.operation_id !== (yield* completionOperationId(completion)) ||
       reviews[0]!.operation_id !== review.review_id ||
       outcome.version !== 1 ||
       outcome.status !== "applied" ||
@@ -777,6 +1124,16 @@ export function readSharedRetainedImportCompletion(
         file: original.resolved.facts.files.find((file) => file.file_id === binding.file_id)!,
       }),
     )
+    if (completion.version === 2 && completion.file_resubmissions.length === 0)
+      return yield* refusal(
+        "A resubmitted completion must carry its mandatory independent proof references.",
+      )
+    const substitutions = yield* loadCompletedSourceFileResubmissions(
+      library,
+      plan,
+      page,
+      completion.version === 2 ? completion.file_resubmissions : [],
+    )
     const restored = yield* restoreNativeImportReadbacks(
       original.resolved.facts,
       page,
@@ -794,6 +1151,22 @@ export function readSharedRetainedImportCompletion(
       )
         return yield* refusal(
           "The published original prefix differs from its independently reviewed complete bodies.",
+        )
+    }
+    for (const substitution of substitutions) {
+      const file = restored.files.find((file) => file.file_id === substitution.file_id)
+      const binding = outcome.bindings.find((binding) => binding.file_id === substitution.file_id)
+      if (
+        !file ||
+        binding?.path !== substitution.path ||
+        binding.page_id !== substitution.page_id ||
+        binding.event_id !== substitution.observation.event_id ||
+        file.event.event_id !== substitution.observation.event_id ||
+        file.content.sha256 !== substitution.observation.body_sha256 ||
+        file.content.bytes !== substitution.observation.body_bytes
+      )
+        return yield* refusal(
+          "The parent completion changed the independently acknowledged file, page or complete body event.",
         )
     }
     return outcome
@@ -847,6 +1220,11 @@ export function applySharedRetainedImportRecovery(input: {
         remote_writes: 0 as const,
       }
     }
+    const substitutions = yield* loadCompletedSourceFileResubmissions(
+      library,
+      plan,
+      review.skill_page_id,
+    )
     if (saved === undefined) {
       const current = yield* reviewSharedRetainedImportRecovery({
         entry: input.entry,
@@ -857,7 +1235,7 @@ export function applySharedRetainedImportRecovery(input: {
         return yield* refusal(
           "The original review drifted; do not apply another observation under its digest.",
         )
-    } else yield* assertSharedRetainedImportRecovery(library, plan, review)
+    } else yield* assertSharedRetainedImportRecovery(library, plan, review, substitutions)
     if (input.dryRun)
       return {
         status: "reviewed" as const,
@@ -869,11 +1247,11 @@ export function applySharedRetainedImportRecovery(input: {
         new_native_pages: plan.files.length - review.bindings.length,
       }
     if (saved === undefined) yield* store.writeJson(key, expected)
-    yield* assertSharedRetainedImportRecovery(library, plan, review)
+    yield* assertSharedRetainedImportRecovery(library, plan, review, substitutions)
     const dispatch = yield* sharedCreateDispatch(
       library,
       { operation_id: review.review_id, skill_id: plan.skill_id },
-      assertSharedRetainedImportRecovery(library, plan, review),
+      assertSharedRetainedImportRecovery(library, plan, review, substitutions),
     )
     yield* Effect.gen(function* () {
       yield* retainSharedNativeAllocationProofs(library, review.skill_page_id, proofs)
@@ -891,6 +1269,7 @@ export function applySharedRetainedImportRecovery(input: {
       plan,
       mode: "create",
       retainedImportRecovery: review,
+      fileResubmissions: substitutions,
     })
     if (result.verified) yield* store.retireKeys([key])
     return { ...result, review_id: review.review_id, original_failure_preserved: true }
