@@ -4,7 +4,7 @@ import { FileEventSchema, RetainedContentSchema } from "./shared-file-state.ts"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { SharedMigrationActivationSchema } from "./shared-migration-activation.ts"
 import { SharedNotionMarkdownProjectionSchema } from "./shared-notion-projection.ts"
-import { SharedGitSourceBindingSchema } from "./shared-source-binding.ts"
+import { SharedGitSourceBindingSchema } from "./shared-source-binding-model.ts"
 
 // The retained wire schema has no dependency on migration execution. Native
 // create origins can decode it while the conversion workflow is being loaded.

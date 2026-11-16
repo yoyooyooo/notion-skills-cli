@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
-import { SharedCreatePlanSchema } from "./shared-create-model.ts"
+import { SharedCreatePlanSchema } from "./shared-create-schema.ts"
 
 export const SourceOnboardingScopeSchema = Schema.Union([
   Schema.Struct({

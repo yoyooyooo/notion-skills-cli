@@ -1,43 +1,27 @@
 import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { pageId } from "./ref.ts"
-import { RetainedContentSchema } from "./shared-file-state.ts"
-import {
-  SharedMigrationConversionCandidateSchema,
-  type SharedMigrationConversionCandidate,
-} from "./shared-migration-conversion-model.ts"
+import type { SharedMigrationConversionCandidate } from "./shared-migration-conversion-model.ts"
 import { validateRetainedMigrationConversion } from "./shared-migration-conversion.ts"
 import { sharedCreateInputPayload } from "./shared-create-objects.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 
-const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
-const MemberBindingSchema = Schema.Struct({
-  legacy_id: Schema.String,
-  skill_id: Schema.String,
-  record_id: Schema.String,
-  page_id: Schema.String,
-})
-export type MigrationMemberBinding = typeof MemberBindingSchema.Type
-export const SharedMigrationOriginArchiveSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  kind: Schema.Literal("migration_create_origin"),
-  candidate_id: Schema.String,
-  sha256: Hash,
-  bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
-  chunks: Schema.Array(RetainedContentSchema),
-})
-export const SharedMigrationOriginManifestSchema = Schema.Struct({
-  archive: SharedMigrationOriginArchiveSchema,
-  member_bindings: Schema.Array(MemberBindingSchema),
-})
-export const SharedMigrationCreateOriginSchema = Schema.Struct({
-  archive: SharedMigrationOriginArchiveSchema,
-  member_bindings: Schema.Array(MemberBindingSchema),
-  candidate: SharedMigrationConversionCandidateSchema,
-})
-export type SharedMigrationCreateOrigin = typeof SharedMigrationCreateOriginSchema.Type
-export type SharedMigrationOriginManifest = typeof SharedMigrationOriginManifestSchema.Type
+import {
+  MemberBindingSchema,
+  SharedMigrationOriginManifestSchema,
+  type MigrationMemberBinding,
+  type SharedMigrationCreateOrigin,
+  type SharedMigrationOriginManifest,
+} from "./shared-migration-create-origin-model.ts"
+export {
+  SharedMigrationOriginArchiveSchema,
+  SharedMigrationOriginManifestSchema,
+  SharedMigrationCreateOriginSchema,
+  type MigrationMemberBinding,
+  type SharedMigrationCreateOrigin,
+  type SharedMigrationOriginManifest,
+} from "./shared-migration-create-origin-model.ts"
 const checked = <A>(run: () => A) =>
   Effect.try({
     try: run,

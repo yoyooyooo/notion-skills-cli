@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { beforeAll, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { createServer } from "node:http"
 import { execFileSync } from "node:child_process"
@@ -26,6 +26,20 @@ import { rich, id } from "../../core/test/shared-snapshot-fixture.ts"
 const executable =
   process.env.NTN_SKILLS_TEST_EXECUTABLE ??
   new URL("../dist/ntn-skills.js", import.meta.url).pathname
+beforeAll(async () => {
+  if (process.env.NTN_SKILLS_TEST_EXECUTABLE !== undefined) return
+  const build = Bun.spawn(["bun", "run", "build"], {
+    cwd: new URL("../../../", import.meta.url).pathname,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(build.stdout).text(),
+    new Response(build.stderr).text(),
+    build.exited,
+  ])
+  if (exit !== 0) throw new Error(`Production CLI build failed: ${stdout}\n${stderr}`)
+}, 120_000)
 const digest = (value: Uint8Array) => createHash("sha256").update(value).digest("hex")
 const field = (input: unknown, name: string) => {
   const value = property(input)[name]

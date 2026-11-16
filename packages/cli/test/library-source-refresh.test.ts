@@ -15,8 +15,11 @@ import {
 import { digest, encode, id, rich, skillPage } from "../../core/test/shared-snapshot-fixture.ts"
 
 const root = new URL("../../../", import.meta.url).pathname
-const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
+const main =
+  process.env.NTN_SKILLS_TEST_EXECUTABLE ??
+  new URL("../dist/ntn-skills.js", import.meta.url).pathname
 beforeAll(async () => {
+  if (process.env.NTN_SKILLS_TEST_EXECUTABLE !== undefined) return
   const child = Bun.spawn(["bun", "run", "build"], { cwd: root, stdout: "pipe", stderr: "pipe" })
   const [stdout, stderr, code] = await Promise.all([
     new Response(child.stdout).text(),
@@ -180,6 +183,7 @@ test("public source prepare/apply uses real HTTP with controlled A/B/C resources
           NTN_SKILLS_HOME: join(directory, "state"),
           NTN_SKILLS_CACHE_HOME: join(directory, "cache"),
           NTN_SKILLS_DATA_HOME: join(directory, "data"),
+          NTN_SKILLS_DEV_ROOT: undefined,
         },
       })
       const [stdout, stderr, exit] = await Promise.all([
@@ -213,6 +217,8 @@ test("public source prepare/apply uses real HTTP with controlled A/B/C resources
         library.skills.database_id,
         "--target",
         skillPage,
+        "--storage",
+        "retained",
         "--output",
         planPath,
       )

@@ -33,10 +33,10 @@
     "packages/core/src/shared-audit-inventory.ts": "b6111866a290d342040ab209c989a240061d96eedefe70e23771a3f13aee4c1e",
     "packages/core/src/shared-audit-transport.ts": "90c241ed72226b2a6dc2d901e7f2138b2bda7373a80e8e9240cbbeed82fefada",
     "packages/core/src/shared-audit-store.ts": "b23d196e7f3bece7396174fb7719fccddc87baafd3297d110f41763cd77bfd67",
-    "packages/core/src/shared-inventory-import.ts": "db2f178300a8f09e96c8bb3ab752988d22100c62d752e398cb61c6e7a7b40318",
+    "packages/core/src/shared-inventory-import.ts": "2f9845c5eec751d911ef50d4a713f6e6fa94f9b7ad3a56b36b463a09044e30a1",
     "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
     "packages/core/src/shared-create.ts": "efeeb5a3f082869c5a62f3904293d194311f7913fff8344fecc15a9799a6940a",
-    "packages/core/src/shared-create-model.ts": "8e9a76a0762f3bc47702288d375f369b22a0be652ced2b1e5427882510527ee0",
+    "packages/core/src/shared-create-model.ts": "f8d889fc13fff4e68039b58c2aed4cb5317b89ed8825cd37224aeb93583b9f14",
     "packages/core/src/shared-create-dispatch.ts": "9c7d14c920efa913fc65a5f28a8d7f370b82ba2bef79b2e22dfb42df338ed289",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
     "packages/core/src/shared-create-outcome.ts": "300496d52de78987b831cab27973116f861c48380c69662e353e626b470be394",
@@ -123,7 +123,7 @@
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
     "packages/core/src/shared-source-onboarding.ts": "7e6751685c574d2dd795d301ebff5d4fcf39c45efae5be4e9d456389d347842d",
-    "packages/core/src/shared-source-onboarding-model.ts": "6d66ea886d8c37a6e72d6eded51c8d58fca3c2eda1e66106427b3752275bbea9",
+    "packages/core/src/shared-source-onboarding-model.ts": "a332500f8d534016e86fd8ff62548adf885e7eeed4b8c242bd721ab43b1eca71",
     "packages/cli/src/commands-library-source-onboarding.ts": "37e46fa096ee052a51b2e6b1ab210f7d30f869f94c5cd7563e8068c09462f601",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
     "packages/core/test/shared-source-onboarding.test.ts": "5c07d649c3599a3e3145a974eafefc842babfadc214359d93c48c4b262ea5626",
@@ -132,7 +132,7 @@
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
-    "packages/cli/test/library-source-members-http.test.ts": "43c190ad3660609f1d61c7e88fafc186f4cca9c7b1258114497961cee584935f",
+    "packages/cli/test/library-source-members-http.test.ts": "dcf9cd3be905fe576c619a83760cddd83598ae00e97e5ebc3708ad2f910a53ee",
     "packages/core/test/shared-import-markdown.test.ts": "125349b27b5e02d2cb6dc97c5601d26f7695525d0e4b5616391e497d2825d0b0",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
     "packages/core/src/shared-create-retained-recovery.ts": "8c251fddefda4d3eeda9263a21b35fa4c338c3a01115c03d939ed54d4162b0c3",
@@ -157,7 +157,7 @@
     "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
     "packages/core/test/shared-source-storage.test.ts": "1dafd44ac557d0a378502472d7569e41edb5267434cc871cf54ffb7676dcd01e",
     "packages/cli/src/commands-library-source-storage.ts": "84628ce643dcc96fa8e37fceee6544bd2ff5ba5b7dd8a24aa96577ba5ff2aa2b",
-    "packages/cli/test/library-source-storage-http.test.ts": "be519cebc8a5b1dc4114c594fbb3ef298037c860273bdaf92ba48563dd2f2d21",
+    "packages/cli/test/library-source-storage-http.test.ts": "022217e367cdeb44860abe3b5b26d0220f5227d5cfdbe32f64009ffb9d378a4e",
     "packages/core/src/shared-source-member.ts": "b4a07644dc23667c412c5e1a725c61cacd6fbbe97e06628587ec04193373a902",
     "packages/core/src/shared-source-materialization.ts": "a08c1db21fbb9c5f0742b093dcad42057bb8daa4e546559c6e361eff43e953ae",
     "packages/core/src/upstream-source.ts": "c680765a7a0864226528853dc60e6c546cde219496493070cba64ccf1461e306",
@@ -169,7 +169,13 @@
     "packages/cli/src/runtime.ts": "49495db4fa9b101eef963d4e3c9aabef307f875a8c2573bc73bdfa90e735ff9d",
     "packages/cli/src/commands-library.ts": "b7dc4e4be43196a16d4e1b0faeca5c4c46fcdab6b4c05e316f122f397e0629e6",
     "packages/core/test/github-api-access.test.ts": "9bab088971fc7f975d73dae20bd3dd4aeeb353ffcd88c68529708e612d8f3ba0",
-    "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892"
+    "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
+    "packages/core/src/shared-create-schema.ts": "84d11feb22d31e8b8f9df768f641b70dd3c371c204c6cbea6f7fdc9eff6b075a",
+    "packages/core/src/shared-migration-create-origin-model.ts": "75c248fbbacb2a840453238747e7757433c6841fd43ca60fa19b924019586436",
+    "packages/core/src/shared-migration-create-origin.ts": "30b6356380705c1609010a0b5c7b9ae297a785043ecda05b42761b146d283f62",
+    "packages/core/src/shared-migration-conversion-model.ts": "600a74d87883e98d929166eab9b6528c4b71fa9c5ea055cf4e0f32c1df0857dc",
+    "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "83979f17f8031756048f499f95c1cb8b1880e6fd716634e30079a38ed37c84d8",
+    "packages/cli/test/library-source-refresh.test.ts": "b1a00a72c0742a84fc0e514c35491366b1fcbadc8268425c91213f99dfc59e77"
   },
   "models": {
     "ProjectionRace": {
@@ -1271,6 +1277,37 @@
         "materializeFixedGithubSource"
       ],
       "scope": "Machine-local GitHub API prefixes route commit/tree and exact blobs without changing shared source IDs. Official environment credentials or an existing gh github.com session are isolated from custom APIs; only explicit dedicated credentials may reach a custom gateway. The standard optional gh service is lazy/memoized per operation, bounded/noninteractive, captures the complete SDK ConfigProvider child environment, never logs/stores tokens, and performs no login/refresh/setup-git. Custom JSON/base64 blobs are size/OID/hash validated; redirects, returned URLs, auth failures and rate limits do not authorize credential rotation or alternate-host fallback. In-flight immutable byte coalescing is additionally scoped to ConfigProvider and gh service; verified content-addressed cache ownership and existing permissions remain unchanged. Real isolated gh, safe failure/large payload/cache/concurrency tests, independent installed CLI/SDK and separate actual Broker/official-gh evidence cover the added behavior. Initial actual Broker 502 remains a failed original; a later independent cold success is separate evidence. These transport/auth procedures and external network behavior are NOT enumerated in unchanged finite TLA domains. Original model/config/cases/expected_rules are unchanged; hash correspondence is not a new theorem. See docs/maintenance-verification-review.md SRC09."
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "native_create_schema_module_initialization",
+      "files": [
+        "packages/core/src/shared-create-schema.ts",
+        "packages/core/src/shared-create-model.ts",
+        "packages/core/src/shared-migration-create-origin-model.ts",
+        "packages/core/src/shared-migration-create-origin.ts",
+        "packages/core/src/shared-migration-conversion-model.ts",
+        "packages/core/src/shared-source-onboarding-model.ts",
+        "packages/core/src/shared-inventory-import.ts",
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts"
+      ],
+      "symbols": [
+        "SharedCreatePlanSchema",
+        "SharedCreateManifestSchema",
+        "SharedCreateJournalSchema",
+        "SharedMigrationCreateOriginSchema",
+        "SharedMigrationConversionCandidateSchema",
+        "SourceOnboardingPlanSchema"
+      ],
+      "scope": "Native Node initialization is outside the finite lifecycle domains. Create plan/manifest/journal and migration-origin schema definitions move unchanged to schema-only dependencies; onboarding and inventory read those dependencies directly, and conversion schema reads the existing source-binding model. Original public re-exports remain. Schema field definitions and create/origin execution function bodies are unchanged; no frozen plan, content identity, validation guard, dispatch/ACK/unknown authority or recovery permission changes. The original fresh-process imports reproduce seven temporal-dead-zone failures before this structural repair; all original twenty plus five additional independent module entries pass afterward. Existing create, migration and onboarding regressions remain separate executable evidence. No model, config, view, case or expected_rules changed. See docs/maintenance-verification-review.md SRC10.",
+      "tests": [
+        "packages/core/test/shared-create-acknowledgement-import.node.test.ts",
+        "packages/core/test/shared-create.test.ts",
+        "packages/core/test/shared-source-onboarding.test.ts",
+        "packages/core/test/shared-migration-create.test.ts",
+        "packages/core/test/shared-migration-conversion.test.ts"
+      ],
+      "no_new_finite_model_claim": true
     }
   ],
   "cases": [
@@ -2009,5 +2046,17 @@
     "assertions_or_stages_removed": false,
     "prior_failed_run_preserved": true,
     "model_configs_expected_rules_changed": false
+  },
+  "post_source_api_ci_review": {
+    "base_commit": "2a70d1e6ea9b847767e8b680d8f1627135b81215",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_existing_hash_changes": [
+      "packages/core/src/shared-inventory-import.ts",
+      "packages/core/src/shared-create-model.ts",
+      "packages/core/src/shared-source-onboarding-model.ts",
+      "packages/cli/test/library-source-members-http.test.ts",
+      "packages/cli/test/library-source-storage-http.test.ts"
+    ],
+    "scope": "Retained loopback/registry journeys make the existing explicit storage choice; the storage HTTP fixture builds its default executable on clean checkouts and preserves explicit installed executables. Refresh execution clears the development-shim override so the chosen artifact is actually exercised. Assertions and original test budgets remain. The lifecycle schema dependency extraction is reviewed separately in SRC10; this metadata is not a new verification result. Existing model/config/view/case/expected_rules inventories remain unchanged."
   }
 }

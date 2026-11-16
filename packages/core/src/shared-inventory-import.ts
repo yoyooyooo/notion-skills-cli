@@ -4,7 +4,8 @@ import { aliasFor, fail, property, text, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { executeSharedCreate, prepareSharedCreate, previewSharedCreate } from "./shared-create.ts"
-import { SharedCreatePlanSchema, validateSharedCreatePlan } from "./shared-create-model.ts"
+import { validateSharedCreatePlan } from "./shared-create-model.ts"
+import { SharedCreatePlanSchema } from "./shared-create-schema.ts"
 import { readFixedLocalFile } from "./shared-fixed-resources.ts"
 import {
   readLocalSkillInventory,

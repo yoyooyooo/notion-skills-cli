@@ -644,3 +644,36 @@ retained，所以产品正确返回SOURCE_STORAGE_REVIEW_REQUIRED。修正仅给
 原生命周期七文件85测试/688断言通过。存储auto拒绝的现有负例继续覆盖；没有更改
 产品代码、有限模型、配置或expected_rules。精确后续提交的CI需独立记录，不能以
 本地通过改写8117207的失败。
+
+## SRC10：Source 候选的完整 CI 修正
+
+沿原 Draft PR 继续检查完整 CI，8117207 的 Ubuntu / Node 24 原件确认四个 Bun 失败
+和七个 Node 独立导入失败。2a70d1e 修复 Registry retained 模式测试后，三个 Formal
+jobs 已全部通过；这不代表普通四平台矩阵或后续候选已通过。原 CI 与本机红例均保留。
+
+两个 HTTP 旅程使用 loopback Git 或 Registry，需要明确 retained 才能继续原有恢复与
+更新断言。member fixture 选择 Source options.storage，refresh 使用公开 --storage
+retained；auto 的写前拒绝不变。storage HTTP fixture 在默认 dist 尚不存在的干净检出
+先构建 CLI，显式安装包入口仍直接使用。refresh 同时遵循原 executable override 约定，
+清除子进程的 NTN_SKILLS_DEV_ROOT，避免宿主日用 shim 绕过正在验证的产物。首次误入
+旧 checkout 的本机结果单独保留，不作为当前候选证据。内置 sync 指引的两处活动措辞
+改为 storage alignment 与 earlier receipt；操作、禁止手工改表和未知结果边界保持。
+
+Node 原生加载发现 create-model 同时导出 schema 和加载迁移执行工作流，后者经 export、
+snapshot、create 和 Source recovery 回到 onboarding-model，在初始化完成前读取创建
+schema。将计划、manifest、journal 与迁移 origin schema 原样移入独立 schema 模块；
+onboarding / inventory 直接读取该模块，conversion schema 直接读取既有 binding model。
+原公开 re-export 保留，创建和 origin 执行函数区逐字节一致；没有延迟解码、预加载、
+动态 import 或放宽原断言。冻结计划、内容身份、校验守护、原 ACK 与 unknown 权限不变。
+
+精确原测试从7失败/13通过变为25通过：保留原20入口，并增加5个独立 schema/model
+入口。create、migration、onboarding 四文件共61测试/436断言通过；typecheck 与格式
+检查通过。干净检出的 storage HTTP 测试先复现 MODULE_NOT_FOUND，修后默认自动构建
+路径1测试/41断言通过。member 完整旅程1测试/171断言通过，保留原300秒上限。
+refresh 在故意无效 DEV_ROOT 哨兵下1测试/34断言通过，保留原120秒上限；builtin
+两测试/50断言通过。以上均使用原断言，独立运行的时间不冒充 CI 平台性能数据。
+
+三个 coverage 文件只同步实际审阅的受保护实现与 fixture；lifecycle 另追踪新 schema
+模块、原消费者及原生导入回归。字段定义和执行逻辑的原样移动已独立比对，模型、配置、
+view、cases 与 expected_rules 保持。模块初始化、测试入口和明确存储选择不构成新增
+有限模型性质。最终构建、安装产物与精确后续提交的 CI 回执在同一 PR 和实施任务中记录。

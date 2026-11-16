@@ -405,7 +405,8 @@ test("installed source member commands admit, explicitly remap and retain real G
     policy: "manual" as const,
     adapter: { type: "git" as const, url: `${origin}/origin.git`, ref: "main" },
     selection: { roots: ["skills"], include: [], exclude: [], mapping: {} },
-    options: {},
+    // This journey exercises retained import/recovery against a loopback Git origin.
+    options: { storage: "retained" },
   }
   for (const [key, value] of Object.entries(sourceDefinitionPropertiesFor(library, definition)))
     f.source.properties[key] = { ...property(f.source.properties[key]), ...property(value) }

@@ -38,7 +38,7 @@
     "packages/cli/src/commands-library.ts": "b7dc4e4be43196a16d4e1b0faeca5c4c46fcdab6b4c05e316f122f397e0629e6",
     "packages/core/test/github-api-access.test.ts": "9bab088971fc7f975d73dae20bd3dd4aeeb353ffcd88c68529708e612d8f3ba0",
     "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
-    "packages/cli/test/library-source-storage-http.test.ts": "be519cebc8a5b1dc4114c594fbb3ef298037c860273bdaf92ba48563dd2f2d21"
+    "packages/cli/test/library-source-storage-http.test.ts": "022217e367cdeb44860abe3b5b26d0220f5227d5cfdbe32f64009ffb9d378a4e"
   },
   "models": {
     "SharedProducer": {
@@ -519,5 +519,11 @@
       ],
       "scope": "Machine-local GitHub API prefixes route commit/tree and exact blobs without changing shared source IDs. Official environment credentials or an existing gh github.com session are isolated from custom APIs; only explicit dedicated credentials may reach a custom gateway. The standard optional gh service is lazy/memoized per operation, bounded/noninteractive, captures the complete SDK ConfigProvider child environment, never logs/stores tokens, and performs no login/refresh/setup-git. Custom JSON/base64 blobs are size/OID/hash validated; redirects, returned URLs, auth failures and rate limits do not authorize credential rotation or alternate-host fallback. In-flight immutable byte coalescing is additionally scoped to ConfigProvider and gh service; verified content-addressed cache ownership and existing permissions remain unchanged. Real isolated gh, safe failure/large payload/cache/concurrency tests, independent installed CLI/SDK and separate actual Broker/official-gh evidence cover the added behavior. Initial actual Broker 502 remains a failed original; a later independent cold success is separate evidence. These transport/auth procedures and external network behavior are NOT enumerated in unchanged finite TLA domains. Original model/config/cases/expected_rules are unchanged; hash correspondence is not a new theorem. See docs/maintenance-verification-review.md SRC09."
     }
-  ]
+  ],
+  "post_source_api_ci_review": {
+    "base_commit": "2a70d1e6ea9b847767e8b680d8f1627135b81215",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_existing_hash_changes": ["packages/cli/test/library-source-storage-http.test.ts"],
+    "scope": "Retained loopback/registry journeys make the existing explicit storage choice; the storage HTTP fixture builds its default executable on clean checkouts and preserves explicit installed executables. Refresh execution clears the development-shim override so the chosen artifact is actually exercised. Assertions and original test budgets remain. The lifecycle schema dependency extraction is reviewed separately in SRC10; this metadata is not a new verification result. Existing model/config/view/case/expected_rules inventories remain unchanged."
+  }
 }

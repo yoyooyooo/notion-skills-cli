@@ -28,6 +28,11 @@ async function freshImport(entry: string, expected: string) {
 // A controlled Effect fixture and a preloaded bundle can hide an ESM cycle.
 // Each case starts a new native Node process with no loader, build or services.
 test.each([
+  ["shared-create-schema.ts", "SharedCreatePlanSchema"],
+  ["shared-migration-create-origin-model.ts", "SharedMigrationCreateOriginSchema"],
+  ["shared-migration-conversion-model.ts", "SharedMigrationConversionCandidateSchema"],
+  ["shared-source-onboarding-model.ts", "SourceOnboardingPlanSchema"],
+  ["shared-create-model.ts", "validateSharedCreatePlan"],
   ["shared-create-restoration.ts", "reviewSharedCreateRestoration"],
   ["shared-create.ts", "executeSharedCreate"],
   ["shared-create-recovery-native-model.ts", "SharedCreateNativeRecoveryReviewSchema"],
