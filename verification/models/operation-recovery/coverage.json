@@ -70,9 +70,9 @@
     "packages/core/test/notion-http.test.ts": "c2975c9d3985626d5db765f387d395b3ea3c55f40bbc91ef1fa557c9d9310099",
     "packages/core/src/shared-import-markdown.ts": "92778d665ad334d2fb7fd587678eebc8961fa8f8dba4be57a16ee18e3f352af9",
     "packages/core/src/shared-fixed-git-transport.ts": "cd83e2412e1b476a96dd549b352b558e6c100f51d3b85246b268468b79a041f7",
-    "packages/core/src/shared-source-storage.ts": "11b8921a2d883433dd6c5786d0659c0a3d0592f399e7fb64edba8a381ad24fe7",
+    "packages/core/src/shared-source-storage.ts": "848fc9b235976a0e59f76f4d6d9555f96ba606ac5c301914d23580fb56170300",
     "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
-    "packages/core/test/shared-source-storage.test.ts": "1dafd44ac557d0a378502472d7569e41edb5267434cc871cf54ffb7676dcd01e",
+    "packages/core/test/shared-source-storage.test.ts": "c15927d5f93bbaf99827e040761dba134b9bf4e070dd075377c8883601374fb2",
     "packages/cli/src/commands-library-source-storage.ts": "84628ce643dcc96fa8e37fceee6544bd2ff5ba5b7dd8a24aa96577ba5ff2aa2b",
     "packages/cli/test/library-source-storage-http.test.ts": "022217e367cdeb44860abe3b5b26d0220f5227d5cfdbe32f64009ffb9d378a4e",
     "packages/core/src/shared-source-member.ts": "b4a07644dc23667c412c5e1a725c61cacd6fbbe97e06628587ec04193373a902",
@@ -89,7 +89,7 @@
     "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
     "packages/cli/src/commands-library-source-file-resubmission.ts": "b563699bf624d007dc7bb53522ac17835113cdbc013cbdaa0114198f01fbe81a",
     "packages/cli/src/sdk.ts": "cd30cf43196273b829fa653da6ec5cad1b366c8aad9e8593c987e96a3edd727b",
-    "packages/cli/test/cli.test.ts": "1c715741ff77c8522dab997edcfdba907f35ce62b10d4488b205aa8aff898222",
+    "packages/cli/test/cli.test.ts": "cb197efda54632c673a81efa195719b5328250dbc505a9ef2d611bf4735150a9",
     "packages/cli/test/library-source-file-resubmission-http.test.ts": "38e2553f9bf57ef16efe5e2892f84b3439bac4fc48335e48cb67ade0e1789bd2",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
     "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
@@ -1359,5 +1359,20 @@
     "old_negative_receipts_and_unknown_preserved": true,
     "local_source_tests_performed": true,
     "actual_full_kami_and_guizang_success_not_claimed": true
+  },
+  "src15_bounded_source_review": {
+    "issue": "AH-1067",
+    "product_commit": "8286ce7cebd8a9d10a11b3eecef557061dc76d08",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_existing_hash_changes": [
+      "packages/core/test/shared-source-storage.test.ts",
+      "packages/core/src/shared-source-storage.ts",
+      "packages/cli/test/cli.test.ts"
+    ],
+    "selection_only": "bounded multi-Source review and per-Source timeout with read-only inventory; storage scope explicitly rejects unsupported subsets",
+    "mutation_authority": "unchanged original guarded source bind/create dispatcher and journals",
+    "finite_model_change": false,
+    "models_configs_views_cases_expected_rules_changed": false,
+    "claims_excluded": "not a fresh formal execution, complete provider review, or natural agent success"
   }
 }

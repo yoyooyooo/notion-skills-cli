@@ -81,6 +81,19 @@ test("external-first policy does not authorize a complete Notion archive on tran
   ).toThrow()
 })
 
+test("storage roster rejects a multi-Source onboarding scope without inventing a partial storage inventory", async () => {
+  const f = fixture()
+  await expect(
+    f.run(
+      reviewSourceStorage({
+        entry: library.skills.database_id,
+        scope: { kind: "sources", sources: [f.source.id, "another-source"] },
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
+  expect(f.writes()).toHaveLength(0)
+})
+
 async function retained() {
   const f = fixture([], { markdownImport: true, recovery: true })
   for (const row of f.skills.values()) {
