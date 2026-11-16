@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "fece257be9a51ca25cd6fbbd93e286afcb8dee0b",
+  "synchronized_commit": "1a439ec5b2610e9f97a0e76bb6405e4e53d9877c",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
@@ -49,9 +49,9 @@
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
     "packages/cli/test/library-source-members-http.test.ts": "dcf9cd3be905fe576c619a83760cddd83598ae00e97e5ebc3708ad2f910a53ee",
-    "packages/core/test/shared-import-markdown.test.ts": "125349b27b5e02d2cb6dc97c5601d26f7695525d0e4b5616391e497d2825d0b0",
+    "packages/core/test/shared-import-markdown.test.ts": "96b9fc71a7c893dd511ee7757ed81ea27fd42191673b3a7fb1b630451ee32d2e",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
-    "packages/core/src/shared-create-retained-recovery.ts": "b22c644f4f2f43651b34bfb303e6927c4569290e8386882c4f383ed25f782323",
+    "packages/core/src/shared-create-retained-recovery.ts": "9315392815f2d805c0ae8fe33ff07d60b1897f5ea060b9b2a1a3c64503bdfffd",
     "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
     "packages/core/test/shared-create-retained-recovery.test.ts": "5455614219721838509ed265ccd55515890496850107eb35c6c4b4785df15854",
     "packages/cli/src/commands-library-source-recovery.ts": "083fde519f62110711eb2408b16b241d4ab3fbc87d25709b0fb3b0388b6344d5",
@@ -60,14 +60,14 @@
     "packages/core/test/shared-import-table-literals.test.ts": "4cc45fc5ba4643e8d1b292aaf0a1d594c46d631557b4655367befb2f684e26ca",
     "packages/core/test/shared-source-projection-repair.test.ts": "09c45eecd802f36f1b0932c889d06b2b6d23c793fabfc4edcadd40913d809416",
     "packages/cli/src/commands-library-source-projection-repair.ts": "cb544e29a32c2b133b3f94d616b81a5759521bc7515da719c6d4b09c1228423d",
-    "packages/core/src/notion-validation-diagnostic.ts": "30121a3d8998123f9d6a6d056ba52758d83f4bc07de8439d8c1b7b6e1e44bd28",
+    "packages/core/src/notion-validation-diagnostic.ts": "f328329294fc48d616543ea77db5a85901750ce81438f5d92061c5ad567442d4",
     "packages/core/src/shared-native-table-code-repair.ts": "77f39d59bbd709303f83796b7a818bf26eb5bda4986d3026d535e3745ed74500",
-    "packages/core/src/shared-source-file-repair.ts": "8f5f9561df7ab77b7dbfe89af2dff6b7235403457c18a20fc5a7eb73d5f33aff",
+    "packages/core/src/shared-source-file-repair.ts": "5d6a47543f399c58df0f8bbc4c8198f76a218e4298f30857ac0430971f75fe63",
     "packages/core/test/shared-source-file-repair.test.ts": "a33e9ec5af4f03ab3cd9cb1381ca081f0ec5ad487471462429cfbe8baa2167d2",
     "packages/core/test/shared-import-code-padding.test.ts": "8ec0a660172144e1c3eb66a8c6a97e47d866f147546739af8416c34c9f70f31a",
-    "packages/cli/src/commands-library-source-file-repair.ts": "ba49f50e678c6be1f00671ddfbd7e193f020092e02123dc649d306b0a18abd63",
+    "packages/cli/src/commands-library-source-file-repair.ts": "66b36ef33e11d2992ee0d9323d31c6e59d7c3215d0092fe9be342d3bdd88f6b6",
     "packages/core/src/notion-http.ts": "f233e802bd37aa80d5f15e2efff22a6dbfaec58bb9b4fad5131f63e2b26c6cc5",
-    "packages/core/test/notion-http.test.ts": "44c01030e204c5bb6b198e4ab1f183aa8525746328a196f1307ad24054533d43",
+    "packages/core/test/notion-http.test.ts": "c2975c9d3985626d5db765f387d395b3ea3c55f40bbc91ef1fa557c9d9310099",
     "packages/core/src/shared-import-markdown.ts": "92778d665ad334d2fb7fd587678eebc8961fa8f8dba4be57a16ee18e3f352af9",
     "packages/core/src/shared-fixed-git-transport.ts": "cd83e2412e1b476a96dd549b352b558e6c100f51d3b85246b268468b79a041f7",
     "packages/core/src/shared-source-storage.ts": "11b8921a2d883433dd6c5786d0659c0a3d0592f399e7fb64edba8a381ad24fe7",
@@ -87,18 +87,18 @@
     "packages/cli/src/commands-library.ts": "b7dc4e4be43196a16d4e1b0faeca5c4c46fcdab6b4c05e316f122f397e0629e6",
     "packages/core/test/github-api-access.test.ts": "9bab088971fc7f975d73dae20bd3dd4aeeb353ffcd88c68529708e612d8f3ba0",
     "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
-    "packages/cli/src/commands-library-source-file-resubmission.ts": "f83a70e6342a39ea93d0e4589a4f2d441eee51a215e0770d2b798bef2ffd0611",
+    "packages/cli/src/commands-library-source-file-resubmission.ts": "b563699bf624d007dc7bb53522ac17835113cdbc013cbdaa0114198f01fbe81a",
     "packages/cli/src/sdk.ts": "cd30cf43196273b829fa653da6ec5cad1b366c8aad9e8593c987e96a3edd727b",
     "packages/cli/test/cli.test.ts": "1c715741ff77c8522dab997edcfdba907f35ce62b10d4488b205aa8aff898222",
-    "packages/cli/test/library-source-file-resubmission-http.test.ts": "30a78f7d51eaef0886cd3f6264c1ff431cd32b39060ef455aedf971f066f2f0f",
+    "packages/cli/test/library-source-file-resubmission-http.test.ts": "38e2553f9bf57ef16efe5e2892f84b3439bac4fc48335e48cb67ade0e1789bd2",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
-    "packages/cli/test/source-file-resubmission-navigation.test.ts": "bbe3a8c82c8bd74b722a94887707d7e5703c94aa17e72e5adbabf61de68e79c3",
+    "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
     "packages/core/src/shared-audit-inspect.ts": "8e5fbaca74d25db03ec9809667c0019150fb07083fc3de93c58674c7e574acb1",
-    "packages/core/src/shared-create-import-readback.ts": "83b7ba8e38a944917a2de8948aeb3aa33629bff2db3fece5b58a8aa3dc3dcd7c",
-    "packages/core/src/shared-create.ts": "03f934f389bffce3048855bda7b9af3f37b9fa588ffdaa2f10116dc0b8adc359",
-    "packages/core/src/shared-native-image-layout.ts": "846b1d4aea87300303e330c76e42d1d5d9e1f30cb0796c31cdc78069064abd07",
-    "packages/core/src/shared-source-file-resubmission-model.ts": "18f8562f54b7b538ac03e194f42d88c30a6f87f6206035e2deb12695d3e4407e",
-    "packages/core/src/shared-source-file-resubmission.ts": "5ef12ec49b230218d2aa3b0fb58d36c0747eaa498eb0d915cd614129347faaec",
+    "packages/core/src/shared-create-import-readback.ts": "0d24da8d034d27874469055098bbc60891c969c385a19a41821fb7c5c4be9257",
+    "packages/core/src/shared-create.ts": "c671e15d9730cda483d32759cdbd708b1d61de81b944fe03312c973465c7d958",
+    "packages/core/src/shared-native-image-layout.ts": "4bb27b7099a77fe23bfac87b909e8e1a06f4f8ed3b8825db2fa8a199f3a10ff1",
+    "packages/core/src/shared-source-file-resubmission-model.ts": "33675b0f64b036b7f17b79712de32c2ad2e1df0fcbb04b3feddc2341e7244b4a",
+    "packages/core/src/shared-source-file-resubmission.ts": "37c22c60e7be06a38ab08325755872a6938452b82f4fdbc5ee27a9fd28b48ca2",
     "packages/core/src/shared-sources-model.ts": "127979694278a99bcf0ccdb20b7e23cdb8991ad9e8c19f2a415dce77f3b7817e",
     "packages/core/src/sqlite-state.ts": "13692d4bbfabad040cd012af13ebebaebb4dc33e893e86b08cd80e72a929a414",
     "packages/core/test/shared-create-ack-visibility.test.ts": "853d92f04c39d18c8f21e28c6969415a6b1cd45f5782b936469f0b5989d9d5c0",
@@ -106,8 +106,12 @@
     "packages/core/test/shared-create-drift.test.ts": "d436e71b05c56842908448073879bbeab14d341a159332efb5cc2b044163f1a4",
     "packages/core/test/shared-create-scope-cost.test.ts": "142ea0a1bbaa3f36cda78b3894d1d4c752a2758c16c7ae12599abad05b8ef1fe",
     "packages/core/test/shared-native-image-layout.test.ts": "0a8c992f1be8664cbbd6da46920c814c10523a114b3caf3cb9ffcc20f03beec8",
-    "packages/core/test/shared-source-file-resubmission.test.ts": "570eed9d24191adfea21b94c031d03c860d7fcab9252d9e8c179650a08819d2f",
-    "packages/core/test/shared-sqlite.node.test.ts": "e1a67494d4a38336568d71da6bfa413bd7451ffdde7d179a0bb09f5e5e5a8e26"
+    "packages/core/test/shared-source-file-resubmission.test.ts": "19d52c12ce171285cb355e87d3f0d222c37a9d436bb1c85b095b9368ece0492e",
+    "packages/core/test/shared-sqlite.node.test.ts": "e1a67494d4a38336568d71da6bfa413bd7451ffdde7d179a0bb09f5e5e5a8e26",
+    "packages/core/src/shared-native-table-literal-repair.ts": "89482d64ef40000bd4359ae7a3de5f940bde9490d55ff8aed7d0538188a28ff9",
+    "packages/core/test/shared-native-linked-images.test.ts": "15319d54c39243ee9c355b5fb7f1793a1ab31d0e03000dd4ea08a29ce555b59e",
+    "packages/core/test/shared-native-table-literal-repair.test.ts": "4c8bd71f3e24416052d1d01734a20e6f7fcff882d4e6c6fdb2996e9cc8724cab",
+    "packages/core/test/shared-source-file-literal-repair.test.ts": "1d0cb92bace576d85903d8385a17cf8914b54c60622aa4ea982a61f23261576a"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -220,7 +224,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "missing-ack.cfg",
-      "expected_broken": ["PrefixNeedsOriginalAck"],
+      "expected_broken": [
+        "PrefixNeedsOriginalAck"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -238,7 +244,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "mismatched-binding.cfg",
-      "expected_broken": ["ExactRecordBinding"],
+      "expected_broken": [
+        "ExactRecordBinding"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -256,7 +264,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "noncontiguous-prefix.cfg",
-      "expected_broken": ["PrefixMustBeContiguous"],
+      "expected_broken": [
+        "PrefixMustBeContiguous"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -274,7 +284,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "repeat-unknown.cfg",
-      "expected_broken": ["UnknownNeverRedispatched"],
+      "expected_broken": [
+        "UnknownNeverRedispatched"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -292,7 +304,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "query-authority.cfg",
-      "expected_broken": ["AckLookupIndependentOfQuery"],
+      "expected_broken": [
+        "AckLookupIndependentOfQuery"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -310,7 +324,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "stale-premise.cfg",
-      "expected_broken": ["DispatchNeedsFreshPremise"],
+      "expected_broken": [
+        "DispatchNeedsFreshPremise"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -328,7 +344,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "permission.cfg",
-      "expected_broken": ["DispatchNeedsPermission"],
+      "expected_broken": [
+        "DispatchNeedsPermission"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -346,7 +364,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "overwrite-original.cfg",
-      "expected_broken": ["OriginalFactsPreserved"],
+      "expected_broken": [
+        "OriginalFactsPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -364,7 +384,9 @@
     {
       "model": "AcknowledgedRecordPrefix",
       "config": "skip-verification.cfg",
-      "expected_broken": ["CompletionNeedsVerification"],
+      "expected_broken": [
+        "CompletionNeedsVerification"
+      ],
       "expected_rules": [
         "TypeOK",
         "PrefixNeedsOriginalAck",
@@ -398,7 +420,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "accept-unknown-original.cfg",
-      "expected_broken": ["KnownFailureRequired"],
+      "expected_broken": [
+        "KnownFailureRequired"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -414,7 +438,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "stale-context.cfg",
-      "expected_broken": ["FrozenIdentityRequired"],
+      "expected_broken": [
+        "FrozenIdentityRequired"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -430,7 +456,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "reuse-original-id.cfg",
-      "expected_broken": ["IndependentIdentity"],
+      "expected_broken": [
+        "IndependentIdentity"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -446,7 +474,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "equal-current-is-old-success.cfg",
-      "expected_broken": ["OriginalFactsPreserved"],
+      "expected_broken": [
+        "OriginalFactsPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -462,7 +492,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "repeat-unknown.cfg",
-      "expected_broken": ["UnknownNeverRedispatched"],
+      "expected_broken": [
+        "UnknownNeverRedispatched"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -478,7 +510,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "incomplete-cold-proof.cfg",
-      "expected_broken": ["ColdRecoveryNeedsCompleteProof"],
+      "expected_broken": [
+        "ColdRecoveryNeedsCompleteProof"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -494,7 +528,9 @@
     {
       "model": "IndependentAcceptance",
       "config": "skip-adopted-event.cfg",
-      "expected_broken": ["CompletionNeedsAdoption"],
+      "expected_broken": [
+        "CompletionNeedsAdoption"
+      ],
       "expected_rules": [
         "TypeOK",
         "KnownFailureRequired",
@@ -528,7 +564,9 @@
     {
       "model": "RestoreFeedback",
       "config": "unverified-binding.cfg",
-      "expected_broken": ["BodyNeedsBoundOriginal"],
+      "expected_broken": [
+        "BodyNeedsBoundOriginal"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -546,7 +584,9 @@
     {
       "model": "RestoreFeedback",
       "config": "stale-body.cfg",
-      "expected_broken": ["BodyNeedsCurrentPremise"],
+      "expected_broken": [
+        "BodyNeedsCurrentPremise"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -564,7 +604,9 @@
     {
       "model": "RestoreFeedback",
       "config": "repeat-body-after-feedback-loss.cfg",
-      "expected_broken": ["FeedbackNeverRepeatsBody"],
+      "expected_broken": [
+        "FeedbackNeverRepeatsBody"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -582,7 +624,9 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-feedback-is-ack.cfg",
-      "expected_broken": ["FeedbackRequiresRealAck"],
+      "expected_broken": [
+        "FeedbackRequiresRealAck"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -600,7 +644,9 @@
     {
       "model": "RestoreFeedback",
       "config": "replace-pending-original.cfg",
-      "expected_broken": ["OriginalRequestPreserved"],
+      "expected_broken": [
+        "OriginalRequestPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -618,7 +664,9 @@
     {
       "model": "RestoreFeedback",
       "config": "invalid-original-is-success.cfg",
-      "expected_broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_broken": [
+        "SuccessNeedsAppliedOriginal"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -636,7 +684,9 @@
     {
       "model": "RestoreFeedback",
       "config": "equal-current-is-original-success.cfg",
-      "expected_broken": ["SuccessNeedsAppliedOriginal"],
+      "expected_broken": [
+        "SuccessNeedsAppliedOriginal"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -654,7 +704,9 @@
     {
       "model": "RestoreFeedback",
       "config": "forget-historical-ack.cfg",
-      "expected_broken": ["HistoricalAckPreserved"],
+      "expected_broken": [
+        "HistoricalAckPreserved"
+      ],
       "expected_rules": [
         "TypeOK",
         "BodyNeedsBoundOriginal",
@@ -734,7 +786,9 @@
     {
       "model": "MaintenanceApply",
       "config": "replay-unknown.cfg",
-      "expected_broken": ["UnknownNeverRepeated"],
+      "expected_broken": [
+        "UnknownNeverRepeated"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -753,7 +807,9 @@
     {
       "model": "MaintenanceApply",
       "config": "partial-completion.cfg",
-      "expected_broken": ["CompletionNeedsAllChildren"],
+      "expected_broken": [
+        "CompletionNeedsAllChildren"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -772,7 +828,9 @@
     {
       "model": "MaintenanceApply",
       "config": "publish-pending.cfg",
-      "expected_broken": ["PendingTreeNotPublished"],
+      "expected_broken": [
+        "PendingTreeNotPublished"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -791,7 +849,9 @@
     {
       "model": "MaintenanceApply",
       "config": "ignore-drift.cfg",
-      "expected_broken": ["ObservedDriftStopsDispatch"],
+      "expected_broken": [
+        "ObservedDriftStopsDispatch"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -810,7 +870,9 @@
     {
       "model": "MaintenanceApply",
       "config": "unreviewed-partial.cfg",
-      "expected_broken": ["PartialRequiresOriginalReview"],
+      "expected_broken": [
+        "PartialRequiresOriginalReview"
+      ],
       "expected_rules": [
         "TypeOK",
         "ConfirmedPrefixBeforeSuffix",
@@ -867,7 +929,9 @@
       "document": "docs/maintenance-verification-review.md#same-execution-lifecycle-event-verification",
       "model_contract": "MaintenanceApply still separates response receipt, retained original outcome and parent progress. Its interrupted acknowledgement-to-outcome state cannot reconcile without that original outcome. AcknowledgedRecordPrefix retains its exact original ACK and complete-census requirements; IndependentAcceptance and RestoreFeedback protocols are unchanged.",
       "unmodeled": "The current file-management execution may join its already verified immutable event fact into a fresh complete query that omits it. Exact envelope validation, conflicting same-ID payloads and individual event/outcome subrequests remain concrete checks. The returned fact is not a durable journal, cannot settle an earlier operation and supplies no unknown-write replay authority.",
-      "tests": ["packages/core/test/shared-file-management.test.ts"],
+      "tests": [
+        "packages/core/test/shared-file-management.test.ts"
+      ],
       "properties_and_bounds_changed": false
     },
     "revival_mode_followup": {
@@ -886,7 +950,9 @@
       "source_commit": "02cfbd2831e991d66d77ed95c41c2340c7523481",
       "document": "docs/maintenance-verification-review.md#native-revival-metadata-and-preview-reconstruction",
       "unmodeled": "The existing isolated add route forwards optional input mode to the already supported file-management plan fields. Known modes and historical absence keep their existing meanings; no retained operation, phase or recovery authority changes. This native metadata routing is outside the finite models.",
-      "tests": ["packages/core/test/shared-skill-apply.test.ts"],
+      "tests": [
+        "packages/core/test/shared-skill-apply.test.ts"
+      ],
       "properties_and_bounds_changed": false,
       "evidence_scope": "Three public applySkill cases use actual filesystem input: directory modes 100644/100755 and a bare Markdown input with unknown mode. The original one-pass/two-failure result becomes three passes. This is concrete source evidence; the prior dafa00d formal runs keep their original identity."
     },
@@ -944,7 +1010,9 @@
   "fresh_creation_policy_test_review": {
     "issue": "AH-1047",
     "scope": "Fresh creation plans now use the declared v15 policy. Only the fresh-plan version assertions changed; all independently captured wire/body equality, create counts, purpose checks and historical v13 immutability tests remain.",
-    "updated_tests": ["packages/core/test/shared-file-management.test.ts"],
+    "updated_tests": [
+      "packages/core/test/shared-file-management.test.ts"
+    ],
     "domain_regression_result": "234 passed, 0 failed across 8 create/recovery files",
     "model_semantics_changed": false
   },
@@ -979,7 +1047,10 @@
         "packages/cli/test/library-source-members-http.test.ts",
         "packages/core/test/shared-import-markdown.test.ts"
       ],
-      "symbols": ["assertImportedMarkdownContent", "importContent"],
+      "symbols": [
+        "assertImportedMarkdownContent",
+        "importContent"
+      ],
       "scope": "Exact full href/visible-label equality recognizes native automatic links in preserved literal comment text. Authored input destinations and image targets remain required, and text/code equality is unchanged. Native wire, frozen projection policies, original dispatch/ACK/journal and recovery rights are unchanged. The existing finite models do not enumerate Markdown tokens or provider rendering. The installed source journey reproduces this native formatting over its original real Git/Node/SQLite route; it does not prove real service recovery. Existing failed original source-v2 creation remains failed until separately authorized recovery. See docs/maintenance-verification-review.md AH-1068."
     },
     {
@@ -1130,7 +1201,10 @@
         "packages/core/test/shared-import-markdown.test.ts",
         "packages/core/test/shared-source-projection-retained.test.ts"
       ],
-      "symbols": ["assertImportedMarkdownContent", "importContent"],
+      "symbols": [
+        "assertImportedMarkdownContent",
+        "importContent"
+      ],
       "scope": "The complete actual Marp readback differs only by class-only div/span presentation wrappers, not visible text, code or destinations. The semantic parser now recognizes only those wrappers; extra id/data/aria/style attributes and literal HTML code remain checked. Original v14 wire/plan/input and old failure facts are unchanged; there is no new native write or recovery permission. A dedicated cold source test and the independent installed CLI/SDK resource read require exact original template bytes, including frontmatter and layout classes. Markdown parsing and raw-resource materialization are outside unchanged finite TLA domains. Previous scoped formal results remain separate; model/config/expected_rules inventories are unchanged."
     },
     {
@@ -1140,7 +1214,10 @@
         "packages/core/src/shared-import-markdown.ts",
         "packages/core/test/shared-import-markdown.test.ts"
       ],
-      "symbols": ["importContent", "assertMeaning"],
+      "symbols": [
+        "importContent",
+        "assertMeaning"
+      ],
       "scope": "The source semantic guard now binds every required authored link to its exact normalized visible-text interval as well as destination, rejecting a later automatic URL as substitute proof for an earlier changed explicit target. Existing presentation/code/source-byte and recovery/ACK authority are unchanged. The prior red regression, neighboring automatic-link positives and full actual-page comparisons are preserved. Markdown text-position parsing is outside unchanged TLA domains; reviewed source correspondence is not a new model theorem. All original model/config/expected_rules inventories remain identical."
     },
     {
@@ -1223,7 +1300,13 @@
         "packages/cli/test/source-file-resubmission-navigation.test.ts",
         "packages/cli/test/library-source-file-resubmission-http.test.ts",
         "packages/cli/test/cli.test.ts",
-        "packages/cli/test/sdk.test.ts"
+        "packages/cli/test/sdk.test.ts",
+        "packages/core/src/shared-native-table-literal-repair.ts",
+        "packages/core/test/shared-native-linked-images.test.ts",
+        "packages/core/test/shared-native-table-literal-repair.test.ts",
+        "packages/core/test/shared-source-file-literal-repair.test.ts",
+        "packages/core/src/shared-source-file-repair.ts",
+        "packages/core/test/shared-import-markdown.test.ts"
       ],
       "symbols": [
         "reviewSharedSourceFileResubmission",
@@ -1235,9 +1318,13 @@
         "executeSharedCreate",
         "completionOperationId",
         "readSharedRetainedImportCompletion",
-        "sharedLocalCategory"
+        "sharedLocalCategory",
+        "projectNativeLinkedImages",
+        "nativeResubmissionReadbackFile",
+        "sourceFileRepairProofVerifier",
+        "verifiedRecoveryRepairs"
       ],
-      "scope": "One supporting file of an unfinished retained import may receive an independently reviewed new native POST only with the complete exact original 400 validation_error/not_applied receipt, absent original ACK/receipt, and the complete currently acknowledged prefix. The image-only paragraph policy inserts line feeds without changing original input, wire, source, links or frozen policies. The original dispatcher never replays or receives a synthetic old ACK; the producer explicitly selects the verified new allocation. New unknown requests cannot be replayed or replaced by a fresh review. Shared proof retains full original request/negative receipt, prefix, new dispatch/ACK and complete body through the existing bounded text codec. Parent completion v2 binds all proof references in both payload and outer operation identity, including rejection of downgrade combined with missing proof indexes. Current body/owner qualification before new writes remains separate from historical cold completion. The exact SQLite review slot is immutable dispatch state and survives restart/cache clear. These concrete composition states, Markdown, proof codecs, storage addresses and CLI/SDK routing are outside the unchanged finite models. Existing properties, configs, expected rules and budgets are unchanged; source hashes are reviewed correspondence, not a new finite theorem. See docs/maintenance-verification-review.md SRC11.",
+      "scope": "One supporting file of an unfinished retained import may receive an independently reviewed new native POST only with the complete exact original 400 validation_error/not_applied receipt, absent original ACK/receipt, and the complete currently acknowledged prefix. The image-only paragraph policy inserts line feeds without changing original input, wire, source, links or frozen policies. The original dispatcher never replays or receives a synthetic old ACK; the producer explicitly selects the verified new allocation. New unknown requests cannot be replayed or replaced by a fresh review. Shared proof retains full original request/negative receipt, prefix, new dispatch/ACK and complete body through the existing bounded text codec. Parent completion v2 binds all proof references in both payload and outer operation identity, including rejection of downgrade combined with missing proof indexes. Current body/owner qualification before new writes remains separate from historical cold completion. The exact SQLite review slot is immutable dispatch state and survives restart/cache clear. These concrete composition states, Markdown, proof codecs, storage addresses and CLI/SDK routing are outside the unchanged finite models. Existing properties, configs, expected rules and budgets are unchanged; source hashes are reviewed correspondence, not a new finite theorem. See docs/maintenance-verification-review.md SRC11. SRC14 separately versioned linked-image review binds the first independent 400 negative and retains immutable v1/v2 slots and proof; original author/adopted event and cold verified readback remain strict. A real v2 native POST received 200 ACK but HTML img tags disappeared from the provider Markdown readback, so the original Skill remains incomplete and its ACKed page is not a replayable 400. A Kami follow-on table-row literal repair retained old review and added completion v3 whose outer identity binds independently verified repair proof. Memoized historical repair proof is scoped to a single producer invocation and freshness/relation/current page checks are still required before writes. Controlled Node CLI+SDK+independent-cold v1/v2 tests and real Notion evidence are separate; none of this new composition is enumerated in unchanged TLA finite models. Original unknown and missing ACK guards, 300s/2000 request/128MiB budget and old v1/v2 completion remain strict. See docs/maintenance-verification-review.md SRC13/SRC14.",
       "tests": [
         "packages/core/test/shared-source-file-resubmission.test.ts",
         "packages/core/test/shared-native-image-layout.test.ts",
@@ -1309,5 +1396,41 @@
     "historical_v1_completion_unchanged": true,
     "default_product_budgets_unchanged": true,
     "proof_failures_preserved": true
+  },
+  "src14_composition_review": {
+    "product_commit": "1a439ec5b2610e9f97a0e76bb6405e4e53d9877c",
+    "reviewed_at_utc": "2026-11-16",
+    "document": "docs/maintenance-verification-review.md",
+    "changed_existing_hash_bindings": [
+      "packages/cli/src/commands-library-source-file-repair.ts",
+      "packages/cli/src/commands-library-source-file-resubmission.ts",
+      "packages/cli/test/library-source-file-resubmission-http.test.ts",
+      "packages/cli/test/source-file-resubmission-navigation.test.ts",
+      "packages/core/src/notion-validation-diagnostic.ts",
+      "packages/core/src/shared-create-import-readback.ts",
+      "packages/core/src/shared-create-retained-recovery.ts",
+      "packages/core/src/shared-create.ts",
+      "packages/core/src/shared-native-image-layout.ts",
+      "packages/core/src/shared-source-file-repair.ts",
+      "packages/core/src/shared-source-file-resubmission-model.ts",
+      "packages/core/src/shared-source-file-resubmission.ts",
+      "packages/core/test/notion-http.test.ts",
+      "packages/core/test/shared-import-markdown.test.ts",
+      "packages/core/test/shared-source-file-resubmission.test.ts"
+    ],
+    "added_files": [
+      "packages/core/src/shared-native-table-literal-repair.ts",
+      "packages/core/test/shared-native-linked-images.test.ts",
+      "packages/core/test/shared-native-table-literal-repair.test.ts",
+      "packages/core/test/shared-source-file-literal-repair.test.ts"
+    ],
+    "models_config_views_cases_and_expected_rules_unchanged": true,
+    "new_composition_is_unmodeled": true,
+    "actual_acked_native_file_drift_not_complete": true,
+    "historical_success_inventory_unchanged": true,
+    "product_budgets_unchanged": true,
+    "old_negative_receipts_and_unknown_preserved": true,
+    "local_source_tests_performed": true,
+    "actual_full_kami_and_guizang_success_not_claimed": true
   }
 }
