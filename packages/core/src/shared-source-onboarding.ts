@@ -256,6 +256,16 @@ function inspect(
     )
     const requested = scope.kind === "source" ? scope.members : undefined
     if (
+      scope.kind === "sources" &&
+      (scope.sources.length < 2 ||
+        scope.sources.length > 100 ||
+        new Set(scope.sources).size !== scope.sources.length ||
+        scope.sources.some((source) => !source.trim()))
+    )
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "Choose two to 100 unique, nonempty exact Sources."),
+      )
+    if (
       requested !== undefined &&
       (requested.length === 0 ||
         requested.length > 100 ||
@@ -265,7 +275,7 @@ function inspect(
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "Select one to 100 unique exact provider member keys."),
       )
-    const sourceTimeout = options.sourceTimeoutMs ?? (scope.kind === "all" ? 30_000 : 120_000)
+    const sourceTimeout = options.sourceTimeoutMs ?? (scope.kind === "source" ? 120_000 : 30_000)
     if (!Number.isSafeInteger(sourceTimeout) || sourceTimeout <= 0 || sourceTimeout > 3_600_000)
       return yield* Effect.fail(
         fail("INVALID_ARGUMENT", "sourceTimeoutMs must be an integer from 1 to 3600000."),
@@ -278,7 +288,9 @@ function inspect(
             selector: row.page_id,
             id: row.source_id,
           }))
-        : [{ selector: scope.source, id: scope.source }]
+        : scope.kind === "sources"
+          ? scope.sources.map((source) => ({ selector: source, id: source }))
+          : [{ selector: scope.source, id: scope.source }]
     const acquired = new Map<string, { definition: SourceDefinition; snapshot: SourceSnapshot }>()
     // These are immutable selected identities from this credential-scoped observation,
     // not a second persistent cache or a renewed current-metadata timestamp.
@@ -306,6 +318,14 @@ function inspect(
       }
       const result = yield* Effect.gen(function* () {
         const definition = yield* readSourceDefinition(library, choice.selector)
+        if (sources.some((source) => source.page_id === definition.page_id))
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_DUPLICATE_SELECTION",
+              "The same Source was selected more than once through distinct selectors.",
+              { source_id: definition.source_id, page_id: definition.page_id },
+            ),
+          )
         if (!definition.enabled) return { definition, snapshot: null }
         const snapshot = yield* acquire(definition, { metrics: (yield* Notion).metrics })
         if (!snapshot.revision || (snapshot.unavailable?.length ?? 0) > 0)

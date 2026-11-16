@@ -305,6 +305,28 @@ test("upstream schema projects its official parameters and exclusive selection o
     await invalid(args)
 }, 60000)
 
+test("source onboarding exposes bounded repeated Source selection without accepting ambiguous member scopes", async () => {
+  const path = ["ctl", "library", "sources", "review"]
+  const schemaResult = await invoke(["schema", ...path], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(schemaResult.exit).toBe(0)
+  expect(schemaResult.onlineCalled).toBe(false)
+  const schema = JSON.parse(schemaResult.stdout).schema
+  expect(schema.parameters).toContainEqual(
+    expect.objectContaining({ name: "source", min_occurrences: 0, max_occurrences: null }),
+  )
+  expect(schema.constraints).toContainEqual({ kind: "exactly_one", flags: ["source", "all"] })
+  const entry = ["--entry", "00000000-0000-4000-8000-000000000001"]
+  for (const flags of [
+    ["--source", "alpha", "--source", "alpha"],
+    ["--source", "alpha", "--source", "beta", "--member", "skills/demo"],
+    ["--source", "alpha", "--all"],
+  ])
+    await invalid([...path, ...entry, ...flags])
+}, 60000)
+
 test("sync exposes local and upstream paths without a root upstream alias", async () => {
   for (const path of [
     ["ctl", "sync", "local"],

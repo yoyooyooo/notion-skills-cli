@@ -187,6 +187,13 @@ export function reviewSourceStorage(input: { readonly entry: string; readonly sc
         onExcessProperty: "error",
       }),
     )
+    if (scope.kind === "sources")
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "A multi-Source subset is supported for onboarding review; storage review requires one Source or all.",
+        ),
+      )
     const inventory = yield* readSourceOnboardingInventory(library)
     const sources =
       scope.kind === "all"

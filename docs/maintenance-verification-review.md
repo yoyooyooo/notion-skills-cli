@@ -885,3 +885,29 @@ proof，必须继续按原调用阶段量化缓存/增量范围；未证明的�
 根原件位于Pro私有`src14-mainline-if1ic6_k`，包括`guizang-linked-native-ack.json`、
 `guizang-linked-body-read.stdout.json`、`guizang-html-image-physical-audit.json`、
 `kami-original-continue.stdout.json`及`kami-proof-cache-continue.stdout.json`。
+
+## SRC15：有界多 Source 对账与真实固定 Git 成员审阅（2026-11-16）
+
+正式只读 `sources list` 观察54个登记来源，全部为Git、已启用、手动策略；
+正向库存481行。这是元数据分母，不能表示54个上游都已实时发现。
+原全范围 `onboard --all` 在120秒预算内返回明确 `partial`：4个来源 reviewed、
+11个 `SOURCE_REVIEW_TIMEOUT`、39个 `SOURCE_REVIEW_BUDGET`，30次HTTP尝试、
+1,472,168响应字节、0业务写；8秒人为单源限时过短，不能据此判源不可用。
+独立 `schpet/linear-cli` 采用60秒单源限时后，在17.3秒/11次请求内完整通过。
+
+为避免每次从前缀重扫，CLI/SDK的 `sources review/onboard` 新增明确的
+`scope.kind=sources` 和重复 `--source`，一次共享完整正向库存、2–100个不同来源顺序执行。
+`--member`/`--bind`仍保持单来源；别名命中同一Source则在第二次Provider请求前拒绝；
+保存的plan摘要和导航保持精确批次，不以该批 `complete` 宣称整库覆盖。
+真实三来源 `review` 结果 complete：anydoc/adhd/schpet各1名 registered，
+16请求、1,231,943响应字节、22.8秒、0业务写。
+四来源 `onboard --storage fixed-git` 结果批次complete：portless、agentcookie、
+grimoire均已登记；firecrawl-workflows的15名中14名registered，1名
+`firecrawl-deep-research` 因准确的 `../firecrawl-research-papers/SKILL.md`
+跨Skill链接被 `SHARED_REFERENCE_INVALID` 阻止；30请求、2,482,937响应字节、
+40.0秒、0可执行动作、0业务写。返回退出3表示有受阻成员，不能当作完成。
+
+本轮只验证显式批次和既有固定Git字节；Kami的大型Source发现、
+同commit精确跨Skill引用，以及尚未实时发现的其他来源均为待办。
+所有冻结计划和只读输出保存在独立私有`src15-next-20261116`证据目录；
+不转写历史原ACK、不修正已知终局、不对未授权来源或Notion正文直接PATCH。

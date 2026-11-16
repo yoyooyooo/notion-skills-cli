@@ -121,6 +121,53 @@ test("a source-only row becomes one disabled complete Skill through the same fro
   expect(again.report.sources[0]?.members[0]?.kind).toBe("registered")
 })
 
+test("an explicit Source subset shares one inventory, retains order and never claims full-library coverage", async () => {
+  const f = setup()
+  const unavailable = id(9999)
+  const scope = { kind: "sources", sources: [f.source.id, unavailable] } as const
+  const report = await f.run(reviewSourceOnboarding(library, scope, f.acquire))
+  expect(report.scope).toEqual(scope)
+  expect(report.coverage).toBe("partial")
+  expect(report.sources.map((source) => source.status)).toEqual(["reviewed", "unavailable"])
+  expect(report.sources[0]?.members[0]?.kind).toBe("admit")
+  expect(report.sources[1]?.error).not.toBeNull()
+  expect(f.acquisitions()).toBe(1)
+  expect(f.writes()).toHaveLength(0)
+  const plan = await f.run(prepareSourceOnboarding(library, scope, {}, f.acquire))
+  expect(plan.report.scope).toEqual(scope)
+  expect(plan.report.coverage).toBe("partial")
+  expect(plan.actions).toHaveLength(1)
+  expect(plan.actions[0]?.kind).toBe("create")
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("an explicit Source subset cannot include duplicates, an empty selector, or one Source disguised as a batch", async () => {
+  const f = setup()
+  for (const sources of [[f.source.id], [f.source.id, f.source.id], [f.source.id, ""]]) {
+    await expect(
+      f.run(reviewSourceOnboarding(library, { kind: "sources", sources }, f.acquire)),
+    ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
+  }
+  expect(f.acquisitions()).toBe(0)
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("two selectors resolving to one Source cannot dispatch its provider twice", async () => {
+  const f = setup()
+  const report = await f.run(
+    reviewSourceOnboarding(
+      library,
+      { kind: "sources", sources: [f.source.id, f.source.id.replaceAll("-", "")] },
+      f.acquire,
+    ),
+  )
+  expect(report.coverage).toBe("partial")
+  expect(report.sources[0]?.status).toBe("reviewed")
+  expect(report.sources[1]?.error?.code).toBe("SOURCE_DUPLICATE_SELECTION")
+  expect(f.acquisitions()).toBe(1)
+  expect(f.writes()).toHaveLength(0)
+})
+
 test("a source directory Router is preserved separately from missing Skill members", async () => {
   const f = setup()
   const router = f.seedSkill(id(8765), "source-directory", "Source directory", "router", true)

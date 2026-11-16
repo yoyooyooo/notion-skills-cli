@@ -28,11 +28,16 @@ Notion字节而改变上游commit、删除旧包、覆盖custom或替代原页�
 确认唯一主POST、同原页、同冻结输入。不要为本可由原dispatcher继续的状态新建恢复器。
 
 `sources review --source SOURCE | --all` 使用完整正向 Skills 元数据与配置范围内的上游成员；
+也可重复 `--source` 选择 2–100 个不同来源以分批核对，同一批只取得一次完整 Skills 清单。
+这种 `scope.kind=sources` 的 `coverage=complete` 仅证明选中子集；单来源超时、整体预算停止、
+同一来源的不同别名重复和其他未选来源必须分开记录，不把分批绿色推断为全库已完成。
+成员级 `--member` 及人工补关系 `--bind` 仍只接受单来源；`--all` 与显式子集互斥。
 `onboard --output PLAN` 冻结同核动作，`onboard-apply` / `onboard-reconcile` 复用原创建与绑定 journal。
 SDK 的 `reviewSources`、`prepareSourceOnboarding`、`applySourceOnboarding`、`reconcileSourceOnboarding`
 必须来自同包且直接进入 Core。原逐成员命令和历史计划不改解释。
 
 `shared-source-onboarding.test.ts` 覆盖 source-only→disabled 新建、重复应用零新增、分页后同名冲突、
+明确批次的范围顺序/零写/原计划、重复选择拒绝、Source页别名不得二次获取、
 固定来源缺关系保原页、custom/启用状态/选定 pin 保留、来源漂移、篡改计划、unknown 创建和绑定不重放。
 新增原生写仅由产品 producer 产生，观察器不能插入成功 ACK 或修复业务行。当前关联正确和原写已确认分开。
 `library-source-members-http.test.ts` 的既有真实 Git/Node/SQLite 入口验证新 CLI 与 SDK 交接。

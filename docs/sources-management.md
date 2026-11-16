@@ -250,7 +250,14 @@ ntn-skills ctl library sources onboard-apply ./onboarding.json --entry ENTRY
 ntn-skills ctl library sources onboard-reconcile ./onboarding.json --entry ENTRY
 ```
 
-明确全库范围时用 `--all` 替换 `--source SOURCE`。每个被选来源只发现一次，准备时各成员
+明确全库范围时用 `--all` 替换 `--source SOURCE`。为避免大仓库超时反复阻断整库巡检，
+也可重复 `--source SOURCE_A --source SOURCE_B` 精确选择 2–100 个不同来源，
+配合 `--source-timeout-ms`、`--duration-ms` 和返回的逐来源状态分批审阅。
+分批报告的 `scope.kind=sources` 只证明列出的来源，不能将一次 `complete` 说成 54 个来源均已核对；
+超时与未审阅的分母必须保留，并在补齐剩余来源后再形成整体结论。
+多个来源同核使用一次完整 Skills 元数据读取，不因分批而赋予自动接纳或绑定权限；
+重复选择（含通过不同别名指向同一页）必须拒绝或报告。
+每个被选来源只发现一次，准备时各成员
 复用该完整观察。Skills 正向元数据完整分页，包括禁用条目；不依赖 View 或 Sources
 反向关系的内联数量。`registered` 只表示已登记的当前身份和关联，正文健康仍为未观察。
 重复成员、同名不同身份、未决创建、来源不可访问和不完整输入分别报告，不作为空库。
@@ -259,7 +266,7 @@ provider revision、原始from_path/href/reason、总数及前20项。截断标�
 不表示完整发现或允许接纳；可用原sources check读取完整提供方结果。
 
 只处理一个来源中的指定成员时，重复传入 `--member EXACT_KEY`。它收窄本次对账与动作，
-不修改 Notion 的共享 Selection；不能与 `--all` 混用。提供方仍取得完整配置范围，
+不修改 Notion 的共享 Selection；不能与 `--all` 或多个 `--source` 混用。提供方仍取得完整配置范围，
 不存在于该完整发现结果的成员明确失败。可将它与 `--bind EXACT_KEY=PAGE_ID` 组合，
 只修复已审阅的旧页关联，不顺带接纳同一仓库的其他新成员。
 没有 Source Member 的来源目录 Router 单独列在 `source_routers`，保留其作者管理的
@@ -309,8 +316,8 @@ Selected Version 不变；后续更新仍须按原 custom/following 规则单独
 成员覆盖通过新的 `review` 核对。命令使用现有请求/字节/时长预算，返回实际用量；
 Git 子进程字节未测量，不算零。含受阻项的结果退出 3，原计划和所有成功项仍保留。
 
-`--source-timeout-ms` 限制每个来源的发现时间：单个 Source 默认 120 秒，`--all` 默认
-30 秒。慢仓库、请求失败和总预算内未观察的来源分别留在部分报告中，不记为零成员。
+`--source-timeout-ms` 限制每个来源的发现时间：单个 Source 默认 120 秒，`--all` 和
+多来源子集默认 30 秒。慢仓库、请求失败和总预算内未观察的来源分别留在部分报告中，不记为零成员。
 失败成员保留原错误的 code/message/details；零可执行动作的计划不会建议直接应用。
 这些限额限制一次调用，不表示该仓库永久不可用或完整文件验证可被跳过。
 

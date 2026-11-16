@@ -18,7 +18,10 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
 bun test packages/cli/test/verification-skill-map.test.ts
 ```
 
-实库必须明确entry和Source；--all是独立授权范围。Provider不可用、缺原输入、无完整cursor或认证不明分别报告，不作为空库。
+实库必须明确entry和Source；--all是独立授权范围。多来源审阅须用重复的
+`--source EXACT_SOURCE_ID`，保存原始已选分母、单来源超时与总预算未审阅的独立结果；
+`scope.kind=sources` 中的 `complete` 只覆盖该批，不能冒充全库绿色。
+Provider不可用、缺原输入、无完整cursor或认证不明分别报告，不作为空库。
 
 ## Drive
 
@@ -44,11 +47,14 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 | 子模块 | 正例 | 关键反例 |
 | --- | --- | --- |
 | 配置/发现 | Selection原字段/v1封装、commit/branch/tag完整固定树 | 未知版本/字段、逃逸/缺资源、超时、半分页 |
-| 身份/范围 | disabled已接纳、原页绑定、Router单列、精确--member | 同名≠原身份；多个Source冲突；伪造member/目标；不可把Router补成Skill |
+| 身份/范围 | disabled已接纳、原页绑定、Router单列、精确--member、重复--source的有界部分范围 | 同名≠原身份；多个Source冲突；伪造member/目标；相同Source别名重复；子集不能伪装全库；不可把Router补成Skill |
 | 冻结/执行 | 一个plan由CLI→SDK→CLI交接、零写预览、默认disabled | 来源/目标漂移、失ACK、未知POST、重复建页 |
 | 完整资源 | 大清单、100 KiB文本、脚本/binary/mode、冷重建 | 缺块/篡改、丢supporting文件、语义变化不能当格式 |
 
-实库沿review → onboard → dry-run → 同plan apply → 原reconcile → 独立read。--member只限本次动作；--bind是新的明确关联决定，不能冒充历史证明。跨Skill引用应保留待审查，不删链接或放开路径逃逸。
+实库沿review → onboard → dry-run → 同plan apply → 原reconcile → 独立read。
+一次多来源review复用一份完整Skills清单，每个选中来源仍独立检查提供方；预算耗尽或单源超时
+明确保留未审阅项。`--member` 和 `--bind` 只限精确单来源，不因多个来源只读审阅获得自动绑定授权。
+跨Skill引用应保留待审查，不删链接或放开路径逃逸。
 
 错误返回、已分配主页面、原ACK、manifest和不可变终局是不同事实。清单前读回被拒绝，
 但原主ACK和journal完整时，已有apply可复用原页并继续未派发后缀；不需要重建或新恢复器。

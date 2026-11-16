@@ -19,7 +19,12 @@ import { sourceRequestBudgets, parseSourceBudget } from "./commands-library-sour
 
 const selection = {
   entry: requiredSingleton("entry", "Exact shared Skills database with Sources attached"),
-  source: singleton("source", "Exact Source ID or page; exclusive with --all"),
+  source: Flag.String("source").pipe(
+    Flag.atLeast(0),
+    Flag.withDescription(
+      "Exact Source ID or page; repeat for a bounded subset, exclusive with --all",
+    ),
+  ),
   member: Flag.String("member").pipe(
     Flag.atLeast(0),
     Flag.withDescription(
@@ -32,31 +37,57 @@ const selection = {
   ),
   sourceTimeoutMs: singleton(
     "source-timeout-ms",
-    "Maximum discovery time per Source; default 30000 for --all, 120000 for one Source",
+    "Maximum discovery time per Source; default 30000 for --all or a subset, 120000 for one Source",
   ),
   ...sourceRequestBudgets,
 }
-function selected(args: {
-  source: Option.Option<string>
-  all: boolean
-  member: readonly string[]
-}) {
+function selected(args: { source: readonly string[]; all: boolean; member: readonly string[] }) {
   return Effect.try({
     try: (): SourceOnboardingScope => {
-      const source = Option.getOrUndefined(args.source)
-      if ((source !== undefined) === args.all || (args.all && args.member.length > 0))
-        throw fail("INVALID_ARGUMENT", "Choose exactly one of --source or --all.")
-      return source === undefined
+      const sources = args.source
+      if (
+        sources.length > 0 === args.all ||
+        sources.length > 100 ||
+        new Set(sources).size !== sources.length ||
+        sources.some((source) => !source.trim()) ||
+        ((args.all || sources.length !== 1) && args.member.length > 0)
+      )
+        throw fail(
+          "INVALID_ARGUMENT",
+          "Choose --all or one to 100 unique --source values; --member requires exactly one Source.",
+        )
+      return args.all
         ? { kind: "all" }
-        : { kind: "source", source, ...(args.member.length === 0 ? {} : { members: args.member }) }
+        : sources.length === 1
+          ? {
+              kind: "source",
+              source: sources[0]!,
+              ...(args.member.length === 0 ? {} : { members: args.member }),
+            }
+          : { kind: "sources", sources: [...sources] }
     },
-    catch: () => fail("INVALID_ARGUMENT", "Choose exactly one of --source or --all."),
+    catch: () =>
+      fail(
+        "INVALID_ARGUMENT",
+        "Choose --all or one to 100 unique --source values; --member requires exactly one Source.",
+      ),
   })
 }
 const selectedConstraints = [
   { kind: "exactly_one", flags: ["source", "all"] },
   { kind: "requires_absent", flag: "all", absent: ["member"] },
 ] as const
+function scopeArgs(scope: SourceOnboardingScope): string[] {
+  return scope.kind === "all"
+    ? ["--all"]
+    : scope.kind === "sources"
+      ? scope.sources.flatMap((source) => ["--source", source])
+      : [
+          "--source",
+          scope.source,
+          ...(scope.members ?? []).flatMap((member) => ["--member", member]),
+        ]
+}
 function reviewOptions(value: Option.Option<string>) {
   const raw = Option.getOrUndefined(value)
   return raw === undefined ? {} : { sourceTimeoutMs: /^\d+$/u.test(raw) ? Number(raw) : NaN }
@@ -88,10 +119,7 @@ export const sourceReviewCommand = defineCommand("review", selection, (args) =>
           "onboard",
           "--entry",
           args.entry,
-          ...(scope.kind === "all" ? ["--all"] : ["--source", scope.source]),
-          ...(scope.kind === "source"
-            ? (scope.members ?? []).flatMap((key) => ["--member", key])
-            : []),
+          ...scopeArgs(scope),
           "--help",
         ],
         read_only: true,
@@ -189,7 +217,9 @@ export const sourceOnboardCommand = defineCommand(
                   "ctl",
                   "library",
                   "sources",
-                  ...(scope.kind === "source" ? ["show", scope.source] : ["review", "--all"]),
+                  ...(scope.kind === "source"
+                    ? ["show", scope.source]
+                    : ["review", ...scopeArgs(scope)]),
                   "--entry",
                   args.entry,
                 ],

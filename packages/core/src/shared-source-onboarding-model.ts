@@ -8,6 +8,7 @@ export const SourceOnboardingScopeSchema = Schema.Union([
     source: Schema.String,
     members: Schema.optionalKey(Schema.Array(Schema.String)),
   }),
+  Schema.Struct({ kind: Schema.Literal("sources"), sources: Schema.Array(Schema.String) }),
   Schema.Struct({ kind: Schema.Literal("all") }),
 ])
 export type SourceOnboardingScope = typeof SourceOnboardingScopeSchema.Type
