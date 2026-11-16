@@ -358,7 +358,7 @@ policy15、旧导入policy14或已冻结但在真实服务中未生效的policy1
 前再次核对本机原派发/ACK，独立冷消费则验证共享完整前任review及其绑定的真实ACK，
 缺前任证据也拒绝。此规则不授权Guizang的400拒绝文件或一般重试。
 
-#### 已分配支持文件的局部表格代码修复
+#### 已分配支持文件的局部表格修复
 
 对已经保存原needs_review的保留型来源导入，原文件可能实际出现表格行内代码
 `•` 被补为 `  • `。普通导入比较继续逐字核对代码，不能将空白一律忽略。
@@ -375,7 +375,7 @@ policy15、旧导入policy14或已冻结但在真实服务中未生效的policy1
 
 repair-file reconcile只读验证历史证据。修复完成后另行执行原sources recovery review。
 原恢复review绑定完整file-repair证明hash集合；缺ACK、未知结果、缺完整正文或更换
-命令都不能跳过。独立冷消费核验同样证据，不依赖作者Store。多处标记、其他代码
+命令都不能跳过。独立冷消费核验同样证据，不依赖作者Store。多处代码标记、其他代码
 改变、错误父块、缺原ACK及未分配文件均写前拒绝。SDK同核入口为
 reviewSourceFileRepair、applySourceFileRepair、reconcileSourceFileRepair。
 
@@ -388,6 +388,18 @@ reviewSourceFileRepair、applySourceFileRepair、reconcileSourceFileRepair。
 返回completion_pending及同一计划的只读preview；preview明确table_row_patches=0。
 下一次明确apply仅补写该原ACK支持的缺失不可变证明，不再经过行更新调用。缺ACK或
 未知派发仍拒绝，当前页面相等不能制造完成权限，完整前像/review若丢失也不能重建代证。
+
+同一入口还支持显式v2审阅：原普通表格文本中的连字符 `-` 被原生导入改成 `•`。
+它要求仅将这些普通文本圆点恢复为连字符后，完整原文字、代码和明确目标全部通过
+严格比较；含代码或链接的待修复行、原本就有圆点、其他改文及模糊物理位置均拒绝。
+最多32行，审阅绑定每行的原table/row身份、完整cells/annotations及全文件前像。
+旧代码padding的v1审阅、请求身份、完成格式与根斜杠规则不变。
+
+v2按原顺序逐行PATCH，只有完整持久ACK才能推进前缀；剩余行每次写前重新核对完整
+正文、原Source/owner/分配前缀和物理行顺序。读回中断后的只读reconcile可返回
+`repair_pending`，指向同一审阅的dry-run，仅授权尚未派发的后缀；丢ACK的行即使当前
+看起来正确仍拒绝重发。全部行完成后，独立完成凭据绑定有序全部ACK及完整前后正文，
+冷客户端缺任一证明即拒绝。没有整页覆盖、替代页、提高预算或新的恢复执行器。
 
 
 #### 明确拒绝文件的独立新提交
@@ -402,10 +414,31 @@ ntn-skills ctl library sources recovery resubmit-file review ORIGINAL_PLAN \
 ```
 
 完整review文件保留原dispatch、负回执与候选承诺；公开结果只给身份、hash和改动计数。
+失败结果保留已净化的HTTP状态、request_id、validation类别及有限传输诊断，
+不输出原始provider message、正文、凭据或任意未知字段；这些诊断不授予重发权限。
 跟随返回的 `resubmit-file apply --dry-run`，核对后明确apply，再只读reconcile。
-当前仅支持显式 `native_image_blocks_v1`：将纯图片段落中的相邻图片分为独立段落，
+默认显式 `native_image_blocks_v1`：将纯图片段落中的相邻图片分为独立段落，
 原image和外层链接token、完整文字/代码/明确目标保留。混合正文、列表、表格、代码与
 HTML不改；旧policy14和默认15不变。不能手动改review或旧wire来扩张提交形式。
+
+当这一独立请求也得到完整、可核对的400负回执且没有ACK或完成时，可明确选择
+`--wire-policy native_linked_images_v2`重新review。它保留第一代完整review、原请求与
+负回执，并将独立段落中的`[![alt](image)](target)`转为原图片块和独立显式文字链接。
+图片token、target及link title字节保留，原源文件不变；这种展示变化只供该已审阅
+文件的严格读回使用，不改变全局文本等价。未知、已有ACK、前任缺失或任意漂移均拒绝。
+两代review/请求各自不可变，第二代不得覆盖第一代的本地slot或共享记录。SDK的
+`reviewSourceFileResubmission`使用同名 `wirePolicy` 参数。
+
+dry-run不调用提供方Markdown解析器。提供方是否接受新表示必须由独立新POST及完整
+读回证明，不能从预览通过推断。若修复后当前原创建已有授权review，继续使用它；新增
+已完成的文件修复保留独立授权和ACK，最终completion绑定完整扩展proof集合，旧review
+与最初失败前缀不被重写。当前更多页必须逐项证实是原请求的连续ACK前缀，不能仅凭当前
+页面存在推断历史成功。
+
+同一原创建调用可复用已经完整验证的不可变文件修复证明字节。每个新阶段仍重新读取
+完整review/outcome索引并比对hash；缺失、pending或变化立即拒绝或重新完整验证。
+该memo只属于当前原操作与凭据，不跨调用、不写持久缓存；Source/owner/当前正文和
+连续ACK前缀仍按原协议新鲜读取，最后完成和冷客户端再次完整核验。默认预算不变。
 
 新请求有独立身份与真实ACK，不重发原拒绝POST、不把新ACK填入旧操作。缺完整负回执、
 原ACK状态不明、原输入/Source/owner/确认前缀漂移均拒绝。未知新请求只能只读核对，
@@ -420,7 +453,7 @@ SDK同核入口为 `reviewSourceFileResubmission`、`applySourceFileResubmission
 #### 有界的API拒绝诊断
 
 新400 validation_error回执保留已净化request ID和有限结构提示：公开body-schema
-字段名、Markdown语法分类及可识别的行/列位置。原提供方message、用户属性名、正文、
+字段名、Markdown语法分类、已知 `standalone_image` 约束及可识别的行/列位置。原提供方message、用户属性名、正文、
 签名URL和凭据均不保留。提示只用于定位，不改变明确拒绝/unknown或重发权限；来源
 层包装及原拒绝journal保留同一安全信息。旧拒绝缺字段时保持未知，不补猜或为取诊断重发。
 

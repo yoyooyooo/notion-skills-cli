@@ -30,7 +30,11 @@ import {
 } from "./shared-create-text-retention.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import { preservesSharedLibraryBindings, type SharedLibrary } from "./shared-library-model.ts"
-import { projectNativeImageBlocks } from "./shared-native-image-layout.ts"
+import {
+  projectNativeImages,
+  nativeResubmissionReadbackFile,
+  type NativeImagePolicy,
+} from "./shared-native-image-layout.ts"
 import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
 import { selectOriginalSourceRecoveryPlan, sourceRecoveryError } from "./shared-source-recovery.ts"
 import { withSourceUpdateLock } from "./shared-source-policy.ts"
@@ -43,6 +47,7 @@ import {
   SourceFileResubmissionReviewRecordSchema,
   SourceFileResubmissionCompletionSchema,
   SourceFileResubmissionCompletionRecordSchema,
+  SourceFileResubmissionPredecessorSchema,
   type SourceFileResubmissionPlan,
   type SourceFileResubmissionCompletionReference,
   type VerifiedNativeFileSubstitution,
@@ -56,10 +61,16 @@ export type { SourceFileResubmissionPlan } from "./shared-source-file-resubmissi
 
 const reviewsEntity = "source-file-resubmission-reviews-v1"
 const outcomesEntity = "source-file-resubmission-outcomes-v1"
-const reviewRecord = (operation: string, file: string) =>
-  `source-file-resubmission-review-${operation}-${file}`
-const outcomeRecord = (operation: string, file: string) =>
-  `source-file-resubmission-outcome-${operation}-${file}`
+const reviewsV2Entity = "source-file-resubmission-reviews-v2"
+const outcomesV2Entity = "source-file-resubmission-outcomes-v2"
+type ReviewVersion = SourceFileResubmissionPlan["version"]
+const reviewEntity = (version: ReviewVersion) => (version === 1 ? reviewsEntity : reviewsV2Entity)
+const outcomeEntity = (version: ReviewVersion) =>
+  version === 1 ? outcomesEntity : outcomesV2Entity
+const reviewRecord = (operation: string, file: string, version: ReviewVersion = 1) =>
+  `source-file-resubmission-review-${operation}-${file}${version === 1 ? "" : "-v2"}`
+const outcomeRecord = (operation: string, file: string, version: ReviewVersion = 1) =>
+  `source-file-resubmission-outcome-${operation}-${file}${version === 1 ? "" : "-v2"}`
 const same = (a: unknown, b: unknown) => canonicalSharedJson(a) === canonicalSharedJson(b)
 const hash = (value: unknown) => sha256(canonicalSharedJson(value))
 const refusal = (message: string) => Effect.fail(fail("SOURCE_FILE_RESUBMISSION_REQUIRED", message))
@@ -117,9 +128,10 @@ function sourceRoot(library: SharedLibrary) {
     ])}/`
   })
 }
-function slotKey(plan: SharedCreatePlan, file: string) {
+function slotKey(plan: SharedCreatePlan, file: string, version: ReviewVersion = 1) {
   return Effect.gen(function* () {
-    return `operations/shared-native-resubmissions/${yield* authScope}/${plan.operation_id}/${yield* sha256(file)}.json`
+    const identity = version === 1 ? file : canonicalSharedJson([file, "native_linked_images_v2"])
+    return `operations/shared-native-resubmissions/${yield* authScope}/${plan.operation_id}/${yield* sha256(identity)}.json`
   })
 }
 function verifyRejection(dispatch: FrozenPost, value: unknown) {
@@ -139,7 +151,11 @@ function verifyRejection(dispatch: FrozenPost, value: unknown) {
     return rejection
   })
 }
-function originalRefusal(library: SharedLibrary, plan: SharedCreatePlan, dispatch: FrozenPost) {
+function originalRefusal(
+  library: SharedLibrary,
+  plan: Pick<SharedCreatePlan, "operation_id">,
+  dispatch: FrozenPost,
+) {
   return Effect.gen(function* () {
     const root = yield* sourceRoot(library),
       store = yield* Store
@@ -220,15 +236,64 @@ function validatePlan(plan: SharedCreatePlan, value: unknown, expectedId?: strin
     const markdown = property(original.body).markdown
     if (typeof markdown !== "string")
       return yield* refusal("The rejected request has no complete native Markdown input.")
-    const candidate = yield* createChecked(() => projectNativeImageBlocks(markdown))
+    const candidate = yield* createChecked(() => projectNativeImages(markdown, review.wire_policy))
     if (
       candidate.kind !== "changed" ||
       !same(candidate.summary, review.changes) ||
       review.candidate_body_sha256 !== (yield* sha256(candidate.markdown))
     )
       return yield* refusal(
-        "The candidate must be exactly the reviewed image-block line-feed insertion.",
+        "The candidate must exactly match its versioned, independently reviewed image representation.",
       )
+    if (saved.version === 2) {
+      const predecessor = saved.predecessor
+      const prior = predecessor.plan.review
+      const {
+        review_id: priorId,
+        version: _priorVersion,
+        wire_policy: _priorPolicy,
+        changes: _priorChanges,
+        candidate_body_sha256: _priorCandidate,
+        ...priorAuthority
+      } = prior
+      const {
+        review_id: _id,
+        version: _version,
+        wire_policy: _policy,
+        changes: _changes,
+        candidate_body_sha256: _candidate,
+        predecessor_sha256: _predecessorHash,
+        ...currentAuthority
+      } = saved.review
+      const oldCandidate = yield* createChecked(() =>
+        projectNativeImages(markdown, prior.wire_policy),
+      )
+      if (
+        priorId !==
+          "source-file-resubmission-" +
+            (yield* hash((({ review_id: _reviewId, ...rest }) => rest)(prior))) ||
+        !same(priorAuthority, currentAuthority) ||
+        !same(predecessor.plan.original_dispatch, original) ||
+        !same(predecessor.plan.original_rejection, saved.original_rejection) ||
+        oldCandidate.kind !== "changed" ||
+        !same(oldCandidate.summary, prior.changes) ||
+        prior.candidate_body_sha256 !== (yield* sha256(oldCandidate.markdown)) ||
+        saved.review.predecessor_sha256 !== (yield* hash(predecessor)) ||
+        review.candidate_body_sha256 === prior.candidate_body_sha256
+      )
+        return yield* refusal(
+          "The second representation must preserve and bind the complete rejected first review.",
+        )
+      const expectedPrior = yield* frozenPost(priorId, {
+        ...property(original.body),
+        markdown: oldCandidate.markdown,
+      })
+      if (!same(expectedPrior, predecessor.dispatch))
+        return yield* refusal(
+          "The previous independent request does not match its exact reviewed representation.",
+        )
+      yield* verifyRejection(predecessor.dispatch, predecessor.rejection)
+    }
     const ordered = [
       plan.files.find((item) => item.path === plan.entrypoint)!,
       ...plan.files.filter((item) => item.path !== plan.entrypoint),
@@ -255,7 +320,15 @@ function validatePlan(plan: SharedCreatePlan, value: unknown, expectedId?: strin
       ...property(original.body),
       markdown: candidate.markdown,
     })
-    return { saved, review, file, resolved, candidate: candidate.markdown, next }
+    return {
+      saved,
+      review,
+      file,
+      resolved,
+      candidate: candidate.markdown,
+      next,
+      readbackFile: nativeResubmissionReadbackFile(file, review.wire_policy),
+    }
   })
 }
 
@@ -348,13 +421,19 @@ function readText(
   })
 }
 
-function savedReview(library: SharedLibrary, plan: SharedCreatePlan, page: string, file: string) {
+function savedReview(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  page: string,
+  file: string,
+  version: ReviewVersion = 1,
+) {
   return Effect.gen(function* () {
     const rows = yield* querySharedRecords(library, {
       skillPageId: page,
       kind: "operation",
-      entityId: reviewsEntity,
-      recordId: reviewRecord(plan.operation_id, file),
+      entityId: reviewEntity(version),
+      recordId: reviewRecord(plan.operation_id, file, version),
     })
     if (rows.length === 0) return undefined
     if (rows.length !== 1) return yield* refusal("The independent file review is duplicated.")
@@ -372,6 +451,7 @@ function savedReview(library: SharedLibrary, plan: SharedCreatePlan, page: strin
     )
     if (
       record.original_operation_id !== plan.operation_id ||
+      decoded.saved.version !== version ||
       record.file_id !== file ||
       record.path !== decoded.review.path ||
       row.operation_id !== record.review_id ||
@@ -382,18 +462,81 @@ function savedReview(library: SharedLibrary, plan: SharedCreatePlan, page: strin
   })
 }
 
+/** The old review and its missing completion remain visible. A new policy
+ * requires a fully bound explicit rejection; current equality never grants it. */
+function sharedPredecessor(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  saved: SourceFileResubmissionPlan,
+) {
+  return Effect.gen(function* () {
+    if (saved.version === 1) return
+    const prior = yield* savedReview(
+      library,
+      plan,
+      saved.review.skill_page_id,
+      saved.review.file_id,
+      1,
+    )
+    const outcomes = yield* querySharedRecords(library, {
+      skillPageId: saved.review.skill_page_id,
+      kind: "operation",
+      entityId: outcomesEntity,
+      recordId: outcomeRecord(plan.operation_id, saved.review.file_id),
+    })
+    if (
+      !prior ||
+      prior.row.hash !== saved.predecessor.review_record_hash ||
+      !same(prior.decoded.saved, saved.predecessor.plan) ||
+      outcomes.length !== 0
+    )
+      return yield* refusal(
+        "The previous rejected independent review must remain complete, unchanged and without completion.",
+      )
+  })
+}
+
+function localPredecessor(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  saved: SourceFileResubmissionPlan,
+) {
+  return Effect.gen(function* () {
+    if (saved.version === 1) return
+    yield* sharedPredecessor(library, plan, saved)
+    const slot = yield* (yield* Store).readJson(
+      yield* slotKey(plan, saved.review.file_id, 1),
+      Schema.Unknown,
+    )
+    const negative = yield* originalRefusal(
+      library,
+      { operation_id: saved.predecessor.plan.review.review_id },
+      saved.predecessor.dispatch,
+    )
+    if (
+      slot === undefined ||
+      !same(slot, saved.predecessor.plan) ||
+      !same(negative, saved.predecessor.rejection)
+    )
+      return yield* refusal(
+        "The original author must retain the complete previous slot, frozen request and exact negative receipt.",
+      )
+  })
+}
+
 function readCompletion(
   library: SharedLibrary,
   plan: SharedCreatePlan,
   page: string,
   file: string,
+  version: ReviewVersion = 1,
 ) {
   return Effect.gen(function* () {
     const rows = yield* querySharedRecords(library, {
       skillPageId: page,
       kind: "operation",
-      entityId: outcomesEntity,
-      recordId: outcomeRecord(plan.operation_id, file),
+      entityId: outcomeEntity(version),
+      recordId: outcomeRecord(plan.operation_id, file, version),
     })
     if (rows.length === 0) return undefined
     if (rows.length !== 1) return yield* refusal("The independent file completion is duplicated.")
@@ -402,11 +545,12 @@ function readCompletion(
         onExcessProperty: "error",
       }),
     )
-    const saved = yield* savedReview(library, plan, page, file)
+    const saved = yield* savedReview(library, plan, page, file, version)
     if (!saved)
       return yield* refusal("The independent completion has no complete reviewed original request.")
     const { decoded } = saved,
       review = decoded.review
+    yield* sharedPredecessor(library, plan, decoded.saved)
     const serialized = yield* readText(library, page, record.proof, "input")
     const outcome = yield* createChecked(() =>
       Schema.decodeUnknownSync(SourceFileResubmissionCompletionSchema)(JSON.parse(serialized), {
@@ -486,7 +630,7 @@ function readCompletion(
       "body",
     )
     yield* createChecked(() => assertImportedMarkdownContent(decoded.candidate, body))
-    const observed = yield* withObservedBody(decoded.file, body)
+    const observed = yield* withObservedBody(decoded.readbackFile, body)
     if (observed.event.event_id !== outcome.observation.event_id)
       return yield* refusal(
         "The completed replacement body does not reconstruct the original file event.",
@@ -498,6 +642,7 @@ function readCompletion(
       original_dispatch: decoded.saved.original_dispatch,
       original_rejection: decoded.saved.original_rejection,
       review_id: review.review_id,
+      wire_policy: review.wire_policy,
       new_dispatch: decoded.next,
       new_acknowledgement: acknowledged.ack,
       page_id: outcome.page_id,
@@ -526,17 +671,15 @@ export function loadCompletedSourceFileResubmissions(
     const rows = yield* querySharedRecords(library, {
       skillPageId: page,
       kind: "operation",
-      entityIds: [reviewsEntity, outcomesEntity],
+      entityIds: [reviewsEntity, outcomesEntity, reviewsV2Entity, outcomesV2Entity],
     })
-    const reviews = rows.filter((row) => row.entity_id === reviewsEntity),
-      outcomes = rows.filter((row) => row.entity_id === outcomesEntity)
-    if (reviews.length !== outcomes.length)
-      return yield* Effect.fail(
-        fail(
-          "SOURCE_FILE_RESUBMISSION_PENDING",
-          "An independent resubmission lacks complete immutable ACK proof; the original import remains unresolved.",
-        ),
-      )
+    const reviews = rows.filter(
+      (row) => row.entity_id === reviewsEntity || row.entity_id === reviewsV2Entity,
+    )
+    const outcomes = rows.filter(
+      (row) => row.entity_id === outcomesEntity || row.entity_id === outcomesV2Entity,
+    )
+    const selected = new Map<string, { version: ReviewVersion; first: boolean; second: boolean }>()
     const result: VerifiedNativeFileSubstitution[] = []
     for (const row of reviews) {
       const record = yield* createChecked(() =>
@@ -546,13 +689,52 @@ export function loadCompletedSourceFileResubmissions(
       )
       if (
         record.original_operation_id !== plan.operation_id ||
-        row.record_id !== reviewRecord(plan.operation_id, record.file_id) ||
-        result.some((item) => item.file_id === record.file_id)
+        row.record_id !==
+          reviewRecord(
+            plan.operation_id,
+            record.file_id,
+            row.entity_id === reviewsV2Entity ? 2 : 1,
+          ) ||
+        (row.entity_id === reviewsEntity
+          ? selected.get(record.file_id)?.first
+          : selected.get(record.file_id)?.second)
       )
         return yield* refusal(
           "A resubmission has a foreign, duplicate or aliased original file identity.",
         )
-      const proof = yield* readCompletion(library, plan, page, record.file_id)
+      const previous = selected.get(record.file_id)
+      const second = row.entity_id === reviewsV2Entity || previous?.second === true
+      selected.set(record.file_id, {
+        version: second ? 2 : 1,
+        first: row.entity_id === reviewsEntity || previous?.first === true,
+        second,
+      })
+    }
+    if (outcomes.length !== selected.size || [...selected.values()].some((item) => !item.first))
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_FILE_RESUBMISSION_PENDING",
+          "An independent resubmission lacks its complete review chain and ACK proof; the original import remains unresolved.",
+        ),
+      )
+    for (const row of outcomes) {
+      const record = yield* createChecked(() =>
+        Schema.decodeUnknownSync(SourceFileResubmissionCompletionRecordSchema)(row.payload, {
+          onExcessProperty: "error",
+        }),
+      )
+      const current = selected.get(record.file_id)
+      if (
+        !current ||
+        row.entity_id !== outcomeEntity(current.version) ||
+        row.record_id !== outcomeRecord(plan.operation_id, record.file_id, current.version)
+      )
+        return yield* refusal(
+          "An outcome is orphaned or belongs to an earlier rejected representation.",
+        )
+    }
+    for (const [file, selectedReview] of selected) {
+      const proof = yield* readCompletion(library, plan, page, file, selectedReview.version)
       if (!proof) return yield* refusal("The exact independent completion proof is missing.")
       result.push(proof)
     }
@@ -572,7 +754,11 @@ export function loadCompletedSourceFileResubmissions(
 }
 
 export function reviewSharedSourceFileResubmission(
-  input: OriginalInput & { readonly target: string; readonly path: string },
+  input: OriginalInput & {
+    readonly target: string
+    readonly path: string
+    readonly wirePolicy?: NativeImagePolicy
+  },
 ) {
   return Effect.gen(function* () {
     const { library, plan } = yield* context(input),
@@ -592,11 +778,14 @@ export function reviewSharedSourceFileResubmission(
     const markdown = property(original_dispatch.body).markdown
     if (typeof markdown !== "string")
       return yield* refusal("The original rejected request must contain complete Markdown.")
-    const candidate = yield* createChecked(() => projectNativeImageBlocks(markdown))
+    const candidate = yield* createChecked(() =>
+      projectNativeImages(markdown, input.wirePolicy ?? "native_image_blocks_v1"),
+    )
     if (candidate.kind !== "changed")
-      return yield* refusal("The original request has no eligible adjacent image-only paragraph.")
+      return yield* refusal(
+        "The original request has no eligible change under the selected image representation.",
+      )
     const fields = {
-      version: 1 as const,
       kind: "source_file_resubmission_review" as const,
       original_operation_id: plan.operation_id,
       permission_scope: current.journal.scope,
@@ -612,8 +801,6 @@ export function reviewSharedSourceFileResubmission(
       journal_sha256: yield* hash(current.journal.journal),
       retained_review_id: current.review.review_id,
       retained_review_hash: current.reviewRecord.hash,
-      wire_policy: candidate.policy,
-      changes: candidate.summary,
       original_request_sha256: yield* hash(original_dispatch),
       original_rejection_sha256: yield* hash(original_rejection),
       candidate_body_sha256: yield* sha256(candidate.markdown),
@@ -621,19 +808,60 @@ export function reviewSharedSourceFileResubmission(
       allocations: current.proofs.map((proof) => proof.reference),
       observations: current.observations,
     }
-    const saved: SourceFileResubmissionPlan = {
-      version: 1,
-      kind: "source_file_resubmission_plan",
-      review: { ...fields, review_id: "source-file-resubmission-" + (yield* hash(fields)) },
-      original_dispatch,
-      original_rejection,
+    let saved: SourceFileResubmissionPlan
+    if (candidate.policy === "native_image_blocks_v1") {
+      const full = {
+        ...fields,
+        version: 1 as const,
+        wire_policy: candidate.policy,
+        changes: candidate.summary,
+      }
+      saved = {
+        version: 1,
+        kind: "source_file_resubmission_plan",
+        review: { ...full, review_id: "source-file-resubmission-" + (yield* hash(full)) },
+        original_dispatch,
+        original_rejection,
+      }
+    } else {
+      const prior = yield* savedReview(library, plan, page, current.file.file_id, 1)
+      if (!prior || prior.decoded.saved.version !== 1)
+        return yield* refusal(
+          "The linked-image policy requires the complete prior reviewed file request and its definitive rejection.",
+        )
+      const predecessor: typeof SourceFileResubmissionPredecessorSchema.Type = {
+        plan: prior.decoded.saved,
+        review_record_hash: prior.row.hash,
+        dispatch: prior.decoded.next,
+        rejection: yield* originalRefusal(
+          library,
+          { operation_id: prior.decoded.review.review_id },
+          prior.decoded.next,
+        ),
+      }
+      const full = {
+        ...fields,
+        version: 2 as const,
+        wire_policy: candidate.policy,
+        changes: candidate.summary,
+        predecessor_sha256: yield* hash(predecessor),
+      }
+      saved = {
+        version: 2,
+        kind: "source_file_resubmission_plan",
+        review: { ...full, review_id: "source-file-resubmission-" + (yield* hash(full)) },
+        original_dispatch,
+        original_rejection,
+        predecessor,
+      }
+      yield* localPredecessor(library, plan, saved)
     }
     yield* validatePlan(plan, saved)
     const slot = yield* (yield* Store).readJson(
-      yield* slotKey(plan, current.file.file_id),
+      yield* slotKey(plan, current.file.file_id, saved.version),
       Schema.Unknown,
     )
-    const prior = yield* savedReview(library, plan, page, current.file.file_id)
+    const prior = yield* savedReview(library, plan, page, current.file.file_id, saved.version)
     if (
       (slot !== undefined && !same(slot, saved)) ||
       (prior !== undefined && !same(prior.decoded.saved, saved))
@@ -667,7 +895,13 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
     const action = Effect.gen(function* () {
       const decoded = yield* validatePlan(plan, input.review, input.reviewId),
         review = decoded.review
-      const completed = yield* readCompletion(library, plan, review.skill_page_id, review.file_id)
+      const completed = yield* readCompletion(
+        library,
+        plan,
+        review.skill_page_id,
+        review.file_id,
+        decoded.saved.version,
+      )
       if (completed) {
         if (completed.review_id !== review.review_id)
           return yield* refusal("This file completed under a different original review.")
@@ -678,7 +912,7 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
           "Use the original credential-scoped author runtime for an incomplete resubmission.",
         )
       const store = yield* Store,
-        key = yield* slotKey(plan, review.file_id)
+        key = yield* slotKey(plan, review.file_id, decoded.saved.version)
       const slot = yield* store.readJson(key, Schema.Unknown)
       if (slot !== undefined && !same(slot, decoded.saved))
         return yield* refusal(
@@ -693,8 +927,10 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
             review.skill_page_id,
             review.path,
             allocatedPage,
+            review.wire_policy,
           )
           const negative = yield* originalRefusal(library, plan, decoded.saved.original_dispatch)
+          yield* localPredecessor(library, plan, decoded.saved)
           if (
             current.original.row.hash !== review.failure_sha256 ||
             current.reviewRecord.hash !== review.retained_review_hash ||
@@ -719,7 +955,13 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
             )
           return current
         }).pipe(withReadOnlyNotion)
-      const priorReview = yield* savedReview(library, plan, review.skill_page_id, review.file_id)
+      const priorReview = yield* savedReview(
+        library,
+        plan,
+        review.skill_page_id,
+        review.file_id,
+        decoded.saved.version,
+      )
       if (
         (priorReview !== undefined && !same(priorReview.decoded.saved, decoded.saved)) ||
         (previous !== undefined && priorReview === undefined)
@@ -781,8 +1023,8 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
               mode: "create",
               kind: "operation",
               skillPageId: review.skill_page_id,
-              entityId: reviewsEntity,
-              recordId: reviewRecord(plan.operation_id, review.file_id),
+              entityId: reviewEntity(decoded.saved.version),
+              recordId: reviewRecord(plan.operation_id, review.file_id, decoded.saved.version),
               operationId: review.review_id,
               payload: {
                 version: 1,
@@ -795,7 +1037,13 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
               },
             })
           }).pipe(Effect.provideService(Notion, dispatch.api))
-          const retained = yield* savedReview(library, plan, review.skill_page_id, review.file_id)
+          const retained = yield* savedReview(
+            library,
+            plan,
+            review.skill_page_id,
+            review.file_id,
+            decoded.saved.version,
+          )
           if (!retained || !same(retained.decoded.saved, decoded.saved))
             return yield* refusal(
               "The complete independent review is not durably visible before the native POST.",
@@ -863,8 +1111,8 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
           mode: "create",
           kind: "operation",
           skillPageId: review.skill_page_id,
-          entityId: outcomesEntity,
-          recordId: outcomeRecord(plan.operation_id, review.file_id),
+          entityId: outcomeEntity(decoded.saved.version),
+          recordId: outcomeRecord(plan.operation_id, review.file_id, decoded.saved.version),
           operationId: review.review_id,
           payload: {
             version: 1,
@@ -877,7 +1125,13 @@ export function applySharedSourceFileResubmission(input: ApplyInput) {
           },
         })
       }).pipe(Effect.provideService(Notion, commit.api))
-      const done = yield* readCompletion(library, plan, review.skill_page_id, review.file_id)
+      const done = yield* readCompletion(
+        library,
+        plan,
+        review.skill_page_id,
+        review.file_id,
+        decoded.saved.version,
+      )
       if (!done)
         return yield* refusal("The full independent file completion is not durably visible.")
       return { ...completedResult(done, review.skill_page_id), remote_writes: undefined }
@@ -893,7 +1147,13 @@ export function reconcileSharedSourceFileResubmission(input: ApplyInput) {
     const { library, plan } = yield* context(input)
     const decoded = yield* validatePlan(plan, input.review, input.reviewId),
       review = decoded.review
-    const proof = yield* readCompletion(library, plan, review.skill_page_id, review.file_id)
+    const proof = yield* readCompletion(
+      library,
+      plan,
+      review.skill_page_id,
+      review.file_id,
+      decoded.saved.version,
+    )
     if (proof) {
       if (proof.review_id !== review.review_id)
         return yield* refusal("The completion belongs to a different independent review.")
@@ -908,7 +1168,13 @@ export function reconcileSharedSourceFileResubmission(input: ApplyInput) {
       return yield* refusal(
         "The independent request has no complete original native ACK; it remains unresolved.",
       )
-    const saved = yield* savedReview(library, plan, review.skill_page_id, review.file_id)
+    const saved = yield* savedReview(
+      library,
+      plan,
+      review.skill_page_id,
+      review.file_id,
+      decoded.saved.version,
+    )
     if (!saved || !same(saved.decoded.saved, decoded.saved))
       return yield* refusal("The original independent review is unavailable.")
     yield* inspectRetainedImportFileResubmissionPrefix(
@@ -917,6 +1183,7 @@ export function reconcileSharedSourceFileResubmission(input: ApplyInput) {
       review.skill_page_id,
       review.path,
       acknowledged.page,
+      review.wire_policy,
     )
     return {
       status: "completion_pending" as const,
@@ -939,9 +1206,12 @@ export function sourceFileResubmissionOriginal(
   header: SharedOperationHeader,
   operations: readonly SharedOperationHeader[],
 ) {
-  if (header.entity_id !== reviewsEntity && header.entity_id !== outcomesEntity) return undefined
+  if (
+    ![reviewsEntity, outcomesEntity, reviewsV2Entity, outcomesV2Entity].includes(header.entity_id)
+  )
+    return undefined
   const match =
-    /^source-file-resubmission-(?:review|outcome)-(skill-create-[a-f0-9]{64})-file-[a-f0-9]{64}$/u.exec(
+    /^source-file-resubmission-(?:review|outcome)-(skill-create-[a-f0-9]{64})-file-[a-f0-9]{64}(?:-v2)?$/u.exec(
       header.record_id,
     )
   return match &&

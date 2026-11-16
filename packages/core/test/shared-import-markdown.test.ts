@@ -53,6 +53,26 @@ test("import does not mistake missing text, code mutations or changed explicit t
     expect(() => assertImportedMarkdownContent(expected!, actual!)).toThrow()
 })
 
+test("a native table that returns only image alt text cannot prove its authored HTML image source", () => {
+  const source = [
+    "| Preview | Theme |",
+    "| --- | --- |",
+    '| <img src="https://github.com/example/image.png" width="260" alt="Theme preview"> | Classic |',
+  ].join("\n")
+  const observed = ["| Preview | Theme |", "| --- | --- |", "| Theme preview | Classic |"].join(
+    "\n",
+  )
+  expect(() => assertImportedMarkdownContent(source, observed)).toThrow()
+  // Matching a visible alt label or keeping a separate href must not excuse
+  // loss of the authored image source and its physical representation.
+  expect(() =>
+    assertImportedMarkdownContent(
+      '<a href="./SPONSORS.md"><img src="https://github.com/example/sponsors.png" alt="Sponsors"></a>',
+      '<a href="./SPONSORS.md"></a>',
+    ),
+  ).toThrow()
+})
+
 test("generated domain links do not hide an explicit target and known Notion page aliases compare equally", () => {
   expect(() =>
     assertImportedMarkdownContent(

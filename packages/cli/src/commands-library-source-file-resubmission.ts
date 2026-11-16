@@ -4,6 +4,7 @@ import type { PlatformError } from "effect/PlatformError"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { fail, property, type SkillsError } from "../../core/src/model.ts"
 import { Notion } from "../../core/src/notion.ts"
+import { retainedNotionRejectionDiagnostics } from "../../core/src/notion-validation-diagnostic.ts"
 import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
 import { Store } from "../../core/src/store.ts"
 import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
@@ -128,6 +129,7 @@ function failure(
         )
   const details = property(error.details)
   const original = property(details.original_details)
+  const observed = { ...details, ...original }
   const bounded: Record<string, string> = {}
   for (const key of [
     "operation_id",
@@ -148,7 +150,28 @@ function failure(
     error.message.length <= 512
       ? error.message
       : "The independent file request could not be verified. Inspect the exact operation through read-only reconciliation.",
-    { ...bounded, next },
+    {
+      ...bounded,
+      ...retainedNotionRejectionDiagnostics(observed),
+      ...(typeof observed.http_status === "number" &&
+      Number.isInteger(observed.http_status) &&
+      observed.http_status >= 100 &&
+      observed.http_status <= 599
+        ? { http_status: observed.http_status }
+        : {}),
+      ...(typeof observed.response_bytes === "number" &&
+      Number.isSafeInteger(observed.response_bytes) &&
+      observed.response_bytes >= 0
+        ? { response_bytes: observed.response_bytes }
+        : {}),
+      ...(["invalid_json", "response_limit", "network"].some((reason) => observed.reason === reason)
+        ? { reason: observed.reason }
+        : {}),
+      ...(observed.notion_code === "validation_error" ? { notion_code: "validation_error" } : {}),
+      ...(observed.phase === "definitive_rejection" ? { phase: "definitive_rejection" } : {}),
+      ...(observed.native_retry_allowed === false ? { native_retry_allowed: false } : {}),
+      next,
+    },
   )
 }
 
@@ -172,11 +195,20 @@ const review = defineCommand(
       "output",
       "Private complete resubmission review and original evidence",
     ),
+    wirePolicy: singleton(
+      "wire-policy",
+      "native_image_blocks_v1 (default), or native_linked_images_v2 after a proven rejection of the first independent request",
+    ),
   },
   (args) =>
     Effect.gen(function* () {
       const plan = yield* readSourceJson(args.plan, 192 * 1024 * 1024)
       const operationId = Option.getOrUndefined(args.operation)
+      const wirePolicy = Option.getOrElse(args.wirePolicy, () => "native_image_blocks_v1")
+      if (wirePolicy !== "native_image_blocks_v1" && wirePolicy !== "native_linked_images_v2")
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "Select native_image_blocks_v1 or native_linked_images_v2."),
+        )
       const { result, budget } = yield* withSourceCommandBudget(
         reviewSharedSourceFileResubmission({
           entry: args.entry,
@@ -184,6 +216,7 @@ const review = defineCommand(
           operationId,
           target: args.target,
           path: args.path,
+          wirePolicy,
         }),
         yield* parseSourceBudget(args),
       )
@@ -237,7 +270,7 @@ const review = defineCommand(
     ),
 ).pipe(
   Command.withDescription(
-    "Review one independent new request after a complete original 400 validation rejection with no allocation ACK. Preserve the frozen input, original wire, failure and confirmed prefix. Only native_image_blocks_v1 is supported: separate adjacent images in image-only paragraphs while preserving every image and outer link. Save the complete evidence privately; unknown or incomplete original requests cannot qualify.",
+    "Review one independent new request after a complete original 400 validation rejection with no allocation ACK. Preserve the frozen input, original wire, failure and confirmed prefix. native_image_blocks_v1 separates adjacent image-only paragraphs. Explicit --wire-policy native_linked_images_v2 requires the first independent request's complete negative receipt, retains its immutable review and makes each linked image a standalone original image plus an explicit text link. Unknown or incomplete predecessors cannot qualify; old requests are never repeated. Save complete evidence privately. A dry-run checks eligibility, not the provider's Markdown parser.",
   ),
 )
 

@@ -166,6 +166,100 @@ test("refusals keep only bounded identities and exact read-only reconciliation",
   expect(JSON.stringify(wrapped)).not.toContain("private-wire")
 })
 
+test("resubmission failures retain safe provider diagnostics without exposing request bodies", () => {
+  const diagnostic = {
+    version: 1,
+    category: "markdown_syntax",
+    fields: ["markdown"],
+    line: 7,
+    column: 3,
+    raw_message_retained: false,
+  }
+  for (const wrapped of [false, true]) {
+    const details = {
+      operation_id: "source-op-new-request",
+      http_status: 400,
+      notion_code: "validation_error",
+      phase: "definitive_rejection",
+      native_retry_allowed: false,
+      request_id: "13d07bd1-4751-40bc-9a0e-956210b78c45",
+      validation: diagnostic,
+      message: "private-provider-message",
+      body: { markdown: "private-source" },
+    }
+    const error = sourceFileResubmissionFailure(
+      fail(
+        "SOURCE_WRITE_NOT_APPLIED",
+        "The reviewed request was rejected.",
+        wrapped ? { original_details: details } : details,
+      ),
+      route,
+    )
+    expect(error.details).toMatchObject({
+      operation_id: details.operation_id,
+      http_status: 400,
+      notion_code: "validation_error",
+      phase: "definitive_rejection",
+      native_retry_allowed: false,
+      request_id: details.request_id,
+      validation: diagnostic,
+      next: sourceFileResubmissionNext({ ...route, action: "reconcile" }),
+    })
+    expect(JSON.stringify(error.details)).not.toContain("private-")
+  }
+})
+
+test("transport diagnostics survive projection but unfamiliar diagnostic values do not", () => {
+  const transport = sourceFileResubmissionFailure(
+    fail("INVALID_RESPONSE", "The Notion API returned invalid JSON.", {
+      original_details: {
+        http_status: 403,
+        reason: "invalid_json",
+        response_bytes: 4546,
+        body: "private-html",
+      },
+    }),
+    route,
+  )
+  expect(transport.details).toMatchObject({
+    http_status: 403,
+    reason: "invalid_json",
+    response_bytes: 4546,
+  })
+  const invalid = sourceFileResubmissionFailure(
+    fail("SOURCE_WRITE_NOT_APPLIED", "Review the original request.", {
+      http_status: "private-status",
+      reason: "private-reason",
+      response_bytes: Number.POSITIVE_INFINITY,
+      request_id: "private-url?token=secret",
+      notion_code: "private-code",
+      phase: "private-phase",
+      native_retry_allowed: true,
+      validation: {
+        version: 1,
+        category: "unclassified",
+        fields: [],
+        raw_message_retained: false,
+        message: "private-message",
+      },
+    }),
+    route,
+  )
+  for (const key of [
+    "http_status",
+    "reason",
+    "response_bytes",
+    "request_id",
+    "notion_code",
+    "phase",
+    "native_retry_allowed",
+    "validation",
+  ])
+    expect(invalid.details).not.toHaveProperty(key)
+  expect(JSON.stringify(transport.details)).not.toContain("private-")
+  expect(JSON.stringify(invalid.details)).not.toContain("private-")
+})
+
 test("recovery command tree exposes the independent review and exact execution selectors", () => {
   for (const action of ["review", "apply", "reconcile"]) {
     const command = selectCommand(sourceRecoveryCommand, ["resubmit-file", action])

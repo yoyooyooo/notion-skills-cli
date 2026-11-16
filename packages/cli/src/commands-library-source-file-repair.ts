@@ -84,6 +84,8 @@ const review = defineCommand(
         file_id: result.review.file_id,
         file_page_id: result.review.file_page_id,
         path: result.review.path,
+        decision: result.review.decision,
+        table_row_patches: result.review.version === 1 ? 1 : result.review.before_rows.length,
         before_body: result.review.before_body,
         candidate_body: result.review.candidate_body,
         output: args.output,
@@ -104,7 +106,7 @@ const review = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Read the original retained import failure, complete manifest and true native allocation ACK prefix. Review exactly one physical table code marker padded by native import. Preserve all other code, text, destinations and rows. Never trim general code, patch the whole Markdown page, create a replacement File, or grant permission to an unknown/rejected request.",
+    "Read the original retained import failure, complete manifest and true native allocation ACK prefix. Review exactly one physical table code marker padded by native import, or a versioned set of plain table literal hyphens changed into bullets and proven against the complete original file. Preserve all other code, text, destinations and rows. Never trim general code, patch the whole Markdown page, create a replacement File, or grant permission to an unknown/rejected request.",
   ),
 )
 
@@ -159,23 +161,30 @@ function execution(mode: "apply" | "reconcile") {
           budget,
           request_metrics: (yield* Notion).requestMetrics?.(),
           next:
-            result.status === "completion_pending"
+            result.status === "repair_pending"
               ? {
                   argv: argv("apply", args, true),
                   read_only: true,
                   reason:
-                    "The exact original row ACK and full readback are verified. Preview only completion of its missing immutable proof; no row PATCH is needed.",
+                    "Preview only the unsent row suffix after the verified original ACK prefix. An unknown row never permits retry or replacement.",
                 }
-              : mode === "apply" && args.dryRun
+              : result.status === "completion_pending"
                 ? {
-                    argv: argv("apply", args),
-                    read_only: false,
+                    argv: argv("apply", args, true),
+                    read_only: true,
                     reason:
-                      "table_row_patches" in result && result.table_row_patches === 0
-                        ? "Complete the missing immutable proof from the actual original row ACK; the row update is not dispatched again."
-                        : "Authorize only this one original table-row correction. Original file/page identity and failed create stay retained.",
+                      "The exact original row ACK and full readback are verified. Preview only completion of its missing immutable proof; no row PATCH is needed.",
                   }
-                : next,
+                : mode === "apply" && args.dryRun
+                  ? {
+                      argv: argv("apply", args),
+                      read_only: false,
+                      reason:
+                        "table_row_patches" in result && result.table_row_patches === 0
+                          ? "Complete the missing immutable proof from the actual original row ACK; the row update is not dispatched again."
+                          : "Authorize only the reviewed original table-row corrections still lacking dispatch. Original file/page identity and failed create stay retained.",
+                    }
+                  : next,
           original_recovery: {
             argv: [
               "ntn-skills",
@@ -195,14 +204,14 @@ function execution(mode: "apply" | "reconcile") {
             ],
             read_only: true,
             reason:
-              "A repaired file is not a completed import. Prepare a separate original-operation recovery review only after the exact repair completes.",
+              "A repaired file is not a completed import. After exact repair completion, inspect the original recovery: an already authorized review is preserved and its later acknowledged prefix is checked; a fresh review is created only when no original review exists.",
           },
         })
       }),
   ).pipe(
     Command.withDescription(
       mode === "apply"
-        ? "Apply one reviewed original table-row patch through the existing durable source mutation guard. Preserve the complete preimage, exact original allocation proofs and actual row ACK; verify the full original file afterwards. Unknown outcomes remain pending and block original recovery; no whole-page update or replacement creation."
+        ? "Apply the reviewed original table-row patches through the existing durable source mutation guard. Preserve the complete preimage, exact original allocation proofs and every actual row ACK; resume only the verified prefix's unsent suffix and verify the full original file afterwards. Unknown outcomes remain pending and block original recovery; no whole-page update or replacement creation."
         : "Read the full retained file-repair review, original failure/allocation ACKs, exact row response and complete before/after bodies. This is historical repair proof, separate from current eligibility and whole-Skill completion.",
     ),
   )

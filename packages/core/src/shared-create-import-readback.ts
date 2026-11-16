@@ -9,6 +9,8 @@ import { readSharedCreateTextPayload } from "./shared-create-text-retention.ts"
 import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
 import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
+import { nativeResubmissionReadbackFile } from "./shared-native-image-layout.ts"
+import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
 
 const ObservationSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -145,6 +147,7 @@ export function restoreNativeImportReadbacks(
   plan: SharedCreatePlan,
   skillPage: string,
   bindings: readonly SharedCreateBinding[],
+  substitutions: readonly VerifiedNativeFileSubstitution[] = [],
 ) {
   return Effect.gen(function* () {
     const files = yield* Effect.forEach(plan.files, (file) =>
@@ -212,7 +215,12 @@ export function restoreNativeImportReadbacks(
                     body.payload,
                   )
                 })
-        const resolved = yield* withObservedBody(file, markdown)
+        const substitution = substitutions.find((item) => item.file_id === file.file_id)
+        const represented =
+          substitution === undefined
+            ? file
+            : nativeResubmissionReadbackFile(file, substitution.wire_policy)
+        const resolved = yield* withObservedBody(represented, markdown)
         if (canonicalSharedJson(resolved.event) !== canonicalSharedJson(event))
           return yield* Effect.fail(
             fail(

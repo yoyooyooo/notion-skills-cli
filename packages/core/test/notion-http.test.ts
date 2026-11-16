@@ -269,6 +269,34 @@ test("native validation failures expose bounded structural hints without copying
       },
     },
     {
+      // The prefix and image constraint were observed with an isolated public sample.
+      // The additional fixture token still must never escape in diagnostics.
+      message: `Markdown errors blocked parsing:\nImages must be standalone blocks and cannot be mixed with paragraph text or other images. Separate image blocks with a blank line, for example \`![first](url)\\n\\n![second](url)\`. private paragraph ${fixtureToken}`,
+      expected: {
+        version: 1,
+        category: "markdown_syntax",
+        constraint: "standalone_image",
+        fields: ["markdown"],
+        raw_message_retained: false,
+      },
+    },
+    {
+      message: `Markdown errors blocked parsing at line 15, column 1: ${fixtureToken} https://private.example/?signature=secret`,
+      expected: {
+        version: 1,
+        category: "markdown_syntax",
+        fields: ["markdown"],
+        line: 15,
+        column: 1,
+        raw_message_retained: false,
+      },
+    },
+    {
+      // A quoted source fragment must not turn an unfamiliar error into parser authority.
+      message: `Unknown provider detail: source says Markdown errors blocked parsing at line 15, column 1; ${fixtureToken}`,
+      expected: { version: 1, category: "unclassified", fields: [], raw_message_retained: false },
+    },
+    {
       message: `Unknown provider detail ${fixtureToken}; source text body.privateCustomerName should never be copied`,
       expected: { version: 1, category: "unclassified", fields: [], raw_message_retained: false },
     },
@@ -311,6 +339,7 @@ test("native validation failures expose bounded structural hints without copying
           "private paragraph",
           "privateCustomerName",
           "Private source input",
+          "Images must be standalone blocks",
         ])
           expect(rendered).not.toContain(sensitive)
         expect(rendered.length).toBeLessThan(1500)

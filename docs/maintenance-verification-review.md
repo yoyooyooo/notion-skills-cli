@@ -785,3 +785,103 @@ coverage和原变异脚本均未改。变异receipt SHA256为
 `618fecc18efb53ad10b2dabc542342e38c366e0c24c834580df056189d196c63`。
 完整package摘要、三组formal summary和变异原件保留在本轮证据根。验证维护与产品提交
 分开提交；现有PR的最终head及远端CI回执另在PR和Linear按实际运行结果记账。
+
+## SRC13：新400回执校正与诊断前缀缺口
+
+2026-11-16 的 `src12-live-20261116-pld0s9c5/guizang-new-rejection.json`
+记录了07:05:47 UTC的新请求拒绝。不能继续用SRC11中06:59的只读检查点断言请求未发送。
+对本地SQLite以query_only核对，新dispatch与负回执的canonical request hash及operation
+ID均匹配：`source-op-68ce73951741bf8f6982aab9faa563eb2d59d8dca78c8f1d1bd18dc4b53547a1`，
+HTTP400 / validation_error / not_applied，request ID为
+`13d07bd1-4751-40bc-9a0e-956210b78c45`。没有该请求的ACK或completion。
+提交正文27,367字节，hash为`51c095f8a846b9a04cc6a8a5e6cabfce900e255f500b9ffe1c92647796e37106`；
+相比旧dispatch仅markdown变化，parent/properties未变。已确认增加9个LF的候选确实被发送并拒绝，
+不是仅有工具调用中断，也不是旧403访问失败；本次调查没有再次发送生产库写入。
+
+原生v2迁移文档明确给出解析错误前缀`Markdown errors blocked parsing`。原
+`notionValidationDiagnostic`只识别Unable/Failed to parse markdown，会把这个标准
+前缀落为unclassified。既有回执只保存有限诊断，原始message未保留，不能事后将这条
+新400改判为已知语法错误或猜定首个失败位置。已新增标准前缀、带位置及仅在引用正文中
+出现该短语的正反例；先复现错误分类，再最小扩充前缀。诊断schema、原请求/失败事实、
+raw_message_retained=false、写入资格和不可重放边界不变。
+
+候选第15行仍有link内的Markdown image，76—78行有HTML a/img，两处表格合计9个
+HTML img单元格。它们是待隔离核验的结构，不能凭出现image就宣布400根因；特别是
+官方v2文档说明未支持的HTML可能按字面量保留。当前dry-run仅核验本地语义和新鲜
+资格，在native dispatch之前返回，未调用提供方解析器，因而不能作为正文接纳证明。
+
+修正后的HTTP传输、Source负回执及CLI诊断导航三文件最终48测试/290断言通过；全树
+typecheck和两个改动TypeScript文件的格式检查通过。全部使用本地隔离测试，不将
+mock错误文案当成该真实request的原始message。本次改动尚未提交/发布，不继承旧HEAD
+的CI或Formal通过结论。证据保存在`src13-400-diagnosis-p4ig7a4y`：官方文档快照、
+immutable-dispatch-check、候选结构、诊断红/绿回执。只读阶段不能确认具体原因；以下
+隔离样例另行核验提供方行为。原两条已拒绝POST均不重放。
+
+### SRC13 真实隔离样例：链接内图片是可复现的拒绝原因
+
+沿此前table-plus实际验证使用的隔离库，由同一固定安装CLI执行create预览和创建；
+成功样例立即用原create_operation_id执行ctl archive预览、归档及其GET核验。没有
+重建或更改Guizang业务页面，没有用新计划逃避生产操作的拒绝事实。普通路径预检
+再次出现403 HTML，保留失败原件；诊断子进程改用用户已授权的本机18004出口，未改
+全局代理、凭据或API地址。四个样例的实际native POST各仅一次，结果为：
+
+| 样例 | 提供方结果 | 完成与清理 |
+| --- | --- | --- |
+| 公开合成独立图片 | 200 | 正式create verified，原ownership归档verified |
+| 同一图片外包Markdown链接 | 400 validation_error | 无新页ACK，明确负回执保留 |
+| 原候选第15行的精确链接图片片段 | 400 validation_error | 无新页ACK，明确负回执保留 |
+| 同一原图片加独立文字链接 | 200 | 正式create verified，原ownership归档verified |
+
+两次400原样本响应均明确为`Markdown errors blocked parsing`，约束是图片必须为
+独立block，不能与paragraph text或其他图片混用。两次公开样例的message hash相同：
+`63520479d117342ef97c24b83c8df1aa28363c9f68fc7edbf8f502d59caf2601`。原片段SHA256为
+`0c8fc1dc3d94b41b76b7e0ed761f35d79cb8d82a81fca3ca824bb61703a31932`，逐字来自已拒绝
+候选，提供方request ID为`1a66f0fc-bbc2-4833-a2f7-b70fa7175055`。这是实际反例，不是
+受控HTTP假定会拒绝。仅增加图片之间空行不处理`[![alt](image)](target)`外层链接，
+因此原新候选仍含一个足以拒绝整个请求的语法结构。
+
+观测hook仅匹配隔离库parent与预先冻结的精确样例markdown，不改变request/headers/
+response/retry，仅留存该公开样例的有限JSON错误内容，不观察或输出凭据。历史生产
+request的原始message没有被找回，不能把样例message填回旧负回执；也未据此断言
+整份原文只剩这一处兼容性问题。HTML img表格的具体行为仍不能凭这四个样例推定。
+
+分开表示保留image原URL与显式链接target，提供方已接受，但当前严格source对比仍
+以text mismatch拒绝这种展示变换。正式修复须引入明确的版本化投影和对应完整读回
+证明，保留原源字节，不能全局忽略文本/链接差异、删图片/链接或修改旧冻结policy。
+本轮只完成原因定位与诊断修补，未再次派发生产新请求或将Guizang标为完成。隔离
+原件在同根`isolated-provider-check/`的两个comparison与source-fragment-identity-proof。
+
+## SRC14：真正新分配已ACK后的第二种正文改义及大包预算
+
+Guizang的第二代`native_linked_images_v2`已经经正式安装CLI执行。完整前任400负回执、
+第一代review和不可变slot均绑定；新`README.en.md` native POST得到独立真实ACK，
+新的File页面为`41a5636c-236e-81a5-9110-cb1a2ad69196`，无旧POST重发。
+紧接着完整readback报`SHARED_CREATE_BODY_MISMATCH`，因此**这是已ACK的新页正文不匹配**，
+不允许当作明确未应用的400再创建替代页。
+
+已对真实页面调用正式CLI `ctl api` 完整读出208个顶层block及5个table的所有行。
+原提交表示中有10个HTML `img` 标签，当前顶层14个image block；来源URL逐字hash
+仅有1个与已读取顶层image block一致，其余URL是否被供应商改写仍需实证，不能直接
+按数量声称全部物理丢失。五个表中物理行的富文本类型全部为`text`，且HTML `img`
+标记在完整Markdown回读中被移除；另有2处quote展示包装。现有严格语义比较将其
+拒绝是正确的，不能把`alt`字样或其他位置的图片当作完整原源和href证明。
+`shared-import-markdown.test.ts`新增具体表内img及Sponsors内嵌img被剔除的负例。
+
+**后续技术边界：**必须先对原ACK页实施可审阅、保持身份的原页投影修复，或明确
+证明每一个图片物理块/URL和原文件均被安全保留；不能绕过已ACK页重发新POST、
+全局忽略HTML差异或删去图片/目标链接。原字节仍归原保留层，Notion展示必须另行验收。
+这是下一阶段的真实缺口，不能因为第二代native创建得到200就宣布整个Guizang完成。
+
+Kami已在原页将`references/deck-preflight.md`的6处物理表格行完成独立审阅修复及
+只读reconcile，旧页与原失败保留。后续原创建续接已跨过原固定前缀，但仍在300秒
+预算内出现过548次请求/22.76MB/6次写入（SRC14第一次），复用不可变修复proof
+的候选再出现约同级别的预算耗尽（第二次约534次请求/7次写入）。这些是成功续接
+的一部分，不等于123文件完整完成。trace显示反复读取相同prefix body和retained
+proof，必须继续按原调用阶段量化缓存/增量范围；未证明的缓存优化不宣称降低真实成本。
+
+目前源码层第二代review和冷证明、扩展completion以及本次的修复证明缓存已有
+相应受控回归，且原安装Node CLI→SDK→冷客户端的v1/v2对照成功；实际Notion
+失败和受控成功分账。**当前未发布PR新head也未完成Formal变异/全库存收口**。
+根原件位于Pro私有`src14-mainline-if1ic6_k`，包括`guizang-linked-native-ack.json`、
+`guizang-linked-body-read.stdout.json`、`guizang-html-image-physical-audit.json`、
+`kami-original-continue.stdout.json`及`kami-proof-cache-continue.stdout.json`。

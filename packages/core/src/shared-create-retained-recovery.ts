@@ -64,12 +64,19 @@ import { sharedCreateManifest } from "./shared-create-model.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { observeSharedCreatePrefixBody } from "./shared-create-recovery-prefix-model.ts"
 import { SourceFileRepairProofSchema } from "./shared-native-table-code-repair.ts"
-import { assertSourceFileRepairsComplete } from "./shared-source-file-repair.ts"
+import {
+  assertSourceFileRepairsComplete,
+  type sourceFileRepairProofVerifier,
+} from "./shared-source-file-repair.ts"
 import {
   SourceFileResubmissionCompletionReferenceSchema,
   type VerifiedNativeFileSubstitution,
 } from "./shared-source-file-resubmission-model.ts"
 import { loadCompletedSourceFileResubmissions } from "./shared-source-file-resubmission.ts"
+import {
+  nativeResubmissionReadbackFile,
+  type NativeImagePolicy,
+} from "./shared-native-image-layout.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const ReviewId = Schema.String.check(Schema.isPattern(/^retained-readback-[a-f0-9]{64}$/u))
@@ -115,6 +122,12 @@ const CompletionSchema = Schema.Union([
     ...CompletionFields,
     file_resubmissions: Schema.Array(SourceFileResubmissionCompletionReferenceSchema),
   }),
+  Schema.Struct({
+    version: Schema.Literal(3),
+    ...CompletionFields,
+    file_resubmissions: Schema.Array(SourceFileResubmissionCompletionReferenceSchema),
+    file_repairs: Schema.Array(SourceFileRepairProofSchema),
+  }),
 ])
 export const retainedImportRecoveryReviewsEntity = "retained-create-readback-reviews-v1"
 const reviewRecordId = (operation: string) => "retained-readback-review-" + operation
@@ -146,6 +159,15 @@ const hash = (value: unknown) => sha256(canonicalSharedJson(value))
 function completionOperationId(completion: typeof CompletionSchema.Type) {
   return Effect.gen(function* () {
     if (completion.version === 1) return completion.review_id
+    if (completion.version === 3)
+      return (
+        "retained-readback-repaired-" +
+        (yield* hash({
+          review_id: completion.review_id,
+          file_resubmissions: completion.file_resubmissions,
+          file_repairs: completion.file_repairs,
+        }))
+      )
     // The parent fact itself records that independent allocation proof is mandatory.
     // Removing the other proof indexes cannot turn this envelope into a legacy completion.
     return (
@@ -349,6 +371,75 @@ function observePrefix(
       })
     }
     return { facts: { ...resolved.facts, files }, original: resolved.facts, observations, resolved }
+  }).pipe(withReadOnlyNotion)
+}
+
+/** Independent repairs carry their own explicit authorization and complete ACK
+ * proof. An already-started recovery keeps its original review; later complete
+ * repairs are committed by the new completion version instead of rewriting it. */
+function verifiedRecoveryRepairs(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  review: SharedRetainedImportRecoveryReview,
+  verifier?: ReturnType<typeof sourceFileRepairProofVerifier>,
+) {
+  return Effect.gen(function* () {
+    const proofs = yield* verifier === undefined
+      ? assertSourceFileRepairsComplete(library, plan, review.skill_page_id)
+      : verifier()
+    for (const expected of review.file_repair_proofs ?? [])
+      if (!proofs.some((proof) => same(proof, expected)))
+        return yield* refusal("An original reviewed file-repair proof is missing or changed.")
+    return proofs
+  })
+}
+
+function inspectCurrentAcknowledgedPrefix(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  page: string,
+) {
+  return Effect.gen(function* () {
+    const original = yield* readOriginalFailure(library, plan, page)
+    const index = yield* querySharedSkillIndex(library, page)
+    const allocated = [index.main, ...index.files]
+    const ordered = [
+      original.resolved.facts.files.find((file) => file.path === plan.entrypoint)!,
+      ...original.resolved.facts.files.filter((file) => file.path !== plan.entrypoint),
+    ]
+    if (allocated.length < original.outcome.bindings.length || allocated.length > ordered.length)
+      return yield* refusal("The current allocation is not the original acknowledged file prefix.")
+    const bindings: SharedCreateBinding[] = []
+    for (const file of ordered.slice(0, allocated.length)) {
+      const matching = allocated.filter(
+        (row) => row.file_id === file.file_id && row.path === file.path,
+      )
+      const old = original.outcome.bindings.find((binding) => binding.file_id === file.file_id)
+      if (matching.length !== 1 || (old !== undefined && old.page_id !== matching[0]!.page_id))
+        return yield* refusal(
+          "An original acknowledged prefix page was replaced, moved or duplicated.",
+        )
+      const binding = old ?? {
+        file_id: file.file_id,
+        path: file.path,
+        page_id: matching[0]!.page_id,
+        event_id: file.event.event_id,
+      }
+      yield* allocationProof(plan, page, binding, file)
+      bindings.push(binding)
+    }
+    const observed = yield* observePrefix(library, plan, page, bindings, "allocated")
+    yield* verifySharedCreateRecoveryIndex(
+      library,
+      observed.facts,
+      page,
+      bindings,
+      false,
+      true,
+      undefined,
+      observed.original,
+    )
+    return bindings
   }).pipe(withReadOnlyNotion)
 }
 
@@ -587,7 +678,7 @@ export function readRetainedImportResubmissionAuthority(
       !same(review.bindings, original.outcome.bindings)
     )
       return yield* refusal("The retained recovery review does not preserve the original failure.")
-    yield* assertSourceFileRepairsComplete(library, plan, page, review.file_repair_proofs ?? [])
+    yield* verifiedRecoveryRepairs(library, plan, review)
     yield* readSharedNativeAllocationProofs(
       library,
       plan,
@@ -611,6 +702,7 @@ export function inspectRetainedImportFileResubmissionPrefix(
   page: string,
   filePath: string,
   allocatedPage?: string,
+  wirePolicy: NativeImagePolicy = "native_image_blocks_v1",
 ) {
   return Effect.gen(function* () {
     const authority = yield* readRetainedImportResubmissionAuthority(library, input, page)
@@ -706,7 +798,7 @@ export function inspectRetainedImportFileResubmissionPrefix(
     if (allocatedPage !== undefined) {
       allocatedFile = yield* observeNativeImportFile(
         original.resolved.facts,
-        file,
+        nativeResubmissionReadbackFile(file, wirePolicy),
         journal.scope,
         page,
         allocatedPage,
@@ -773,6 +865,22 @@ export function reviewSharedRetainedImportRecovery(input: {
     )
       return yield* refusal("The complete shared inputs no longer reconstruct the original plan.")
     const journal = yield* originalJournal(plan)
+    const retained = yield* querySharedRecords(library, {
+      skillPageId: page,
+      kind: "operation",
+      entityId: retainedImportRecoveryReviewsEntity,
+      recordId: reviewRecordId(plan.operation_id),
+    })
+    if (retained.length > 1) return yield* refusal("The original recovery review is duplicated.")
+    if (retained.length === 1) {
+      const prior = (yield* validateSharedRetainedImportRecoveryReview(retained[0]!.payload, plan))
+        .review
+      if (retained[0]!.operation_id !== prior.review_id || prior.skill_page_id !== page)
+        return yield* refusal("The existing recovery review belongs to another original operation.")
+      yield* assertSharedRetainedImportRecovery(library, plan, prior)
+      yield* inspectCurrentAcknowledgedPrefix(library, plan, page)
+      return prior
+    }
     const observed = yield* observePrefix(library, plan, page, original.outcome.bindings)
     yield* verifySharedCreateRecoveryIndex(
       library,
@@ -833,14 +941,10 @@ export function assertSharedRetainedImportRecovery(
   review: SharedRetainedImportRecoveryReview,
   substitutions: readonly VerifiedNativeFileSubstitution[] = [],
   inspectionScope: "full" | "allocated" = "full",
+  repairVerifier?: ReturnType<typeof sourceFileRepairProofVerifier>,
 ) {
   return Effect.gen(function* () {
-    yield* assertSourceFileRepairsComplete(
-      library,
-      plan,
-      review.skill_page_id,
-      review.file_repair_proofs ?? [],
-    )
+    yield* verifiedRecoveryRepairs(library, plan, review, repairVerifier)
     const local = yield* originalJournal(plan, substitutions)
     if (
       local.scope !== review.permission_scope ||
@@ -944,9 +1048,12 @@ export function assertSharedRetainedImportRecovery(
           return yield* refusal(
             "An independently reviewed native file changed its exact owner, path or page.",
           )
+        const substitution = substitutions.find((item) => item.file_id === fileId)
         const current = yield* observeNativeImportFile(
           original.resolved.facts,
-          native,
+          substitution === undefined
+            ? native
+            : nativeResubmissionReadbackFile(native, substitution.wire_policy),
           local.scope,
           review.skill_page_id,
           check.observation.page_id,
@@ -1018,8 +1125,15 @@ export function saveSharedRetainedImportCompletion(
       original_failure_sha256: review.original_failure_sha256,
       outcome,
     }
-    const payload =
-      substitutions.length === 0
+    const completeRepairs = yield* verifiedRecoveryRepairs(library, plan, review)
+    const payload = !same(completeRepairs, review.file_repair_proofs ?? [])
+      ? {
+          version: 3 as const,
+          ...fields,
+          file_resubmissions: substitutions.map((item) => item.completion_reference),
+          file_repairs: completeRepairs,
+        }
+      : substitutions.length === 0
         ? { version: 1 as const, ...fields }
         : {
             version: 2 as const,
@@ -1112,7 +1226,19 @@ export function readSharedRetainedImportCompletion(
       return yield* refusal(
         "The recovery completion does not preserve its original failure, source, exact page prefix and complete file tree.",
       )
-    yield* assertSourceFileRepairsComplete(library, plan, page, review.file_repair_proofs ?? [])
+    if (completion.version === 3) {
+      if (
+        same(completion.file_repairs, review.file_repair_proofs ?? []) ||
+        (review.file_repair_proofs ?? []).some(
+          (proof) => !completion.file_repairs.some((item) => same(item, proof)),
+        )
+      )
+        return yield* refusal(
+          "The extended completion must retain every original repair and its additional exact proof set.",
+        )
+      yield* assertSourceFileRepairsComplete(library, plan, page, completion.file_repairs)
+    } else
+      yield* assertSourceFileRepairsComplete(library, plan, page, review.file_repair_proofs ?? [])
     yield* readSharedNativeAllocationProofs(
       library,
       plan,
@@ -1132,12 +1258,13 @@ export function readSharedRetainedImportCompletion(
       library,
       plan,
       page,
-      completion.version === 2 ? completion.file_resubmissions : [],
+      completion.version === 1 ? [] : completion.file_resubmissions,
     )
     const restored = yield* restoreNativeImportReadbacks(
       original.resolved.facts,
       page,
       outcome.bindings,
+      substitutions,
     )
     for (const observation of review.observations) {
       const file = restored.files.find((file) => file.file_id === observation.file_id)
@@ -1169,7 +1296,7 @@ export function readSharedRetainedImportCompletion(
           "The parent completion changed the independently acknowledged file, page or complete body event.",
         )
     }
-    return outcome
+    return { outcome, facts: restored }
   }).pipe(withReadOnlyNotion)
 }
 

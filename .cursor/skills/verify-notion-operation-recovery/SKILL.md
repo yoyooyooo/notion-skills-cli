@@ -131,6 +131,26 @@ shared-source-file-repair.test.ts验证独立row ACK与原create ACK分开核对
 
 ### 明确拒绝后的独立文件提交
 
+第二代链接图片请求复用同一dispatcher，使用版本化review/entity/record身份与独立
+不可变slot。它只可接在第一代明确负回执之后；完整前任证明丢失、ACK冲突或unknown
+均停止。验证真实实现的两代负回执保留、显式新ACK、原producer采用及冷证明链；旧
+有限模型没有枚举该具体组合，不能将原模型通过解释为新表示已被提供方接纳。
+
+后续独立文件修复不替换原授权review。当前完整ACK前缀与原失败短前缀区分；新增的
+已核修复在completion v3及其外层identity绑定，旧v1/v2完成仍执行原严格proof集合。
+缺修复proof或删索引并降版必须失败。实际回归入口是
+`shared-source-file-literal-repair.test.ts`，模型状态边界与证据见SRC14维护记录。
+
+原producer内部的修复证明memo仅保存已完整核验的历史证明引用；每次仍拉取完整的
+review/outcome标记并比较hash，不缓存当前Source/owner/正文资格。相同标记复用不代表
+跨调用的新鲜度；完成和冷读仍完整核验。相应反例验证标记消失、内容/hash变化及新调用
+不继承memo，并实测第一次与后续请求数。该成本优化不扩大原有限模型域。
+
+支持文件的v2物理表格修复仍使用原row dispatcher：每个row独立不可重放，完整ACK
+决定连续前缀，部分可见正文不构成ACK。`shared-source-file-literal-repair.test.ts`
+覆盖部分ACK续接及unknown两种可见性、换序/改文/降版拒绝；旧单代码span v1回归保留。
+具体多行组合与字面量解析不在旧有限模型域中，须以实际源码和安装/实库证据独立记录。
+
 `resubmit-file` 只接受完整原400负回执，使用独立review与新request身份。旧native POST
 保持不可重放；原producer只可显式采用有完整新ACK和共享proof的分配结果。
 先读模型README的对应状态边界；执行 `shared-source-file-resubmission.test.ts`，核对

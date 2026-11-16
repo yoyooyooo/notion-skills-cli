@@ -65,6 +65,17 @@ NTN_SKILLS_TEST_EXECUTABLE="$INSTALLED_BIN" NTN_SOURCE_MEMBERS_EVIDENCE_DIR="$EV
 
 ### 明确拒绝文件的独立提交
 
+链接图片的第二代表示必须使用明确`wirePolicy/native_linked_images_v2`并绑定第一代
+完整review、实际dispatch、明确400负回执与无ACK/完成。验证原图及target保留、旧slot/
+共享记录不覆盖、unknown可见/不可见不重放、缺前任冷证明拒绝。运行新增
+`packages/core/test/shared-native-linked-images.test.ts`与扩充的`shared-source-file-resubmission.test.ts`；
+安装HTTP旅程分别核验v1和v2，v2原POST/第一代/第二代各一次，独立空Store读取全部原文件。
+
+后续已ACK文件经独立修复完成后，原恢复review保持，复核当前连续ACK前缀；扩展completion
+把新增修复proof集合绑定到外层身份。运行`shared-source-file-literal-repair.test.ts`中的
+progressive前缀、缺ACK/正文/路径变化、冷缺proof和降版删索引反例。不能将局部repair完成
+当作整Skill成功，不能放宽默认预算或把mock结果当提供方接纳。
+
 原400负回执只允许评审一个独立新请求；原POST和失败事实保持原样。完整当前前缀、
 新ACK和共享proof核验后，原producer显式采用新分配继续；unknown不换身份或重复发送。
 单文件完成仍不是整个Skill完成。先读恢复guardian的对应边界，并运行：
@@ -111,6 +122,12 @@ preview、同包SDKapply、CLIreconcile和独立冷SDK原资源校验；实际No
 复用 [harness cleanup](../verify-ntn-skills/references/harness.md#cleanup)。保留旧失败、原输入、ACK和已分配页面；原unknown未结清不能清理Store或换计划。导入脚本只做字节校验，不运行。独立冷Agent仅按该Skill的执行评估尚未完成时明确not_run。
 
 ### 支持文件物理代码修复交接
+
+v2普通表格连字符修复使用同一repair-file入口和原dispatcher，不增加第二套状态机。
+运行 `packages/core/test/shared-native-table-literal-repair.test.ts` 与
+`packages/core/test/shared-source-file-literal-repair.test.ts`，核对多行完整审阅、真实ACK
+前缀后中断、丢ACK可见/不可见、物理行换序、人工改文、冷证明缺失和旧v1兼容。
+原生页面或源输入不替换，不以全局字符等价修补；默认预算不变。
 
 shared-source-file-repair.test.ts与shared-import-code-padding.test.ts覆盖原已ACK文件的
 局部代码修复。原安装旅程须实际走repair-file→SDK→original recovery→冷读取；

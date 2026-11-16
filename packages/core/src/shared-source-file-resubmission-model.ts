@@ -8,6 +8,7 @@ import {
   SourceMutationAcknowledgementSchema,
   SourceMutationRejectionSchema,
 } from "./shared-sources-model.ts"
+import type { NativeImagePolicy } from "./shared-native-image-layout.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const Size = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
@@ -23,7 +24,7 @@ export const SourceFileResubmissionObservationSchema = Schema.Struct({
   body_bytes: Size,
   event_id: Schema.String,
 })
-export const SourceFileResubmissionReviewSchema = Schema.Struct({
+const SourceFileResubmissionReviewV1Schema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("source_file_resubmission_review"),
   review_id: ReviewId,
@@ -55,13 +56,43 @@ export const SourceFileResubmissionReviewSchema = Schema.Struct({
   allocations: Schema.Array(SharedNativeAllocationReferenceSchema),
   observations: Schema.Array(SourceFileResubmissionObservationSchema),
 })
-export const SourceFileResubmissionPlanSchema = Schema.Struct({
+export const SourceFileResubmissionPlanV1Schema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("source_file_resubmission_plan"),
-  review: SourceFileResubmissionReviewSchema,
+  review: SourceFileResubmissionReviewV1Schema,
   original_dispatch: SharedCreateFrozenPostSchema,
   original_rejection: SourceMutationRejectionSchema,
 })
+const SourceFileResubmissionReviewV2Schema = Schema.Struct({
+  ...SourceFileResubmissionReviewV1Schema.fields,
+  version: Schema.Literal(2),
+  wire_policy: Schema.Literal("native_linked_images_v2"),
+  changes: Schema.Struct({
+    ...SourceFileResubmissionReviewV1Schema.fields.changes.fields,
+    detached_linked_images: Size,
+  }),
+  predecessor_sha256: Hash,
+})
+export const SourceFileResubmissionPredecessorSchema = Schema.Struct({
+  plan: SourceFileResubmissionPlanV1Schema,
+  review_record_hash: Hash,
+  dispatch: SharedCreateFrozenPostSchema,
+  rejection: SourceMutationRejectionSchema,
+})
+export const SourceFileResubmissionPlanV2Schema = Schema.Struct({
+  ...SourceFileResubmissionPlanV1Schema.fields,
+  version: Schema.Literal(2),
+  review: SourceFileResubmissionReviewV2Schema,
+  predecessor: SourceFileResubmissionPredecessorSchema,
+})
+export const SourceFileResubmissionReviewSchema = Schema.Union([
+  SourceFileResubmissionReviewV1Schema,
+  SourceFileResubmissionReviewV2Schema,
+])
+export const SourceFileResubmissionPlanSchema = Schema.Union([
+  SourceFileResubmissionPlanV1Schema,
+  SourceFileResubmissionPlanV2Schema,
+])
 export type SourceFileResubmissionPlan = typeof SourceFileResubmissionPlanSchema.Type
 
 /** Shared immutable facts stay bounded; complete plans and responses use the existing text codec. */
@@ -114,6 +145,7 @@ export type VerifiedNativeFileSubstitution = {
   readonly original_dispatch: typeof SharedCreateFrozenPostSchema.Type
   readonly original_rejection: typeof SourceMutationRejectionSchema.Type
   readonly review_id: string
+  readonly wire_policy: NativeImagePolicy
   readonly new_dispatch: typeof SharedCreateFrozenPostSchema.Type
   readonly new_acknowledgement: typeof SourceMutationAcknowledgementSchema.Type
   readonly page_id: string

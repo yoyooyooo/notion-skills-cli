@@ -159,6 +159,8 @@ async function rejectedOriginal() {
 async function reviewed() {
   const f = await rejectedOriginal()
   const saved = await f.run(reviewSharedSourceFileResubmission({ ...f.input, path: target }))
+  if (saved.version !== 1)
+    throw new Error("The default review must preserve the first representation")
   expect(saved.review.bindings).toHaveLength(3)
   expect(saved.review.changes).toEqual({
     paragraphs: 1,
@@ -168,6 +170,262 @@ async function reviewed() {
   })
   return { ...f, saved, request: { ...f.input, review: saved, reviewId: saved.review.review_id } }
 }
+
+async function rejectedFirstRepresentation() {
+  const f = await reviewed()
+  let posts = 0
+  const error = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      return yield* applySharedSourceFileResubmission(f.request).pipe(
+        Effect.provideService(Notion, {
+          ...api,
+          request: (path, body, options) => {
+            if (
+              path === "v1/pages" &&
+              options?.method === "POST" &&
+              property(property(body).parent).data_source_id === library.files.data_source_id
+            ) {
+              posts++
+              return Effect.fail(
+                fail("NOTION_REQUEST_FAILED", "Controlled v2 provider linked-image refusal", {
+                  phase: "definitive_rejection",
+                  http_status: 400,
+                  notion_code: "validation_error",
+                }),
+              )
+            }
+            return api.request(path, body, options)
+          },
+        }),
+        Effect.flip,
+      )
+    }),
+  )
+  expect(error.code).toBe("SOURCE_WRITE_NOT_APPLIED")
+  expect(posts).toBe(1)
+  f.clear()
+  return f
+}
+
+test("a linked-image second representation preserves both refusals and completes the original cold proof", async () => {
+  const f = await rejectedFirstRepresentation()
+  const second = await f.run(
+    reviewSharedSourceFileResubmission({
+      ...f.input,
+      path: target,
+      wirePolicy: "native_linked_images_v2",
+    }),
+  )
+  expect(second.version).toBe(2)
+  if (second.version !== 2) throw new Error("Expected the versioned second representation")
+  expect(second.predecessor.plan).toEqual(f.saved)
+  expect(second.review.changes.detached_linked_images).toBe(10)
+  const history = [...f.base.json].filter(([key]) => /source-(?:op|rejection)-/.test(key))
+  const request = { ...f.input, review: second, reviewId: second.review.review_id }
+  expect(
+    (await f.run(applySharedSourceFileResubmission({ ...request, dryRun: true }))).remote_writes,
+  ).toBe(0)
+  expect(f.writes()).toHaveLength(0)
+  const done = await f.run(applySharedSourceFileResubmission(request))
+  expect(done.verified).toBe(true)
+  expect(f.nativeCreates()).toHaveLength(1)
+  const wire = String(property(f.nativeCreates()[0]!.body).markdown)
+  expect(wire).not.toContain("[![Badge")
+  for (let i = 0; i < 10; i++) {
+    expect(wire).toContain(`![Badge ${i}](https://img.example/${i}.svg)`)
+    expect(wire).toContain(`[Badge ${i}](https://example.org/${i})`)
+  }
+  for (const [key, value] of history) expect(f.base.json.get(key)).toEqual(value)
+  expect(canonicalSharedJson(f.plan)).toBe(f.frozenPlan)
+  f.clear()
+  expect((await f.run(applySharedSourceFileResubmission(request))).verified).toBe(true)
+  expect(f.writes()).toHaveLength(0)
+  const old = await f.run(applySharedSourceFileResubmission(f.request).pipe(Effect.flip))
+  expect(old.code).toBe("SOURCE_FILE_RESUBMISSION_PENDING")
+  expect(f.writes()).toHaveLength(0)
+  const parent = await f.run(applySharedRetainedImportRecovery(f.parent))
+  expect(parent.verified).toBe(true)
+  if (!("file_page_id" in done)) throw new Error("Expected a new file ACK")
+  f.base.bodies.set(done.file_page_id, "# Later human edit\n")
+  f.base.json.clear()
+  f.base.objects.clear()
+  f.clear()
+  expect((await f.run(reconcileSharedSourceFileResubmission(request))).verified).toBe(true)
+  expect((await f.run(reconcileSharedCreate(library, f.plan))).verified).toBe(true)
+  expect(f.writes()).toHaveLength(0)
+})
+
+test.each(["missing-rejection", "ack-conflict", "missing-slot", "missing-shared-review"] as const)(
+  "a second representation refuses %s before writing",
+  async (guard) => {
+    const f = await rejectedFirstRepresentation()
+    const firstDispatch = [...f.base.json].find(
+      ([, value]) =>
+        typeof property(value).identity === "string" &&
+        String(property(value).identity).startsWith(f.saved.review.review_id + ":") &&
+        property(property(property(value).body).parent).data_source_id ===
+          library.files.data_source_id,
+    )
+    if (!firstDispatch) throw new Error("Missing first independent request")
+    if (guard === "missing-rejection")
+      f.base.json.delete(firstDispatch[0].replace("/source-op-", "/source-rejection-"))
+    if (guard === "ack-conflict")
+      f.base.json.set(firstDispatch[0].replace("/source-op-", "/source-ack-"), { version: 1 })
+    if (guard === "missing-slot") {
+      const key = [...f.base.json.keys()].find((key) =>
+        key.includes("/shared-native-resubmissions/"),
+      )
+      if (!key) throw new Error("Missing immutable first slot")
+      f.base.json.delete(key)
+    }
+    if (guard === "missing-shared-review") {
+      for (const [id, row] of f.base.records) {
+        if (
+          text(property(property(row.properties).entity).rich_text) ===
+          "source-file-resubmission-reviews-v1"
+        )
+          f.base.records.delete(id)
+      }
+    }
+    const result = await f.run(
+      reviewSharedSourceFileResubmission({
+        ...f.input,
+        path: target,
+        wirePolicy: "native_linked_images_v2",
+      }).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Failure")
+    expect(f.writes()).toHaveLength(0)
+  },
+)
+
+test("the new representation never forgives a changed explicit destination", async () => {
+  const f = await rejectedFirstRepresentation()
+  const second = await f.run(
+    reviewSharedSourceFileResubmission({
+      ...f.input,
+      path: target,
+      wirePolicy: "native_linked_images_v2",
+    }),
+  )
+  const request = { ...f.input, review: second, reviewId: second.review.review_id }
+  const result = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      return yield* applySharedSourceFileResubmission(request).pipe(
+        Effect.provideService(Notion, {
+          ...api,
+          request: (path, body, options) =>
+            api.request(path, body, options).pipe(
+              Effect.map((response) => {
+                if (!path.includes("/markdown?")) return response
+                const value = property(response)
+                return typeof value.markdown === "string" &&
+                  value.markdown.includes("[Badge 0](https://example.org/0)")
+                  ? {
+                      ...value,
+                      markdown: value.markdown.replace(
+                        "[Badge 0](https://example.org/0)",
+                        "[Badge 0](https://example.org/wrong)",
+                      ),
+                    }
+                  : response
+              }),
+            ),
+        }),
+        Effect.result,
+      )
+    }),
+  )
+  expect(result._tag).toBe("Failure")
+  if (result._tag !== "Failure") throw new Error("Expected changed target refusal")
+  expect(result.failure.code).toBe("SHARED_CREATE_BODY_MISMATCH")
+  expect(f.nativeCreates()).toHaveLength(1)
+})
+
+test.each([false, true])(
+  "a second-generation unknown visible=%s never authorizes another POST",
+  async (visible) => {
+    const f = await rejectedFirstRepresentation()
+    const saved = await f.run(
+      reviewSharedSourceFileResubmission({
+        ...f.input,
+        path: target,
+        wirePolicy: "native_linked_images_v2",
+      }),
+    )
+    const request = { ...f.input, review: saved, reviewId: saved.review.review_id }
+    let attempts = 0
+    const first = await f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* applySharedSourceFileResubmission(request).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) => {
+              if (
+                path === "v1/pages" &&
+                options?.method === "POST" &&
+                property(property(body).parent).data_source_id === library.files.data_source_id
+              ) {
+                attempts++
+                const uncertain = Effect.fail(
+                  fail(
+                    "WRITE_OUTCOME_UNKNOWN",
+                    "Controlled missing second-generation native response",
+                  ),
+                )
+                return visible
+                  ? api.request(path, body, options).pipe(Effect.andThen(uncertain))
+                  : uncertain
+              }
+              return api.request(path, body, options)
+            },
+          }),
+          Effect.result,
+        )
+      }),
+    )
+    expect(first._tag).toBe("Failure")
+    expect(attempts).toBe(1)
+    f.clear()
+    await expect(f.run(applySharedSourceFileResubmission(request))).rejects.toBeDefined()
+    await expect(f.run(reconcileSharedSourceFileResubmission(request))).rejects.toBeDefined()
+    await expect(f.run(applySharedRetainedImportRecovery(f.parent))).rejects.toBeDefined()
+    expect(f.writes()).toHaveLength(0)
+  },
+)
+
+test("cold second-generation completion requires its full earlier shared review", async () => {
+  const f = await rejectedFirstRepresentation()
+  const saved = await f.run(
+    reviewSharedSourceFileResubmission({
+      ...f.input,
+      path: target,
+      wirePolicy: "native_linked_images_v2",
+    }),
+  )
+  const request = { ...f.input, review: saved, reviewId: saved.review.review_id }
+  expect((await f.run(applySharedSourceFileResubmission(request))).verified).toBe(true)
+  expect((await f.run(applySharedRetainedImportRecovery(f.parent))).verified).toBe(true)
+  let removed = 0
+  for (const [id, row] of f.base.records)
+    if (
+      text(property(property(row.properties).entity).rich_text) ===
+      "source-file-resubmission-reviews-v1"
+    ) {
+      f.base.records.delete(id)
+      removed++
+    }
+  expect(removed).toBe(1)
+  f.base.json.clear()
+  f.base.objects.clear()
+  f.clear()
+  await expect(f.run(reconcileSharedSourceFileResubmission(request))).rejects.toBeDefined()
+  await expect(f.run(reconcileSharedCreate(library, f.plan))).rejects.toBeDefined()
+  expect(f.writes()).toHaveLength(0)
+})
 
 test("one independently reviewed native ACK resumes the original producer and survives a cold Store", async () => {
   const f = await reviewed()

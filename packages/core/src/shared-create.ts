@@ -59,6 +59,8 @@ import {
 } from "./shared-create-resources.ts"
 import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
 import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
+import { nativeResubmissionReadbackFile } from "./shared-native-image-layout.ts"
+import { sourceFileRepairProofVerifier } from "./shared-source-file-repair.ts"
 import { resolveSharedCreateSource } from "./shared-create-source.ts"
 import {
   acceptsNativeImportReadback,
@@ -1651,14 +1653,28 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       return yield* Effect.fail(
         fail("SHARED_CREATE_SCOPE", "The exact original outcome belongs to another Skill."),
       )
+    let restoredRetainedReadbacks = false
     if (outcome.status === "needs_review") {
       const restored = yield* readSharedCreateRestoration(library, plan, page, outcome, row.hash)
       if (restored !== undefined) outcome = restored.outcome
-      else
-        outcome =
-          (yield* readResourceNoteCompletion(library, plan, page, outcome, row.hash)) ??
-          (yield* readSharedRetainedImportCompletion(library, plan, page, outcome, row.hash)) ??
-          outcome
+      else {
+        const resource = yield* readResourceNoteCompletion(library, plan, page, outcome, row.hash)
+        if (resource !== undefined) outcome = resource
+        else {
+          const retained = yield* readSharedRetainedImportCompletion(
+            library,
+            plan,
+            page,
+            outcome,
+            row.hash,
+          )
+          if (retained !== undefined) {
+            outcome = retained.outcome
+            facts = retained.facts
+            restoredRetainedReadbacks = true
+          }
+        }
+      }
     }
     if (outcome.status !== "applied")
       return yield* Effect.fail(
@@ -1684,7 +1700,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
         page,
         outcome.projection_repair,
       )
-    if (acceptsNativeImportReadback(plan))
+    if (acceptsNativeImportReadback(plan) && !restoredRetainedReadbacks)
       facts = yield* restoreNativeImportReadbacks(facts, page, outcome.bindings)
     const expected = sharedCreateFiles(facts)
       .map((file) => ({ file_id: file.file_id, path: file.path, event_id: file.event.event_id }))
@@ -1842,6 +1858,10 @@ export function executeSharedCreate(
         ? undefined
         : (yield* validateSharedRetainedImportRecoveryReview(input.retainedImportRecovery, plan))
             .review
+    const repairVerifier =
+      retainedRecovery === undefined
+        ? undefined
+        : sourceFileRepairProofVerifier(library, plan, retainedRecovery.skill_page_id)
     if (restoration !== undefined && retainedRecovery !== undefined)
       return yield* Effect.fail(
         fail("SHARED_CREATE_RECOVERY_REQUIRED", "Select exactly one original recovery authority."),
@@ -1920,6 +1940,7 @@ export function executeSharedCreate(
             retainedRecovery,
             fileResubmissions,
             "allocated",
+            repairVerifier,
           )
         admitted = true
       }
@@ -1973,6 +1994,8 @@ export function executeSharedCreate(
           plan,
           retainedRecovery,
           fileResubmissions,
+          "full",
+          repairVerifier,
         )
     }
     const store = yield* Store
@@ -2011,7 +2034,18 @@ export function executeSharedCreate(
         Effect.gen(function* () {
           if (!acceptReadback || facts.version !== 1) return file
           const current = facts
-          const observed = yield* observeNativeImportFile(plan, file, scope, skillPage!, page)
+          const replacement = fileResubmissions.find((item) => item.file_id === file.file_id)
+          const represented =
+            replacement === undefined
+              ? file
+              : nativeResubmissionReadbackFile(file, replacement.wire_policy)
+          const observed = yield* observeNativeImportFile(
+            plan,
+            represented,
+            scope,
+            skillPage!,
+            page,
+          )
           facts = {
             ...current,
             files: current.files.map((item) => (item.file_id === file.file_id ? observed : item)),
@@ -2518,7 +2552,7 @@ export function loadPendingSharedCreates(
               input.skillPageId,
               terminal,
               outcomeHashes.get(header.record_id)!,
-            )) ??
+            ))?.outcome ??
             terminal
       }
       if (terminal?.status === "applied") {

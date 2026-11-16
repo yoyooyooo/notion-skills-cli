@@ -15,6 +15,7 @@ const fields = [
 export const NotionValidationDiagnosticSchema = Schema.Struct({
   version: Schema.Literal(1),
   category: Schema.Literals(["body_schema", "markdown_syntax", "unclassified"]),
+  constraint: Schema.optionalKey(Schema.Literal("standalone_image")),
   fields: Schema.Array(Schema.Literals(fields)).check(Schema.isMaxLength(fields.length)),
   line: Schema.optionalKey(
     Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 999999 })),
@@ -31,7 +32,11 @@ export const NotionValidationDiagnosticSchema = Schema.Struct({
 export function notionValidationDiagnostic(input: unknown) {
   if (typeof input !== "string") return undefined
   const message = input.slice(0, 65536)
-  const syntax = /^(?:unable|failed) to parse (?:notion[- ]flavored )?markdown\b/iu.test(message)
+  // v2 documents this prefix; preserve only structural hints, never source excerpts.
+  const syntax =
+    /^(?:(?:unable|failed) to parse (?:notion[- ]flavored )?markdown\b|Markdown errors blocked parsing\b)/iu.test(
+      message,
+    )
   const category = /^body failed validation\b/iu.test(message)
     ? ("body_schema" as const)
     : syntax
@@ -52,10 +57,16 @@ export function notionValidationDiagnostic(input: unknown) {
   }
   const line = position("line"),
     column = position("column")
+  const standaloneImage =
+    syntax &&
+    /^Markdown errors blocked parsing:\s*Images must be standalone blocks and cannot be mixed with paragraph text or other images\./u.test(
+      message,
+    )
   return {
     version: 1 as const,
     category,
     fields: selected,
+    ...(standaloneImage ? { constraint: "standalone_image" as const } : {}),
     ...(line === undefined ? {} : { line }),
     ...(column === undefined ? {} : { column }),
     raw_message_retained: false as const,
