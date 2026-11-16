@@ -9,6 +9,7 @@ import { querySharedMetadataInventory } from "./shared-metadata-inventory.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { discoverSourceDefinition } from "./shared-source-adapters.ts"
 import { resolveSourceBinding, type SharedGitSourceBinding } from "./shared-source-binding.ts"
+import { makeSourceBinding, registerSourceBinding } from "./shared-source-binding.ts"
 import {
   guardedSourceMutation,
   listSourceDefinitions,
@@ -18,6 +19,9 @@ import {
   sourceRich,
 } from "./shared-source-definitions.ts"
 import { prepareSharedSourceProjection } from "./shared-source-projection.ts"
+import { prepareSourceMember } from "./shared-source-member.ts"
+import { gitOnlyProjection } from "./shared-git-only-consumer.ts"
+import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { withSourceUpdateLock } from "./shared-source-policy.ts"
 import {
   executeSharedCreate,
@@ -188,6 +192,10 @@ const identity = (library: SharedLibrary, source: string, member: string) =>
   sha256(canonicalSharedJson(["source-onboarding-v1", library.library_id, source, member])).pipe(
     Effect.map((hash) => `skill-${hash}`),
   )
+const gitMainIdentity = (library: SharedLibrary, source: string, member: string) =>
+  sha256(
+    canonicalSharedJson(["source-onboarding-git-main-v1", library.library_id, source, member]),
+  ).pipe(Effect.map((hash) => `file-${hash}`))
 const errorValue = (error: SkillsError) => ({
   code: error.code,
   message: error.message,
@@ -721,15 +729,44 @@ export function prepareSourceOnboarding(
                     "Candidate discovery completed but no creation plan was prepared within this budget.",
                   ),
                 )
-              : prepareSharedSourceProjection({
-                  library,
-                  definition,
-                  acquired: snapshot,
-                  member: member.member_key,
-                  skillId: yield* identity(library, definition.page_id, member.member_key),
-                  enabled: false,
-                  markdownImport: true,
-                  storage: options.storage,
+              : Effect.gen(function* () {
+                  const prepared = yield* prepareSourceMember(
+                    definition,
+                    snapshot,
+                    member.member_key,
+                    options.storage,
+                  )
+                  if (prepared.kind === "fixed_git") {
+                    return {
+                      kind: "create_git" as const,
+                      source: reference,
+                      member: member.member_key,
+                      skill_id: yield* identity(library, definition.page_id, member.member_key),
+                      main_file_id: yield* gitMainIdentity(
+                        library,
+                        definition.page_id,
+                        member.member_key,
+                      ),
+                      name: prepared.member.portable.name,
+                      description: prepared.member.portable.description,
+                      binding: prepared.binding,
+                    }
+                  }
+                  return {
+                    kind: "create" as const,
+                    source: reference,
+                    member: member.member_key,
+                    plan: yield* prepareSharedSourceProjection({
+                      library,
+                      definition,
+                      acquired: snapshot,
+                      member: member.member_key,
+                      skillId: yield* identity(library, definition.page_id, member.member_key),
+                      enabled: false,
+                      markdownImport: true,
+                      storage: "retained",
+                    }),
+                  }
                 })
           ).pipe(Effect.result)
           if (child._tag === "Failure") {
@@ -744,12 +781,7 @@ export function prepareSourceOnboarding(
             })
             continue
           }
-          actions.push({
-            kind: "create",
-            source: reference,
-            member: member.member_key,
-            plan: child.success,
-          })
+          actions.push(child.success)
         }
         members.push(member)
       }
@@ -809,12 +841,32 @@ function validatePlan(library: SharedLibrary, value: unknown) {
       if (
         source?.status !== "reviewed" ||
         reviewed?.length !== 1 ||
-        reviewed[0]?.kind !== (action.kind === "create" ? "admit" : "bind")
+        reviewed[0]?.kind !== (action.kind === "bind" ? "bind" : "admit")
       )
         return yield* Effect.fail(
           fail("SOURCE_ONBOARDING_INVALID", "An action has no matching reviewed member."),
         )
-      if (action.kind === "create") {
+      if (action.kind === "create_git") {
+        const { source_id: _sourceId, version: _version, kind: _kind, ...fixed } = action.binding
+        const verified = yield* makeSourceBinding(fixed)
+        if (
+          canonicalSharedJson(verified) !== canonicalSharedJson(action.binding) ||
+          action.binding.root !== (action.member === "." ? "" : action.member) ||
+          !action.binding.files.some((file) => file.path === "SKILL.md") ||
+          action.binding.files.some((file) => file.sha256 === undefined) ||
+          action.skill_id !== (yield* identity(library, action.source.page_id, action.member)) ||
+          action.main_file_id !==
+            (yield* gitMainIdentity(library, action.source.page_id, action.member)) ||
+          !action.name.trim() ||
+          !action.description.trim()
+        )
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_ONBOARDING_INVALID",
+              "Git-only admission differs from its exact frozen source, member or stable identity.",
+            ),
+          )
+      } else if (action.kind === "create") {
         const child = yield* validateSharedCreatePlan(action.plan)
         const origin = child.source_projection?.definition
         if (
@@ -849,6 +901,189 @@ function validatePlan(library: SharedLibrary, value: unknown) {
         )
     }
     return plan
+  })
+}
+
+/** One metadata-only page plus one necessary pinned Source fact. No native
+ * supporting Files/Records, and never a different page for a lost response. */
+function executeGitOnly(
+  library: SharedLibrary,
+  action: Extract<SourceOnboardingAction, { kind: "create_git" }>,
+  mode: "apply" | "dry-run" | "reconcile",
+) {
+  return Effect.gen(function* () {
+    const api = yield* Notion
+    const ids = library.skills.property_ids
+    const expectSource = Effect.gen(function* () {
+      const current = yield* readSourceDefinition(library, action.source.page_id)
+      if (
+        !current.enabled ||
+        current.fingerprint !== action.source.fingerprint ||
+        current.source_id !== action.source.source_id
+      )
+        return yield* Effect.fail(
+          fail("SOURCE_DEFINITION_CHANGED", "The frozen Git Source changed before admission."),
+        )
+    })
+    const candidates = Effect.gen(function* () {
+      const rows = yield* readSourceOnboardingInventory(library)
+      return rows.filter(
+        (row) => row.skill_id === action.skill_id || alias(row.name) === alias(action.name),
+      )
+    })
+    const beforeDispatch = Effect.gen(function* () {
+      yield* expectSource
+      if ((yield* candidates).length !== 0)
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_ONBOARDING_CONFLICT",
+            "An existing name or Skill ID cannot be replaced by a new Git-only page.",
+          ),
+        )
+    })
+    const observe = Effect.gen(function* () {
+      const matches = yield* candidates
+      if (matches.length === 0) return undefined
+      if (matches.length !== 1 || matches[0]?.skill_id !== action.skill_id)
+        return yield* Effect.fail(
+          fail("SOURCE_ONBOARDING_CONFLICT", "The Git-only Skill identity is ambiguous."),
+        )
+      const match = matches[0]!
+      if (
+        match.kind !== "skill" ||
+        match.enabled ||
+        match.name !== action.name ||
+        match.origin !== action.source.page_id ||
+        match.member !== action.member ||
+        match.main_file_id !== action.main_file_id ||
+        match.selected_version !== action.binding.source_id
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_ONBOARDING_CONFLICT",
+            "The current Git-only Skill page does not match the exact frozen identity.",
+          ),
+        )
+      const raw = yield* api.request(`v1/pages/${match.page_id}`)
+      const projection = sourceField(raw, ids.Projection!)
+      const references = sourceField(raw, ids.References!)
+      if (
+        projection.has_more === true ||
+        references.has_more === true ||
+        text(projection.rich_text) !== gitOnlyProjection ||
+        text(references.rich_text) !== ""
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_ONBOARDING_CONFLICT",
+            "The Git-only page gained an editable native projection.",
+          ),
+        )
+      const index = yield* querySharedSkillIndex(library, match.page_id, raw)
+      if (index.files.length !== 0)
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_ONBOARDING_CONFLICT",
+            "Native supporting Files cannot be substituted for the original Git tree.",
+          ),
+        )
+      const native = property(
+        yield* api.request(`v1/pages/${match.page_id}/markdown?markdown_version=v2`),
+      )
+      if (
+        native.id !== match.page_id ||
+        native.markdown !== "" ||
+        native.truncated !== false ||
+        !Array.isArray(native.unknown_block_ids) ||
+        native.unknown_block_ids.length > 0 ||
+        (native.warnings !== undefined &&
+          (!Array.isArray(native.warnings) || native.warnings.length > 0))
+      )
+        return yield* Effect.fail(
+          fail(
+            "SOURCE_ONBOARDING_CONFLICT",
+            "The Git-only control page has authored body content or incomplete readback.",
+          ),
+        )
+      return {
+        page_id: match.page_id,
+        skill_id: action.skill_id,
+        source_id: action.binding.source_id,
+      }
+    })
+    const field = (value: string) => ({ rich_text: sourceRich(value) })
+    const request = {
+      parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
+      properties: {
+        [ids.Name!]: { title: sourceRich(action.name) },
+        [ids.Description!]: field(action.description),
+        [ids.Kind!]: { select: { name: "skill" } },
+        [ids.Enabled!]: { checkbox: false },
+        [ids["Default Context"]!]: { checkbox: false },
+        [ids["Skill ID"]!]: field(action.skill_id),
+        [ids["Main File ID"]!]: field(action.main_file_id),
+        [ids.Projection!]: field(gitOnlyProjection),
+        [ids.Source!]: field(action.binding.source_id),
+        [ids.References!]: field(""),
+        [ids.Origin!]: { relation: [{ id: action.source.page_id }] },
+        [ids["Source Member"]!]: field(action.member),
+        ...(ids.Members === undefined ? {} : { [ids.Members]: { relation: [] } }),
+        ...(ids.Requires === undefined ? {} : { [ids.Requires]: { relation: [] } }),
+      },
+    }
+    if (mode === "dry-run") yield* beforeDispatch
+    const created = yield* guardedSourceMutation(
+      library,
+      {
+        identity: `git-only:${action.source.source_id}:${action.member}`,
+        path: "v1/pages",
+        method: "POST",
+        body: request,
+        dryRun: mode !== "apply",
+        repeat: "never",
+        beforeDispatch,
+      },
+      observe,
+    )
+    if ("dry_run" in created && created.dry_run === true)
+      return { ...created, verified: false, page_id: null }
+    const verified =
+      (created.status === "applied" && created.verified === true) ||
+      (created.status === "observed_current" &&
+        "original_outcome" in created &&
+        created.original_outcome === "applied")
+    if (!verified)
+      return yield* Effect.fail(
+        fail(
+          "SOURCE_WRITE_UNKNOWN",
+          "The original Git-only creation has no verified API acknowledgement; preserve it without registration.",
+        ),
+      )
+    const page = property(created.result).page_id
+    if (typeof page !== "string" || pageId(page) !== page)
+      return yield* Effect.fail(
+        fail("SOURCE_ONBOARDING_CONFLICT", "The original acknowledged page has no exact identity."),
+      )
+    const registered = yield* registerSourceBinding(library, {
+      skillPageId: page,
+      mode: mode === "reconcile" ? "reconcile" : "create",
+      fixedSource: {
+        url: action.binding.url,
+        commit: action.binding.commit,
+        root: action.binding.root,
+        tree: action.binding.tree,
+        files: action.binding.files,
+      },
+    })
+    return {
+      status: "applied" as const,
+      page_id: page,
+      operation_id: created.operation_id,
+      verified: Boolean(registered.record),
+      native_file_pages: 0 as const,
+      pinned_git_files: action.binding.files.length,
+      source_id: registered.binding.source_id,
+    }
   })
 }
 
@@ -971,7 +1206,7 @@ export function executeSourceOnboarding(
     const results: Array<{
       source_id: string
       member: string
-      kind: "create" | "bind"
+      kind: "create" | "create_git" | "bind"
       verified: boolean
       page_id: string | null
       operation_id: string | null
@@ -993,6 +1228,7 @@ export function executeSourceOnboarding(
             ),
           )
         if (action.kind === "bind") return yield* executeBinding(library, plan, action, mode)
+        if (action.kind === "create_git") return yield* executeGitOnly(library, action, mode)
         if (mode === "dry-run") {
           const preview = yield* previewSharedCreate(library, action.plan)
           const { plan: _fullInput, ...summary } = preview
@@ -1013,7 +1249,12 @@ export function executeSourceOnboarding(
             action.kind === "bind"
               ? action.before.page_id
               : (pageId(String(property(executed.failure.details).skill_page_id ?? "")) ?? null),
-          operation_id: action.kind === "create" ? action.plan.operation_id : null,
+          operation_id:
+            action.kind === "create"
+              ? action.plan.operation_id
+              : typeof property(executed.failure.details).operation_id === "string"
+                ? String(property(executed.failure.details).operation_id)
+                : null,
           error: sourceOnboardingError(executed.failure, action),
         })
         if (executed.failure.code === "REQUEST_BUDGET_EXHAUSTED") break

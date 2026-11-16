@@ -1387,5 +1387,32 @@
       "packages/core/test/shared-source-onboarding.test.ts"
     ],
     "claims_excluded": "No single-member lazy-resource assertion, no Notion Files/Records full-copy requirement, no natural Agent success claim."
+  },
+  "src17_git_only_control_plane_review": {
+    "issue": "AH-1067",
+    "reviewed_at_utc": "2026-11-17",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_existing_hash_changes": [],
+    "new_protected_context_files": [],
+    "owner": "Source onboarding metadata-only Git selection and original protected Source mutation journal; Git-only v2 current/readResources via immutable snapshot and existing fixed Git reader",
+    "unchanged_authorities": [
+      "original guarded source POST/ack/unknown and Record registration",
+      "native v1 custom, original-op and historical pin semantics",
+      "source selection immutable commit/OID/hash and current eligibility"
+    ],
+    "tested": [
+      "packages/core/test/shared-source-onboarding.test.ts",
+      "packages/core/test/shared-git-only-consumer.test.ts",
+      "packages/core/test/resource-read.test.ts",
+      "packages/core/test/shared-source-storage.test.ts"
+    ],
+    "finite_model_semantics_changed": false,
+    "existing_model_configs_cases_and_expected_rules_changed": false,
+    "explicit_nonclaims": [
+      "Not a finite proof of new Git-only snapshot/interleavings",
+      "Real Notion apply/enable not yet executed",
+      "No natural Pi session claim",
+      "Cross-Skill sibling link resolution not yet integrated"
+    ]
   }
 }

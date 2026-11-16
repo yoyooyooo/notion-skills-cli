@@ -3,6 +3,13 @@
   "synchronized_commit": "1a439ec5b2610e9f97a0e76bb6405e4e53d9877c",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
+    "packages/core/src/cache.ts": "54e1ecf36473a087224bd434e408721981514f08dddba0b7d7aab320c5a2c5cf",
+    "packages/core/src/model.ts": "adbb97351854ea9144d78ecc93558fca7dccfaf42cf02ea18927a690e1de6afd",
+    "packages/core/src/shared-acquisition-model.ts": "e01eb903c26717781179496b8bc35544660b818b6dedc6c3f50806489b32ed09",
+    "packages/core/src/shared-consumer.ts": "34bd74b07f09ce2bebce9d9c0b8600f03666bcc1795d1bad491f3260d423b8e7",
+    "packages/core/src/shared-skill-index.ts": "113a24ed5df5e18143cdd6501debcfea672d046d4e51112ad87f253bbdb6ca52",
+    "packages/core/src/shared-git-only-consumer.ts": "fd07e8c93431cda33a80824c042cba91c9564db3021a79837c96e64396c3ae4a",
+    "packages/core/test/shared-git-only-consumer.test.ts": "312fcfb54c2966bedc1ba48fbf219f5e5c56fb8685c972e05103ca5c0ebaf6ea",
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
     "packages/core/src/shared-maintenance-result.ts": "690a839c98ec87a71a896de3153145a729f1637349696e558222c029ebfe7710",
     "packages/core/src/shared-source-display.ts": "8c4038bd728472617a41fc6bcf038bcdf203711f154b4c52993da5b92d9e389c",
@@ -23,7 +30,7 @@
     "packages/core/src/shared-file-observer.ts": "f8cf74c46f17b2a2bc519faa50afdc9508b98e77b2f5be0c33e821e6a1010ff3",
     "packages/core/src/shared-body-write.ts": "ff58d50e87df7381c44d9320c8dcf937a498701fc21077edb37e9bfebeb89bc1",
     "packages/core/src/shared-source-refresh.ts": "4d848c663274dbc7544af3e751b2f1ce68ba4d8e19d962aad3836704ec2936f2",
-    "packages/core/src/shared-selected-source.ts": "6581e9d002d44438c422161b2acad8731c44e7f0b1fb7aa0c753d7b73a05a879",
+    "packages/core/src/shared-selected-source.ts": "d04aa383eafaecb4f57cd6011de0d2678cbd608f538c5758fdadbb0bcaa2aa8d",
     "packages/core/src/shared-snapshot.ts": "80e5011f64bf68cd90951d5994d7c3aa6568b5f15b230e7a928e2343c4a8584d",
     "packages/core/src/shared-source-run.ts": "b53a2e2d41b7da696003eaf526a9cc35c153fc882f8c5ba4c8d34093117c5bb1",
     "packages/core/src/notion-readonly.ts": "c618f4bd7b0ed5e19c92a028e0a433e19a746e85e8238fbb266f27df866e0c41",
@@ -122,11 +129,11 @@
     "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
-    "packages/core/src/shared-source-onboarding.ts": "bf88efb7104dec612b25655539e83f6caf6db521d0034ad63e6b706b1016bec7",
-    "packages/core/src/shared-source-onboarding-model.ts": "0ab4f2cba816c0931a266671efa5ea50a6f682635548cbce63992af474c1cad6",
-    "packages/cli/src/commands-library-source-onboarding.ts": "0b05ec37444a1cba08f78c4ab8fda3fbb7a6c189f7d17298ce11c7ed53b28cc3",
+    "packages/core/src/shared-source-onboarding.ts": "3dc161fa268abece60bf250c09ec0af0ace633088a53596b30a2d7e3e6031169",
+    "packages/core/src/shared-source-onboarding-model.ts": "8828c64d859e3f9c4d246da4ccfd9231ce9743e84592d13847f72dfc69263f5a",
+    "packages/cli/src/commands-library-source-onboarding.ts": "4e484b7b3ce9392191d94ebd1c0baaf59cf7636412a046e52d8842948f959ace",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "3756f975ec7f98eb37d40c8ac882caca557337d5cd4e867e8ed598dceecfa4c9",
+    "packages/core/test/shared-source-onboarding.test.ts": "57e02461c78d40cfefd642c9e86ad9037b7cd489c0443d8322bb3017eec4a62b",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -2254,5 +2261,46 @@
       "packages/core/test/shared-source-onboarding.test.ts"
     ],
     "claims_excluded": "No single-member lazy-resource assertion, no Notion Files/Records full-copy requirement, no natural Agent success claim."
+  },
+  "src17_git_only_control_plane_review": {
+    "issue": "AH-1067",
+    "reviewed_at_utc": "2026-11-17",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_existing_hash_changes": [
+      "packages/core/src/shared-selected-source.ts",
+      "packages/core/src/shared-source-onboarding.ts",
+      "packages/core/src/shared-source-onboarding-model.ts",
+      "packages/cli/src/commands-library-source-onboarding.ts",
+      "packages/core/test/shared-source-onboarding.test.ts"
+    ],
+    "new_protected_context_files": [
+      "packages/core/src/cache.ts",
+      "packages/core/src/model.ts",
+      "packages/core/src/shared-acquisition-model.ts",
+      "packages/core/src/shared-consumer.ts",
+      "packages/core/src/shared-skill-index.ts",
+      "packages/core/src/shared-git-only-consumer.ts",
+      "packages/core/test/shared-git-only-consumer.test.ts"
+    ],
+    "owner": "Source onboarding metadata-only Git selection and original protected Source mutation journal; Git-only v2 current/readResources via immutable snapshot and existing fixed Git reader",
+    "unchanged_authorities": [
+      "original guarded source POST/ack/unknown and Record registration",
+      "native v1 custom, original-op and historical pin semantics",
+      "source selection immutable commit/OID/hash and current eligibility"
+    ],
+    "tested": [
+      "packages/core/test/shared-source-onboarding.test.ts",
+      "packages/core/test/shared-git-only-consumer.test.ts",
+      "packages/core/test/resource-read.test.ts",
+      "packages/core/test/shared-source-storage.test.ts"
+    ],
+    "finite_model_semantics_changed": false,
+    "existing_model_configs_cases_and_expected_rules_changed": false,
+    "explicit_nonclaims": [
+      "Not a finite proof of new Git-only snapshot/interleavings",
+      "Real Notion apply/enable not yet executed",
+      "No natural Pi session claim",
+      "Cross-Skill sibling link resolution not yet integrated"
+    ]
   }
 }

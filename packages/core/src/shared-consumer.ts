@@ -8,6 +8,7 @@ import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "./shared-snapshot.ts"
 import { sharedSkillMetadataFor } from "./shared-metadata-inventory.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
+import { openGitOnlySharedConsumer, gitOnlyProjection } from "./shared-git-only-consumer.ts"
 
 /** Resolve only the immutable source explicitly selected in the current Skills row. */
 export function openSharedConsumer(
@@ -83,6 +84,29 @@ export function openSharedConsumer(
       sourceId,
       sourceOptions,
     )
+    const projectionField = sharedSkillProperty(rawPage, input.library, "Projection")
+    if (
+      projectionField.type === "rich_text" &&
+      Array.isArray(projectionField.rich_text) &&
+      text(projectionField.rich_text) === gitOnlyProjection
+    ) {
+      if (authoring)
+        return yield* Effect.fail(
+          fail(
+            "GIT_ONLY_AUTHORING_REVIEW",
+            "Git-only source bodies require an explicit Notion takeover before native authoring.",
+          ),
+        )
+      return yield* openGitOnlySharedConsumer({
+        library: input.library,
+        target: selected,
+        rawPage,
+        scope: input.scope,
+        startedAt: input.startedAt,
+        fixedSource,
+        ...(input.expectedSkillId === undefined ? {} : { expectedSkillId: input.expectedSkillId }),
+      })
+    }
     return yield* openSharedSnapshot({
       ...acquisitionInput,
       rawPage,

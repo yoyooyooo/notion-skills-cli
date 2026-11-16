@@ -21,6 +21,14 @@ Sources 单独保存可编辑配置，Records 保留不可变历史。普通 Ski
 
 **有上游 GitHub 的默认消费路径：固定 Git 内容为数据面，Notion 是授权、身份和接管控制面。** 普通 `read/use/files` 读取所选 commit 的原始文件与本机内容缓存；不可为了让管理表显得完整，就把全部上游主文、图片、脚本和附件搬到 Notion Files/Records。当前不可变 Source 绑定和已有作者 custom/历史原操作仍遵循原有权限与证据合同；这里的“不复制资源”不表示可以删除这些必要的历史记录。新创建/保留型作者操作如果仍涉及原生 Markdown 页面，应将该费用与 Git 消费分账，不把整包原生导入当作固定 Git 日用的前置验收。
 
+### Git-only 最小接纳（固定上游优先）
+
+`sources onboard --source SOURCE --member EXACT_KEY` 在默认 `--storage auto` 判定为未转换、完整固定 Git 时，冻结 `create_git` 动作：**只建立一个默认 Disabled 的 Skills 控制页和该页对应的一个必要不可变 Source pin 证明**。该页保存 Skill ID、主文身份、Origin、Source Member、Git 选择及 `Projection=git-only/v1`，不为上游辅助 Markdown、图片、脚本或其他资源创建 Notion Files 页面/字节对象。确实要求 Notion 可编辑/保留导入时，使用显式 `--storage retained`，保留原 native 创建和不可变恢复合同；旧原操作不得重新解释为 Git-only。
+
+`git-only/v1` 消费必须先核验当前 Skills 资格、选定的 immutable source pin、精确 Source Member 路径、单一 Origin、空的 native 正文/文件归属/引用/未经审阅的管理关系。之后以原固定 Git manifest 建立完整文件目录，只取得本次需要的 `SKILL.md`，references/非文档资源在选中的固定 snapshot 中按路径和 OID/SHA256/长度/模式延迟取回。本机缓存是派生物，不向 Notion 发布全文。当前 Notion 页面发生人工正文编辑时返回 `GIT_ONLY_CUSTOM_TAKEOVER`，保护人工修改等待显式接管流程；不要静默回退为旧 Git 内容或把原页面改为空。跨上游兄弟 Skill 的相对链接保持原字节，归属/目标验证仍需独立验收，不能放宽通用路径逃逸检查。新建控制页 POST、Source 记录及后续元数据均沿原 journal/ACK/unknown 防重放；页面看起来存在不能证明未收到响应的原请求成功。
+
+接纳默认 Disabled，必须由后续明确的授权变更才可公开普通目录/`read/use`；只读 `review` 与 `onboard --output` 仅生成候选或冻结计划，不会接纳或启用。此设计不要求补齐历史保留型导入的全部 Files/Records。独立冷 SDK/Pi 与真实提供方验收需分别记录，不以受控 fixture 通过代替发布成功。
+
 ## 来源适配
 
 适配器输出统一的完整文件集合、member key 与解析后的 revision。通用 Git acquisition 使用精确 commit/tree，支持 GitHub、GitLab 和自托管 HTTPS/SSH Git，不以 GitHub API 作为领域模型。Registry 复用已有明确版本的资源读取。Linear 使用只读 GraphQL issue/document 到文件的显式映射；updatedAt 加实际字节摘要固定一次观测，并不冒充可回溯的服务端历史版本。

@@ -6,10 +6,16 @@ import { HttpClient } from "effect/http"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fail, property, type SkillsError } from "../src/model.ts"
+import { fail, property, text, type SkillsError } from "../src/model.ts"
 import { Store } from "../src/store.ts"
 import { Notion } from "../src/notion.ts"
 import { executeSharedCreate } from "../src/shared-create.ts"
+import { authScope } from "../src/catalog.ts"
+import { openSharedConsumer } from "../src/shared-consumer.ts"
+import { openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
+import { readResources } from "../src/resource-read.ts"
+import { fileRef } from "../src/ref.ts"
+import { querySharedRecords } from "../src/shared-records.ts"
 import { bindSourceDefinition } from "../src/shared-source-definitions.ts"
 import { discoverSourceDefinition } from "../src/shared-source-adapters.ts"
 import {
@@ -30,6 +36,8 @@ function setup() {
     p.source_member = rich("source_member", "")
   }
   let acquisitions = 0
+  let gitCreates = 0
+  let lostGitCreate: { readonly visible: boolean } | undefined
   const acquire = () => {
     acquisitions++
     return Effect.succeed(structuredClone(f.snapshot))
@@ -56,6 +64,72 @@ function setup() {
           ...api,
           request: (path, body, options) =>
             Effect.suspend(() => {
+              if (
+                path === "v1/pages" &&
+                options?.method === "POST" &&
+                property(property(body).parent).data_source_id === library.skills.data_source_id &&
+                text(
+                  property(
+                    property(property(body).properties)[
+                      (library.skills.property_ids as Record<string, string>).Projection!
+                    ],
+                  ).rich_text,
+                ) === "git-only/v1"
+              ) {
+                const newPage = id(56800 + ++gitCreates)
+                const lost = lostGitCreate
+                lostGitCreate = undefined
+                f.calls.push({ path, method: "POST", body })
+                if (lost?.visible === false)
+                  return Effect.fail(
+                    fail(
+                      "WRITE_OUTCOME_UNKNOWN",
+                      "Controlled missing Git-only POST acknowledgement",
+                    ),
+                  )
+                const attrs = property(property(body).properties)
+                const properties = Object.fromEntries(
+                  Object.entries(attrs).map(([key, value]) => {
+                    const field = property(value)
+                    if (Array.isArray(field.rich_text))
+                      return [
+                        key,
+                        { id: key, type: "rich_text", rich_text: field.rich_text, has_more: false },
+                      ]
+                    if (Array.isArray(field.title))
+                      return [key, { id: key, type: "title", title: field.title }]
+                    if (Array.isArray(field.relation))
+                      return [
+                        key,
+                        { id: key, type: "relation", relation: field.relation, has_more: false },
+                      ]
+                    if (field.select !== undefined)
+                      return [key, { id: key, type: "select", select: field.select }]
+                    return [key, { id: key, type: "checkbox", checkbox: field.checkbox }]
+                  }),
+                )
+                const newRow = {
+                  object: "page",
+                  id: newPage,
+                  parent: {
+                    type: "data_source_id",
+                    data_source_id: library.skills.data_source_id,
+                    database_id: library.skills.database_id,
+                  },
+                  last_edited_time: new Date().toISOString(),
+                  properties,
+                }
+                f.skills.set(newPage, newRow)
+                f.base.bodies.set(newPage, "")
+                return lost
+                  ? Effect.fail(
+                      fail(
+                        "WRITE_OUTCOME_UNKNOWN",
+                        "Controlled lost Git-only POST acknowledgement",
+                      ),
+                    )
+                  : Effect.succeed(structuredClone(newRow))
+              }
               const target = f.skills.get(path.replace(/^v1\/pages\//u, ""))
               const changes = property(property(body).properties)
               if (
@@ -88,10 +162,20 @@ function setup() {
         )
       }),
     )
-  return { ...f, run, acquire, scope, acquisitions: () => acquisitions }
+  return {
+    ...f,
+    run,
+    acquire,
+    scope,
+    acquisitions: () => acquisitions,
+    gitCreates: () => gitCreates,
+    loseGitCreate: (visible: boolean) => {
+      lostGitCreate = { visible }
+    },
+  }
 }
 
-test("a source-only row becomes one disabled complete Skill through the same frozen plan", async () => {
+test("a source-only fixed Git member creates just one disabled identity page and one exact Source fact", async () => {
   const f = setup()
   const report = await f.run(reviewSourceOnboarding(library, f.scope, f.acquire))
   expect(report.sources[0]?.members[0]?.kind).toBe("admit")
@@ -99,7 +183,8 @@ test("a source-only row becomes one disabled complete Skill through the same fro
   const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
   expect(plan.actions).toHaveLength(1)
   expect(f.acquisitions()).toBe(2)
-  expect(plan.actions[0]?.kind).toBe("create")
+  expect(plan.actions[0]?.kind).toBe("create_git")
+  const beforeFiles = f.files.size
   f.clear()
   const dry = await f.run(executeSourceOnboarding(library, plan, "dry-run"))
   expect(dry.status).toBe("previewed")
@@ -107,12 +192,15 @@ test("a source-only row becomes one disabled complete Skill through the same fro
   const applied = await f.run(executeSourceOnboarding(library, plan, "apply"))
   expect(applied.status).toBe("completed")
   expect(applied.results[0]?.verified).toBe(true)
+  expect(f.files.size).toBe(beforeFiles)
+  expect(f.gitCreates()).toBe(1)
   const created = [...f.skills.values()].find((row) => row.id === applied.results[0]?.page_id)
   expect(property(property(created).properties).enabled).toMatchObject({ checkbox: false })
   f.clear()
   const repeated = await f.run(executeSourceOnboarding(library, plan, "apply"))
   expect(repeated.status).toBe("completed")
   expect(f.writes()).toHaveLength(0)
+  expect(f.gitCreates()).toBe(1)
   expect((await f.run(executeSourceOnboarding(library, plan, "reconcile"))).status).toBe(
     "completed",
   )
@@ -121,6 +209,75 @@ test("a source-only row becomes one disabled complete Skill through the same fro
   expect(again.actions).toHaveLength(0)
   expect(again.report.sources[0]?.members[0]?.kind).toBe("registered")
 })
+
+test("an explicitly enabled Git-only member consumes original Git main and lazily retrieves a supporting Markdown without native Files", async () => {
+  const f = setup()
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const applied = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  expect(applied.status).toBe("completed")
+  const page = applied.results[0]?.page_id!
+  const target = f.skills.get(page)!
+  // Controlled authorization change only: the onboarding itself must never
+  // enable a new member. This simulates a later explicit author decision.
+  property(property(target).properties).enabled = {
+    id: "enabled",
+    type: "checkbox",
+    checkbox: true,
+  }
+  f.clear()
+  const current = await f.run(
+    Effect.gen(function* () {
+      return yield* openSharedConsumer({
+        library,
+        target: page,
+        scope: yield* authScope,
+        startedAt: Date.now(),
+      })
+    }),
+  )
+  expect(current.shared_acquisition?.version).toBe(2)
+  expect(current.file_bindings).toBeUndefined()
+  expect(current.files).toHaveLength(f.snapshot.members[0]!.portable.files.length)
+  expect(current.materialization?.materialized_paths).toEqual(["SKILL.md"])
+  const body = await f.run(openFixedSnapshotFiles(current, () => ["references/a.md"]))
+  expect(new TextDecoder().decode(body.files[0]?.bytes)).toContain("# Guide")
+  const requested = fileRef(current.record.id, "references/a.md", current.snapshot_id)
+  const resource = await f.run(readResources({ version: 1, refs: [requested] }))
+  expect(resource.status).toBe("ready")
+  if (resource.status === "ready") {
+    expect(resource.files[0]?.requested_ref).toBe(requested)
+    expect(resource.files[0]?.encoding).toBe("utf8")
+    expect(resource.files[0]?.content).toContain("# Guide")
+  }
+  expect(f.files.size).toBeGreaterThan(0) // all existing fixture Files are unrelated
+  expect(f.writes()).toHaveLength(0)
+})
+
+test.each([false, true])(
+  "a Git-only POST with an unknown acknowledgement visible=%s cannot be replayed or register Source facts",
+  async (visible) => {
+    const f = setup()
+    const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+    expect(plan.actions[0]?.kind).toBe("create_git")
+    f.loseGitCreate(visible)
+    const first = await f.run(executeSourceOnboarding(library, plan, "apply"))
+    expect(first.status).toBe("partial")
+    expect(first.results[0]?.error?.code).toBe("SOURCE_WRITE_UNKNOWN")
+    expect(f.gitCreates()).toBe(1)
+    const page = visible ? id(56801) : undefined
+    if (page) {
+      expect(
+        await f.run(querySharedRecords(library, { skillPageId: page, kind: "source" })),
+      ).toHaveLength(0)
+    }
+    f.clear()
+    const again = await f.run(executeSourceOnboarding(library, plan, "apply"))
+    expect(again.status).toBe("partial")
+    expect(again.results[0]?.error?.code).toBe("SOURCE_WRITE_UNKNOWN")
+    expect(f.gitCreates()).toBe(1)
+    expect(f.writes()).toHaveLength(0)
+  },
+)
 
 test("an explicit Source subset shares one inventory, retains order and never claims full-library coverage", async () => {
   const f = setup()
@@ -138,7 +295,7 @@ test("an explicit Source subset shares one inventory, retains order and never cl
   expect(plan.report.scope).toEqual(scope)
   expect(plan.report.coverage).toBe("partial")
   expect(plan.actions).toHaveLength(1)
-  expect(plan.actions[0]?.kind).toBe("create")
+  expect(plan.actions[0]?.kind).toBe("create_git")
   expect(f.writes()).toHaveLength(0)
 })
 
@@ -250,7 +407,9 @@ test("explicit member scope freezes only that member without editing the Source 
 
 test("source drift and tampered parent plans cannot dispatch a child", async () => {
   const f = setup()
-  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const plan = await f.run(
+    prepareSourceOnboarding(library, f.scope, { storage: "retained" }, f.acquire),
+  )
   const changed = { ...plan, plan_id: `source-onboarding-${"0".repeat(64)}` }
   f.clear()
   await expect(f.run(executeSourceOnboarding(library, changed, "apply"))).rejects.toMatchObject({
@@ -265,7 +424,9 @@ test("source drift and tampered parent plans cannot dispatch a child", async () 
 
 test("unknown creation remains on its original operation and is never replaced", async () => {
   const f = setup()
-  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const plan = await f.run(
+    prepareSourceOnboarding(library, f.scope, { storage: "retained" }, f.acquire),
+  )
   f.unknown("skill", false)
   const first = await f.run(executeSourceOnboarding(library, plan, "apply"))
   expect(first.status).toBe("partial")
@@ -273,7 +434,9 @@ test("unknown creation remains on its original operation and is never replaced",
   const second = await f.run(executeSourceOnboarding(library, plan, "apply"))
   expect(second.status).toBe("partial")
   expect(f.nativeCreates()).toHaveLength(0)
-  const fresh = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const fresh = await f.run(
+    prepareSourceOnboarding(library, f.scope, { storage: "retained" }, f.acquire),
+  )
   expect(fresh.actions).toHaveLength(0)
   expect(fresh.report.sources[0]?.members[0]).toMatchObject({
     kind: "blocked",
@@ -283,7 +446,9 @@ test("unknown creation remains on its original operation and is never replaced",
 
 test("a child failure keeps original recovery identity without echoing the complete plan", async () => {
   const f = setup()
-  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const plan = await f.run(
+    prepareSourceOnboarding(library, f.scope, { storage: "retained" }, f.acquire),
+  )
   const action = plan.actions[0]!
   if (action.kind !== "create") throw new Error("Expected an original creation")
   const original = structuredClone(action.plan)

@@ -31,6 +31,8 @@ export type PlannedSharedSourceFile = SourcePlanFile
 export type PlannedSharedSource = {
   readonly source_id: string
   readonly revision: string
+  /** Exact immutable Git member root; only fixed-Git sources provide this. */
+  readonly git_member_root?: string
   /** Complete immutable directory, independent of the local object cache. */
   readonly manifest: readonly PlannedSharedSourceFile[]
   /** All declared local paths and known SHA-256 aliases, including unrequested source paths. */
@@ -177,6 +179,7 @@ export function planSelectedSharedSource(
       return {
         source_id: selected.source_id,
         revision: selected.revision,
+        git_member_root: binding.root,
         manifest: binding.files.map((file) => ({
           path: file.path,
           bytes: file.bytes,

@@ -27,6 +27,8 @@ Provider不可用、缺原输入、无完整cursor或认证不明分别报告，
 
 固定 Git 内容消费走上游 commit/tree/blob 与本机缓存，Notion 只维护授权身份、接管和必要历史。针对多成员上游，验证 `review/onboard --source SOURCE --member KEY` 在源码层把范围下推到 Git blob 获取之前；必须仍核对完整配置选路与 commit/tree、只取得所选成员及必要引用的原字节、保留其余成员/正文/原pin、零 Notion 写入。单成员的完整原资源仍按原合同读取；不得将“免拉其他成员”冒充“单成员 123 文件零下载”。普通 Git 日用不要求先补满 Notion Files/Records，也不以历史 retained/native 创建恢复作为发布前置。
 
+新 `create_git` 与独立消费测试必须另核：单个 Disabled 控制页 + 一条必要 pin 证明、0 支持 File/原文件实体、重复执行零新页、unknown POST 可见/不可见均不得重派发，原生人工正文编辑/关系漂移/错误 Git hash 明确拒绝；开启资格只允许另一个显式授权决定。`shared-git-only-consumer.test.ts` 与 `shared-source-onboarding.test.ts` 驱动真实同核 `openSharedConsumer`→按需 `openFixedSnapshotFiles`；原生 `--storage retained` 的旧创建/恢复负例不能消失。Git-only 原字节读取不应“成功地”删除相邻兄弟 Skill 链接，跨成员链接解析需单独证明。真实 Notion 只执行冻结 plan/dry-run 前不得宣称 production admission。
+
 ## Drive
 
 实现切片（受控数据，不写真实库）：

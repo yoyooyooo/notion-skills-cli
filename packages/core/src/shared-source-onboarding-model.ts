@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { SharedLibrarySchema } from "./shared-library-model.ts"
 import { SharedCreatePlanSchema } from "./shared-create-schema.ts"
+import { SharedGitSourceBindingSchema } from "./shared-source-binding-model.ts"
 
 export const SourceOnboardingScopeSchema = Schema.Union([
   Schema.Struct({
@@ -103,6 +104,16 @@ export const SourceOnboardingActionSchema = Schema.Union([
     source: Source,
     member: Schema.String,
     plan: SharedCreatePlanSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create_git"),
+    source: Source,
+    member: Schema.String,
+    skill_id: Schema.String,
+    main_file_id: Schema.String,
+    name: Schema.String,
+    description: Schema.String,
+    binding: SharedGitSourceBindingSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("bind"),

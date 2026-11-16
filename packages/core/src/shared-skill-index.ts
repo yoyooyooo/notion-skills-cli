@@ -110,7 +110,11 @@ export function querySharedSkillIndex(
           !Number.isFinite(Date.parse(row.last_edited_time))
         )
           throw fail("SHARED_METADATA_INVALID", "The main body has no valid observation timestamp.")
-        const projection = readProjectionBaseline(rich("Projection"))
+        // A Git-only member has no native Markdown projection. Its raw bytes
+        // are owned by the selected immutable source, not the Notion page.
+        const projectionText = rich("Projection")
+        const projection =
+          projectionText === "git-only/v1" ? undefined : readProjectionBaseline(projectionText)
         return {
           skill_id: identity(rich("Skill ID"), "Skill ID"),
           page_id: id,

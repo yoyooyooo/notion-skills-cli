@@ -15,6 +15,26 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
     new Set(acquisition.files.map((file) => file.path)).size !== acquisition.files.length
   )
     throw fail("STATE_CORRUPT", "Frozen shared acquisition differs from the exact snapshot owner.")
+  if (acquisition.version === 2) {
+    if (
+      !acquisition.source.source_id ||
+      !acquisition.source.revision ||
+      snapshot.file_bindings !== undefined ||
+      snapshot.native_references !== undefined ||
+      acquisition.files.length !== snapshot.files.length ||
+      acquisition.files.some(
+        (file) =>
+          !snapshot.files.some((candidate) => candidate.path === file.path) ||
+          normalizePath(file.source_path) !== file.source_path ||
+          file.source_path !== file.path,
+      )
+    )
+      throw fail(
+        "STATE_CORRUPT",
+        "A Git-only Skill requires a complete exact fixed source directory without native File bindings.",
+      )
+    return new Set(acquisition.files.map((file) => file.path))
+  }
   for (const route of acquisition.files) {
     if (
       !snapshot.files.some((file) => file.path === route.path) ||

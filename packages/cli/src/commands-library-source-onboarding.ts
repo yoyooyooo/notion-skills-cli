@@ -200,14 +200,25 @@ export const sourceOnboardCommand = defineCommand(
                 native_files: action.plan.files.length,
                 enabled: false,
               }
-            : {
-                kind: action.kind,
-                source_id: action.source.source_id,
-                member: action.member,
-                page_id: action.before.page_id,
-                proof: action.proof,
-                selected_version_preserved: action.before.selected_version,
-              },
+            : action.kind === "create_git"
+              ? {
+                  kind: action.kind,
+                  source_id: action.source.source_id,
+                  member: action.member,
+                  skill_id: action.skill_id,
+                  selected_version: action.binding.source_id,
+                  fixed_git_files: action.binding.files.length,
+                  native_files: 0,
+                  enabled: false,
+                }
+              : {
+                  kind: action.kind,
+                  source_id: action.source.source_id,
+                  member: action.member,
+                  page_id: action.before.page_id,
+                  proof: action.proof,
+                  selected_version_preserved: action.before.selected_version,
+                },
         ),
         next:
           plan.actions.length === 0

@@ -173,7 +173,7 @@ export const FileEntrySchema = Schema.Struct({
 })
 /** Acquisition locations for the one authoritative Snapshot.files directory.
  * These contain no credentials and never replace its byte/hash/mode identities. */
-export const SharedSnapshotAcquisitionSchema = Schema.Struct({
+const SharedSnapshotAcquisitionV1 = Schema.Struct({
   version: Schema.Literal(1),
   library: SharedLibrarySchema,
   source: Schema.NullOr(Schema.Struct({ source_id: Schema.String, revision: Schema.String })),
@@ -192,6 +192,24 @@ export const SharedSnapshotAcquisitionSchema = Schema.Struct({
     ]),
   ),
 })
+/** Git-only Skills keep no native File pages. Each path is pinned to the same
+ * authenticated source fact and may be materialized only when requested. */
+const SharedSnapshotAcquisitionV2 = Schema.Struct({
+  version: Schema.Literal(2),
+  library: SharedLibrarySchema,
+  source: Schema.Struct({ source_id: Schema.String, revision: Schema.String }),
+  files: Schema.Array(
+    Schema.Struct({
+      kind: Schema.Literal("source"),
+      path: Schema.String,
+      source_path: Schema.String,
+    }),
+  ),
+})
+export const SharedSnapshotAcquisitionSchema = Schema.Union([
+  SharedSnapshotAcquisitionV1,
+  SharedSnapshotAcquisitionV2,
+])
 const NotionBlockNodeSchema = Schema.Struct({
   id: Schema.String,
   type: Schema.String,
