@@ -1314,7 +1314,11 @@ test("an exact retained member with unspecified provider modes imports as follow
     version: "1.2.3",
   }
   for (const [key, value] of Object.entries(
-    sourceDefinitionPropertiesFor(sourceLibrary, { ...sourceDefinition, adapter }),
+    sourceDefinitionPropertiesFor(sourceLibrary, {
+      ...sourceDefinition,
+      adapter,
+      options: { ...sourceDefinition.options, storage: "retained" },
+    }),
   ))
     f.source.properties[key] = { ...property(f.source.properties[key]), ...property(value) }
   const { git_manifest: _git, ...member } = f.snapshot.members[0]!
