@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "90292d66d6ffeb85f37a123a7ed839f429b1c5fe",
+  "synchronized_commit": "3245b898f3afa0fbf065d96ba8a5a2574f5aea31",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-git-only-marker.ts": "adfec72d2011dc07de5b36fc7c984befac68a3c4a7ce857c52d76bbe1f0e8933",
@@ -138,7 +138,7 @@
     "packages/core/src/shared-source-onboarding-model.ts": "62a9ba76123b87502aa290163a3ec7c35bd10df80297d854436274f1c9842333",
     "packages/cli/src/commands-library-source-onboarding.ts": "4e484b7b3ce9392191d94ebd1c0baaf59cf7636412a046e52d8842948f959ace",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "77b61dbe62f61d9f07c8e4c96740ef773e269b4a327734775e29661a15741a4e",
+    "packages/core/test/shared-source-onboarding.test.ts": "20ca5559fdf50a1d66a5ee55591a55a275f2bf6339a60cf09548da36399cd0d9",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -2401,5 +2401,13 @@
       "Historical failed add remains needs_review/unproven; only independent acceptance is completed.",
       "Protected hash synchronization does not imply a new TLC execution."
     ]
+  },
+  "src19_current_graph_projection_review": {
+    "issue": "AH-1067",
+    "implementation_commit": "3245b898f3afa0fbf065d96ba8a5a2574f5aea31",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_source_changes": ["packages/core/test/shared-source-onboarding.test.ts"],
+    "semantics": "Add registered Origin and Source Member to the same filtered graph inventory; original source-owner and scope guards unchanged. Fixture now respects filter_properties, current unpinned use positive and foreign-Origin zero-write negative verified.",
+    "evidence": "69 tests / 1063 assertions; original failure retained; existing state transitions, cases and expected rules unchanged."
   }
 }
