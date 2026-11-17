@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "e06af13609a55dc8379edc2de369da06808120db",
+  "synchronized_commit": "83581d715a8656bde3324f2bd2c2bfe8ac44796d",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-git-only-marker.ts": "adfec72d2011dc07de5b36fc7c984befac68a3c4a7ce857c52d76bbe1f0e8933",
@@ -134,11 +134,11 @@
     "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
-    "packages/core/src/shared-source-onboarding.ts": "4d2a4beec7c1eb3b34d083bedfa7184c1a4b15d9403dd47ff8bef4257b977222",
+    "packages/core/src/shared-source-onboarding.ts": "c844dd6635a01baebae5b4154c3ee5af44ae449885bca9e90969106d56db6992",
     "packages/core/src/shared-source-onboarding-model.ts": "62a9ba76123b87502aa290163a3ec7c35bd10df80297d854436274f1c9842333",
     "packages/cli/src/commands-library-source-onboarding.ts": "4e484b7b3ce9392191d94ebd1c0baaf59cf7636412a046e52d8842948f959ace",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "20ca5559fdf50a1d66a5ee55591a55a275f2bf6339a60cf09548da36399cd0d9",
+    "packages/core/test/shared-source-onboarding.test.ts": "77fe864139d369cf2e7262022d6a3b47f41c4c8c15ac980b74770e50543cdeb8",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -2418,5 +2418,17 @@
     "semantic_change": "Offline public help, bundled setup and English/Chinese host README directly route existing-library inspection and complete author read/apply preview. No parser action, permissions, state, source bytes, dispatch or model budget changed.",
     "verification": "4 focused public entrypoint tests /79 assertions, inaccessible application roots and zero provider probes; original natural failed runs retained and no additional model retry.",
     "finite_models_cases_expected_rules_changed": false
+  },
+  "git_admission_ack_observation_review": {
+    "issue": "AH-1067",
+    "implementation_commit": "83581d715a8656bde3324f2bd2c2bfe8ac44796d",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_sources": [
+      "packages/core/src/shared-source-onboarding.ts",
+      "packages/core/test/shared-source-onboarding.test.ts"
+    ],
+    "semantics": "Existing guardedSourceMutation validates the original durable acknowledgement before its existing observeAcknowledged callback reads that exact page. Query-index delay no longer masks a known original creation. Original request/plan bytes and source owner/member/native-body checks preserved; no acknowledgement or unknown response cannot authorize a second POST or immutable Source registration.",
+    "concrete_evidence": "Real original ketchup-video page resumed without recreation; controlled lagged-index positive and visible/hidden unknown response negatives including lag, plus original Source mutation suite.",
+    "model_transitions_cases_expected_rules_changed": false
   }
 }
