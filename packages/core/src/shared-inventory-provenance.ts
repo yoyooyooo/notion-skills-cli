@@ -1,6 +1,7 @@
 import { basename, dirname, isAbsolute, resolve, relative, sep } from "node:path"
 import { decode, property } from "./model.ts"
-import { pageId } from "./ref.ts"
+import { pageId, parseRef } from "./ref.ts"
+import { sharedSkillId } from "./shared-content.ts"
 import {
   emptyLocalIdentity,
   LocalInventoryIdentitySchema,
@@ -8,7 +9,11 @@ import {
   type LocalInventoryIdentity,
 } from "./shared-inventory-model.ts"
 
-export type ProvenanceDocument = { readonly path: string; readonly value: unknown }
+export type ProvenanceDocument = {
+  readonly path: string
+  readonly observed_path?: string
+  readonly value: unknown
+}
 export type LocalIdentityEntry = {
   readonly path: string
   readonly identity: LocalInventoryIdentity
@@ -40,14 +45,46 @@ function repository(value: unknown): string | null {
   }
 }
 
+function handoffIdentity(ref: string | null) {
+  if (ref === null) return undefined
+  try {
+    const parsed = parseRef(ref)
+    if (
+      !["SKILL.md", "ROUTER.md", "PROMPT.md"].includes(parsed.path) ||
+      parsed.snapshot !== undefined ||
+      parsed.file_id !== undefined
+    )
+      return undefined
+    const page = pageId(parsed.selector)
+    if (page !== undefined) return { page_id: page, library_id: null, skill_id: null }
+    const shared = /^shared_skill:([^:]+):([^:]+)$/u.exec(parsed.selector)
+    if (shared === null) return undefined
+    const library = decodeURIComponent(shared[1]!),
+      skill = decodeURIComponent(shared[2]!)
+    return sharedSkillId(library, skill) === parsed.selector
+      ? { page_id: null, library_id: library, skill_id: skill }
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** Registry paths establish identity candidates; registry names alone never do. */
 export function localInventoryProvenance(documents: readonly ProvenanceDocument[]) {
   const entries: LocalIdentityEntry[] = []
   const findings: InventoryFinding[] = []
   const roots: InventoryModeRoot[] = []
   const installedModes = new Map<string, unknown>()
+  const observedPaths = new Map(
+    documents.map((document) => [document.path, document.observed_path ?? document.path]),
+  )
   const blocked = (path: string, code: string) =>
-    findings.push({ path, code, severity: "review", details: { content: "redacted" } })
+    findings.push({
+      path: observedPaths.get(path) ?? path,
+      code,
+      severity: "review",
+      details: { content: "redacted" },
+    })
   for (const document of documents)
     if (basename(document.path) === "assets.yaml") {
       const repo = dirname(dirname(document.path)),
@@ -134,12 +171,11 @@ export function localInventoryProvenance(documents: readonly ProvenanceDocument[
           path = string(row.path),
           name = string(row.name),
           ref = string(row.ref)
-        const selected = ref === null ? undefined : /^skill:\/\/([^/]+)\/SKILL\.md$/u.exec(ref)?.[1]
-        const page = selected === undefined ? undefined : pageId(selected)
+        const identity = handoffIdentity(ref)
         if (
           path === null ||
           name === null ||
-          page === undefined ||
+          identity === undefined ||
           isAbsolute(path) ||
           !within(repo, resolve(repo, path))
         ) {
@@ -151,7 +187,7 @@ export function localInventoryProvenance(documents: readonly ProvenanceDocument[
           path: target,
           identity: {
             ...emptyLocalIdentity(),
-            page_id: page,
+            ...identity,
             authority: "notion_handoff",
             evidence_file: document.path,
           },
@@ -189,7 +225,12 @@ export function localInventoryProvenance(documents: readonly ProvenanceDocument[
           },
         })
       }
-    } else if (basename(document.path) !== "upstreams.json")
+    } else if (
+      basename(document.path) !== "upstreams.json" ||
+      raw.skills === null ||
+      typeof raw.skills !== "object" ||
+      Array.isArray(raw.skills)
+    )
       blocked(document.path, "PROVENANCE_FORMAT_UNSUPPORTED")
   }
   for (const document of documents)

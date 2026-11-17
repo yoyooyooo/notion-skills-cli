@@ -100,6 +100,7 @@ import {
   reconcileSharedCreate,
   type SharedCreatePlan,
 } from "./shared-create.ts"
+import { completedSharedCreateCurrentTree } from "./shared-create-current-tree.ts"
 import { loadPendingSharedSkillApplies, reconcileSharedSkillApply } from "./shared-skill-apply.ts"
 import {
   observeAcceptedSingleBodyApply,
@@ -542,6 +543,13 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       creates.set(plan.operation_id, plan)
     }
     for (const plan of creates.values()) {
+      if (
+        yield* completedSharedCreateCurrentTree(input.library, plan, selected, {
+          headers: operationHeaders,
+          events: allEvents,
+        })
+      )
+        continue
       const result = yield* reconcileSharedCreate(input.library, plan)
       return yield* Effect.fail(
         fail(

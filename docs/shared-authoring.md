@@ -273,6 +273,33 @@ Apply sends one guarded PATCH to that original supporting page using the origina
 
 Use the original credential scope and Store for review/apply because they contain the original durable request receipts. An independent Store can later reconcile the shared completion without those local receipts; that historical verification still needs a fresh `read` for current content. A complete ordinary native inventory import can use the version-3 local-link route above; fixed-source and other inventory recoveries retain their own commands. `ctl operation show skill-create-…` identifies this native-create family and directs the caller to the original-plan route; it does not treat the identifier as a legacy resumable operation.
 
+### Accept a complete legacy current tree independently
+
+A disabled ordinary complete policy-13 create can have all of its original pages and raw resources present, while its retained result remains a known body mismatch and the old local ACK is unavailable. Use an explicit current-tree decision only when every authored Markdown body exactly matches its frozen prediction, every original resource manifest/chunk/hash/mode is complete, and all original File/page bindings remain unchanged:
+
+```bash
+ntn-skills ctl library create recovery review ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE --accept-current-tree \
+  --output ./current-tree-review.json
+
+ntn-skills ctl library create recovery apply ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --review ./current-tree-review.json \
+  --review-id RETURNED_REVIEW_ID --dry-run
+
+ntn-skills ctl library create recovery apply ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --review ./current-tree-review.json \
+  --review-id RETURNED_REVIEW_ID
+
+ntn-skills ctl library create recovery reconcile ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE --accept-current-tree
+```
+
+Review and dry-run are read-only. Apply appends only its independent review, new initial adopted ownership facts and completion Records. It does not allocate a Skill/File page, patch a body/property, publish the old create's events, fabricate an ACK or replace its outcome. The old create remains `needs_review` with completion unproven; its ordinary reconciliation still reports that failure. The separate acceptance may qualify current consumption after a later explicit normal enable operation. A cold CLI/SDK must understand and fully validate this new proof.
+
+This route requires the complete retained original plan and a known `SHARED_CREATE_BODY_MISMATCH` outcome identifying the entire tree. Source/Origin, Members, Requires, projection and reference mappings must be empty; the Files relation must retain the exact complete supporting bindings. It does not accept an unknown original outcome, partial tree, prior ownership, missing raw chunk or additional pending operation. The only presentation allowance is the existing automatic link in a generated resource-note heading; authored text, code and link destinations retain the strict original prediction. Full frontmatter and modes come from the exact retained input.
+
+Before each new independent Record, the full current tree and operation set are rechecked. A changed body, metadata, binding, Source or third pending intent stops the next write. An unknown immutable POST is never resent. If its complete exact fact later becomes visible, the existing Record reconciliation mechanism can confirm that prefix and a subsequent apply may append only the unattempted independent suffix. The explicit reconcile command itself never writes a missing fact. Keep the original unknown receipt and the separate acceptance receipt; a current-tree acceptance is not historical completion of the old create.
+
 ### Update native properties
 
 ```bash

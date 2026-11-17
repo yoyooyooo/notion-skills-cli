@@ -1169,6 +1169,11 @@ Markdown/PATCH/retained proof/SQLite 重启/第三 pending 组合不在原有限
 注释中的非空凭据赋值沿同一 key 判据拒绝，不能成为上述模板识别的旁路；
 空凭据注释与普通说明保持支持。
 
+后续 c33 基线只追加已由实际代码确认的公开默认值 `GRAFANA_ORG_ID=1`。
+它不是通用 ID 或整数例外：其它 key/value、前导零和凭据前缀仍拒绝，凭据判据
+先于该精确分支。原安全模板字节、mode 和其它规则不变；实际全目录入库仍需
+新的正规 inventory 与执行前重扫，不能由 scanner 回归推断迁移完成。
+
 识别只改变新扫描对该精确字节的 sensitive 分类，不改文件、mode、Source、
 原 plan、dispatch、ACK 或 outcome。原完整实体 manifest、真实描述符重读和
 执行前重新扫描继续约束输入；旧 blocked 观察不能经 review 变成授权。
@@ -1180,3 +1185,40 @@ Markdown/PATCH/retained proof/SQLite 重启/第三 pending 组合不在原有限
 文件解析不属于生命周期有限状态域；coverage 仅增加明确未建模的源码对应。
 TLA/config/view/cases/expected_rules 不变，旧模型绿灯不替代新提交的 CI、
 安装或真实库存迁移证明。
+
+### Complete legacy current-tree acceptance
+
+在 c33e9ef27f417cfb51ac5d8cdd4433e7c55b55eb 之上，新增明确的
+`create recovery review --accept-current-tree`，仅接受完整 ordinary policy-13
+disabled native tree：原完整输入和已知 needs_review mismatch 必须仍共享可读，
+当前作者 Markdown 精确等于原 prediction，raw manifest/chunks/hash/mode 完整，
+所有 File/page 身份不变。只复用已有 generated resource-note heading autolink 比较，
+不放宽作者正文等价。review 不写；apply 仅发独立 review、adopted ownership 和 completion
+Records，不新建/修改原 Skill 或 File，不制造原 create event/ACK/outcome。
+
+复用 IndependentAcceptance 的已知失败/独立身份/未知不可变请求不重放原则；
+但多文档全树、64KiB codec、具体 source/metadata/bytes/mode 和完整 cold CLI/SDK
+组合不在该单 file-add 有限域内。两个 coverage 文件明确记录这个未建模绑定，
+只同步实际修改源码的审阅对应；TLA/config/view/cases/expected_rules 不变。
+原 create reconcile 继续返回 needs_review。正常 reader 只在完整独立证明存在时
+解除这一原失败的消费屏障，其他 pending 的原检查继续生效。
+
+关键回归使用真实原 producer failure 并清除旧 author Store/ACK；正文/metadata、
+缺 raw、额外 binding、未知 outcome、第三 pending 拒绝，新 Record 之后的并发编辑
+在下次派发前停止。冷读缺少 adopted event 或用旧 create event 替代都拒绝。
+原 unknown receipt 保留；独立 Record 后精确可见只确认该既有 prefix，不重发它。
+Node public CLI/SQLite 与空 Store SDK 验证完整 frontmatter、raw mode 和 snapshot
+绑定，安装同包与实库仍各自保留结果，不能把前一提交 CI 继承为这条新入口的证明。
+
+### Selected inventory identity revalidation
+
+库存的原、新观察仍分别保留完整 provenance 文件 SHA。执行旧计划时完整重扫，
+选定实体的 manifest、解析后的身份、别名和发现根必须不变；无关且有效的登记追加
+不再单独使该实体失效。来源不可读、已变文档解析错误、相关 owner 重定向或冲突、
+完整字节或 mode 漂移仍拒绝。公开 stable Skill ref 按精确 library/Skill 身份核对，
+缺失的显式 owner 在同名旧成功导入复用之前拒绝，不能转为新 native 创建。
+
+相关路径重验和解析属于具体未建模边界。新增真实目录回归包含无关追加正例与上述
+拒绝项；独立审阅发现最早 reuse 分支遗漏后，使用已有成功导入 fixture 复现红例，
+再由同一原断言确认早期 guard。原 plan、journal、ACK、unknown 与派发规则不改，
+旧失败回执和后续绿色回归分开保留。源码映射不改变有限模型或扩大实际迁移计数。

@@ -40,6 +40,10 @@ When historical state migration changes, its separate recovery acceptance starts
 
 These recipes are developer regression/audit procedures. Ordinary imports finish on the non-dry command's exit 0, `ok: true` and `verified: true`; callers do not repeat the read/files/export matrix.
 
+For `recovery review --accept-current-tree`, run `shared-create-current-tree.test.ts` and the adjacent `.node.test.ts`. The fixture retains a real policy-13 complete four-file failure, removes the original local ACK/Store, and requires read-only review/dry-run, only independent Records, unchanged original failure and separate normal enablement. Reject authored-body/metadata/Source/binding drift, a missing raw chunk, unknown original outcome, prior ownership and third pending facts before a new write. Recheck after the first review POST; late edits must stop the next Record. Unknown independent facts cannot be resent; a visible exact immutable prefix authorizes only the untouched suffix. Cold proof must not substitute an original create event for an independent adopted event.
+
+The Node case uses public CLI processes with real SQLite and a new ordinary SDK Store. It checks full frontmatter, all four files, raw hashes/executable modes, one snapshot/version and zero consumer writes. `NTN_SKILLS_CURRENT_TREE_CLI_ENTRY` and `NTN_SKILLS_CURRENT_TREE_SDK_ENTRY` may select the exact independently installed candidate pair for the same journey. Preserve prior fixture/setup failures and actual archive/entry hashes. Neither this controlled journey nor unchanged finite models prove live legacy acceptance or Broker delivery.
+
 ## How to get to it (user POV)
 
 Select the affected entry points and retain their outcomes separately:

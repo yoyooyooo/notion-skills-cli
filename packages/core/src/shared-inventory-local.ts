@@ -81,12 +81,14 @@ function safeEnvironmentExample(path: string, target: string, bytes: Uint8Array)
     const key = assignment[1]!,
       value = assignment[2]!
     keys.add(key)
+    if (value === "") continue
+    if (credentialEnvironmentKey(key)) return false
+    // The documented initial Grafana organization is a public constant, not arbitrary account data.
+    if (key === "GRAFANA_ORG_ID" && value === "1") continue
     if (
-      value !== "" &&
-      (!/^[A-Z][A-Z0-9_]*_(?:WAIT|TIMEOUT)_SECONDS$/u.test(key) ||
-        credentialEnvironmentKey(key) ||
-        !/^[0-9]{1,5}$/u.test(value) ||
-        Number(value) > 86_400)
+      !/^[A-Z][A-Z0-9_]*_(?:WAIT|TIMEOUT)_SECONDS$/u.test(key) ||
+      !/^[0-9]{1,5}$/u.test(value) ||
+      Number(value) > 86_400
     )
       return false
   }
@@ -428,6 +430,7 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
         if (document?.errors.length) throw Error("Invalid provenance YAML")
         documents.push({
           path: canonical._tag === "Success" ? canonical.success : path,
+          observed_path: path,
           value: document === undefined ? JSON.parse(source) : document.toJS(),
         })
         provenance.push({ path, sha256: hash(loaded.success.bytes), status: "verified" })
@@ -616,6 +619,10 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
         ownIdentities
           .filter((identity) => identity.page_id !== null)
           .map((identity) => identity.page_id)
+          .filter((value, i, all) => all.indexOf(value) === i).length > 1 ||
+        ownIdentities
+          .filter((identity) => identity.library_id !== null && identity.skill_id !== null)
+          .map((identity) => canonicalSharedJson([identity.library_id, identity.skill_id]))
           .filter((value, i, all) => all.indexOf(value) === i).length > 1
       )
         ownFindings.push({
@@ -708,7 +715,11 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
         },
         classification: ownFindings.some((finding) => finding.severity === "blocked")
           ? "review_required"
-          : ownIdentities.some((identity) => identity.page_id !== null)
+          : ownIdentities.some(
+                (identity) =>
+                  identity.page_id !== null ||
+                  (identity.library_id !== null && identity.skill_id !== null),
+              )
             ? "managed_candidate"
             : ownIdentities.some((identity) => identity.commit !== null)
               ? "upstream_candidate"

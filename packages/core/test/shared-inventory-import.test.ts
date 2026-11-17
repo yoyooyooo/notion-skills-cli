@@ -34,6 +34,8 @@ import {
 } from "../src/shared-inventory-batch.ts"
 import { Store, sha256 } from "../src/store.ts"
 import { canonicalSharedJson, querySharedRecords } from "../src/shared-records.ts"
+import { sharedSkillId } from "../src/shared-content.ts"
+import { fileRef } from "../src/ref.ts"
 import { loadSharedCreatePlan } from "../src/shared-create.ts"
 import { authScope } from "../src/catalog.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
@@ -193,7 +195,11 @@ async function fixture(
   }
 }
 
-async function currentInventoryReview(f: ReturnType<typeof sharedCreateFixture>, root: string) {
+async function currentInventoryReview(
+  f: ReturnType<typeof sharedCreateFixture>,
+  root: string,
+  provenance: string[] = [],
+) {
   const auditState = await mkdtemp(join(tmpdir(), "ntn-repeat-audit-"))
   const audit = await f.run(
     Effect.gen(function* () {
@@ -231,7 +237,9 @@ async function currentInventoryReview(f: ReturnType<typeof sharedCreateFixture>,
   )
   const remote = await f.run(prepareSharedBaselineInventory(audit.run_id))
   expect(remote.visible_registered_census?.coverage).toBe("full")
-  const local = await f.run(scanLocalSkillInventory({ roots: [root] }))
+  const local = await f.run(
+    scanLocalSkillInventory({ roots: [root], provenance_files: provenance }),
+  )
   const review = await f.run(
     reconcileSkillInventories({
       remote_inventory_id: remote.inventory_id,
@@ -294,6 +302,44 @@ test("a fresh review in another directory skips a completed native import by ori
     code: "INVENTORY_PREVIOUS_IMPORT_INCOMPLETE",
   })
   expect(f.writes()).toHaveLength(0)
+})
+
+test("an unavailable stable owner cannot reuse another owner's completed same-name input", async () => {
+  const f = await fixture()
+  f.skills.clear()
+  f.files.clear()
+  f.base.records.clear()
+  const original = await f.prepare()
+  await f.run(executeInventoryImport(f.library, original))
+  const repository = await mkdtemp(join(tmpdir(), "ntn-exact-stable-owner-"))
+  const copy = join(repository, "skills", "sample")
+  const provenance = join(repository, ".ak", "notion-handoffs.json")
+  await mkdir(join(repository, "skills"))
+  await mkdir(join(repository, ".ak"))
+  await cp(f.root, copy, { recursive: true })
+  for (const libraryId of [f.library.library_id, "foreign-library"]) {
+    await writeFile(
+      provenance,
+      JSON.stringify({
+        version: 1,
+        skills: [
+          {
+            name: "reviewed-import",
+            path: "skills/sample",
+            ref: fileRef(sharedSkillId(libraryId, "missing-exact-owner"), "SKILL.md"),
+          },
+        ],
+      }),
+    )
+    const fresh = await currentInventoryReview(f, copy, [provenance])
+    expect(fresh.entity.input_content_sha256).toBe(original.input_content_sha256)
+    f.clear()
+    await expect(
+      f.run(prepareInventoryImport(fresh.input).pipe(Effect.provide(NodeServices.layer))),
+    ).rejects.toMatchObject({ code: "INVENTORY_EXISTING_REVIEW_REQUIRED" })
+    expect(f.writes()).toHaveLength(0)
+    expect(f.currentBodies()).toHaveLength(0)
+  }
 })
 
 test("same-name input changes and incomplete original imports cannot be counted as a reusable success", async () => {

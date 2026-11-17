@@ -153,12 +153,12 @@ test("outside/broken symlinks, secrets and finite budgets stay explicit without 
   expect(bytes.metrics.bytes).toBeLessThanOrEqual(2)
 })
 
-test("exact env example templates preserve empty credentials, bounded timeouts, original bytes and modes", async () => {
+test("exact env example templates preserve empty credentials, bounded timeouts, the public Grafana org default, bytes and modes", async () => {
   const f = await auditFixture(1),
     local = await localFixture(),
     path = join(local.skill, ".env.example"),
     template =
-      "# Optional settings\r\n# PASSWORD=\r\nSERVICE_USER=\r\nSERVICE_PASSWORD=\r\nSERVICE_TOKEN=\r\nSERVICE_WAIT_SECONDS=10\r\nSERVICE_TIMEOUT_SECONDS=60\r\n"
+      "# Optional settings\r\n# PASSWORD=\r\nSERVICE_USER=\r\nSERVICE_PASSWORD=\r\nSERVICE_TOKEN=\r\nSERVICE_WAIT_SECONDS=10\r\nSERVICE_TIMEOUT_SECONDS=60\r\nGRAFANA_URL=\r\nGRAFANA_ORG_ID=1\r\nGRAFANA_TOKEN=\r\n"
   for (const [permissions, mode] of [
     [0o644, "100644"],
     [0o755, "100755"],
@@ -196,6 +196,11 @@ test("env example recognition rejects numeric credentials, other names, unsuppor
     [".env.example", "PASSWORD_TIMEOUT_SECONDS=10\n"],
     [".env.example", "API_KEY_WAIT_SECONDS=10\n"],
     [".env.example", "ACCESS_TOKEN_TIMEOUT_SECONDS=10\n"],
+    [".env.example", "GRAFANA_ORG_ID=2\n"],
+    [".env.example", "GRAFANA_ORG_ID=0\n"],
+    [".env.example", "GRAFANA_ORG_ID=01\n"],
+    [".env.example", "GRAFANA_TOKEN_ORG_ID=1\n"],
+    [".env.example", "SERVICE_ORG_ID=1\n"],
     [".env.example", "SERVICE_TIMEOUT_SECONDS=86401\n"],
     [".env.example", "SERVICE_TIMEOUT_SECONDS=99999999999999999999\n"],
     [".env.example", "SERVICE_TIMEOUT_SECONDS=-1\n"],

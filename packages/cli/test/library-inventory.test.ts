@@ -106,7 +106,7 @@ test("public inventory retains a complete safe env template and blocks nonempty 
   const root = join(directory, "safe-env-example"),
     path = join(root, ".env.example"),
     input =
-      "# Controlled template\r\nSERVICE_PASSWORD=\r\nSERVICE_TOKEN=\r\nSERVICE_WAIT_SECONDS=0\r\nSERVICE_TIMEOUT_SECONDS=86400\r\n"
+      "# Controlled template\r\nSERVICE_PASSWORD=\r\nSERVICE_TOKEN=\r\nSERVICE_WAIT_SECONDS=0\r\nSERVICE_TIMEOUT_SECONDS=86400\r\nGRAFANA_ORG_ID=1\r\n"
   mkdirSync(root)
   writeFileSync(join(root, "SKILL.md"), "# Controlled template resource\n")
   writeFileSync(path, input)
@@ -128,7 +128,7 @@ test("public inventory retains a complete safe env template and blocks nonempty 
     ]),
   )
   expect(readFileSync(path, "utf8")).toBe(input)
-  for (const key of ["PASSWORD", "API_KEY", "TOKEN", "AUTH_TIMEOUT_SECONDS"]) {
+  for (const key of ["PASSWORD", "API_KEY", "TOKEN", "AUTH_TIMEOUT_SECONDS", "GRAFANA_ORG_ID"]) {
     writeFileSync(path, `${key}=123456\n`)
     const blocked = await invoke(["ctl", "library", "inventory", "local", "--root", root])
     expect(blocked.exit).toBe(4)

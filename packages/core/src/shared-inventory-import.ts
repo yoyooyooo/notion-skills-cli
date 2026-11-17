@@ -309,7 +309,11 @@ export function prepareInventoryImport(
       const existingTarget =
         match.remote_page_id !== null ||
         match.candidates.length !== 0 ||
-        entity.identities.some((identity) => identity.page_id !== null)
+        entity.identities.some(
+          (identity) =>
+            identity.page_id !== null ||
+            (identity.library_id !== null && identity.skill_id !== null),
+        )
       const existingError = () =>
         fail(
           "INVENTORY_EXISTING_REVIEW_REQUIRED",
@@ -322,7 +326,11 @@ export function prepareInventoryImport(
         )
       if (
         match.remote_page_id === null &&
-        entity.identities.some((identity) => identity.page_id !== null)
+        entity.identities.some(
+          (identity) =>
+            identity.page_id !== null ||
+            (identity.library_id !== null && identity.skill_id !== null),
+        )
       )
         return yield* Effect.fail(existingError())
       if (input.decision.kind === "native") {

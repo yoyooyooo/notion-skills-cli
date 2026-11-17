@@ -53,6 +53,7 @@ export function revalidateLocalInventoryEntity(inventoryId: string, entityId: st
     const current = fresh.entities.find((entry) => entry.entity_id === entityId)
     if (
       fresh.coverage !== "full" ||
+      fresh.provenance.some((entry) => entry.status !== "verified") ||
       current === undefined ||
       current.files.some((file) => file.status !== "verified") ||
       current.findings.some((finding) => finding.severity === "blocked")
@@ -64,10 +65,24 @@ export function revalidateLocalInventoryEntity(inventoryId: string, entityId: st
           { entity_id: entityId, inventory_id: fresh.inventory_id },
         ),
       )
+    // The full registry digest remains in each immutable observation. Execution
+    // depends on this entity's resolved claims, not unrelated valid registrations.
+    const changedProvenance = new Set(
+      fresh.provenance
+        .filter(
+          (entry) =>
+            original.provenance.find((before) => before.path === entry.path)?.sha256 !==
+            entry.sha256,
+        )
+        .map((entry) => entry.path),
+    )
     if (
       current.manifest_sha256 !== entity.manifest_sha256 ||
       canonicalSharedJson(current.identities) !== canonicalSharedJson(entity.identities) ||
-      canonicalSharedJson(fresh.provenance) !== canonicalSharedJson(original.provenance)
+      canonicalSharedJson(current.aliases) !== canonicalSharedJson(entity.aliases) ||
+      canonicalSharedJson(current.discovery_identity ?? null) !==
+        canonicalSharedJson(entity.discovery_identity ?? null) ||
+      fresh.findings.some((finding) => changedProvenance.has(finding.path))
     )
       return yield* Effect.fail(
         fail(
@@ -156,8 +171,11 @@ export function reconcileSkillInventories(input: {
       const byPage = remote.resources.filter((resource) =>
         entity.identities.some(
           (identity) =>
-            identity.page_id === resource.page_id &&
-            (identity.library_id === null || identity.library_id === remote.library_id),
+            (identity.page_id === resource.page_id &&
+              (identity.library_id === null || identity.library_id === remote.library_id)) ||
+            (identity.library_id === remote.library_id &&
+              identity.skill_id !== null &&
+              identity.skill_id === resource.skill_id),
         ),
       )
       const bySource = remote.resources.filter((resource) => {

@@ -1,6 +1,10 @@
 import { Crypto, Effect, Schema } from "effect"
 import { retainNotionReadbackMismatch } from "./shared-notion-readback-diagnostic.ts"
 import { assertOriginalSourceProjectionRepairComplete } from "./shared-source-projection-repair.ts"
+import {
+  completedSharedCreateCurrentTree,
+  sharedCreateCurrentAcceptancesEntity,
+} from "./shared-create-current-tree.ts"
 import type { SharedCreateProjectionRepairProof } from "./shared-create-outcome.ts"
 import {
   retainSharedCreateText,
@@ -2639,6 +2643,22 @@ export function loadPendingSharedCreates(
     const pending: SharedCreatePlan[] = []
     for (const header of candidates) {
       let terminal = outcomes.get(header.record_id)
+      if (
+        terminal?.status === "needs_review" &&
+        headers.some((item) => item.entity_id === sharedCreateCurrentAcceptancesEntity)
+      ) {
+        const original = yield* loadSharedCreatePlan(library, {
+          skillPageId: input.skillPageId,
+          operationId: header.record_id,
+        })
+        if (
+          yield* completedSharedCreateCurrentTree(library, original, input.skillPageId, {
+            headers,
+            events: input.events,
+          })
+        )
+          continue
+      }
       if (
         (terminal === undefined || terminal.status === "needs_review") &&
         headers.some((item) => item.entity_id === sharedCreateRestorationOutcomesEntity)

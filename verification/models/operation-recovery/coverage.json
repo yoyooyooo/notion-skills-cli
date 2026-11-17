@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "1c3d90a34eda8d39f8e3f4109b6df4ba282bee08",
+  "synchronized_commit": "c33e9ef27f417cfb51ac5d8cdd4433e7c55b55eb",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
@@ -70,7 +70,7 @@
     "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
     "packages/core/src/shared-skill-apply-authoring.ts": "ea6fcb2fa2bcef6bc2eface18317aa6c915aabd55bf0f41e90ed868277cdb2c9",
     "packages/core/src/shared-file-management.ts": "48e41b5b394c4d785da44c2b1ebdafd820ee71b6f0edf63f7597e857fb1d8863",
-    "packages/core/src/shared-snapshot.ts": "43ac48856c64204f3f42e73d2fdbf598796cff22950217b6ae5bc3d6f93ef88e",
+    "packages/core/src/shared-snapshot.ts": "5b3fa80db5e6b82a257c6b3d4d7895c4bf4a54cf474def664324cf7641f91396",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-maintenance-operations.ts": "10925e80b097d23f9543420413f43b5305e4c09d39745c66907e7eda929c09a7",
@@ -140,7 +140,7 @@
     "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
     "packages/core/src/shared-audit-inspect.ts": "27cd7e6ce84e121759d97da47d1ae01bba28853936df52a979de7dc285215c6f",
     "packages/core/src/shared-create-import-readback.ts": "6216f41390691a6b3c590ffcc98c0364da81847472164ce6e8ebfd30780897be",
-    "packages/core/src/shared-create.ts": "27c64a4e92ed479a6ea95d8c64a419a28b12a0f67436f353cc96830e673a837d",
+    "packages/core/src/shared-create.ts": "2c8dcc2275d5fd2a70ffbe01e0ee24a9580573a076952d83f2195752a75e94fc",
     "packages/core/src/shared-native-image-layout.ts": "4bb27b7099a77fe23bfac87b909e8e1a06f4f8ed3b8825db2fa8a199f3a10ff1",
     "packages/core/src/shared-source-file-resubmission-model.ts": "33675b0f64b036b7f17b79712de32c2ad2e1df0fcbb04b3feddc2341e7244b4a",
     "packages/core/src/shared-source-file-resubmission.ts": "37c22c60e7be06a38ab08325755872a6938452b82f4fdbc5ee27a9fd28b48ca2",
@@ -168,10 +168,14 @@
     "packages/core/src/shared-git-main-takeover.ts": "a8bf73f87adbebbae4dcf19c73a2d16a88ac96d6ebe60a27a250566e340f9512",
     "packages/core/test/shared-git-main-takeover-fixture.ts": "39ea51d7f865fc2cc993f2d2056f24e34153e9829857070d9650371c0f2cbea4",
     "packages/core/test/shared-git-main-takeover.test.ts": "b1a1a411bbd21993f6329458eff1b7334f2ee4fd5002da39b9b01d336cb07c7b",
-    "packages/cli/src/commands-library-create.ts": "de24a3ee69a3f0f6f26ab7c3eb970c8b5c5317a3f749f979b540117e68a538e4",
+    "packages/cli/src/commands-library-create.ts": "33a42dbe1ca9fcb2cad60392cbc9adbeb722816c5fe153dbbf3f46a304a4fd30",
     "packages/core/test/shared-create-table-plus-restoration-fixture.ts": "83b028d7ca64cb3abe09c4b879969a732eb4abb8c95c69ec5ae525b8b981b968",
     "packages/core/test/shared-create-table-plus-restoration.test.ts": "6be14acfa1d8764e55333634727802e75e8c40d4c5326b2fb2432169c7a3dcc3",
-    "packages/core/test/shared-create-table-plus-restoration.node.test.ts": "033c0d8b9d859ea8ff2b583a1966aa4479e39b1820b94ef2c89352150b417c62"
+    "packages/core/test/shared-create-table-plus-restoration.node.test.ts": "033c0d8b9d859ea8ff2b583a1966aa4479e39b1820b94ef2c89352150b417c62",
+    "packages/core/src/shared-create-current-tree.ts": "e6a112fd36dcaf5e37363017781a22e17f1442f7da467f6f4608db9056c82644",
+    "packages/core/test/shared-create-current-tree-fixture.ts": "b2bda98395d5ee304abf99f07c6e31fb0354e4fa0b7ac6079bb1f0fa2c50ba10",
+    "packages/core/test/shared-create-current-tree.test.ts": "2f171ed86d5e95fe2ec7e8877f3a3cf10ecc294b45d3f9c4c977d72f5ed95545",
+    "packages/core/test/shared-create-current-tree.node.test.ts": "78ef3ee077cc30eda43c2292d7748f0587b6eaef4441a1a17da40948a8b183ea"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -1526,6 +1530,31 @@
         "packages/core/test/shared-create-table-plus-restoration.test.ts",
         "packages/core/test/shared-create-table-plus-restoration.node.test.ts"
       ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "complete_legacy_current_tree_acceptance",
+      "files": [
+        "packages/core/src/shared-create-current-tree.ts",
+        "packages/core/src/shared-create.ts",
+        "packages/core/src/shared-snapshot.ts",
+        "packages/cli/src/commands-library-create.ts"
+      ],
+      "symbols": [
+        "reviewSharedCreateCurrentTree",
+        "applySharedCreateCurrentTree",
+        "reconcileSharedCreateCurrentTree",
+        "completedSharedCreateCurrentTree",
+        "loadPendingSharedCreates",
+        "openSharedSnapshot"
+      ],
+      "scope": "A complete disabled ordinary policy-13 native tree requires its exact retained original manifest, known needs_review mismatch and every original File/page binding. Author Markdown is exactly its frozen prediction; retained body objects and remote raw manifests/chunks/hash/mode must exist. Only the existing generated note autolink comparison is reused. Independent review/adopted events/completion never rewrite old outcomes, supply old events/ACKs or mutate native pages. Fresh full-tree/source/metadata/operation guards precede each new Record. Unknown immutable POSTs never replay; exact observed independent facts may permit only unattempted suffixes, while reconcile never writes. Cold ordinary consumption needs the whole separate proof; original create stays needs_review/unproven. Multi-file byte commitments, concrete CLI/SQLite/SDK composition and current-page observations are outside unchanged finite models. IndependentAcceptance supplies existing abstract principles, not a new full-tree theorem. See docs/maintenance-verification-review.md Complete legacy current-tree acceptance.",
+      "tests": [
+        "packages/core/test/shared-create-current-tree-fixture.ts",
+        "packages/core/test/shared-create-current-tree.test.ts",
+        "packages/core/test/shared-create-current-tree.node.test.ts"
+      ],
+      "no_new_finite_model_claim": true
     }
   ],
   "retained_recovery_journey_budget_review": {
