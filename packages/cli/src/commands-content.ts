@@ -19,6 +19,7 @@ import {
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
 import { fail } from "../../core/src/model.ts"
 import { SharedApplyChangesManifestSchema } from "../../core/src/shared-skill-apply-model.ts"
+import { compactApplyOutput } from "./apply-output.ts"
 import { listSkills } from "../../core/src/catalog-consumption.ts"
 
 import {
@@ -430,32 +431,48 @@ export const applyCommand = defineCommand(
     ),
     ...memberFlags,
     dryRun: dryRunFlag,
+    compact: switchFlag(
+      "compact",
+      "Omit the detailed per-request trace in the JSON tool result while retaining aggregate costs, exact refs, status and operation IDs; full output remains the default",
+    ),
     progress: progressFlag,
   },
   (config) =>
     Effect.gen(function* () {
       yield* validateConstraints([memberConstraint], config)
-      yield* emit(
-        yield* applySkill(config.target, {
-          input: Option.getOrUndefined(config.input),
-          remove: config.remove,
-          changes: yield* readChangesManifest(Option.getOrUndefined(config.changes)),
-          database: Option.getOrUndefined(config.database),
-          name: Option.getOrUndefined(config.name),
-          description: Option.getOrUndefined(config.description),
-          defaultContext: Option.getOrUndefined(config.defaultContext),
-          members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
-          dryRun: config.dryRun,
-          ...(yield* publicationOptions(config.progress)),
-        }),
-      )
+      const result = yield* applySkill(config.target, {
+        input: Option.getOrUndefined(config.input),
+        remove: config.remove,
+        changes: yield* readChangesManifest(Option.getOrUndefined(config.changes)),
+        database: Option.getOrUndefined(config.database),
+        name: Option.getOrUndefined(config.name),
+        description: Option.getOrUndefined(config.description),
+        defaultContext: Option.getOrUndefined(config.defaultContext),
+        members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
+        dryRun: config.dryRun,
+        ...(yield* publicationOptions(config.progress)),
+      })
+      yield* emit(config.compact ? compactApplyOutput(result) : result)
     }),
 ).pipe(
   withConstraints([memberConstraint]),
   Command.withShortDescription("Apply one content change to an exact pinned baseline"),
   Command.withDescription(
-    "Submit changed files in --input and explicit deletions with --remove. Omitted files remain unchanged; deleting the main file is rejected. New files in --input are additions. Equal bytes are not a move, and a missing input file is not a deletion. --changes is an optional version 1 JSON manifest with moves, removes, revives and exact link-rewrite spans. The target must be a pinned main ref or snapshot ID from a prior read; a stale baseline fails before writing. In a shared library, body edits, metadata and explicit layout changes form one frozen sequential parent operation. The complete final tree is checked before dispatch. The batch is not atomic. A later failure retains earlier verified edits. Unknown children are not redispatched. Replacement still refuses to infer mixed deletions from omitted files. Shared success reports status=applied, verified=true and apply_operation_id. Identical input reports unchanged. --dry-run sends no Notion writes. Legacy targets retain their existing publication recovery and ctl operation resume OPERATION_ID.",
+    "Submit changed files in --input and explicit deletions with --remove. Omitted files remain unchanged; deleting the main file is rejected. New files in --input are additions. Equal bytes are not a move, and a missing input file is not a deletion. --changes is an optional version 1 JSON manifest with moves, removes, revives and exact link-rewrite spans. The target must be a pinned main ref or snapshot ID from a prior read; a stale baseline fails before writing. In a shared library, body edits, metadata and explicit layout changes form one frozen sequential parent operation. The complete final tree is checked before dispatch. The batch is not atomic. A later failure retains earlier verified edits. Unknown children are not redispatched. Replacement still refuses to infer mixed deletions from omitted files. Shared success reports status=applied, verified=true and apply_operation_id. Identical input reports unchanged. --dry-run sends no Notion writes. For agent-friendly output, --compact omits only the verbose per-request transport trace while retaining aggregate request metrics, exact identity, status, changes and original operation ID; the complete existing JSON remains the default. Legacy targets retain their existing publication recovery and ctl operation resume OPERATION_ID.",
   ),
+  Command.withExamples([
+    {
+      command:
+        "ntn-skills apply 'PINNED_REF' --database ENTRY --input ./changes --dry-run --compact",
+      description:
+        "Review a complete multi-file intent without writing or flooding the agent context with request traces",
+    },
+    {
+      command: "ntn-skills apply 'PINNED_REF' --database ENTRY --input ./changes --compact",
+      description:
+        "Apply one explicitly authorized intent and receive a compact verified original-operation receipt",
+    },
+  ]),
 )
 
 export const replaceCommand = defineCommand(

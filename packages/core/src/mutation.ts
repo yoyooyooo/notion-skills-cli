@@ -562,7 +562,7 @@ function sharedApplyResult(
           read_only: true,
           reason:
             result.status === "planned"
-              ? "Inspect the retained baseline while reviewing the preview before an explicit apply."
+              ? "Review the frozen changes; if this exact intent was already authorized, execute apply with the same pinned ref and input without --dry-run. Re-reading the unchanged baseline is optional, not a requirement."
               : "Read the exact verified version when its content is needed.",
         },
         operation,
