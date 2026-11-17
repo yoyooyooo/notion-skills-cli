@@ -33,6 +33,12 @@ Provider不可用、缺原输入、无完整cursor或认证不明分别报告，
 
 ## Drive
 
+SRC19 恢复既定文档级接管：`create_git` 只表示初始 source-only，正常读走原 `openSharedSnapshot`/`observeSharedFile`/恢复核心。必须分别跑“主文custom、reference仍Git”和“单reference custom、主文/其他资源仍Git”。用正式 `prepareSharedFileManagement` add v4 创建一个上游reference覆盖页，正式 Source refresh A→B、独立空本地派生缓存、改回原字节仍custom、只 restore-follow 该文件并保留旧pin。验证 no-write 未改读、read-only发现新改动拒绝、错误source descriptor/重复native owner拒绝；不再把 `GIT_ONLY_CUSTOM_TAKEOVER` 报错当完成。新的 mixed acquisition v3 有 source routes 仅用于未接管文件，不能用Git修补缺失custom内容；普通入口不全拉Markdown，路径移除/移动的引用核对仍完备。
+
+```sh
+bun test packages/core/test/shared-source-onboarding.test.ts packages/core/test/shared-git-only-consumer.test.ts packages/core/test/shared-file-observer-readonly.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-restore.test.ts packages/core/test/shared-source-refresh.test.ts --timeout 60000
+```
+
 实现切片（受控数据，不写真实库）：
 
 ```sh

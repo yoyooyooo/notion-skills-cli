@@ -16,6 +16,7 @@ import { openSharedConsumer } from "./shared-consumer.ts"
 import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
 import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
 import { hasPendingSharedCreate } from "./shared-create.ts"
 import {
@@ -1038,7 +1039,16 @@ function acquireTargetSnapshot(
               .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
           )
           yield* Effect.try({
-            try: () => assertSharedFileReferences(files),
+            try: () =>
+              observed.snapshot.shared_acquisition?.version === 3
+                ? assertSparseGitFileReferences(
+                    files,
+                    observed.snapshot.files.map((file) => file.path),
+                    observed.snapshot.shared_acquisition.git_member_root,
+                  )
+                : observed.snapshot.shared_acquisition?.version === 2
+                  ? undefined
+                  : assertSharedFileReferences(files),
             catch: (error) =>
               error instanceof SkillsError
                 ? error

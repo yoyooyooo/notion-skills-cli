@@ -206,9 +206,19 @@ const SharedSnapshotAcquisitionV2 = Schema.Struct({
     }),
   ),
 })
+/** Sparse Git + per-document Notion ownership. Source routes include untouched
+ * Markdown; custom bytes are eagerly verified and never recovered from Git. */
+const SharedSnapshotAcquisitionV3 = Schema.Struct({
+  version: Schema.Literal(3),
+  library: SharedLibrarySchema,
+  source: Schema.Struct({ source_id: Schema.String, revision: Schema.String }),
+  git_member_root: Schema.String,
+  files: SharedSnapshotAcquisitionV1.fields.files,
+})
 export const SharedSnapshotAcquisitionSchema = Schema.Union([
   SharedSnapshotAcquisitionV1,
   SharedSnapshotAcquisitionV2,
+  SharedSnapshotAcquisitionV3,
 ])
 const NotionBlockNodeSchema = Schema.Struct({
   id: Schema.String,

@@ -24,7 +24,7 @@ import { sharedFileSourcePath } from "./shared-file-placement.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedRecords } from "./shared-records.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
+import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { sha256, Store } from "./store.ts"
 import {
@@ -159,11 +159,23 @@ export function restoreSelectedSharedFile<R = never>(input: {
         ),
       )
     const sourcePath = yield* checked(() => sharedFileSourcePath(binding.path, state))
-    const source = yield* resolveSelectedSharedSource(
+    const sourcePlan = yield* planSelectedSharedSource(
       input.library,
       index.page_id,
       index.source_reference,
     )
+    if (!sourcePlan.manifest.some((file) => file.path === sourcePath))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_SOURCE_FILE_MISSING",
+          "The selected fixed source has no exact file at this file's retained source path.",
+          {
+            path: binding.path,
+            source_path: sourcePath,
+          },
+        ),
+      )
+    const source = { ...sourcePlan, ...(yield* sourcePlan.materialize([sourcePath])) }
     const candidate = yield* checked(() => {
       const matches = source.files.filter((file) => file.path === sourcePath)
       if (matches.length !== 1)

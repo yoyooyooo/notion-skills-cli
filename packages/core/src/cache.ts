@@ -18,6 +18,7 @@ import { currentMaterializationVersion } from "./materialization.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import { catalog } from "./catalog.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
 export interface ReadPolicyOptions {
@@ -303,6 +304,7 @@ function validationPaths(snapshot: Snapshot, paths?: readonly string[]) {
     new Set(selected).size !== selected.length ||
     selected.some((path) => !snapshot.files.some((file) => file.path === path)) ||
     (snapshot.shared_acquisition?.version !== 2 &&
+      snapshot.shared_acquisition?.version !== 3 &&
       snapshot.files.some(
         (file) =>
           !selected.includes(file.path) &&
@@ -310,7 +312,7 @@ function validationPaths(snapshot: Snapshot, paths?: readonly string[]) {
             /\.(md|markdown)$/iu.test(file.path) ||
             !snapshot.shared_acquisition?.files.some((route) => route.path === file.path)),
       )) ||
-    (snapshot.shared_acquisition?.version === 2 &&
+    ((snapshot.shared_acquisition?.version === 2 || snapshot.shared_acquisition?.version === 3) &&
       (!selected.includes(snapshot.entrypoint) ||
         snapshot.files.some(
           (file) =>
@@ -382,11 +384,17 @@ function validateSharedCurrentTree(
     if (snapshot.shared_acquisition?.version !== 2)
       yield* Effect.try({
         try: () =>
-          assertSharedFileReferences(
-            files,
-            undefined,
-            snapshot.files.map((file) => file.path),
-          ),
+          snapshot.shared_acquisition?.version === 3
+            ? assertSparseGitFileReferences(
+                files,
+                snapshot.files.map((file) => file.path),
+                snapshot.shared_acquisition.git_member_root,
+              )
+            : assertSharedFileReferences(
+                files,
+                undefined,
+                snapshot.files.map((file) => file.path),
+              ),
         catch: (error) =>
           error instanceof SkillsError
             ? error
@@ -658,7 +666,8 @@ export function cachedRemoteObservation(
       (options.access === "manifest" || options.access === "metadata")
     // Existing callers still perform the original full-object validation in its original order.
     if (!sharedSelective)
-      yield* snapshot.shared_acquisition?.version === 2
+      yield* snapshot.shared_acquisition?.version === 2 ||
+      snapshot.shared_acquisition?.version === 3
         ? validateCachedSharedCurrentTree(snapshot)
         : validateSnapshot(snapshot)
     if (

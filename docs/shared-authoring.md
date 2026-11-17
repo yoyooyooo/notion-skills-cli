@@ -32,7 +32,7 @@ ntn-skills read 'REF_FROM_LIST' --database LIBRARY_ENTRY
 ntn-skills files SNAPSHOT_ID_FROM_READ
 ```
 
-`list` reads discovery metadata. `read` returns the selected instructions and a fixed snapshot with a complete file inventory. Supporting Markdown loads with the selected instructions; non-document bytes are fetched when requested from that exact snapshot. A current read may reuse a validated cache; `read SKILL_PAGE_ID --database LIBRARY_ENTRY --refresh` requests fresh current-state validation. A pinned ref stays fixed and does not accept `--refresh`. Use `export` or an authoring read when you need every file's bytes.
+`list` reads discovery metadata. `read` returns the selected instructions and a fixed snapshot with a complete file inventory. Native/custom documents use the original verified observation path. In an initially Git-only Skill, untouched upstream supporting Markdown, scripts and images remain lazy until requested from that exact snapshot; only edited documents become Notion-owned. A current read may reuse a validated cache; `read SKILL_PAGE_ID --database LIBRARY_ENTRY --refresh` requests fresh current-state validation. A pinned ref stays fixed and does not accept `--refresh`. Use `export` or an authoring read when you need every file's bytes.
 
 Create a new library only when the task includes creating its tables under an owned parent:
 
@@ -45,6 +45,17 @@ Use the returned `library.skills.database_id` as the entry. Initialization creat
 New databases are full-page, not inline, and are named **Skills**, **Files**, **Sources** and **Records**. No `[library-...]` suffix is required. Display names may change without changing identity: attachment and completed-operation readback use the registered descriptor's exact database, data-source and property IDs. During initialization, each initial table POST carries its operation ID, parent and role in an internal `ntn-skills-table:v1` description; the completed Skills descriptor replaces its temporary marker. Keep these internal descriptions intact. Unregistered databases under a chosen parent block a new initialization rather than being adopted by title, so choose a dedicated parent or attach the exact established entry.
 
 Direct edits to a bound Notion body are detected by normal current reads. After the complete edited body has been retained and verified, that whole file becomes customized. Other files retain their own ownership. Name, Description, Default Context and Router Members remain native Notion properties; a body edit does not change them.
+
+For an initially Git-only Skill, changing the main Notion page adopts just `SKILL.md`. Changing a linked reference page adopts just that reference; no other upstream file is copied to Notion. A reference that has never had an editable Notion page can be overridden through the existing exact file command:
+
+```bash
+ntn-skills ctl library file add SKILL_PAGE_ID references/checklist.md --entry LIBRARY_ENTRY --input ./edited-checklist.md --dry-run
+ntn-skills ctl library file add SKILL_PAGE_ID references/checklist.md --entry LIBRARY_ENTRY --input ./edited-checklist.md
+```
+
+For a source-only Markdown path, this freezes its original fixed-file descriptor and creates one document override. It refuses an existing native owner or a changed source snapshot; a normal native add still refuses path collisions. Once adopted, rewriting the original Git text, refreshing upstream or switching machines does not release that file's `custom` ownership. Use that file's explicit `restore-follow` to return to the selected upstream version. A strict `--read-only` call cannot commit a newly observed edit and returns `SHARED_OBSERVATION_REQUIRED`; it never hides the manual edit by falling back to Git. Normal authorized current observation retains the edit through the established file operation journal.
+
+If Notion changes a new document's meaning during import (for example by turning a bare filename into a URL), a known body mismatch retains its original page and `needs_review` result. Do not rerun `file add` or replace that page. Inspect the exact returned original operation and body; the existing `file accept-add review --accept-current --accept-observed-sha256 HASH` can freeze a separate explicit current-document decision, then `accept-add apply` verifies that decision without replaying creation or rewriting the old failure. A sparse v4 overlay additionally checks its original Source/member/file descriptor and every unchanged native baseline. Unknown creation remains ineligible for independent acceptance.
 
 `Enabled` controls ordinary current consumption. `Default Context` remains an optional author-managed organization and View-filter attribute, not another enablement or full-body injection switch. A host uses the selected View result without applying the checkbox twice. Keep existing schema IDs, values and explicit authoring options; this contract does not rename, remove or automatically hide a user column. An unfiltered View remains unaffected by this checkbox, while a View that explicitly filters it follows ordinary metadata freshness.
 

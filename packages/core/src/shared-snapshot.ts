@@ -54,6 +54,7 @@ import {
 import { gitBlobOid } from "./shared-github-source.ts"
 import type { PlannedSharedSource, PlannedSharedSourceFile } from "./shared-selected-source.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
 import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
 import {
   planFileValidation,
@@ -174,6 +175,9 @@ export type OpenSharedSnapshotInput = {
   }
   /** Internal authoring preflight: never retain/adopt a newly observed body. */
   readonly readOnly?: boolean
+  /** Authenticated Git-only admission with sparse, document-scoped Notion
+   * overrides. The caller verifies original Source ownership first. */
+  readonly sparseGit?: boolean
   /** An explicit subset defers immutable non-document bytes while keeping the complete directory. */
   readonly requestedPaths?: readonly string[]
   readonly requestedFileIds?: readonly string[]
@@ -852,10 +856,45 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
     }
     const states = new Map<string, ResolvedFileState>()
+    const initialObservations = new Map<
+      string,
+      Effect.Success<ReturnType<typeof observeSharedFile>>
+    >()
     // Validate every graph and baseline before observing or adopting any body.
     for (const binding of bindings) {
       const events = eventsByFile.get(binding.file_id) ?? []
       if (events.length === 0) {
+        if (input.sparseGit === true && binding.baseline === undefined) {
+          const observed = yield* observeSharedFile({
+            library: input.library,
+            skillPageId: selected,
+            fileId: binding.file_id,
+            pageId: binding.page_id,
+            events: [],
+            plans: [],
+            bodyWrites: [],
+            initialNative: true,
+            ...(binding.file_id === index.main.file_id
+              ? {
+                  initialFollowing: {
+                    source_revision: input.fixedSource!.revision,
+                    projection: { normalization_version: 1 as const, sha256: yield* sha256("") },
+                  },
+                }
+              : {}),
+            readOnly: input.readOnly,
+            beforePlanWrite: (plan) => retainPendingFileOperation(pendingScope, plan),
+          })
+          initialObservations.set(binding.file_id, observed)
+          states.set(binding.file_id, observed.state)
+          if (observed.changed) {
+            eventsByFile.set(binding.file_id, [observed.event])
+            yield* store.retireKeys([
+              yield* pendingFileOperationKey(pendingScope.prefix, observed.operation),
+            ])
+          }
+          continue
+        }
         if (index.source_reference || binding.baseline !== undefined)
           return yield* Effect.fail(
             fail(
@@ -928,10 +967,22 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         )
       requestedLogical.add(binding.path)
     }
+    const changedPathSet = bindings.some((binding) => {
+      const state = states.get(binding.file_id)
+      return (
+        state?.ownership.kind === "tombstone" ||
+        (state?.placement?.suppressed_paths.length ?? 0) > 0
+      )
+    })
     const needsBytes = (path: string) =>
       !selective ||
       path === record.entrypoint ||
-      /\.(md|markdown)$/iu.test(path) ||
+      (input.sparseGit !== true && /\.(md|markdown)$/iu.test(path)) ||
+      (input.sparseGit === true && changedPathSet && /\.(md|markdown)$/iu.test(path)) ||
+      (input.sparseGit === true &&
+        bindings.some(
+          (file) => file.path === path && states.get(file.file_id)?.ownership.kind === "custom",
+        )) ||
       requestedLogical.has(path)
     if (plannedSource !== undefined) {
       // Shared membership, every event graph and original-operation barriers precede
@@ -981,7 +1032,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       const mainOwner = states.get(index.main.file_id)?.ownership
       const customHeader =
         mainOwner?.kind === "custom" ? nativeMetadataForOwnership(mainOwner).frontmatter : undefined
-      if (sourceByPath.has(record.entrypoint) && customHeader === undefined)
+      if (
+        input.sparseGit !== true &&
+        sourceByPath.has(record.entrypoint) &&
+        customHeader === undefined
+      )
         requested.add(record.entrypoint)
       // Durable privacy markers use SHA-256. A Git-only identity cannot prove that
       // an overridden original is unrestricted, so retain its classification read.
@@ -1221,22 +1276,24 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         (item.action === "recover_fixed" && state?.ownership.kind === "following")
       ) {
         const events = eventsByFile.get(binding.file_id) ?? []
-        const observed = yield* observeSharedFile({
-          library: input.library,
-          skillPageId: selected,
-          fileId: binding.file_id,
-          pageId: binding.page_id,
-          events,
-          plans: [],
-          bodyWrites: [],
-          readOnly: input.readOnly,
-          beforePlanWrite: (plan) => retainPendingFileOperation(pendingScope, plan),
-          ...(events.length === 0 ? { initialNative: true } : {}),
-        })
+        const observed =
+          initialObservations.get(binding.file_id) ??
+          (yield* observeSharedFile({
+            library: input.library,
+            skillPageId: selected,
+            fileId: binding.file_id,
+            pageId: binding.page_id,
+            events,
+            plans: [],
+            bodyWrites: [],
+            readOnly: input.readOnly,
+            beforePlanWrite: (plan) => retainPendingFileOperation(pendingScope, plan),
+            ...(events.length === 0 ? { initialNative: true } : {}),
+          }))
         bodyReads += 1
         state = observed.state
         states.set(binding.file_id, state)
-        if (observed.changed) {
+        if (observed.changed && !initialObservations.has(binding.file_id)) {
           eventsByFile.set(binding.file_id, [...events, observed.event])
           // Successful observation verified its shared event; local intent can now retire.
           yield* store.retireKeys([
@@ -1400,7 +1457,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     }
     const nativeSources = yield* checked(() =>
       composed.files
-        .filter((file) => /\.(?:md|markdown)$/iu.test(file.path))
+        .filter(
+          (file) =>
+            /\.(?:md|markdown)$/iu.test(file.path) &&
+            (input.sparseGit !== true || composed.provenance.get(file.path)?.kind === "custom"),
+        )
         .map((file) => {
           const binding = activeBindings.find((value) => value.path === file.path)
           const observation =
@@ -1452,6 +1513,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       .sort((a, b) => (a.file_id < b.file_id ? -1 : a.file_id > b.file_id ? 1 : 0))
     const completeFiles = yield* checked(() =>
       composed.files.map((file) => {
+        if (input.sparseGit === true && composed.provenance.get(file.path)?.kind !== "custom")
+          return file
         if (file.path !== record.entrypoint) {
           const markdown = /\.(?:md|markdown)$/iu.test(file.path)
           if (!markdown) {
@@ -1512,7 +1575,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           record.description,
           body,
           customHeader === undefined ? file : { ...file, bytes: encoder.encode(customHeader) },
-          customHeader === undefined
+          input.sparseGit !== true && customHeader === undefined
             ? sourceFiles.find((source) => source.path === record.entrypoint)
             : undefined,
         )
@@ -1520,7 +1583,15 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     )
     // Only the final tree can resolve references: native custom files may repair
     // or replace provider links, while tombstones and moves may break them.
-    yield* checked(() => assertSharedFileReferences(completeFiles, undefined, placement.paths))
+    yield* checked(() =>
+      input.sparseGit === true
+        ? assertSparseGitFileReferences(
+            completeFiles,
+            placement.paths,
+            plannedSource!.git_member_root!,
+          )
+        : assertSharedFileReferences(completeFiles, undefined, placement.paths),
+    )
     const files: Snapshot["files"][number][] = []
     const acquisitionFiles: NonNullable<Snapshot["shared_acquisition"]>["files"][number][] = []
     for (const path of placement.paths) {
@@ -1563,25 +1634,42 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         yield* markLocalContentRestriction(hash)
       if (file !== undefined) yield* store.writeBytes(`objects/${hash}`, file.bytes)
       files.push({ path, bytes: length, sha256: hash, ...(mode === undefined ? {} : { mode }) })
-      if (path !== record.entrypoint && !/\.(md|markdown)$/iu.test(path)) {
+      if (
+        input.sparseGit === true ||
+        (path !== record.entrypoint && !/\.(md|markdown)$/iu.test(path))
+      ) {
         if (raw !== undefined)
           acquisitionFiles.push({ kind: "resource", path, object_id: raw.object_id })
         else if (provenance?.kind !== "custom" && sourcePath !== undefined)
           acquisitionFiles.push({ kind: "source", path, source_path: sourcePath })
       }
     }
-    const sharedAcquisition =
-      acquisitionFiles.length === 0
-        ? undefined
-        : {
-            version: 1 as const,
+    const sharedAcquisition: Snapshot["shared_acquisition"] =
+      input.sparseGit === true
+        ? {
+            version: 3,
             library: input.library,
-            source:
-              input.fixedSource === undefined
-                ? null
-                : { source_id: input.fixedSource.source_id, revision: input.fixedSource.revision },
+            source: {
+              source_id: input.fixedSource!.source_id,
+              revision: input.fixedSource!.revision,
+            },
+            git_member_root: plannedSource!.git_member_root!,
             files: acquisitionFiles,
           }
+        : acquisitionFiles.length === 0
+          ? undefined
+          : {
+              version: 1 as const,
+              library: input.library,
+              source:
+                input.fixedSource === undefined
+                  ? null
+                  : {
+                      source_id: input.fixedSource.source_id,
+                      revision: input.fixedSource.revision,
+                    },
+              files: acquisitionFiles,
+            }
     const version = yield* sharedSnapshotVersion({
       record,
       files,

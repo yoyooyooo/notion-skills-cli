@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { Effect } from "effect"
+import { authScope } from "../src/catalog.ts"
 import { Notion } from "../src/notion.ts"
 import { property } from "../src/model.ts"
 import { gitOnlyProjection, openGitOnlySharedConsumer } from "../src/shared-git-only-consumer.ts"
@@ -42,6 +43,7 @@ function setup() {
   }
   props.members = { id: "members", type: "relation", relation: [], has_more: false }
   const files = member.portable.files
+  const materialized: string[][] = []
   const source: PlannedSharedSource = {
     source_id: pin,
     revision: f.snapshot.revision,
@@ -58,13 +60,16 @@ function setup() {
     })),
     local_paths: [],
     materialize: (paths) =>
-      Effect.succeed({
-        files: paths.map((path) => ({
-          path,
-          bytes: files.find((item) => item.path === path)!.bytes,
-          mode: files.find((item) => item.path === path)!.mode,
-        })),
-        local_paths: [],
+      Effect.sync(() => {
+        materialized.push([...paths])
+        return {
+          files: paths.map((path) => ({
+            path,
+            bytes: files.find((item) => item.path === path)!.bytes,
+            mode: member.git_manifest!.files.find((item) => item.path === path)!.mode,
+          })),
+          local_paths: [],
+        }
       }),
   }
   let markdown = ""
@@ -84,13 +89,15 @@ function setup() {
       }),
     )
   const read = () =>
-    openGitOnlySharedConsumer({
-      library,
-      target,
-      rawPage: row,
-      scope: "test-scope",
-      startedAt: Date.now(),
-      fixedSource: source,
+    Effect.gen(function* () {
+      return yield* openGitOnlySharedConsumer({
+        library,
+        target,
+        rawPage: row,
+        scope: yield* authScope,
+        startedAt: Date.now(),
+        fixedSource: source,
+      })
     })
   return {
     f,
@@ -98,6 +105,7 @@ function setup() {
     row,
     target,
     files,
+    materialized,
     read,
     run,
     changeMarkdown: (next: string) => {
@@ -111,8 +119,8 @@ test("Git-only current snapshot retains the full pinned directory but downloads 
   const result = await f.run(f.read())
   expect(result.record.locator.type).toBe("shared_skill")
   expect(result.files).toHaveLength(f.files.length)
-  expect(result.shared_acquisition?.version).toBe(2)
-  expect(result.file_bindings).toBeUndefined()
+  expect(result.shared_acquisition?.version).toBe(3)
+  expect(result.file_bindings).toHaveLength(1)
   expect(result.files.find((file) => file.path === "SKILL.md")?.sha256).toBe(
     sha(f.files.find((file) => file.path === "SKILL.md")!.bytes),
   )
@@ -123,34 +131,42 @@ test("Git-only current snapshot retains the full pinned directory but downloads 
   expect(f.f.files.size).toBeGreaterThan(0) // unrelated fixture content is untouched
 })
 
-test("Git-only source cannot hide custom Notion content, native File bindings or unverified bytes", async () => {
+test("sparse Git adopts just the edited Notion main and still refuses unverified source bytes", async () => {
   const f = setup()
   f.changeMarkdown("# Human edit\n")
-  await expect(f.run(f.read())).rejects.toMatchObject({ code: "GIT_ONLY_CUSTOM_TAKEOVER" })
-  f.changeMarkdown("")
+  const adopted = await f.run(f.read())
+  expect(adopted.shared_acquisition?.version).toBe(3)
+  expect(adopted.shared_acquisition?.files.some((route) => route.path === "SKILL.md")).toBe(false)
+  expect(adopted.files.find((file) => file.path === "references/a.md")?.sha256).toBe(
+    sha(f.files.find((file) => file.path === "references/a.md")!.bytes),
+  )
+  expect(f.materialized.flat()).not.toContain("SKILL.md")
+  const g = setup()
   const inconsistent = {
-    ...f.source,
-    manifest: f.source.manifest.map((file) =>
+    ...g.source,
+    manifest: g.source.manifest.map((file) =>
       file.path === "SKILL.md"
         ? { ...file, identity: { ...file.identity, sha256: "a".repeat(64) } }
         : file,
     ),
   }
   await expect(
-    f.run(
-      openGitOnlySharedConsumer({
-        library,
-        target: f.target,
-        rawPage: f.row,
-        scope: "test-scope",
-        startedAt: Date.now(),
-        fixedSource: inconsistent,
+    g.run(
+      Effect.gen(function* () {
+        return yield* openGitOnlySharedConsumer({
+          library,
+          target: g.target,
+          rawPage: g.row,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          fixedSource: inconsistent,
+        })
       }),
     ),
-  ).rejects.toMatchObject({ code: "GIT_ONLY_SOURCE_INCOMPLETE" })
+  ).rejects.toMatchObject({ code: "SHARED_SOURCE_CONFLICT" })
 })
 
-test("Git-only refuses a changed member, missing origin or authored Members without reinterpreting upstream Git bytes", async () => {
+test("sparse Git refuses changed identity and unavailable authored Members without reinterpreting upstream Git bytes", async () => {
   const f = setup()
   const fields = property(f.row.properties)
   fields.source_member = rich("source_member", "skills/wrong")
@@ -183,7 +199,7 @@ test("Git-only refuses a changed member, missing origin or authored Members with
     relation: [{ id: id(123) }],
     has_more: false,
   }
-  await expect(f.run(f.read())).rejects.toMatchObject({ code: "GIT_ONLY_RELATION_REVIEW" })
+  await expect(f.run(f.read())).rejects.toMatchObject({ code: "SHARED_ROUTER_MEMBER_UNAVAILABLE" })
   expect(f.f.writes()).toHaveLength(0)
 })
 
@@ -192,7 +208,7 @@ test("a completed pre-marker Git-only page remains consumable only with its dete
   const fields = property(f.row.properties)
   fields.projection = rich("projection", gitOnlyProjection)
   const original = await f.run(f.read())
-  expect(original.shared_acquisition?.version).toBe(2)
+  expect(original.shared_acquisition?.version).toBe(3)
   expect(original.files.some((item) => item.path === "SKILL.md")).toBe(true)
   fields.origin = {
     id: "origin",

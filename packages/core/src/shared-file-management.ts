@@ -15,6 +15,8 @@ import { sharedSkillId } from "./shared-content.ts"
 import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import type { FrozenWriteBody } from "./shared-body-write-model.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
+import { sparseStateFromSnapshot } from "./shared-sparse-git-state.ts"
 import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import {
@@ -230,7 +232,7 @@ function currentContext(library: SharedLibrary, skillPageId: string) {
     return { index, events, headers } satisfies Context
   })
 }
-function resolved(context: Context) {
+function resolved(context: Context, snapshot?: Snapshot) {
   const states = new Map<string, ResolvedFileState>()
   const byId = new Map(bindings(context.index).map((binding) => [binding.file_id, binding]))
   for (const event of context.events)
@@ -241,10 +243,7 @@ function resolved(context: Context) {
         { file_id: event.file_id },
       )
   for (const binding of byId.values()) {
-    const state = resolveFileState(
-      binding.file_id,
-      context.events.filter((event) => event.file_id === binding.file_id),
-    )
+    const state = sparseStateFromSnapshot(context.index, binding, context.events, snapshot)
     if (state.placement !== undefined && state.placement.path !== binding.path)
       throw fail(
         "SHARED_PATH_CONFLICT",
@@ -311,18 +310,20 @@ function proposedTree(
       readonly retained?: RetainedContent
     }
     readonly entrypoint: string
+    readonly source_overlay?: Snapshot["files"][number]
   },
+  sparseRoot?: string,
 ) {
   let candidate: CompositionFile[]
   if (input.action === "add" || input.action === "undelete") {
-    if (files.some((file) => file.path === input.path))
+    if (files.some((file) => file.path === input.path) && input.source_overlay === undefined)
       throw fail(
         "SHARED_FILE_PATH_CONFLICT",
         "The new path already exists in the complete source/custom tree.",
         { path: input.path },
       )
     candidate = [
-      ...files,
+      ...files.filter((file) => input.source_overlay === undefined || file.path !== input.path),
       {
         path: input.path,
         bytes: new TextEncoder().encode(
@@ -359,7 +360,17 @@ function proposedTree(
     overrides: [],
     entrypoint: input.entrypoint,
   })
-  return { files: composed.files, check: assertSharedFileReferences(composed.files) }
+  return {
+    files: composed.files,
+    check:
+      sparseRoot === undefined
+        ? assertSharedFileReferences(composed.files)
+        : assertSparseGitFileReferences(
+            composed.files,
+            composed.files.map((file) => file.path),
+            sparseRoot,
+          ),
+  }
 }
 function checkSnapshotIdentity(
   library: SharedLibrary,
@@ -532,7 +543,7 @@ export function inspectSharedFileManagementContext(library: SharedLibrary, snaps
       )
     const scope = yield* authScope
     const context = yield* currentContext(library, locator.page_id)
-    const states = yield* managementChecked(() => resolved(context))
+    const states = yield* managementChecked(() => resolved(context, snapshot))
     const now = yield* Clock.currentTimeMillis
     const evidence = yield* managementChecked(() =>
       assertFreshEvidence(snapshot, library, context, states, scope, now),
@@ -599,7 +610,7 @@ export function revalidateSharedFileManagementContext(
           "The original snapshot, binding, metadata or file frontier changed after planning.",
         ),
       )
-    const states = yield* managementChecked(() => resolved(context))
+    const states = yield* managementChecked(() => resolved(context, snapshot))
     yield* checkSnapshotIdentity(library, snapshot, context, states, input.source_revision)
     return {
       ...context,
@@ -642,7 +653,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
           },
         ),
       )
-    const states = yield* managementChecked(() => resolved(context))
+    const states = yield* managementChecked(() => resolved(context, input.snapshot))
     const now = yield* Clock.currentTimeMillis
     const evidence = yield* managementChecked(() =>
       assertFreshEvidence(input.snapshot, input.library, context, states, scope, now),
@@ -789,16 +800,35 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       ...(input.action === "add" && input.mode !== undefined ? { mode: input.mode } : {}),
     }
     const content = { markdown, retained }
+    const sparse = input.snapshot.shared_acquisition
+    const sourceOverlay =
+      input.action === "add" &&
+      sparse?.version === 3 &&
+      sparse.files.some((route) => route.path === path && route.kind === "source")
+        ? input.snapshot.files.find((file) => file.path === path)
+        : undefined
+    if (sourceOverlay !== undefined && !/\.(md|markdown)$/iu.test(path))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_MANAGEMENT_INVALID",
+          "Native document overlays require a Markdown path; raw resources use their existing resource authoring entry.",
+        ),
+      )
     const checkedTree =
       input.referenceCheck === undefined
         ? yield* managementChecked(() =>
-            proposedTree(tree, {
-              action: input.action,
-              path,
-              destination_path: destination,
-              content,
-              entrypoint: input.snapshot.entrypoint,
-            }),
+            proposedTree(
+              tree,
+              {
+                action: input.action,
+                path,
+                destination_path: destination,
+                content,
+                entrypoint: input.snapshot.entrypoint,
+                ...(sourceOverlay === undefined ? {} : { source_overlay: sourceOverlay }),
+              },
+              sparse?.version === 3 ? sparse.git_member_root : undefined,
+            ),
           )
         : { check: input.referenceCheck }
 
@@ -861,9 +891,12 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
       reference_check: checkedTree.check,
       before,
       creation_projection: creationProjection,
+      ...(sourceOverlay === undefined ? {} : { source_overlay: sourceOverlay }),
       ...(input.action === "add" && input.mode !== undefined ? { creation_mode: input.mode } : {}),
       ...(input.action === "add" &&
-      (supportingHeader !== undefined || creationBindings !== undefined)
+      (supportingHeader !== undefined ||
+        creationBindings !== undefined ||
+        sourceOverlay !== undefined)
         ? { creation_input: input.markdown }
         : {}),
       ...(creationBindings === undefined ? {} : { creation_bindings: creationBindings }),
@@ -1075,7 +1108,6 @@ function verifyBefore(
         ),
       )
     if (batch !== undefined) yield* assertBatchFrontier(context, plan, batch)
-    const states = yield* managementChecked(() => resolved(context))
     const snapshot = yield* (yield* Store).readJson(
       `snapshots/${plan.snapshot_id}.json`,
       SnapshotSchema,
@@ -1090,6 +1122,22 @@ function verifyBefore(
         fail(
           "SHARED_FILE_MANAGEMENT_STALE",
           "The exact checked complete snapshot is unavailable or differs from the original plan.",
+        ),
+      )
+    const states = yield* managementChecked(() => resolved(context, snapshot))
+    if (
+      plan.version === 4 &&
+      (snapshot.shared_acquisition?.version !== 3 ||
+        !snapshot.shared_acquisition.files.some(
+          (route) => route.kind === "source" && route.path === plan.path,
+        ) ||
+        canonicalSharedJson(snapshot.files.find((file) => file.path === plan.path)) !==
+          canonicalSharedJson(plan.source_overlay))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_FILE_MANAGEMENT_STALE",
+          "The exact upstream document to overlay differs from the frozen snapshot.",
         ),
       )
     const priorEventIds = new Set(batch?.prior_events.map((event) => event.event_id) ?? [])
@@ -1124,7 +1172,16 @@ function verifyBefore(
     const standaloneTree = batch === undefined ? yield* snapshotTree(snapshot) : undefined
     const references =
       batch === undefined
-        ? yield* managementChecked(() => proposedTree(standaloneTree!, plan).check)
+        ? yield* managementChecked(
+            () =>
+              proposedTree(
+                standaloneTree!,
+                plan,
+                snapshot.shared_acquisition?.version === 3
+                  ? snapshot.shared_acquisition.git_member_root
+                  : undefined,
+              ).check,
+          )
         : yield* managementChecked(() => assertSharedFileReferences(batch.final_files))
     if (batch !== undefined) {
       const expected = batch.final_files.find(
@@ -1159,8 +1216,8 @@ function verifyBefore(
       )
     if (plan.action === "add") {
       if (
-        plan.version === 3 &&
-        plan.creation_bindings.some(
+        (plan.version === 3 || plan.version === 4) &&
+        plan.creation_bindings?.some(
           (expected) =>
             !bindings(context.index).some(
               (actual) => actual.path === expected.path && actual.page_id === expected.page_id,

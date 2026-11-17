@@ -25,7 +25,11 @@ Sources 单独保存可编辑配置，Records 保留不可变历史。普通 Ski
 
 `sources onboard --source SOURCE --member EXACT_KEY` 在默认 `--storage auto` 判定为未转换、完整固定 Git 时，冻结 `create_git` 动作：**只建立一个默认 Disabled 的 Skills 控制页和该页对应的一个必要不可变 Source pin 证明**。该页保存 Skill ID、主文身份、Origin、Source Member、Git 选择及 `Projection=git-only/v1:<SOURCE_PAGE_ID>`，将原接纳 Source 页面身份冻结在控制标记内；不为上游辅助 Markdown、图片、脚本或其他资源创建 Notion Files 页面/字节对象。确实要求 Notion 可编辑/保留导入时，使用显式 `--storage retained`，保留原 native 创建和不可变恢复合同；旧原操作不得重新解释为 Git-only。之前冻结的无 Source 身份旧 `create_git` 计划在新合同下明确拒绝，应重新只读准备，避免同一计划派发出不同的请求。**已完成登记**且保存旧 `Projection=git-only/v1` 的控制页不会被丢弃：只有当前 Source UUID、Source Member 与首次接纳时按固定公式生成的 Skill ID 逐一吻合，才可继续使用旧控制页的固定 Git 内容；改变 Origin 或成员会失败，不会把旧控制页冒充新一次接纳。
 
-`git-only/v1` 消费必须先核验当前 Skills 资格、选定的 immutable source pin、精确 Source Member 路径、单一 Origin、空的 native 正文/文件归属/引用/未经审阅的管理关系。之后以原固定 Git manifest 建立完整文件目录，只取得本次需要的 `SKILL.md`，references/非文档资源在选中的固定 snapshot 中按路径和 OID/SHA256/长度/模式延迟取回。本机缓存是派生物，不向 Notion 发布全文。当前 Notion 页面发生人工正文编辑时返回 `GIT_ONLY_CUSTOM_TAKEOVER`，保护人工修改等待显式接管流程；不要静默回退为旧 Git 内容或把原页面改为空。跨上游兄弟 Skill 的相对链接保持原字节，归属/目标验证仍需独立验收，不能放宽通用路径逃逸检查。新建控制页 POST、Source 记录及后续元数据均沿原 journal/ACK/unknown 防重放；页面看起来存在不能证明未收到响应的原请求成功。
+`git-only/v1` 只标记最初的固定 Git 接纳方式，不代表整 Skill 永久只读。消费先核验 Skills 资格、原 Source/Member 与固定 pin，再进入原有文件级 `following/custom/tombstone` 合成链。主文和每份 reference 各自观察：修改哪份 Notion 文档，就整份接管哪份；其余仍使用 GitHub 固定 commit 的原字节。新接纳的空主页面没有整包副本，首次正文变化沿原观察/历史/事件机制形成该文件的 custom；已有支持页同样按其原基线和事件判断。普通读可以完成必要的归属留存；`--read-only` 不能替人落接管事件，会明确要求一次正常授权观察，绝不失败后偷回 Git。
+
+需要编辑尚无 Notion 页的上游 reference 时，使用已有 `ctl library file add TARGET references/a.md --entry ENTRY --input edited.md`：只创建该文档的覆盖页，冻结原 Git 文件描述符和完整核对的版本；已有 native owner、错误原文件哈希或原快照变化仍拒绝。新 add-plan v4 不改写旧版已保存计划。修改后整页内容从 Notion 获取；不是行级合并，也不默认接管同 Skill 的其他文档。改回原文、清缓存、换机器或上游 A→B 均不解除 custom，只有该文件的 `restore-follow` 才回到当前选定 Git 版本并保留旧内容。
+
+混合 snapshot 的 acquisition v3 保留完整有效文件目录与按文件获取路线。未改的 Git Markdown/脚本/图片按需拉取，custom 文档用共享归属/保留内容验证；所有读、`use`、导出和 SDK 使用同一 snapshot。接管后的主文不会再从新的上游主文补合额外 YAML 字段。跨成员相对引用仍验证同 Source/commit 和目标有效快照；路径删除或移动触发必要的完整引用核对。新建控制页、覆盖文档、Source 事实继续沿原 journal/ACK/unknown 防重放，不把当前页面相等当成丢失响应的成功证据。
 
 接纳默认 Disabled，必须由后续明确的授权变更才可公开普通目录/`read/use`；只读 `review` 与 `onboard --output` 仅生成候选或冻结计划，不会接纳或启用。此设计不要求补齐历史保留型导入的全部 Files/Records。独立冷 SDK/Pi 与真实提供方验收需分别记录，不以受控 fixture 通过代替发布成功。
 

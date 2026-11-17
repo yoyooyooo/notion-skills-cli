@@ -1,6 +1,6 @@
 import { expandSharedOperationPlan, storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { Effect, Schema } from "effect"
-import { fail, SkillsError } from "./model.ts"
+import { fail, SkillsError, FileEntrySchema } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { FrozenWriteBodySchema } from "./shared-body-write-model.ts"
 import {
@@ -77,6 +77,16 @@ export const SharedFileManagementPlanSchema = Schema.Union([
         path: Schema.String,
       }),
     ),
+  }),
+  Schema.Struct({
+    ...SharedFileManagementPlanV1Schema.fields,
+    version: Schema.Literal(4),
+    action: Schema.Literal("add"),
+    creation_input: Schema.String,
+    creation_bindings: Schema.optional(
+      Schema.Array(Schema.Struct({ page_id: Schema.String, path: Schema.String })),
+    ),
+    source_overlay: FileEntrySchema,
   }),
 ])
 export type SharedFileManagementPlan = typeof SharedFileManagementPlanSchema.Type
@@ -231,6 +241,19 @@ export function validateSharedFileManagementPlan(input: unknown) {
         )
       if (plan.action === "add") {
         if (
+          plan.version === 4 &&
+          (plan.source_overlay.path !== plan.path ||
+            !/\.(md|markdown)$/iu.test(plan.path) ||
+            !/^[a-f0-9]{64}$/u.test(plan.source_overlay.sha256) ||
+            !Number.isSafeInteger(plan.source_overlay.bytes) ||
+            plan.source_overlay.bytes < 0 ||
+            !plan.source_id)
+        )
+          throw fail(
+            "SHARED_FILE_MANAGEMENT_INVALID",
+            "An overlay must bind one original fixed Git document.",
+          )
+        if (
           plan.page_id !== null ||
           plan.before !== null ||
           plan.destination_path !== null ||
@@ -321,7 +344,7 @@ export function validateSharedFileManagementPlan(input: unknown) {
         ? yield* managementChecked(() => {
             const input = splitNativeSupportingMarkdown(plan.creation_input)
             const expected =
-              plan.version === 3
+              (plan.version === 3 || plan.version === 4) && plan.creation_bindings !== undefined
                 ? restoreSharedNativeFileLinks(input.body, plan.path, plan.creation_bindings)
                 : input.body
             if (
@@ -405,6 +428,7 @@ export function makeSharedFileManagementPlan(
   > & {
     readonly creation_input?: string
     readonly creation_bindings?: readonly { readonly page_id: string; readonly path: string }[]
+    readonly source_overlay?: typeof FileEntrySchema.Type
     readonly event:
       | Omit<Extract<FileEvent, { kind: "adopted" }>, "event_id">
       | Omit<Extract<FileEvent, { kind: "deleted" }>, "event_id">
@@ -418,11 +442,13 @@ export function makeSharedFileManagementPlan(
     const frozen = {
       ...input,
       version:
-        input.creation_bindings !== undefined
-          ? (3 as const)
-          : input.creation_input === undefined
-            ? (1 as const)
-            : (2 as const),
+        input.source_overlay !== undefined
+          ? (4 as const)
+          : input.creation_bindings !== undefined
+            ? (3 as const)
+            : input.creation_input === undefined
+              ? (1 as const)
+              : (2 as const),
       kind: "file_management" as const,
       event: { ...input.event, event_id: `${input.action}-${eventHash}` },
     }

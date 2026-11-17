@@ -59,6 +59,13 @@ export type ObserveSharedFileInput<R = never> = {
   readonly pageId: string
   readonly events: readonly FileEvent[]
   readonly initialNative?: boolean
+  /** Only the authenticated sparse Git main page is born with a known empty
+   * editable projection. This virtual initial state writes no event; the first
+   * actual edit is adopted as a normal root event with no invented parents. */
+  readonly initialFollowing?: {
+    readonly source_revision: string
+    readonly projection: BodyFingerprint
+  }
   /** Batch-discovered unresolved plans plus local recovery receipts, never current-body substitutes. */
   readonly plans?: readonly SharedObservationPlan[]
   /** Batch-checked body writes. Omission performs standalone shared discovery. */
@@ -124,6 +131,12 @@ export function observeSharedFile<R = never>(input: ObserveSharedFileInput<R>) {
       ? undefined
       : yield* checked(() => {
           if (input.events.length > 0) return resolveFileState(input.fileId, input.events)
+          if (input.initialFollowing !== undefined && input.initialNative === true)
+            return {
+              file_id: input.fileId,
+              heads: [],
+              ownership: { kind: "following" as const, ...input.initialFollowing },
+            } satisfies ResolvedFileState
           if (input.initialNative !== true)
             throw fail(
               "BASELINE_MISSING",

@@ -245,7 +245,7 @@ export function projectUpstreamMemberSnapshot(
 export function resolveUpstreamMemberRelative(snapshot: Snapshot, from: string, relative: string) {
   return Effect.gen(function* () {
     const local = fileRef(snapshot.record.id, from, snapshot.snapshot_id)
-    if (snapshot.shared_acquisition?.version === 2) {
+    if (snapshot.shared_acquisition?.version === 2 || snapshot.shared_acquisition?.version === 3) {
       const own = yield* Effect.try({
         try: () => resolveRef(local, relative),
         catch: (error) => error as SkillsError,

@@ -38,8 +38,8 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
   for (const route of acquisition.files) {
     if (
       !snapshot.files.some((file) => file.path === route.path) ||
-      route.path === snapshot.entrypoint ||
-      /\.(md|markdown)$/iu.test(route.path)
+      (acquisition.version !== 3 &&
+        (route.path === snapshot.entrypoint || /\.(md|markdown)$/iu.test(route.path)))
     )
       throw fail(
         "STATE_CORRUPT",
@@ -56,5 +56,15 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
     } else if (!/^resource-[a-f0-9]{64}$/u.test(route.object_id))
       throw fail("STATE_CORRUPT", "A retained raw path has an invalid immutable manifest identity.")
   }
+  if (
+    acquisition.version === 3 &&
+    (normalizePath(acquisition.git_member_root) !== acquisition.git_member_root ||
+      !acquisition.source.source_id ||
+      !acquisition.source.revision)
+  )
+    throw fail(
+      "STATE_CORRUPT",
+      "A mixed snapshot requires its original fixed Git root and version.",
+    )
   return new Set(acquisition.files.map((route) => route.path))
 }

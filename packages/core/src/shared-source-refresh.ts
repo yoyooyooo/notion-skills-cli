@@ -35,6 +35,10 @@ import {
 } from "./shared-records.ts"
 import { resolveSelectedSharedSource } from "./shared-selected-source.ts"
 import { openSharedSnapshot } from "./shared-snapshot.ts"
+import { openSharedConsumer } from "./shared-consumer.ts"
+import { isGitOnlyProjection } from "./shared-git-only-marker.ts"
+import { sparseStateFromSnapshot } from "./shared-sparse-git-state.ts"
+import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { resolveFileState, FileEventSchema } from "./shared-file-state.ts"
 import { composeSharedFilePlacements, sharedFileSourcePath } from "./shared-file-placement.ts"
@@ -282,9 +286,13 @@ function projectCandidate(
       })
     }
   return Effect.gen(function* () {
-    const fixed = selected.index.source_reference
-      ? yield* resolveSelectedSharedSource(library, selected.id, selected.index.source_reference)
-      : undefined
+    const sparseGit = isGitOnlyProjection(
+      text(sourceField(selected.raw, library.skills.property_ids.Projection!).rich_text),
+    )
+    const fixed =
+      !sparseGit && selected.index.source_reference
+        ? yield* resolveSelectedSharedSource(library, selected.id, selected.index.source_reference)
+        : undefined
     const scope = yield* authScope
     const record = yield* sourceChecked(() =>
       sharedRecordFromPage(
@@ -316,26 +324,39 @@ function projectCandidate(
             rawPage: selected.raw,
             field: "Requires",
           })
-    const current = yield* openSharedSnapshot({
-      library,
-      target: selected.id,
-      rawPage: selected.raw,
-      scope,
-      startedAt: yield* Clock.currentTimeMillis,
-      forceFull: true,
-      readOnly: true,
-      relations: { members, required },
-      ...(fixed
-        ? {
-            fixedSource: {
-              source_id: fixed.source_id,
-              revision: fixed.revision,
-              files: fixed.files,
-              local_paths: fixed.local_paths,
-            },
-          }
-        : {}),
-    }).pipe(Effect.mapError(referenceErrorContext("current_snapshot")))
+    const current = yield* (
+      sparseGit
+        ? openSharedConsumer({
+            library,
+            target: selected.id,
+            rawPage: selected.raw,
+            scope,
+            startedAt: yield* Clock.currentTimeMillis,
+            forceFull: true,
+            readOnly: true,
+            relations: { members, required },
+          })
+        : openSharedSnapshot({
+            library,
+            target: selected.id,
+            rawPage: selected.raw,
+            scope,
+            startedAt: yield* Clock.currentTimeMillis,
+            forceFull: true,
+            readOnly: true,
+            relations: { members, required },
+            ...(fixed
+              ? {
+                  fixedSource: {
+                    source_id: fixed.source_id,
+                    revision: fixed.revision,
+                    files: fixed.files,
+                    local_paths: fixed.local_paths,
+                  },
+                }
+              : {}),
+          })
+    ).pipe(Effect.mapError(referenceErrorContext("current_snapshot")))
     const records = yield* querySharedRecords(library, {
       skillPageId: selected.id,
       kind: "file_event",
@@ -358,10 +379,7 @@ function projectCandidate(
     const custom: string[] = []
     for (const file of bindings) {
       const state = yield* sourceChecked(() =>
-        resolveFileState(
-          file.file_id,
-          events.filter((event) => event.file_id === file.file_id),
-        ),
+        sparseStateFromSnapshot(selected.index, file, events, current),
       )
       states.push({ file_id: file.file_id, path: file.path, state })
       if (state.ownership.kind === "following") {
@@ -410,7 +428,11 @@ function projectCandidate(
       record,
       bindings: activeBindings,
       files: yield* Effect.forEach(
-        composed.files.filter((file) => /\.md$/iu.test(file.path)),
+        composed.files.filter(
+          (file) =>
+            /\.md$/iu.test(file.path) &&
+            (!sparseGit || composed.provenance.get(file.path)?.kind === "custom"),
+        ),
         (file) =>
           Effect.gen(function* () {
             const binding = activeBindings.find((item) => item.path === file.path)
@@ -437,6 +459,7 @@ function projectCandidate(
     const resolvedLinks = [...links, ...native.links]
     const final = yield* sourceChecked(() =>
       composed.files.map((file) => {
+        if (sparseGit && composed.provenance.get(file.path)?.kind !== "custom") return file
         if (file.path !== current.entrypoint)
           return /\.md$/iu.test(file.path)
             ? {
@@ -472,13 +495,21 @@ function projectCandidate(
               ? ""
               : renderSharedRouterMembers(members)),
           file,
-          files.find((item) => item.path === file.path),
+          sparseGit ? undefined : files.find((item) => item.path === file.path),
         )
       }),
     )
-    yield* sourceChecked(() => assertSharedFileReferences(final)).pipe(
-      Effect.mapError(referenceErrorContext("candidate_file_references")),
-    )
+    yield* sourceChecked(() =>
+      sparseGit
+        ? assertSparseGitFileReferences(
+            final,
+            final.map((file) => file.path),
+            current.shared_acquisition?.version === 3
+              ? current.shared_acquisition.git_member_root
+              : "",
+          )
+        : assertSharedFileReferences(final),
+    ).pipe(Effect.mapError(referenceErrorContext("candidate_file_references")))
     const projected = yield* Effect.forEach(final, (file) =>
       Effect.gen(function* () {
         return {
@@ -496,8 +527,9 @@ function projectCandidate(
         files: current.shared_authoring.files
           .filter(
             (file) =>
+              file.heads.length > 0 &&
               states.find((item) => item.file_id === file.file_id)?.state.ownership.kind ===
-              "following",
+                "following",
           )
           .map(({ file_id, page_id, path, heads, body_sha256 }) => ({
             file_id,
@@ -1272,21 +1304,35 @@ export function applySourceRefresh(
         ),
       )
 
-    const fixed = yield* resolveSelectedSharedSource(library, selected.id, sourcePin)
-    const verified = yield* openSharedSnapshot({
-      library,
-      target: selected.id,
-      scope: yield* authScope,
-      startedAt: yield* Clock.currentTimeMillis,
-      readOnly: true,
-      forceFull: true,
-      fixedSource: {
-        source_id: fixed.source_id,
-        revision: fixed.revision,
-        files: fixed.files,
-        local_paths: fixed.local_paths,
-      },
-    })
+    const sparseGit = isGitOnlyProjection(
+      text(sourceField(selected.raw, library.skills.property_ids.Projection!).rich_text),
+    )
+    const fixed = sparseGit
+      ? undefined
+      : yield* resolveSelectedSharedSource(library, selected.id, sourcePin)
+    const verified = yield* sparseGit
+      ? openSharedConsumer({
+          library,
+          target: selected.id,
+          scope: yield* authScope,
+          startedAt: yield* Clock.currentTimeMillis,
+          readOnly: true,
+          forceFull: true,
+        })
+      : openSharedSnapshot({
+          library,
+          target: selected.id,
+          scope: yield* authScope,
+          startedAt: yield* Clock.currentTimeMillis,
+          readOnly: true,
+          forceFull: true,
+          fixedSource: {
+            source_id: fixed!.source_id,
+            revision: fixed!.revision,
+            files: fixed!.files,
+            local_paths: fixed!.local_paths,
+          },
+        })
     if (canonicalSharedJson(verified.files) !== canonicalSharedJson(plan.projected_files))
       return yield* Effect.fail(
         fail(

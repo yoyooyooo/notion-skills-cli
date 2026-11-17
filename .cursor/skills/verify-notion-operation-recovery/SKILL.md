@@ -28,6 +28,8 @@ AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩�
 具体恢复复用AcknowledgedRecordPrefix的原ACK/前缀/后缀边界及独立接受的保留事实原则，
 新增retained v2字节/解析条件仍只由实际实现与安装回归证明，不改原模型有限域。
 
+SRC19 的单文档覆盖 add v4 可以沿同一个 IndependentAcceptance 原操作路径处理已知完整正文不匹配：检查原 snapshot、Source 选择及不可变 Git 文件描述符、其他 native 投影/custom frontier，显式 hash-bound 接受当前目标文档。不是重发 add 或忽略 provider 改义；旧 needs_review 与 completion=unproven 保留，unknown 创建仍拒绝。验证在 `shared-source-onboarding.test.ts` 的 sparse document mismatch 正例及 `shared-file-management.test.ts` 的原生所有负例；冷读依据共享独立 review/event/completion，不需要为了引用恢复拷贝全部 Git 内容。
+
 表格字面量的独立原页修复由 `shared-source-projection-repair.test.ts` 覆盖：原主ACK、完整
 前像和独立PATCH ACK分开；original apply不能绕过repair的unknown。原创建完成还需绑定
 独立修复的review/outcome hash，冷消费缺证据拒绝。具体Markdown与组合状态由实际回归

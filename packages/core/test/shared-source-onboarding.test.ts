@@ -15,11 +15,29 @@ import { authScope } from "../src/catalog.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
 import { openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
 import { readResources } from "../src/resource-read.ts"
+import { consume } from "../src/consumer.ts"
+import { snapshotPortable } from "../src/export.ts"
 import { readSkill, resolveSkillRef } from "../src/snapshot.ts"
 import { registerSourceBinding } from "../src/shared-source-binding.ts"
+import { restoreSelectedSharedFile } from "../src/shared-file-restore.ts"
+import {
+  prepareSharedFileManagement,
+  executeSharedFileManagement,
+} from "../src/shared-file-management.ts"
+import { withSharedAuthoringTarget } from "../src/shared-authoring-context.ts"
+import {
+  reviewSharedFileAddAcceptance,
+  applySharedFileAddAcceptance,
+} from "../src/shared-file-add-acceptance.ts"
+import { resolveFileState, type FileEvent } from "../src/shared-file-state.ts"
 import { fileRef } from "../src/ref.ts"
 import { querySharedRecords } from "../src/shared-records.ts"
-import { bindSourceDefinition } from "../src/shared-source-definitions.ts"
+import { bindSourceDefinition, readSourceDefinition } from "../src/shared-source-definitions.ts"
+import {
+  prepareSourceRefreshFromSnapshot,
+  reviewSourceMembers,
+  applySourceRefresh,
+} from "../src/shared-source-refresh.ts"
 import { discoverSourceDefinition } from "../src/shared-source-adapters.ts"
 import { SourceOnboardingPlanSchema } from "../src/shared-source-onboarding-model.ts"
 import {
@@ -31,8 +49,16 @@ import {
 import { fixture, library, ids } from "./shared-source-projection-fixture.ts"
 import { id, rich } from "./shared-snapshot-fixture.ts"
 
-function setup() {
-  const f = fixture([], { markdownImport: true })
+function setup(
+  setupOptions: {
+    readonly bodyWrites?: boolean
+    readonly nativeReadback?: (wire: string) => string
+  } = {},
+) {
+  const f = fixture([], {
+    markdownImport: true,
+    ...(setupOptions.nativeReadback ? { readback: setupOptions.nativeReadback } : {}),
+  })
   const root = mkdtempSync(join(tmpdir(), "ntn-source-onboarding-"))
   for (const row of f.skills.values()) {
     const p = property(row.properties)
@@ -68,6 +94,47 @@ function setup() {
           ...api,
           request: (path, body, options) =>
             Effect.suspend(() => {
+              const bodyTarget = /^v1\/pages\/([^/]+)\/markdown$/u.exec(path)
+              if (setupOptions.bodyWrites === true && bodyTarget && options?.method === "PATCH") {
+                const page = bodyTarget[1]!,
+                  current = f.base.bodies.get(page)
+                const request = property(body),
+                  changes = property(request.update_content).content_updates
+                if (
+                  request.type !== "update_content" ||
+                  request.markdown_version !== "v2" ||
+                  !Array.isArray(changes) ||
+                  changes.length !== 1 ||
+                  current === undefined
+                )
+                  return Effect.fail(
+                    fail(
+                      "TEST_RESTORE_REQUEST",
+                      "Expected one exact full-document restore request.",
+                    ),
+                  )
+                const update = property(changes[0])
+                if (
+                  typeof update.old_str !== "string" ||
+                  update.old_str === "" ||
+                  current !== update.old_str ||
+                  typeof update.new_str !== "string"
+                )
+                  return Effect.fail(
+                    fail("TEST_RESTORE_REQUEST", "The frozen original document no longer matches."),
+                  )
+                const rendered = update.new_str.replace(/^<h1>([^\n]*)<\/h1>(?=\n|$)/u, "# $1")
+                f.calls.push({ path, method: "PATCH", body })
+                f.base.bodies.set(page, rendered)
+                const row = f.skills.get(page) ?? f.files.get(page)
+                if (row) row.last_edited_time = new Date().toISOString()
+                return Effect.succeed({
+                  id: page,
+                  markdown: rendered,
+                  truncated: false,
+                  unknown_block_ids: [],
+                })
+              }
               if (
                 path === "v1/pages" &&
                 options?.method === "POST" &&
@@ -136,6 +203,41 @@ function setup() {
               }
               const target = f.skills.get(path.replace(/^v1\/pages\//u, ""))
               const changes = property(property(body).properties)
+              const record = [...f.base.records.values()].find(
+                (row) => path === `v1/pages/${row.id}`,
+              )
+              if (
+                setupOptions.bodyWrites === true &&
+                record &&
+                options?.method === "PATCH" &&
+                Object.keys(changes).join(",") === library.records.property_ids.Origin
+              ) {
+                f.calls.push({ path, method: "PATCH", body })
+                const key = library.records.property_ids.Origin!
+                property(record.properties)[key] = {
+                  id: key,
+                  type: "relation",
+                  ...property(changes[key]),
+                  has_more: false,
+                }
+                return Effect.succeed(structuredClone(record))
+              }
+              if (
+                setupOptions.bodyWrites === true &&
+                target &&
+                options?.method === "PATCH" &&
+                Object.keys(changes).join(",") === "source"
+              ) {
+                f.calls.push({ path, method: "PATCH", body })
+                property(target.properties).source = {
+                  id: "source",
+                  type: "rich_text",
+                  ...property(changes.source),
+                  has_more: false,
+                }
+                target.last_edited_time = new Date().toISOString()
+                return Effect.succeed(structuredClone(target))
+              }
               if (
                 target !== undefined &&
                 options?.method === "PATCH" &&
@@ -255,8 +357,8 @@ test("an explicitly enabled Git-only member consumes original Git main and lazil
       })
     }),
   )
-  expect(current.shared_acquisition?.version).toBe(2)
-  expect(current.file_bindings).toBeUndefined()
+  expect(current.shared_acquisition?.version).toBe(3)
+  expect(current.file_bindings).toHaveLength(1)
   expect(current.files).toHaveLength(f.snapshot.members[0]!.portable.files.length)
   expect(current.materialization?.materialized_paths).toEqual(["SKILL.md"])
   const body = await f.run(openFixedSnapshotFiles(current, () => ["references/a.md"]))
@@ -407,6 +509,351 @@ test("Git-only sibling links read pinned Git bytes through --from only for a pub
     code: "SOURCE_REVISION_UNAVAILABLE",
   })
   expect(f.writes()).toHaveLength(0)
+})
+
+test("one edited child document is sticky Notion custom while main and all other resources follow Git, including after cold recovery and A-to-B", async () => {
+  const f = setup({ bodyWrites: true })
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const applied = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  const page = applied.results[0]!.page_id!
+  const row = f.skills.get(page)!
+  property(row.properties).enabled = { id: "enabled", type: "checkbox", checkbox: true }
+  const open = () =>
+    f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: page,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+        })
+      }),
+    )
+  const textOf = async (snapshot: Awaited<ReturnType<typeof open>>, path: string) => {
+    const selected = await f.run(openFixedSnapshotFiles(snapshot, () => [path]))
+    return new TextDecoder().decode(selected.files[0]!.bytes)
+  }
+  const original = await open()
+  const mainA = original.files.find((file) => file.path === "SKILL.md")!.sha256
+  const originalGuide = new TextDecoder().decode(
+    f.snapshot.members[0]!.portable.files.find((file) => file.path === "references/a.md")!.bytes,
+  )
+  const fileCount = f.files.size
+  const authoring = await f.run(
+    withSharedAuthoringTarget(
+      page,
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: page,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+          readOnly: true,
+        })
+      }),
+    ),
+  )
+  const overlay = await f.run(
+    prepareSharedFileManagement({
+      library,
+      snapshot: authoring,
+      action: "add",
+      path: "references/a.md",
+      markdown: "# My complete guide\n\nOnly this document belongs to me.\n",
+    }),
+  )
+  expect(overlay.version).toBe(4)
+  const allocated = await f.run(
+    executeSharedFileManagement(library, { plan: overlay, mode: "create" }),
+  )
+  expect(allocated.status).toBe("applied")
+  expect(f.files.size).toBe(fileCount + 1)
+  const childId = allocated.page_id!
+  const child = f.files.get(childId)!
+  const customFileId = overlay.file_id
+  const mixed = await open()
+  expect(await textOf(mixed, "references/a.md")).toContain("Only this document belongs to me.")
+  expect(mixed.files.find((file) => file.path === "SKILL.md")!.sha256).toBe(mainA)
+  expect(
+    mixed
+      .shared_acquisition!.files.filter((route) => route.kind === "source")
+      .map((route) => route.path),
+  ).toEqual(
+    expect.arrayContaining(["SKILL.md", "scripts/run.js", "assets/icon.png", "data/options.json"]),
+  )
+  expect(mixed.shared_acquisition!.files.some((route) => route.path === "references/a.md")).toBe(
+    false,
+  )
+  const mixedRef = fileRef(mixed.record.id, "references/a.md", mixed.snapshot_id)
+  const requestedMixed = await f.run(readResources({ version: 1, refs: [mixedRef] }))
+  expect(requestedMixed.status).toBe("ready")
+  if (requestedMixed.status === "ready")
+    expect(requestedMixed.files[0]!.content).toContain("Only this document belongs to me.")
+  const used = await f.run(
+    consume({
+      version: 1,
+      targets: [fileRef(mixed.record.id, "SKILL.md", mixed.snapshot_id)],
+      purpose: "use",
+    }),
+  )
+  expect(used.status).toBe("ready")
+  if (used.status === "ready") {
+    expect(used.entries[0]!.manifest.files).toEqual(mixed.files)
+    expect(used.entries[0]!.manifest.snapshot_id).toBe(mixed.snapshot_id)
+  }
+  const states = async () => {
+    const facts = await f.run(
+      querySharedRecords(library, { skillPageId: page, kind: "file_event" }),
+    )
+    return facts.map((fact) => fact.payload as FileEvent)
+  }
+  expect(resolveFileState(customFileId, await states()).ownership.kind).toBe("custom")
+  f.base.bodies.set(childId, originalGuide)
+  child.last_edited_time = new Date().toISOString()
+  const sameBytes = await open()
+  expect(resolveFileState(customFileId, await states()).ownership.kind).toBe("custom")
+  expect(
+    sameBytes.shared_acquisition!.files.some((route) => route.path === "references/a.md"),
+  ).toBe(false)
+  const beforeA = await textOf(original, "SKILL.md")
+
+  const updatedFiles = f.snapshot.members[0]!.portable.files.map((file) => ({
+    ...file,
+    bytes:
+      file.path === "SKILL.md" || file.path === "references/a.md"
+        ? new TextEncoder().encode(new TextDecoder().decode(file.bytes) + "\nUpstream B\n")
+        : file.bytes,
+  }))
+  const manifestFiles = updatedFiles.map((file) => ({
+    path: file.path,
+    source_path: `skills/demo/${file.path}`,
+    bytes: file.bytes.length,
+    mode: file.mode!,
+    git_oid: createHash("sha1")
+      .update(`blob ${file.bytes.length}\0`)
+      .update(file.bytes)
+      .digest("hex"),
+    sha256: createHash("sha256").update(file.bytes).digest("hex"),
+  }))
+  const revision = "c".repeat(40),
+    tree = "d".repeat(40)
+  const upstreamB = {
+    ...f.snapshot,
+    revision,
+    members: [
+      {
+        ...f.snapshot.members[0]!,
+        portable: { ...f.snapshot.members[0]!.portable, files: updatedFiles },
+        git_manifest: { commit: revision, tree, root: "skills/demo", files: manifestFiles },
+      },
+    ],
+  }
+  f.registerSnapshot(upstreamB)
+  const refresh = await f.run(
+    Effect.gen(function* () {
+      const definition = yield* readSourceDefinition(library, f.source.id)
+      return yield* prepareSourceRefreshFromSnapshot(library, {
+        definition,
+        acquired: upstreamB,
+        target: page,
+        memberReview: yield* reviewSourceMembers(library, f.source.id, upstreamB),
+      })
+    }),
+  )
+  expect(refresh.custom_files_preserved).toEqual(["references/a.md"])
+  const appliedRefresh = await f.run(applySourceRefresh(library, refresh, false, false))
+  expect(appliedRefresh.verified).toBe(true)
+  const next = await open()
+  expect(await textOf(next, "SKILL.md")).toContain("Upstream B")
+  expect(await textOf(next, "references/a.md")).toBe(originalGuide)
+  expect(await textOf(original, "SKILL.md")).toBe(beforeA)
+
+  // Simulate an independent client's empty derived store while leaving the
+  // shared Notion pages, original facts and recorded custom body untouched.
+  f.base.json.clear()
+  f.base.objects.clear()
+  const cold = await open()
+  expect(await textOf(cold, "references/a.md")).toBe(originalGuide)
+  expect(await textOf(cold, "SKILL.md")).toContain("Upstream B")
+  expect(resolveFileState(customFileId, await states()).ownership.kind).toBe("custom")
+  await f.run(openFixedSnapshotFiles(cold, (snapshot) => snapshot.files.map((file) => file.path)))
+  const exported = await f.run(snapshotPortable(cold))
+  expect(
+    new TextDecoder().decode(exported.files.find((file) => file.path === "references/a.md")!.bytes),
+  ).toBe(originalGuide)
+  expect(
+    new TextDecoder().decode(exported.files.find((file) => file.path === "SKILL.md")!.bytes),
+  ).toContain("Upstream B")
+
+  const restored = await f.run(
+    restoreSelectedSharedFile({ library, skillPageId: page, path: "references/a.md" }),
+  )
+  expect(restored.source_revision).toBe(revision)
+  expect(resolveFileState(customFileId, await states()).ownership.kind).toBe("following")
+  const following = await open()
+  expect(await textOf(following, "references/a.md")).toContain("Upstream B")
+  expect(await textOf(cold, "references/a.md")).toBe(originalGuide)
+  expect(following.files.find((file) => file.path === "SKILL.md")!.sha256).toBe(
+    cold.files.find((file) => file.path === "SKILL.md")!.sha256,
+  )
+})
+
+test("a main-only Notion edit takes over the whole main, including an empty edit, and restore-follow leaves every supporting document unchanged", async () => {
+  const f = setup({ bodyWrites: true })
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const admitted = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  const page = admitted.results[0]!.page_id!
+  const row = f.skills.get(page)!
+  property(row.properties).enabled = { id: "enabled", type: "checkbox", checkbox: true }
+  const open = (readOnly = false) =>
+    f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: page,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+          readOnly,
+        })
+      }),
+    )
+  const original = await open()
+  const originalSupport = original.files.filter((file) => file.path !== "SKILL.md")
+  const initialFiles = f.files.size
+  f.base.bodies.set(page, "# My complete instructions\n\nOnly my document body should be used.\n")
+  row.last_edited_time = new Date().toISOString()
+  f.clear()
+  await expect(open(true)).rejects.toMatchObject({ code: "SHARED_OBSERVATION_REQUIRED" })
+  expect(f.writes()).toHaveLength(0)
+  const taken = await open()
+  const body = await f.run(openFixedSnapshotFiles(taken, () => ["SKILL.md"]))
+  const markdown = new TextDecoder().decode(body.files[0]!.bytes)
+  expect(markdown).toContain("Only my document body")
+  expect(markdown).not.toContain("# Initial")
+  expect(markdown).not.toContain("license: MIT")
+  expect(taken.files.filter((file) => file.path !== "SKILL.md")).toEqual(originalSupport)
+  expect(taken.shared_acquisition!.files.some((route) => route.path === "SKILL.md")).toBe(false)
+  f.base.bodies.set(page, "")
+  row.last_edited_time = new Date().toISOString()
+  const blankCustom = await open()
+  expect(blankCustom.shared_acquisition!.files.some((route) => route.path === "SKILL.md")).toBe(
+    false,
+  )
+  f.base.bodies.set(page, "# My final reviewed main\n")
+  row.last_edited_time = new Date().toISOString()
+  await open()
+  const restored = await f.run(
+    restoreSelectedSharedFile({ library, skillPageId: page, path: "SKILL.md" }),
+  )
+  expect(restored.source_revision).toBe(f.snapshot.revision)
+  const following = await open()
+  expect(following.files).toEqual(original.files)
+  expect(f.files.size).toBe(initialFiles)
+  expect(
+    following.shared_acquisition!.files.some(
+      (route) => route.path === "SKILL.md" && route.kind === "source",
+    ),
+  ).toBe(true)
+})
+
+test("a known sparse document add readback mismatch is independently reviewed on its original page without replaying creation or rewriting old failure", async () => {
+  const f = setup({
+    nativeReadback: (wire) =>
+      wire.replace("Expected original manual prose.", "Reviewed current prose."),
+  })
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const admitted = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  const page = admitted.results[0]!.page_id!
+  property(f.skills.get(page)!.properties).enabled = {
+    id: "enabled",
+    type: "checkbox",
+    checkbox: true,
+  }
+  const open = () =>
+    f.run(
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: page,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+        })
+      }),
+    )
+  const baseline = await f.run(
+    withSharedAuthoringTarget(
+      page,
+      Effect.gen(function* () {
+        return yield* openSharedConsumer({
+          library,
+          target: page,
+          scope: yield* authScope,
+          startedAt: Date.now(),
+          forceFull: true,
+          readOnly: true,
+        })
+      }),
+    ),
+  )
+  const overlay = await f.run(
+    prepareSharedFileManagement({
+      library,
+      snapshot: baseline,
+      action: "add",
+      path: "references/a.md",
+      markdown: "Expected original manual prose.\n",
+    }),
+  )
+  const fileCount = f.files.size
+  const rejected = await f.run(
+    executeSharedFileManagement(library, { plan: overlay, mode: "create" }).pipe(Effect.result),
+  )
+  expect(rejected._tag).toBe("Failure")
+  if (rejected._tag !== "Failure") throw new Error("Expected original complete-body mismatch")
+  expect(rejected.failure.code).toBe("SHARED_FILE_MANAGEMENT_REVIEW_REQUIRED")
+  const childPage = String(property(rejected.failure.details).page_id)
+  expect(f.files.size).toBe(fileCount + 1)
+  const review = await f.run(
+    reviewSharedFileAddAcceptance({
+      library,
+      skillPageId: page,
+      originalOperationId: overlay.operation_id,
+      acceptCurrent: true,
+      acceptedObservedSha256: createHash("sha256")
+        .update(f.base.bodies.get(childPage)!)
+        .digest("hex"),
+    }),
+  )
+  const originalSelection = property(f.skills.get(page)!.properties).source
+  property(f.skills.get(page)!.properties).source = rich("source", "source-" + "a".repeat(64))
+  f.clear()
+  await expect(
+    f.run(applySharedFileAddAcceptance({ library, review, reviewId: review.review_id })),
+  ).rejects.toMatchObject({ code: "SHARED_FILE_ADD_ACCEPTANCE_REQUIRED" })
+  expect(f.writes()).toHaveLength(0)
+  property(f.skills.get(page)!.properties).source = originalSelection
+  const accepted = await f.run(
+    applySharedFileAddAcceptance({ library, review, reviewId: review.review_id }),
+  )
+  expect(accepted.verified).toBe(true)
+  expect(accepted.original_status).toBe("needs_review")
+  expect(accepted.original_completion).toBe("unproven")
+  await expect(open()).rejects.toMatchObject({ code: "SHARED_FILE_MANAGEMENT_RECONCILED" })
+  const mixed = await open()
+  const actual = await f.run(openFixedSnapshotFiles(mixed, () => ["references/a.md"]))
+  expect(new TextDecoder().decode(actual.files[0]!.bytes)).toContain("Reviewed current prose.")
+  expect(mixed.files.find((file) => file.path === "SKILL.md")!.sha256).toBe(
+    baseline.files.find((file) => file.path === "SKILL.md")!.sha256,
+  )
+  f.base.json.clear()
+  f.base.objects.clear()
+  const cold = await open()
+  expect(cold.files).toEqual(mixed.files)
+  expect(f.files.size).toBe(fileCount + 1)
 })
 
 test.each([false, true])(

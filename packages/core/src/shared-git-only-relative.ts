@@ -27,7 +27,7 @@ export function resolveGitOnlySibling(snapshot: Snapshot, from: string, relative
     const acquisition = snapshot.shared_acquisition
     const owner = snapshot.record.locator
     if (
-      acquisition?.version !== 2 ||
+      (acquisition?.version !== 2 && acquisition?.version !== 3) ||
       owner.type !== "shared_skill" ||
       snapshot.scope !== (yield* authScope)
     )
@@ -177,14 +177,19 @@ export function resolveGitOnlySibling(snapshot: Snapshot, from: string, relative
     })
     const targetAcquisition = opened.shared_acquisition
     const file = opened.files.find((entry) => entry.path === relativeTarget)
+    const sourceRoute = targetAcquisition?.files.find(
+      (entry) => entry.path === relativeTarget && entry.kind === "source",
+    )
     if (
       !opened.record.enabled ||
-      targetAcquisition?.version !== 2 ||
+      (targetAcquisition?.version !== 2 && targetAcquisition?.version !== 3) ||
       targetAcquisition.source.source_id !== target.selected_version ||
       targetAcquisition.source.revision !== source.commit ||
-      file?.sha256 !== descriptor.sha256 ||
-      file?.bytes !== descriptor.bytes ||
-      file?.mode !== descriptor.mode
+      file === undefined ||
+      (sourceRoute !== undefined &&
+        (file.sha256 !== descriptor.sha256 ||
+          file.bytes !== descriptor.bytes ||
+          file.mode !== descriptor.mode))
     )
       return yield* Effect.fail(
         fail(

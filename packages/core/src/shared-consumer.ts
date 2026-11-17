@@ -91,21 +91,10 @@ export function openSharedConsumer(
       Array.isArray(projectionField.rich_text) &&
       isGitOnlyProjection(text(projectionField.rich_text))
     ) {
-      if (authoring)
-        return yield* Effect.fail(
-          fail(
-            "GIT_ONLY_AUTHORING_REVIEW",
-            "Git-only source bodies require an explicit Notion takeover before native authoring.",
-          ),
-        )
       return yield* openGitOnlySharedConsumer({
-        library: input.library,
-        target: selected,
+        ...acquisitionInput,
         rawPage,
-        scope: input.scope,
-        startedAt: input.startedAt,
         fixedSource,
-        ...(input.expectedSkillId === undefined ? {} : { expectedSkillId: input.expectedSkillId }),
       })
     }
     return yield* openSharedSnapshot({
