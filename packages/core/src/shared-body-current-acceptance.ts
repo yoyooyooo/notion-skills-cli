@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Clock, Effect, Schema } from "effect"
 import { fail } from "./model.ts"
 import { Notion } from "./notion.ts"
 import {
@@ -22,7 +22,8 @@ import {
   querySharedRecords,
   validateSharedRecordEnvelope,
 } from "./shared-records.ts"
-import { querySharedSkillIndex } from "./shared-skill-index.ts"
+import { querySharedSkillIndex, type SharedSkillIndex } from "./shared-skill-index.ts"
+import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
 import { sha256, Store } from "./store.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
@@ -262,6 +263,72 @@ export function completedSharedBodyCurrentAcceptance(
   })
 }
 
+/** A current-version proof, distinct from the historical independent decision. */
+export function observeSharedBodyCurrentAcceptance(
+  library: SharedLibrary,
+  original: SharedBodyWritePlan,
+  observed: {
+    readonly index: SharedSkillIndex
+    readonly headers: readonly SharedOperationHeader[]
+    readonly events: readonly FileEvent[]
+  },
+) {
+  return Effect.gen(function* () {
+    const acceptance = yield* completedSharedBodyCurrentAcceptance(library, original, observed)
+    if (acceptance === undefined) return undefined
+    const { index } = observed
+    const binding = [index.main, ...index.files].find((item) => item.file_id === original.file_id)
+    if (
+      index.page_id !== original.skill_page_id ||
+      index.skill_id !== original.skill_id ||
+      index.source_reference !== original.source_id ||
+      binding?.page_id !== original.page_id ||
+      binding.path !== original.path
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CURRENT_ACCEPTANCE_STALE",
+          "The accepted current file binding or Source changed.",
+        ),
+      )
+    yield* checked(() => verifyEvent(original, observed.events, true))
+    const response = yield* completeResponse(
+      yield* (yield* Notion).request(`v1/pages/${original.page_id}/markdown?markdown_version=v2`),
+      original,
+    )
+    if ((yield* sha256(response.markdown)) !== acceptance.accepted_observed_sha256)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CURRENT_ACCEPTANCE_STALE",
+          "The current exact body differs from the independently accepted observation.",
+        ),
+      )
+    const markdown = normalizeObservedBody(response.markdown)
+    return {
+      acceptance,
+      observation: {
+        changed: false as const,
+        state: yield* checked(() =>
+          resolveFileState(
+            original.file_id,
+            observed.events.filter((event) => event.file_id === original.file_id),
+          ),
+        ),
+        body: {
+          page_id: original.page_id,
+          markdown,
+          fingerprint: {
+            normalization_version: 1 as const,
+            sha256: original.candidate.content.sha256,
+          },
+          bytes: original.candidate.content.bytes,
+          downloaded_at: yield* Clock.currentTimeMillis,
+        },
+      },
+    }
+  })
+}
+
 export function acceptCurrentSharedBodyWrite(input: {
   readonly library: SharedLibrary
   readonly skillPageId: string
@@ -288,14 +355,27 @@ export function acceptCurrentSharedBodyWrite(input: {
         ),
       )
     const original = yield* validateSharedBodyWritePlan(row.payload)
+    // Validate the actual retained representation. A legal complete legacy
+    // payload keeps its own envelope hash; a derived payload must exactly
+    // match the supported encoding of the independently validated full plan.
+    const stored =
+      canonicalSharedJson(row.payload) === canonicalSharedJson(original)
+        ? original
+        : storedSharedOperationPlan(original)
+    const storedHash = yield* sha256(
+      canonicalSharedJson({ version: 1, operation_id: original.operation_id, payload: stored }),
+    )
     if (
+      row.kind !== "operation" ||
       row.record_id !== original.operation_id ||
       row.operation_id !== original.operation_id ||
       row.entity_id !== original.file_id ||
+      row.skill_page_id !== original.skill_page_id ||
       original.operation_id !== input.originalOperationId ||
       original.skill_page_id !== input.skillPageId ||
       original.library_id !== library.library_id ||
-      row.hash !== (yield* originalHash(original))
+      canonicalSharedJson(row.payload) !== canonicalSharedJson(stored) ||
+      row.hash !== storedHash
     )
       return yield* Effect.fail(
         fail(
@@ -362,8 +442,9 @@ export function acceptCurrentSharedBodyWrite(input: {
       const binding = [index.main, ...index.files].find(
         (value) => value.file_id === original.file_id,
       )
+      // This exact-target authoring decision does not enable or publish a Skill.
+      // Disabled ordinary consumption remains guarded by openSharedSnapshot.
       if (
-        !index.enabled ||
         index.skill_id !== original.skill_id ||
         binding?.page_id !== original.page_id ||
         binding.path !== original.path ||
@@ -394,7 +475,7 @@ export function acceptCurrentSharedBodyWrite(input: {
           kind: "body_write_current_acceptance",
           operation_id: id,
           original_operation_id: original.operation_id,
-          original_plan_sha256: row.hash,
+          original_plan_sha256: yield* originalHash(original),
           original_write_outcome: "unknown",
           decision: "accepted_current",
           library_id: original.library_id,

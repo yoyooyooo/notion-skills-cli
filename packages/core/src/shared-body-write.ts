@@ -44,6 +44,7 @@ import { completedSharedBodyWriteReview } from "./shared-body-write-review.ts"
 import { completedSharedBodyCurrentAcceptance } from "./shared-body-current-acceptance.ts"
 import { readSharedFileSourceContext } from "./shared-file-source-context.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
+import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
 
 export {
   SharedBodyWritePlanSchema,
@@ -201,9 +202,15 @@ export function prepareSharedBodyWrite(input: {
   readonly source?: RestoreSource
   readonly inputProjection?: SharedBodyWritePlan["input_projection"]
   readonly authoredInputSha256?: string
+  /** Preserve the exact current native body only when its source projection is equivalent. */
+  readonly acceptEquivalentReadback?: boolean
   readonly expected?: { readonly heads: readonly string[]; readonly body_sha256: string }
 }) {
   return Effect.gen(function* () {
+    if (input.acceptEquivalentReadback && input.action !== "restore_follow")
+      return yield* Effect.fail(
+        fail("INVALID_ARGUMENT", "Equivalent source readback applies only to restore-follow."),
+      )
     const context = yield* currentContext(
       input.library,
       input.skillPageId,
@@ -296,6 +303,26 @@ export function prepareSharedBodyWrite(input: {
       return yield* Effect.fail(
         fail("SHARED_BODY_WRITE_STALE", "The selected source changed while preparing the restore."),
       )
+    let candidateMarkdown = input.candidateMarkdown
+    let restoreReadback: SharedBodyWritePlan["restore_readback"]
+    if (input.acceptEquivalentReadback && candidateMarkdown !== before.markdown) {
+      if (input.inputProjection === undefined || input.authoredInputSha256 === undefined)
+        return yield* Effect.fail(
+          fail(
+            "INVALID_ARGUMENT",
+            "Equivalent source readback requires its complete original projection and authored input identity.",
+          ),
+        )
+      const equivalent = yield* bodyWriteChecked(() =>
+        assertImportedMarkdownContent(input.inputProjection!.markdown, before.markdown),
+      ).pipe(Effect.result)
+      if (equivalent._tag === "Success") {
+        candidateMarkdown = before.markdown
+        restoreReadback = { version: 1, policy: "notion_import_readback_v1" }
+      } else if (equivalent.failure.code !== "SHARED_CREATE_BODY_MISMATCH") {
+        return yield* Effect.fail(equivalent.failure)
+      }
+    }
     const plan = yield* makeSharedBodyWritePlan({
       library_id: input.library.library_id,
       skill_page_id: input.skillPageId,
@@ -308,8 +335,9 @@ export function prepareSharedBodyWrite(input: {
       ...(input.source === undefined ? {} : { restore_source: input.source }),
       ...(sourceContext === undefined ? {} : { source_context: sourceContext }),
       before: { ...before, ...nativeMetadataForOwnership(context.state.ownership) },
-      candidateMarkdown: input.candidateMarkdown,
+      candidateMarkdown,
       parents: context.state.heads,
+      ...(restoreReadback === undefined ? {} : { restore_readback: restoreReadback }),
       ...(input.inputProjection === undefined ? {} : { input_projection: input.inputProjection }),
       ...(input.authoredInputSha256 === undefined
         ? {}
@@ -699,6 +727,8 @@ export function executeSharedBodyWrite<R = never>(
     readonly plan: SharedBodyWritePlan
     readonly mode: "create" | "reconcile"
     readonly beforePlanWrite?: (plan: SharedBodyWritePlan) => Effect.Effect<void, SkillsError, R>
+    /** Standalone callers may recheck their outer write barrier before native dispatch. */
+    readonly beforeDispatch?: Effect.Effect<void, SkillsError, R>
     /** The original plan and retained bodies are verified; no native body write has been sent. */
     readonly afterRestorePlanRetained?: (
       plan: SharedBodyWritePlan,
@@ -755,6 +785,10 @@ export function executeSharedBodyWrite<R = never>(
       verifyCurrent(library, plan, true, preflight),
       { phase: "author_preflight" },
     )
+    if (input.beforeDispatch !== undefined)
+      yield* withNotionRequestAttribution(input.beforeDispatch.pipe(withReadOnlyNotion), {
+        phase: "author_preflight",
+      })
     if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
       yield* withNotionRequestAttribution(input.beforeRestoreDispatch.pipe(withReadOnlyNotion), {
         phase: "author_preflight",
@@ -800,6 +834,10 @@ export function executeSharedBodyWrite<R = never>(
       const verified = yield* withNotionRequestAttribution(verifyCurrent(library, plan, true), {
         phase: "author_preflight",
       })
+      if (input.beforeDispatch !== undefined)
+        yield* withNotionRequestAttribution(input.beforeDispatch.pipe(withReadOnlyNotion), {
+          phase: "author_preflight",
+        })
       if (plan.action === "restore_follow" && input.beforeRestoreDispatch !== undefined)
         yield* withNotionRequestAttribution(input.beforeRestoreDispatch.pipe(withReadOnlyNotion), {
           phase: "author_preflight",

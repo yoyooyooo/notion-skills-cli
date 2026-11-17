@@ -85,6 +85,24 @@ describe("native Markdown projection v4", () => {
 })
 
 describe("native Markdown projection v5", () => {
+  test.each([
+    "1. **Choose**:\n   - `L0`: Script.\n   - `L1`: Finite judgment.\n2. Verify.",
+    "- Parent\n  - Child\n    - Grandchild",
+    "> Parent\n> - Child\n> - Another child",
+  ])("container paragraphs keep their nested list boundaries (%s)", (source) => {
+    const retained = projectV4(source)
+    for (const version of [5, 15] as const) {
+      const current = projectSharedNotionMarkdown(source, {
+        version,
+        purpose: "data_source_create",
+      })
+      expect(current.input_markdown).toBe(source)
+      expect(current.markdown).toBe(retained.markdown)
+      expect(sharedNotionMarkdownWire(current)).toBe(source)
+      expect(validateSharedNotionMarkdownProjection(current)).toEqual(current)
+    }
+  })
+
   test("freezes the native paragraph/list separator without changing wire or old policy 4", () => {
     const source = "**Not allowed**:\n- First\n- Second"
     const observed = "<b>Not allowed</b>:\n\n- First\n- Second"

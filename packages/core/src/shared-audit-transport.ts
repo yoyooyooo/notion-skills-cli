@@ -5,6 +5,7 @@ import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 import type { AuditRun } from "./shared-audit-model.ts"
 import { saveAuditRun } from "./shared-audit-store.ts"
+import { captureAuditValue } from "./shared-audit-checkpoint.ts"
 
 const FailureSchema = Schema.Struct({
   code: Schema.String,
@@ -77,7 +78,7 @@ export function auditJournalNotion(
         return yield* Effect.fail(result.failure)
       const value =
         result._tag === "Success"
-          ? result.success
+          ? captureAuditValue(result.success)
           : {
               code: result.failure.code,
               message: result.failure.message,

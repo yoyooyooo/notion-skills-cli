@@ -66,6 +66,7 @@ import {
   acceptsNativeImportReadback,
   observeNativeImportFile,
   restoreNativeImportReadbacks,
+  withObservedBody,
 } from "./shared-create-import-readback.ts"
 import {
   loadSharedCreateRetained,
@@ -88,8 +89,15 @@ import {
   saveSharedCreateRestorationCompletion,
   readSharedCreateRestoration,
   sharedCreateRestorationOutcomesEntity,
+  currentSharedCreateLinkBindings,
   type SharedCreateRestorationReview,
 } from "./shared-create-restoration.ts"
+import {
+  linkedCreateFile,
+  observeSharedCreateLinkFile,
+  repairSharedCreateLinkFile,
+  type SharedCreateLinkRepairReference,
+} from "./shared-create-link-repair.ts"
 import {
   validateSharedRetainedImportRecoveryReview,
   assertSharedRetainedImportRecovery,
@@ -1612,7 +1620,11 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
         }
       }
     }
-    if (rows.length !== 1 || row === undefined)
+    const reviewedReadback =
+      rows.length === 0 && plan.complete_resources === 1 && plan.files[0]?.projection.version === 15
+        ? yield* readSharedCreateRestoration(library, plan, page, undefined, null)
+        : undefined
+    if ((rows.length !== 1 || row === undefined) && reviewedReadback === undefined)
       return yield* Effect.fail(
         recover(
           fail(
@@ -1624,7 +1636,8 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
           page,
         ),
       )
-    let outcome = yield* createChecked(() => decodeOutcome(row))
+    let outcome = reviewedReadback?.outcome ?? (yield* createChecked(() => decodeOutcome(row!)))
+    if (reviewedReadback !== undefined) facts = reviewedReadback.facts
     if (
       outcome.skill_id !== plan.skill_id ||
       outcome.skill_page_id !== page ||
@@ -1653,12 +1666,15 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       return yield* Effect.fail(
         fail("SHARED_CREATE_SCOPE", "The exact original outcome belongs to another Skill."),
       )
-    let restoredRetainedReadbacks = false
+    let restoredRetainedReadbacks = reviewedReadback !== undefined
     if (outcome.status === "needs_review") {
-      const restored = yield* readSharedCreateRestoration(library, plan, page, outcome, row.hash)
-      if (restored !== undefined) outcome = restored.outcome
-      else {
-        const resource = yield* readResourceNoteCompletion(library, plan, page, outcome, row.hash)
+      const restored = yield* readSharedCreateRestoration(library, plan, page, outcome, row!.hash)
+      if (restored !== undefined) {
+        outcome = restored.outcome
+        facts = restored.facts
+        restoredRetainedReadbacks = true
+      } else {
+        const resource = yield* readResourceNoteCompletion(library, plan, page, outcome, row!.hash)
         if (resource !== undefined) outcome = resource
         else {
           const retained = yield* readSharedRetainedImportCompletion(
@@ -1666,7 +1682,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
             plan,
             page,
             outcome,
-            row.hash,
+            row!.hash,
           )
           if (retained !== undefined) {
             outcome = retained.outcome
@@ -1721,7 +1737,7 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
     yield* retainInputs(library, facts, page, "reconcile").pipe(
       Effect.mapError((error) => recover(error, plan, "retained_inputs", page)),
     )
-    if (acceptsNativeImportReadback(plan))
+    if (acceptsNativeImportReadback(plan) || restoredRetainedReadbacks)
       for (const file of facts.files) yield* retainCreatedBody(library, file, page, "reconcile")
     for (const source of sharedCreateFixedSources(plan)) {
       yield* registerSourceBinding(library, {
@@ -2016,6 +2032,7 @@ export function executeSharedCreate(
         dispatch_receipt_version: 1,
       })
     yield* invalidateSubscriptionCatalog(scope, library.skills.database_id)
+    const originalApi = yield* Notion
     const api = dispatch.api,
       main = plan.files.find((file) => file.path === plan.entrypoint)!
     return yield* Effect.gen(function* () {
@@ -2028,12 +2045,47 @@ export function executeSharedCreate(
         : undefined
       const resolved = yield* resolveSharedCreateSource(plan, skillPage)
       let facts: SharedCreatePlan = resolved.facts
-      const acceptReadback = acceptsNativeImportReadback(plan)
+      const linkedReview = restoration?.version === 3 ? restoration : undefined
+      const linkBindings =
+        linkedReview === undefined
+          ? []
+          : yield* currentSharedCreateLinkBindings(library, plan, skillPage)
+      const linkBodies = new Map<string, string>()
+      const linkRepairProofs: SharedCreateLinkRepairReference[] = []
+      const acceptReadback =
+        acceptsNativeImportReadback(plan) ||
+        restoration?.version === 2 ||
+        linkedReview !== undefined
       if (acceptReadback) stage = "manifest"
       const observe = (file: SharedCreatePlan["files"][number], page: string) =>
         Effect.gen(function* () {
           if (!acceptReadback || facts.version !== 1) return file
           const current = facts
+          if (linkedReview !== undefined) {
+            const read = yield* observeSharedCreateLinkFile(
+              library,
+              plan,
+              linkedReview,
+              file,
+              page,
+              linkBindings,
+            )
+            const markdown = normalizeObservedBody(read.markdown)
+            linkBodies.set(file.file_id, markdown)
+            const hasLinks = linkedReview.local_links.some((link) => link.from === file.path)
+            const observed =
+              hasLinks && read.phase === "before"
+                ? file
+                : yield* withObservedBody(
+                    read.phase === "after" ? linkedCreateFile(file, linkBindings) : file,
+                    markdown,
+                  )
+            facts = {
+              ...current,
+              files: current.files.map((item) => (item.file_id === file.file_id ? observed : item)),
+            }
+            return observed
+          }
           const replacement = fileResubmissions.find((item) => item.file_id === file.file_id)
           const represented =
             replacement === undefined
@@ -2046,6 +2098,17 @@ export function executeSharedCreate(
             skillPage!,
             page,
           )
+          if (
+            restoration?.version === 2 &&
+            (observed.content.sha256 !== restoration.observations[0]?.body_sha256 ||
+              observed.content.bytes !== restoration.observations[0]?.body_bytes)
+          )
+            return yield* Effect.fail(
+              fail(
+                "SHARED_CREATE_RESTORATION_REQUIRED",
+                "The main readback changed after the explicit recovery review.",
+              ),
+            )
           facts = {
             ...current,
             files: current.files.map((item) => (item.file_id === file.file_id ? observed : item)),
@@ -2096,7 +2159,7 @@ export function executeSharedCreate(
             yield* assertBody(
               plan.operation_id,
               binding.page_id,
-              native.projection.markdown,
+              linkBodies.get(native.file_id) ?? native.projection.markdown,
               acceptReadback && native.event.kind === "deleted",
               false,
               native.projection.version,
@@ -2184,7 +2247,7 @@ export function executeSharedCreate(
       yield* assertBody(
         plan.operation_id,
         skillPage,
-        resolvedMain.projection.markdown,
+        linkBodies.get(resolvedMain.file_id) ?? resolvedMain.projection.markdown,
         false,
         false,
         resolvedMain.projection.version,
@@ -2262,7 +2325,7 @@ export function executeSharedCreate(
         yield* assertBody(
           plan.operation_id,
           page,
-          observedFile.projection.markdown,
+          linkBodies.get(observedFile.file_id) ?? observedFile.projection.markdown,
           acceptReadback && observedFile.event.kind === "deleted",
           false,
           observedFile.projection.version,
@@ -2297,6 +2360,38 @@ export function executeSharedCreate(
           true,
           description.version,
         )
+      }
+      if (linkedReview !== undefined) {
+        for (const file of plan.files.filter((file) =>
+          linkedReview.local_links.some((link) => link.from === file.path),
+        )) {
+          stage = `repair_links:${file.file_id}`
+          const bindingAt = bindings.findIndex((item) => item.file_id === file.file_id)
+          const binding = bindings[bindingAt]!
+          const proof = yield* repairSharedCreateLinkFile(
+            library,
+            plan,
+            linkedReview,
+            file,
+            binding.page_id,
+            bindings,
+            allocatedCheck,
+            (observed, markdown) => {
+              if (facts.version !== 1)
+                throw fail(
+                  "SHARED_CREATE_SCOPE",
+                  "Local-link restoration requires the original ordinary v1 create.",
+                )
+              facts = {
+                ...facts,
+                files: facts.files.map((item) => (item.file_id === file.file_id ? observed : item)),
+              }
+              linkBodies.set(file.file_id, markdown)
+              bindings[bindingAt] = { ...binding, event_id: observed.event.event_id }
+            },
+          ).pipe(Effect.provideService(Notion, originalApi))
+          linkRepairProofs.push(proof)
+        }
       }
       if (acceptReadback) {
         stage = "retained_inputs"
@@ -2349,7 +2444,13 @@ export function executeSharedCreate(
       yield* verifyFacts(library, facts, skillPage)
       stage = "outcome"
       if (restoration !== undefined)
-        yield* saveSharedCreateRestorationCompletion(library, plan, restoration, bindings)
+        yield* saveSharedCreateRestorationCompletion(
+          library,
+          plan,
+          restoration,
+          bindings,
+          linkRepairProofs,
+        )
       else if (retainedRecovery !== undefined)
         yield* saveSharedRetainedImportCompletion(
           library,
@@ -2521,7 +2622,7 @@ export function loadPendingSharedCreates(
     for (const header of candidates) {
       let terminal = outcomes.get(header.record_id)
       if (
-        terminal?.status === "needs_review" &&
+        (terminal === undefined || terminal.status === "needs_review") &&
         headers.some((item) => item.entity_id === sharedCreateRestorationOutcomesEntity)
       ) {
         const plan = yield* loadSharedCreatePlan(library, {
@@ -2533,11 +2634,11 @@ export function loadPendingSharedCreates(
           plan,
           input.skillPageId,
           terminal,
-          outcomeHashes.get(header.record_id)!,
+          outcomeHashes.get(header.record_id) ?? null,
           input.events,
         )
         if (restored !== undefined) terminal = restored.outcome
-        else
+        else if (terminal !== undefined)
           terminal =
             (yield* readResourceNoteCompletion(
               library,

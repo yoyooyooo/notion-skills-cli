@@ -21,6 +21,8 @@ import {
 import { normalizeObservedBody } from "./shared-file-state.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
+import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
+import type { Notion } from "./notion.ts"
 import {
   pendingFileOperations,
   pendingFileOperationKey,
@@ -262,8 +264,25 @@ function pendingScope(scope: string, library: SharedLibrary, skillId: string, sk
   })
 }
 
+function assertNoPendingApply(library: SharedLibrary, skillPageId: string) {
+  return Effect.gen(function* () {
+    const parent = (yield* loadPendingSharedSkillApplies(library, { skillPageId }))[0]
+    if (parent !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_PENDING_OPERATION",
+          "The original parent operation remains unresolved; accepting its current main body does not authorize another body write.",
+          {
+            operation_id: parent.operation_id,
+          },
+        ),
+      )
+  })
+}
+
 function reconcileLocalBeforeNewPlan(library: SharedLibrary, scope: SharedPendingFileScope) {
   return Effect.gen(function* () {
+    yield* assertNoPendingApply(library, scope.skill_page_id)
     const first = (yield* pendingFileOperations(scope))[0]
     if (first === undefined) return
     if (first.plan.kind !== "body_write")
@@ -334,9 +353,10 @@ function dispatch<R = never>(
           plan.before.fingerprint.sha256 === plan.candidate.content.sha256,
         ...(projection === undefined ? {} : { input_projection: projection }),
       }
-    const result = yield* executeSharedBodyWrite<R | Store | Crypto.Crypto>(library, {
+    const result = yield* executeSharedBodyWrite<R | Store | Crypto.Crypto | Notion>(library, {
       plan,
       mode: "create",
+      beforeDispatch: assertNoPendingApply(library, plan.skill_page_id),
       beforePlanWrite: (original) => retainPendingFileOperation(scope, original),
       ...(beforeRestoreDispatch === undefined ? {} : { beforeRestoreDispatch }),
       ...(afterRestoreBodyWrite === undefined ? {} : { afterRestoreBodyWrite }),
@@ -547,6 +567,7 @@ export function restoreSharedFileFollowing<R = never>(input: {
       skillPageId: input.skillPageId,
       fileId: input.fileId,
       action: "restore_follow",
+      acceptEquivalentReadback: true,
       candidateMarkdown: projection.markdown,
       source: input.source,
       inputProjection: projection,

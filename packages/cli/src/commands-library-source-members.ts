@@ -68,6 +68,9 @@ export const sourceAdmitCommand = defineCommand(
             )
           const acquired = yield* discoverSourceDefinition(definition, {
             metrics: (yield* Notion).metrics,
+            ...(["git", "github-market"].includes(definition.adapter.type)
+              ? { onlyMembers: [args.member] }
+              : {}),
           })
           return yield* prepareSharedSourceProjection({
             library,

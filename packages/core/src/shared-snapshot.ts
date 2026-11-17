@@ -101,6 +101,7 @@ import {
   type SharedCreatePlan,
 } from "./shared-create.ts"
 import { loadPendingSharedSkillApplies, reconcileSharedSkillApply } from "./shared-skill-apply.ts"
+import { observeAcceptedSingleBodyApply } from "./shared-single-body-apply-acceptance.ts"
 import type { SharedSkillApplyPlan } from "./shared-skill-apply-model.ts"
 import {
   pendingFileOperations,
@@ -506,6 +507,11 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       eventsByFile.set(event.file_id, events)
     }
     const allEvents = [...eventsByFile.values()].flat()
+    const initialObservations = new Map<
+      string,
+      Effect.Success<ReturnType<typeof observeSharedFile>>
+    >()
+    const acceptedBodyParents = new Map<string, SharedBodyWritePlan>()
     const eventById = new Map(allEvents.map((event) => [event.event_id, event]))
     const plans = new Map<string, SharedObservationPlan>()
     const localPending = yield* pendingFileOperations(pendingScope)
@@ -620,6 +626,16 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       skillApplies.set(plan.operation_id, plan)
     }
     for (const plan of skillApplies.values()) {
+      const accepted = yield* observeAcceptedSingleBodyApply(input.library, plan, {
+        index,
+        headers: operationHeaders,
+        events: allEvents,
+      })
+      if (accepted !== undefined) {
+        acceptedBodyParents.set(accepted.child.operation_id, accepted.child)
+        initialObservations.set(accepted.child.file_id, accepted.observation)
+        continue
+      }
       const result = yield* reconcileSharedSkillApply(input.library, plan)
       return yield* Effect.fail(
         fail(
@@ -629,6 +645,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         ),
       )
     }
+    const readOnlyObservation = input.readOnly === true || acceptedBodyParents.size !== 0
     for (const plan of yield* loadPendingSharedObservationPlans(input.library, {
       skillPageId: selected,
       events: allEvents,
@@ -796,6 +813,17 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             { body_write_operation_id: plan.operation_id },
           ),
         )
+      const accepted = acceptedBodyParents.get(plan.operation_id)
+      if (accepted !== undefined) {
+        if (canonicalSharedJson(accepted) !== canonicalSharedJson(plan))
+          return yield* Effect.fail(
+            fail(
+              "SHARED_RECORD_CONFLICT",
+              "The local child differs from the independently accepted parent's exact body intent.",
+            ),
+          )
+        continue
+      }
       const result = yield* reconcileSharedBodyWrite(input.library, plan)
       yield* invalidateSnapshotCache(record.id, input.scope)
       const local = localPending.find((entry) => entry.plan.operation_id === plan.operation_id)
@@ -838,7 +866,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         events: eventsByFile.get(binding.file_id) ?? [],
         plans: [plan],
         bodyWrites: [],
-        readOnly: input.readOnly,
+        readOnly: readOnlyObservation,
       }).pipe(Effect.result)
       if (reconciled._tag === "Failure") {
         if (reconciled.failure.code === "SHARED_OBSERVATION_RECONCILED") {
@@ -856,10 +884,6 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       )
     }
     const states = new Map<string, ResolvedFileState>()
-    const initialObservations = new Map<
-      string,
-      Effect.Success<ReturnType<typeof observeSharedFile>>
-    >()
     // Validate every graph and baseline before observing or adopting any body.
     for (const binding of bindings) {
       const events = eventsByFile.get(binding.file_id) ?? []
@@ -882,7 +906,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
                   },
                 }
               : {}),
-            readOnly: input.readOnly,
+            readOnly: readOnlyObservation,
             beforePlanWrite: (plan) => retainPendingFileOperation(pendingScope, plan),
           })
           initialObservations.set(binding.file_id, observed)
@@ -1165,7 +1189,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     const metadataObservedAt = yield* Clock.currentTimeMillis
     const cachePolicy = yield* effectiveCachePolicy
     const metadataMaxAge =
-      input.forceFull || input.readOnly
+      input.forceFull || readOnlyObservation
         ? cachePolicy.read_max_age_ms
         : (yield* sharedReadFreshness(
             record,
@@ -1272,6 +1296,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           }
         }
       } else if (
+        initialObservations.has(binding.file_id) ||
         item.action === "body_read" ||
         (item.action === "recover_fixed" && state?.ownership.kind === "following")
       ) {
@@ -1286,7 +1311,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
             events,
             plans: [],
             bodyWrites: [],
-            readOnly: input.readOnly,
+            readOnly: readOnlyObservation,
             beforePlanWrite: (plan) => retainPendingFileOperation(pendingScope, plan),
             ...(events.length === 0 ? { initialNative: true } : {}),
           }))
@@ -1773,7 +1798,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
           skill_page_id: selected,
           source_id: index.source_reference,
           source_revision: input.fixedSource?.revision ?? "",
-          read_only: input.readOnly === true,
+          read_only: readOnlyObservation,
           files: activeBindings.map((binding) => {
             const state = states.get(binding.file_id)
             const observation = nextObservations.find((value) => value.file_id === binding.file_id)

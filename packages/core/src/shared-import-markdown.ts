@@ -3,6 +3,82 @@ import type { Token } from "marked"
 import { fail } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
 import { maskImportTablePlus } from "./shared-import-table-literals.ts"
+import { referenceProse } from "./shared-file-references.ts"
+
+/** Native v2 uses paired standalone quote tags for multi-paragraph quotes.
+ * Only unambiguous flat containers are presentation. Mask code/comments and
+ * require top-level HTML tokens so literal labels and destinations stay intact. */
+function nativeQuoteBlocks(markdown: string): string {
+  if (!markdown.includes("<quote>") || !markdown.includes("</quote>")) return markdown
+  const visible = referenceProse(markdown, 2, true)
+  const tokens = SourceLexer.lexInline(visible)
+  if (tokens.map((token) => token.raw).join("") !== visible) return markdown
+  const starts = new Map<number, number>()
+  const lines = visible.split("\n")
+  let position = 0
+  for (const [line, text] of lines.entries()) {
+    starts.set(position, line)
+    position += text.length + 1
+  }
+  const pairs = new Map<number, "open" | "close">()
+  let depth = 0,
+    opening = 0,
+    nested = false
+  position = 0
+  for (const token of tokens) {
+    const line = starts.get(position)
+    if (
+      token.type === "html" &&
+      (token.raw === "<quote>" || token.raw === "</quote>") &&
+      line !== undefined &&
+      /^<\/?quote>[ \t]*$/u.test(lines[line]!)
+    ) {
+      if (token.raw === "<quote>") {
+        if (depth === 0) {
+          opening = line
+          nested = false
+        } else nested = true
+        depth += 1
+      } else if (depth > 0 && --depth === 0 && !nested) {
+        pairs.set(opening, "open")
+        pairs.set(line, "close")
+      }
+    }
+    position += token.raw.length
+  }
+  if (pairs.size === 0) return markdown
+  let quoted = false
+  return markdown
+    .split("\n")
+    .map((line, index) => {
+      const marker = pairs.get(index)
+      if (marker !== undefined) {
+        quoted = marker === "open"
+        return quoted ? ">" : ""
+      }
+      return quoted ? `> ${line}` : line
+    })
+    .join("\n")
+}
+
+const literalCustomTag = /^<\/?[a-z][a-z0-9]*(?:-[a-z0-9]+)+\s*\/?>$/iu
+function literalCustomTagBlock(raw: string): string | undefined {
+  const tokens = SourceLexer.lexInline(raw)
+  if (
+    tokens[0]?.type !== "html" ||
+    !literalCustomTag.test(tokens[0].raw) ||
+    tokens.map((token) => token.raw).join("") !== raw
+  )
+    return undefined
+  // These attribute-free custom tags are visible instruction labels. Native
+  // import escapes them and parses their contents as Markdown. Re-lex that
+  // same literal form; code tokens, standard HTML and attributes stay intact.
+  return tokens
+    .map((token) =>
+      token.type === "html" && literalCustomTag.test(token.raw) ? `\\${token.raw}` : token.raw,
+    )
+    .join("")
+}
 
 /** Presentation may change at import. Keep text, code and explicit destinations
  * as separate checks rather than predicting Notion's Markdown serialization. */
@@ -113,12 +189,18 @@ function importContent(markdown: string) {
         case "heading":
           inline(token.text, token.tokens)
           break
+        case "html": {
+          const literal = literalCustomTagBlock(token.raw)
+          if (literal === undefined) inline(token.raw)
+          else blocks(SourceLexer.lex(literal))
+          break
+        }
         default:
           inline(token.raw)
       }
     }
   }
-  blocks(SourceLexer.lex(markdown))
+  blocks(SourceLexer.lex(nativeQuoteBlocks(markdown)))
   return { text: text.join("").replace(/\s+/gu, ""), code, links }
 }
 
@@ -126,6 +208,40 @@ export function assertImportedMarkdownContent(expected: string, actual: string):
   const before = importContent(expected)
   const after = importContent(actual)
   assertMeaning(before, after)
+}
+
+/** Review-only evidence for a local destination that native import treated as a
+ * hostname. Only the original authored occurrence may use that exact spelling;
+ * this is never successful import acceptance and never authorizes an external
+ * destination, changed label, code or an added link. */
+export function assertImportedLocalLinksRepairable(
+  expected: string,
+  actual: string,
+  localHrefs: readonly string[],
+): number {
+  const before = importContent(expected),
+    after = importContent(actual)
+  const allowed = new Set(
+    localHrefs.filter((href) => /^[^./?#:][^/?#:]*\.(?:md|markdown)(?:[?#].*)?$/iu.test(href)),
+  )
+  const required = before.links.filter((link) => link.authored || !link.automatic)
+  let changed = 0
+  const links = after.links.map((link) => {
+    const original = required.find(
+      (candidate) => candidate.start === link.start && candidate.end === link.end,
+    )
+    if (
+      original !== undefined &&
+      allowed.has(original.href) &&
+      link.href === `https://${original.href}`
+    ) {
+      changed++
+      return { ...link, href: original.href }
+    }
+    return link
+  })
+  assertMeaning(before, { ...after, links })
+  return changed
 }
 
 function assertMeaning(

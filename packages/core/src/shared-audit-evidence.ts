@@ -5,6 +5,7 @@ import { Store, sha256 } from "./store.ts"
 import type { AuditRun } from "./shared-audit-model.ts"
 import type { AuditCheckpointOwner } from "./shared-audit-transport.ts"
 import { saveAuditRun } from "./shared-audit-store.ts"
+import { captureAuditValue } from "./shared-audit-checkpoint.ts"
 
 type Observation = AuditRun["observations"][string]
 export class AuditEvidence extends Context.Service<
@@ -46,9 +47,10 @@ export function auditEvidenceService(
           return observation
         }),
       ),
-    save: (path, value) =>
+    save: (path, input) =>
       provide(
         Effect.gen(function* () {
+          const value = captureAuditValue(input)
           const identity = yield* key(path)
           const observed_at = yield* Clock.currentTimeMillis
           const response_sha256 = yield* sha256(canonicalSharedJson(value))

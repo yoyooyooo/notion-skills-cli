@@ -6,20 +6,21 @@ import { pageId } from "./ref.ts"
 import {
   AUDIT_RULES_VERSION,
   READABLE_AUDIT_RULES,
-  AuditCheckpointSchema,
   AuditRunIdSchema,
   type AuditRun,
 } from "./shared-audit-model.ts"
 import { presentAuditReport } from "./shared-audit-growth.ts"
+import {
+  auditCheckpointKey as key,
+  auditPartPrefix,
+  readAuditCheckpoint,
+  saveAuditCheckpoint,
+} from "./shared-audit-checkpoint.ts"
 
-const key = (id: string) => `audit/runs/${id}.json`
 const PointerSchema = Schema.Struct({ run_id: AuditRunIdSchema })
 
 export function saveAuditRun(run: AuditRun) {
-  return Effect.gen(function* () {
-    const sha = yield* sha256(canonicalSharedJson(run))
-    yield* (yield* Store).writeJson(key(run.run_id), { sha256: sha, run })
-  }).pipe(Effect.uninterruptible)
+  return saveAuditCheckpoint(run).pipe(Effect.uninterruptible)
 }
 
 function readStoredAuditRun(runId: string, entryId?: string) {
@@ -28,46 +29,37 @@ function readStoredAuditRun(runId: string, entryId?: string) {
       try: () => decode(AuditRunIdSchema, runId),
       catch: () => fail("INVALID_ARGUMENT", "Use one exact audit run ID, not a filesystem path."),
     })
-    const checkpoint = yield* (yield* Store).readJson(key(runId), AuditCheckpointSchema).pipe(
-      Effect.mapError(() =>
-        fail("AUDIT_CHECKPOINT_CORRUPT", "The audit checkpoint is corrupt or unsupported.", {
-          run_id: runId,
-        }),
+    const run = yield* readAuditCheckpoint(runId).pipe(
+      Effect.mapError((error) =>
+        error.code === "AUDIT_CHECKPOINT_CORRUPT"
+          ? error
+          : fail("AUDIT_CHECKPOINT_CORRUPT", "The audit checkpoint is corrupt or unsupported.", {
+              run_id: runId,
+            }),
       ),
     )
-    if (checkpoint === undefined)
+    if (run === undefined)
       return yield* Effect.fail(
         fail("AUDIT_RUN_NOT_FOUND", "The exact audit run does not exist in this local state.", {
           run_id: runId,
         }),
       )
     if (
-      checkpoint.run.run_id !== runId ||
-      (yield* sha256(canonicalSharedJson(checkpoint.run))) !== checkpoint.sha256
-    )
-      return yield* Effect.fail(
-        fail("AUDIT_CHECKPOINT_CORRUPT", "The audit checkpoint integrity check failed.", {
-          run_id: runId,
-        }),
-      )
-    if (
-      checkpoint.run.rules_version !== AUDIT_RULES_VERSION &&
-      !READABLE_AUDIT_RULES.includes(
-        checkpoint.run.rules_version as (typeof READABLE_AUDIT_RULES)[number],
-      )
+      run.rules_version !== AUDIT_RULES_VERSION &&
+      !READABLE_AUDIT_RULES.includes(run.rules_version as (typeof READABLE_AUDIT_RULES)[number])
     )
       return yield* Effect.fail(
         fail(
           "AUDIT_RULES_UNSUPPORTED",
           "The retained checkpoint uses an unknown audit rules version.",
-          { run_id: runId, rules_version: checkpoint.run.rules_version },
+          { run_id: runId, rules_version: run.rules_version },
         ),
       )
-    if (entryId !== undefined && checkpoint.run.entry_id !== entryId)
+    if (entryId !== undefined && run.entry_id !== entryId)
       return yield* Effect.fail(
         fail("AUDIT_SCOPE_MISMATCH", "The run belongs to a different exact library entry."),
       )
-    return checkpoint.run
+    return run
   })
 }
 
@@ -136,7 +128,10 @@ export function publishAuditSummary(run: AuditRun) {
         retained.push(result.success)
     }
     retained.sort((a, b) => b.updated_at - a.updated_at || a.run_id.localeCompare(b.run_id))
-    const obsolete = retained.slice(Math.max(1, run.retain_runs)).map((value) => key(value.run_id))
+    const obsolete: string[] = []
+    for (const value of retained.slice(Math.max(1, run.retain_runs))) {
+      obsolete.push(key(value.run_id), ...(yield* store.listKeys(auditPartPrefix(value.run_id))))
+    }
     if (obsolete.length) yield* store.retireKeys(obsolete)
   })
 }

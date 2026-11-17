@@ -206,7 +206,30 @@ ntn-skills ctl library create recovery reconcile ./original-create-plan.json \
 
 This bounded route accepts an ordinary native Markdown create whose only allocated native page is the original main. It checks the same library, original full input, failed outcome, complete original request/ACK set, unchanged metadata and relations, and complete current Markdown. The body must equal the original candidate exactly; an automatic hyperlink is not normalized away. Review and dry-run do not write. Apply preserves the main page and old `needs_review` fact, resumes only the original never-dispatched file suffix, verifies the full tree and original initial events, and retains a separate restoration completion. It does not patch an existing body or replay an unknown request. An acknowledged suffix whose readback was interrupted is observed by its exact original ACK before any further dispatch.
 
-Use the original credential scope and Store for review/apply because they contain the original durable request receipts. An independent Store can later reconcile the shared completion without those local receipts; that historical verification still needs a fresh `read` for current content. Inventory and fixed-source recoveries retain their own commands. `ctl operation show skill-create-…` identifies this native-create family and directs the caller to the original-plan route; it does not treat the identifier as a legacy resumable operation.
+A version-2 review additionally supports an ordinary policy-15 complete create with exactly one Markdown main, its original raw resources, no Source, no Members/Requires and Default Context false. Its only original native allocation must be that main with a complete durable ACK. The original manifest/outcome may still be absent because the first complete readback stopped before their dispatch. Explicitly accept the SHA-256 of the complete normalized Notion Markdown body you inspected:
+
+```bash
+ntn-skills ctl library create recovery review ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE \
+  --accept-observed-sha256 EXACT_NORMALIZED_READBACK_SHA256 \
+  --output ./restoration-review.json
+```
+
+Use the same apply/dry-run/reconcile commands above with the returned review digest. This branch verifies preserved text, code and authored link destinations using the import-content checks; a changed explicit link is still refused. It freezes the exact observed bytes, and even a semantically equivalent formatting change after review is refused before dispatch. Apply retains the original plan and wire unchanged, keeps the same main page, creates only original unattempted raw-resource pages, verifies every resource byte and executable mode, and records completion separately. An absent original terminal is kept absent; an existing original failure stays immutable. Version-1 exact restoration and ordinary policy-15 creation retain their previous comparison rules. A copied plan, missing/changed ACK or unknown resource request cannot authorize another write.
+
+For a complete ordinary multi-file import that stopped because Notion turned an authored local filename such as `guide.md` into `https://guide.md`, review the original acknowledged prefix explicitly:
+
+```bash
+ntn-skills ctl library create recovery review ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE --repair-local-links \
+  --output ./local-links-review.json
+```
+
+Apply that saved review with the same dry-run/apply commands and its returned digest. The review preserves the complete original policy-14 or policy-15 plan, immutable failure, allocated pages, every raw resource and the current body of each acknowledged file. Only original local references to files in that same declared Skill may defer destination verification; text, code, external links and all other destinations must already agree. Apply allocates only the original undispatched suffix, then replaces those local destinations with the exact same-owner Notion page links. Each affected body receives one whole-body preimage-matched PATCH with its own durable acknowledgement. Forward and cyclic references therefore use actual allocated pages. Every final body, resource byte and mode must verify before the original requested enablement; an unknown POST or PATCH is never replayed.
+
+This version-3 completion keeps the original failure intact and retains the complete preimages, acknowledged responses and final file facts for independent reconciliation. It does not treat an invalid HTTPS destination as a successful import, and it does not change the normal new-create path: a future import containing these bare local links can still stop at `needs_review` and require this explicit recovery.
+
+Use the original credential scope and Store for review/apply because they contain the original durable request receipts. An independent Store can later reconcile the shared completion without those local receipts; that historical verification still needs a fresh `read` for current content. A complete ordinary native inventory import can use the version-3 local-link route above; fixed-source and other inventory recoveries retain their own commands. `ctl operation show skill-create-…` identifies this native-create family and directs the caller to the original-plan route; it does not treat the identifier as a legacy resumable operation.
 
 ### Update native properties
 
@@ -296,6 +319,8 @@ ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md \
 ```
 
 Restore uses the exact source currently selected in Notion, retains the old complete custom body, and verifies the new result before changing ownership. Moved files use their retained source path. An absent source file remains a failure with the custom content preserved; the CLI does not guess a same-named replacement or select a newer commit. The main entrypoint can also be explicitly restored.
+
+When the complete current Notion body preserves the selected fixed source's text, code and explicit link destinations, restore keeps that exact displayed body and records the return to following without a body PATCH. Consumption then uses the fixed Git source's original bytes, while the complete former custom body remains in history. A content difference uses the existing strict restore path and its full preimage and readback checks.
 
 To submit a request for later processing, initialize the request fields once, then submit the exact current file:
 
@@ -568,6 +593,8 @@ ntn-skills ctl file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION_ID \
 ```
 
 After reviewing that exact candidate and event, execute the same command without `--dry-run`. A successful result is `reviewed` with `decision: accepted_current` and `original_write_outcome: unknown`. This creates only the independent immutable decision. It does not replay the body PATCH, invent an adoption event or manufacture an `applied` outcome for the original operation.
+
+The exact authoring target may be disabled during this review; acceptance does not change Enabled. A version-1 apply containing only that one main-body child and no metadata or layout changes can then expose its independently accepted current content after fresh identity, Source, complete frontier and body checks. Ordinary disabled consumption still fails; use an authoring read to inspect it. The client holding the exact original parent and child dispatch records may separately change only Enabled from false to true, with the same proof checked again before dispatch. Cold clients gain only read access. New body, metadata and file-lifecycle changes remain blocked, and the original parent and child retain their unknown history and dispatch records.
 
 An uncertain decision write retains its dispatch. Use the same command with `--reconcile` for read-only verification. After verified acceptance, a fresh `read` may return `SHARED_BODY_WRITE_RECONCILED` with `read_again: true`; read again to obtain the current snapshot. Original failures, preimages, candidates and historical pins remain available.
 

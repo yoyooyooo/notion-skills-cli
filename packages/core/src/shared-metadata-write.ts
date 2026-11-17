@@ -9,6 +9,10 @@ import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
+import { observeAcceptedSingleBodyApply } from "./shared-single-body-apply-acceptance.ts"
+import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
+import { loadPendingSharedObservationPlans } from "./shared-observation-operation.ts"
+import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
 import {
   appendSharedRecord,
   canonicalSharedJson,
@@ -24,6 +28,7 @@ import {
   pendingFileOperationKey,
   retainPendingFileOperation,
   sharedPendingObservationPrefix,
+  type SharedPendingFileScope,
 } from "./shared-pending-file-operations.ts"
 import { Store } from "./store.ts"
 import {
@@ -752,6 +757,83 @@ export function loadPendingSharedMetadataWrites(
 }
 
 /** Exact original recovery plus the existing auth-scoped replay barrier; no second ledger. */
+/** An accepted current body is read authority only. The one exception is an
+ * independent enable intent held beside the exact original local dispatch pair. */
+function checkNewMetadataIntent(
+  library: SharedLibrary,
+  plan: SharedMetadataWritePlan,
+  scope: SharedPendingFileScope,
+  expectedHeaders?: string,
+) {
+  return Effect.gen(function* () {
+    const local = (yield* pendingFileOperations(scope)).filter(
+      (entry) => entry.plan.operation_id !== plan.operation_id,
+    )
+    const headers = yield* querySharedOperationIndex(library, plan.skill_page_id)
+    const parents = yield* loadPendingSharedSkillApplies(library, {
+      skillPageId: plan.skill_page_id,
+      headers,
+    })
+    if (local.length === 0 && parents.length === 0 && expectedHeaders === undefined)
+      return undefined
+    const rejected = fail(
+      "SHARED_PENDING_OPERATION",
+      "Reconcile the original pending Skill operation before preparing a new metadata write.",
+    )
+    const parent = local.find((entry) => entry.plan.kind === "skill_apply")?.plan
+    const child = local.find((entry) => entry.plan.kind === "body_write")?.plan
+    const change = plan.changes[0]
+    if (
+      local.length !== 2 ||
+      parent?.kind !== "skill_apply" ||
+      child?.kind !== "body_write" ||
+      parents.length !== 1 ||
+      parents[0]?.operation_id !== parent.operation_id ||
+      plan.changes.length !== 1 ||
+      change?.field !== "Enabled" ||
+      change.before !== false ||
+      change.after !== true
+    )
+      return yield* Effect.fail(rejected)
+    const accepted = yield* observeAcceptedSingleBodyApply(library, parent)
+    if (
+      accepted === undefined ||
+      canonicalSharedJson(accepted.child) !== canonicalSharedJson(child) ||
+      plan.skill_id !== parent.skill_id ||
+      plan.file_id !== child.file_id ||
+      plan.page_id !== child.page_id
+    )
+      return yield* Effect.fail(rejected)
+    const current = {
+      skillPageId: plan.skill_page_id,
+      headers: accepted.headers,
+      events: accepted.events,
+    }
+    if (
+      (yield* loadPendingSharedObservationPlans(library, current)).length !== 0 ||
+      (yield* loadPendingSharedFileManagement(library, current)).length !== 0 ||
+      (yield* loadPendingSharedMetadataWrites(library, current)).some(
+        (entry) => entry.operation_id !== plan.operation_id,
+      )
+    )
+      return yield* Effect.fail(rejected)
+    const frontier = canonicalSharedJson(
+      accepted.headers
+        .filter((header) => header.record_id !== plan.operation_id)
+        .map((header) => [header.record_id, header.entity_id, header.hash])
+        .sort((left, right) => left[0]!.localeCompare(right[0]!)),
+    )
+    if (expectedHeaders !== undefined && expectedHeaders !== frontier)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CURRENT_ACCEPTANCE_STALE",
+          "Shared operation evidence changed before the independent enable dispatch.",
+        ),
+      )
+    return frontier
+  })
+}
+
 export function executeSharedMetadataWriteWithJournal<R = never>(input: {
   readonly library: SharedLibrary
   readonly plan: SharedMetadataWritePlan
@@ -779,16 +861,6 @@ export function executeSharedMetadataWriteWithJournal<R = never>(input: {
     }
     const local = yield* pendingFileOperations(pendingScope)
     const original = local.find((entry) => entry.plan.operation_id === plan.operation_id)
-    if (
-      input.mode === "create" &&
-      local.some((entry) => entry.plan.operation_id !== plan.operation_id)
-    )
-      return yield* Effect.fail(
-        fail(
-          "SHARED_PENDING_OPERATION",
-          "Reconcile the original pending Skill operation before preparing a new metadata write.",
-        ),
-      )
     if (original !== undefined && canonicalSharedJson(original.plan) !== canonicalSharedJson(plan))
       return yield* Effect.fail(
         fail(
@@ -796,9 +868,18 @@ export function executeSharedMetadataWriteWithJournal<R = never>(input: {
           "The original metadata dispatch receipt differs from the requested frozen plan.",
         ),
       )
+    const enableHeaders =
+      input.mode === "create" && original === undefined
+        ? yield* checkNewMetadataIntent(library, plan, pendingScope)
+        : undefined
+    const beforeDispatch = (frozen: SharedMetadataWritePlan) =>
+      Effect.gen(function* () {
+        if (input.beforeDispatch !== undefined) yield* input.beforeDispatch(frozen)
+        yield* checkNewMetadataIntent(library, frozen, pendingScope, enableHeaders)
+      })
     if (input.dryRun) {
       yield* verifyBefore(library, plan)
-      if (input.beforeDispatch !== undefined) yield* input.beforeDispatch(plan)
+      yield* beforeDispatch(plan)
       return {
         status: "planned" as const,
         operation_id: plan.operation_id,
@@ -808,10 +889,10 @@ export function executeSharedMetadataWriteWithJournal<R = never>(input: {
         protection: sharedMetadataWriteProtection,
       }
     }
-    const result = yield* executeSharedMetadataWrite<R | Store | Crypto.Crypto>(library, {
+    const result = yield* executeSharedMetadataWrite<R | Store | Crypto.Crypto | Notion>(library, {
       plan,
       mode: original === undefined ? input.mode : "reconcile",
-      beforeDispatch: input.beforeDispatch,
+      beforeDispatch,
       beforePlanWrite: (frozen) => retainPendingFileOperation(pendingScope, frozen),
     })
     if (result.status !== "unchanged") {

@@ -46,6 +46,8 @@ import {
   type SharedRecord,
 } from "./shared-records.ts"
 import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
+import { prepareSharedCreateText } from "./shared-create-text-retention.ts"
+import { acceptsNativeImportReadback } from "./shared-create-import-readback.ts"
 import { sha256, Store } from "./store.ts"
 
 type Plan = SharedCreatePlan
@@ -138,10 +140,18 @@ export function originalKnownCreateBootstrap(
     readonly review: SharedCreateKnownRecoveryReview
     readonly hash: string
   },
+  options: { readonly linkRecovery?: boolean } = {},
 ) {
   return Effect.gen(function* () {
     if (plan.version !== 1 || plan.source_projection?.version === 2)
       return yield* refusal("Select an original native or fixed-Git v1 create.")
+    if (
+      options.linkRecovery &&
+      (plan.complete_resources !== 1 || plan.source_projection !== undefined)
+    )
+      return yield* refusal(
+        "Local-link restoration requires the original ordinary complete native create.",
+      )
     const selectedSource = plan.source_projection?.binding
     const store = yield* Store,
       scope = yield* authScope,
@@ -278,7 +288,8 @@ export function originalKnownCreateBootstrap(
             pageId(binding.page_id) !== binding.page_id ||
             binding.file_id !== file.file_id ||
             binding.path !== file.path ||
-            binding.event_id !== file.event.event_id
+            (binding.event_id !== file.event.event_id &&
+              !(options.linkRecovery && acceptsNativeImportReadback(plan)))
           )
         })
       )
@@ -293,21 +304,66 @@ export function originalKnownCreateBootstrap(
         sharedCreateManifest(plan),
       )
       for (const file of plan.files) {
-        yield* addFact(
-          file.input.object_id,
-          "retain-input-" + file.input.sha256,
-          file.input.object_id,
-          "object",
-          sharedCreateInputPayload(file.input.text),
-        )
-        yield* addFact(
-          file.content.object_id,
-          "retain-" + file.content.sha256,
-          file.content.object_id,
-          "object",
-          sharedCreateBodyPayload(file.projection.markdown),
-        )
+        if (options.linkRecovery) {
+          const texts = [
+            { value: file.input.text, kind: "input" as const },
+            ...(acceptsNativeImportReadback(plan)
+              ? []
+              : [{ value: file.projection.markdown, kind: "body" as const }]),
+          ]
+          for (const { value, kind } of texts) {
+            const prepared = yield* prepareSharedCreateText(value, kind)
+            for (const object of prepared.objects)
+              yield* addFact(
+                object.object_id,
+                `retain-${object.object_id}`,
+                object.object_id,
+                "object",
+                object.payload,
+              )
+            yield* addFact(
+              prepared.object_id,
+              prepared.operation_id,
+              prepared.object_id,
+              "object",
+              prepared.payload,
+            )
+          }
+        } else {
+          yield* addFact(
+            file.input.object_id,
+            "retain-input-" + file.input.sha256,
+            file.input.object_id,
+            "object",
+            sharedCreateInputPayload(file.input.text),
+          )
+          yield* addFact(
+            file.content.object_id,
+            "retain-" + file.content.sha256,
+            file.content.object_id,
+            "object",
+            sharedCreateBodyPayload(file.projection.markdown),
+          )
+        }
       }
+      if (options.linkRecovery)
+        for (const file of plan.resources ?? []) {
+          for (const object of file.prepared.objects)
+            yield* addFact(
+              object.object_id,
+              `retain-${object.object_id}`,
+              object.object_id,
+              "object",
+              object.payload,
+            )
+          yield* addFact(
+            file.prepared.content.object_id,
+            `retain-${file.prepared.content.object_id}`,
+            file.prepared.content.object_id,
+            "object",
+            file.prepared.manifest,
+          )
+        }
       if (selectedSource !== undefined)
         yield* addFact(
           selectedSource.source_id,

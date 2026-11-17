@@ -33,6 +33,7 @@ test("real SQLite admits exact audit/source/inventory domains, updates only run 
     `operations/shared-source-runs/source-run-00000000-0000-4000-8000-000000000002.json`,
   ]
   const immutable = [
+    `audit/parts/audit-00000000-0000-4000-8000-000000000001/${"f".repeat(64)}.json`,
     `inventory/observations/inventory-${"b".repeat(64)}.json`,
     `plans/shared-inventory-imports/inventory-import-${"c".repeat(64)}.json`,
     `operations/shared-inventory-imports/inventory-import-${"c".repeat(64)}.json`,
@@ -49,7 +50,7 @@ const bad=yield* state.write('audit/runs/../../other.json',{}).pipe(Effect.flip)
 console.log(JSON.stringify({mutable:mutable.length,immutable:immutable.length,keys:yield* state.list('audit/runs/')}));`),
   )
   expect(first.exit, first.stderr).toBe(0)
-  expect(JSON.parse(first.stdout)).toMatchObject({ mutable: 3, immutable: 4, keys: [mutable[0]] })
+  expect(JSON.parse(first.stdout)).toMatchObject({ mutable: 3, immutable: 5, keys: [mutable[0]] })
   const reopened = await child(
     program(`const mutable=${JSON.stringify(mutable)},immutable=${JSON.stringify(immutable)};
 for(const key of mutable)if((yield* state.read(key)).step!==2)throw Error('Checkpoint lost on reopen');
@@ -58,7 +59,7 @@ yield* state.retire([mutable[2]]);const retired=yield* state.write(mutable[2],{s
 console.log(JSON.stringify({reopened:true,originals:immutable.length}));`),
   )
   expect(reopened.exit, reopened.stderr).toBe(0)
-  expect(JSON.parse(reopened.stdout)).toEqual({ reopened: true, originals: 4 })
+  expect(JSON.parse(reopened.stdout)).toEqual({ reopened: true, originals: 5 })
 }, 30_000)
 
 test("audit actually resumes through a real Store in fresh Node processes and reports offline", async () => {

@@ -307,7 +307,7 @@ function block(
     // the original marker remains in the validated source prefix.
     const children =
       token.type === "list_item" && token.task === true ? SourceLexer.lex(token.text) : token.tokens
-    const projected = blocks(token.text, purpose, children, policy)
+    const projected = blocks(token.text, purpose, children, policy, true)
     return decorated(
       token.raw,
       token.text,
@@ -335,13 +335,14 @@ function blocks(
   purpose: SharedNotionMarkdownPurpose,
   tokens: readonly Token[] = SourceLexer.lex(raw),
   policy: SerializationPolicy = 2,
+  insideContainer = false,
 ): Projected {
   if (tokens.map((token) => token.raw).join("") !== raw) return unsupported()
   const projected = tokens.map((token) => block(token, purpose, policy))
-  if (policy === 5) {
-    // A native paragraph and following list are separate blocks even when
-    // their authored Markdown has only one newline. Freeze the observed
-    // separator without changing list children, code or the request bytes.
+  if (policy === 5 && !insideContainer) {
+    // A root paragraph and following list are separate native blocks even
+    // with one authored newline. Container children keep their original
+    // boundaries so reapplying their list/quote prefixes cannot add lines.
     for (let at = 1; at < tokens.length; at++) {
       const previous = tokens[at - 1]!
       if (tokens[at]!.type !== "list" || !["paragraph", "text"].includes(previous.type)) continue

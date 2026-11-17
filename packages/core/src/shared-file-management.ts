@@ -48,6 +48,7 @@ import {
 import { querySharedSkillIndex, type SharedSkillIndex } from "./shared-skill-index.ts"
 import { sharedSnapshotVersion } from "./shared-snapshot-identity.ts"
 import { loadSharedApplyReferenceTree } from "./shared-skill-apply-target.ts"
+import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
 import {
   pendingFileOperations,
   pendingFileOperationKey,
@@ -518,7 +519,7 @@ function assertFreshEvidence(
   }
   return evidence
 }
-function pendingRemote(library: SharedLibrary, context: Context) {
+function pendingRemote(library: SharedLibrary, context: Context, allowedParent?: string) {
   return Effect.gen(function* () {
     const input = {
       skillPageId: context.index.page_id,
@@ -528,7 +529,11 @@ function pendingRemote(library: SharedLibrary, context: Context) {
     const observed = yield* loadPendingSharedObservationPlans(library, input)
     const written = yield* loadPendingSharedBodyWrites(library, input)
     const managed = yield* loadPendingSharedFileManagement(library, input)
-    return [...observed, ...written, ...managed]
+    const parents = yield* loadPendingSharedSkillApplies(library, {
+      ...input,
+      headers: input.headers.filter((header) => header.record_id !== allowedParent),
+    })
+    return [...observed, ...written, ...managed, ...parents]
   })
 }
 
@@ -1637,9 +1642,12 @@ export function executeSharedFileManagement<R = never>(
     )
     if (context.headers.some((header) => header.record_id === plan.operation_id))
       return yield* reconcileSharedFileManagement(library, plan)
-    const remote = yield* withNotionRequestAttribution(pendingRemote(library, context), {
-      phase: "author_preflight",
-    })
+    const remote = yield* withNotionRequestAttribution(
+      pendingRemote(library, context, batch?.parent_operation_id),
+      {
+        phase: "author_preflight",
+      },
+    )
     const allowed = new Set(batch?.allowed_operation_ids ?? [])
     const blocked =
       batch === undefined

@@ -146,6 +146,12 @@ const sharedLocalDomains: readonly {
   },
   { prefix: "audit/latest", category: "cache", address: /^audit\/latest\/[a-f0-9]{64}\.json$/u },
   {
+    prefix: "audit/parts",
+    category: "cache",
+    address:
+      /^audit\/parts\/audit-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "inventory/observations",
     category: "dispatch",
     address: /^inventory\/observations\/inventory-[a-f0-9]{64}\.json$/u,
@@ -182,6 +188,12 @@ const sharedLocalDomains: readonly {
     category: "dispatch",
     address:
       /^operations\/shared-native-readbacks\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
+  },
+  {
+    prefix: "operations/shared-create-link-repairs",
+    category: "dispatch",
+    address:
+      /^operations\/shared-create-link-repairs\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/file-[a-f0-9]{64}\.json$/u,
   },
   {
     prefix: "operations/shared-native-resubmissions",

@@ -81,6 +81,7 @@ export function sharedCreateFixture(
     readonly relations?: boolean
     readonly readback?: (wire: string) => string
     readonly recovery?: boolean
+    readonly bodyPatch?: boolean
     readonly httpClient?: HttpClient.HttpClient
   } = {},
 ) {
@@ -119,6 +120,7 @@ export function sharedCreateFixture(
           | "outcome"
           | "recovery_outcome"
           | "recovery_receipt"
+          | "body"
         readonly visible: boolean
       }
     | undefined
@@ -384,7 +386,39 @@ export function sharedCreateFixture(
               }
               const markdown = /^\/v1\/pages\/([^/]+)\/markdown$/u.exec(pathname)
               if (markdown !== null && base.bodies.has(markdown[1] ?? "")) {
-                if (method !== "GET")
+                if (method === "PATCH" && fixtureOptions.bodyPatch === true) {
+                  const request = property(body),
+                    updates = property(request.update_content).content_updates,
+                    update =
+                      Array.isArray(updates) && updates.length === 1
+                        ? property(updates[0])
+                        : undefined,
+                    page = markdown[1]!
+                  if (
+                    request.type !== "update_content" ||
+                    request.markdown_version !== "v2" ||
+                    !update ||
+                    update.old_str !== base.bodies.get(page) ||
+                    typeof update.new_str !== "string"
+                  )
+                    return Effect.fail(
+                      fail(
+                        "TEST_BODY_PREIMAGE",
+                        "A body PATCH needs one exact whole-body preimage",
+                      ),
+                    )
+                  const uncertain = unknown?.stage === "body" ? unknown : undefined
+                  if (uncertain) unknown = undefined
+                  if (!uncertain || uncertain.visible)
+                    base.bodies.set(
+                      page,
+                      fixtureOptions.readback?.(update.new_str) ?? update.new_str,
+                    )
+                  if (uncertain)
+                    return Effect.fail(
+                      fail("WRITE_OUTCOME_UNKNOWN", "Lost original body PATCH response"),
+                    )
+                } else if (method !== "GET")
                   return Effect.fail(
                     fail("TEST_BODY_OVERWRITE", "Native create attempted a body replacement"),
                   )
@@ -481,7 +515,8 @@ export function sharedCreateFixture(
         | "source_selection"
         | "outcome"
         | "recovery_outcome"
-        | "recovery_receipt",
+        | "recovery_receipt"
+        | "body",
       visible: boolean,
     ) => {
       unknown = { stage, visible }

@@ -1,12 +1,124 @@
 import { expect, test } from "bun:test"
+import quoteReadback from "./fixtures/native-quote-readback.json"
 import {
   assertImportedMarkdownContent,
+  assertImportedLocalLinksRepairable,
   compatibleImportMarkdown,
 } from "../src/shared-import-markdown.ts"
 import {
   projectSharedNotionMarkdown,
   sharedNotionMarkdownWire,
 } from "../src/shared-notion-projection.ts"
+
+test("minimized native quote regression preserves both paragraphs and still rejects broken local links", () => {
+  expect(
+    assertImportedLocalLinksRepairable(
+      quoteReadback.source,
+      quoteReadback.observed,
+      quoteReadback.local_hrefs,
+    ),
+  ).toBe(3)
+  expect(() =>
+    assertImportedMarkdownContent(quoteReadback.source, quoteReadback.observed),
+  ).toThrow()
+  for (const changed of [
+    quoteReadback.observed.replace("verify before acting", "act without verification"),
+    quoteReadback.observed.replace("observe --image", "observe  --image"),
+    quoteReadback.observed.replace("https://lookup.md", "https://wrong.example/lookup.md"),
+  ])
+    expect(() =>
+      assertImportedLocalLinksRepairable(quoteReadback.source, changed, quoteReadback.local_hrefs),
+    ).toThrow()
+})
+
+test("a paired standalone native quote parses its internal Markdown without changing code or destinations", () => {
+  const source = [
+    "> ## Heading",
+    ">",
+    "> - Keep `two  spaces` and [guide](https://example.test/guide).",
+    "> - Keep the second item.",
+    ">",
+    "> ```text",
+    "> <quote>",
+    "> Literal code wrappers.",
+    "> </quote>",
+    "> ```",
+  ].join("\n")
+  const observed = [
+    "<quote>",
+    "## Heading",
+    "",
+    "- Keep <code>two  spaces</code> and [guide](https://example.test/guide).",
+    "- Keep the second item.",
+    "",
+    "```text",
+    "<quote>",
+    "Literal code wrappers.",
+    "</quote>",
+    "```",
+    "</quote>",
+  ].join("\n")
+  expect(() => assertImportedMarkdownContent(source, observed)).not.toThrow()
+  for (const changed of [
+    observed.replace("second item", "other item"),
+    observed.replace("two  spaces", "two spaces"),
+    observed.replace("https://example.test/guide", "https://wrong.example/guide"),
+    observed.replace("Literal code wrappers.", "Changed code wrappers."),
+  ])
+    expect(() => assertImportedMarkdownContent(source, changed)).toThrow()
+})
+
+test("quote recognition never consumes attributes, unmatched, nested, inline or escaped literal tags", () => {
+  for (const actual of [
+    '<quote color="red">\nKeep\n</quote>',
+    "<quote>\nKeep",
+    "Keep\n</quote>",
+    "<quote>Keep\n</quote>",
+    "<quote>\nKeep</quote>",
+    "\\<quote>\nKeep\n\\</quote>",
+    "<quote>\n<quote>\nKeep\n</quote>\n</quote>",
+    "<quote>\nKeep\n```text\n</quote>\n```",
+    "<quote>\nKeep\n<!--\n</quote>\n-->",
+  ])
+    expect(() => assertImportedMarkdownContent("> Keep", actual)).toThrow()
+  for (const literal of [
+    "\\<quote>\nKeep\n\\</quote>",
+    "```text\n<quote>\nKeep\n</quote>\n```",
+    "`<quote>` Keep `</quote>`",
+  ]) {
+    expect(() => assertImportedMarkdownContent(literal, literal)).not.toThrow()
+    expect(() => assertImportedMarkdownContent(literal, "<quote>\nKeep\n</quote>")).toThrow()
+  }
+  expect(() =>
+    assertImportedMarkdownContent(
+      "[\n<quote>\nKeep\n</quote>\n](https://example.test/guide)",
+      "[Keep](https://example.test/guide)",
+    ),
+  ).toThrow()
+})
+
+test("local hostname repair evidence binds the original explicit occurrence and never accepts a broken destination", () => {
+  const source = "[Local](guide.md) and [Website](https://guide.md) with `guide.md`."
+  const actual = "[Local](https://guide.md) and [Website](https://guide.md) with `guide.md`."
+  expect(assertImportedLocalLinksRepairable(source, actual, ["guide.md"])).toBe(1)
+  expect(() => assertImportedMarkdownContent(source, actual)).toThrow()
+  for (const changed of [
+    actual.replace("[Local]", "[Other]"),
+    actual.replace("https://guide.md", "https://evil.test/guide.md"),
+    actual.replace("[Website](https://guide.md)", "[Website](guide.md)"),
+    actual.replace("`guide.md`", "`https://guide.md`"),
+    `${actual} [Added](https://guide.md)`,
+  ])
+    expect(() => assertImportedLocalLinksRepairable(source, changed, ["guide.md"])).toThrow()
+  expect(() => assertImportedLocalLinksRepairable(source, actual, [])).toThrow()
+  expect(() =>
+    assertImportedLocalLinksRepairable(
+      "[A](references/guide.md)",
+      "[A](https://references/guide.md)",
+      ["references/guide.md"],
+    ),
+  ).toThrow()
+})
 
 test("import accepts presentation changes without requiring Markdown roundtrip equality", () => {
   const input =
@@ -39,6 +151,52 @@ test("class-only div and span presentation can flatten while code and authored d
     '`<div class="meta">Visible</div>`',
   ])
     expect(() => assertImportedMarkdownContent(input, "Visible")).toThrow()
+})
+
+test("literal custom-tag blocks keep their labels while native import parses their enclosed Markdown", () => {
+  for (const [before, after] of [
+    [
+      "<user-story-example>\n1. As a customer, I want a balance.\n</user-story-example>",
+      "\\<user-story-example>\n\n1. As a customer, I want a balance.<br />\\</user-story-example>",
+    ],
+    [
+      "<issue-template>\n## Parent\n\nKeep the parent.\n\n</issue-template>",
+      "\\<issue-template>\n\n## Parent\n\nKeep the parent.\n\n\\</issue-template>",
+    ],
+    [
+      "<vertical-slice-rules>\n- Keep every layer.\n- Verify every slice.\n</vertical-slice-rules>",
+      "\\<vertical-slice-rules>\n\n- Keep every layer.\n- Verify every slice.<br />\\</vertical-slice-rules>",
+    ],
+  ]) {
+    expect(() => assertImportedMarkdownContent(before!, after!)).not.toThrow()
+  }
+})
+
+test("literal custom-tag parsing never drops labels, attributes, code bytes or explicit destinations", () => {
+  const before = "<example-rule>\n1. Keep `<literal-tag>` and [guide](notes.md).\n</example-rule>"
+  const after =
+    "\\<example-rule>\n\n1. Keep `<literal-tag>` and [guide](notes.md).<br />\\</example-rule>"
+  expect(() => assertImportedMarkdownContent(before, after)).not.toThrow()
+  for (const changed of [
+    after.replace("Keep", "Discard"),
+    after.replace("\\<example-rule>", "\\<different-rule>"),
+    after.replaceAll(/\\<\/?example-rule>/gu, ""),
+    after.replace("`<literal-tag>`", "`\\<literal-tag>`"),
+    after.replace("](notes.md)", "](https://notes.md)"),
+  ])
+    expect(() => assertImportedMarkdownContent(before, changed)).toThrow()
+  const fence = "<example-rule>\n```md\n<literal-tag>\n```\n</example-rule>"
+  const nativeFence = "\\<example-rule>\n\n```md\n<literal-tag>\n```\n\n\\</example-rule>"
+  expect(() => assertImportedMarkdownContent(fence, nativeFence)).not.toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(fence, nativeFence.replace("<literal-tag>", "\\<literal-tag>")),
+  ).toThrow()
+  expect(() =>
+    assertImportedMarkdownContent(
+      '<example-rule data-policy="keep">\nKeep all content.\n</example-rule>',
+      "\\<example-rule>\n\nKeep all content.\n\\</example-rule>",
+    ),
+  ).toThrow()
 })
 
 test("import does not mistake missing text, code mutations or changed explicit targets for formatting", () => {

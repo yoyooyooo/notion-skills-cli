@@ -11,6 +11,7 @@ import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 import { nativeResubmissionReadbackFile } from "./shared-native-image-layout.ts"
 import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
+import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
 
 const ObservationSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -148,6 +149,7 @@ export function restoreNativeImportReadbacks(
   skillPage: string,
   bindings: readonly SharedCreateBinding[],
   substitutions: readonly VerifiedNativeFileSubstitution[] = [],
+  linkRepairs: readonly { readonly file_id: string; readonly body_sha256: string }[] = [],
 ) {
   return Effect.gen(function* () {
     const files = yield* Effect.forEach(plan.files, (file) =>
@@ -216,12 +218,29 @@ export function restoreNativeImportReadbacks(
                   )
                 })
         const substitution = substitutions.find((item) => item.file_id === file.file_id)
+        const linked = linkRepairs.find((item) => item.file_id === file.file_id)
         const represented =
-          substitution === undefined
-            ? file
-            : nativeResubmissionReadbackFile(file, substitution.wire_policy)
+          linked !== undefined
+            ? {
+                ...file,
+                projection: {
+                  ...file.projection,
+                  markdown: restoreSharedNativeFileLinks(
+                    file.projection.markdown,
+                    file.path,
+                    bindings,
+                  ),
+                },
+              }
+            : substitution === undefined
+              ? file
+              : nativeResubmissionReadbackFile(file, substitution.wire_policy)
         const resolved = yield* withObservedBody(represented, markdown)
-        if (canonicalSharedJson(resolved.event) !== canonicalSharedJson(event))
+        if (
+          (linked !== undefined &&
+            (substitution !== undefined || linked.body_sha256 !== resolved.content.sha256)) ||
+          canonicalSharedJson(resolved.event) !== canonicalSharedJson(event)
+        )
           return yield* Effect.fail(
             fail(
               "SHARED_CREATE_INVALID",

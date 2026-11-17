@@ -7,6 +7,7 @@ import {
 } from "./shared-notion-projection.ts"
 import { canonicalSharedJson, validateSharedRecordEnvelope } from "./shared-records.ts"
 import { SHARED_FACT_ENVELOPE_BYTES } from "./shared-record-codec.ts"
+import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
 
 const storage = "derived-text-v1"
 const ProjectionInput = Schema.Struct({
@@ -79,11 +80,30 @@ function transform(value: unknown, expand: boolean): Record<string, unknown> {
   const content = { ...property(plan[contentKey]) }
   if (plan[projectionKey] != null) {
     const projected = projection(plan[projectionKey], expand)
+    let derived = expand ? property(projected).markdown : property(plan[projectionKey]).markdown
+    if (plan.kind === "body_write" && plan.restore_readback !== undefined) {
+      const acceptance = property(plan.restore_readback),
+        before = property(plan.before)
+      if (
+        plan.action !== "restore_follow" ||
+        acceptance.version !== 1 ||
+        acceptance.policy !== "notion_import_readback_v1" ||
+        Object.keys(acceptance).length !== 2 ||
+        typeof before.raw_markdown !== "string" ||
+        typeof derived !== "string"
+      )
+        throw invalid()
+      const current = normalizeObservedBody(before.raw_markdown)
+      assertImportedMarkdownContent(derived, current)
+      // The source projection remains frozen; only this no-body restore derives
+      // its candidate from the independently retained exact current preimage.
+      derived = current
+    }
     if (expand) {
       if (Object.hasOwn(content, "markdown")) throw invalid()
-      content.markdown = property(projected).markdown
+      content.markdown = derived
     } else {
-      if (content.markdown !== property(plan[projectionKey]).markdown) throw invalid()
+      if (content.markdown !== derived) throw invalid()
       delete content.markdown
     }
     plan[projectionKey] = projected

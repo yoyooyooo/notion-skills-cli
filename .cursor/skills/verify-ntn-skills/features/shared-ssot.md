@@ -453,6 +453,30 @@ unknown suffix and interrupted readback, original operation routing, and indepen
 complete main/reference consumption. The original real failure and author repair
 remain separate evidence from controlled tests and any later successful recovery.
 
+The additive version-2 `create recovery review --accept-observed-sha256 HASH`
+branch is limited to an ordinary complete policy-15 create with one Markdown
+main, original raw resources, no Source/relations and Default Context false.
+Require the same original journal and sole main ACK, including the case stopped
+before any manifest or terminal outcome. Preserve that absent outcome or the
+original known failure; never rewrite the frozen plan or resend its main POST.
+Accept only a complete explicit observed-body digest after the existing import
+text/code/authored-link checks. Recheck that exact digest on apply, including
+formatting-only drift. A differing explicit destination remains a refusal.
+
+```bash
+bun test packages/core/test/shared-create-restoration.test.ts \
+  packages/core/test/shared-create-readback-restoration.test.ts --timeout 30000
+```
+
+Keep the version-1 exact restoration cases. The new cases
+cover same-page auto-link/custom-tag representation review, mandatory observed
+hash, absent/tampered original ACK, unchanged frozen input, changed body and raw
+resource refusal, visible/hidden unknown suffixes, and cold completion with exact
+binary/script bytes and executable modes. Remove a retained resource object in
+the controlled fixture and require cold verification to fail. Repeated apply and
+cold reconcile/consumption must make zero writes. Record installed CLI and real
+Notion recovery separately; these source tests do not establish live completion.
+
 ### SS16 native inventory recovery — One acknowledged main before any Records
 
 Keep the original complete inventory import and v1 native create plan unchanged. The bounded native review uses projection 11 to 12 only for a complete one-main Skill with an initial adopted event, no Source, resources, Members or Requires, and disabled/default-false intent. It requires the original prepared and executed inventory records, credential-scoped create journal, and exactly one original main POST with its complete durable ACK. Neither a copied plan nor a matching current page authorizes recovery. Extra or cross-scope dispatch evidence, missing ACKs, additional Files or Source facts, changed metadata, incomplete Markdown or a different full body must refuse before writes.
