@@ -13,6 +13,8 @@ description: "验证 ntn-skills CLI/SDK 的目录资格、当前读取、固定�
 
 ## Doctor
 
+四柱验收将实际HTTP、源响应字节、持久cache、Agent工具调用及最终provider输入分账。`apply --compact` 的最终输出必须在CommandMetrics追加后再投影；`command-output.ts` 给订阅者的完整账本须由真实已结束进程的stdout SHA256/长度回证。没有独立账本的compact不是零请求，也不是完整审计；只声明已安装CLI/SDK的proof v1能力不足以替代实际运行记录。Warm read重复零HTTP且不刷新有效期/扩大immutable对象目录；过期、权限变化、force refresh、独立Store与凭据隔离回归沿原测试保留。
+
 ```sh
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
 bun test packages/cli/test/verification-skill-map.test.ts

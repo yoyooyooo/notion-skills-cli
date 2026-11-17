@@ -452,7 +452,7 @@ export const applyCommand = defineCommand(
         dryRun: config.dryRun,
         ...(yield* publicationOptions(config.progress)),
       })
-      yield* emit(config.compact ? compactApplyOutput(result) : result)
+      yield* emit(result, config.compact ? compactApplyOutput : undefined)
     }),
 ).pipe(
   withConstraints([memberConstraint]),

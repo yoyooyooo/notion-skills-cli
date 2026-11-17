@@ -51,6 +51,7 @@ import {
 } from "./shared-skill-apply-model.ts"
 import { executeSharedSkillApply } from "./shared-skill-apply.ts"
 import { sha256, Store } from "./store.ts"
+import { withAuthoringPlanReads, outsideAuthoringPlanReads } from "./shared-authoring-plan-reads.ts"
 
 export type SharedApplyInput = SharedMetadataUpdateOptions & {
   readonly files: readonly ImportFile[]
@@ -522,11 +523,13 @@ function applyMaintenanceTree(
       ...(metadataPlan === undefined ? {} : { metadata: metadataPlan }),
       stages,
     })
-    const result = yield* executeSharedSkillApply(library, {
-      plan,
-      mode: "create",
-      dryRun: input.dryRun,
-    })
+    const result = yield* outsideAuthoringPlanReads(
+      executeSharedSkillApply(library, {
+        plan,
+        mode: "create",
+        dryRun: input.dryRun,
+      }),
+    )
     if (result.status === "partial")
       return yield* Effect.fail(
         fail(
@@ -713,10 +716,15 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
           operation_id: plan.operation_id,
           plan,
           dry_run: true as const,
-          changes: { files: requested.files.map((file) => file.path), removed: requested.removed },
+          changes: {
+            files: requested.files.map((file) => file.path),
+            removed: requested.removed,
+          },
           protection: fileManagementProtection,
         }
-      const result = yield* executeSharedFileManagement(library, { plan, mode: "create" })
+      const result = yield* outsideAuthoringPlanReads(
+        executeSharedFileManagement(library, { plan, mode: "create" }),
+      )
       if (result.status !== "applied")
         return yield* Effect.fail(
           fail(
@@ -914,11 +922,13 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
       bodies,
       ...(metadataPlan === undefined ? {} : { metadata: metadataPlan }),
     })
-    const result = yield* executeSharedSkillApply(library, {
-      plan,
-      mode: "create",
-      dryRun: input.dryRun,
-    })
+    const result = yield* outsideAuthoringPlanReads(
+      executeSharedSkillApply(library, {
+        plan,
+        mode: "create",
+        dryRun: input.dryRun,
+      }),
+    )
     if (result.status === "partial")
       return yield* Effect.fail(
         fail(
@@ -928,7 +938,7 @@ export function applySharedSkillChanges(snapshot: Snapshot, input: SharedApplyIn
         ),
       )
     return { ...result, kind: "skill_apply" as const, plan, changes }
-  })
+  }).pipe(withAuthoringPlanReads)
 }
 
 export function verifySharedAppliedSnapshot(snapshot: Snapshot, plan: SharedSkillApplyPlan): void {

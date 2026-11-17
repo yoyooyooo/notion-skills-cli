@@ -1415,6 +1415,56 @@ describe("frozen sequential shared apply", () => {
 })
 
 describe("public shared apply and replace routing", () => {
+  test("two-file public author maintenance records exact phase costs without hiding original writes", async () => {
+    const f = sharedSnapshotFixture(),
+      baseline = await fresh(f)
+    const directory = mkdtempSync(join(tmpdir(), "shared-author-cost-"))
+    mkdirSync(join(directory, "references"))
+    writeFileSync(join(directory, "SKILL.md"), "# Main\n\n[New](references/cost.md)\n")
+    writeFileSync(
+      join(directory, "references/cost.md"),
+      "# Cost reference\n\nComplete supporting document.\n",
+    )
+    const fixture = await f.run(withWriter(f, Notion))
+    await recordedFixtureTransport(fixture, async (api) => {
+      const outcome = await f.run(
+        applySkill(fileRef(baseline.record.id, baseline.entrypoint, baseline.snapshot_id), {
+          input: directory,
+        }).pipe(Effect.provideService(Notion, api)),
+      )
+      expect(property(outcome)).toMatchObject({
+        status: "applied",
+        verified: true,
+        completion: "complete",
+      })
+      const metrics = api.requestMetrics!()
+      expect(metrics.trace_dropped).toBe(0)
+      expect(metrics.in_flight).toBe(0)
+      expect(metrics.requests.notion_write).toBeGreaterThan(0)
+      expect(metrics.total_requests).toBeLessThanOrEqual(98)
+      expect(metrics.requests.notion_write).toBe(14)
+      expect(payloads(f).filter((item) => item.kind === "skill_apply")).toHaveLength(1)
+      const receipt = process.env.NTN_SKILLS_TEST_COST_RECEIPT
+      if (receipt)
+        writeFileSync(
+          receipt,
+          JSON.stringify(
+            {
+              task: "same fixture public pinned apply main+one new linked reference",
+              status: property(outcome).status,
+              verified: property(outcome).verified,
+              snapshot_id: property(outcome).snapshot_id,
+              files: property(outcome).files,
+              request_metrics: metrics,
+            },
+            null,
+            2,
+          ) + "\n",
+          { flag: "wx", mode: 0o600 },
+        )
+    })
+  }, 60000)
+
   async function replacement(f: Fixture, snapshot: Snapshot) {
     const files = await f.run(
       Effect.gen(function* () {

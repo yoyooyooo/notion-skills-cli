@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test"
 import { compactApplyOutput } from "../src/apply-output.ts"
+import { renderCommandOutput } from "../src/command-output.ts"
+import { channel } from "node:diagnostics_channel"
+import { createHash } from "node:crypto"
+import { createRequestMetrics } from "../../core/src/request-metrics.ts"
 
 test("compact apply retains exact owner, pin, operation and aggregate request evidence without carrying the transport trace", () => {
   const original = {
@@ -63,4 +67,55 @@ test("compact mode does not rewrite results without a complete per-attempt trace
   expect(compactApplyOutput(error)).toBe(error)
   const untraced = { ok: true, status: "unchanged", request_metrics: { total_requests: 0 } }
   expect(compactApplyOutput(untraced)).toBe(untraced)
+})
+
+test("the final CLI formatter projects after full command metrics and emits a hash-bound separate complete ledger", () => {
+  const metrics = createRequestMetrics({ traceLimit: 100 })
+  const finish = metrics.begin({
+    path: "v1/pages/00000000-0000-4000-8000-000000000001",
+    method: "GET",
+    requestBytes: 0,
+  })
+  finish({ responseBytes: 364 })
+  const original = metrics.snapshot()
+  const outputEvents: unknown[] = []
+  const observer = (event: unknown) => {
+    outputEvents.push(event)
+  }
+  const diagnostic = channel("ntn-skills.command-output")
+  diagnostic.subscribe(observer)
+  try {
+    const result = {
+      operation: "apply",
+      status: "applied",
+      verified: true,
+      apply_operation_id: "exact-original",
+      sensitive_input_body: "Not recorded by diagnostics",
+      request_metrics: { total_requests: 999 },
+    }
+    const compact = renderCommandOutput(result, original, compactApplyOutput)
+    const projected = JSON.parse(compact)
+    expect(projected.request_metrics.total_requests).toBe(1)
+    expect(projected.request_metrics.trace_omitted_from_output).toBe(true)
+    expect(projected.request_metrics).not.toHaveProperty("trace")
+    expect(outputEvents).toHaveLength(1)
+    expect(outputEvents[0]).toEqual({
+      version: 1,
+      event: "result",
+      operation: "apply",
+      status: "applied",
+      operation_id: "exact-original",
+      projected: true,
+      output_bytes: Buffer.byteLength(compact),
+      output_sha256: createHash("sha256").update(compact).digest("hex"),
+      request_metrics: original,
+    })
+    expect(outputEvents[0]).not.toHaveProperty("sensitive_input_body")
+    const full = renderCommandOutput(result, original)
+    expect(JSON.parse(full).request_metrics).toEqual(original)
+    expect(full).toBe(JSON.stringify({ ok: true, ...result, request_metrics: original }) + "\n")
+    expect(original.trace.length).toBeGreaterThan(0)
+  } finally {
+    diagnostic.unsubscribe(observer)
+  }
 })

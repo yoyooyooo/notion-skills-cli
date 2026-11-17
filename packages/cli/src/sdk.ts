@@ -88,6 +88,9 @@ import {
 } from "../../core/src/catalog-consumption.ts"
 
 export const SDK_VERSION = 1
+/** Selected CLI can expose the complete HTTP ledger independently of compact
+ * stdout, with an exact closed-output SHA-256 proof. Not remote authority. */
+export const COMMAND_OUTPUT_PROOF_VERSION = 1
 export const PACKAGE_VERSION = version
 export { CONSUMPTION_EFFECTS_VERSION } from "../../core/src/consumption-effects.ts"
 export type {

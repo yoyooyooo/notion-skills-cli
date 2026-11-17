@@ -9,6 +9,8 @@ Use the existing `verify-ntn-skills` Skill for live Notion, public CLI, installe
 
 ## Select the maintenance owner
 
+四柱成本：作者准备期可共享同一次只读观察，原操作派发、unknown恢复、写后核验不得复用写前当前态。`shared-authoring-plan-reads.test.ts` 核对单向关闭、迟到producer、内层只读保护、取消、跨调用隔离以及128项/8MiB JSON上限；不改变持久TTL或Notion归属。`shared-skill-apply.test.ts` 的 two-file public author maintenance 经原HTTP fixture验证 applied/verified/complete、<=98次请求和14次必要写（基线114），不能用模拟计数或延长TTL取得下降。真实before/after使用相同pin/输入hash、独立空客户端的零写dry-run；当前权限和原ACK guard的原负例不能删。
+
 AH-1024 的具体维护场景由 [Skill 维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) 持有。AuditRun 不含草稿字段的分类规则；MNT01 需要目录与完整审计的实现回归及安装入口。不要为每个feature创建重复guardian，或把源码hash同步当成新性质证明。
 
 The default suite remains `lifecycle`. For exact acknowledged Record prefixes, independent acceptance and restore feedback, use [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md) and `--suite operation-recovery`. Those models now own these narrower boundaries; the six lifecycle models retain their original bounds. Request ownership, cancellation and deadline changes use the existing [RequestEngine formal feature](../verify-ntn-skills/features/request-engine-formal.md) and `--suite request-engine`.

@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Option, Stdio, Stream } from "effect"
 import { Command, Flag } from "effect/cli"
 import { commandMetrics, selectCommandMetrics } from "./command-metrics.ts"
+import { renderCommandOutput } from "./command-output.ts"
 
 import { SkillsError, configuration, fail, parseDuration } from "@notion-skills-cli/core"
 import type { ReadPolicyOptions } from "@notion-skills-cli/core"
@@ -175,15 +176,13 @@ export function readPolicy(config: {
   })
 }
 
-export function emit(value: object) {
+export function emit(value: object, project?: (result: Record<string, unknown>) => object) {
   return Effect.gen(function* () {
     const stdio = yield* Stdio.Stdio
     const metrics = yield* commandMetrics
-    const result = {
-      ...(Array.isArray(value) ? { ok: true, items: value } : { ok: true, ...value }),
-      ...(metrics === undefined ? {} : { request_metrics: metrics }),
-    }
-    yield* Stream.make(JSON.stringify(result) + "\n").pipe(Stream.run(stdio.stdout()))
+    yield* Stream.make(renderCommandOutput(value, metrics, project)).pipe(
+      Stream.run(stdio.stdout()),
+    )
   })
 }
 

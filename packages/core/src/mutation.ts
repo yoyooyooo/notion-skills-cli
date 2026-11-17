@@ -1,5 +1,6 @@
 import { Effect, FileSystem, Path } from "effect"
 import { withSharedAuthoringRequest } from "./shared-authoring-context.ts"
+import { withAuthoringPlanReads, outsideAuthoringPlanReads } from "./shared-authoring-plan-reads.ts"
 import { parseYaml as parse } from "./yaml.ts"
 import { authScope, catalog, creationSource } from "./catalog.ts"
 import {
@@ -576,10 +577,12 @@ function sharedApplyResult(
           : { unchanged: true as const }),
         verified: true as const,
       })
-    const after = yield* openSkill(locator.page_id, {
-      database: locator.database_id,
-      refresh: true,
-    }).pipe((effect) =>
+    const after = yield* outsideAuthoringPlanReads(
+      openSkill(locator.page_id, {
+        database: locator.database_id,
+        refresh: true,
+      }),
+    ).pipe((effect) =>
       withNotionRequestAttribution(effect, {
         phase: "author_verify",
         skill_page_id: locator.page_id,
@@ -699,77 +702,90 @@ function applySkillCurrent(inputTarget: string, options: ApplyOptions) {
           "Apply targets the complete Skill; use its main ref or snapshot ID.",
         ),
       )
-    const current = yield* openSkill(id, {
-      database: options.database ?? shared?.database_id,
-      refresh: true,
-      ...(shared === undefined ? {} : { sharedReadOnly: true }),
-    })
-    if (
-      current.version_id !== baseline.version_id ||
-      (options.defaultContext !== undefined &&
-        current.record.default_context !== baseline.record.default_context)
-    )
-      return yield* Effect.fail(
-        fail("WRITE_CONFLICT", "The remote Skill changed since the pinned read.", {
-          page_id: id,
-          expected_version: baseline.version_id,
-          actual_version: current.version_id,
-        }),
-      )
-    if (shared !== undefined) {
+    const currentRead = Effect.gen(function* () {
+      const current = yield* openSkill(id, {
+        database: options.database ?? shared?.database_id,
+        refresh: true,
+        ...(shared === undefined ? {} : { sharedReadOnly: true }),
+      })
       if (
-        current.record.locator.type !== "shared_skill" ||
-        current.record.id !== baseline.record.id ||
-        current.record.locator.database_id !== shared.database_id ||
-        current.record.locator.library_id !== shared.library_id
+        current.version_id !== baseline.version_id ||
+        (options.defaultContext !== undefined &&
+          current.record.default_context !== baseline.record.default_context)
       )
         return yield* Effect.fail(
-          fail("WRITE_CONFLICT", "The exact shared apply target changed after the pinned read."),
+          fail("WRITE_CONFLICT", "The remote Skill changed since the pinned read.", {
+            page_id: id,
+            expected_version: baseline.version_id,
+            actual_version: current.version_id,
+          }),
         )
-      const loaded = options.input === undefined ? undefined : yield* loadImport(options.input)
-      const imported = yield* Effect.try({
-        try: () => {
-          const packaged = loaded?.files.some((file) => file.path === MANIFEST)
-            ? readPortable(loaded.files)
-            : undefined
+      return current
+    })
+    if (shared !== undefined)
+      return yield* withAuthoringPlanReads(
+        Effect.gen(function* () {
+          const current = yield* currentRead
           if (
-            packaged &&
-            (packaged.kind !== current.record.kind ||
-              packaged.main !== current.entrypoint ||
-              packaged.projection !== undefined)
+            current.record.locator.type !== "shared_skill" ||
+            current.record.id !== baseline.record.id ||
+            current.record.locator.database_id !== shared.database_id ||
+            current.record.locator.library_id !== shared.library_id
           )
-            throw fail(
-              "INVALID_CONTENT_SOURCE",
-              "A shared apply package must preserve the canonical kind/main path and cannot supply hidden legacy projection authority.",
+            return yield* Effect.fail(
+              fail(
+                "WRITE_CONFLICT",
+                "The exact shared apply target changed after the pinned read.",
+              ),
             )
-          return {
-            files: packaged?.files ?? loaded?.files ?? [],
-            ...(packaged?.relations === undefined ? {} : { portableRelations: packaged.relations }),
-            ...portableRelationSelection(packaged?.relations, shared.library_id, {
-              ...(options.members === undefined ? {} : { members: options.members }),
-              ...(options.requires === undefined ? {} : { requires: options.requires }),
-            }),
-          }
-        },
-        catch: (error) =>
-          error instanceof SkillsError
-            ? error
-            : fail("INVALID_INPUT", "The shared apply input could not be decoded."),
-      })
-      return yield* sharedApplyResult(
-        current,
-        {
-          ...imported,
-          remove: options.remove,
-          ...(options.changes === undefined ? {} : { changes: options.changes }),
-          name: options.name,
-          description: options.description,
-          defaultContext: options.defaultContext,
-          dryRun: options.dryRun,
-        },
-        "apply",
+          const loaded = options.input === undefined ? undefined : yield* loadImport(options.input)
+          const imported = yield* Effect.try({
+            try: () => {
+              const packaged = loaded?.files.some((file) => file.path === MANIFEST)
+                ? readPortable(loaded.files)
+                : undefined
+              if (
+                packaged &&
+                (packaged.kind !== current.record.kind ||
+                  packaged.main !== current.entrypoint ||
+                  packaged.projection !== undefined)
+              )
+                throw fail(
+                  "INVALID_CONTENT_SOURCE",
+                  "A shared apply package must preserve the canonical kind/main path and cannot supply hidden legacy projection authority.",
+                )
+              return {
+                files: packaged?.files ?? loaded?.files ?? [],
+                ...(packaged?.relations === undefined
+                  ? {}
+                  : { portableRelations: packaged.relations }),
+                ...portableRelationSelection(packaged?.relations, shared.library_id, {
+                  ...(options.members === undefined ? {} : { members: options.members }),
+                  ...(options.requires === undefined ? {} : { requires: options.requires }),
+                }),
+              }
+            },
+            catch: (error) =>
+              error instanceof SkillsError
+                ? error
+                : fail("INVALID_INPUT", "The shared apply input could not be decoded."),
+          })
+          return yield* sharedApplyResult(
+            current,
+            {
+              ...imported,
+              remove: options.remove,
+              ...(options.changes === undefined ? {} : { changes: options.changes }),
+              name: options.name,
+              description: options.description,
+              defaultContext: options.defaultContext,
+              dryRun: options.dryRun,
+            },
+            "apply",
+          )
+        }),
       )
-    }
+    const current = yield* currentRead
     if (options.changes !== undefined && options.changes !== null)
       return yield* Effect.fail(
         fail(
