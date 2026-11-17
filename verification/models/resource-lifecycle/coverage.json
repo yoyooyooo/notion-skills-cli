@@ -1,11 +1,17 @@
 {
   "version": 1,
-  "synchronized_commit": "15558851ca9d106538a2781af7f83acc761c5e4a",
+  "synchronized_commit": "4ddc8c3927026a583e7ef92cd90625ebc5f20e7b",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
+    "packages/cli/src/command-registration.ts": "ba4dc0b21403ee2a09c28ac0a1ec804478ee3e63a9223a6c112d368ead577ef8",
+    "packages/cli/test/builtin-guidance.test.ts": "4c5dc6399b1a4e9eaea611c13bcd0ca0d5dc9bfafd7847edaff90196136cedf8",
+    "packages/core/src/shared-authoring-plan-reads.ts": "0b6711ed635fe9181810aae6f2a80192f72e516f8cbef489e2de939189ef2fe6",
+    "packages/core/test/shared-authoring-plan-reads.test.ts": "a7635b9bd2e2c39e62edcd26a9d2fa292910c6b0240bc280267ebacfca92bce9",
+    "packages/cli/src/command-output.ts": "dbe64f1b1c1eb5b16d0d1a8f660b6895090b6b4e219bee76da8170e2d912021d",
+    "packages/cli/src/command-options.ts": "13fd73323565ab0b57b0cff04a1a8be39ec4b68136be2201d79331fccb2973ba",
     "packages/cli/src/apply-output.ts": "58d85bfec455f424eca32af9bbdeaa18b3033318925eaa857ab263d1e2a6b050",
-    "packages/cli/src/commands-content.ts": "22948330f84089c66a39d1f33f675cfdc33bd2df16437cfabc0a06c60b32dfb9",
-    "packages/cli/test/apply-output.test.ts": "e255c35230169a4415de70c7191aa96e1b4bd9ed3aaa796ae8447598254e26fc",
+    "packages/cli/src/commands-content.ts": "be25bd7c18a1db63808adb78c1b5cf8a6c18cb607d93b3aa05449705bf113ec9",
+    "packages/cli/test/apply-output.test.ts": "a04c463bd666f9ba55656ddd4ad398bcb69dac6bc557b36ad5d8e1017eac6828",
     "packages/core/src/shared-git-only-marker.ts": "adfec72d2011dc07de5b36fc7c984befac68a3c4a7ce857c52d76bbe1f0e8933",
     "packages/core/src/shared-git-only-relative.ts": "646eb414af845a45b15deb9b496017093992b223b108b77f04a4e91e69abac3c",
     "packages/core/src/upstream-member-snapshot.ts": "bcb796be4b0ac28c6954cdf457c38a8c28644b23a0f9d8acf362bd8be7fdf758",
@@ -81,11 +87,11 @@
     "packages/core/src/shared-file-management.ts": "4717c0fac37ff374924ba656d6c2856756707888ec5d32c86c81c0d12c810865",
     "packages/core/src/shared-skill-apply.ts": "a660c8a2a591eb1f48414ad278ad4870543875a9ef7f89b99c7a520f6fc6763f",
     "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
-    "packages/core/src/mutation.ts": "c54d4337f1d43157a79fcaa09079a88b1aa591fa8732cf11c0c82f1ef80fc829",
+    "packages/core/src/mutation.ts": "36cfa8623b7be527297f1d4c3c0f914dd9cab3a97d1b48c9f6ea791a4399c437",
     "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
     "packages/core/src/shared-authoring.ts": "82215267af7fd81eb368a8abc081790e93fff64a6e9dd317c37a0293e5493e09",
     "packages/core/src/shared-body-write-model.ts": "95d408707422a496d724d63cd025d6828f754f15f0d960e4c6de682eb02fd937",
-    "packages/core/src/shared-skill-apply-authoring.ts": "cc18512bd136918551dc76484c74031c5157f270c8fb540dfcaa592adb40645c",
+    "packages/core/src/shared-skill-apply-authoring.ts": "ea6fcb2fa2bcef6bc2eface18317aa6c915aabd55bf0f41e90ed868277cdb2c9",
     "packages/core/src/shared-file-restore.ts": "e2d93707ecbf1a802b1a4ba7f76bd9d6c4c1c032a7b43a48b33a249bd758d40c",
     "packages/core/src/sqlite-state.ts": "13692d4bbfabad040cd012af13ebebaebb4dc33e893e86b08cd80e72a929a414",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
@@ -118,7 +124,7 @@
     "packages/core/src/shared-file-add-acceptance.ts": "3f15c9b2e8610c09d1eb6da0fe5e013872a361569af8f0b024167ad6f4317759",
     "packages/core/src/resource-read.ts": "6ada172071a1b0a8c212696525b16aba888c6ef437eeb2f6481e697afdf97b44",
     "packages/core/src/resource-read-model.ts": "26842f8115c6940196e8c3586fb7b8f69f776dd5b43d22a1b51eb4ebbcd8b62b",
-    "packages/cli/src/sdk.ts": "cd30cf43196273b829fa653da6ec5cad1b366c8aad9e8593c987e96a3edd727b",
+    "packages/cli/src/sdk.ts": "ec2e7cd2e4f3069a604a9328b29a7b5eca2c302f0b554831d40e667c0fd1400f",
     "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
     "packages/core/src/shared-content.ts": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f",
@@ -2465,5 +2471,89 @@
     ],
     "finite_model_transitions_changed": false,
     "cfg_cases_views_expected_rules_changed": false
+  },
+  "four_pillars_preparation_output_review": {
+    "issue": "AH-500 / AH-1063",
+    "implementation_commit": "862747660a45061d7c6ac0ebb9a3402f06270ac2",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_changed_sources": [
+      "packages/cli/src/commands-content.ts",
+      "packages/cli/test/apply-output.test.ts",
+      "packages/core/src/mutation.ts",
+      "packages/core/src/shared-skill-apply-authoring.ts",
+      "packages/cli/src/sdk.ts"
+    ],
+    "new_correspondence_files": [
+      "packages/core/src/shared-authoring-plan-reads.ts",
+      "packages/core/test/shared-authoring-plan-reads.test.ts",
+      "packages/cli/src/command-output.ts",
+      "packages/cli/src/command-options.ts"
+    ],
+    "ownership_boundary": "One invocation read-only preparation can reuse validated transport observations; original executor, reconcile and post-write verify close the preparation scope before fresh transport checks. An inner restricted transport is not unwrapped. Late work cannot repopulate a closed scope. No persistent TTL or Git/Notion document authority changed.",
+    "capacity": "128 successful observations and 8 MiB serialized JSON; overflow bypasses cache; not a physical-memory claim.",
+    "output_boundary": "Project compact only after final metrics; optional local diagnostics carries the complete original metrics plus emitted stdout hash and length. Aggregate-only stdout remains insufficient for complete request audit.",
+    "controlled_comparison": {
+      "before_requests": 114,
+      "after_requests": 98,
+      "writes_each": 14,
+      "trace_dropped_each": 0
+    },
+    "real_readonly_comparison": {
+      "same_pin_and_input_hashes": true,
+      "before_requests": 42,
+      "after_requests": 24,
+      "before_response_bytes": 256028,
+      "after_response_bytes": 115749,
+      "remote_writes_each": 0,
+      "warm_repeated_requests_each": 0,
+      "warm_objects_added": 0
+    },
+    "regression_evidence": "237 original author/lifecycle/cache regressions; 109 final planning/output/author focused tests; 12 Node cache-retention and cross-runtime immutable-byte tests. Concrete receipts retain their separate exact artifact scopes.",
+    "models_configs_cases_views_expected_rules_changed": false,
+    "proof_limits": [
+      "No finite model proof of response memory size or live cost",
+      "No change to old failed model attempts",
+      "Natural final-answer gate requires its separate actual Session",
+      "Remote historical snapshot missing is still explicit and independent"
+    ]
+  },
+  "four_pillars_daily_route_review": {
+    "implementation_commit": "4ddc8c3927026a583e7ef92cd90625ebc5f20e7b",
+    "issue": "AH-500 / AH-1063",
+    "document": "docs/maintenance-verification-review.md",
+    "added_correspondence": [
+      "packages/cli/src/command-registration.ts",
+      "packages/cli/test/builtin-guidance.test.ts"
+    ],
+    "ordinary_authorized_route": "Same fully validating public apply after fresh author pin; separate preview required when requested or intent/authorization unresolved. No permission/guard change.",
+    "progressive_root_bytes": 5293,
+    "actual_builtin_result_bytes": 6066,
+    "natural_sample": {
+      "requests": 8,
+      "cap": 10,
+      "model_retries": 0,
+      "final_answer": true,
+      "actual_apply_http": 101,
+      "original_writes": 14,
+      "compact_stdout_bytes": 9101,
+      "independent_current_tree": "verified",
+      "old_cached_pin": "verified",
+      "guard_refusals": 4,
+      "tool_calls": 11
+    },
+    "controlled_sample": {
+      "provider_requests": 29,
+      "phase_observations": 16,
+      "processes_closed": 4,
+      "consumer_remote_writes": 0,
+      "duplicate_complete_skill_bodies": 0
+    },
+    "original_failed_runs_retained": true,
+    "finite_models_cases_configs_views_expected_rules_changed": false,
+    "limitations": [
+      "One successful frozen model sample; no statistical reliability claim",
+      "Cold-client old-history restoration remains AH-509",
+      "Formal correspondence does not prove measured HTTP costs or memory bounds"
+    ]
   }
 }
