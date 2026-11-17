@@ -14,6 +14,94 @@ import { Store } from "../src/store.ts"
 import { Effect } from "effect"
 import { rich } from "./shared-snapshot-fixture.ts"
 import { gitMainFixture, library, sha } from "./shared-git-main-takeover-fixture.ts"
+import { gitMainInput } from "../src/shared-git-main-initialization-model.ts"
+import { completeNativeMainInput } from "../src/shared-complete-main-input.ts"
+
+test("fixed Git main authoring retains repository-relative siblings and restores only its own native bindings", () => {
+  const page = "00000000-0000-4000-8000-000000000002"
+  const body = [
+    "[Sibling](../other/SKILL.md#usage)",
+    "[Guide](references/guide.md?view=1#details)",
+    "[Named][sibling]",
+    "",
+    "[sibling]: ../other/references/guide%20one.md",
+    "",
+    "`😀 [example](../../../outside.md)`",
+  ].join("\n")
+  const input = {
+    text: `---\nname: demo\ndescription: Demo\nlicense: MIT\n---\n\n${body}\n`,
+    name: "demo",
+    description: "Demo",
+    path: "SKILL.md",
+    bindings: [{ page_id: page, path: "references/guide.md" }],
+  }
+  const authored = gitMainInput({ ...input, source_member: "skills/demo" })
+  expect(authored.body).toBe(
+    `${body.replace("references/guide.md?view=1#details", `https://app.notion.com/p/${page.replaceAll("-", "")}?view=1#details`)}\n`,
+  )
+  expect(authored.frontmatter).toContain("license: MIT")
+  expect(() => completeNativeMainInput(input)).toThrow()
+})
+
+test("Git main authoring cannot escape its frozen repository or substitute a noncanonical member", () => {
+  const input = {
+    text: "---\nname: demo\ndescription: Demo\n---\n\n[Sibling](../other/SKILL.md)\n",
+    name: "demo",
+    description: "Demo",
+    path: "SKILL.md",
+    bindings: [],
+  }
+  for (const source_member of [".", "", "../demo", "skills/../demo", "/skills/demo"])
+    expect(() => gitMainInput({ ...input, source_member })).toThrow()
+  for (const href of ["../../../outside.md", "%2e%2e/%2e%2e/%2e%2e/outside.md", "/outside.md"])
+    expect(() =>
+      gitMainInput({
+        ...input,
+        source_member: "skills/demo",
+        text: input.text.replace("../other/SKILL.md", href),
+      }),
+    ).toThrow()
+})
+
+test("same-owner initial takeover preserves sibling hrefs through plan validation, insertion and a cold mixed snapshot", async () => {
+  const f = await gitMainFixture()
+  const snapshot = await f.read()
+  const siblings = "[Sibling](../other/SKILL.md#usage) [Repository guide](../../shared/guide.md)"
+  const markdown = new TextDecoder().decode(f.original.bytes) + `\n${siblings}\n`
+  const prepared = await f.author(
+    prepareSharedGitMainTakeover({ library, snapshot, path: "SKILL.md", markdown, mode: "100755" }),
+  )
+  expect(f.bodyWrites).toHaveLength(0)
+  expect(prepared.plan.input_projection?.input_markdown).toContain(siblings)
+  expect(prepared.plan.git_main_initialization?.authored_input).toBe(markdown)
+  const header = (text: string) => /^---\n([\s\S]*?)\n---/u.exec(text)![1]!
+  if (prepared.plan.candidate.content.kind === "resource")
+    throw new Error("Expected the complete Markdown main, not a raw resource")
+  expect(prepared.plan.candidate.content.frontmatter).toContain(header(markdown))
+  await f.run(validateSharedBodyWritePlan(prepared.plan))
+  const applied = await f.author(
+    executeSharedGitMainTakeover({ library, plan: prepared.plan, mode: "create" }),
+  )
+  expect(applied.status).toBe("applied")
+  expect(f.bodyWrites).toHaveLength(1)
+  f.f.base.json.clear()
+  f.f.base.objects.clear()
+  const cold = await f.read()
+  expect(cold.shared_acquisition?.version).toBe(3)
+  expect(cold.shared_acquisition?.source).toEqual(snapshot.shared_acquisition?.source)
+  expect(cold.record.locator).toEqual(snapshot.record.locator)
+  expect(cold.file_bindings).toEqual(snapshot.file_bindings)
+  const main = cold.files.find((file) => file.path === "SKILL.md")!
+  expect(main.mode).toBe("100755")
+  const bytes = await f.run(
+    Effect.flatMap(Store, (store) => store.readBytes(`objects/${main.sha256}`)),
+  )
+  const rendered = new TextDecoder().decode(bytes)
+  expect(rendered).toContain(siblings)
+  expect(parseYaml(header(rendered))).toEqual(parseYaml(header(markdown)))
+  for (const file of snapshot.files.filter((file) => file.path !== "SKILL.md"))
+    expect(cold.files.find((current) => current.path === file.path)).toEqual(file)
+})
 
 async function preparedInitial() {
   const f = await gitMainFixture()

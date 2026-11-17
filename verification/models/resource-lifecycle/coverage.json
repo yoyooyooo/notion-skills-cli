@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "a66b0eb5b2071b7dbd1e6271b2a0314696a90b36",
+  "synchronized_commit": "d95aa5091102aa2d4122d3a7299838d951b2cc7a",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
@@ -123,7 +123,7 @@
     "packages/core/src/mutation.ts": "36cfa8623b7be527297f1d4c3c0f914dd9cab3a97d1b48c9f6ea791a4399c437",
     "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
     "packages/core/src/shared-authoring.ts": "60a7a9f0c4f836f4adbe5de3c8fa00bd61405bfcb677dd5bafcbd1db716232d4",
-    "packages/core/src/shared-body-write-model.ts": "83d6f1e6d781b8505d2ad8bc300cacfd0a59c654f6cbc8b1461d7d97f2c66fba",
+    "packages/core/src/shared-body-write-model.ts": "b417d32a241b7075587f9ba32e6496ffb1614b874809e1f83d22809e47f632f6",
     "packages/core/src/shared-skill-apply-authoring.ts": "ea6fcb2fa2bcef6bc2eface18317aa6c915aabd55bf0f41e90ed868277cdb2c9",
     "packages/core/src/shared-file-restore.ts": "e2d93707ecbf1a802b1a4ba7f76bd9d6c4c1c032a7b43a48b33a249bd758d40c",
     "packages/core/src/sqlite-state.ts": "e7a78909b0acf1944f1a6b224cd0503a67d2d3e9b1c6ecfdc615f80c3fb5b64d",
@@ -180,7 +180,7 @@
     "packages/core/src/shared-source-onboarding-model.ts": "62a9ba76123b87502aa290163a3ec7c35bd10df80297d854436274f1c9842333",
     "packages/cli/src/commands-library-source-onboarding.ts": "4e484b7b3ce9392191d94ebd1c0baaf59cf7636412a046e52d8842948f959ace",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "77fe864139d369cf2e7262022d6a3b47f41c4c8c15ac980b74770e50543cdeb8",
+    "packages/core/test/shared-source-onboarding.test.ts": "5e1963b404acf504b19ff8cc0440b7458cf16075085d36d874fabb7a7c6442bb",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -254,11 +254,11 @@
     "packages/core/src/snapshot.ts": "c91507fa454f2fccd4dc9ae10130dfca9c0354ce3b3c3e26e595c07f822ec5e7",
     "packages/cli/test/library-file-takeover-http.test.ts": "86b2a5c6635f5980d67acbbadbe6edc9d1c8a6792919ec754527fefb8e8a137e",
     "packages/cli/test/library-file-takeover-input.test.ts": "92eb23e9db23303ce6da41cf570a8ac09abfe6256a40ad01f67c1d5107e5b74c",
-    "packages/core/src/shared-git-main-initialization-model.ts": "a6d25b4e59ab68379e0dfc75734b7ec5ef01d57a5fca2c953bf5aa2734b06561",
+    "packages/core/src/shared-git-main-initialization-model.ts": "0fa8e0f870a7da1b58cdb844ca8a0938f845b384be5128dfd5e1bf587d577914",
     "packages/core/src/shared-git-main-initialization.ts": "422577b1285b85357aadf1b80051c2c2560d17d92ff68287dae8741871887c42",
-    "packages/core/src/shared-git-main-takeover.ts": "a8bf73f87adbebbae4dcf19c73a2d16a88ac96d6ebe60a27a250566e340f9512",
+    "packages/core/src/shared-git-main-takeover.ts": "15cb37ac934e682531a06fed451d4b157fdb55635ae47041d2d780baaebbf1ac",
     "packages/core/test/shared-git-main-takeover-fixture.ts": "39ea51d7f865fc2cc993f2d2056f24e34153e9829857070d9650371c0f2cbea4",
-    "packages/core/test/shared-git-main-takeover.test.ts": "b1a1a411bbd21993f6329458eff1b7334f2ee4fd5002da39b9b01d336cb07c7b",
+    "packages/core/test/shared-git-main-takeover.test.ts": "8809614d0fa1719ce2e083562457c3a7d32eb9b1d27b295be25e293f2f68d578",
     "packages/cli/src/commands-library-create.ts": "33a42dbe1ca9fcb2cad60392cbc9adbeb722816c5fe153dbbf3f46a304a4fd30",
     "packages/core/test/shared-snapshot-fixture.ts": "5bb5ddf1dfb0359ba6e407aaa790a72f2116358f626277db3a335591199cbe1d",
     "packages/core/test/shared-create-table-plus-restoration-fixture.ts": "83b028d7ca64cb3abe09c4b879969a732eb4abb8c95c69ec5ae525b8b981b968",
@@ -529,13 +529,14 @@
       "kind": "reviewed_implementation_context_not_modeled",
       "name": "initial_git_main_complete_takeover_and_fixed_export",
       "symbols": [
+        "gitMainInput",
         "prepareSharedGitMainTakeover",
         "executeSharedGitMainTakeover",
         "readGitMainInitializationContext",
         "verifyCurrent",
         "acquireTargetSnapshot"
       ],
-      "scope": "An explicit complete local main may initialize only the exact original Git-only owner, same main File/page, immutable Source/member and demonstrably empty native page with no native event or pending intent. The original full Git input and full authored YAML/body/mode are retained separately in the existing body-write plan. Fresh Source/identity/frontier/body checks precede the original once-only append; concurrent text is preserved and mismatched readback remains needs_review. Unknown ACK or missing completion never becomes replayable from current equality. Other files retain fixed Git/native routes; v3 cold all-file export materializes only the same immutable manifest, while ordinary main reads remain lazy and offline missing bytes cause no network. Complete YAML, source bytes, empty-page authoring, concrete dispatch and cold acquisition are outside the unchanged finite ProjectionRace/MaintenanceApply domains. Original TLA/config/view/cases/expected_rules and earlier results remain unchanged.",
+      "scope": "An explicit complete local main may initialize only the exact original Git-only owner, same main File/page, immutable Source/member and demonstrably empty native page with no native event or pending intent. The original full Git input and full authored YAML/body/mode are retained separately in the existing body-write plan. Fresh Source/identity/frontier/body checks precede the original once-only append; concurrent text is preserved and mismatched readback remains needs_review. Unknown ACK or missing completion never becomes replayable from current equality. Other files retain fixed Git/native routes; v3 cold all-file export materializes only the same immutable manifest, while ordinary main reads remain lazy and offline missing bytes cause no network. Complete YAML, source bytes, empty-page authoring, concrete dispatch and cold acquisition are outside the unchanged finite ProjectionRace/MaintenanceApply domains. Original TLA/config/view/cases/expected_rules and earlier results remain unchanged. The initial Git main parser and its plan validator now use the same frozen canonical Source member as a repository-coordinate prefix for the containing path and same-owner binding copies. Own native destinations still restore exactly; authored sibling href spelling is preserved, while repository escape, ordinary native root escape and source drift remain rejected. Concrete cold mixed-snapshot and public --from tests retain the same Source, immutable commit and target Enabled checks. Relative Markdown parsing and this composition remain unmodeled implementation context; no state transition, dispatch authority, unknown handling or finite-proof claim is changed.",
       "files": [
         "packages/cli/src/commands-library-file-takeover.ts",
         "packages/core/src/shared-body-write-model.ts",
@@ -547,12 +548,14 @@
         "packages/core/src/shared-git-main-initialization.ts",
         "packages/core/src/shared-git-main-takeover.ts",
         "packages/core/test/shared-git-main-takeover-fixture.ts",
-        "packages/core/test/shared-git-main-takeover.test.ts"
+        "packages/core/test/shared-git-main-takeover.test.ts",
+        "packages/core/test/shared-source-onboarding.test.ts"
       ],
       "tests": [
         "packages/core/test/shared-git-main-takeover.test.ts",
         "packages/cli/test/library-file-takeover-input.test.ts",
-        "packages/cli/test/library-file-takeover-http.test.ts"
+        "packages/cli/test/library-file-takeover-http.test.ts",
+        "packages/core/test/shared-source-onboarding.test.ts"
       ],
       "review": "docs/maintenance-verification-review.md#initial-git-main-takeover-correspondence",
       "no_new_finite_model_claim": true

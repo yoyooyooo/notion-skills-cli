@@ -341,6 +341,7 @@ export function validateSharedBodyWritePlan(input: unknown) {
           description: initial.description,
           path: plan.path,
           bindings: initial.bindings,
+          source_member: plan.source_context.definition.member,
         })
         if (
           plan.input_projection.input_markdown !== authored.body ||

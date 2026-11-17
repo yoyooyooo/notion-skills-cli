@@ -137,6 +137,7 @@ export function prepareSharedGitMainTakeover(input: {
         description: selected.index.description,
         path: input.path,
         bindings,
+        source_member: selected.sourceContext.definition!.member,
       }),
     )
     yield* gitMainChecked(() =>
