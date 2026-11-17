@@ -54,6 +54,7 @@ function setup(
     readonly bodyWrites?: boolean
     readonly nativeReadback?: (wire: string) => string
     readonly filteredMetadata?: boolean
+    readonly lagGitInventory?: boolean
   } = {},
 ) {
   const f = fixture([], {
@@ -259,7 +260,25 @@ function setup(
                 }
                 return Effect.succeed(structuredClone(target))
               }
-              const response = api.request(path, body, options)
+              let response = api.request(path, body, options)
+              if (
+                setupOptions.lagGitInventory &&
+                path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query`)
+              )
+                response = response.pipe(
+                  Effect.map((raw) => {
+                    const value = property(raw)
+                    return {
+                      ...value,
+                      results: (value.results as unknown[]).filter(
+                        (row) =>
+                          !Object.values(property(property(row).properties)).some((field) =>
+                            text(property(field).rich_text).startsWith("git-only/v1:"),
+                          ),
+                      ),
+                    }
+                  }),
+                )
               if (
                 setupOptions.filteredMetadata === true &&
                 path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query?`)
@@ -360,6 +379,23 @@ test("pre-marker Git-only frozen plans are rejected rather than replaying a chan
     code: "SOURCE_DEFINITION_INVALID",
   })
   expect(f.gitCreates()).toBe(0)
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("a durable Git creation ACK verifies its exact page even while the provider query index lags", async () => {
+  const f = setup({ lagGitInventory: true })
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const fileCount = f.files.size
+  const applied = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  expect(applied.status).toBe("completed")
+  expect(applied.results[0]!.verified).toBe(true)
+  expect(f.gitCreates()).toBe(1)
+  expect(f.files.size).toBe(fileCount)
+  f.clear()
+  const repeated = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  expect(repeated.results[0]!.page_id).toBe(applied.results[0]!.page_id)
+  expect(repeated.results[0]!.verified).toBe(true)
+  expect(f.gitCreates()).toBe(1)
   expect(f.writes()).toHaveLength(0)
 })
 
@@ -933,10 +969,15 @@ test("a known sparse document add readback mismatch is independently reviewed on
   expect(f.files.size).toBe(fileCount + 1)
 })
 
-test.each([false, true])(
-  "a Git-only POST with an unknown acknowledgement visible=%s cannot be replayed or register Source facts",
-  async (visible) => {
-    const f = setup()
+test.each([
+  { visible: false, lagGitInventory: false },
+  { visible: true, lagGitInventory: false },
+  { visible: false, lagGitInventory: true },
+  { visible: true, lagGitInventory: true },
+])(
+  "a Git-only POST with an unknown acknowledgement %j cannot be replayed or register Source facts",
+  async ({ visible, lagGitInventory }) => {
+    const f = setup({ lagGitInventory })
     const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
     expect(plan.actions[0]?.kind).toBe("create_git")
     f.loseGitCreate(visible)

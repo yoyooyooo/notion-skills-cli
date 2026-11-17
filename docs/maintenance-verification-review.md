@@ -4,6 +4,10 @@ AH-1024 extends the existing authorship, audit and original-operation owners. Th
 
 ## SRC15: bounded Source subsets and unchanged write authority (AH-1067)
 
+### Git admission: exact acknowledged page versus a delayed query index
+
+The real metadata-only ketchup-video creation retained its original successful POST acknowledgement, but the immediately following Skills query omitted that page. The original code reported `SOURCE_WRITE_MISMATCH` and correctly refused to create another page; read-only reconciliation later located the same page and showed only its immutable Source registration remained unsent. The original plan continued on that page. The fix supplies the existing guarded source mutator's `observeAcknowledged` hook: only after it validates the durable original ACK may admission read that exact page ID. Its library, stable Skill/main identity, Source/member, disabled status, empty projection/body and absent native Files are still checked. Pre-dispatch collision and Source fingerprint checks remain; unacknowledged creation still uses the original discovery path and never gains registration authority from current equality. No response, request or plan bytes are reinterpreted and no new recovery executor is added. Delayed-index positive and both visible/hidden unknown-response negatives cover the boundary; original source mutation models, cfg and expected rules remain unchanged.
+
 ### NXT final routing review: public entrypoints before schema discovery
 
 The fixed-budget post-repair onboarding and maintenance evaluations retained their original prompts, input bytes, model, output cap and request limit. Both ended without a completed task; their original results remain failures, and there is no further natural-model retry in this change. The actual transcripts showed repeated package/schema exploration before the existing setup reference or complete apply workflow was reached. Guarded credentials, arbitrary scripts, output redirection and unscoped doctor calls were not opened to obtain a passing sample.

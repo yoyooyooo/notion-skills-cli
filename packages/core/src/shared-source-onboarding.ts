@@ -943,76 +943,88 @@ function executeGitOnly(
           ),
         )
     })
-    const observe = Effect.gen(function* () {
-      const matches = yield* candidates
-      if (matches.length === 0) return undefined
-      if (matches.length !== 1 || matches[0]?.skill_id !== action.skill_id)
-        return yield* Effect.fail(
-          fail("SOURCE_ONBOARDING_CONFLICT", "The Git-only Skill identity is ambiguous."),
+    const observePage = (acknowledgedPageId?: string) =>
+      Effect.gen(function* () {
+        const acknowledgedPage =
+          acknowledgedPageId === undefined
+            ? undefined
+            : yield* api.request(`v1/pages/${acknowledgedPageId}`)
+        const matches =
+          acknowledgedPage === undefined
+            ? yield* candidates
+            : [yield* sourceChecked(() => bindingFromRow(library, acknowledgedPage))]
+        if (matches.length === 0) return undefined
+        if (matches.length !== 1 || matches[0]?.skill_id !== action.skill_id)
+          return yield* Effect.fail(
+            fail("SOURCE_ONBOARDING_CONFLICT", "The Git-only Skill identity is ambiguous."),
+          )
+        const match = matches[0]!
+        if (
+          match.kind !== "skill" ||
+          match.enabled ||
+          match.name !== action.name ||
+          match.origin !== action.source.page_id ||
+          match.member !== action.member ||
+          match.main_file_id !== action.main_file_id ||
+          match.selected_version !== action.binding.source_id
         )
-      const match = matches[0]!
-      if (
-        match.kind !== "skill" ||
-        match.enabled ||
-        match.name !== action.name ||
-        match.origin !== action.source.page_id ||
-        match.member !== action.member ||
-        match.main_file_id !== action.main_file_id ||
-        match.selected_version !== action.binding.source_id
-      )
-        return yield* Effect.fail(
-          fail(
-            "SOURCE_ONBOARDING_CONFLICT",
-            "The current Git-only Skill page does not match the exact frozen identity.",
-          ),
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_ONBOARDING_CONFLICT",
+              "The current Git-only Skill page does not match the exact frozen identity.",
+            ),
+          )
+        if (acknowledgedPageId !== undefined && match.page_id !== acknowledgedPageId)
+          return yield* Effect.fail(
+            fail("SOURCE_ONBOARDING_CONFLICT", "The acknowledged Git-only page identity changed."),
+          )
+        const raw = acknowledgedPage ?? (yield* api.request(`v1/pages/${match.page_id}`))
+        const projection = sourceField(raw, ids.Projection!)
+        const references = sourceField(raw, ids.References!)
+        if (
+          projection.has_more === true ||
+          references.has_more === true ||
+          text(projection.rich_text) !== action.projection ||
+          text(references.rich_text) !== ""
         )
-      const raw = yield* api.request(`v1/pages/${match.page_id}`)
-      const projection = sourceField(raw, ids.Projection!)
-      const references = sourceField(raw, ids.References!)
-      if (
-        projection.has_more === true ||
-        references.has_more === true ||
-        text(projection.rich_text) !== action.projection ||
-        text(references.rich_text) !== ""
-      )
-        return yield* Effect.fail(
-          fail(
-            "SOURCE_ONBOARDING_CONFLICT",
-            "The Git-only page gained an editable native projection.",
-          ),
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_ONBOARDING_CONFLICT",
+              "The Git-only page gained an editable native projection.",
+            ),
+          )
+        const index = yield* querySharedSkillIndex(library, match.page_id, raw)
+        if (index.files.length !== 0)
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_ONBOARDING_CONFLICT",
+              "Native supporting Files cannot be substituted for the original Git tree.",
+            ),
+          )
+        const native = property(
+          yield* api.request(`v1/pages/${match.page_id}/markdown?markdown_version=v2`),
         )
-      const index = yield* querySharedSkillIndex(library, match.page_id, raw)
-      if (index.files.length !== 0)
-        return yield* Effect.fail(
-          fail(
-            "SOURCE_ONBOARDING_CONFLICT",
-            "Native supporting Files cannot be substituted for the original Git tree.",
-          ),
+        if (
+          native.id !== match.page_id ||
+          native.markdown !== "" ||
+          native.truncated !== false ||
+          !Array.isArray(native.unknown_block_ids) ||
+          native.unknown_block_ids.length > 0 ||
+          (native.warnings !== undefined &&
+            (!Array.isArray(native.warnings) || native.warnings.length > 0))
         )
-      const native = property(
-        yield* api.request(`v1/pages/${match.page_id}/markdown?markdown_version=v2`),
-      )
-      if (
-        native.id !== match.page_id ||
-        native.markdown !== "" ||
-        native.truncated !== false ||
-        !Array.isArray(native.unknown_block_ids) ||
-        native.unknown_block_ids.length > 0 ||
-        (native.warnings !== undefined &&
-          (!Array.isArray(native.warnings) || native.warnings.length > 0))
-      )
-        return yield* Effect.fail(
-          fail(
-            "SOURCE_ONBOARDING_CONFLICT",
-            "The Git-only control page has authored body content or incomplete readback.",
-          ),
-        )
-      return {
-        page_id: match.page_id,
-        skill_id: action.skill_id,
-        source_id: action.binding.source_id,
-      }
-    })
+          return yield* Effect.fail(
+            fail(
+              "SOURCE_ONBOARDING_CONFLICT",
+              "The Git-only control page has authored body content or incomplete readback.",
+            ),
+          )
+        return {
+          page_id: match.page_id,
+          skill_id: action.skill_id,
+          source_id: action.binding.source_id,
+        }
+      })
     const field = (value: string) => ({ rich_text: sourceRich(value) })
     const request = {
       parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
@@ -1044,8 +1056,23 @@ function executeGitOnly(
         dryRun: mode !== "apply",
         repeat: "never",
         beforeDispatch,
+        // A durable original POST ACK names its exact page. Notion's query
+        // index may lag that write; do not mistake a missing query row for a
+        // failed creation, nor replace the ACK with a current-name match.
+        observeAcknowledged: (response) =>
+          Effect.gen(function* () {
+            const id = property(response).id
+            if (typeof id !== "string" || pageId(id) !== id)
+              return yield* Effect.fail(
+                fail(
+                  "SOURCE_ONBOARDING_CONFLICT",
+                  "The original Git creation ACK has no exact page identity.",
+                ),
+              )
+            return yield* observePage(id)
+          }),
       },
-      observe,
+      observePage(),
     )
     if ("dry_run" in created && created.dry_run === true)
       return { ...created, verified: false, page_id: null }
