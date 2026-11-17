@@ -1011,3 +1011,38 @@ grimoire均已登记；firecrawl-workflows的15名中14名registered，1名
 同commit精确跨Skill引用，以及尚未实时发现的其他来源均为待办。
 所有冻结计划和只读输出保存在独立私有`src15-next-20261116`证据目录；
 不转写历史原ACK、不修正已知终局、不对未授权来源或Notion正文直接PATCH。
+
+## Migration dogfood correspondence
+
+本次从 `cf40cc1b4a61a07792a1a5b1564db223265bdac5` 审阅到生产源码提交
+`e50ff89817451cd7a365914ed77fcb90fb18647a`。原 formal CI 在源码对应门槛停止：
+lifecycle 有 17 个、operation-recovery 有 9 个已保护路径漂移，且每个旧 hash
+都精确对应前一提交。它们是需要维护审阅的源码变化，不是已经发现的 TLC 反例。
+本次保留全部 TLA、config、view、40/35 配置和独立 expected_rules；更新的源码
+hash 只绑定下述审阅，不证明新增分支，不把历史运行称为本提交的新运行。
+
+| 实现变化 | 与原有限模型的关系 | 具体实现验证 |
+| --- | --- | --- |
+| 不可变 audit parts 与小 checkpoint | AuditRun/AuditScope 的只读语义、覆盖分母和单调恢复不变；SQLite 原子性、分片完整性与 HTTP 原件不在其有限域 | shared-audit-checkpoint、shared-audit-sqlite；完整 run 需校验并组装，旧 full checkpoint 保留兼容 |
+| v15 列表、平坦 quote 和字面量 tag 读回 | 文本、代码、显式链接仍逐项保留；表示与解析不属于 ProjectionRace/ImportCreate 的状态变量 | shared-import-markdown、shared-notion-projection-v4；含丢目标链接、嵌套/不完整 quote 等拒绝案例 |
+| 等价 restore 不发正文 PATCH | 固定 Git 原字节、原 custom 前像、完整 YAML/mode 仍分开；显式恢复本来就在 ProjectionRace 的排除域 | shared-restore-readback；内容不等价仍走完整非空前像匹配和严格读回，unknown 不重放，无 revision-CAS 声称 |
+| 原 native create v2/v3 恢复及同 owner 本地链接修复 | 原 ACK 前缀、仅未派发 suffix、unknown 不重放、完整结果后启用与原有限原则一致；具体多文件/PATCH/冷证明组合未被模型枚举 | shared-create-readback-restoration、shared-create-link-restoration 及 safety/SQLite 回归；每个修复绑定完整前像与独立 ACK，旧失败与原 wire 不改 |
+| full/derived 原记录与 sole-main 当前受理 | 实际保存的 envelope 与完整原计划 hash 分开；新读取例外不属于 MaintenanceApply 的两 allocation 加一 body 有限域 | shared-body-current-acceptance、shared-single-body-apply-acceptance 及 safety；完整图、来源、头部、mode、raw SHA 均新鲜复核 |
+| 仅校验明确选中的 source members | 未选成员的 YAML 错误不扩大或改变选中成员的身份与字节合同；属于 CLI 范围解析 | library-source-member-scope 保留选中坏输入的拒绝，未把整库发现或所有来源称为已验证 |
+
+sole-main 例外只适用于 v1、一个原 adopted native 主正文、没有 metadata/layout
+的父计划，且原 Source 上下文没有 live definition。独立决定不造原 ACK、event
+或 applied outcome；原父子 unknown 保留。
+普通消费复用同一次已核 raw body，其他文件必须保持只读观察。新 metadata 写只有
+原 Store 精确持有原父和原 child 两项 dispatch 时的 Enabled false→true 例外，
+派发前再次核对；冷 Store、第三 pending、其他字段及新的正文/资源/布局写仍阻断。
+这种 body-write 当前受理不能解释为 unknown native create 可走 file-add 接受。
+
+针对新例外，在单独干净 worktree 对真实代码做两项守卫对照：关闭 exact raw SHA
+比较会使仅换行变化的拒绝断言失败；关闭 accepted-parent 的只读观察会使 supporting
+正文被自然 adoption 的拒绝断言失败。两项均由实际行为断言捕获，随后精确恢复，
+产品树不参与 mutation。范围仅是这两个新 guard，不冒称原六组恢复 mutation 又跑了一遍。
+已有定向 219 项及类型修正后的 40 项检查各自保留运行身份，后者不与前者相加。
+
+正式维护仍以当前提交 CI 的完整模型/规则结果及对应代码回归为准。安装 CLI/SDK、
+SIGINT/SIGKILL 审计恢复与真实 Notion/Pi 验收各自记录；源码对应更新不能代替这些门槛。

@@ -40,7 +40,7 @@ async function checkpoint(state: string, runtime: string): Promise<AuditRun> {
       "--eval",
       `import {DatabaseSync} from 'node:sqlite';
 const db=new DatabaseSync(process.argv[1],{readOnly:true});
-try { console.log(JSON.stringify(db.prepare("SELECT key,payload FROM shared_local_records WHERE category='cache' AND retired=0 AND key LIKE 'audit/runs/%'").all())); }
+try { console.log(JSON.stringify(db.prepare("SELECT key,payload FROM shared_local_records WHERE category='cache' AND retired=0 AND (key LIKE 'audit/runs/%' OR key LIKE 'audit/parts/%')").all())); }
 finally { db.close(); }`,
       join(state, "state.sqlite"),
     ],
@@ -48,12 +48,52 @@ finally { db.close(); }`,
   )
   const rows: unknown = JSON.parse(stdout)
   assert.ok(Array.isArray(rows))
-  assert.equal(rows.length, 1, "Exactly one original installed audit run must exist")
-  const row = property(rows[0])
+  const runs = rows.filter((value) => String(property(value).key).startsWith("audit/runs/"))
+  assert.equal(runs.length, 1, "Exactly one original installed audit run must exist")
+  const row = property(runs[0])
   assert.equal(typeof row.payload, "string")
   const envelope = property(JSON.parse(String(row.payload)))
   assert.equal(envelope.sha256, hash(canonicalSharedJson(envelope.run)))
-  const run = Schema.decodeUnknownSync(AuditRunSchema)(envelope.run)
+  assert.ok(envelope.version === undefined || envelope.version === 2)
+  let complete = envelope.run
+  if (envelope.version === 2) {
+    const stored = property(envelope.run)
+    const byKey = new Map(rows.map((value) => [property(value).key, property(value).payload]))
+    assert.equal(byKey.size, rows.length, "The audit snapshot contains duplicate keys")
+    const part = (reference: unknown): unknown => {
+      assert.equal(typeof reference, "string")
+      assert.match(String(reference), /^[a-f0-9]{64}$/u)
+      const payload = byKey.get(`audit/parts/${stored.run_id}/${reference}.json`)
+      assert.equal(typeof payload, "string", "A referenced audit part is missing")
+      const retained = property(JSON.parse(String(payload)))
+      assert.ok(Object.hasOwn(retained, "value"))
+      assert.equal(hash(canonicalSharedJson(retained.value)), reference)
+      return retained.value
+    }
+    const inventory = (value: unknown) => {
+      const table = property(value)
+      return {
+        ...table,
+        skills: part(table.skills),
+        files: part(table.files),
+        records: part(table.records),
+        sources: part(table.sources),
+      }
+    }
+    complete = {
+      ...stored,
+      inventory: inventory(stored.inventory),
+      census: inventory(stored.census),
+      observations: Object.fromEntries(
+        Object.entries(property(stored.observations)).map(([key, value]) => {
+          const { value_sha256, ...metadata } = property(value)
+          assert.equal(value_sha256, metadata.response_sha256)
+          return [key, { ...metadata, value: part(value_sha256) }]
+        }),
+      ),
+    }
+  }
+  const run = Schema.decodeUnknownSync(AuditRunSchema)(complete)
   assert.equal(row.key, `audit/runs/${run.run_id}.json`)
   for (const observation of Object.values(run.observations))
     assert.equal(observation.response_sha256, hash(canonicalSharedJson(observation.value)))

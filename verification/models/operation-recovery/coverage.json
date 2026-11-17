@@ -1,8 +1,32 @@
 {
   "version": 1,
-  "synchronized_commit": "f7537451220c8e10cb4fb144387ed783ec40cb9e",
+  "synchronized_commit": "e50ff89817451cd7a365914ed77fcb90fb18647a",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
+    "packages/core/src/shared-authoring.ts": "73c64cbb07fb50185bfb901240fc0a31e339cc9c3baddd8bda11be7a71af9e35",
+    "packages/core/src/shared-body-current-acceptance.ts": "2dced0391c13ec5a6bce04c47c9469985d224d610a5e95a8ee68c20c56ee90db",
+    "packages/core/src/shared-body-write-model.ts": "2425bee22958137a225550ba2032fb084700ea9a0ac266a39e00b1ee328f93fc",
+    "packages/core/src/shared-body-write.ts": "d5f5807db69154cb107ef11a558100530a15f5f4edcad0b00e6b2c918e77384e",
+    "packages/core/src/shared-create-link-repair.ts": "985c5492a807b874259cfda5278bd077fe914064f0ee537b90453593273825c1",
+    "packages/core/src/shared-create-recovery-known-bootstrap.ts": "c4f4a2054d2005f832bf6248791c3368a74ac3ae6bcb835a631436b0185c4e04",
+    "packages/core/src/shared-create-restoration.ts": "9b83221ba1247859fafe2cf647544f1812002651a3b3906e8ac55611e096ecb2",
+    "packages/core/src/shared-metadata-write.ts": "335ff85e6a4df20cdd931a0afd99166ee691fb3313d89190abc69495f2c259f6",
+    "packages/core/src/shared-notion-markdown-v2.ts": "0c26760d225d5759b9d13a107f208cae892f5241439f9433a6ffca1abf85c1c7",
+    "packages/core/src/shared-single-body-apply-acceptance.ts": "3d6ee8ced4c8f2259dab950292c1e3f2307575a1c571ef81257976a587809a6c",
+    "packages/core/test/fixtures/native-quote-readback.json": "439a35a393701cfc26b8eb57dae8e2950552fa1790494b0d3095d29d71a4576c",
+    "packages/core/test/fixtures/to-prd-restore-readback.json": "d2343e0d23e0ede9017f51dbdfe1450d6091865ff6b428f098917dc4d1cf8edb",
+    "packages/core/test/shared-body-current-acceptance.test.ts": "9f800634dc30e7a863f377bc5456317fb41b3a30f3d7ccd833f2dbf5b8b59acf",
+    "packages/core/test/shared-create-fixture.ts": "78042c46ce8a3ad49f31bceb3d0f131defd8bc54909eddd551922cda41d00d11",
+    "packages/core/test/shared-create-link-restoration-fixture.ts": "dae65e6ad3bca2806c02187cd63593636337e970acd90246a245f7d0044e0b14",
+    "packages/core/test/shared-create-link-restoration-safety.test.ts": "485f6b972069bd4dcbc2dd6c912cde99c984de9fa6b562135b94195f11845a56",
+    "packages/core/test/shared-create-link-restoration-sqlite.node.test.ts": "eee3303a78a596c8176d9ec97397de8a29f0e4f27d40b371dd958c51626d3e4b",
+    "packages/core/test/shared-create-link-restoration.test.ts": "03ff06a14ac4923b7d8c9080cc87a2de5270a3528f9fa73bd6380c3df23f608c",
+    "packages/core/test/shared-create-readback-restoration.test.ts": "22d7615f0b51e2f76e10b6008c0fa1cd3c06c7b0042ee6a50b343cc96ce357a9",
+    "packages/core/test/shared-notion-projection-v4.test.ts": "097df9f31f50e7fba1e24d299f350bca0422b0ee92117c6d7853e1adf9ec341b",
+    "packages/core/test/shared-restore-readback.test.ts": "f0697b4585e35b0e8ba98a63c89be515be603efd86935889b5aecbc1bf30d419",
+    "packages/core/test/shared-single-body-apply-acceptance-fixture.ts": "d8c1b4bebef8abcaebd78810aa31dbb7e9a7767c441367e8c450f54d1b09f349",
+    "packages/core/test/shared-single-body-apply-acceptance-safety.test.ts": "9f6c2307c239a3e597a640cb02130bad06d1ed28dd277559cfb8e12329f503ef",
+    "packages/core/test/shared-single-body-apply-acceptance.test.ts": "45b7fdcd4322cf0984124f6c4b0545e3e49fbd52b2c5fa8795f2f17ada3a810b",
     "packages/cli/src/command-registration.ts": "ba4dc0b21403ee2a09c28ac0a1ec804478ee3e63a9223a6c112d368ead577ef8",
     "packages/cli/test/builtin-guidance.test.ts": "4c5dc6399b1a4e9eaea611c13bcd0ca0d5dc9bfafd7847edaff90196136cedf8",
     "packages/core/src/shared-authoring-plan-reads.ts": "0b6711ed635fe9181810aae6f2a80192f72e516f8cbef489e2de939189ef2fe6",
@@ -34,8 +58,8 @@
     "packages/core/src/shared-skill-apply-target.ts": "1e92a4913189efcb04201ae5ff487284dc1aa210f313707b8073ae869058af2a",
     "packages/core/src/shared-skill-apply-tree.ts": "03a2c39aeebb21e96d9f0e12540988f5f4ca13592a3a4a3f071c2c6883eb3ec0",
     "packages/core/src/shared-skill-apply-authoring.ts": "ea6fcb2fa2bcef6bc2eface18317aa6c915aabd55bf0f41e90ed868277cdb2c9",
-    "packages/core/src/shared-file-management.ts": "4717c0fac37ff374924ba656d6c2856756707888ec5d32c86c81c0d12c810865",
-    "packages/core/src/shared-snapshot.ts": "d9a4560370cce3fd0ac8a655c00ab3e828284b3676c8f763be8416c95cf52447",
+    "packages/core/src/shared-file-management.ts": "48e41b5b394c4d785da44c2b1ebdafd820ee71b6f0edf63f7597e857fb1d8863",
+    "packages/core/src/shared-snapshot.ts": "f68b4d8183583618be5745c1fed1f2f3a8f01b4be0fbd594de71f2f86c8d7257",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
     "packages/core/src/shared-maintenance-operations.ts": "10925e80b097d23f9543420413f43b5305e4c09d39745c66907e7eda929c09a7",
@@ -43,7 +67,7 @@
     "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371",
-    "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
+    "packages/core/src/shared-plan-storage.ts": "bc2bb0dcced59d9953e9013c5f2cbf77fefa7b2c29b57a06dff8d2ec540a7864",
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
     "packages/core/src/shared-maintenance-result.ts": "690a839c98ec87a71a896de3153145a729f1637349696e558222c029ebfe7710",
     "packages/core/src/shared-source-run.ts": "b53a2e2d41b7da696003eaf526a9cc35c153fc882f8c5ba4c8d34093117c5bb1",
@@ -58,7 +82,7 @@
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
     "packages/cli/test/library-source-members-http.test.ts": "dcf9cd3be905fe576c619a83760cddd83598ae00e97e5ebc3708ad2f910a53ee",
-    "packages/core/test/shared-import-markdown.test.ts": "96b9fc71a7c893dd511ee7757ed81ea27fd42191673b3a7fb1b630451ee32d2e",
+    "packages/core/test/shared-import-markdown.test.ts": "5a0eec4bf3a079aa67c480b0cd01ecd0158716b211ed281c46368dc3c87605d8",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
     "packages/core/src/shared-create-retained-recovery.ts": "9315392815f2d805c0ae8fe33ff07d60b1897f5ea060b9b2a1a3c64503bdfffd",
     "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
@@ -77,7 +101,7 @@
     "packages/cli/src/commands-library-source-file-repair.ts": "66b36ef33e11d2992ee0d9323d31c6e59d7c3215d0092fe9be342d3bdd88f6b6",
     "packages/core/src/notion-http.ts": "f233e802bd37aa80d5f15e2efff22a6dbfaec58bb9b4fad5131f63e2b26c6cc5",
     "packages/core/test/notion-http.test.ts": "c2975c9d3985626d5db765f387d395b3ea3c55f40bbc91ef1fa557c9d9310099",
-    "packages/core/src/shared-import-markdown.ts": "92778d665ad334d2fb7fd587678eebc8961fa8f8dba4be57a16ee18e3f352af9",
+    "packages/core/src/shared-import-markdown.ts": "e100d41a4ae25dcf42ca17f00a73d9bb0244fa7e0502b6d0c41028f50ab1ff58",
     "packages/core/src/shared-fixed-git-transport.ts": "cd83e2412e1b476a96dd549b352b558e6c100f51d3b85246b268468b79a041f7",
     "packages/core/src/shared-source-storage.ts": "848fc9b235976a0e59f76f4d6d9555f96ba606ac5c301914d23580fb56170300",
     "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
@@ -102,14 +126,14 @@
     "packages/cli/test/library-source-file-resubmission-http.test.ts": "38e2553f9bf57ef16efe5e2892f84b3439bac4fc48335e48cb67ade0e1789bd2",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
     "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
-    "packages/core/src/shared-audit-inspect.ts": "8e5fbaca74d25db03ec9809667c0019150fb07083fc3de93c58674c7e574acb1",
-    "packages/core/src/shared-create-import-readback.ts": "0d24da8d034d27874469055098bbc60891c969c385a19a41821fb7c5c4be9257",
-    "packages/core/src/shared-create.ts": "c671e15d9730cda483d32759cdbd708b1d61de81b944fe03312c973465c7d958",
+    "packages/core/src/shared-audit-inspect.ts": "27cd7e6ce84e121759d97da47d1ae01bba28853936df52a979de7dc285215c6f",
+    "packages/core/src/shared-create-import-readback.ts": "6216f41390691a6b3c590ffcc98c0364da81847472164ce6e8ebfd30780897be",
+    "packages/core/src/shared-create.ts": "a0006c0e460c4f65d41f88465acce97860c61882ae417e21c5b0aedf03f48abd",
     "packages/core/src/shared-native-image-layout.ts": "4bb27b7099a77fe23bfac87b909e8e1a06f4f8ed3b8825db2fa8a199f3a10ff1",
     "packages/core/src/shared-source-file-resubmission-model.ts": "33675b0f64b036b7f17b79712de32c2ad2e1df0fcbb04b3feddc2341e7244b4a",
     "packages/core/src/shared-source-file-resubmission.ts": "37c22c60e7be06a38ab08325755872a6938452b82f4fdbc5ee27a9fd28b48ca2",
     "packages/core/src/shared-sources-model.ts": "127979694278a99bcf0ccdb20b7e23cdb8991ad9e8c19f2a415dce77f3b7817e",
-    "packages/core/src/sqlite-state.ts": "13692d4bbfabad040cd012af13ebebaebb4dc33e893e86b08cd80e72a929a414",
+    "packages/core/src/sqlite-state.ts": "ea8238f35f91a6d6112dd285693c1136c64699f438f1dff22a42f822166bcabb",
     "packages/core/test/shared-create-ack-visibility.test.ts": "853d92f04c39d18c8f21e28c6969415a6b1cd45f5782b936469f0b5989d9d5c0",
     "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "eb43acb15e05faca53e663524dad07db5f4d91679bc9d27d4ff256063521fc2c",
     "packages/core/test/shared-create-drift.test.ts": "d436e71b05c56842908448073879bbeab14d341a159332efb5cc2b044163f1a4",
@@ -964,6 +988,60 @@
     "model_semantics_changed": false
   },
   "unmodeled_bindings": [
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "migration_native_readback_and_equivalent_restore",
+      "symbols": [
+        "assertImportedMarkdownContent",
+        "prepareSharedBodyWrite",
+        "restoreSharedFileFollowing"
+      ],
+      "scope": "Policy-15 list spacing, bounded flat quote readback and literal custom-tag handling preserve text, code and authored link destinations. Equivalent restore retains the exact observed native body and old custom metadata while fixed-source consumption returns original Git bytes without a body PATCH. Different bodies retain the explicit full-preimage protocol. Native parsing, complete YAML, modes, codecs and restore orchestration remain outside the unchanged finite models; current equality never supplies a missing original ACK.",
+      "tests": [
+        "packages/core/test/shared-import-markdown.test.ts",
+        "packages/core/test/shared-notion-projection-v4.test.ts",
+        "packages/core/test/shared-restore-readback.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#migration-dogfood-correspondence",
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "migration_original_native_restoration_and_local_links",
+      "symbols": [
+        "reviewSharedCreateRestoration",
+        "applySharedCreateRestoration",
+        "reconcileSharedCreateRestoration"
+      ],
+      "scope": "The bounded v2 sole-main/raw-resource restoration and v3 same-owner local-link repair retain the exact original input, failed or absent terminal, complete original dispatch/ACK prefix and all acknowledged pages. Only never-dispatched original suffix requests may run. Each existing-body local-link repair binds its complete preimage and separate durable PATCH acknowledgement; unknown creates or patches are never replayed. Final body/resource/mode/event proof precedes enablement and independent completion. The concrete parser, arbitrary tree, per-file repair proof, SQLite slot and cold-completion composition are unmodeled; original AcknowledgedContinuation and AcknowledgedRecordPrefix properties and bounds are unchanged.",
+      "tests": [
+        "packages/core/test/shared-create-readback-restoration.test.ts",
+        "packages/core/test/shared-create-link-restoration.test.ts",
+        "packages/core/test/shared-create-link-restoration-safety.test.ts",
+        "packages/core/test/shared-create-link-restoration-sqlite.node.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#migration-dogfood-correspondence",
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "migration_single_main_independent_current_acceptance",
+      "symbols": [
+        "acceptCurrentSharedBodyWrite",
+        "observeSharedBodyCurrentAcceptance",
+        "observeAcceptedSingleBodyApply",
+        "checkNewMetadataIntent",
+        "assertNoPendingApply"
+      ],
+      "scope": "An independent accepted_current decision validates the actual retained full or derived-text-v1 envelope while binding the complete original plan. Only a version-1 parent with one adopted native main body, no metadata/layout and no live Source definition can expose its current content after fresh complete identity, Source, event frontier, YAML/mode and raw-body SHA checks. Other observations are read-only. The original Store must retain exactly the same parent/child dispatch pair to separately change only Enabled false to true, with proof rechecked before PATCH. Cold clients cannot write bodies, metadata or file lifecycle; original unknown outcomes and replay barriers stay unchanged. This sole-body decision protocol is outside MaintenanceApply's two-allocation/one-body domain and is not IndependentAcceptance's known failed file-add protocol. It acquires no finite-model proof through these source hashes.",
+      "tests": [
+        "packages/core/test/shared-body-current-acceptance.test.ts",
+        "packages/core/test/shared-single-body-apply-acceptance.test.ts",
+        "packages/core/test/shared-single-body-apply-acceptance-safety.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#migration-dogfood-correspondence",
+      "no_new_finite_model_claim": true
+    },
     {
       "kind": "hash_bound_context_not_modeled",
       "name": "source_onboarding_bounded_text_and_native_selection",

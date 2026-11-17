@@ -9,11 +9,13 @@
 | AcknowledgedRecordPrefix | 一个原操作、两个有序 Record 位置、一个已 ACK 前缀和一个未派发后缀 | 原请求与完整载荷绑定 exact ACK GET；前缀无空洞；未知结果不重派发；当前前提和权限复核；独立完成不改写原输入和失败 |
 | IndependentAcceptance | 一个已知失败的 add、一个新接受 ID、冻结 File/owner/frontier、review/[observed body]/adopted/completion 三或四项不可变事实、五或六类完整冷读证明 | 原失败仍为 needs_review/unproven；接受身份独立；未知同一请求不重派发；精确可见的不可变事实可只读核实，然后仅推进下一个独立 Record |
 | RestoreFeedback | 一次冻结提交、一个原 restore 身份、一轮正文、最多两个独立反馈代 | 原身份和当前前提核实后才派发正文；只有持久化明确未应用的负回执才可启动第二反馈代，每代最多一次派发；unknown 不换原操作或反馈代；历史 ACK 与当前前提分开 |
-| MaintenanceApply | 一个父计划、两个引用分配和一个绑定正文；绑定自身的派发、应用、ACK、核对也分开 | 验证原分配前缀和精确绑定才派发正文；未知不重放、完整子结果才完成、pending 树不可发布；旧 pin 是固定输入，权限不在模型中 |
+| MaintenanceApply | 一个父计划、两个引用分配和一个绑定正文；绑定自身的派发、应用、ACK、核对也分开 | 验证原分配前缀和精确绑定才派发正文；未知不重放、完整子结果才完成、该三子操作协议的 pending 树不可发布；旧 pin 是固定输入，权限不在模型中 |
 
 正例只有安全性与有限范围的可达完成路径，不承诺 provider 最终可见、未知结果最终解除或无条件终止。每个反例只启用一个故障常量。完整配置清单和每个配置应检查的全部性质，以 [coverage.json](coverage.json) 的 `cases` 为唯一正本：4 个模型，35 个配置（10+8+10+7）。先前文字的34未计入后来增加的 unreviewed-partial；本轮没有增加配置族。实际对应、ACK 抽象和排除项见[维护审阅](../../../docs/maintenance-verification-review.md)。
 
-MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证前缀才允许后缀，unknown 不重放，部分树不进入当前消费。`oldPin` 固定为旧值是建模假设，不能独立证明实际 pin 字节或权限保护。原 outcome 存在的 unknown 可 `ReconcileOriginal`；只有 ACK 而无原 outcome 不自动获得继续后缀的权限。具体正文、引用和 Notion 权限由公共实现及安装回归验证。
+MaintenanceApply 覆盖一个完整父计划和三个有序子操作：已验证前缀才允许后缀，unknown 不重放，该协议的部分树不进入当前消费。`oldPin` 固定为旧值是建模假设，不能独立证明实际 pin 字节或权限保护。原 outcome 存在的 unknown 可 `ReconcileOriginal`；只有 ACK 而无原 outcome 不自动获得继续后缀的权限。具体正文、引用和 Notion 权限由公共实现及安装回归验证。
+
+另有仅含一个 native 主正文、没有 metadata/layout 的 v1 父操作，可凭独立的 `accepted_current` 决定与每次新鲜完整观测开放当前读取；原 Store 还可单独执行严格的 Enabled false→true。原父子 unknown 与新写屏障保留，普通读取不取得其他文件的 adoption 权限。这是有限三子操作模型之外的具体协议，不是已知失败 file-add 的 IndependentAcceptance，也不将旧模型结果扩大为这条新分支的证明。完整字节、冷客户端写屏障与派发前复核由对应实现回归和真实 guard 对照负责，见[迁移维护对应审阅](../../../docs/maintenance-verification-review.md#migration-dogfood-correspondence)。
 
 ## 原子边界与源码对应
 
