@@ -83,3 +83,51 @@ test("current onboarding and maintenance preserve complete inputs and original r
   ])
     expect(supply).toContain(term)
 })
+
+test("the maintenance root is a bounded complete ordinary edit route, with exceptional protocols deferred", () => {
+  const maintain = builtins.find((skill) => skill.id === "notion/ntn-skills-maintain")!
+  const root = maintain.portable.files.find((file) => file.path === "SKILL.md")!
+  const body = text(root.bytes)
+  expect(root.bytes.byteLength).toBeLessThanOrEqual(5300)
+  const ordinary = body.slice(0, body.indexOf("## Finish"))
+  for (const term of [
+    "read PAGE --database ENTRY --authoring --read-only",
+    "apply RETURNED_PIN --database ENTRY --input INPUT --dry-run --compact",
+    "apply RETURNED_PIN --database ENTRY --input INPUT --compact",
+    "The CLI reads and validates the complete input directory itself",
+    "Do not search the catalog for the page UUID",
+    "already authorized",
+    "Omitted files/properties stay unchanged",
+  ])
+    expect(ordinary).toContain(term)
+  expect(ordinary).not.toContain("prepare-import")
+  const commands = /```bash\n([\s\S]*?)```/u.exec(ordinary)![1]!.trim().split("\n")
+  expect(commands).toHaveLength(2)
+  expect(commands[0]).toContain("read PAGE")
+  expect(commands[1]).toContain("apply RETURNED_PIN")
+  expect(commands[1]).not.toContain("--dry-run")
+  expect(ordinary).toContain("A preview is not authorization")
+  expect(ordinary).toContain("a separate dry-run need not repeat that validation")
+  expect(body).toContain("A successful apply still needs your final answer")
+  for (const guard of [
+    "not atomic",
+    "unknown",
+    "not_applied",
+    "partial",
+    "original operation",
+    "restore-follow",
+    "entire document only",
+    "no Git fallback",
+  ])
+    expect(body).toContain(guard)
+  const detailed = text(
+    maintain.portable.files.find((file) => file.path === "references/operations.md")!.bytes,
+  )
+  for (const heading of [
+    "Reviewed inventory and repair",
+    "Audit and import a complete local Skill",
+    "Repair an existing identity",
+    "Original-operation recovery",
+  ])
+    expect(detailed).toContain(heading)
+})

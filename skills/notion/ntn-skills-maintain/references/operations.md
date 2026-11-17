@@ -141,3 +141,55 @@ A parent with a known failed body can block ordinary edits until that original c
 A body mismatch includes its projection version, expected and observed UTF-8 byte counts, and a bounded hexadecimal excerpt at the first differing byte. The original complete observation and operation remain authoritative. This diagnostic makes no additional body request, broadens no equivalence rule, and never retries a write or accepts the observed text for you. Saved older plans continue to use their original projection version.
 
 Deletion retains a file's page and body. The current file tree and retained lifecycle event determine whether it is a tombstone; a manually editable native Status label is not an ownership receipt. Verify disappearance from the current tree and the exact returned state, then use undelete to revive that identity. Do not create a substitute row because a display field still reads custom.
+
+## Reviewed inventory and repair
+
+Read this section only for the explicitly requested import or repair. Routine edits use the root workflow.
+
+### Create a new item
+
+Prepare ordinary `SKILL.md` and supporting files, then create the authorized Skill:
+
+```bash
+ntn-skills create ./release-review --database LIBRARY_ENTRY
+```
+
+Ordinary Skill folders need no hand-authored manifest. `--name` and `--description` explicitly override input metadata. A name collision does not permit replacing another page. Prompt/Router kind declarations still use the portable contract in [content formats](#content-formats).
+
+A shared library creates native Skills/Files pages, preserves the original input, and enables the Skill only after its complete file set verifies. Omit `--storage` for that path. Ordinary `create` uses the existing complete-resource creation journal: Markdown remains editable, while scripts, JSON, images and other resources retain exact bytes and executable modes. Directory imports ignore only Finder's `.DS_Store` files, without deleting them locally; other dotfiles remain content. Do not execute scripts or resolve provider credentials while uploading. Use the inventory workflow below for a reviewed multi-item import or upstream provenance decision, not as a prerequisite for one ordinary complete folder. Unsupported input must fail before partial creation. An unknown result retains its exact input and original operation.
+
+### Audit and import a complete local Skill
+
+Freeze the authorized roots and target library first. Do not expand a private project, external symlink target or package-owned tree merely because a Skill refers to it.
+
+```bash
+ntn-skills ctl audit run --entry LIBRARY_ENTRY --all --depth content
+ntn-skills ctl audit resume AUDIT_RUN_ID
+ntn-skills ctl library inventory remote --audit-run AUDIT_RUN_ID
+ntn-skills ctl library inventory local --root /absolute/approved/skills --allow-target /absolute/approved/targets
+ntn-skills ctl library inventory reconcile --remote REMOTE_INVENTORY_ID --local LOCAL_INVENTORY_ID
+ntn-skills ctl library inventory review RECONCILIATION_ID
+```
+
+Use `audit report RUN_ID` or `audit list` offline to inspect original observations. Audit depth, execution, coverage and severity are separate: exit 75 is resumable budget exhaustion, 4 is incomplete coverage, and 3 is a completed full audit with error findings. Partial scope cannot prove absence. Inventory records complete paths, hashes, byte sizes, modes, real identities, logical aliases, restricted dependencies and provenance without executing scripts or changing the source tree. Add only the exact relevant `--provenance` files; an AK installation needs its assets mode configuration alongside install/upstream registries.
+
+Review one entity and its complete manifest, then choose exactly one input kind:
+
+```bash
+ntn-skills ctl library inventory prepare-import --entry LIBRARY_ENTRY \
+  --review RECONCILIATION_ID --entity ENTITY_ID --approve-manifest MANIFEST_SHA256 \
+  --native --output ./import-plan.json
+ntn-skills ctl library inventory apply-import ./import-plan.json --entry LIBRARY_ENTRY --dry-run
+ntn-skills ctl library inventory apply-import ./import-plan.json --entry LIBRARY_ENTRY
+ntn-skills ctl library inventory reconcile-import ./import-plan.json --entry LIBRARY_ENTRY
+```
+
+For upstream content, replace `--native` with `--source SOURCE_ID --member EXACT_MEMBER`. Local modifications require a proven original fixed commit; the current upstream revision cannot serve as an invented old baseline. Exact existing equal content uses `--verify-existing`; differences and ambiguous identities need a separate reviewed author/source plan. Names and hashes alone never authorize replacement.
+
+New entries default to disabled. Add `--enable` only when preparing a plan that explicitly includes making the fully verified new Skill available. Markdown, references, scripts, JSON, images, binary, modes and required relative paths all participate in completeness. Same-library portable relations retain their explicit ownership; upstream relationship suggestions do not modify user selections. Revalidate the complete source tree and provenance before applying. Never drop unsupported files to obtain a successful main-only import.
+
+Use the same original plan for partial recovery and repeated execution. `reconcile-import` reads the original outcome without source-tree reads, provider rediscovery or remote writes. Only original durable receipts can justify continuation; current equality does not confirm a lost response. A copied or rehashed JSON is not new upload authority. For an actual inventory import, independently audit and consume each reviewed batch from its frozen pre-import manifest, retaining all conflicts, pending authorization and failures in the denominator. Do not delete or redirect local originals as part of import.
+
+### Repair an existing identity
+
+For a page with a legal Skill ID and blank Main File ID, use `ntn-skills ctl repair plan PAGE --entry historical-missing-main --database LIBRARY_ENTRY --dry-run`. Inspect the exact target and preservation facts, then copy its returned `next.argv`. The apply command reuses that original operation; do not hand-write identity fields or copy a page. A hand-created Files row uses the explicit `managed-file` entry with `--owner` and `--path`. An ordinary child page without safe same-page placement returns a diagnosed refusal. Duplicate or foreign identities require an explicit owner decision. Disabled state, a matching body and a Status label are not repair authority.
