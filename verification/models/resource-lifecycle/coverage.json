@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "4ddc8c3927026a583e7ef92cd90625ebc5f20e7b",
+  "synchronized_commit": "f7537451220c8e10cb4fb144387ed783ec40cb9e",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/command-registration.ts": "ba4dc0b21403ee2a09c28ac0a1ec804478ee3e63a9223a6c112d368ead577ef8",
@@ -198,7 +198,7 @@
     "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "eb43acb15e05faca53e663524dad07db5f4d91679bc9d27d4ff256063521fc2c",
     "packages/cli/test/library-source-refresh.test.ts": "b1a00a72c0742a84fc0e514c35491366b1fcbadc8268425c91213f99dfc59e77",
     "packages/cli/src/commands-library-source-file-resubmission.ts": "b563699bf624d007dc7bb53522ac17835113cdbc013cbdaa0114198f01fbe81a",
-    "packages/cli/test/cli.test.ts": "7523e697a5d6573e386d881017bc396c7f802558558f01ef48740f6499bf6bec",
+    "packages/cli/test/cli.test.ts": "bc3c977104eb40af920295d384dd01508f1f09cd891368073dc83765994da97b",
     "packages/cli/test/library-source-file-resubmission-http.test.ts": "38e2553f9bf57ef16efe5e2892f84b3439bac4fc48335e48cb67ade0e1789bd2",
     "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
     "packages/core/src/shared-native-image-layout.ts": "4bb27b7099a77fe23bfac87b909e8e1a06f4f8ed3b8825db2fa8a199f3a10ff1",
@@ -2555,5 +2555,15 @@
       "Cold-client old-history restoration remains AH-509",
       "Formal correspondence does not prove measured HTTP costs or memory bounds"
     ]
+  },
+  "four_pillars_final_cli_help_contract_review": {
+    "issue": "AH-1063",
+    "implementation_commit": "f7537451220c8e10cb4fb144387ed783ec40cb9e",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_test_changes": ["packages/cli/test/cli.test.ts"],
+    "failure": "Exact ca46da4 Ubuntu/Node24 full job: 4581 tests passed, only old unconditional dry-run root-description literal failed. Original job and local fail-before kept.",
+    "correction": "The same actual offline help test now requires explicit authorization before compact apply, requires dry-run for preview/ambiguous/unauthorized intent, and retains the executable ./changes --dry-run example plus omitted-file/no-network checks. Product code/parser/state/permissions unchanged.",
+    "finite_model_transitions_configs_cases_expected_rules_changed": false,
+    "scope": "Test correspondence repair; no new product, model attempt or remote mutation; prior runtime and installed execution bytes still identical."
   }
 }
