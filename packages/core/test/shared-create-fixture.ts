@@ -261,6 +261,7 @@ export function sharedCreateFixture(
                 if (uncertain) unknown = undefined
                 let created: Record<string, unknown> | undefined
                 if (uncertain?.visible !== false) {
+                  while (skills.has(id(nextPage)) || files.has(id(nextPage))) nextPage++
                   const raw = property(body),
                     page = id(nextPage++)
                   if (typeof raw.markdown !== "string" || raw.markdown_version !== "v2")

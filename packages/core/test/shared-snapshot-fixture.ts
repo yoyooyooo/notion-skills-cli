@@ -358,6 +358,7 @@ export function sharedSnapshotFixture(
             return Effect.succeed(list(results, body))
           }
           if (pathname === "/v1/pages" && method === "POST") {
+            while (records.has(id(nextPage))) nextPage++
             const page = id(nextPage++)
             const input = property(body)
             if (property(input.parent).data_source_id === library.files.data_source_id) {
@@ -466,6 +467,7 @@ export function sharedSnapshotFixture(
     operationId = recordId,
   ) => {
     const envelope = canonicalSharedJson({ version: 1, operation_id: operationId, payload })
+    while (records.has(id(nextPage))) nextPage++
     const page = id(nextPage++)
     records.set(page, {
       object: "page",

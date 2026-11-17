@@ -35,6 +35,10 @@ const review = defineCommand(
       "repair-local-links",
       "Review exact original same-owner local links, retain their current preimages and repair their acknowledged native pages after the complete tree is allocated",
     ),
+    repairTablePlus: singleton(
+      "repair-table-plus",
+      "Exact original supporting-file path with known ordinary table + to bullet corruption; preserve its complete preimage and repair before the unattempted suffix",
+    ),
     ...sourceRequestBudgets,
   },
   (args) =>
@@ -47,6 +51,7 @@ const review = defineCommand(
           target: args.target,
           acceptedObservedSha256: Option.getOrUndefined(args.acceptedObservedSha256),
           repairLocalLinks: args.repairLocalLinks,
+          repairTablePlus: Option.getOrUndefined(args.repairTablePlus),
         }),
         yield* parseSourceBudget(args),
       )
@@ -66,7 +71,7 @@ const review = defineCommand(
     }).pipe(withReadOnlyNotion),
 ).pipe(
   Command.withDescription(
-    "Review an original acknowledged create with unchanged metadata and relations. Legacy restoration requires its exact body. A complete ordinary v15 sole-main create may accept --accept-observed-sha256 after text, code and link verification. --repair-local-links instead reviews a complete ordinary multi-file create whose original local file links were treated as hostnames: preserve every original input, page and raw resource, allocate only the original suffix, then repair exact same-owner destinations with guarded body PATCHes. Review never writes or starts a replacement create.",
+    "Review an original acknowledged create with unchanged metadata and relations. Legacy restoration requires its exact body. A complete ordinary v15 sole-main create may accept --accept-observed-sha256 after text, code and link verification. --repair-local-links instead reviews a complete ordinary multi-file create whose original local file links were treated as hostnames: preserve every original input, page and raw resource, allocate only the original suffix, then repair exact same-owner destinations with guarded body PATCHes. --repair-table-plus PATH instead reviews only the original last acknowledged supporting file of a disabled complete policy-14 ordinary create. Its full body must differ solely at proven ordinary table plus literals; other text, code and destinations remain exact. These review modes are mutually exclusive. Review never writes or starts a replacement create.",
   ),
 )
 const apply = defineCommand(
@@ -106,7 +111,7 @@ const apply = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Continue the exact reviewed original native create. Preserve its ACKs and original outcome, create only the original unattempted file or raw-resource suffix, verify the complete tree and retain a separate restoration completion. Version 3 local-link reviews authorize only exact-preimage PATCHes to same-owner pages after all files are allocated; older reviews never patch a body. No unknown request is replayed. Dry-run revalidates without remote writes; repeated completion is read-only.",
+    "Continue the exact reviewed original native create. Preserve its ACKs and original outcome, create only the original unattempted file or raw-resource suffix, verify the complete tree and retain a separate restoration completion. Version 3 local-link reviews authorize only exact-preimage PATCHes to same-owner pages after all files are allocated; version 4 table-plus reviews repair their one exact acknowledged supporting page first and require the independent PATCH ACK and strict readback before the original unattempted suffix. Older reviews never patch a body. No unknown request is replayed. Dry-run revalidates without remote writes; repeated completion is read-only.",
   ),
 )
 const reconcile = defineCommand(

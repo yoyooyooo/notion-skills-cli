@@ -2,12 +2,15 @@ import { expect, test } from "bun:test"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer, Schema } from "effect"
+import { Buffer } from "node:buffer"
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { lstat, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
+import { chmod, lstat, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { readImportZip } from "../src/import.ts"
 import { portableFiles } from "../src/portable.ts"
+import { prepareSharedCreateRetained } from "../src/shared-create-retained.ts"
 import { PlanItemSchema } from "../src/upstream-model.ts"
 import {
   discoverSource,
@@ -131,7 +134,7 @@ const materializedFiles = files({
   "workbench/demosrc/assets/data.bin": binary,
   "workbench/demosrc/nested/note.txt": "nested contained bytes\n",
   "workbench/file.txt": "accepted payload\n",
-})
+}).map((file) => ({ ...file, mode: "100644" as const }))
 
 test("contained directory, file and nested Git links retain raw identity and materialize exportable bytes", async () => {
   await repository(async (directory) => {
@@ -263,6 +266,48 @@ test("accepted_ref fixes contained link bytes and provenance despite a newer com
     expect(
       latest.members[0]!.portable.files.some((file) => file.path.endsWith("untracked.txt")),
     ).toBe(false)
+  })
+})
+
+test("contained Git links preserve pinned executable modes through the retained ZIP", async () => {
+  await repository(async (directory) => {
+    const script = "#!/bin/sh\nprintf 'fixture only\\n'\n"
+    await put(directory, `${key}/gallery/fetch-media.sh`, script)
+    await chmod(join(directory, key, "gallery/fetch-media.sh"), 0o755)
+    await put(directory, `${key}/demos/example.txt`, "accepted example\n")
+    await link(directory, `${key}/workbench/demosrc`, "../demos")
+    await link(directory, `${key}/workbench/gallerysrc`, "../gallery")
+    await link(directory, `${key}/workbench/run`, "../gallery/fetch-media.sh")
+    const revision = commit(directory)
+    expect(git(directory, ["ls-tree", revision, `${key}/gallery/fetch-media.sh`])).toBe(
+      `100755 blob ${oid(directory, revision, "gallery/fetch-media.sh")}\t${key}/gallery/fetch-media.sh`,
+    )
+    // A dirty checkout mode must not replace the accepted Git tree's mode.
+    await chmod(join(directory, key, "gallery/fetch-media.sh"), 0o644)
+    const member = (await discover(input(directory, { accepted_ref: revision }))).members[0]!
+    const retained = await Effect.runPromise(
+      prepareSharedCreateRetained(member.portable.files, "SKILL.md").pipe(Effect.provide(services)),
+    )
+    const executables = [
+      "gallery/fetch-media.sh",
+      "workbench/gallerysrc/fetch-media.sh",
+      "workbench/run",
+    ]
+    for (const path of executables)
+      expect(retained.files.find((file) => file.path === path)?.mode).toBe("100755")
+    expect(retained.mode_defaulted_paths).toEqual([])
+    const unpacked = readImportZip(Buffer.from(retained.archive_base64, "base64"))
+    expect(unpacked).toHaveLength(member.portable.files.length)
+    for (const file of unpacked) {
+      expect(file.mode).toBe(executables.includes(file.path) ? "100755" : "100644")
+      expect(file.bytes).toEqual(
+        member.portable.files.find((original) => original.path === file.path)!.bytes,
+      )
+      if (executables.includes(file.path)) expect(file.bytes).toEqual(utf8.encode(script))
+    }
+    expect(member.git_manifest).toBeUndefined()
+    expect(member.git_materialization!.links).toHaveLength(3)
+    expect(member.git_materialization!.files.every((file) => !("mode" in file))).toBe(true)
   })
 })
 

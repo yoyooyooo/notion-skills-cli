@@ -697,6 +697,28 @@ Kami/Guizang原未完成操作没有被改计划、新建替代页或删历史�
 实现反例、独立安装和实际服务证明。原模型、配置与expected_rules不扩大；维护源码
 hash是经审阅的关联，不能声称旧模型已证明新协议或整个Git网络。
 
+### 包含相对 Git 链接的 retained 模式保留（2026-11-17）
+
+固定来源发现已经从 Git 对象安全展开根内相对链接。实际 video-shotcraft 的完整
+来源含一份 100755 脚本，但 linked member 没有普通 git_manifest，展开过程又没有
+向 portable input 传递原 mode，导致显式 retained 后按未声明模式默认成 100644。
+这属于原 producer 丢失已知文件权限，不需要改来源、排除文件或增加恢复协议。
+
+修复只在含链接的 member 把终端固定 Git blob 的 100644/100755 模式传给既有
+retained producer；不采用当前 checkout 的权限。原 git_materialization 描述符仍
+保持原 link/OID/hash 结构，raw 与 derived 字节 hash 的定义不变；无链接 member
+继续由原 git_manifest 传递模式，其 portable 输入和身份计算不变。旧 frozen plan、
+Source/member 归属、following 语义、原 ACK/unknown 及存储选择权限均不改变。
+
+upstream-contained-links.test.ts 用真实自有 Git 仓库先观察 100755→100644 的红测，
+再核原文件、目录别名和文件别名经过 retained ZIP 后的完整字节及模式，且 dirty
+checkout 权限不能替换固定 Git mode。原根外、绝对路径、重叠、循环、深度和
+submodule 反例继续执行；原 retained 冷消费及未知写保护的相邻回归保持。
+这里的 Git 链接展开、文件 mode 和 ZIP 表示在两套 coverage 中仍明确属于
+hash_bound_context_not_modeled。只维护经审阅的源码/测试 hash 与映射；TLA、配置、
+view、cases 和 expected_rules 不变，不把既有有限模型结果称作新模式转换证明，
+也不把本地受控测试称作 video-shotcraft 实库迁移完成。
+
 ## SRC09：自定义GitHub API与现有gh登录态
 
 本轮从实际nmem服务卡找到既有公共只读Broker，再读其拥有者README与源码确认：服务
@@ -1107,3 +1129,32 @@ sole-main 例外只适用于 v1、一个原 adopted native 主正文、没有 me
 
 正式维护仍以当前提交 CI 的完整模型/规则结果及对应代码回归为准。安装 CLI/SDK、
 SIGINT/SIGKILL 审计恢复与真实 Notion/Pi 验收各自记录；源码对应更新不能代替这些门槛。
+
+### Ordinary native supporting-table restoration
+
+在 `1c3d90a34eda8d39f8e3f4109b6df4ba282bee08` 之上新增的 ordinary native
+restoration v4，只处理 disabled、complete-resources、policy 14 的已知原创建失败。
+选中的 supporting 文档必须是原完整 ACK 前缀的最后一项；原输入、mode、正文前像、
+metadata、Source absence 和无关系范围都固定。诊断只允许原普通表格位置的
+`+`→`•` 损坏；严格 import-content 判据没有将二者等价化。
+
+独立 repair 使用既有 policy-17 wire 保护，先对同一页做完整前像匹配 PATCH，
+核对原请求、持久 ACK、完整严格读回及保留证明，才允许原未派发 suffix。
+ACK 后中断只能补证据，unknown PATCH/POST 不能重发。原失败不改；完成记录为 v4，
+冷读取同时核原 failure/review、修复前后正文与完整 ACK、所有 file events 和资源。
+旧 v1–v3 的请求与记录身份沿原分支执行。没有新增 Source recovery、通用重试或原 ACK 权威。
+
+独立审阅抓到一个具体续跑反例：restoration journal 与 repair ACK 已保存后，
+正式 metadata producer 留下同 owner 的可见 unknown intent，原 v4 仍继续写后缀。
+新的 v4 operation-index 守卫仅允许原 manifest/outcome、同一 review 和完整验证过的
+repair proof，每次新的 repair/suffix dispatch 前检查；第三 operation 或 hash 漂移拒绝。
+旧 v3 bootstrap/continuation 不借此改变。该反例使用实际 public Core plan/dispatcher，
+不是手造一个外形近似的 pending payload；不扩大为完整 CLI 可达性或所有外部写入的证明。
+
+这些原 ACK、前缀、fresh premise、独立事实及 unknown 边界与原有限原则一致；具体
+Markdown/PATCH/retained proof/SQLite 重启/第三 pending 组合不在原有限状态域内。
+两个 coverage 只添加明确的 `hash_bound_context_not_modeled` 对应，绑定已审源码和
+实际 Bun/Node 回归；所有原 TLA/config/view/cases/expected_rules 不变。
+`shared-create-table-plus-restoration` 的普通回归与真实 Node SQLite→冷 SDK 旅程负责
+这些实现义务，旧 v3 SQLite 回归保留。模型结果、源码回归、独立安装、实库和 Broker/provider
+交付仍分别记录，不能由映射或旧提交绿灯相互替代。

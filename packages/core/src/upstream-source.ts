@@ -553,6 +553,7 @@ function expandGitResources(
       source_path: string
       source_git_oid: string
       bytes: Uint8Array
+      mode: "100644" | "100755"
     }
   >()
   let total = 0
@@ -617,6 +618,7 @@ function expandGitResources(
         source_path: path,
         source_git_oid: entry.oid,
         bytes,
+        mode: entry.mode === "100755" ? "100755" : "100644",
       })
       return
     }
@@ -1080,18 +1082,25 @@ function gitSnapshot(
         const acquired = yield* member(
           input,
           key,
-          expanded.files.map(({ path, bytes }) => ({ path, bytes })),
+          // Linked members have no regular Git manifest to supply modes at retention.
+          expanded.files.map(({ path, bytes, mode }) => ({
+            path,
+            bytes,
+            ...(expanded.links.length ? { mode } : {}),
+          })),
           files,
         )
         if (expanded.links.length) {
           const links = yield* Effect.forEach(expanded.links, ({ bytes, ...link }) =>
             Effect.map(digest(bytes), (source_hash) => ({ ...link, source_hash })),
           )
-          const materialized = yield* Effect.forEach(expanded.files, ({ bytes, ...file }) =>
-            Effect.map(digest(bytes), (materialized_file_hash) => ({
-              ...file,
-              materialized_file_hash,
-            })),
+          const materialized = yield* Effect.forEach(
+            expanded.files,
+            ({ bytes, mode: _mode, ...file }) =>
+              Effect.map(digest(bytes), (materialized_file_hash) => ({
+                ...file,
+                materialized_file_hash,
+              })),
           )
           members.push({
             ...acquired,

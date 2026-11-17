@@ -19,6 +19,7 @@ import {
   SharedCreateOutcomeSchema,
   decodeSharedCreateOutcome,
   sharedCreateOutcomeId,
+  sharedCreateManifestRecordHash,
   type SharedCreateOutcome,
   type SharedCreateBinding,
 } from "./shared-create-outcome.ts"
@@ -47,15 +48,22 @@ import {
 import { prepareSharedNativeAllocationProof } from "./shared-create-recovery-acknowledgements.ts"
 import { sharedCreateRecoveryJournalKey } from "./shared-create-recovery-prefix.ts"
 import { FileEventSchema, normalizeObservedBody, type FileEvent } from "./shared-file-state.ts"
-import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
+import {
+  assertImportedMarkdownContent,
+  assertImportedTablePlusRepairable,
+} from "./shared-import-markdown.ts"
 import { restoreNativeImportReadbacks } from "./shared-create-import-readback.ts"
 import { withObservedBody } from "./shared-create-import-readback.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import {
   sharedCreateLocalLinks,
   assertCreateLocalLinkPreimage,
+  assertCreateBodyRepairPreimage,
+  SharedCreateTablePlusRepairSchema,
+  repairSharedCreateLinkFile,
   observeSharedCreateLinkFile,
   readSharedCreateLinkRepair,
+  sharedCreateLinkRepairProofsEntity,
   SharedCreateLinkRepairReferenceSchema,
   type SharedCreateLinkRepairReference,
 } from "./shared-create-link-repair.ts"
@@ -68,7 +76,7 @@ import {
   validateSharedRecordEnvelope,
 } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
-import type { SharedOperationHeader } from "./shared-operation-index.ts"
+import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const OriginalId = Schema.String.check(Schema.isPattern(/^skill-create-[a-f0-9]{64}$/u))
@@ -108,8 +116,18 @@ const ReviewSchema = Schema.Union([
       Schema.Struct({ from: Schema.String, href: Schema.String, target: Schema.String }),
     ),
   }),
+  Schema.Struct({
+    ...ReviewFields,
+    version: Schema.Literal(4),
+    original_outcome_sha256: Hash,
+    decision: Schema.Literal("repair_reviewed_table_plus_and_resume"),
+    table_plus: SharedCreateTablePlusRepairSchema,
+  }),
 ])
 export type SharedCreateRestorationReview = typeof ReviewSchema.Type
+type BodyRepairReview = Extract<SharedCreateRestorationReview, { version: 3 | 4 }>
+const isBodyRepairReview = (review: SharedCreateRestorationReview): review is BodyRepairReview =>
+  review.version === 3 || review.version === 4
 const CompletionFields = {
   kind: Schema.Literal("skill_create_restoration_outcome"),
   review_id: ReviewId,
@@ -127,6 +145,12 @@ const CompletionSchema = Schema.Union([
     version: Schema.Literal(3),
     original_outcome_sha256: Hash,
     link_repair_proofs: Schema.Array(SharedCreateLinkRepairReferenceSchema),
+  }),
+  Schema.Struct({
+    ...CompletionFields,
+    version: Schema.Literal(4),
+    original_outcome_sha256: Hash,
+    table_plus_repair_proofs: Schema.Array(SharedCreateLinkRepairReferenceSchema),
   }),
 ])
 const reviewEntity = "skill-create-restoration-reviews-v1"
@@ -160,7 +184,7 @@ const hash = (value: unknown) => sha256(canonicalSharedJson(value))
 const refusal = (message: string) =>
   Effect.fail(fail("SHARED_CREATE_RESTORATION_REQUIRED", message))
 
-function restorationPlan(input: unknown, allowLinks = false) {
+function restorationPlan(input: unknown, allowLinks = false, allowTablePlus = false) {
   return Effect.gen(function* () {
     const plan = yield* validateSharedCreatePlan(input)
     const completeMain =
@@ -184,11 +208,22 @@ function restorationPlan(input: unknown, allowLinks = false) {
       plan.members.length === 0 &&
       (plan.requires?.length ?? 0) === 0 &&
       sharedCreateLocalLinks(plan).length > 0
+    const completeTablePlus =
+      allowTablePlus &&
+      plan.complete_resources === 1 &&
+      plan.content_kind === "skill" &&
+      plan.enabled === false &&
+      plan.files.length > 1 &&
+      plan.files.every((file) => file.projection.version === 14) &&
+      plan.default_context === false &&
+      plan.members.length === 0 &&
+      (plan.requires?.length ?? 0) === 0
     if (
       plan.version !== 1 ||
       plan.source_projection !== undefined ||
       (!completeMain &&
         !completeLinks &&
+        !completeTablePlus &&
         (plan.complete_resources !== undefined || (plan.resources?.length ?? 0) !== 0)) ||
       plan.files.some((file) => file.event.kind !== "adopted" || file.event.parents.length !== 0)
     )
@@ -208,7 +243,7 @@ export function validateSharedCreateRestorationReview(
     const review = yield* createChecked(() =>
       Schema.decodeUnknownSync(ReviewSchema)(input, { onExcessProperty: "error" }),
     )
-    const plan = yield* restorationPlan(planInput, review.version === 3)
+    const plan = yield* restorationPlan(planInput, review.version === 3, review.version === 4)
     const { review_id, ...fields } = review
     const main = plan.files.find((file) => file.path === plan.entrypoint)!
     const binding = review.bindings[0],
@@ -221,22 +256,22 @@ export function validateSharedCreateRestorationReview(
       review.original_manifest_sha256 !== (yield* hash(sharedCreateManifest(plan))) ||
       review.library_id !== plan.library.library_id ||
       review.skill_id !== plan.skill_id ||
-      (review.version === 2 || review.version === 3) !== (plan.complete_resources === 1) ||
+      (review.version === 2 || isBodyRepairReview(review)) !== (plan.complete_resources === 1) ||
       pageId(review.skill_page_id) !== review.skill_page_id ||
       review.bootstrap.kind !==
         (review.original_outcome_sha256 === null
           ? "acknowledged_main_before_manifest"
           : "known_needs_review") ||
-      (review.version === 3
+      (isBodyRepairReview(review)
         ? review.bootstrap.allocations.length !== review.bindings.length
         : review.bootstrap.allocations.length !== 1) ||
-      (review.version === 3
+      (isBodyRepairReview(review)
         ? review.bindings.length < 1 || review.bindings.length > plan.files.length
         : review.bindings.length !== 1) ||
       !binding ||
       binding.file_id !== main.file_id ||
       binding.path !== main.path ||
-      (review.version !== 3 && binding.event_id !== main.event.event_id) ||
+      (!isBodyRepairReview(review) && binding.event_id !== main.event.event_id) ||
       binding.page_id !== review.skill_page_id ||
       review.observations.length !== review.bindings.length ||
       !observation ||
@@ -286,6 +321,35 @@ export function validateSharedCreateRestorationReview(
       return yield* refusal(
         "The local-link review changed the original declared destinations or allocated pages.",
       )
+    if (review.version === 4) {
+      const selected = review.table_plus
+      const file = plan.files.find((item) => item.file_id === selected.file_id)
+      const original = review.bindings.at(-1)
+      const observed = review.observations.at(-1)
+      const normalized = normalizeObservedBody(selected.before_markdown)
+      if (
+        !file ||
+        !original ||
+        !observed ||
+        file.path === plan.entrypoint ||
+        original.file_id !== file.file_id ||
+        selected.path !== file.path ||
+        selected.input_sha256 !== file.input.sha256 ||
+        selected.mode !== (file.input.mode ?? null) ||
+        selected.before_sha256 !== (yield* sha256(selected.before_markdown)) ||
+        selected.before_bytes !== new TextEncoder().encode(selected.before_markdown).length ||
+        observed.body_sha256 !== (yield* sha256(normalized)) ||
+        observed.body_bytes !== new TextEncoder().encode(normalized).length ||
+        !Number.isSafeInteger(selected.changed_literals) ||
+        selected.changed_literals < 1
+      )
+        return yield* refusal(
+          "The table-literal review must bind the exact last acknowledged supporting file and its full original preimage.",
+        )
+      yield* createChecked(() =>
+        assertCreateBodyRepairPreimage(plan, file, selected.before_markdown, review),
+      )
+    }
     yield* createChecked(() => validateSharedRecordEnvelope(review.review_id, review, "operation"))
     return { plan, review }
   })
@@ -450,13 +514,82 @@ function linkObservation(
     next_cursor: null,
   }
 }
+/** A resumed v4 journal cannot authorize a second operation on this owner.
+ * Headers are only commitments: a repair header also needs its complete ACK proof. */
+export function verifySharedTablePlusRestorationOperations(
+  library: SharedLibrary,
+  plan: SharedCreatePlan,
+  review: Extract<SharedCreateRestorationReview, { version: 4 }>,
+) {
+  return Effect.gen(function* () {
+    const allowed = new Map([
+      [
+        plan.operation_id,
+        {
+          entity_id: sharedCreateManifestEntity,
+          hash: yield* sharedCreateManifestRecordHash(plan),
+        },
+      ],
+      [
+        sharedCreateOutcomeId(plan.operation_id),
+        {
+          entity_id: sharedCreateOutcomesEntity,
+          hash: review.original_outcome_sha256,
+        },
+      ],
+      [
+        reviewRecordId(plan.operation_id),
+        {
+          entity_id: reviewEntity,
+          hash: yield* hash({ version: 1, operation_id: review.review_id, payload: review }),
+        },
+      ],
+    ])
+    const proof = yield* readSharedCreateLinkRepair(
+      library,
+      plan,
+      review,
+      plan.files.find((file) => file.file_id === review.table_plus.file_id)!,
+      review.bindings,
+    )
+    if (proof !== undefined)
+      allowed.set(proof.reference.record_id, {
+        entity_id: sharedCreateLinkRepairProofsEntity,
+        hash: proof.reference.hash,
+      })
+    const headers = yield* querySharedOperationIndex(library, review.skill_page_id)
+    const seen = new Set<string>()
+    for (const header of headers) {
+      const expected = allowed.get(header.record_id)
+      if (
+        !expected ||
+        seen.has(header.record_id) ||
+        header.entity_id !== expected.entity_id ||
+        header.hash !== expected.hash
+      )
+        return yield* refusal(
+          "Another operation or changed original fact now owns this incomplete table-literal restoration.",
+        )
+      seen.add(header.record_id)
+    }
+    if (
+      !seen.has(plan.operation_id) ||
+      !seen.has(sharedCreateOutcomeId(plan.operation_id)) ||
+      (proof !== undefined && !seen.has(reviewRecordId(plan.operation_id)))
+    )
+      return yield* refusal("The exact original table-literal manifest or failure disappeared.")
+  }).pipe(withReadOnlyNotion)
+}
+
 function observeRestoredLinkPrefix(
   library: SharedLibrary,
   plan: SharedCreatePlan,
-  review: Extract<SharedCreateRestorationReview, { version: 3 }>,
+  review: BodyRepairReview,
   initial: boolean,
 ) {
   return Effect.gen(function* () {
+    if (review.version === 4)
+      yield* verifySharedTablePlusRestorationOperations(library, plan, review)
     yield* verifySharedCreateRecoveryScope(library, plan, review.skill_page_id)
     const bindings = yield* currentSharedCreateLinkBindings(library, plan, review.skill_page_id)
     if (
@@ -507,18 +640,25 @@ export function reviewSharedCreateRestoration(input: {
   readonly target: string
   readonly acceptedObservedSha256?: string
   readonly repairLocalLinks?: boolean
+  readonly repairTablePlus?: string
 }) {
   return Effect.gen(function* () {
-    const plan = yield* restorationPlan(input.plan, input.repairLocalLinks === true),
+    if (input.repairLocalLinks === true && input.repairTablePlus !== undefined)
+      return yield* refusal("Select one original body-repair mode.")
+    const plan = yield* restorationPlan(
+        input.plan,
+        input.repairLocalLinks === true,
+        input.repairTablePlus !== undefined,
+      ),
       page = pageId(input.target)
     if (!page) return yield* refusal("Select the exact original main page.")
     const library = yield* loadSharedLibrary(input.entry)
     if (!preservesSharedLibraryBindings(plan.library, library))
       return yield* refusal("The original create belongs to another library.")
     const original = yield* originalKnownCreateBootstrap(library, plan, page, undefined, {
-      linkRecovery: input.repairLocalLinks === true,
+      nativeBodyRecovery: input.repairLocalLinks === true || input.repairTablePlus !== undefined,
     })
-    if (input.repairLocalLinks === true) {
+    if (input.repairLocalLinks === true || input.repairTablePlus !== undefined) {
       if (
         input.acceptedObservedSha256 !== undefined ||
         original.originalOutcomeHash === null ||
@@ -527,10 +667,24 @@ export function reviewSharedCreateRestoration(input: {
         return yield* refusal(
           "Local-link restoration requires the original known complete multi-file failure and its own explicit review.",
         )
+      const tableFile =
+        input.repairTablePlus === undefined
+          ? undefined
+          : plan.files.find((file) => file.path === input.repairTablePlus)
+      if (
+        input.repairTablePlus !== undefined &&
+        (!tableFile ||
+          tableFile.path === plan.entrypoint ||
+          original.bindings.at(-1)?.file_id !== tableFile.file_id)
+      )
+        return yield* refusal(
+          "Select only the original failed supporting file at the end of its acknowledged prefix.",
+        )
       yield* verifySharedCreateRecoveryScope(library, plan, page)
       yield* verifySharedCreateRecoveryIndex(library, plan, page, original.bindings, false, true)
       const observations = []
       let changes = 0
+      let tablePlus: typeof SharedCreateTablePlusRepairSchema.Type | undefined
       for (const binding of original.bindings) {
         const file = plan.files.find((item) => item.file_id === binding.file_id)!
         const row = yield* (yield* Notion).request(`v1/pages/${binding.page_id}`)
@@ -547,9 +701,27 @@ export function reviewSharedCreateRestoration(input: {
         )
         const observed = yield* observeSharedCreatePrefixBody(file.file_id, binding.page_id, raw)
         const markdown = normalizeObservedBody(String(property(raw).markdown))
-        const changed = yield* createChecked(() =>
-          assertCreateLocalLinkPreimage(plan, file, markdown),
-        )
+        const changed = yield* createChecked(() => {
+          if (input.repairTablePlus === undefined)
+            return assertCreateLocalLinkPreimage(plan, file, markdown)
+          if (file.file_id === tableFile!.file_id)
+            return assertImportedTablePlusRepairable(file.projection.markdown, markdown)
+          assertImportedMarkdownContent(file.projection.markdown, markdown)
+          return 0
+        })
+        if (tableFile !== undefined && file.file_id === tableFile.file_id) {
+          const before = String(property(raw).markdown)
+          tablePlus = {
+            file_id: file.file_id,
+            path: file.path,
+            input_sha256: file.input.sha256,
+            mode: file.input.mode ?? null,
+            before_markdown: before,
+            before_sha256: yield* sha256(before),
+            before_bytes: new TextEncoder().encode(before).length,
+            changed_literals: changed,
+          }
+        }
         changes += changed
         const expectedEvent =
           changed === 0 && file.projection.version === 14
@@ -566,7 +738,6 @@ export function reviewSharedCreateRestoration(input: {
           "The original prefix has no proven local hostname conversion to repair.",
         )
       const fields = {
-        version: 3 as const,
         kind: "skill_create_restoration_review" as const,
         original_operation_id: plan.operation_id,
         original_plan_sha256: yield* hash(plan),
@@ -575,11 +746,20 @@ export function reviewSharedCreateRestoration(input: {
         library_id: library.library_id,
         skill_id: plan.skill_id,
         skill_page_id: page,
-        decision: "repair_reviewed_local_links_and_resume" as const,
         bootstrap: original.bootstrap,
         bindings: original.bindings,
         observations,
-        local_links: sharedCreateLocalLinks(plan),
+        ...(tablePlus === undefined
+          ? {
+              version: 3 as const,
+              decision: "repair_reviewed_local_links_and_resume" as const,
+              local_links: sharedCreateLocalLinks(plan),
+            }
+          : {
+              version: 4 as const,
+              decision: "repair_reviewed_table_plus_and_resume" as const,
+              table_plus: tablePlus,
+            }),
       }
       return (yield* validateSharedCreateRestorationReview(
         { ...fields, review_id: "create-restore-" + (yield* hash(fields)) },
@@ -639,11 +819,13 @@ export function saveSharedCreateRestorationCompletion(
     skill_page_id: review.skill_page_id,
     status: "applied",
     reason_code:
-      review.version === 3
-        ? "REPAIRED_ORIGINAL_LOCAL_LINKS_AND_COMPLETE_RESOURCES_VERIFIED"
-        : review.version === 2
-          ? "REVIEWED_ORIGINAL_READBACK_AND_RESOURCES_VERIFIED"
-          : "EXACT_ORIGINAL_CANDIDATE_RESTORED_AND_TREE_VERIFIED",
+      review.version === 4
+        ? "REPAIRED_ORIGINAL_TABLE_PLUS_AND_COMPLETE_RESOURCES_VERIFIED"
+        : review.version === 3
+          ? "REPAIRED_ORIGINAL_LOCAL_LINKS_AND_COMPLETE_RESOURCES_VERIFIED"
+          : review.version === 2
+            ? "REVIEWED_ORIGINAL_READBACK_AND_RESOURCES_VERIFIED"
+            : "EXACT_ORIGINAL_CANDIDATE_RESTORED_AND_TREE_VERIFIED",
     bindings,
   }
   return appendSharedRecord(library, {
@@ -660,6 +842,7 @@ export function saveSharedCreateRestorationCompletion(
       original_outcome_sha256: review.original_outcome_sha256,
       outcome,
       ...(review.version === 3 ? { link_repair_proofs: linkRepairProofs } : {}),
+      ...(review.version === 4 ? { table_plus_repair_proofs: linkRepairProofs } : {}),
     },
   })
 }
@@ -739,20 +922,25 @@ export function readSharedCreateRestoration(
         Schema.decodeUnknownSync(FileEventSchema)(row.payload, { onExcessProperty: "error" }),
       )
     const linkRepairs: Array<{ file_id: string; body_sha256: string }> = []
-    if (review.version === 3) {
-      if (payload.version !== 3) return yield* refusal("The linked completion has another version.")
+    if (isBodyRepairReview(review)) {
+      if (payload.version !== 3 && payload.version !== 4)
+        return yield* refusal("The body-repair completion has another version.")
+      const references =
+        payload.version === 3 ? payload.link_repair_proofs : payload.table_plus_repair_proofs
       const files = plan.files.filter((file) =>
-        review.local_links.some((link) => link.from === file.path),
+        review.version === 3
+          ? review.local_links.some((link) => link.from === file.path)
+          : review.table_plus.file_id === file.file_id,
       )
       if (
-        payload.link_repair_proofs.length !== files.length ||
-        new Set(payload.link_repair_proofs.map((item) => item.file_id)).size !== files.length
+        references.length !== files.length ||
+        new Set(references.map((item) => item.file_id)).size !== files.length
       )
         return yield* refusal(
           "The linked completion lacks one exact PATCH proof for every linked body.",
         )
       for (const file of files) {
-        const reference = payload.link_repair_proofs.find((item) => item.file_id === file.file_id)
+        const reference = references.find((item) => item.file_id === file.file_id)
         if (!reference)
           return yield* refusal("A final linked body has no original repair acknowledgement.")
         const proof = yield* readSharedCreateLinkRepair(
@@ -781,7 +969,7 @@ export function readSharedCreateRestoration(
       }
     }
     const facts =
-      review.version === 2 || review.version === 3
+      review.version === 2 || isBodyRepairReview(review)
         ? yield* restoreNativeImportReadbacks(plan, page, outcome.bindings, [], linkRepairs)
         : plan
     if (
@@ -852,7 +1040,7 @@ export function applySharedCreateRestoration(input: {
     const key = yield* sharedCreateRecoveryJournalKey(scope, library.library_id, plan.operation_id)
     const journal = yield* store.readJson(key, Schema.Unknown)
     const expectedJournal = {
-      version: review.version === 3 ? 7 : review.version === 2 ? 5 : 4,
+      version: review.version === 4 ? 8 : review.version === 3 ? 7 : review.version === 2 ? 5 : 4,
       scope,
       library_id: library.library_id,
       review,
@@ -896,7 +1084,7 @@ export function applySharedCreateRestoration(input: {
         plan,
         review.skill_page_id,
         undefined,
-        { linkRecovery: review.version === 3 },
+        { nativeBodyRecovery: isBodyRepairReview(review) },
       )
       if (
         !same(original.bootstrap, review.bootstrap) ||
@@ -926,13 +1114,13 @@ export function applySharedCreateRestoration(input: {
         return yield* refusal("The complete retained original input changed.")
     }
     if (
-      review.version === 3 &&
+      isBodyRepairReview(review) &&
       !(yield* (yield* sharedCreateDispatch(plan.library, plan)).canResume)
     )
       return yield* refusal(
         "An original native or link PATCH request remains unknown; preserve it without any new write.",
       )
-    if (review.version === 3)
+    if (isBodyRepairReview(review))
       yield* observeRestoredLinkPrefix(library, plan, review, journal === undefined)
     else
       yield* observeRestoredMain(
@@ -962,7 +1150,11 @@ export function applySharedCreateRestoration(input: {
             .map((file) => ({ file_id: file.file_id, path: file.path })),
           maximum_native_page_creates: sharedCreateFiles(plan).length - review.bindings.length,
           existing_body_patches:
-            review.version === 3 ? new Set(review.local_links.map((link) => link.from)).size : 0,
+            review.version === 4
+              ? 1
+              : review.version === 3
+                ? new Set(review.local_links.map((link) => link.from)).size
+                : 0,
           enabled: sharedCreateEnabled(plan),
           record_ids: [
             reviewRecordId(plan.operation_id),
@@ -984,7 +1176,7 @@ export function applySharedCreateRestoration(input: {
         operation_id: review.review_id,
         skill_id: plan.skill_id,
       },
-      review.version === 3
+      isBodyRepairReview(review)
         ? observeRestoredLinkPrefix(library, plan, review, journal === undefined)
         : observeRestoredMain(
             library,
@@ -1004,6 +1196,28 @@ export function applySharedCreateRestoration(input: {
       entityId: reviewEntity,
       payload: review,
     }).pipe(Effect.provideService(Notion, dispatch.api))
+    if (review.version === 4) {
+      const file = plan.files.find((item) => item.file_id === review.table_plus.file_id)!
+      const binding = review.bindings.find((item) => item.file_id === file.file_id)!
+      yield* observeSharedCreateLinkFile(
+        library,
+        plan,
+        review,
+        file,
+        binding.page_id,
+        review.bindings,
+      )
+      yield* repairSharedCreateLinkFile(
+        library,
+        plan,
+        review,
+        file,
+        binding.page_id,
+        review.bindings,
+        observeRestoredLinkPrefix(library, plan, review, true),
+        () => {},
+      )
+    }
     const result = yield* executeSharedCreate(library, {
       plan,
       mode: "create",
@@ -1025,7 +1239,7 @@ export function reconcileSharedCreateRestoration(input: {
   readonly target: string
 }) {
   return Effect.gen(function* () {
-    const plan = yield* restorationPlan(input.plan, true),
+    const plan = yield* restorationPlan(input.plan, true, true),
       library = yield* loadSharedLibrary(input.entry)
     const result = yield* reconcileSharedCreate(library, plan)
     if (result.skill_page_id !== pageId(input.target))

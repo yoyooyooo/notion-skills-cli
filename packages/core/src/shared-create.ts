@@ -89,6 +89,7 @@ import {
   saveSharedCreateRestorationCompletion,
   readSharedCreateRestoration,
   sharedCreateRestorationOutcomesEntity,
+  verifySharedTablePlusRestorationOperations,
   currentSharedCreateLinkBindings,
   type SharedCreateRestorationReview,
 } from "./shared-create-restoration.ts"
@@ -1929,6 +1930,8 @@ export function executeSharedCreate(
     let allocatedCheck: Effect.Effect<void, SkillsError, Notion | Store | Crypto.Crypto> =
       Effect.void
     const beforeDispatch = Effect.gen(function* () {
+      if (restoration?.version === 4)
+        yield* verifySharedTablePlusRestorationOperations(library, plan, restoration)
       // Legacy native/migration plans retain their original review and recovery
       // protocol. The complete-resource/source contract opts into fresh stages.
       if (
@@ -2045,7 +2048,8 @@ export function executeSharedCreate(
         : undefined
       const resolved = yield* resolveSharedCreateSource(plan, skillPage)
       let facts: SharedCreatePlan = resolved.facts
-      const linkedReview = restoration?.version === 3 ? restoration : undefined
+      const linkedReview =
+        restoration?.version === 3 || restoration?.version === 4 ? restoration : undefined
       const linkBindings =
         linkedReview === undefined
           ? []
@@ -2072,12 +2076,24 @@ export function executeSharedCreate(
             )
             const markdown = normalizeObservedBody(read.markdown)
             linkBodies.set(file.file_id, markdown)
-            const hasLinks = linkedReview.local_links.some((link) => link.from === file.path)
+            const hasLinks =
+              linkedReview.version === 3
+                ? linkedReview.local_links.some((link) => link.from === file.path)
+                : linkedReview.table_plus.file_id === file.file_id
+            if (linkedReview.version === 4 && hasLinks && read.phase !== "after")
+              return yield* Effect.fail(
+                fail(
+                  "SHARED_CREATE_RESTORATION_REQUIRED",
+                  "The reviewed table-literal repair must be completely acknowledged before any original suffix.",
+                ),
+              )
             const observed =
               hasLinks && read.phase === "before"
                 ? file
                 : yield* withObservedBody(
-                    read.phase === "after" ? linkedCreateFile(file, linkBindings) : file,
+                    read.phase === "after" && linkedReview.version === 3
+                      ? linkedCreateFile(file, linkBindings)
+                      : file,
                     markdown,
                   )
             facts = {
@@ -2363,7 +2379,9 @@ export function executeSharedCreate(
       }
       if (linkedReview !== undefined) {
         for (const file of plan.files.filter((file) =>
-          linkedReview.local_links.some((link) => link.from === file.path),
+          linkedReview.version === 3
+            ? linkedReview.local_links.some((link) => link.from === file.path)
+            : linkedReview.table_plus.file_id === file.file_id,
         )) {
           stage = `repair_links:${file.file_id}`
           const bindingAt = bindings.findIndex((item) => item.file_id === file.file_id)

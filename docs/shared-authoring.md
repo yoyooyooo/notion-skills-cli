@@ -259,6 +259,18 @@ Apply that saved review with the same dry-run/apply commands and its returned di
 
 This version-3 completion keeps the original failure intact and retains the complete preimages, acknowledged responses and final file facts for independent reconciliation. It does not treat an invalid HTTPS destination as a successful import, and it does not change the normal new-create path: a future import containing these bare local links can still stop at `needs_review` and require this explicit recovery.
 
+For a disabled ordinary policy-14 import that stopped at a supporting document because Notion changed an ordinary table `+` literal to `•`, select that exact last acknowledged path:
+
+```bash
+ntn-skills ctl library create recovery review ./original-create-plan.json \
+  --entry LIBRARY_ENTRY --target ORIGINAL_MAIN_PAGE \
+  --repair-table-plus references/capabilities.md --output ./table-plus-review.json
+```
+
+Apply the saved version-4 review with the same dry-run/apply/reconcile commands above. This branch requires the original complete input, known mismatch outcome, full acknowledged prefix, unchanged metadata and no Source, Members, Requires or Default Context. The entire supporting body must differ only at the proven original table-plus positions; missing text, changed code or another authored link is refused. The review freezes the full current preimage and original file mode. It cannot select the main or a different prefix/suffix file, and cannot be combined with either other review flag.
+
+Apply sends one guarded PATCH to that original supporting page using the original input with the existing policy-17 table-literal protection. It keeps the old plan and request unchanged. The exact repair request/ACK, strict full readback and retained proof must verify before any original unattempted suffix is allocated. Each new repair or suffix dispatch rechecks the allowed original operation facts; another pending operation blocks it. An acknowledged interrupted repair can finish its missing proof without another PATCH; an unknown repair or suffix is never replayed. Completion preserves the original failure and leaves this draft disabled. Enable it separately after reviewing the complete result. Independent consumers require a CLI/SDK that understands version-4 restoration and verifies its full retained repair proof, file events, content and modes.
+
 Use the original credential scope and Store for review/apply because they contain the original durable request receipts. An independent Store can later reconcile the shared completion without those local receipts; that historical verification still needs a fresh `read` for current content. A complete ordinary native inventory import can use the version-3 local-link route above; fixed-source and other inventory recoveries retain their own commands. `ctl operation show skill-create-…` identifies this native-create family and directs the caller to the original-plan route; it does not treat the identifier as a legacy resumable operation.
 
 ### Update native properties

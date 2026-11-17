@@ -140,17 +140,17 @@ export function originalKnownCreateBootstrap(
     readonly review: SharedCreateKnownRecoveryReview
     readonly hash: string
   },
-  options: { readonly linkRecovery?: boolean } = {},
+  options: { readonly nativeBodyRecovery?: boolean } = {},
 ) {
   return Effect.gen(function* () {
     if (plan.version !== 1 || plan.source_projection?.version === 2)
       return yield* refusal("Select an original native or fixed-Git v1 create.")
     if (
-      options.linkRecovery &&
+      options.nativeBodyRecovery &&
       (plan.complete_resources !== 1 || plan.source_projection !== undefined)
     )
       return yield* refusal(
-        "Local-link restoration requires the original ordinary complete native create.",
+        "Body-repair restoration requires the original ordinary complete native create.",
       )
     const selectedSource = plan.source_projection?.binding
     const store = yield* Store,
@@ -289,7 +289,7 @@ export function originalKnownCreateBootstrap(
             binding.file_id !== file.file_id ||
             binding.path !== file.path ||
             (binding.event_id !== file.event.event_id &&
-              !(options.linkRecovery && acceptsNativeImportReadback(plan)))
+              !(options.nativeBodyRecovery && acceptsNativeImportReadback(plan)))
           )
         })
       )
@@ -304,7 +304,7 @@ export function originalKnownCreateBootstrap(
         sharedCreateManifest(plan),
       )
       for (const file of plan.files) {
-        if (options.linkRecovery) {
+        if (options.nativeBodyRecovery) {
           const texts = [
             { value: file.input.text, kind: "input" as const },
             ...(acceptsNativeImportReadback(plan)
@@ -346,7 +346,7 @@ export function originalKnownCreateBootstrap(
           )
         }
       }
-      if (options.linkRecovery)
+      if (options.nativeBodyRecovery)
         for (const file of plan.resources ?? []) {
           for (const object of file.prepared.objects)
             yield* addFact(

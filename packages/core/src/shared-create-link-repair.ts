@@ -17,21 +17,42 @@ import { normalizeObservedBody } from "./shared-file-state.ts"
 import {
   assertImportedLocalLinksRepairable,
   assertImportedMarkdownContent,
+  assertImportedTablePlusRepairable,
 } from "./shared-import-markdown.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
   materializeSharedNativeFile,
   restoreSharedNativeFileLinks,
 } from "./shared-native-file-content.ts"
-import { sharedNotionMarkdownWire } from "./shared-notion-projection.ts"
+import {
+  projectSharedNotionMarkdown,
+  sharedNotionMarkdownWire,
+} from "./shared-notion-projection.ts"
 import { appendSharedRecord, canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { guardedSourceMutation } from "./shared-source-definitions.ts"
 import { SourceMutationAcknowledgementSchema } from "./shared-sources-model.ts"
 import { sha256, Store } from "./store.ts"
 
 type NativeFile = SharedCreatePlan["files"][number]
-type Identity = { readonly review_id: string; readonly skill_page_id: string }
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
+export const SharedCreateTablePlusRepairSchema = Schema.Struct({
+  file_id: Schema.String,
+  path: Schema.String,
+  input_sha256: Hash,
+  mode: Schema.Union([Schema.String, Schema.Null]),
+  before_markdown: Schema.String,
+  before_sha256: Hash,
+  before_bytes: Schema.Number,
+  changed_literals: Schema.Number,
+})
+type TablePlusRepair = typeof SharedCreateTablePlusRepairSchema.Type
+type Identity = {
+  readonly review_id: string
+  readonly skill_page_id: string
+} & (
+  | { readonly table_plus?: undefined; readonly bindings?: readonly SharedCreateBinding[] }
+  | { readonly table_plus: TablePlusRepair; readonly bindings: readonly SharedCreateBinding[] }
+)
 const TextReference = Schema.Struct({
   object_id: Schema.String,
   sha256: Hash,
@@ -44,9 +65,7 @@ export const SharedCreateLinkRepairReferenceSchema = Schema.Struct({
   hash: Hash,
 })
 export type SharedCreateLinkRepairReference = typeof SharedCreateLinkRepairReferenceSchema.Type
-const ProofSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  kind: Schema.Literal("original_create_local_link_repair"),
+const ProofFields = {
   review_id: Schema.String,
   original_operation_id: Schema.String,
   skill_page_id: Schema.String,
@@ -64,7 +83,20 @@ const ProofSchema = Schema.Struct({
     acknowledged_at: Schema.Number,
     response_metadata: Schema.Unknown,
   }),
-})
+}
+const ProofSchema = Schema.Union([
+  Schema.Struct({
+    ...ProofFields,
+    version: Schema.Literal(1),
+    kind: Schema.Literal("original_create_local_link_repair"),
+  }),
+  Schema.Struct({
+    ...ProofFields,
+    version: Schema.Literal(2),
+    kind: Schema.Literal("original_create_table_plus_repair"),
+    original_input_sha256: Hash,
+  }),
+])
 const StateSchema = Schema.Struct({
   version: Schema.Literal(1),
   review_id: Schema.String,
@@ -76,7 +108,8 @@ const StateSchema = Schema.Struct({
   before_markdown: Schema.String,
 })
 export const sharedCreateLinkRepairProofsEntity = "skill-create-link-repair-proofs-v1"
-const recordId = (operation: string, file: string) => `link-repair-${operation}:${file}`
+const recordId = (operation: string, file: string, identity: Identity) =>
+  `${identity.table_plus === undefined ? "link-repair" : "table-plus-repair"}-${operation}:${file}`
 const hash = (value: unknown) => sha256(canonicalSharedJson(value))
 const same = (left: unknown, right: unknown) =>
   canonicalSharedJson(left) === canonicalSharedJson(right)
@@ -84,6 +117,30 @@ const refusal = (message: string) =>
   Effect.fail(fail("SHARED_CREATE_LINK_REPAIR_REQUIRED", message))
 const bindingFacts = (bindings: readonly SharedCreateBinding[]) =>
   bindings.map(({ file_id, path, page_id }) => ({ file_id, path, page_id }))
+function repairBindingFacts(identity: Identity, bindings: readonly SharedCreateBinding[]) {
+  if (identity.table_plus === undefined) return bindingFacts(bindings)
+  const prefix = identity.bindings
+  if (
+    prefix.length === 0 ||
+    prefix.length > bindings.length ||
+    prefix.some((item, at) => {
+      const current = bindings[at]
+      return !current || !same(bindingFacts([item]), bindingFacts([current]))
+    })
+  )
+    throw fail(
+      "SHARED_CREATE_LINK_REPAIR_REQUIRED",
+      "The table-literal repair lost its exact original acknowledged file prefix.",
+    )
+  return bindingFacts(prefix)
+}
+function repairedCreateFile(
+  identity: Identity,
+  file: NativeFile,
+  bindings: readonly SharedCreateBinding[],
+) {
+  return identity.table_plus === undefined ? linkedCreateFile(file, bindings) : file
+}
 
 export function sharedCreateLocalLinks(plan: SharedCreatePlan) {
   const paths = new Set([...plan.files, ...(plan.resources ?? [])].map((file) => file.path))
@@ -105,6 +162,33 @@ export function assertCreateLocalLinkPreimage(
       .filter((reference) => reference.from === file.path)
       .map((reference) => reference.href),
   )
+}
+export function assertCreateBodyRepairPreimage(
+  plan: SharedCreatePlan,
+  file: NativeFile,
+  markdown: string,
+  identity: Identity,
+) {
+  const selected = identity.table_plus
+  if (selected === undefined) return assertCreateLocalLinkPreimage(plan, file, markdown)
+  if (file.file_id !== selected.file_id) {
+    assertImportedMarkdownContent(file.projection.markdown, markdown)
+    return 0
+  }
+  if (
+    file.path === plan.entrypoint ||
+    file.path !== selected.path ||
+    file.input.sha256 !== selected.input_sha256 ||
+    (file.input.mode ?? null) !== selected.mode ||
+    markdown !== selected.before_markdown ||
+    assertImportedTablePlusRepairable(file.projection.markdown, markdown) !==
+      selected.changed_literals
+  )
+    throw fail(
+      "SHARED_CREATE_LINK_REPAIR_REQUIRED",
+      "The complete original supporting-file table-literal preimage changed.",
+    )
+  return selected.changed_literals
 }
 export function linkedCreateFile(file: NativeFile, bindings: readonly SharedCreateBinding[]) {
   return {
@@ -132,14 +216,27 @@ function bodyRequest(
 ) {
   return {
     // Keep unknown link PATCHes inside the original create's existing replay barrier.
-    identity: `${plan.operation_id}:link-repair:${identity.review_id}:${file.file_id}`,
+    identity: `${plan.operation_id}:${identity.table_plus === undefined ? "link-repair" : "table-plus-repair"}:${identity.review_id}:${file.file_id}`,
     path: `v1/pages/${page}/markdown`,
     method: "PATCH" as const,
     body: {
       type: "update_content",
       markdown_version: "v2",
       update_content: {
-        content_updates: [{ old_str: before, new_str: linkedWire(file, bindings) }],
+        content_updates: [
+          {
+            old_str: before,
+            new_str:
+              identity.table_plus === undefined
+                ? linkedWire(file, bindings)
+                : sharedNotionMarkdownWire(
+                    projectSharedNotionMarkdown(file.projection.input_markdown, {
+                      version: 17,
+                      purpose: "data_source_create",
+                    }),
+                  ),
+          },
+        ],
       },
     },
   }
@@ -196,7 +293,10 @@ function validateAck(
     yield* observeSharedCreatePrefixBody(file.file_id, page, acknowledgement.response)
     const markdown = String(property(acknowledgement.response).markdown)
     yield* createChecked(() => {
-      assertImportedMarkdownContent(linkedCreateFile(file, bindings).projection.markdown, markdown)
+      assertImportedMarkdownContent(
+        repairedCreateFile(identity, file, bindings).projection.markdown,
+        markdown,
+      )
       assertImportedMarkdownContent(
         file.projection.markdown,
         materializeSharedNativeFile(markdown, file.path, bindings),
@@ -244,7 +344,7 @@ export function readSharedCreateLinkRepair(
       skillPageId: identity.skill_page_id,
       kind: "operation",
       entityId: sharedCreateLinkRepairProofsEntity,
-      recordId: recordId(plan.operation_id, file.file_id),
+      recordId: recordId(plan.operation_id, file.file_id, identity),
     })
     if (rows.length === 0 && expected === undefined) return undefined
     if (rows.length !== 1)
@@ -262,7 +362,11 @@ export function readSharedCreateLinkRepair(
       record_id: row.record_id,
       hash: row.hash,
     }
+    const committedBindings = yield* createChecked(() => repairBindingFacts(identity, bindings))
     if (
+      (identity.table_plus === undefined
+        ? proof.version !== 1
+        : proof.version !== 2 || proof.original_input_sha256 !== file.input.sha256) ||
       !binding ||
       proof.review_id !== identity.review_id ||
       row.operation_id !== identity.review_id ||
@@ -271,7 +375,7 @@ export function readSharedCreateLinkRepair(
       proof.file_id !== file.file_id ||
       proof.path !== file.path ||
       proof.page_id !== binding.page_id ||
-      proof.bindings_sha256 !== (yield* hash(bindingFacts(bindings))) ||
+      proof.bindings_sha256 !== (yield* hash(committedBindings)) ||
       (expected !== undefined && !same(expected, reference))
     )
       return yield* refusal(
@@ -279,7 +383,7 @@ export function readSharedCreateLinkRepair(
       )
     const before = yield* retainedText(library, identity.skill_page_id, proof.before),
       after = yield* retainedText(library, identity.skill_page_id, proof.after)
-    yield* createChecked(() => assertCreateLocalLinkPreimage(plan, file, before))
+    yield* createChecked(() => assertCreateBodyRepairPreimage(plan, file, before, identity))
     const metadata = property(proof.acknowledgement.response_metadata)
     if (Object.hasOwn(metadata, "markdown"))
       return yield* refusal("Response metadata cannot replace the retained complete ACK body.")
@@ -310,7 +414,15 @@ export function observeSharedCreateLinkFile(
 ) {
   return Effect.gen(function* () {
     const current = yield* readBody(file, page)
-    const complete = bindings.length === plan.files.length + (plan.resources?.length ?? 0)
+    if (identity.table_plus !== undefined && file.file_id !== identity.table_plus.file_id) {
+      yield* createChecked(() =>
+        assertImportedMarkdownContent(file.projection.markdown, current.markdown),
+      )
+      return { ...current, phase: "before" as const }
+    }
+    const complete =
+      identity.table_plus !== undefined ||
+      bindings.length === plan.files.length + (plan.resources?.length ?? 0)
     const proof = complete
       ? yield* readSharedCreateLinkRepair(library, plan, identity, file, bindings)
       : undefined
@@ -367,7 +479,9 @@ export function observeSharedCreateLinkFile(
         return { ...current, phase: "after" as const }
       }
     }
-    yield* createChecked(() => assertCreateLocalLinkPreimage(plan, file, current.markdown))
+    yield* createChecked(() =>
+      assertCreateBodyRepairPreimage(plan, file, current.markdown, identity),
+    )
     if (saved === undefined && retain)
       yield* store.writeJson(key, { ...fields, before_markdown: current.markdown })
     return { ...current, phase: "before" as const }
@@ -391,7 +505,7 @@ export function repairSharedCreateLinkFile(
       if (current.markdown !== existing.markdown)
         return yield* refusal("The completed linked body changed.")
       const resolved = yield* withObservedBody(
-        linkedCreateFile(file, bindings),
+        repairedCreateFile(identity, file, bindings),
         normalizeObservedBody(existing.markdown),
       )
       observed(resolved, normalizeObservedBody(existing.markdown))
@@ -407,7 +521,7 @@ export function repairSharedCreateLinkFile(
     )
       return yield* refusal("The original complete link-repair preimage is unavailable.")
     const before = state.before_markdown
-    yield* createChecked(() => assertCreateLocalLinkPreimage(plan, file, before))
+    yield* createChecked(() => assertCreateBodyRepairPreimage(plan, file, before, identity))
     const request = bodyRequest(plan, identity, file, page, before, bindings)
     const assertBefore = Effect.gen(function* () {
       yield* beforeDispatch
@@ -435,7 +549,7 @@ export function repairSharedCreateLinkFile(
             const markdown = String(property(response).markdown)
             yield* createChecked(() =>
               assertImportedMarkdownContent(
-                linkedCreateFile(file, bindings).projection.markdown,
+                repairedCreateFile(identity, file, bindings).projection.markdown,
                 markdown,
               ),
             )
@@ -444,7 +558,12 @@ export function repairSharedCreateLinkFile(
       },
       Effect.succeed(undefined),
     )
-    if (!("verified" in result) || result.verified !== true)
+    const acknowledgedResume =
+      identity.table_plus !== undefined &&
+      result.status === "observed_current" &&
+      "original_outcome" in result &&
+      result.original_outcome === "applied"
+    if (!("verified" in result && result.verified === true) && !acknowledgedResume)
       return yield* refusal("The exact local-link PATCH remains unknown.")
     const ack = yield* store.readJson(
       yield* acknowledgementKey(library, request),
@@ -457,7 +576,7 @@ export function repairSharedCreateLinkFile(
         "The repaired current body differs from the original PATCH acknowledgement.",
       )
     const resolved = yield* withObservedBody(
-      linkedCreateFile(file, bindings),
+      repairedCreateFile(identity, file, bindings),
       normalizeObservedBody(verified.markdown),
     )
     observed(resolved, normalizeObservedBody(verified.markdown))
@@ -470,16 +589,22 @@ export function repairSharedCreateLinkFile(
     })
     const { response, ...metadata } = verified.acknowledgement
     const { markdown: _markdown, ...response_metadata } = property(response)
+    const committedBindings = yield* createChecked(() => repairBindingFacts(identity, bindings))
     const proof = {
-      version: 1 as const,
-      kind: "original_create_local_link_repair" as const,
+      ...(identity.table_plus === undefined
+        ? { version: 1 as const, kind: "original_create_local_link_repair" as const }
+        : {
+            version: 2 as const,
+            kind: "original_create_table_plus_repair" as const,
+            original_input_sha256: file.input.sha256,
+          }),
       review_id: identity.review_id,
       original_operation_id: plan.operation_id,
       skill_page_id: identity.skill_page_id,
       file_id: file.file_id,
       path: file.path,
       page_id: page,
-      bindings_sha256: yield* hash(bindingFacts(bindings)),
+      bindings_sha256: yield* hash(committedBindings),
       before: reference(beforeText),
       after: reference(afterText),
       acknowledgement: { ...metadata, response_metadata },
@@ -499,7 +624,7 @@ export function repairSharedCreateLinkFile(
       )
       yield* appendSharedRecord(library, {
         mode: "create",
-        recordId: recordId(plan.operation_id, file.file_id),
+        recordId: recordId(plan.operation_id, file.file_id, identity),
         operationId: identity.review_id,
         skillPageId: identity.skill_page_id,
         kind: "operation",
@@ -510,7 +635,7 @@ export function repairSharedCreateLinkFile(
     return {
       file_id: file.file_id,
       page_id: page,
-      record_id: recordId(plan.operation_id, file.file_id),
+      record_id: recordId(plan.operation_id, file.file_id, identity),
       hash: yield* hash({ version: 1, operation_id: identity.review_id, payload: proof }),
     }
   })
