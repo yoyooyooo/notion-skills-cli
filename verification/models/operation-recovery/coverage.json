@@ -1,8 +1,11 @@
 {
   "version": 1,
-  "synchronized_commit": "e06af13609a55dc8379edc2de369da06808120db",
+  "synchronized_commit": "15558851ca9d106538a2781af7f83acc761c5e4a",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
+    "packages/cli/src/apply-output.ts": "58d85bfec455f424eca32af9bbdeaa18b3033318925eaa857ab263d1e2a6b050",
+    "packages/cli/src/commands-content.ts": "22948330f84089c66a39d1f33f675cfdc33bd2df16437cfabc0a06c60b32dfb9",
+    "packages/cli/test/apply-output.test.ts": "e255c35230169a4415de70c7191aa96e1b4bd9ed3aaa796ae8447598254e26fc",
     "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
     "packages/core/src/shared-create-recovery-native.ts": "3f99dd5b0e2e397c59625efbd8dacc3926854e5d5f3224352469ab26d94889bd",
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
@@ -42,7 +45,7 @@
     "packages/core/src/shared-source-refresh.ts": "d382f0809b17ade5a3e2a5ccd3140afc46ce9c73f86e7b50c570ab304c8e0622",
     "packages/core/test/shared-source-definitions.test.ts": "2a51eb051ec313fdfe88f3962188931d55c717f68e494e12b48c8dfe14bf7814",
     "packages/core/test/shared-source-run.test.ts": "f78b6d8b506fec1de15998fb3064250244f6974361362dde7465e9d37c7b7892",
-    "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd",
+    "packages/core/src/mutation.ts": "c54d4337f1d43157a79fcaa09079a88b1aa591fa8732cf11c0c82f1ef80fc829",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -1463,5 +1466,37 @@
     "semantic_change": "Offline public help, bundled setup and English/Chinese host README directly route existing-library inspection and complete author read/apply preview. No parser action, permissions, state, source bytes, dispatch or model budget changed.",
     "verification": "4 focused public entrypoint tests /79 assertions, inaccessible application roots and zero provider probes; original natural failed runs retained and no additional model retry.",
     "finite_models_cases_expected_rules_changed": false
+  },
+  "nxt_compact_author_receipt_review": {
+    "issue": "AH-500, AH-1063",
+    "reviewed_at_utc": "2026-11-17",
+    "implementation_commit": "15558851ca9d106538a2781af7f83acc761c5e4a",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_original_protected_source_changes": ["packages/core/src/mutation.ts"],
+    "new_explicit_correspondence_context": [
+      "packages/cli/src/apply-output.ts",
+      "packages/cli/src/commands-content.ts",
+      "packages/cli/test/apply-output.test.ts"
+    ],
+    "original_natural_model": "Actual authorized apply completed and verified, then strict 10-model-request budget correctly denied final. Do not reinterpret as full natural task success.",
+    "output_contract": "Opt-in CLI apply --compact only removes request_metrics.trace from stdout and adds omitted marker/count; all original identity, file manifest, next, status, aggregate request metrics and core journaling unchanged. Default full JSON unchanged.",
+    "actual_preserved_original_applied_result": {
+      "bytes": 111375,
+      "compact_bytes": 9065,
+      "reduction_percent": 91.86,
+      "original_apply_writes": 14,
+      "original_apply_total_requests": 114,
+      "original_operation_preserved": true
+    },
+    "other_evidence": "One real installed CLI --compact dry-run planned / zero writes (the preview did not emit request_metrics); synthetic full-trace test preserves all fields; NXT guard precisely scopes --compact to existing authorized apply. Cold historical pin failed SNAPSHOT_MISSING in a new client and belongs to N09.",
+    "not_claimed": [
+      "No fresh natural-model run after tool-output change",
+      "No full HTTP ledger is implied by compact stdout",
+      "No automatic old-pin remote archival",
+      "No decrease in provider request counts",
+      "No new finite-state transitions or changed expected rules"
+    ],
+    "finite_model_transitions_changed": false,
+    "cfg_cases_views_expected_rules_changed": false
   }
 }

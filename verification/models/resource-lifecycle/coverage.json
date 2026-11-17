@@ -1,8 +1,11 @@
 {
   "version": 1,
-  "synchronized_commit": "83581d715a8656bde3324f2bd2c2bfe8ac44796d",
+  "synchronized_commit": "15558851ca9d106538a2781af7f83acc761c5e4a",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
+    "packages/cli/src/apply-output.ts": "58d85bfec455f424eca32af9bbdeaa18b3033318925eaa857ab263d1e2a6b050",
+    "packages/cli/src/commands-content.ts": "22948330f84089c66a39d1f33f675cfdc33bd2df16437cfabc0a06c60b32dfb9",
+    "packages/cli/test/apply-output.test.ts": "e255c35230169a4415de70c7191aa96e1b4bd9ed3aaa796ae8447598254e26fc",
     "packages/core/src/shared-git-only-marker.ts": "adfec72d2011dc07de5b36fc7c984befac68a3c4a7ce857c52d76bbe1f0e8933",
     "packages/core/src/shared-git-only-relative.ts": "646eb414af845a45b15deb9b496017093992b223b108b77f04a4e91e69abac3c",
     "packages/core/src/upstream-member-snapshot.ts": "bcb796be4b0ac28c6954cdf457c38a8c28644b23a0f9d8acf362bd8be7fdf758",
@@ -78,7 +81,7 @@
     "packages/core/src/shared-file-management.ts": "4717c0fac37ff374924ba656d6c2856756707888ec5d32c86c81c0d12c810865",
     "packages/core/src/shared-skill-apply.ts": "a660c8a2a591eb1f48414ad278ad4870543875a9ef7f89b99c7a520f6fc6763f",
     "packages/core/src/shared-metadata-write.ts": "813230699f59dc0d6909066e9d2c493927d859ccb1c504502d392792c95e3103",
-    "packages/core/src/mutation.ts": "89801038675de46b6fb07d63a43c4ffa0eaed0b0608648cfab804ce62fe27dfd",
+    "packages/core/src/mutation.ts": "c54d4337f1d43157a79fcaa09079a88b1aa591fa8732cf11c0c82f1ef80fc829",
     "packages/core/src/command-operations.ts": "6b05d65465d4421e888b464bd9bb19314dc38f2ee90de94ce21fc190d4f873b6",
     "packages/core/src/shared-authoring.ts": "82215267af7fd81eb368a8abc081790e93fff64a6e9dd317c37a0293e5493e09",
     "packages/core/src/shared-body-write-model.ts": "95d408707422a496d724d63cd025d6828f754f15f0d960e4c6de682eb02fd937",
@@ -2430,5 +2433,37 @@
     "semantics": "Existing guardedSourceMutation validates the original durable acknowledgement before its existing observeAcknowledged callback reads that exact page. Query-index delay no longer masks a known original creation. Original request/plan bytes and source owner/member/native-body checks preserved; no acknowledgement or unknown response cannot authorize a second POST or immutable Source registration.",
     "concrete_evidence": "Real original ketchup-video page resumed without recreation; controlled lagged-index positive and visible/hidden unknown response negatives including lag, plus original Source mutation suite.",
     "model_transitions_cases_expected_rules_changed": false
+  },
+  "nxt_compact_author_receipt_review": {
+    "issue": "AH-500, AH-1063",
+    "reviewed_at_utc": "2026-11-17",
+    "implementation_commit": "15558851ca9d106538a2781af7f83acc761c5e4a",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_original_protected_source_changes": ["packages/core/src/mutation.ts"],
+    "new_explicit_correspondence_context": [
+      "packages/cli/src/apply-output.ts",
+      "packages/cli/src/commands-content.ts",
+      "packages/cli/test/apply-output.test.ts"
+    ],
+    "original_natural_model": "Actual authorized apply completed and verified, then strict 10-model-request budget correctly denied final. Do not reinterpret as full natural task success.",
+    "output_contract": "Opt-in CLI apply --compact only removes request_metrics.trace from stdout and adds omitted marker/count; all original identity, file manifest, next, status, aggregate request metrics and core journaling unchanged. Default full JSON unchanged.",
+    "actual_preserved_original_applied_result": {
+      "bytes": 111375,
+      "compact_bytes": 9065,
+      "reduction_percent": 91.86,
+      "original_apply_writes": 14,
+      "original_apply_total_requests": 114,
+      "original_operation_preserved": true
+    },
+    "other_evidence": "One real installed CLI --compact dry-run planned / zero writes (the preview did not emit request_metrics); synthetic full-trace test preserves all fields; NXT guard precisely scopes --compact to existing authorized apply. Cold historical pin failed SNAPSHOT_MISSING in a new client and belongs to N09.",
+    "not_claimed": [
+      "No fresh natural-model run after tool-output change",
+      "No full HTTP ledger is implied by compact stdout",
+      "No automatic old-pin remote archival",
+      "No decrease in provider request counts",
+      "No new finite-state transitions or changed expected rules"
+    ],
+    "finite_model_transitions_changed": false,
+    "cfg_cases_views_expected_rules_changed": false
   }
 }
