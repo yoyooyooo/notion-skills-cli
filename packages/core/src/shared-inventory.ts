@@ -6,6 +6,7 @@ import { scanLocalSkillInventory } from "./shared-inventory-local.ts"
 import { INVENTORY_RULES, LocalSkillInventorySchema } from "./shared-inventory-model.ts"
 import { readInventoryArtifact, saveInventoryArtifact } from "./shared-inventory-store.ts"
 import { readSharedBaselineInventory } from "./shared-inventory-remote.ts"
+import { reviewInventoryProvenance } from "./shared-inventory-provenance-review.ts"
 
 export {
   scanLocalSkillInventory,
@@ -34,7 +35,11 @@ export function readLocalSkillInventory(id: string) {
 }
 
 /** Recheck one approved entity without enlarging the original readable scope. */
-export function revalidateLocalInventoryEntity(inventoryId: string, entityId: string) {
+export function revalidateLocalInventoryEntity(
+  inventoryId: string,
+  entityId: string,
+  provenanceBefore?: unknown,
+) {
   return Effect.gen(function* () {
     const original = yield* readLocalSkillInventory(inventoryId)
     const entity = original.entities.find((entity) => entity.entity_id === entityId)
@@ -67,22 +72,12 @@ export function revalidateLocalInventoryEntity(inventoryId: string, entityId: st
       )
     // The full registry digest remains in each immutable observation. Execution
     // depends on this entity's resolved claims, not unrelated valid registrations.
-    const changedProvenance = new Set(
-      fresh.provenance
-        .filter(
-          (entry) =>
-            original.provenance.find((before) => before.path === entry.path)?.sha256 !==
-            entry.sha256,
-        )
-        .map((entry) => entry.path),
-    )
     if (
       current.manifest_sha256 !== entity.manifest_sha256 ||
       canonicalSharedJson(current.identities) !== canonicalSharedJson(entity.identities) ||
       canonicalSharedJson(current.aliases) !== canonicalSharedJson(entity.aliases) ||
       canonicalSharedJson(current.discovery_identity ?? null) !==
-        canonicalSharedJson(entity.discovery_identity ?? null) ||
-      fresh.findings.some((finding) => changedProvenance.has(finding.path))
+        canonicalSharedJson(entity.discovery_identity ?? null)
     )
       return yield* Effect.fail(
         fail(
@@ -91,10 +86,18 @@ export function revalidateLocalInventoryEntity(inventoryId: string, entityId: st
           { entity_id: entityId, inventory_id: fresh.inventory_id },
         ),
       )
+    const provenanceReviewId = yield* reviewInventoryProvenance(
+      inventoryId,
+      original,
+      fresh,
+      entityId,
+      provenanceBefore,
+    )
     return {
       original_inventory_id: inventoryId,
       inventory_id: fresh.inventory_id,
       entity: current,
+      provenance_review_id: provenanceReviewId,
       scope: original.scope,
     }
   })

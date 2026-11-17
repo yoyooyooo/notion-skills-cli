@@ -63,6 +63,13 @@ test("inventory schemas expose explicit repeatable roots/provenance and offline 
         expect.arrayContaining([expect.objectContaining({ name: "audit-run", required: true })]),
       )
   }
+  const apply = await invoke(["schema", "ctl", "library", "inventory", "apply-import"])
+  expect(apply.exit, apply.stdout + apply.stderr).toBe(0)
+  expect(JSON.parse(apply.stdout).schema.parameters).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "provenance-before", max_occurrences: 1 }),
+    ]),
+  )
 }, 20000)
 
 test("public local inventory preserves exact binary bytes and executable modes without network or source writes", async () => {

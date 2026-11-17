@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "c33e9ef27f417cfb51ac5d8cdd4433e7c55b55eb",
+  "synchronized_commit": "a66b0eb5b2071b7dbd1e6271b2a0314696a90b36",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
@@ -22,7 +22,7 @@
     "packages/core/test/fixtures/native-quote-readback.json": "439a35a393701cfc26b8eb57dae8e2950552fa1790494b0d3095d29d71a4576c",
     "packages/core/test/fixtures/to-prd-restore-readback.json": "d2343e0d23e0ede9017f51dbdfe1450d6091865ff6b428f098917dc4d1cf8edb",
     "packages/core/test/shared-audit-checkpoint.test.ts": "e8abf6d531380ff7f06bc71427d1eb25e9f8116d674cc49bfa43a7c7f5b6da93",
-    "packages/core/test/shared-audit-sqlite.node.test.ts": "2995ad98b70f42dd0dbb975da51f5a8fdac11f535e0a43f1ed7a7bbe342fab04",
+    "packages/core/test/shared-audit-sqlite.node.test.ts": "be1c908916bf423bbec61d07c8e5426c1a44873d2db922398a6c715d37afd999",
     "packages/core/test/shared-body-current-acceptance.test.ts": "9f800634dc30e7a863f377bc5456317fb41b3a30f3d7ccd833f2dbf5b8b59acf",
     "packages/core/test/shared-create-fixture.ts": "b332d1e0f9b28355518414d4d1902265a5b68272c908b6fe463fc7a148b62758",
     "packages/core/test/shared-create-link-restoration-fixture.ts": "dae65e6ad3bca2806c02187cd63593636337e970acd90246a245f7d0044e0b14",
@@ -87,8 +87,8 @@
     "packages/core/src/shared-audit-inventory.ts": "b6111866a290d342040ab209c989a240061d96eedefe70e23771a3f13aee4c1e",
     "packages/core/src/shared-audit-transport.ts": "9176dff8e11a6dcd74850134d2580c686984163e9ff5fc68a49c84a59ae0e9e3",
     "packages/core/src/shared-audit-store.ts": "e956a6c22d765bc4199bb4135a6e767ab08ce252c701910abefdf61fe08136b9",
-    "packages/core/src/shared-inventory-import.ts": "165db60ca608db577e09526cd308076aee3ff16a83055c1dc503c84030418fb7",
-    "packages/core/src/shared-inventory-local.ts": "242dc32907835bacf4e5a77ee4c6fde6aa62f54ec25c5de18c172690c507ebee",
+    "packages/core/src/shared-inventory-import.ts": "0a64520a8ae60f657334cfc683b5fcd88455249039cb26cab47773c34c7a49fc",
+    "packages/core/src/shared-inventory-local.ts": "697c7d953ad9251febc4197930205a94d35e4ec4b8e296d037f1bdfc858c88bb",
     "packages/core/src/shared-create.ts": "2c8dcc2275d5fd2a70ffbe01e0ee24a9580573a076952d83f2195752a75e94fc",
     "packages/core/src/shared-create-model.ts": "f8d889fc13fff4e68039b58c2aed4cb5317b89ed8825cd37224aeb93583b9f14",
     "packages/core/src/shared-create-dispatch.ts": "199e3178c36917d059fa492ed5c177e42512cffbd1128c4ad926d4a8f1352113",
@@ -126,7 +126,7 @@
     "packages/core/src/shared-body-write-model.ts": "83d6f1e6d781b8505d2ad8bc300cacfd0a59c654f6cbc8b1461d7d97f2c66fba",
     "packages/core/src/shared-skill-apply-authoring.ts": "ea6fcb2fa2bcef6bc2eface18317aa6c915aabd55bf0f41e90ed868277cdb2c9",
     "packages/core/src/shared-file-restore.ts": "e2d93707ecbf1a802b1a4ba7f76bd9d6c4c1c032a7b43a48b33a249bd758d40c",
-    "packages/core/src/sqlite-state.ts": "ea8238f35f91a6d6112dd285693c1136c64699f438f1dff22a42f822166bcabb",
+    "packages/core/src/sqlite-state.ts": "e7a78909b0acf1944f1a6b224cd0503a67d2d3e9b1c6ecfdc615f80c3fb5b64d",
     "packages/core/src/shared-source-batch.ts": "7e2bdaba8938ff33b4f75322c98589bf82db89e94af89e4892c94776fb953ba2",
     "packages/core/src/shared-create-continuation-acknowledged.ts": "f9bb61412db9ae7f596fd8f14ab87de20ce740edebd35c9e49dd85f15f614e0a",
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
@@ -269,11 +269,14 @@
     "packages/core/test/shared-create-current-tree.test.ts": "2f171ed86d5e95fe2ec7e8877f3a3cf10ecc294b45d3f9c4c977d72f5ed95545",
     "packages/core/test/shared-create-current-tree.node.test.ts": "78ef3ee077cc30eda43c2292d7748f0587b6eaef4441a1a17da40948a8b183ea",
     "packages/core/test/shared-inventory.test.ts": "d4917d63f38b1c82bf6a8180d08d00168c1692bbbb086b198349fa3a141576bc",
-    "packages/cli/test/library-inventory.test.ts": "5995fd61d166267913b0d87b017053f890415373ed9bfd31df7275453b2e7bcf",
-    "packages/core/src/shared-inventory.ts": "d1c071560fa72c04991be61c2e9ca939755f9d530332cf27716853854cbec6d3",
-    "packages/core/src/shared-inventory-provenance.ts": "9bb38efda621c5ccecbd992ad9739928a66b8884ab277d1803d8933230f7355c",
-    "packages/core/test/shared-inventory-revalidation.test.ts": "1b2bcb743160cc859bbfc50ae3b9e7295be3dae00d0a4e043470a09b53324577",
-    "packages/core/test/shared-inventory-import.test.ts": "7eac6e3a61d6bf3137472be63f9e01f7798c39d26cc488cd65973b5e390f1d40"
+    "packages/cli/test/library-inventory.test.ts": "96429355196b8938c4fa5384e99f88736088fb18406b55d63fbc5b3011a8a76e",
+    "packages/core/src/shared-inventory.ts": "3f1a50dbf23e6cdd31462a42aeaecd86e4982ae79546c52dcfea5b93f18703b7",
+    "packages/core/src/shared-inventory-provenance.ts": "d06756684faa51c5a8800d9edd77209c0ac432c025256263af5a93a84809db3c",
+    "packages/core/test/shared-inventory-revalidation.test.ts": "682640231610d8ef5d01576f537effd648157e9274ed55b2978d421950302018",
+    "packages/core/test/shared-inventory-import.test.ts": "7eac6e3a61d6bf3137472be63f9e01f7798c39d26cc488cd65973b5e390f1d40",
+    "packages/core/src/shared-inventory-model.ts": "ed7b0bc29589081d687e924faa668a4e15b416d154b285802ba88da366550881",
+    "packages/core/src/shared-inventory-provenance-review.ts": "3f3b44b9c13658904b0f177cec4cc54a0d281417db2b4a239d24886f48550bac",
+    "packages/cli/src/commands-library-inventory-import.ts": "4cb4c808d0e15710546b1bb18b58c1aea8d60a9998131463073f798a0c6751d2"
   },
   "models": {
     "ProjectionRace": {
@@ -1747,10 +1750,40 @@
         "reconcileSkillInventories",
         "prepareInventoryImport"
       ],
-      "scope": "Immutable observations retain complete provenance-file hashes. Re-execution of the original plan accepts an unrelated valid registry append only after a full rescan preserves the selected complete manifest, resolved identities, aliases and discovery identity. Unavailable provenance, changed-document parser findings, relevant redirection/conflict, byte or mode drift remain refusals. Public page and canonical shared Skill main references resolve by exact owner/library; unavailable declared owners block before same-name successful-import reuse. Original plans, journals, dispatch/ACK/unknown authority and model domains stay unchanged. Registry parsing and selected-entity correspondence are concrete implementation obligations, not new finite-model claims. See docs/maintenance-verification-review.md Selected inventory identity revalidation.",
+      "scope": "Immutable observations retain complete provenance-file hashes. Re-execution of the original plan accepts an unrelated valid registry append only after a full rescan preserves the selected complete manifest, resolved identities, aliases and discovery identity. Unavailable provenance, changed-document findings other than the separate exact opaque-preimage review, relevant redirection/conflict, byte or mode drift remain refusals. Public page and canonical shared Skill main references resolve by exact owner/library; unavailable declared owners block before same-name successful-import reuse. Original plans, journals, dispatch/ACK/unknown authority and model domains stay unchanged. Registry parsing and selected-entity correspondence are concrete implementation obligations, not new finite-model claims. See docs/maintenance-verification-review.md Selected inventory identity revalidation.",
       "tests": [
         "packages/core/test/shared-inventory-revalidation.test.ts",
         "packages/core/test/shared-inventory-import.test.ts"
+      ],
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "opaque_install_provenance_preimage_review",
+      "files": [
+        "packages/core/src/shared-inventory-provenance.ts",
+        "packages/core/src/shared-inventory-model.ts",
+        "packages/core/src/shared-inventory-local.ts",
+        "packages/core/src/shared-inventory-provenance-review.ts",
+        "packages/core/src/shared-inventory.ts",
+        "packages/core/src/shared-inventory-import.ts",
+        "packages/core/src/sqlite-state.ts",
+        "packages/cli/src/commands-library-inventory-import.ts"
+      ],
+      "symbols": [
+        "unresolvedInstallClaims",
+        "inventoryAssetsSkills",
+        "scanLocalSkillInventory",
+        "reviewInventoryProvenance",
+        "revalidateLocalInventoryEntity",
+        "executeInventoryImport",
+        "sharedLocalDomains"
+      ],
+      "scope": "An unchanged selected entity may retain the original plan after unrelated install registrations change only when the complete opaque row key/value set and complete assets.skills configuration remain unchanged. New inventories hash both facts from the same bounded verified reads; legacy apply-import requires explicit complete original registry/assets bytes matching retained whole-file hashes. The existing YAML parser and shared input selector compare every skills configuration field, including unknown keys; unrelated mirror changes do not alter that context. A separate immutable local review records changed-but-equivalent assets apart from unchanged files without rewriting the original inventory, plan, dispatch, ACK or outcome. Missing preimages, other findings, selected identity, aliases, byte/mode or opaque/configuration changes still refuse. The exact SQLite dispatch address allows identical reuse but rejects conflicts and malformed addresses across restart. Concrete parsing, digest correspondence and SQLite persistence remain outside unchanged finite models. See docs/maintenance-verification-review.md Opaque install provenance preimage review.",
+      "tests": [
+        "packages/core/test/shared-inventory-revalidation.test.ts",
+        "packages/core/test/shared-audit-sqlite.node.test.ts",
+        "packages/cli/test/library-inventory.test.ts"
       ],
       "no_new_finite_model_claim": true
     }

@@ -20,6 +20,8 @@ import {
 import {
   localInventoryProvenance,
   inventoryCanonicalAssetId,
+  unresolvedInstallClaims,
+  inventoryAssetsSkills,
   type ProvenanceDocument,
 } from "./shared-inventory-provenance.ts"
 import { saveInventoryArtifact } from "./shared-inventory-store.ts"
@@ -428,12 +430,27 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
           ? parseDocument(source, { logLevel: "silent" })
           : undefined
         if (document?.errors.length) throw Error("Invalid provenance YAML")
+        const value = document === undefined ? JSON.parse(source) : document.toJS()
         documents.push({
           path: canonical._tag === "Success" ? canonical.success : path,
           observed_path: path,
-          value: document === undefined ? JSON.parse(source) : document.toJS(),
+          value,
         })
-        provenance.push({ path, sha256: hash(loaded.success.bytes), status: "verified" })
+        const unresolved =
+          basename(path) === "install-sources.json" ? unresolvedInstallClaims(value) : undefined
+        const assetsSkills =
+          basename(path) === "assets.yaml" ? inventoryAssetsSkills(value) : undefined
+        provenance.push({
+          path,
+          sha256: hash(loaded.success.bytes),
+          status: "verified",
+          ...(unresolved === undefined
+            ? {}
+            : { unresolved_install_claims_sha256: hash(canonicalSharedJson(unresolved)) }),
+          ...(assetsSkills === undefined
+            ? {}
+            : { assets_skills_sha256: hash(canonicalSharedJson(assetsSkills)) }),
+        })
       } catch {
         provenance.push({ path, sha256: hash(loaded.success.bytes), status: "invalid" })
         add("PROVENANCE_INVALID", path)

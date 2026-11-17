@@ -1222,3 +1222,38 @@ Node public CLI/SQLite 与空 Store SDK 验证完整 frontmatter、raw mode 和 
 拒绝项；独立审阅发现最早 reuse 分支遗漏后，使用已有成功导入 fixture 复现红例，
 再由同一原断言确认早期 guard。原 plan、journal、ACK、unknown 与派发规则不改，
 旧失败回执和后续绿色回归分开保留。源码映射不改变有限模型或扩大实际迁移计数。
+
+### Opaque install provenance preimage review
+
+在 a66b0eb5b2071b7dbd1e6271b2a0314696a90b36 之上，针对原计划的完整选定实体
+不变、无关安装登记退场却使整档 SHA 改变的实际拒绝，新增明确的
+`inventory apply-import --provenance-before FILE`。脱敏 finding 相等不能证明原行
+不变；新库存保留未解析安装项的 key 和完整 opaque row 摘要，旧库存只能由显式
+提供、整文件 SHA 精确等于原观察的完整原件补足该证据。原、新 opaque 集合与全部
+assets.yaml 的完整 assets.skills 配置必须一致，选定实体的 manifest、身份、别名、发现根及其它 finding
+拒绝条件保持。不会猜测未解析项的物理归属、扩大目录扫描或修改旧 inventory/plan。
+
+新增事实只写入本地不可变 provenance-review 地址，记录原/新库存和文件摘要；
+不持久化原件正文，不改 source、Notion、原 dispatch、ACK 或 outcome。该地址
+明确登记为 SQLite dispatch domain。真实 Node 测试先以 Unknown SQLite domain
+address 失败，登记精确地址后，同值重写、异值冲突、跨进程重开和坏地址拒绝通过；
+原 audit restart 用例也保持通过。
+
+曾提出的不同文件名符号链接资产反例，经实际 boundedFile 的 O_NOFOLLOW 与
+lstat/handle stat 守卫确认不可达，未引入 canonical_path schema 或额外授权。
+新增真实文件别名用例保留拒绝；原件缺失、错误整档 SHA、opaque key/完整行/集合
+变化、没有前像证明的 assets 变化和选定已解析身份变化也由原公共函数断言拒绝。
+
+后续真实原计划预演在整档 assets SHA 守卫停止，旧失败原件保留。精确 Git 原件
+匹配旧 SHA，唯一差异是已退场 mirror 的 mapping 删除；完整 assets.skills 配置
+与原解析器的有序 mode-root 集合均相同。因此仅增加该完整配置的 optional 摘要，
+从同次已验证文件读取中取得；旧观察以整档 SHA 匹配的原 assets 全文补证，再经
+相同 YAML 解析与完整子树比较。没有额外当前文件读取或第二套 root 解释器。
+mirror-only 正例先失败后通过；无原 assets 证明、错误原件、mode-root 或未解释
+skills 字段变化仍拒绝。独立 review 分别记录已变但上下文相等的 assets 与真正
+未变的 assets，不将语义受理写成旧整档字节未变。
+
+这些 JSON 解析、摘要、局部身份重验和 SQLite 地址属于两套 coverage 明确的
+hash_bound_context_not_modeled 对应。TLA、config、view、cases、expected_rules、
+工具锁与模型边界不变；本次对应检查不是新 TLC 运行。正式安装 CLI 对旧计划的
+只读预演及后续真实执行各自保留独立回执，不能由源码回归推断已经恢复或迁移完成。

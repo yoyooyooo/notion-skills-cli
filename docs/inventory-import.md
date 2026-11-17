@@ -201,6 +201,33 @@ ntn-skills ctl library inventory reconcile-import ./import-plan.json --entry ENT
 
 准备计划冻结原库绑定、远端观察、本地清单、来源修订、文件归属和允许的创建集合。执行前重新扫描并通过真实文件描述符读取输入，拒绝新增文件、改动字节、执行权限变化和链接替换；不会因缓存已有相同 hash 就忽略源树变化。计划必须来自同一 state root 的真实准备记录；复制并重算 JSON 摘要不能取得另一份共享授权。
 
+同一共享登记文件中，其他 Skill 的有效登记变化不必使当前完整输入失效。对于 `install-sources.json` 中尚未解析的安装类型，盘点另存登记键和完整原记录的摘要；续作要求这些未解析项逐项不变。`assets.yaml` 若有字节变化，其完整 `assets.skills` 配置必须保持一致，包括尚未解释的字段；当前摘要来自同一次已验证的文件读取。脱敏提示相同、提示数量相同或路径看似无关，都不能替代这项证明；其他未解析错误仍阻塞。
+
+旧盘点没有这份逐项摘要时，`apply-import` 可显式提供原登记文件的完整逐字文本：
+
+```json
+{
+  "version": 1,
+  "documents": [
+    {
+      "path": "/absolute/agent-kit/.ak/install-sources.json",
+      "text": "原文件完整 UTF-8 文本，保留空格与换行"
+    },
+    {
+      "path": "/absolute/agent-kit/.ak/assets.yaml",
+      "text": "配置已变化且旧盘点未保留其语义摘要时，提供原 assets.yaml 的完整逐字文本"
+    }
+  ]
+}
+```
+
+```bash
+ntn-skills ctl library inventory apply-import ./original-plan.json --entry ENTRY \
+  --provenance-before ./original-provenance.json --dry-run
+```
+
+每份文本必须与旧盘点已保留的整文件 SHA-256 精确一致，路径必须在原来源登记范围内且不能重复。原 assets 配置经相同 YAML 解析后，只有整棵 `assets.skills` 与当前观察一致才可接受其外部 mirror 等字段的变化；缺原件或任何该配置字段的变化仍拒绝。工具据此保存独立的 `provenance_review_id`，仍使用原计划与原创建日志；不会改写旧盘点、补造 ACK、推断未解析项的管理权，或读取新的目录范围。正式续作沿用同一参数，不需要重新准备创建计划。原件缺失、错 hash、未解析项增删或变更、相关配置漂移及所选实体变化都会拒绝。原登记文本也可能含私有信息，应与原计划一样保存在受控位置。
+
 创建复用现有原操作日志。部分结果保留已创建身份与未开始步骤；只有持久原回执支持的已知步骤才能继续。未知请求不重发，不按同名重建。重复已完成计划返回原结果，不再创建 Skill、Files 或相同历史。新工作需重新准备，原未知操作仍需保留。
 
 `reconcile-import` 不读本地源树、不重新发现 Provider、不写远端，只核对原冻结操作。原源树随后改变不妨碍核对既有操作。没有原响应证明时，当前页面恰好匹配也不能补造成功。

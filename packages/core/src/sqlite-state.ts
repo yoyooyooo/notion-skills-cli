@@ -157,6 +157,11 @@ const sharedLocalDomains: readonly {
     address: /^inventory\/observations\/inventory-[a-f0-9]{64}\.json$/u,
   },
   {
+    prefix: "inventory/provenance-reviews",
+    category: "dispatch",
+    address: /^inventory\/provenance-reviews\/inventory-provenance-review-[a-f0-9]{64}\.json$/u,
+  },
+  {
     prefix: "operations/shared-source-runs",
     category: "dispatch",
     address:

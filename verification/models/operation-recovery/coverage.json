@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "c33e9ef27f417cfb51ac5d8cdd4433e7c55b55eb",
+  "synchronized_commit": "a66b0eb5b2071b7dbd1e6271b2a0314696a90b36",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
@@ -145,7 +145,7 @@
     "packages/core/src/shared-source-file-resubmission-model.ts": "33675b0f64b036b7f17b79712de32c2ad2e1df0fcbb04b3feddc2341e7244b4a",
     "packages/core/src/shared-source-file-resubmission.ts": "37c22c60e7be06a38ab08325755872a6938452b82f4fdbc5ee27a9fd28b48ca2",
     "packages/core/src/shared-sources-model.ts": "127979694278a99bcf0ccdb20b7e23cdb8991ad9e8c19f2a415dce77f3b7817e",
-    "packages/core/src/sqlite-state.ts": "ea8238f35f91a6d6112dd285693c1136c64699f438f1dff22a42f822166bcabb",
+    "packages/core/src/sqlite-state.ts": "e7a78909b0acf1944f1a6b224cd0503a67d2d3e9b1c6ecfdc615f80c3fb5b64d",
     "packages/core/test/shared-create-ack-visibility.test.ts": "853d92f04c39d18c8f21e28c6969415a6b1cd45f5782b936469f0b5989d9d5c0",
     "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "eb43acb15e05faca53e663524dad07db5f4d91679bc9d27d4ff256063521fc2c",
     "packages/core/test/shared-create-drift.test.ts": "d436e71b05c56842908448073879bbeab14d341a159332efb5cc2b044163f1a4",
@@ -175,7 +175,17 @@
     "packages/core/src/shared-create-current-tree.ts": "e6a112fd36dcaf5e37363017781a22e17f1442f7da467f6f4608db9056c82644",
     "packages/core/test/shared-create-current-tree-fixture.ts": "b2bda98395d5ee304abf99f07c6e31fb0354e4fa0b7ac6079bb1f0fa2c50ba10",
     "packages/core/test/shared-create-current-tree.test.ts": "2f171ed86d5e95fe2ec7e8877f3a3cf10ecc294b45d3f9c4c977d72f5ed95545",
-    "packages/core/test/shared-create-current-tree.node.test.ts": "78ef3ee077cc30eda43c2292d7748f0587b6eaef4441a1a17da40948a8b183ea"
+    "packages/core/test/shared-create-current-tree.node.test.ts": "78ef3ee077cc30eda43c2292d7748f0587b6eaef4441a1a17da40948a8b183ea",
+    "packages/core/src/shared-inventory-provenance.ts": "d06756684faa51c5a8800d9edd77209c0ac432c025256263af5a93a84809db3c",
+    "packages/core/src/shared-inventory-model.ts": "ed7b0bc29589081d687e924faa668a4e15b416d154b285802ba88da366550881",
+    "packages/core/src/shared-inventory-local.ts": "697c7d953ad9251febc4197930205a94d35e4ec4b8e296d037f1bdfc858c88bb",
+    "packages/core/src/shared-inventory-provenance-review.ts": "3f3b44b9c13658904b0f177cec4cc54a0d281417db2b4a239d24886f48550bac",
+    "packages/core/src/shared-inventory.ts": "3f1a50dbf23e6cdd31462a42aeaecd86e4982ae79546c52dcfea5b93f18703b7",
+    "packages/core/src/shared-inventory-import.ts": "0a64520a8ae60f657334cfc683b5fcd88455249039cb26cab47773c34c7a49fc",
+    "packages/cli/src/commands-library-inventory-import.ts": "4cb4c808d0e15710546b1bb18b58c1aea8d60a9998131463073f798a0c6751d2",
+    "packages/core/test/shared-inventory-revalidation.test.ts": "682640231610d8ef5d01576f537effd648157e9274ed55b2978d421950302018",
+    "packages/core/test/shared-audit-sqlite.node.test.ts": "be1c908916bf423bbec61d07c8e5426c1a44873d2db922398a6c715d37afd999",
+    "packages/cli/test/library-inventory.test.ts": "96429355196b8938c4fa5384e99f88736088fb18406b55d63fbc5b3011a8a76e"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -1553,6 +1563,36 @@
         "packages/core/test/shared-create-current-tree-fixture.ts",
         "packages/core/test/shared-create-current-tree.test.ts",
         "packages/core/test/shared-create-current-tree.node.test.ts"
+      ],
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "opaque_install_provenance_preimage_review",
+      "files": [
+        "packages/core/src/shared-inventory-provenance.ts",
+        "packages/core/src/shared-inventory-model.ts",
+        "packages/core/src/shared-inventory-local.ts",
+        "packages/core/src/shared-inventory-provenance-review.ts",
+        "packages/core/src/shared-inventory.ts",
+        "packages/core/src/shared-inventory-import.ts",
+        "packages/core/src/sqlite-state.ts",
+        "packages/cli/src/commands-library-inventory-import.ts"
+      ],
+      "symbols": [
+        "unresolvedInstallClaims",
+        "inventoryAssetsSkills",
+        "scanLocalSkillInventory",
+        "reviewInventoryProvenance",
+        "revalidateLocalInventoryEntity",
+        "executeInventoryImport",
+        "sharedLocalDomains"
+      ],
+      "scope": "An unchanged selected entity may retain the original plan after unrelated install registrations change only when the complete opaque row key/value set and complete assets.skills configuration remain unchanged. New inventories hash both facts from the same bounded verified reads; legacy apply-import requires explicit complete original registry/assets bytes matching retained whole-file hashes. The existing YAML parser and shared input selector compare every skills configuration field, including unknown keys; unrelated mirror changes do not alter that context. A separate immutable local review records changed-but-equivalent assets apart from unchanged files without rewriting the original inventory, plan, dispatch, ACK or outcome. Missing preimages, other findings, selected identity, aliases, byte/mode or opaque/configuration changes still refuse. The exact SQLite dispatch address allows identical reuse but rejects conflicts and malformed addresses across restart. Concrete parsing, digest correspondence and SQLite persistence remain outside unchanged finite models. See docs/maintenance-verification-review.md Opaque install provenance preimage review.",
+      "tests": [
+        "packages/core/test/shared-inventory-revalidation.test.ts",
+        "packages/core/test/shared-audit-sqlite.node.test.ts",
+        "packages/cli/test/library-inventory.test.ts"
       ],
       "no_new_finite_model_claim": true
     }

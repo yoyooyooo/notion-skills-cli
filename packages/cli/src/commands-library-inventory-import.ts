@@ -139,6 +139,10 @@ const apply = defineCommand(
   {
     plan: Argument.String("plan"),
     entry,
+    provenanceBefore: singleton(
+      "provenance-before",
+      "Optional exact original registry/assets bytes for legacy opaque findings; JSON {version:1,documents:[{path,text}]} must match the original inventory hashes",
+    ),
     ...sourceRequestBudgets,
     dryRun: switchFlag(
       "dry-run",
@@ -148,13 +152,16 @@ const apply = defineCommand(
   (args) =>
     Effect.gen(function* () {
       const plan = yield* readSourceJson(args.plan, maximumPlanBytes)
+      const beforePath = Option.getOrUndefined(args.provenanceBefore)
+      const provenanceBefore =
+        beforePath === undefined ? undefined : yield* readSourceJson(beforePath, 8 * 1024 * 1024)
       const limits = yield* parseSourceBudget(args)
       const { result, budget } = yield* withSourceCommandBudget(
         Effect.gen(function* () {
           const library = yield* loadSharedLibrary(args.entry)
           return yield* withSourceUpdateLock(
             library,
-            executeInventoryImport(library, plan, { dryRun: args.dryRun }),
+            executeInventoryImport(library, plan, { dryRun: args.dryRun, provenanceBefore }),
           )
         }),
         limits,

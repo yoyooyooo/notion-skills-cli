@@ -27,6 +27,31 @@ export type InventoryModeRoot = {
 const string = (value: unknown) => (typeof value === "string" && value.length > 0 ? value : null)
 const fixedCommit = (value: unknown) =>
   typeof value === "string" && /^[a-f0-9]{40}$/u.test(value) ? value : null
+const unsupportedInstallClaim = (candidate: unknown) => {
+  const row = property(candidate),
+    installed = string(row.installedName)
+  return installed === null || /[\0\r\n]/u.test(installed) || row.type !== "git"
+}
+
+/** Preserve every opaque row and its registry key without exposing its values. */
+export function unresolvedInstallClaims(value: unknown) {
+  const raw = property(value)
+  if (
+    raw.version !== 1 ||
+    raw.skills === null ||
+    typeof raw.skills !== "object" ||
+    Array.isArray(raw.skills)
+  )
+    return undefined
+  return Object.entries(property(raw.skills))
+    .filter(([, candidate]) => unsupportedInstallClaim(candidate))
+    .sort(([left], [right]) => left.localeCompare(right))
+}
+
+/** Full shared parser input, including fields not currently interpreted as mode roots. */
+export function inventoryAssetsSkills(value: unknown): unknown {
+  return property(property(value).assets).skills
+}
 const within = (root: string, path: string) => {
   const part = relative(root, path)
   return part === "" || (part !== ".." && !part.startsWith(`..${sep}`) && !isAbsolute(part))
@@ -88,7 +113,7 @@ export function localInventoryProvenance(documents: readonly ProvenanceDocument[
   for (const document of documents)
     if (basename(document.path) === "assets.yaml") {
       const repo = dirname(dirname(document.path)),
-        skills = property(property(property(document.value).assets).skills)
+        skills = property(inventoryAssetsSkills(document.value))
       const configured = [
         skills,
         ...(Array.isArray(skills.roots) ? skills.roots.map(property) : []),
@@ -200,9 +225,8 @@ export function localInventoryProvenance(documents: readonly ProvenanceDocument[
       !Array.isArray(raw.skills)
     ) {
       for (const [key, candidate] of Object.entries(property(raw.skills))) {
-        const row = property(candidate),
-          installed = string(row.installedName)
-        if (installed === null || /[\0\r\n]/u.test(installed) || row.type !== "git") {
+        const row = property(candidate)
+        if (unsupportedInstallClaim(candidate)) {
           blocked(document.path, "INSTALL_PROVENANCE_UNSUPPORTED")
           continue
         }

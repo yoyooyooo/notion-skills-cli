@@ -35,6 +35,7 @@ test("real SQLite admits exact audit/source/inventory domains, updates only run 
   const immutable = [
     `audit/parts/audit-00000000-0000-4000-8000-000000000001/${"f".repeat(64)}.json`,
     `inventory/observations/inventory-${"b".repeat(64)}.json`,
+    `inventory/provenance-reviews/inventory-provenance-review-${"9".repeat(64)}.json`,
     `plans/shared-inventory-imports/inventory-import-${"c".repeat(64)}.json`,
     `operations/shared-inventory-imports/inventory-import-${"c".repeat(64)}.json`,
     `operations/shared-sources/${"d".repeat(64)}/source-ack-${"e".repeat(64)}.json`,
@@ -45,12 +46,13 @@ Effect.runPromise(Effect.scoped(Effect.gen(function*(){const state=yield* sqlite
   const first = await child(
     program(`const mutable=${JSON.stringify(mutable)},immutable=${JSON.stringify(immutable)};
 for(const key of mutable){yield* state.write(key,{step:1});yield* state.write(key,{step:2});if((yield* state.read(key)).step!==2)throw Error('Run checkpoint did not advance');}
-for(const key of immutable){yield* state.write(key,{step:1});const result=yield* state.write(key,{step:2}).pipe(Effect.flip);if(result.code!=='STATE_CONFLICT')throw Error('Original evidence was replaced');}
+for(const key of immutable){yield* state.write(key,{step:1});yield* state.write(key,{step:1});const result=yield* state.write(key,{step:2}).pipe(Effect.flip);if(result.code!=='STATE_CONFLICT')throw Error('Original evidence was replaced');}
 const bad=yield* state.write('audit/runs/../../other.json',{}).pipe(Effect.flip);if(bad.code!=='INVALID_ARGUMENT')throw Error('Unsafe address accepted');
+for(const key of ['inventory/provenance-reviews/../other.json','inventory/provenance-reviews/inventory-provenance-review-'+ '9'.repeat(63)+'.json','inventory/provenance-reviews/inventory-provenance-review-'+ 'A'.repeat(64)+'.json','inventory/provenance-reviews/other-'+ '9'.repeat(64)+'.json']){const rejected=yield* state.write(key,{}).pipe(Effect.flip);if(rejected.code!=='INVALID_ARGUMENT')throw Error('Invalid provenance review address accepted');}
 console.log(JSON.stringify({mutable:mutable.length,immutable:immutable.length,keys:yield* state.list('audit/runs/')}));`),
   )
   expect(first.exit, first.stderr).toBe(0)
-  expect(JSON.parse(first.stdout)).toMatchObject({ mutable: 3, immutable: 5, keys: [mutable[0]] })
+  expect(JSON.parse(first.stdout)).toMatchObject({ mutable: 3, immutable: 6, keys: [mutable[0]] })
   const reopened = await child(
     program(`const mutable=${JSON.stringify(mutable)},immutable=${JSON.stringify(immutable)};
 for(const key of mutable)if((yield* state.read(key)).step!==2)throw Error('Checkpoint lost on reopen');
@@ -59,7 +61,7 @@ yield* state.retire([mutable[2]]);const retired=yield* state.write(mutable[2],{s
 console.log(JSON.stringify({reopened:true,originals:immutable.length}));`),
   )
   expect(reopened.exit, reopened.stderr).toBe(0)
-  expect(JSON.parse(reopened.stdout)).toEqual({ reopened: true, originals: 5 })
+  expect(JSON.parse(reopened.stdout)).toEqual({ reopened: true, originals: 6 })
 }, 30_000)
 
 test("audit actually resumes through a real Store in fresh Node processes and reports offline", async () => {

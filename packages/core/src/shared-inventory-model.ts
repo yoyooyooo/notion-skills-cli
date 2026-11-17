@@ -112,6 +112,8 @@ export const LocalSkillInventorySchema = Schema.Struct({
       path: Schema.String,
       sha256: Schema.NullOr(Hash),
       status: Schema.Literals(["verified", "unavailable", "invalid", "changed"]),
+      unresolved_install_claims_sha256: Schema.optional(Hash),
+      assets_skills_sha256: Schema.optional(Hash),
     }),
   ),
   metrics: Schema.Struct({

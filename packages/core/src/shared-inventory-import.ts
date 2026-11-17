@@ -658,9 +658,21 @@ export function validateInventoryImport(input: unknown) {
 export function executeInventoryImport(
   library: SharedLibrary,
   input: unknown,
-  options: { readonly dryRun?: boolean; readonly reconcile?: boolean } = {},
+  options: {
+    readonly dryRun?: boolean
+    readonly reconcile?: boolean
+    readonly provenanceBefore?: unknown
+  } = {},
 ) {
   const work = Effect.gen(function* () {
+    if (options.reconcile && options.provenanceBefore !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "INVALID_ARGUMENT",
+          "Provenance revalidation belongs to original apply, not reconciliation.",
+        ),
+      )
+    let provenanceReviewId: string | undefined
     const plan = yield* validateInventoryImport(input)
     if (!preservesSharedLibraryBindings(plan.library, library))
       return yield* Effect.fail(
@@ -684,7 +696,9 @@ export function executeInventoryImport(
       const current = yield* revalidateLocalInventoryEntity(
         plan.local_inventory_id,
         plan.local_entity.entity_id,
+        options.provenanceBefore,
       )
+      provenanceReviewId = current.provenance_review_id
       if (current.entity.manifest_sha256 !== plan.approved_manifest)
         return yield* Effect.fail(
           fail("INVENTORY_REVIEW_STALE", "The approved original input changed."),
@@ -712,6 +726,7 @@ export function executeInventoryImport(
         verified: !options.dryRun,
         reused: !options.dryRun,
         verification: "original_input_and_completion" as const,
+        provenance_review_id: provenanceReviewId,
         current_content: "unobserved" as const,
         remote_writes: 0,
         local_writes: 0,
@@ -753,6 +768,7 @@ export function executeInventoryImport(
       return {
         plan_id: plan.plan_id,
         status: "existing_verified" as const,
+        provenance_review_id: provenanceReviewId,
         verified: true,
         audit_run_id: audit.run_id,
         remote_writes: 0,
@@ -762,6 +778,7 @@ export function executeInventoryImport(
       return {
         plan_id: plan.plan_id,
         ...(yield* previewSharedCreate(library, plan.action.creation)),
+        provenance_review_id: provenanceReviewId,
         verified: false,
       }
     if (!options.reconcile) {
@@ -784,6 +801,7 @@ export function executeInventoryImport(
     return {
       plan_id: plan.plan_id,
       input_class: plan.action.input_class,
+      provenance_review_id: provenanceReviewId,
       ...result,
       local_writes: 0,
       imported_from_frozen_manifest: plan.approved_manifest,
