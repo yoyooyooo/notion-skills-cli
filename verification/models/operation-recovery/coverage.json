@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "90292d66d6ffeb85f37a123a7ed839f429b1c5fe",
+  "synchronized_commit": "e06af13609a55dc8379edc2de369da06808120db",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/core/src/shared-create-recovery-native-authority.ts": "b1af96943f89cd8a100653a3e37668ccd29f1d2f699493f8580563874c1a3a03",
@@ -89,7 +89,7 @@
     "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
     "packages/cli/src/commands-library-source-file-resubmission.ts": "b563699bf624d007dc7bb53522ac17835113cdbc013cbdaa0114198f01fbe81a",
     "packages/cli/src/sdk.ts": "cd30cf43196273b829fa653da6ec5cad1b366c8aad9e8593c987e96a3edd727b",
-    "packages/cli/test/cli.test.ts": "cb197efda54632c673a81efa195719b5328250dbc505a9ef2d611bf4735150a9",
+    "packages/cli/test/cli.test.ts": "7523e697a5d6573e386d881017bc396c7f802558558f01ef48740f6499bf6bec",
     "packages/cli/test/library-source-file-resubmission-http.test.ts": "38e2553f9bf57ef16efe5e2892f84b3439bac4fc48335e48cb67ade0e1789bd2",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
     "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
@@ -1454,5 +1454,14 @@
       "Historical failed add remains needs_review/unproven; only independent acceptance is completed.",
       "Protected hash synchronization does not imply a new TLC execution."
     ]
+  },
+  "nxt_public_entrypoint_review": {
+    "issue": "AH-1063",
+    "implementation_commit": "e06af13609a55dc8379edc2de369da06808120db",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_changed_context": ["packages/cli/test/cli.test.ts"],
+    "semantic_change": "Offline public help, bundled setup and English/Chinese host README directly route existing-library inspection and complete author read/apply preview. No parser action, permissions, state, source bytes, dispatch or model budget changed.",
+    "verification": "4 focused public entrypoint tests /79 assertions, inaccessible application roots and zero provider probes; original natural failed runs retained and no additional model retry.",
+    "finite_models_cases_expected_rules_changed": false
   }
 }
