@@ -12,6 +12,7 @@ import {
   executeSharedBodyWrite,
   prepareSharedBodyWrite,
   reconcileSharedBodyWrite,
+  loadPendingSharedBodyWrites,
 } from "./shared-body-write.ts"
 import {
   sharedBodyWriteProtection,
@@ -22,6 +23,10 @@ import { normalizeObservedBody } from "./shared-file-state.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
+import { observeReviewedSingleBodyApply } from "./shared-single-body-apply-acceptance.ts"
+import { loadPendingSharedObservationPlans } from "./shared-observation-operation.ts"
+import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
+import { loadPendingSharedMetadataWrites } from "./shared-metadata-write.ts"
 import type { Notion } from "./notion.ts"
 import {
   pendingFileOperations,
@@ -264,26 +269,86 @@ function pendingScope(scope: string, library: SharedLibrary, skillId: string, sk
   })
 }
 
-function assertNoPendingApply(library: SharedLibrary, skillPageId: string) {
+type ReviewedMainIntent = {
+  readonly scope: SharedPendingFileScope
+  readonly fileId: string
+  readonly path: string
+  readonly plan?: SharedBodyWritePlan
+}
+
+function assertNoPendingApply(
+  library: SharedLibrary,
+  skillPageId: string,
+  intent?: ReviewedMainIntent,
+) {
   return Effect.gen(function* () {
-    const parent = (yield* loadPendingSharedSkillApplies(library, { skillPageId }))[0]
-    if (parent !== undefined)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_PENDING_OPERATION",
-          "The original parent operation remains unresolved; accepting its current main body does not authorize another body write.",
-          {
-            operation_id: parent.operation_id,
-          },
-        ),
+    const parents = yield* loadPendingSharedSkillApplies(library, { skillPageId })
+    const parent = parents[0]
+    if (parent === undefined) return undefined
+    const rejected = fail(
+      "SHARED_PENDING_OPERATION",
+      "The original parent operation remains unresolved; accepting its current main body does not authorize another body write.",
+      {
+        operation_id: parent.operation_id,
+      },
+    )
+    if (intent === undefined || intent.path !== "SKILL.md" || parents.length !== 1)
+      return yield* Effect.fail(rejected)
+    const local = (yield* pendingFileOperations(intent.scope)).filter(
+      (entry) =>
+        intent.plan === undefined ||
+        entry.plan.operation_id !== intent.plan.operation_id ||
+        canonicalSharedJson(entry.plan) !== canonicalSharedJson(intent.plan),
+    )
+    if (local.length !== 1 || canonicalSharedJson(local[0]!.plan) !== canonicalSharedJson(parent))
+      return yield* Effect.fail(rejected)
+    const reviewed = yield* observeReviewedSingleBodyApply(library, parent)
+    if (
+      reviewed === undefined ||
+      reviewed.child.file_id !== intent.fileId ||
+      reviewed.child.path !== intent.path
+    )
+      return yield* Effect.fail(rejected)
+    if (
+      intent.plan !== undefined &&
+      (intent.plan.action !== "write" ||
+        canonicalSharedJson(intent.plan.event.parents) !==
+          canonicalSharedJson(reviewed.observation.state.heads) ||
+        intent.plan.before.fingerprint.sha256 !== reviewed.observation.body.fingerprint.sha256 ||
+        intent.plan.before.raw_markdown !== reviewed.observation.body.raw_markdown)
+    )
+      return yield* Effect.fail(rejected)
+    const current = { skillPageId, headers: reviewed.headers, events: reviewed.events }
+    if (
+      (yield* loadPendingSharedObservationPlans(library, current)).length !== 0 ||
+      (yield* loadPendingSharedFileManagement(library, current)).length !== 0 ||
+      (yield* loadPendingSharedMetadataWrites(library, current)).length !== 0 ||
+      (yield* loadPendingSharedBodyWrites(library, current)).some(
+        (plan) =>
+          intent.plan === undefined ||
+          plan.operation_id !== intent.plan.operation_id ||
+          canonicalSharedJson(plan) !== canonicalSharedJson(intent.plan),
       )
+    )
+      return yield* Effect.fail(rejected)
+    return parent.operation_id
   })
 }
 
-function reconcileLocalBeforeNewPlan(library: SharedLibrary, scope: SharedPendingFileScope) {
+function reconcileLocalBeforeNewPlan(
+  library: SharedLibrary,
+  scope: SharedPendingFileScope,
+  intent?: Omit<ReviewedMainIntent, "scope" | "plan">,
+) {
   return Effect.gen(function* () {
-    yield* assertNoPendingApply(library, scope.skill_page_id)
-    const first = (yield* pendingFileOperations(scope))[0]
+    const reviewedParent = yield* assertNoPendingApply(
+      library,
+      scope.skill_page_id,
+      intent === undefined ? undefined : { ...intent, scope },
+    )
+    const first = (yield* pendingFileOperations(scope)).find(
+      (entry) => entry.plan.operation_id !== reviewedParent,
+    )
     if (first === undefined) return
     if (first.plan.kind !== "body_write")
       return yield* Effect.fail(
@@ -356,7 +421,13 @@ function dispatch<R = never>(
     const result = yield* executeSharedBodyWrite<R | Store | Crypto.Crypto | Notion>(library, {
       plan,
       mode: "create",
-      beforeDispatch: assertNoPendingApply(library, plan.skill_page_id),
+      beforeDispatch: assertNoPendingApply(
+        library,
+        plan.skill_page_id,
+        plan.action === "write"
+          ? { scope, fileId: plan.file_id, path: plan.path, plan }
+          : undefined,
+      ).pipe(Effect.asVoid),
       beforePlanWrite: (original) => retainPendingFileOperation(scope, original),
       ...(beforeRestoreDispatch === undefined ? {} : { beforeRestoreDispatch }),
       ...(afterRestoreBodyWrite === undefined ? {} : { afterRestoreBodyWrite }),
@@ -449,7 +520,7 @@ export function writeSharedSkillFile(input: {
         ),
       )
     const journal = yield* pendingScope(scope, library, locator.skill_id, locator.page_id)
-    yield* reconcileLocalBeforeNewPlan(library, journal)
+    yield* reconcileLocalBeforeNewPlan(library, journal, { fileId: file.file_id, path: input.path })
     const index = yield* querySharedSkillIndex(library, locator.page_id)
     if (
       index.skill_id !== locator.skill_id ||

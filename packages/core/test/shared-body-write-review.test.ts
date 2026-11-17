@@ -244,7 +244,6 @@ describe("explicit acceptance of a retained body-write observation", () => {
     "same_normalized_body",
     "changed_source",
     "changed_skill",
-    "disabled",
     "changed_heads",
   ])("%s cannot be accepted under the original observation and parent frontier", async (change) => {
     const { shared, plan } = await needsReview()
@@ -252,7 +251,6 @@ describe("explicit acceptance of a retained body-write observation", () => {
     if (change === "same_normalized_body") shared.markdown = observed.replaceAll("\n", "\r\n")
     if (change === "changed_source") shared.source = "another-source"
     if (change === "changed_skill") shared.skillId = "another-skill"
-    if (change === "disabled") shared.enabled = false
     if (change === "changed_heads") {
       if (shared.initial.kind !== "adopted") throw new Error("Fixture requires initial custom")
       const changed: FileEvent = {

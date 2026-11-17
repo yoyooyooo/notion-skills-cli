@@ -1012,6 +1012,67 @@ grimoire均已登记；firecrawl-workflows的15名中14名registered，1名
 所有冻结计划和只读输出保存在独立私有`src15-next-20261116`证据目录；
 不转写历史原ACK、不修正已知终局、不对未授权来源或Notion正文直接PATCH。
 
+## Initial Git main takeover correspondence
+
+基于 `677413c69abbbcd9b19787a32625e438f402e573` 的增量实现修复真实 Impeccable
+主文迁移缺口：Native Description 更新后，原 Git-only 主文仍返回固定 Git 全文；
+普通 body write 因不存在原 native baseline 返回 `BASELINE_MISSING`。
+新公开 `ctl library file takeover --input` 只初始化精确原 owner 的未物化主文，
+不新建 Skill，不推断空 native 文本就是原文件，也不适用于已有 native 事件或 unknown。
+
+完整原 Git bytes/descriptor、完整 authored input、所有受支持 YAML 字段和 mode
+进入原 body-write plan 的可选初始输入证明；原无该字段的计划含义不变。新 branch
+只在无 native 事件、同 File/page/Source/member、完整空页与完整 pending/frontier
+检查通过后发一次初始 append，仍由原 dispatch/ACK/readback/event/outcome 链控制。
+派发前重新检查实际正文与 Source 定义；并发追加保留用户文本并进入原 needs_review，
+丢失 ACK 或缺 completion 不因当前文本相等而补造成功。冷 mixed-tree export 只在
+原 v3 acquisition 上通过既有 fixed-file reader 补齐同一 manifest；普通主文仍懒读，
+offline 不联网。以上不是新的恢复协议、CAS 或消费资格例外。
+
+这些显式作者输入、YAML/mode、初始 native 空页和固定 Git 字节获取属于现有有限
+ProjectionRace/MaintenanceApply 的排除范围。resource-lifecycle 与 operation-recovery
+只新增 `reviewed_implementation_context_not_modeled` 对应并更新实际审阅文件 hash；
+全部 TLA/config/view/cases/expected_rules 与原有有限域保持不变。历史 40/35 模型
+结果不改称本次新运行，hash 对应不授予新的形式证明。
+
+`shared-git-main-takeover.test.ts` 保留普通入口原失败及正反例。独立工作树使用自己的
+依赖，对真实 body-write 代码分别删除保存原计划后的完整正文复核、删除 exact Source
+context 比较；前者使 late-body 的 STALE 断言失败，后者使本应拒绝的 Source 定义
+漂移实际执行成功。两项精确恢复后同一测试通过，产品树不参与 mutation。
+`library-file-takeover-http.test.ts` 另用实际 Node CLI、独立 SQLite、受控 Notion/Git
+验证正式 dry-run/plan/reconcile、冷完整导出、全部前言/正文/mode、未改支持文件及旧 pin。
+这些受控结果与后续实际 adapt/17 项 Notion 迁移分别记录；当前不声称实库已经接管。
+
+## Complete main migration correspondence
+
+同一 `677413c` 基线后，真实 adapt、Milestone、Worker 和三个缺额外前言字段的
+native 主文各暴露一个不同入口缺口。本次复用既有 body-write、body-review 与
+observation journal，保留初次失败、全部原计划和未知派发；不修改旧父子回执，
+也不把 Native Description 更新当作完整主文迁移。
+
+| 确认的缺口 | 最小实现和禁止越过的边界 | 判别性实现入口 |
+| --- | --- | --- |
+| 初次 Git 主文的嵌套 Markdown 被普通 v15 投影拒绝 | 仅确证未物化的初次 Git main 改用既有 v17 import wire；原 body-write 仍精确读回。原完整 needs_review 可显式 review，且必须再验完整 text/code/显式 href、Source、owner 和 frontier。零父事件只属于原已验证初始化 plan；unknown、真实内容损失和并发追加不能接受。 | `shared-git-main-import-review.test.ts`、实际 `library-file-takeover-http.test.ts` 两条旅程 |
+| 已知 sole-main 父操作没有父终局，妨碍修正已审阅的损失 | 仅 v1 单主文、无 metadata/layout、原完整 needs_review 和独立 accepted_observed 可暴露当前基线。原 Store 只允许同主文新显式纠正；派发前重验原图与全部第三 pending。新纠正有自己 applied 证明后才可独立启用；旧父 pending、旧子 needs_review 保留。 | `shared-single-body-apply-review.test.ts`，含冷客户端、未知新纠正与 late-body/第三 pending 反例 |
+| 历史 body-only 候选没有 frozen frontmatter | 仅缺 header 分支，以 retained 原 input body 与 fresh Native Name/Description 经原 canonicalMain 重建，完整 SHA 必须等于原 authored_input_sha256。已有 header 仍严格比较，非规范原 header、改变字段或正文都拒绝。 | `shared-single-body-apply-header.test.ts`，真实 Worker 原输入的独立离线 hash 证明另存 |
+| 普通 body-only 命令不能补缺失的完整前言 | 显式 `file takeover --header-input` 使用既有 observation event，仅 native 单 head main、同 owner/Source/binding、原 mode、精确现有 consumer body；完整 before/after header 可审。原始 body SHA、Native metadata、所有 pending 在派发前重验；零正文/属性 PATCH，Git-only 与 unknown 不获得权限。 | `shared-main-header-input.test.ts`、同安装 Node CLI 后同包冷 SDK 读新 header/快照 |
+
+这四项没有为 MaintenanceApply、ProjectionRace、BodyWrite 或 review 模型增加状态、
+转换、有限域或性质。它们的完整正文/前言、Source 图、历史计划重建、冷 SQLite/SDK
+和具体 dispatch 前检查属于原模型之外的实现组合，因此两个 coverage 只将明确
+文件与本段审阅绑定为 `reviewed_implementation_context_not_modeled`。所有原
+TLA/config/view/cases/expected_rules 不变；源码 hash 门槛不是新的形式证明。
+独立工作树 guard 反例、定向回归、真实 Node 安装旅程及实库 writer 的结果分别保存，
+不能以任何一层替代另一层。原已安装旧 Broker/SDK 的 FlClash 成功也不证明这些
+新路径；同包 SDK 的受控冷读取与后续正式 Broker 新包实测分别验收。
+
+新增两项独立 guard 反例使用另一工作树的同一实际源码与自己的依赖。删除新纠正
+的 `beforeDispatch` pending 核对后，晚到第三 remote intent 的原拒绝断言实际得到
+Success；删除 header-only 的完整 Native index 比对后，retention 期间 Description
+漂移实际发布成功。两项分别精确恢复后，同一两个用例通过，且两个源码 SHA 与
+原 baseline 一致。产品工作树未做 guard mutation；日志、精确命令和恢复 hash
+独立保存，不把编译或解析失败计作 guard 被捕获。
+
 ## Migration dogfood correspondence
 
 本次从 `cf40cc1b4a61a07792a1a5b1564db223265bdac5` 审阅到生产源码提交

@@ -130,7 +130,17 @@ export function validateSharedBodyWriteReviewPlan(input: unknown) {
         !Number.isSafeInteger(plan.content.bytes) ||
         plan.content.bytes < 0 ||
         canonicalSharedJson(plan.event.content) !== canonicalSharedJson(plan.content) ||
-        plan.event.parents.length === 0 ||
+        // The original validated body plan must prove first Git-main insertion
+        // before this root review event can be persisted or cold-verified.
+        (plan.event.parents.length === 0 &&
+          !(
+            plan.version === 2 &&
+            plan.path === "SKILL.md" &&
+            plan.page_id === plan.skill_page_id &&
+            plan.content.kind !== "resource" &&
+            plan.content.frontmatter !== undefined &&
+            plan.content.mode !== undefined
+          )) ||
         new Set(plan.event.parents).size !== plan.event.parents.length ||
         canonicalSharedJson(plan.event.parents) !==
           canonicalSharedJson([...plan.event.parents].sort()) ||

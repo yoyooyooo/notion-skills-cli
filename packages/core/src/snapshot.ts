@@ -1176,7 +1176,13 @@ function acquireTargetSnapshot(
                 }),
           },
         }
-        if (access !== "all" && snapshot.record.locator.type === "shared_skill") {
+        // Sparse Git intentionally opens only requested bytes. An all-file
+        // consumer (notably a cold export) must acquire that same fixed manifest
+        // through the existing verified byte reader before returning it.
+        if (
+          snapshot.record.locator.type === "shared_skill" &&
+          (access !== "all" || snapshot.shared_acquisition?.version === 3)
+        ) {
           const selected = yield* openFixedSnapshotFiles(snapshot, select, options)
           files = selected.files
           snapshot = {

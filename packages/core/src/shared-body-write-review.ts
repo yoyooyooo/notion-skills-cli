@@ -1,4 +1,6 @@
 import { Effect, Schema } from "effect"
+import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
+import { verifyGitMainInitializationContext } from "./shared-git-main-initialization.ts"
 import { invalidateSnapshotCache } from "./cache.ts"
 import { fail, property, type SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
@@ -218,6 +220,12 @@ function loadOriginalFacts(
         fail("SHARED_BODY_REVIEW_INVALID", "The retained response names another page."),
       )
     const body = yield* checked(() => completeBody(envelope.response, original.page_id))
+    // An initial import may vary presentation, but never the complete authored
+    // text, code or explicit links. This also protects cold completed-review reads.
+    if (original.git_main_initialization !== undefined)
+      yield* checked(() =>
+        assertImportedMarkdownContent(original.input_projection!.markdown, body.markdown),
+      )
     const rawHash = yield* sha256(body.raw)
     const normalizedHash = yield* sha256(body.markdown)
     const content = {
@@ -384,16 +392,19 @@ function verifyCurrent(
     const index = yield* querySharedSkillIndex(library, plan.skill_page_id)
     const binding = [index.main, ...index.files].find((file) => file.file_id === plan.file_id)
     const events = yield* fileEvents(library, plan)
-    const state = yield* checked(() => resolveFileState(plan.file_id, events))
+    const initial = facts.original.git_main_initialization !== undefined
+    const state =
+      initial && events.length === 0
+        ? undefined
+        : yield* checked(() => resolveFileState(plan.file_id, events))
     if (
-      !index.enabled ||
       binding === undefined ||
       index.skill_id !== plan.skill_id ||
       binding.page_id !== plan.page_id ||
       binding.path !== plan.path ||
       index.source_reference !== plan.source_id ||
-      state.ownership.kind === "tombstone" ||
-      canonicalSharedJson(state.heads) !== canonicalSharedJson(plan.event.parents)
+      state?.ownership.kind === "tombstone" ||
+      canonicalSharedJson(state?.heads ?? []) !== canonicalSharedJson(plan.event.parents)
     )
       return yield* Effect.fail(
         fail(
@@ -401,6 +412,17 @@ function verifyCurrent(
           "The original file binding, source selection or parent frontier changed; no new review facts were accepted.",
         ),
       )
+    // Disabled owners may be explicitly reviewed; this does not enable them.
+    if (initial) {
+      if (state !== undefined || events.length !== 0)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_REVIEW_STALE",
+            "The initial main already has native history; no root review event is authorized.",
+          ),
+        )
+      yield* verifyGitMainInitializationContext(library, facts.original)
+    }
     yield* checked(() => resolveFileState(plan.file_id, [...events, plan.event]))
     const raw = yield* (yield* Notion).request(
       `v1/pages/${plan.page_id}/markdown?markdown_version=v2`,

@@ -9,7 +9,11 @@ import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { querySharedOperationIndex, type SharedOperationHeader } from "./shared-operation-index.ts"
-import { observeAcceptedSingleBodyApply } from "./shared-single-body-apply-acceptance.ts"
+import {
+  observeAcceptedSingleBodyApply,
+  observeReviewedSingleBodyApply,
+} from "./shared-single-body-apply-acceptance.ts"
+import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import { loadPendingSharedSkillApplies } from "./shared-skill-apply.ts"
 import { loadPendingSharedObservationPlans } from "./shared-observation-operation.ts"
 import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
@@ -784,9 +788,7 @@ function checkNewMetadataIntent(
     const child = local.find((entry) => entry.plan.kind === "body_write")?.plan
     const change = plan.changes[0]
     if (
-      local.length !== 2 ||
       parent?.kind !== "skill_apply" ||
-      child?.kind !== "body_write" ||
       parents.length !== 1 ||
       parents[0]?.operation_id !== parent.operation_id ||
       plan.changes.length !== 1 ||
@@ -795,13 +797,20 @@ function checkNewMetadataIntent(
       change.after !== true
     )
       return yield* Effect.fail(rejected)
-    const accepted = yield* observeAcceptedSingleBodyApply(library, parent)
+    const accepted =
+      local.length === 2 && child?.kind === "body_write"
+        ? yield* observeAcceptedSingleBodyApply(library, parent)
+        : local.length === 1
+          ? yield* observeReviewedSingleBodyApply(library, parent)
+          : undefined
     if (
       accepted === undefined ||
-      canonicalSharedJson(accepted.child) !== canonicalSharedJson(child) ||
+      (accepted.decision === "accepted_current" &&
+        canonicalSharedJson(accepted.child) !== canonicalSharedJson(child)) ||
+      (accepted.decision === "accepted_observed" && !accepted.corrected) ||
       plan.skill_id !== parent.skill_id ||
-      plan.file_id !== child.file_id ||
-      plan.page_id !== child.page_id
+      plan.file_id !== accepted.child.file_id ||
+      plan.page_id !== accepted.child.page_id
     )
       return yield* Effect.fail(rejected)
     const current = {
@@ -812,6 +821,8 @@ function checkNewMetadataIntent(
     if (
       (yield* loadPendingSharedObservationPlans(library, current)).length !== 0 ||
       (yield* loadPendingSharedFileManagement(library, current)).length !== 0 ||
+      (accepted.decision === "accepted_observed" &&
+        (yield* loadPendingSharedBodyWrites(library, current)).length !== 0) ||
       (yield* loadPendingSharedMetadataWrites(library, current)).some(
         (entry) => entry.operation_id !== plan.operation_id,
       )

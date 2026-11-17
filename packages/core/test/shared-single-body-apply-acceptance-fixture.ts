@@ -3,6 +3,7 @@ import { HttpClient } from "effect/http"
 import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
+import { canonicalMain } from "../src/portable.ts"
 import { parseTarget } from "../src/ref.ts"
 import { openSkill } from "../src/snapshot.ts"
 import { applySharedSkillChanges } from "../src/shared-skill-apply-authoring.ts"
@@ -143,17 +144,26 @@ export function coldClient(f: Fixture) {
 }
 
 export async function pendingSingleBody(
-  unknown: "event" | "parent-outcome" = "event",
+  unknown: "event" | "parent-outcome" | "known-mismatch" = "event",
   fileCount = 1,
+  mainMetadata: "retained" | "canonical" | "noncanonical" = "retained",
 ) {
   const f = sharedSnapshotFixture({ fileCount })
+  const intendedBody =
+    unknown === "known-mismatch"
+      ? "# Milestone\n\nRead [Skeleton](skill://4135636c-236e-8191-8226-d828c7b44b39/SKILL.md) before implementation.\n"
+      : candidateBody
   const before = f.bodies.get(skillPage)!
   const content = {
     object_id: `body-${digest(before)}`,
     sha256: digest(before),
     bytes: encode(before).byteLength,
-    mode: "100644",
-    frontmatter: "---\nname: Managed Name\ndescription: Managed description\n---\n",
+    ...(mainMetadata === "retained"
+      ? {
+          mode: "100644",
+          frontmatter: "---\nname: Managed Name\ndescription: Managed description\n---\n",
+        }
+      : {}),
   }
   f.seedFact(
     { event_id: "initial-main", file_id: "file-main", parents: [], kind: "adopted", content },
@@ -177,9 +187,15 @@ export async function pendingSingleBody(
       files: [
         {
           path: "SKILL.md",
-          bytes: encode(
-            `---\nname: Managed Name\ndescription: Managed description\n---\n\n${candidateBody}`,
-          ),
+          bytes:
+            mainMetadata === "canonical"
+              ? canonicalMain("Managed Name", "Managed description", intendedBody, {
+                  path: "SKILL.md",
+                  bytes: new Uint8Array(),
+                }).bytes
+              : encode(
+                  `---\nname: Managed Name\ndescription: Managed description\n---\n\n${intendedBody}`,
+                ),
         },
       ],
       dryRun: true,
@@ -200,7 +216,12 @@ export async function pendingSingleBody(
       withNativeWrites(
         f,
         executeSharedSkillApply(library, { plan, mode: "create" }),
-        child.candidate.markdown,
+        unknown === "known-mismatch"
+          ? child.candidate.markdown.replace(
+              "[Skeleton](skill://4135636c-236e-8191-8226-d828c7b44b39/SKILL.md)",
+              "Skeleton",
+            )
+          : child.candidate.markdown,
       ),
       (path, body, method, next) => {
         if (unknown === "parent-outcome" && path === "v1/pages" && method === "POST") {
@@ -220,8 +241,11 @@ export async function pendingSingleBody(
       },
     ).pipe(Effect.result),
   )
-  if (failure(stopped).code !== "WRITE_OUTCOME_UNKNOWN")
-    throw new Error("Expected unknown original event dispatch")
+  if (
+    failure(stopped).code !==
+    (unknown === "known-mismatch" ? "SHARED_BODY_WRITE_REVIEW_REQUIRED" : "WRITE_OUTCOME_UNKNOWN")
+  )
+    throw new Error("Expected the selected original body-write failure")
   property(property(f.main.properties).enabled).checkbox = false
   const accept = (dryRun = false) =>
     acceptCurrentSharedBodyWrite({

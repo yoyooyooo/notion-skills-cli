@@ -26,6 +26,44 @@ AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影�
 
 MNT02/07 见 [resource-audit](resource-audit.md)；MNT03 见 [maintenance-repair](maintenance-repair.md)；MNT04/05 运行 `bun test packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000`；MNT06 使用公开 `ntn-skills schema ctl` 与 `packages/cli/test/maintenance-repair.test.ts` 的命令 schema 回归。MNT08/09 的安装路径见下方 [joined installed acceptance](#joined-installed-acceptance)，实际 Pi 使用 Broker 的 `verify-notion-skills-integration` 维护地图。每次只选择受影响入口，不要求全部切片重跑。
 
+## MNT03 初始 Git 主文的完整接管
+
+`ctl library file takeover PAGE SKILL.md --input COMPLETE_SKILL.md` 只接受同一原
+Git-only owner、固定 Source/member、无 native 主文事件且当前完整空白的控制页。
+原完整 Git 前像、完整输入 YAML/正文和 mode 分别冻结；Name/Description 必须先显式
+对齐，不能把一次目录元数据更新算作主文迁移。正式 plan/apply/reconcile 复用原
+body-write journal；无 ACK 不重放，追加与用户并发文字相遇时保留文字并 needs_review。
+初次输入使用既有 v17 import wire；原 body writer 仍逐字比较候选。已知完整回包
+只有通过完整 text/code/显式 href 核对和原 Source 证明，才可走既有显式 review；
+不把 Native 排版变化自动当成功，不放行内容损失或 unknown。
+
+```sh
+bun test packages/core/test/shared-git-main-takeover.test.ts packages/core/test/shared-git-main-import-review.test.ts packages/core/test/shared-main-header-input.test.ts packages/core/test/shared-single-body-apply-review.test.ts packages/core/test/shared-single-body-apply-header.test.ts packages/core/test/shared-body-write-review.test.ts packages/core/test/shared-file-takeover.test.ts packages/cli/test/library-file-takeover-input.test.ts --timeout 60000
+bun test packages/cli/test/library-file-takeover-http.test.ts
+```
+
+后者运行实际 Node CLI、独立 SQLite 与受控 HTTP，不是实库验收：完整 YAML/执行位、
+同 owner/File/source、未改 Git 文件、原 pin、重复零写和独立冷导出逐项核对。
+精确与 needs_review→显式 review 两条初始旅程均经公开 ctl；既有 native main 的
+`--header-input` 再保留全部前言，正文和属性 PATCH 为零；新的 Node 子进程从同一
+安装包 import SDK 冷读新快照。通过 `NTN_SKILLS_TEST_EXECUTABLE` 指定正常安装的
+候选 bin 时禁止自动重建；构建产物测试与安装产物测试分别记录。
+普通主文读取保持懒加载；冷整树 export 按同一固定 manifest 补取，offline 缺文件
+明确失败且零网络。晚到正文和 Source 定义漂移各有真实 guard 删除反例；对应范围见
+[维护对应审阅](../../../../docs/maintenance-verification-review.md#initial-git-main-takeover-correspondence)。
+
+## MNT03 已知回包受理与完整前言
+
+`shared-single-body-apply-review` 只验证已知 sole-main v1 needs_review：独立
+accepted_observed、原 Store 新纠正、已 applied 新正文后独立启用。原父/子终局
+不能变绿；未知 accepted_current 仍不得写新正文。第三 pending、当前 raw body、
+head、Source、binding、Native metadata 或完整 mode/frontmatter 漂移均须实际拒绝。
+历史 headerless 候选仅可按原完整 authored-input hash 证明 canonical 重建，不能
+据当前 Name/Description 猜原输入字段。`shared-main-header-input` 则验证显式完整
+前言、body/模式保留、同 owner、全 pending 屏障、派发前漂移与未知事件只读核对；
+普通 body write/apply/takeover 不继承该权限。参见
+[完整主文迁移对应审阅](../../../../docs/maintenance-verification-review.md#complete-main-migration-correspondence)。
+
 ## MNT01 执行入口
 
 从当前 checkout 执行，不连接生产 Notion：

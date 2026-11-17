@@ -20,6 +20,11 @@ import {
   validateSharedNotionMarkdownProjection,
 } from "./shared-notion-projection.ts"
 import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
+import {
+  gitMainInput,
+  SharedGitMainInitializationSchema,
+} from "./shared-git-main-initialization-model.ts"
+import { nativeMainFrontmatter } from "./shared-native-file-metadata.ts"
 
 const Identity = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u))
 export const BodyWriteActionSchema = Schema.Literals(["write", "restore_follow"])
@@ -58,6 +63,8 @@ export const SharedBodyWritePlanSchema = Schema.Struct({
   restore_source: Schema.optional(RestoreSourceSchema),
   /** New restore plans bind live Source configuration; old frozen plans keep their original digest. */
   source_context: Schema.optional(SharedFileSourceContextSchema),
+  /** Explicit first native main insertion, with the real complete Git preimage. */
+  git_main_initialization: Schema.optional(SharedGitMainInitializationSchema),
   before: FrozenWriteBodySchema,
   candidate: Schema.Struct({ markdown: Schema.String, content: RetainedContentSchema }),
   /** Optional for previously frozen plans; the full preprojection body remains retained here. */
@@ -145,6 +152,9 @@ function description(plan: Omit<SharedBodyWritePlan, "operation_id">) {
     action: plan.action,
     ...(plan.restore_source === undefined ? {} : { restore_source: plan.restore_source }),
     ...(plan.source_context === undefined ? {} : { source_context: plan.source_context }),
+    ...(plan.git_main_initialization === undefined
+      ? {}
+      : { git_main_initialization: plan.git_main_initialization }),
     before: plan.before,
     candidate: plan.candidate,
     event: plan.event,
@@ -183,14 +193,14 @@ export function validateSharedBodyWritePlan(input: unknown) {
         throw fail("SHARED_BODY_WRITE_INVALID", "The frozen file path must be canonical.")
       if (
         plan.source_context !== undefined &&
-        (plan.action !== "restore_follow" ||
+        ((plan.action !== "restore_follow" && plan.git_main_initialization === undefined) ||
           plan.source_context.selected_version !== plan.source_id)
       )
         throw fail(
           "SHARED_BODY_WRITE_INVALID",
           "The restore's frozen Source context contradicts its selected version.",
         )
-      if (plan.before.raw_markdown.length === 0)
+      if (plan.before.raw_markdown.length === 0 && plan.git_main_initialization === undefined)
         throw fail(
           "SHARED_BODY_WRITE_UNSUPPORTED",
           "An empty old body cannot provide a unique complete match. Retain a candidate; no existing page is overwritten.",
@@ -227,9 +237,9 @@ export function validateSharedBodyWritePlan(input: unknown) {
         ((plan.input_projection.version !== 1 &&
           plan.input_projection.purpose !== "body_write" &&
           !(
-            plan.action === "restore_follow" &&
-            plan.input_projection.version >= 11 &&
-            plan.input_projection.purpose === "data_source_create"
+            plan.input_projection.purpose === "data_source_create" &&
+            ((plan.action === "restore_follow" && plan.input_projection.version >= 11) ||
+              (plan.git_main_initialization !== undefined && plan.input_projection.version === 17))
           )) ||
           (validateSharedNotionMarkdownProjection(plan.input_projection).markdown !==
             plan.candidate.markdown &&
@@ -258,7 +268,7 @@ export function validateSharedBodyWritePlan(input: unknown) {
         )
       if (
         new Set(plan.event.parents).size !== plan.event.parents.length ||
-        plan.event.parents.length === 0 ||
+        (plan.event.parents.length === 0 && plan.git_main_initialization === undefined) ||
         canonicalSharedJson(plan.event.parents) !==
           canonicalSharedJson([...plan.event.parents].sort()) ||
         plan.event.parents.includes(plan.event.event_id)
@@ -292,9 +302,73 @@ export function validateSharedBodyWritePlan(input: unknown) {
             "Restore-follow requires the exact frozen selected source and file path.",
           )
       }
+      const initial = plan.git_main_initialization
+      if (initial !== undefined) {
+        if (
+          plan.action !== "write" ||
+          plan.path !== "SKILL.md" ||
+          plan.page_id !== plan.skill_page_id ||
+          plan.event.parents.length !== 0 ||
+          plan.before.raw_markdown !== "" ||
+          plan.before.markdown !== "" ||
+          Object.keys(nativeFileMetadata(plan.before)).length !== 0 ||
+          plan.restore_source !== undefined ||
+          plan.restore_readback !== undefined ||
+          plan.input_projection === undefined ||
+          plan.authored_input_sha256 === undefined ||
+          plan.source_context?.definition == null ||
+          initial.source_file.path !== plan.path ||
+          !initial.bindings.some(
+            (binding) => binding.path === plan.path && binding.page_id === plan.page_id,
+          ) ||
+          new Set(initial.bindings.map((binding) => binding.path)).size !==
+            initial.bindings.length ||
+          new Set(initial.bindings.map((binding) => binding.page_id)).size !==
+            initial.bindings.length ||
+          initial.bindings.some(
+            (binding) =>
+              pageId(binding.page_id) !== binding.page_id ||
+              normalizePath(binding.path) !== binding.path,
+          )
+        )
+          throw fail(
+            "SHARED_BODY_WRITE_INVALID",
+            "Initial Git main insertion requires its exact empty control page, absent native frontier, full fixed source and complete authored input.",
+          )
+        const authored = gitMainInput({
+          text: initial.authored_input,
+          name: initial.name,
+          description: initial.description,
+          path: plan.path,
+          bindings: initial.bindings,
+        })
+        if (
+          plan.input_projection.input_markdown !== authored.body ||
+          canonicalSharedJson(nativeFileMetadata(plan.candidate.content)) !==
+            canonicalSharedJson({ mode: initial.authored_mode, frontmatter: authored.frontmatter })
+        )
+          throw fail(
+            "SHARED_BODY_WRITE_INVALID",
+            "The first native main must preserve every authored frontmatter field, its exact mode and complete projected body.",
+          )
+      }
     })
     const previousHash = yield* sha256(plan.before.markdown)
     const candidateHash = yield* sha256(plan.candidate.markdown)
+    if (plan.git_main_initialization !== undefined) {
+      const initial = plan.git_main_initialization
+      if (
+        (yield* sha256(initial.source_input)) !== initial.source_file.sha256 ||
+        new TextEncoder().encode(initial.source_input).byteLength !== initial.source_file.bytes ||
+        (yield* sha256(initial.authored_input)) !== plan.authored_input_sha256
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_WRITE_INVALID",
+            "The complete fixed Git preimage or authored input differs from its committed bytes.",
+          ),
+        )
+    }
     const previous: RetainedContent = {
       object_id: `body-${previousHash}`,
       sha256: previousHash,
@@ -377,7 +451,16 @@ export function makeSharedBodyWritePlan(
       sha256: hash,
       bytes: new TextEncoder().encode(markdown).byteLength,
       ...nativeFileMetadata(
-        input.action === "restore_follow" ? (input.restore_source ?? {}) : input.before,
+        input.git_main_initialization === undefined
+          ? input.action === "restore_follow"
+            ? (input.restore_source ?? {})
+            : input.before
+          : {
+              mode: input.git_main_initialization.authored_mode,
+              frontmatter: nativeMainFrontmatter(
+                input.git_main_initialization.authored_input,
+              ).replace(/^\uFEFF/u, ""),
+            },
       ),
     }
     const parents = [...input.parents].sort()
@@ -415,6 +498,9 @@ export function makeSharedBodyWritePlan(
       action: input.action,
       ...(input.restore_source === undefined ? {} : { restore_source: input.restore_source }),
       ...(input.source_context === undefined ? {} : { source_context: input.source_context }),
+      ...(input.git_main_initialization === undefined
+        ? {}
+        : { git_main_initialization: input.git_main_initialization }),
       before: input.before,
       candidate: { markdown, content },
       event,

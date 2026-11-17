@@ -45,6 +45,10 @@ import { completedSharedBodyCurrentAcceptance } from "./shared-body-current-acce
 import { readSharedFileSourceContext } from "./shared-file-source-context.ts"
 import { withReadOnlyNotion } from "./notion-readonly.ts"
 import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
+import {
+  verifyGitMainInitializationContext,
+  type SharedGitMainInitialization,
+} from "./shared-git-main-initialization.ts"
 
 export {
   SharedBodyWritePlanSchema,
@@ -132,6 +136,7 @@ function currentContext(
   skillPageId: string,
   fileId: string,
   suppliedIndex?: SharedSkillIndex,
+  initial?: SharedGitMainInitialization,
 ) {
   return Effect.gen(function* () {
     const index = suppliedIndex ?? (yield* querySharedSkillIndex(library, skillPageId))
@@ -145,7 +150,10 @@ function currentContext(
         fail("SHARED_BODY_WRITE_SCOPE", "The selected active Skill/file binding is unavailable."),
       )
     const events = yield* fileEvents(library, skillPageId, fileId)
-    const state = yield* bodyWriteChecked(() => resolveFileState(fileId, events))
+    const state =
+      events.length === 0 && initial !== undefined
+        ? undefined
+        : yield* bodyWriteChecked(() => resolveFileState(fileId, events))
     return { index, binding, events, state }
   })
 }
@@ -217,6 +225,11 @@ export function prepareSharedBodyWrite(input: {
       input.fileId,
       input.currentIndex,
     )
+    if (context.state === undefined)
+      return yield* Effect.fail(
+        fail("BASELINE_MISSING", "An ordinary body write requires its real native event baseline."),
+      )
+    const state = context.state
     const headers = yield* querySharedOperationIndex(input.library, input.skillPageId)
     const pending = yield* loadPendingSharedBodyWrites(input.library, {
       skillPageId: input.skillPageId,
@@ -274,7 +287,7 @@ export function prepareSharedBodyWrite(input: {
     )
     const before = yield* readExactBody(context.binding.page_id)
     const decision = yield* bodyWriteChecked(() =>
-      decideObservedBody(context.state.ownership, before.fingerprint),
+      decideObservedBody(state.ownership, before.fingerprint),
     )
     if (decision.kind !== "unchanged")
       return yield* Effect.fail(
@@ -380,14 +393,21 @@ function verifyCurrent(
 ) {
   return Effect.gen(function* () {
     const context =
-      suppliedContext ?? (yield* currentContext(library, plan.skill_page_id, plan.file_id))
+      suppliedContext ??
+      (yield* currentContext(
+        library,
+        plan.skill_page_id,
+        plan.file_id,
+        undefined,
+        plan.git_main_initialization,
+      ))
     if (
       context.index.skill_id !== plan.skill_id ||
       context.binding.page_id !== plan.page_id ||
       context.binding.path !== plan.path ||
       context.index.source_reference !== plan.source_id ||
-      canonicalSharedJson(context.state.heads) !== canonicalSharedJson(plan.event.parents) ||
-      canonicalSharedJson(nativeMetadataForOwnership(context.state.ownership)) !==
+      canonicalSharedJson(context.state?.heads ?? []) !== canonicalSharedJson(plan.event.parents) ||
+      canonicalSharedJson(nativeMetadataForOwnership(context.state?.ownership)) !==
         canonicalSharedJson(nativeFileMetadata(plan.before))
     )
       return yield* Effect.fail(
@@ -396,12 +416,22 @@ function verifyCurrent(
           "The frozen identity, path, source selection or event frontier changed.",
         ),
       )
+    if (plan.git_main_initialization !== undefined) {
+      if (context.state !== undefined || context.events.length !== 0)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_WRITE_STALE",
+            "The initial Git main, exact source, metadata or native frontier changed; no first insertion is authorized.",
+          ),
+        )
+      yield* verifyGitMainInitializationContext(library, plan)
+    }
     yield* validateSource(
       library,
       plan.skill_page_id,
       context.index.source_reference,
       plan.restore_source,
-      context.state.placement === undefined
+      context.state?.placement === undefined
         ? context.binding.path
         : context.state.placement.source_path,
     )
@@ -754,7 +784,13 @@ export function executeSharedBodyWrite<R = never>(
     if (headers.some((header) => header.record_id === plan.operation_id))
       return yield* reconcileSharedBodyWrite(library, plan)
     const preflight = yield* withNotionRequestAttribution(
-      currentContext(library, plan.skill_page_id, plan.file_id),
+      currentContext(
+        library,
+        plan.skill_page_id,
+        plan.file_id,
+        undefined,
+        plan.git_main_initialization,
+      ),
       { phase: "author_preflight" },
     )
     const pending = yield* withNotionRequestAttribution(
@@ -796,8 +832,8 @@ export function executeSharedBodyWrite<R = never>(
     const sameBody = plan.before.fingerprint.sha256 === plan.candidate.content.sha256
     if (
       sameBody &&
-      (plan.action === "write" ||
-        (initial.state.ownership.kind === "following" &&
+      ((plan.action === "write" && plan.git_main_initialization === undefined) ||
+        (initial.state?.ownership.kind === "following" &&
           initial.state.ownership.source_revision === plan.restore_source?.revision &&
           canonicalSharedJson(nativeMetadataForOwnership(initial.state.ownership)) ===
             canonicalSharedJson(nativeFileMetadata(plan.candidate.content))))
@@ -863,21 +899,29 @@ export function executeSharedBodyWrite<R = never>(
       const request = yield* (yield* Notion)
         .request(
           `v1/pages/${plan.page_id}/markdown`,
-          {
-            markdown_version: "v2",
-            type: "update_content",
-            update_content: {
-              content_updates: [
-                {
-                  old_str: plan.before.raw_markdown,
-                  new_str:
-                    plan.input_projection === undefined
-                      ? plan.candidate.markdown
-                      : sharedNotionMarkdownWire(plan.input_projection),
+          plan.git_main_initialization !== undefined
+            ? {
+                markdown_version: "v2",
+                type: "insert_content",
+                insert_content: {
+                  content: sharedNotionMarkdownWire(plan.input_projection!),
                 },
-              ],
-            },
-          },
+              }
+            : {
+                markdown_version: "v2",
+                type: "update_content",
+                update_content: {
+                  content_updates: [
+                    {
+                      old_str: plan.before.raw_markdown,
+                      new_str:
+                        plan.input_projection === undefined
+                          ? plan.candidate.markdown
+                          : sharedNotionMarkdownWire(plan.input_projection),
+                    },
+                  ],
+                },
+              },
           { method: "PATCH" },
         )
         .pipe(Effect.result)

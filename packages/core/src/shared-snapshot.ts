@@ -101,7 +101,10 @@ import {
   type SharedCreatePlan,
 } from "./shared-create.ts"
 import { loadPendingSharedSkillApplies, reconcileSharedSkillApply } from "./shared-skill-apply.ts"
-import { observeAcceptedSingleBodyApply } from "./shared-single-body-apply-acceptance.ts"
+import {
+  observeAcceptedSingleBodyApply,
+  observeReviewedSingleBodyApply,
+} from "./shared-single-body-apply-acceptance.ts"
 import type { SharedSkillApplyPlan } from "./shared-skill-apply-model.ts"
 import {
   pendingFileOperations,
@@ -626,11 +629,18 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       skillApplies.set(plan.operation_id, plan)
     }
     for (const plan of skillApplies.values()) {
-      const accepted = yield* observeAcceptedSingleBodyApply(input.library, plan, {
+      const currentDecision = yield* observeAcceptedSingleBodyApply(input.library, plan, {
         index,
         headers: operationHeaders,
         events: allEvents,
       })
+      const accepted =
+        currentDecision ??
+        (yield* observeReviewedSingleBodyApply(input.library, plan, {
+          index,
+          headers: operationHeaders,
+          events: allEvents,
+        }))
       if (accepted !== undefined) {
         acceptedBodyParents.set(accepted.child.operation_id, accepted.child)
         initialObservations.set(accepted.child.file_id, accepted.observation)

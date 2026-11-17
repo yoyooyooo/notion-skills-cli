@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { authScope } from "./catalog.ts"
+import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { decode, fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId } from "./ref.ts"
@@ -34,6 +35,8 @@ export function readSharedFileIntentContext(input: {
   readonly library: SharedLibrary
   readonly skillPageId: string
   readonly path: string
+  /** Only an explicit complete-header request may use the exact disabled authoring target. */
+  readonly allowDisabledHeader?: boolean
 }) {
   return Effect.gen(function* () {
     if (
@@ -48,7 +51,10 @@ export function readSharedFileIntentContext(input: {
     const raw = yield* (yield* Notion).request(`v1/pages/${input.skillPageId}`)
     const index = yield* querySharedSkillIndex(input.library, input.skillPageId, raw)
     const sourceContext = yield* readSharedFileSourceContext(input.library, input.skillPageId, raw)
-    if (!index.enabled)
+    if (
+      !index.enabled &&
+      !(input.allowDisabledHeader === true && (yield* isSharedAuthoringTarget(index.page_id)))
+    )
       return yield* Effect.fail(
         fail("CONTENT_DISABLED", "Enable the selected Skill before managing its files."),
       )
