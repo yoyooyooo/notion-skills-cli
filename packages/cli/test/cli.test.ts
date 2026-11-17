@@ -868,7 +868,15 @@ test("cold setup and whole-intent editing are directly discoverable without a sc
   const help = await invoke(["--help"], { inaccessible: true, traceOnline: true })
   const text = help.stdout.replace(/\s+/g, " ")
   expect(text).toContain("read PAGE --database ENTRY --authoring --read-only")
-  expect(text).toContain("apply RETURNED_PIN --database ENTRY --input DIR --dry-run")
+  expect(text).toContain(
+    "For an explicitly authorized complete input, apply RETURNED_PIN --database ENTRY --input DIR --compact",
+  )
+  expect(text).toContain(
+    "Use --dry-run instead when a preview is requested, intent is unclear or writing is not authorized",
+  )
+  expect(text).toContain(
+    "ntn-skills apply RETURNED_PIN --database ENTRY --input ./changes --dry-run",
+  )
   expect(text).toContain("omitted files stay unchanged")
 }, 30000)
 
