@@ -96,6 +96,10 @@ function queryInventory(library: SharedLibrary) {
       "Projection",
       "References",
       "Source",
+      // Sparse Git admission authenticates the original source owner/member.
+      // Keep these in the same inventory, without a per-node page fallback.
+      "Origin",
+      "Source Member",
       "Members",
       "Requires",
     ]

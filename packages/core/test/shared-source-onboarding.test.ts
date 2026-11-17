@@ -53,6 +53,7 @@ function setup(
   setupOptions: {
     readonly bodyWrites?: boolean
     readonly nativeReadback?: (wire: string) => string
+    readonly filteredMetadata?: boolean
   } = {},
 ) {
   const f = fixture([], {
@@ -258,7 +259,37 @@ function setup(
                 }
                 return Effect.succeed(structuredClone(target))
               }
-              return api.request(path, body, options)
+              const response = api.request(path, body, options)
+              if (
+                setupOptions.filteredMetadata === true &&
+                path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query?`)
+              ) {
+                const selected = new Set(
+                  new URL(path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
+                )
+                if (selected.size > 0)
+                  return response.pipe(
+                    Effect.map((raw) => {
+                      const value = property(raw)
+                      return {
+                        ...value,
+                        results: (value.results as unknown[]).map((item) => {
+                          const row = property(item)
+                          return {
+                            ...row,
+                            properties: Object.fromEntries(
+                              Object.entries(property(row.properties)).filter(
+                                ([key, field]) =>
+                                  selected.has(key) || selected.has(String(property(field).id)),
+                              ),
+                            ),
+                          }
+                        }),
+                      }
+                    }),
+                  )
+              }
+              return response
             }),
         }
         return yield* action.pipe(
@@ -329,6 +360,52 @@ test("pre-marker Git-only frozen plans are rejected rather than replaying a chan
     code: "SOURCE_DEFINITION_INVALID",
   })
   expect(f.gitCreates()).toBe(0)
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("current use preserves sparse Git Source ownership under actual filtered graph metadata", async () => {
+  const f = setup({ filteredMetadata: true })
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const admitted = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  const page = admitted.results[0]!.page_id!,
+    row = f.skills.get(page)!
+  property(row.properties).enabled = { id: "enabled", type: "checkbox", checkbox: true }
+  const action = plan.actions[0]!
+  if (action.kind !== "create_git") throw new Error("Expected sparse Git admission")
+  const currentRef = fileRef(`shared_skill:${library.library_id}:${action.skill_id}`, "SKILL.md")
+  const use = () =>
+    f.run(
+      consume(
+        { version: 1, targets: [currentRef], purpose: "use", freshness: { policy: "refresh" } },
+        { database: library.skills.database_id, readOnly: true },
+      ),
+    )
+  f.base.json.clear()
+  f.base.objects.clear()
+  f.clear()
+  const result = await use()
+  expect(result.status).toBe("ready")
+  if (result.status !== "ready") throw new Error(JSON.stringify(result))
+  expect(result.entries[0]!.manifest.files).toHaveLength(action.binding.files.length)
+  const inventories = f.calls.filter((call) =>
+    call.path.startsWith(`v1/data_sources/${library.skills.data_source_id}/query?`),
+  )
+  expect(inventories).toHaveLength(1)
+  const fields = new URL(inventories[0]!.path, "https://api.notion.com/").searchParams.getAll(
+    "filter_properties",
+  )
+  expect(fields).toContain(library.skills.property_ids.Origin)
+  expect(fields).toContain(library.skills.property_ids["Source Member"])
+  expect(f.writes()).toHaveLength(0)
+  property(row.properties).origin = {
+    id: "origin",
+    type: "relation",
+    relation: [{ id: id(99887) }],
+    has_more: false,
+  }
+  const changed = await use()
+  expect(changed.status).toBe("failed")
+  if (changed.status === "failed") expect(changed.error.code).toBe("GIT_ONLY_SCOPE")
   expect(f.writes()).toHaveLength(0)
 })
 
