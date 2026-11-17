@@ -80,7 +80,7 @@ const advancedCommands = [
 ]
 const ctlCommand = defineCommand("ctl").pipe(
   Command.withDescription(
-    "Manage setup, libraries, sources, Views, synchronization and original-operation recovery. Prepare exposes advanced graph/session/budget controls; resolve inspects relative references. Status reports recorded local state, not current remote health. Use ctl COMMAND --help or schema ctl COMMAND for exact parameters.",
+    "For setup or connecting an existing library, read ctl builtin read notion/ntn-skills-maintain --path references/setup.md first; it is complete and offline. Inspect an existing entry with ctl library inspect ENTRY, without creating tables or configuring Pi. Manage libraries, sources, Views, synchronization and original-operation recovery here. Status reports recorded local state, not current remote health. Use ctl COMMAND --help or schema ctl COMMAND only for the chosen action.",
   ),
   Command.withSubcommands([
     withRuntime(libraryCommand, live),
@@ -123,9 +123,24 @@ const schemaCommand = defineCommand(
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Discover Notion Skills with list --query, inspect original text or an exact resource with read, and load one root plus its complete Requires with use. Keep returned canonical refs for later resource reads. Files and export provide optional inventories and packages. Authoring is available on demand through create/adopt/write/update and pinned apply/replace; inspect exact disabled drafts with read --authoring and enable a verified tree with update --enabled true. Use COMMAND --help or the bundled maintenance Skill. Manage libraries, sources, Views, preparation, synchronization and original operations with ctl. Help/schema work offline. Loading instructions does not execute them or attest delivery; preserve an interrupted operation's exact next.argv.",
+      "Setup or existing-library connection: ctl builtin read notion/ntn-skills-maintain --path references/setup.md (offline, no credentials or configuration changes). Editing existing files or adding references: read PAGE --database ENTRY --authoring --read-only, then apply RETURNED_PIN --database ENTRY --input DIR --dry-run; omitted files stay unchanged. Read the bundled maintenance workflow before authorized writes. For consumption, list discovers names/refs, read inspects exact text, and use loads a root plus complete Requires; retain returned fixed refs for resources. Files/export are optional. Help/schema work offline; inspect only the chosen command. Loading instructions does not execute them. Preserve interrupted operations and their exact next.argv.",
     ),
     Command.withExamples([
+      {
+        command:
+          "ntn-skills ctl builtin read notion/ntn-skills-maintain --path references/setup.md",
+        description:
+          "First use or existing Notion library: one offline setup and Pi connection guide",
+      },
+      {
+        command: "ntn-skills read PAGE_ID --database ENTRY --authoring --read-only",
+        description: "Prepare to edit one existing Skill; keep the exact returned pin",
+      },
+      {
+        command: "ntn-skills apply RETURNED_PIN --database ENTRY --input ./changes --dry-run",
+        description:
+          "Preview changed documents and new references together; omitted files stay unchanged",
+      },
       {
         command: "ntn-skills list",
         description: "Discover skill names, descriptions and refs without loading bodies",

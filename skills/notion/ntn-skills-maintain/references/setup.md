@@ -4,6 +4,24 @@ Use this procedure when the user authorizes creation of a new library or
 connection to an exact existing one. Reading this package reference requires no
 Notion library and does not install an Agent extension.
 
+## Already have a library?
+
+Do not initialize another parent or inspect every command schema. Check the
+given entry with `ntn-skills ctl library inspect ENTRY`. In Pi, preview the
+connection with `/context-broker connect SOURCE ENTRY --config /absolute/config.json`.
+Keep the exact configuration path chosen by the user. Only an explicit
+configuration-change authorization permits the returned `--apply` command;
+then reload Pi with that same file. A verified library descriptor, saved
+configuration and actual Skill delivery are separate results. Missing local
+configuration is an unconnected client, not a missing remote library.
+
+For an existing Skill's main/reference edits, read
+`ntn-skills read PAGE_ID --database ENTRY --authoring --read-only`, retain its
+returned pin, then preview `ntn-skills apply RETURNED_PIN --database ENTRY --input DIR --dry-run`.
+That one input directory may contain a changed main and a new reference;
+omitted files remain unchanged. Continue only the authorized action and its
+original recovery route. The full maintenance workflow is in the parent Skill.
+
 ## Inputs
 
 Use the executable supplied by the host, or the installed `ntn-skills` CLI.

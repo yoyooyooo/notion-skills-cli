@@ -4,6 +4,14 @@ AH-1024 extends the existing authorship, audit and original-operation owners. Th
 
 ## SRC15: bounded Source subsets and unchanged write authority (AH-1067)
 
+### NXT final routing review: public entrypoints before schema discovery
+
+The fixed-budget post-repair onboarding and maintenance evaluations retained their original prompts, input bytes, model, output cap and request limit. Both ended without a completed task; their original results remain failures, and there is no further natural-model retry in this change. The actual transcripts showed repeated package/schema exploration before the existing setup reference or complete apply workflow was reached. Guarded credentials, arbitrary scripts, output redirection and unscoped doctor calls were not opened to obtain a passing sample.
+
+The product correction is confined to public navigation: root/ctl help directly names the existing offline setup reference; the first-use reference front-loads exact existing-library inspection, selected Pi configuration preview and explicit-authority boundaries. Root help also exposes the existing author read followed by a single sparse apply preview, including unchanged omitted files. The English/Chinese Broker READMEs give those same routes before extended product details. No parser action, command authorization, operation state, ownership, query budget, source byte or model retry policy changes. Offline production-CLI tests run with inaccessible application roots and an HTTP probe, verify help/schema agreement and zero provider access; source rules and reference links retain their existing tests. This is a deterministic routing repair, not a claim that a new autonomous task has passed.
+
+The changed protected CLI test is correspondence context only. Existing finite model states, cfg files, views, negative scenarios and expected-rule inventories are unchanged; updating its reviewed source fingerprint does not create new formal coverage or erase the retained natural failures.
+
 ### SRC19: document-level takeover rejoins the original owner pipeline
 
 Actual installed Pi found a separate current-`use` projection gap after the fixed-pin CLI/SDK path had passed: graph batching requested `Projection` and `Source` but omitted `Origin` and `Source Member`. Real Notion therefore removed those properties, and the existing owner guard correctly rejected the candidate with `INVALID_SHARED_SKILL`. The fixture now honors `filter_properties`; the new current-use regression fails on the original query. The fix adds only the two registered fields to that same complete graph inventory. No extra per-node GET, weakened owner proof, fallback to Git, or wider ordinary discovery inventory is introduced. Wrong-Origin rejection remains independently asserted. The original Pi failure and before/after source receipts are retained.

@@ -853,6 +853,25 @@ test("daily recovery guidance names executable command paths offline", async () 
   }
 }, 30000)
 
+test("cold setup and whole-intent editing are directly discoverable without a schema crawl", async () => {
+  const setup = "ctl builtin read notion/ntn-skills-maintain --path references/setup.md"
+  for (const path of [[], ["ctl"]]) {
+    const help = await invoke([...path, "--help"], { inaccessible: true, traceOnline: true })
+    expect(help.exit).toBe(0)
+    expect(help.onlineCalled).toBe(false)
+    expect(help.stdout.replace(/\s+/g, " ")).toContain(setup)
+    const schema = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
+    expect(schema.exit).toBe(0)
+    expect(schema.onlineCalled).toBe(false)
+    expect(JSON.parse(schema.stdout).schema.description).toContain(setup)
+  }
+  const help = await invoke(["--help"], { inaccessible: true, traceOnline: true })
+  const text = help.stdout.replace(/\s+/g, " ")
+  expect(text).toContain("read PAGE --database ENTRY --authoring --read-only")
+  expect(text).toContain("apply RETURNED_PIN --database ENTRY --input DIR --dry-run")
+  expect(text).toContain("omitted files stay unchanged")
+}, 30000)
+
 test("parser errors return the relevant offline help command", async () => {
   for (const [args, next] of [
     [["read"], ["ntn-skills", "read", "--help"]],

@@ -35,6 +35,19 @@ test("bundled instructions describe the current library and include every relati
 test("current onboarding and maintenance preserve complete inputs and original recovery boundaries", () => {
   const maintain = builtins.find((skill) => skill.id === "notion/ntn-skills-maintain")!
   expect(maintain.portable.files.some((file) => file.path === "references/setup.md")).toBe(true)
+  const setup = text(
+    maintain.portable.files.find((file) => file.path === "references/setup.md")!.bytes,
+  )
+  const firstRoute = setup.slice(0, setup.indexOf("## Inputs"))
+  for (const term of [
+    "ctl library inspect ENTRY",
+    "/context-broker connect SOURCE ENTRY",
+    "configuration-change authorization",
+    "apply RETURNED_PIN",
+    "--dry-run",
+    "omitted files remain unchanged",
+  ])
+    expect(firstRoute).toContain(term)
   const author = maintain.portable.files.map((file) => text(file.bytes)).join("\n")
   for (const term of [
     "adopt",
