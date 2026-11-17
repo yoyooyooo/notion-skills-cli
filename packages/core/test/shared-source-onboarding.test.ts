@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test"
-import { Crypto, Effect, FileSystem, Path } from "effect"
+import { Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { ChildProcessSpawner } from "effect/process"
 import { HttpClient } from "effect/http"
 import { mkdtempSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fail, property, text, type SkillsError } from "../src/model.ts"
@@ -14,10 +15,13 @@ import { authScope } from "../src/catalog.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
 import { openFixedSnapshotFiles } from "../src/fixed-snapshot-files.ts"
 import { readResources } from "../src/resource-read.ts"
+import { readSkill, resolveSkillRef } from "../src/snapshot.ts"
+import { registerSourceBinding } from "../src/shared-source-binding.ts"
 import { fileRef } from "../src/ref.ts"
 import { querySharedRecords } from "../src/shared-records.ts"
 import { bindSourceDefinition } from "../src/shared-source-definitions.ts"
 import { discoverSourceDefinition } from "../src/shared-source-adapters.ts"
+import { SourceOnboardingPlanSchema } from "../src/shared-source-onboarding-model.ts"
 import {
   prepareSourceOnboarding,
   reviewSourceOnboarding,
@@ -74,7 +78,7 @@ function setup() {
                       (library.skills.property_ids as Record<string, string>).Projection!
                     ],
                   ).rich_text,
-                ) === "git-only/v1"
+                ).startsWith("git-only/v1:")
               ) {
                 const newPage = id(56800 + ++gitCreates)
                 const lost = lostGitCreate
@@ -210,6 +214,22 @@ test("a source-only fixed Git member creates just one disabled identity page and
   expect(again.report.sources[0]?.members[0]?.kind).toBe("registered")
 })
 
+test("pre-marker Git-only frozen plans are rejected rather than replaying a changed Source-owned POST", async () => {
+  const f = setup()
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
+  const legacy = structuredClone(plan)
+  if (legacy.actions[0]?.kind !== "create_git") throw new Error("Expected fixed Git action")
+  delete (legacy.actions[0] as { projection?: string }).projection
+  expect(() =>
+    Schema.decodeUnknownSync(SourceOnboardingPlanSchema)(legacy, { onExcessProperty: "error" }),
+  ).toThrow()
+  await expect(f.run(executeSourceOnboarding(library, legacy, "apply"))).rejects.toMatchObject({
+    code: "SOURCE_DEFINITION_INVALID",
+  })
+  expect(f.gitCreates()).toBe(0)
+  expect(f.writes()).toHaveLength(0)
+})
+
 test("an explicitly enabled Git-only member consumes original Git main and lazily retrieves a supporting Markdown without native Files", async () => {
   const f = setup()
   const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, f.acquire))
@@ -250,6 +270,142 @@ test("an explicitly enabled Git-only member consumes original Git main and lazil
     expect(resource.files[0]?.content).toContain("# Guide")
   }
   expect(f.files.size).toBeGreaterThan(0) // all existing fixture Files are unrelated
+  expect(f.writes()).toHaveLength(0)
+})
+
+test("Git-only sibling links read pinned Git bytes through --from only for a published same-Source same-commit member", async () => {
+  const f = setup()
+  f.source.properties[ids.Selection!] = rich(
+    ids.Selection!,
+    JSON.stringify({ roots: ["skills"], include: [], exclude: [], mapping: {} }),
+  )
+  const original = structuredClone(f.snapshot)
+  const first = structuredClone(original.members[0]!)
+  const main = first.portable.files.find((file) => file.path === "SKILL.md")!
+  const encode = (value: string) => new TextEncoder().encode(value)
+  const gitOid = (value: Uint8Array) =>
+    createHash("sha1").update(`blob ${value.length}\0`).update(value).digest("hex")
+  const alpha = encode(
+    "---\nname: initial-source\ndescription: Initial complete member\n---\n\n" +
+      "# Main\n\n[Sibling](../papers/SKILL.md)\n",
+  )
+  const beta = encode(
+    "---\nname: pinned-papers\ndescription: Exact sibling from the same Git commit\n---\n\n# Papers\n",
+  )
+  const revisedFirst = {
+    ...first,
+    portable: {
+      ...first.portable,
+      files: [
+        { ...main, bytes: alpha },
+        ...first.portable.files.filter((file) => file.path !== "SKILL.md"),
+      ],
+    },
+    git_manifest: {
+      ...first.git_manifest!,
+      files: first.git_manifest!.files.map((entry) =>
+        entry.path === "SKILL.md"
+          ? { ...entry, bytes: alpha.length, git_oid: gitOid(alpha) }
+          : entry,
+      ),
+    },
+  }
+  const sibling = {
+    ...structuredClone(revisedFirst),
+    member_key: "skills/papers",
+    source_path: "skills/papers",
+    portable: {
+      ...structuredClone(revisedFirst.portable),
+      name: "pinned-papers",
+      description: "Exact sibling from the same Git commit",
+      files: [{ path: "SKILL.md", bytes: beta, mode: "100644" as const }],
+    },
+    git_manifest: {
+      ...structuredClone(revisedFirst.git_manifest!),
+      root: "skills/papers",
+      files: [
+        {
+          path: "SKILL.md",
+          source_path: "skills/papers/SKILL.md",
+          git_oid: gitOid(beta),
+          bytes: beta.length,
+          mode: "100644" as const,
+        },
+      ],
+    },
+  }
+  const source = { ...original, members: [revisedFirst, sibling] }
+  f.registerSnapshot(source)
+  const acquire = () => Effect.succeed(structuredClone(source))
+  const plan = await f.run(prepareSourceOnboarding(library, f.scope, {}, acquire))
+  expect(plan.actions.map((action) => action.kind)).toEqual(["create_git", "create_git"])
+  const applied = await f.run(executeSourceOnboarding(library, plan, "apply"))
+  expect(applied.status).toBe("completed")
+  const mainPage = applied.results.find((row) => row.member === "skills/demo")!.page_id!
+  const siblingPage = applied.results.find((row) => row.member === "skills/papers")!.page_id!
+  for (const page of [mainPage, siblingPage]) {
+    property(f.skills.get(page)!.properties).enabled = {
+      id: "enabled",
+      type: "checkbox",
+      checkbox: true,
+    }
+  }
+  const current = await f.run(
+    Effect.gen(function* () {
+      return yield* openSharedConsumer({
+        library,
+        target: mainPage,
+        scope: yield* authScope,
+        startedAt: Date.now(),
+      })
+    }),
+  )
+  const from = fileRef(current.record.id, "SKILL.md", current.snapshot_id)
+  const resolved = await f.run(resolveSkillRef(from, "../papers/SKILL.md"))
+  expect(resolved).toContain("snapshot=s_")
+  const joined = await f.run(readSkill("../papers/SKILL.md", { from }))
+  expect("content" in joined ? joined.content : "").toContain("# Papers")
+  expect(joined.path).toBe("SKILL.md")
+  expect(f.files.size).toBeGreaterThan(0)
+  f.clear()
+  property(f.skills.get(siblingPage)!.properties).enabled = {
+    id: "enabled",
+    type: "checkbox",
+    checkbox: false,
+  }
+  await expect(f.run(resolveSkillRef(from, "../papers/SKILL.md"))).rejects.toMatchObject({
+    code: "SOURCE_MEMBER_UNAVAILABLE",
+  })
+  expect(f.writes()).toHaveLength(0)
+  property(f.skills.get(siblingPage)!.properties).enabled = {
+    id: "enabled",
+    type: "checkbox",
+    checkbox: true,
+  }
+  const siblingAction = plan.actions.find((action) => action.member === "skills/papers")
+  if (siblingAction?.kind !== "create_git")
+    throw new Error("Expected a frozen Git-only sibling action")
+  const differentCommit = await f.run(
+    registerSourceBinding(library, {
+      skillPageId: siblingPage,
+      mode: "create",
+      fixedSource: {
+        url: siblingAction.binding.url,
+        commit: "c".repeat(40),
+        tree: "d".repeat(40),
+        root: siblingAction.binding.root,
+        files: siblingAction.binding.files,
+      },
+    }),
+  )
+  property(f.skills.get(siblingPage)!.properties).source = rich(
+    "source",
+    differentCommit.binding.source_id,
+  )
+  f.clear()
+  await expect(f.run(resolveSkillRef(from, "../papers/SKILL.md"))).rejects.toMatchObject({
+    code: "SOURCE_REVISION_UNAVAILABLE",
+  })
   expect(f.writes()).toHaveLength(0)
 })
 

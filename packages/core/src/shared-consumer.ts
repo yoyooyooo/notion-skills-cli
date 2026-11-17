@@ -8,7 +8,8 @@ import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "./shared-snapshot.ts"
 import { sharedSkillMetadataFor } from "./shared-metadata-inventory.ts"
 import { isSharedAuthoringTarget } from "./shared-authoring-context.ts"
-import { openGitOnlySharedConsumer, gitOnlyProjection } from "./shared-git-only-consumer.ts"
+import { openGitOnlySharedConsumer } from "./shared-git-only-consumer.ts"
+import { isGitOnlyProjection } from "./shared-git-only-marker.ts"
 
 /** Resolve only the immutable source explicitly selected in the current Skills row. */
 export function openSharedConsumer(
@@ -88,7 +89,7 @@ export function openSharedConsumer(
     if (
       projectionField.type === "rich_text" &&
       Array.isArray(projectionField.rich_text) &&
-      text(projectionField.rich_text) === gitOnlyProjection
+      isGitOnlyProjection(text(projectionField.rich_text))
     ) {
       if (authoring)
         return yield* Effect.fail(

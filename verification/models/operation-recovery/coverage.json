@@ -18,7 +18,7 @@
     "packages/core/test/shared-create-known-recovery.test.ts": "8869f52fabfadbcf2837e03ab350a2c0dc701610a1c4430f0e2ec88eabb239c9",
     "packages/core/test/shared-file-management.test.ts": "ecdced69dbd400671e93467be3638b563ba5dde953698915c21c9f21b6c01cfe",
     "packages/core/test/shared-file-request.test.ts": "710c485b34f73e187846c497b78548539641bf1254fc813c507357aa132aaca2",
-    "packages/core/test/shared-source-projection-fixture.ts": "9e8c7c38a7495a2b0d5840c9413d3d828e95348dd19baed6756739f448ab4a43",
+    "packages/core/test/shared-source-projection-fixture.ts": "78140bdc8622b7dabef564dce30250e55ba9b2df9812dcc97d83e553c4a5f298",
     "packages/core/test/shared-snapshot-fixture.ts": "7b95df133d6ed562f8b4e4248e57750c45451a3b5a773aebcbee3e13ccbfec20",
     "packages/core/src/shared-skill-apply.ts": "a660c8a2a591eb1f48414ad278ad4870543875a9ef7f89b99c7a520f6fc6763f",
     "packages/core/src/shared-skill-apply-model.ts": "b46fa76c208efbf0cb4f94d673f0857ce826299a8e96790cf81513bca0bf2456",
@@ -1414,5 +1414,14 @@
       "No natural Pi session claim",
       "Cross-Skill sibling link resolution not yet integrated"
     ]
+  },
+  "src18_git_only_fixture_review": {
+    "issue": "AH-1067",
+    "document": "docs/maintenance-verification-review.md",
+    "reviewed_implementation_context": ["packages/core/test/shared-source-projection-fixture.ts"],
+    "concrete_change": "The shared Source projection fixture now includes all member source-path Git OIDs for controlled sibling-source observations; the original operation-recovery model state/actions/cases are unchanged. Git-only target frozen marker and --from sibling link validation are covered by separate concrete tests.",
+    "model_configs_cases_expected_rules_changed": false,
+    "finite_models_changed": false,
+    "claims_excluded": "No formal proof of Git-only sibling authorization or natural Pi use."
   }
 }

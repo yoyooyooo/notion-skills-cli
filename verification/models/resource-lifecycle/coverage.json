@@ -3,13 +3,18 @@
   "synchronized_commit": "1a439ec5b2610e9f97a0e76bb6405e4e53d9877c",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
+    "packages/core/src/shared-git-only-marker.ts": "adfec72d2011dc07de5b36fc7c984befac68a3c4a7ce857c52d76bbe1f0e8933",
+    "packages/core/src/shared-git-only-relative.ts": "7fb2c06981ffb1bb1f7c9889412793b95d1c68070e85360be83a88e3eb91c95b",
+    "packages/core/src/upstream-member-snapshot.ts": "363ad8c9c4ef2ea4dbd59d89dfb55eea6a213ebb79d959083de50b281784f8ab",
+    "packages/core/test/upstream-member-snapshot.node.test.ts": "c51c050fadf8615b77dd1b811814028e8f8be90b51729bb4f820b48b68fd5bc9",
+    "packages/core/test/shared-source-projection-fixture.ts": "78140bdc8622b7dabef564dce30250e55ba9b2df9812dcc97d83e553c4a5f298",
     "packages/core/src/cache.ts": "54e1ecf36473a087224bd434e408721981514f08dddba0b7d7aab320c5a2c5cf",
     "packages/core/src/model.ts": "adbb97351854ea9144d78ecc93558fca7dccfaf42cf02ea18927a690e1de6afd",
     "packages/core/src/shared-acquisition-model.ts": "e01eb903c26717781179496b8bc35544660b818b6dedc6c3f50806489b32ed09",
-    "packages/core/src/shared-consumer.ts": "34bd74b07f09ce2bebce9d9c0b8600f03666bcc1795d1bad491f3260d423b8e7",
-    "packages/core/src/shared-skill-index.ts": "113a24ed5df5e18143cdd6501debcfea672d046d4e51112ad87f253bbdb6ca52",
-    "packages/core/src/shared-git-only-consumer.ts": "fd07e8c93431cda33a80824c042cba91c9564db3021a79837c96e64396c3ae4a",
-    "packages/core/test/shared-git-only-consumer.test.ts": "312fcfb54c2966bedc1ba48fbf219f5e5c56fb8685c972e05103ca5c0ebaf6ea",
+    "packages/core/src/shared-consumer.ts": "b9599e57bbf09e582ece348941ca2b50a9334b585086cd027497c2a7b6c4aa93",
+    "packages/core/src/shared-skill-index.ts": "7d0f6043d0be2addf328620bad3bc3128942a48bb5f28636831e61f89333f305",
+    "packages/core/src/shared-git-only-consumer.ts": "6fb5dc1ac67fada994bd1154e686ebf2df7defd82f19e3ece6e0ee897fe70177",
+    "packages/core/test/shared-git-only-consumer.test.ts": "cb39667f176579af89b55c8b94cd601d23b91d5eea9e2225618539cf94846d03",
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
     "packages/core/src/shared-maintenance-result.ts": "690a839c98ec87a71a896de3153145a729f1637349696e558222c029ebfe7710",
     "packages/core/src/shared-source-display.ts": "8c4038bd728472617a41fc6bcf038bcdf203711f154b4c52993da5b92d9e389c",
@@ -129,11 +134,11 @@
     "packages/core/src/shared-plan-storage.ts": "2b5c7e425131aa9249219edcdf6faaf7b9e7209bd3a9b685eb3c5beb80d194e9",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
-    "packages/core/src/shared-source-onboarding.ts": "3dc161fa268abece60bf250c09ec0af0ace633088a53596b30a2d7e3e6031169",
-    "packages/core/src/shared-source-onboarding-model.ts": "8828c64d859e3f9c4d246da4ccfd9231ce9743e84592d13847f72dfc69263f5a",
+    "packages/core/src/shared-source-onboarding.ts": "4d2a4beec7c1eb3b34d083bedfa7184c1a4b15d9403dd47ff8bef4257b977222",
+    "packages/core/src/shared-source-onboarding-model.ts": "62a9ba76123b87502aa290163a3ec7c35bd10df80297d854436274f1c9842333",
     "packages/cli/src/commands-library-source-onboarding.ts": "4e484b7b3ce9392191d94ebd1c0baaf59cf7636412a046e52d8842948f959ace",
     "packages/core/src/shared-metadata-inventory.ts": "641a91ad9c2a4e135dffdddfb4e300cbdeaffff5e134db2c983f932f190a35ee",
-    "packages/core/test/shared-source-onboarding.test.ts": "57e02461c78d40cfefd642c9e86ad9037b7cd489c0443d8322bb3017eec4a62b",
+    "packages/core/test/shared-source-onboarding.test.ts": "0ee764b530c718ef57606fa9d4a42eaa093fa00468bade2fcda5f2571bcf1f20",
     "packages/core/src/shared-create-text-retention.ts": "b82c6c9e30cbd405e3653f57fad8e2719c3c3f8ee2d9c3b0c4797e82d870cf30",
     "packages/core/test/shared-source-projection-retained.test.ts": "718c8393639204c35b95d0ea97a0074fd7bf18505a5928a3cb30f2e3f778aa43",
     "packages/core/test/shared-record-codec.node.test.ts": "d420174efa7d25d2eef0046564b4764e9bea59ada15a38851ed11df2fe218ae8",
@@ -2302,5 +2307,57 @@
       "No natural Pi session claim",
       "Cross-Skill sibling link resolution not yet integrated"
     ]
+  },
+  "src18_git_only_source_owner_sibling_review": {
+    "issue": "AH-1067",
+    "document": "docs/maintenance-verification-review.md",
+    "original_delivery": "4480b61f474b652c0252e643d35a663dfa881a7d",
+    "changed_existing_source_correspondences": [
+      "packages/core/src/shared-consumer.ts",
+      "packages/core/src/shared-skill-index.ts",
+      "packages/core/src/shared-git-only-consumer.ts",
+      "packages/core/test/shared-git-only-consumer.test.ts",
+      "packages/core/src/shared-source-onboarding.ts",
+      "packages/core/src/shared-source-onboarding-model.ts",
+      "packages/core/test/shared-source-onboarding.test.ts"
+    ],
+    "added_explicit_context_bindings": [
+      "packages/core/src/shared-git-only-marker.ts",
+      "packages/core/src/shared-git-only-relative.ts",
+      "packages/core/src/upstream-member-snapshot.ts",
+      "packages/core/test/upstream-member-snapshot.node.test.ts",
+      "packages/core/test/shared-source-projection-fixture.ts"
+    ],
+    "concrete_semantics": "Git-only frozen create action now includes exact admitting Source page; current one-Origin marker checked separately from immutable selected Git pin. Explicit only --from sibling path traversals require a full Origin-filtered Source Member roster, active exact target with matched immutable Git URL/commit/tree/blob, and a verified target snapshot; native/tracked and single-member paths retain their previous dispatch.",
+    "operation_authority": "Existing create/journal/ACK/unknown and immutable Source registration unchanged; old create_git plan lacking marker rejected rather than reinterpreted; no Notion native supporting File allocations.",
+    "finite_models_changed": false,
+    "model_configs_cases_views_expected_rules_changed": false,
+    "validations": [
+      "bun run typecheck",
+      "bun test packages/core/test/shared-source-onboarding.test.ts",
+      "bun test packages/core/test/shared-git-only-consumer.test.ts",
+      "node vitest upstream-member-snapshot.node.test.ts and upstream-member-links.node.test.ts"
+    ],
+    "not_claimed": [
+      "not new formal proof of cross-member source traversal",
+      "not actual published Firecrawl Git-only member",
+      "not natural Pi agent cold/maintenance success",
+      "not one Source complete means all Sources complete"
+    ]
+  },
+  "src18_completed_legacy_owner_read_review": {
+    "issue": "AH-1067",
+    "document": "docs/maintenance-verification-review.md",
+    "modified_context": [
+      "packages/core/src/shared-git-only-marker.ts",
+      "packages/core/src/shared-git-only-relative.ts",
+      "packages/core/src/shared-git-only-consumer.ts",
+      "packages/core/test/shared-git-only-consumer.test.ts",
+      "packages/core/test/shared-source-onboarding.test.ts"
+    ],
+    "semantic_review": "Completed original Git-only v1 control pages are accepted only when the stable Skill ID cryptographically derives from exact original Source page, member and library. New create_git plans freeze the explicit original Source marker; old incomplete plans are still rejected before dispatch. Original Source ACK/unknown, native retained, body customization and old fixed history protections unchanged.",
+    "model_cases_views_configs_expected_rules_changed": false,
+    "finite_model_transitions_changed": false,
+    "validation": "Deterministic legacy original-owner, changed-Origin negative, current Git source, duplicate no writes, cross-member fixed Git and native tracked regressions. No production enable or natural Pi claim."
   }
 }

@@ -1,6 +1,8 @@
 import { expect, test } from "vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { ConfigProvider, Effect } from "effect"
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
+import { ConfigProvider, Crypto, Effect, FileSystem, Path } from "effect"
+import { HttpClient } from "effect/http"
 import { createHash } from "node:crypto"
 import { mkdtemp } from "node:fs/promises"
 import { trashPath } from "../src/local-locks.ts"
@@ -99,7 +101,17 @@ interface Fixture {
 async function fixture(
   operation: (
     state: Fixture,
-  ) => Effect.Effect<unknown, unknown, Store | Notion | NodeServices.NodeServices>,
+  ) => Effect.Effect<
+    unknown,
+    unknown,
+    | Store
+    | Notion
+    | NodeServices.NodeServices
+    | HttpClient.HttpClient
+    | Crypto.Crypto
+    | FileSystem.FileSystem
+    | Path.Path
+  >,
 ) {
   const root = await mkdtemp(join(tmpdir(), "ntn-member-snapshot-"))
   const sourceZip = portableZip(alpha, true)
@@ -308,6 +320,7 @@ async function fixture(
         Effect.provideService(Notion, api),
         Effect.provide(StoreLive),
         Effect.provide(NodeServices.layer),
+        Effect.provide(NodeHttpClient.layerFetch),
         Effect.provide(
           ConfigProvider.layer(
             ConfigProvider.fromUnknown({

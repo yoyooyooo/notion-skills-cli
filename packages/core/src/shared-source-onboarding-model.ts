@@ -108,6 +108,8 @@ export const SourceOnboardingActionSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("create_git"),
     source: Source,
+    /** Frozen original owner marker; old plans without this field fail closed. */
+    projection: Schema.String,
     member: Schema.String,
     skill_id: Schema.String,
     main_file_id: Schema.String,

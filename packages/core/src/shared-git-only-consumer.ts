@@ -10,8 +10,9 @@ import type { PlannedSharedSource } from "./shared-selected-source.ts"
 import { sha256, Store } from "./store.ts"
 import { pageId } from "./ref.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import { assertGitOnlyAdmissionOwner, isGitOnlyProjection } from "./shared-git-only-marker.ts"
 
-export const gitOnlyProjection = "git-only/v1"
+export { gitOnlyProjection } from "./shared-git-only-marker.ts"
 
 /** The current page remains an identity/permission control, never the source
  * for an imported Markdown body. Changes to its empty native body fail closed.
@@ -76,7 +77,7 @@ export function openGitOnlySharedConsumer(input: {
     if (
       index.source_reference !== input.fixedSource.source_id ||
       index.files.length !== 0 ||
-      values[0] !== gitOnlyProjection ||
+      !isGitOnlyProjection(values[0] ?? "") ||
       values[1] !== "" ||
       input.fixedSource.git_member_root === undefined ||
       values[2] !== (input.fixedSource.git_member_root || ".") ||
@@ -120,8 +121,13 @@ export function openGitOnlySharedConsumer(input: {
       },
       catch: (e) => e as ReturnType<typeof fail>,
     })
-    if (origin === undefined)
-      return yield* Effect.fail(fail("GIT_ONLY_SCOPE", "Git-only source ownership is missing."))
+    yield* assertGitOnlyAdmissionOwner({
+      projection: values[0]!,
+      library_id: input.library.library_id,
+      skill_id: record.locator.skill_id,
+      origin_page_id: String(property(origin).id ?? ""),
+      member: values[2]!,
+    })
     // A source-only page is born with no native Markdown. A human edit is an
     // explicit takeover request, not a license to mask it with remote bytes.
     const body = property(

@@ -93,15 +93,26 @@ export function fixture(
     },
     ...extraFiles,
   ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-  const revisions = new Map<string, SourceSnapshot["members"][number]["portable"]["files"]>()
+  const revisions = new Map<string, SourceSnapshot["members"]>()
   let providerReads = 0
   const client = HttpClient.make((request, url) =>
     Effect.sync(() => {
       providerReads++
       const commit = url.pathname.split("/").find((part) => /^[a-f0-9]{40}$/u.test(part))
-      const file = (revisions.get(commit ?? "") ?? []).find((candidate) =>
-        url.pathname.endsWith(`/${candidate.path}`),
-      )
+      const file = (revisions.get(commit ?? "") ?? [])
+        .flatMap((member) =>
+          member.portable.files.map((file) => ({
+            file,
+            source_path:
+              member.source_path === "." ? file.path : `${member.source_path}/${file.path}`,
+            git_oid: member.git_manifest?.files.find((entry) => entry.path === file.path)?.git_oid,
+          })),
+        )
+        .find(
+          (candidate) =>
+            url.pathname.endsWith(`/${candidate.source_path}`) ||
+            (candidate.git_oid !== undefined && url.pathname.endsWith(`/${candidate.git_oid}`)),
+        )?.file
       return HttpClientResponse.fromWeb(
         request,
         file === undefined
@@ -183,9 +194,8 @@ export function fixture(
       },
     ],
   }
-  revisions.set(snapshot.revision, snapshot.members[0]!.portable.files)
-  const registerSnapshot = (next: SourceSnapshot) =>
-    revisions.set(next.revision, next.members[0]!.portable.files)
+  revisions.set(snapshot.revision, snapshot.members)
+  const registerSnapshot = (next: SourceSnapshot) => revisions.set(next.revision, next.members)
   const run: typeof f.run = (effect) =>
     f.run(
       Effect.gen(function* () {

@@ -23,11 +23,13 @@ Sources 单独保存可编辑配置，Records 保留不可变历史。普通 Ski
 
 ### Git-only 最小接纳（固定上游优先）
 
-`sources onboard --source SOURCE --member EXACT_KEY` 在默认 `--storage auto` 判定为未转换、完整固定 Git 时，冻结 `create_git` 动作：**只建立一个默认 Disabled 的 Skills 控制页和该页对应的一个必要不可变 Source pin 证明**。该页保存 Skill ID、主文身份、Origin、Source Member、Git 选择及 `Projection=git-only/v1`，不为上游辅助 Markdown、图片、脚本或其他资源创建 Notion Files 页面/字节对象。确实要求 Notion 可编辑/保留导入时，使用显式 `--storage retained`，保留原 native 创建和不可变恢复合同；旧原操作不得重新解释为 Git-only。
+`sources onboard --source SOURCE --member EXACT_KEY` 在默认 `--storage auto` 判定为未转换、完整固定 Git 时，冻结 `create_git` 动作：**只建立一个默认 Disabled 的 Skills 控制页和该页对应的一个必要不可变 Source pin 证明**。该页保存 Skill ID、主文身份、Origin、Source Member、Git 选择及 `Projection=git-only/v1:<SOURCE_PAGE_ID>`，将原接纳 Source 页面身份冻结在控制标记内；不为上游辅助 Markdown、图片、脚本或其他资源创建 Notion Files 页面/字节对象。确实要求 Notion 可编辑/保留导入时，使用显式 `--storage retained`，保留原 native 创建和不可变恢复合同；旧原操作不得重新解释为 Git-only。之前冻结的无 Source 身份旧 `create_git` 计划在新合同下明确拒绝，应重新只读准备，避免同一计划派发出不同的请求。**已完成登记**且保存旧 `Projection=git-only/v1` 的控制页不会被丢弃：只有当前 Source UUID、Source Member 与首次接纳时按固定公式生成的 Skill ID 逐一吻合，才可继续使用旧控制页的固定 Git 内容；改变 Origin 或成员会失败，不会把旧控制页冒充新一次接纳。
 
 `git-only/v1` 消费必须先核验当前 Skills 资格、选定的 immutable source pin、精确 Source Member 路径、单一 Origin、空的 native 正文/文件归属/引用/未经审阅的管理关系。之后以原固定 Git manifest 建立完整文件目录，只取得本次需要的 `SKILL.md`，references/非文档资源在选中的固定 snapshot 中按路径和 OID/SHA256/长度/模式延迟取回。本机缓存是派生物，不向 Notion 发布全文。当前 Notion 页面发生人工正文编辑时返回 `GIT_ONLY_CUSTOM_TAKEOVER`，保护人工修改等待显式接管流程；不要静默回退为旧 Git 内容或把原页面改为空。跨上游兄弟 Skill 的相对链接保持原字节，归属/目标验证仍需独立验收，不能放宽通用路径逃逸检查。新建控制页 POST、Source 记录及后续元数据均沿原 journal/ACK/unknown 防重放；页面看起来存在不能证明未收到响应的原请求成功。
 
 接纳默认 Disabled，必须由后续明确的授权变更才可公开普通目录/`read/use`；只读 `review` 与 `onboard --output` 仅生成候选或冻结计划，不会接纳或启用。此设计不要求补齐历史保留型导入的全部 Files/Records。独立冷 SDK/Pi 与真实提供方验收需分别记录，不以受控 fixture 通过代替发布成功。
+
+原始 `SKILL.md` 中的 `../sibling/SKILL.md` 链接保留 Git 原字节。仅在显式 `read '../sibling/SKILL.md' --from '<PINNED_REF>'` 时，Git-only 相对引用解析器才查询该 Source 已绑定的成员清单，并核对两端固定 URL/commit/tree、原 Source 页面、精确 Source Member、目标已启用、目标文件 SHA-256/大小/模式和实际 Git-only snapshot。验证通过返回对方的固定 snapshot ref，不通过则明确拒绝。普通主文 `read/use` 不增加兄弟成员扫描或文件下载，且不为引用新建任何 Notion Files/Records。现有 retained/native 成员尚未达到这套固定 Git 条件时仍沿原路径处理，不能伪造同版本结果。
 
 ## 来源适配
 

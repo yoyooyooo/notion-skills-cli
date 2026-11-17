@@ -4,7 +4,9 @@ import { Effect } from "effect"
 import { Notion } from "../src/notion.ts"
 import { property } from "../src/model.ts"
 import { gitOnlyProjection, openGitOnlySharedConsumer } from "../src/shared-git-only-consumer.ts"
+import { gitOnlyProjectionForSource } from "../src/shared-git-only-marker.ts"
 import type { PlannedSharedSource } from "../src/shared-selected-source.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
 import { fixture, library } from "./shared-source-projection-fixture.ts"
 import { id, rich } from "./shared-snapshot-fixture.ts"
 
@@ -13,13 +15,23 @@ const sha = (value: Uint8Array) => createHash("sha256").update(value).digest("he
 function setup() {
   const f = fixture()
   const target = id(56002)
-  const row = f.seedSkill(target, "git-only-member", "initial-source", "skill", true)
-  const props = property(row.properties)
   const member = f.snapshot.members[0]!
+  const originalIdentity = createHash("sha256")
+    .update(
+      canonicalSharedJson([
+        "source-onboarding-v1",
+        library.library_id,
+        f.source.id,
+        member.member_key,
+      ]),
+    )
+    .digest("hex")
+  const row = f.seedSkill(target, `skill-${originalIdentity}`, "initial-source", "skill", true)
+  const props = property(row.properties)
   const pin = `source-${"1".repeat(64)}`
   props.main_file_id = rich("main_file_id", "file-git-only-main")
   props.source = rich("source", pin)
-  props.projection = rich("projection", gitOnlyProjection)
+  props.projection = rich("projection", gitOnlyProjectionForSource(f.source.id))
   props.references = rich("references", "")
   props.source_member = rich("source_member", member.member_key)
   props.origin = {
@@ -152,6 +164,19 @@ test("Git-only refuses a changed member, missing origin or authored Members with
     relation: [{ id: f.f.source.id }],
     has_more: false,
   }
+  fields.origin = {
+    id: "origin",
+    type: "relation",
+    relation: [{ id: id(4333) }],
+    has_more: false,
+  }
+  await expect(f.run(f.read())).rejects.toMatchObject({ code: "GIT_ONLY_SCOPE" })
+  fields.origin = {
+    id: "origin",
+    type: "relation",
+    relation: [{ id: f.f.source.id }],
+    has_more: false,
+  }
   fields.members = {
     id: "members",
     type: "relation",
@@ -159,5 +184,22 @@ test("Git-only refuses a changed member, missing origin or authored Members with
     has_more: false,
   }
   await expect(f.run(f.read())).rejects.toMatchObject({ code: "GIT_ONLY_RELATION_REVIEW" })
+  expect(f.f.writes()).toHaveLength(0)
+})
+
+test("a completed pre-marker Git-only page remains consumable only with its deterministic original Source identity", async () => {
+  const f = setup()
+  const fields = property(f.row.properties)
+  fields.projection = rich("projection", gitOnlyProjection)
+  const original = await f.run(f.read())
+  expect(original.shared_acquisition?.version).toBe(2)
+  expect(original.files.some((item) => item.path === "SKILL.md")).toBe(true)
+  fields.origin = {
+    id: "origin",
+    type: "relation",
+    relation: [{ id: id(8333) }],
+    has_more: false,
+  }
+  await expect(f.run(f.read())).rejects.toMatchObject({ code: "GIT_ONLY_SCOPE" })
   expect(f.f.writes()).toHaveLength(0)
 })

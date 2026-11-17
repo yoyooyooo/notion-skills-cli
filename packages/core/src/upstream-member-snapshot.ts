@@ -19,6 +19,7 @@ import {
 } from "./upstream-member-links.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import type { SourceLinkUnavailable } from "./upstream-member-model.ts"
+import { resolveGitOnlySibling } from "./shared-git-only-relative.ts"
 
 function memberContext(snapshot: Snapshot, rawPage: unknown) {
   return Effect.gen(function* () {
@@ -244,6 +245,19 @@ export function projectUpstreamMemberSnapshot(
 export function resolveUpstreamMemberRelative(snapshot: Snapshot, from: string, relative: string) {
   return Effect.gen(function* () {
     const local = fileRef(snapshot.record.id, from, snapshot.snapshot_id)
+    if (snapshot.shared_acquisition?.version === 2) {
+      const own = yield* Effect.try({
+        try: () => resolveRef(local, relative),
+        catch: (error) => error as SkillsError,
+      }).pipe(Effect.result)
+      if (own._tag === "Success") return own.success
+      if (
+        own.failure.code !== "INVALID_PATH" ||
+        own.failure.message !== "The path escapes the skill root."
+      )
+        return yield* Effect.fail(own.failure)
+      return yield* resolveGitOnlySibling(snapshot, from, relative)
+    }
     if (snapshot.record.locator.type !== "notion_page" || !snapshot.source_projection)
       return yield* Effect.try({
         try: () => resolveRef(local, relative),

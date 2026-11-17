@@ -29,6 +29,8 @@ Provider不可用、缺原输入、无完整cursor或认证不明分别报告，
 
 新 `create_git` 与独立消费测试必须另核：单个 Disabled 控制页 + 一条必要 pin 证明、0 支持 File/原文件实体、重复执行零新页、unknown POST 可见/不可见均不得重派发，原生人工正文编辑/关系漂移/错误 Git hash 明确拒绝；开启资格只允许另一个显式授权决定。`shared-git-only-consumer.test.ts` 与 `shared-source-onboarding.test.ts` 驱动真实同核 `openSharedConsumer`→按需 `openFixedSnapshotFiles`；原生 `--storage retained` 的旧创建/恢复负例不能消失。Git-only 原字节读取不应“成功地”删除相邻兄弟 Skill 链接，跨成员链接解析需单独证明。真实 Notion 只执行冻结 plan/dry-run 前不得宣称 production admission。
 
+新合同还核验 `Projection=git-only/v1:<SOURCE_PAGE_ID>` 的原始 Owner 与唯一 Origin 一致；之前不含该原始 Source 身份的冻结 `create_git` 计划必须拒绝并重新准备。跨成员资源只经真实 `read ../sibling/SKILL.md --from PINNED_REF` 触发，同 Source/commit/tree、目标已启用、OID/SHA256和目标固定snapshot均通过时才返回精确引用。负例包含 disabled、变更commit或Origin、找不到成员和越界；普通 main read 不允许批量取得兄弟 Git blob 或建立 Notion Files。
+
 ## Drive
 
 实现切片（受控数据，不写真实库）：

@@ -20,7 +20,7 @@ import {
 } from "./shared-source-definitions.ts"
 import { prepareSharedSourceProjection } from "./shared-source-projection.ts"
 import { prepareSourceMember } from "./shared-source-member.ts"
-import { gitOnlyProjection } from "./shared-git-only-consumer.ts"
+import { gitOnlyProjectionForSource } from "./shared-git-only-marker.ts"
 import { querySharedSkillIndex } from "./shared-skill-index.ts"
 import { withSourceUpdateLock } from "./shared-source-policy.ts"
 import {
@@ -740,6 +740,7 @@ export function prepareSourceOnboarding(
                     return {
                       kind: "create_git" as const,
                       source: reference,
+                      projection: gitOnlyProjectionForSource(reference.page_id),
                       member: member.member_key,
                       skill_id: yield* identity(library, definition.page_id, member.member_key),
                       main_file_id: yield* gitMainIdentity(
@@ -852,6 +853,7 @@ function validatePlan(library: SharedLibrary, value: unknown) {
         if (
           canonicalSharedJson(verified) !== canonicalSharedJson(action.binding) ||
           action.binding.root !== (action.member === "." ? "" : action.member) ||
+          action.projection !== gitOnlyProjectionForSource(action.source.page_id) ||
           !action.binding.files.some((file) => file.path === "SKILL.md") ||
           action.binding.files.some((file) => file.sha256 === undefined) ||
           action.skill_id !== (yield* identity(library, action.source.page_id, action.member)) ||
@@ -970,7 +972,7 @@ function executeGitOnly(
       if (
         projection.has_more === true ||
         references.has_more === true ||
-        text(projection.rich_text) !== gitOnlyProjection ||
+        text(projection.rich_text) !== action.projection ||
         text(references.rich_text) !== ""
       )
         return yield* Effect.fail(
@@ -1022,7 +1024,7 @@ function executeGitOnly(
         [ids["Default Context"]!]: { checkbox: false },
         [ids["Skill ID"]!]: field(action.skill_id),
         [ids["Main File ID"]!]: field(action.main_file_id),
-        [ids.Projection!]: field(gitOnlyProjection),
+        [ids.Projection!]: field(action.projection),
         [ids.Source!]: field(action.binding.source_id),
         [ids.References!]: field(""),
         [ids.Origin!]: { relation: [{ id: action.source.page_id }] },
