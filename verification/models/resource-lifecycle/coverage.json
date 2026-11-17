@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "1c3d90a34eda8d39f8e3f4109b6df4ba282bee08",
+  "synchronized_commit": "439a7a16489d258130617a59d482dcff4d371378",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
@@ -88,7 +88,7 @@
     "packages/core/src/shared-audit-transport.ts": "9176dff8e11a6dcd74850134d2580c686984163e9ff5fc68a49c84a59ae0e9e3",
     "packages/core/src/shared-audit-store.ts": "e956a6c22d765bc4199bb4135a6e767ab08ce252c701910abefdf61fe08136b9",
     "packages/core/src/shared-inventory-import.ts": "2f9845c5eec751d911ef50d4a713f6e6fa94f9b7ad3a56b36b463a09044e30a1",
-    "packages/core/src/shared-inventory-local.ts": "d2185483e41b551b9eb6d69d7ce9c5090ca90fc72d26f472af1723b27d5ab060",
+    "packages/core/src/shared-inventory-local.ts": "02ba2a037b58340f1ed54103425157ab948715b235423722d6a8bf7aaf0ab313",
     "packages/core/src/shared-create.ts": "27c64a4e92ed479a6ea95d8c64a419a28b12a0f67436f353cc96830e673a837d",
     "packages/core/src/shared-create-model.ts": "f8d889fc13fff4e68039b58c2aed4cb5317b89ed8825cd37224aeb93583b9f14",
     "packages/core/src/shared-create-dispatch.ts": "199e3178c36917d059fa492ed5c177e42512cffbd1128c4ad926d4a8f1352113",
@@ -695,6 +695,20 @@
         "packages/core/test/shared-inventory.test.ts",
         "packages/core/test/shared-inventory-import.test.ts"
       ]
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "closed_env_example_inventory_templates",
+      "files": ["packages/core/src/shared-inventory-local.ts"],
+      "symbols": ["safeEnvironmentExample", "credentialEnvironmentKey", "scanLocalSkillInventory"],
+      "scope": "Only exact logical and real .env.example basenames may pass the closed UTF-8 empty-assignment and bounded noncredential timeout grammar. Active or commented nonempty credential assignments, other sensitive names, unsupported syntax and whole-content secret signatures remain blocked. Raw bytes and modes are unchanged, and original whole-entity revalidation rejects later drift. This local classification is outside the lifecycle finite models; no approval override, new operation authority, model, rule or liveness claim is added.",
+      "tests": [
+        "packages/core/test/shared-inventory.test.ts",
+        "packages/core/test/shared-inventory-import.test.ts",
+        "packages/cli/test/library-inventory.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#closed-environment-example-recognition",
+      "no_new_finite_model_claim": true
     },
     {
       "kind": "hash_bound_context_not_modeled",

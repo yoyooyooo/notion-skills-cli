@@ -1158,3 +1158,25 @@ Markdown/PATCH/retained proof/SQLite 重启/第三 pending 组合不在原有限
 `shared-create-table-plus-restoration` 的普通回归与真实 Node SQLite→冷 SDK 旅程负责
 这些实现义务，旧 v3 SQLite 回归保留。模型结果、源码回归、独立安装、实库和 Broker/provider
 交付仍分别记录，不能由映射或旧提交绿灯相互替代。
+
+### Closed environment example recognition
+
+在 `439a7a16489d258130617a59d482dcff4d371378` 之上，local inventory 仅为
+逻辑与真实文件名都严格是 `.env.example` 的输入增加封闭模板识别。完整 UTF-8
+每行只接受空白、注释、空赋值或无凭据语义的 WAIT_SECONDS/TIMEOUT_SECONDS
+字段及 0–86400 十进制整数。数字密码、token、API key 和其它非空值仍阻塞；
+未知语法、重复键、无效字节和全文秘密特征也拒绝。普通敏感路径行为不变。
+注释中的非空凭据赋值沿同一 key 判据拒绝，不能成为上述模板识别的旁路；
+空凭据注释与普通说明保持支持。
+
+识别只改变新扫描对该精确字节的 sensitive 分类，不改文件、mode、Source、
+原 plan、dispatch、ACK 或 outcome。原完整实体 manifest、真实描述符重读和
+执行前重新扫描继续约束输入；旧 blocked 观察不能经 review 变成授权。
+没有新增承诺型审批、ignore 参数或通用配置解释器。
+
+原正常已安装 CLI 对真实安全模板的 partial/exit4 与新 source CLI 的 full/exit0
+分别保存，均核原字节/mode不变及 0 HTTP。合成回归覆盖有界超时、数字凭据、
+语法/编码拒绝及字节、mode、秘密值漂移，原 import 回归保持。模板分类和本地
+文件解析不属于生命周期有限状态域；coverage 仅增加明确未建模的源码对应。
+TLA/config/view/cases/expected_rules 不变，旧模型绿灯不替代新提交的 CI、
+安装或真实库存迁移证明。

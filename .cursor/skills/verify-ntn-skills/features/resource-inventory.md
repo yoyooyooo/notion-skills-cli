@@ -149,6 +149,20 @@ references and budget limits stay visible. No local tree modification or script
 execution is permitted. Local inventory writes only a derived immutable local
 Store artifact and its optional report.
 
+Only an exact `.env.example` logical and real basename can be recognized as a
+closed nonsecret template: valid UTF-8, blank/comment lines, empty assignments,
+and credential-free `*_WAIT_SECONDS` / `*_TIMEOUT_SECONDS` keys with decimal
+values from 0 to 86400. Nonempty commented credential assignments remain blocked;
+full-content secret signatures still apply to comments.
+Ordinary `.env` files, numeric passwords/tokens/API keys, other nonempty values,
+duplicate keys, expansion/evaluation syntax and invalid bytes remain blocked.
+This is not an ignore flag or an approval override. Preserve raw bytes and modes;
+fresh whole-entity revalidation uses the same scanner and rejects subsequent
+content or mode drift. Retained blocked observations and their plans are unchanged.
+Run the env-example cases in `packages/core/test/shared-inventory.test.ts` and
+the public Node case in `packages/cli/test/library-inventory.test.ts`, plus the
+existing inventory import regressions. Controlled local scans make no provider call.
+
 Within one discovered entity, an exact root `SKILL.md` is the main document even
 when `PROMPT.md` or `ROUTER.md` is present as a supporting resource. This follows
 the existing directory-import preference. Without `SKILL.md`, the existing

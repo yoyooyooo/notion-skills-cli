@@ -53,6 +53,45 @@ const sensitiveName = (path: string) =>
   )
 const secretPattern =
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[A-Z0-9]{16}|secret_[A-Za-z0-9]{32,})\b/u
+const credentialEnvironmentKey = (key: string) =>
+  /(?:^|_)(?:PASS|PASSWD|PASSWORD|TOKEN|SECRET|KEY|AUTH|AUTHORIZATION|CREDENTIALS?|SESSION|COOKIE)(?:_|$)/iu.test(
+    key,
+  )
+
+/** A closed template grammar, not a dotenv evaluator or a sensitive-file override. */
+function safeEnvironmentExample(path: string, target: string, bytes: Uint8Array) {
+  if (basename(path) !== ".env.example" || basename(target) !== ".env.example") return false
+  let source: string
+  try {
+    source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch {
+    return false
+  }
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]|\r(?!\n)/u.test(source)) return false
+  const keys = new Set<string>()
+  for (const line of source.split(/\r?\n/u)) {
+    if (/^[ \t]*$/u.test(line)) continue
+    if (/^[ \t]*#/u.test(line)) {
+      for (const assignment of line.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*(?=[^ \t])/gu))
+        if (credentialEnvironmentKey(assignment[1]!)) return false
+      continue
+    }
+    const assignment = /^[ \t]*([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*([0-9]*)[ \t]*$/u.exec(line)
+    if (assignment === null || keys.has(assignment[1]!)) return false
+    const key = assignment[1]!,
+      value = assignment[2]!
+    keys.add(key)
+    if (
+      value !== "" &&
+      (!/^[A-Z][A-Z0-9_]*_(?:WAIT|TIMEOUT)_SECONDS$/u.test(key) ||
+        credentialEnvironmentKey(key) ||
+        !/^[0-9]{1,5}$/u.test(value) ||
+        Number(value) > 86_400)
+    )
+      return false
+  }
+  return true
+}
 
 async function boundedFile(
   path: string,
@@ -317,7 +356,9 @@ export function scanLocalSkillInventory(input: ScanLocalSkillInventoryInput) {
             contentIdentity.set(target, identity(stat))
           }
           const decoded = new TextDecoder().decode(loaded.success.bytes)
-          const sensitive = base.sensitive || secretPattern.test(decoded)
+          const sensitive =
+            (base.sensitive && !safeEnvironmentExample(item.entry, target, loaded.success.bytes)) ||
+            secretPattern.test(decoded)
           file = {
             ...base,
             status: "verified",

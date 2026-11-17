@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test"
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createHash } from "node:crypto"
 import { createHttpProbe } from "./http-probe.ts"
 
 // Integration owns the production build; these tests consume its exact bundle.
@@ -13,12 +14,16 @@ async function invoke(args: readonly string[]) {
   const node = Bun.which("node")
   if (node === null) throw new Error("Node is required for the public CLI contract.")
   const before = probe.calls()
+  const environment = { ...process.env }
+  // This fixture owns the exact bundle; a machine's optional source checkout
+  // must not redirect the public Node child to another revision.
+  delete environment.NTN_SKILLS_DEV_ROOT
   const child = Bun.spawn([node, main, ...args], {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
     env: {
-      ...process.env,
+      ...environment,
       NOTION_API_TOKEN: "controlled-inventory-offline-token",
       NOTION_API_BASE_URL: probe.origin,
       NTN_SKILLS_HOME: join(directory, "state"),
@@ -95,6 +100,45 @@ test("public local inventory preserves exact binary bytes and executable modes w
     coverage: "partial",
     remote_writes: 0,
   })
+}, 15000)
+
+test("public inventory retains a complete safe env template and blocks nonempty numeric credentials", async () => {
+  const root = join(directory, "safe-env-example"),
+    path = join(root, ".env.example"),
+    input =
+      "# Controlled template\r\nSERVICE_PASSWORD=\r\nSERVICE_TOKEN=\r\nSERVICE_WAIT_SECONDS=0\r\nSERVICE_TIMEOUT_SECONDS=86400\r\n"
+  mkdirSync(root)
+  writeFileSync(join(root, "SKILL.md"), "# Controlled template resource\n")
+  writeFileSync(path, input)
+  chmodSync(path, 0o644)
+  const accepted = await invoke(["ctl", "library", "inventory", "local", "--root", root])
+  expect(accepted.exit, accepted.stdout + accepted.stderr).toBe(0)
+  const report = JSON.parse(accepted.stdout)
+  expect(report).toMatchObject({ coverage: "full", remote_writes: 0, source_writes: 0 })
+  expect(report.entities[0].files).toHaveLength(2)
+  expect(report.entities[0].files).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: ".env.example",
+        bytes: Buffer.byteLength(input),
+        mode: "100644",
+        sensitive: false,
+        sha256: createHash("sha256").update(input).digest("hex"),
+      }),
+    ]),
+  )
+  expect(readFileSync(path, "utf8")).toBe(input)
+  for (const key of ["PASSWORD", "API_KEY", "TOKEN", "AUTH_TIMEOUT_SECONDS"]) {
+    writeFileSync(path, `${key}=123456\n`)
+    const blocked = await invoke(["ctl", "library", "inventory", "local", "--root", root])
+    expect(blocked.exit).toBe(4)
+    const observed = JSON.parse(blocked.stdout)
+    expect(observed).toMatchObject({ coverage: "partial", remote_writes: 0, source_writes: 0 })
+    expect(
+      observed.entities[0].files.find((file: { path: string }) => file.path === ".env.example")
+        .sensitive,
+    ).toBe(true)
+  }
 }, 15000)
 
 test("invalid local scopes and incomplete review selectors fail without any provider call", async () => {
