@@ -165,6 +165,8 @@ An ordinary Skill folder needs no hand-authored manifest. Ordinary `create` acce
 
 A draft already created in Notion can stay disabled while being edited. Complete its Name and Description and set Kind to `skill`, then run `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` to retain its original page/body and establish stable identities. Use `read SKILL_PAGE_ID --authoring` for a fresh editable pin; normal writes preserve the disabled state until `update SKILL_PAGE_ID --enabled true` verifies and enables the complete tree. An unfinished disabled draft remains outside consumer discovery without blocking other Skills. To add a reference and link it from the main body in one edit, submit both files in one sparse `apply`; the [complete-tree guide](docs/maintenance-tree-contract.md) covers this path. For an individual `ctl library file add`, the [reference guide](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill) explains the subsequent fresh-pin main edit.
 
+An initial Git-main body review can stop after its full prefix—the exact review, retained body and adoption event—is retained and verified in shared Records. `ctl library file review --complete` can create one independent completion Record from the original Store after fresh Source, owner, full-body and event-frontier checks. It preserves the original `needs_review` and writes no body, property or file event. Preview with `--complete --dry-run`; repeated completed review and `--reconcile` are read-only. [Commands and eligibility](docs/usage.md#completing-a-retained-body-review).
+
 Fixed GitHub source inspection takes an exact commit and root:
 
 ```bash

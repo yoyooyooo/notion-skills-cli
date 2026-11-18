@@ -30,6 +30,8 @@ Global configuration defaults to `~/.config/ntn-skills/config.json`; retained sn
 
 The CLI sends no analytics requests. Online calls use the project's HTTP engine and signed Notion downloads. Local access covers configuration/state/cache, explicit inputs and requested outputs. Snapshots, upload staging, sync plans/baselines/receipts contain private bytes and have no automatic garbage collection. Content/catalog freshness defaults are five minutes/60 seconds and do not control retention. Uninstalling leaves all roots in place; preserve pinned versions and unfinished recovery receipts. Cache clearing retires only disposable SQL observations; it does not move files. [Cleanup guidance](usage.md#upgrade-and-uninstall) and [security policy](../SECURITY.md).
 
+For an interrupted initial Git-main body review, a host may expose the explicit [completion command](usage.md#completing-a-retained-body-review) using the exact original body operation and raw observed-body SHA. `--complete` requires the original Store and credential scope; a cold host cannot reconstruct that write authority from visible content. Preserve the returned original review `operation_id` separately from optional `completion_operation_id`, and keep the original `needs_review` history. `--complete --dry-run` is a preview; repeated completed review and `--reconcile` are read-only. A completion result does not itself enable the Skill or prove host activation: obtain the normal current read before selecting content.
+
 ## Bundled Skills in hosts
 
 OMP/Pi and Tern expose package Skills through the same ordinary `$` selection path as other Skills:

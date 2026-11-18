@@ -91,6 +91,16 @@ The same explicit decision supports an original `restore_follow` only when its f
 
 This section defines the shared-library command surface. The [shared architecture](shared-ssot-architecture.md) explains ownership and recovery decisions. The [shared verification recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md) drives these commands through the public CLI; run results are recorded separately from the contract.
 
+### Body-review completion
+
+`ctl library file review PAGE ORIGINAL_BODY_OPERATION --entry ENTRY --accept-observed-sha256 SHA --complete` completes only an existing version 2 `accepted_observed` review whose original body plan contains `git_main_initialization`. Its exact review plan, retained observed-body object and adopted file event must already exist in shared Records. The full prefix is verified from those shared facts; old per-Record durable ACKs are not required. The writer must retain the identical pending review in the original credential scope and Store, with no pending operations beyond that review and its exact original body write.
+
+Preparation and the dispatch guard revalidate the complete original facts, fixed Source and owner context, fresh full body and the sole current review-event frontier. The only new remote effect is one immutable operation Record, `completed-v1-${review_operation_id}`, bound to the exact original review. The existing `reviewed-*` receipt is not synthesized or rewritten; the original body outcome remains `needs_review`. No native body, property, retained-body object or file-event write is authorized.
+
+The completion uses the existing original-operation dispatcher with `repeat: never`. A new completion dispatch without a verified acknowledgement remains unknown and cannot be sent again. An unknown original body write is ineligible; an unproven old review receipt remains unchanged when the independent completion is retained. Current equality or query absence cannot supply a missing prefix or authorize replay. Repeating a completed request and `--reconcile` validate the same historical chain without writes; later edits require their normal current-read checks. Results preserve `operation_id` as the original review ID and may additionally expose `completion_operation_id`. Existing version 1 and ordinary review semantics remain unchanged.
+
+`--complete --dry-run` performs the same eligibility checks and previews one immutable Record with zero native body patches. `--complete` and `--reconcile` are mutually exclusive; the existing `--dry-run`/`--reconcile` conflict remains. [Operator sequence](usage.md#completing-a-retained-body-review).
+
 ### Layout and identity
 
 A shared library has one exact Skills database entry whose description contains a versioned descriptor. The descriptor records `library_id`, the Skills/Files/Records database and data-source IDs, and stable property IDs. The main body lives on its Skills row. Supporting bodies live directly on Files rows with a native Skill relation. Readers query Files by that forward relation and follow every cursor; the reverse `Supporting Files` property is a navigation aid, not a complete consumer inventory.

@@ -11,7 +11,7 @@ import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
 
 const storage = "derived-text-v1"
 const ProjectionInput = Schema.Struct({
-  version: Schema.Literals([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
+  version: Schema.Literals([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]),
   input_markdown: Schema.String,
   purpose: Schema.optional(Schema.Literals(["body_write", "data_source_create"])),
 })

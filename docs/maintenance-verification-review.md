@@ -2,6 +2,31 @@
 
 AH-1024 extends the existing authorship, audit and original-operation owners. The prior baseline is `6c38e747a9e40186fdf9d4ecda033eb5b413561c`. This review records actual boundaries; execution results belong to a frozen run, not to this text or a refreshed source hash.
 
+## Completing a retained initial Git-main body review
+
+`file review --complete` is a separate completion decision for an existing version 2 review whose original body plan contains `git_main_initialization`. The original review plan, observed-body object and adopted event must already exist as exact shared facts. It does not accept another body or recreate the old review receipt. CLI previews select the same `complete` mode with `dryRun: true`; reconciliation remains a distinct read-only mode.
+
+| Concrete boundary | Required evidence and rejection |
+| --- | --- |
+| Original prefix | Reconstruct the exact review from its retained original plan, `needs_review` observation and acceptance digest; validate all three immutable prefix Records and event ancestry. Missing, conflicting or substituted facts block completion. |
+| Writer authority | Require the exact pending review in the original Store and credential scope. Only that review and its exact original body write may be pending. A cold Store, scope change, copied plan or third pending operation cannot authorize the new Record. |
+| Fresh guards | Recheck the fixed Source and owner metadata, complete current body and sole review-event frontier during preparation and immediately before dispatch. Changed links, content, modes, frontmatter, Source identity or a competing event reject the decision. |
+| One new effect | The existing shared dispatcher retains one distinct `completed-v1-${review_operation_id}` operation Record with `repeat: never`. It writes no body, property, retained object or file event. The old `reviewed-*` receipt and body outcome stay unchanged. |
+| Unknown and repeated calls | A lost completion response never grants replay. A visible exact completion can be verified through the original prefix; a completed call or explicit reconcile remains read-only. Current body equality alone cannot manufacture historical completion. |
+| Consumer meaning | Keep the original review `operation_id` and separate completion identity. Cold consumption validates the shared historical chain before its normal current-content checks; completion does not enable content or prove host/model delivery. |
+
+Concrete regression obligations include a retained full prefix with a delayed event query and missing terminal, a one-Record successful completion, repeated/cold reconciliation with zero writes, and independent current read/export preserving complete bytes and modes. Negative cases must retain missing-prefix, foreign-Store/scope, unrelated pending operation, changed Source/body/frontier, version 1/ordinary review and lost-completion-response barriers. CLI schema and runtime parsing must allow `--complete --dry-run`, reject `--complete --reconcile`, and preserve the existing dry-run/reconcile conflict.
+
+Readers that already hold the complete, validated operation index reuse it only to discover whether the separate completion identity exists. An indexed completion still requires its exact full payload and eligible original scope; an observed old receipt is checked independently and cannot be concealed by either terminal. A caller without complete headers performs the original fresh lookup, and verification after a new write always does a fresh lookup. The first full gate exposed an extra metadata request on an unchanged expired ordinary review. The correction preserves the existing strict 16-request expectation rather than increasing it; indexed missing/changed payloads, conflicting old receipts and ordinary-review fake completions remain rejection cases.
+
+The existing finite lifecycle and operation-recovery models express general prefix, unknown-write and independent-decision boundaries. They do **not** model this concrete version 2 Git-main review completion, its three Record payloads, local pending scope, fresh Source/body checks or cold consumer reconstruction. Their previous passes cannot be relabeled as proof of this new path. This change does not alter TLA models, configurations, expected rules or model case inventories; concrete tests and package/host evidence remain separate obligations. No atomic transaction, page-revision CAS or eventual completion is claimed.
+
+## Exact derived-text storage for projection 16 and 17
+
+The existing `derived-text-v1` operation-plan representation retained complete unique inputs but accepted projection versions only through 15. A full initial Git-main plan using the current version 17 projector therefore failed its lossless reconstruction check during a zero-write preview once its expanded envelope exceeded 64 KiB. The storage schema now also accepts the already implemented versions 16 and 17. No projector, body comparator, dispatch authority, source text or envelope budget changes.
+
+The retained input, projection version and purpose still reconstruct the complete canonical plan before it can become write authority. The original domain validator checks every resulting commitment and digest. Regression cases cover complete version 15/16/17 round trips, a large public Git-main preparation, exact source/authored inputs and mode/frontmatter, unknown versions, incompatible purpose and changed retained input. Unique inputs that still exceed 64 KiB after removing derived copies continue to fail before dispatch. These schema and byte-reconstruction checks are reviewed concrete implementation context outside the finite model domains; no new finite-model result is claimed.
+
 ## SRC15: bounded Source subsets and unchanged write authority (AH-1067)
 
 ### Final CI: preserve both authorization paths in the public help assertion

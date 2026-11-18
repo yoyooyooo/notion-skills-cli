@@ -59,6 +59,9 @@ export function bodyWriteReviewOperationId(originalOperationId: string) {
 }
 export const bodyWriteReviewReceiptId = (operationId: string) => `reviewed-${operationId}`
 
+/** A separate, single dispatch identity. Never substitutes for the old receipt's ACK. */
+export const bodyWriteReviewCompletionId = (operationId: string) => `completed-v1-${operationId}`
+
 function eventDescription(
   plan: Pick<
     SharedBodyWriteReviewPlan,
@@ -106,6 +109,18 @@ export function bodyWriteReviewReceipt(plan: SharedBodyWriteReviewPlan) {
       ),
     }
   })
+}
+
+export function bodyWriteReviewCompletion(plan: SharedBodyWriteReviewPlan) {
+  return bodyWriteReviewReceipt(plan).pipe(
+    Effect.map((receipt) => ({
+      ...receipt,
+      kind: "body_write_review_completion" as const,
+      operation_id: bodyWriteReviewCompletionId(plan.operation_id),
+      review_operation_id: plan.operation_id,
+      original_review_receipt: "unproven" as const,
+    })),
+  )
 }
 
 export function validateSharedBodyWriteReviewPlan(input: unknown) {

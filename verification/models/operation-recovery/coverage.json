@@ -3,9 +3,15 @@
   "synchronized_commit": "e2c309bbee68a5b00e91db4318c6d4883d30163f",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
-    "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
-    "packages/core/src/shared-body-write-review-model.ts": "b52cf5a7bc732721fd743533e3c8ac2c6db251b544417822afa2e9a0a2fc0664",
-    "packages/core/src/shared-body-write-review.ts": "bd4362d2d8891eaca65434d0abe431ef0a1fdb16067f333c774d1b0c5c6c434e",
+    "packages/cli/test/library-file-review.test.ts": "c89d8c989e459a09f78f6976b6d3b5f1fbdbd64ccbf5f8a49b5b9c14136f9c9d",
+    "packages/core/test/shared-body-write-review-completion.test.ts": "ecf430ca79100b2b097190ee597f9cc2bc757ea67b9c376b4f7a8426e1444249",
+    "packages/core/test/shared-body-write-review-metadata.test.ts": "b9d6d2b34736333b4d42ed338974c44f463589b5924b3cbc94b57d448ebaa2ed",
+    "packages/core/src/shared-notion-projection.ts": "270f82fdffe91e97088dd2f9148296e37ce22d0a26cb2ecd7b67640897cacd7e",
+    "packages/core/test/shared-plan-storage.test.ts": "f5fe71cd7710373c78ed726322c081fd774a35bd32067edef8f1dd0d9d233539",
+    "packages/core/test/shared-retained-record-costs.test.ts": "b896cb1c99c967e38f97834cc94b5051b06cda00e8abd8a432088c81e6908e23",
+    "packages/cli/src/commands-library-file-review.ts": "4ee5dfbe05ef9f05c48f61fb8e50e8b73b064c275e2c7203fd2edc93b8438457",
+    "packages/core/src/shared-body-write-review-model.ts": "73af457f87e6144676ebb69a21a69084253235740d590710201d22792dd97092",
+    "packages/core/src/shared-body-write-review.ts": "f8f525bfc276adb486c66cd8866add6fe069bff0442c1fc863de3745dd4ff9d6",
     "packages/core/src/shared-complete-main-input.ts": "2561f8cbb81160428bb59ca57a417cd74623f3288687d3701b11e13af835cad6",
     "packages/core/src/shared-file-intent.ts": "5669d689ccfd33792f09e34c7b2e822bad72bac05d57a353d009ed73915700bf",
     "packages/core/src/shared-file-takeover.ts": "b24b9c1807447f946cf70517a62d715538b40946b9d082c5c6d24381a0dec015",
@@ -78,7 +84,7 @@
     "packages/core/test/shared-skill-apply-tree.test.ts": "80bf230dc1ad6985270f67a929895257fd57e52381350c52ea3e09ca69027773",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-maintenance-operations.test.ts": "64a8e49f34344a13ed7171e5bb9970609b9d5192155c5d75dfd55508c933c371",
-    "packages/core/src/shared-plan-storage.ts": "bc2bb0dcced59d9953e9013c5f2cbf77fefa7b2c29b57a06dff8d2ec540a7864",
+    "packages/core/src/shared-plan-storage.ts": "8a0b3e63996be03d334a54f7351a6a29ae76c537be99b5f0bf52377d404eaf07",
     "packages/core/src/shared-apply-body-binding.ts": "d58c3925356d8e7d49dd17809f58f89caccc679280c73c2eea3efec002131b92",
     "packages/core/src/shared-maintenance-result.ts": "690a839c98ec87a71a896de3153145a729f1637349696e558222c029ebfe7710",
     "packages/core/src/shared-source-run.ts": "b53a2e2d41b7da696003eaf526a9cc35c153fc882f8c5ba4c8d34093117c5bb1",
@@ -138,7 +144,7 @@
     "packages/cli/test/library-source-file-resubmission-http.test.ts": "38e2553f9bf57ef16efe5e2892f84b3439bac4fc48335e48cb67ade0e1789bd2",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
     "packages/cli/test/source-file-resubmission-navigation.test.ts": "4ced04015f37a65c18724d8b06d3f118dbe64e80abd4e9b45f11a5662887033f",
-    "packages/core/src/shared-audit-inspect.ts": "27cd7e6ce84e121759d97da47d1ae01bba28853936df52a979de7dc285215c6f",
+    "packages/core/src/shared-audit-inspect.ts": "63c39532b69630e654653c7299dadc3d9403a0eca35fa42af528418079411702",
     "packages/core/src/shared-create-import-readback.ts": "9e86f9bf0909aa8eeaa2786703f452fb5c9570e500d2349e02e1a9d146c8defc",
     "packages/core/src/shared-create.ts": "b1a47936753d5a8f7a6912088f73a805dd3dd61a017120b0c3b6c6fd91c423f5",
     "packages/core/src/shared-native-image-layout.ts": "4bb27b7099a77fe23bfac87b909e8e1a06f4f8ed3b8825db2fa8a199f3a10ff1",
@@ -147,7 +153,7 @@
     "packages/core/src/shared-sources-model.ts": "127979694278a99bcf0ccdb20b7e23cdb8991ad9e8c19f2a415dce77f3b7817e",
     "packages/core/src/sqlite-state.ts": "e7a78909b0acf1944f1a6b224cd0503a67d2d3e9b1c6ecfdc615f80c3fb5b64d",
     "packages/core/test/shared-create-ack-visibility.test.ts": "853d92f04c39d18c8f21e28c6969415a6b1cd45f5782b936469f0b5989d9d5c0",
-    "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "eb43acb15e05faca53e663524dad07db5f4d91679bc9d27d4ff256063521fc2c",
+    "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "f1842fc4f77ee1911cb4a0399ec65f526a26b4b84d9a551b9873c6cd3001ec06",
     "packages/core/test/shared-create-drift.test.ts": "d436e71b05c56842908448073879bbeab14d341a159332efb5cc2b044163f1a4",
     "packages/core/test/shared-create-scope-cost.test.ts": "142ea0a1bbaa3f36cda78b3894d1d4c752a2758c16c7ae12599abad05b8ef1fe",
     "packages/core/test/shared-native-image-layout.test.ts": "0a8c992f1be8664cbbd6da46920c814c10523a114b3caf3cb9ffcc20f03beec8",
@@ -161,7 +167,7 @@
     "packages/core/src/shared-sparse-git-references.ts": "e7155663e779a31c0db1f97ff140e3178619705531733ebea23a5aafa9980bf7",
     "packages/cli/src/commands-library-file-takeover.ts": "aca6125515891f73457d740e960df62346654ac0167c8ec74865429fbd05fccb",
     "packages/core/src/snapshot.ts": "c91507fa454f2fccd4dc9ae10130dfca9c0354ce3b3c3e26e595c07f822ec5e7",
-    "packages/cli/test/library-file-takeover-http.test.ts": "86b2a5c6635f5980d67acbbadbe6edc9d1c8a6792919ec754527fefb8e8a137e",
+    "packages/cli/test/library-file-takeover-http.test.ts": "710ee75870666afe574f516fd4adde6c751366d5df602331d34ce46aaed2fb9d",
     "packages/cli/test/library-file-takeover-input.test.ts": "92eb23e9db23303ce6da41cf570a8ac09abfe6256a40ad01f67c1d5107e5b74c",
     "packages/core/src/shared-git-main-initialization-model.ts": "0fa8e0f870a7da1b58cdb844ca8a0938f845b384be5128dfd5e1bf587d577914",
     "packages/core/src/shared-git-main-initialization.ts": "422577b1285b85357aadf1b80051c2c2560d17d92ff68287dae8741871887c42",
@@ -1034,6 +1040,53 @@
     "model_semantics_changed": false
   },
   "unmodeled_bindings": [
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "projection_16_17_derived_text_roundtrip",
+      "symbols": ["ProjectionInput", "storedSharedOperationPlan", "expandSharedOperationPlan"],
+      "scope": "The existing derived-text-v1 schema additionally accepts the already implemented projection versions 16 and 17. Complete unique inputs, raw preimage, version, purpose, source/authored text and identity commitments remain retained. Canonical expansion must equal the complete original plan before authority is stored; original domain digests validate reconstructed content. Unknown versions, incompatible purpose, tampered inputs and unique-input envelopes above the unchanged 64 KiB budget remain rejected before dispatch. Projection algorithms, body comparison, write authority and finite model transitions are unchanged; this schema/byte reconstruction is reviewed concrete context, not a new finite-model proof.",
+      "files": [
+        "packages/core/src/shared-plan-storage.ts",
+        "packages/core/src/shared-notion-projection.ts"
+      ],
+      "tests": [
+        "packages/core/test/shared-plan-storage.test.ts",
+        "packages/core/test/shared-git-main-takeover.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#exact-derived-text-storage-for-projection-16-and-17",
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "initial_git_main_review_independent_completion",
+      "symbols": [
+        "bodyWriteReviewCompletionId",
+        "bodyWriteReviewCompletion",
+        "verifyReviewPrefix",
+        "reviewTerminal",
+        "completionWriter",
+        "completeExistingReview",
+        "reviewSharedBodyWrite",
+        "completedSharedBodyWriteReview"
+      ],
+      "scope": "An existing version-2 initial Git-main review with complete exact shared plan, observed object and adopted event can receive one separate completed-v1 identity. Only its original credential scope and exact local review pending plan may authorize this new Record; unrelated pending operations, original Source/owner metadata, full raw body and complete current frontier are rechecked before dispatch. The existing repeat:never dispatcher preserves every new unknown intent and ACK. Neither the old reviewed-* receipt nor the original needs_review outcome is rewritten or inferred successful. Both observed terminal kinds must be exact; historical completion never proves current content. Cold consumers require the whole original proof and independent completion before normal current checks. Ordinary/version-1 reviews retain their original boundaries. This one-new-Record composition with a legacy three-fact prefix is outside existing finite model domains; no model/config/view/case/expected-rule inventory changes or new finite-model proof is claimed. A previously acquired complete validated operation index controls discovery only: indexed completions still require their exact payload and original scope, and an observed legacy receipt is checked independently. Callers without that index and verification after a new write retain fresh lookup. The unchanged expired ordinary-review cost remains 16 metadata requests.",
+      "files": [
+        "packages/cli/src/commands-library-file-review.ts",
+        "packages/core/src/shared-body-write-review-model.ts",
+        "packages/core/src/shared-body-write-review.ts",
+        "packages/core/src/shared-audit-inspect.ts"
+      ],
+      "tests": [
+        "packages/core/test/shared-body-write-review-completion.test.ts",
+        "packages/core/test/shared-retained-record-costs.test.ts",
+        "packages/core/test/shared-body-write-review.test.ts",
+        "packages/core/test/shared-body-write-review-metadata.test.ts",
+        "packages/cli/test/library-file-review.test.ts",
+        "packages/cli/test/library-file-takeover-http.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#completing-a-retained-initial-git-main-body-review",
+      "no_new_finite_model_claim": true
+    },
     {
       "kind": "reviewed_implementation_context_not_modeled",
       "name": "complete_main_header_and_independent_known_review",

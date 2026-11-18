@@ -16,6 +16,8 @@ import {
 } from "./shared-body-write-model.ts"
 import {
   bodyWriteReviewChecked as checked,
+  bodyWriteReviewCompletion,
+  bodyWriteReviewCompletionId,
   bodyWriteReviewOperationId,
   bodyWriteReviewReceipt,
   bodyWriteReviewReceiptId,
@@ -39,7 +41,9 @@ import {
   pendingFileOperations,
   retainPendingFileOperation,
   sharedPendingObservationPrefix,
+  type SharedPendingFileScope,
 } from "./shared-pending-file-operations.ts"
+import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
 import {
   appendSharedRecord,
   canonicalSharedJson,
@@ -439,11 +443,14 @@ function verifyCurrent(
   })
 }
 
-function reviewed(plan: SharedBodyWriteReviewPlan) {
+function reviewed(plan: SharedBodyWriteReviewPlan, completionOperationId?: string) {
   return {
     status: "reviewed" as const,
     decision: "accepted_observed" as const,
     operation_id: plan.operation_id,
+    ...(completionOperationId === undefined
+      ? {}
+      : { completion_operation_id: completionOperationId }),
     original_operation_id: plan.original_operation_id,
     original_status: "needs_review" as const,
     accepted_observed_sha256: plan.accepted_observed_sha256,
@@ -513,7 +520,7 @@ function verifyReviewAncestry(plan: SharedBodyWriteReviewPlan, observed: readonl
     )
 }
 
-function verifyChain(
+function verifyReviewPrefix(
   library: SharedLibrary,
   plan: SharedBodyWriteReviewPlan,
   facts: OriginalFacts,
@@ -555,20 +562,237 @@ function verifyChain(
       entityId: plan.file_id,
       payload: plan.event,
     })
-    const receipt = yield* bodyWriteReviewReceipt(plan)
-    yield* appendSharedRecord(library, {
+    const observed = events ?? (yield* fileEvents(library, plan))
+    yield* checked(() => verifyReviewAncestry(plan, observed))
+  })
+}
+
+function requireCompletionScope(plan: SharedBodyWriteReviewPlan, facts: OriginalFacts) {
+  return checked(() => {
+    if (plan.version !== 2 || facts.original.git_main_initialization === undefined)
+      throw fail(
+        "SHARED_BODY_REVIEW_INELIGIBLE",
+        "Independent completion requires an existing version 2 initial Git-main review with its full frozen Source and owner context.",
+      )
+  })
+}
+
+/** Either terminal must bind the same complete old prefix. Current bytes never
+ * establish a historical completion, and later valid edits do not erase it. */
+function reviewTerminal(
+  library: SharedLibrary,
+  plan: SharedBodyWriteReviewPlan,
+  facts: OriginalFacts,
+  headers?: readonly SharedOperationHeader[],
+) {
+  return Effect.gen(function* () {
+    const completionId = bodyWriteReviewCompletionId(plan.operation_id)
+    // Complete headers decide discovery only; an indexed terminal still needs
+    // its exact payload, and the old receipt is checked independently below.
+    const hasCompletion =
+      headers === undefined
+        ? (yield* querySharedRecords(library, {
+            skillPageId: plan.skill_page_id,
+            kind: "operation",
+            recordId: completionId,
+          })).length !== 0
+        : headers.some((header) => header.record_id === completionId)
+    if (hasCompletion) {
+      yield* requireCompletionScope(plan, facts)
+      yield* appendSharedRecord(library, {
+        mode: "reconcile",
+        recordId: completionId,
+        operationId: completionId,
+        skillPageId: plan.skill_page_id,
+        kind: "operation",
+        entityId: plan.file_id,
+        payload: yield* bodyWriteReviewCompletion(plan),
+      })
+    }
+    const receipt = yield* appendSharedRecord(library, {
       mode: "reconcile",
       recordId: bodyWriteReviewReceiptId(plan.operation_id),
       operationId: plan.operation_id,
       skillPageId: plan.skill_page_id,
       kind: "operation",
       entityId: plan.file_id,
-      payload: receipt,
-    })
-    const observed = events ?? (yield* fileEvents(library, plan))
-    yield* checked(() => verifyReviewAncestry(plan, observed))
-    return reviewed(plan)
+      payload: yield* bodyWriteReviewReceipt(plan),
+    }).pipe(Effect.result)
+    if (receipt._tag === "Failure" && receipt.failure.code !== "SHARED_RECORD_UNRESOLVED")
+      return yield* Effect.fail(receipt.failure)
+    // An independent completion cannot conceal a conflicting old receipt.
+    // Missing old delivery remains unproven; an observed old fact must be exact.
+    if (hasCompletion) return reviewed(plan, completionId)
+    if (receipt._tag === "Success") return reviewed(plan)
+    return undefined
+  })
+}
+
+function verifyChain(
+  library: SharedLibrary,
+  plan: SharedBodyWriteReviewPlan,
+  facts: OriginalFacts,
+  events?: readonly FileEvent[],
+  headers?: readonly SharedOperationHeader[],
+) {
+  return Effect.gen(function* () {
+    yield* verifyReviewPrefix(library, plan, facts, events)
+    const result = yield* reviewTerminal(library, plan, facts, headers)
+    if (result === undefined)
+      return yield* Effect.fail(
+        fail(
+          "SHARED_RECORD_UNRESOLVED",
+          "The original review has no verified terminal. Reconcile never supplies a missing receipt.",
+          { record_id: bodyWriteReviewReceiptId(plan.operation_id) },
+        ),
+      )
+    return result
   }).pipe(Effect.mapError((error) => recoveryError(error, plan, "reconcile")))
+}
+
+function priorReviewScopeDispatch(
+  scope: SharedPendingFileScope,
+  plan: Pick<SharedBodyWriteReviewPlan, "file_id" | "operation_id">,
+) {
+  return Effect.gen(function* () {
+    const localKey = yield* pendingFileOperationKey(scope.prefix, plan)
+    const suffix = localKey.slice(localKey.lastIndexOf("/"))
+    return (yield* (yield* Store).listKeys("operations/shared-observation-pending/")).some(
+      (key) =>
+        key !== localKey &&
+        /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key) &&
+        key.endsWith(suffix),
+    )
+  })
+}
+
+/** Only the original review writer may authorize the one new independent fact. */
+function completionWriter(
+  scope: SharedPendingFileScope,
+  plan: SharedBodyWriteReviewPlan,
+  facts: OriginalFacts,
+) {
+  return Effect.gen(function* () {
+    const pending = yield* pendingFileOperations(scope)
+    const review = pending.find((entry) => entry.plan.operation_id === plan.operation_id)
+    if (
+      review === undefined ||
+      canonicalSharedJson(review.plan) !== canonicalSharedJson(plan) ||
+      (yield* priorReviewScopeDispatch(scope, plan))
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_BODY_REVIEW_INELIGIBLE",
+          "Independent completion requires the exact original review pending plan and credential scope in its original Store.",
+        ),
+      )
+    for (const entry of pending) {
+      if (entry.plan.operation_id === plan.operation_id) continue
+      if (
+        entry.plan.operation_id !== plan.original_operation_id ||
+        canonicalSharedJson(entry.plan) !== canonicalSharedJson(facts.original)
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_PENDING_OPERATION",
+            "Reconcile the other frozen operation before independently completing this review.",
+            { operation_id: entry.plan.operation_id },
+          ),
+        )
+    }
+  })
+}
+
+function completeExistingReview(
+  library: SharedLibrary,
+  plan: SharedBodyWriteReviewPlan,
+  facts: OriginalFacts,
+  scope: SharedPendingFileScope,
+  dryRun: boolean,
+  headers: readonly SharedOperationHeader[],
+) {
+  return Effect.gen(function* () {
+    yield* verifyReviewPrefix(library, plan, facts)
+    const terminal = yield* reviewTerminal(library, plan, facts, headers)
+    if (terminal !== undefined) return terminal
+    yield* requireCompletionScope(plan, facts)
+    const revalidate = Effect.gen(function* () {
+      const fresh = yield* loadOriginalFacts(
+        library,
+        plan.skill_page_id,
+        plan.original_operation_id,
+      )
+      yield* verifyReviewPrefix(library, plan, fresh)
+      yield* completionWriter(scope, plan, fresh)
+      yield* verifyGitMainInitializationContext(library, fresh.original)
+      const events = yield* fileEvents(library, plan)
+      const state = yield* checked(() => resolveFileState(plan.file_id, events))
+      if (
+        canonicalSharedJson(state.heads) !== canonicalSharedJson([plan.event.event_id]) ||
+        state.ownership.kind !== "custom" ||
+        canonicalSharedJson(state.ownership.content) !== canonicalSharedJson(plan.content)
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_REVIEW_STALE",
+            "The exact review event is no longer the complete current file frontier.",
+          ),
+        )
+      const raw = yield* (yield* Notion).request(
+        `v1/pages/${plan.page_id}/markdown?markdown_version=v2`,
+      )
+      const current = yield* checked(() => completeBody(raw, plan.page_id))
+      if (current.raw !== fresh.raw || current.markdown !== fresh.markdown)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_BODY_REVIEW_STALE",
+            "The current complete body differs from the exact originally accepted observation.",
+          ),
+        )
+    })
+    yield* revalidate
+    const completionId = bodyWriteReviewCompletionId(plan.operation_id)
+    if (dryRun)
+      return {
+        status: "planned" as const,
+        decision: "accepted_observed" as const,
+        original_status: "needs_review" as const,
+        operation_id: plan.operation_id,
+        original_operation_id: plan.original_operation_id,
+        completion_operation_id: completionId,
+        accepted_observed_sha256: plan.accepted_observed_sha256,
+        content_sha256: plan.content.sha256,
+        dry_run: true as const,
+        write_plan: {
+          immutable_records: 1,
+          native_body_patches: 0,
+          original_review_receipt: "unproven" as const,
+        },
+        plan,
+      }
+    const dispatch = yield* sharedCreateDispatch(
+      library,
+      { operation_id: completionId, skill_id: plan.skill_id },
+      revalidate,
+    )
+    if (!(yield* dispatch.canResume))
+      return yield* Effect.fail(
+        fail(
+          "SHARED_BODY_REVIEW_UNRESOLVED",
+          "The independent completion dispatch remains unknown. Observe the same fact without sending it again.",
+        ),
+      )
+    yield* appendSharedRecord(library, {
+      mode: "create",
+      recordId: completionId,
+      operationId: completionId,
+      skillPageId: plan.skill_page_id,
+      kind: "operation",
+      entityId: plan.file_id,
+      payload: yield* bodyWriteReviewCompletion(plan),
+    }).pipe(Effect.provideService(Notion, dispatch.api))
+    return yield* verifyChain(library, plan, facts)
+  }).pipe(Effect.mapError((error) => recoveryError(error, plan, "complete")))
 }
 
 /** Historical completion only. Never use a current body to fill an absent review fact. */
@@ -604,7 +828,8 @@ export function completedSharedBodyWriteReview(
       !headers.some(
         (header) =>
           header.record_id === operationId ||
-          header.record_id === bodyWriteReviewReceiptId(operationId),
+          header.record_id === bodyWriteReviewReceiptId(operationId) ||
+          header.record_id === bodyWriteReviewCompletionId(operationId),
       )
     )
       return undefined
@@ -624,7 +849,7 @@ export function completedSharedBodyWriteReview(
           "The original review plan has not been observed; its receipt cannot authorize a replacement.",
         ),
       )
-    return yield* verifyChain(library, plan, facts, input.events)
+    return yield* verifyChain(library, plan, facts, input.events, headers)
   })
 }
 
@@ -635,14 +860,14 @@ export function reviewSharedBodyWrite(input: {
   readonly originalOperationId: string
   readonly acceptedObservedSha256: string
   readonly scope: string
-  readonly mode: "create" | "reconcile"
+  readonly mode: "create" | "reconcile" | "complete"
   readonly dryRun: boolean
 }) {
   return Effect.gen(function* () {
     if (
       !/^[a-f0-9]{64}$/u.test(input.scope) ||
       !/^[a-f0-9]{64}$/u.test(input.acceptedObservedSha256) ||
-      !["create", "reconcile"].includes(input.mode) ||
+      !["create", "reconcile", "complete"].includes(input.mode) ||
       (input.mode === "reconcile" && input.dryRun)
     )
       return yield* Effect.fail(
@@ -687,27 +912,20 @@ export function reviewSharedBodyWrite(input: {
     // Another credential scope can hide the original shared review request.
     // Its opaque Store address is enough to forbid a fresh version/dispatch;
     // never read another scope's plan or treat that address as completion.
-    const localKey = yield* pendingFileOperationKey(scope.prefix, {
+    const priorScopeDispatch = yield* priorReviewScopeDispatch(scope, {
       file_id: original.file_id,
       operation_id: operationId,
     })
-    const suffix = localKey.slice(localKey.lastIndexOf("/"))
-    const priorScopeDispatch = (yield* (yield* Store).listKeys(
-      "operations/shared-observation-pending/",
-    )).some(
-      (key) =>
-        key !== localKey &&
-        /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key) &&
-        key.endsWith(suffix),
-    )
     const recovery =
       input.mode === "reconcile" ||
+      input.mode === "complete" ||
       retained !== undefined ||
       priorScopeDispatch ||
       headers.some(
         (header) =>
           header.record_id === operationId ||
-          header.record_id === bodyWriteReviewReceiptId(operationId),
+          header.record_id === bodyWriteReviewReceiptId(operationId) ||
+          header.record_id === bodyWriteReviewCompletionId(operationId),
       )
     if (recovery && retained === undefined)
       return yield* Effect.fail(
@@ -722,7 +940,18 @@ export function reviewSharedBodyWrite(input: {
         fail("STATE_CORRUPT", "The retained original review cannot be replaced by another plan."),
       )
     let result: ReturnType<typeof reviewed>
-    if (recovery) result = yield* verifyChain(input.library, plan, facts)
+    if (input.mode === "complete") {
+      const completion = yield* completeExistingReview(
+        input.library,
+        plan,
+        facts,
+        scope,
+        input.dryRun,
+        headers,
+      )
+      if (completion.status === "planned") return completion
+      result = completion
+    } else if (recovery) result = yield* verifyChain(input.library, plan, facts, undefined, headers)
     else {
       const allowed = new Set([plan.original_operation_id])
       const parents = local.filter((entry) => entry.plan.kind === "skill_apply")

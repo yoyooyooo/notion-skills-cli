@@ -37,7 +37,10 @@ import { loadPendingSharedBodyWrites } from "./shared-body-write.ts"
 import { assertSharedNativeAdoptionComplete } from "./shared-native-adoption.ts"
 import { nativeAdoptionEntity } from "./shared-native-adoption-model.ts"
 import { reconcileSharedBodyWriteReview } from "./shared-body-write-review.ts"
-import { validateSharedBodyWriteReviewPlan } from "./shared-body-write-review-model.ts"
+import {
+  bodyWriteReviewCompletionId,
+  validateSharedBodyWriteReviewPlan,
+} from "./shared-body-write-review-model.ts"
 import { loadPendingSharedMetadataWrites } from "./shared-metadata-write.ts"
 import { loadPendingSharedFileManagement } from "./shared-file-management.ts"
 import {
@@ -977,10 +980,14 @@ export function inspectAuditSkill(
         header.entity_id === nativeAdoptionEntity &&
         /^skill-adopt-[a-f0-9]{64}$/u.test(header.record_id),
     )
+    // Only completions tied to an observed original review belong to this
+    // family. An orphan completion remains unclassified and unverified.
+    const bodyReviewCompletions = new Set([...bodyReviewIds].map(bodyWriteReviewCompletionId))
     const unclassified = operations.filter(
       (header) =>
         !nativeAdoptions.includes(header) &&
         !bodyReviewIds.has(header.record_id.replace(/^reviewed-/u, "")) &&
+        !bodyReviewCompletions.has(header.record_id) &&
         retainedImportRecoveryOriginal(header, operations) === undefined &&
         sharedCreateRestorationOriginal(header, operations) === undefined &&
         sourceProjectionRepairOriginal(header, operations) === undefined &&

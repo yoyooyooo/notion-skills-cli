@@ -3,7 +3,12 @@
   "synchronized_commit": "e2c309bbee68a5b00e91db4318c6d4883d30163f",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
-    "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
+    "packages/cli/test/library-file-review.test.ts": "c89d8c989e459a09f78f6976b6d3b5f1fbdbd64ccbf5f8a49b5b9c14136f9c9d",
+    "packages/core/test/shared-body-write-review-completion.test.ts": "ecf430ca79100b2b097190ee597f9cc2bc757ea67b9c376b4f7a8426e1444249",
+    "packages/core/test/shared-body-write-review-metadata.test.ts": "b9d6d2b34736333b4d42ed338974c44f463589b5924b3cbc94b57d448ebaa2ed",
+    "packages/core/test/shared-plan-storage.test.ts": "f5fe71cd7710373c78ed726322c081fd774a35bd32067edef8f1dd0d9d233539",
+    "packages/core/test/shared-retained-record-costs.test.ts": "b896cb1c99c967e38f97834cc94b5051b06cda00e8abd8a432088c81e6908e23",
+    "packages/cli/src/commands-library-file-review.ts": "4ee5dfbe05ef9f05c48f61fb8e50e8b73b064c275e2c7203fd2edc93b8438457",
     "packages/core/src/shared-complete-main-input.ts": "2561f8cbb81160428bb59ca57a417cd74623f3288687d3701b11e13af835cad6",
     "packages/core/src/shared-file-intent.ts": "5669d689ccfd33792f09e34c7b2e822bad72bac05d57a353d009ed73915700bf",
     "packages/core/src/shared-file-takeover.ts": "b24b9c1807447f946cf70517a62d715538b40946b9d082c5c6d24381a0dec015",
@@ -133,8 +138,8 @@
     "packages/core/src/shared-create-recovery-acknowledgements.ts": "d82b8d76a655ff2e5b5bbac92872a6ec4147ae43cef3fd41f83982a65e68d44d",
     "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "d7c8da03dc0534a6e09820ac62dc3a24c8fae16191e86a163c2da4266269a064",
     "packages/core/src/shared-native-file-content.ts": "8dcf9b86b8838f960f686ba1e58f4db6bbe890c2291d2b55098d1c27ed94bffe",
-    "packages/core/src/shared-body-write-review-model.ts": "b52cf5a7bc732721fd743533e3c8ac2c6db251b544417822afa2e9a0a2fc0664",
-    "packages/core/src/shared-body-write-review.ts": "bd4362d2d8891eaca65434d0abe431ef0a1fdb16067f333c774d1b0c5c6c434e",
+    "packages/core/src/shared-body-write-review-model.ts": "73af457f87e6144676ebb69a21a69084253235740d590710201d22792dd97092",
+    "packages/core/src/shared-body-write-review.ts": "f8f525bfc276adb486c66cd8866add6fe069bff0442c1fc863de3745dd4ff9d6",
     "packages/core/src/shared-pending-file-operations.ts": "720a0d159c267c26cb4fe039987de7b1ef26b7e196558e60d778ad595da9a8e7",
     "packages/core/src/shared-create-recovery-native-model.ts": "068381815f816de5592d81a4c7b304b84779b9643db0651c2b8afb09731ba8a9",
     "packages/core/src/shared-create-recovery-native-plan.ts": "d686bb94d7daa8eee9dc68f1acf22f99a0b9c4484a36429763ee9c949c350a3e",
@@ -161,7 +166,7 @@
     "packages/core/test/resource-read.test.ts": "263659b0e54a23c700b00939731fc3dc24c8f12b212e02e56d79f036501c099d",
     "packages/cli/test/sdk.test.ts": "09fdd140f6fdc68ef2b357df6e855c18c717cf8f73adef204be4fbd806bbb22c",
     "packages/core/src/shared-content.ts": "2099810af56a7493fc7bc8b091e1e8113af3f8be754ecc876d7fac216070c17f",
-    "packages/core/src/shared-audit-inspect.ts": "27cd7e6ce84e121759d97da47d1ae01bba28853936df52a979de7dc285215c6f",
+    "packages/core/src/shared-audit-inspect.ts": "63c39532b69630e654653c7299dadc3d9403a0eca35fa42af528418079411702",
     "packages/core/src/shared-audit-growth.ts": "8def4d06a20b2bc5118155987dcd14205319ae2e2ca663f8da21a127ef7ec2c9",
     "packages/core/src/shared-native-repair.ts": "03ed0d221738a1aa9d85edab11ef201754253e683520bc41b7736385bcc672d1",
     "packages/core/src/shared-native-repair-model.ts": "fdd127eed0395bd4cf1f23c1f26b3498e1b6e1e0c797cd5635928993441b70e0",
@@ -173,7 +178,7 @@
     "packages/core/test/shared-audit-target.test.ts": "a4e9b3621d179ff25d681a25d9f1cd151ee33cc3daf29396ea70cc3121f10bc9",
     "packages/core/test/shared-native-repair.test.ts": "8c04cc6723480e78ecbf88e4ba6537b70f2682d2901f495a315705b495a4ec50",
     "packages/core/test/shared-file-adoption.test.ts": "64dec2552982ef2209b2c0491e57f9226d5ddd60944eb0d122e0f94e0cc65d3b",
-    "packages/core/src/shared-plan-storage.ts": "bc2bb0dcced59d9953e9013c5f2cbf77fefa7b2c29b57a06dff8d2ec540a7864",
+    "packages/core/src/shared-plan-storage.ts": "8a0b3e63996be03d334a54f7351a6a29ae76c537be99b5f0bf52377d404eaf07",
     "packages/core/src/shared-notion-table-hostnames.ts": "a653fa50e5ea1827fac75d81314d12bd773fc95f1c7a7ac6ec98d5a9a1a93ab1",
     "packages/core/test/shared-notion-projection-v15.test.ts": "22403da8b223d1db7bbdf869531731734949a3e94a281b3afb9b48d39b0eba3b",
     "packages/core/src/shared-source-onboarding.ts": "c844dd6635a01baebae5b4154c3ee5af44ae449885bca9e90969106d56db6992",
@@ -229,7 +234,7 @@
     "packages/core/src/shared-migration-create-origin-model.ts": "75c248fbbacb2a840453238747e7757433c6841fd43ca60fa19b924019586436",
     "packages/core/src/shared-migration-create-origin.ts": "30b6356380705c1609010a0b5c7b9ae297a785043ecda05b42761b146d283f62",
     "packages/core/src/shared-migration-conversion-model.ts": "600a74d87883e98d929166eab9b6528c4b71fa9c5ea055cf4e0f32c1df0857dc",
-    "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "eb43acb15e05faca53e663524dad07db5f4d91679bc9d27d4ff256063521fc2c",
+    "packages/core/test/shared-create-acknowledgement-import.node.test.ts": "f1842fc4f77ee1911cb4a0399ec65f526a26b4b84d9a551b9873c6cd3001ec06",
     "packages/cli/test/library-source-refresh.test.ts": "b1a00a72c0742a84fc0e514c35491366b1fcbadc8268425c91213f99dfc59e77",
     "packages/cli/src/commands-library-source-file-resubmission.ts": "b563699bf624d007dc7bb53522ac17835113cdbc013cbdaa0114198f01fbe81a",
     "packages/cli/test/cli.test.ts": "bc3c977104eb40af920295d384dd01508f1f09cd891368073dc83765994da97b",
@@ -252,7 +257,7 @@
     "packages/core/src/shared-sparse-git-references.ts": "e7155663e779a31c0db1f97ff140e3178619705531733ebea23a5aafa9980bf7",
     "packages/cli/src/commands-library-file-takeover.ts": "aca6125515891f73457d740e960df62346654ac0167c8ec74865429fbd05fccb",
     "packages/core/src/snapshot.ts": "c91507fa454f2fccd4dc9ae10130dfca9c0354ce3b3c3e26e595c07f822ec5e7",
-    "packages/cli/test/library-file-takeover-http.test.ts": "86b2a5c6635f5980d67acbbadbe6edc9d1c8a6792919ec754527fefb8e8a137e",
+    "packages/cli/test/library-file-takeover-http.test.ts": "710ee75870666afe574f516fd4adde6c751366d5df602331d34ce46aaed2fb9d",
     "packages/cli/test/library-file-takeover-input.test.ts": "92eb23e9db23303ce6da41cf570a8ac09abfe6256a40ad01f67c1d5107e5b74c",
     "packages/core/src/shared-git-main-initialization-model.ts": "0fa8e0f870a7da1b58cdb844ca8a0938f845b384be5128dfd5e1bf587d577914",
     "packages/core/src/shared-git-main-initialization.ts": "422577b1285b85357aadf1b80051c2c2560d17d92ff68287dae8741871887c42",
@@ -473,6 +478,53 @@
   "model_import_commit": "de3e7414568fca8bf62c2f2fc99ca3c217b871b6",
   "review_basis": "The synchronized commit and content hashes bind reviewed runtime correspondence, not a full refinement proof. Public CLI, installed SDK, real Notion/provider/UI behavior and physical machines require independent evidence. Prior ProjectionRace, UpdateCommit, AuditRun, ImportCreate and CreateRecovery inputs and receipts are retained unchanged. The five retained and five NativeRestoration AcknowledgedContinuation configurations were checked together in formal-native-restoration-v3; their unchanged model/config/view inputs retain those original named-positive and negative-control results. Original failed runtime and tool invocations remain separate. Native inventory immutable-Record prefix recovery, consumption-effect disclosure, strict-read-only routing, request attribution and header reuse are hash-bound implementation context only. The new independent native file-add current acceptance is explicitly unmodeled: it supplies its own reviewed adoption/completion, never an original ACK or successful original add outcome. Current source correspondence and direct tests do not turn earlier TLC results into a proof of this separate decision. No source hash alone establishes an invariant, liveness property or task completion.",
   "unmodeled_bindings": [
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "projection_16_17_derived_text_roundtrip",
+      "symbols": ["ProjectionInput", "storedSharedOperationPlan", "expandSharedOperationPlan"],
+      "scope": "The existing derived-text-v1 schema additionally accepts the already implemented projection versions 16 and 17. Complete unique inputs, raw preimage, version, purpose, source/authored text and identity commitments remain retained. Canonical expansion must equal the complete original plan before authority is stored; original domain digests validate reconstructed content. Unknown versions, incompatible purpose, tampered inputs and unique-input envelopes above the unchanged 64 KiB budget remain rejected before dispatch. Projection algorithms, body comparison, write authority and finite model transitions are unchanged; this schema/byte reconstruction is reviewed concrete context, not a new finite-model proof.",
+      "files": [
+        "packages/core/src/shared-plan-storage.ts",
+        "packages/core/src/shared-notion-projection.ts"
+      ],
+      "tests": [
+        "packages/core/test/shared-plan-storage.test.ts",
+        "packages/core/test/shared-git-main-takeover.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#exact-derived-text-storage-for-projection-16-and-17",
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "initial_git_main_review_independent_completion",
+      "symbols": [
+        "bodyWriteReviewCompletionId",
+        "bodyWriteReviewCompletion",
+        "verifyReviewPrefix",
+        "reviewTerminal",
+        "completionWriter",
+        "completeExistingReview",
+        "reviewSharedBodyWrite",
+        "completedSharedBodyWriteReview"
+      ],
+      "scope": "An existing version-2 initial Git-main review with complete exact shared plan, observed object and adopted event can receive one separate completed-v1 identity. Only its original credential scope and exact local review pending plan may authorize this new Record; unrelated pending operations, original Source/owner metadata, full raw body and complete current frontier are rechecked before dispatch. The existing repeat:never dispatcher preserves every new unknown intent and ACK. Neither the old reviewed-* receipt nor the original needs_review outcome is rewritten or inferred successful. Both observed terminal kinds must be exact; historical completion never proves current content. Cold consumers require the whole original proof and independent completion before normal current checks. Ordinary/version-1 reviews retain their original boundaries. This one-new-Record composition with a legacy three-fact prefix is outside existing finite model domains; no model/config/view/case/expected-rule inventory changes or new finite-model proof is claimed. A previously acquired complete validated operation index controls discovery only: indexed completions still require their exact payload and original scope, and an observed legacy receipt is checked independently. Callers without that index and verification after a new write retain fresh lookup. The unchanged expired ordinary-review cost remains 16 metadata requests.",
+      "files": [
+        "packages/cli/src/commands-library-file-review.ts",
+        "packages/core/src/shared-body-write-review-model.ts",
+        "packages/core/src/shared-body-write-review.ts",
+        "packages/core/src/shared-audit-inspect.ts"
+      ],
+      "tests": [
+        "packages/core/test/shared-body-write-review-completion.test.ts",
+        "packages/core/test/shared-retained-record-costs.test.ts",
+        "packages/core/test/shared-body-write-review.test.ts",
+        "packages/core/test/shared-body-write-review-metadata.test.ts",
+        "packages/cli/test/library-file-review.test.ts",
+        "packages/cli/test/library-file-takeover-http.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#completing-a-retained-initial-git-main-body-review",
+      "no_new_finite_model_claim": true
+    },
     {
       "kind": "reviewed_implementation_context_not_modeled",
       "name": "complete_main_header_and_independent_known_review",

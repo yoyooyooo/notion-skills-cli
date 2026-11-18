@@ -7,7 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { Notion } from "../../core/src/notion.ts"
-import { property } from "../../core/src/model.ts"
+import { property, text } from "../../core/src/model.ts"
 import { parseYaml } from "../../core/src/yaml.ts"
 import { writeSharedSkillFile } from "../../core/src/shared-authoring.ts"
 import { withSharedAuthoringTarget } from "../../core/src/shared-authoring-context.ts"
@@ -43,10 +43,11 @@ beforeAll(async () => {
   if (code) throw new Error(`Build failed: ${out}\n${err}`)
 }, 120_000)
 
-for (const readback of ["exact", "reviewed"] as const)
+for (const readback of ["exact", "reviewed", "review-completed"] as const)
   test("real Node ctl and bundled SDK consume the same Git main and explicit header through SQLite (" +
     readback +
     ")", async () => {
+    const reviewed = readback !== "exact"
     const f = await gitMainFixture()
     const root = await realpath(
       await mkdtemp(
@@ -54,8 +55,19 @@ for (const readback of ["exact", "reviewed"] as const)
       ),
     )
     const errors: string[] = [],
-      calls: { path: string; method: string }[] = []
-    let gitRequests = 0
+      calls: { phase: string; path: string; method: string; body: unknown; status: number }[] = []
+    let gitRequests = 0,
+      phase = "setup",
+      hiddenReviewEvent = "",
+      hideReviewEvent = false,
+      hiddenReviewQueries = 0
+    const recordFields: Readonly<Record<string, string>> = library.records.property_ids
+    const recordText = (row: unknown, key: string) =>
+      text(property(property(property(row).properties)[key]).rich_text)
+    const recordId = (row: unknown) => recordText(row, recordFields["Record ID"]!)
+    const recordPayload = (row: unknown) =>
+      property(JSON.parse(recordText(row, recordFields.Payload!))).payload
+    const recordRows = () => [...f.f.base.records.values()]
     const server = createServer(async (request, response) => {
       try {
         const url = new URL(request.url ?? "/", "http://127.0.0.1")
@@ -80,19 +92,37 @@ for (const readback of ["exact", "reviewed"] as const)
         const method = request.method
         if (method !== "GET" && method !== "POST" && method !== "PATCH")
           throw new Error("Unexpected method")
-        calls.push({ path: url.pathname, method })
-        if (url.pathname === "/v1/users/me")
+        const call = { phase, path: url.pathname, method, body, status: 0 }
+        calls.push(call)
+        if (url.pathname === "/v1/users/me") {
+          call.status = 200
           return json(response, 200, {
             object: "user",
             id: id(99),
             type: "bot",
             bot: { workspace_id: id(100) },
           })
-        const result = await f.run(
+        }
+        let result = await f.run(
           Effect.flatMap(Notion, (api) =>
             api.request(url.pathname.slice(1) + url.search, body, { method }),
           ),
         )
+        call.status = 200
+        // The POST remains acknowledged and retained; only the immediate complete
+        // file-event query lags, so the original review never sends its receipt.
+        if (
+          hideReviewEvent &&
+          url.pathname === `/v1/data_sources/${library.records.data_source_id}/query` &&
+          JSON.stringify(property(body).filter).includes('"file_event"')
+        ) {
+          const raw = property(result)
+          if (Array.isArray(raw.results)) {
+            const visible = raw.results.filter((row) => recordId(row) !== hiddenReviewEvent)
+            if (visible.length !== raw.results.length) hiddenReviewQueries++
+            result = { ...raw, results: visible }
+          }
+        }
         return json(response, 200, result)
       } catch (error) {
         errors.push(String(error))
@@ -137,6 +167,7 @@ globalThis.fetch = (request, options) => {
       NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     })
     const cli = async (label: string, argv: string[], client = "writer", expectedExit = 0) => {
+      phase = label
       const child = Bun.spawn([node, "--import", preload, executable, ...argv], {
         stdin: "ignore",
         stdout: "pipe",
@@ -149,16 +180,37 @@ globalThis.fetch = (request, options) => {
         child.exited,
       ])
       await writeFile(join(root, `${label}.stdout.json`), stdout)
+      await writeFile(join(root, `${label}.stderr.log`), stderr)
+      await writeFile(join(root, `${label}.command.json`), JSON.stringify({ argv, client, code }))
       expect(errors, label).toEqual([])
       expect(code, `${label}: ${stdout} ${stderr}`).toBe(expectedExit)
       return property(JSON.parse(stdout))
+    }
+    const pendingJournal = () => {
+      const rows: unknown[] = JSON.parse(
+        execFileSync(
+          node,
+          [
+            "--input-type=module",
+            "--eval",
+            `import { DatabaseSync } from 'node:sqlite';
+const db = new DatabaseSync(${JSON.stringify(join(root, "writer", "state", "state.sqlite"))}, {readOnly:true});
+try { console.log(JSON.stringify(db.prepare("SELECT key,payload FROM shared_local_records WHERE category='dispatch' AND retired=0 AND key LIKE 'operations/shared-observation-pending/%' ORDER BY key").all())); } finally { db.close(); }`,
+          ],
+          { encoding: "utf8" },
+        ),
+      )
+      return rows.map((row) => {
+        const value = property(row)
+        return { key: value.key, value: JSON.parse(String(value.payload)) }
+      })
     }
     const input = join(root, "SKILL.md")
     const original = new TextDecoder().decode(f.original.bytes)
     let local = original
       .replace("user-invokable: true", "user-invokable: false\ncustom: [one, two]")
       .replace("Keep all source documents.", "Keep the complete edited local main.")
-    if (readback === "reviewed") {
+    if (reviewed) {
       local = local.replace(
         "Keep the complete edited local main.",
         "1. **First step**:\n   - Keep every local instruction.\n\n2. **Second step**:\n   - Keep all source documents.",
@@ -191,13 +243,8 @@ globalThis.fetch = (request, options) => {
       expect(property(plan.git_main_initialization).source_input).toBe(original)
       const planFile = join(root, "original-plan.json")
       await writeFile(planFile, JSON.stringify(plan))
-      const applied = await cli(
-        "apply",
-        [...args, "--plan", planFile],
-        "writer",
-        readback === "reviewed" ? 1 : 0,
-      )
-      if (readback === "reviewed") {
+      const applied = await cli("apply", [...args, "--plan", planFile], "writer", reviewed ? 1 : 0)
+      if (reviewed) {
         expect(property(applied.error).code).toBe("SHARED_BODY_WRITE_REVIEW_REQUIRED")
         const beforeReview = writes().length
         const reviewArgs = [
@@ -212,16 +259,131 @@ globalThis.fetch = (request, options) => {
           "--accept-observed-sha256",
           sha(f.markdown()),
         ]
-        expect((await cli("review-dry-run", [...reviewArgs, "--dry-run"])).status).toBe("planned")
+        const reviewPreview = await cli("review-dry-run", [...reviewArgs, "--dry-run"])
+        expect(reviewPreview.status).toBe("planned")
         expect(writes()).toHaveLength(beforeReview)
-        expect((await cli("review-apply", reviewArgs)).decision).toBe("accepted_observed")
+        if (readback === "review-completed") {
+          const reviewPlan = property(reviewPreview.plan),
+            reviewId = String(reviewPlan.operation_id),
+            receiptId = `reviewed-${reviewId}`,
+            completionId = `completed-v1-${reviewId}`
+          expect(reviewPlan.version).toBe(2)
+          hiddenReviewEvent = String(property(reviewPlan.event).event_id)
+          hideReviewEvent = true
+          const failedReview = await cli("review-apply-missing-receipt", reviewArgs, "writer", 1)
+          hideReviewEvent = false
+          expect(property(failedReview.error).code).toBe("BASELINE_MISSING")
+          expect(hiddenReviewQueries).toBeGreaterThan(0)
+          const reviewWrites = writes().slice(beforeReview)
+          expect(reviewWrites.map((call) => recordId(call.body))).toEqual([
+            reviewId,
+            String(property(reviewPlan.content).object_id),
+            hiddenReviewEvent,
+          ])
+          expect(reviewWrites.every((call) => call.status === 200)).toBe(true)
+          expect(recordRows().some((row) => recordId(row) === receiptId)).toBe(false)
+          const journal = pendingJournal()
+          expect(
+            journal.find((entry) => property(property(entry.value).plan).operation_id === reviewId),
+          ).toMatchObject({ value: { plan: reviewPlan } })
+          await writeFile(join(root, "original-review-journal.json"), JSON.stringify(journal))
+          const recordsBefore = structuredClone(recordRows()),
+            ownerBefore = structuredClone(f.row),
+            bodyBefore = f.markdown(),
+            beforeCompletion = writes().length
+          const originalOutcome = recordsBefore.find(
+            (row) =>
+              property(recordPayload(row)).kind === "body_write_outcome" &&
+              property(recordPayload(row)).operation_id === plan.operation_id,
+          )
+          expect(property(recordPayload(originalOutcome)).status).toBe("needs_review")
+          const unresolved = await cli(
+            "original-review-reconcile",
+            [...reviewArgs, "--reconcile"],
+            "writer",
+            1,
+          )
+          expect(property(unresolved.error).code).toBe("SHARED_RECORD_UNRESOLVED")
+          expect(property(property(unresolved.error).details).record_id).toBe(receiptId)
+          expect(writes()).toHaveLength(beforeCompletion)
+          const completionPreview = await cli("review-complete-dry-run", [
+            ...reviewArgs,
+            "--complete",
+            "--dry-run",
+          ])
+          expect(completionPreview).toMatchObject({
+            status: "planned",
+            operation_id: reviewId,
+            completion_operation_id: completionId,
+            original_status: "needs_review",
+            write_plan: {
+              immutable_records: 1,
+              native_body_patches: 0,
+              original_review_receipt: "unproven",
+            },
+          })
+          expect(writes()).toHaveLength(beforeCompletion)
+          expect(pendingJournal()).toEqual(journal)
+          const completed = await cli("review-complete-apply", [...reviewArgs, "--complete"])
+          expect(completed).toMatchObject({
+            status: "reviewed",
+            decision: "accepted_observed",
+            original_status: "needs_review",
+            operation_id: reviewId,
+            completion_operation_id: completionId,
+            original_operation_id: plan.operation_id,
+            verified: true,
+          })
+          const completionWrites = writes().slice(beforeCompletion)
+          expect(completionWrites).toHaveLength(1)
+          expect(completionWrites[0]).toMatchObject({
+            method: "POST",
+            path: "/v1/pages",
+            status: 200,
+          })
+          expect(recordId(completionWrites[0]!.body)).toBe(completionId)
+          expect(recordRows()).toHaveLength(recordsBefore.length + 1)
+          for (const row of recordsBefore)
+            expect(recordRows().find((current) => recordId(current) === recordId(row))).toEqual(row)
+          expect(
+            recordPayload(recordRows().find((row) => recordId(row) === completionId)),
+          ).toMatchObject({
+            kind: "body_write_review_completion",
+            operation_id: completionId,
+            review_operation_id: reviewId,
+            original_operation_id: plan.operation_id,
+            original_status: "needs_review",
+            status: "reviewed",
+            original_review_receipt: "unproven",
+          })
+          expect(recordRows().some((row) => recordId(row) === receiptId)).toBe(false)
+          expect(f.row).toEqual(ownerBefore)
+          expect(f.markdown()).toBe(bodyBefore)
+          await writeFile(
+            join(root, "completion-proof.json"),
+            JSON.stringify({
+              review_id: reviewId,
+              completion_id: completionId,
+              hidden_review_queries: hiddenReviewQueries,
+              original_records: recordsBefore,
+              completed_records: recordRows(),
+              original_outcome: recordPayload(originalOutcome),
+              original_receipt_present: false,
+              original_review_writes: reviewWrites,
+              completion_writes: completionWrites,
+              body_sha256: sha(bodyBefore),
+            }),
+          )
+        } else expect((await cli("review-apply", reviewArgs)).decision).toBe("accepted_observed")
       } else expect(applied.status).toBe("applied")
       expect(f.bodyWrites).toHaveLength(1)
       const after = writes().length
       const repeated = await cli("reconcile", [...args, "--plan", planFile, "--reconcile"])
-      expect(repeated.status).toBe(readback === "reviewed" ? "reviewed" : "applied")
+      expect(repeated.status).toBe(reviewed ? "reviewed" : "applied")
       expect(writes()).toHaveLength(after)
       const beforeMain = gitRequests
+      if (readback === "review-completed")
+        await expect(stat(join(root, "cold"))).rejects.toMatchObject({ code: "ENOENT" })
       const read = await cli(
         "cold-read",
         ["read", f.target, "--database", library.skills.database_id, "--read-only"],
@@ -249,6 +411,8 @@ globalThis.fetch = (request, options) => {
       expect(property(offline.error).code).toBe("SNAPSHOT_MISSING")
       expect(calls).toHaveLength(beforeOffline)
       expect(gitRequests).toBe(beforeMain)
+      if (readback === "review-completed")
+        await expect(stat(join(root, "exporter"))).rejects.toMatchObject({ code: "ENOENT" })
       const exported = await cli(
         "cold-export",
         [
@@ -269,13 +433,29 @@ globalThis.fetch = (request, options) => {
       const yaml = (value: string) => parseYaml(/^---\n([\s\S]*?)\n---/u.exec(value)![1]!)
       expect(yaml(rendered)).toEqual(yaml(local))
       expect(rendered).toContain(
-        readback === "reviewed"
-          ? "Keep every local instruction."
-          : "Keep the complete edited local main.",
+        reviewed ? "Keep every local instruction." : "Keep the complete edited local main.",
       )
-      expect((await stat(join(root, "export", "SKILL.md"))).mode & 0o111).not.toBe(0)
-      for (const file of f.member.portable.files.filter((file) => file.path !== "SKILL.md"))
-        expect(sha(await readFile(join(root, "export", file.path)))).toBe(sha(file.bytes))
+      if (readback === "review-completed") {
+        expect(read.content).toBe(rendered)
+        expect(rendered.replace(/^---\n[\s\S]*?\n---\n\n/u, "")).toBe(f.markdown() + "\n")
+      }
+      const exportedModes = []
+      for (const file of f.member.portable.files) {
+        if (file.path !== "SKILL.md")
+          expect(sha(await readFile(join(root, "export", file.path)))).toBe(sha(file.bytes))
+        const diskMode = (await stat(join(root, "export", file.path))).mode & 0o777,
+          gitMode = diskMode & 0o111 ? "100755" : "100644",
+          expectedMode = file.path === "SKILL.md" ? "100755" : file.mode
+        if (expectedMode === undefined) throw new Error(`Missing fixed Git mode for ${file.path}`)
+        expect(gitMode).toBe(expectedMode)
+        exportedModes.push({
+          path: file.path,
+          expected_git_mode: expectedMode,
+          actual_git_mode: gitMode,
+          disk_mode: diskMode.toString(8),
+        })
+      }
+      await writeFile(join(root, "export-modes.json"), JSON.stringify(exportedModes))
       expect(f.f.skills.has(f.target)).toBe(true)
       expect(f.f.nativeCreates()).toHaveLength(0)
       const headerInput = join(root, "header-input.md")
@@ -331,9 +511,7 @@ globalThis.fetch = (request, options) => {
       expect(sdkRead.snapshot_id).not.toBe(read.snapshot_id)
       expect(String(sdkRead.content)).toContain('"header-only-version": 2')
       expect(String(sdkRead.content)).toContain(
-        readback === "reviewed"
-          ? "Keep every local instruction."
-          : "Keep the complete edited local main.",
+        reviewed ? "Keep every local instruction." : "Keep the complete edited local main.",
       )
       expect(property(property(sdk.metrics).requests).notion_write).toBe(0)
       expect(writes()).toHaveLength(afterHeader)
@@ -342,6 +520,7 @@ globalThis.fetch = (request, options) => {
         JSON.stringify({ journey: readback, evidence_root: root, executable, sdk_entry: sdkEntry }),
       )
     } finally {
+      await writeFile(join(root, "http-calls.json"), JSON.stringify(calls))
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       )

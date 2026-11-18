@@ -652,6 +652,12 @@ New review plans use version 2 and retain the original write candidate's complet
 
 If review is interrupted, retain its original receipt and repeat the exact review with `--reconcile`. Reconciliation only verifies the original review facts and never fills missing facts by repeating unknown writes. Existing version 1 plans, events and receipts retain their original identities and contents, including their historical metadata omission. The review identity remains unique to the original body write; a missing original plan or conflicting versions cannot authorize a replacement review. `--dry-run` and `--reconcile` are mutually exclusive.
 
+### Complete a retained initial Git-main review
+
+An existing version 2 review of an initial Git-main takeover can have all three prefix facts retained and verified in shared Records—the exact review plan, retained observed-body object and adopted file event—without a terminal receipt. Use the same original body operation and exact raw SHA with `--complete --dry-run` to preview one independent completion Record, then remove `--dry-run` to execute. The [operator sequence](usage.md#completing-a-retained-body-review) gives the complete commands.
+
+This write requires the identical pending review in its original Store and credential scope; only its exact original body write may coexist as another pending operation. Source, owner metadata, complete current body and the sole review-event frontier are checked again before dispatch. Completion preserves the original review ID, old `needs_review` and unproven `reviewed-*` receipt. It does not repeat any prefix or write a body, property or file event. Missing prefix facts, ordinary/version 1 reviews and changed observations cannot use this permission. An unknown completion dispatch cannot be replayed. Completed requests and `--reconcile` remain read-only; `--complete` cannot combine with `--reconcile`. Current reading and any later edit retain their separate validation requirements.
+
 ## Accepting the current version after an unknown write
 
 An original body write can have no retained outcome even when its exact adoption event is later visible. The explicit `accept-current` command records an independent decision to accept the current version. It requires that existing exact event, a complete fresh body equal to the original candidate, and unchanged file identity, Source and parent frontier. It preserves the original outcome as `unknown`.

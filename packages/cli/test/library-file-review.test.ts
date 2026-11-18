@@ -59,6 +59,13 @@ test("public file review exposes exact original-operation and singleton acceptan
         max_occurrences: 1,
         default: false,
       }),
+      expect.objectContaining({
+        name: "complete",
+        required: false,
+        min_occurrences: 0,
+        max_occurrences: 1,
+        default: false,
+      }),
     ]),
   )
   const help = JSON.stringify(schema.description)
@@ -68,6 +75,11 @@ test("public file review exposes exact original-operation and singleton acceptan
   expect(help).toContain("main or a supporting file")
   expect(help).toContain("frozen native mode and complete frontmatter")
   expect(help).toContain("Existing version 1 review facts")
+  expect(help).toContain("--complete")
+  expect(help).toContain("initial Git-main")
+  expect(help).toContain("one independent completion Record")
+  expect(help).toContain("original Store")
+  expect(help).toContain("--complete --dry-run")
 })
 
 test("public review declares and enforces mutually exclusive dry-run and reconcile intent", () => {
@@ -82,4 +94,30 @@ test("public review declares and enforces mutually exclusive dry-run and reconci
   expect(enforceConstraint(constraint, { dryRun: true, reconcile: false })).toBe(true)
   expect(enforceConstraint(constraint, { dryRun: false, reconcile: true })).toBe(true)
   expect(enforceConstraint(constraint, { dryRun: true, reconcile: true })).toBe(false)
+})
+
+test("public review permits a completion preview and rejects completion combined with reconciliation", () => {
+  const constraints = Context.getOption(reviewCommand().annotations, Constraints).pipe(
+    Option.getOrElse(() => []),
+  )
+  expect(constraints).toContainEqual({
+    kind: "mutually_exclusive",
+    flags: ["complete", "reconcile"],
+  })
+  for (const [dryRun, reconcile, complete, valid] of [
+    [false, false, false, true],
+    [true, false, false, true],
+    [false, true, false, true],
+    [true, true, false, false],
+    [false, false, true, true],
+    [true, false, true, true],
+    [false, true, true, false],
+    [true, true, true, false],
+  ]) {
+    expect(
+      constraints.every((constraint) =>
+        enforceConstraint(constraint, { dryRun, reconcile, complete }),
+      ),
+    ).toBe(valid === true)
+  }
 })

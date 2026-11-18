@@ -30,7 +30,11 @@ export const libraryFileReviewCommand = defineCommand(
     ),
     reconcile: switchFlag(
       "reconcile",
-      "Read back this same original review without repeating unknown writes; excludes --dry-run",
+      "Read back this same original review without repeating unknown writes; excludes --dry-run and --complete",
+    ),
+    complete: switchFlag(
+      "complete",
+      "Complete a retained version 2 initial Git-main review after verifying its full shared prefix in the original Store; allows --dry-run and excludes --reconcile",
     ),
   },
   (options) =>
@@ -38,6 +42,10 @@ export const libraryFileReviewCommand = defineCommand(
       if (options.dryRun && options.reconcile)
         return yield* Effect.fail(
           fail("INVALID_ARGUMENT", "--dry-run and --reconcile are mutually exclusive."),
+        )
+      if (options.complete && options.reconcile)
+        return yield* Effect.fail(
+          fail("INVALID_ARGUMENT", "--complete and --reconcile are mutually exclusive."),
         )
       if (!/^[a-f0-9]{64}$/u.test(options.acceptedObservedSha256))
         return yield* Effect.fail(
@@ -72,15 +80,18 @@ export const libraryFileReviewCommand = defineCommand(
           originalOperationId: options.originalOperation,
           acceptedObservedSha256: options.acceptedObservedSha256,
           scope,
-          mode: options.reconcile ? "reconcile" : "create",
+          mode: options.complete ? "complete" : options.reconcile ? "reconcile" : "create",
           dryRun: options.dryRun,
         }),
       )
     }),
 ).pipe(
-  withConstraints([exclusiveFlags(["dryRun", "reconcile"])]),
+  withConstraints([
+    exclusiveFlags(["dryRun", "reconcile"]),
+    exclusiveFlags(["complete", "reconcile"]),
+  ]),
   Command.withDescription(
-    "Explicitly accept the complete currently observed body for one original body-write operation retained as needs_review. --accept-observed-sha256 must identify the exact bytes you reviewed; changed observations fail instead of accepting another version. The original preimage, candidate and needs_review evidence remain retained. New version 2 plans preserve the original candidate's frozen native mode and complete frontmatter, including license fields. Existing version 1 review facts keep their original identities and contents. The review records accepted_observed and does not replay the original write or rewrite the body. It can review the main or a supporting file through the original operation identity, including an exact disabled authoring target without enabling it. An initial Git-main takeover additionally verifies the unchanged original Source and complete text/code/explicit-link content before accepting native presentation. A known sole-main version-1 parent may expose its reviewed baseline and allow a separate explicit correction from the original Store; the old parent and needs_review child remain unchanged. Unknown writes use their separate accept-current contract. --dry-run previews without writes; --reconcile only observes the same original review. A missing original plan or conflicting versions cannot authorize another review. These flags are mutually exclusive.",
+    "Explicitly accept the complete currently observed body for one original body-write operation retained as needs_review. --accept-observed-sha256 must identify the exact bytes you reviewed; changed observations fail instead of accepting another version. The original preimage, candidate and needs_review evidence remain retained. New version 2 plans preserve the original candidate's frozen native mode and complete frontmatter, including license fields. Existing version 1 review facts keep their original identities and contents. The review records accepted_observed and does not replay the original write or rewrite the body. It can review the main or a supporting file through the original operation identity, including an exact disabled authoring target without enabling it. An initial Git-main takeover additionally verifies the unchanged original Source and complete text/code/explicit-link content before accepting native presentation. A known sole-main version-1 parent may expose its reviewed baseline and allow a separate explicit correction from the original Store; the old parent and needs_review child remain unchanged. Unknown writes use their separate accept-current contract. --complete finishes only a retained version 2 initial Git-main review from the original Store: verification of its full shared prefix plus fresh Source, metadata, full-body and sole-review-frontier checks permit one independent completion Record, with no body, property or file-event writes and no repeated prefix. The operation_id remains the original review ID. --complete --dry-run previews that completion without writes; a repeated completed review and --reconcile are read-only. --reconcile excludes both --dry-run and --complete. A missing original plan, changed observation or conflicting version cannot authorize completion. An unknown original body write is ineligible; an unknown new completion is never replayed.",
   ),
   Command.withExamples([
     {
@@ -88,6 +99,12 @@ export const libraryFileReviewCommand = defineCommand(
         "ntn-skills ctl library file review PAGE ORIGINAL_OPERATION --entry LIBRARY --accept-observed-sha256 SHA256 --dry-run",
       description:
         "Preview acceptance of one exact observed whole-file body while preserving the original needs_review outcome.",
+    },
+    {
+      command:
+        "ntn-skills ctl library file review PAGE ORIGINAL_OPERATION --entry LIBRARY --accept-observed-sha256 SHA256 --complete --dry-run",
+      description:
+        "Preview one independent completion Record for a retained initial Git-main review after verifying its full shared prefix in the original Store.",
     },
   ]),
 )

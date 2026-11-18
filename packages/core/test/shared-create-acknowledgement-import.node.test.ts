@@ -2,7 +2,8 @@ import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { expect, test } from "vitest"
 
-async function freshNode(source: string) {
+async function freshNode(entry: string, source: string) {
+  const started = performance.now()
   const child = spawn(process.execPath, ["--input-type=module", "-e", source], {
     stdio: ["ignore", "pipe", "pipe"],
   })
@@ -14,13 +15,22 @@ async function freshNode(source: string) {
   child.stderr.setEncoding("utf8").on("data", (data: string) => {
     stderr += data
   })
-  const [exit] = await once(child, "close")
-  return { exit, stdout, stderr }
+  const [exit, signal] = await once(child, "close")
+  return {
+    entry,
+    pid: child.pid,
+    elapsed_ms: Math.round(performance.now() - started),
+    exit,
+    signal,
+    stdout,
+    stderr,
+  }
 }
 
 async function freshImport(entry: string, expected: string) {
   const url = new URL("../src/" + entry, import.meta.url).href
   return freshNode(
+    entry,
     `const module = await import(${JSON.stringify(url)}); if (!( ${JSON.stringify(expected)} in module)) throw Error("Missing public module entry"); console.log("loaded")`,
   )
 }
@@ -60,9 +70,11 @@ test.each([
   "native Node independently initializes %s without a temporal-dead-zone cycle",
   async (entry, expected) => {
     const result = await freshImport(entry, expected)
-    expect(result.exit, result.stderr).toBe(0)
-    expect(result.stdout).toBe("loaded\n")
-    expect(result.stderr).toBe("")
+    const diagnostic = JSON.stringify(result, null, 2)
+    expect(result.exit, diagnostic).toBe(0)
+    expect(result.signal, diagnostic).toBeNull()
+    expect(result.stdout, diagnostic).toBe("loaded\n")
+    expect(result.stderr, diagnostic).toBe("")
   },
   60_000,
 )
@@ -109,9 +121,11 @@ f.base.json.clear();f.base.objects.clear();f.credential('independent-'+sample.na
 assert.equal((await f.run(reconcileSharedCreateRestoration(selected))).verified,true);assert.equal(f.writes().length,0);
 console.log(JSON.stringify({case:sample.name,original_failure_preserved:true,same_page:true,repeat_writes:0,cold_verified:true,changed_link_refused:true}));
 `
-    const result = await freshNode(source)
-    expect(result.exit, result.stderr).toBe(0)
-    expect(result.stderr).toBe("")
+    const result = await freshNode(`restoration:${sample.name}`, source)
+    const diagnostic = JSON.stringify(result, null, 2)
+    expect(result.exit, diagnostic).toBe(0)
+    expect(result.signal, diagnostic).toBeNull()
+    expect(result.stderr, diagnostic).toBe("")
     expect(JSON.parse(result.stdout)).toMatchObject({
       case: sample.name,
       original_failure_preserved: true,

@@ -147,6 +147,8 @@ ntn-skills apply 'PINNED_MAIN_REF_FROM_READ' --database 'ENTRY_DATABASE_ID' --in
 
 已经在 Notion 新建的草稿可保持禁用，补全 Name、Description 并将 Kind 设为 `skill` 后，用 `adopt SKILL_PAGE_ID --database ENTRY_DATABASE_ID` 在原页面登记稳定身份并保留完整正文。随后 `read SKILL_PAGE_ID --authoring` 返回新的编辑 pin；普通修改保留禁用状态，`update SKILL_PAGE_ID --enabled true` 才会在完整验证后启用。尚未登记的禁用草稿不进入消费目录，也不阻断其他 Skill。新增 reference 并在主文加入链接时，可将两份文件一次交给稀疏 `apply`；步骤见[整树维护合同](docs/maintenance-tree-contract.md)。若单独使用 `ctl library file add`，[reference 指南](docs/shared-authoring.md#link-the-new-reference-from-the-original-skill)说明后续如何取得 fresh pin 并修改主文。
 
+首次 Git 主文接管的 review 可能在精确 review、保留正文和采用事件已由共享 Records 完整保留并验证后中断。`ctl library file review --complete` 只允许从原 Store，在重新核对 Source、owner、完整正文和事件前沿后，登记一份独立完成记录；原 `needs_review` 保留，不写正文、属性或文件事件。用 `--complete --dry-run` 预览；重复已完成的 review 与 `--reconcile` 均只读。[命令与适用边界](docs/usage.md#completing-a-retained-body-review)。
+
 共享库使用独立的 **Skills、Files、Records、Sources** 数据库。descriptor 与属性 ID 保存内部身份，显示名变化不影响定位。Notion 管理可编辑正文、元数据与保留历史，本地缓存由这些事实派生。日常用 `--database` 明确选库；裸 `list` 仍是工作区发现。身份、固定版本与恢复边界见[共享架构](docs/shared-ssot-architecture.md)。
 
 正常 current read 完整确认 Notion 正文编辑并保留原操作事实后，将整个文件记为自定义；其他文件继续自己的来源行为。改回原文不恢复跟随，也不要求手工接管标记或旧的整 Skill fork。名称、Description、Default Context 与 Router Members 始终来自 Notion 原生属性。

@@ -433,6 +433,20 @@ For an upload interruption, inspect `ctl operation show OPERATION_ID` and `resul
 
 If the CLI exits during version checks or final readback, recovery still compares against its last accepted observations. An edit read during an unfinished check does not become permission to overwrite it. A completed `write` resume returns the operation summary; read the exact target again to obtain its current pinned file ref before continuing work on a reference or attachment.
 
+### Completing a retained body review
+
+An interrupted initial Git-main takeover review may have its exact review plan, retained observed body and adoption event in shared Records while its terminal receipt is absent. For an existing version 2 review, `file review --complete` can add one independent completion Record. It requires the exact pending review in its original Store and credential scope. The only other permitted pending operation is its original body write; another pending operation stops completion.
+
+Use the original body-write ID and the SHA-256 of the complete original `response.markdown` UTF-8 bytes already reviewed. A normalized export or reconstructed frontmatter is not that raw observation. Preview, inspect the one-Record plan, then execute the same decision:
+
+```bash
+ntn-skills ctl library file review PAGE ORIGINAL_BODY_OPERATION --entry ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --complete --dry-run
+ntn-skills ctl library file review PAGE ORIGINAL_BODY_OPERATION --entry ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --complete
+ntn-skills ctl library file review PAGE ORIGINAL_BODY_OPERATION --entry ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --reconcile
+```
+
+Completion freshly verifies the frozen Source and owner metadata, complete body and sole review-event frontier. It creates no body/property/file-event writes, repeats no prefix, and preserves the original `needs_review` plus any unproven old review receipt. The result keeps `operation_id` as the original review ID and may include `completion_operation_id` for the new fact. Version 1, ordinary reviews, missing prefix facts, changed content/Source and uncertain completion writes gain no new write authority. A repeated completed request and `--reconcile` are read-only; `--reconcile` cannot combine with `--complete` or `--dry-run`. After completion, obtain a fresh current read before further authoring. [Full contract](protocol.md#body-review-completion).
+
 ## Synchronizing local Skills
 
 Connect one existing Notion page to one logical local directory, then run the saved binding. Labels are local configuration; the binding follows the canonical page ID after rename. Repeating the same connection reuses the binding. A missing local directory initializes from Notion. Existing differing content requires an explicit `--from local|notion`; equal content can establish a confirmed baseline without copying it. `--dry-run` checks registration without saving a binding or copying content.

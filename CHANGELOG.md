@@ -26,6 +26,9 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
 - Reuse compatible complete metadata within catalog/default-View projections, graph preparation and scalar reads. Fetch only the selected View detail, share identity and Records observations within their valid acquisition phase, and retain independent coverage/errors for each projection.
 - Reuse verified retained payloads, immutable content and local materializations across repeated reads. Permission denials invalidate affected observations, request budgets remain isolated, and reuse does not renew the original freshness timestamp.
 - Preserve unknown operations, durable recovery receipts, local bindings and synchronization common bases separately from disposable observations. Recovery and source changes continue to require exact ownership, scope, frozen input and readback evidence.
+- Add `ctl library file review --complete` for a retained version 2 initial Git-main review missing its terminal receipt. The original Store can create one independent completion Record after verifying the full shared prefix and fresh Source, owner, body and frontier, preserving the old review/body outcomes and writing no body, property or file event. Completion previews are read-only; unknown new completion writes cannot be replayed.
+- Reuse an already complete operation index to discover review completions while preserving exact terminal checks and the existing ordinary-read request budget.
+- Support the existing projection versions 16 and 17 in lossless derived-text plan storage, preserving complete original inputs and the 64 KiB fact limit for large Git-main previews.
 
 ### Compatibility notes
 
