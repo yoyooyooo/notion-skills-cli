@@ -36,10 +36,11 @@ if (
         "records-history",
         "fixed-names",
         "ownership-current",
+        "cancellation",
       ].includes(args[7])))
 )
   throw new Error(
-    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory|records-history|fixed-names|ownership-current]",
+    "Usage: node scripts/sdk-package-smoke.mjs --archive /package.tgz --fixture /fixture.json --outdir /new/absolute/directory [--case view-dynamics|scalar-inventory|records-history|fixed-names|ownership-current|cancellation]",
   )
 const [archive, fixturePath, root] = [args[1], args[3], args[5]]
 const viewDynamicsOnly = args[7] === "view-dynamics"
@@ -56,6 +57,7 @@ if (
   throw new Error("NTN_SKILLS_SOURCE_FIXTURE_PORT must be a fixed loopback port in 1–65535")
 const fixedNamesOnly = args[7] === "fixed-names"
 const ownershipCurrentOnly = args[7] === "ownership-current"
+const cancellationOnly = args[7] === "cancellation"
 await mkdir(root, { mode: 0o700 })
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 function assertNoTransport(reports, traceEnabled) {
@@ -478,6 +480,11 @@ async function command(argv, options = {}) {
   return result
 }
 async function test(name, run) {
+  if (
+    cancellationOnly &&
+    !/^(consume|readResources) abort during (headers|body) waits for owned HTTP cleanup$/.test(name)
+  )
+    return
   if (
     (viewDynamicsOnly || scalarInventoryOnly || recordsHistoryOnly) &&
     name !== "scalar logical reads share one complete projected inventory within each refresh"
@@ -3478,7 +3485,9 @@ try {
         const connectionClosed = new Promise((resolve) => {
           closed = resolve
         })
-        const server = createServer((_request, response) => {
+        const requests = []
+        const server = createServer((request, response) => {
+          requests.push({ method: request.method, path: request.url })
           response.on("close", closed)
           if (phase === "body") {
             response.writeHead(200, { "content-type": "application/json" })
@@ -3486,17 +3495,76 @@ try {
           }
           requested()
         })
-        server.listen(0, "127.0.0.1")
-        await once(server, "listening")
         const state = join(root, `abort-${operation}-${phase}`)
+        let acquisitionProof
         if (operation === "readResources") {
-          assert.ok(isAbsolute(fixture.resourceBatch.retained_fixture))
-          await cp(fixture.resourceBatch.retained_fixture, state, {
+          assert.ok(isAbsolute(fixture.resourceBatch.current_acquisition_fixture))
+          await cp(fixture.resourceBatch.current_acquisition_fixture, state, {
             recursive: true,
             errorOnExist: true,
             force: false,
           })
+          const original = fixture.snapshots.find(
+            (snapshot) => snapshot.record.name === fixture.resourceBatch.name,
+          )
+          assert.ok(original)
+          const database = new DatabaseSync(join(state, env.NTN_SKILLS_HOME, "state.sqlite"), {
+            readOnly: true,
+          })
+          let snapshot
+          try {
+            const rows = database.prepare("SELECT manifest FROM snapshots").all()
+            assert.equal(rows.length, 1)
+            snapshot = JSON.parse(rows[0].manifest)
+            assert.equal(
+              database.prepare("SELECT count(*) AS count FROM historical_snapshot_mappings").get()
+                .count,
+              0,
+            )
+          } finally {
+            database.close()
+          }
+          const { shared_acquisition: acquisition, ...manifest } = snapshot
+          assert.deepEqual(
+            manifest,
+            original,
+            "Current acquisition preserves the complete selected manifest",
+          )
+          assert.equal(acquisition.version, 4)
+          assert.equal(acquisition.source, null)
+          assert.equal(acquisition.library.library_id, original.record.locator.library_id)
+          assert.deepEqual(
+            acquisition.files.map((route) => route.path).sort(),
+            [...fixture.resourceBatch.files, ...fixture.resourceBatch.unselected]
+              .map((file) => file.path)
+              .sort(),
+          )
+          for (const route of acquisition.files) {
+            assert.equal(route.kind, "resource")
+            assert.match(route.object_id, /^resource-[a-f0-9]{64}$/)
+          }
+          const selected = new Set(fixture.resourceBatch.files.map((file) => file.path))
+          for (const file of original.files) {
+            const source = await readFile(
+              join(fixture.cwd, env.NTN_SKILLS_HOME, "objects", file.sha256),
+            )
+            assert.equal(source.byteLength, file.bytes)
+            assert.equal(hash(source), file.sha256)
+            const path = join(state, env.NTN_SKILLS_HOME, "objects", file.sha256)
+            if (selected.has(file.path)) await assert.rejects(readFile(path), { code: "ENOENT" })
+            else assert.deepEqual(await readFile(path), source)
+          }
+          acquisitionProof = {
+            version: acquisition.version,
+            snapshot_id: original.snapshot_id,
+            complete_manifest_preserved: true,
+            source_hashes_verified: true,
+            missing_selected_paths: [...selected],
+            history_mappings: 0,
+          }
         } else await mkdir(state)
+        server.listen(0, "127.0.0.1")
+        await once(server, "listening")
         const reports = []
         let receivedHeaders
         const headersSeen = new Promise((resolve) => {
@@ -3530,6 +3598,7 @@ try {
           assert.equal(reports[0].total_requests, 1)
           assert.equal(reports[0].outcomes.cancelled, 1)
           assert.equal(transportProbe.fetch_calls, 1)
+          assert.deepEqual(requests, [{ method: "GET", path: "/v1/users/me" }])
           const attempts = reports[0].trace.filter((event) => event.event === "attempt")
           assert.equal(attempts.length, 1)
           assert.equal(
@@ -3544,6 +3613,7 @@ try {
             fetch_calls: transportProbe.fetch_calls,
             request_metrics: reports[0],
             phase,
+            ...(acquisitionProof === undefined ? {} : { current_acquisition: acquisitionProof }),
           }
         } finally {
           activeInitializationProbe = undefined

@@ -12,12 +12,12 @@ import {
   type Source,
   type Catalog,
   SnapshotSchema,
+  SHARED_ACQUISITION_VERSION,
 } from "../packages/core/src/model.ts"
-import { publishSnapshotObservation } from "../packages/core/src/cache.ts"
+import { publishSnapshotObservation, validateSnapshotManifest } from "../packages/core/src/cache.ts"
 import { fileRef } from "../packages/core/src/ref.ts"
 import { Store } from "../packages/core/src/store.ts"
-import { prepareSharedSnapshotHistory } from "../packages/core/src/shared-snapshot-history.ts"
-import { registerRetainedSnapshot } from "../packages/core/src/shared-history-materialization.ts"
+import { prepareSharedResourceContent } from "../packages/core/src/shared-resource-content.ts"
 import { configureSharedHttpOrigins } from "../packages/core/src/shared-source-config.ts"
 import { registerSourcePlanBinding } from "../packages/core/src/shared-source-plan-binding.ts"
 import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
@@ -545,7 +545,7 @@ const library: NonNullable<Source["shared_library"]> = {
     property_ids: {},
   },
 }
-const fixturePlan = await Effect.runPromise(
+await Effect.runPromise(
   Effect.scoped(
     Effect.gen(function* () {
       const store = yield* Store
@@ -646,18 +646,13 @@ const fixturePlan = await Effect.runPromise(
             })
           }
       }
-      if (catalogSize !== undefined) return { kind: "catalog" as const }
-      return {
-        kind: "resources" as const,
-        plan: yield* prepareSharedSnapshotHistory(library, resourceSnapshot),
-      }
     }),
   ).pipe(
     Effect.provide(nodeRuntime(root).live),
     Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(seedEnv))),
   ),
 )
-if (fixturePlan.kind === "catalog") {
+if (catalogSize !== undefined) {
   await writeFile(join(root, "env.json"), JSON.stringify(env, null, 2) + "\n", { mode: 0o600 })
   await writeFile(
     join(root, "fixture.json"),
@@ -694,23 +689,51 @@ if (fixturePlan.kind === "catalog") {
   )
   process.exit(0)
 }
-const resourcePlan = fixturePlan.plan
-// A separate admitted lazy pin reaches the real SDK identity/HTTP boundary.
-// It intentionally has neither a complete local snapshot nor local source objects.
-const retainedFixture = join(root, "retained-resource-source")
-await mkdir(retainedFixture, { mode: 0o700 })
+// Cancellation starts from a complete current selection with explicit resource
+// locations. Only selected resource bytes are absent; no history pin is registered.
+const currentAcquisitionFixture = join(root, "current-resource-acquisition")
+await mkdir(currentAcquisitionFixture, { mode: 0o700 })
 await Effect.runPromise(
   Effect.scoped(
-    registerRetainedSnapshot(scope, library, resourcePlan.pin_id, resourcePlan.manifest),
+    Effect.gen(function* () {
+      const routes = []
+      for (const file of resourceFiles) {
+        const resource = yield* prepareSharedResourceContent(file.bytes, null)
+        routes.push({
+          kind: "resource" as const,
+          path: file.path,
+          object_id: resource.content.object_id,
+        })
+      }
+      const snapshot = yield* validateSnapshotManifest(
+        decode(SnapshotSchema, {
+          ...resourceSnapshot,
+          shared_acquisition: {
+            version: SHARED_ACQUISITION_VERSION,
+            library,
+            source: null,
+            files: routes,
+          },
+        }),
+      )
+      const store = yield* Store
+      const missing = new Set(
+        resourceFiles.filter((file) => file.selected).map((file) => hash(file.bytes)),
+      )
+      for (const file of snapshot.files)
+        if (!missing.has(file.sha256))
+          yield* store.writeBytes(`objects/${file.sha256}`, bodies.get(file.sha256)!)
+      yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
+    }),
   ).pipe(
-    Effect.provide(nodeRuntime(retainedFixture).live),
+    Effect.provide(nodeRuntime(currentAcquisitionFixture).live),
     Effect.provide(
       ConfigProvider.layer(
         ConfigProvider.fromUnknown({
           ...env,
-          NTN_SKILLS_HOME: join(retainedFixture, "state"),
-          NTN_SKILLS_CONFIG_HOME: join(retainedFixture, "config"),
-          NTN_SKILLS_CACHE_HOME: join(retainedFixture, "cache"),
+          NTN_SKILLS_HOME: join(currentAcquisitionFixture, "state"),
+          NTN_SKILLS_CONFIG_HOME: join(currentAcquisitionFixture, "config"),
+          NTN_SKILLS_CACHE_HOME: join(currentAcquisitionFixture, "cache"),
         }),
       ),
     ),
@@ -1265,7 +1288,7 @@ const metadata = {
     })),
   },
   resourceBatch: {
-    retained_fixture: retainedFixture,
+    current_acquisition_fixture: currentAcquisitionFixture,
     name: resourceSnapshot.record.name,
     owner_ref: ref(resourceSnapshot),
     refs: resourceFiles
