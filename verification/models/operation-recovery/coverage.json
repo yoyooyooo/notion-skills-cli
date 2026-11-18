@@ -15,7 +15,7 @@
     "packages/core/test/shared-single-body-apply-header.test.ts": "63a69b3f79c9484092540ee1469dc6f7d0ba0443f09a49e5032e08003f0a8f1c",
     "packages/core/test/shared-single-body-apply-review.test.ts": "903fa10e5aa2e62e6616b0df148759cd90584e8c33393ddc6ece1eaadfe7fdad",
     "packages/core/src/shared-authoring.ts": "60a7a9f0c4f836f4adbe5de3c8fa00bd61405bfcb677dd5bafcbd1db716232d4",
-    "packages/core/src/shared-body-current-acceptance.ts": "2dced0391c13ec5a6bce04c47c9469985d224d610a5e95a8ee68c20c56ee90db",
+    "packages/core/src/shared-body-current-acceptance.ts": "4c89758404326333787cfa7c4ff9132e64b10c9e70d036156fddae938d124a61",
     "packages/core/src/shared-body-write-model.ts": "b417d32a241b7075587f9ba32e6496ffb1614b874809e1f83d22809e47f632f6",
     "packages/core/src/shared-body-write.ts": "70bb5045c2bea86916c165652c1835835dc5945074a80b900d45152d8b209b22",
     "packages/core/src/shared-create-link-repair.ts": "c7252431e4cc90d983539473faaa276d0cdbaa650178805f4915f46356da7cd9",
@@ -26,7 +26,7 @@
     "packages/core/src/shared-single-body-apply-acceptance.ts": "5fe4e91a2da2392e5adb1e7eaabcde16b64280c281aee9dab4913c4cb5312603",
     "packages/core/test/fixtures/native-quote-readback.json": "439a35a393701cfc26b8eb57dae8e2950552fa1790494b0d3095d29d71a4576c",
     "packages/core/test/fixtures/to-prd-restore-readback.json": "d2343e0d23e0ede9017f51dbdfe1450d6091865ff6b428f098917dc4d1cf8edb",
-    "packages/core/test/shared-body-current-acceptance.test.ts": "9f800634dc30e7a863f377bc5456317fb41b3a30f3d7ccd833f2dbf5b8b59acf",
+    "packages/core/test/shared-body-current-acceptance.test.ts": "ab9b38a7ae841aa6b9be1fc5c80987a3c8e48885fb8427dd7d1a8770507d9d97",
     "packages/core/test/shared-create-fixture.ts": "b332d1e0f9b28355518414d4d1902265a5b68272c908b6fe463fc7a148b62758",
     "packages/core/test/shared-create-link-restoration-fixture.ts": "e2e641b33c75765ca64ba85f25a8a1f91aaa61b065fe0fd61a80f137f56d845d",
     "packages/core/test/shared-create-link-restoration-safety.test.ts": "3375ce62d54a1b6ac46fbaa7882af86291d69b418ccb322f642952ffd1c0407e",
@@ -190,7 +190,9 @@
     "packages/core/src/shared-native-file-content.ts": "8dcf9b86b8838f960f686ba1e58f4db6bbe890c2291d2b55098d1c27ed94bffe",
     "packages/core/test/shared-create-fragment-sqlite-worker.ts": "19cfda49d75387e088f0a3bce9a158dc8a264792e62a4d6b274c9c82992e89a3",
     "packages/core/test/shared-create-fragment-sqlite.node.test.ts": "6a0d5345046b7ed12cd8e576db901fe63b0d64a16d0ce8a7f25b64ab7f5fa5a5",
-    "packages/core/test/shared-native-file-content.test.ts": "e8d195a67373b7b77210a46988f2c65fbad0c45d58c63f74392394fefecb012e"
+    "packages/core/test/shared-native-file-content.test.ts": "e8d195a67373b7b77210a46988f2c65fbad0c45d58c63f74392394fefecb012e",
+    "packages/core/test/shared-body-write-review-fixture.ts": "6fd35052962cf6b251445d9eaaaaabafa7d701e638b78de4ed27a2b7b8ef712a",
+    "packages/cli/src/commands-library-file-accept-current.ts": "4d8289a261bf6bdbb404e375e20900efdea9d53ae3a0bafb1df0266eb5bcd647"
   },
   "models": {
     "AcknowledgedRecordPrefix": {
@@ -1636,6 +1638,31 @@
         "packages/core/test/shared-native-file-content.test.ts"
       ],
       "reviewed_base_commit": "e2c309bbee68a5b00e91db4318c6d4883d30163f",
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "reviewed_implementation_context_not_modeled",
+      "name": "unchanged_body_restore_independent_current_acceptance",
+      "files": [
+        "packages/core/src/shared-body-current-acceptance.ts",
+        "packages/core/test/shared-body-current-acceptance.test.ts",
+        "packages/core/test/shared-body-write-review-fixture.ts",
+        "packages/cli/src/commands-library-file-accept-current.ts"
+      ],
+      "symbols": [
+        "acceptCurrentSharedBodyWrite",
+        "completedSharedBodyCurrentAcceptance",
+        "observeSharedBodyCurrentAcceptance",
+        "loadPendingSharedBodyWrites",
+        "openSharedSnapshot"
+      ],
+      "scope": "The existing independent accepted_current decision additionally admits restore_follow only when the validated original before and candidate bodies are identical and the original complete following_restored event is visible as the unique current frontier. It binds the exact full original plan, selected immutable Source revision/path, frozen complete Source definition/member, native mode/frontmatter and fresh raw preimage; a main file also checks current native Name/Description. Missing frozen Source context, event invisibility or mismatch, actual body-PATCH restores and current drift fail closed. A lost event POST response may be independently accepted only after the exact immutable event is visible; it never becomes an original ACK or applied outcome. Cold shared snapshots require the same full independent decision and original plan/event, followed by ordinary current-file checks. Normal reconciliation, dispatch slots and unknown non-replay are unchanged. This concrete restore combination is outside the existing finite model domains; no TLA/config/view/expected-rule change or fresh finite-model proof is claimed.",
+      "tests": [
+        "packages/core/test/shared-body-current-acceptance.test.ts",
+        "packages/core/test/shared-file-restore.test.ts",
+        "packages/core/test/shared-restore-readback.test.ts"
+      ],
+      "review": "docs/maintenance-verification-review.md#unchanged-body-restore-current-acceptance",
       "no_new_finite_model_claim": true
     }
   ],

@@ -67,7 +67,7 @@ export const libraryFileAcceptCurrentCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["dryRun", "reconcile"])]),
   Command.withDescription(
-    "Record an explicit current-version acceptance for an original unknown body write whose exact adopted event already exists. Requires a complete fresh candidate match, unchanged file/Source and exact current frontier. The original write outcome remains unknown; this independent reviewed decision never fabricates applied, replays a PATCH or creates an acceptance event. Unknown decision writes retain one dispatch and reconcile only. Read again after verified acceptance.",
+    "Record an explicit current-version acceptance for an original unknown body write with its exact adopted event, or an unchanged-body restore-follow with its exact following_restored event. Requires the complete fresh candidate, unchanged file/Source and exact current frontier. Restore-follow also requires the original raw body, frozen Source configuration, revision/path and native mode/header. The original outcome remains unknown; this independent reviewed decision never fabricates applied, replays a PATCH or creates a missing event. Unknown decision writes retain one dispatch and reconcile only. Read again after verified acceptance.",
   ),
   Command.withExamples([
     {

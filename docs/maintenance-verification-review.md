@@ -1130,6 +1130,26 @@ sole-main 例外只适用于 v1、一个原 adopted native 主正文、没有 me
 正式维护仍以当前提交 CI 的完整模型/规则结果及对应代码回归为准。安装 CLI/SDK、
 SIGINT/SIGKILL 审计恢复与真实 Notion/Pi 验收各自记录；源码对应更新不能代替这些门槛。
 
+### Unchanged-body restore current acceptance
+
+`restore_follow` 的原执行可能已校验 event POST 返回，但紧随的完整 query 暂时不可见，
+因而没有原 completion。实际 falling-leaves 样本的 48 次请求有两次 Record POST、
+零正文 PATCH、零 coalesced request；只读原操作 reconcile 不会补写缺失事实。
+这次扩展复用独立 `accept-current` 决策，只接纳 before 与 candidate 完全相同的
+restore。精确 `following_restored` 必须已存在且是唯一当前 frontier，完整原计划、
+Source definition/member/selected version、固定 revision/path、native mode/header
+及原 raw body 均须匹配；主文件再核当前 Name/Description。不可见或不匹配的 event、
+真正发过 PATCH 的 restore、没有冻结 Source context 的旧计划仍被拒绝。event POST
+若曾丢失响应，只能在该精确 immutable event 已独立可见后作新接受决定，不代表
+原 ACK 或原 operation 已完成。普通 reconcile 与原 unknown 保持原义。
+
+`shared-body-current-acceptance.test.ts` 从实际执行器复现 event 查询延迟，用空 Store
+的公共 `openSharedSnapshot` 检查缺决策阻断、完整决策可消费、篡改原 plan hash 拒绝，
+并覆盖 Source、header/mode、raw/body、frontier、不同原 operation 和未知 event POST。
+原计划和独立 decision 的完整关联复用既有 codec 与冷验证，不新增 ACK 协议。
+这条具体 restore 组合不在现有有限模型域内；两份 coverage 的源码摘要只绑定本次
+实现审阅。TLA/config/view/expected_rules 均未改，也不继承旧 TLC 结果作为新证明。
+
 ### Ordinary native supporting-table restoration
 
 在 `1c3d90a34eda8d39f8e3f4109b6df4ba282bee08` 之上新增的 ordinary native

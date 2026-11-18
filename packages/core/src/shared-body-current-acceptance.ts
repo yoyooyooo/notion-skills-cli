@@ -1,5 +1,5 @@
 import { Clock, Effect, Schema } from "effect"
-import { fail } from "./model.ts"
+import { fail, property } from "./model.ts"
 import { Notion } from "./notion.ts"
 import {
   bodyWriteChecked as checked,
@@ -10,10 +10,14 @@ import {
 } from "./shared-body-write-model.ts"
 import {
   FileEventSchema,
+  nativeFileMetadata,
   normalizeObservedBody,
   resolveFileState,
   type FileEvent,
+  type ResolvedFileState,
 } from "./shared-file-state.ts"
+import { readSharedFileSourceContext } from "./shared-file-source-context.ts"
+import { sharedFileSourcePath } from "./shared-file-placement.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import type { SharedOperationHeader } from "./shared-operation-index.ts"
 import {
@@ -24,7 +28,9 @@ import {
 } from "./shared-records.ts"
 import { querySharedSkillIndex, type SharedSkillIndex } from "./shared-skill-index.ts"
 import { storedSharedOperationPlan } from "./shared-plan-storage.ts"
+import { resolveSelectedSharedSourceReference } from "./shared-selected-source.ts"
 import { sha256, Store } from "./store.ts"
+import { parseYaml } from "./yaml.ts"
 
 const Hash = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))
 const Response = Schema.Struct({
@@ -73,6 +79,21 @@ function originalHash(original: SharedBodyWritePlan) {
   )
 }
 
+function unchangedBodyRestore(original: SharedBodyWritePlan) {
+  return (
+    original.action === "restore_follow" &&
+    original.event.kind === "following_restored" &&
+    original.restore_source !== undefined &&
+    original.source_context !== undefined &&
+    original.candidate.content.kind !== "resource" &&
+    original.before.fingerprint.sha256 === original.candidate.content.sha256 &&
+    original.before.bytes === original.candidate.content.bytes &&
+    original.before.markdown === original.candidate.markdown &&
+    canonicalSharedJson(nativeFileMetadata(original.candidate.content)) ===
+      canonicalSharedJson(nativeFileMetadata(original.event))
+  )
+}
+
 function completeResponse(input: unknown, original: SharedBodyWritePlan) {
   return Effect.gen(function* () {
     const response = yield* checked(() => Schema.decodeUnknownSync(Response)(input))
@@ -102,7 +123,8 @@ function completeResponse(input: unknown, original: SharedBodyWritePlan) {
     const normalized = yield* checked(() => normalizeObservedBody(response.markdown))
     if (
       (yield* sha256(normalized)) !== original.candidate.content.sha256 ||
-      new TextEncoder().encode(normalized).byteLength !== original.candidate.content.bytes
+      new TextEncoder().encode(normalized).byteLength !== original.candidate.content.bytes ||
+      (original.action === "restore_follow" && response.markdown !== original.before.raw_markdown)
     )
       return yield* Effect.fail(
         fail(
@@ -150,27 +172,95 @@ function verifyEvent(
   const selected = events.filter((event) => event.file_id === original.file_id)
   const accepted = selected.find((event) => event.event_id === original.event.event_id)
   if (
-    original.action !== "write" ||
-    original.event.kind !== "adopted" ||
+    !(
+      (original.action === "write" && original.event.kind === "adopted") ||
+      unchangedBodyRestore(original)
+    ) ||
     accepted === undefined ||
     canonicalSharedJson(accepted) !== canonicalSharedJson(original.event)
   )
     throw fail(
       "SHARED_CURRENT_ACCEPTANCE_INELIGIBLE",
-      "The exact original adopted event must already exist; acceptance never creates a missing event.",
+      "The exact original adopted event or unchanged-body following restoration must already exist; acceptance never creates a missing event or completes the original operation.",
     )
   const state = resolveFileState(original.file_id, selected)
+  const ownership =
+    original.event.kind === "following_restored"
+      ? {
+          kind: "following",
+          source_revision: original.event.source_revision,
+          projection: original.event.projection,
+          ...nativeFileMetadata(original.event),
+        }
+      : { kind: "custom", content: original.candidate.content }
   if (
     current &&
     (canonicalSharedJson(state.heads) !== canonicalSharedJson([original.event.event_id]) ||
-      state.ownership.kind !== "custom" ||
-      canonicalSharedJson(state.ownership.content) !==
-        canonicalSharedJson(original.candidate.content))
+      canonicalSharedJson(state.ownership) !== canonicalSharedJson(ownership))
   )
     throw fail(
       "SHARED_CURRENT_ACCEPTANCE_STALE",
       "The complete current frontier no longer consists of the original accepted event.",
     )
+  return state
+}
+
+function verifyRestoreSource(
+  library: SharedLibrary,
+  original: SharedBodyWritePlan,
+  state: ResolvedFileState,
+  index: SharedSkillIndex,
+) {
+  return Effect.gen(function* () {
+    if (original.action !== "restore_follow") return
+    if (original.file_id === index.main.file_id) {
+      const header = nativeFileMetadata(original.candidate.content).frontmatter
+      const match =
+        header === undefined ? null : /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(header)
+      const metadata = yield* checked(() =>
+        property(match === null ? undefined : parseYaml(match[1] ?? "")),
+      )
+      if (
+        match === null ||
+        metadata.name !== index.name ||
+        metadata.description !== index.description
+      )
+        return yield* Effect.fail(
+          fail(
+            "SHARED_CURRENT_ACCEPTANCE_STALE",
+            "The current native main header differs from the complete frozen restore header.",
+          ),
+        )
+    }
+    const source = original.restore_source
+    const context = yield* readSharedFileSourceContext(library, original.skill_page_id)
+    if (
+      source === undefined ||
+      canonicalSharedJson(context) !== canonicalSharedJson(original.source_context)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CURRENT_ACCEPTANCE_STALE",
+          "The complete Source definition, selected version or member differs from the original restore plan.",
+        ),
+      )
+    const selected = yield* resolveSelectedSharedSourceReference(library, {
+      skillPageId: original.skill_page_id,
+      sourceId: original.source_id,
+    })
+    const path = yield* checked(() => sharedFileSourcePath(original.path, state))
+    if (
+      selected.revision !== source.revision ||
+      path !== source.path ||
+      !selected.paths.includes(path)
+    )
+      return yield* Effect.fail(
+        fail(
+          "SHARED_CURRENT_ACCEPTANCE_STALE",
+          "The fixed Source revision or file path differs from the original restore plan.",
+        ),
+      )
+  })
 }
 
 function validateDecision(input: unknown, original: SharedBodyWritePlan) {
@@ -220,7 +310,7 @@ function reviewed(value: Acceptance, original: SharedBodyWritePlan) {
   }
 }
 
-/** An independent decision, never evidence that the original PATCH completed. */
+/** An independent decision, never evidence that the original write or restore completed. */
 export function completedSharedBodyCurrentAcceptance(
   library: SharedLibrary,
   original: SharedBodyWritePlan,
@@ -291,7 +381,8 @@ export function observeSharedBodyCurrentAcceptance(
           "The accepted current file binding or Source changed.",
         ),
       )
-    yield* checked(() => verifyEvent(original, observed.events, true))
+    const state = yield* checked(() => verifyEvent(original, observed.events, true))
+    yield* verifyRestoreSource(library, original, state, index)
     const response = yield* completeResponse(
       yield* (yield* Notion).request(`v1/pages/${original.page_id}/markdown?markdown_version=v2`),
       original,
@@ -457,7 +548,8 @@ export function acceptCurrentSharedBodyWrite(input: {
           ),
         )
       const events = yield* eventsFor(library, original)
-      yield* checked(() => verifyEvent(original, events, true))
+      const state = yield* checked(() => verifyEvent(original, events, true))
+      yield* verifyRestoreSource(library, original, state, index)
       const response = yield* completeResponse(
         yield* (yield* Notion).request(`v1/pages/${original.page_id}/markdown?markdown_version=v2`),
         original,

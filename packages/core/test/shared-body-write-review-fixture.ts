@@ -101,6 +101,8 @@ export interface Remote {
   rows: Map<string, Record<string, unknown>>
   hidden: Set<string>
   initial: FileEvent
+  skillProperties?: Record<string, unknown>
+  pages?: ReadonlyMap<string, unknown>
   support?: { page_id: string; file_id: string; path: string; markdown: string }
 }
 function remote(markdown = original, metadata: NativeFileMetadata = {}): Remote {
@@ -226,6 +228,7 @@ function client(
             [s.Source]: rich(shared.source),
             [s.References]: rich(""),
             [s.Projection]: rich(""),
+            ...shared.skillProperties,
           }
           return Effect.succeed({
             object: "page",
@@ -237,6 +240,9 @@ function client(
             ),
           })
         }
+        const page = shared.pages?.get(url.pathname.replace(/^\/v1\/pages\//u, ""))
+        if (page !== undefined && requestOptions?.method !== "PATCH")
+          return Effect.succeed(structuredClone(page))
         const selectedBody =
           url.pathname === `/v1/pages/${skillPage}/markdown`
             ? skillPage
@@ -438,6 +444,7 @@ function client(
     Layer.succeed(Store, store),
   )
   return {
+    api,
     calls,
     run: <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto | Store>) =>
       Effect.runPromise(effect.pipe(Effect.provide(layer))),
