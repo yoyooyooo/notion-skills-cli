@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHttpProbe } from "./http-probe.ts"
 
-// Integration owns the one production build. Never build from a CLI test.
+// test:unit builds the production entry before discovering CLI consumer tests.
 const main = new URL("../dist/ntn-skills.js", import.meta.url).pathname
 const probe = createHttpProbe()
 const directory = mkdtempSync(join(tmpdir(), "ntn-library-audit-contract-"))
@@ -19,6 +19,7 @@ async function invoke(args: readonly string[]) {
     stderr: "pipe",
     env: {
       ...process.env,
+      NTN_SKILLS_DEV_ROOT: undefined,
       NOTION_API_TOKEN: "controlled-audit-offline-token",
       NOTION_API_BASE_URL: probe.origin,
       NTN_SKILLS_HOME: join(directory, "state"),
