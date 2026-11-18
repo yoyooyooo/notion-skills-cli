@@ -16,6 +16,7 @@ import { sharedMarkdownReferences } from "./shared-file-references.ts"
 import { normalizeObservedBody } from "./shared-file-state.ts"
 import {
   assertImportedLocalLinksRepairable,
+  assertImportedLocalFragmentContent,
   assertImportedMarkdownContent,
   assertImportedTablePlusRepairable,
 } from "./shared-import-markdown.ts"
@@ -23,6 +24,7 @@ import type { SharedLibrary } from "./shared-library-model.ts"
 import {
   materializeSharedNativeFile,
   restoreSharedNativeFileLinks,
+  sharedNativeLocalHrefs,
 } from "./shared-native-file-content.ts"
 import {
   projectSharedNotionMarkdown,
@@ -49,6 +51,7 @@ type TablePlusRepair = typeof SharedCreateTablePlusRepairSchema.Type
 type Identity = {
   readonly review_id: string
   readonly skill_page_id: string
+  readonly original_outcome_sha256?: string | null
 } & (
   | { readonly table_plus?: undefined; readonly bindings?: readonly SharedCreateBinding[] }
   | { readonly table_plus: TablePlusRepair; readonly bindings: readonly SharedCreateBinding[] }
@@ -142,6 +145,16 @@ function repairedCreateFile(
   return identity.table_plus === undefined ? linkedCreateFile(file, bindings) : file
 }
 
+function repairFragmentHrefs(
+  identity: Identity,
+  file: NativeFile,
+  bindings: readonly SharedCreateBinding[],
+) {
+  return identity.table_plus === undefined
+    ? sharedNativeLocalHrefs(file.projection.markdown, file.path, bindings)
+    : []
+}
+
 export function sharedCreateLocalLinks(plan: SharedCreatePlan) {
   const paths = new Set([...plan.files, ...(plan.resources ?? [])].map((file) => file.path))
   return plan.files.flatMap((file) =>
@@ -160,6 +173,7 @@ export function assertCreateLocalLinkPreimage(
     markdown,
     sharedCreateLocalLinks(plan)
       .filter((reference) => reference.from === file.path)
+      .filter((reference) => !reference.href.startsWith("#") && !reference.href.startsWith("?"))
       .map((reference) => reference.href),
   )
 }
@@ -293,13 +307,19 @@ function validateAck(
     yield* observeSharedCreatePrefixBody(file.file_id, page, acknowledgement.response)
     const markdown = String(property(acknowledgement.response).markdown)
     yield* createChecked(() => {
-      assertImportedMarkdownContent(
+      assertImportedLocalFragmentContent(
         repairedCreateFile(identity, file, bindings).projection.markdown,
         markdown,
+        repairFragmentHrefs(identity, file, bindings),
       )
-      assertImportedMarkdownContent(
+      assertImportedLocalFragmentContent(
         file.projection.markdown,
         materializeSharedNativeFile(markdown, file.path, bindings),
+        identity.table_plus === undefined
+          ? sharedCreateLocalLinks(plan)
+              .filter((reference) => reference.from === file.path)
+              .map((reference) => reference.href)
+          : [],
       )
     })
     return { acknowledgement, markdown }
@@ -507,6 +527,7 @@ export function repairSharedCreateLinkFile(
       const resolved = yield* withObservedBody(
         repairedCreateFile(identity, file, bindings),
         normalizeObservedBody(existing.markdown),
+        repairFragmentHrefs(identity, file, bindings),
       )
       observed(resolved, normalizeObservedBody(existing.markdown))
       return existing.reference
@@ -548,9 +569,10 @@ export function repairSharedCreateLinkFile(
             yield* observeSharedCreatePrefixBody(file.file_id, page, response)
             const markdown = String(property(response).markdown)
             yield* createChecked(() =>
-              assertImportedMarkdownContent(
+              assertImportedLocalFragmentContent(
                 repairedCreateFile(identity, file, bindings).projection.markdown,
                 markdown,
+                repairFragmentHrefs(identity, file, bindings),
               ),
             )
             return { page_id: page, sha256: yield* sha256(markdown) }
@@ -559,7 +581,7 @@ export function repairSharedCreateLinkFile(
       Effect.succeed(undefined),
     )
     const acknowledgedResume =
-      identity.table_plus !== undefined &&
+      (identity.table_plus !== undefined || identity.original_outcome_sha256 === null) &&
       result.status === "observed_current" &&
       "original_outcome" in result &&
       result.original_outcome === "applied"
@@ -578,6 +600,7 @@ export function repairSharedCreateLinkFile(
     const resolved = yield* withObservedBody(
       repairedCreateFile(identity, file, bindings),
       normalizeObservedBody(verified.markdown),
+      repairFragmentHrefs(identity, file, bindings),
     )
     observed(resolved, normalizeObservedBody(verified.markdown))
     const beforeText = yield* prepareSharedCreateText(before, "input"),

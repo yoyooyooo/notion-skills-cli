@@ -10,14 +10,21 @@ import { mapMarkdownLinks } from "../src/typed-links.ts"
 import { sharedCreateFixture } from "./shared-create-fixture.ts"
 
 const encode = (text: string) => new TextEncoder().encode(text)
-export async function failedLinkedOriginal(policy: 14 | 15 = 14) {
+export async function failedLinkedOriginal(policy: 14 | 15 = 14, unicodeFragment = false) {
   const f = sharedCreateFixture({
     bodyPatch: true,
     readback: (wire) =>
       normalizeObservedBody(
-        mapMarkdownLinks(wire.replace(/^<h1>([^\n]*)<\/h1>(?=\n|$)/u, "# $1"), (href) =>
-          /^[^./:#?][^/:?#]*\.md$/u.test(href) ? `https://${href}` : href,
-        ),
+        mapMarkdownLinks(wire.replace(/^<h1>([^\n]*)<\/h1>(?=\n|$)/u, "# $1"), (href) => {
+          const at = href.indexOf("#")
+          const represented =
+            unicodeFragment && at >= 0
+              ? href.slice(0, at) + new URL(href, "https://fixture.test/").hash
+              : href
+          return /^[^./:#?][^/:?#]*\.md$/u.test(represented)
+            ? `https://${represented}`
+            : represented
+        }),
       ),
   })
   const resources = Array.from({ length: 4 }, (_, at) => ({
@@ -36,7 +43,7 @@ export async function failedLinkedOriginal(policy: 14 | 15 = 14) {
           {
             path: "SKILL.md",
             bytes: encode(
-              "# Root\n\nRead [First](references/first.md) and [Second](references/second.md).\n",
+              `# Root\n\nRead [First](references/first.md${unicodeFragment ? "#进程加载对账" : ""}) and [Second](references/second.md).\n`,
             ),
           },
           {
@@ -66,8 +73,8 @@ export async function failedLinkedOriginal(policy: 14 | 15 = 14) {
       recordId: sharedCreateOutcomeId(plan.operation_id),
     }),
   )
-  expect(rows).toHaveLength(1)
-  const originalFailure = canonicalSharedJson(rows[0])
+  expect(rows).toHaveLength(unicodeFragment ? 0 : 1)
+  const originalFailure = rows[0] === undefined ? undefined : canonicalSharedJson(rows[0])
   const selected = {
     entry: f.library.skills.database_id,
     plan,

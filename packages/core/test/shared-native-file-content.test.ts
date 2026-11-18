@@ -4,6 +4,7 @@ import {
   parseSharedFileLinks,
   restoreSharedNativeFileLinks,
   sharedNativeAuthoredBody,
+  sharedNativeLocalHrefs,
 } from "../src/shared-native-file-content.ts"
 import { fileRef } from "../src/ref.ts"
 
@@ -93,6 +94,31 @@ test("authoring refuses an escaping path or ambiguous native binding instead of 
       { page_id: "not-a-page", path: "references/guide.md" },
     ]),
   ).toThrow()
+})
+
+test("UTF-8 fragment permission comes only from exact original owner destinations without changing wire bytes", () => {
+  const native = `https://app.notion.com/p/${support.replaceAll("-", "")}#中文`
+  const foreign = "https://app.notion.com/p/00000000000040008000000000000003#中文"
+  const input = `[Own](references/guide.md#中文) [Foreign](${foreign}) [Other](other.md#中文) [Self](#中文)\n\n\`[Literal](references/guide.md#中文)\``
+  expect(sharedNativeLocalHrefs(input, "SKILL.md", files)).toEqual([native])
+  expect(sharedNativeLocalHrefs(input, "SKILL.md", [])).toEqual([])
+  expect(sharedNativeLocalHrefs(input, "example.ts", files)).toEqual([])
+  expect(restoreSharedNativeFileLinks(input, "SKILL.md", files)).toBe(
+    input.replace("](references/guide.md#中文)", `](${native})`),
+  )
+  expect(() => sharedNativeLocalHrefs(input, "SKILL.md", [...files, files[1]!])).toThrow()
+  expect(() =>
+    sharedNativeLocalHrefs(input, "SKILL.md", [
+      { page_id: "invalid", path: "references/guide.md" },
+    ]),
+  ).toThrow()
+  expect(
+    sharedNativeLocalHrefs(
+      `<a href="references/guide.md#中文">literal</a> [Foreign](${foreign})`,
+      "SKILL.md",
+      files,
+    ),
+  ).toEqual([])
 })
 
 test("explicit cross-Skill links resolve only their exact from-path and destination", () => {

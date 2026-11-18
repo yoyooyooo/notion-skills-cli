@@ -210,8 +210,73 @@ export function assertImportedMarkdownContent(expected: string, actual: string):
   assertMeaning(before, after)
 }
 
+function unicodeFragmentRepresentation(href: string): string | undefined {
+  const at = href.indexOf("#")
+  if (at < 0) return undefined
+  const fragment = href.slice(at + 1)
+  if (!/[^\u0000-\u007f]/u.test(fragment)) return undefined
+  try {
+    // Validate existing escapes only. Their spelling is never decoded or
+    // normalized in the result; path, query and every ASCII byte stay exact.
+    if (/[\u0000-\u001f\u007f-\u009f]/u.test(decodeURIComponent(fragment))) return undefined
+    return href.slice(0, at + 1) + fragment.replace(/[^\u0000-\u007f]/gu, encodeURIComponent)
+  } catch {
+    return undefined
+  }
+}
+
+function localLinkSpellings(
+  before: ReturnType<typeof importContent>,
+  after: ReturnType<typeof importContent>,
+  localHrefs: readonly string[],
+  allowHostname: boolean,
+) {
+  const allowed = new Set(localHrefs)
+  const required = before.links.filter((link) => link.authored || !link.automatic)
+  let changed = 0,
+    matched = 0
+  const links = after.links.map((link) => {
+    const original = required[matched]
+    if (original === undefined || original.start !== link.start || original.end !== link.end)
+      return link
+    matched++
+    if (!allowed.has(original.href)) return link
+    const represented = unicodeFragmentRepresentation(original.href)
+    const hostname =
+      allowHostname && /^[^./?#:][^/?#:]*\.(?:md|markdown)(?:[?#].*)?$/iu.test(original.href)
+    if (
+      (represented !== undefined && link.href === represented) ||
+      (hostname &&
+        (link.href === `https://${original.href}` ||
+          (represented !== undefined && link.href === `https://${represented}`)))
+    ) {
+      changed++
+      return { ...link, href: original.href }
+    }
+    return link
+  })
+  return { links, changed }
+}
+
+/** Explicit owner-scoped readback projection. Callers supply only destinations
+ * derived from the original complete owner tree and its exact native bindings.
+ * No actual URL is decoded; only non-ASCII fragment scalars may use their exact
+ * UTF-8 representation at the original authored occurrence. */
+export function assertImportedLocalFragmentContent(
+  expected: string,
+  actual: string,
+  localHrefs: readonly string[],
+): number {
+  const before = importContent(expected),
+    after = importContent(actual)
+  const represented = localLinkSpellings(before, after, localHrefs, false)
+  assertMeaning(before, { ...after, links: represented.links })
+  return represented.changed
+}
+
 /** Review-only evidence for a local destination that native import treated as a
- * hostname. Only the original authored occurrence may use that exact spelling;
+ * hostname or represented with UTF-8 fragment escaping. Only the original
+ * authored occurrence may use that exact spelling;
  * this is never successful import acceptance and never authorizes an external
  * destination, changed label, code or an added link. */
 export function assertImportedLocalLinksRepairable(
@@ -221,27 +286,9 @@ export function assertImportedLocalLinksRepairable(
 ): number {
   const before = importContent(expected),
     after = importContent(actual)
-  const allowed = new Set(
-    localHrefs.filter((href) => /^[^./?#:][^/?#:]*\.(?:md|markdown)(?:[?#].*)?$/iu.test(href)),
-  )
-  const required = before.links.filter((link) => link.authored || !link.automatic)
-  let changed = 0
-  const links = after.links.map((link) => {
-    const original = required.find(
-      (candidate) => candidate.start === link.start && candidate.end === link.end,
-    )
-    if (
-      original !== undefined &&
-      allowed.has(original.href) &&
-      link.href === `https://${original.href}`
-    ) {
-      changed++
-      return { ...link, href: original.href }
-    }
-    return link
-  })
-  assertMeaning(before, { ...after, links })
-  return changed
+  const represented = localLinkSpellings(before, after, localHrefs, true)
+  assertMeaning(before, { ...after, links: represented.links })
+  return represented.changed
 }
 
 function assertMeaning(

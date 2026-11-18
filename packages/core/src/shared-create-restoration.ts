@@ -110,7 +110,7 @@ const ReviewSchema = Schema.Union([
   Schema.Struct({
     ...ReviewFields,
     version: Schema.Literal(3),
-    original_outcome_sha256: Hash,
+    original_outcome_sha256: Schema.Union([Hash, Schema.Null]),
     decision: Schema.Literal("repair_reviewed_local_links_and_resume"),
     local_links: Schema.Array(
       Schema.Struct({ from: Schema.String, href: Schema.String, target: Schema.String }),
@@ -143,7 +143,7 @@ const CompletionSchema = Schema.Union([
   Schema.Struct({
     ...CompletionFields,
     version: Schema.Literal(3),
-    original_outcome_sha256: Hash,
+    original_outcome_sha256: Schema.Union([Hash, Schema.Null]),
     link_repair_proofs: Schema.Array(SharedCreateLinkRepairReferenceSchema),
   }),
   Schema.Struct({
@@ -316,7 +316,12 @@ export function validateSharedCreateRestorationReview(
       review.version === 3 &&
       (!same(review.local_links, sharedCreateLocalLinks(plan)) ||
         review.local_links.length === 0 ||
-        new Set(review.bindings.map((item) => item.page_id)).size !== review.bindings.length)
+        new Set(review.bindings.map((item) => item.page_id)).size !== review.bindings.length ||
+        (review.original_outcome_sha256 === null &&
+          (review.bindings.length !== 1 ||
+            review.observations.length !== 1 ||
+            review.bootstrap.allocations.length !== 1 ||
+            review.bindings[0]?.event_id !== main.event.event_id)))
     )
       return yield* refusal(
         "The local-link review changed the original declared destinations or allocated pages.",
@@ -514,27 +519,22 @@ function linkObservation(
     next_cursor: null,
   }
 }
-/** A resumed v4 journal cannot authorize a second operation on this owner.
+/** A resumed table repair or sole-main link journal cannot authorize another operation.
  * Headers are only commitments: a repair header also needs its complete ACK proof. */
-export function verifySharedTablePlusRestorationOperations(
+export function verifySharedBodyRepairRestorationOperations(
   library: SharedLibrary,
   plan: SharedCreatePlan,
-  review: Extract<SharedCreateRestorationReview, { version: 4 }>,
+  review: BodyRepairReview,
 ) {
   return Effect.gen(function* () {
-    const allowed = new Map([
+    if (review.version === 3 && review.original_outcome_sha256 !== null)
+      return yield* refusal("Only a sole-main link bootstrap uses this operation boundary.")
+    const allowed = new Map<string, { entity_id: string; hash: string }>([
       [
         plan.operation_id,
         {
           entity_id: sharedCreateManifestEntity,
           hash: yield* sharedCreateManifestRecordHash(plan),
-        },
-      ],
-      [
-        sharedCreateOutcomeId(plan.operation_id),
-        {
-          entity_id: sharedCreateOutcomesEntity,
-          hash: review.original_outcome_sha256,
         },
       ],
       [
@@ -545,18 +545,32 @@ export function verifySharedTablePlusRestorationOperations(
         },
       ],
     ])
-    const proof = yield* readSharedCreateLinkRepair(
-      library,
-      plan,
-      review,
-      plan.files.find((file) => file.file_id === review.table_plus.file_id)!,
-      review.bindings,
-    )
-    if (proof !== undefined)
-      allowed.set(proof.reference.record_id, {
-        entity_id: sharedCreateLinkRepairProofsEntity,
-        hash: proof.reference.hash,
+    if (review.version === 4)
+      allowed.set(sharedCreateOutcomeId(plan.operation_id), {
+        entity_id: sharedCreateOutcomesEntity,
+        hash: review.original_outcome_sha256,
       })
+    const bindings =
+      review.version === 4
+        ? review.bindings
+        : yield* currentSharedCreateLinkBindings(library, plan, review.skill_page_id)
+    const files =
+      review.version === 4
+        ? plan.files.filter((file) => file.file_id === review.table_plus.file_id)
+        : bindings.length === sharedCreateFiles(plan).length
+          ? plan.files.filter((file) => review.local_links.some((link) => link.from === file.path))
+          : []
+    let proofs = 0
+    for (const file of files) {
+      const proof = yield* readSharedCreateLinkRepair(library, plan, review, file, bindings)
+      if (proof !== undefined) {
+        proofs++
+        allowed.set(proof.reference.record_id, {
+          entity_id: sharedCreateLinkRepairProofsEntity,
+          hash: proof.reference.hash,
+        })
+      }
+    }
     const headers = yield* querySharedOperationIndex(library, review.skill_page_id)
     const seen = new Set<string>()
     for (const header of headers) {
@@ -568,16 +582,16 @@ export function verifySharedTablePlusRestorationOperations(
         header.hash !== expected.hash
       )
         return yield* refusal(
-          "Another operation or changed original fact now owns this incomplete table-literal restoration.",
+          "Another operation or changed original fact now owns this incomplete body restoration.",
         )
       seen.add(header.record_id)
     }
     if (
-      !seen.has(plan.operation_id) ||
-      !seen.has(sharedCreateOutcomeId(plan.operation_id)) ||
-      (proof !== undefined && !seen.has(reviewRecordId(plan.operation_id)))
+      (review.version === 4 &&
+        (!seen.has(plan.operation_id) || !seen.has(sharedCreateOutcomeId(plan.operation_id)))) ||
+      (proofs > 0 && (!seen.has(plan.operation_id) || !seen.has(reviewRecordId(plan.operation_id))))
     )
-      return yield* refusal("The exact original table-literal manifest or failure disappeared.")
+      return yield* refusal("The exact original body-restoration commitments disappeared.")
   }).pipe(withReadOnlyNotion)
 }
 
@@ -588,8 +602,8 @@ function observeRestoredLinkPrefix(
   initial: boolean,
 ) {
   return Effect.gen(function* () {
-    if (review.version === 4)
-      yield* verifySharedTablePlusRestorationOperations(library, plan, review)
+    if (review.version === 4 || review.original_outcome_sha256 === null)
+      yield* verifySharedBodyRepairRestorationOperations(library, plan, review)
     yield* verifySharedCreateRecoveryScope(library, plan, review.skill_page_id)
     const bindings = yield* currentSharedCreateLinkBindings(library, plan, review.skill_page_id)
     if (
@@ -661,11 +675,15 @@ export function reviewSharedCreateRestoration(input: {
     if (input.repairLocalLinks === true || input.repairTablePlus !== undefined) {
       if (
         input.acceptedObservedSha256 !== undefined ||
-        original.originalOutcomeHash === null ||
+        (original.originalOutcomeHash === null &&
+          (input.repairLocalLinks !== true ||
+            original.bootstrap.kind !== "acknowledged_main_before_manifest" ||
+            original.bindings.length !== 1 ||
+            original.bootstrap.allocations.length !== 1)) ||
         plan.files.length < 2
       )
         return yield* refusal(
-          "Local-link restoration requires the original known complete multi-file failure and its own explicit review.",
+          "Body restoration requires its exact original known failure or sole-main acknowledged link bootstrap and its own explicit review.",
         )
       const tableFile =
         input.repairTablePlus === undefined
@@ -735,7 +753,7 @@ export function reviewSharedCreateRestoration(input: {
       }
       if (changes === 0)
         return yield* refusal(
-          "The original prefix has no proven local hostname conversion to repair.",
+          "The original prefix has no proven local hostname or UTF-8 fragment representation to repair.",
         )
       const fields = {
         kind: "skill_create_restoration_review" as const,
@@ -882,7 +900,7 @@ export function readSharedCreateRestoration(
     const outcome = payload.outcome
     const originalPreserved =
       failed === undefined
-        ? review.version === 2 &&
+        ? (review.version === 2 || review.version === 3) &&
           review.original_outcome_sha256 === null &&
           failureHash === null &&
           review.bootstrap.kind === "acknowledged_main_before_manifest"

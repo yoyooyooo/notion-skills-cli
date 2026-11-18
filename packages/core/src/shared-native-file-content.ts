@@ -15,6 +15,33 @@ export type SharedFileLink = {
   readonly target: string
 }
 
+function restoredFileHref(
+  href: string,
+  target: string,
+  files: readonly { readonly page_id: string; readonly path: string }[],
+  from: string,
+) {
+  if (href.startsWith("#") || href.startsWith("?")) return href
+  const matches = files.filter((file) => file.path === target)
+  if (matches.length === 0) return href
+  const selected = matches[0]
+  if (
+    matches.length !== 1 ||
+    selected === undefined ||
+    pageId(selected.page_id) !== selected.page_id
+  )
+    throw fail(
+      "SHARED_REFERENCE_INVALID",
+      "A local reference must resolve to one exact native page in the selected owner snapshot.",
+      { from, target },
+    )
+  const suffix = href.search(/[?#]/u)
+  return (
+    `https://app.notion.com/p/${selected.page_id.replaceAll("-", "")}` +
+    (suffix < 0 ? "" : href.slice(suffix))
+  )
+}
+
 /** A fresh owner snapshot supplies exact native bindings for authoring. Restore
  * consumer-relative destinations before writing them back to Notion; provider-only
  * files, foreign refs, external URLs and code keep their original spelling. */
@@ -24,28 +51,26 @@ export function restoreSharedNativeFileLinks(
   files: readonly { readonly page_id: string; readonly path: string }[],
 ): string {
   if (!/\.(?:md|markdown)$/iu.test(path)) return markdown
-  return mapSharedMarkdownReferences(path, markdown, (reference) => {
-    const href = reference.href
-    if (href.startsWith("#") || href.startsWith("?")) return href
-    const matches = files.filter((file) => file.path === reference.target)
-    if (matches.length === 0) return href
-    const selected = matches[0]
-    if (
-      matches.length !== 1 ||
-      selected === undefined ||
-      pageId(selected.page_id) !== selected.page_id
-    )
-      throw fail(
-        "SHARED_REFERENCE_INVALID",
-        "A local reference must resolve to one exact native page in the selected owner snapshot.",
-        { from: path, target: reference.target },
-      )
-    const suffix = href.search(/[?#]/u)
-    return (
-      `https://app.notion.com/p/${selected.page_id.replaceAll("-", "")}` +
-      (suffix < 0 ? "" : href.slice(suffix))
-    )
+  return mapSharedMarkdownReferences(path, markdown, (reference) =>
+    restoredFileHref(reference.href, reference.target, files, path),
+  )
+}
+
+/** Only original relative destinations resolved by this owner's exact bindings.
+ * Foreign native URLs, fragment-only links and literal code are never admitted. */
+export function sharedNativeLocalHrefs(
+  markdown: string,
+  path: string,
+  files: readonly { readonly page_id: string; readonly path: string }[],
+): readonly string[] {
+  if (!/\.(?:md|markdown)$/iu.test(path)) return []
+  const hrefs: string[] = []
+  mapSharedMarkdownReferences(path, markdown, (reference) => {
+    const href = restoredFileHref(reference.href, reference.target, files, path)
+    if (href !== reference.href) hrefs.push(href)
+    return reference.href
   })
+  return hrefs
 }
 
 /** Page mentions are inline entities; page tags are child pages unless the

@@ -3,6 +3,7 @@ import quoteReadback from "./fixtures/native-quote-readback.json"
 import {
   assertImportedMarkdownContent,
   assertImportedLocalLinksRepairable,
+  assertImportedLocalFragmentContent,
   compatibleImportMarkdown,
 } from "../src/shared-import-markdown.ts"
 import {
@@ -118,6 +119,75 @@ test("local hostname repair evidence binds the original explicit occurrence and 
       ["references/guide.md"],
     ),
   ).toThrow()
+})
+
+test("UTF-8 fragment repair requires the exact original local destination", () => {
+  const href = "references/apollo-api.md#进程加载对账"
+  const represented = "references/apollo-api.md#" + encodeURIComponent("进程加载对账")
+  const source = `Read [Guide](${href}) and keep \`#进程加载对账\`.`
+  const observed = source.replace(`](${href})`, `](${represented})`)
+  expect(assertImportedLocalLinksRepairable(source, observed, [href])).toBe(1)
+  expect(() => assertImportedMarkdownContent(source, observed)).toThrow()
+  expect(() => assertImportedLocalLinksRepairable(source, observed, [])).toThrow()
+  for (const changed of [
+    observed.replace("references/apollo-api.md", "references/other.md"),
+    observed.replace("references/apollo-api.md#", "references/apollo-api.md?other=1#"),
+    observed.replace("%E8%BF%9B", "%E8%BF%9C"),
+    observed.replaceAll("%", "%25"),
+    observed.replace(represented, represented.split("#")[0]!),
+    observed.replace(represented, represented + "%2F"),
+    observed.replace(represented, represented + "%00"),
+    observed.replace(represented, represented + "%FF"),
+    observed.replace(represented, represented + "%"),
+    observed.replace(represented, "https://foreign.test/" + represented),
+    observed.replace("[Guide]", "[Changed]"),
+    observed.replace("keep", "discard"),
+    observed.replace("\`#进程加载对账\`", "\`#%E8%BF%9B\`"),
+    observed + ` [Extra](${represented})`,
+  ])
+    expect(() => assertImportedLocalLinksRepairable(source, changed, [href])).toThrow()
+})
+
+test("UTF-8 readback projection preserves ASCII spelling, occurrence order and Unicode code points", () => {
+  const href = "references/guide.md?view=1#ASCII/进程?part=2"
+  const encoded = "references/guide.md?view=1#ASCII/" + encodeURIComponent("进程") + "?part=2"
+  const unchanged = "[Other](references/other.md#中文)"
+  const source = `[Guide](${href}) ${unchanged}`
+  const actual = `[Guide](${encoded}) ${unchanged}`
+  expect(assertImportedLocalFragmentContent(source, actual, [href])).toBe(1)
+  expect(assertImportedLocalFragmentContent(source, source, [href])).toBe(0)
+  expect(() => assertImportedLocalFragmentContent(source, actual, [])).toThrow()
+  expect(() =>
+    assertImportedLocalFragmentContent(source, actual, ["references/other.md#中文"]),
+  ).toThrow()
+  for (const changed of [
+    actual.replace("?view=1", "?view=2"),
+    actual.replace("#ASCII/", "#ASCII%2F"),
+    actual.replace("?part=2", "%3Fpart=2"),
+    actual.replace(encoded, "https://foreign.test/" + encoded),
+    actual.replace(unchanged, "[Other](references/other.md#" + encodeURIComponent("中文") + ")"),
+    actual.replace("%E8%BF%9B", "%e8%bf%9b"),
+  ])
+    expect(() => assertImportedLocalFragmentContent(source, changed, [href])).toThrow()
+  const decomposed = "references/guide.md#e\u0301"
+  expect(() =>
+    assertImportedLocalFragmentContent(
+      `[A](${decomposed})`,
+      "[A](references/guide.md#" + encodeURIComponent("é") + ")",
+      [decomposed],
+    ),
+  ).toThrow()
+  expect(() =>
+    assertImportedLocalFragmentContent("[A](guide.md)", "[A](https://guide.md)", ["guide.md"]),
+  ).toThrow()
+  const bare = "guide.md#中文"
+  expect(
+    assertImportedLocalLinksRepairable(
+      `[A](${bare})`,
+      "[A](https://guide.md#" + encodeURIComponent("中文") + ")",
+      [bare],
+    ),
+  ).toBe(1)
 })
 
 test("import accepts presentation changes without requiring Markdown roundtrip equality", () => {

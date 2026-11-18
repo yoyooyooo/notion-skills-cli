@@ -6,12 +6,18 @@ import type { SharedCreateBinding } from "./shared-create-outcome.ts"
 import { FileEventSchema, normalizeObservedBody } from "./shared-file-state.ts"
 import { loadRetainedBody } from "./shared-file-observer.ts"
 import { readSharedCreateTextPayload } from "./shared-create-text-retention.ts"
-import { assertImportedMarkdownContent } from "./shared-import-markdown.ts"
+import {
+  assertImportedMarkdownContent,
+  assertImportedLocalFragmentContent,
+} from "./shared-import-markdown.ts"
 import { canonicalSharedJson, querySharedRecords } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
 import { nativeResubmissionReadbackFile } from "./shared-native-image-layout.ts"
 import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
-import { restoreSharedNativeFileLinks } from "./shared-native-file-content.ts"
+import {
+  restoreSharedNativeFileLinks,
+  sharedNativeLocalHrefs,
+} from "./shared-native-file-content.ts"
 
 const ObservationSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -47,7 +53,11 @@ export function acceptsNativeImportReadback(plan: SharedCreatePlan): boolean {
   )
 }
 
-export function withObservedBody(file: NativeFile, markdown: string) {
+export function withObservedBody(
+  file: NativeFile,
+  markdown: string,
+  localFragmentHrefs: readonly string[] = [],
+) {
   return Effect.gen(function* () {
     if (
       file.event.kind !== "adopted" &&
@@ -57,7 +67,15 @@ export function withObservedBody(file: NativeFile, markdown: string) {
       return yield* Effect.fail(
         fail("SHARED_CREATE_SCOPE", "Import readback requires a resolved initial ownership event."),
       )
-    yield* checked(() => assertImportedMarkdownContent(file.projection.markdown, markdown))
+    yield* checked(() =>
+      localFragmentHrefs.length === 0
+        ? assertImportedMarkdownContent(file.projection.markdown, markdown)
+        : assertImportedLocalFragmentContent(
+            file.projection.markdown,
+            markdown,
+            localFragmentHrefs,
+          ),
+    )
     // A tombstone retains the pre-deletion version, not its reading-page rendering.
     if (file.event.kind === "deleted") return { ...file, event: file.event }
     const hash = yield* sha256(markdown)
@@ -235,7 +253,13 @@ export function restoreNativeImportReadbacks(
             : substitution === undefined
               ? file
               : nativeResubmissionReadbackFile(file, substitution.wire_policy)
-        const resolved = yield* withObservedBody(represented, markdown)
+        const resolved = yield* withObservedBody(
+          represented,
+          markdown,
+          linked === undefined
+            ? []
+            : sharedNativeLocalHrefs(file.projection.markdown, file.path, bindings),
+        )
         if (
           (linked !== undefined &&
             (substitution !== undefined || linked.body_sha256 !== resolved.content.sha256)) ||

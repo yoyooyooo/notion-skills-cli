@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "synchronized_commit": "d95aa5091102aa2d4122d3a7299838d951b2cc7a",
+  "synchronized_commit": "e2c309bbee68a5b00e91db4318c6d4883d30163f",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
   "files": {
     "packages/cli/src/commands-library-file-review.ts": "3600fd01b437f6706600b26bd9fbda10ef3945b82382700649d66a86bec7bf4c",
@@ -16,7 +16,7 @@
     "packages/core/src/shared-audit-checkpoint.ts": "5d9796455c0b5dfb2827c1c88a124b174a38234a5d71b10bd5708a1fc01853b2",
     "packages/core/src/shared-audit-evidence.ts": "dc7ad95e8a9c8266c71107e7e3c2fe269bccf28b1ebf4cf3a131d01229eb165d",
     "packages/core/src/shared-body-current-acceptance.ts": "2dced0391c13ec5a6bce04c47c9469985d224d610a5e95a8ee68c20c56ee90db",
-    "packages/core/src/shared-create-link-repair.ts": "c1e8a38868e1bf7cfc674a490dc6eca68dcec8c2acf70d0a89b464bd5161d1b5",
+    "packages/core/src/shared-create-link-repair.ts": "c7252431e4cc90d983539473faaa276d0cdbaa650178805f4915f46356da7cd9",
     "packages/core/src/shared-notion-markdown-v2.ts": "0c26760d225d5759b9d13a107f208cae892f5241439f9433a6ffca1abf85c1c7",
     "packages/core/src/shared-single-body-apply-acceptance.ts": "5fe4e91a2da2392e5adb1e7eaabcde16b64280c281aee9dab4913c4cb5312603",
     "packages/core/test/fixtures/native-quote-readback.json": "439a35a393701cfc26b8eb57dae8e2950552fa1790494b0d3095d29d71a4576c",
@@ -25,10 +25,10 @@
     "packages/core/test/shared-audit-sqlite.node.test.ts": "be1c908916bf423bbec61d07c8e5426c1a44873d2db922398a6c715d37afd999",
     "packages/core/test/shared-body-current-acceptance.test.ts": "9f800634dc30e7a863f377bc5456317fb41b3a30f3d7ccd833f2dbf5b8b59acf",
     "packages/core/test/shared-create-fixture.ts": "b332d1e0f9b28355518414d4d1902265a5b68272c908b6fe463fc7a148b62758",
-    "packages/core/test/shared-create-link-restoration-fixture.ts": "dae65e6ad3bca2806c02187cd63593636337e970acd90246a245f7d0044e0b14",
-    "packages/core/test/shared-create-link-restoration-safety.test.ts": "485f6b972069bd4dcbc2dd6c912cde99c984de9fa6b562135b94195f11845a56",
+    "packages/core/test/shared-create-link-restoration-fixture.ts": "e2e641b33c75765ca64ba85f25a8a1f91aaa61b065fe0fd61a80f137f56d845d",
+    "packages/core/test/shared-create-link-restoration-safety.test.ts": "3375ce62d54a1b6ac46fbaa7882af86291d69b418ccb322f642952ffd1c0407e",
     "packages/core/test/shared-create-link-restoration-sqlite.node.test.ts": "eee3303a78a596c8176d9ec97397de8a29f0e4f27d40b371dd958c51626d3e4b",
-    "packages/core/test/shared-create-link-restoration.test.ts": "03ff06a14ac4923b7d8c9080cc87a2de5270a3528f9fa73bd6380c3df23f608c",
+    "packages/core/test/shared-create-link-restoration.test.ts": "a1bd5783cd30a4fc769f02811f3f1b663f555439ecdf770cffc0938941c577d2",
     "packages/core/test/shared-create-readback-restoration.test.ts": "22d7615f0b51e2f76e10b6008c0fa1cd3c06c7b0042ee6a50b343cc96ce357a9",
     "packages/core/test/shared-notion-projection-v4.test.ts": "097df9f31f50e7fba1e24d299f350bca0422b0ee92117c6d7853e1adf9ec341b",
     "packages/core/test/shared-restore-readback.test.ts": "f0697b4585e35b0e8ba98a63c89be515be603efd86935889b5aecbc1bf30d419",
@@ -89,7 +89,7 @@
     "packages/core/src/shared-audit-store.ts": "e956a6c22d765bc4199bb4135a6e767ab08ce252c701910abefdf61fe08136b9",
     "packages/core/src/shared-inventory-import.ts": "0a64520a8ae60f657334cfc683b5fcd88455249039cb26cab47773c34c7a49fc",
     "packages/core/src/shared-inventory-local.ts": "697c7d953ad9251febc4197930205a94d35e4ec4b8e296d037f1bdfc858c88bb",
-    "packages/core/src/shared-create.ts": "2c8dcc2275d5fd2a70ffbe01e0ee24a9580573a076952d83f2195752a75e94fc",
+    "packages/core/src/shared-create.ts": "b1a47936753d5a8f7a6912088f73a805dd3dd61a017120b0c3b6c6fd91c423f5",
     "packages/core/src/shared-create-model.ts": "f8d889fc13fff4e68039b58c2aed4cb5317b89ed8825cd37224aeb93583b9f14",
     "packages/core/src/shared-create-dispatch.ts": "199e3178c36917d059fa492ed5c177e42512cffbd1128c4ad926d4a8f1352113",
     "packages/core/src/shared-create-verification.ts": "01b5e32adcbd789038687f0800345ee5dd5ce424e100941a52121a25aa012496",
@@ -132,7 +132,7 @@
     "packages/core/src/shared-create-continuation-acknowledged-model.ts": "4caee353f40086aa2d49d351ebf8d302d04fc422e425260af44d1a6389cc47aa",
     "packages/core/src/shared-create-recovery-acknowledgements.ts": "d82b8d76a655ff2e5b5bbac92872a6ec4147ae43cef3fd41f83982a65e68d44d",
     "packages/core/src/shared-create-recovery-acknowledgement-model.ts": "d7c8da03dc0534a6e09820ac62dc3a24c8fae16191e86a163c2da4266269a064",
-    "packages/core/src/shared-native-file-content.ts": "c0d8de5045e44bfbf12ab675eeb56ecaec1f525162334bf750c40eb7fddf2a00",
+    "packages/core/src/shared-native-file-content.ts": "8dcf9b86b8838f960f686ba1e58f4db6bbe890c2291d2b55098d1c27ed94bffe",
     "packages/core/src/shared-body-write-review-model.ts": "b52cf5a7bc732721fd743533e3c8ac2c6db251b544417822afa2e9a0a2fc0664",
     "packages/core/src/shared-body-write-review.ts": "bd4362d2d8891eaca65434d0abe431ef0a1fdb16067f333c774d1b0c5c6c434e",
     "packages/core/src/shared-pending-file-operations.ts": "720a0d159c267c26cb4fe039987de7b1ef26b7e196558e60d778ad595da9a8e7",
@@ -144,11 +144,11 @@
     "packages/core/src/shared-inventory-recovery.ts": "9c16635c6a104049e007b5b97c1d275ad42b83f68d15cd01567d18ada4d67459",
     "packages/core/src/shared-file-request.ts": "12571d8ed6e46cbc29a5e7b84ae3c1d2aa12ec28003b401e960e73138e083a11",
     "packages/cli/src/commands-library-file-request.ts": "0aef3dbd6ca32c48d9036f4672dcf4dbd6ff5ae04c16522f6482a0f0146e9736",
-    "packages/core/src/shared-create-import-readback.ts": "6216f41390691a6b3c590ffcc98c0364da81847472164ce6e8ebfd30780897be",
+    "packages/core/src/shared-create-import-readback.ts": "9e86f9bf0909aa8eeaa2786703f452fb5c9570e500d2349e02e1a9d146c8defc",
     "packages/core/src/shared-inventory-import-reuse.ts": "9b6bcae350480ee5456955a432e6b9c63ee990c50268f09305e3ecb644ca1c0c",
     "packages/core/src/shared-input-fingerprint.ts": "54b993d833173e45f5234ee4db6ecb83c89aaa5024ebd3f0bfd14717939f6ff5",
-    "packages/core/src/shared-import-markdown.ts": "e100d41a4ae25dcf42ca17f00a73d9bb0244fa7e0502b6d0c41028f50ab1ff58",
-    "packages/core/src/shared-create-restoration.ts": "df75ba1994673672586770f8ba13304d9e011830d70f6cbeeb167fe7b860b3af",
+    "packages/core/src/shared-import-markdown.ts": "50cc29b9825e46f143607de8ba0321c7eda2a0e0c7a2ea62a4d36f61ee26d250",
+    "packages/core/src/shared-create-restoration.ts": "a61b76cb9d89522a7f23a89ffd2a45018a8cbbdd0a3e9ef29d19a125550aaf68",
     "packages/core/src/consumption-effects.ts": "630d530d5acccfc55109be28f904378a3903d0104d1a5caa5e6b9fc0b95a1035",
     "packages/core/src/notion.ts": "dad3f5e5f5d47dfcc89c81b6291a498ca9f0647dbf129e9fe6f50b306f64a85c",
     "packages/core/src/request-metrics.ts": "17827dbc924c254e03079fc983fda4986dc418c8cb6dd350741be61bcee982cb",
@@ -187,7 +187,7 @@
     "packages/core/src/shared-retained-source.ts": "c1bb5e89e9ab4ba2812c675dd3d7329f079a9c767d8f4031a3cf20d63da34744",
     "packages/core/test/shared-create.test.ts": "8be219595c1b65890611b225d4d7ebeeef276c3fe70127e76bf847b510ea7c49",
     "packages/cli/test/library-source-members-http.test.ts": "dcf9cd3be905fe576c619a83760cddd83598ae00e97e5ebc3708ad2f910a53ee",
-    "packages/core/test/shared-import-markdown.test.ts": "5a0eec4bf3a079aa67c480b0cd01ecd0158716b211ed281c46368dc3c87605d8",
+    "packages/core/test/shared-import-markdown.test.ts": "e63076ce2f1eff0601227ef3b29fdb9af32ccfb57093f2e6f1189cfc4e60ae47",
     "packages/cli/test/source-onboarding-navigation.test.ts": "f422f3653181a789a7ce985c01f2c5c8e3857efba4631b8fc2d0e83ead70fbad",
     "packages/core/src/shared-create-retained-recovery.ts": "9315392815f2d805c0ae8fe33ff07d60b1897f5ea060b9b2a1a3c64503bdfffd",
     "packages/core/src/shared-source-recovery.ts": "40f44f36229a433abdf003b9adce85bc0b403dbb4b59d20841ad5f46de44ccd6",
@@ -276,7 +276,10 @@
     "packages/core/test/shared-inventory-import.test.ts": "7eac6e3a61d6bf3137472be63f9e01f7798c39d26cc488cd65973b5e390f1d40",
     "packages/core/src/shared-inventory-model.ts": "ed7b0bc29589081d687e924faa668a4e15b416d154b285802ba88da366550881",
     "packages/core/src/shared-inventory-provenance-review.ts": "3f3b44b9c13658904b0f177cec4cc54a0d281417db2b4a239d24886f48550bac",
-    "packages/cli/src/commands-library-inventory-import.ts": "4cb4c808d0e15710546b1bb18b58c1aea8d60a9998131463073f798a0c6751d2"
+    "packages/cli/src/commands-library-inventory-import.ts": "4cb4c808d0e15710546b1bb18b58c1aea8d60a9998131463073f798a0c6751d2",
+    "packages/core/test/shared-create-fragment-sqlite-worker.ts": "19cfda49d75387e088f0a3bce9a158dc8a264792e62a4d6b274c9c82992e89a3",
+    "packages/core/test/shared-create-fragment-sqlite.node.test.ts": "6a0d5345046b7ed12cd8e576db901fe63b0d64a16d0ce8a7f25b64ab7f5fa5a5",
+    "packages/core/test/shared-native-file-content.test.ts": "e8d195a67373b7b77210a46988f2c65fbad0c45d58c63f74392394fefecb012e"
   },
   "models": {
     "ProjectionRace": {
@@ -1697,13 +1700,13 @@
         "reviewSharedCreateRestoration",
         "applySharedCreateRestoration",
         "readSharedCreateRestoration",
-        "verifySharedTablePlusRestorationOperations",
+        "verifySharedBodyRepairRestorationOperations",
         "originalKnownCreateBootstrap",
         "repairSharedCreateLinkFile",
         "readSharedCreateLinkRepair",
         "executeSharedCreate"
       ],
-      "scope": "Version-4 restoration is limited to the last acknowledged supporting file of a disabled complete ordinary policy-14 native create. Preserve the original plan/failure and full input/mode/preimage; use existing policy-17 wire, exact independent PATCH ACK/readback/proof, then only the original unattempted suffix. Unknown repair/suffix never replays. A genuine same-owner unknown metadata operation after an ACK interruption is rejected by the fresh v4-only exact operation-header/proof guard before every new dispatch. Versions 1-3 remain unchanged. Concrete Markdown, PATCH/proof ordering, modes, SQLite restart and cold public SDK reconstruction are reviewed implementation obligations outside the unchanged finite TLA domains, not a new model or live-library proof. See docs/maintenance-verification-review.md Ordinary native supporting-table restoration.",
+      "scope": "Version-4 restoration is limited to the last acknowledged supporting file of a disabled complete ordinary policy-14 native create. Preserve the original plan/failure and full input/mode/preimage; use existing policy-17 wire, exact independent PATCH ACK/readback/proof, then only the original unattempted suffix. Unknown repair/suffix never replays. A genuine same-owner unknown metadata operation after an ACK interruption is rejected by the fresh v4-only exact operation-header/proof guard before every new dispatch. Historical versions 1-2 and version-3 reviews with a non-null original outcome remain unchanged; the separately reviewed sole-main version-3 bootstrap is mapped below. Concrete Markdown, PATCH/proof ordering, modes, SQLite restart and cold public SDK reconstruction are reviewed implementation obligations outside the unchanged finite TLA domains, not a new model or live-library proof. See docs/maintenance-verification-review.md Ordinary native supporting-table restoration.",
       "tests": [
         "packages/core/test/shared-create-fixture.ts",
         "packages/core/test/shared-snapshot-fixture.ts",
@@ -1788,6 +1791,40 @@
         "packages/core/test/shared-audit-sqlite.node.test.ts",
         "packages/cli/test/library-inventory.test.ts"
       ],
+      "no_new_finite_model_claim": true
+    },
+    {
+      "kind": "hash_bound_context_not_modeled",
+      "name": "same_owner_unicode_fragments_and_acknowledged_main_bootstrap",
+      "files": [
+        "packages/core/src/shared-create-import-readback.ts",
+        "packages/core/src/shared-create-link-repair.ts",
+        "packages/core/src/shared-create-restoration.ts",
+        "packages/core/src/shared-create.ts",
+        "packages/core/src/shared-import-markdown.ts",
+        "packages/core/src/shared-native-file-content.ts"
+      ],
+      "symbols": [
+        "assertImportedLocalFragmentContent",
+        "assertImportedLocalLinksRepairable",
+        "sharedNativeLocalHrefs",
+        "reviewSharedCreateRestoration",
+        "verifySharedBodyRepairRestorationOperations",
+        "applySharedCreateRestoration",
+        "readSharedCreateRestoration",
+        "withObservedBody"
+      ],
+      "scope": "Explicit native same-owner bindings may authorize only the UTF-8 percent-encoding of non-ASCII fragment scalars. Original path, query, ASCII spelling, existing escapes, text and code remain strict; external, unbound and fragment-only/query-only destinations gain no permission. Review, original ACK validation and cold consumption share this bounded projection while original request bytes and hashes remain unchanged. A version-3 null original outcome is limited to the exact sole-main acknowledged bootstrap before manifest creation, with complete original plan/input/journal/ACK proof and no foreign operation. Every new dispatch rechecks the exact operation set and current tree; an interrupted known durable ACK can be read back before never-dispatched suffix work, while unknown requests are never replayed. Completion and cold policy-14/15 reconstruction require the explicit matching review, complete bindings, body/raw/mode/event proof and retained original facts. Existing non-null version-3 histories keep their original branch. Concrete Unicode, null-bootstrap eligibility, operation-header sets, SQLite interruption and cold SDK composition are runtime-test obligations outside the unchanged finite models; no new TLA, config, view, case, expected-rule or live-provider claim is added.",
+      "tests": [
+        "packages/core/test/shared-create-fragment-sqlite-worker.ts",
+        "packages/core/test/shared-create-fragment-sqlite.node.test.ts",
+        "packages/core/test/shared-create-link-restoration-fixture.ts",
+        "packages/core/test/shared-create-link-restoration-safety.test.ts",
+        "packages/core/test/shared-create-link-restoration.test.ts",
+        "packages/core/test/shared-import-markdown.test.ts",
+        "packages/core/test/shared-native-file-content.test.ts"
+      ],
+      "reviewed_base_commit": "e2c309bbee68a5b00e91db4318c6d4883d30163f",
       "no_new_finite_model_claim": true
     }
   ],

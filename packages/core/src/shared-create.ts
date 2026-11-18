@@ -64,6 +64,7 @@ import {
 import { sharedCreateDispatch } from "./shared-create-dispatch.ts"
 import type { VerifiedNativeFileSubstitution } from "./shared-source-file-resubmission-model.ts"
 import { nativeResubmissionReadbackFile } from "./shared-native-image-layout.ts"
+import { sharedNativeLocalHrefs } from "./shared-native-file-content.ts"
 import { sourceFileRepairProofVerifier } from "./shared-source-file-repair.ts"
 import { resolveSharedCreateSource } from "./shared-create-source.ts"
 import {
@@ -93,7 +94,7 @@ import {
   saveSharedCreateRestorationCompletion,
   readSharedCreateRestoration,
   sharedCreateRestorationOutcomesEntity,
-  verifySharedTablePlusRestorationOperations,
+  verifySharedBodyRepairRestorationOperations,
   currentSharedCreateLinkBindings,
   type SharedCreateRestorationReview,
 } from "./shared-create-restoration.ts"
@@ -1626,7 +1627,9 @@ export function reconcileSharedCreate(library: SharedLibrary, input: SharedCreat
       }
     }
     const reviewedReadback =
-      rows.length === 0 && plan.complete_resources === 1 && plan.files[0]?.projection.version === 15
+      rows.length === 0 &&
+      plan.complete_resources === 1 &&
+      plan.files.every((file) => file.projection.version === 14 || file.projection.version === 15)
         ? yield* readSharedCreateRestoration(library, plan, page, undefined, null)
         : undefined
     if ((rows.length !== 1 || row === undefined) && reviewedReadback === undefined)
@@ -1934,8 +1937,11 @@ export function executeSharedCreate(
     let allocatedCheck: Effect.Effect<void, SkillsError, Notion | Store | Crypto.Crypto> =
       Effect.void
     const beforeDispatch = Effect.gen(function* () {
-      if (restoration?.version === 4)
-        yield* verifySharedTablePlusRestorationOperations(library, plan, restoration)
+      if (
+        restoration?.version === 4 ||
+        (restoration?.version === 3 && restoration.original_outcome_sha256 === null)
+      )
+        yield* verifySharedBodyRepairRestorationOperations(library, plan, restoration)
       // Legacy native/migration plans retain their original review and recovery
       // protocol. The complete-resource/source contract opts into fresh stages.
       if (
@@ -2099,6 +2105,9 @@ export function executeSharedCreate(
                       ? linkedCreateFile(file, linkBindings)
                       : file,
                     markdown,
+                    read.phase === "after" && linkedReview.version === 3
+                      ? sharedNativeLocalHrefs(file.projection.markdown, file.path, linkBindings)
+                      : [],
                   )
             facts = {
               ...current,
