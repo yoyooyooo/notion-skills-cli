@@ -7,12 +7,10 @@ import {
   makeSharedBodyWritePlan,
   validateSharedBodyWritePlan,
 } from "../src/shared-body-write-model.ts"
-import { prepareSharedGitMainTakeover } from "../src/shared-git-main-takeover.ts"
 import { projectSharedNotionMarkdown } from "../src/shared-notion-projection.ts"
 import { expandSharedOperationPlan, storedSharedOperationPlan } from "../src/shared-plan-storage.ts"
 import { SHARED_FACT_ENVELOPE_BYTES } from "../src/shared-record-codec.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
-import { gitMainFixture, library } from "./shared-git-main-takeover-fixture.ts"
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const page = "00000000-0000-4000-8000-000000000001"
@@ -98,33 +96,6 @@ for (const version of [15, 16, 17] as const)
       expect(plan.candidate.content.frontmatter).toBe("---\nlicense: MIT\n---\n")
     },
   )
-
-test("a large first Git main keeps the complete source and authored input through the compact public plan", async () => {
-  const f = await gitMainFixture()
-  const snapshot = await f.read()
-  const original = new TextDecoder().decode(f.original.bytes)
-  const markdown = original + "\n" + body
-  const prepared = await f.author(
-    prepareSharedGitMainTakeover({
-      library,
-      snapshot,
-      path: "SKILL.md",
-      markdown,
-      mode: "100755",
-    }),
-  )
-  expect(f.bodyWrites).toHaveLength(0)
-  expect(prepared.plan.input_projection?.version).toBe(17)
-  expect(prepared.plan.git_main_initialization?.source_input).toBe(original)
-  expect(prepared.plan.git_main_initialization?.authored_input).toBe(markdown)
-  expect(prepared.plan.git_main_initialization?.authored_mode).toBe("100755")
-  expect(envelopeBytes(prepared.plan)).toBeGreaterThan(SHARED_FACT_ENVELOPE_BYTES)
-  const stored = property(storedSharedOperationPlan(prepared.plan))
-  expect(stored.storage).toBe("derived-text-v1")
-  expect(expandSharedOperationPlan(stored)).toEqual(prepared.plan)
-  expect(await f.run(validateSharedBodyWritePlan(stored))).toEqual(prepared.plan)
-  expect(f.bodyWrites).toHaveLength(0)
-})
 
 test("compact plans still reject unknown versions, incompatible purposes and changed retained input", async () => {
   const plan = await restorePlan(17)

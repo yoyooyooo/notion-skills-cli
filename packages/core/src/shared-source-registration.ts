@@ -8,7 +8,8 @@ import {
   SharedGitSourceBindingSchema,
   type SharedGitSourceBinding,
 } from "./shared-source-binding-model.ts"
-import { SharedSourcePlanSchema, type SharedSourcePlan } from "./shared-source-plan.ts"
+import type { SharedSourcePlan } from "./shared-source-plan.ts"
+import { SharedSourcePlanSchema } from "./shared-source-plan-model.ts"
 import { sha256, Store } from "./store.ts"
 
 export const SharedSourceIdSchema = Schema.String.check(

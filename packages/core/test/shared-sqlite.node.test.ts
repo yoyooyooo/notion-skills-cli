@@ -225,65 +225,162 @@ test("real Store publishes, repairs and retires current-tree proofs without rene
   })
 }, 30_000)
 
-test("the bounded file-observation slot keeps the highest real-process generation and fences every pre-clear completion", async () => {
-  await isolated(async (root) => {
-    const key = `cache/shared-file-observations/${"7".repeat(64)}/latest.json`
-    const identity = "shared_skill:slot-library:slot-skill"
-    const payload = {
-      version: 1,
-      scope,
-      library_id: "slot-library",
-      skill_id: "slot-skill",
-      skill_page_id: "page",
-      snapshot_id: "fixed-snapshot",
-      observations: Array.from({ length: 80 }, (_, index) => ({
-        file_id: `file-${index}`,
-        sha256: "a".repeat(64),
-      })),
-    }
-    const write = (generation: number) =>
-      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:${generation}})`
-    const initialize = await child(
-      root,
-      `for(let i=0;i<3;i++)yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});${write(1)}`,
-    )
-    expect(initialize.exit, initialize.stderr).toBe(0)
-    const contenders = await Promise.all([3, 2].map((generation) => child(root, write(generation))))
-    for (const result of contenders) expect(result.exit, result.stderr).toBe(0)
-    const newest = await child(
-      root,
-      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
-    )
-    expect(newest.exit, newest.stderr).toBe(0)
-    expect(JSON.parse(newest.stdout).generation).toBe(3)
-    const conflict = await child(
-      root,
-      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:3,snapshot_id:'other'})`,
-    )
-    expect(conflict.exit).not.toBe(0)
-    expect(conflict.stderr).toContain("different content")
-    const cleared = await child(
-      root,
-      `yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify({active:yield* state.list('cache/shared-file-observations')}))`,
-    )
-    expect(cleared.exit, cleared.stderr).toBe(0)
-    expect(JSON.parse(cleared.stdout).active).toEqual([])
-    const late = await child(root, write(4))
-    expect(late.exit).not.toBe(0)
-    expect(late.stderr).toContain("retired before publication")
-    const batch = (count: number) =>
-      child(
+test.each(["shared-file-observations", "current-native-bodies"])(
+  "the %s slot keeps the highest real-process generation and fences every pre-clear completion",
+  async (domain) => {
+    await isolated(async (root) => {
+      const key = `cache/${domain}/${"7".repeat(64)}/latest.json`
+      const identity = "shared_skill:slot-library:slot-skill"
+      const payload = {
+        version: 1,
+        scope,
+        library_id: "slot-library",
+        skill_id: "slot-skill",
+        skill_page_id: "page",
+        snapshot_id: "fixed-snapshot",
+        observations: Array.from({ length: 80 }, (_, index) => ({
+          file_id: `file-${index}`,
+          sha256: "a".repeat(64),
+        })),
+      }
+      const write = (generation: number) =>
+        `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:${generation}})`
+      const initialize = await child(
         root,
-        `for(let i=0;i<${count};i++){const generation=yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation})}yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify({rows:yield* sql\`SELECT count(*) AS count,sum(length(payload)) AS bytes FROM shared_local_records\`,pages:yield* sql\`PRAGMA page_count\`}))}))`,
+        `for(let i=0;i<3;i++)yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});${write(1)}`,
       )
-    const first = await batch(20),
-      repeated = await batch(60)
-    expect(first.exit, first.stderr).toBe(0)
-    expect(repeated.exit, repeated.stderr).toBe(0)
-    const initial = JSON.parse(first.stdout),
-      final = JSON.parse(repeated.stdout)
-    expect(initial.rows[0].count).toBe(1)
-    expect(final).toEqual(initial)
+      expect(initialize.exit, initialize.stderr).toBe(0)
+      const contenders = await Promise.all(
+        [3, 2].map((generation) => child(root, write(generation))),
+      )
+      for (const result of contenders) expect(result.exit, result.stderr).toBe(0)
+      const newest = await child(
+        root,
+        `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+      )
+      expect(newest.exit, newest.stderr).toBe(0)
+      expect(JSON.parse(newest.stdout).generation).toBe(3)
+      const conflict = await child(
+        root,
+        `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation:3,snapshot_id:'other'})`,
+      )
+      expect(conflict.exit).not.toBe(0)
+      expect(conflict.stderr).toContain("different content")
+      const cleared = await child(
+        root,
+        `yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.retire([${JSON.stringify(key)}]);console.log(JSON.stringify({active:yield* state.list(${JSON.stringify(`cache/${domain}`)})}))`,
+      )
+      expect(cleared.exit, cleared.stderr).toBe(0)
+      expect(JSON.parse(cleared.stdout).active).toEqual([])
+      const late = await child(root, write(4))
+      expect(late.exit).not.toBe(0)
+      expect(late.stderr).toContain("retired before publication")
+      const batch = (count: number) =>
+        child(
+          root,
+          `for(let i=0;i<${count};i++){const generation=yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(payload)},generation})}yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;console.log(JSON.stringify({rows:yield* sql\`SELECT count(*) AS count,sum(length(payload)) AS bytes FROM shared_local_records\`,pages:yield* sql\`PRAGMA page_count\`}))}))`,
+        )
+      const first = await batch(20),
+        repeated = await batch(60)
+      expect(first.exit, first.stderr).toBe(0)
+      expect(repeated.exit, repeated.stderr).toBe(0)
+      const initial = JSON.parse(first.stdout),
+        final = JSON.parse(repeated.stdout)
+      expect(initial.rows[0].count).toBe(1)
+      expect(final).toEqual(initial)
+    })
+  },
+  30_000,
+)
+
+function currentPublicationProgram(root: string) {
+  return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
+import {ConfigProvider,Effect,FileSystem,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
+import {HttpClient} from ${JSON.stringify(import.meta.resolve("effect/http"))};
+import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
+import {Notion} from ${JSON.stringify(core + "notion.ts")};
+import {SnapshotSchema,decode} from ${JSON.stringify(core + "model.ts")};
+import {openSharedSnapshot} from ${JSON.stringify(core + "shared-snapshot.ts")};
+import {clearCache} from ${JSON.stringify(core + "cache.ts")};
+import {currentSnapshotFixture,currentLibrary,currentScope,currentSkillPage} from ${JSON.stringify(new URL("./shared-current-fixture.ts", import.meta.url).pathname)};
+process.env.NTN_SKILLS_HOME=${JSON.stringify(root)};
+process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(root + "-config")};
+process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(root + "-cache")};
+const fixture=currentSnapshotFixture({fileCount:1});
+fixture.bodies.set(currentSkillPage,'# Current main\\n[Child](https://app.notion.com/p/'+fixture.files[0].id.replaceAll('-','')+')\\n');
+const seed=decode(SnapshotSchema,await fixture.open());
+fixture.main.properties.Name.title[0].plain_text='Concurrent display';
+fixture.main.properties.Description.rich_text[0].plain_text='New current directory label.';
+fixture.main.properties.Description.rich_text[0].text.content='New current directory label.';
+const renamed=decode(SnapshotSchema,await fixture.open());
+const api=await fixture.run(Notion),http=await fixture.run(HttpClient.HttpClient);
+const services=Layer.mergeAll(NodeServices.layer,Layer.succeed(Notion,api),Layer.succeed(HttpClient.HttpClient,http),StoreLive.pipe(Layer.provideMerge(NodeServices.layer)));
+Effect.runPromise(Effect.gen(function*(){
+ const store=yield* Store,fs=yield* FileSystem.FileSystem,key='snapshots/'+seed.snapshot_id+'.json';
+ for(const file of seed.files)yield* store.writeBytes('objects/'+file.sha256,fixture.objects.get('objects/'+file.sha256));
+ const alternate={...renamed,record:{...renamed.record,default_context:true},shared_acquisition:{...renamed.shared_acquisition,library:{...currentLibrary,files:{...currentLibrary.files,property_ids:{...currentLibrary.files.property_ids,'Reading status':'extra-display-property'}}}}};
+ const contenders=yield* Effect.all([seed,alternate].map(value=>store.writeJson(key,value).pipe(Effect.result)),{concurrency:2});
+ const first=yield* store.readJson(key,SnapshotSchema),physical=decode(SnapshotSchema,JSON.parse(yield* fs.readFileString(store.root+'/'+key)));
+ const changed=[
+  {...seed,files:seed.files.map((file,index)=>index===0?{...file,mode:'100755'}:file)},
+  {...seed,file_bindings:seed.file_bindings.map((file,index)=>index===0?{...file,file_id:'different-current-file'}:file)},
+  {...seed,record:{...seed.record,locator:{...seed.record.locator,page_id:'00000000-0000-4000-8000-000000000099'}}},
+  {...seed,native_references:{...seed.native_references,entries:seed.native_references.entries.map((entry,index)=>index===0?{...entry,ref:entry.ref+'/different'}:entry)}},
+ ];
+ const conflicts=yield* Effect.forEach(changed,value=>store.writeJson(key,value).pipe(Effect.result));
+ const {shared_acquisition:_acquisition,...legacyBase}=seed;
+ const legacyVersion=yield* sha256('legacy-store-comparison');
+ const legacy={...legacyBase,version_id:legacyVersion,snapshot_id:'s_'+(yield* sha256(JSON.stringify([seed.scope,seed.record.id,legacyVersion])))};
+ yield* store.writeJson('snapshots/'+legacy.snapshot_id+'.json',legacy);
+ const legacyConflict=yield* store.writeJson('snapshots/'+legacy.snapshot_id+'.json',{...legacy,record:alternate.record}).pipe(Effect.result);
+ const open=()=>openSharedSnapshot({library:currentLibrary,target:currentSkillPage,scope:currentScope,startedAt:Date.now()});
+ fixture.clearCalls();yield* open();const coldBodies=fixture.bodyCalls().length;
+ fixture.clearCalls();yield* open();const warmBodies=fixture.bodyCalls().length;
+ const nativeKeys=yield* store.listKeys('cache/current-native-bodies'),observation=yield* store.readJson(nativeKeys[0],Schema.Unknown);
+ const final=yield* store.readJson(key,SnapshotSchema);
+ const objectMode=(yield* fs.stat(store.root+'/objects/'+seed.files[0].sha256)).mode&0o777;
+ const pending=(yield* fs.readDirectory(store.root+'/snapshots')).filter(name=>name.endsWith('.pending'));
+ yield* clearCache(undefined,{all:true});
+ const stale=yield* store.writeJson(nativeKeys[0],observation).pipe(Effect.result);
+ console.log(JSON.stringify({
+  contenders:contenders.map(result=>result._tag==='Success'?'ok':result.failure.code),
+  sameContent:seed.snapshot_id===renamed.snapshot_id,nativeMetadataChanged:seed.native_references.index_sha256!==renamed.native_references.index_sha256,
+  immutable:JSON.stringify(first)===JSON.stringify(final),physical:JSON.stringify(first)===JSON.stringify(physical),
+  storedName:first.record.name,conflicts:conflicts.map(result=>result._tag==='Failure'?result.failure.code:'accepted'),
+  legacy:legacyConflict._tag==='Failure'?legacyConflict.failure.code:'accepted',
+  coldBodies,warmBodies,nativeKeys,generation:observation.generation,objectMode,pending,
+  afterClear:(yield* store.readJson(nativeKeys[0],Schema.Unknown))??null,
+  stale:stale._tag==='Failure'?stale.failure.code:'accepted'
+ }));
+}).pipe(Effect.provide(services),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(error=>{console.error(String(error));process.exitCode=1})`
+}
+
+test("real Store current v5 publication tolerates concurrent display observations and preserves content, authority and cache fences", async () => {
+  await isolated(async (root) => {
+    const result = await runProgram(currentPublicationProgram(root))
+    expect(result.exit, result.stderr).toBe(0)
+    const value = JSON.parse(result.stdout)
+    expect(value).toMatchObject({
+      contenders: ["ok", "ok"],
+      immutable: true,
+      physical: true,
+      sameContent: true,
+      nativeMetadataChanged: true,
+      conflicts: ["STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT", "STATE_CORRUPT"],
+      legacy: "STATE_CORRUPT",
+      coldBodies: 2,
+      warmBodies: 0,
+      objectMode: 0o600,
+      pending: [],
+      afterClear: null,
+      stale: "CACHE_INVALIDATED",
+    })
+    expect(["Current demo", "Concurrent display"]).toContain(value.storedName)
+    expect(value.nativeKeys).toHaveLength(1)
+    expect(value.nativeKeys[0]).toMatch(
+      /^cache\/current-native-bodies\/[a-f0-9]{64}\/latest\.json$/u,
+    )
+    expect(value.generation).toBe(2)
   })
 }, 30_000)
 

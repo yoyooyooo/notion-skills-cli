@@ -437,7 +437,6 @@ test("independent empty Store reconstructs the original native ACK, body/header/
       scope: yield* authScope,
       startedAt: Date.now(),
       forceFull: true,
-      readOnly: true,
     })
   })
   expect((await f.run(Effect.flip(consume))).code).toBe("CONTENT_DISABLED")

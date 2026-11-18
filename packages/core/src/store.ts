@@ -7,6 +7,75 @@ import type { Base, SyncBinding, SyncReceipt } from "./sync.ts"
 import type { UpstreamRepository } from "./upstream-state.ts"
 import type { PublicationIntegrityRepository } from "./publication-integrity-state.ts"
 
+/** A current v5 selection freezes content and authority, while observations own
+ * display/discovery fields and property bindings. An atomic install keeps the
+ * first complete manifest; a same-content publisher must not overwrite it or
+ * fail merely because it observed newer display metadata. Older contracts keep
+ * their original full-payload comparison. */
+function comparableSnapshotContent(input: unknown): string {
+  const snapshot = decode(SnapshotSchema, input)
+  const { created_at: _createdAt, ...content } = snapshot
+  const acquisition = content.shared_acquisition
+  if (
+    content.record.locator.type !== "shared_skill" ||
+    acquisition?.version !== 5 ||
+    content.historical_snapshot_id !== undefined
+  ) {
+    const { created_at: _createdAt, ...original } = property(input)
+    return JSON.stringify(original)
+  }
+  const {
+    name: _name,
+    alias: _alias,
+    description: _description,
+    default_context: _defaultContext,
+    enabled: _enabled,
+    ...record
+  } = content.record
+  const library = acquisition.library
+  const location = (table: typeof library.skills) => ({
+    database_id: table.database_id,
+    data_source_id: table.data_source_id,
+  })
+  const relations = (items: NonNullable<typeof snapshot.members>) =>
+    items.map(({ id, ref }) => ({ id, ref }))
+  const native = content.native_references
+  return JSON.stringify({
+    ...content,
+    record,
+    shared_acquisition: {
+      ...acquisition,
+      library: {
+        ...library,
+        skills: location(library.skills),
+        files: location(library.files),
+        records: location(library.records),
+        ...(library.sources === undefined ? {} : { sources: location(library.sources) }),
+      },
+    },
+    ...(content.members === undefined ? {} : { members: relations(content.members) }),
+    ...(content.router_members === undefined
+      ? {}
+      : { router_members: relations(content.router_members) }),
+    ...(content.required === undefined ? {} : { required: relations(content.required) }),
+    ...(native === undefined
+      ? {}
+      : {
+          // The resolver's current names, availability and observation hashes do
+          // not alter its link destinations. Compare the actual routing facts;
+          // exact delivered bytes remain bound by the file manifest above.
+          native_references: {
+            parent_id: native.parent_id,
+            entries: native.entries.map(
+              ({ name: _name, description: _description, availability: _availability, ...link }) =>
+                link,
+            ),
+            unresolved: native.unresolved.map(({ availability: _availability, ...link }) => link),
+          },
+        }),
+  })
+}
+
 export class Store extends Context.Service<
   Store,
   {
@@ -158,17 +227,14 @@ export const StoreLive = Layer.effect(
               try: () => {
                 const actual = JSON.parse(new TextDecoder().decode(existing)) as unknown
                 const proposed = JSON.parse(new TextDecoder().decode(bytes)) as unknown
-                decode(SnapshotSchema, actual)
-                decode(SnapshotSchema, proposed)
-                return [property(actual), property(proposed)] as const
+                return [
+                  comparableSnapshotContent(actual),
+                  comparableSnapshotContent(proposed),
+                ] as const
               },
               catch: () => fail("STATE_CORRUPT", "Snapshot manifest is invalid.", { key }),
             })
-            const identity = (snapshot: Record<string, unknown>) => {
-              const { created_at: _createdAt, ...content } = snapshot
-              return JSON.stringify(content)
-            }
-            equivalentSnapshot = identity(pair[0]) === identity(pair[1])
+            equivalentSnapshot = pair[0] === pair[1]
           }
           if (
             !equivalentSnapshot &&

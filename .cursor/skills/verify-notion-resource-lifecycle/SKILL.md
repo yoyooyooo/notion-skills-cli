@@ -1,56 +1,49 @@
 ---
 name: verify-notion-resource-lifecycle
-description: "验证当前 Notion Skill 的身份、文件权威、关系闭包、完整读取和只读有界审计的有限状态性质。领域合同或对应状态模型改变时使用；区分待退役历史性质、当前模型、实际实现和真实服务，不以更新 hash 或放宽断言制造通过。"
+description: "验证当前 Skill/File 身份、Content 权威、有限 readiness 和精确资源的状态边界。修改领域合同或对应状态模型时使用；当前实现回归、旧模型对应和真实系统结果分别判定。"
 ---
 
 # 当前资源状态验证
 
-按 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 选择当前性质。本入口不负责以有限模型替代完整分页/字节/Notion/Pi 验收，也不负责另建本轮验证平台。
+按 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 选择当前性质。本入口不负责以模型替代完整分页、真实字节、Notion 投影或 Pi，也不负责另建验证平台。
 
 ## Launch
 
-从仓库根读取现有 [coverage](../../../verification/models/resource-lifecycle/coverage.json)、[模型说明](../../../verification/models/resource-lifecycle/README.md) 与 [运行器维护说明](../../../docs/formal-verification-maintenance.md)。沿已锁定的 Pstack/TLC 工具与仓库 runner 执行，不复制其内部实现。
+复用 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 的受控输入。
+`verification/models/resource-lifecycle/coverage.json` 仍有 event/proof/永久 pin 的旧对应关系，退出当前执行入口。不能继续运行旧 AuditScope 或 ImportCreate 来证明已删掉的实现。
 
-现有模型与源码包含待退役历史合同。工具缺失记 blocked；合同或源码对应已不成立记 failed 或待重构，旧模型 PASS 不继承为本轮 PASS。
+当前性质直接由已有 current tests 验证。以后只有具体状态风险需要模型时，才在原模型维护机制中建立准确对应；不因每张 Issue 创建模型。
 
 ## Doctor
 
-只对实际改变的状态边界核对 source、model、cfg、view 和规则集合。不要自动同步 coverage hash。先分清产品缺陷、模型漂移和用户已改变的产品合同，再确定需要修改或退役的性质。
-
-| 现有模型/性质 | 本轮处置 |
+| 当前边界 | 必须保持 |
 | --- | --- |
-| ProjectionRace / HumanEditPreserved | 保护 Notion-authoritative 当前作者内容；generated 可重建。不可继续要求所有生成页永久保留，也不可取消作者保护 |
-| UpdateCommit / SessionPinStable | 保留一次任务的内容一致性、完整当前选择、unknown 不伪造成功；删除永久旧 pin 和历史资源必须保留的承诺 |
-| AuditRun / AuditScope | 保留只读、目标与全库分母、完整正反向覆盖、预算暂停。不能由 metadata 完整推导正文完整 |
-| ImportCreate / CreateRecovery / AcknowledgedContinuation | 删除当前冷读必须完整原 ACK/event/proof 的要求；当前稳定身份、完整树、unknown 去重及 partial 仍由新对应关系检查 |
-| RequestAdmission / SharedProducer | 复用现有请求预算、取消、scope、并发合并规则；它们不能证明内容治理已完成 |
+| Content = native / resource / source | 严格唯一 union，不读 Projection/旧事件，不推断 generated 编辑接管 |
+| ready / applying / attention | ready 无 operation；其余有当前 operation；普通消费非 ready 不取正文 |
+| File identity/path/owner | 单 owner、stable File ID、完整分页、安全无冲突路径；删除不被 cache 复活 |
+| Exact resource | 单当前 object locator、hash/bytes/mode 完整、原件可用；历史 carrier 不 fallback |
+| 当前请求 | 预算、取消、scope 和合并边界继续有效，不用降低完整性换成本 |
 
-不把旧性质从 cfg 删除后直接报新合同通过。功能实现、对应模型和有区分力的正反例必须一起解释；无新对应关系时保持未通过。
+以上是当前状态义务，不是声称已有形式模型证明。父修订、原 ACK/review/completion 和永久旧选择可恢复不在目标内。
 
 ## Drive
 
-只在所选模型仍对应当前实现，或完成了该组合同重构后运行。例如检查已有审计边界：
-
 ~~~sh
-CURRENT_MODEL_OUT="$(mktemp -d /tmp/notion-current-model.XXXXXX)"
-node scripts/verify-resource-lifecycle.mjs --suite lifecycle --model AuditScope --out "$CURRENT_MODEL_OUT"
+bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-resource.test.ts --timeout 60000
 ~~~
 
-检查 HTTP 边界时使用既有 request-engine 组，不扩成所有内容状态的积：
+核正例与实际拒绝：excess fields、缺 descriptor、重复 owner/path/物理行、非 ready、partial page、missing attachment、hash/byte mismatch、generated edit、unknown create 不重复 POST。按改动选必要切片，不构造所有维度的乘积。
 
-~~~sh
-CURRENT_REQUEST_OUT="$(mktemp -d /tmp/notion-current-request.XXXXXX)"
-node scripts/verify-resource-lifecycle.mjs --suite request-engine --model RequestAdmission --out "$CURRENT_REQUEST_OUT"
-~~~
+请求性质直接复用现有 request-budget/request-engine-contract/shared-read-coalescing tests；只有实际请求模型对应仍成立时才由其 owner 运行现有 request-engine 组。它不证明内容治理完整。
 
-运行器的完整规则集合、预期负例、tool error、timeout、cut/unexamined 判定不放宽。不要为每张 Issue 新增模型。现有源码 mutation 脚本会写候选工作树，只能在独立且无人并写的副本执行，不能在共享产品树执行。
+来源和关系清理仍需完整当前反向范围与实际库结果。metadata 完整不推导全文完整，局部目标不推导全库无残留。
 
 ## Evidence
 
-读实际 report、summary 和反例路径，说明覆盖的有限状态、环境假设、未建模边界。一次结果足够；不追加多层签收、不可变证明链或内容快照。模型、受控代码与真实系统各报实际范围。
+说明实际覆盖的有限状态、假设及未验部分。旧 coverage hash 不能替代行为；不得放宽断言或删负例让旧模型变绿。源码、受控代码、实际包和真实系统各自只报实际结果。
 
-普通消费必须远端 0 写，Notion 查询 POST 仍是读。当前 owner/path/引用完整、未知创建不重复和全库清理不能仅靠图或源码 hash 宣称成立。
+普通消费必须语义远端 0 写。resource 存储 helper 的授权写入与普通 reader 分开计数；query POST 是读。
 
 ## Cleanup
 
-保留本次必要结果后，按 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收自有候选/临时工具。当前任务必要状态有界保留；不以旧模型承诺延长历史 pin 或旧对象生命周期。
+沿 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收自有临时物。当前唯一字节和在途必要状态有界保护；不以已取消的旧模型承诺保留历史对象。

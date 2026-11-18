@@ -1,4 +1,4 @@
-import { chmod, cp, mkdir } from "node:fs/promises"
+import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildDeclarations } from "./build-declarations.ts"
@@ -53,5 +53,9 @@ for (const file of [
 ])
   await cp(join(root, file), join(target, file))
 await cp(join(root, "docs"), join(target, "docs"), { recursive: true })
-if (args.length) await cp(new URL("package.json", import.meta.url), join(target, "package.json"))
+if (args.length) {
+  const manifest = JSON.parse(await readFile(new URL("package.json", import.meta.url), "utf8"))
+  delete manifest.devDependencies
+  await writeFile(join(target, "package.json"), JSON.stringify(manifest, null, 2) + "\n")
+}
 console.log(`Built CLI, SDK and ${declarations} declaration files in ${target}`)

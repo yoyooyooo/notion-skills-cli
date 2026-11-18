@@ -93,11 +93,12 @@ export const sourceDefinitionProperties = {
   Ref: { rich_text: {} },
   Selection: { rich_text: {} },
   Options: { rich_text: {} },
+  Content: { rich_text: {} },
   Enabled: { checkbox: {} },
   Policy: { select: { options: ["manual", "pinned", "auto"].map((name) => ({ name })) } },
   Status: {
     select: {
-      options: ["ready", "checking", "checked", "applied", "blocked", "failed"].map((name) => ({
+      options: ["ready", "applying", "attention"].map((name) => ({
         name,
       })),
     },

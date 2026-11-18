@@ -95,9 +95,7 @@ describe("independently accepted sole-body parent consumption", () => {
       `v1/pages/${skillPage}`,
     ])
     expect(pendingKeys(f)).toEqual(originalPending)
-    const current = await f.run(
-      openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }),
-    )
+    const current = await f.run(openSkill(skillPage, { ...selected, refresh: true }))
     expect(property(current.record).enabled).toBe(true)
     expect(
       payloads(f).some((value) =>
@@ -112,13 +110,8 @@ describe("independently accepted sole-body parent consumption", () => {
     expect(originalPending).toHaveLength(2)
     expect((await f.run(accept())).decision).toBe("accepted_current")
     expect(
-      failure(
-        await f.run(
-          openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }).pipe(
-            Effect.result,
-          ),
-        ),
-      ).code,
+      failure(await f.run(openSkill(skillPage, { ...selected, refresh: true }).pipe(Effect.result)))
+        .code,
     ).toBe("CONTENT_DISABLED")
     f.clearCalls()
     const current = await authoringRead(f)

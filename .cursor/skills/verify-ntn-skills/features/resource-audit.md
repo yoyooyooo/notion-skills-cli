@@ -107,10 +107,7 @@ See [the source correspondence review](../../../../docs/maintenance-state-verifi
 
 ## Installed process-signal continuation
 
-The existing package smoke calls `scripts/package-smoke/audit.ts`. Its owned
-loopback service reuses `shared-audit-fixture.ts`; every product command runs the
-independently installed Node bin with an empty per-case Store. The service never
-seeds consumer checkpoints or invokes an internal audit entrypoint.
+The former installed authoring/audit gate is retired with its product routes. Use [current-convergence](current-convergence.md) for the current contract. `bun run package:check` proves installed current consumption only; it does not prove the pending writer, live table cutover or Pi daily use.
 
 Four cases send actual SIGINT or SIGKILL to that exact child PID, either while a
 read response is withheld before its observation checkpoint, or after a readonly

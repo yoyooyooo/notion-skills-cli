@@ -173,31 +173,19 @@ export const FileEntrySchema = Schema.Struct({
 })
 /** Acquisition locations for the one authoritative Snapshot.files directory.
  * These contain no credentials and never replace its byte/hash/mode identities. */
-const SharedAcquisitionSourceFields = {
-  source_id: Schema.String,
-  revision: Schema.String,
-}
-/** One current acquisition contract. Source layout is a domain distinction,
- * not a choice of historical decoders. Old cache envelopes must be reselected. */
-export const SHARED_ACQUISITION_VERSION = 4
+/** One current acquisition contract. Every source route names its own current
+ * Source, so a Skill can use several Sources without an implicit default. */
+export const SHARED_ACQUISITION_VERSION = 5
 export const SharedSnapshotAcquisitionSchema = Schema.Struct({
   version: Schema.Literal(SHARED_ACQUISITION_VERSION),
   library: SharedLibrarySchema,
-  source: Schema.NullOr(
-    Schema.Union([
-      Schema.Struct({ kind: Schema.Literal("tree"), ...SharedAcquisitionSourceFields }),
-      Schema.Struct({
-        kind: Schema.Literal("git_member"),
-        ...SharedAcquisitionSourceFields,
-        member_root: Schema.String,
-      }),
-    ]),
-  ),
   files: Schema.Array(
     Schema.Union([
       Schema.Struct({
         kind: Schema.Literal("source"),
         path: Schema.String,
+        source_id: Schema.String,
+        revision: Schema.String,
         source_path: Schema.String,
       }),
       Schema.Struct({

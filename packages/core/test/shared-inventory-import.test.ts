@@ -435,7 +435,6 @@ test("native inventory imports accept Notion formatting and cold consumers use t
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       ),
@@ -975,7 +974,6 @@ test("complete native inventory import preserves independently frozen resource b
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     ),
@@ -1234,7 +1232,6 @@ test("an unchanged original upstream tree selects the checked C2 through the pub
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     ),
@@ -1308,7 +1305,6 @@ test("complete modified-upstream import retains C1 ancestry and local N1 while u
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     ),
@@ -1417,7 +1413,6 @@ test("an exact retained member with unspecified provider modes imports as follow
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     ),

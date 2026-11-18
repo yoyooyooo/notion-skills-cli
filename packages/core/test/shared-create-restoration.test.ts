@@ -120,7 +120,6 @@ test("explicit exact restoration completes the same original create and a cold c
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )

@@ -77,11 +77,11 @@ export const sharedSkillProperties = {
   Tags: { multi_select: { options: [] } },
   Enabled: { checkbox: {} },
   "Default Context": { checkbox: {} },
-  References: rich,
   "Skill ID": rich,
   "Main File ID": rich,
-  Projection: rich,
-  Source: rich,
+  Content: rich,
+  "Current State": select(["ready", "applying", "attention"]),
+  Operation: rich,
 }
 export const sharedRelationProperty = (skillsDataSourceId: string) => ({
   relation: { data_source_id: skillsDataSourceId, single_property: {} },
@@ -100,17 +100,17 @@ export const sharedFileProperties = (skillsDataSourceId: string) => ({
   Name: { title: {} },
   "File ID": rich,
   Path: rich,
-  Projection: rich,
-  Status: select(["following", "custom", "tombstone"]),
+  Content: rich,
   Skill: { relation: { data_source_id: skillsDataSourceId, dual_property: {} } },
 })
 export const sharedRecordProperties = (skillsDataSourceId: string) => ({
   Name: { title: {} },
   "Record ID": rich,
-  Kind: select(["file_event", "object", "source", "snapshot", "profile", "operation", "archive"]),
+  Kind: select(["resource", "profile", "operation"]),
   "Entity ID": rich,
   Hash: rich,
   Payload: rich,
+  Resource: { files: {} },
   Skill: { relation: { data_source_id: skillsDataSourceId, single_property: {} } },
 })
 
@@ -147,7 +147,11 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
       throw fail("LIBRARY_INVALID", "A shared table has no stable title binding.")
     const ids = Object.keys(expected).map((name) => table.property_ids[name])
     if (ids.some((id) => !id) || new Set(ids).size !== ids.length)
-      throw fail("LIBRARY_INVALID", "A shared table has missing or overlapping property bindings.")
+      throw fail(
+        "CURRENT_SCHEMA_REQUIRED",
+        "The library needs explicit current-content migration before use.",
+        { next: "migrate_current_content" },
+      )
   }
   for (const field of ["Members", "Requires"]) {
     const members = library.skills.property_ids[field]
@@ -180,7 +184,6 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
       ids.some((id) => !id) ||
       new Set(ids).size !== ids.length ||
       !library.skills.property_ids.Origin ||
-      !library.skills.property_ids["Source Member"] ||
       !library.records.property_ids.Origin
     )
       throw fail(
@@ -360,7 +363,6 @@ function inspectLibrary(library: SharedLibrary) {
             Origin: {
               relation: { data_source_id: library.sources.data_source_id, single_property: {} },
             },
-            ...(table === library.skills ? { "Source Member": { rich_text: {} } } : {}),
           },
           library.parent_page_id,
           table,

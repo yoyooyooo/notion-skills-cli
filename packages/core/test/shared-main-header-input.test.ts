@@ -23,7 +23,6 @@ import {
   pendingSingleBody,
   withRequestHook,
 } from "./shared-single-body-apply-acceptance-fixture.ts"
-import { gitMainFixture } from "./shared-git-main-takeover-fixture.ts"
 
 const input =
   "---\nname: Managed Name\ndescription: Managed description\nmetadata:\n  version: 3\nrole: reviewer\nlicense: MIT\nargs:\n  - name: target\n    required: false\nuser-invokable: true\n---\n\n# Native main\n"
@@ -89,7 +88,6 @@ test("explicit complete header changes only header ownership and cold snapshot i
     openSkill(skillPage, {
       database: library.skills.database_id,
       refresh: true,
-      sharedReadOnly: true,
     }),
   )
   const main = snapshot.files.find((file) => file.path === "SKILL.md")!
@@ -125,21 +123,6 @@ test("the exact disabled authoring target can edit its header without enabling t
   )
   expect(property(property(f.main.properties).enabled).checkbox).toBe(false)
   expect(f.calls.some((call) => call.method === "PATCH")).toBe(false)
-})
-
-test("a Git-only main cannot use header-only input to invent a native baseline", async () => {
-  const f = await gitMainFixture()
-  await expect(
-    f.author(
-      prepareSharedFileTakeover({
-        library,
-        skillPageId: f.target,
-        path: "SKILL.md",
-        headerInput: new TextDecoder().decode(f.original.bytes),
-      }),
-    ),
-  ).rejects.toMatchObject({ code: "SHARED_MAIN_HEADER_SCOPE" })
-  expect(f.bodyWrites).toHaveLength(0)
 })
 
 for (const visible of [false, true])
@@ -275,7 +258,6 @@ test("ordinary body-only write and ordinary takeover never gain the explicit com
     openSkill(skillPage, {
       database: library.skills.database_id,
       refresh: true,
-      sharedReadOnly: true,
     }),
   )
   await expect(

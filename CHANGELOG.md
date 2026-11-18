@@ -10,8 +10,8 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
   reading projections, finite current operations and coordinated cutover in
   [the current library contract](docs/current-contract.md). The live data and
   installed Pi runtime have not yet passed those cutover gates.
-- Replace shared acquisition v1/v2/v3 readers with one current format. Full and
-  Git-member sources share route validation and selective exact-byte acquisition.
+- Replace shared acquisition v1/v2/v3/v4 readers with one current v5 format.
+  Native, Git-only and mixed trees share per-file authority and selective exact-byte acquisition.
 - Return an explicit reselection action for missing or incompatible cached
   selections. Fixed file reads no longer restore remote history, and historical
   snapshot Sources fail before lookup. Missing bytes still require current owner
@@ -24,38 +24,13 @@ Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-
   Old behavior tests cannot certify the new destination, and no new runner or
   evidence archive is added.
 
-### Notion authoring and source management
+### Current SDK and package boundary
 
-- Add shared **Skills / Files / Sources / Records** libraries with stable Skill and file identities, fixed source versions, complete resource inventories and retained ownership/history. Initialization and source-table upgrades are explicit; existing libraries are not migrated automatically.
-- Create a native Skill from an ordinary local folder, adopt an existing disabled Notion draft without replacing its page, edit through a fresh `read --authoring` pin, and enable it only after the complete tree verifies. Add, move or delete reference files through `ctl library file`; supporting Markdown becomes editable Notion child pages.
-- Support pinned shared `write`, `update`, `apply` and whole-content replacement while preserving unaffected files. Shared `apply` accepts existing-file edits plus metadata, or one isolated add/delete; mixed or multiple layout changes fail before writing. Operations are sequential and retain their original recovery identity.
-- Manage fixed sources through explicit list/show/members/check/fetch/prepare/apply operations. Git sources support GitHub, GitLab and self-hosted repositories; Linear sources map exact issues/documents to files. Ordinary discovery and reads do not poll upstream providers.
-- Preserve current author edits, native links and complete supporting resources while keeping older snapshots immutable. Whole-file ownership changes remain explicit: restoring earlier text does not silently resume source following.
-
-### CLI and SDK consumption
-
-- Add the daily `use` command alongside metadata-only `list` and original-text `read`. Use prepares selected roots and their complete Requires closure; inspect reads only selected roots, and optional Members remain unselected. Shared dependencies reuse one prepared body, with explicit cycle, version and budget errors.
-- Publish the versioned `ntn-skills/sdk` Node entry point for catalog discovery, consumption, fixed-file inventory and scalar/batch resource reads. The SDK uses the same core, credential scope, request engine and cache rules as the CLI.
-- Resolve names and aliases through complete ordinary catalog evidence; keep ambiguous or incomplete discovery explicit. Exact canonical references retain their direct selection path.
-- Read fixed resources without preparing or fetching unrelated main bodies. Verify only the selected snapshot objects, retain canonical file identities and reject missing, corrupt or incorrectly scoped content.
-- Keep everyday help and schema compact. Management and advanced graph/sync/recovery commands use the `ctl` tree; explicit authoring help remains available on demand. Historical root command aliases continue to select the same handlers.
-
-### Requests, caches and recovery
-
-- Use the project's direct Notion HTTP engine with scoped admission, bounded read retries, cancellation and request metrics. Unknown write outcomes remain attached to their original operation and are not automatically replayed.
-- Reuse compatible complete metadata within catalog/default-View projections, graph preparation and scalar reads. Fetch only the selected View detail, share identity and Records observations within their valid acquisition phase, and retain independent coverage/errors for each projection.
-- Reuse verified retained payloads, immutable content and local materializations across repeated reads. Permission denials invalidate affected observations, request budgets remain isolated, and reuse does not renew the original freshness timestamp.
-- Preserve unknown operations, durable recovery receipts, local bindings and synchronization common bases separately from disposable observations. Recovery and source changes continue to require exact ownership, scope, frozen input and readback evidence.
-- Add `ctl library file review --complete` for a retained version 2 initial Git-main review missing its terminal receipt. The original Store can create one independent completion Record after verifying the full shared prefix and fresh Source, owner, body and frontier, preserving the old review/body outcomes and writing no body, property or file event. Completion previews are read-only; unknown new completion writes cannot be replayed.
-- Reuse an already complete operation index to discover review completions while preserving exact terminal checks and the existing ordinary-read request budget.
-- Support the existing projection versions 16 and 17 in lossless derived-text plan storage, preserving complete original inputs and the 64 KiB fact limit for large Git-main previews.
-
-### Compatibility notes
-
-- Current shared read/consume may retain newly observed author edits in Records. These operations can require write permission; calling them an inspection does not make them universally remote read-only.
-- Shared native creation currently accepts UTF-8 text files. Fixed sources can supply binary resources; native binary creation is not implemented.
-- Existing legacy publication/synchronization paths, immutable pins and recovery receipts retain their own contracts. Use the installed command's returned next action when recovering an old operation.
-- See the [authoring guide](docs/shared-authoring.md), [consumer/SDK contract](docs/consumer-contract.md) and [cache diagnostics](docs/usage.md#observe-repeated-reads) for commands and boundaries.
+- Require public SDK version 2. Remove Source management methods and the public `readOnly` input. Current consumption always rejects semantic remote writes; consumer and resource result formats remain version 1.
+- Use one current acquisition v5 format with a per-file Source/resource route and multiple Sources. Read current descriptors, permissions and complete file metadata before fetching selected original bytes.
+- Retire old content writer, Source refresh, sync/recovery, root aliases and builtin publish routes from the public CLI. The current writer and live data cutover remain unfinished work.
+- Preserve bounded pending-resource sharing, independent caller eligibility, exact bytes and modes, cancellation cleanup, request budgets and local cache isolation.
+- Build a fresh external declaration closure and tarball. The installed package gate exercises current discovery, read/use, complete Files pagination, selected resource bytes, export, changed-current refusal and HTTP cancellation. Old authoring/history/operator/Pi-maintenance package gates are removed. This controlled gate does not establish live Notion or daily Pi acceptance.
 
 ## 0.3.0
 
@@ -105,11 +80,11 @@ Initial npm release, published with maintainer web authentication.
 
 - Set the public npm package name to `ntn-skills`, matching the executable and bootstrap Skill; retain the `notion-skills-cli` source repository.
 - Add equivalent English and Simplified Chinese READMEs with a centered header, language switch and section navigation; package both language files.
-- Move detailed operations into the [usage guide](docs/usage.md), and document source-access and release status.
+- Move detailed operations into the usage guide, and document source-access and release status.
 - Separate consumer installation and use from contributor source/build steps in both READMEs; consumers install a built tarball with npm and run on Node.js 22.19.0 or newer.
 - Replace the Bun runtime platform, executable shebang and distribution target with Node.js; keep Bun 1.4.3 for development/build/tests, and exercise npm consumers on Node.js 22 and 24 in CI.
 - Add an English installation and first-read walkthrough, tarball consumption, upgrade and uninstall instructions, and explicit runtime/platform evidence boundaries in [README](README.md).
-- Document metadata freshness separately from retained snapshots and upload staging, inherited workspace/API endpoint settings, network behavior and optional local data cleanup across the [protocol](docs/protocol.md), [host integration](docs/host-integration.md) and [Skill reference](skills/ntn-skills/references/integration.md).
+- Document metadata freshness separately from retained snapshots and upload staging, inherited workspace/API endpoint settings, network behavior and optional local data cleanup across the protocol, host integration and [Skill reference](skills/ntn-skills/references/integration.md).
 - Use the returned snapshot ID to list every attachment; a pinned file ref filters only its own path.
 - Set the public issue and private vulnerability-reporting channels, security support for the latest patch of the current 0.x series, and a seven-day acknowledgement target without a promised fix deadline in [SECURITY](SECURITY.md).
 - Define 0.x compatibility, deprecation migration guidance and fast-forward integration in [CONTRIBUTING](CONTRIBUTING.md), and prepare the package/release metadata and CI release lane.

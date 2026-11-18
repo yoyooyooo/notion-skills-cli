@@ -46,110 +46,6 @@ function expectUnstartedMetrics(reports: readonly unknown[], count: number) {
 }
 
 describe("Promise SDK boundary", () => {
-  test("storage inspection and alignment share direct SDK cancellation without acquiring the provider", async () => {
-    const reports: unknown[] = [],
-      options = {
-        env: {},
-        signal: AbortSignal.abort(),
-        onRequestMetrics: (value: unknown) => reports.push(value),
-      }
-    await expect(
-      publicSdk.reviewSourceStorage({ entry: input.targets[0]!, scope: { kind: "all" } }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.prepareSourceStorageAlignment(
-        { entry: input.targets[0]!, source: "original", target: input.targets[0]! },
-        options,
-      ),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.applySourceStorageAlignment({ plan: {} }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reconcileSourceStorageAlignment({ plan: {} }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    expectUnstartedMetrics(reports, 4)
-  })
-  test("explicit Source recovery retains the direct SDK cancellation boundary", async () => {
-    const reports: unknown[] = []
-    const options = {
-      env: {},
-      signal: AbortSignal.abort(),
-      onRequestMetrics: (value: unknown) => reports.push(value),
-    }
-    const request = { entry: input.targets[0]!, target: input.targets[0]!, plan: {} }
-    await expect(publicSdk.reviewSourceRecovery(request, options)).rejects.toMatchObject({
-      code: "CANCELLED",
-    })
-    await expect(
-      publicSdk.applySourceRecovery({ ...request, review: {}, reviewId: "unstarted" }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(publicSdk.reconcileSourceRecovery(request, options)).rejects.toMatchObject({
-      code: "CANCELLED",
-    })
-    await expect(publicSdk.reviewSourceProjectionRepair(request, options)).rejects.toMatchObject({
-      code: "CANCELLED",
-    })
-    await expect(
-      publicSdk.applySourceProjectionRepair(
-        { ...request, review: {}, reviewId: "unstarted" },
-        options,
-      ),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reconcileSourceProjectionRepair(
-        { ...request, review: {}, reviewId: "unstarted" },
-        options,
-      ),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reviewSourceFileRepair({ ...request, path: "CHEATSHEET.md" }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.applySourceFileRepair({ ...request, repair: {}, reviewId: "unstarted" }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reconcileSourceFileRepair(
-        { ...request, repair: {}, reviewId: "unstarted" },
-        options,
-      ),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reviewSourceFileResubmission({ ...request, path: "README.en.md" }, options),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.applySourceFileResubmission(
-        { ...request, review: {}, reviewId: "unstarted" },
-        options,
-      ),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reconcileSourceFileResubmission(
-        { ...request, review: {}, reviewId: "unstarted" },
-        options,
-      ),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    expectUnstartedMetrics(reports, 12)
-  })
-  test("Source handoff methods share the SDK pre-abort boundary without acquiring transport", async () => {
-    const options = { env: {}, signal: AbortSignal.abort() }
-    const reports: unknown[] = []
-    const measured = { ...options, onRequestMetrics: (value: unknown) => reports.push(value) }
-    const source = { entry: input.targets[0]!, scope: { kind: "all" as const } }
-    await expect(publicSdk.reviewSources(source, measured)).rejects.toMatchObject({
-      code: "CANCELLED",
-    })
-    await expect(publicSdk.prepareSourceOnboarding(source, measured)).rejects.toMatchObject({
-      code: "CANCELLED",
-    })
-    await expect(
-      publicSdk.applySourceOnboarding({ entry: source.entry, plan: {} }, measured),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    await expect(
-      publicSdk.reconcileSourceOnboarding({ entry: source.entry, plan: {} }, measured),
-    ).rejects.toMatchObject({ code: "CANCELLED" })
-    expectUnstartedMetrics(reports, 4)
-  })
   test("name resolution is pure and manifest listing preserves the SDK cancellation boundary", async () => {
     expect(() =>
       resolveCatalogReference("skill://missing/SKILL.md", {
@@ -328,7 +224,7 @@ describe("Promise SDK boundary", () => {
       CONSUMER_CONTRACT_VERSION,
       RESOURCE_READ_CONTRACT_VERSION,
       READ_OUTPUT_PROOF_VERSION,
-    ]).toEqual([1, 1, 1, 1])
+    ]).toEqual([2, 1, 1, 1])
     const reports: unknown[] = []
     for (const input of [
       { version: 2, refs: [resourceRef] },
@@ -339,7 +235,6 @@ describe("Promise SDK boundary", () => {
       expect(
         await readResources(input, {
           env: {},
-          readOnly: true,
           onRequestMetrics: (value) => reports.push(value),
         }),
       ).toMatchObject({ status: "failed", error: { code: "INVALID_ARGUMENT" } })
@@ -355,7 +250,6 @@ describe("Promise SDK boundary", () => {
         { version: 1, refs: [resourceRef] },
         {
           env: {},
-          readOnly: true,
           signal: controller.signal,
           onRequestMetrics: (value) => reports.push(value),
         },

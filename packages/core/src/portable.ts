@@ -293,10 +293,9 @@ export function portableZip(skill: PortableSkill, projection = false, snapshot =
           : { os: 3, attrs: ((file.mode === "100755" ? 0o100755 : 0o100644) << 16) >>> 0 }),
       },
     ]
-  const bytes = zipSync(entries)
-  if (bytes.length > 20 * 1024 * 1024)
-    throw fail("FILE_TOO_LARGE", "Portable Skill ZIP must fit Notion's 20 MiB direct upload limit.")
-  return bytes
+  // The portable tree has its own expanded-size and entry limits. Notion's
+  // direct-upload limit belongs to the upload boundary, not local backups.
+  return zipSync(entries)
 }
 
 export function readPortable(input: readonly ImportFile[]): PortableSkill | undefined {

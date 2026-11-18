@@ -263,7 +263,6 @@ test("known v9 recovery preserves 3 original pages, creates only 32 suffix pages
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )
@@ -319,7 +318,6 @@ test("v9 sole-main recovery creates zero native pages and retains all six raw fi
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )

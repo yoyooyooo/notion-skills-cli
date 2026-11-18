@@ -1,198 +1,73 @@
-# Operations and recovery
+# Current content inspection and operations
 
-## Operation choices
+The current public content surface is `list/read/use/files/export`.
+`ctl library` provides `init`, `inspect`, `files` and `profile`.
+Use `ntn-skills schema COMMAND...` for a specific parser question.
+Content import, replacement, file mutation, Source refresh and cleanup await
+the current writer; this reference does not define substitute commands.
 
-| Intent | Command | Result |
-| --- | --- | --- |
-| New item | `create INPUT --database LIBRARY` | A new page; an existing name is a conflict |
-| Existing unregistered disabled draft | `adopt PAGE_ID --database LIBRARY` | Retain the original page/body/disabled state and establish its complete initial identity and retained-body lifecycle |
-| Inspect an exact draft for editing | `read PAGE_ID --database LIBRARY --authoring` | Validate the complete tree online and return a fixed author pin without enabling current consumption |
-| One edit of existing body, resources and properties | `apply PINNED_MAIN_REF --input CHANGES --description TEXT` | Shared targets use a frozen sequential batch; earlier publication targets retain their own protocol |
-| One selected file | `write PINNED_FILE_REF --input FILE` | Preserve every other file and page property |
-| Properties only | `update PINNED_MAIN_REF --name NAME --description TEXT` | Change only the specified allowed properties |
-| Enable or disable a reviewed native Skill | `update PAGE_ID --database LIBRARY --enabled true` or `--enabled false` | Verify the complete current tree and change only nominated properties |
-| Deliberately replace the entire file set | `replace INPUT --target PINNED_MAIN_REF` | Preserve page identity and replace the included file set |
-| One non-document resource | `ctl resource add/replace PAGE_ID PATH --entry LIBRARY --input FILE` | Exact bytes and executable mode; no resource execution |
-| Complete reviewed local import | `ctl library inventory prepare-import/apply-import/reconcile-import` | One approved complete inventory entity and its original create operation |
-| Fixed shared snapshot copy | `export PINNED_MAIN_REF --projection snapshot --output NEW_DIRECTORY_OR_ZIP` | Export the chosen complete read view without changing Notion |
-
-`apply` accepts a changes directory, ZIP or Markdown file. Paths are rooted at the Skill, including `references/` and other nested directories. A single Markdown file uses its basename. Preserve the original main path and kind when supplying a portable manifest. A path cannot be both changed and removed; the main file and reserved portability files cannot be deleted. Full replacement is a deliberate different operation: omitted supporting files leave the Skill's inclusion set.
-
-Use exact page IDs/URLs or returned refs. Names and aliases can collide; incomplete discovery does not establish uniqueness. The creation database is explicit `--database`, the configured default, or the only discovered library. An existing target keeps its database.
-
-For a shared Skill, select `export --projection snapshot` explicitly. The default source projection belongs to the earlier authored-publication format and rejects shared Skills. Exported snapshot files are consumption output; editing them does not submit a change. Select the intended complete files as explicit `write` or sparse `apply` input against a fresh author pin.
-
-## Initial native draft adoption
-
-Adopt requires an exact original page with complete valid Name/Description, Kind=skill and Enabled=false. Skill ID/Main File ID/Source/Projection/References and managed relations must be empty, and no Files or Records lifecycle may already belong to it. It anchors deterministic Skill and main File identities to the library and original page, retains the complete main body and initial adopted event, and changes only the two identity properties. It sends no body PATCH and creates no Skills/Files page. `--dry-run` makes no remote writes.
-
-An unregistered disabled page can remain under human construction without blocking the consumer catalog. It is not an active Skill or proof of a history-free draft. Existing bindings or Records require their original workflow, not a replacement identity. Repeat adoption only reconciles its original retained outcome; `verification=original_adoption_outcome` and `enabled_at_adoption` are historical facts. Use the returned fresh authoring read before further edits or activation.
-
-## Shared file lifecycle
-
-Use the exact Skill page ID and library entry for each individual operation:
-
-```bash
-ntn-skills ctl file add SKILL_PAGE_ID references/new.md --entry LIBRARY_ENTRY --input ./new.md
-ntn-skills ctl file move SKILL_PAGE_ID references/old.md references/new.md --entry LIBRARY_ENTRY
-ntn-skills ctl file delete SKILL_PAGE_ID references/obsolete.md --entry LIBRARY_ENTRY
-ntn-skills ctl file restore-follow SKILL_PAGE_ID references/checklist.md --entry LIBRARY_ENTRY
-```
-
-Each supports `--dry-run`. Add creates a File identity; move keeps the File ID, native page and fixed-source path; delete retains a tombstone and the old page/body. Complete-tree relative references must remain valid, and move does not rewrite links. Main files cannot be moved or deleted. Restore-follow retains the complete custom body before restoring the exact currently selected source; a moved file uses its old source path. It never advances a commit. Local source bytes require an explicit machine/workspace binding plus `--allow-local-archive` to retain that selected body in shared records.
-
-For a reference visible from the original Notion Skill, obtain a fresh `read PAGE_ID --authoring` after add, then write the complete main file with a descriptive link to the new logical path, for example `[Checklist](references/new.md)`. Do not reuse the pre-add pin: the file inventory changed. Write restores relative destinations using only the fresh selected owner's exact native File bindings, so existing and new links stay clickable in Notion; a subsequent read renders the same fixed resource paths. The returned `page_id` also supports an explicit native URL. The file lives in the related flat Files table; this workflow does not create or enumerate physical child pages. Add alone does not edit the main body. Submitting the unchanged complete read result performs no body PATCH or new Records publication merely to normalize URL spelling.
-
-Shared `apply` can submit added or edited native UTF-8 files, explicit moves/removals/revivals and nominated metadata in one frozen, non-atomic parent operation. Use `--input` for added or edited files, repeatable `--remove` for deletions, and `--changes` for the version 1 manifest. Omitted files and properties remain unchanged. The complete proposed tree is checked before dispatch. A later failure can leave earlier verified children applied; preserve the original operation and follow its returned recovery action. Unknown children are not replayed. `replace` preserves the original kind, but still rejects mixed or multiple deletions inferred from omitted files with `SHARED_APPLY_LAYOUT_BATCH_UNSUPPORTED`; express those changes through explicit `apply` input and layout instructions.
-
-For main/reference splitting, submit the short main and new reference files together. The same original parent retains the complete input, allocates the new File pages, records their ACK-bound identities, and binds the existing body to those pages before dispatch. Resume uses that saved binding and only the proved-unsent suffix. It never discovers replacement IDs or treats current equality as an ACK. New files that themselves depend on other unallocated new pages remain a preflight refusal; stage that graph without unresolved links before a later explicit link edit.
-
-## Content formats
-
-Skill, Router and Prompt use `SKILL.md`, `ROUTER.md` and `PROMPT.md` for reading. To create a Prompt/Router, keep the exported portable manifest or use the installed `schema create` contract. A root `.ntn-skills.json` declares kind and main; a lone file named `ROUTER.md` does not change the import kind.
-
-For example, a Prompt directory contains `.ntn-skills.json` and `PROMPT.md`:
-
-```json
-{
-  "format": "ntn-skills",
-  "version": 2,
-  "kind": "prompt",
-  "name": "Release Review",
-  "description": "Review a proposed release",
-  "main": "PROMPT.md"
-}
-```
-
-In a shared library, ordinary Skill folders with `SKILL.md` need no hand-authored manifest. Ordinary creation, Source admission and reviewed inventory import reuse the complete-resource create journal: Markdown stays editable, while scripts, JSON, images and other resources retain exact bytes and executable modes. Their native Files pages are management notes, not the resource payload. A directory import ignores only Finder `.DS_Store`, without removing it locally. Keep other dotfiles and never execute uploaded scripts. The new Skill stays disabled until its complete file set verifies. Use inventory review for multi-item import or upstream provenance decisions, not as a prerequisite for one ordinary folder; later resource edits use `ctl resource`. Omit `--storage` for the shared path. Shared main frontmatter must match current native Name/Description or values explicitly nominated in the same apply, and `notion_page_id` must match the selected Skill. Extra unsupported main fields are rejected. Native authoring normalizes CRLF to LF and terminal line feeds before exact candidate verification.
-
-An automatic filename hyperlink in the CLI-generated resource-note heading may be accepted only when its HTTP(S) target exactly repeats the displayed filename and the rest of that generated note matches. This does not normalize authored Markdown or alter a resource's bytes/hash/mode. A known original note-verification failure may continue through the same `create` input only with its complete original ACK prefix and current checks; its old failure remains separately recorded. Unknown native requests are never replayed to obtain a success.
-
-Router `--member` selects the complete Members relation using exact current Skill identities from the same database. `--clear-members` clears it; omission preserves it. Members and authored Router instructions remain distinct. Default Context is an ordinary checkbox available to Notion Views, not a second host-selection rule.
-
-## Current reads and ownership
-
-For shared content, a successful complete current observation retains a direct Notion body edit as a whole-file customization. Other files retain their own source behavior. Reverting the text, clearing caches or moving the file does not restore following. Use explicit restore-follow for that change; no manual adopt mark or whole-Skill fork is required. Notion still owns Name, Description, Default Context and Router Members.
-
-Current `read --refresh` validates the selected Notion observation and complete manifest; non-document bytes may remain lazy. Authoring reads and full export verify the complete tree. Pinned resources keep their original identity: cached bytes work offline, while missing bytes require the frozen acquisition and its current read permission. Cross-member resolution uses exact current bindings and must not invent targets.
-
-## Original-operation recovery
-
-Commands emit one JSON result. Help/version/schema are offline; operational failures are structured. A completed mutation verifies the requested content and metadata readback. Require the applied/already-unchanged outcome as well as exit 0, `ok: true`, `verified: true` and no dry-run. A recovery result with `not_applied` or `partial` is not a completed edit even when `verified: true`. Keep the returned page/ref/operation result, and investigate further only for a discrepancy or an explicit audit.
-
-| Result | Next action |
-| --- | --- |
-| `WRITE_CONFLICT` | Read the current exact item and merge the intended change into a fresh pinned edit |
-| `UPSTREAM_CONTENT_READ_ONLY` | Edit the source or explicitly fork the selected member |
-| Shared body/metadata write or restore-follow is unknown | Read the exact current Skill; obey `read_again` after original facts settle, and retain missing original facts as unresolved |
-| Shared apply is incomplete | Inspect its original ID with `ctl operation show ORIGINAL --target PAGE --entry ENTRY`; use `reconcile` for read-only outcome verification. Explicit `resume` is limited to a verified prefix and proved-unsent suffix under the original local journal; unknown children stop it |
-| Initial Git-main review has its full prefix retained and verified in Records but no terminal receipt | From its original Store, preview `ctl library file review PAGE ORIGINAL_BODY_OPERATION --entry ENTRY --accept-observed-sha256 EXACT_RAW_SHA256 --complete --dry-run`; completion is limited to the existing version 2 review and one independent Record |
-| Restore request stopped before final feedback | `ctl file request TARGET PATH --entry ENTRY --reconcile`; for an older processing receipt missing its ID, add `--operation ORIGINAL` after inspecting the exact original through `ctl library state`. Preview with `--dry-run`; no body write is repeated. A verified `ORIGINAL_NOT_APPLIED` requires explicit new `--submit` before processing |
-| Shared create is unknown | Keep the same complete input and original intent; its retry reconciles original creation identities without blindly repeating POSTs |
-| Known ordinary native body mismatch, with the same original main explicitly restored to its exact candidate | `ctl library create recovery review ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN --output REVIEW`; inspect the digest, then `recovery apply ORIGINAL_PLAN --entry LIBRARY --review REVIEW --review-id ID [--dry-run]` |
-| Initial draft adoption is unknown | Preserve `adoption_operation_id` and use the returned `adopt PAGE_ID --database LIBRARY --reconcile`; no current equality or absent record authorizes a replay |
-| Shared add/delete/move is unknown | `ctl file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
-| An original operation from another retained protocol | Follow its exact returned recovery action and original ID; do not translate it into a new create |
-| Missing access, invalid paths or unsupported content | Fix the actual input/access issue before retrying |
-| Output path conflict | Choose a new destination or review the owned previous output |
-
-Shared operation IDs have one `ctl operation show/reconcile` entry. Only an original apply supports explicit `resume` of its proved-unsent suffix; other families return their own guarded recovery action. Do not replay a create, remove state, change frozen input or add acceptance/proof steps to routine edits. An operation outside these families must follow its exact returned recovery action; never substitute a different operation merely to clear a failure.
-
-If an original body write remains unresolved, keep its original plan, response and current complete-body observation. A later matching body or visible file event does not supply a missing original completion. When the returned recovery action permits an explicit current-body decision, inspect the exact full observation and use `ctl file accept-current SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --dry-run` before submitting that same decision. This retains an independent acceptance; it does not repeat the body PATCH or change the original unknown outcome into applied. Follow a returned `read_again` with a new current read before authoring again.
-
-For an eligible initial Git-main review, `--complete` requires the exact review plan, retained observed body and adoption event already in shared Records, plus the same pending review and credential scope in the original Store. Only its exact original body write may coexist as another pending operation. The command freshly checks Source, owner metadata, full body and the sole review-event frontier. After inspecting the one-Record preview, execute the same command without `--dry-run`. It adds no body/property/file-event writes and preserves the original `needs_review` and unproven old review receipt. The result's `operation_id` stays the original review ID; retain any separate `completion_operation_id`. Missing prefix facts, ordinary/version 1 reviews and changed content remain outside this completion permission. Repeat a completed request or use the same original arguments with `--reconcile` for read-only verification; omit `--complete` when reconciling. Unknown completion dispatches cannot be replayed. Obtain a fresh current read afterward.
-
-The exact-restoration route requires the original Store, one original main allocation, full original request/ACK set, unchanged metadata/relations and exact complete current Markdown. It never normalizes away an automatic link or patches an existing body. It retains a separate completion while preserving the original `needs_review` outcome. Independent `ctl library create recovery reconcile ORIGINAL_PLAN --entry LIBRARY --target ORIGINAL_MAIN` proves that historical chain; read current content afterward. Inventory and fixed-source plans keep their own recovery routes.
-
-For an ordinary native file add with the exact retained `SHARED_FILE_MANAGEMENT_BODY_MISMATCH` outcome, a separate current-file acceptance is available after the author explicitly repairs that same bound page to its frozen candidate. Preserve the original plan, Store and failure. This narrow path requires the complete unchanged native tree, exact owner/File/page bindings and event frontier; unknown or invalid page responses are ineligible. Inspect the complete current Markdown and select its SHA-256, then save and inspect the review:
+## Inspect the exact tree
 
 ```sh
-ntn-skills ctl file accept-add review SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY --accept-observed-sha256 EXACT_HASH --output REVIEW
-ntn-skills ctl file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID --dry-run
-ntn-skills ctl file accept-add apply REVIEW --entry LIBRARY_ENTRY --review-id REVIEW_ID
-ntn-skills ctl file accept-add reconcile SKILL_PAGE_ID ORIGINAL_OPERATION --entry LIBRARY_ENTRY
+ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills read PAGE_ID --database ENTRY --refresh --json
+ntn-skills files SNAPSHOT_ID
+ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
 ```
 
-The default review still requires the exact frozen candidate. When intentionally retaining the actual complete observation instead, add `--accept-current` to `review` together with its exact `--accept-observed-sha256`. The separate review, retained observed body, adopted event and completion do not change the original failure. This permits a subsequent ordinary `write` to correct a known wrong link without recreating the page. The operator must inspect the actual content; the flag is not automatic approval or an unknown-create retry.
+The index includes the main descriptor, stable File IDs, owner, path, authority,
+current state and last-edit observations. It follows complete pagination but
+does not read bodies. A successful export acquires every selected byte and
+preserves modes. For one file use `read SNAPSHOT_ID --path PATH --output NEW_FILE`.
+An arbitrary multiple-path export option is not available.
 
-These commands emit JSON and request metrics without extra output flags. Acceptance writes only its complete review, a new adopted event and its own completion. It never creates or patches a native page, emits the old add event, or supplies a missing original request/ACK. The old add remains `needs_review` with unproven completion. Repeated completed acceptance and reconciliation are read-only; unknown new Record dispatches cannot be replayed. Obtain a fresh current read afterward; it may first report `read_again` while retiring a derived local barrier. Source-backed files and changed trees keep their existing author workflows. A relative link changed into an HTTPS link is a real content change and must not be normalized into equality.
+Name/Description can change without changing content identity. A renamed File
+keeps its stable identity but changes its current path. Deleted current rows must
+not be resurrected by cache. Missing bytes, inaccessible owners or partial
+pagination remain errors; they are not an empty or complete tree.
 
-### Reserved creation markers on older pages
+## Prepare complete input
 
-An older publication reference page may start with `ntn-skills-create:v1:…`. That reserved paragraph records the original creation identity, parent, logical path and input commitment so interrupted creation can identify the same page. A child page lacks the database property slots used by a publication root, so this older protocol carries its identity in the first physical block. Valid consumer reads exclude it from authored content, and that protocol's writers preserve it. Do not delete, relocate or re-encode it for appearance: current page visibility alone cannot replace its original recovery evidence. Current shared native Skills/Files use registered properties and immutable Records; adding a reference through `ctl file add` does not require manually creating this marker.
+Retain the main entrypoint and all intended supporting files with safe relative
+paths. Keep original text encoding, binary bytes and executable modes where
+the selected representation supports them. Identify explicit add/move/delete
+and relationship changes; omissions alone are not deletion instructions.
 
-## Builtin management
+For every file, choose native, Source or resource authority. A native page owns
+its current body and exact frontmatter prefix. A Source declaration owns the
+exact source revision/path and expected bytes. A resource declaration owns one
+current original stored in Records. Generated reading pages are not alternate
+authoritative copies.
 
-Use installed package Skills to direct the Agent's work. Package installation, remote publication and ordinary content edits are separate operations:
+Main content stays on Skills. Each supporting document has a Files row and
+complete reading body; images and binary resources expose originals. A
+metadata-only inspection cannot establish that this human reading requirement
+has been fulfilled in the actual library.
 
-```bash
-ntn-skills ctl builtin list
-ntn-skills ctl builtin install notion/ntn-skills-maintain
-ntn-skills ctl builtin status notion/ntn-skills-maintain
-ntn-skills ctl builtin update notion/ntn-skills-maintain
-ntn-skills ctl builtin publish notion/ntn-skills-maintain --database library
-```
+## Incomplete current work
 
-Local install/update distributes one managed central copy. Preserve modified or foreign targets if the CLI reports a conflict. Package publication creates a remote copy; updating an existing copy requires an exact pinned target. Builtin origin describes the installed package ID, not editable publisher text. After changing local distribution, use the consuming host's documented reload path.
+Skills.Current State is `ready`, `applying` or `attention`. Operation is empty
+only for ready. Ordinary readers reject the other states before fetching bodies;
+management may inspect them to understand the unfinished scope.
 
-## A moved reference and an interrupted parent
+Use a current operation's stable identity, intended content and observed effects
+to reconcile only its unfinished work. An unknown CREATE must be located and
+deduplicated before another create is considered. Current equality does not
+establish an acknowledgement of the original request. Permission failure,
+partial pagination and a partial tree cannot be marked complete.
 
-A declared move keeps the same File ID and native page. When editing links in the same apply, write them using the final logical path. The CLI projects them through the retained page identity. If the native link target is unchanged, the plan keeps read-only projection evidence rather than issuing a redundant body write or creating another content event.
+The public general content-recovery command is not available yet. Keep the
+specific result and required current action; do not mark a Skill ready by hand,
+clear state or fabricate an operation command. No previous page versions,
+review chain or content proof records are required.
 
-A parent with a known failed body can block ordinary edits until that original child is resolved. An explicit `ctl file review` may coexist only with its exact shared parent and already-confirmed original prefix. Review accepts a complete observed body as the next authoring baseline; it does not make a failed original write successful. `ctl operation resume` may then close that parent as `partial`, leaving its unsent tail unexecuted. Read current content and express any correction as new intent. Unknown requests do not gain this permission.
+## Cleanup boundaries
 
-A body mismatch includes its projection version, expected and observed UTF-8 byte counts, and a bounded hexadecimal excerpt at the first differing byte. The original complete observation and operation remain authoritative. This diagnostic makes no additional body request, broadens no equivalence rule, and never retries a write or accepts the observed text for you. Saved older plans continue to use their original projection version.
+Cleanup needs complete authorized ownership and relationship coverage, including
+reverse references. Transfer any unique current bytes before retiring their
+carrier. Target inspection does not prove whole-library coverage. An inaccessible
+row is not a deletion candidate, and hiding a column is not cleanup.
 
-Deletion retains a file's page and body. The current file tree and retained lifecycle event determine whether it is a tombstone; a manually editable native Status label is not an ownership receipt. Verify disappearance from the current tree and the exact returned state, then use undelete to revive that identity. Do not create a substitute row because a display field still reads custom.
-
-## Reviewed inventory and repair
-
-Read this section only for the explicitly requested import or repair. Routine edits use the root workflow.
-
-### Create a new item
-
-Prepare ordinary `SKILL.md` and supporting files, then create the authorized Skill:
-
-```bash
-ntn-skills create ./release-review --database LIBRARY_ENTRY
-```
-
-Ordinary Skill folders need no hand-authored manifest. `--name` and `--description` explicitly override input metadata. A name collision does not permit replacing another page. Prompt/Router kind declarations still use the portable contract in [content formats](#content-formats).
-
-A shared library creates native Skills/Files pages, preserves the original input, and enables the Skill only after its complete file set verifies. Omit `--storage` for that path. Ordinary `create` uses the existing complete-resource creation journal: Markdown remains editable, while scripts, JSON, images and other resources retain exact bytes and executable modes. Directory imports ignore only Finder's `.DS_Store` files, without deleting them locally; other dotfiles remain content. Do not execute scripts or resolve provider credentials while uploading. Use the inventory workflow below for a reviewed multi-item import or upstream provenance decision, not as a prerequisite for one ordinary complete folder. Unsupported input must fail before partial creation. An unknown result retains its exact input and original operation.
-
-### Audit and import a complete local Skill
-
-Freeze the authorized roots and target library first. Do not expand a private project, external symlink target or package-owned tree merely because a Skill refers to it.
-
-```bash
-ntn-skills ctl audit run --entry LIBRARY_ENTRY --all --depth content
-ntn-skills ctl audit resume AUDIT_RUN_ID
-ntn-skills ctl library inventory remote --audit-run AUDIT_RUN_ID
-ntn-skills ctl library inventory local --root /absolute/approved/skills --allow-target /absolute/approved/targets
-ntn-skills ctl library inventory reconcile --remote REMOTE_INVENTORY_ID --local LOCAL_INVENTORY_ID
-ntn-skills ctl library inventory review RECONCILIATION_ID
-```
-
-Use `audit report RUN_ID` or `audit list` offline to inspect original observations. Audit depth, execution, coverage and severity are separate: exit 75 is resumable budget exhaustion, 4 is incomplete coverage, and 3 is a completed full audit with error findings. Partial scope cannot prove absence. Inventory records complete paths, hashes, byte sizes, modes, real identities, logical aliases, restricted dependencies and provenance without executing scripts or changing the source tree. Add only the exact relevant `--provenance` files; an AK installation needs its assets mode configuration alongside install/upstream registries.
-
-Review one entity and its complete manifest, then choose exactly one input kind:
-
-```bash
-ntn-skills ctl library inventory prepare-import --entry LIBRARY_ENTRY \
-  --review RECONCILIATION_ID --entity ENTITY_ID --approve-manifest MANIFEST_SHA256 \
-  --native --output ./import-plan.json
-ntn-skills ctl library inventory apply-import ./import-plan.json --entry LIBRARY_ENTRY --dry-run
-ntn-skills ctl library inventory apply-import ./import-plan.json --entry LIBRARY_ENTRY
-ntn-skills ctl library inventory reconcile-import ./import-plan.json --entry LIBRARY_ENTRY
-```
-
-For upstream content, replace `--native` with `--source SOURCE_ID --member EXACT_MEMBER`. Local modifications require a proven original fixed commit; the current upstream revision cannot serve as an invented old baseline. Exact existing equal content uses `--verify-existing`; differences and ambiguous identities need a separate reviewed author/source plan. Names and hashes alone never authorize replacement.
-
-New entries default to disabled. Add `--enable` only when preparing a plan that explicitly includes making the fully verified new Skill available. Markdown, references, scripts, JSON, images, binary, modes and required relative paths all participate in completeness. Same-library portable relations retain their explicit ownership; upstream relationship suggestions do not modify user selections. Revalidate the complete source tree and provenance before applying. Never drop unsupported files to obtain a successful main-only import.
-
-Use the same original plan for partial recovery and repeated execution. `reconcile-import` reads the original outcome without source-tree reads, provider rediscovery or remote writes. Only original durable receipts can justify continuation; current equality does not confirm a lost response. A copied or rehashed JSON is not new upload authority. For an actual inventory import, independently audit and consume each reviewed batch from its frozen pre-import manifest, retaining all conflicts, pending authorization and failures in the denominator. Do not delete or redirect local originals as part of import.
-
-### Repair an existing identity
-
-For a page with a legal Skill ID and blank Main File ID, use `ntn-skills ctl repair plan PAGE --entry historical-missing-main --database LIBRARY_ENTRY --dry-run`. Inspect the exact target and preservation facts, then copy its returned `next.argv`. The apply command reuses that original operation; do not hand-write identity fields or copy a page. A hand-created Files row uses the explicit `managed-file` entry with `--owner` and `--path`. An ordinary child page without safe same-page placement returns a diagnosed refusal. Duplicate or foreign identities require an explicit owner decision. Disabled state, a matching body and a Status label are not repair authority.
+The public cleanup/census writer is not available yet. Report exactly what was
+inspected and what remains. A successful read does not certify that obsolete
+tables, fields, pages, attachments or navigation are absent.

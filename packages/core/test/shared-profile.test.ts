@@ -43,6 +43,7 @@ const fields = {
   Hash: "hash",
   Payload: "payload",
   Skill: "skill",
+  Resource: "resource",
 }
 const library: SharedLibrary = {
   version: 1,
@@ -59,11 +60,11 @@ const library: SharedLibrary = {
       Tags: "tags",
       Enabled: "enabled",
       "Default Context": "default",
-      References: "references",
       "Skill ID": "skill_id",
       "Main File ID": "main_file_id",
-      Projection: "projection",
-      Source: "source",
+      Content: "content",
+      "Current State": "state",
+      Operation: "operation",
     },
   },
   files: {
@@ -73,8 +74,7 @@ const library: SharedLibrary = {
       Name: "title",
       "File ID": "file_id",
       Path: "path",
-      Projection: "projection",
-      Status: "status",
+      Content: "content",
       Skill: "skill",
     },
   },

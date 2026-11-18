@@ -124,10 +124,7 @@ export function pendingKeys(f: Fixture) {
 
 export function authoringRead(f: Fixture) {
   return f.run(
-    withSharedAuthoringTarget(
-      skillPage,
-      openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }),
-    ),
+    withSharedAuthoringTarget(skillPage, openSkill(skillPage, { ...selected, refresh: true })),
   )
 }
 
@@ -179,9 +176,7 @@ export async function pendingSingleBody(
     `retain-${content.sha256}`,
   )
   await f.target(parseTarget(skillPage), selected)
-  const baseline = await f.run(
-    openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }),
-  )
+  const baseline = await f.run(openSkill(skillPage, { ...selected, refresh: true }))
   const preview = await f.run(
     applySharedSkillChanges(baseline, {
       files: [

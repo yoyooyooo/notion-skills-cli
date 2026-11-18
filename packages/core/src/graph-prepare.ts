@@ -174,7 +174,6 @@ export function prepareGraphWithSnapshots(
     return yield* withPrepareExecution(
       prepareSelected(input, targets, budget, {
         database: options.database,
-        sharedReadOnly: options.readOnly === true || execution.priority === "prefetch",
         metrics: options.metrics,
         startedAt,
       }).pipe(Effect.provideService(Notion, selectedApi)),
@@ -194,7 +193,6 @@ function prepareSelected(
   budget: PrepareReady["budget"],
   options: {
     readonly database?: string
-    readonly sharedReadOnly?: boolean
     readonly metrics?: boolean
     readonly startedAt: number
   },
@@ -237,7 +235,6 @@ function prepareSelectedInScope(
   budget: PrepareReady["budget"],
   options: {
     readonly database?: string
-    readonly sharedReadOnly?: boolean
     readonly metrics?: boolean
     readonly startedAt: number
   },

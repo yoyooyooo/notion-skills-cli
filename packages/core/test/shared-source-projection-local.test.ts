@@ -151,7 +151,6 @@ describe("complete local customization of a proven immutable C1", () => {
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     )
@@ -277,7 +276,6 @@ describe("complete local customization of a proven immutable C1", () => {
           target: created.skill_page_id,
           scope: yield* authScope,
           startedAt: Date.now(),
-          readOnly: true,
           forceFull: true,
         })
       }),

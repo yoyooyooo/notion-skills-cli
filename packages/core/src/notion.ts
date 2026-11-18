@@ -95,7 +95,7 @@ type NotionRequestOptions = {
 type DetachedNotionReadContext = {
   readonly identity: string
   readonly run: <A>(
-    effect: Effect.Effect<A, SkillsError, Notion | Crypto.Crypto>,
+    effect: Effect.Effect<A, SkillsError, Notion | Crypto.Crypto | HttpClient.HttpClient>,
   ) => Effect.Effect<A, SkillsError>
 }
 const NetworkMetrics = Context.Reference<ReturnType<typeof createRequestMetrics> | undefined>(
@@ -529,7 +529,9 @@ export const NotionTransport = Layer.effect(
         )
         return {
           identity,
-          run: <A>(effect: Effect.Effect<A, SkillsError, Notion | Crypto.Crypto>) =>
+          run: <A>(
+            effect: Effect.Effect<A, SkillsError, Notion | Crypto.Crypto | HttpClient.HttpClient>,
+          ) =>
             Effect.gen(function* () {
               const api = yield* Notion
               const readOnly: Notion["Service"] = {
@@ -557,6 +559,7 @@ export const NotionTransport = Layer.effect(
             }).pipe(
               Effect.provide(runtime),
               Effect.provide(NodeServices.layer),
+              Effect.provide(NodeHttpClient.layerFetch),
               Effect.provideService(ConfigProvider.ConfigProvider, configProvider),
               Effect.provideService(NetworkMetrics, metrics),
               Effect.scoped,

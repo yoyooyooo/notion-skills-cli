@@ -4,11 +4,14 @@ import { fail, SkillsError, type Snapshot, type Source } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sharedRecordFromPage } from "./shared-content.ts"
+import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
+import { requireCurrentSkillReady } from "./shared-current-file.ts"
+import { queryCurrentSkillIndex } from "./shared-current-index.ts"
+import { readCurrentSharedResourceBytes } from "./shared-current-resource.ts"
+import { resolveCurrentSharedSources } from "./shared-current-source.ts"
 import { gitBlobOid } from "./shared-github-source.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { readFixedResourceBytes } from "./shared-fixed-resource-read.ts"
-import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import { sha256, Store } from "./store.ts"
 
 /** Fetch missing selected files from their declared current locations. Recheck
@@ -21,6 +24,13 @@ export function materializeSharedFixedAcquisition(
   return Effect.gen(function* () {
     const acquisition = snapshot.shared_acquisition
     if (acquisition === undefined || paths.length === 0) return []
+    yield* Effect.try({
+      try: () => validateSnapshotAcquisition(snapshot),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "The selected acquisition is invalid."),
+    })
     const routes = acquisition.files.filter((route) => paths.includes(route.path))
     if (routes.length === 0) return []
     if (options.offline)
@@ -46,7 +56,12 @@ export function materializeSharedFixedAcquisition(
       library.files.database_id !== previous.files.database_id ||
       library.files.data_source_id !== previous.files.data_source_id ||
       library.records.database_id !== previous.records.database_id ||
-      library.records.data_source_id !== previous.records.data_source_id
+      library.records.data_source_id !== previous.records.data_source_id ||
+      (routes.some((route) => route.kind === "source") &&
+        (library.sources === undefined ||
+          previous.sources === undefined ||
+          library.sources.database_id !== previous.sources.database_id ||
+          library.sources.data_source_id !== previous.sources.data_source_id))
     )
       return yield* Effect.fail(
         fail(
@@ -88,30 +103,70 @@ export function materializeSharedFixedAcquisition(
           : fail("SHARED_ACQUISITION_SCOPE", "The current acquisition owner is unavailable."),
     })
     const store = yield* Store
+    const index = yield* queryCurrentSkillIndex(library, page, raw)
+    yield* Effect.try({
+      try: () => requireCurrentSkillReady(index.state, page),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("CURRENT_SKILL_NOT_READY", "The current Skill requires management attention."),
+    })
+    const currentFiles = [index.main, ...index.files]
+    // A local selection may keep its already materialized bytes. Missing bytes
+    // can only come from a still-current exact file descriptor, not a former
+    // resource pointer or a Source that merely remains remotely available.
+    const descriptors = yield* Effect.try({
+      try: () =>
+        new Map(
+          routes.map((route) => {
+            const expected = snapshot.files.find((file) => file.path === route.path)
+            const selectedBinding = snapshot.file_bindings?.find((file) => file.path === route.path)
+            const current = currentFiles.find((file) => file.path === route.path)
+            const content = current?.content
+            if (
+              expected === undefined ||
+              selectedBinding === undefined ||
+              current === undefined ||
+              current.file_id !== selectedBinding.file_id ||
+              current.page_id !== selectedBinding.page_id ||
+              content === undefined ||
+              content.kind === "native" ||
+              content.sha256 !== expected.sha256 ||
+              content.bytes !== expected.bytes ||
+              content.mode !== (expected.mode ?? "100644") ||
+              (route.kind === "source"
+                ? content.kind !== "source" ||
+                  content.source_id !== route.source_id ||
+                  content.revision !== route.revision ||
+                  content.source_path !== route.source_path
+                : content.kind !== "resource" || content.object_id !== route.object_id)
+            )
+              throw fail(
+                "SHARED_ACQUISITION_CHANGED",
+                "The selected file is no longer current. Read the current Skill again.",
+                { path: route.path, next: "reselect_current", target: snapshot.record.id },
+              )
+            return [route.path, content] as const
+          }),
+        ),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("SHARED_ACQUISITION_SCOPE", "The current file bindings are invalid."),
+    })
     const result: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
     const sourceRoutes = routes.filter((route) => route.kind === "source")
-    if (sourceRoutes.length !== 0) {
-      const frozen = acquisition.source
-      if (frozen === null)
-        return yield* Effect.fail(fail("STATE_CORRUPT", "The selected path has no exact source."))
-      const source = yield* planSelectedSharedSource(library, page, frozen.source_id)
-      if (source.revision !== frozen.revision)
-        return yield* Effect.fail(
-          fail(
-            "SHARED_SOURCE_CONFLICT",
-            "The selected source revision is no longer current. Read the current Skill again.",
-            { next: "reselect_current", target: snapshot.record.id },
-          ),
-        )
-      for (const route of sourceRoutes) {
+    const sources = yield* resolveCurrentSharedSources(library, { selections: sourceRoutes })
+    for (const source of sources.values()) {
+      const selectedRoutes = sourceRoutes.filter((route) => route.source_id === source.source_id)
+      for (const route of selectedRoutes) {
         const expected = snapshot.files.find((file) => file.path === route.path)!
         const descriptor = source.manifest.find((file) => file.path === route.source_path)
         if (
           descriptor === undefined ||
           descriptor.bytes !== expected.bytes ||
-          descriptor.mode !== expected.mode ||
-          (descriptor.identity.sha256 !== undefined &&
-            descriptor.identity.sha256 !== expected.sha256)
+          descriptor.mode !== (expected.mode ?? "100644") ||
+          descriptor.sha256 !== expected.sha256
         )
           return yield* Effect.fail(
             fail(
@@ -121,7 +176,7 @@ export function materializeSharedFixedAcquisition(
             ),
           )
       }
-      const selected = [...new Set(sourceRoutes.map((route) => route.source_path))].sort()
+      const selected = [...new Set(selectedRoutes.map((route) => route.source_path))].sort()
       const materialized = yield* source.materialize(selected)
       if (
         materialized.files.length !== selected.length ||
@@ -133,17 +188,17 @@ export function materializeSharedFixedAcquisition(
             "Acquisition returned an incomplete or duplicate file set.",
           ),
         )
-      for (const route of sourceRoutes) {
+      for (const route of selectedRoutes) {
         const expected = snapshot.files.find((file) => file.path === route.path)!
         const actual = materialized.files.find((file) => file.path === route.source_path)
         const descriptor = source.manifest.find((file) => file.path === route.source_path)!
         if (
           actual === undefined ||
           actual.bytes.length !== expected.bytes ||
-          actual.mode !== expected.mode ||
+          actual.mode !== (expected.mode ?? "100644") ||
           (yield* sha256(actual.bytes)) !== expected.sha256 ||
-          (descriptor.identity.kind === "git" &&
-            (yield* gitBlobOid(actual.bytes)) !== descriptor.identity.git_oid)
+          (descriptor.git_oid !== undefined &&
+            (yield* gitBlobOid(actual.bytes)) !== descriptor.git_oid)
         )
           return yield* Effect.fail(
             fail(
@@ -169,17 +224,10 @@ export function materializeSharedFixedAcquisition(
         else if (local.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(local.failure)
       }
       if (bytes === undefined) {
-        bytes = yield* readFixedResourceBytes(library, {
-          skillPageId: page,
-          snapshotId: snapshot.snapshot_id,
-          content: {
-            kind: "resource",
-            object_id: route.object_id,
-            sha256: expected.sha256,
-            bytes: expected.bytes,
-            mode: expected.mode ?? null,
-          },
-        })
+        const content = descriptors.get(route.path)
+        if (content?.kind !== "resource")
+          return yield* Effect.fail(fail("STATE_CORRUPT", "The current resource binding was lost."))
+        bytes = yield* readCurrentSharedResourceBytes(library, { skillPageId: page, content })
         resources.set(route.object_id, bytes)
       }
       if (bytes.length !== expected.bytes || (yield* sha256(bytes)) !== expected.sha256)

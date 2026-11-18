@@ -403,7 +403,6 @@ test("completed prefix recovery opens the original full fixed Git tree under ind
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )

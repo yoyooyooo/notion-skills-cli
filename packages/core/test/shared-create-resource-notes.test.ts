@@ -109,7 +109,6 @@ test("a known resource-note failure resumes the original ACK prefix without rewr
         target: main,
         scope: yield* authScope,
         startedAt: Date.now(),
-        readOnly: true,
         forceFull: true,
       })
     }),

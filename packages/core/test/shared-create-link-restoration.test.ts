@@ -66,7 +66,6 @@ test.each([14, 15] as const)(
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     )
@@ -126,7 +125,6 @@ test("UTF-8 same-owner fragment recovery keeps the original wire and survives co
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )

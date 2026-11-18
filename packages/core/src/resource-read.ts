@@ -426,12 +426,7 @@ export function readResources(value: unknown, options: ResourceReadOptions = {})
           readReady(input, options).pipe(
             Effect.provideService(
               ImmutableByteReadPolicy,
-              JSON.stringify([
-                "resources",
-                budgetFor(input),
-                options.offline === true,
-                options.readOnly === true,
-              ]),
+              JSON.stringify(["resources", budgetFor(input), options.offline === true]),
             ),
             Effect.timeout(budgetFor(input).timeBudgetMs),
             Effect.mapError((error) =>

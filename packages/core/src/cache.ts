@@ -18,7 +18,6 @@ import { currentMaterializationVersion } from "./materialization.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import { catalog } from "./catalog.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
-import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
 export interface ReadPolicyOptions {
@@ -130,6 +129,7 @@ export const ObservationSchema = Schema.Struct({
   bundle_checkpoint: Schema.optional(SourceBundleCheckpointSchema),
   metadata_only: Schema.optional(Schema.Literal(true)),
   shared_body_valid_until: Schema.optional(Schema.Number),
+  current_snapshot: Schema.optional(SnapshotSchema),
   access_denied: Schema.optional(Schema.Literals(["AUTH_REQUIRED", "ACCESS_DENIED"])),
 })
 export type AccessDenial = "AUTH_REQUIRED" | "ACCESS_DENIED"
@@ -368,28 +368,21 @@ function validateSharedCurrentTree(
     })
     const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
     yield* validateSnapshotObjects(snapshot, files, paths)
-    // Git-member relative links retain their repository root. All source modes
-    // share the same complete-directory and selected-byte validation contract.
+    // Every authority uses the same complete directory for local references.
     yield* Effect.try({
       try: () =>
-        snapshot.shared_acquisition?.source?.kind === "git_member"
-          ? assertSparseGitFileReferences(
-              files,
-              snapshot.files.map((file) => file.path),
-              snapshot.shared_acquisition.source.member_root,
-            )
-          : assertSharedFileReferences(
-              files,
-              undefined,
-              snapshot.files.map((file) => file.path),
-            ),
+        assertSharedFileReferences(
+          files,
+          undefined,
+          snapshot.files.map((file) => file.path),
+        ),
       catch: (error) =>
         error instanceof SkillsError
           ? error
           : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
     })
     // The complete path/reference proof is distinct from selected actual bytes.
-    // A missing raw object is recoverable only through its frozen acquisition.
+    // Missing raw bytes require a still-current exact acquisition route.
     yield* store.writeJson(key, {
       ...receipt,
       ...(paths.length === snapshot.files.length ? {} : { verified_paths: [...paths].sort() }),
@@ -462,6 +455,7 @@ export function publishSnapshotObservation(
       validated_at: validatedAt,
       snapshot_id: snapshot.snapshot_id,
       default_context: snapshot.record.default_context,
+      ...(snapshot.record.locator.type === "shared_skill" ? { current_snapshot: snapshot } : {}),
       invalidated: false,
       ...(options.bundleCheckpoint ? { bundle_checkpoint: options.bundleCheckpoint } : {}),
       ...(options.metadataOnly ? { metadata_only: true } : {}),
@@ -675,15 +669,33 @@ export function cachedRemoteObservation(
       if (options.access === "metadata") yield* validateSnapshotManifest(snapshot)
       else yield* validateCachedSharedCurrentTree(snapshot)
     }
+    const current = latest.current_snapshot ?? snapshot
+    yield* validateSnapshotManifest(current)
+    const fileIdentities = (value: Snapshot) =>
+      value.file_bindings?.map(({ file_id, path }) => ({ file_id, path })) ?? []
+    if (
+      current.snapshot_id !== snapshot.snapshot_id ||
+      current.scope !== snapshot.scope ||
+      current.version_id !== snapshot.version_id ||
+      current.record.id !== snapshot.record.id ||
+      canonicalSharedJson(current.record.locator) !==
+        canonicalSharedJson(snapshot.record.locator) ||
+      canonicalSharedJson(fileIdentities(current)) !==
+        canonicalSharedJson(fileIdentities(snapshot)) ||
+      canonicalSharedJson(current.files) !== canonicalSharedJson(snapshot.files)
+    )
+      return yield* Effect.fail(
+        fail("STATE_CORRUPT", "Current cache metadata differs from its selected content."),
+      )
     return {
       snapshot:
         latest.default_context === undefined
-          ? snapshot
+          ? current
           : {
-              ...snapshot,
-              record: { ...snapshot.record, default_context: latest.default_context },
+              ...current,
+              record: { ...current.record, default_context: latest.default_context },
             },
-      // Verification and same-pin recovery must use the immutable manifest, not current preferences.
+      // Local object verification uses the originally selected content manifest.
       ...(options.access === "metadata" ? { stored_snapshot: snapshot } : {}),
       validated_at: latest.validated_at,
       bundle_checkpoint: latest.bundle_checkpoint,

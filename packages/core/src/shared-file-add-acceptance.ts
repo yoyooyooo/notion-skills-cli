@@ -267,55 +267,10 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
       return yield* refusal(
         "Acceptance requires the exact original complete enabled native Skill snapshot and unchanged owner metadata.",
       )
-    const mixed = plan.version === 4 ? baseline.shared_acquisition : undefined
-    const sourceBinding =
-      plan.version === 4
-        ? yield* resolveSourceBinding(retained.library, {
-            skillPageId: plan.skill_page_id,
-            sourceId: plan.source_id,
-          })
-        : undefined
-    if (plan.version === 4) {
-      const definition = review.source_context.definition
-      if (
-        mixed?.source?.kind !== "git_member" ||
-        mixed.source.source_id !== plan.source_id ||
-        mixed.source.revision !== plan.source_revision ||
-        sourceBinding?.commit !== plan.source_revision ||
-        sourceBinding.root !== mixed.source.member_root ||
-        definition === null ||
-        definition.member !== (sourceBinding.root || ".") ||
-        !same(
-          baseline.files.find((file) => file.path === plan.path),
-          plan.source_overlay,
-        ) ||
-        !mixed.files.some((route) => route.path === plan.path && route.kind === "source")
+    if (plan.version === 4)
+      return yield* refusal(
+        "The old sparse overlay acceptance has been retired; use the current writer.",
       )
-        return yield* refusal(
-          "The overlay acceptance lost its exact original Source/member/file binding.",
-        )
-      yield* assertGitOnlyAdmissionOwner({
-        projection: gitOnlyProjectionForSource(definition.page_id),
-        library_id: plan.library_id,
-        skill_id: plan.skill_id,
-        origin_page_id: definition.page_id,
-        member: definition.member,
-      })
-      for (const file of baseline.files) {
-        const route = mixed.files.find((item) => item.path === file.path)
-        if (route?.kind !== "source") continue
-        const sourceFile = sourceBinding.files.find((item) => item.path === route.source_path)
-        if (
-          !sourceFile ||
-          sourceFile.sha256 !== file.sha256 ||
-          sourceFile.bytes !== file.bytes ||
-          sourceFile.mode !== file.mode
-        )
-          return yield* refusal(
-            "The untouched Git directory differs from the original frozen overlay baseline.",
-          )
-      }
-    }
     const priorBindings = review.bindings.filter((binding) => binding.file_id !== plan.file_id)
     const target = review.bindings.find((binding) => binding.file_id === plan.file_id)
     if (
@@ -337,30 +292,14 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
     const ownership = priorBindings.map((binding) => ({
       file_id: binding.file_id,
       path: binding.path,
-      state:
-        mixed?.source?.kind === "git_member" &&
-        binding.path === baseline.entrypoint &&
-        !review.prior_events.some((event) => event.file_id === binding.file_id)
-          ? {
-              file_id: binding.file_id,
-              heads: [],
-              ownership: {
-                kind: "following" as const,
-                source_revision: mixed.source.revision,
-                projection: {
-                  normalization_version: 1 as const,
-                  sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                },
-              },
-            }
-          : resolveFileState(
-              binding.file_id,
-              review.prior_events.filter((event) => event.file_id === binding.file_id),
-            ),
+      state: resolveFileState(
+        binding.file_id,
+        review.prior_events.filter((event) => event.file_id === binding.file_id),
+      ),
     }))
     const version = yield* sharedSnapshotVersion({
       ...baseline,
-      source: mixed?.source?.kind === "git_member" ? mixed.source : null,
+      source: null,
       ownership,
     })
     if (version !== plan.snapshot_version_id)
@@ -399,21 +338,6 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
       const response = yield* completeResponse(observation.response, binding.page_id)
       const body = yield* checked(() => normalizeObservedBody(response.markdown))
       const state = ownership.find((value) => value.file_id === binding.file_id)?.state
-      if (
-        plan.version === 4 &&
-        binding.file_id !== plan.file_id &&
-        state?.ownership.kind === "following"
-      ) {
-        const route = mixed!.files.find((item) => item.path === binding.path)
-        if (
-          route?.kind !== "source" ||
-          (yield* sha256(body)) !== state.ownership.projection?.sha256
-        )
-          return yield* refusal(
-            "An unchanged following document or its original projection changed before overlay acceptance.",
-          )
-        continue
-      }
       if (binding.file_id !== plan.file_id && state?.ownership.kind !== "custom")
         return yield* refusal(
           "This acceptance is limited to a complete native custom-file tree; source projections and tombstones require their existing lifecycle.",
@@ -475,19 +399,11 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
           ),
         )
     }
-    if (plan.version !== 4 && baseline.files.length !== priorBindings.length)
+    if (baseline.files.length !== priorBindings.length)
       return yield* refusal(
         "The original snapshot contains non-native resources outside this acceptance boundary.",
       )
-    yield* checked(() =>
-      mixed?.source?.kind === "git_member"
-        ? assertSparseGitFileReferences(
-            tree,
-            baseline.files.map((file) => file.path),
-            mixed.source.member_root,
-          )
-        : assertSharedFileReferences(tree),
-    )
+    yield* checked(() => assertSharedFileReferences(tree))
     yield* checked(() => validateSharedRecordEnvelope(id, review, "operation"))
     return review
   })

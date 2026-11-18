@@ -6,11 +6,10 @@ import { expect, test, vi } from "vitest"
 import { readSkill, listSkill, readResources } from "../../cli/src/sdk.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import {
-  executeSharedResourceAuthoring,
-  prepareSharedResourceAuthoring,
-} from "../src/shared-resource-authoring.ts"
-import { resourceAuthoringFixture } from "./shared-resource-authoring-fixture.ts"
-import { library, skillPage } from "./shared-snapshot-fixture.ts"
+  currentSnapshotFixture,
+  currentLibrary as library,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
 const { startSdkSourceFixture } = await import(
   new URL("../../../scripts/sdk-source-fixture.mjs", import.meta.url).href
@@ -21,19 +20,12 @@ const hash = createHash("sha256").update(raw).digest("hex")
 const recordsPath = `/v1/data_sources/${library.records.data_source_id}/query`
 
 async function sample() {
-  const f = await resourceAuthoringFixture()
-  await f.open(false)
-  const plan = await f.run(
-    prepareSharedResourceAuthoring({
-      library,
-      snapshot: await f.open(),
-      action: "add",
-      path: "scripts/read-only.sh",
-      bytes: raw,
-      mode: "100755",
-    }),
-  )
-  await f.run(executeSharedResourceAuthoring(library, { plan, mode: "create" }))
+  const f = currentSnapshotFixture({ fileCount: 1 })
+  await f.resource(0, "scripts/read-only.sh", raw, "100755")
+  const main = {
+    ...structuredClone(f.main),
+    parent: { ...f.main.parent, database_id: library.skills.database_id },
+  }
   return {
     notion: {
       library,
@@ -45,11 +37,11 @@ async function sample() {
         description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(library) }],
         data_sources: [{ id: library.skills.data_source_id, name: "Skills" }],
       },
-      main: structuredClone(f.base.main),
-      skills: [structuredClone(f.base.main)],
+      main,
+      skills: [structuredClone(main)],
       files: structuredClone(f.files),
-      records: structuredClone([...f.base.records.values()]),
-      bodies: Object.fromEntries(f.base.bodies),
+      records: structuredClone([...f.records.values()]),
+      bodies: Object.fromEntries(f.bodies),
     },
   }
 }
@@ -97,7 +89,7 @@ async function bootstrap(source: Source, root: string, name: string) {
     NTN_SKILLS_NOTION_INTERVAL_MS: "100",
     NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
   }
-  const options = { env, database: library.skills.database_id, readOnly: true, metrics: true }
+  const options = { env, database: library.skills.database_id, metrics: true }
   const main = await readSkill(skillPage, options)
   const directoryRef = new URL(main.ref)
   directoryRef.pathname = "/"
@@ -129,7 +121,7 @@ async function joinedEligibility(source: Source) {
       source.requests.filter(
         (row: { phase: string; path: string; terminal: string }) =>
           row.phase === "read" &&
-          row.path === `/v1/pages/${skillPage}` &&
+          row.path === `/v1/data_sources/${library.files.data_source_id}/query` &&
           row.terminal === "finished",
       ),
     ).toHaveLength(2),
@@ -161,7 +153,7 @@ test("two public SDK runtimes share only exact immutable bytes, and creator canc
     hold.release()
     ready(await second)
     await idle(source)
-    expect(bodyCalls(source)).toHaveLength(2)
+    expect(bodyCalls(source)).toHaveLength(1)
     expect(
       bodyCalls(source).every((row: { terminal: string }) => row.terminal === "finished"),
     ).toBe(true)
@@ -185,7 +177,7 @@ test("last public waiter cancellation closes its transport and the same pin can 
     expect(closed.terminal).toBe("aborted")
     ready(await readResources(input, options))
     await idle(source)
-    expect(bodyCalls(source)).toHaveLength(3)
+    expect(bodyCalls(source)).toHaveLength(2)
   })
 })
 
@@ -204,11 +196,11 @@ test.each(["budget", "store"] as const)(
       const first = readResources(input, options)
       await hold.reached
       ready(await readResources(separate.input, separate.options))
-      expect(bodyCalls(source)).toHaveLength(3)
+      expect(bodyCalls(source)).toHaveLength(2)
       hold.release()
       ready(await first)
       await idle(source)
-      expect(bodyCalls(source)).toHaveLength(4)
+      expect(bodyCalls(source)).toHaveLength(2)
     })
   },
 )
@@ -227,6 +219,6 @@ test("another credential cannot borrow the authorized pin's pending bytes", asyn
     hold.release()
     ready(await first)
     await idle(source)
-    expect(bodyCalls(source)).toHaveLength(2)
+    expect(bodyCalls(source)).toHaveLength(1)
   })
 })

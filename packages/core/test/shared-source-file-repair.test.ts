@@ -318,7 +318,6 @@ test("one reviewed table-code patch retains the full original file and unblocks 
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     ),

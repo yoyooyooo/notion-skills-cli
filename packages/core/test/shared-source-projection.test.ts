@@ -49,7 +49,6 @@ describe("initial fixed-source native projections", () => {
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     )
@@ -167,7 +166,6 @@ describe("initial fixed-source native projections", () => {
               scope: yield* authScope,
               startedAt: Date.now(),
               forceFull: true,
-              readOnly: true,
             })
           }),
         )

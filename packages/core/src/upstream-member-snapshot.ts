@@ -19,7 +19,6 @@ import {
 } from "./upstream-member-links.ts"
 import { mapMarkdownLinks } from "./typed-links.ts"
 import type { SourceLinkUnavailable } from "./upstream-member-model.ts"
-import { resolveGitOnlySibling } from "./shared-git-only-relative.ts"
 
 function memberContext(snapshot: Snapshot, rawPage: unknown) {
   return Effect.gen(function* () {
@@ -245,10 +244,13 @@ export function projectUpstreamMemberSnapshot(
 export function resolveUpstreamMemberRelative(snapshot: Snapshot, from: string, relative: string) {
   return Effect.gen(function* () {
     const local = fileRef(snapshot.record.id, from, snapshot.snapshot_id)
-    if (snapshot.shared_acquisition?.source?.kind === "git_member") {
+    if (snapshot.record.locator.type === "shared_skill") {
       const own = yield* Effect.try({
         try: () => resolveRef(local, relative),
-        catch: (error) => error as SkillsError,
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("INVALID_PATH", "The relative current Skill path is invalid."),
       }).pipe(Effect.result)
       if (own._tag === "Success") return own.success
       if (
@@ -256,7 +258,17 @@ export function resolveUpstreamMemberRelative(snapshot: Snapshot, from: string, 
         own.failure.message !== "The path escapes the skill root."
       )
         return yield* Effect.fail(own.failure)
-      return yield* resolveGitOnlySibling(snapshot, from, relative)
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_SOURCE_REQUIRED",
+          "A relative path crossing the current Skill root requires an explicit current Source contribution link.",
+          {
+            from_path: from,
+            relative_path: relative,
+            next: "manage_current_source_links",
+          },
+        ),
+      )
     }
     if (snapshot.record.locator.type !== "notion_page" || !snapshot.source_projection)
       return yield* Effect.try({

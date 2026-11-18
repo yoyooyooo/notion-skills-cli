@@ -1,5 +1,5 @@
 // Bump whenever generated read bytes change for otherwise identical remote content.
-export const CURRENT_MATERIALIZATION_VERSION = "current-acquisition-v4"
+export const CURRENT_MATERIALIZATION_VERSION = "current-files-v5"
 
 const SUBSCRIPTION_ROUTER_MATERIALIZATION_VERSION = `${CURRENT_MATERIALIZATION_VERSION}:multi-member-router-v1`
 

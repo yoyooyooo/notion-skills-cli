@@ -80,7 +80,6 @@ test("independent acceptance publishes only new Records; old create remains need
         target: page,
         scope: yield* authScope,
         startedAt: Date.now(),
-        readOnly: true,
         forceFull: true,
       })
     }),
@@ -180,7 +179,6 @@ test("cold acceptance refuses a missing independent ownership event and does not
           target: page,
           scope: yield* authScope,
           startedAt: Date.now(),
-          readOnly: true,
           forceFull: true,
         })
       }),

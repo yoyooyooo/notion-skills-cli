@@ -1,66 +1,40 @@
 ---
 name: verify-notion-source-onboarding
-description: "验证当前 Sources 的完整成员、来源贡献、显式刷新、整文件接管和 Notion 全文阅读。修改 Git/HTTP/registry/Notion/local 来源纳管或迁移时使用；保留现有来源能力，不沿旧 retained/proof 代际继续建设兼容。"
+description: "验证当前 Source 计划、逐文件来源、完整目录、精确按需获取与 Notion 阅读投影。修改来源纳管、刷新或迁移时使用；来源读取通过不代表成员已发布或全 Pro 已迁入。"
 ---
 
 # 当前来源验证
 
-执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 的来源切片。本入口不负责一般作者编辑，也不负责把部分 Source 成功代替全库或 Pro 全量迁移。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 的来源切片。本入口不负责一般作者编辑，也不负责以部分来源成功替代全库或 Pro 迁移。
 
 ## Launch
 
-从仓库根运行，沿 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 隔离配置和派生状态。绑定实际 Source、member、revision、scope 和完整文件输入。读取或导出不执行内容中的脚本，不更改上游或凭据来制造通过。
+沿 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 隔离当前输入、配置和派生状态。绑定 exact Source/member/revision/scope。读取不执行来源脚本，也不改变上游或凭据以制造通过。
 
 ## Doctor
 
 ~~~sh
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
-bun test packages/cli/test/verification-skill-map.test.ts
+bun test packages/core/test/shared-current-source.test.ts packages/core/test/shared-acquisition-contract.test.ts packages/core/test/shared-current-resource.test.ts --timeout 60000
 ~~~
 
-区分来源可达、已登记、完整成员、内容完整、人类阅读及当前可消费。Provider 不可达、身份不明、分页未完或权限不足不能解释为空来源。多 Source 子集完成不等于全库完成。
+这些检查覆盖当前 plan、逐文件获取与原件资源。Source 写入、成员发布、全量 Files 和阅读投影需要自己的实现与实际结果。
 
 ## Drive
 
-1. 使用当前 Sources 合同求值 provider、位置、选定 revision、include/exclude/mapping/patch 和贡献归属。Git-only/mixed/native 共用一个当前协议，Notion-native 不强迫绑定 Source。
-2. 核对完整有效文件树，所有 supporting 文件都有 Files 身份、owner、Path 和可读正文/原件。git-only 不再以稀疏消费为理由省略人类阅读页；普通读取仍不为补这些页写远端。
-3. 检查一次显式来源刷新，新增/更新/缺失/改名/排除均有结果。Notion 作者内容、名称/Tags/Default Context、人工 Router 与另一 Source 的贡献不被覆盖。patch 前提不匹配明确失败。
-4. 分别检查主文接管与单子文件接管。接管之后读取当前 Notion 内容，其他文件仍按明确来源获取；改回相同字节不能暗中重置权威。恢复跟随是显式动作，不保存旧内容回滚链。
-5. 固定来源获取保持 repository/revision/tree/path/blob/hash/mode 和权限范围。仅拉所选内容与必要依赖；签名 URL 不是长期身份。保留实际 Git、HTTP、registry/market、Notion 及 machine/workspace-scoped local 能力。跨机缺合法 local binding 明确不可用，不自动上传私有内容。
-6. 一次创建或刷新中断时按当前稳定身份和已确认效果对账，unknown 不盲目重发。转换旧数据只属于 AH-513 的一次性过程，旧 reader/writer/decoder 在日常路径退出。
-7. Pro 全本地迁移由 AH-516 逐项核内容、定制和所有曝光/更新边。来源样本通过不等于全部库存移交；有意停用单列，未读/未知不算已完成。
+1. Sources.Content 只接受当前 `{version: 1, plan}`；Last Revision 必须等于 normalized plan 的 SHA-256。稳定 Source ID 不再使用 snapshot/bundle/source-plan carrier。缺 hash 的 Git manifest 明确拒绝，不在 reader 回写补齐。
+2. acquisition v5 按文件记录 source_id/revision/source_path 或 resource object_id。同一 Skill 可用多 Source；同一 Source 不可混不同 current revision。只查本次所需 Source，批查询完整分页并拒绝重复物理页。
+3. 源文件按固定 revision/hash/bytes/mode 获取。缺 cache 时先核当前 owner/descriptor；变化、停用、未 ready、权限不足或分页不完不得访问旧 Records/history 补救。offline 不探远端。
+4. Git-only/mixed/native 每个 supporting 文件都有 Files 身份、唯一 owner 和完整阅读页。有效本地 directory 不是 Notion 投影；文本需要全文，图片/二进制需要有效原件。普通读不为补页远端写入。
+5. generated Source/resource body 被编辑也不自动取得权威。显式接管、恢复跟随、刷新与排除属管理写入；当前 public Source writer 尚未接入，不能用已退役 create_git 或 onboard 路径宣称完成。
+6. 当前 resource 小文件单 Record inline，大文件单原件 attachment。精确 bytes/mode、上传失败、missing attachment、签名 URL 更新和预算分别检查；URL 不作长期身份。
+7. 全 Pro 内容与所有曝光/更新边由 AH-516 对账。provider 可达、已登记、成员完整、字节完整、投影完整和当前可消费分别判定。未知不能算有意停用或已移交。
 
-实际安装入口复用 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 的精确安装 bin、同包 SDK、受控 Provider 和空 Store 设施。该 recipe 的旧 create_git 零 Files、历史 retained/ACK 证明或多代修复要求不是当前产品目标；功能 owner 必须修订相应断言，不能拿旧结果替代本轮。
+现有 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 仅提供旧设施定位。其 create_git 零 Files、旧 Source carrier、adoption/retained/ACK 和历史修复配方不执行。本轮只使用上面的 current tests 与实际 current 命令；独立包路径由其 owner 接通后再验。
 
 ## Evidence
 
-记录当前 Source/member 范围、完整清单、来源贡献、作者覆盖、实际请求和独立读取结果。比较相同输入及 freshness，不更换来源、增加 TTL 或省略文件来降低成本。真实 Notion、受控 HTTP、安装包与 Pi 分别记录。
-
-现有回归定位如下。只运行本次边界所需切片；其中原版本/证明链/兼容用例须随实现退役或改写为当前正确性，不默认复制整个清单：
-
-- packages/core/test/shared-source-onboarding.test.ts
-- packages/core/test/shared-source-definitions.test.ts
-- packages/core/test/upstream-source-batch.test.ts
-- packages/core/test/shared-source-projection-retained.test.ts
-- packages/core/test/shared-import-markdown.test.ts
-- packages/cli/test/source-onboarding-navigation.test.ts
-- packages/core/test/shared-create-retained-recovery.test.ts
-- packages/core/test/shared-source-file-resubmission.test.ts
-- packages/core/test/shared-native-image-layout.test.ts
-- packages/core/test/shared-native-linked-images.test.ts
-- packages/core/test/shared-create-scope-cost.test.ts
-- packages/cli/test/source-file-resubmission-navigation.test.ts
-- packages/cli/test/library-source-file-resubmission-http.test.ts
-- packages/core/test/shared-source-projection-repair.test.ts
-- packages/core/test/shared-import-table-literals.test.ts
-- packages/core/test/shared-source-file-repair.test.ts
-- packages/core/test/shared-native-table-literal-repair.test.ts
-- packages/core/test/shared-source-file-literal-repair.test.ts
-- packages/core/test/shared-import-code-padding.test.ts
-- packages/core/test/notion-http.test.ts
-- packages/core/test/shared-source-storage.test.ts
-- packages/cli/test/library-source-storage-http.test.ts
+记录所选 Source/member 范围、完整目录、来源贡献、精确字节、当前权限与请求成本。不得用零 Files 的快速消费样本证明人类阅读已完成。受控 HTTP、实际包、真实 Notion 与 Pi 分开声明。
 
 ## Cleanup
 
-沿 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 处理自有临时内容。当前唯一字节、未完成操作必要输入和其他 owner 保留；已经失效的历史 pin 不成为永久保护根。Sources 的来源管理与普通消费分开，检查过程不偷偷修库或创建阅读页。
+沿 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收自有临时物。当前唯一字节和必要在途输入先移交；普通消费不清库。旧历史 pin 不成为永久保留根。

@@ -533,11 +533,7 @@ describe("shared authoring through the standard fresh snapshot", () => {
   test("sharedReadOnly refuses initial and changed adoption before every Notion write", async () => {
     const f = sharedSnapshotFixture()
     const first = failure(
-      await f.run(
-        openSkill(skillPage, { ...options, refresh: true, sharedReadOnly: true }).pipe(
-          Effect.result,
-        ),
-      ),
+      await f.run(openSkill(skillPage, { ...options, refresh: true }).pipe(Effect.result)),
     )
     expect(first.code).toBe("SHARED_OBSERVATION_REQUIRED")
     expect(f.writeCount()).toBe(0)
@@ -546,11 +542,7 @@ describe("shared authoring through the standard fresh snapshot", () => {
     f.bodies.set(skillPage, "Changed after baseline\n")
     f.clearCalls()
     const next = failure(
-      await f.run(
-        openSkill(skillPage, { ...options, refresh: true, sharedReadOnly: true }).pipe(
-          Effect.result,
-        ),
-      ),
+      await f.run(openSkill(skillPage, { ...options, refresh: true }).pipe(Effect.result)),
     )
     expect(next.code).toBe("SHARED_OBSERVATION_REQUIRED")
     expect(f.writeCount()).toBe(0)

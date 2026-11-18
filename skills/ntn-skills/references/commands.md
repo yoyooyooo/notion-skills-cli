@@ -1,113 +1,107 @@
-# Commands and recovery
+# Current commands
 
-Run `ntn-skills --help` for installed capabilities and `ntn-skills COMMAND --help` for exact parameters. Help/version work offline and return text. `use` defaults to compact instructions; `use --json` returns full structured consumption. `list` and `read` return JSON by default and accept explicit `--json`; `read --raw` returns exact text. Other commands return one JSON value; exit 0 succeeds, exit 1 is an operational failure and exit 2 is invalid input. Use `schema [command path...]` for machine-readable types, defaults, cardinality and constraints from the installed parser. Parse errors include `next.argv` for the relevant offline help. Bare collections such as `ctl library sources list` return an `items` array; named arrays such as catalog `records` retain their fields. Replace example placeholders with actual returned identities.
+Use the executable and scope supplied by the host. Command names and exact
+flags come from `ntn-skills schema COMMAND...` or that command's help.
+The public root is `list/read/use/files/export/schema/ctl`.
 
-## Discovery and reads
+## Discovery and selection
 
-```bash
-ntn-skills list [--query TASK_TERMS] [--database DATABASE_ID_OR_ALIAS] [--limit 50] [--cursor NEXT_CURSOR] --json
-ntn-skills ctl database list
-ntn-skills read 'CURRENT_REF_FROM_LIST' --json
-ntn-skills use 'CURRENT_REF_FROM_LIST'
-ntn-skills use 'CURRENT_REF_FROM_LIST' --json
-ntn-skills read 'CURRENT_PAGE_ID' --refresh
-ntn-skills files 'SNAPSHOT_ID_FROM_READ'
-ntn-skills read 'RELATIVE_PATH' --from 'PINNED_CONTAINING_FILE_REF'
-ntn-skills read 'PINNED_FILE_REF' --lines 10-30
-ntn-skills read 'PINNED_BINARY_REF' --output NEW_LOCAL_PATH
+```sh
+ntn-skills list --database ENTRY --query TERMS --json
+ntn-skills list --database ENTRY --cursor RETURNED_CURSOR --json
+ntn-skills read EXACT_REF --database ENTRY --json
+ntn-skills use EXACT_REF --database ENTRY
 ```
 
-`list` paginates metadata without bodies or file manifests and retains coverage, database identity and freshness. `--query` filters Name/alias/Description across the accessible source scope unless a View is explicitly selected. The default limit is 50, maximum 500. `count` describes this page; `total_count` describes filtered records in this observation. Follow `next_cursor` while `has_more` is true, preserving query/source selection; a changed directory returns `LIST_CURSOR_STALE`. These fields do not upgrade `coverage.exhaustive`. Hosts needing a complete default directory use SDK `listCatalog`; SDK `listSkills` shares this bounded projection. Database selectors accept one ID, URL or exact case-sensitive registered alias; titles are labels. Unknown/ambiguous selectors fail without fallback. Different databases may contain same-name Skills; preserve page identities and select a database or exact returned record ref. `ctl config show` inspects local aliases; `ctl database register ALIAS --database SELECTOR` validates and registers one, and `ctl database unregister ALIAS` removes only the exact local alias offline. `ctl config set default_database SELECTOR` affects create only and does not constrain discovery. `ctl config unset default_database` clears the preference offline.
+Keep the same query and selection when following a cursor. Names and aliases
+may collide; use an exact returned ref or page ID with its known library.
+Coverage failures cannot establish absence or uniqueness.
 
-`read` inspects one file without loading Requires. `use` loads one root and the complete Requires closure through the shared consumer, with each body appearing once and optional Member bodies left lazy. Copy the returned canonical refs for supporting resources. A missing required node fails the whole use result. `use --json` separates the body graph from manifests and delivery/activation evidence; preparation alone is not model receipt. Canonical IDs and fixed refs bypass catalog discovery. Name selection requires complete uniqueness evidence; incomplete discovery returns an actionable exact-ref or `--database` choice. Advanced graph/session/budget controls use `ctl prepare`; the old root path remains an exact compatibility entry.
+`read` inspects. `use` selects instructions and the complete Requires closure;
+unselected Members remain lazy. Do not activate a workflow while merely
+summarizing or editing its text.
 
-Each `list` row also carries boolean `default_context` (missing or unchecked is false); this field never filters `list` or explicit reads.
+## Files and export
 
-Record `name` and authored frontmatter `name` retain their exact human-readable spelling; names must be nonempty without control characters. Unicode, digits, spaces and hyphens are allowed. A callable `alias` normalizes to NFC and lowercase, trims surrounding whitespace, replaces whitespace runs with `-`, and percent-encodes characters outside Unicode letters, marks, numbers, `_` and `-`. `Tty7`, `n8n-workflow`, `React19` and `中文` retain those names, with aliases `tty7`, `n8n-workflow`, `react19` and `中文`. `Review/2026` has alias `review%2F2026`. Aliases never establish identity; collisions require an exact page ID or ref. See the [public read-output example](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/protocol.md#success).
-
-These illustrative JSON excerpts show the naming fields in successful `read` output and the corresponding authored frontmatter. The full response also supplies exact identity, scope, pinned ref, version, freshness and range; retain those fields when selecting or activating content.
-
-```json
-[
-  {"record": {"name": "Tty7", "alias": "tty7"}, "content": "---\nname: Tty7\ndescription: Terminal workflow\n---\nUse the selected terminal workflow."},
-  {"record": {"name": "n8n-workflow", "alias": "n8n-workflow"}, "content": "---\nname: n8n-workflow\ndescription: Automation workflow\n---\nUse the selected automation workflow."},
-  {"record": {"name": "React19", "alias": "react19"}, "content": "---\nname: React19\ndescription: React workflow\n---\nUse the selected React workflow."},
-  {"record": {"name": "中文", "alias": "中文"}, "content": "---\nname: 中文\ndescription: 中文工作流\n---\n按所选工作流执行。"}
-]
+```sh
+ntn-skills files SNAPSHOT_ID
+ntn-skills read RELATIVE_PATH --from 'CONTAINING_FILE_REF'
+ntn-skills read SNAPSHOT_ID --path assets/image.png --output NEW_IMAGE
+ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY_OR_ZIP
 ```
 
-Current `read/files/export/list` accept one of `--refresh`, `--offline`, `--max-age DURATION`. Defaults are 5m for content and 60s for metadata. Refresh validates online; offline intentionally selects eligible local observations and reports their age; max-age overrides the limit (`0` requires validation). Failed validation never falls back silently to stale bytes. Unpinned offline lookup requires the same locally identifiable credential and endpoint scope; explicit snapshot pins retain their own identity.
+A selected ref preserves a complete local manifest. Keep it for subsequent
+files instead of selecting by name again. Relative paths resolve from the
+containing file, not always the root. A cross-root link needs an explicit
+current Skill ref.
 
-Shared current reads batch flat Files metadata and retained ownership before reusing unchanged bodies. Complete newly observed Notion edits become whole-file customizations after their shared facts verify; no manual adopt marker is required. An independent full-body deadline bounds same-timestamp edits. Preserve the exact `shared_skill` locator, encoded stable record ID and scope; a stable ID is not a page UUID.
+The inventory may include lazy Source/resource bytes. Acquire only the requested
+file unless the task needs the complete export. Exact binary bytes and modes
+are preserved; native files combine their stored frontmatter with normalized
+current body text. Existing identical output is reused; differing output is
+rejected. Reading/exporting scripts never executes them.
 
-Ordinary shared reads can leave unrequested non-Markdown resources unmaterialized while returning their complete fixed manifest. `--refresh` validates current observed content without requiring every binary or script to download. A complete export or authoring request verifies all files. Preserve returned materialization, freshness, validation and pin fields; an available manifest does not prove every byte is already local.
+No arbitrary multiple-path export option is registered. Use single-file output
+or a full export as appropriate. A local selection is not a remote historical
+restore handle. If exact missing bytes cannot use an unchanged current declared
+location, select current content again.
 
-Host metadata consumers can use `ctl cache identity` to obtain an opaque local credential/configuration digest and effective catalog TTL without contacting Notion. It exposes no credential or account, does not establish current permission, and does not change read/offline scope validation. See the [cache contract](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/protocol.md#read-policy-and-cache-management).
+## Freshness and Views
 
-Pinned refs and snapshots are immutable; pinned relative `--from` preserves that version and rejects refresh/max-age. Retained local bytes work offline. A missing resource can be acquired only from its frozen pin identity, and `--offline` fails when those exact bytes are absent. Use the snapshot ID to enumerate all files; a file ref filters its file. Resolve relative links from the containing file, including nested references. `--path` cannot be combined with a target that already has a path, and `--from` rejects `--path`. Inclusive line ranges are 1-based. `--raw` omits JSON identity/freshness, so use it only after retaining those fields. Binary files use `--output`; differing existing output fails with `OUTPUT_CONFLICT`. Reading a script does not authorize execution.
+`--refresh`, `--offline` and `--max-age` are mutually exclusive. Refresh
+validates current native bodies; offline requires local selected bytes. A
+fixed selection rejects refresh/max-age because those choose current content.
+A valid current cache hit can use zero HTTP; metadata revalidation and actual
+body reads have their own observable costs.
 
-## Task routing
+```sh
+ntn-skills ctl views --database ENTRY
+ntn-skills list --view VIEW_ID --database ENTRY
+ntn-skills list --profile PROFILE_ID --database ENTRY
+ntn-skills list --default-view
+```
 
-For Notion page creation, a combined file/metadata change through `apply` against a pinned baseline, or a one-time portable import/export, load `ntn-skills-maintain`. For fixed shared sources, Profile/View defaults, source/member decisions and their interrupted operations, load `ntn-skills-sync`. If a sibling is unavailable, read its exact ID with `ctl builtin read`, then read the needed supporting files from the returned inventory using `--path`. No local install is required just to inspect package instructions.
+Views retain native API ordering and filters. Explicit View selection wins over
+Profile rules. Profiles and Views do not grant access. Change shared rules with
+the `notion/ntn-skills-sync` builtin.
+
+## Library inspection
+
+```sh
+ntn-skills ctl library inspect ENTRY
+ntn-skills ctl library files PAGE_ID --entry ENTRY
+```
+
+Inspect reads the descriptor; files reads complete current file metadata, state
+and authority. Neither reads every body nor repairs the library. A missing
+current descriptor or pending current operation remains an explicit error.
+
+The current library family also provides `init` and singular `profile`.
+Content mutation and Source refresh await the current writer. Use
+`notion/ntn-skills-maintain` for scope and input preparation.
 
 ## Local builtins
 
-The three package IDs are `notion/ntn-skills`, `notion/ntn-skills-maintain` and `notion/ntn-skills-sync`. Context Broker exposes them as `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` through ordinary Skill selection. These package reads need no local install or Notion source; the CLI commands below manage explicit local copies.
-
-```bash
+```sh
 ntn-skills ctl builtin list
 ntn-skills ctl builtin read notion/ntn-skills
 ntn-skills ctl builtin read notion/ntn-skills --path references/integration.md
-ntn-skills ctl builtin install notion/ntn-skills
 ntn-skills ctl builtin status
-ntn-skills ctl builtin update notion/ntn-skills
-ntn-skills ctl builtin install notion/ntn-skills --agent-dir ~/.claude --agent-dir ~/.pi/agent
-ntn-skills ctl builtin export notion/ntn-skills --output ./portable-entrypoint
 ```
 
-These commands work offline without network access or credentials. `ctl builtin list` returns metadata and installation state without instruction bodies. Install/status/update default to the central XDG data store and `~/.agents/skills/<name>` links. Optional repeated `--agent-dir DIR` adds `DIR/skills/<name>` destinations pointing to that same tree; registered targets persist for updates. `NTN_SKILLS_DATA_HOME` overrides the full data directory, otherwise `$XDG_DATA_HOME/ntn-skills` or `~/.local/share/ntn-skills` applies. Export is portable output without installation ownership. Exact IDs select builtins; ordinary remote `list/read` never fall back to package content.
+Package reads work without a Notion library. In a supporting Broker, select the
+exact `@builtin` identity. Local install/update is a separate requested action;
+read its current help and preserve unrelated host roots. Installation exposes
+metadata but does not activate the Skill or configure a native URI adapter.
 
-Keep the central version-2 `.ntn-builtin-install.json` and separate distribution records: they record exact ID/data-root/path/package/content identity, the complete file baseline and owned links. Repeated identical install reuses content and can add targets. Clean old content requires explicit update; all links share its replacement, with prior bytes retained through system Trash. Added/deleted/changed files, foreign links and unowned directories block replacement. An older receipt cannot authorize replacement; preserve it and the original files when the installed command reports a conflict. Never fabricate a receipt or silently adopt another tool's target.
+## Errors
 
-States are `not_installed`, `current`, `update_available`, `modified`, `unmanaged` and `interrupted`. Interrupted records remain outside `skills`; inspect status and recovery/outcome before an explicit retry. Reload/restart host discovery after install/update; OMP uses `/restart`. CLI upgrades, local builtin updates and remote `ctl builtin publish` are independent. Publishing a package copy is an authorized online content-maintenance task; use the maintenance workflow and exact selected destination.
+Keep the exact error and scope. `CURRENT_SCHEMA_REQUIRED` means current
+descriptors must be supplied by an explicit management action.
+`CURRENT_OPERATION_PENDING` means current content is not ready. Missing
+permission, bytes, complete pagination or identity must not fall back to a
+same-name local workflow or a newer source revision.
 
-## Read and management failures
-
-| Failure | Next action |
-| --- | --- |
-| `SKILL_AMBIGUOUS` | Select from candidate database/page identities; do not take the first name match |
-| `CATALOG_INCOMPLETE` | Inspect failed source identities; query a known database and do not claim global absence |
-| `SKILL_NOT_FOUND` | Broaden metadata query or select a known database/current page |
-| `INVALID_SKILL_NAME`, `INVALID_SKILL` | Route a selected content repair to maintain; do not activate malformed content |
-| `SNAPSHOT_MISSING`, `SNAPSHOT_CONFLICT` | Preserve the requested identity; loading current content cannot recreate an arbitrary historical version |
-| `FILE_NOT_FOUND` | Inspect the pinned file inventory and containing-file path |
-| `BINARY_FILE` | Use output and an appropriate viewer |
-| `BUILTIN_UPDATE_AVAILABLE` | Inspect status and explicitly update clean registered content |
-| `BUILTIN_MODIFIED`, `BUILTIN_UNMANAGED` | Preserve local bytes; do not remove/fabricate receipts to force replacement |
-| `BUILTIN_DISTRIBUTION_CONFLICT` | Inspect conflicting destinations or registry errors independently of central state; preserve foreign/changed links and ownership records |
-| `BUILTIN_NOT_INSTALLED` | Explicitly install the central Skill before updating; preserve any unrecognized prior installation |
-| `BUILTIN_INTERRUPTED` | Inspect journal readback/outcome; preserve an unresolved fence |
-| `BUILTIN_PATH_CHANGED`, `BUILTIN_IO_ERROR` | Resolve path drift/I/O without discarding prior bytes or transaction records |
-| `OUTPUT_CONFLICT` | Select a fresh output or review the existing bytes; no blind overwrite |
-| `AUTH_REQUIRED`, `ACCESS_DENIED`, `NOTION_UNAVAILABLE`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Follow [diagnosis](integration.md#diagnose-discovery-and-loading) |
-
-Unknown errors remain failures. Read sanitized transport `details.reason` or nested `cause_details.reason`; do not request raw stderr that may contain credentials/signed URLs. For a partial or unknown shared operation, retain its original ID/input and use the matching maintenance or source recovery path. A fresh exact current read reconciles shared body writes, metadata, apply and restore-follow; `read_again` requests another read after the original outcome has been verified. Add/delete/move use `ctl library file reconcile TARGET OPERATION_ID --entry ENTRY`. The original operation's returned recovery action identifies its exact protocol; do not substitute another operation family. Creating another operation never resolves an unknown request. A verified `not_applied` or `partial` recovery confirms the reported outcome, not a completed edit.
-
-[Public CLI contract](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/protocol.md) owns exact response, identity, storage and recovery semantics.
-
-## Discover through a Notion View
-
-```bash
-ntn-skills ctl views --database library
-ntn-skills list --default-view --database library
-ntn-skills list --view 'VIEW_ID_OR_NOTION_URL' --database library
-ntn-skills list --profile PROFILE_ID --database library
-```
-
-Replace selectors with returned identities. `ctl views` preserves the Notion API order, not an alphabetical sort or a promise about UI tab order. `--default-view` consults the machine-bound shared Profile, falling back to the first API-order View when no default is configured. `--profile PROFILE_ID` selects a shared rule with an explicit `--database`. Explicit `--view` takes precedence over Profile defaults and does not fall back when missing or inaccessible. Omit these selections to discover the full configured library. Profile rules do not activate bodies or grant access; route rule changes to `ntn-skills-sync`. `--query` filters returned metadata and never reads bodies. A selected View includes native quick filters. Empty results and no Views are successful empty directories; failed or incomplete queries are not. View membership is discovery policy, not permission.
-
-View observations use the catalog freshness policy, isolated by credential, database and selector. `--refresh` starts a new native query. Continuation pages retain its query ID and expiry; expiry never extends the observation TTL. Incomplete, missing or repeating pagination fails. Known member metadata errors remain explicit in `coverage.failed_sources`; valid rows are returned, but a partial result cannot establish unique-name resolution.
-
-## Active provider-neutral Sources
-
-For a registered four-table shared library, `ctl library sources list/show/members` inspects mutable origins. `check/fetch` explicitly acquires Git/GitLab or Linear content without remote writes. `prepare/apply` advances one bound member through an exact frozen plan while preserving custom files and older pins. Delegate these changes to `ntn-skills-sync`; ordinary `list/read/files/export` never follows a branch or re-fetches Linear implicitly. The full JSON input and recovery contract is in the [source guide](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/sources-management.md).
+Use [diagnosis](integration.md#diagnose-discovery-and-loading) for a real loading
+problem. Do not clear caches, change identity or execute a content operation
+just to make a read succeed.

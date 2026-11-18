@@ -1,24 +1,29 @@
 import { expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 import { posix } from "node:path"
 import { builtins } from "../src/builtins.ts"
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
+const findBuiltin = (id: string) => {
+  const value = builtins.find((skill) => skill.id === id)
+  if (!value) throw new Error(`Missing builtin: ${id}`)
+  return value
+}
+const fileText = (id: string, path: string) => {
+  const file = findBuiltin(id).portable.files.find((candidate) => candidate.path === path)
+  if (!file) throw new Error(`Missing builtin file: ${id}/${path}`)
+  return text(file.bytes)
+}
 
-test("bundled instructions describe the current library and include every relative reference", () => {
+test("bundled current instructions include every relative reference without checkout-only links", () => {
   expect(builtins.map((skill) => skill.id)).toEqual([
     "notion/ntn-skills",
     "notion/ntn-skills-maintain",
     "notion/ntn-skills-sync",
   ])
-  // Do not forbid the current shared apply's guarded operation resume route.
-  // Retired source workflows and migration narration are not daily instructions.
-  const historicalRouting =
-    /\blegacy\b|\bmigrat(?:e|ed|ing|ion)\b|compatibility default|ctl sync (?:local|upstream)|ctl library migration|已迁移|未迁移|过渡期/iu
   for (const skill of builtins) {
-    expect(skill.portable.description).not.toMatch(historicalRouting)
     for (const file of skill.portable.files) {
       const body = text(file.bytes)
-      expect(body, `${skill.id}/${file.path}`).not.toMatch(historicalRouting)
       const prose = body.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "")
       for (const [, link] of prose.matchAll(/\]\(([^)]+)\)/g)) {
         if (/^[a-z][a-z\d+.-]*:|^#/i.test(link!)) continue
@@ -32,102 +37,89 @@ test("bundled instructions describe the current library and include every relati
   }
 })
 
-test("current onboarding and maintenance preserve complete inputs and original recovery boundaries", () => {
-  const maintain = builtins.find((skill) => skill.id === "notion/ntn-skills-maintain")!
-  expect(maintain.portable.files.some((file) => file.path === "references/setup.md")).toBe(true)
-  const setup = text(
-    maintain.portable.files.find((file) => file.path === "references/setup.md")!.bytes,
-  )
-  const firstRoute = setup.slice(0, setup.indexOf("## Inputs"))
-  for (const term of [
-    "ctl library inspect ENTRY",
-    "/context-broker connect SOURCE ENTRY",
-    "configuration-change authorization",
-    "apply RETURNED_PIN",
-    "--dry-run",
-    "omitted files remain unchanged",
+test("executable builtin examples stay within the public current command surface", () => {
+  const roots = new Set(["list", "read", "use", "files", "export", "schema", "ctl"])
+  const controls = new Set([
+    "library",
+    "config",
+    "cache",
+    "builtin",
+    "doctor",
+    "api",
+    "views",
+    "prepare",
+    "resolve",
   ])
-    expect(firstRoute).toContain(term)
-  const author = maintain.portable.files.map((file) => text(file.bytes)).join("\n")
-  for (const term of [
-    "adopt",
-    "--authoring",
-    "file add",
-    "file move",
-    "file delete",
-    "restore-follow",
-    "read_again",
-    "not_applied",
-    "partial",
-    "--allow-local-archive",
-    "ctl operation resume",
-    "unknown",
-    "original",
-    "bytes",
-    "modes",
-  ])
-    expect(author).toContain(term)
-  expect(author).toContain("not atomic")
-  expect(author).toContain("proved-unsent")
-  const sync = builtins.find((skill) => skill.id === "notion/ntn-skills-sync")!
-  const supply = sync.portable.files.map((file) => text(file.bytes)).join("\n")
-  for (const term of [
-    "ctl library sources",
-    "ctl library source select",
-    "ctl library profile",
-    "--expect",
-    "fingerprint",
-    "reconcile",
-    "custom",
-    "do not grant access",
-  ])
-    expect(supply).toContain(term)
+  const library = new Set(["init", "inspect", "files", "profile"])
+  let examples = 0
+  for (const skill of builtins) {
+    for (const file of skill.portable.files) {
+      const body = text(file.bytes)
+      for (const [, block] of body.matchAll(/```(?:bash|sh)\n([\s\S]*?)```/g)) {
+        for (const line of block!.split("\n")) {
+          const match = /^ntn-skills\s+(.+)$/u.exec(line.trim())
+          if (!match) continue
+          examples += 1
+          const words = match[1]!.split(/\s+/u)
+          const label = `${skill.id}/${file.path}: ${line}`
+          expect(roots.has(words[0]!), label).toBe(true)
+          if (words[0] === "ctl") {
+            expect(controls.has(words[1]!), label).toBe(true)
+            if (words[1] === "library") expect(library.has(words[2]!), label).toBe(true)
+          }
+          expect(words, label).not.toContain("--authoring")
+          expect(words, label).not.toContain("--read-only")
+        }
+      }
+    }
+  }
+  expect(examples).toBeGreaterThan(10)
 })
 
-test("the maintenance root is a bounded complete ordinary edit route, with exceptional protocols deferred", () => {
-  const maintain = builtins.find((skill) => skill.id === "notion/ntn-skills-maintain")!
-  const root = maintain.portable.files.find((file) => file.path === "SKILL.md")!
-  const body = text(root.bytes)
-  expect(root.bytes.byteLength).toBeLessThanOrEqual(5300)
-  const ordinary = body.slice(0, body.indexOf("## Finish"))
-  for (const term of [
-    "read PAGE --database ENTRY --authoring --read-only",
-    "apply RETURNED_PIN --database ENTRY --input INPUT --dry-run --compact",
-    "apply RETURNED_PIN --database ENTRY --input INPUT --compact",
-    "The CLI reads and validates the complete input directory itself",
-    "Do not search the catalog for the page UUID",
-    "already authorized",
-    "Omitted files/properties stay unchanged",
+test("maintenance prepares complete current input without claiming an available content writer", () => {
+  const root = fileText("notion/ntn-skills-maintain", "SKILL.md")
+  const setup = fileText("notion/ntn-skills-maintain", "references/setup.md")
+  const operations = fileText("notion/ntn-skills-maintain", "references/operations.md")
+  expect(new TextEncoder().encode(root).byteLength).toBeLessThanOrEqual(5300)
+  expect(root).toContain("ctl library files PAGE_ID --entry ENTRY")
+  expect(root).toContain("read PAGE_ID --database ENTRY --refresh --json")
+  expect(root).toContain("CURRENT_SCHEMA_REQUIRED")
+  expect(root).toContain("CURRENT_OPERATION_PENDING")
+  expect(root).toContain("current writer is unavailable")
+  expect(root).toContain("not a completed")
+  expect(setup).toContain("ctl library init --parent AUTHORIZED_PARENT_PAGE")
+  expect(setup).toContain("current public writer is not available")
+  expect(setup).toContain("/context-broker connect SOURCE ENTRY")
+  expect(operations).toContain("metadata-only")
+  expect(operations).toContain("Target inspection does not prove whole-library coverage")
+  expect(operations).toContain("unknown CREATE")
+})
+
+test("consumption and Profile guidance preserve zero-write reads and complete current replacement", () => {
+  const consumer = fileText("notion/ntn-skills", "SKILL.md")
+  const profile = fileText("notion/ntn-skills-sync", "SKILL.md")
+  const details = fileText("notion/ntn-skills-sync", "references/synchronization.md")
+  expect(consumer).toContain("zero semantic Notion writes")
+  expect(consumer).toContain("generated Source/resource")
+  expect(consumer).toContain("selecting current content again")
+  expect(consumer).toContain("not a current CLI option")
+  expect(profile).toContain("ctl library profile set")
+  expect(profile).toContain("--expect new")
+  expect(profile).toContain("complete desired rule")
+  expect(profile).toContain("--reconcile")
+  expect(profile).toContain("without another POST or PATCH")
+  expect(profile).toContain("do not grant access")
+  expect(details).toContain("A Skill can combine multiple")
+  expect(details).toMatch(/every supporting file/iu)
+})
+
+test("the published documentation allowlist contains only current guides", () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { files: string[] }
+  expect(manifest.files.filter((path) => path.startsWith("docs/"))).toEqual([
+    "docs/README.md",
+    "docs/current-contract.md",
+    "docs/maintenance-verification-review.md",
   ])
-    expect(ordinary).toContain(term)
-  expect(ordinary).not.toContain("prepare-import")
-  const commands = /```bash\n([\s\S]*?)```/u.exec(ordinary)![1]!.trim().split("\n")
-  expect(commands).toHaveLength(2)
-  expect(commands[0]).toContain("read PAGE")
-  expect(commands[1]).toContain("apply RETURNED_PIN")
-  expect(commands[1]).not.toContain("--dry-run")
-  expect(ordinary).toContain("A preview is not authorization")
-  expect(ordinary).toContain("a separate dry-run need not repeat that validation")
-  expect(body).toContain("A successful apply still needs your final answer")
-  for (const guard of [
-    "not atomic",
-    "unknown",
-    "not_applied",
-    "partial",
-    "original operation",
-    "restore-follow",
-    "entire document only",
-    "no Git fallback",
-  ])
-    expect(body).toContain(guard)
-  const detailed = text(
-    maintain.portable.files.find((file) => file.path === "references/operations.md")!.bytes,
-  )
-  for (const heading of [
-    "Reviewed inventory and repair",
-    "Audit and import a complete local Skill",
-    "Repair an existing identity",
-    "Original-operation recovery",
-  ])
-    expect(detailed).toContain(heading)
 })

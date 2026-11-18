@@ -124,6 +124,16 @@ test("retired root commands and name-based replacement are rejected offline", as
     ["ctl", "sync", "reconcile", "binding"],
     ["replace", "missing.md"],
     ["replace", "missing.md", "--target", "Sample Skill"],
+    ["create", "missing.md"],
+    ["apply", "sample", "--input", "missing"],
+    ["adopt", "sample"],
+    ["ctl", "builtin", "publish", "notion/ntn-skills-maintain"],
+    ["ctl", "library", "source", "list"],
+    ["ctl", "library", "file", "takeover", "sample"],
+    ["ctl", "repair", "plan"],
+    ["ctl", "operation", "reconcile", "old-operation"],
+    ["read", "sample", "--read-only"],
+    ["read", "sample", "--authoring"],
   ])
     await invalid(args)
 }, 60000)
@@ -162,441 +172,54 @@ test("read schema exposes official parameter types and requiredness offline", as
     }),
   )
   expect(output.schema.args).toBeUndefined()
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "authoring",
-      kind: "flag",
-      type: "boolean",
-      required: false,
-      max_occurrences: 1,
-      default: false,
-    }),
-  )
+  for (const retired of ["authoring", "read-only"])
+    expect(
+      output.schema.parameters.some((parameter: { name: string }) => parameter.name === retired),
+    ).toBe(false)
   expect(output.schema.flags).toBeUndefined()
   expect(Array.isArray(output.schema.commands)).toBe(true)
 }, 15000)
 
-test("native draft adoption and enable schemas stay explicit and offline", async () => {
-  const adoption = await invoke(["schema", "adopt"], { inaccessible: true, traceOnline: true })
-  expect(adoption.exit).toBe(0)
-  expect(adoption.onlineCalled).toBe(false)
-  const schema = JSON.parse(adoption.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "page", kind: "argument", required: true }),
-  )
-  for (const name of ["dry-run", "reconcile"])
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({ name, kind: "flag", type: "boolean", default: false }),
-    )
-  const update = await invoke(["schema", "update"], { inaccessible: true, traceOnline: true })
-  expect(update.exit).toBe(0)
-  expect(update.onlineCalled).toBe(false)
-  expect(JSON.parse(update.stdout).schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "enabled", kind: "flag", type: "string", required: false }),
-  )
-  for (const args of [
-    ["adopt", "11111111-1111-4111-8111-111111111111", "--dry-run", "--reconcile"],
-    ["read", "11111111-1111-4111-8111-111111111111", "--authoring", "--offline"],
-    ["read", "11111111-1111-4111-8111-111111111111", "--authoring", "--max-age", "5m"],
-    ["update", "11111111-1111-4111-8111-111111111111", "--enabled", "sometimes"],
-  ])
-    await invalid(args)
-}, 20000)
-
-test("database init schema exposes exact table attachment and durable resume offline", async () => {
-  const result = await invoke(["schema", "ctl", "database", "init"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const output = JSON.parse(result.stdout)
-  expect(output.command).toEqual(["ctl", "database", "init"])
-  for (const name of [
-    "parent",
-    "content-database",
-    "upstream-database",
-    "operation",
-    "set-default",
-  ])
-    expect(output.schema.parameters).toContainEqual(
-      expect.objectContaining({ name, kind: "flag", required: false }),
-    )
-})
-
-test("operation resume schema exposes explicit new artifact opt-in offline", async () => {
-  const result = await invoke(["schema", "ctl", "operation", "resume"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  expect(JSON.parse(result.stdout).schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "new-artifact",
-      kind: "flag",
-      type: "boolean",
-      required: false,
-      min_occurrences: 0,
-      max_occurrences: 1,
-      default: false,
-    }),
-  )
-})
-
-test("upstream schema projects its official parameters and exclusive selection offline", async () => {
-  for (const [leaf, required] of [
-    ["add", ["input", "operation"]],
-    ["update", ["subscription-id", "input", "if-version"]],
-    ["remove", ["subscription-id", "if-version"]],
-  ] as const) {
-    const result = await invoke(["schema", "ctl", "sync", "upstream", leaf], {
-      inaccessible: true,
-      traceOnline: true,
-    })
+test("current management and export schemas contain no historical compatibility routes", async () => {
+  for (const [path, names] of [
+    [
+      ["ctl"],
+      ["api", "builtin", "cache", "config", "doctor", "library", "prepare", "resolve", "views"],
+    ],
+    [
+      ["ctl", "library"],
+      ["files", "init", "inspect", "profile"],
+    ],
+    [
+      ["ctl", "builtin"],
+      ["export", "install", "list", "read", "status", "update"],
+    ],
+  ] satisfies Array<[string[], string[]]>) {
+    const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
     expect(result.exit).toBe(0)
     expect(result.onlineCalled).toBe(false)
-    const parameters = JSON.parse(result.stdout).schema.parameters
-    for (const name of required)
-      expect(parameters).toContainEqual(
-        expect.objectContaining({ name, required: true, min_occurrences: 1, max_occurrences: 1 }),
-      )
+    expect(
+      JSON.parse(result.stdout)
+        .schema.commands.map((command: { name: string }) => command.name)
+        .sort(),
+    ).toEqual(names)
   }
-  const result = await invoke(["schema", "ctl", "sync", "upstream", "run"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const schema = JSON.parse(result.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "target",
-      kind: "flag",
-      min_occurrences: 0,
-      max_occurrences: null,
-    }),
-  )
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "all",
-      kind: "flag",
-      min_occurrences: 0,
-      max_occurrences: 1,
-      default: false,
-    }),
-  )
-  expect(schema.constraints).toContainEqual({ kind: "exactly_one", flags: ["target", "all"] })
-  for (const args of [
-    ["ctl", "sync", "upstream", "run"],
-    ["ctl", "sync", "upstream", "run", "--target", "11111111-1111-4111-8111-111111111111", "--all"],
-    ["ctl", "sync", "upstream", "run", "--all", "--all"],
-    ["ctl", "sync", "upstream", "add", "--input", "missing.json"],
-    [
-      "ctl",
-      "sync",
-      "upstream",
-      "update",
-      "11111111-1111-4111-8111-111111111111",
-      "--input",
-      "missing.json",
-    ],
-  ])
-    await invalid(args)
-}, 60000)
-
-test("source onboarding exposes bounded repeated Source selection without accepting ambiguous member scopes", async () => {
-  const path = ["ctl", "library", "sources", "review"]
-  const schemaResult = await invoke(["schema", ...path], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(schemaResult.exit).toBe(0)
-  expect(schemaResult.onlineCalled).toBe(false)
-  const schema = JSON.parse(schemaResult.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "source", min_occurrences: 0, max_occurrences: null }),
-  )
-  expect(schema.constraints).toContainEqual({ kind: "exactly_one", flags: ["source", "all"] })
-  const entry = ["--entry", "00000000-0000-4000-8000-000000000001"]
-  for (const flags of [
-    ["--source", "alpha", "--source", "alpha"],
-    ["--source", "alpha", "--source", "beta", "--member", "skills/demo"],
-    ["--source", "alpha", "--all"],
-  ])
-    await invalid([...path, ...entry, ...flags])
-}, 60000)
-
-test("sync exposes local and upstream paths without a root upstream alias", async () => {
+  const exported = await invoke(["schema", "export"], { inaccessible: true, traceOnline: true })
+  expect(exported.exit).toBe(0)
+  expect(exported.onlineCalled).toBe(false)
+  expect(
+    JSON.parse(exported.stdout).schema.parameters.some(
+      (parameter: { name: string }) => parameter.name === "projection",
+    ),
+  ).toBe(false)
+  await invalid(["export", "sample", "--output", "out", "--projection", "source"])
   for (const path of [
-    ["ctl", "sync", "local"],
-    ["ctl", "sync", "upstream"],
-  ]) {
-    const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    expect(JSON.parse(result.stdout).command).toEqual(path)
-  }
-  for (const args of [
-    ["schema", "upstream"],
-    ["upstream", "run", "--all"],
-  ]) {
-    const result = await invoke(args, { inaccessible: true, traceOnline: true })
-    expect(result.exit).not.toBe(0)
-    expect(result.onlineCalled).toBe(false)
-  }
-}, 30000)
-
-test("rejected-file resubmission help and schemas stay explicit and offline", async () => {
-  const path = ["ctl", "library", "sources", "recovery", "resubmit-file"]
-  for (const action of ["review", "apply", "reconcile"]) {
-    const result = await invoke(["schema", ...path, action], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    const output = JSON.parse(result.stdout)
-    expect(output.command).toEqual([...path, action])
-    for (const name of [
-      "plan",
-      "entry",
-      ...(action === "review" ? ["target", "path", "output"] : ["review", "review-id"]),
-    ])
-      expect(output.schema.parameters).toContainEqual(
-        expect.objectContaining({ name, required: true, max_occurrences: 1 }),
-      )
-    expect(output.schema.parameters).toContainEqual(
-      expect.objectContaining({ name: "operation", required: false, max_occurrences: 1 }),
-    )
-    const help = await invoke([...path, action, "--help"], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    expect(help.exit).toBe(0)
-    expect(help.onlineCalled).toBe(false)
-    expect(help.stdout).toContain("resubmit-file")
-    expect(help.stdout).toContain(
-      action === "review"
-        ? "native_image_blocks_v1"
-        : action === "apply"
-          ? "separate real ACK"
-          : "never dispatches",
-    )
-  }
-  await invalid([
-    ...path,
-    "reconcile",
-    "unread-original.json",
-    "--entry",
-    "unread-library",
-    "--review",
-    "unread-review.json",
-    "--review-id",
-    "unread-id",
-    "--dry-run",
+    ["create"],
+    ["ctl", "library", "source"],
+    ["ctl", "operation"],
+    ["ctl", "repair"],
   ])
-}, 45000)
-
-test("export projection schema defaults to source and rejects unsupported or repeated values offline", async () => {
-  const result = await invoke(["schema", "export"], { inaccessible: true, traceOnline: true })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const schema = JSON.parse(result.stdout).schema
-  expect(schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "projection",
-      kind: "flag",
-      type: "string",
-      required: false,
-      min_occurrences: 0,
-      max_occurrences: 1,
-      default: "source",
-    }),
-  )
-  expect(schema.constraints).toContainEqual({
-    kind: "allowed_values",
-    flag: "projection",
-    values: ["source", "snapshot"],
-  })
-  await invalid(["export", "sample", "--output", "out", "--projection", "other"])
-  await invalid([
-    "export",
-    "sample",
-    "--output",
-    "out",
-    "--projection",
-    "source",
-    "--projection",
-    "snapshot",
-  ])
-}, 30000)
-
-test("Router member flags expose repeatable exact selection and exclusive clearing offline", async () => {
-  const target = "11111111-1111-4111-8111-111111111111"
-  for (const command of ["create", "replace", "update"]) {
-    const result = await invoke(["schema", command], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    const schema = JSON.parse(result.stdout).schema
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({
-        name: "description",
-        description: expect.stringContaining("2000 Unicode characters"),
-      }),
-    )
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({
-        name: "member",
-        kind: "flag",
-        type: "string",
-        required: false,
-        min_occurrences: 0,
-        max_occurrences: null,
-        default: [],
-      }),
-    )
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({
-        name: "clear-members",
-        kind: "flag",
-        type: "boolean",
-        required: false,
-        min_occurrences: 0,
-        max_occurrences: 1,
-        default: false,
-      }),
-    )
-    expect(schema.constraints).toContainEqual({
-      kind: "mutually_exclusive",
-      flags: ["member", "clear-members"],
-    })
-    const args =
-      command === "replace"
-        ? [command, "missing.md", "--target", target]
-        : [command, command === "create" ? "missing.md" : target]
-    await invalid([...args, "--member", target, "--clear-members"])
-    await invalid([...args, "--clear-members", "--clear-members"])
-  }
-}, 60000)
-
-test("native Requires flags and explicit relation schema commands are discoverable offline", async () => {
-  const target = "00000000-0000-4000-8000-000000000001"
-  for (const command of ["create", "update"]) {
-    const result = await invoke(["schema", command], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    const schema = JSON.parse(result.stdout).schema
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({ name: "require", type: "string", max_occurrences: null }),
-    )
-    expect(schema.parameters).toContainEqual(
-      expect.objectContaining({ name: "clear-requires", type: "boolean", max_occurrences: 1 }),
-    )
-    expect(schema.constraints).toContainEqual({
-      kind: "mutually_exclusive",
-      flags: ["require", "clear-requires"],
-    })
-    await invalid([
-      command,
-      command === "create" ? "missing.md" : target,
-      "--require",
-      target,
-      "--clear-requires",
-    ])
-  }
-  for (const command of ["plan", "apply", "reconcile"]) {
-    const result = await invoke(["schema", "ctl", "library", "relations", command], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    expect(JSON.parse(result.stdout).schema.parameters).toContainEqual(
-      expect.objectContaining({ name: command === "plan" ? "entry" : "input", required: true }),
-    )
-  }
-}, 60000)
-
-test("machine constraints and handler rejection share the command contract", async () => {
-  for (const [path, expected] of [
-    [["read"], { kind: "mutually_exclusive", flags: ["raw", "output"] }],
-    [["ctl", "sync", "local", "plan"], { kind: "exactly_one", flags: ["binding", "all"] }],
-    [["ctl", "cache", "clear"], { kind: "requires_absent", flag: "all", absent: ["database"] }],
-    [
-      ["ctl", "library", "file", "request"],
-      { kind: "mutually_exclusive", flags: ["submit", "process", "reconcile"] },
-    ],
-  ] as const) {
-    const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.onlineCalled).toBe(false)
-    expect(JSON.parse(result.stdout).schema.constraints).toContainEqual(expected)
-  }
-  for (const args of [
-    ["read", "sample", "--raw", "--output", "out.md"],
-    ["read", "sample", "--lines", "1-2", "--output", "out.md"],
-    ["ctl", "sync", "local", "plan"],
-    ["ctl", "sync", "local", "plan", "binding", "--all"],
-    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
-    ["ctl", "cache", "clear", "--all", "--database", "db"],
-    [
-      "ctl",
-      "library",
-      "file",
-      "request",
-      "00000000-0000-4000-8000-000000000001",
-      "references/1.md",
-      "--entry",
-      "00000000-0000-4000-8000-000000000002",
-      "--submit",
-      "--process",
-    ],
-  ])
-    await invalid(args)
-}, 60000)
-
-test("file request original operation is explicit, reconcile-only and available in public help", async () => {
-  const command = ["ctl", "library", "file", "request"]
-  const target = [
-    "00000000-0000-4000-8000-000000000001",
-    "references/1.md",
-    "--entry",
-    "00000000-0000-4000-8000-000000000002",
-  ]
-  const operation = `body-write-follow-${"a".repeat(64)}.${"b".repeat(64)}`
-  for (const flags of [
-    ["--operation", operation],
-    ["--process", "--operation", operation],
-    ["--submit", "--operation", operation],
-    ["--reconcile", "--operation", "wrong"],
-    ["--reconcile", "--operation", operation, "--operation", operation],
-  ])
-    await invalid([...command, ...target, ...flags])
-  const schema = await invoke(["schema", ...command], { inaccessible: true, traceOnline: true })
-  expect(schema.exit).toBe(0)
-  expect(schema.onlineCalled).toBe(false)
-  expect(JSON.parse(schema.stdout).schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "operation" }),
-  )
-  const help = await invoke([...command, "--help"], { inaccessible: true, traceOnline: true })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout).toContain("--operation")
-}, 60000)
-
-test("update Default Context accepts explicit true and false and rejects repetition", async () => {
-  const target = "11111111-1111-4111-8111-111111111111"
-  for (const flags of [
-    ["--default-context"],
-    ["--default-context=true"],
-    ["--default-context=false"],
-  ]) {
-    const result = await invoke(["update", target, ...flags, "--dry-run"])
-    jsonFailure(result, "AUTH_REQUIRED", 1)
-  }
-  await invalid(["update", target, "--default-context", "--default-context"])
-  await invalid(["update", target, "--default-context=true", "--default-context=false"])
+    await invalid(["schema", ...path])
 }, 30000)
 
 test("unknown flags, obsolete selectors and conflicting paths fail before online handlers", async () => {
@@ -691,201 +314,12 @@ test("pinned and relative pinned reads allow offline but reject refresh and age 
   }
 }, 60000)
 
-test("sync and cache require unambiguous selections before online work", async () => {
-  for (const args of [
-    ["ctl", "sync", "local", "bind", "sample"],
-    ["ctl", "sync", "local", "bind", pinned, "--path", "local"],
-    ["ctl", "sync", "local", "plan"],
-    ["ctl", "sync", "local", "plan", "binding", "--all"],
-    ["ctl", "sync", "local", "plan", "--all", "--from", "local"],
-    ["ctl", "sync", "local", "plan", "--all", "--from", "notion"],
-    ["ctl", "sync", "local", "plan", "binding", "--from", "remote"],
-    ["ctl", "sync", "local", "plan", "binding", "--dry-run"],
-    ["ctl", "sync", "local", "apply"],
-    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--all"],
-    ["ctl", "sync", "local", "apply", "--plan", "p_invalid", "--from", "local"],
-    ["ctl", "operation", "reconcile", "operation-id", "--force"],
-    ["ctl", "sync", "local", "status", "--offline"],
-    ["ctl", "sync", "local", "unbind"],
-    ["ctl", "cache", "clear"],
-    ["ctl", "cache", "clear", "sample", "--all"],
-    ["ctl", "cache", "clear", "--all", "--database", "sample"],
-    ["ctl", "cache", "clear", pinned],
-    ["ctl", "config", "set-cache-policy"],
-  ])
-    await invalid(args)
-}, 60000)
-
-test("valid sync selections and explicit replacement targets reach their actual operational prerequisites", async () => {
-  for (const args of [
-    [
-      "ctl",
-      "sync",
-      "local",
-      "bind",
-      "sample",
-      "--path",
-      "local",
-      "--as",
-      "local-copy",
-      "--dry-run",
-    ],
-    [
-      "ctl",
-      "sync",
-      "local",
-      "connect",
-      "11111111-1111-4111-8111-111111111111",
-      "--path",
-      "local",
-      "--dry-run",
-    ],
-    [
-      "ctl",
-      "sync",
-      "upstream",
-      "connect",
-      "https://example.com/skills.git",
-      "--database",
-      "11111111-1111-4111-8111-111111111111",
-    ],
-    ["replace", "missing.md", "--target", "11111111-1111-4111-8111-111111111111", "--dry-run"],
-  ])
-    jsonFailure(await invoke(args), "AUTH_REQUIRED", 1)
-  for (const source of ["local", "notion"]) {
-    const result = await invoke(
-      [
-        "ctl",
-        "sync",
-        "local",
-        "plan",
-        "missing-binding",
-        "--from",
-        source,
-        "--output",
-        "plan.json",
-      ],
-      { traceOnline: true },
-    )
-    jsonFailure(result, "SYNC_BINDING_MISSING", 1)
-    expect(result.onlineCalled).toBe(false)
-  }
-  const empty = await invoke(["ctl", "sync", "local", "status"])
-  expect(empty.exit).toBe(0)
-  expect(JSON.parse(empty.stdout)).toEqual({ ok: true, bindings: [] })
-}, 30000)
-
-const helpCommands = [
-  [],
-  ["apply"],
-  ["ctl", "sync", "local", "connect"],
-  ["ctl", "sync", "local", "run"],
-  ["ctl", "sync", "local", "check"],
-  ["ctl", "sync", "upstream"],
-  ["ctl", "sync", "upstream", "connect"],
-  ["ctl", "sync", "upstream", "run"],
-  ["ctl", "sync", "upstream", "list"],
-  ["list"],
-  ["ctl", "database"],
-  ["ctl", "database", "list"],
-  ["read"],
-  ["files"],
-  ["create"],
-  ["replace"],
-  ["update"],
-  ["schema"],
-  ["schema", "read"],
-  ["ctl"],
-  ["ctl", "status"],
-  ["ctl", "backup"],
-  ["ctl", "operation"],
-  ["ctl", "operation", "list"],
-  ["ctl", "operation", "show"],
-  ["ctl", "sync", "local"],
-  ["export"],
-  ["write"],
-  ["ctl", "config"],
-  ["ctl", "config", "show"],
-  ["ctl", "config", "set"],
-  ["ctl", "config", "unset"],
-  ["ctl", "config", "set-token"],
-  ["ctl", "config", "clear-token"],
-  ["ctl", "database"],
-  ["ctl", "database", "register"],
-  ["ctl", "database", "unregister"],
-  ["ctl", "sync"],
-  ["ctl", "sync", "local", "bind"],
-  ["ctl", "sync", "local", "status"],
-  ["ctl", "sync", "local", "plan"],
-  ["ctl", "sync", "local", "apply"],
-  ["ctl", "operation", "reconcile"],
-  ["ctl", "sync", "local", "unbind"],
-  ["ctl", "cache"],
-  ["ctl", "cache", "status"],
-  ["ctl", "cache", "clear"],
-  ["ctl", "resolve"],
-  ["ctl", "doctor"],
-  ["ctl", "operation", "resume"],
-]
-for (const command of helpCommands) {
-  test(`${command.join(" ") || "root"} help requires no provider or accessible application roots`, async () => {
-    const result = await invoke([...command, "--help"], { inaccessible: true, traceOnline: true })
-    expect(result.exit).toBe(0)
-    expect(result.stderr).toBe("")
-    expect(result.stdout.trim().length).toBeGreaterThan(0)
-    expect(result.onlineCalled).toBe(false)
-  })
-}
-test("daily recovery guidance names executable command paths offline", async () => {
-  for (const [path, instruction] of [
-    [["create"], "operation resume OPERATION_ID"],
-    [["ctl", "sync", "local", "bind"], "sync local run BINDING --from local|notion"],
-    [["ctl", "operation"], "operation"],
-  ] as const) {
-    const help = await invoke([...path, "--help"], { inaccessible: true, traceOnline: true })
-    expect(help.exit).toBe(0)
-    expect(help.onlineCalled).toBe(false)
-    expect(help.stdout.replace(/\s+/g, " ")).toContain(instruction)
-    const schema = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(schema.exit).toBe(0)
-    expect(schema.onlineCalled).toBe(false)
-    expect(JSON.stringify(JSON.parse(schema.stdout).schema)).toContain(instruction)
-  }
-}, 30000)
-
-test("cold setup and whole-intent editing are directly discoverable without a schema crawl", async () => {
-  const setup = "ctl builtin read notion/ntn-skills-maintain --path references/setup.md"
-  for (const path of [[], ["ctl"]]) {
-    const help = await invoke([...path, "--help"], { inaccessible: true, traceOnline: true })
-    expect(help.exit).toBe(0)
-    expect(help.onlineCalled).toBe(false)
-    expect(help.stdout.replace(/\s+/g, " ")).toContain(setup)
-    const schema = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(schema.exit).toBe(0)
-    expect(schema.onlineCalled).toBe(false)
-    expect(JSON.parse(schema.stdout).schema.description).toContain(setup)
-  }
-  const help = await invoke(["--help"], { inaccessible: true, traceOnline: true })
-  const text = help.stdout.replace(/\s+/g, " ")
-  expect(text).toContain("read PAGE --database ENTRY --authoring --read-only")
-  expect(text).toContain(
-    "For an explicitly authorized complete input, apply RETURNED_PIN --database ENTRY --input DIR --compact",
-  )
-  expect(text).toContain(
-    "Use --dry-run instead when a preview is requested, intent is unclear or writing is not authorized",
-  )
-  expect(text).toContain(
-    "ntn-skills apply RETURNED_PIN --database ENTRY --input ./changes --dry-run",
-  )
-  expect(text).toContain("omitted files stay unchanged")
-}, 30000)
-
 test("parser errors return the relevant offline help command", async () => {
   for (const [args, next] of [
     [["read"], ["ntn-skills", "read", "--help"]],
     [
-      ["ctl", "sync", "local", "plan", "--unknown-option"],
-      ["ntn-skills", "ctl", "sync", "local", "plan", "--help"],
+      ["ctl", "library", "inspect", "--unknown-option"],
+      ["ntn-skills", "ctl", "library", "inspect", "--help"],
     ],
     [["unknown-command"], ["ntn-skills", "--help"]],
   ] satisfies Array<[string[], string[]]>) {
@@ -899,185 +333,6 @@ test("parser errors return the relevant offline help command", async () => {
   }
 }, 30000)
 
-test("apply exposes sparse changes and enforces metadata selection before access", async () => {
-  const schema = await invoke(["schema", "apply"], { inaccessible: true, traceOnline: true })
-  expect(schema.exit).toBe(0)
-  expect(schema.onlineCalled).toBe(false)
-  const output = JSON.parse(schema.stdout)
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "target", kind: "argument", required: true }),
-  )
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({ name: "input", kind: "flag", required: false, max_occurrences: 1 }),
-  )
-  expect(output.schema.parameters).toContainEqual(
-    expect.objectContaining({
-      name: "remove",
-      kind: "flag",
-      min_occurrences: 0,
-      max_occurrences: null,
-    }),
-  )
-  const help = await invoke(["apply", "--help"], { inaccessible: true, traceOnline: true })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("operation resume OPERATION_ID")
-  const page = "11111111-1111-4111-8111-111111111111"
-  for (const command of ["apply", "update"])
-    await invalid([command, pinned, "--member", page, "--clear-members"])
-}, 30000)
-
-test("upstream connect exposes Git source and member directory selection offline", async () => {
-  const result = await invoke(["schema", "ctl", "sync", "upstream", "connect"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(result.exit).toBe(0)
-  expect(result.onlineCalled).toBe(false)
-  const parameters = JSON.parse(result.stdout).schema.parameters
-  expect(parameters).toContainEqual(
-    expect.objectContaining({
-      name: "source",
-      kind: "argument",
-      required: true,
-      max_occurrences: 1,
-    }),
-  )
-  for (const name of ["root", "include", "exclude"])
-    expect(parameters).toContainEqual(
-      expect.objectContaining({ name, kind: "flag", min_occurrences: 0, max_occurrences: null }),
-    )
-  expect(parameters.some((parameter: { name: string }) => parameter.name === "input")).toBe(false)
-  const help = await invoke(["ctl", "sync", "upstream", "connect", "--help"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout).toContain("HEAD")
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("member directory")
-  await invalid(["ctl", "sync", "upstream", "connect"])
-  await invalid([
-    "ctl",
-    "sync",
-    "upstream",
-    "connect",
-    "https://example.com/skills.git",
-    "--ref",
-    "main",
-    "--ref",
-    "main",
-  ])
-})
-
-test("local connect exposes one initial direction and validates it before access", async () => {
-  const schema = await invoke(["schema", "ctl", "sync", "local", "connect"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(schema.exit).toBe(0)
-  expect(schema.onlineCalled).toBe(false)
-  const contract = JSON.parse(schema.stdout).schema
-  expect(
-    contract.parameters.find((parameter: { name: string }) => parameter.name === "path"),
-  ).toMatchObject({
-    required: true,
-    min_occurrences: 1,
-    max_occurrences: 1,
-  })
-  expect(contract.constraints).toContainEqual({
-    kind: "allowed_values",
-    flag: "from",
-    values: ["local", "notion"],
-  })
-  const help = await invoke(["ctl", "sync", "local", "connect", "--help"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(help.exit).toBe(0)
-  expect(help.onlineCalled).toBe(false)
-  expect(help.stdout.replace(/\s+/g, " ")).toContain("missing directory")
-  await invalid([
-    "ctl",
-    "sync",
-    "local",
-    "connect",
-    "11111111-1111-4111-8111-111111111111",
-    "--path",
-    "missing-local",
-    "--from",
-    "unknown",
-  ])
-  await invalid(["ctl", "sync", "local", "connect", "11111111-1111-4111-8111-111111111111"])
-})
-
-test("daily management schema excludes historical operator commands offline", async () => {
-  const upstream = await invoke(["schema", "ctl", "sync", "upstream"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(upstream.exit).toBe(0)
-  expect(upstream.onlineCalled).toBe(false)
-  const upstreamCommands = JSON.parse(upstream.stdout).schema.commands.map(
-    (command: { name: string }) => command.name,
-  )
-  for (const name of [
-    "connect",
-    "list",
-    "add",
-    "update",
-    "remove",
-    "status",
-    "check",
-    "plan",
-    "apply",
-    "run",
-    "fork",
-    "track",
-  ])
-    expect(upstreamCommands).toContain(name)
-  for (const name of [
-    "publish-files",
-    "content-adopt-plan",
-    "content-adopt-apply",
-    "source-rich-text-repair-plan",
-    "source-rich-text-repair-apply",
-    "source-rich-text-repair-reconcile",
-    "source-rich-text-repair-show",
-    "source-root-fidelity-plan",
-    "source-root-fidelity-apply",
-    "source-root-fidelity-reconcile",
-    "source-root-fidelity-show",
-    "source-root-completion-plan",
-    "source-root-completion-apply",
-    "source-root-completion-reconcile",
-    "source-root-completion-show",
-    "map-checkpoint-adopt-plan",
-    "map-checkpoint-adopt-apply",
-    "adopt-plan",
-    "adopt-apply",
-    "prepare-plan",
-    "prepare-apply",
-    "rebuild",
-    "restore-deleted",
-  ])
-    expect(upstreamCommands).not.toContain(name)
-  const operation = await invoke(["schema", "ctl", "operation"], {
-    inaccessible: true,
-    traceOnline: true,
-  })
-  expect(operation.exit).toBe(0)
-  expect(operation.onlineCalled).toBe(false)
-  expect(
-    JSON.parse(operation.stdout)
-      .schema.commands.map((command: { name: string }) => command.name)
-      .sort(),
-  ).toEqual(["list", "reconcile", "resume", "show"])
-  await invalid(["ctl", "sync", "upstream", "content-adopt-plan", "--input", "missing.json"])
-  await invalid(["ctl", "sync", "upstream", "adopt-plan", "--evidence", "missing.json"])
-  await invalid(["ctl", "operation", "body-completion-plan", "p_fixture"])
-}, 30000)
-
 test("implicit root help works offline", async () => {
   const result = await invoke([], { inaccessible: true, traceOnline: true })
   expect(result.exit).toBe(0)
@@ -1085,7 +340,7 @@ test("implicit root help works offline", async () => {
   expect(result.onlineCalled).toBe(false)
 })
 
-test("SC25 C3 daily help/schema keep internal operator commands out of the daily surface", async () => {
+test("current help and schema expose the same small command tree", async () => {
   const root = await invoke(["schema"], { inaccessible: true, traceOnline: true })
   expect(root.exit).toBe(0)
   expect(root.onlineCalled).toBe(false)
@@ -1107,64 +362,6 @@ test("SC25 C3 daily help/schema keep internal operator commands out of the daily
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout).not.toContain("--session-bindings")
 }, 30000)
-
-for (const path of [
-  ["views"],
-  ["prepare"],
-  ["resolve"],
-  ["operation", "resume"],
-  ["sync", "local", "run"],
-  ["sync", "upstream", "run"],
-])
-  test(`SC25 C3 ctl and historical ${path.join(" ")} share one parser`, async () => {
-    const canonical = await invoke(["schema", "ctl", ...path], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    const historical = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
-    expect(canonical.exit).toBe(0)
-    expect(historical.exit).toBe(0)
-    expect(canonical.onlineCalled || historical.onlineCalled).toBe(false)
-    expect(JSON.parse(canonical.stdout).schema).toEqual(JSON.parse(historical.stdout).schema)
-    const commandHelp = await invoke(["ctl", ...path, "--help"], {
-      inaccessible: true,
-      traceOnline: true,
-    })
-    expect(commandHelp.exit).toBe(0)
-    expect(commandHelp.onlineCalled).toBe(false)
-  }, 30000)
-
-for (const author of ["create", "adopt", "write", "update", "apply", "replace"])
-  test(`SC25 C3 historical ${author} schema remains available offline`, async () => {
-    const schema = await invoke(["schema", author], { inaccessible: true, traceOnline: true })
-    expect(schema.exit).toBe(0)
-    expect(JSON.parse(schema.stdout).schema.name).toBe(author)
-  }, 30000)
-
-for (const command of [
-  ["list"],
-  ["ctl", "database", "list"],
-  ["read", "sample"],
-  ["files", "sample"],
-  ["files", "sample"],
-  ["create", "missing.md"],
-  ["replace", "missing.md", "--target", "11111111-1111-4111-8111-111111111111"],
-  ["export", "sample", "--output", "output.zip"],
-  ["write", "sample", "--input", "missing.md"],
-  ["ctl", "database", "register", "personal"],
-  ["ctl", "sync", "local", "bind", "sample", "--path", "local"],
-  ["ctl", "cache", "status", "sample"],
-  ["ctl", "cache", "clear", "sample"],
-]) {
-  test(`${command.join(" ")} rejects repeated database values before its handler`, async () => {
-    for (const flags of [
-      ["--database", "frontend", "--database", "ops"],
-      ["--database=frontend", "--database=ops"],
-      ["--database", "frontend", "--database=frontend"],
-    ])
-      await invalid([...command, ...flags])
-  }, 15000)
-}
 
 test("new and existing singleton strings and Booleans reject repetition", async () => {
   for (const args of [
@@ -1514,38 +711,3 @@ test("ctl configuration accepts only supported keys and preserves independent se
   ])
     await invalid(["ctl", "config", ...args])
 }, 60000)
-
-test("ctl database unregister removes only an exact local registration", async () => {
-  const root = await mkdtemp(join(tmpdir(), "ntn-skills-database-contract-"))
-  await mkdir(join(root, "config"), { recursive: true })
-  const source = {
-    alias: "ops",
-    database_id: "11111111-1111-4111-8111-111111111111",
-    title: "Operations",
-    data_source_ids: [],
-  }
-  await writeFile(
-    join(root, "config", "config.json"),
-    JSON.stringify({ sources: [source], default_database: source.database_id }),
-  )
-  const missing = await invoke(["ctl", "database", "unregister", "OPS"], {
-    root,
-    traceOnline: true,
-  })
-  jsonFailure(missing, "DATABASE_NOT_FOUND", 1)
-  expect(missing.onlineCalled).toBe(false)
-  const removed = await invoke(["ctl", "database", "unregister", "ops"], {
-    root,
-    traceOnline: true,
-  })
-  expect(removed.exit).toBe(0)
-  expect(removed.onlineCalled).toBe(false)
-  expect(JSON.parse(removed.stdout)).toMatchObject({ unregistered: [source], sources: [] })
-  const shown = await invoke(["ctl", "config", "show"], { root })
-  expect(JSON.parse(shown.stdout).config).toMatchObject({
-    sources: [],
-    default_database: source.database_id,
-  })
-  for (const args of [["add", "ops", "--database", source.database_id], ["registered"]])
-    await invalid(["ctl", "database", ...args])
-}, 30000)

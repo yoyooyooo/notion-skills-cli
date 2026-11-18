@@ -15,8 +15,8 @@ const deferred = () => {
   return { promise, resolve }
 }
 
-// This is the original installed scalar-inventory service. It serves only its
-// declared fixture facts; controls change HTTP delivery, never SDK results.
+// The installed current-reader service serves only declared Notion facts.
+// Controls change HTTP delivery, never SDK results or consumer caches.
 export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   assert.ok(sample?.notion?.library?.skills)
   assert.ok(isAbsolute(ledgerPath), "The owned request ledger must be absolute")
@@ -36,8 +36,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     denyCurrent = false,
     denyAuthentication = false
   let viewObservation,
-    incompleteViewInventory = false,
-    historyObservation = false
+    incompleteViewInventory = false
   let pendingControl, closing
   const event = (call, name, fields = {}) => {
     fs.appendFileSync(
@@ -60,7 +59,9 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     if (!filter) return true
     if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item))
     if (Array.isArray(filter.or)) return filter.or.some((item) => matches(row, item))
-    const field = row.properties[filter.property]
+    const field =
+      row.properties[filter.property] ??
+      Object.values(row.properties).find((value) => value.id === filter.property)
     if (!field) return false
     if (filter.relation?.is_empty === true) return field.relation?.length === 0
     if (filter.relation)
@@ -165,8 +166,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         view_member_page_ids: viewObservation.member_page_ids,
       })
     } else if (
-      historyObservation &&
       request.method === "GET" &&
+      url.pathname !== `/v1/pages/${notion.main.id}` &&
       notion.skills.some((row) => url.pathname === `/v1/pages/${row.id}`)
     )
       value = notion.skills.find((row) => url.pathname === `/v1/pages/${row.id}`)
@@ -189,7 +190,10 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
             ? notion.files
             : url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
               ? notion.records
-              : undefined
+              : library.sources &&
+                  url.pathname === `/v1/data_sources/${library.sources.data_source_id}/query`
+                ? notion.sources
+                : undefined
       assert.ok(rows, "An unexpected data source was queried")
       value = page(
         project(
@@ -215,20 +219,6 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         ].sort(),
         has_more: value.has_more,
         next_cursor: value.next_cursor,
-        ...(historyObservation &&
-        url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
-          ? {
-              records: value.results.map((row) => ({
-                page_id: row.id,
-                owner: row.properties.skill?.relation?.map((owner) => owner.id) ?? [],
-                record_id: richText(row.properties.record?.rich_text),
-                entity_id: richText(row.properties.entity?.rich_text),
-                kind: row.properties.kind?.select?.name,
-                hash: richText(row.properties.hash?.rich_text),
-                payload_included: Object.hasOwn(row.properties, "payload"),
-              })),
-            }
-          : {}),
       })
     } else throw new Error("Unexpected controlled inventory request")
 
@@ -242,16 +232,16 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         path === "/v1/databases/" + library.skills.database_id ||
         path === "/v1/pages/" + notion.main.id ||
         notion.files.some((file) => path === "/v1/pages/" + file.id) ||
-        (historyObservation && notion.skills.some((row) => path === "/v1/pages/" + row.id)) ||
+        notion.skills.some((row) => path === "/v1/pages/" + row.id) ||
         Object.keys(notion.bodies).some((id) => path === "/v1/pages/" + id + "/markdown") ||
         (viewObservation &&
           (path === "/v1/views" || path === "/v1/views/" + sample.view_dynamics.view.id))
       )
     return (
       method === "POST" &&
-      ([library.skills, library.files, library.records].some(
-        (table) => path === "/v1/data_sources/" + table.data_source_id + "/query",
-      ) ||
+      ([library.skills, library.files, library.records, library.sources]
+        .filter(Boolean)
+        .some((table) => path === "/v1/data_sources/" + table.data_source_id + "/query") ||
         (viewObservation && path === "/v1/views/" + sample.view_dynamics.view.id + "/queries"))
     )
   }
@@ -285,7 +275,6 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       "denyAuthentication",
       "denyCurrent",
       "incompleteViewInventory",
-      "historyObservation",
     ]
     assert.ok(Object.keys(options).every((key) => keys.includes(key)))
     if (Object.hasOwn(options, "current")) {
@@ -306,20 +295,13 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         "Unknown fixture View observation",
       )
     }
-    for (const key of [
-      "denyAuthentication",
-      "denyCurrent",
-      "incompleteViewInventory",
-      "historyObservation",
-    ])
+    for (const key of ["denyAuthentication", "denyCurrent", "incompleteViewInventory"])
       if (Object.hasOwn(options, key)) assert.equal(typeof options[key], "boolean")
     if (Object.hasOwn(options, "denyAuthentication"))
       denyAuthentication = options.denyAuthentication
     if (Object.hasOwn(options, "denyCurrent")) denyCurrent = options.denyCurrent
     if (Object.hasOwn(options, "incompleteViewInventory"))
       incompleteViewInventory = options.incompleteViewInventory
-    if (Object.hasOwn(options, "historyObservation"))
-      historyObservation = options.historyObservation
     applyView()
     discardPending()
     phase = label
@@ -534,7 +516,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     eventsPath,
     requests,
     unexpected,
-    // The existing scalar/history smoke owns these same mutable fixture facts.
+    // The controlled source owns these mutable current fixture facts.
     // They are not consumer state and are never copied into the consumer cache.
     notion,
     setPhase,
@@ -556,134 +538,5 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       })()
       return closing
     },
-  }
-}
-
-/** Reuse the original source fixture for built and independently installed SDK callers. */
-export async function verifyCatalogDirectorySdk({ sdk, sample, env, root }) {
-  assert.ok(isAbsolute(root))
-  fs.mkdirSync(root, { mode: 0o700 })
-  const input = sample.view_dynamics
-  assert.equal(sdk.CATALOG_DIRECTORY_CONTRACT_VERSION, 1)
-  assert.equal(input.inventory_pages, Math.ceil(sample.row_count / 100))
-  const source = await startSdkSourceFixture(sample, join(root, "requests.jsonl"))
-  const evidence = { version: 1, status: "running", transport: "owned loopback Notion", phases: [] }
-  try {
-    for (const mode of ["separate", "combined"]) {
-      const cwd = join(root, mode)
-      fs.cpSync(sample.seed, cwd, { recursive: true, errorOnExist: true, force: false })
-      source.setPhase(mode, { current: "initial", viewObservationId: input.observations[0].id })
-      const reports = []
-      const options = {
-        cwd,
-        env: {
-          ...env,
-          NOTION_API_BASE_URL: source.origin,
-          NTN_SKILLS_REQUEST_TRACE_LIMIT: "10000",
-        },
-        database: sample.notion.library.skills.database_id,
-        metrics: true,
-        onRequestMetrics: (value) => reports.push(value),
-      }
-      const started = performance.now()
-      const result =
-        mode === "combined"
-          ? await sdk.listCatalog({ ...options, directory: {} })
-          : {
-              version: 1,
-              catalog: { ok: true, value: await sdk.listCatalog(options) },
-              directory: {
-                ok: true,
-                value: await sdk.listCatalog({ ...options, defaultView: true }),
-              },
-            }
-      const calls = source.requests.filter((call) => call.phase === mode)
-      const inventory = calls.filter(
-        (call) =>
-          call.path ===
-          "/v1/data_sources/" + sample.notion.library.skills.data_source_id + "/query",
-      )
-      const observed = {
-        mode,
-        elapsed_ms: performance.now() - started,
-        result,
-        request_metrics: [...reports],
-        requests: calls,
-        inventory_requests: inventory.length,
-        inventory_response_bytes: inventory.reduce(
-          (sum, call) => sum + call.decoded_response_bytes,
-          0,
-        ),
-      }
-      evidence.phases.push(observed)
-      assert.equal(result.version, 1)
-      assert.equal(result.catalog.ok, true)
-      assert.equal(result.directory.ok, true)
-      assert.deepEqual(
-        result.catalog.value.records.map((record) => record.id).sort(),
-        [...input.ordinary_record_ids].sort(),
-      )
-      assert.deepEqual(
-        result.directory.value.records.map((record) => record.id),
-        input.observations[0].member_record_ids,
-      )
-      assert.equal(result.directory.value.view.id, input.view.id)
-      assert.equal(result.directory.value.capability_directory, true)
-      assert.equal(result.catalog.value.scope, result.directory.value.scope)
-      assert.equal(result.catalog.value.coverage.exhaustive, true)
-      assert.equal(result.directory.value.coverage.exhaustive, true)
-      assert.equal(inventory.length, input.inventory_pages * (mode === "combined" ? 1 : 2))
-      assert.equal(reports.length, mode === "combined" ? 1 : 2)
-      assert.equal(
-        reports.reduce((sum, report) => sum + report.total_requests, 0),
-        calls.length,
-      )
-      assert.equal(
-        reports.reduce((sum, report) => sum + report.response_bytes, 0),
-        calls.reduce((sum, call) => sum + call.decoded_response_bytes, 0),
-      )
-      for (const report of reports) {
-        assert.equal(report.trace_dropped, 0)
-        assert.equal(report.in_flight, 0)
-        assert.equal(report.unknown_response_bytes, 0)
-        assert.equal(report.requests.notion_body, 0)
-        assert.equal(report.requests.notion_write, 0)
-        assert.equal(report.requests.provider, 0)
-      }
-      for (const call of inventory) {
-        assert.deepEqual([...call.filter_properties].sort(), [...sample.projection].sort())
-        assert.deepEqual(call.returned_properties, [...sample.projection].sort())
-      }
-      assert.deepEqual(source.unexpected, [])
-      if (mode === "combined") {
-        source.setPhase("warm")
-        const warm = await sdk.listCatalog({ ...options, directory: {} })
-        assert.deepEqual(warm.catalog.value.records, result.catalog.value.records)
-        assert.deepEqual(warm.directory.value.records, result.directory.value.records)
-        assert.equal(source.requests.filter((call) => call.phase === "warm").length, 0)
-        assert.equal(reports.at(-1).total_requests, 0)
-        evidence.warm = { result: warm, request_metrics: reports.at(-1) }
-      }
-    }
-    assert.deepEqual(
-      evidence.phases[1].result.catalog.value.records,
-      evidence.phases[0].result.catalog.value.records,
-    )
-    assert.deepEqual(
-      evidence.phases[1].result.directory.value.records,
-      evidence.phases[0].result.directory.value.records,
-    )
-    evidence.status = "passed"
-    return evidence
-  } catch (error) {
-    evidence.status = "failed"
-    evidence.error = String(error)
-    throw error
-  } finally {
-    await source.close()
-    fs.writeFileSync(join(root, "report.json"), JSON.stringify(evidence, null, 2) + "\n", {
-      flag: "wx",
-      mode: 0o600,
-    })
   }
 }

@@ -1,54 +1,19 @@
-import { initializeSourceLibrary } from "../../core/src/shared-sources-library.ts"
-import { librarySourceDefinitionsCommand } from "./commands-library-source-definitions.ts"
-import {
-  librarySourceCompositionCommand,
-  librarySourceReconcileCommand,
-  librarySourceSelectCommand,
-  librarySourceResourceCommand,
-} from "./commands-library-sources.ts"
-import { libraryFilesCommand } from "./commands-library-files.ts"
-import { Clock, Effect, FileSystem, Option } from "effect"
-import { Store } from "../../core/src/store.ts"
-import {
-  archiveSharedHistory,
-  restoreSharedHistory,
-} from "../../core/src/shared-history-workflow.ts"
+import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
-import {
-  inspectFixedGithubSource,
-  validateFixedGithubSource,
-} from "../../core/src/shared-github-source.ts"
-import { resolveGithubApiAccess } from "../../core/src/github-api-access.ts"
-import { registerSourceBinding } from "../../core/src/shared-source-binding.ts"
-import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
-import { libraryOnboarding } from "../../core/src/shared-library-onboarding.ts"
-import { configuration } from "../../core/src/store.ts"
-import { notionWriteCapabilities } from "../../core/src/shared-file-state.ts"
-import { inspectSharedResourceState } from "../../core/src/shared-resource-state.ts"
-import { withReadOnlyNotion } from "../../core/src/notion-readonly.ts"
-import { querySharedSkillIndex } from "../../core/src/shared-skill-index.ts"
-import { Notion } from "../../core/src/notion.ts"
-import { fail, property, SkillsError, SnapshotSchema } from "../../core/src/model.ts"
 import { defineCommand } from "../../core/src/command-schema.ts"
-import { emit, singleton, requiredSingleton, switchFlag } from "./command-options.ts"
-import { libraryMigrationCommand } from "./commands-library-migration.ts"
+import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
+import { initializeSourceLibrary } from "../../core/src/shared-sources-library.ts"
+import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
+import { Notion } from "../../core/src/notion.ts"
+import { emit, requiredSingleton, singleton } from "./command-options.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
-import { libraryRelationsCommand } from "./commands-library-relations.ts"
-import { libraryGraphCommand } from "./commands-library-graph.ts"
-import { libraryAuditCommand } from "./commands-library-audit.ts"
-import { libraryResourceCommand } from "./commands-library-resource.ts"
-import { libraryInventoryCommand } from "./commands-library-inventory.ts"
-import { libraryCreateCommand } from "./commands-library-create.ts"
 
 const initialize = defineCommand(
   "init",
   {
-    parent: singleton("parent", "Create one shared library under this exact Notion parent page"),
-    entry: singleton("entry", "Attach and verify an existing shared library database entry"),
-    operation: singleton(
-      "operation",
-      "Reconcile an original initialization; never replay unknown creation",
-    ),
+    parent: singleton("parent", "Create one current library under this exact parent page"),
+    entry: singleton("entry", "Inspect an existing current library entry"),
+    operation: singleton("operation", "Reconcile the exact pending table creation"),
   },
   (options) =>
     Effect.gen(function* () {
@@ -57,50 +22,38 @@ const initialize = defineCommand(
         entry: Option.getOrUndefined(options.entry),
         operation: Option.getOrUndefined(options.operation),
       })
-      // Explicit attachment/reconciliation is read-only. A newly created
-      // library completes the current four-table layout before returning.
-      const result = !base.reused ? yield* initializeSourceLibrary(base.library) : base
-      const configured = yield* configuration
+      const result =
+        base.library.sources === undefined && !base.reused
+          ? yield* initializeSourceLibrary(base.library)
+          : base
       yield* emit({
         ...result,
-        source_management_ready: result.library.sources !== undefined,
-        ...libraryOnboarding({
-          library: result.library,
-          created: !base.reused,
-          localAliases: (configured.sources ?? [])
-            .filter((source) => source.database_id === result.library.skills.database_id)
-            .map((source) => source.alias),
-        }),
-        ...(result.library.sources
-          ? {}
-          : {
-              next: {
-                argv: [
-                  "ntn-skills",
-                  "ctl",
-                  "library",
-                  "sources",
-                  "init",
-                  "--entry",
-                  result.library.skills.database_id,
-                ],
-              },
-            }),
+        contract: "current",
+        next: {
+          argv: [
+            "ntn-skills",
+            "list",
+            "--database",
+            result.library.skills.database_id,
+            "--refresh",
+            "--json",
+          ],
+        },
       })
     }),
 ).pipe(
   Command.withDescription(
-    "Create four full-page databases named Skills, Files, Records and Sources, or attach an exact existing entry. Display titles have no identity role and need no library suffix. Stable property/data-source IDs live in the registered Notion descriptor; each initial table POST also carries its original operation, role and parent in an internal description marker. Repeating the same dedicated parent reuses its unique registered library even after renaming. Unregistered tables stop a new initialization rather than being adopted by name. Unknown creation is retained with its original operation and never replayed; this command does not migrate existing content or change machine defaults. An existing three-table library is upgraded explicitly with ctl library sources init.",
+    "Create the current Skills, Files, Records and Sources layout. Existing libraries must already use the current Content contract; this command does not convert old content or continue old publication operations.",
   ),
 )
 
 const inspect = defineCommand("inspect", { entry: Argument.String("entry") }, ({ entry }) =>
   Effect.gen(function* () {
-    yield* emit({ library: yield* loadSharedLibrary(entry), capabilities: notionWriteCapabilities })
+    yield* emit({ library: yield* loadSharedLibrary(entry), contract: "current" })
   }),
 ).pipe(
   Command.withDescription(
-    "Read a shared library descriptor from its exact Notion entry. This reads management metadata only, not Skill bodies or upstream resources.",
+    "Read the current library descriptor by its exact Skills database ID. This does not read bodies or change schema.",
   ),
 )
 
@@ -108,12 +61,12 @@ const files = defineCommand(
   "files",
   {
     target: Argument.String("target"),
-    entry: requiredSingleton("entry", "Exact shared library database entry"),
+    entry: requiredSingleton("entry", "Exact current Skills database entry"),
   },
   ({ target, entry }) =>
     Effect.gen(function* () {
       const library = yield* loadSharedLibrary(entry)
-      const index = yield* querySharedSkillIndex(library, target)
+      const index = yield* queryCurrentSkillIndex(library, target)
       yield* emit({
         library_id: library.library_id,
         ...index,
@@ -124,292 +77,13 @@ const files = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Query only the selected Skill's flat file metadata, following all data-source cursors. Returns stable file IDs, logical paths and the actual body-page edit times. Does not read bodies, fetch upstream resources or infer deletion from inaccessible rows.",
+    "Read the main Content descriptor and every supporting Files row. Returns current authority, exact owner, path and finite operation state after complete pagination. No body, Records history, repairs or writes.",
   ),
-)
-
-const state = defineCommand(
-  "state",
-  {
-    target: Argument.String("target"),
-    entry: requiredSingleton("entry", "Exact shared library database entry"),
-    observe: switchFlag(
-      "observe",
-      "Read exact current bodies and original-operation evidence without adopting, reconciling or writing",
-    ),
-    candidate: singleton(
-      "candidate",
-      "Optional complete frozen JSON plan from ctl library sources prepare; no provider refresh",
-    ),
-    sessionPin: singleton(
-      "session-pin",
-      "Optional exact retained snapshot- ID supplied by the caller's session; current selection remains independent",
-    ),
-  },
-  ({ target, entry, observe, candidate, sessionPin }) =>
-    Effect.gen(function* () {
-      const library = yield* loadSharedLibrary(entry)
-      const candidatePath = Option.getOrUndefined(candidate)
-      const frozen =
-        candidatePath === undefined
-          ? undefined
-          : yield* Effect.gen(function* () {
-              const content = yield* (yield* FileSystem.FileSystem)
-                .readFileString(candidatePath)
-                .pipe(
-                  Effect.mapError(() =>
-                    fail("INVALID_ARGUMENT", "The frozen candidate file could not be read."),
-                  ),
-                )
-              return yield* Effect.try({
-                try: (): unknown => JSON.parse(content),
-                catch: () =>
-                  fail("INVALID_ARGUMENT", "The frozen candidate file must be valid JSON."),
-              })
-            })
-      yield* emit(
-        yield* inspectSharedResourceState(library, {
-          target,
-          observe,
-          candidate: frozen,
-          sessionPin: Option.getOrUndefined(sessionPin),
-        }),
-      )
-    }).pipe(withReadOnlyNotion),
-).pipe(
-  Command.withDescription(
-    "Inspect Source origin, exact selected base, recorded page projection, custom ancestry and an explicitly supplied session pin as separate facts. Default inspection reads metadata, shared operation headers and local pending receipts; current bodies and unresolved operation payloads stay unobserved. --observe reads exact bodies and supported original-operation evidence without adopting or reconciling. --candidate validates an existing complete sources prepare plan without fetching newer provider content. --session-pin inspects an exact retained snapshot manifest without loading its byte objects or claiming the session has selected it automatically. Missing facts, inaccessible bodies and unsupported operation families remain explicit. The whole call runs with semantic read-only Notion capability; it never changes page content, selection, ownership or schema.",
-  ),
-)
-
-const sourceFlags = {
-  commit: requiredSingleton("commit", "Selected immutable full 40-character Git commit"),
-  root: requiredSingleton(
-    "root",
-    "Exact repository-relative source root; use an empty string for the whole repository",
-  ),
-}
-const sourceInspect = defineCommand(
-  "inspect",
-  {
-    url: Argument.String("url"),
-    ...sourceFlags,
-  },
-  ({ url, commit, root }) =>
-    Effect.gen(function* () {
-      const startedAt = yield* Clock.currentTimeMillis
-      const api = yield* Notion
-      const access = yield* resolveGithubApiAccess
-      const source = yield* inspectFixedGithubSource({ url, commit, root, metrics: api.metrics })
-      yield* emit({
-        source,
-        access: {
-          api_base: access.base,
-          authentication: access.authentication.kind,
-          custom_api: access.custom,
-        },
-        metadata_only: true,
-        elapsed_ms: (yield* Clock.currentTimeMillis) - startedAt,
-        request_metrics: api.requestMetrics?.(),
-      })
-    }),
-).pipe(
-  Command.withDescription(
-    "Inspect one explicitly fixed GitHub commit and complete selected file tree. Uses a machine-local NTN_SKILLS_GITHUB_API_URL when configured; otherwise reuses explicit tokens or the existing official gh session. Prints only credential-source metadata, never tokens. Does not download blob bodies, execute files, or select a newer commit. Truncated trees, symlinks and submodules in scope fail explicitly.",
-  ),
-)
-const sourceRegister = defineCommand(
-  "register",
-  {
-    target: Argument.String("target"),
-    entry: requiredSingleton("entry", "Exact shared library database entry"),
-    url: singleton(
-      "url",
-      "Public https://github.com/owner/repository source; requires --commit and --root",
-    ),
-    commit: singleton("commit", "Selected immutable full Git commit; use with --url and --root"),
-    root: singleton("root", "Exact repository-relative root; use with --url and --commit"),
-    manifest: singleton(
-      "manifest",
-      "Previously inspected fixed source JSON, or the complete source inspect JSON output; excludes --url/--commit/--root",
-    ),
-    reconcile: switchFlag(
-      "reconcile",
-      "Read back the original deterministic registration without repeating an unknown create",
-    ),
-  },
-  ({ target, entry, url, commit, root, manifest, reconcile }) =>
-    Effect.gen(function* () {
-      const startedAt = yield* Clock.currentTimeMillis
-      const api = yield* Notion
-      const selectedUrl = Option.getOrUndefined(url)
-      const selectedCommit = Option.getOrUndefined(commit)
-      const selectedRoot = Option.getOrUndefined(root)
-      const manifestPath = Option.getOrUndefined(manifest)
-      const fixedSource = yield* Effect.gen(function* () {
-        if (manifestPath !== undefined) {
-          if (
-            selectedUrl !== undefined ||
-            selectedCommit !== undefined ||
-            selectedRoot !== undefined
-          )
-            return yield* Effect.fail(
-              fail(
-                "INVALID_ARGUMENT",
-                "--manifest cannot be combined with --url, --commit or --root.",
-              ),
-            )
-          const json = yield* (yield* FileSystem.FileSystem)
-            .readFileString(manifestPath)
-            .pipe(
-              Effect.mapError(() =>
-                fail(
-                  "SOURCE_MANIFEST_UNAVAILABLE",
-                  "The selected source manifest could not be read.",
-                ),
-              ),
-            )
-          return yield* Effect.try({
-            try: () => {
-              const parsed: unknown = JSON.parse(json)
-              return validateFixedGithubSource(property(parsed).source ?? parsed)
-            },
-            catch: (error) =>
-              error instanceof SkillsError
-                ? error
-                : fail(
-                    "INVALID_SHARED_SOURCE",
-                    "The source manifest is not valid fixed-source JSON.",
-                  ),
-          })
-        }
-        if (selectedUrl === undefined || selectedCommit === undefined || selectedRoot === undefined)
-          return yield* Effect.fail(
-            fail("INVALID_ARGUMENT", "Supply --manifest, or all of --url, --commit and --root."),
-          )
-        return yield* inspectFixedGithubSource({
-          url: selectedUrl,
-          commit: selectedCommit,
-          root: selectedRoot,
-          metrics: api.metrics,
-        })
-      })
-      const library = yield* loadSharedLibrary(entry)
-      const index = yield* querySharedSkillIndex(library, target)
-      const result = yield* registerSourceBinding(library, {
-        skillPageId: index.page_id,
-        mode: reconcile ? "reconcile" : "create",
-        fixedSource,
-      })
-      yield* emit({
-        ...result,
-        elapsed_ms: (yield* Clock.currentTimeMillis) - startedAt,
-        request_metrics: api.requestMetrics?.(),
-      })
-    }),
-).pipe(
-  Command.withDescription(
-    "Retain an immutable Git source manifest for one exact shared Skill. This registers a candidate source and returns its stable source ID; it does not select it, create body projections, or replace editable content. Use --manifest to reuse a previously inspected exact source without another provider metadata request. On unknown outcome, retain the same manifest or URL/commit/root and target, and add --reconcile.",
-  ),
-)
-const sources = defineCommand("source").pipe(
-  Command.withSubcommands([
-    sourceInspect,
-    sourceRegister,
-    librarySourceCompositionCommand,
-    librarySourceReconcileCommand,
-    librarySourceSelectCommand,
-    librarySourceResourceCommand,
-  ]),
-)
-
-const snapshotSave = defineCommand(
-  "save",
-  {
-    snapshot: Argument.String("snapshot"),
-    entry: requiredSingleton("entry", "Exact shared library database entry"),
-    reconcile: switchFlag(
-      "reconcile",
-      "Observe the original frozen archive operation without repeating unknown writes",
-    ),
-    allowLocalArchive: switchFlag(
-      "allow-local-archive",
-      "Authorize sharing this exact snapshot's local resource bytes in Notion",
-    ),
-  },
-  ({ snapshot, entry, reconcile, allowLocalArchive }) =>
-    Effect.gen(function* () {
-      const startedAt = yield* Clock.currentTimeMillis
-      if (!/^s_[a-f0-9]{64}$/.test(snapshot))
-        return yield* Effect.fail(
-          fail("INVALID_SNAPSHOT", "Save requires an exact local snapshot ID."),
-        )
-      const frozen = yield* (yield* Store).readJson(`snapshots/${snapshot}.json`, SnapshotSchema)
-      if (!frozen)
-        return yield* Effect.fail(
-          fail("SNAPSHOT_MISSING", "The original local snapshot manifest is unavailable."),
-        )
-      const library = yield* loadSharedLibrary(entry)
-      const result = yield* archiveSharedHistory(library, frozen, {
-        mode: reconcile ? "reconcile" : "create",
-        allowLocalArchive,
-      })
-      yield* emit({
-        ...result,
-        elapsed_ms: (yield* Clock.currentTimeMillis) - startedAt,
-        request_metrics: (yield* Notion).requestMetrics?.(),
-      })
-    }),
-).pipe(
-  Command.withDescription(
-    "Retain one already complete local shared Skill snapshot as a portable shared pin in Notion. Freezes exact final main/resource bytes, writes content chunks before the manifest, and preserves the original plan on unknown outcome. Current body content is never substituted for this pin.",
-  ),
-)
-const snapshotRestore = defineCommand(
-  "restore",
-  {
-    pin: Argument.String("pin"),
-    entry: requiredSingleton("entry", "Exact shared library database entry"),
-    target: requiredSingleton("target", "Exact Skill page belonging to the shared pin"),
-  },
-  ({ pin, entry, target }) =>
-    Effect.gen(function* () {
-      const startedAt = yield* Clock.currentTimeMillis
-      const library = yield* loadSharedLibrary(entry)
-      const result = yield* restoreSharedHistory(library, { skillPageId: target, pinId: pin })
-      yield* emit({
-        ...result,
-        elapsed_ms: (yield* Clock.currentTimeMillis) - startedAt,
-        request_metrics: (yield* Notion).requestMetrics?.(),
-      })
-    }),
-).pipe(
-  Command.withDescription(
-    "Validate current access to the exact Skill, then restore every archived byte from the selected shared Notion pin. Publishes a complete local fixed snapshot only; does not read current bodies, fetch upstream, advance current state or change Notion content. Use its returned snapshot_id with read/files/export --projection snapshot.",
-  ),
-)
-const snapshots = defineCommand("snapshot").pipe(
-  Command.withSubcommands([snapshotSave, snapshotRestore]),
 )
 
 export const libraryCommand = defineCommand("library").pipe(
-  Command.withShortDescription("Initialize and inspect the shared Notion library layout"),
-  Command.withSubcommands([
-    initialize,
-    inspect,
-    files,
-    state,
-    libraryAuditCommand.pipe(Command.unlisted),
-    libraryResourceCommand.pipe(Command.unlisted),
-    libraryInventoryCommand,
-    libraryCreateCommand,
-    sources,
-    librarySourceDefinitionsCommand,
-    snapshots,
-    libraryMigrationCommand,
-    libraryProfilesCommand,
-    libraryRelationsCommand,
-    libraryGraphCommand,
-    libraryFilesCommand.pipe(Command.unlisted),
-  ]),
+  Command.withDescription(
+    "Manage the current library and Profile. Content import, source refresh and file mutations are unavailable until their current writer is installed; old event, snapshot, archive and repair commands are retired.",
+  ),
+  Command.withSubcommands([initialize, inspect, files, libraryProfilesCommand]),
 )

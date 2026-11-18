@@ -123,6 +123,14 @@ function sharedFileObservationOwner(value: unknown) {
   }
 }
 const sharedCurrentTreeValidationPrefix = "cache/shared-current-tree-validation"
+const currentNativeBodiesPrefix = "cache/current-native-bodies"
+function fencedFileObservation(key: string): boolean {
+  return (
+    key.endsWith("/latest.json") &&
+    (key.startsWith(`${currentNativeBodiesPrefix}/`) ||
+      key.startsWith("cache/shared-file-observations/"))
+  )
+}
 // These exact domains hold evolving local run state or a derived pointer.
 // All original write intents, acknowledgements, plans and inventory observations
 // retain their immutable-payload rule in the same existing SQLite table.
@@ -210,6 +218,11 @@ const sharedLocalDomains: readonly {
     prefix: "cache/shared-file-observations",
     category: "cache",
     address: /^cache\/shared-file-observations\/[a-f0-9]{64}\/(?:[0-9]{20}|latest)\.json$/u,
+  },
+  {
+    prefix: currentNativeBodiesPrefix,
+    category: "cache",
+    address: /^cache\/current-native-bodies\/[a-f0-9]{64}\/latest\.json$/u,
   },
   {
     prefix: "cache/shared-page-identities",
@@ -698,6 +711,16 @@ export function sqliteState(
               fail("STATE_CORRUPT", "Domain query returned an invalid payload."),
             )
           const parsed = yield* parse(rows[0].payload)
+          if (fencedFileObservation(key)) {
+            const owner = yield* Effect.try({
+              try: () => sharedFileObservationOwner(parsed),
+              catch: storageError,
+            })
+            const fences = yield* sql<{
+              retired_through: number
+            }>`SELECT retired_through FROM cache_fences WHERE scope=${owner.scope} AND identity=${owner.record_identity}`
+            if (owner.generation <= (fences[0]?.retired_through ?? 0)) return undefined
+          }
           if (restrictedHash !== undefined)
             yield* Effect.try({
               try: () => localContentPayload(restrictedHash, parsed),
@@ -790,11 +813,15 @@ export function sqliteState(
                       return
                   }
                 }
-                if (parts[1] === "shared-file-observations" && parts[3] === "latest.json") {
+                if (fencedFileObservation(key)) {
                   const owner = yield* Effect.try({
                     try: () => sharedFileObservationOwner(value),
                     catch: storageError,
                   })
+                  // Claim the existing SQLite writer slot before reading the
+                  // fence and current payload; parallel publishers cannot race a
+                  // deferred transaction's read-to-write upgrade.
+                  yield* sql`UPDATE cache_fences SET generation=generation WHERE scope=${owner.scope} AND identity=${owner.record_identity}`
                   const fences = yield* sql<{
                     retired_through: number
                   }>`SELECT retired_through FROM cache_fences WHERE scope=${owner.scope} AND identity=${owner.record_identity}`
@@ -1054,10 +1081,7 @@ export function sqliteState(
                   catch: storageError,
                 })
                 if (sharedCategory !== undefined) {
-                  if (
-                    key.startsWith("cache/shared-file-observations/") &&
-                    key.endsWith("/latest.json")
-                  ) {
+                  if (fencedFileObservation(key)) {
                     const rows = yield* sql<{
                       payload: string
                     }>`SELECT payload FROM shared_local_records WHERE key=${key} AND category='cache'`

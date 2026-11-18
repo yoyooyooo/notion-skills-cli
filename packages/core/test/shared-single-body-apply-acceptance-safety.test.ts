@@ -54,10 +54,7 @@ function replaceEvent(input: Case, changed: Record<string, unknown>) {
   input.f.seedFact(changed, "file_event", input.child.file_id, String(changed.event_id))
 }
 const read = () =>
-  withSharedAuthoringTarget(
-    skillPage,
-    openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }),
-  )
+  withSharedAuthoringTarget(skillPage, openSkill(skillPage, { ...selected, refresh: true }))
 
 describe("sole-body current acceptance safety boundaries", () => {
   test("valid multi-body v1 and layout v2 plans are outside this read exception before IO", async () => {

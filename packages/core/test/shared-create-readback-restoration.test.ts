@@ -154,7 +154,6 @@ test.each([true, false])(
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     )

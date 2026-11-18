@@ -24,10 +24,6 @@ export const useCommand = defineCommand(
     ),
     database: databaseFlag,
     ...readPolicyFlags,
-    readOnly: switchFlag(
-      "read-only",
-      "Forbid every remote write, including internal history retention",
-    ),
     json: switchFlag("json", "Return complete bodies and machine evidence as structured JSON"),
     metrics: switchFlag("metrics", "Include measured HTTP attempts and bytes; requires --json"),
   },
@@ -73,7 +69,6 @@ export const useCommand = defineCommand(
         {
           database: Option.getOrUndefined(config.database),
           metrics: config.metrics,
-          readOnly: config.readOnly,
         },
       )
       if (result.status === "failed")

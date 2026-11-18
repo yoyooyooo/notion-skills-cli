@@ -29,7 +29,6 @@ export const filesConstraints: readonly CommandConstraint[] = [
 ]
 export const readConstraints: readonly CommandConstraint[] = [
   ...filesConstraints,
-  { kind: "requires_absent", flag: "authoring", absent: ["offline", "maxAge", "from"] },
   exclusiveFlags(["raw", "output"]),
   exclusiveFlags(["raw", "json"]),
   exclusiveFlags(["lines", "output"]),
@@ -52,7 +51,6 @@ export const cacheClearConstraints: readonly CommandConstraint[] = [
 export const exportConstraints: readonly CommandConstraint[] = [
   ...filesConstraints,
   { kind: "allowed_values", flag: "format", values: ["zip", "directory"] },
-  { kind: "allowed_values", flag: "projection", values: ["source", "snapshot"] },
 ]
 export const exactTargetConstraint: CommandConstraint = { kind: "exact_target", target: "target" }
 export const memberConstraint = exclusiveFlags(["member", "clear-members"])

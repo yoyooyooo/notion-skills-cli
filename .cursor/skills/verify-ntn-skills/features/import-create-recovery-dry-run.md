@@ -63,7 +63,7 @@ The existing package gate exercises successful public author commands in fresh N
 bun scripts/package-smoke.ts --archive "$CLI_TGZ" --migration-archive "$MIGRATION_TGZ" --runtime "$NODE"
 ```
 
-`scripts/package-smoke/authoring.ts` reuses the existing shared-create fixture and its durable-before-create assertion, plus the strict body/property request boundary used by the shared-apply fixture. The service observes the original dispatch retained by the installed consumer; it never seeds or edits that consumer's SQLite state, receipts or snapshots. Every command uses the independently installed Node bin. The fixture service is verification code, not a consumer source fallback.
+The former installed authoring/audit gate is retired with its product routes. Use [current-convergence](current-convergence.md) for the current contract. `bun run package:check` proves installed current consumption only; it does not prove the pending writer, live table cutover or Pi daily use.
 
 The owned lifecycle creates one main file and two resources, reads their canonical native projection through returned refs, and retains all three original pins. It then verifies body-only `write`, explicit sparse `update`, `apply` preserving omitted files, and `replace` removing one omitted resource. Shared replacement supports one isolated layout change; this gate does not pretend that a multi-file deletion is supported. Main frontmatter that disagrees with native metadata is a `SHARED_METADATA_CONFLICT` with no writes. A verified repeat of the exact original shared creation reuses its original operation; a different creation intent with the same name is `NAME_CONFLICT`. Legacy `CREATE_CONFLICT` recipes retain their separate boundary.
 

@@ -397,7 +397,7 @@ export function exportSkill(selectorInput: string, options: ExportOptions) {
       try: () => parseTarget(selectorInput),
       catch: (e) => e as SkillsError,
     })
-    const projection = options.projection ?? "source"
+    const projection = options.projection ?? "snapshot"
     const snapshot = yield* targetSnapshot(
       target,
       options,
@@ -429,7 +429,7 @@ export function exportSkill(selectorInput: string, options: ExportOptions) {
         files,
       }
     } else skill = yield* snapshotAuthoredPortable(snapshot)
-    const exported = yield* exportPortable(skill, options)
+    const exported = yield* exportPortable(skill, { ...options, projection })
     return {
       ...snapshotInfo(snapshot),
       ...exported,

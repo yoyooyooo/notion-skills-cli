@@ -128,7 +128,6 @@ describe("retained initial source projection in the original create kernel", () 
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       ),
@@ -232,7 +231,6 @@ describe("retained initial source projection in the original create kernel", () 
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       ),
@@ -423,7 +421,6 @@ describe("retained initial source projection in the original create kernel", () 
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       ),
@@ -490,7 +487,6 @@ describe("retained initial source projection in the original create kernel", () 
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           }),
         )
       }),
@@ -543,7 +539,6 @@ describe("retained initial source projection in the original create kernel", () 
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     )
@@ -600,7 +595,6 @@ describe("retained initial source projection in the original create kernel", () 
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       )
@@ -667,7 +661,6 @@ describe("retained initial source projection in the original create kernel", () 
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       )
@@ -892,7 +885,6 @@ describe("retained initial source projection in the original create kernel", () 
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     )

@@ -157,7 +157,7 @@ function withWriter<A, E>(
 
 async function fresh(f: Fixture): Promise<Snapshot> {
   await f.target(parseTarget(skillPage), selected)
-  return f.run(openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }))
+  return f.run(openSkill(skillPage, { ...selected, refresh: true }))
 }
 async function prepared(f: Fixture, snapshot: Snapshot): Promise<SharedSkillApplyPlan> {
   const result = await f.run(
@@ -1334,9 +1334,7 @@ describe("frozen sequential shared apply", () => {
       ),
     ).toHaveLength(0)
     const blocked = await f.run(
-      openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }).pipe(
-        Effect.result,
-      ),
+      openSkill(skillPage, { ...selected, refresh: true }).pipe(Effect.result),
     )
     expect(blocked._tag).toBe("Failure")
     f.clearCalls()

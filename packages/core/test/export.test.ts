@@ -1,6 +1,7 @@
 import { convertPortable } from "../../portable-converter/src/converter.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
+import { randomBytes } from "node:crypto"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
 import {
@@ -48,6 +49,26 @@ const original: PortableSkill = {
 }
 const runPure = <A, E>(operation: Effect.Effect<A, E, NodeServices.NodeServices>) =>
   Effect.runPromise(operation.pipe(Effect.provide(NodeServices.layer)))
+
+test("local ZIP backups preserve resources larger than the direct-upload limit", async () => {
+  const bytes = new Uint8Array(randomBytes(21 * 1024 * 1024))
+  const skill: PortableSkill = {
+    kind: "skill",
+    name: "Current large resource",
+    description: "Export complete current bytes locally.",
+    main: "SKILL.md",
+    files: [
+      { path: "SKILL.md", bytes: encode("# Current content\n"), mode: "100644" },
+      { path: "assets/large.bin", bytes, mode: "100755" },
+    ],
+  }
+  const archive = portableZip(skill, false, true)
+  expect(archive.length).toBeGreaterThan(20 * 1024 * 1024)
+  const restored = readPortable(readImportZip(archive))!
+  const resource = restored.files.find((file) => file.path === "assets/large.bin")!
+  expect(resource.mode).toBe("100755")
+  expect(await runPure(sha256(resource.bytes))).toBe(await runPure(sha256(bytes)))
+})
 
 test("portable ZIP preserves source bytes, metadata, main filename and nested paths across multiple cycles", async () => {
   let skill = original

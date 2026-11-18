@@ -1,174 +1,55 @@
-# 完整 Skill 的渐进维护
+# 当前 Skill 管理验证
 
-主要验证入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+主要入口：[verify-notion-management](../../verify-notion-management/SKILL.md)。当前语义以 [current contract](../../../../docs/current-contract.md) 为准。旧逐代恢复、Git 主文 takeover 和 HTTP takeover 专用用例不再定义本轮管理能力。
 
-AH-1024 管理此批，AH-1025 至 AH-1033 持有下表交付。先更新受影响的合同和失败用例，再改实现。未运行的场景不能记为通过。
+## 实现与实际边界
 
-## 责任与可失败场景
+| 当前行为 | 实现 / 验证 | 证明范围 |
+| --- | --- | --- |
+| Content union、state、owner/path、完整分页 | shared-current-file/index；shared-current-index.test.ts | 当前 metadata 合同 |
+| Native 直接读、末尾 owner guard、无消费写 | shared-snapshot；shared-current-snapshot.test.ts | 当前受控 reader |
+| 完整 current Profile 替换和有限 reconcile | shared-profile；shared-profile.test.ts | 单 Profile 当前规则 |
+| Exact resource、单原件 attachment、unknown 去重 | shared-current-resource；shared-current-resource.test.ts | 资源存储/获取 helper |
+| 公共命令与包内指导 | command-registration；builtin-guidance.test.ts | 可调用和可教的 current 入口 |
 
-| 场景 | 实现责任 | 验证入口 | 关键反例 |
-| --- | --- | --- | --- |
-| MNT01 草稿和注册状态 | 目录分类、inventory、目标 inspector | shared-audit-draft、shared-audit、native-adoption | 合法草稿误报；清空身份藏历史；错字段被当空值 |
-| MNT02 目标诊断和全库范围 | 原 audit scheduler、检查点和覆盖 | resource-audit、安装 smoke | 无关行拖慢目标；关系丢失的孤儿被漏报为全库完整。`--target` 只读可达页和关系过滤头；`--all`/`--census` 才是完整反向表 |
-| MNT03 原页修复和接管 | adoption、identity、operation | authoring、operation-recovery | 无ACK重建、复制身份、部分schema、并发手改 |
-| MNT04 整树计划 | apply planner、文件与引用解析 | apply、resource-lifecycle | 省略当删除、同名猜移动、误改样例、丢未改文件 |
-| MNT05 执行和删除恢复 | 原父子操作与文件状态 | operation-recovery、实际HTTP | unknown重放、半树当完整、恢复新身份、覆盖人类编辑 |
-| MNT06 Agent命令与维护Skill | canonical parser、原操作路由、builtin | help/schema、安装CLI、冷Agent | next.argv猜引用、跨族恢复、说明代替可执行入口 |
-| MNT07 保留原因与增长 | audit/history、同事实复用 | resource-audit、表行和请求 | 无链接当孤儿、同header当同payload、历史pin当垃圾。同主同 Record 头只记 possible_equivalent；`next.argv` 为只读 help/resume/report，完整反向 census 单列为可选 alternative |
-| MNT08 跨系统组合 | 现有Pi Mock和integration | 实际CLI、Pi、serializer、Session | 测试插件补正文、半新图、晚回调、效果丢失 |
-| MNT09 安装与日用候选 | 分发产物与owned真实目标 | package smoke、真实Notion、Pi两臂 | 源码代替安装、私有缓存兜底、暖纠错改记冷成功 |
+以上源码均在 packages/core/src，核心测试在 packages/core/test，CLI 测试在 packages/cli/test。内容整树 writer、Source 发布/刷新、完整 census/cleanup 尚未公开；不能从现有 reader 或 Profile 结果推导完成。
 
-`verify-notion-resource-lifecycle` 负责身份、归属、删除和审计范围的有限合同。`verify-notion-operation-recovery` 负责原请求、ACK、部分完成和未知结果。Broker 的 consumer-state 与 integration 负责管理结果进入固定图、实际请求及回执的交接。
+## 选择必要切片
 
-领域执行入口由 verify-notion-management、verify-notion-consumption 与 verify-notion-source-onboarding 分担，复用本矩阵和现有驱动；不新建总验证平台或 Mock 专属 Skill。新 guardian 只有在独立状态归属、独立不变量和独立可执行反例均成立时才准入。它须说明复用及替代关系、源码对应、工具锁、精确正负性质、真实 guard 反例、结束及清理方式，并由冷 Agent 独立运行。仅有文档时保持 draft。
+~~~sh
+bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-profile.test.ts packages/core/test/shared-current-resource.test.ts packages/cli/test/builtin-guidance.test.ts --timeout 60000
+~~~
 
-## 按切片选择现有入口
+按实际改动选择其中所需测试，不作为每次全跑的固定门槛。保留有区分力的拒绝：错 owner、重复路径/物理行、非 ready、缺 Content、分页未完、missing 原件、字节不符和 unknown 不重复请求。
 
-MNT02/07 见 [resource-audit](resource-audit.md)；MNT03 见 [maintenance-repair](maintenance-repair.md)；MNT04/05 运行 `bun test packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-maintenance-operations.test.ts --timeout 60000`；MNT06 使用公开 `ntn-skills schema ctl` 与 `packages/cli/test/maintenance-repair.test.ts` 的命令 schema 回归。MNT08/09 的安装路径见下方 [joined installed acceptance](#joined-installed-acceptance)，实际 Pi 使用 Broker 的 `verify-notion-skills-integration` 维护地图。每次只选择受影响入口，不要求全部切片重跑。
+管理 metadata 能返回 applying/attention 及 operation ID；普通消费在正文前拒绝。ready 必须为空 Operation，不能用手改 ready 绕过半树。普通 native 编辑不创建 adoption/event/历史资源。
 
-## MNT03 初始 Git 主文的完整接管
+## 当前公开路径
 
-`ctl library file takeover PAGE SKILL.md --input COMPLETE_SKILL.md` 只接受同一原
-Git-only owner、固定 Source/member、无 native 主文事件且当前完整空白的控制页。
-原完整 Git 前像、完整输入 YAML/正文和 mode 分别冻结；Name/Description 必须先显式
-对齐，不能把一次目录元数据更新算作主文迁移。正式 plan/apply/reconcile 复用原
-body-write journal；无 ACK 不重放，追加与用户并发文字相遇时保留文字并 needs_review。
-初次输入使用既有 v17 import wire；原 body writer 仍逐字比较候选。已知完整回包
-只有通过完整 text/code/显式 href 核对和原 Source 证明，才可走既有显式 review；
-不把 Native 排版变化自动当成功，不放行内容损失或 unknown。
+~~~sh
+ntn-skills ctl library inspect ENTRY
+ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills read PAGE_ID --database ENTRY --refresh --json
+ntn-skills files SNAPSHOT_ID
+ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
+~~~
 
-```sh
-bun test packages/core/test/shared-git-main-takeover.test.ts packages/core/test/shared-git-main-import-review.test.ts packages/core/test/shared-main-header-input.test.ts packages/core/test/shared-single-body-apply-review.test.ts packages/core/test/shared-single-body-apply-header.test.ts packages/core/test/shared-body-write-review.test.ts packages/core/test/shared-file-takeover.test.ts packages/cli/test/library-file-takeover-input.test.ts --timeout 60000
-bun test packages/cli/test/library-file-takeover-http.test.ts
-```
+files 的完整目录不证明 body 已获取。整包导出、单文件输出和实际 Notion 全文阅读分别核对。文本 projection 占位、图片原件缺失、Source-generated body 编辑自动接管均是缺陷。
 
-后者运行实际 Node CLI、独立 SQLite 与受控 HTTP，不是实库验收：完整 YAML/执行位、
-同 owner/File/source、未改 Git 文件、原 pin、重复零写和独立冷导出逐项核对。
-精确与 needs_review→显式 review 两条初始旅程均经公开 ctl；既有 native main 的
-`--header-input` 再保留全部前言，正文和属性 PATCH 为零；新的 Node 子进程从同一
-安装包 import SDK 冷读新快照。通过 `NTN_SKILLS_TEST_EXECUTABLE` 指定正常安装的
-候选 bin 时禁止自动重建；构建产物测试与安装产物测试分别记录。
-普通主文读取保持懒加载；冷整树 export 按同一固定 manifest 补取，offline 缺文件
-明确失败且零网络。晚到正文和 Source 定义漂移各有真实 guard 删除反例；对应范围见
-[维护对应审阅](../../../../docs/maintenance-verification-review.md#initial-git-main-takeover-correspondence)。
+当前 Profile 用 singular `ctl library profile`。set 传完整规则、必填 name/enabled/expect，遗漏 default-view/freshness-json 表示清除。unknown 后的 reconcile 只读当前规则，不重复 POST/PATCH；当前内容相等不伪造旧 ACK。
 
-## MNT03 已知回包受理与完整前言
+## 内容 writer 接通后的剩余检查
 
-`shared-single-body-apply-review` 只验证已知 sole-main v1 needs_review：独立
-accepted_observed、原 Store 新纠正、已 applied 新正文后独立启用。原父/子终局
-不能变绿；未知 accepted_current 仍不得写新正文。第三 pending、当前 raw body、
-head、Source、binding、Native metadata 或完整 mode/frontmatter 漂移均须实际拒绝。
-历史 headerless 候选仅可按原完整 authored-input hash 证明 canonical 重建，不能
-据当前 Name/Description 猜原输入字段。`shared-main-header-input` 则验证显式完整
-前言、body/模式保留、同 owner、全 pending 屏障、派发前漂移与未知事件只读核对；
-普通 body write/apply/takeover 不继承该权限。参见
-[完整主文迁移对应审阅](../../../../docs/maintenance-verification-review.md#complete-main-migration-correspondence)。
+用一个代表性完整输入覆盖 main、引用、代码、图片/二进制和 mode，显式声明移动/删除及权威变化。刷新不能覆盖 native 或其他 Source 贡献；排除文件不复生。只在 current writer 真实可用后驱动，不调用已退役 apply/file takeover/restore/history 路径。
 
-## MNT01 执行入口
+同一意图检查成功、部分完成和响应未知。按 stable identity 核当前效果，只继续未完成范围；再次执行 no-op。反向关系与完整分页控制删除范围。目标索引通过不是全库清理通过。
 
-从当前 checkout 执行，不连接生产 Notion：
+真实清理先移交唯一当前内容，移除旧表/字段/记录/附件/导航后重新枚举。当前尚无公开全库治理入口，保持明确缺口，不追加临时 audit 内核。
 
-```sh
-bun test packages/core/test/shared-audit-draft.test.ts packages/core/test/shared-audit.test.ts packages/core/test/shared-audit-inventory.test.ts packages/core/test/shared-native-adoption.test.ts --timeout 30000
-```
+## 安装与日用
 
-先在未修改源码上保留 `shared-audit-draft` 的失败日志。用同一物理页驱动目录分类和完整 audit run，再检查 report。不要只验证纯分类器。
+独立候选包用实际 Node CLI 和同包 SDK；离开 checkout、无开发 override、空 Store。旧 package/controlled-authoring/Pi 配方仍需 owner 接到 current 接口，不能沿固定历史 Broker/原 ACK 门禁宣布新包通过。
 
-合法禁用草稿允许名称、描述和 Kind 尚未完成。它不进入消费者目录，不因此获得可接管资格。主文件身份、来源、关系、Files 和 Records 残留仍须显式检查。字段类型错误、分页不全、反向表未观察不能被归为干净草稿。
+实际 Notion 和 Pro Pi 共用 [current-convergence](current-convergence.md) 第六组与 AH-1063 旅程。源码测试、包安装、正文/投影、模型投递各自报告。旧 Git sibling/main-takeover HTTP tests 不再出现在本入口的执行清单。
 
-metadata 审计可完成草稿的注册检查。未注册正文和历史未验证时保持 unobserved，不能把 metadata 成功扩大成 content/history 通过。审计不调用 adopt、修复、正文写入或消费保留。
-
-共享规则变化须升级 audit 规则版本。旧 checkpoint 可以离线查看原事实，但不得跨新规则恢复或用旧结果制造增量通过。
-
-## 组合与成本合同
-
-主场景覆盖草稿、接管、消费、拆分、引用移动、删除、恢复、并发编辑、原操作续接及新旧会话消费。每个前置票先验证自己的切片；MNT08 不负责把前置空规程变成通过。
-
-Mock 只替换模型决策或外部服务。参数来自真实可见内容和返回的精确 next.argv。CLI、SDK、工具循环和 serializer 使用真实实现。独立 oracle 保留原文、身份、引用、原生 Session 和实际 HTTP，不调用产品实现制造预期答案。
-
-来源请求、作者写入、保留写入、实际响应字节和表行增量分别记录。no-op、重复原操作与真实变更分别测量。私人会话 pins 无法全局枚举时不能建议全局清理。保留原错误、部分覆盖、未运行和未知终局。
-
-## 文档与模型维护
-
-每个切片更新本地图、相关公开协议及 builtin。通过 Pro 的正式 `ntn` 更新受影响的 Notion 长期页并完整读回，保留历史结论和子页链接。
-
-AuditRun 目前只抽象只读、反向覆盖和续跑，不含具体草稿字段。MNT01 由实现与安装回归证明，不能仅刷新 coverage hash 获得形式化证明。状态协议真正变化时补最小模型和精确反例，Statechart 从同一模型生成。
-
-
-## Joined installed acceptance
-
-The package smoke calls `checkProgressiveMaintenance` and `checkInstalledMaintenanceRepair` through the existing installed authoring fixture. The first retains one original main and two new references with original modes `100644` and `100755`, verifies actual raw bodies and stable identities, preserves an old pin, performs explicit move/delete/revive, and shows zero source-row growth for identical current input. Revival uses one public `apply --changes` parent for the original file and its main-body reference, with a zero-write dry-run first; require unchanged native identity, bytes and mode, plus the original deleted pin remaining absent. Repair seeds only native service rows, then drives the installed Node bin through public plan/apply/show/reconcile/repeat commands. It verifies historical-main and managed-file repair, unchanged original pages, URLs, authors, body and extra properties, one identity PATCH per page, zero repeat writes/row growth, and an explicit ordinary-child refusal. Source-function tests remain a separate layer; neither controlled HTTP path claims real Notion acceptance.
-
-For the installed progressive representative, use the existing package smoke entrypoint from the repository root:
-
-```bash
-NTN_SMOKE_EVIDENCE_ROOT=/absolute/owned/evidence \
-  bun scripts/package-smoke.ts --stage maintenance \
-  --archive /absolute/ntn-skills.tgz \
-  --migration-archive /absolute/ntn-skills-state-migration.tgz \
-  --runtime /absolute/node
-```
-
-Use the exact supplied candidate archives and a supported Node executable. This installs into an isolated consumer and runs the same progressive stage through public CLI subprocesses and the owned HTTP service; it does not run repair, Pi or the remaining package stages. Omit `--stage` for the complete package smoke. Preserve stdout/stderr/exit and the emitted `ntn-skills-consumer-*` directory. Read `controlled-authoring/progressive-maintenance.json`, `controlled-authoring/evidence.json` and `controlled-authoring/source-terminal.json` together: audit actual command inputs/outputs, HTTP request/response ledger, source bodies and identities, modes, no-write observations, and service shutdown. Do not replace missing originals with a returned summary or import internal handlers to manufacture evidence.
-
-For a focused repair run, reuse `prepareConsumer` and `checkAuthoring(consumer, undefined, { repairOnly: true })` with an independently installed archive. This skips the unrelated author lifecycle while retaining the same command/HTTP ledger, isolated SQLite state, native source oracle and service shutdown. Preserve `maintenance-repair.json`, `evidence.json` and `source-terminal.json`; a missing original command, source response or shutdown record cannot be replaced by the returned summary.
-
-The primary Linux/Node24 CI lane builds a Broker from its frozen source with this exact CLI candidate, installs both artifacts and Pi 1.5.2, and sets `MNT_VERIFY_PI_REQUIRED=1`. The existing package runner then drives actual Pi, tools, Node CLI, SQLite, source HTTP and normal model serializer. `maintenance-ci.test.ts` fails if that path, pinned version, mandatory flag or original artifact retention is removed. Other lanes report the Pi scope as not_run and still run all installed CLI checks.
-
-Resolve the selected Node launcher's `process.execPath` before creating isolated consumer and Pi environments. Version-manager launchers can depend on the original HOME. Keep the isolated HOME and credentials boundary; do not copy the user's runtime configuration into it. The home-dependent launcher regression must fail for the launcher in the isolated home and run successfully through the resolved binary. An actual Session reporting a launcher error or `CLI_JSON_MISSING` is a failed installed run, even if Pi exits zero.
-
-`maintenance-pi.test.ts` validates the independent oracle: exact read-only next.argv, original call IDs, full source and effects, complete directory objects and native Session. Paths repeated in authoring output do not count as duplicate generated directories. Mock cannot choose a missing ref from the source oracle or replace an unsupported split with a simpler write. Model usage is not a real-model cost measurement.
-
-For NXT03, `checkInstalledMaintenancePi` creates a long original main through the installed CLI. Before Pi starts, a public fresh authoring read and the independent native fixture must both show that `references/pi-one.md` and `references/pi-two.md` are absent. `prepareMaintenancePiIntent` moves both complete original sections into local input files without a remote apply. Actual Pi selects its own fresh pin, previews the complete input, then performs exactly one parent apply. Inspect `fixture-stage.json`, the original Session, `single-apply-proof.json` and the source ledger together: both native pages must first be allocated by that Pi apply, their complete bytes must match the original sections, the main must contain the two bound native links, and the old tree must still omit both files. The explicit `legacy-preallocated` preparation branch and its regression preserve the former two-stage case; it does not satisfy NXT03. Prior evidence directories remain unchanged.
-
-The driver accepts explicitly selected Pi 1.5.2 as well as the existing 1.4.0 and 1.5.0 hosts. Record the actual selected version and whether an owned fallback was installed; a requested version is not execution evidence. This controlled selector uses public result refs and operation IDs, then validates the exact owner-bound read-only `next.argv` before reconcile. Its route is predetermined, and it stops on partial or unknown. It proves the installed protocol and actual Pi tool loop, not cold natural-model recovery choice. Keep NXT02's independent cold-Agent criterion separate.
-
-When the new reference contains a complete section copied from the original main, preserve the raw body-occurrence count across each actual request. The original public authoring read is a different file and snapshot. Its contained occurrence is attributable only when the pre-Pi public baseline, original Session result, exact bash argv, owner, old snapshot, main File ID and complete outgoing result bytes agree; the new reference must be absent from that old tree and present under its acknowledged new identity. Report raw occurrences, the explained old-main contribution and current-reference copies separately. Do not remove historical content or label raw two as raw one. Changed baseline bytes/identity, unknown additional copies and a repeated new-reference body remain rejection cases in `maintenance-pi.test.ts`. A validator correction may reanalyze retained originals offline, with the original failed terminal preserved and the reanalysis written separately.
-
-Formal source correspondence is recorded in `docs/maintenance-verification-review.md`. AuditScope has 7 exact positive/negative configurations in lifecycle; MaintenanceApply has 7 in operation recovery, including the later unreviewed-partial negative. The checked inventories contain 40 and 35 cases respectively. A new run must preserve its original failure artifacts and complete property inventory.
-
-## Independent-review regressions
-
-`shared-skill-apply.test.ts` must exercise complete add/delete/revive parents with
-regular, executable and historically unknown modes. Known original modes survive
-revival; unknown modes stay absent. `shared-skill-apply-tree.test.ts` rejects a
-submitted mode change even when bytes match. A version-2 dry-run must perform the
-same complete-tree reconstruction as execution and reject unavailable retained
-bytes before any pending receipt, original plan or semantic write.
-
-`shared-native-repair.test.ts` must keep a same-owner local original repair pending
-when the source query temporarily omits its plan. A completed-looking identity is
-not an outcome, and another owner remains usable. The no-repair path must not add
-a redundant authentication request; `shared-audit.test.ts` checks cancellation
-and resumed request reuse.
-
-`shared-audit-target.test.ts` checks a Files permission denial followed by a
-request-budget pause in both initial and final observations. The online and
-offline reports retain that finding. Resume keeps the original failed response,
-even when a separate final observation later proves access. These are concrete
-source/transport regressions, not newly claimed TLC properties.
-
-`shared-file-management.test.ts` must exercise a real controlled HTTP response
-for an event that the same execution acknowledged but an immediate full query
-omits. That exact acknowledged event can join the fresh history; a conflicting
-same-ID payload must stop completion. Independent reconciliation still requires
-the original complete outcome: a matching current path or event alone never
-settles an unknown original operation.
-
-## Real native split regression
-
-Use the existing `shared-body-write`, `shared-file-management`, `shared-skill-apply` and `shared-maintenance-operations` tests. Cover a ~23 KiB main shortened through the actual bounded operation record, compact/full plan round-trip and corruption, true unique-input overflow before dispatch, existing-target relative links over a service that rewrites bare relative URLs, and explicit observed-body acceptance with old failure preserved and cold retained-body proof. New-file mutual links must refuse before writes until the pages are staged; a permissive fixture must not claim native Notion supports them. The same real mobile-use page/file identities and prior pin are the live continuation, not a replacement fixture.
-
-## NXT02–05 complete maintenance task
-
-Use one public `apply --input` for an existing main that links to two new references. The v2 parent freezes the complete logical tree before allocation, including fixed-width native URL capacity. Only verified original allocation outcomes supply page IDs; the immutable binding then supplies one exact original body plan. Cover interruption after both allocation ACKs, original body unknown, rehashed replacement page IDs, preserved old pin/modes and public directory-input output. New-file-to-new-file dependencies still refuse before any write. The public `operation show` may propose the exact original `resume` only for a verified prefix and proved-unissued suffix with the original local parent journal; it must never turn a missing or unknown outcome into an unsent step.
-
-For Source A→B, use `sources run --update-following` and same-run `run-resume` over an existing following file plus a custom file. Verify selection, visible body, ownership and final complete tree separately. Include unknown body response, Source/file/request drift, failed request feedback and a failed display checkpoint after an original body success. The latter must retain the body operation ID and repair only feedback/progress; a new upstream discovery or body PATCH is a failure. Ordinary auto runs keep their conservative body guard. No native CAS is claimed.
-
-Run the eight focused source files: `shared-skill-apply`, `shared-skill-apply-tree`, `shared-maintenance-operations`, `shared-source-run`, `shared-source-refresh`, `shared-source-definitions`, `shared-file-request`, `shared-file-restore`. Two maintained formal models and six isolated real-guard mutations cover their declared bounds. Actual owned Notion and installed CLI/Pi/model runs remain separate required layers; fixture success alone cannot close these tickets.
-
-## Real collection maintenance regressions
-
-Use `shared-library-management.test.ts` for exact Source removal/consolidation, shared Record owners, outside Requires, new members after preview, compatible roots, retained selected versions and no duplicate writes after a lost response. `shared-create-public-resources.test.ts` exercises public create with executable scripts, binary/JSON and the explicit Finder metadata exclusion. `shared-create-resource-notes.test.ts` verifies generated-note autolinks without changing raw bytes or user Markdown, and original-ACK continuation preserving the old failed outcome. `shared-sqlite.node.test.ts` includes the retained management operation address; a memory-only Store is insufficient proof of the public command.
-
-Run the actual preview and returned next.argv on an authorized exact collection, then inspect forward Skills/Files/Records/Origin membership. Distinguish live-table Trash from permanent erasure and private historical pins. Do not expand unrelated platform/model matrices for these metadata operations. Preserve the exact failure artifacts and continue the original operation rather than creating a replacement proof object.
+只保留本次必要结果。未完成当前意图所需状态有界保留；其余自有临时物遵守 [系统 Trash 清理](../references/harness.md#cleanup)。不建设新维护验证平台。

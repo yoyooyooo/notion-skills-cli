@@ -17,7 +17,6 @@ export function consumeSharedCreation(
     const current = yield* openSkill(result.skill_page_id, {
       database: library.skills.database_id,
       refresh: true,
-      ...(options.readOnly === undefined ? {} : { sharedReadOnly: options.readOnly }),
     })
     if (
       current.record.locator.type !== "shared_skill" ||

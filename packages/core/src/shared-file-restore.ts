@@ -269,7 +269,6 @@ export function restoreSelectedSharedFile<R = never>(input: {
       scope: yield* authScope,
       startedAt: yield* Clock.currentTimeMillis,
       forceFull: true,
-      readOnly: true,
     })
     yield* checked(() =>
       verifySharedAuthoredSnapshot(current, {

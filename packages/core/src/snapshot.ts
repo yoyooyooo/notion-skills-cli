@@ -16,9 +16,6 @@ import { openSharedConsumer } from "./shared-consumer.ts"
 import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
-import { assertSparseGitFileReferences } from "./shared-sparse-git-references.ts"
-import { sharedPendingObservationPrefix } from "./shared-snapshot.ts"
-import { hasPendingSharedCreate } from "./shared-create.ts"
 import {
   authScope,
   catalog,
@@ -202,7 +199,7 @@ function openSubscription(id: string, options: CatalogOptions) {
 
 export function openSkill(
   selector: string,
-  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
+  options: CatalogOptions = {},
   view: SnapshotView = "generated",
 ) {
   return openSnapshot(selector, options, view)
@@ -210,7 +207,7 @@ export function openSkill(
 
 function openSnapshot(
   selector: string,
-  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
+  options: CatalogOptions = {},
   view: SnapshotView = "generated",
   allowBundleCache = false,
   selectedFiles?: {
@@ -236,7 +233,6 @@ function openSnapshot(
         startedAt,
         forceFull: Boolean(options.refresh) || options.maxAge === 0,
         maxAge: options.maxAge,
-        readOnly: options.sharedReadOnly,
         ...selectedFiles,
       })
     let skill: NotionPageRecord
@@ -280,7 +276,6 @@ function openSnapshot(
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
           maxAge: options.maxAge,
-          readOnly: options.sharedReadOnly,
           ...selectedFiles,
         })
       }
@@ -328,7 +323,6 @@ function openSnapshot(
           startedAt,
           forceFull: Boolean(options.refresh) || options.maxAge === 0,
           maxAge: options.maxAge,
-          readOnly: options.sharedReadOnly,
           ...selectedFiles,
         })
       }
@@ -874,7 +868,7 @@ function selectedMaterialization(snapshot: Snapshot, files: readonly { readonly 
 
 function acquireTargetSnapshot(
   target: SkillTarget,
-  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
+  options: CatalogOptions = {},
   view: SnapshotView = "generated",
   access: "all" | "manifest" | "entrypoint" | "target" = "all",
 ) {
@@ -974,13 +968,6 @@ function acquireTargetSnapshot(
           (observed.snapshot.record.kind !== "router" ||
             observed.snapshot.router_members !== undefined))
       const locator = observed?.snapshot.record.locator
-      let pending = false
-      if (!options.offline && scope && locator?.type === "shared_skill")
-        pending =
-          (yield* (yield* Store).listKeys(
-            `${yield* sharedPendingObservationPrefix(scope, locator.library_id, locator.skill_id)}/`,
-          )).some((key) => key.endsWith(".json")) ||
-          (yield* hasPendingSharedCreate(scope, locator.library_id, locator.skill_id))
       let useObserved =
         observed !== undefined &&
         (options.offline ||
@@ -990,8 +977,7 @@ function acquireTargetSnapshot(
               (locator?.type === "shared_skill"
                 ? Math.min(maxAge, currentEligibilityMaxAge)
                 : maxAge) &&
-            bodyFresh &&
-            !pending))
+            bodyFresh))
       let materialization: ObservedSnapshot["materialization"]
       if (observed && useObserved) {
         if (
@@ -1039,14 +1025,7 @@ function acquireTargetSnapshot(
               .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
           )
           yield* Effect.try({
-            try: () =>
-              observed.snapshot.shared_acquisition?.source?.kind === "git_member"
-                ? assertSparseGitFileReferences(
-                    files,
-                    observed.snapshot.files.map((file) => file.path),
-                    observed.snapshot.shared_acquisition.source.member_root,
-                  )
-                : assertSharedFileReferences(files),
+            try: () => assertSharedFileReferences(files),
             catch: (error) =>
               error instanceof SkillsError
                 ? error
@@ -1201,7 +1180,7 @@ function acquireTargetSnapshot(
 /** Keep selected bytes private to the operation that consumes them. */
 export function targetSnapshot(
   target: SkillTarget,
-  options: CatalogOptions & { readonly sharedReadOnly?: boolean } = {},
+  options: CatalogOptions = {},
   view: SnapshotView = "generated",
   access: "all" | "manifest" | "entrypoint" | "target" = "all",
 ) {
@@ -1282,8 +1261,7 @@ function readSkillSelected(input: string, options: ReadOptions) {
   return readSkillContent(input, options)
 }
 
-function readSkillContent(input: string, supplied: ReadOptions) {
-  const options = { ...supplied, sharedReadOnly: supplied.readOnly }
+function readSkillContent(input: string, options: ReadOptions) {
   return Effect.gen(function* () {
     if (options.from && options.path !== undefined)
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "--from and --path cannot be combined."))

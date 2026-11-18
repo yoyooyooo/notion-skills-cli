@@ -40,6 +40,12 @@ Keep `Name`, `Description`, `Kind`, `Tags`, `Enabled`, `Default Context`, `Skill
 `Main File ID`, `Members` and `Requires`. Name and Description manage discovery;
 they do not silently rewrite source bytes or a file's authored frontmatter.
 
+`Content` holds the main file's current descriptor. `Current State` and `Operation`
+decode into either `ready` with no operation, or `applying` / `attention` with one
+stable current operation ID. A normal reader stops before body acquisition when
+the Skill is not ready. Inspection may return that state for explicit management;
+it does not load an old operation journal or reconcile it as a read side effect.
+
 The main file has the same current authority/content descriptor as a supporting
 file. Its page body is either the current native author body or a generated reading
 projection. The descriptor makes that distinction explicit. Editing a generated
@@ -62,14 +68,30 @@ Do not keep both an editable relation and an independently authoritative JSON co
 ### Files and main-file descriptors
 
 Keep `Name` as display, `File ID` as stable identity, `Path` as a canonical relative
-path and `Skill` as exactly one owner. Add one explicit authority and one current
-content descriptor. Decode them into a discriminated union at the boundary:
+path and `Skill` as exactly one owner. Store one `Content` JSON descriptor. Its
+discriminant determines authority and representation, so a separately editable
+Authority or Status column cannot drift from the locator:
 
 | Current authority and representation | Bytes come from | What the Notion body means |
 | --- | --- | --- |
 | Notion native Markdown | Current page body plus explicitly stored current file metadata | Editable author content |
 | Notion exact resource | Current Records resource locator and exact size/hash/mode | Generated full text for readable resources; an original usable attachment for opaque resources |
 | Selected Source file | Current Source contribution, exact selected revision and source path | Generated full reading projection |
+
+The one accepted descriptor union is:
+
+```ts
+type Content =
+  | { kind: "native"; mode: "100644" | "100755"; frontmatter: string }
+  | { kind: "resource"; object_id: string; sha256: string; bytes: number; mode: "100644" | "100755" }
+  | { kind: "source"; source_id: string; revision: string; source_path: string; sha256: string; bytes: number; mode: "100644" | "100755" }
+```
+
+`native` and `resource` are Notion-owned. A native header is exact current file
+metadata; an empty string means known absence. It has no stored body hash to block
+a human edit. Resource and Source descriptors require a complete hash, byte count
+and mode before publication. An absent descriptor returns `CURRENT_SCHEMA_REQUIRED`
+with `next=migrate_current_content`; no Projection, event or title fallback exists.
 
 Authority describes who controls the file. Representation describes how its bytes
 are stored. A resource managed by Notion is still Notion-owned even when its exact
@@ -126,6 +148,13 @@ table. Shared targets retain each Source's separate contribution. Disabling or
 removing a Source must resolve its affected current files explicitly and cannot
 silently delete another Source's files or Notion-owned overrides.
 
+The current reader decodes Sources `Content` as `{version: 1, plan}`. The plan owns
+the complete selected provider layout and exact upstream identities. `Last Revision`
+is the SHA-256 fingerprint of its normalized current plan. Each source-owned File
+selects the stable Source ID, that fingerprint and its source path. The underlying
+Git commit or other provider identity remains inside the plan; the fingerprint is
+not a content-version history or an instruction to follow a moving branch.
+
 Automatic Source Routers derive current active member links. Human Routers retain
 their explicitly authored membership. Requires expands mandatory Skill
 dependencies; Members provides candidates. Disabled content and permission-denied
@@ -142,10 +171,14 @@ Only three durable kinds are needed at the target boundary:
 | Operation | Stable current intent ID and its exact affected owner/path set | Only while needed to finish, reconcile or abandon that intent |
 
 Hash, size and mode verify current bytes. They do not promise historical retrieval.
-Updating a current resource may create new immutable chunks before switching the
-current pointer, then collect unreferenced old chunks. No old pointer, snapshot or
-release is retained to preserve a version. Shared chunks are deleted only after
-their current references have been completely checked.
+The current resource implementation uses one Record: at most 32 KiB is inline
+Base64; larger files use one original Notion attachment in the registered `Resource`
+files property, up to 64 MiB. The payload describes the current hash, size and mode.
+It never stores an expiring download URL as identity. The attachment response,
+host, timeout, byte bound and final hash are checked before accepting bytes.
+Replacing a resource may create its current object before switching the pointer;
+unreferenced old objects are collected after checking current and unfinished-write
+references. No old pointer or snapshot is retained to preserve a version.
 
 A Profile has no parent revision or revision graph. A current fingerprint may
 detect a changed baseline for a management action; it is not a stored predecessor
@@ -196,10 +229,17 @@ Management owns those actions. A current reader only needs current identities,
 permissions, relationships, selected Source data and usable bytes.
 
 Keep a complete file directory separate from the set of locally materialized
-paths. Fetch the entry first, then exact requested files. The single acquisition
-contract uses source capabilities (`tree` or `git_member`) and per-file source or
-resource routes. It has one accepted schema; old acquisition decoders are removed.
+paths. Fetch the entry first, then exact requested files. Acquisition v5 has one
+library binding and per-file source or resource routes. Each source route carries
+its own stable Source ID, current revision and source path, so one Skill can read
+multiple declared Sources. There is no singleton source or Git-only reader branch.
+It has one accepted schema; old acquisition decoders are removed.
 Protocol numbers identify incompatible wire formats, not content versions.
+
+The public SDK is version 2. Hosts must require this exact SDK contract before
+using current consumption. Source management methods and the public `readOnly`
+input are removed; all consumption is already read only. Consumer and resource
+result formats remain version 1. SDK v1 is not an alternate current reader.
 
 A task selection may retain its exact directory and bytes in local cache for
 consistent delivery. If that local selection or required content has gone, return
@@ -271,43 +311,54 @@ First daily use does not close the separate Pro-wide migration task.
 
 ## Implementation status and remaining cutover blockers
 
-The current code change unifies acquisition, rejects incompatible cached selections,
-removes missing-cache historical recovery and rejects historical snapshot Sources.
-The existing verification entrypoints are being retargeted to this contract.
+Current tree assembly now reads Skills/Files `Content`, complete current membership
+and current Source plans. Native reads use a disposable local body observation.
+They never query event DAGs, adopt edits, reconcile operations or require original
+completion records. Current native alias completion remains a read-only fidelity
+check for actual unsupported Notion export nodes; it is not a historical operation
+gate. Acquisition v5 checks current ownership and locators before obtaining missing
+selected resource or Source bytes. Old cached selections require reselection.
 
-Current Profile management now replaces one stable Record page in place. Its
-fingerprint describes only current rules; duplicate physical rows fail, unknown
-writes reconcile without replay, and completion clears the finite local pending
-rules. Focused local tests cover these changes and preserve View, scope, pagination
-and freshness behavior. Production Profile rows have not been converted.
+The Promise SDK exposes only `SDK_VERSION=2`. Ordinary consumption always rejects
+remote writes; the old `readOnly` option is rejected before a runtime starts.
+Broker requires the matching SDK and package manifest. It does not load an older
+SDK or use a CLI consumer fallback. Local ZIP exports follow the portable tree's
+128 MiB expanded-size and 10,000-entry limits; remote upload limits do not constrain
+local backups.
 
-The production contract is **not switched yet**. Before installation/data cutover,
-the following must be replaced or removed in the same implementation line:
+Current Profile management replaces one stable Record page in place. Fingerprints
+describe current rules; duplicate pages fail, unknown writes reconcile without
+replay, and completion clears finite local pending state. The public route is
+`ctl library profile`, singular.
 
-- Event-DAG file ownership, read-triggered adoption and original-operation proof
-  gates in current tree assembly ([AH-1140](https://linear.app/yoyooyooo/issue/AH-1140)).
-- Existing Profile rows and incompatible local Profile state still require the
-  finite current-only cutover. Current field schema/types and the remaining paired
-  management writers must also be completed
-  ([AH-499](https://linear.app/yoyooyooo/issue/AH-499),
-  [AH-504](https://linear.app/yoyooyooo/issue/AH-504),
-  [AH-507](https://linear.app/yoyooyooo/issue/AH-507)).
-- Git-only Files population, complete resource text rendering and safe relationship
-  maintenance ([AH-501](https://linear.app/yoyooyooo/issue/AH-501),
-  [AH-505](https://linear.app/yoyooyooo/issue/AH-505)).
-- Legacy retained bundles that fetch a whole ZIP for a missing member, historic
-  resource carriers and live obsolete Notion data
-  ([AH-513](https://linear.app/yoyooyooo/issue/AH-513),
-  [AH-517](https://linear.app/yoyooyooo/issue/AH-517)).
-- Reserved/constant consumer fields, content identity mixed with display metadata,
-  coordinated cache invalidation and full export coverage
-  ([AH-1142](https://linear.app/yoyooyooo/issue/AH-1142)).
-- A packaged matching SDK, actual Pi installation and the bounded daily-use journey
-  ([AH-617](https://linear.app/yoyooyooo/issue/AH-617),
-  [AH-1063](https://linear.app/yoyooyooo/issue/AH-1063)), followed by all Pro-local
-  Skill migration and exposure cleanup
-  ([AH-516](https://linear.app/yoyooyooo/issue/AH-516)).
+The registered CLI now exposes current consumption, library initialization and
+inspection, current Profiles, configuration/cache/builtin management and diagnostics.
+Old create/apply/write/replace/adopt, Source refresh, sync, archive, graph-release,
+repair and migration command families are not active authoring routes. The current
+content writer is not connected yet. Do not use an old guide, raw API call or legacy
+package as its substitute. Removing a command does not by itself prove that every
+old module or packaged reference has been removed.
 
-Old tests that require those retired behaviors cannot certify this destination.
-Change their assertions only together with the behavior they cover. Keep current
-identity, permission, fidelity, interruption and request-budget protections.
+The production data and Pi installation are **not switched yet**. Remaining work:
+
+- Complete the current content/Source writer, finite operation reconciliation,
+  relationship updates and current reference collection: AH-504, AH-507, AH-505.
+- Populate every Git-only supporting Files row and render full readable text or
+  original usable attachments. A complete provider manifest does not establish
+  that all required Notion reading pages exist: AH-501.
+- Convert unique current bytes, old Profiles and actual field bindings, then
+  retire obsolete Notion rows, properties, attachments, pages and navigation.
+  Preserve the actual `Source` property ID even where its old display name is
+  `Selected Version` until conversion accounts for it: AH-513.
+- Finish caller, package, builtin-reference and obsolete-module retirement,
+  selected-path export coverage and remaining cache coordination: AH-517/AH-1142.
+- Build and install the matching CLI/SDK/Broker candidate, execute one bounded
+  Pro Pi daily-use journey, then finish Pro-wide content and exposure migration:
+  AH-617/AH-1063/AH-516.
+
+Run only the applicable checks in the existing current-convergence entry. Current
+schema/index, native tree, exact resource, Source and acquisition tests establish
+their controlled boundaries. They do not certify live table cleanup, completed
+authoring, an installed package or real Pi delivery. Old proof-model coverage and
+historical authoring recipes are outside the current verification route until
+their owner establishes a new implementation correspondence or retires them.

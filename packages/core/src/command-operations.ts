@@ -462,7 +462,6 @@ function updateSkillCurrent(input: string, options: UpdateSkillOptions) {
       : yield* openSkill(target.selector, {
           database: options.database,
           refresh: true,
-          sharedReadOnly: Boolean(options.dryRun),
         })
     if (target.path && target.path !== baseline.entrypoint)
       return yield* Effect.fail(
@@ -475,7 +474,6 @@ function updateSkillCurrent(input: string, options: UpdateSkillOptions) {
         ? yield* openSkill(locator.page_id, {
             database,
             refresh: true,
-            sharedReadOnly: Boolean(options.dryRun),
           })
         : baseline
       if (

@@ -1,43 +1,4 @@
 import { resolve } from "node:path"
-import {
-  reviewSourceStorage as coreReviewSourceStorage,
-  prepareSourceStorageAlignment as corePrepareSourceStorageAlignment,
-  applySourceStorageAlignment as coreApplySourceStorageAlignment,
-  reconcileSourceStorageAlignment as coreReconcileSourceStorageAlignment,
-} from "../../core/src/shared-source-storage.ts"
-import { loadSharedLibrary } from "../../core/src/shared-library.ts"
-import { withSourceCommandBudget } from "../../core/src/shared-source-budget.ts"
-import {
-  reviewSourceOnboarding as coreReviewSources,
-  prepareSourceOnboarding as corePrepareSourceOnboarding,
-  executeSourceOnboarding as coreExecuteSourceOnboarding,
-} from "../../core/src/shared-source-onboarding.ts"
-import type {
-  SourceOnboardingScope,
-  SourceOnboardingBindingDecision,
-} from "../../core/src/shared-source-onboarding-model.ts"
-import type { RequestBudgetLimits } from "../../core/src/request-budget.ts"
-import type { SourceMemberStorage } from "../../core/src/shared-source-member.ts"
-import {
-  reviewSharedSourceProjectionRepair as coreReviewSourceProjectionRepair,
-  applySharedSourceProjectionRepair as coreApplySourceProjectionRepair,
-  reconcileSharedSourceProjectionRepair as coreReconcileSourceProjectionRepair,
-} from "../../core/src/shared-source-projection-repair.ts"
-import {
-  reviewSharedSourceFileRepair as coreReviewSourceFileRepair,
-  applySharedSourceFileRepair as coreApplySourceFileRepair,
-  reconcileSharedSourceFileRepair as coreReconcileSourceFileRepair,
-} from "../../core/src/shared-source-file-repair.ts"
-import {
-  reviewSharedSourceFileResubmission as coreReviewSourceFileResubmission,
-  applySharedSourceFileResubmission as coreApplySourceFileResubmission,
-  reconcileSharedSourceFileResubmission as coreReconcileSourceFileResubmission,
-} from "../../core/src/shared-source-file-resubmission.ts"
-import {
-  reviewSharedSourceRecovery as coreReviewSourceRecovery,
-  applySharedSourceRecovery as coreApplySourceRecovery,
-  reconcileSharedSourceRecovery as coreReconcileSourceRecovery,
-} from "../../core/src/shared-source-recovery.ts"
 import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect"
 import { version } from "../package.json"
 import {
@@ -87,7 +48,7 @@ import {
   type ListSkillsResult,
 } from "../../core/src/catalog-consumption.ts"
 
-export const SDK_VERSION = 1
+export const SDK_VERSION = 2
 /** Selected CLI can expose the complete HTTP ledger independently of compact
  * stdout, with an exact closed-output SHA-256 proof. Not remote authority. */
 export const COMMAND_OUTPUT_PROOF_VERSION = 1
@@ -138,309 +99,8 @@ export interface SdkOptions {
   readonly onRequestMetrics?: (snapshot: RequestMetricsSnapshot | null) => void
 }
 
-export type {
-  SourceOnboardingScope,
-  SourceOnboardingReport,
-  SourceOnboardingPlan,
-  SourceOnboardingBindingDecision,
-} from "../../core/src/shared-source-onboarding-model.ts"
-export type SourceManagementOptions = SdkOptions & { readonly budget?: RequestBudgetLimits }
-const sourceManagementBudget = (options: SourceManagementOptions): RequestBudgetLimits =>
-  options.budget ?? { requests: 2000, bytes: 134217728, duration_ms: 300000 }
-
-export function reviewSourceStorage(
-  input: Parameters<typeof coreReviewSourceStorage>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () => withSourceCommandBudget(coreReviewSourceStorage(input), sourceManagementBudget(options)),
-    options,
-  )
-}
-export function prepareSourceStorageAlignment(
-  input: Parameters<typeof corePrepareSourceStorageAlignment>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        corePrepareSourceStorageAlignment(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-export function applySourceStorageAlignment(
-  input: Parameters<typeof coreApplySourceStorageAlignment>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreApplySourceStorageAlignment(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-export function reconcileSourceStorageAlignment(
-  input: Parameters<typeof coreReconcileSourceStorageAlignment>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreReconcileSourceStorageAlignment(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-/** Direct Core management, not a CLI subprocess. All observations remain remotely read-only. */
-export function reviewSources(
-  input: {
-    readonly entry: string
-    readonly scope: SourceOnboardingScope
-    readonly sourceTimeoutMs?: number
-  },
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        Effect.gen(function* () {
-          return yield* coreReviewSources(
-            yield* loadSharedLibrary(input.entry),
-            input.scope,
-            undefined,
-            { sourceTimeoutMs: input.sourceTimeoutMs },
-          )
-        }),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-/** The caller must retain the returned full plan before an explicit apply. */
-export function prepareSourceOnboarding(
-  input: {
-    readonly entry: string
-    readonly scope: SourceOnboardingScope
-    readonly storage?: SourceMemberStorage
-    readonly bindings?: readonly SourceOnboardingBindingDecision[]
-    readonly sourceTimeoutMs?: number
-  },
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        Effect.gen(function* () {
-          return yield* corePrepareSourceOnboarding(
-            yield* loadSharedLibrary(input.entry),
-            input.scope,
-            {
-              storage: input.storage,
-              sourceTimeoutMs: input.sourceTimeoutMs,
-              bindings: input.bindings,
-            },
-          )
-        }),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-export function applySourceOnboarding(
-  input: { readonly entry: string; readonly plan: unknown; readonly dryRun?: boolean },
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        Effect.gen(function* () {
-          return yield* coreExecuteSourceOnboarding(
-            yield* loadSharedLibrary(input.entry),
-            input.plan,
-            input.dryRun ? "dry-run" : "apply",
-          )
-        }),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-export function reconcileSourceOnboarding(
-  input: { readonly entry: string; readonly plan: unknown },
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        Effect.gen(function* () {
-          return yield* coreExecuteSourceOnboarding(
-            yield* loadSharedLibrary(input.entry),
-            input.plan,
-            "reconcile",
-          )
-        }),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-/** Review and execute the selected original child using the same CLI recovery
- * authority. No subprocess, new admission plan or implicit enablement. */
-export function reviewSourceRecovery(
-  input: Parameters<typeof coreReviewSourceRecovery>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () => withSourceCommandBudget(coreReviewSourceRecovery(input), sourceManagementBudget(options)),
-    options,
-  )
-}
-export function applySourceRecovery(
-  input: Parameters<typeof coreApplySourceRecovery>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () => withSourceCommandBudget(coreApplySourceRecovery(input), sourceManagementBudget(options)),
-    options,
-  )
-}
-export function reconcileSourceRecovery(
-  input: Parameters<typeof coreReconcileSourceRecovery>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(coreReconcileSourceRecovery(input), sourceManagementBudget(options)),
-    options,
-  )
-}
-
 export type ConsumeOptions = SdkOptions & Omit<CoreConsumeOptions, "signal" | "onEffects">
 
-export function reviewSourceFileRepair(
-  input: Parameters<typeof coreReviewSourceFileRepair>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(coreReviewSourceFileRepair(input), sourceManagementBudget(options)),
-    options,
-  )
-}
-export function applySourceFileRepair(
-  input: Parameters<typeof coreApplySourceFileRepair>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(coreApplySourceFileRepair(input), sourceManagementBudget(options)),
-    options,
-  )
-}
-export function reconcileSourceFileRepair(
-  input: Parameters<typeof coreReconcileSourceFileRepair>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreReconcileSourceFileRepair(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-/** An independently reviewed new file request, never replay authority for the rejected POST. */
-export function reviewSourceFileResubmission(
-  input: Parameters<typeof coreReviewSourceFileResubmission>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreReviewSourceFileResubmission(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-export function applySourceFileResubmission(
-  input: Parameters<typeof coreApplySourceFileResubmission>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreApplySourceFileResubmission(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-export function reconcileSourceFileResubmission(
-  input: Parameters<typeof coreReconcileSourceFileResubmission>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreReconcileSourceFileResubmission(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-
-export function reviewSourceProjectionRepair(
-  input: Parameters<typeof coreReviewSourceProjectionRepair>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreReviewSourceProjectionRepair(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-export function applySourceProjectionRepair(
-  input: Parameters<typeof coreApplySourceProjectionRepair>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreApplySourceProjectionRepair(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
-export function reconcileSourceProjectionRepair(
-  input: Parameters<typeof coreReconcileSourceProjectionRepair>[0],
-  options: SourceManagementOptions = {},
-) {
-  return runOperation(
-    () =>
-      withSourceCommandBudget(
-        coreReconcileSourceProjectionRepair(input),
-        sourceManagementBudget(options),
-      ),
-    options,
-  )
-}
 export type ReadSkillOptions = SdkOptions & Omit<ReadOptions, "onEffects">
 export type ReadSkillResult = Effect.Success<ReturnType<typeof coreReadSkill>>
 export type ListSkillOptions = SdkOptions & NonNullable<Parameters<typeof coreListSkill>[1]>
@@ -497,6 +157,11 @@ async function runOperation<A>(
       env.NTN_SKILLS_REQUEST_TRACE_LIMIT = "10000"
     traceRequested = Number(env.NTN_SKILLS_REQUEST_TRACE_LIMIT ?? 0) > 0
     if (options.signal?.aborted) throw cancelled()
+    if (Object.hasOwn(options, "readOnly"))
+      throw fail(
+        "INVALID_ARGUMENT",
+        "readOnly is not an SDK option. Consumption never writes to Notion.",
+      )
     const cwd = resolve(options.cwd ?? ".")
     const effect = operation()
     const program = Effect.gen(function* () {
@@ -540,7 +205,6 @@ export async function consume(
           database: options.database,
           execution: options.execution,
           metrics: options.metrics,
-          readOnly: options.readOnly,
           onEffects: (value) => {
             effects = value
           },
@@ -593,7 +257,6 @@ export async function readResources(
         coreReadResources(decodeResourceReadInput(input), {
           database: options.database,
           offline: options.offline,
-          readOnly: options.readOnly,
           onEffects: (value) => {
             effects = value
           },
@@ -653,7 +316,6 @@ export async function readSkill(
           refresh: options.refresh,
           offline: options.offline,
           maxAge: options.maxAge,
-          readOnly: options.readOnly,
           onEffects: (value) => {
             effects = value
           },

@@ -75,7 +75,6 @@ export function attachSourceLibrary(entry: string, input: unknown, dryRun = fals
           Origin: {
             relation: { data_source_id: candidate.sources!.data_source_id, single_property: {} },
           },
-          ...(role === "skills" ? { "Source Member": { rich_text: {} } } : {}),
         },
         candidate.parent_page_id,
         candidate[role],
@@ -254,39 +253,6 @@ export function initializeSourceLibrary(library: SharedLibrary) {
         throw fail("SOURCE_LIBRARY_CONFLICT", "Sources Records reverse relation is missing.")
       return id
     })
-    let skillSchema = property(
-      yield* api.request(`v1/data_sources/${library.skills.data_source_id}`),
-    )
-    const existingMember = property(property(skillSchema.properties)["Source Member"])
-    if (existingMember.id && existingMember.type !== "rich_text")
-      return yield* Effect.fail(
-        fail("SOURCE_LIBRARY_CONFLICT", "Source Member is occupied by another property type."),
-      )
-    if (!existingMember.id) {
-      const result = yield* guardedSourceMutation(
-        library,
-        {
-          identity: "initialize-source-member",
-          path: `v1/data_sources/${library.skills.data_source_id}`,
-          method: "PATCH",
-          body: { properties: { "Source Member": { rich_text: {} } } },
-        },
-        Effect.gen(function* () {
-          const row = property(
-            yield* api.request(`v1/data_sources/${library.skills.data_source_id}`),
-          )
-          return property(property(row.properties)["Source Member"]).type === "rich_text"
-            ? row
-            : undefined
-        }),
-      )
-      skillSchema = property("result" in result ? result.result : undefined)
-    }
-    const memberId = property(property(skillSchema.properties)["Source Member"]).id
-    if (typeof memberId !== "string")
-      return yield* Effect.fail(
-        fail("SOURCE_LIBRARY_CONFLICT", "Source Member identity is unavailable."),
-      )
     const candidate: SharedLibrary = {
       ...library,
       sources: sourceBinding,
@@ -295,7 +261,6 @@ export function initializeSourceLibrary(library: SharedLibrary) {
         property_ids: {
           ...library.skills.property_ids,
           Origin: skillOrigin,
-          "Source Member": memberId,
         },
       },
       records: {

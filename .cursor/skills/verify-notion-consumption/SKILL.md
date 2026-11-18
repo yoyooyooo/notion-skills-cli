@@ -1,52 +1,48 @@
 ---
 name: verify-notion-consumption
-description: "验证 ntn-skills 当前目录、正文与全部子文件、任务内选择一致性、缓存新鲜度、完整导出和零远端消费写。修改 list/read/use/resources/export、权限、获取或缓存时使用；不把长期历史恢复或旧协议兼容作为目标。"
+description: "验证 ntn-skills 当前完整目录、正文与子文件、任务内选择、缓存、导出及普通消费远端零写。修改 list/read/use/files/export、权限、精确获取或 freshness 时使用，不保留历史内容恢复合同。"
 ---
 
 # 当前消费验证
 
-执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 的第 1、3、5 组。本入口负责 CLI/SDK 取得的当前字节及成本，不负责作者写入恢复，也不负责把读取成功当成 Pi 已投递或模型任务完成。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 1、3、5 组。本入口负责 CLI/SDK 当前字节和成本，不负责作者写入恢复，也不负责用成功读取代替 Pi 投递。
 
 ## Launch
 
-从仓库根执行，沿 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 隔离运行。安装检查使用实际安装的 bin/SDK，移除开发覆盖；冷客户端不复制作者 Store。认证、endpoint、scope 和 freshness 保持实际边界。
+从仓库根执行，复用 [共用 Launch](../verify-ntn-skills/references/harness.md#launch)。独立消费者不复制作者 Store。安装检查使用实际 bin/SDK，移除开发 override；scope、凭据、endpoint 和 freshness 保持相同。
 
 ## Doctor
 
 ~~~sh
-bun test packages/cli/test/verification-skill-map.test.ts
-bun test packages/core/test/notion-readonly.test.ts packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-read-coalescing.test.ts --timeout 60000
+bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-relative.test.ts --timeout 60000
 ~~~
 
-后一组只验证现有语义只读、预算、取消及请求合并底座，不证明普通 consumer 已使用这些边界。当前 reader 仍留存 observation/object/adopted 时，第 3 组必须失败；不能用严格 audit 拒绝写入代替正常 read 成功且 0 写。
+这些测试直接驱动当前 reader 的受控 Notion 边界，记录查询、正文与语义写；不是仅调用一个拒写 wrapper。缺 Content、非 ready、错 owner/path、分页未完或截断正文不得产出完整快照。
 
 ## Drive
 
-1. 从当前授权集合选取 git-only、mixed、Notion-native 的必要样本。核完整 path/mode/owner、主文、子文件、Requires/Members 和 exclusions。默认 View 不是权限边界，启停与可访问性分别检查。
-2. 修改一份 Notion-authoritative 正文后 fresh read 取得修改。生成阅读页仍按 Source 权威读取，不能因页上有正文自动接管。当前内容缺失、权限不足或分页未完明确失败/partial，不回旧 reader 或历史版本。
-3. 在同一任务内固定必要文件清单、来源与内容身份。后续读取不得混入后来内容；旧选择失效、缓存缺失或旧协议输入给出重新选择动作，不远端复活旧 pin。
-4. 对整包和明确路径集合导出独立核对完整 bytes/path/mode。保留当前 provider 的固定 Git revision 与按需获取，不因取消版本管理改读上游最新 HEAD。下载/读取不授权执行脚本。
-5. 在同 scope、相同内容和有效 freshness/TTL 内重复暖读，要求 0 HTTP；过期后只发生必要核验。目录只取必要 metadata，无变化正文写 0。合并请求不共享错误权限或借用另一调用的 budget。
-6. 分别查看普通 list/read/use/resources/export 的实际语义写计数，全部为 0。Notion 查询 POST 是读；创建 Record、adopt、补阅读和清理都是写，不能改名为 retention 后排除。
+1. 核对完整目录和 binding。Skills 主文唯一，Files 只含 supporting；所有来源共享相同当前 descriptor。目录完整与 Notion 全文投影分别验。
+2. native 冷读、无变化 metadata 复核、单文件直接编辑、缺本地正文及独立全文期限各走一次。三份 native 文件的固定 fixture 冷读为 6 请求：2 个 metadata query、3 个 body、最后一次 owner GET；无变化 metadata 复核为 3 请求、0 body。外层有效 TTL 直接命中才是 0 HTTP。
+3. Name/Description 变化返回当前 metadata，但不改 bytes 或内容身份。原任务选择仍保留其 metadata。改路径或删当前行不被旧 cache 复活。
+4. 同任务内保持一份完整选定目录。缺 Source/resource bytes 只可使用仍相符的当前 owner/descriptor；缺 native 旧选择字节或当前声明变化要求重选，不恢复远端历史。
+5. 每文件 acquisition v5 支持多 Source、native 和 resource。检查 exact hash/bytes/mode、按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。
+6. 相对文件留在选定 owner；跨 Skill 路径要求显式当前引用。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
+7. 真实公开 list/read/use/files/export 的语义写计数均为 0。Notion query POST 是读；Record 创建、投影、adoption 和清理都是写。
 
-安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际 archive/bin/SDK 入口。若现有 recipe 仍要求远端历史恢复或旧包，不执行该旧合同来证明新目标。Pi 由 AH-1063 与 Broker 既有 integration 完成，不扩 OMP/Tern。
+相关当前获取和请求检查：
+
+~~~sh
+bun test packages/core/test/shared-acquisition-contract.test.ts packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-read-coalescing.test.ts --timeout 60000
+~~~
+
+安装层复用 [portable-export-package-consumption](../verify-ntn-skills/features/portable-export-package-consumption.md) 的实际包入口。旧远端恢复或已退出命令的步骤不可继承；包未切换记缺口。Pi 由 AH-1063 和 Broker integration 验，不扩 OMP/Tern。
 
 ## Evidence
 
-记录选定范围、当前身份/来源、完整内容比对、freshness、HTTP attempts/bytes 和语义写。保留固定来源原始模板字节；阅读布局相同不能替代原 bytes 检查。身份/完整性失败不得换来源掩盖，当前允许的等价 Git 获取通道也不能变成旧协议 fallback。
+记录当前范围、来源、完整字节比对、freshness、HTTP attempts/bytes 和语义写。相同输入/scope/freshness 才可比较成本；不省文件或延 TTL 制造下降。
 
-以下文件是现有实现回归的定位入口，按实际改动选择；其中旧 pin/retention/代际兼容断言必须随当前实现迁移，旧 PASS 不计入本轮：
-
-- packages/core/test/shared-freshness-consumer.test.ts
-- packages/core/test/fixed-snapshot-files.test.ts
-- packages/core/test/resource-read.test.ts
-- packages/core/test/consumer-effects.test.ts
-- packages/cli/test/sdk.test.ts
-- packages/core/test/shared-fixed-git-transport.test.ts
-- packages/core/test/github-api-access.test.ts
-- packages/core/test/shared-github-routing.test.ts
-- packages/core/test/shared-source-materialization.test.ts
+源码当前测试、实际安装、真实 Notion 阅读投影和 Pi 分开记录。Source/resource 的本地 exact bytes 不证明 Notion 每份子文档已有人类正文。
 
 ## Cleanup
 
-按 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收本次自有派生物。保留仍在执行任务必要的当前字节，任务结束后可回收；不承诺旧选择跨机或永久可恢复。当前唯一内容和其他任务状态不误删。
+沿 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收自有派生状态。当前任务仍需的字节暂留；不承诺旧选择跨机或永久恢复。当前唯一内容和其他 owner 不误删。

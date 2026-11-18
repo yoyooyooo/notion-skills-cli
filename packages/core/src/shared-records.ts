@@ -12,6 +12,7 @@ import {
 import { sha256, Store } from "./store.ts"
 
 export const SharedRecordKindSchema = Schema.Literals([
+  "resource",
   "file_event",
   "object",
   "source",
@@ -360,7 +361,11 @@ type SelectedRecords = SkillRecordSelection | LibraryProfileSelection | LibraryA
 type RecordHeader = Omit<AnySharedRecord, "operation_id" | "payload"> & {
   readonly last_edited_time: string | null
 }
-type RecordRow = { readonly header: RecordHeader; readonly record?: AnySharedRecord }
+type RecordRow = {
+  readonly header: RecordHeader
+  readonly record?: AnySharedRecord
+  readonly resource?: unknown
+}
 
 function decodeHeader(
   rawValue: unknown,
@@ -574,6 +579,7 @@ function queryRecordRows(
   selected: SelectedRecords,
   content?: "body",
   metadataOnly = false,
+  resourceProperty?: string,
 ): Effect.Effect<readonly RecordRow[], SkillsError, Notion | Crypto.Crypto> {
   return Effect.gen(function* () {
     const api = yield* Notion
@@ -655,6 +661,7 @@ function queryRecordRows(
         (field) => field !== "Name" && (!metadataOnly || field !== "Payload"),
       ))
         parameters.append("filter_properties", identifier(ids[field], `${field} property ID`))
+      if (resourceProperty !== undefined) parameters.append("filter_properties", resourceProperty)
       return {
         path: `v1/data_sources/${dataSourceId}/query?${parameters.toString()}`,
         filter: filters.length === 1 ? filters[0] : { and: filters },
@@ -744,9 +751,38 @@ function queryRecordRows(
               page_ids: [previous.page_id, header.page_id],
             }),
           )
+        if (previous !== undefined && header.kind === "resource")
+          return yield* Effect.fail(
+            fail("SHARED_RESOURCE_DUPLICATE", "A current resource has multiple physical pages.", {
+              record_id: header.record_id,
+              page_ids: [previous.page_id, header.page_id],
+            }),
+          )
         if (previous === undefined || header.page_id < previous.page_id)
           records.set(identity, header)
-        rows.push({ header, ...(record === undefined ? {} : { record }) })
+        const resource =
+          resourceProperty === undefined
+            ? undefined
+            : yield* checked(() => {
+                const matches = Object.entries(property(property(raw).properties)).filter(
+                  ([key, value]) =>
+                    key === resourceProperty || property(value).id === resourceProperty,
+                )
+                const field = matches[0]?.[1]
+                if (
+                  matches.length !== 1 ||
+                  (property(field).id !== undefined && property(field).id !== resourceProperty)
+                )
+                  throw invalid(
+                    "A current resource requires exactly one registered Resource property.",
+                  )
+                return field
+              })
+        rows.push({
+          header,
+          ...(record === undefined ? {} : { record }),
+          ...(resourceProperty === undefined ? {} : { resource }),
+        })
       }
       if (!page.has_more) return rows
       cursor = yield* checked(() => identifier(page.next_cursor, "Records cursor", 2048))
@@ -948,7 +984,11 @@ function queryRecords(
  * Object content requires an explicit entity. Hash verification is local.
  */
 export function querySharedRecords(library: SharedLibrary, input: QuerySharedRecordsInput) {
-  if (input.kind === "object" && input.entityId === undefined && input.entityIds === undefined)
+  if (
+    (input.kind === "object" || input.kind === "resource") &&
+    input.entityId === undefined &&
+    input.entityIds === undefined
+  )
     return Effect.fail(
       invalid(
         "Object records require an explicit Entity ID; bulk ownership discovery never loads object bodies.",
@@ -957,8 +997,39 @@ export function querySharedRecords(library: SharedLibrary, input: QuerySharedRec
   return queryRecords(
     library,
     { ...input, libraryProfile: false, kind: input.kind ?? "file_event" },
-    input.kind === "object" || input.payloadContainsBody === true ? "body" : undefined,
+    input.kind === "object" || input.kind === "resource" || input.payloadContainsBody === true
+      ? "body"
+      : undefined,
   )
+}
+
+/** One exact current resource and its native attachment property from the same response. */
+export function queryCurrentSharedResourceRecord(
+  library: SharedLibrary,
+  input: { readonly skillPageId: string; readonly objectId: string },
+) {
+  return Effect.gen(function* () {
+    const resourceProperty = yield* checked(() =>
+      identifier(library.records.property_ids.Resource, "Resource property ID"),
+    )
+    const rows = yield* queryRecordRows(
+      library,
+      {
+        skillPageId: input.skillPageId,
+        kind: "resource",
+        entityId: input.objectId,
+        recordId: input.objectId,
+      },
+      "body",
+      false,
+      resourceProperty,
+    )
+    const row = rows[0]
+    if (row === undefined) return undefined
+    if (rows.length !== 1 || row.record?.kind !== "resource" || row.record.skill_page_id === null)
+      return yield* Effect.fail(invalid("A current resource requires one exact Skill-owned row."))
+    return { record: row.record, resource: row.resource }
+  })
 }
 
 /**
@@ -1077,6 +1148,7 @@ function textChunks(value: string) {
 function appendRecord(
   library: SharedLibrary,
   input: AppendRecordInput,
+  resourceUpload?: { readonly id: string; readonly name: string },
 ): Effect.Effect<AnySharedRecord, SkillsError, Notion | Crypto.Crypto> {
   return Effect.gen(function* () {
     const prepared = yield* checked(() => {
@@ -1085,6 +1157,15 @@ function appendRecord(
       if (input.kind === "profile")
         throw invalid("Profiles use the current in-place writer, never the append-only writer.")
       const ids = fieldIds(library)
+      const resourceProperty =
+        input.kind !== "resource"
+          ? undefined
+          : identifier(library.records.property_ids.Resource, "Resource property ID")
+      if (resourceUpload !== undefined) {
+        if (input.kind !== "resource") throw invalid("Only current resources accept attachments.")
+        notionId(resourceUpload.id, "Uploaded file ID")
+        identifier(resourceUpload.name, "Resource filename", 255)
+      }
       const recordId = identifier(input.recordId, "Record ID")
       const entityId = identifier(input.entityId, "Entity ID")
       const skillPageId =
@@ -1095,7 +1176,7 @@ function appendRecord(
         kind,
       )
       const storage = encodeSharedRecordStorage(envelope.canonical)
-      return { ids, recordId, entityId, skillPageId, kind, storage, ...envelope }
+      return { ids, recordId, entityId, skillPageId, kind, storage, resourceProperty, ...envelope }
     })
     const hash = yield* sha256(prepared.canonical)
     const expected: Omit<AnySharedRecord, "page_id"> = {
@@ -1124,7 +1205,11 @@ function appendRecord(
         : yield* queryRecords(
             library,
             { skillPageId: prepared.skillPageId, recordId: prepared.recordId },
-            prepared.kind === "object" || input.payloadContainsBody === true ? "body" : undefined,
+            prepared.kind === "object" ||
+              prepared.kind === "resource" ||
+              input.payloadContainsBody === true
+              ? "body"
+              : undefined,
             input.mode === "reconcile",
           )
     const found = existing[0]
@@ -1165,11 +1250,29 @@ function appendRecord(
             [prepared.ids.Skill]: {
               relation: prepared.skillPageId === null ? [] : [{ id: prepared.skillPageId }],
             },
+            ...(prepared.resourceProperty === undefined
+              ? {}
+              : {
+                  [prepared.resourceProperty]: {
+                    files:
+                      resourceUpload === undefined
+                        ? []
+                        : [
+                            {
+                              name: resourceUpload.name,
+                              type: "file_upload",
+                              file_upload: { id: resourceUpload.id },
+                            },
+                          ],
+                  },
+                }),
           },
         },
         {
           method: "POST",
-          ...(prepared.kind === "object" || input.payloadContainsBody === true
+          ...(prepared.kind === "object" ||
+          prepared.kind === "resource" ||
+          input.payloadContainsBody === true
             ? { content: "body" as const }
             : {}),
         },
@@ -1245,6 +1348,42 @@ export function appendSharedRecord(
     Effect.flatMap((record) =>
       record.skill_page_id === null
         ? Effect.fail(invalid("A Skill-scoped record cannot be a library Profile."))
+        : Effect.succeed(record),
+    ),
+  )
+}
+
+/** The management kernel supplies its already uploaded handle and persists the finite intent. */
+export function createCurrentSharedResourceRecord(
+  library: SharedLibrary,
+  input: {
+    readonly skillPageId: string
+    readonly objectId: string
+    readonly payload: unknown
+    readonly mode: "create" | "reconcile"
+    readonly upload?: { readonly id: string; readonly name: string }
+    readonly beforeCreate?: Effect.Effect<void, SkillsError>
+  },
+) {
+  return appendRecord(
+    library,
+    {
+      libraryProfile: false,
+      skillPageId: input.skillPageId,
+      recordId: input.objectId,
+      operationId: `store-${input.objectId}`,
+      entityId: input.objectId,
+      kind: "resource",
+      payload: input.payload,
+      payloadContainsBody: true,
+      mode: input.mode,
+      ...(input.beforeCreate === undefined ? {} : { beforeCreate: input.beforeCreate }),
+    },
+    input.upload,
+  ).pipe(
+    Effect.flatMap((record) =>
+      record.skill_page_id === null
+        ? Effect.fail(invalid("A current resource requires an exact Skill owner."))
         : Effect.succeed(record),
     ),
   )

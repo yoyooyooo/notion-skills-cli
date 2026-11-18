@@ -1,5 +1,11 @@
 import { Effect, Schema } from "effect"
-import { assertKnownSnapshotAccess, validateSnapshot, validateSnapshotManifest } from "./cache.ts"
+import {
+  assertKnownSnapshotAccess,
+  invalidateScopeCache,
+  invalidateSnapshotCache,
+  validateSnapshot,
+  validateSnapshotManifest,
+} from "./cache.ts"
 import {
   fail,
   property,
@@ -50,7 +56,9 @@ function readSnapshotManifest(id: string) {
           },
         ),
       )
-    const snapshot = yield* checked(() => Schema.decodeUnknownSync(SnapshotSchema)(stored))
+    const snapshot = yield* checked(() =>
+      Schema.decodeUnknownSync(SnapshotSchema)(stored, { onExcessProperty: "error" }),
+    )
     if (snapshot.snapshot_id !== id || snapshot.files.some((f) => !/^[a-f0-9]{64}$/.test(f.sha256)))
       return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot manifest is invalid."))
     return snapshot
@@ -124,7 +132,37 @@ export function openFixedSnapshotFiles(
       bytesByPath.set(path, bytes)
     }
     if (missing.length && snapshot.shared_acquisition !== undefined) {
-      const acquired = yield* materializeSharedFixedAcquisition(snapshot, missing, options)
+      const acquired = yield* materializeSharedFixedAcquisition(snapshot, missing, options).pipe(
+        Effect.tapError((error) => {
+          if (error.code === "AUTH_REQUIRED") return invalidateScopeCache(snapshot.scope)
+          if (
+            ![
+              "ACCESS_DENIED",
+              "NOT_FOUND",
+              "CONTENT_DISABLED",
+              "SKILL_DISABLED",
+              "SOURCE_DISABLED",
+              "CURRENT_OPERATION_PENDING",
+              "CURRENT_SKILL_NOT_READY",
+              "CURRENT_SCHEMA_REQUIRED",
+              "CURRENT_INDEX_INVALID",
+              "CURRENT_SOURCE_NOT_READY",
+              "SHARED_ACQUISITION_CHANGED",
+              "SHARED_SOURCE_CONFLICT",
+              "SHARED_SOURCE_MISSING",
+              "SHARED_RESOURCE_CHANGED",
+              "SHARED_RESOURCE_UNAVAILABLE",
+            ].includes(error.code)
+          )
+            return Effect.void
+          // A failed lazy read is also a current observation. Do not allow a
+          // later TTL hit to forget a known removal, pending writer or denial.
+          return invalidateSnapshotCache(snapshot.record.id, snapshot.scope, {
+            retainForOffline: true,
+            ...(error.code === "ACCESS_DENIED" ? { accessDenied: error.code } : {}),
+          })
+        }),
+      )
       for (const file of acquired) bytesByPath.set(file.path, file.bytes)
     }
     const stillMissing = missing.filter((path) => !bytesByPath.has(path))

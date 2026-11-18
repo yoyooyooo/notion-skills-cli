@@ -1,48 +1,86 @@
 ---
 name: ntn-skills-maintain
-description: Create, adopt and edit native Notion Skills, references and metadata; audit complete owned imports and repair exact identities. Preserve original operations and whole-file custom ownership. Source policy, revisions and Profiles use ntn-skills-sync.
-compatibility: Requires the installed ntn-skills CLI and Notion access authorized for the requested operation.
+description: Inspect the current Notion Skill library, its complete file ownership and reading state, or create its four-table layout. Use for content-management requests, complete local inputs and incomplete current operations; determine which current management capability is available before changing content.
+compatibility: Requires the installed ntn-skills CLI and Notion access for the requested operation. Ordinary inspection requires no Notion write permission.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
 ---
 
-# Maintain Notion content
+# Maintain the current library
 
-Use the exact installed CLI and target library supplied by the user or the host. Loading these instructions does not authorize any write or script execution. Names are not unique identities.
+Use the exact executable, library and target supplied by the task. Names are
+display labels, not unique identities. The current CLI exposes library setup,
+inspection and Profile management. Content import, apply, file mutation, Source
+refresh and cleanup commands are not available while the current writer is
+being completed.
 
-## Existing Skill: one complete edit
-
-When the task supplies PAGE, ENTRY and an INPUT directory, use this path directly. Do not search the catalog for the page UUID, inspect package directories, enumerate every command schema, or run a whole-library audit. The CLI reads and validates the complete input directory itself. Read known input files with the host's read tool only when their content is needed.
+For an existing Skill, inspect its current main descriptor and every supporting
+Files row, then read the requested content:
 
 ```bash
-ntn-skills read PAGE --database ENTRY --authoring --read-only
-ntn-skills apply RETURNED_PIN --database ENTRY --input INPUT --compact
+ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills read PAGE_ID --database ENTRY --refresh --json
 ```
 
-Copy RETURNED_PIN from the first result's top-level `ref`. Keep the installed executable prefix and `--database` unchanged. The pin is a whole-Skill authoring baseline; `sr:` handles are session references, not CLI targets. Main and new references go in the **same** input directory and the same apply. Omitted files/properties stay unchanged. Never guess native page IDs, split an ordinary main/reference edit into separate creates, run uploaded scripts or modify other Skills.
+The first command is metadata-only and includes current state, ownership, paths
+and authority. It does not certify file bodies. The second uses the ordinary
+read-only consumer. Follow exact returned refs for supporting files; export a
+complete tree when the task requires every byte.
 
-Use the two-command path only when the user already authorized submitting this complete input to the exact target. The actual apply validates the whole proposed tree before dispatch; a separate dry-run need not repeat that validation. If the user requests a preview, authorization is missing, or the intended changes remain unclear, run `ntn-skills apply RETURNED_PIN --database ENTRY --input INPUT --dry-run --compact` instead and stop without writing. A preview is not authorization. Do not reread an unchanged baseline. Use the selected command's `--help` only for an actual syntax uncertainty or error, not as a prerequisite.
+## Content ownership
 
-`--compact` retains status, verified result, operation ID, fixed version, complete file manifest and aggregate costs while omitting the verbose HTTP trace. Exact per-request audits require full output unless the installed integration separately verifies the original ledger with command-output proof v1 and closed stdout hash/length/process evidence. Compact totals alone are not that proof.
+Skills owns one main document. Each supporting file has one Files row with a
+stable File ID, one Skill owner, a safe relative Path and a current Content
+descriptor. The descriptor is one of:
 
-## Finish, or preserve the original failure
+- `native`: the page body is authoritative; stored frontmatter and mode complete
+  the file. A native edit is read directly without an adoption record.
+- `source`: one exact current Source ID/revision/path supplies bytes, hash, size
+  and mode. A generated page is for reading; editing it does not transfer authority.
+- `resource`: one exact current Records resource supplies bytes, hash, size and
+  mode. The reading page does not replace the original.
 
-For ordinary success require exit 0, `ok:true`, `verified:true`, an applied/already-unchanged result and no dry-run. Report the changed paths, preserved files, fixed ref and original operation ID to the user. The CLI already checked the current result: do not perform another export, hash checklist or read solely to repeat its verification. A successful apply still needs your final answer.
+Text Files should have complete human-readable bodies; images and binary files
+should expose usable originals. Metadata, URLs or hash placeholders do not
+prove that reading projection is complete. Current input validation and actual
+Notion projection are separate checks.
 
-The batch is not atomic: a later failure may leave earlier children applied. `partial`, `not_applied`, unknown or an interrupted response are **not** a completed edit. Keep the original operation/input and follow its exact `next.argv`; never repeat a possibly applied write, create a replacement, clear pending state or relabel current equality as an ACK. Read [recovery](references/operations.md#original-operation-recovery) only when a real result requires it. A stale baseline needs a fresh authoring read. `read_again` and observation-required errors retain their original scope; no Git fallback may hide a Notion edit.
+## State and errors
 
-## Ownership and other intents
+`ready` requires an empty Operation field. `applying` and `attention` require
+the current operation ID. Ordinary consumers refuse non-ready content before
+reading bodies. This finite state identifies unfinished current work; it is not
+a content-version history.
 
-A Notion edit takes over that entire document only; unchanged sibling files continue using the selected fixed Git source. `restore-follow` explicitly releases that file back to the selected source; it never advances upstream. Preserve stable Skill/File IDs and native pages. Main files cannot be moved/deleted. Editing a disabled draft does not enable it. Missing/inaccessible content is not deletion intent.
+A missing or invalid Content descriptor returns `CURRENT_SCHEMA_REQUIRED`.
+An unfinished current operation returns `CURRENT_OPERATION_PENDING`. Preserve
+the exact error, affected owner and next action. Do not replace missing content
+with Git, another Skill or cached older content, and do not mark state ready by
+hand to bypass an incomplete tree.
 
-For a **different** requested task, read only its route before acting:
+## A content-change request
 
-| Task | Route |
+Use the already authorized scope. Inspect the exact current tree and prepare
+the complete requested local input, preserving supporting paths, original
+bytes, modes and intended relationships. Source-generated and native files need
+an explicit authority decision. Missing or inaccessible data is not deletion
+intent.
+
+Check the installed command schema for the specific required operation. When
+the current writer is unavailable, report that boundary and the prepared input;
+do not invent an apply command, patch bookkeeping properties directly or use a
+different operation family. Inspection is useful work, but is not a completed
+content edit. No content versions or proof records are required.
+
+## Other routes
+
+| Task | Read |
 | --- | --- |
-| Connect an existing library or set up a new one | [Setup](references/setup.md); configuration changes and creating tables each need authorization |
-| Create/adopt, file add/move/delete/undelete, properties, enablement, binary resources or explicit replacement | [Operations](references/operations.md#operation-choices); use the exact target and complete input |
-| Reviewed local inventory/import or identity repair | [Inventory and repair](references/operations.md#reviewed-inventory-and-repair); no name-only identity guessing |
-| Source admission/selection/policy, Profiles or collection removal | Read `notion/ntn-skills-sync` with the same installed CLI; retain per-document custom ownership |
+| Connect an existing library or create a current layout | [Setup](references/setup.md) |
+| Inspect complete input, authority or incomplete current work | [Operations](references/operations.md) |
+| Shared Profile/View/freshness rules and current Source boundaries | `notion/ntn-skills-sync` |
 
-Do not read these references for a normal successful main-plus-reference edit. Builtin resources are available through `ctl builtin read notion/ntn-skills-maintain --path RELATIVE_PATH`; no repository/cache search is needed.
+For package references, use `ctl builtin read notion/ntn-skills-maintain --path
+RELATIVE_PATH`. Do not search private cache or repository directories to find
+bundled instructions.

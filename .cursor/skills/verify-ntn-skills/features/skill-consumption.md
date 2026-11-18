@@ -371,7 +371,7 @@ node scripts/sdk-package-smoke.mjs --archive "$CLI_ARCHIVE" --fixture "$FROZEN_F
 
 运行 `shared-authoring-record-costs.test.ts` 的 H=0/1/50/101 合法历史和缺失、冲突、foreign owner、incomplete response、重复 cursor 反例，并保留 `shared-metadata-write.test.ts` 的原 operation reconcile 与零重复写入要求。一次 SDK 查询可能有多页 HTTP；完整历史 Payload 仍随历史增长，不宣称常数读取。
 
-安装态复用 `scripts/package-smoke/authoring.ts` 的 `checkAuthoring`，冻结相同初始内容和命令序列，对比每条实际请求及写入。保留故意丢失响应的未知字节、原 operation 恢复、旧 pin 和完整正文断言；受控结果不替代真实 Notion 或模型验收。
+The former installed authoring/audit gate is retired with its product routes. Use [current-convergence](current-convergence.md) for the current contract. `bun run package:check` proves installed current consumption only; it does not prove the pending writer, live table cutover or Pi daily use.
 
 ### SC11：完整 graph inventory 的必要属性投影
 

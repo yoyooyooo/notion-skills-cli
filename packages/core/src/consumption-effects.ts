@@ -20,8 +20,6 @@ export const ConsumptionEffectsSchema = Schema.Struct({
 })
 export type ConsumptionEffects = typeof ConsumptionEffectsSchema.Type
 export interface ConsumptionObservationOptions {
-  /** Disallow every semantic Notion write, including internal history retention. */
-  readonly readOnly?: boolean
   /** Runs after request cleanup, including cancellation, without changing the result. */
   readonly onEffects?: (effects: ConsumptionEffects) => void
 }
@@ -134,7 +132,7 @@ export function withConsumptionEffects<A extends object, R>(
         }),
     }
     return yield* withNotionRequestAttribution(effect, { phase: "consume" }).pipe(
-      Effect.provideService(Notion, options.readOnly ? readOnlyNotion(observed) : observed),
+      Effect.provideService(Notion, readOnlyNotion(observed)),
       Effect.provideService(ConsumptionEffectsSnapshot, snapshot),
       Effect.map((result) => ({ ...result, effects: snapshot() })),
       Effect.mapError((error) =>

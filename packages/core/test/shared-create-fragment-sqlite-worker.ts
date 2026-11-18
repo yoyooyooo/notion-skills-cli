@@ -159,7 +159,6 @@ await Effect.runPromise(
               scope: yield* authScope,
               startedAt: Date.now(),
               forceFull: true,
-              readOnly: true,
             })
             assert.deepEqual(snapshot.files.map((file) => file.path).sort(), [
               "SKILL.md",

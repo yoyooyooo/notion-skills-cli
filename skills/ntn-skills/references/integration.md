@@ -1,81 +1,88 @@
 # Discovery and integration
 
-The CLI supplies metadata, immutable snapshots and explicit content operations. Host adapters supply startup catalogs, native Skill activation and protocol/tool integration. Installing this entrypoint alone does not install an adapter or change global host configuration.
+The CLI supplies current metadata and locally selected file trees. Host adapters
+supply startup discovery, activation and native tools. Installing a builtin
+alone does not configure an adapter or inject remote instructions.
 
-## Default awareness and selected consumption
+## Host consumption
 
-A supporting host can expose the installed entrypoint's name/description and load its body when relevant. To know remote workflows at startup, it must also run metadata discovery or carry a short instruction to use this entrypoint. A suitable instruction is:
+Use the host's exact executable argv and library scope. Startup metadata gives
+names, descriptions, stable refs, coverage and freshness without loading bodies.
+If none is supplied, use the entrypoint's metadata discovery.
 
-> When a task may benefit from the Notion Skill library, choose from its supplied metadata. If no remote catalog is supplied, use ntn-skills to discover it. Read only the selected workflow and keep supporting files on the selected version. Route Notion content changes to ntn-skills-maintain and fixed sources and Profile/View defaults to ntn-skills-sync.
+A complete main body already visible is sufficient for an introduction.
+Read a requested reference from its containing-file ref and selected directory.
+Use `files SNAPSHOT_ID` when the path is unknown. Preserve the successful
+result's owner, snapshot, scope and freshness.
 
-With OMP/Pi Context Broker enabled, a short `<ntn-skills-guidance>` block already supplies resolved executable argv and source/database scopes, metadata discovery, exact-ref reads, pinned resource reads and help entrypoints. The broker keeps one copy in the effective context and restores it after compaction removes it, including ordinary turns without a Skill invocation. Use that command/scope when supplied. Each configured source keeps its own argv and database; do not assume the first source or a global executable. With zero sources, bundled guidance and package Skill reads still work offline. This does not load the entrypoint body or activate a remote workflow; other supporting hosts can use the instruction above.
+Inspection does not activate a Skill. Use selects a root and complete Requires
+closure. Members remain lazy. A prepared response or enqueued payload does not
+prove actual model delivery; truncated or failed content is not complete.
 
-Append the source's supplied argument examples to its executable argv, retaining `--database`. Start discovery with short task keywords and select a suitable record before reading its body. A successful read returns top-level `content`, pinned `ref` and `snapshot_id`; `record` is metadata. A complete body already supplied by the host/Broker or a successful read is sufficient for an introduction or summary; do not list its cache directory or inspect package/agent metadata merely to identify it again. Resolve a requested relative file directly from a visible entry directory; read other supporting files only when needed. `files SNAPSHOT` lists resources; the supplied `resource-read-args` use `read SNAPSHOT --path RELATIVE`, avoiding shell interpretation of URI arguments. The CLI also supports `read RELATIVE --from PINNED_REF` when the host passes the URI literally. Retain JSON output to check CLI `ok`/`error` and snapshot identity. Inspection describes the workflow without running its setup or repository checks.
+Context Broker can expose `$ntn-skills@builtin`,
+`$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin`. Package identity
+is distinct from same-name remote content. Builtin reads need no Notion copy.
+A native `Read skill://...` route exists only when the host registers it;
+otherwise the shell CLI remains available.
 
-Context Broker exposes `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin` through ordinary Skill discovery, with their supporting files. Use the exact `@builtin` identity to distinguish package instructions from same-name local or Notion copies. No local installation or Notion publication is needed for these package reads. Pi/OMP and Tern use this same selection path; Tern manual selection inserts the exact token into the composer. `/context-broker` owns session/View/status/refresh controls. There is no separate `/ntn-skills save` or management/schema palette.
+This current integration target is the paired CLI/SDK/Broker in Pi. OMP/Tern
+host acceptance is deferred; their local Skill content can still be inventoried
+for the user's Notion library. Do not infer host support from CLI URI support.
 
-Selected Notion Skill payloads also provide pinned `skill-ref` and `snapshot-id`. If path privacy hides `skill-directory`, retain the supplied command/database scope and use `files SNAPSHOT` or `read SNAPSHOT --path RELATIVE`. An introduction describes the Skill's style and prerequisites without adopting them or discovering prerequisite Skills.
+## Current selection and cache
 
-Startup metadata includes names/descriptions, exact record refs, databases, scope, coverage and freshness, without bodies. The host's selected Notion View determines default discovery. An explicit session View has priority. The CLI can resolve a selected or machine-bound shared Profile through `list --profile PROFILE_ID --database ENTRY` or `list --default-view`; without a default View, it uses the first View in API order. Preserve the current Profile fingerprint returned by the paired SDK. `Default Context` is only a normal property used by a View filter, not another host gate. The complete directory remains available for explicit `$`, search and reads. Same-alias pages remain distinct; partial discovery cannot prove absence or uniqueness.
+A task keeps one selected tree until explicitly selecting current content again.
+Already materialized bytes remain usable locally. A missing Source/resource byte
+may be acquired only through its unchanged current declared owner and location.
+A missing native selected byte cannot be reconstructed as an older body.
 
-Preserve exact human-readable `name` and authored frontmatter values, including Unicode, digits, spaces and hyphens; names must be nonempty and contain no control characters. The separate callable alias uses NFC normalization and lowercase, trims surrounding whitespace, replaces whitespace runs with `-`, and percent-encodes characters outside Unicode letters, marks, numbers, `_` and `-`. `Tty7` stays `Tty7` with alias `tty7`. Keep aliases separate from page IDs and stable member keys; collisions require exact selectors. Export directory and authored frontmatter names need not equal the alias.
+Current observations may reuse unchanged native bodies after complete metadata
+checks. Native bodies also have an independent 24-hour recheck deadline.
+`--refresh` reads those bodies again without fetching every unrequested raw
+resource. Source files retain exact revision/hash/size/mode; reads never advance
+a branch. A Source/resource reading projection does not control its bytes.
 
-After metadata registration, an enabled Notion source can prepare the selected View's workflows and resources in the background. This does not activate instructions, add loading records or call the model. The first user message receives current metadata before its model request. `/context-broker views [SOURCE]` lists choices; `/context-broker view [SOURCE] ID_OR_URL` selects one for the active session; `default` resets it. Switching changes the next request's discovery directory while loaded bodies keep their snapshots. Detached completion discovers the full metadata catalog only.
-
-On selection, require a successful current read and retain page/version/snapshot identity, pinned refs, scope and freshness. The broker owns snapshot/relative-path mechanics when integrated. Direct shell users follow returned pinned refs. A task keeps its selected version until an explicit switch; a remote edit does not silently update an active workflow. Inspection, content maintenance and configuration do not activate the inspected Skill. Downloading scripts never authorizes execution.
-
-For a long Pi session, `notion_ctl` with `working_set: "show"` reports active Notion roots and their complete Requires closure. `working_set: "budget", max_bytes: N` sets the session's complete instruction-byte budget; explicit `null` removes it. An over-budget use is refused as a complete selection rather than truncated or silently evicted. `working_set: "release", roots: [FIXED_ROOT_REF]` releases only those exact active root selections; shared Requires remain while another root needs them. Release does not delete Notion content or historical pins. Later explicit use can restore the workflow, while compaction or a late old result cannot reactivate a released selection. These bytes cover Notion instruction graphs, not the entire model context or all local Skills.
-
-A native `Read skill://...` route exists only if the host registers it. Do not replace an existing local Skill handler or assume CLI URI support installs one. Without an adapter, use `ntn-skills read` through the shell. The separate pi-context-broker repository owns OMP/Pi and Tern setup and native acceptance; see its [configuration reference](https://github.com/yoyooyooo/pi-context-broker/blob/main/packages/context-broker/docs/reference.md) and [Tern guide](https://github.com/yoyooyooo/pi-context-broker/blob/main/packages/tern-context-broker/README.md).
+All ordinary consumption is remotely read-only. No Record creation, body
+projection, adoption or cleanup occurs during a read. Query POSTs are reads.
+Current Name/Description changes can appear without changing file bytes or
+content identity; an active immutable local selection retains its own metadata.
 
 ## Connection and local state
 
-Direct shell consumers need Node.js 22.22.3+ within 22.x or 24.20.0+ and an installed `ntn-skills` executable. Context Broker can supply its own packaged executable argv; use that exact command when provided. Online work uses the project's direct HTTP engine and existing Notion token. Read content is sufficient for discovery and already-retained consumption. A current shared read that retains a newly observed whole-file edit also needs Record write access; selected mutations need Insert/Update content. Read the installed command's `--help` instead of guessing flags.
+Authentication uses a nonempty saved token before `NOTION_API_TOKEN`.
+`ctl config show` exposes presence only. Configure a token through trusted
+stdin when requested, never command arguments or chat. A token's presence does
+not establish validity or access to the selected library.
 
-Authentication priority is nonempty saved `config.token` > nonempty `NOTION_API_TOKEN`. `ctl config show` omits secrets and reports only token presence. Saved tokens are plaintext in private configuration. If explicitly configuring one, pass it through trusted stdin to `ctl config set-token --stdin`; never use arguments or reports. `clear-token` restores environment-token selection when removing that saved override is intended. Do not ask for credentials implicitly.
+Use `NTN_SKILLS_CONFIG_HOME`, `NTN_SKILLS_HOME` and
+`NTN_SKILLS_CACHE_HOME` for isolated tests. Do not copy personal configuration
+or author caches into an independent consumer. A different local root does not
+change remote permissions.
 
-Separate config/state/cache roots with `NTN_SKILLS_CONFIG_HOME`, `NTN_SKILLS_HOME`, `NTN_SKILLS_CACHE_HOME` or XDG bases when isolation is required. Separate roots do not isolate official login, and copying personal configuration can copy a higher-priority token. Credential/workspace/endpoint scope controls eligible cached lookup. Pinned snapshots remain readable offline and can outlive remote permission; they are not proof of present access.
+`NOTION_API_BASE_URL` is a trusted API origin and part of credential scope.
+Do not change it to bypass an access error. Avoid logging credentials or signed
+resource URLs. Cached local content is not evidence of current remote permission.
 
-Explicitly installed local builtin copies use a separate shared data root: `NTN_SKILLS_DATA_HOME` > `$XDG_DATA_HOME/ntn-skills` > `~/.local/share/ntn-skills`. Default Agent-facing entries are links in `~/.agents/skills`; repeat `--agent-dir DIR` to add other supported Agent roots. These links share one central version. Keep their installation/distribution records; this sharing does not merge Notion credentials or cache scopes. Isolate HOME and the data root for verification as well as config/state/cache.
-
-`NOTION_API_BASE_URL` selects a trusted API origin and affects credential scope. It accepts HTTPS origins or loopback HTTP for controlled tests; paths, queries and URL credentials are rejected. Do not change the endpoint to work around an access failure. Workspace scheduling uses the authenticated connection identity. Never record tokens, raw transport bodies or signed download URLs.
-
-Shared readers batch native file metadata and shared ownership facts, preserve complete whole-file customizations, and rebuild disposable observations from shared records. Their independent full-body deadline prevents repeated metadata renewal from hiding unchanged-timestamp edits indefinitely. Source and local-resource bindings do not override native Name, Description or file ownership.
-
-Shared current reads reuse unchanged bodies after complete file metadata and ownership checks. Freshness and the independent body deadline bound reuse even when a page timestamp stays unchanged. `--refresh` or explicit `--max-age 0` validates current Markdown without forcing every unrequested binary to download. Pinned raw resources retain their exact source, hash and mode; a missing object may be fetched only from that frozen source, while `--offline` requires it locally. An authoring request or complete export verifies every file.
-
-## Consolidated shared libraries
-
-Use the exact configured Skills entry for discovery and consumption. A retained `bundle-...` Source reconstructs resources from that library's Records; fixed Git resources use the selected immutable commit. Preserve the returned current or pinned ref, complete directory and checksum-bound resources. Missing data remains an error; another library, local Skill or latest upstream revision cannot fill it implicitly.
-
-A native References file-link map resolves exact cross-file or same-library references; it does not automatically load another Skill. Large Router member relations are paginated. Archive records remain separate from Profile rules and current discovery. Reading a script, ZIP or original historical operation never authorizes executing its contents.
+`ctl cache status` inspects local cache state. Cache configuration and reclamation
+are explicit local actions; consult their current schema only when needed.
+Clearing state is not the default fix for an active selection or stale host
+metadata.
 
 ## Diagnose discovery and loading
 
-Start from the actual symptom and existing result. Do not run every diagnostic or clear state by default.
-
-| Symptom | Check and next action |
+| Symptom | Check and action |
 | --- | --- |
-| Expected workflow is absent | Inspect supplied metadata/`list` coverage and failed sources. Broaden `--query`; use `list --database KNOWN_DATABASE` for an exact known library. `ctl config show` checks existing registrations; use `ctl database register` only when configuration change is intended. Search absence is not workspace absence. |
-| Same name identifies several workflows | Keep all page identities and select the intended database or exact page-ID ref. Do not rename or choose the first row merely to resolve lookup. |
-| Workflow is listed but loading fails | Read the selected error code and scope. Check `ntn-skills --version` and sanitized `ctl config show` as relevant. `ctl doctor` validates direct API authentication; add `--database ID` to inspect one catalog and read/cache one available Skill. It is not required for ordinary reads. Do not turn an error into empty instructions. |
-| Content appears old | Determine whether this is an active pinned version, a bounded current observation or a stale host metadata catalog. Refresh a current unpinned target when latest content is required; pinned refs reject refresh. A host source-metadata refresh and a content refresh are different operations. Do not delete snapshots or recovery state. |
-| `skill://` fails in the host Read tool but CLI works | Check whether that host has the adapter. Use the CLI as the supported path until integration is configured; a Skill cannot register the protocol handler. |
-| Bundled builtin missing from ordinary `$` | Check the Broker package and source/provenance selection; use its exact `@builtin` token. Package builtins need no local install or Notion connection. |
-| Explicit local copy installed but native host menu is unchanged | Inspect `ctl builtin status` and its distribution paths; add `--agent-dir PROFILE` only if that host needs an additional root. Reload/restart native discovery. OMP uses `/restart`; `/reload-plugins` does not load changed extension code. |
-| Reading resources fails | Use the selected snapshot's file inventory and resolve from the containing file. A body link alone does not create a file binding. A maintenance task may need its exact Files entry or fixed-source file repaired; preserve the selected owner and original operation. |
-| Authentication or access fails | Identify the selected credential precedence and intended workspace. Token presence is not validity; do not silently clear an override, change identity, expose a token or initiate login. Report a real external access prerequisite when one remains. |
+| Expected workflow absent | Inspect coverage and failed sources; broaden query or select the exact known database. Search absence is not workspace absence. |
+| Same name matches several pages | Select the intended database or exact returned ref; preserve each identity. |
+| Current schema required | Keep the precise error and affected entry. Current descriptor conversion is a management task; another reader must not mask it. |
+| Current operation pending | Inspect its current state and operation ID with library files; do not mark ready by hand. |
+| Content appears old | Distinguish host metadata, a current bounded observation and an active local selection. Refresh the current target when current content is needed. |
+| Selected file is missing | Inspect the selection's directory and current exact descriptor. Re-select when the old local bytes are unavailable; do not substitute a newer file silently. |
+| Native tool rejects skill URI | Check the host adapter; use the supplied CLI until its native route exists. |
+| Builtin missing | Check the paired Broker/package identity and exact @builtin token; no remote publication is required. |
+| Authentication or access fails | Check existing token precedence, intended workspace and sanitized doctor output. Do not expose or silently replace credentials. |
+| Reading page looks complete but bytes differ | Inspect its Content authority. Generated reading pages do not replace the exact Source/resource bytes. |
 
-Configuration/source metadata, immutable snapshots and ongoing sync state have different lifecycles. `ctl cache status` inspects observations offline. An authorized `ctl cache clear` retires only disposable SQL observations; it does not remove pinned snapshots, objects, plans, baselines or receipts. Cache clearing is not the default fix for stale host catalogs or pinned versions. Upgrades/uninstall retain private config/state unless separately retired.
-
-`ctl cache capacity` inspects or changes admission for optional rebuildable SQL indexes (`--max-bytes N`, `--retention 7d`). The defaults are 64 MiB of logical payloads and a seven-day retention age; hits do not renew that age. This is separate from content freshness and does not limit physical SQLite allocation or the whole disk. `ctl cache retention` explains protected and eligible entries. `ctl cache reclaim` previews exact candidates; only the returned plan with `--apply --plan PLAN_ID` performs recovery-preserving reclamation. The original payload is verified and sent through system Trash before the matching index is removed. Unknown or changed entries, immutable objects, pins, current permission evidence and original operations remain protected. A later read rebuilds eligible indexes from the same fixed facts.
-
-## Adapter contract references
-
-The [host contract](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/host-integration.md) owns integration behavior. One-way source consumers discover metadata, select a page, verify discovery/read scope, then export its fixed snapshot into an owned directory. Match export `main_path` against `.ntn-skills.json`'s `main` and preserve all files and relative layout; portable entry bytes can differ from the normalized read view. Identical output is reused; different output fails without overwrite.
-
-The [CLI protocol](https://github.com/yoyooyooo/notion-skills-cli/blob/main/docs/protocol.md) owns selectors, storage, freshness and error contracts. Shared Skills/Files/Sources/Records and portable exports use the public read/ref interface. Copy stable shared record IDs and refs exactly rather than interpreting them as page UUIDs. Adapters accept additional JSON fields, propagate unknown failures, and cannot infer current authorization from retained snapshots.
-
-## Four-table Sources management
-
-The Sources database owns active provider configuration; Skills.Origin and Source Member identify the primary association, and Selected Version remains a fixed content pin. Sources is not an additional ordinary-read discovery pass. Generic Git (including GitLab) and explicit Linear issue/document mappings enter through the source adapter boundary. Public fixed Git can retain an exact file manifest and fetch resource bytes on demand; a retained source stores its complete archive before explicit selection. Use `ctl library sources` for management and retain exact source/member identities. Native Sources views and Files.Origin rollups are navigation; complete CLI membership uses the forward relation.
+Follow the current installed parser and supplied host interface. Report actual
+configuration, current read and model delivery separately. Loading succeeded
+only when the necessary complete content was actually returned.

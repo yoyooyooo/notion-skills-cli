@@ -5,21 +5,14 @@ import {
   Notion,
   SkillsError,
   listViews,
-  createSkill,
-  applySkill,
-  replaceSkill,
   exportSkill,
-  writeSkill,
   listSkill,
   readSkill,
   resolveSkillRef,
-  updateSkill,
 } from "@notion-skills-cli/core"
 
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
 import { fail } from "../../core/src/model.ts"
-import { SharedApplyChangesManifestSchema } from "../../core/src/shared-skill-apply-model.ts"
-import { compactApplyOutput } from "./apply-output.ts"
 import { listSkills } from "../../core/src/catalog-consumption.ts"
 
 import {
@@ -165,14 +158,6 @@ export const readCommand = defineCommand(
     database: databaseFlag,
     metrics: requestMetricsFlag,
     json: switchFlag("json", "Emit the stable JSON result; incompatible with --raw"),
-    readOnly: switchFlag(
-      "read-only",
-      "Forbid every remote write, including internal history retention",
-    ),
-    authoring: switchFlag(
-      "authoring",
-      "Inspect one exact current native page for editing, including disabled content; always validates online without qualifying disabled consumer reuse",
-    ),
     ...readPolicyFlags,
     from: singleton(
       "from",
@@ -208,8 +193,6 @@ export const readCommand = defineCommand(
         from: Option.getOrUndefined(config.from),
         lines: Option.getOrUndefined(config.lines),
         output: Option.getOrUndefined(config.output),
-        authoring: config.authoring,
-        readOnly: config.readOnly,
         ...(yield* readPolicy(config)),
       })
       if (config.raw) {
@@ -222,7 +205,7 @@ export const readCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("Read one file with bounded cache freshness or a pinned snapshot"),
   Command.withDescription(
-    "Read one file, defaulting to the selected record's entrypoint: SKILL.md, ROUTER.md or PROMPT.md. --authoring inspects one exact native page ID/URL for editing, including disabled drafts: it always validates the complete current tree online and returns a fixed author pin without qualifying disabled content for current consumer reuse. It rejects offline/max-age/from and pinned targets; initialize an unregistered native draft with adopt first. Names/aliases/page IDs/URLs/unpinned refs otherwise reuse eligible observations for 5m; --refresh validates native bodies and the fixed source manifest online, while supporting raw bytes are acquired when selected. --offline requires the selected bytes locally; --max-age overrides age (explicit 0 also requires online validation). Shared Skills revalidate flat file metadata and immutable ownership facts; an independent 24-hour full-body deadline bounds same-timestamp edits. Notion native content is retained before whole-file custom adoption. Legacy aligned native Skills may reuse verified files after metadata checks. Both report freshness.validation=metadata when bodies were reused. Policies are mutually exclusive. Pinned targets (including relative --from pinned refs) select immutable versions and reject refresh/max-age. Missing selected bytes may be acquired only through the pin's frozen source or retained history; --offline forbids this acquisition. --path supplies a file only when the target has no path. Relative --from rejects --path. JSON includes source/freshness, identity, pinned ref, version, range and has_more. --lines uses inclusive 1-based ranges. --output writes exact bytes with identical reuse and differing-output rejection; --raw emits successful text only. An absent snapshot requires a new current read; arbitrary historical versions cannot be fetched.",
+    "Read SKILL.md, ROUTER.md, PROMPT.md or an exact selected path. Current reads validate complete Files metadata and current Content descriptors. Native edits are read directly into local cache; Source and resource content keep exact bytes. All consumption forbids semantic Notion writes. Eligible current observations may be reused within the freshness policy; --refresh reads native bodies again, --offline requires local selected bytes, and --max-age overrides age. Native bodies also have an independent 24-hour deadline. A local selected ref preserves its complete directory and bytes while available. Missing bytes use only an unchanged current declared Source/resource route; otherwise select current content again. No historical retrieval or adoption runs. --from resolves within the containing file; cross-root links require an explicit current Skill ref. --lines is an inclusive range, --output writes exact bytes and refuses conflicting output, and --raw emits successful text only. Disabled content and access errors remain explicit.",
   ),
   Command.withExamples([
     {
@@ -288,243 +271,6 @@ export const filesCommand = defineCommand(
   ]),
 )
 
-export const createCommand = defineCommand(
-  "create",
-  {
-    input: Argument.String("input").pipe(
-      Argument.withDescription(
-        "Local ZIP/folder (portable v2 for Prompt/Router) or ordinary Skill Markdown file",
-      ),
-    ),
-    database: databaseFlag,
-    name: singleton(
-      "name",
-      "Exact human title override; nonempty Unicode without control characters",
-    ),
-    description: singleton(
-      "description",
-      "Override Description; nonblank, at most 2000 Unicode characters; required if source has none",
-    ),
-    storage: Flag.Literals("storage", ["markdown_files", "notion_blocks"]).pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "markdown_files stores editable LF UTF-8 files without Markdown parsing (rejects CR/NUL/binary); notion_blocks uses native rich text",
-      ),
-    ),
-    dryRun: dryRunFlag,
-    progress: progressFlag,
-    ...memberFlags,
-    ...requiredFlags,
-  },
-  (config) =>
-    Effect.gen(function* () {
-      yield* emit(
-        yield* createSkill(config.input, {
-          database: Option.getOrUndefined(config.database),
-          name: Option.getOrUndefined(config.name),
-          description: Option.getOrUndefined(config.description),
-          storage: Option.getOrUndefined(config.storage),
-          members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
-          requires: config["clear-requires"]
-            ? []
-            : config.require.length
-              ? config.require
-              : undefined,
-          dryRun: config.dryRun,
-          ...(yield* publicationOptions(config.progress)),
-        }),
-      )
-    }),
-).pipe(
-  withConstraints([memberConstraint, requiredConstraint]),
-  Command.withShortDescription("Create a new Skill, Router or Prompt from local input"),
-  Command.withDescription(
-    'Create one new Skill, Router or Prompt in the selected database. Ordinary Skill folders with SKILL.md and supporting files, ZIPs, or a single Markdown file need no hand-authored manifest; use --name/--description for explicit metadata overrides. Database priority is --database, configured default, then one unambiguous discovered library. In a shared library, the CLI freezes all input, creates native Skills/Files identities, and enables the new Skill only after the complete body set verifies. Shared creation uses the existing complete-resource journal: Markdown is editable and all other resources retain exact bytes and executable modes. Directory imports ignore Finder .DS_Store only. Unsupported projection and size failures stop before page creation without omitting authored files. Omit --storage for this path; markdown_files is a legacy storage mode and is rejected for shared entries. A name collision never permits overwriting another Skill. Shared success returns a verified snapshot, pinned refs and create_operation_id. Preserve the exact input and original operation after an unknown response; repeating the same intent reconciles it without blindly repeating page creates. --dry-run performs online preflight but sends no Notion writes and is not proof of a completed create. For Prompt, stage a folder with root .ntn-skills.json containing {"format":"ntn-skills","version":2,"kind":"prompt","name":"Review Prompt","description":"Requirements for a review","main":"PROMPT.md"} and a UTF-8 PROMPT.md body containing \'Review the change and explain its risks.\'. For Router, use {"format":"ntn-skills","version":2,"kind":"router","name":"Review Router","description":"Select a review Skill","main":"ROUTER.md"} and a UTF-8 ROUTER.md body containing \'Select the relevant member Skill for this review.\'. kind must be skill, router or prompt; filenames/frontmatter never select kind. Without a manifest, ZIP/folder uses SKILL.md or unique top-level Markdown and kind defaults to skill; a single Markdown file is also a Skill regardless of filename. Portable v1 is unsupported. main must name an existing normalized relative source file (arbitrary filename allowed); published entrypoints are SKILL.md, ROUTER.md and PROMPT.md respectively. Manifest name must be nonblank without control characters; description must be nonblank and at most 2000 Unicode code points, even when overridden. --name/--description override manifest metadata, which overrides body frontmatter; ordinary Skill name falls back from frontmatter to filename and requires a description from frontmatter or --description. Shared Skills and Routers accept repeatable --member and --require with exact current enabled Skill page IDs or unpinned entrypoint refs in the same library and data source. Requires is for unconditional prerequisites; member bodies remain lazy. Nested Routers, Prompts, resource refs and pinned refs are invalid relation targets. Each explicit relation write supports at most 100 targets and rejects larger replacements before writing. For legacy entries, References Markdown becomes editable child pages and optional Files preserves original bytes; those targets retain content_id, --progress and ctl operation resume OPERATION_ID publication recovery. Shared operation IDs do not use that legacy resume path. Insert, Update and Read content permissions are required.',
-  ),
-  Command.withExamples([
-    {
-      command: "ntn-skills create ./my-skill --dry-run",
-      description: "Preview creation using the configured default or the only discovered database",
-    },
-    {
-      command: "ntn-skills create ./my-skill",
-      description: "Create the Skill and return its exported snapshot",
-    },
-    {
-      command: "ntn-skills create ./my-skill --database DATABASE_ID --name 'My Skill'",
-      description: "Override the database and display title explicitly",
-    },
-    {
-      command: "ntn-skills create ./review-prompt --database DATABASE_ID --dry-run",
-      description:
-        "Online preview of the Prompt folder containing the full v2 manifest and PROMPT.md shown above; omit --dry-run to publish",
-    },
-    {
-      command:
-        "ntn-skills create ./review-router --database DATABASE_ID --member SKILL_PAGE_ID --member 'skill://OTHER_SKILL_PAGE_ID/SKILL.md' --dry-run",
-      description:
-        "Online preview of the Router folder shown above with exact existing same-library Skills; omit --dry-run to publish",
-    },
-  ]),
-)
-
-function readChangesManifest(input: string | undefined) {
-  return Effect.gen(function* () {
-    if (input === undefined) return undefined
-    const location = (yield* Path.Path).resolve(input)
-    const text = yield* (yield* FileSystem.FileSystem)
-      .readFileString(location)
-      .pipe(
-        Effect.mapError(() =>
-          fail("INVALID_INPUT", "Could not read the changes manifest.", { input: location }),
-        ),
-      )
-    return yield* Effect.try({
-      try: () =>
-        Schema.decodeUnknownSync(SharedApplyChangesManifestSchema)(JSON.parse(text), {
-          onExcessProperty: "error",
-        }),
-      catch: () =>
-        fail(
-          "INVALID_INPUT",
-          "The changes manifest must be the documented version 1 JSON object.",
-          { input: location },
-        ),
-    })
-  })
-}
-
-export const applyCommand = defineCommand(
-  "apply",
-  {
-    target: Argument.String("target").pipe(
-      Argument.withDescription(
-        "Pinned main ref or snapshot ID from read; names and current page IDs are not a version baseline",
-      ),
-    ),
-    input: singleton(
-      "input",
-      "Sparse directory containing only the files to add or change; relative paths are retained",
-    ),
-    remove: Flag.String("remove").pipe(
-      Flag.atLeast(0),
-      Flag.withDescription(
-        "Exact relative file path to remove from the selected snapshot; repeat for multiple files",
-      ),
-    ),
-    changes: singleton(
-      "changes",
-      "Optional JSON manifest of explicit moves, removes, revives and link-rewrite spans. Omitted input files are not deletions.",
-    ),
-    database: databaseFlag,
-    name: singleton("name", "Exact new human title; preserves page identity"),
-    description: singleton(
-      "description",
-      "New Description; nonblank, at most 2000 Unicode characters",
-    ),
-    defaultContext: Flag.Boolean("default-context").pipe(
-      Flag.withDescription(
-        "Optional View-filter metadata only; does not enable the Skill or auto-load its instructions",
-      ),
-      Flag.atMost(1),
-      Flag.map((values) => Option.fromUndefinedOr(values[0])),
-    ),
-    ...memberFlags,
-    dryRun: dryRunFlag,
-    compact: switchFlag(
-      "compact",
-      "Omit the detailed per-request trace in the JSON tool result while retaining aggregate costs, exact refs, status and operation IDs; full output remains the default",
-    ),
-    progress: progressFlag,
-  },
-  (config) =>
-    Effect.gen(function* () {
-      yield* validateConstraints([memberConstraint], config)
-      const result = yield* applySkill(config.target, {
-        input: Option.getOrUndefined(config.input),
-        remove: config.remove,
-        changes: yield* readChangesManifest(Option.getOrUndefined(config.changes)),
-        database: Option.getOrUndefined(config.database),
-        name: Option.getOrUndefined(config.name),
-        description: Option.getOrUndefined(config.description),
-        defaultContext: Option.getOrUndefined(config.defaultContext),
-        members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
-        dryRun: config.dryRun,
-        ...(yield* publicationOptions(config.progress)),
-      })
-      yield* emit(result, config.compact ? compactApplyOutput : undefined)
-    }),
-).pipe(
-  withConstraints([memberConstraint]),
-  Command.withShortDescription("Apply one content change to an exact pinned baseline"),
-  Command.withDescription(
-    "Submit changed files in --input and explicit deletions with --remove. Omitted files remain unchanged; deleting the main file is rejected. New files in --input are additions. Equal bytes are not a move, and a missing input file is not a deletion. --changes is an optional version 1 JSON manifest with moves, removes, revives and exact link-rewrite spans. The target must be a pinned main ref or snapshot ID from a prior read; a stale baseline fails before writing. In a shared library, body edits, metadata and explicit layout changes form one frozen sequential parent operation. The complete final tree is checked before dispatch. The batch is not atomic. A later failure retains earlier verified edits. Unknown children are not redispatched. Replacement still refuses to infer mixed deletions from omitted files. Shared success reports status=applied, verified=true and apply_operation_id. Identical input reports unchanged. --dry-run sends no Notion writes. For agent-friendly output, --compact omits only the verbose per-request transport trace while retaining aggregate request metrics, exact identity, status, changes and original operation ID; the complete existing JSON remains the default. Legacy targets retain their existing publication recovery and ctl operation resume OPERATION_ID.",
-  ),
-  Command.withExamples([
-    {
-      command:
-        "ntn-skills apply 'PINNED_REF' --database ENTRY --input ./changes --dry-run --compact",
-      description:
-        "Review a complete multi-file intent without writing or flooding the agent context with request traces",
-    },
-    {
-      command: "ntn-skills apply 'PINNED_REF' --database ENTRY --input ./changes --compact",
-      description:
-        "Apply one explicitly authorized intent and receive a compact verified original-operation receipt",
-    },
-  ]),
-)
-
-export const replaceCommand = defineCommand(
-  "replace",
-  {
-    input: Argument.String("input").pipe(
-      Argument.withDescription("Local ZIP path, Skill folder, or Markdown file with any filename"),
-    ),
-    database: databaseFlag,
-    name: singleton("name", "Exact human title override; preserves page identity"),
-    description: singleton(
-      "description",
-      "Override Description; nonblank, at most 2000 Unicode characters; required if source has none",
-    ),
-    storage: Flag.Literals("storage", ["markdown_files", "notion_blocks"]).pipe(
-      Flag.optional,
-      Flag.withDescription(
-        "Choose editable LF UTF-8 files (no CR/NUL/binary) or native rich text; existing editable-file pages retain their storage",
-      ),
-    ),
-    target: requiredSingleton(
-      "target",
-      "Exact page ID/URL, page-ID ref or pinned snapshot; names cannot select replacement",
-    ),
-    dryRun: dryRunFlag,
-    progress: progressFlag,
-    ...memberFlags,
-  },
-  (config) =>
-    Effect.gen(function* () {
-      yield* validateConstraints([exactTargetConstraint, memberConstraint], config)
-      yield* emit(
-        yield* replaceSkill(config.input, {
-          database: Option.getOrUndefined(config.database),
-          name: Option.getOrUndefined(config.name),
-          description: Option.getOrUndefined(config.description),
-          storage: Option.getOrUndefined(config.storage),
-          members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
-          dryRun: config.dryRun,
-          target: config.target,
-          ...(yield* publicationOptions(config.progress)),
-        }),
-      )
-    }),
-).pipe(
-  withConstraints([exactTargetConstraint, memberConstraint]),
-  Command.withShortDescription("Replace the complete file set of one exact existing Skill"),
-  Command.withDescription(
-    "Requires --target identifying an exact page or pinned snapshot. Names never select replacement and missing targets never create. Pinned versions enforce a current-version check. A shared target uses the native authoring kernel and preserves the original kind. Omitted supporting files are inferred deletions: one isolated inferred deletion is supported, while inferred deletion combined with other changes or multiple inferred deletions fails before writing. Use apply with explicit --input, --remove and --changes for complete-tree maintenance. Shared replacement does not accept hidden legacy projection authority. Inspect the exact original result after an interruption; do not start a replacement to bypass pending work. Existing legacy targets retain their complete replacement publication, where omitted files are requested removals. Use --dry-run to preview.",
-  ),
-)
-
 export const exportCommand = defineCommand(
   "export",
   {
@@ -536,13 +282,6 @@ export const exportCommand = defineCommand(
       "Destination ZIP or directory; identical content is reused, differing output is never overwritten",
     ),
     format: singleton("format", "zip or directory; default: zip for .zip outputs"),
-    projection: Flag.String("projection").pipe(
-      Flag.atMost(1),
-      Flag.map((values) => values[0] ?? "source"),
-      Flag.withDescription(
-        "source preserves portable source files (default); snapshot exports the materialized read view",
-      ),
-    ),
     database: databaseFlag,
     ...readPolicyFlags,
   },
@@ -554,7 +293,7 @@ export const exportCommand = defineCommand(
         yield* exportSkill(config.selector, {
           output: config.output,
           format: format as "zip" | "directory" | undefined,
-          projection: config.projection as "source" | "snapshot",
+          projection: "snapshot",
           database: Option.getOrUndefined(config.database),
           ...(yield* readPolicy(config)),
         }),
@@ -563,7 +302,7 @@ export const exportCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("Export a complete reversible Skill as ZIP or folder"),
   Command.withDescription(
-    "Export every content file and a versioned portable manifest. --projection source (default) preserves portable source files; --projection snapshot exports the materialized read view, including the native Skill or Router Members index. Current inputs follow the 5m content policy; use mutually exclusive --refresh, --offline or --max-age. Ordinary aligned native Skills may revalidate metadata and reuse verified source files (freshness.validation=metadata); --refresh or explicit --max-age 0 requires complete body/resource validation. Pinned refs and snapshot IDs select immutable versions and reject refresh/max-age. Export acquires any missing bytes only from the pin's frozen source or retained history; --offline requires every exported byte locally. References links become relative paths; optional Files preserves source bytes, while page-only output is normalized. ZIP entries sort deterministically with fixed timestamps. --output is required; .zip selects ZIP, otherwise directory; --format overrides it. Identical output returns reused=true; differing output returns OUTPUT_CONFLICT. Cache policy changes input selection only, never output overwrite permission. Export never mutates Notion.",
+    "Export the complete currently selected file tree as a directory or deterministic ZIP. Exact Source/resource bytes and executable modes are preserved; native files use their explicit current frontmatter and normalized body. Notion is never changed. The destination must be new or byte-for-byte identical. A local selected ref may be used while its manifest and required bytes remain available; missing exact bytes can only use an unchanged current declared location, otherwise select current content again. --offline requires every byte locally. Use read --path PATH --output FILE for one file. A portable manifest describes this export; no remote content version or history is created.",
   ),
   Command.withExamples([
     {
@@ -576,58 +315,6 @@ export const exportCommand = defineCommand(
     },
   ]),
 )
-export const writeCommand = defineCommand(
-  "write",
-  {
-    target: Argument.String("skill-or-ref").pipe(
-      Argument.withDescription(
-        "Name, invocation alias, page ID/URL, skill:// file ref or snapshot ID; pinned targets are version baselines",
-      ),
-    ),
-    path: singleton("path", "Skill-relative file path, default SKILL.md; omit for a file ref"),
-    input: requiredSingleton("input", "Local file containing the full replacement content"),
-    database: databaseFlag,
-    dryRun: dryRunFlag,
-    progress: progressFlag,
-  },
-  (config) =>
-    Effect.gen(function* () {
-      yield* emit(
-        yield* writeSkill(config.target, {
-          path: Option.getOrUndefined(config.path),
-          input: config.input,
-          database: Option.getOrUndefined(config.database),
-          dryRun: config.dryRun,
-          ...(yield* publicationOptions(config.progress)),
-        }),
-      )
-    }),
-).pipe(
-  Command.withShortDescription("Write one Skill file to Notion"),
-  Command.withDescription(
-    "Replace one complete file, defaulting to the selected record entrypoint. --path supplies a path only when the target has none. Pinned refs and snapshot IDs are online version baselines; stale content fails before writing. In a shared library, only an existing exact native file binding can be written. Main Name and Description remain native Notion properties; nominate their changes through update or apply. Complete existing main and supporting headers are retained separately from the editable body. A submitted header must preserve existing extra main fields and the exact supporting header; adding, changing or omitting those fields is rejected. Body-only input retains the existing header. notion_page_id must match. Native input normalizes CRLF and terminal line feeds before the candidate is frozen; other Notion rendering differences must pass exact verification. Other logical files stay intact. Identical input returns action=unchanged without mutation; --dry-run validates without writes. Shared success returns a verified current snapshot, pinned ref, previous_version_id and body_write_operation_id. Preserve this original operation after an unknown result and read the exact current Skill for reconciliation; do not pass shared IDs to legacy ctl operation resume. Legacy targets retain their earlier full-file publication, --progress and guarded ctl operation resume workflow.",
-  ),
-  Command.withExamples([
-    {
-      command: "ntn-skills write 'PINNED_REF' --input ./SKILL.md --dry-run",
-      description: "Preview a write using the exact ref returned by read",
-    },
-    {
-      command: "ntn-skills write 'skill://resource-tag-governance/SKILL.md' --input ./SKILL.md",
-      description: "Write the current Skill body while preserving page properties",
-    },
-    {
-      command: "ntn-skills write 'PINNED_ATTACHMENT_REF' --input ./vocabulary.md",
-      description: "Replace an attachment using its returned pinned file ref",
-    },
-    {
-      command:
-        "ntn-skills write 'Resource Tag Governance' --path vocabulary.md --input ./vocabulary.md",
-      description: "Select a Skill by display Name and a separate file path",
-    },
-  ]),
-)
-
 export const resolveCommand = defineCommand(
   "resolve",
   {
@@ -657,61 +344,4 @@ export const resolveCommand = defineCommand(
       description: "Resolve from a nested reference file and retain its fixed version",
     },
   ]),
-)
-
-export const updateCommand = defineCommand(
-  "update",
-  {
-    target: Argument.String("target"),
-    database: databaseFlag,
-    name: singleton("name", "Exact new human title; preserves page identity"),
-    enabled: singleton("enabled", "Set the native shared Skill's enabled state: true or false"),
-    description: singleton(
-      "description",
-      "New Description; nonblank, at most 2000 Unicode characters",
-    ),
-    dryRun: dryRunFlag,
-    ...memberFlags,
-    ...requiredFlags,
-    defaultContext: Flag.Boolean("default-context").pipe(
-      Flag.withDescription(
-        "Optional View-filter metadata only; does not enable the Skill or auto-load its instructions",
-      ),
-      Flag.atMost(1),
-      Flag.map((values) => Option.fromUndefinedOr(values[0])),
-    ),
-  },
-  (config) =>
-    Effect.gen(function* () {
-      yield* validateConstraints([memberConstraint, requiredConstraint], config)
-      const enabled = Option.getOrUndefined(config.enabled)
-      if (enabled !== undefined && enabled !== "true" && enabled !== "false")
-        return yield* Effect.fail(
-          new SkillsError({
-            code: "INVALID_ARGUMENT",
-            message: "--enabled must be exactly true or false.",
-          }),
-        )
-      yield* emit(
-        yield* updateSkill(config.target, {
-          database: Option.getOrUndefined(config.database),
-          name: Option.getOrUndefined(config.name),
-          description: Option.getOrUndefined(config.description),
-          defaultContext: Option.getOrUndefined(config.defaultContext),
-          enabled: enabled === undefined ? undefined : enabled === "true",
-          members: config["clear-members"] ? [] : config.member.length ? config.member : undefined,
-          requires: config["clear-requires"]
-            ? []
-            : config.require.length
-              ? config.require
-              : undefined,
-          dryRun: config.dryRun,
-        }),
-      )
-    }),
-).pipe(
-  withConstraints([memberConstraint, requiredConstraint]),
-  Command.withDescription(
-    "Update only nominated Name, Description, Default Context, Enabled, Members or Requires on an exact target; omitted fields and native file bodies remain unchanged. Exact native pages and retained author pins support disabled drafts without an extra flag. --enabled true|false applies only to shared native records; enabling first verifies the complete current tree and all original-operation barriers. Shared Skills and Routers accept --member/--clear-members and --require/--clear-requires independently. Relation targets must be exact accessible enabled Skill page IDs or unpinned entrypoint refs in the same library/data source. Requires is for unconditional prerequisites. Relation reads paginate completely; explicit replacement writes above 100 targets fail before dispatch because Notion arrays do not append. Pinned snapshots enforce their version baseline. A shared library uses registered native property IDs and the common original-operation journal; metadata uses native last-writer behavior, not compare-and-swap. Shared success reports action=updated, verified=true and metadata_operation_id. Unknown results retain their original plan for read-only reconciliation. Select a shared fixed Source with ctl library source select; update does not accept a Source or ownership override. Existing legacy SyncMode conversion remains a separate workflow.",
-  ),
 )

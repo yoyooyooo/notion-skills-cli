@@ -104,9 +104,7 @@ test("the original Store can dispatch a new exact-main correction and independen
   ).toBe("planned")
   await f.run(withNativeWrites(f, updateSkill(skillPage, { ...selected, enabled: true })))
   const cold = coldClient(f)
-  const current = await cold.run(
-    openSkill(skillPage, { ...selected, refresh: true, sharedReadOnly: true }),
-  )
+  const current = await cold.run(openSkill(skillPage, { ...selected, refresh: true }))
   const main = current.files.find((file) => file.path === "SKILL.md")!
   const bytes = await cold.run(
     Effect.flatMap(Store, (store) => store.readBytes(`objects/${main.sha256}`)),

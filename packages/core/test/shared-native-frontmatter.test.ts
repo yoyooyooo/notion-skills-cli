@@ -27,7 +27,6 @@ test("public body write and apply preserve complete native headers while refusin
     openSkill(created.skill_page_id, {
       database: library.skills.database_id,
       refresh: true,
-      sharedReadOnly: true,
     }),
   )
   const main = snapshot.files.find((file) => file.path === snapshot.entrypoint)!
@@ -85,7 +84,6 @@ test("public body write and apply preserve complete native headers while refusin
       openSkill(created.skill_page_id, {
         database: library.skills.database_id,
         refresh: true,
-        sharedReadOnly: true,
       }),
     )
     const editedMain = refreshed.files.find((file) => file.path === refreshed.entrypoint)!
@@ -109,7 +107,6 @@ test("public body write and apply preserve complete native headers while refusin
       openSkill(created.skill_page_id, {
         database: library.skills.database_id,
         refresh: true,
-        sharedReadOnly: true,
       }),
     )
     const updated = current.files.find((file) => file.path === path)!
@@ -153,7 +150,6 @@ test("public body write and apply preserve complete native headers while refusin
       openSkill(created.skill_page_id, {
         database: library.skills.database_id,
         refresh: true,
-        sharedReadOnly: true,
       }),
     )
     expect(cold.files).toEqual(current.files)

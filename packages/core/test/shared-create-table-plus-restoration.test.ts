@@ -99,7 +99,6 @@ test("v4 repairs only the acknowledged supporting file before the unattempted su
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )

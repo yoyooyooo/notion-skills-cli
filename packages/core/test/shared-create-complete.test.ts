@@ -88,7 +88,6 @@ describe("complete resource creation in the original native journal", () => {
             target: created.skill_page_id,
             scope: yield* authScope,
             startedAt: Date.now(),
-            readOnly: true,
             forceFull: true,
           })
         }),
@@ -166,7 +165,6 @@ describe("complete resource creation in the original native journal", () => {
             target: created.skill_page_id,
             scope: yield* authScope,
             startedAt: Date.now(),
-            readOnly: true,
             forceFull: true,
           })
         }),
@@ -220,7 +218,6 @@ describe("complete resource creation in the original native journal", () => {
           target: created.skill_page_id,
           scope: yield* authScope,
           startedAt: Date.now(),
-          readOnly: true,
           forceFull: true,
         })
       }),

@@ -144,7 +144,6 @@ test("original v10 known mismatch has a separately typed v11 recovery and preser
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )
@@ -217,7 +216,6 @@ test("all acknowledged v10 recovery allocations continue by an explicit v11 deci
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )
@@ -288,7 +286,6 @@ test("complete 407-file continuation keeps all 35 ACKs within ordinary individua
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )

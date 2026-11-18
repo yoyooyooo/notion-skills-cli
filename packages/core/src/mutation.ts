@@ -317,7 +317,6 @@ function writeSkillCurrent(inputTarget: string, options: WriteOptions) {
       {
         database: selectedDatabase,
         refresh: true,
-        sharedReadOnly: Boolean(options.dryRun),
       },
     )
     if (baseline && baseline.version_id !== current.version_id)
@@ -706,7 +705,6 @@ function applySkillCurrent(inputTarget: string, options: ApplyOptions) {
       const current = yield* openSkill(id, {
         database: options.database ?? shared?.database_id,
         refresh: true,
-        ...(shared === undefined ? {} : { sharedReadOnly: true }),
       })
       if (
         current.version_id !== baseline.version_id ||
@@ -1109,7 +1107,6 @@ function saveDocument(
       const current = yield* openSkill(locator.page_id, {
         database: options.database ?? locator.database_id,
         refresh: true,
-        sharedReadOnly: true,
       })
       if (current.record.id !== baseline.record.id || current.version_id !== baseline.version_id)
         return yield* Effect.fail(

@@ -336,7 +336,6 @@ test("reviewed source main repair keeps original allocation and completes only t
           scope: yield* authScope,
           startedAt: Date.now(),
           forceFull: true,
-          readOnly: true,
         })
       }),
     ),
@@ -386,7 +385,6 @@ test("reviewed source main repair keeps original allocation and completes only t
             scope: yield* authScope,
             startedAt: Date.now(),
             forceFull: true,
-            readOnly: true,
           })
         }),
       ),

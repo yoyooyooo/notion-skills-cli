@@ -102,7 +102,6 @@ test("four original script payloads and executable modes survive cold linked rec
         scope: yield* authScope,
         startedAt: Date.now(),
         forceFull: true,
-        readOnly: true,
       })
     }),
   )
