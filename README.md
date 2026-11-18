@@ -27,6 +27,12 @@ Available on [npm](https://www.npmjs.com/package/ntn-skills). For source builds,
 
 ## Why use it?
 
+The `next` line is converging on [one current library contract](docs/current-contract.md):
+Notion owns current management and author content, every supporting file has a full
+reading entry, and CLI/SDK/Pi share one consumption path. The contract lists the
+remaining data and installation gates; source changes alone do not mark the live
+library or installed host as migrated.
+
 You maintain reusable instructions in Notion, but an Agent only needs a few of them for its current task. `ntn-skills list` exposes names and descriptions so the Agent can choose a relevant workflow before loading its instructions. `read` loads the selected file and fixes the Skill version for later resource reads.
 
 A task can outlive an edit in Notion. The first successful read returns a **snapshot**: a local, fixed version of the workflow and its files. Keep the returned refs for the task. Ordinary current-target reads may reuse content validated within five minutes; use `--refresh` to adopt a freshly validated remote version for a new task. Stable manual edits to committed Notion content are readable through that same current-page path; old pinned snapshots stay unchanged, and unfinished publications retain their original recovery guards.

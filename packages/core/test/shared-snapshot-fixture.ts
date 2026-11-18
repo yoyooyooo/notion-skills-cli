@@ -113,7 +113,11 @@ function responseProperty(propertyId: string, value: unknown) {
 }
 
 export function sharedSnapshotFixture(
-  options: { readonly httpClient?: HttpClient.HttpClient; readonly fileCount?: number } = {},
+  options: {
+    readonly httpClient?: HttpClient.HttpClient
+    readonly fileCount?: number
+    readonly root?: string
+  } = {},
 ) {
   const fileCount = options.fileCount ?? 3
   if (!Number.isSafeInteger(fileCount) || fileCount < 1)
@@ -200,7 +204,7 @@ export function sharedSnapshotFixture(
     }
   }
   const store: Store["Service"] = {
-    root: "/unused",
+    root: options.root ?? "/unused",
     configRoot: "/unused",
     cacheRoot: "/unused",
     integrity: integrityRepositoryFixture(),

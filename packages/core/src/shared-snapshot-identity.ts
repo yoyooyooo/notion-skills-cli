@@ -35,7 +35,10 @@ export function sharedSnapshotVersion(input: {
       ...(input.shared_acquisition === undefined
         ? {}
         : { shared_acquisition: input.shared_acquisition }),
-      source: input.source,
+      source:
+        input.source === null
+          ? null
+          : { source_id: input.source.source_id, revision: input.source.revision },
       ownership: [...input.ownership].sort((left, right) =>
         left.file_id < right.file_id ? -1 : left.file_id > right.file_id ? 1 : 0,
       ),

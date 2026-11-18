@@ -119,7 +119,7 @@ test("Git-only current snapshot retains the full pinned directory but downloads 
   const result = await f.run(f.read())
   expect(result.record.locator.type).toBe("shared_skill")
   expect(result.files).toHaveLength(f.files.length)
-  expect(result.shared_acquisition?.version).toBe(3)
+  expect(result.shared_acquisition?.version).toBe(4)
   expect(result.file_bindings).toHaveLength(1)
   expect(result.files.find((file) => file.path === "SKILL.md")?.sha256).toBe(
     sha(f.files.find((file) => file.path === "SKILL.md")!.bytes),
@@ -135,7 +135,7 @@ test("sparse Git adopts just the edited Notion main and still refuses unverified
   const f = setup()
   f.changeMarkdown("# Human edit\n")
   const adopted = await f.run(f.read())
-  expect(adopted.shared_acquisition?.version).toBe(3)
+  expect(adopted.shared_acquisition?.version).toBe(4)
   expect(adopted.shared_acquisition?.files.some((route) => route.path === "SKILL.md")).toBe(false)
   expect(adopted.files.find((file) => file.path === "references/a.md")?.sha256).toBe(
     sha(f.files.find((file) => file.path === "references/a.md")!.bytes),
@@ -208,7 +208,7 @@ test("a completed pre-marker Git-only page remains consumable only with its dete
   const fields = property(f.row.properties)
   fields.projection = rich("projection", gitOnlyProjection)
   const original = await f.run(f.read())
-  expect(original.shared_acquisition?.version).toBe(3)
+  expect(original.shared_acquisition?.version).toBe(4)
   expect(original.files.some((item) => item.path === "SKILL.md")).toBe(true)
   fields.origin = {
     id: "origin",

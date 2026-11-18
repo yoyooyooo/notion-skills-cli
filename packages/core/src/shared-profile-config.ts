@@ -57,7 +57,7 @@ export function bindSharedProfile(input: {
     yield* (yield* Store).writeJson("config.json", { ...current, shared_profile: binding })
     return {
       shared_profile: binding,
-      profile_revision_id: selected.profile.revision_id,
+      profile_fingerprint: selected.profile.fingerprint,
       metadata_only: true as const,
     }
   })
@@ -148,7 +148,7 @@ export function catalogWithProfile(options: ProfileCatalogOptions = {}) {
               library_id: observed.library.library_id,
               library_entry: observed.library.skills.database_id,
               profile_id: observed.profile.profile_id,
-              revision_id: observed.profile.revision_id,
+              fingerprint: observed.profile.fingerprint,
               selection: selection.selection,
               source: observed.source,
               freshness: observed.freshness,

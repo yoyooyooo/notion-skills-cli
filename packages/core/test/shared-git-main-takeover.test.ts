@@ -87,7 +87,7 @@ test("same-owner initial takeover preserves sibling hrefs through plan validatio
   f.f.base.json.clear()
   f.f.base.objects.clear()
   const cold = await f.read()
-  expect(cold.shared_acquisition?.version).toBe(3)
+  expect(cold.shared_acquisition?.version).toBe(4)
   expect(cold.shared_acquisition?.source).toEqual(snapshot.shared_acquisition?.source)
   expect(cold.record.locator).toEqual(snapshot.record.locator)
   expect(cold.file_bindings).toEqual(snapshot.file_bindings)
@@ -118,7 +118,7 @@ async function preparedInitial() {
 test("ordinary body write reproduces the source-only main BASELINE_MISSING without inventing an empty file event", async () => {
   const f = await gitMainFixture()
   const snapshot = await f.read()
-  expect(snapshot.shared_acquisition?.version).toBe(3)
+  expect(snapshot.shared_acquisition?.version).toBe(4)
   expect(snapshot.files.find((file) => file.path === "SKILL.md")?.bytes).toBe(
     f.original.bytes.length,
   )

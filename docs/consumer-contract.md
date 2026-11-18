@@ -1,5 +1,9 @@
 # Skill consumption contract v1
 
+The wire contract below is being narrowed under the
+[current library contract](current-contract.md). Only the implemented changes
+described here are available; the production cutover still has explicit gates.
+
 SC03 / AH-620 freezes the executable core boundary for `consume`. The implementation is
 `packages/core/src/consumer.ts`; its runtime schemas are composed from the existing
 prepare, snapshot and native File schemas in `consumer-model.ts`. The engine and the
@@ -113,8 +117,10 @@ The SDK also exports `listSkill(ref, options): Promise<ListSkillResult>`, the ex
 `files` operation. For a fixed ref it validates the historical manifest, name/alias,
 scope, database constraint and known permission denials without preparing the main
 or reading body objects. A locally complete manifest can be listed while every body
-object is absent. A missing manifest may use the existing retained-pin lookup;
-absence remains `SNAPSHOT_MISSING`, and a wrong historical name remains
+object is absent. A missing manifest returns `SNAPSHOT_MISSING` with
+`details.next: "reselect_current"`; it never looks up retained history. An obsolete
+acquisition contract returns the same reselection action, while actual corrupt
+content fails validation. A wrong selected name remains
 `SNAPSHOT_CONFLICT`. Copy the returned canonical file ref for `readSkill` or
 `readResources`. Current `listSkill` retains the existing current acquisition rules;
 it is not a new metadata-only catalog operation.
@@ -493,10 +499,21 @@ reads retain the existing local-history capability across credential changes; th
 does not prove current access under the newly selected credential. Current reads and
 `use` separately enforce the selected credential scope. Default fixed reads need no
 fresh request to the former remote page, but reject an explicitly known authentication
-or access denial attached to the manifest's scope/target. If a retained pin lacks
-bytes and must acquire them online, `openRetainedSnapshot` revalidates the current
-library/Records identity and current Skill access before fetching exact old-pin
-bytes. It never substitutes the current body.
+or access denial attached to the manifest's scope/target. If a selection lacks
+bytes, only a declared current acquisition route may fetch them. It validates the
+current library, exact owner and enablement, selected Source revision and requested
+path/hash/size/mode before returning content. An authored object without such a
+route requires reselection. It never substitutes the current body or invokes
+historical snapshot restoration.
+
+Shared acquisition has one accepted schema (version 4), with `tree` or `git_member`
+Source capabilities and source/resource routes. The latter carries its canonical
+member root inside the Source descriptor. Old v1/v2/v3 acquisition caches cannot
+enter this reader. Current cache observations use a new materialization epoch;
+fixed old selections return the reselection action. `snapshot-*` is rejected as a
+current Source with `CURRENT_SOURCE_REQUIRED` and `migrate_current_content`; a
+generic Source wrapper cannot re-enable the history reader. Existing legacy bundle
+carriers still require the separate current-data cutover before their retirement.
 
 `--refresh` and `--max-age 0` currently force a full current observation. Ordinary
 positive TTL expiration can revalidate metadata while the separate body deadline is

@@ -104,7 +104,7 @@ export type QuerySharedProfileRecordsInput = {
   readonly entityId?: string
   readonly recordId?: string
 }
-export type AppendSharedProfileRecordInput = {
+export type AppendSharedArchiveRecordInput = {
   readonly beforeCreate?: Effect.Effect<void, SkillsError>
   readonly mode: "create" | "reconcile"
   readonly recordId: string
@@ -124,12 +124,7 @@ type LibraryArchiveSelection = QuerySharedProfileRecordsInput & {
 }
 type AppendRecordInput =
   | (AppendSharedRecordInput & { readonly libraryProfile: false })
-  | (AppendSharedProfileRecordInput & {
-      readonly libraryProfile: true
-      readonly kind: "profile"
-      readonly payloadContainsBody?: never
-    })
-  | (AppendSharedProfileRecordInput & {
+  | (AppendSharedArchiveRecordInput & {
       readonly libraryProfile: true
       readonly libraryArchive: true
       readonly kind: "archive"
@@ -610,7 +605,25 @@ function queryRecordRows(
           property: ids.Kind,
           select: { equals: decode(SharedRecordKindSchema, selected.kind) },
         })
-      if (selected.entityId !== undefined)
+      const currentProfileIdentity =
+        selected.libraryProfile === true &&
+        selected.libraryArchive !== true &&
+        selected.recordId !== undefined &&
+        selected.entityId !== undefined
+      if (currentProfileIdentity)
+        filters.push({
+          or: [
+            {
+              property: ids["Record ID"],
+              rich_text: { equals: identifier(selected.recordId, "Record ID") },
+            },
+            {
+              property: ids["Entity ID"],
+              rich_text: { equals: identifier(selected.entityId, "Entity ID") },
+            },
+          ],
+        })
+      if (selected.entityId !== undefined && !currentProfileIdentity)
         filters.push({
           property: ids["Entity ID"],
           rich_text: { equals: identifier(selected.entityId, "Entity ID") },
@@ -632,7 +645,7 @@ function queryRecordRows(
           })),
         })
       }
-      if (selected.recordId !== undefined)
+      if (selected.recordId !== undefined && !currentProfileIdentity)
         filters.push({
           property: ids["Record ID"],
           rich_text: { equals: identifier(selected.recordId, "Record ID") },
@@ -709,6 +722,21 @@ function queryRecordRows(
         pages.add(header.page_id)
         const identity = canonicalSharedJson([header.skill_page_id, header.record_id])
         const previous = records.get(identity)
+        if (
+          previous !== undefined &&
+          selected.libraryProfile === true &&
+          selected.libraryArchive !== true
+        )
+          return yield* Effect.fail(
+            fail(
+              "SHARED_PROFILE_DUPLICATE",
+              "A current Profile has multiple physical record pages.",
+              {
+                record_id: header.record_id,
+                page_ids: [previous.page_id, header.page_id],
+              },
+            ),
+          )
         if (previous !== undefined && !sameHeaderFact(previous, header))
           return yield* Effect.fail(
             fail("SHARED_RECORD_CONFLICT", "The same Record ID names incompatible shared facts.", {
@@ -978,7 +1006,37 @@ export function querySharedProfileRecords(
   library: SharedLibrary,
   input: QuerySharedProfileRecordsInput = {},
 ) {
-  return queryRecords(library, { ...input, libraryProfile: true, kind: "profile" })
+  return Effect.gen(function* () {
+    // An exact lookup includes either identity, so a conflicting entity/kind cannot
+    // hide behind a more restrictive filter. The decoder still requires both.
+    const rows = yield* queryRecordRows(library, {
+      ...input,
+      libraryProfile: true,
+      ...(input.recordId !== undefined && input.entityId !== undefined
+        ? {}
+        : { kind: "profile" as const }),
+    })
+    const profiles: SharedProfileRecord[] = []
+    const entities = new Map<string, string>()
+    for (const row of rows) {
+      const record = row.record
+      if (record === undefined || record.kind !== "profile" || record.skill_page_id !== null)
+        return yield* Effect.fail(
+          invalid("A current Profile requires a verified library-owned row."),
+        )
+      const previous = entities.get(record.entity_id)
+      if (previous !== undefined)
+        return yield* Effect.fail(
+          fail("SHARED_PROFILE_DUPLICATE", "A stable Profile ID has multiple current pages.", {
+            profile_id: record.entity_id,
+            page_ids: [previous, record.page_id],
+          }),
+        )
+      entities.set(record.entity_id, record.page_id)
+      profiles.push(record)
+    }
+    return profiles
+  })
 }
 
 /** Archive headers are separate from Profile discovery and normal Skill reads. */
@@ -1024,6 +1082,8 @@ function appendRecord(
     const prepared = yield* checked(() => {
       if (input.mode !== "create" && input.mode !== "reconcile")
         throw invalid("Record mode must be create or reconcile.")
+      if (input.kind === "profile")
+        throw invalid("Profiles use the current in-place writer, never the append-only writer.")
       const ids = fieldIds(library)
       const recordId = identifier(input.recordId, "Record ID")
       const entityId = identifier(input.entityId, "Entity ID")
@@ -1190,25 +1250,113 @@ export function appendSharedRecord(
   )
 }
 
-/** Library management shares the existing canonical envelope and unknown-write boundary. */
-export function appendSharedProfileRecord(
+/** Write one already-observed current Profile. The caller owns the complete
+ * identity lookup and durable pending intent; this boundary sends one request. */
+export function writeCurrentSharedProfileRecord(
   library: SharedLibrary,
-  input: AppendSharedProfileRecordInput,
+  input: {
+    readonly current: SharedProfileRecord | null
+    readonly recordId: string
+    readonly operationId: string
+    readonly entityId: string
+    readonly payload: unknown
+  },
 ): Effect.Effect<SharedProfileRecord, SkillsError, Notion | Crypto.Crypto> {
-  return appendRecord(library, { ...input, libraryProfile: true, kind: "profile" }).pipe(
-    Effect.flatMap((record) =>
-      record.skill_page_id !== null || record.kind !== "profile"
-        ? Effect.fail(invalid("A library Profile cannot have a Skill binding."))
-        : Effect.succeed(record),
-    ),
-  )
+  return Effect.gen(function* () {
+    const prepared = yield* checked(() => {
+      const ids = fieldIds(library)
+      const recordId = identifier(input.recordId, "Record ID")
+      const entityId = identifier(input.entityId, "Entity ID")
+      if (!/^profile-current-[a-f0-9]{64}$/u.test(recordId))
+        throw invalid("A current Profile requires its stable Record ID.")
+      if (
+        input.current !== null &&
+        (input.current.kind !== "profile" ||
+          input.current.skill_page_id !== null ||
+          input.current.record_id !== recordId ||
+          input.current.entity_id !== entityId)
+      )
+        throw invalid("The observed current Profile has another identity.")
+      const page =
+        input.current === null ? null : notionId(input.current.page_id, "Profile page ID")
+      const envelope = boundedEnvelope(
+        { version: 1, operation_id: input.operationId, payload: input.payload },
+        "profile",
+      )
+      return { ids, recordId, entityId, page, ...envelope }
+    })
+    const hash = yield* sha256(prepared.canonical)
+    const expected = {
+      record_id: prepared.recordId,
+      operation_id: prepared.operationId,
+      skill_page_id: null,
+      kind: "profile" as const,
+      entity_id: prepared.entityId,
+      hash,
+      payload: prepared.payload,
+    }
+    const rich = (value: string) => ({ rich_text: textChunks(value) })
+    const value = yield* (yield* Notion).request(
+      prepared.page === null ? "v1/pages" : `v1/pages/${prepared.page}`,
+      {
+        ...(prepared.page === null
+          ? { parent: { type: "data_source_id", data_source_id: library.records.data_source_id } }
+          : {}),
+        properties: {
+          [prepared.ids.Name]: { title: textChunks(`profile: ${prepared.entityId}`) },
+          [prepared.ids["Record ID"]]: rich(prepared.recordId),
+          [prepared.ids.Kind]: { select: { name: "profile" } },
+          [prepared.ids["Entity ID"]]: rich(prepared.entityId),
+          [prepared.ids.Hash]: rich(hash),
+          [prepared.ids.Payload]: rich(encodeSharedRecordStorage(prepared.canonical)),
+          [prepared.ids.Skill]: { relation: [] },
+        },
+      },
+      { method: prepared.page === null ? "POST" : "PATCH" },
+    )
+    const verified = yield* verifiedRecord(value, library, {
+      libraryProfile: true,
+      kind: "profile",
+      recordId: prepared.recordId,
+      entityId: prepared.entityId,
+    }).pipe(
+      Effect.mapError((error) =>
+        fail(
+          "WRITE_OUTCOME_UNKNOWN",
+          "The Profile response could not be verified; reconcile current rules.",
+          {
+            record_id: prepared.recordId,
+            operation_id: prepared.operationId,
+            cause_code: error.code,
+          },
+        ),
+      ),
+    )
+    if (
+      verified.kind !== "profile" ||
+      verified.skill_page_id !== null ||
+      (prepared.page !== null && verified.page_id !== prepared.page) ||
+      !sameFact(verified, expected)
+    )
+      return yield* Effect.fail(
+        fail(
+          "WRITE_OUTCOME_UNKNOWN",
+          "The Profile response differs from the requested current rules.",
+          {
+            record_id: prepared.recordId,
+            operation_id: prepared.operationId,
+          },
+        ),
+      )
+    return verified
+  })
 }
 
 /** An immutable library archive keeps original history without claiming it is
  * current state or a successfully completed former operation. */
 export function appendSharedArchiveRecord(
   library: SharedLibrary,
-  input: AppendSharedProfileRecordInput,
+  input: AppendSharedArchiveRecordInput,
 ): Effect.Effect<SharedArchiveRecord, SkillsError, Notion | Crypto.Crypto> {
   return appendRecord(library, {
     ...input,

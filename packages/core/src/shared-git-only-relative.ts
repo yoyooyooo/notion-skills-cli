@@ -27,7 +27,7 @@ export function resolveGitOnlySibling(snapshot: Snapshot, from: string, relative
     const acquisition = snapshot.shared_acquisition
     const owner = snapshot.record.locator
     if (
-      (acquisition?.version !== 2 && acquisition?.version !== 3) ||
+      acquisition?.source?.kind !== "git_member" ||
       owner.type !== "shared_skill" ||
       snapshot.scope !== (yield* authScope)
     )
@@ -182,7 +182,7 @@ export function resolveGitOnlySibling(snapshot: Snapshot, from: string, relative
     )
     if (
       !opened.record.enabled ||
-      (targetAcquisition?.version !== 2 && targetAcquisition?.version !== 3) ||
+      targetAcquisition?.source?.kind !== "git_member" ||
       targetAcquisition.source.source_id !== target.selected_version ||
       targetAcquisition.source.revision !== source.commit ||
       file === undefined ||

@@ -4,7 +4,7 @@
 
 ## AH-1050 NXT08–11：共享新鲜度与可重建缓存
 
-`ctl library profile set` 的 `--freshness-json` 随原 Profile revision 共享保存，结构为 `{default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,...}]}`。两个 duration 均可省略，已提供的值为非负安全整数毫秒；`skills` 必须存在且每个稳定 Skill ID 唯一。显示名不参与身份。替换完整 revision 时移除某条 override 即恢复继承；`ctl library profile freshness PROFILE --entry ENTRY --skill STABLE_ID` 返回具体生效值和原 revision。单次 max-age、逐 Skill、Profile default、产品 default 依次解析。Source 定期检查只使用自己的 source_check_max_age_ms，多个选定成员取最短上界，不能延长 Notion 正文观测策略。
+`ctl library profile set` 的 `--freshness-json` 保存在唯一当前 Profile Record 中，结构为 `{default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,...}]}`。两个 duration 均可省略，已提供的值为非负安全整数毫秒；`skills` 必须存在且每个稳定 Skill ID 唯一。显示名不参与身份。更新使用 `--expect CURRENT_FINGERPRINT`，新建使用 `--expect new`；同一页面原地替换完整规则，省略 override 即恢复继承，不创建父修订。`profile freshness PROFILE --entry ENTRY --skill STABLE_ID` 返回具体生效值和当前 `profile_fingerprint`。指纹只检测已观测的基线变化，不承诺跨机器 CAS。未知写入只核对当前值，不重放 POST/PATCH；核对完成后清除有限 pending。单次 max-age、逐 Skill、Profile default、产品 default 依次解析。Source 检查独立使用 source_check_max_age_ms，不能延长正文、当前资格或完整正文校验期限。
 
 较长 read 策略不会续期 immutable bytes、当前资格或完整正文校验。当前 eligibility 仍受原产品 read deadline 限制，完整正文独立上限仍为 24h；作者 preflight 和强制 refresh 继续走原检查。warm 命中不改变原 validated_at，offline 明示 stale，已知拒绝和未决原 operation 不能被策略绕过。`shared-freshness-consumer` 必须经实际当前读取及 consume/strict proof decoder，防止只更新返回值却遗漏公共 schema；Requires 各节点走同一个 resolver。
 

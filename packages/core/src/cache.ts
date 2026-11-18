@@ -142,7 +142,7 @@ export interface Freshness {
   readonly stale?: boolean
   readonly validation?: "metadata"
   readonly policy_source?: "explicit" | "skill" | "profile" | "product"
-  readonly profile_revision_id?: string
+  readonly profile_fingerprint?: string
   readonly full_body_max_age_ms?: number
   readonly current_eligibility_max_age_ms?: number
 }
@@ -303,26 +303,16 @@ function validationPaths(snapshot: Snapshot, paths?: readonly string[]) {
   if (
     new Set(selected).size !== selected.length ||
     selected.some((path) => !snapshot.files.some((file) => file.path === path)) ||
-    (snapshot.shared_acquisition?.version !== 2 &&
-      snapshot.shared_acquisition?.version !== 3 &&
-      snapshot.files.some(
-        (file) =>
-          !selected.includes(file.path) &&
-          (file.path === snapshot.entrypoint ||
-            /\.(md|markdown)$/iu.test(file.path) ||
-            !snapshot.shared_acquisition?.files.some((route) => route.path === file.path)),
-      )) ||
-    ((snapshot.shared_acquisition?.version === 2 || snapshot.shared_acquisition?.version === 3) &&
-      (!selected.includes(snapshot.entrypoint) ||
-        snapshot.files.some(
-          (file) =>
-            !selected.includes(file.path) &&
-            !snapshot.shared_acquisition?.files.some((route) => route.path === file.path),
-        )))
+    !selected.includes(snapshot.entrypoint) ||
+    snapshot.files.some(
+      (file) =>
+        !selected.includes(file.path) &&
+        !snapshot.shared_acquisition?.files.some((route) => route.path === file.path),
+    )
   )
     throw fail(
       "STATE_CORRUPT",
-      "Partial shared validation requires every Markdown body and frozen acquisition for each omitted raw file.",
+      "Partial validation requires the current entry and an exact acquisition route for every omitted file.",
     )
   return selected
 }
@@ -378,28 +368,26 @@ function validateSharedCurrentTree(
     })
     const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
     yield* validateSnapshotObjects(snapshot, files, paths)
-    // Git-only bytes have exact pinned Git blob evidence. Authored relative
-    // cross-member links are not writable native File references; do not
-    // reinterpret them as a path inside this Skill's Notion File tree.
-    if (snapshot.shared_acquisition?.version !== 2)
-      yield* Effect.try({
-        try: () =>
-          snapshot.shared_acquisition?.version === 3
-            ? assertSparseGitFileReferences(
-                files,
-                snapshot.files.map((file) => file.path),
-                snapshot.shared_acquisition.git_member_root,
-              )
-            : assertSharedFileReferences(
-                files,
-                undefined,
-                snapshot.files.map((file) => file.path),
-              ),
-        catch: (error) =>
-          error instanceof SkillsError
-            ? error
-            : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
-      })
+    // Git-member relative links retain their repository root. All source modes
+    // share the same complete-directory and selected-byte validation contract.
+    yield* Effect.try({
+      try: () =>
+        snapshot.shared_acquisition?.source?.kind === "git_member"
+          ? assertSparseGitFileReferences(
+              files,
+              snapshot.files.map((file) => file.path),
+              snapshot.shared_acquisition.source.member_root,
+            )
+          : assertSharedFileReferences(
+              files,
+              undefined,
+              snapshot.files.map((file) => file.path),
+            ),
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
+    })
     // The complete path/reference proof is distinct from selected actual bytes.
     // A missing raw object is recoverable only through its frozen acquisition.
     yield* store.writeJson(key, {
@@ -428,13 +416,7 @@ export function publishSnapshotObservation(
 ) {
   return Effect.gen(function* () {
     if (snapshot.record.locator.type === "shared_skill")
-      yield* validateSharedCurrentTree(
-        snapshot,
-        false,
-        snapshot.shared_acquisition?.version === 2
-          ? (options.sharedMaterializedPaths ?? [snapshot.entrypoint])
-          : options.sharedMaterializedPaths,
-      )
+      yield* validateSharedCurrentTree(snapshot, false, options.sharedMaterializedPaths)
     else yield* validateSnapshot(snapshot)
     const store = yield* Store
     const validatedAt = yield* Clock.currentTimeMillis
@@ -666,8 +648,7 @@ export function cachedRemoteObservation(
       (options.access === "manifest" || options.access === "metadata")
     // Existing callers still perform the original full-object validation in its original order.
     if (!sharedSelective)
-      yield* snapshot.shared_acquisition?.version === 2 ||
-      snapshot.shared_acquisition?.version === 3
+      yield* snapshot.shared_acquisition !== undefined
         ? validateCachedSharedCurrentTree(snapshot)
         : validateSnapshot(snapshot)
     if (

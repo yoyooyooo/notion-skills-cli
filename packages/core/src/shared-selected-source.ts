@@ -12,10 +12,6 @@ import {
   validateFixedGithubMaterializationSource,
 } from "./shared-source-materialization.ts"
 import { resolveSourcePlanBinding } from "./shared-source-plan-binding.ts"
-import {
-  inspectSharedSnapshotHistory,
-  materializeSharedSnapshotFiles,
-} from "./shared-snapshot-history.ts"
 import { inspectRetainedSource, materializeRetainedSource } from "./shared-retained-source.ts"
 import {
   admitSharedSourcePlan,
@@ -62,19 +58,14 @@ export function resolveSelectedSharedSourceReference(
         binding,
       }
     }
-    if (/^snapshot-[a-f0-9]{64}$/u.test(input.sourceId)) {
-      const binding = yield* inspectSharedSnapshotHistory(library, {
-        skillPageId: input.skillPageId,
-        pinId: input.sourceId,
-      })
-      return {
-        kind: "snapshot" as const,
-        source_id: binding.pin_id,
-        revision: binding.pin_id,
-        paths: binding.manifest.files.map((file) => file.path),
-        binding,
-      }
-    }
+    if (input.sourceId.startsWith("snapshot-"))
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_SOURCE_REQUIRED",
+          "Historical snapshots are no longer a current source. Migrate the current content before selecting this Skill.",
+          { source_id: input.sourceId, next: "migrate_current_content" },
+        ),
+      )
     if (/^source-[a-f0-9]{64}$/u.test(input.sourceId)) {
       const binding = yield* resolveSourceBinding(library, input)
       return {
@@ -144,26 +135,6 @@ export function planSelectedSharedSource(
             skillPageId,
             sourceId: selected.source_id,
             source: selected.binding,
-            paths,
-          }).pipe(Effect.map((files) => ({ files, local_paths: [] }))),
-      }
-    }
-    if (selected.kind === "snapshot") {
-      return {
-        source_id: selected.source_id,
-        revision: selected.revision,
-        manifest: selected.binding.manifest.files.map((file) => ({
-          path: file.path,
-          bytes: file.bytes,
-          identity: { kind: "sha256" as const, sha256: file.sha256 },
-          ...(file.mode === undefined ? {} : { mode: file.mode }),
-        })),
-        local_paths: [],
-        materialize: (paths: readonly string[]) =>
-          materializeSharedSnapshotFiles(library, {
-            skillPageId,
-            pinId: selected.source_id,
-            manifest: selected.binding.manifest,
             paths,
           }).pipe(Effect.map((files) => ({ files, local_paths: [] }))),
       }

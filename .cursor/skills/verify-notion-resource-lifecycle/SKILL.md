@@ -1,90 +1,56 @@
 ---
 name: verify-notion-resource-lifecycle
-description: Check Notion Skill file ownership, guarded body replacement, source selection, reviewed complete imports, pinned consumption and read-only resumable audits with TLA+/TLC and Pstack statecharts. Use when changing these lifecycle boundaries. Trace exact source hashes and distinguish finite model coverage from installed and live acceptance.
+description: "验证当前 Notion Skill 的身份、文件权威、关系闭包、完整读取和只读有界审计的有限状态性质。领域合同或对应状态模型改变时使用；区分待退役历史性质、当前模型、实际实现和真实服务，不以更新 hash 或放宽断言制造通过。"
 ---
 
-# Verify Notion resource lifecycles
+# 当前资源状态验证
 
-Use the existing `verify-ntn-skills` Skill for live Notion, public CLI, installed SDK, physical-machine behavior and performance. This Skill checks finite lifecycle contracts; it does not duplicate those acceptance claims or authorize publishing, repair, deletion, production writes or a daemon.
+按 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 选择当前性质。本入口不负责以有限模型替代完整分页/字节/Notion/Pi 验收，也不负责另建本轮验证平台。
 
-## Select the maintenance owner
+## Launch
 
-四柱成本：作者准备期可共享同一次只读观察，原操作派发、unknown恢复、写后核验不得复用写前当前态。`shared-authoring-plan-reads.test.ts` 核对单向关闭、迟到producer、内层只读保护、取消、跨调用隔离以及128项/8MiB JSON上限；不改变持久TTL或Notion归属。`shared-skill-apply.test.ts` 的 two-file public author maintenance 经原HTTP fixture验证 applied/verified/complete、<=98次请求和14次必要写（基线114），不能用模拟计数或延长TTL取得下降。真实before/after使用相同pin/输入hash、独立空客户端的零写dry-run；当前权限和原ACK guard的原负例不能删。
+从仓库根读取现有 [coverage](../../../verification/models/resource-lifecycle/coverage.json)、[模型说明](../../../verification/models/resource-lifecycle/README.md) 与 [运行器维护说明](../../../docs/formal-verification-maintenance.md)。沿已锁定的 Pstack/TLC 工具与仓库 runner 执行，不复制其内部实现。
 
-AH-1024 的具体维护场景由 [Skill 维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) 持有。AuditRun 不含草稿字段的分类规则；MNT01 需要目录与完整审计的实现回归及安装入口。不要为每个feature创建重复guardian，或把源码hash同步当成新性质证明。
+现有模型与源码包含待退役历史合同。工具缺失记 blocked；合同或源码对应已不成立记 failed 或待重构，旧模型 PASS 不继承为本轮 PASS。
 
-The default suite remains `lifecycle`. For exact acknowledged Record prefixes, independent acceptance and restore feedback, use [verify-notion-operation-recovery](../verify-notion-operation-recovery/SKILL.md) and `--suite operation-recovery`. Those models now own these narrower boundaries; the six lifecycle models retain their original bounds. Request ownership, cancellation and deadline changes use the existing [RequestEngine formal feature](../verify-ntn-skills/features/request-engine-formal.md) and `--suite request-engine`.
+## Doctor
 
-Read the [maintenance contract](../../../docs/formal-verification-maintenance.md). CI runs every reviewed config in the affected repository suites. The independent `cases.expected_rules` inventory must remain complete; a removed property, extra/unchecked rule, changed tool byte, unexpected negative, incomplete or cut result fails. `--model` selects a whole model group without changing this contract. Output must be new or pre-created empty and absolute.
+只对实际改变的状态边界核对 source、model、cfg、view 和规则集合。不要自动同步 coverage hash。先分清产品缺陷、模型漂移和用户已改变的产品合同，再确定需要修改或退役的性质。
 
-## Establish the exact correspondence
+| 现有模型/性质 | 本轮处置 |
+| --- | --- |
+| ProjectionRace / HumanEditPreserved | 保护 Notion-authoritative 当前作者内容；generated 可重建。不可继续要求所有生成页永久保留，也不可取消作者保护 |
+| UpdateCommit / SessionPinStable | 保留一次任务的内容一致性、完整当前选择、unknown 不伪造成功；删除永久旧 pin 和历史资源必须保留的承诺 |
+| AuditRun / AuditScope | 保留只读、目标与全库分母、完整正反向覆盖、预算暂停。不能由 metadata 完整推导正文完整 |
+| ImportCreate / CreateRecovery / AcknowledgedContinuation | 删除当前冷读必须完整原 ACK/event/proof 的要求；当前稳定身份、完整树、unknown 去重及 partial 仍由新对应关系检查 |
+| RequestAdmission / SharedProducer | 复用现有请求预算、取消、scope、并发合并规则；它们不能证明内容治理已完成 |
 
-Read `verification/models/resource-lifecycle/coverage.json` and `README.md`. The synchronization record identifies the reviewed source commit and exact working-tree hashes. Formal assets were originally imported from `de3e7414568fca8bf62c2f2fc99ca3c217b871b6`; that import is provenance, not the current product base. Compare every recorded hash with the checkout. For changed files, trace the named functions and their callers before changing the model or synchronization record.
+不把旧性质从 cfg 删除后直接报新合同通过。功能实现、对应模型和有区分力的正反例必须一起解释；无新对应关系时保持未通过。
 
-| Model | Reviewed contract | Limits |
-| --- | --- | --- |
-| ProjectionRace | The automatic projection refusal boundary and isolated replacement-helper contract, versus a rejected read-check-unconditional-replace alternative. | Explicit complete-body-match restore and request submission are unmodeled. A new source version, earlier read, UI lock or confirmation does not create atomic edit protection. |
-| UpdateCommit | Complete retention before one authorized selection; one original dispatch, honest unknown outcomes and stable existing session pins. | It does not model every dispatcher, all source adapters, multiple writers or arbitrary resources. |
-| AuditRun | Read-only reverse inventory, declared coverage and monotone resumption under a finite budget. | Two roots and one orphan abstract the real paginated audit; the model does not prove network cost, SQL crash recovery or a globally atomic database snapshot. |
-| ImportCreate | A reviewed complete input, disabled creation, durable original acknowledgements, bounded continuation and enablement only after all abstract stages verify. | Two retained inputs (document and raw resource) and four stages abstract a single explicitly enabled creation. Actual file formats, immutable-record reconciliation and manual edits require code and installed tests. |
-| CreateRecovery | A separately reviewed v9 creation recovery, one or three original ACK pages, a complete original request set, no unknown-attempt replay and exact Projection authority before the first write. | One abstract missing suffix and three mutable stages. It does not prove Markdown v10, arbitrary request counts, cold-record validation, current-body atomicity, transport permissions or actual Notion behavior. |
-| AcknowledgedContinuation | Complete original request/ACK authority for an allocated tree, fresh body checks before continuation stages, no uncertain redispatch and full shared proofs before cold completion. | Three visible pages and four abstract stages. Exact requests, byte commitments, every immutable Record subrequest, native rendering and edits after a check require implementation evidence. |
-| AuditScope | Target closure versus independent library reverse coverage, read-only progress and bounded resumption. | Four abstract fact classes; actual pagination, permission failures at budget boundaries and repair markers use implementation regressions. |
+## Drive
 
-A passing model is not completion of its linked Issue. Negative controls describe the consequence of removing a guard; classify a production defect only with its current code correspondence or a live reproduction.
+只在所选模型仍对应当前实现，或完成了该组合同重构后运行。例如检查已有审计边界：
 
-## Run the verification
+~~~sh
+CURRENT_MODEL_OUT="$(mktemp -d /tmp/notion-current-model.XXXXXX)"
+node scripts/verify-resource-lifecycle.mjs --suite lifecycle --model AuditScope --out "$CURRENT_MODEL_OUT"
+~~~
 
-Use the README's pinned Pstack and TLC setup outside the checkout. With `PSTACK_STATECHART_ROOT` and `TLA2TOOLS` configured:
+检查 HTTP 边界时使用既有 request-engine 组，不扩成所有内容状态的积：
 
-```sh
-node scripts/verify-resource-lifecycle.mjs --out "$(mktemp -d /tmp/notion-formal.XXXXXX)"
-bun test packages/core/test/shared-file-state.test.ts packages/core/test/shared-file-observer.test.ts packages/core/test/shared-file-observer-readonly.test.ts packages/core/test/shared-inventory-import.test.ts packages/core/test/shared-audit-target.test.ts packages/core/test/shared-native-repair.test.ts packages/core/test/shared-file-adoption.test.ts
-```
+~~~sh
+CURRENT_REQUEST_OUT="$(mktemp -d /tmp/notion-current-request.XXXXXX)"
+node scripts/verify-resource-lifecycle.mjs --suite request-engine --model RequestAdmission --out "$CURRENT_REQUEST_OUT"
+~~~
 
-Read each original `report.md`, `tlc.out`, `summary.json` and `chart.mmd`. Require complete finite exploration in positive safety configurations and exactly the listed broken rules in each negative control. In the fairness case, state the environment assumptions. An unchecked rule, parser failure, timeout or missing chart is not a pass.
+运行器的完整规则集合、预期负例、tool error、timeout、cut/unexamined 判定不放宽。不要为每张 Issue 新增模型。现有源码 mutation 脚本会写候选工作树，只能在独立且无人并写的副本执行，不能在共享产品树执行。
 
-Run the real-code mutation exercise only in an isolated worktree with all writers of covered source files paused:
+## Evidence
 
-```sh
-python3 scripts/check-resource-lifecycle-mutations.py --out /tmp/notion-resource-guard-mutations
-```
+读实际 report、summary 和反例路径，说明覆盖的有限状态、环境假设、未建模边界。一次结果足够；不追加多层签收、不可变证明链或内容快照。模型、受控代码与真实系统各报实际范围。
 
-Each original baseline must pass, removing the real guard must trigger an assertion failure, and restoring its exact bytes must pass again. The script stops rather than overwriting a concurrent change. Preserve all original output outside the repository. It changes no live Notion content.
+普通消费必须远端 0 写，Notion 查询 POST 仍是读。当前 owner/path/引用完整、未知创建不重复和全库清理不能仅靠图或源码 hash 宣称成立。
 
-For changes to the reviewed v9 recovery path, select the new group instead of rerunning unchanged model groups:
+## Cleanup
 
-```sh
-node scripts/verify-resource-lifecycle.mjs --model CreateRecovery --out /absolute/new/recovery-model-run
-python3 scripts/check-create-recovery-mutations.py --protected-worktree /absolute/active/worktree --out /absolute/new/recovery-guard-run
-```
-
-The second command runs from a separate candidate worktree with its own dependency tree and caches. It reuses the public recovery and dispatcher fixtures. Removing the complete-original-dispatch-set check must make an incomplete original admission fail the test's independent refusal assertion. Removing the first-PATCH scope check must fail the independent zero-transport-write assertion even though the later scope check still returns an error. A post-write error does not establish safe rejection.
-
-The existing four mutation cases still cover their original body, ownership and read-only boundaries. They do not cover the recovery metadata allowance, the complete original request set or its two histories. Do not report them as new recovery proof.
-
-## Explain results in domain terms
-
-For the human-edit counterexample, identify the initial read, subsequent human edit and unconditional replacement. Trace `automaticSourceStops` for the automatic source-run refusal and keep the `requireSafeBodyReplacement` mutation's isolated helper scope explicit. Changed-body restore no longer calls that helper: an explicit restore uses one nonempty complete old-body match, frozen-input revalidation and full candidate readback. Manual authoring and this restore protocol are outside ProjectionRace. Complete string matching is not page revision CAS; a matching earlier GET alone is not a server-enforced precondition.
-
-For selection and import, distinguish a dispatch, its durable original acknowledgement, current visibility and a verified outcome. Reconciliation of an immutable exact fact has a different authority from acknowledgement of a mutable page request. Do not use an equal current page to manufacture a missing acknowledgement or replay a lost create.
-
-For these six legacy models, keep `request --submit`, ACK-bound exact Record GET and projection 13 in `unmodeled_bindings`; the narrower ACK-prefix proof is now explicitly owned by verify-notion-operation-recovery. Submission fixes body/frontier/identity/Source authority; only a verified selection advance within that same Source definition/member may vary. Exact Record GET requires the original durable ACK and the full Record validator, not query visibility or a guessed page ID. Projection 13 covers one bounded creation-list rendering rule, supported by a minimal repository counterexample and a separate complete native81 observation. None of these paths acquires a finite-model proof by updating source hashes; retain the historical v11-to-v12 native recovery contract unchanged.
-
-The current metadata-only census, portable input fingerprints, read-only completed-import reuse and projection-14 import readback are also unmodeled. A census reports Skill bodies as unobserved. Reuse requires the original complete import and its outcome, never an equal current page. Projection 14 freezes the first complete Notion readback, preserves original input and fixed-source bytes, and cannot authorize existing-body replacement. ACK-directed page lookup still requires the original successful response and rejects a conflicting stable-identity query. Review these helpers and their implementation tests before updating hashes; the older ImportCreate and AuditRun models do not prove these new branches.
-
-For audit, distinguish surviving roots, reverse-table orphans, complete target coverage, the full library denominator and resume progress. A target audit can be complete while a derived library inventory remains partial. The real audit uses `withReadOnlyNotion` across descendant helpers, bounds each invocation and checkpoints observed outcomes. Its integration and Node SQLite tests establish details absent from the finite model. Normal current reads can adopt new whole-file edits and are not a substitute for a read-only audit.
-
-Map these cases into the existing `verify-ntn-skills` resource, audit, import-create-recovery and shared-SSOT features. Keep source tests, independent installed CLI/SDK results and real Notion evidence separate. Import checks derive expected hashes, modes and paths from the pre-operation manifest, then audit and consume the actual result independently of the importer's `verified` field.
-
-Use Pstack `/statechart` semantics: retain generated Mermaid, label states in domain language, preserve distinct rule-breaking states and disclose hidden self-loops. Use Pele for SVG rendering. Do not remove a failed rule or hide its bad path to obtain a passing chart.
-
-## Maintain the verification
-
-When code changes, apply `/maintain-formal-verification-skill`: decide whether a failure is a changed intended contract, model drift or a product defect. Move the reviewed commit and hashes only after tracing that distinction. Run the affected existing model group when its modeled contract changes, and keep each new negative control isolated enough to identify the guard it removes.
-
-When only one reviewed model group changes, run that selected group and retain the exact prior receipts for unchanged groups. Record source, runner, model/config/view hashes and the reviewed correspondence; inherited evidence is not a new execution. A projection serialization change does not by itself require changing ProjectionRace or UpdateCommit. A new first-write authority branch requires its own code-level counterexample and explicit mapping.
-
-For changes explicitly outside every model, synchronize reviewed source correspondence without relabeling earlier model results as new runs. Preserve the original six models. AuditScope adds seven configurations for target closure versus full reverse coverage; the full suite has 40 configurations. See the [maintenance correspondence review](../../../docs/maintenance-verification-review.md). Exact bytes, repair eligibility and installed/live behavior require concrete checks.
-
-Performance, arbitrary data sizes, source parsing, actual permissions, concurrent Notion edits, multiple writers, machine-bound local access and complete historical retention need their own tests or additional models. A finite pass does not authorize production imports, host installation, cleanup or changes to the editing protocol.
+保留本次必要结果后，按 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收自有候选/临时工具。当前任务必要状态有界保留；不以旧模型承诺延长历史 pin 或旧对象生命周期。

@@ -49,7 +49,7 @@ export function sharedReadFreshness(record: ContentRecord, options: ReadPolicyOp
           ? null
           : {
               profile_id: selected.profile.profile_id,
-              revision_id: selected.profile.revision_id,
+              fingerprint: selected.profile.fingerprint,
               freshness: selected.freshness,
             },
     }

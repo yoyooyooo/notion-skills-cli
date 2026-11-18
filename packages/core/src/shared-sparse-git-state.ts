@@ -16,7 +16,7 @@ export function sparseStateFromSnapshot(
   const acquisition = snapshot?.shared_acquisition
   if (
     snapshot &&
-    acquisition?.version === 3 &&
+    acquisition?.source?.kind === "git_member" &&
     binding.file_id === index.main.file_id &&
     binding.page_id === index.page_id &&
     binding.path === snapshot.entrypoint &&

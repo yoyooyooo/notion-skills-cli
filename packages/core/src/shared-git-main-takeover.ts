@@ -77,7 +77,7 @@ export function prepareSharedGitMainTakeover(input: {
       snapshot.record.kind !== "skill" ||
       input.path !== snapshot.entrypoint ||
       input.path !== "SKILL.md" ||
-      acquisition?.version !== 3 ||
+      acquisition?.source?.kind !== "git_member" ||
       !acquisition.files.some(
         (file) =>
           file.kind === "source" && file.path === input.path && file.source_path === input.path,

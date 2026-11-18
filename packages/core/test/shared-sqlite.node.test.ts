@@ -42,7 +42,7 @@ const keys = {
   recoveryResponse: `operations/shared-native-recovery-responses/create-recovery-${"9".repeat(64)}/${"e".repeat(64)}.json`,
   nativeContinuation: `operations/shared-native-continuation/${scope}/skill-create-${"8".repeat(64)}.json`,
   continuationResponse: `operations/shared-native-recovery-responses/create-continuation-${"9".repeat(64)}/${"e".repeat(64)}.json`,
-  profilePending: `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/profile-${"c".repeat(64)}.json`,
+  profilePending: `operations/shared-profile-pending/${scope}/${"b".repeat(64)}/pending.json`,
 }
 const pendingPayload = {
   version: 1,
@@ -520,7 +520,6 @@ test("dispatch retirement hides active work but retains its exact payload and ne
     const dispatched = [
       keys.observationPending,
       keys.historyPending,
-      keys.profilePending,
       keys.sourceRegistration,
       keys.nativeCreate,
       keys.nativeRecovery,
@@ -555,6 +554,45 @@ test("dispatch retirement hides active work but retains its exact payload and ne
     )
     expect(conflict.exit).not.toBe(0)
     expect(conflict.stderr).toContain("cannot be overwritten")
+  })
+}, 30_000)
+
+test("current Profile pending stays immutable until completion, then releases its single address without old rules", async () => {
+  await isolated(async (root) => {
+    const key = keys.profilePending
+    const first = { version: 2, rules: { name: "First pending rules" } }
+    const next = { version: 2, rules: { name: "Next current intent" } }
+    const started = await child(
+      root,
+      `
+      yield* state.write(${JSON.stringify(key)},${JSON.stringify(first)});
+      const conflict = yield* state.write(${JSON.stringify(key)},${JSON.stringify(next)}).pipe(Effect.result);
+      console.log(JSON.stringify({conflict:conflict._tag,current:yield* state.read(${JSON.stringify(key)})}));
+    `,
+    )
+    expect(started.exit, started.stderr).toBe(0)
+    expect(JSON.parse(started.stdout)).toEqual({ conflict: "Failure", current: first })
+    const finished = await child(
+      root,
+      `
+      yield* state.retire([${JSON.stringify(key)}]);
+      yield* state.retire([${JSON.stringify(key)}]);
+      yield* state.run(Effect.gen(function*(){const sql=yield* SqlClient.SqlClient;
+        console.log(JSON.stringify(yield* sql\`SELECT key,payload,retired FROM shared_local_records\`));
+      }));
+    `,
+    )
+    expect(finished.exit, finished.stderr).toBe(0)
+    expect(JSON.parse(finished.stdout)).toEqual([])
+    const restarted = await child(
+      root,
+      `
+      yield* state.write(${JSON.stringify(key)},${JSON.stringify(next)});
+      console.log(JSON.stringify({current:yield* state.read(${JSON.stringify(key)}),active:yield* state.list('operations/shared-profile-pending')}));
+    `,
+    )
+    expect(restarted.exit, restarted.stderr).toBe(0)
+    expect(JSON.parse(restarted.stdout)).toEqual({ current: next, active: [key] })
   })
 }, 30_000)
 

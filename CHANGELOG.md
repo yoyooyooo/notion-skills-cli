@@ -4,6 +4,26 @@
 
 Changes since the published [0.3.0 release](https://github.com/yoyooyooo/notion-skills-cli/releases/tag/v0.3.0).
 
+### Current-only convergence on `next`
+
+- Define the four-table destination, explicit file authority, complete human
+  reading projections, finite current operations and coordinated cutover in
+  [the current library contract](docs/current-contract.md). The live data and
+  installed Pi runtime have not yet passed those cutover gates.
+- Replace shared acquisition v1/v2/v3 readers with one current format. Full and
+  Git-member sources share route validation and selective exact-byte acquisition.
+- Return an explicit reselection action for missing or incompatible cached
+  selections. Fixed file reads no longer restore remote history, and historical
+  snapshot Sources fail before lookup. Missing bytes still require current owner
+  admission; corruption, permission and path/hash/size/mode checks remain.
+- Update one current Profile Record in place with a current fingerprint, explicit
+  `--expect`, complete duplicate detection and a single unfinished local intent.
+  Reconciliation reads the current rules without replaying a write; completed
+  Profile intent data is removed from SQLite. Old revision-chain payloads fail.
+- Reuse the six existing verification Skills for one bounded convergence journey.
+  Old behavior tests cannot certify the new destination, and no new runner or
+  evidence archive is added.
+
 ### Notion authoring and source management
 
 - Add shared **Skills / Files / Sources / Records** libraries with stable Skill and file identities, fixed source versions, complete resource inventories and retained ownership/history. Initialization and source-table upgrades are explicit; existing libraries are not migrated automatically.

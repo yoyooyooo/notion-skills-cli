@@ -1,5 +1,11 @@
 # Documentation
 
+The `next` implementation follows the [current library contract](current-contract.md):
+current content, explicit authority, complete human reading projections and one
+coordinated CLI/SDK/Pi path. That page lists the remaining production cutover
+blockers. Older history and recovery guides describe code that is being retired;
+they do not change the current-only destination or authorize an automatic fallback.
+
 Start with the repository README in [English](../README.md) or [简体中文](../README.zh-CN.md) for requirements, installation and the first successful read. Source development/build instructions belong to [Contributing](../CONTRIBUTING.md#development-setup). The guides below describe public usage and contracts.
 
 - [Usage guide](usage.md): installation, authentication, discovery, fixed/current reads, one pinned apply for file/metadata changes, source/local connection and recurring runs, publication progress and original-operation recovery, cache policy, upgrade and uninstall.

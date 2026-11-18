@@ -1040,15 +1040,13 @@ function acquireTargetSnapshot(
           )
           yield* Effect.try({
             try: () =>
-              observed.snapshot.shared_acquisition?.version === 3
+              observed.snapshot.shared_acquisition?.source?.kind === "git_member"
                 ? assertSparseGitFileReferences(
                     files,
                     observed.snapshot.files.map((file) => file.path),
-                    observed.snapshot.shared_acquisition.git_member_root,
+                    observed.snapshot.shared_acquisition.source.member_root,
                   )
-                : observed.snapshot.shared_acquisition?.version === 2
-                  ? undefined
-                  : assertSharedFileReferences(files),
+                : assertSharedFileReferences(files),
             catch: (error) =>
               error instanceof SkillsError
                 ? error
@@ -1075,7 +1073,7 @@ function acquireTargetSnapshot(
                   current_eligibility_max_age_ms: resolvedPolicy.current_eligibility_max_age_ms,
                   ...(resolvedPolicy.profile === null
                     ? {}
-                    : { profile_revision_id: resolvedPolicy.profile.revision_id }),
+                    : { profile_fingerprint: resolvedPolicy.profile.fingerprint }),
                 }),
             ...(observed.invalidated ? { stale: true } : {}),
           },
@@ -1172,7 +1170,7 @@ function acquireTargetSnapshot(
                   current_eligibility_max_age_ms: resolvedPolicy.current_eligibility_max_age_ms,
                   ...(resolvedPolicy.profile === null
                     ? {}
-                    : { profile_revision_id: resolvedPolicy.profile.revision_id }),
+                    : { profile_fingerprint: resolvedPolicy.profile.fingerprint }),
                 }),
           },
         }
@@ -1181,7 +1179,7 @@ function acquireTargetSnapshot(
         // through the existing verified byte reader before returning it.
         if (
           snapshot.record.locator.type === "shared_skill" &&
-          (access !== "all" || snapshot.shared_acquisition?.version === 3)
+          (access !== "all" || snapshot.shared_acquisition !== undefined)
         ) {
           const selected = yield* openFixedSnapshotFiles(snapshot, select, options)
           files = selected.files

@@ -273,8 +273,7 @@ const sharedLocalDomains: readonly {
   {
     prefix: "operations/shared-profile-pending",
     category: "dispatch",
-    address:
-      /^operations\/shared-profile-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\/profile-[a-f0-9]{64}\.json$/u,
+    address: /^operations\/shared-profile-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\/pending\.json$/u,
   },
   {
     prefix: "operations/shared-sources",
@@ -1073,8 +1072,12 @@ export function sqliteState(
                       yield* sql`UPDATE cache_fences SET retired_through=generation WHERE scope=${saved.scope} AND identity=${saved.record_identity}`
                     }
                   }
-                  // Dispatch payloads remain auditable after completion and never join cache clearing.
-                  yield* sql`UPDATE shared_local_records SET retired=1 WHERE key=${key} AND category=${sharedCategory}`
+                  // A Profile keeps only its unfinished current write. Completion
+                  // clears the rules and permits the next intent at the same address.
+                  if (key.startsWith("operations/shared-profile-pending/"))
+                    yield* sql`DELETE FROM shared_local_records WHERE key=${key} AND category='dispatch'`
+                  else
+                    yield* sql`UPDATE shared_local_records SET retired=1 WHERE key=${key} AND category=${sharedCategory}`
                   continue
                 }
                 const p = key.split("/")
@@ -1118,8 +1121,9 @@ export function sqliteState(
               }
               return keys.map((key) => ({
                 key,
-                retention_path:
-                  sharedLocalCategory(key) === "dispatch"
+                retention_path: key.startsWith("operations/shared-profile-pending/")
+                  ? "sqlite_current_profile_cleared"
+                  : sharedLocalCategory(key) === "dispatch"
                     ? "sqlite_shared_dispatch_retirement"
                     : "sqlite_observation_retirement",
               }))

@@ -173,10 +173,26 @@ export const FileEntrySchema = Schema.Struct({
 })
 /** Acquisition locations for the one authoritative Snapshot.files directory.
  * These contain no credentials and never replace its byte/hash/mode identities. */
-const SharedSnapshotAcquisitionV1 = Schema.Struct({
-  version: Schema.Literal(1),
+const SharedAcquisitionSourceFields = {
+  source_id: Schema.String,
+  revision: Schema.String,
+}
+/** One current acquisition contract. Source layout is a domain distinction,
+ * not a choice of historical decoders. Old cache envelopes must be reselected. */
+export const SHARED_ACQUISITION_VERSION = 4
+export const SharedSnapshotAcquisitionSchema = Schema.Struct({
+  version: Schema.Literal(SHARED_ACQUISITION_VERSION),
   library: SharedLibrarySchema,
-  source: Schema.NullOr(Schema.Struct({ source_id: Schema.String, revision: Schema.String })),
+  source: Schema.NullOr(
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("tree"), ...SharedAcquisitionSourceFields }),
+      Schema.Struct({
+        kind: Schema.Literal("git_member"),
+        ...SharedAcquisitionSourceFields,
+        member_root: Schema.String,
+      }),
+    ]),
+  ),
   files: Schema.Array(
     Schema.Union([
       Schema.Struct({
@@ -192,34 +208,6 @@ const SharedSnapshotAcquisitionV1 = Schema.Struct({
     ]),
   ),
 })
-/** Git-only Skills keep no native File pages. Each path is pinned to the same
- * authenticated source fact and may be materialized only when requested. */
-const SharedSnapshotAcquisitionV2 = Schema.Struct({
-  version: Schema.Literal(2),
-  library: SharedLibrarySchema,
-  source: Schema.Struct({ source_id: Schema.String, revision: Schema.String }),
-  files: Schema.Array(
-    Schema.Struct({
-      kind: Schema.Literal("source"),
-      path: Schema.String,
-      source_path: Schema.String,
-    }),
-  ),
-})
-/** Sparse Git + per-document Notion ownership. Source routes include untouched
- * Markdown; custom bytes are eagerly verified and never recovered from Git. */
-const SharedSnapshotAcquisitionV3 = Schema.Struct({
-  version: Schema.Literal(3),
-  library: SharedLibrarySchema,
-  source: Schema.Struct({ source_id: Schema.String, revision: Schema.String }),
-  git_member_root: Schema.String,
-  files: SharedSnapshotAcquisitionV1.fields.files,
-})
-export const SharedSnapshotAcquisitionSchema = Schema.Union([
-  SharedSnapshotAcquisitionV1,
-  SharedSnapshotAcquisitionV2,
-  SharedSnapshotAcquisitionV3,
-])
 const NotionBlockNodeSchema = Schema.Struct({
   id: Schema.String,
   type: Schema.String,

@@ -1,59 +1,47 @@
 ---
 name: verify-notion-management
-description: "验证 Notion Skill 管理的草稿注册、原生导入、整树维护、文件身份、人工归属、删除恢复和只读审计。修改这些作者行为或原操作恢复时使用；不负责消费新鲜度、宿主注入或以源码测试代替实库维护验收。"
+description: "验证 Notion Skills 当前作者内容、整树更新、文件权威、关系闭包、有限恢复与残留清理。修改 Skills/Files/Records 管理或迁移清退时使用；以当前完整性和实际无残留判定，不要求旧 ACK 或历史证明链。"
 ---
 
-# 管理验证
+# 当前管理验证
 
-主要对象是同一 Skill、Files、Records 的作者意图与原操作。Source 成员接手交给 [来源专项](../verify-notion-source-onboarding/SKILL.md)；读取、缓存和权限交给 [消费专项](../verify-notion-consumption/SKILL.md)。不负责替代实际 Pi/provider/模型证明。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 的第 1、2、4 组。本入口不负责消费缓存，也不负责用模型或源码测试代替真实 Notion 清理、安装或 Pi 验收。
 
 ## Launch
 
-从仓库根执行，沿 [共用隔离设施](../verify-ntn-skills/references/harness.md#launch) 创建本轮证据目录。受控测试不连接生产库；真实写入先明确库/目标/原计划，维持同目标一个writer。不得复制作者Store来证明另一客户端恢复。
+从仓库根执行，沿 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 隔离。受控测试不写生产库。实际管理使用任务已授权的目标和完整意图，不重复索取已给定授权；不因测试成功扩大到其他库或业务动作。维持受影响范围的单一当前 writer。
 
 ## Doctor
 
-```sh
+~~~sh
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
 bun test packages/cli/test/verification-skill-map.test.ts
-```
+~~~
 
-需要安装验收时绑定精确CLI/archive/runtime，再按 [维护矩阵](../verify-ntn-skills/features/skill-maintenance.md#joined-installed-acceptance) 检查前提。缺凭据/原ACK/输入记blocked，不转用生产或忽略待恢复操作。
+确定 AH-499 当前字段合同、目标 owner、支持文件范围和 AH-513 退役对象集合。旧格式仍是当前唯一字节时，先迁出再清理。缺权限、未枚举分页或尚未迁出的内容明确阻塞清理，不把它们当空值。
 
 ## Drive
 
-先选子模块，不把全部历史迁入和模型作为每次小改的前置：
+1. 独立比对输入与当前树，覆盖主文、文本/代码、图片/二进制、相对链接、path/mode、Requires/Members 和当前排除。Skills 只有一个主文作者入口，Files 各文本子文档正文完整。
+2. 分别验证 Notion-authoritative 和 generated。来源刷新不能覆盖前者；后者可按当前来源重建。显式整文件接管和恢复跟随共用当前写入入口，不自动备份旧版本。
+3. 改名、移动、删除/排除、换源和 Source 停用均核对反向闭包。源刷新不能使已排除文件复生，多来源贡献和其他 owner 不误伤。
+4. 区分目标检查与全库 census。全库必须含完整分页、反向关系及权限缺口；metadata 不能代替全文。清退旧表/字段/页/Records/附件/导航后再次枚举，再做同一治理应 no-op。
+5. 对一次代表性管理意图检查成功、partial 和响应未知。unknown CREATE 先按当前稳定身份核对，不能盲目重发；当前结果已正确不再要求补旧 review/completion。只继续仍未完成的当前目标，原请求未知不能写成已 ACK。
+6. 删除旧 writer/协议入口归 AH-513/AH-517，先于最终安装。含唯一内容的本地正本归 AH-516，在对应当前消费和 AH-1063 成立后退场；不得把这道内容保护门槛用来保留旧 writer。
 
-| 子模块 | 正例与反例 | 规程 |
-| --- | --- | --- |
-| 初始化/草稿 | 真空库、合法草稿；错误类型/旧身份不可伪装空值 | [empty library](../verify-ntn-skills/features/empty-library.md) |
-| 原生导入 | 完整字节、页面语义、原计划冷重建；文字/代码/目标变化及缺块必须失败 | [原生导入](references/native-import.md) |
-| 整树维护 | sparse保留、原ID移动/删除/恢复；新页unknown、并发custom、旧pin不可覆盖 | [维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) |
-| 审计/修复 | 目标闭包/全库分母、原页修复；半覆盖不得标complete | [audit](../verify-ntn-skills/features/resource-audit.md)、[repair](../verify-ntn-skills/features/maintenance-repair.md) |
-
-整树和审计的最小实现切片：
-
-```sh
-bun test packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts packages/core/test/shared-audit-target.test.ts packages/core/test/shared-native-repair.test.ts --timeout 60000
-```
-
-原生导入切片与安装命令在子模块。实际安装仍复用 [skill-maintenance](../verify-ntn-skills/features/skill-maintenance.md#joined-installed-acceptance)，由真实Node CLI、SQLite、受控HTTP原件检查；真实Notion另立证据。改ACK/派发/unknown时再路由 [operation recovery](../verify-notion-operation-recovery/SKILL.md)，改归属/审计状态时路由 [lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。
+实际安装复用 [skill-maintenance](../verify-ntn-skills/features/skill-maintenance.md) 中的真实 Node CLI、同包 SDK 和受控 HTTP 入口。原 ACK/旧版本等过时断言先由功能 owner 改到当前合同，不能整套照跑后宣称本轮通过。
 
 ## Evidence
 
-至少核对原页面/文件身份、完整输入及实际树、custom前沿、Selected Version、Members/Requires、Enabled、旧pin，和每次写入的原operation/ACK。展示投影、固定原文、当前消费可有版本化转换，必须分别保存。
+一份结果列目标、覆盖、effects、cost、剩余范围和下一步。当前正文正确、原请求结果、全库清理分别判定。真实唯一字节先移交，再删除废弃绑定或将页面/库移入 Notion Trash；不保留可见平行旧库来留证。
 
-完整主操作结果和子动作逐项核对。dry-run需零远端写；重复已完成操作不得增页/增版本；unknown只能核对原操作。未执行的实际服务、冷客户端、Pi和模型不从单测继承passed。独立审计全部正文未执行时明确仅验证哪些字段。
+现有回归定位如下，按当前功能边界修订与执行，不默认重跑全部历史恢复：
+
+- packages/core/test/shared-skill-apply-tree.test.ts
+- packages/core/test/shared-maintenance-operations.test.ts
+- packages/core/test/shared-audit-target.test.ts
+- packages/core/test/shared-native-repair.test.ts
 
 ## Cleanup
 
-复用 [harness cleanup](../verify-ntn-skills/references/harness.md#cleanup)。先保存命令/HTTP/状态原件；任何unknown还依赖的journal留存。远端原页和失败历史不因验证结束移除。
-
-## 不能替代的证据
-
-| 看似够用 | 仍须检查 |
-| --- | --- |
-| create返回verified | 独立固定/当前读取、完整资源、未改属性 |
-| 正文看起来一样 | 完整语义、代码、明确链接；不能把加号和圆点等价 |
-| 当前页面等于候选 | 原派发/ACK及原恢复权限 |
-| audit目标通过 | 全库反向范围是否实际完成 |
+复用 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup)。仅处理已确认归属和已转移内容的对象。当前未完成操作的必要状态有界保留；历史 pin、原 ACK 缺失或过去 unknown 不能无限阻断已确认的新当前态。所有本地移除遵守可恢复 Trash。

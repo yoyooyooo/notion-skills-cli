@@ -1,7 +1,7 @@
 {
   "name": "ntn-skills",
   "version": "0.1.0",
-  "description": "Discover, read and maintain Notion skills with immutable task snapshots",
+  "description": "Discover, read and maintain current Notion skills and their files",
   "type": "module",
   "repository": {
     "type": "git",
@@ -21,7 +21,7 @@
     "agent-skills",
     "cli",
     "nodejs",
-    "snapshots"
+    "skill-management"
   ],
   "publishConfig": {
     "access": "public",
@@ -45,6 +45,7 @@
     "dist/types",
     "skills",
     "docs/README.md",
+    "docs/current-contract.md",
     "docs/usage.md",
     "docs/protocol.md",
     "docs/shared-authoring.md",

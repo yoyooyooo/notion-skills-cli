@@ -504,8 +504,8 @@ function projectCandidate(
         ? assertSparseGitFileReferences(
             final,
             final.map((file) => file.path),
-            current.shared_acquisition?.version === 3
-              ? current.shared_acquisition.git_member_root
+            current.shared_acquisition?.source?.kind === "git_member"
+              ? current.shared_acquisition.source.member_root
               : "",
           )
         : assertSharedFileReferences(final),

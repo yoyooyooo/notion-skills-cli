@@ -278,11 +278,11 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
     if (plan.version === 4) {
       const definition = review.source_context.definition
       if (
-        mixed?.version !== 3 ||
+        mixed?.source?.kind !== "git_member" ||
         mixed.source.source_id !== plan.source_id ||
         mixed.source.revision !== plan.source_revision ||
         sourceBinding?.commit !== plan.source_revision ||
-        sourceBinding.root !== mixed.git_member_root ||
+        sourceBinding.root !== mixed.source.member_root ||
         definition === null ||
         definition.member !== (sourceBinding.root || ".") ||
         !same(
@@ -338,7 +338,7 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
       file_id: binding.file_id,
       path: binding.path,
       state:
-        mixed?.version === 3 &&
+        mixed?.source?.kind === "git_member" &&
         binding.path === baseline.entrypoint &&
         !review.prior_events.some((event) => event.file_id === binding.file_id)
           ? {
@@ -360,7 +360,7 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
     }))
     const version = yield* sharedSnapshotVersion({
       ...baseline,
-      source: mixed?.version === 3 ? mixed.source : null,
+      source: mixed?.source?.kind === "git_member" ? mixed.source : null,
       ownership,
     })
     if (version !== plan.snapshot_version_id)
@@ -480,11 +480,11 @@ function validateReview(input: unknown, retained: Original, expectedId?: string)
         "The original snapshot contains non-native resources outside this acceptance boundary.",
       )
     yield* checked(() =>
-      mixed?.version === 3
+      mixed?.source?.kind === "git_member"
         ? assertSparseGitFileReferences(
             tree,
             baseline.files.map((file) => file.path),
-            mixed.git_member_root,
+            mixed.source.member_root,
           )
         : assertSharedFileReferences(tree),
     )

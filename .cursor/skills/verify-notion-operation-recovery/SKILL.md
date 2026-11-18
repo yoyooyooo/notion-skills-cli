@@ -1,164 +1,56 @@
 ---
 name: verify-notion-operation-recovery
-description: 验证 Notion skills 原操作恢复的状态协议。修改 ACK Record 连续前缀、exact ACK GET 与 query 可见性、仅未派发 suffix、file accept-add 独立接受、restore-follow 业务反馈 reconcile、原操作身份或 pending/unknown barrier 时使用。读取覆盖模型、正负例、源码对应和公共回归；复用锁定的 statechart/TLC 与仓库运行器。
+description: "验证当前 Notion 管理操作在 unknown、partial、取消、预算暂停和重启后的有限对账。修改当前意图/稳定身份/去重边界时使用；不要求重放原 ACK、review/completion、Profile 或 file-event 历史链，不为旧修复代际保留兼容。"
 ---
 
-# 原操作恢复验证
+# 当前操作恢复验证
 
-先读 [模型边界与源码对应](../../../verification/models/operation-recovery/README.md) 和 [coverage.json](../../../verification/models/operation-recovery/coverage.json)。以文件内容和当前源码为准，不从历史结论推断通过。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 4 组。本入口不负责网络 retry 的独立请求模型，也不负责把模型或受控测试当成真实 Notion、安装包或 Pi 已通过。
 
-## 选择范围
+## Launch
 
-AH-1024 的受控身份补全、整树父子操作和删除恢复沿 [维护矩阵](../verify-ntn-skills/features/skill-maintenance.md) 进入本 guardian。复用原操作事实，不为新命令另造恢复权威。新增协议先写状态边界、精确反例和真实实现映射；尚未实现或未运行的场景不继承旧28配置的通过结论。
+读取 [原有模型说明](../../../verification/models/operation-recovery/README.md)、[coverage](../../../verification/models/operation-recovery/coverage.json) 和 [运行器维护说明](../../../docs/formal-verification-maintenance.md)。复用现有 runner、工具和实际 HTTP fixture，不新建独立恢复发行物或多代 adapter。
 
-| 变化 | 模型 | 公共回归 |
-| --- | --- | --- |
-| 原 ACK、frozen request、exact Record GET、原生恢复前缀或 suffix | AcknowledgedRecordPrefix | shared-create-native-recovery、shared-create-known-recovery |
-| 独立 accept-add、原失败、adopted event、完整冷读证明 | IndependentAcceptance | shared-file-management |
-| 原 restore ID、submitted body/frontier/Source、processing 绑定、反馈丢失与 reconcile；明确400 validation负回执后的独立反馈代 | RestoreFeedback | shared-file-request、shared-source-definitions、shared-source-run |
-| 整树父计划、完整子前缀、仅未派发后缀、半树消费屏障；原新页分配结果与动态正文绑定 | MaintenanceApply | shared-skill-apply、shared-skill-apply-tree、shared-maintenance-operations |
-| 共享 dispatcher、Record 或 source mutation | 上述四个模型中实际受影响的组 | 对应公共回归；完整 suite 的九文件列表见下 |
+当前目标来自 AH-507：一次当前意图只保留继续所需的稳定身份、目标内容、已处理范围和下一步，完成后有界回收。原模型记录的是调查起点，不能继续把其全部历史性质当作产品必须保留的行为。
 
-保留型 native import 的已知终局审阅复用同一原producer与ACK事实，具体回归为
-`shared-create-retained-recovery.test.ts`。独立review及完成不覆盖原失败；真正unknown仍不重发。
-原生正文解析、保留包字节与具体Source版本不在有限模型中；不能仅靠模型通过放行实库。
+## Doctor
 
-本分支的400明确拒绝与响应未知都不能通过当前页面或新review重发同一native创建。
-审阅记录、原已知失败、独立完成与完整消费证据分开；内容审计继续报告未完成原操作。
-具体恢复复用AcknowledgedRecordPrefix的原ACK/前缀/后缀边界及独立接受的保留事实原则，
-新增retained v2字节/解析条件仍只由实际实现与安装回归证明，不改原模型有限域。
+逐项区分准备、已派发、已确认当前效果、unknown、partial、完成/放弃。网络发送、提供方执行和本地记账不是一个原子动作；Notion 普通属性或本地 mutex 不是分布式 CAS。
 
-SRC19 的单文档覆盖 add v4 可以沿同一个 IndependentAcceptance 原操作路径处理已知完整正文不匹配：检查原 snapshot、Source 选择及不可变 Git 文件描述符、其他 native 投影/custom frontier，显式 hash-bound 接受当前目标文档。不是重发 add 或忽略 provider 改义；旧 needs_review 与 completion=unproven 保留，unknown 创建仍拒绝。验证在 `shared-source-onboarding.test.ts` 的 sparse document mismatch 正例及 `shared-file-management.test.ts` 的原生所有负例；冷读依据共享独立 review/event/completion，不需要为了引用恢复拷贝全部 Git 内容。
+IndependentAcceptance 的完整旧 proof、ColdRecoveryNeedsCompleteProof，以及旧 review/event/completion 修复代际需要随新实现重做或退役。仅更新 hash、删反例或把当前值相等改称原 ACK 均不能通过。
 
-表格字面量的独立原页修复由 `shared-source-projection-repair.test.ts` 覆盖：原主ACK、完整
-前像和独立PATCH ACK分开；original apply不能绕过repair的unknown。原创建完成还需绑定
-独立修复的review/outcome hash，冷消费缺证据拒绝。具体Markdown与组合状态由实际回归
-负责，模型的原ACK/前缀、独立决定和unknown边界仍保持，不宣称有限模型证明提供方文本行为。
+## Drive
 
-恢复前的 create/import 和既有 continuation 仍读 [verify-notion-resource-lifecycle](../verify-notion-resource-lifecycle/SKILL.md)。HTTP RequestEngine 的 retry/预算/取消归独立 request-engine 验证；Broker consumer/session 归 Broker guardian。不要把原业务 Request 当成 HTTP 请求重试模型。
+使用一项当前管理意图和三个代表切点，不排列所有历史协议：
 
-## 核对源码对应
+1. CREATE 已发送但响应丢失。按当前稳定身份查询和去重；未确认缺失不得盲目重发。当前对象满足目标可继续未完成动作，但原请求仍未知时不能伪造原请求成功。
+2. 部分文件已完成后停止或进程重启。重新观察当前目标与范围，只执行尚未完成部分，缺文件/权限/分页明确 partial。旧原 ACK/review 不再阻断已正确当前状态。
+3. 预算耗尽或用户取消。当前 invocation 的子任务/重试不重领 budget；新的恢复 invocation 使用自己的总预算，能继续或明确结束，不无限 running。
+4. 停旧 writer 并显式放弃旧意图后，允许重建当前状态；识别迟到对象和重复页。不得要求复原完整历史证明，也不得让无关旧操作阻断所有当前消费。
 
-1. 读取 coverage.json 的 files、models、cases，根据变化读 README 对应实际函数。
-2. 检查 source hash。漂移意味着原证明需要维护审查，不能自动刷新 hash。
-3. 对照改变的派发前提、未知结果、原身份、证据持久化、exact readback 和最终结果。模型步骤要对应实际边界；网络发送、provider apply、ACK Store 写入不能合并为一个原子动作。
-4. 维护差异时使用 /maintain-formal-verification-skill；新增性质或模型时读 /statechart。保留故意坏配置的违例；不复制上游 skill 内部命令实现。
-5. 完成源码对应审查、必要回归和正负例后，才更新本 suite 相关 files hashes 与 synchronized_commit，不刷新别的 guardian。
-
-三个关键边界：
-
-- exact ACK GET 不依赖 query 索引可见性；native suffix 仍要求完整 census 与已核实前缀相符。
-- unknown 不可变 Record 的精确观察可以支持下一个不同 Record；同一 POST 不重派发，不补造原 ACK。
-- metadata ACK 历史结果与当前正文/Source 授权分开。正文变了停止新动作，但不能抹除已知历史结果。
-
-## 配置工具并运行
-
-从目标仓库根执行。先实读工具路径和 `verification/models/resource-lifecycle/tool-lock.json`，由运行器核验完整锁。使用本机同版本工具目录；按 lifecycle README 获取工具，运行器核对 tool-lock，不依赖维护者私有路径。
+请求边界先复用实际传输回归：
 
 ~~~sh
-export PSTACK_STATECHART_ROOT=/absolute/pstack/pstack/skills/statechart
-export TLA2TOOLS=/absolute/tools/tla2tools-1.7.4.jar
-OPERATION_RECOVERY_OUT="$(mktemp -d /tmp/notion-operation-recovery-XXXXXX)"
-node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --out "$OPERATION_RECOVERY_OUT"
+bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts --timeout 60000
 ~~~
 
-单模型变化可加 --model AcknowledgedRecordPrefix、IndependentAcceptance、RestoreFeedback 或 MaintenanceApply。共享边界和批次验收运行完整 suite；当前 cases 共 35 项，不能拿子集代替完整运行。整树与修复的实际映射和未建模边界见[维护对应审阅](../../../docs/maintenance-verification-review.md)。
+这只证明预算与 unknown 传输处理。当前操作组还必须用新合同的真实管理入口检查身份去重、完整读取和重复 no-op；没有对应实现/断言则报告缺口，不能拿上述通过替代。
 
-读取输出 summary.json 和每组 report.md，核对 complete、源码/工具/input hashes、完整性质清单和预期反例集合。正例没有 broken；反例只允许 expected_broken 的准确集合。tool error、少跑性质、额外违例、未完成搜索、cut、unexamined 都停止通过结论。失败输出也保留。
-
-按影响选择实际公共函数回归；完整 suite 对应九个文件；使用 fixture，不连接生产 Notion。
+对 AcknowledgedRecordPrefix、IndependentAcceptance、RestoreFeedback、MaintenanceApply 只运行与改动对应的现有模型组。先完成实际函数、性质和正反例的对应，再执行：
 
 ~~~sh
-bun test packages/core/test/shared-create-native-recovery.test.ts packages/core/test/shared-create-known-recovery.test.ts packages/core/test/shared-file-management.test.ts packages/core/test/shared-file-request.test.ts packages/core/test/shared-skill-apply.test.ts packages/core/test/shared-skill-apply-tree.test.ts packages/core/test/shared-maintenance-operations.test.ts packages/core/test/shared-source-definitions.test.ts packages/core/test/shared-source-run.test.ts --timeout 60000
+CURRENT_RECOVERY_OUT="$(mktemp -d /tmp/notion-current-recovery.XXXXXX)"
+node scripts/verify-resource-lifecycle.mjs --suite operation-recovery --model MaintenanceApply --out "$CURRENT_RECOVERY_OUT"
 ~~~
 
-输出中文图时使用本次 runner 的 chart.mmd 和 report.md，遵循 /statechart 的视图与渲染规则。Pele 的可定位安装和公开渲染命令见 [图形产物复现](../../../docs/formal-verification-maintenance.md#图形产物定位与复现)。正反例都保留，不为展示缩小性质/cfg 或隐藏最短反例动作。
+源码尚未切到当前合同或 coverage 不对应时，这个命令不是新恢复合同的通过证明。保留完整规则判定，不绕过 runner 的源码/工具检查。涉及真实 mutation 时只在独立候选树操作，不写共享产品树。
 
-## 验证真实 guard 和恢复
+## Evidence
 
-`python3 scripts/check-operation-recovery-mutations.py` 会暂时改真实源码，只在单独 linked candidate worktree 运行。当前产品树作为 --protected-worktree；两者不能相同。以当前审查过的源码与测试建立候选，不使用脏的旧主仓。
+分别报告原请求已知结果、当前观察到的效果、尚未完成范围与下一步。当前对账成立不等于历史请求已确认；未执行真实 Notion 或安装层则明确 not_run。
 
-1. 在隔离树安装自己的 frozen-lockfile 依赖，不链接外部 node_modules，不启动生产应用。
-2. 让候选包含产品树 coverage.json.files 的准确版本与当前 mutation 脚本；脚本逐项核查 source/test hashes 相同。
-3. 在候选执行脚本，传真实产品绝对路径和新的树外输出目录。可绑定为环境变量：`python3 scripts/check-operation-recovery-mutations.py --protected-worktree "$OPERATION_PRODUCT_ROOT" --out "$OPERATION_MUTATION_OUT"`。
-4. 六组 baseline → mutant → restored 中，baseline/restored 执行准确测试数且通过，mutant 为真实断言失败；语法或依赖错误不计。新增两组分别删除原allocation-page匹配和错误地把不确定反馈归为明确拒绝。
-5. 核对 complete_source_and_modes_restored、protected_source_unchanged 与前后完整快照。并发变化时保留文件并报告，不覆盖他人更改。原件保留，不永久清理。
+正例、真正违例、缺条件和工具失败分别说明。只保存本次必要命令与输出，不保存多代页面、历史操作档案或新的永久证明平台。第 6 组 Pi 仍由 AH-1063 提供一次结果。
 
-真实 guard 变化后若旧 mutation 不再精确定位，先审查新边界再更新对照。hash 检查失败不能冒充真实安全回归被抓住。
+## Cleanup
 
-
-当前 mutation 入口固定执行六组，不接受单 guard 选择；模型切片可以用 `--model`，不要将真实回放六组误报为只执行一组。下面的准备配方保留当前尚未提交的 Git 可见文件，依赖仍在候选内独立安装。先暂停候选的其他写入者，所有目录必须是本次新建的：
-
-~~~sh
-export OPERATION_PRODUCT_ROOT="$PWD"
-export OPERATION_CANDIDATE_PARENT="$(mktemp -d /tmp/notion-operation-candidate.XXXXXX)"
-export OPERATION_CANDIDATE_ROOT="$OPERATION_CANDIDATE_PARENT/candidate"
-git worktree add --detach "$OPERATION_CANDIDATE_ROOT" HEAD
-python3 - <<'COPY_REVIEWED'
-from pathlib import Path
-import os, shutil, subprocess
-source = Path(os.environ["OPERATION_PRODUCT_ROOT"])
-candidate = Path(os.environ["OPERATION_CANDIDATE_ROOT"])
-names = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=source).decode().split("\0")
-for name in sorted(set(filter(None, names))):
-    src, dst = source / name, candidate / name
-    if src.is_file() and not src.is_symlink():
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-    elif src.is_symlink():
-        if not dst.is_symlink() or os.readlink(src) != os.readlink(dst):
-            raise RuntimeError("Review symlink separately: " + name)
-COPY_REVIEWED
-(cd "$OPERATION_CANDIDATE_ROOT" && bun install --frozen-lockfile)
-export OPERATION_MUTATION_OUT="$OPERATION_CANDIDATE_PARENT/mutations"
-python3 "$OPERATION_CANDIDATE_ROOT/scripts/check-operation-recovery-mutations.py" --protected-worktree "$OPERATION_PRODUCT_ROOT" --out "$OPERATION_MUTATION_OUT"
-~~~
-
-此配方不会删除候选或产品文件。遇到工作树删除项、符号链接变化或不匹配的 coverage 时，先审阅具体差异；不能通过删除原件或更新 hash 绕过。最终 `protected_source_unchanged` 核对 coverage 全部源码/测试的内容和模式，候选另核完整 Git 可见文件前后快照。
-
-## 交付和冷跑
-
-提交模型/配置/源码对应、必要回归、中文图和证据 manifest。区分有限模型、公共函数回归、真实 guard 对照、冷 Agent、安装 CLI、真实 Notion 证据；这里没有自动获得后两类证明。
-
-独立冷 Agent 只给此 skill 路径、目标 checkout、任务范围和新输出根，由它读原件并运行。回执包括实际命令、配置数量、完整性质判据、源码/工具/input hashes、失败原件和恢复结果。未实际跑过时保持“未验证”，不能以读过文档替代。
-
-回链：[恢复地图](../verify-ntn-skills/features/import-create-recovery-dry-run.md) · [共享 SSOT](../verify-ntn-skills/features/shared-ssot.md)。更新覆盖边界时保留原六模型历史范围。通过不表示任意长度前缀、跨机器 exactly-once、provider CAS 或无条件进度。
-
-### 原创建与独立文件修复的组合
-
-shared-source-file-repair.test.ts验证独立row ACK与原create ACK分开核对：原恢复review
-绑定file-repair集合，unknown和缺冷证据不能跨入口绕过。未扩大原有限TLA域；物理
-表格/代码解析、完整前像和具体proof codec仍由实现、安装及真实服务层证明。安全诊断
-只扩充观测，不改变原拒绝的操作权限。
-
-### 明确拒绝后的独立文件提交
-
-第二代链接图片请求复用同一dispatcher，使用版本化review/entity/record身份与独立
-不可变slot。它只可接在第一代明确负回执之后；完整前任证明丢失、ACK冲突或unknown
-均停止。验证真实实现的两代负回执保留、显式新ACK、原producer采用及冷证明链；旧
-有限模型没有枚举该具体组合，不能将原模型通过解释为新表示已被提供方接纳。
-
-后续独立文件修复不替换原授权review。当前完整ACK前缀与原失败短前缀区分；新增的
-已核修复在completion v3及其外层identity绑定，旧v1/v2完成仍执行原严格proof集合。
-缺修复proof或删索引并降版必须失败。实际回归入口是
-`shared-source-file-literal-repair.test.ts`，模型状态边界与证据见SRC14维护记录。
-
-原producer内部的修复证明memo仅保存已完整核验的历史证明引用；每次仍拉取完整的
-review/outcome标记并比较hash，不缓存当前Source/owner/正文资格。相同标记复用不代表
-跨调用的新鲜度；完成和冷读仍完整核验。相应反例验证标记消失、内容/hash变化及新调用
-不继承memo，并实测第一次与后续请求数。该成本优化不扩大原有限模型域。
-
-支持文件的v2物理表格修复仍使用原row dispatcher：每个row独立不可重放，完整ACK
-决定连续前缀，部分可见正文不构成ACK。`shared-source-file-literal-repair.test.ts`
-覆盖部分ACK续接及unknown两种可见性、换序/改文/降版拒绝；旧单代码span v1回归保留。
-具体多行组合与字面量解析不在旧有限模型域中，须以实际源码和安装/实库证据独立记录。
-
-`resubmit-file` 只接受完整原400负回执，使用独立review与新request身份。旧native POST
-保持不可重放；原producer只可显式采用有完整新ACK和共享proof的分配结果。
-先读模型README的对应状态边界；执行 `shared-source-file-resubmission.test.ts`，核对
-unknown可见/不可见、原负回执冲突、当前新增前缀/替代页漂移、ACK后仅补proof和冷证明缺失。
-v2父completion必须在外层operation identity绑定proof集合；降v1并同时删除两类索引也要拒绝。
-SQLite slot由 `shared-sqlite.node.test.ts` 的跨重启/不可变/cache-clear/地址拒绝矩阵验证，
-安装入口由 `library-source-file-resubmission-http.test.ts` 走真实Node CLI、同一SDK和冷客户端。
-`shared-create-scope-cost.test.ts` 核后续精确查询完整分页、坏行和关系漂移；每次首个新写入
-前的完整name/alias准入与默认300秒/2000请求/128MiB预算不变。实际新组合不继承旧有限域证明。
+按 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 回收本次自有对象。仍在执行的当前操作保留必要状态，完成/显式放弃后按有界策略回收。旧 unknown 不成为无限恢复产品；其他 owner 与当前唯一字节不误删。

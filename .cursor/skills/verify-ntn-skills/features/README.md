@@ -1,121 +1,36 @@
-# ntn-skills verification map
+# 当前验证入口
 
-领域导航：[管理](../../verify-notion-management/SKILL.md) · [消费](../../verify-notion-consumption/SKILL.md) · [来源接手](../../verify-notion-source-onboarding/SKILL.md)。完整唯一归属由 [skill-domains.json](../../../../verification/skill-domains.json) 和常规测试检查。
+本轮从 [current-convergence：最新态收敛旅程](current-convergence.md) 开始。它拥有 AH-500 的六组顺序、结果边界和停止条件；功能实现分别由 AH-498 列出的唯一 owner 负责。
 
-New-user acceptance starts at [EMPTY: initialize a real empty library, then maintain its objects](empty-library.md). Do not substitute pre-seeded schema or author caches for this starting condition.
-
-AH-1050 continues that same journey through the [NXT delivery and verification contract](nxt-delivery.md). Freeze the complete inputs and budgets with the existing EMPTY extension `scripts/nxt-journey.ts freeze --run RUN --bin EXACT_BASELINE_BIN`; use its scoped `command` driver to retain candidate argv, binary hash, original outcome and measured product requests. The run's original initializer and census remain owned by `control.ts empty`. Baseline evidence is immutable and is not a new-feature pass.
-
-These recipes describe current executable entry points and are not records of completed acceptance. Sync/cache commands, read policies and exact-target replacement are implemented. Read the matching recipe before driving a feature; preserve command/result evidence and distinguish deterministic, live and installed-consumer proof.
-
-Shared-library verification covers the managed layout, ownership, fixed manifests, history restoration, View metadata, Router directories and authorized migration operations. Use the shared recipe and [architecture](../../../../docs/shared-ssot-architecture.md) to identify the relevant boundary. Record live, installed-host and release outcomes in the external run ledger; do not carry an older result into a changed candidate.
-
-## Sub-features
-
-- [Skill 消费链](./skill-consumption.md)：AH-617 的 SC-VERIFY-01～03，CLI 入口、源/投影/会话状态证明、反例与清理后证据；SC01–SC26 和完整场景矩阵统一维护在链接的 Broker 主地图。SC11 同次 SDK full/默认目录观察沿原 shared-views 与 scalar HTTP fixture 核对原始库存复用、独立 outcome 与实际账本。单 current inspect 投影候选经三对真实冷读后未通过延迟采用门槛，运行时代码与候选专用断言已撤回；原 scalar 目录复用不变，完整实验、字节收益和延迟回退均保留在该页。
-- [直连请求引擎](./request-engine.md)：NG-VC-01、NG-RE-02～05/21，离线失败基线、自有认证、真实 HTTP 尝试、多 scope 调度、未知写入与无官方 ntn 交付。
-- [Skill 依赖图](./skill-dependency-graph.md)：NG-SG-06～20，两条独立根选择、Members/Requires、引用与准备、会话固定图、批量/历史/按需物化/预取。图专项不得沿用 AH-560 单 Skill 的 pass。
-
-- [Discovery, configuration, authentication and doctor](./discovery-config-auth-doctor.md): help, database/catalog discovery, local preferences and connection diagnostics.
-- [Snapshots, reading, files and relative resolution](./snapshot-read-open-files-resolve.md): current online content, immutable local versions and exact file output.
-- [Shared Notion SSOT](./shared-ssot.md): `ctl library`, flat Files metadata, whole-file adoption, fixed Git/manifest registration, shared archive/restore, read-only migration review, Router member indexes, original unknown operations and request budgets. Source-built CLI, installed package, independent machines and UI/model evidence remain separate.
-- [Create, replace, dry-run and recovery](./import-create-recovery-dry-run.md): selected local inputs, explicit create/replace decisions and uncertain outcomes; [pinned changes](./reference-write-version-conflict.md) cover daily `apply`.
-- [Pinned changes, reference pages and version conflicts](./reference-write-version-conflict.md): one `apply` for sparse file/property changes, lower-level file writes and stale-baseline rejection.
-- [Portable export and package consumption](./portable-export-package-consumption.md): reversible exports and the built npm package boundary.
-- [Broker consumption](./broker-consumption.md): metadata-only scope/coverage discovery, selected-page activation, fixed directory materialization, actual manifest entrypoint, output protection and installed/offline credential isolation. Routes to independent Pi/OMP real-model consumption, Pi terminal selection and daily Tern/OMP installation/menu verification in the broker repository.
-- [Bidirectional sync and read-cache verification plan](./sync-cache-verification-plan.md): acceptance cases for the [implemented CLI design](../../../../docs/sync-cache-cli-design.md), including common bases, real targets, TTL, batch plans, conflicts and recovery. Case execution is recorded in the external run ledger.
-- [Built-in Skill management](./builtin-management.md): offline bundled instructions and optional explicit central installations, shared/Agent links and local-update protection; ordinary host selection belongs to the linked broker runners.
-- [Upstream subscriptions](./upstream-subscriptions.md): retained `ctl sync upstream` bindings only. For current four-table libraries use the [Sources recipe](resource-sources.md) and `ctl library sources`; do not direct new users through the retained subscription route.
-- [MNT03 original-page repair](./maintenance-repair.md): one historical missing-main repair or one managed Files row. Native draft adoption is unchanged. The command module is mounted under `ctl` by `command-registration.ts`. Source fixture proof is not an installed or live pass.
-- AH-255 baseline: installed CLI `consumption --installed-bin` → real selected database read/pinned export; broker integration `--mode live-fixture --command-json '["node","ABSOLUTE_INSTALLED_CLI"]' --extension ABSOLUTE_INSTALLED_BROKER` → independent Pi/OMP consumption of the owned fixture and its resource. Real Pi terminal uses broker `scripts/verify-pi-pty.mjs`; Tern/OMP input uses `verify-native-ui.mjs --notion`. These are executable routes, not completed acceptance; this historical AH-255 baseline does not replace the current Router/Prompt/upstream recipes.
-
-## Accepted design coverage
-
-AH-681 的首批状态、保护与只读故事见 [阶段一验证地图](resource-phase1.md)。NR01-state、NR02-protection、NR03-readonly 复用现有 source/installed CLI 与共享库验证入口，真实库存导入由后续任务单独验收。
-
-Command/parameter semantics belong to the [protocol](../../../../docs/protocol.md); the [CLI design](../../../../docs/sync-cache-cli-design.md) records rationale, and the [verification matrix](./sync-cache-verification-plan.md) owns case definitions and evidence requirements. Case IDs are stable lookup keys, not test counts or pass results.
-
-| Entry or boundary | Cases | Required proof |
+| 改变的行为 | 领域入口 | 本轮职责 |
 | --- | --- | --- |
-| `ctl library inventory prepare-imports/apply-imports/reconcile-imports` | NR32-batch | [Inventory recipe](resource-inventory.md#nr32-batch-import-reliability): complete approved cohort, retained preparation failures, serial original child journals, known body failure isolation, unknown-write stop, repeat without duplicates, actual Node CLI and immutable SQLite batch; invocation counts are not first-pass success rates |
-| AH-617 consumption contract and CLI evidence | SC-VERIFY-01–03 | [Consumption recipe](skill-consumption.md): exact user entry, separate source/projection/session evidence, rejected false positives, real drive and unchanged evidence hashes after Cleanup; CLI proof does not establish Pi/model/installed behavior |
-| `ctl library init/inspect/files/state` and shared catalog/View identity | SS01–SS03, SS10 | [Shared recipe](shared-ssot.md): exact descriptor/property IDs, default new-library Members self-relation, read-only original-init recovery, complete flat metadata and native View membership; no body/provider work for metadata commands |
-| Shared current `read`, `files`, whole-file adoption and `--metrics` | SS03–SS06 | Complete snapshot, persistent custom ownership, unchanged-body zero writes, bounded full verification, original-plan reconciliation and explicit open first-write boundary |
-| Notion in-flight reads, attempt concurrency and admission | SS05–SS06 | Service-local coalescing and cancellation, unset/empty default 4, integer cap 1–64, permit plus SQL wait under the original five-minute deadline, independent network timeout and no mutation coalescing/retry |
-| `ctl library sources` live definitions, schema, adapters and reviewed refresh | SS19 | [Source management](../../../../docs/sources-management.md): exact primary relations, full configuration, Git/GitLab/Linear provider observations, immutable candidate/selection, custom/pin preservation and separate installed proof; [source recipe](resource-sources.md) retains the target, member and preparation stage for structured `SHARED_REFERENCE_INVALID` failures |
-| `ctl library source inspect/register`, including `--manifest` | SS07 | Fixed commit/tree/root and scoped manifest; full inspect JSON or bare manifest registers with zero provider work and rejects URL/commit/root mixing; candidate registration does not imply source selection or projection |
-| `ctl library snapshot save/restore` | SS08–SS09 | Frozen exact bytes, chunks before manifest, original archive identity, independent empty-state restore, missing/corrupt-history refusal and current access checks |
-| Shared independent install, physical machines and host/model acceptance | SS11 | Separate candidate-package and two-machine evidence, native UI and actual model consumption; record complete-file consumption separately from independent recovery refusal for an incomplete target |
-| `ctl library migration plan/review/apply/reconcile` and bounded `migration recovery` / `recovery continuation` | SS12 | Frozen scope, original approval and exact native copy; planning remains `apply_allowed:false`. Recovery preserves original failures/pages. Continuation needs an actual retained terminal, accepts current allocations separately, creates only the unattempted suffix and binds completion v2. Missing evidence and repeated unknown writes stay blocked; cutover and retirement are separate. |
-| Shared Router current and fixed snapshot reads | SS13 | Registered Members identity, full relation/batched metadata, same-library enabled Skills, stable-ID conflict rejection, frozen index with lazy member bodies and offline rejection of incomplete historical Router snapshots |
-| `ctl sync local connect`, advanced `bind`, initial source choice and duplicate labels | S1–S2, S14, P2, P10 | Repeated same-edge reuse; automatic pull for a missing directory; explicit source for existing differing contents; dry-run/config and page identity checks |
-| `ctl sync local status`, `status --refresh` | C17, S9 | Local-only observation stays provisional; online refresh does not advance any common base |
-| `ctl sync local plan`, explicit `--from`, `--output` | S3–S8, P3–P4, P9 | Checked identities/directions, immutable plan copy, rejected conflicts and stale-plan state preservation |
-| `ctl sync local plan --all`, shared page/real destination | S9–S10, S15, R7 | Distinct-candidate rejection, one accepted remote update, independently verified local fan-out/bases |
-| `ctl sync local run`, advanced `apply --plan` by ID/file | S3–S7, S11–S13, L1–L7, P4 | One checked plan and verified convergence; retained receipts settle only on confirmed observations; rejected content/link drift preserves both sides |
-| `ctl operation reconcile OPERATION_ID`, `ctl sync local unbind` | R1–R7, P6, P8, P10 | Restart/readback before replay decision; truthful partial outcomes; content/baseline/receipt retention |
-| Pinned `apply`, full-input `replace --target` and existing write preconditions | P5, C12–C13, S8, NXT02–03, write-properties, write-conflict | Explicit shared apply retains one sequential parent for native additions, declared layout changes and body edits; new main links bind to allocated page ACKs. New-file links to unallocated peers remain rejected. Replace does not infer mixed layout intent from omissions. Stale pins, main deletion and missing/non-main targets fail before effects |
-| File-only `write` and property-only `update` | write-properties, write-conflict | [Write recipe](reference-write-version-conflict.md); body writes preserve properties, shared main frontmatter conflicts reject, explicit property flags change only authorized attributes, stale pins reject |
-| Independently installed shared author lifecycle | P5, C12–C13, SC23, import-recovery, write-properties | [Existing package gate](import-create-recovery-dry-run.md#independent-installed-author-lifecycle): public create/write/update/apply/replace, canonical readback and immutable old pins, dry-run/conflict zero writes, exact lost-outcome recovery, `ctl views/status`; actual Node bin plus controlled HTTP service, separate from production Notion |
-| `read/files/export`, common cache flags | C1–C15, P1, P11 | Controlled TTL/identity failures, complete fixed refs, actual CLI surface and Node.js consumer; export output protection remains covered by its existing recipe |
-| `list`, cache scope and discovery coverage | C8–C9, C18, P1, discover-default-context | Offline/refresh behavior retains ambiguity/incomplete coverage and independent catalog age limit; optional checkbox emits a boolean without filtering list or explicit reads, legacy caches default to false |
-| `ctl cache status/clear`, XDG and old-state upgrade | C10–C11, C16–C19, P6 | Effective isolated roots and cache-only retirement; failed retention invalidates the entire observation batch while retaining bytes, pinned state, common bases and pending plans |
-| `ctl cache identity [--database SELECTOR]`, shared consumer metadata | C20 | Credential/remote-catalog identity is independent of cwd, command spelling, roots and local preferences; equivalent selectors share identity, changed credentials/remote selection isolate it. Broker dual-host proof uses its separate shared-cache route. |
-| `ctl config set/unset cache_policy.read_max_age_ms` and `cache_policy.catalog_max_age_ms` | P1, P7 | Offline persisted precedence/integer milliseconds, sanitized config and next-process effective policy |
-| Public help/schema/JSON/raw/exit contract | P1, P3, P11 | Offline help and schema agree with the public parser, invalid flags fail before effects, arrays use `items`, progress stays on stderr and failures name a legal next action |
-| Broker CLI consumption: `list` → page-ID `read` → fixed `files/export` | broker-list, broker-activate, broker-materialize, broker-output, broker-installed, broker-offline-scope | [Broker consumption map](./broker-consumption.md); actual main_path/manifest files/IDs, reuse/conflict bytes, installed Node and scope-isolation evidence |
-| Official `ctl builtin list/read/export` | builtin-catalog, builtin-consumer | [Package recipe](portable-export-package-consumption.md); three exact IDs with independent responsibilities, offline provenance, complete source/reference/export bytes, identical reuse and customized-output protection |
-| `ctl builtin publish`, `ctl config set/unset builtin_database` | builtin-publish, builtin-preference | [Publication recipe](import-create-recovery-dry-run.md); first-publication collision rejection, exact-target/pinned updates and fresh readback; [configuration recipe](discovery-config-auth-doctor.md) covers independent preference preservation |
-| Publication `--progress`, durable receipts and `ctl operation resume` | import-recovery, publication-progress, publication-pacing | [Publication recipe](import-create-recovery-dry-run.md); frozen input, fixed IDs, external-edit conflicts across process exits/checkpoints/preflight handoff/final readback, complete target-file result replay, unknown-create refusal, JSON stdout/separate stderr, controlled-clock request admission and actual Node CLI recovery |
-| Editable UTF-8 file storage | editable-file-consumer, editable-file-recovery | [Publication recipe](import-create-recovery-dry-run.md); complete live files, independent resource consumption, exact-target changes and original-operation recovery |
-| `ctl sync upstream connect`, `list`, recurring `run` | upstream-subscriptions | [Upstream recipe](upstream-subscriptions.md); one matching subscription, complete members/resources, array envelope, nonzero partial result, original work continuation and confirmed-Trash recovery |
-| `ctl builtin install/update/status`, installation-aware `ctl builtin list` | builtin-managed-install, builtin-managed-update, builtin-managed-conflict, builtin-managed-recovery | [Management recipe](builtin-management.md); central complete receipts and distribution records, shared/optional links, modified-sibling isolation, unmanaged preservation, A-to-B content/resource transition, v1 preservation/migration-required fences, separate external conversion, fiber interruption/handle closure, concurrency and separate host/UI proof |
-| Content Source Type / Builtin ID | source-provenance, source-schema-upgrade, source-metadata-reuse, source-frozen-recovery | [Discovery/schema recipe](discovery-config-auth-doctor.md) covers repeated published attaches and legacy compatibility; [publication recipe](import-create-recovery-dry-run.md) covers raw properties, metadata-only update, complete reuse and frozen recovery; [package recipe](portable-export-package-consumption.md) separates remote metadata from trusted package identity |
+| 跨域收敛、公开入口与独立包 | [verify-ntn-skills](../SKILL.md) | 当前旅程路由，不能代替各层实际验证 |
+| 作者内容、整树、关系与清理 | [verify-notion-management](../../verify-notion-management/SKILL.md) | 完整内容、实际清退、重复 no-op |
+| 当前读取、导出、缓存和成本 | [verify-notion-consumption](../../verify-notion-consumption/SKILL.md) | 当前全部字节、任务一致性、普通消费 0 写 |
+| 来源成员、贡献、刷新与接管 | [verify-notion-source-onboarding](../../verify-notion-source-onboarding/SKILL.md) | git-only/mixed/native 同合同、全文阅读和当前来源 |
+| 当前权威与审计有限模型 | [resource lifecycle](../../verify-notion-resource-lifecycle/SKILL.md) | 当前性质对应、有限范围、真实正反例 |
+| unknown/partial 与当前对账 | [operation recovery](../../verify-notion-operation-recovery/SKILL.md) | 当前稳定身份、去重、预算和有限恢复 |
 
-Historical `ntn-skills-operator` adoption, repair, `publish-files`, rebuild and edit-acceptance recipes belong to the [independent operator artifact](../../../../docs/historical-operations.md). Exercise them when their retained implementation changes; they are not gates or manual preparation for ordinary reads, pinned apply, connect/run or bundled Skill selection.
+[skill-domains.json](../../../../verification/skill-domains.json) 保持每份既有 feature 的唯一主要 owner；公共路由测试核实路径和接线。该索引不是旧产品合同的永久保留清单，不要求每次运行领域全部测试。
 
-Controlled-clock fixtures live in core cache tests; real link and commit-interruption fixtures live in sync-local/sync tests. The helper and consumer smoke isolate config/state/cache/data and XDG bases; builtin management also uses an owned HOME for default shared links. Ordinary live acceptance keeps one writer; L7/C14/R7 use controlled concurrency with designated fixtures. Track deterministic, live and installed-consumer results separately, including any unavailable native storage branch.
+## 实施顺序与边界
 
+1. 先对照 AH-499 当前四表合同。当前 reader/writer 尚未实现、普通 read 仍留存历史或历史 schema 仍在时，记录实际 failed/blocked；不把旧 PASS 迁移成新 PASS。
+2. 根据改动选择必要的当前领域切片。复用原测试中的权限、内容完整、路径、分页、预算、取消和 unknown 反例；与已取消历史承诺有关的断言由实现 owner 同步重做或退役。
+3. 需要安装时使用实际 archive/bin/SDK，离开 checkout。包装中仍含旧 operator/decoder/fallback 即是单轨未完成，不能靠源码测试绕过。
+4. 真实 Notion 清退由 AH-513；旧 caller/实现退出由 AH-517；同一次配对安装和真实 Pro Pi 由 AH-1063；Pro 全本地 Skills 内容及曝光/更新入口由 AH-516 对账。
+5. OMP/Tern 适配延期，不加入本轮矩阵，也不为它们保留旧 adapter。其宿主目录中的本地 Skill 内容仍进入 Pro 盘点。全部迁入 Notion 不等于全部加入 Default Context。
 
-## How to get to it (user POV)
+## 共用设施与现有实现定位
 
-The user surface is `ntn-skills`, invoked from this checkout through the control helper's `cli` mode. The recipes use the real command names and flags from [main.ts](../../../../packages/cli/src/main.ts), [usage](../../../../docs/usage.md) and [protocol](../../../../docs/protocol.md). Each recipe lists its specific user entry points and observable results.
+[harness](../references/harness.md#launch) 提供运行隔离、凭据注入、基础命令记录和系统 Trash。只复用当前仍适用的设施；其中旧 package/history 流程不能成为当前产品前置。
 
-For the References import workflow, select the authorized database and absolute input directories, then use helper `prepare` to dry-run those inputs and freeze their file hashes into `$RUN/evidence/plan.json`, or select an existing authorized plan. Its `database` selects that Notion database; its entries contain `name`, absolute `input`, `files` and `file_hashes` with `path`, `sha256` and `bytes`. The current six-entry scenario uses the public invocation aliases `open-source-repo-readiness`, `semantic-decompression`, `write`, `hai-audit-docs-against-code`, `github-cicd-bootstrap` and `npm-publish`. Use the selected plan's actual inputs and CLI-returned identities rather than guessing page IDs or refs. Shared libraries use the separate SS01–SS13 recipe through helper `cli`; `prepare/import/verify/reuse` does not establish shared-library acceptance.
+当前切片可定位到 [空库](empty-library.md)、[维护](skill-maintenance.md)、[来源](resource-sources.md)、[请求引擎](request-engine.md)、[独立包消费](portable-export-package-consumption.md) 和 [Broker 消费](broker-consumption.md)。这些旧 feature 文件仍包含待 AH-517 清退的历史要求，执行前必须核对当前旅程与实现，不能把整篇旧合同自动当成当前通过门槛。
 
-## Driving it with control-ntn-skills
+旧 NXT/SC/NG case ID 仅用于定位原实现和失败；固定批次文件数、旧 PR/SHA、原 ACK/review/completion、历史 pin、历史恢复或 OMP/Tern 全矩阵不再定义本轮验收。不要扩旧 nxt-journey runner、复制原配方或新增多层签收来覆盖这些差异。
 
-Preconditions:
+## 完成条件
 
-- Run commands from the repository root. `RUN` is the absolute owned run directory; `IMPORT_PLAN` is the helper's frozen References import JSON. Product `SYNC_PLAN_ID`/`SYNC_PLAN_FILE` belongs to `ctl sync local apply`, and shared `MIGRATION_INPUT` to `ctl library migration plan --input`; pass those product arguments after helper `cli --` rather than using the outer helper's `--plan`.
-- Bind `DATABASE` to `plan.database`, `INPUT` to a selected entry's absolute input, and `FILE_PATH` to one of that entry's relative files. A local source file is the absolute input directory joined to its relative path. Bind `INPUT_FILE` to that actual file; `TITLE` and `DESCRIPTION` are approved source metadata, not guessed replacements.
-- Bind `TARGET`, `REF`, `SNAPSHOT`, `FILE_REF`, `PAGE_ID`, `PAGE_URL` and `SKILL_ALIAS` only from selected CLI results. `REF` and `FILE_REF` are pinned; `TARGET` is the chosen current unpinned selector. Bind `RELATIVE_PATH` to an actual link relative to the containing file. Recipe-specific variables similarly name actual selected files or captured replies.
-- The inherited `NOTION_API_TOKEN` supplies authentication without copying personal configuration; first confirm its identity matches the intended project credential. The helper isolates config/state/cache/data and XDG bases under scratch. Online work uses `scripts/dev.ts` to execute the production TypeScript entry with Node.js without a build, or the explicit installed npm bin. Verify default npm execution and explicit `NTN_SKILLS_DEV_ROOT` separately, with argv/cwd/exit preservation and a stateful offline inventory; normal mode requires no Bun or checkout. The machine request scheduler remains shared across content roots. Ordinary live acceptance uses one writer per owned page.
-- For strict filesystem-sentinel runs, isolate the parent Bun launcher's XDG cache in a separate owned temporary directory too. The helper cannot override a transpiler-cache write that happens before its code executes; preserve and clean this launcher directory separately.
+入口存在只算路由通过，模型通过只算其有限域通过。真实安装、Notion 内容、清理范围和 Pi 投递必须分别有实际结果；未知、未读和 partial 不算完成。
 
-Initialize and diagnose:
-
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts init --run "$RUN"
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$RUN"
-```
-
-Drive each CLI argument array with `bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ...`. Plan-wide acceptance uses the exact helper modes shown in the import recipe. All proof belongs under `$RUN/evidence`: retain command arguments, CLI stdout JSON/text, exit status and resulting state. The helper records stderr metadata only (`bytes`, `sha256`, `raw_retained:false`), never raw or sanitized stderr text. For live writes, include fresh online readback and the selected plan's file/hash comparison; CLI success alone is insufficient. Help/version are text, normal responses are JSON, and exits are 0 for success, 1 for operational failure and 2 for invalid arguments.
-
-Finish with:
-
-```bash
-bun .cursor/skills/verify-ntn-skills/scripts/control.ts cleanup --run "$RUN"
-```
-
-Cleanup moves run scratch state and recorded successful package scratch to system Trash, never `$RUN/evidence` or retained user Notion skills. Defer cleanup while unresolved original writes still depend on that scratch state. Confirm evidence remains available after cleanup before reporting a proof.
-
-## Gotchas
-
-- A recipe is not evidence. Record exactly which entry points were exercised and report skipped paths with their unmet prerequisite.
-- Dry-run can read the network and populate caches. Compare fresh remote state before and after; remote bodies, properties, reference membership and files must remain unchanged. It does not prove service acceptance.
-- `WRITE_PARTIAL` and `WRITE_OUTCOME_UNKNOWN` require readback before deciding on another write. Do not automatically retry mutations or infer failure from a timeout.
-- Fixture snapshots used by package smoke prove offline package consumption only; they cannot prove a live Notion mutation.
-- No imported or downloaded script is automatically executed. Reading or exporting a script proves its bytes, not runtime behavior.
-- Default helper Doctor is offline: real source version/help, entry hash and isolated roots. `doctor --run "$RUN" --live --database "$DATABASE"` explicitly forwards that scope to the project's direct-HTTP doctor and may populate owned caches. Without `--database`, it is an unscoped diagnostic. Neither route substitutes for explicit consumption and coverage inspection.
-- Current-target reads use bounded cache policy. Use `--refresh` for fresh Notion readback; a fast or TTL-cached response records a prior observation. Pinned refs intentionally retain their fixed versions.
+AH-500 交付有限入口及前五组，AH-1063 共用一次第六组结果，AH-516 收口全 Pro 迁移，AH-498 汇总六组与全量结果。足够证明当前正确和无残留后停止，不建设新的 runner、内容版本库或验证平台。

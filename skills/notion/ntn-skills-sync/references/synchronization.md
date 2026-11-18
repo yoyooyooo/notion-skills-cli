@@ -54,7 +54,7 @@ ntn-skills ctl library profile bind PROFILE_ID --entry LIBRARY_ENTRY
 ntn-skills list --default-view
 ```
 
-Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_ENTRY --name NAME --enabled true|false --base REVISION [--default-view VIEW_ID]`. Use `--base new` only for a new Profile; otherwise copy the exact current revision from show. Omitting the optional View removes an old default. `profile unbind` removes only the machine binding. Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence; absent a configured default, use the first View in API order. Bare list discovers the accessible source scope; follow every returned cursor for the complete observation. Rules do not grant access or activate bodies.
+Create or replace complete current rules with `profile set PROFILE_ID --entry LIBRARY_ENTRY --name NAME --enabled true|false --expect CURRENT_FINGERPRINT [--default-view VIEW_ID]`. Use `--expect new` for a missing Profile; otherwise copy its current `fingerprint` from show. The stable Record ID and page remain unchanged on update, and identical content causes no write. Omitting the optional View or freshness rules clears that prior value. `profile unbind` removes only the machine binding. Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence; absent a configured default, use the first View in API order. Bare list discovers the accessible source scope; follow every returned cursor for the complete observation. Rules do not grant access or activate bodies.
 
 ### Shared recovery
 
@@ -63,9 +63,9 @@ Create or replace a complete rule with `profile set PROFILE_ID --entry LIBRARY_E
 | Git source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
 | Composition registration | Repeat its exact `composition register` input with `--reconcile` |
 | Source selection | `ctl library source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY` |
-| Profile revision | Repeat the exact complete `profile set` intent with `--reconcile` |
+| Current Profile rules | Repeat the complete `profile set` intent with `--reconcile`; compare current rules without POST or PATCH |
 
-Preserve original input and IDs. Equal current properties or absent remote results do not prove an unknown original request succeeded or was never sent. Missing facts remain unresolved, especially on an independent machine with no local receipt. These source and Profile operations use their returned reconciliation actions. Unified `ctl operation resume` can continue only an original shared apply's proved-unsent suffix after its verified prefix, under the original local journal; it does not resume the operations in this table. A verified recovery proves its reported status, not necessarily completion of the intended change.
+For the Source operations, preserve original input and IDs; equal current properties or absent remote results do not prove whether an unknown original request ran. A Profile uses a finite current intent: matching current rules resolve it, while missing or different current content remains unresolved or conflicting. It stores no predecessor or completed rule history. The fingerprint and a local lock do not provide distributed CAS. Unified `ctl operation resume` applies only to an original shared apply; it does not resume these Source or Profile operations.
 
 ## Unresolved original results
 

@@ -43,7 +43,7 @@ const catalog: ListCatalogResult = {
     library_id: "library",
     library_entry: "00000000-0000-4000-8000-000000000010",
     profile_id: "daily",
-    revision_id: "a".repeat(64),
+    fingerprint: "a".repeat(64),
     selection: "profile",
     source: "notion",
     freshness: freshness({ refresh: true }, at, at, 60000),
@@ -52,7 +52,7 @@ const catalog: ListCatalogResult = {
 const run = (input: ListCatalogResult, options: Parameters<typeof pageCatalog>[1]) =>
   Effect.runPromise(pageCatalog(input, options).pipe(Effect.provide(NodeServices.layer)))
 
-test("SC25 Profile pagination survives refresh to offline while revision/query/scope changes reject the cursor", async () => {
+test("SC25 Profile pagination survives refresh to offline while fingerprint/query/scope changes reject the cursor", async () => {
   const first = await run(catalog, { limit: 1 })
   if (first.next_cursor === null || catalog.profile === undefined)
     throw new Error("Expected a paged Profile fixture")
@@ -73,7 +73,7 @@ test("SC25 Profile pagination survives refresh to offline while revision/query/s
   for (const changed of [
     { ...cached, scope: "b".repeat(64) },
     { ...cached, fetched_at: at + 1 },
-    { ...cached, profile: { ...catalog.profile, revision_id: "b".repeat(64) } },
+    { ...cached, profile: { ...catalog.profile, fingerprint: "b".repeat(64) } },
   ])
     await expect(run(changed, { limit: 2, cursor: first.next_cursor })).rejects.toMatchObject({
       code: "LIST_CURSOR_STALE",

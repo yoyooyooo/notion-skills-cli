@@ -1688,31 +1688,28 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       }
     }
     const sharedAcquisition: Snapshot["shared_acquisition"] =
-      input.sparseGit === true
-        ? {
-            version: 3,
+      acquisitionFiles.length === 0 && input.sparseGit !== true
+        ? undefined
+        : {
+            version: 4,
             library: input.library,
-            source: {
-              source_id: input.fixedSource!.source_id,
-              revision: input.fixedSource!.revision,
-            },
-            git_member_root: plannedSource!.git_member_root!,
-            files: acquisitionFiles,
-          }
-        : acquisitionFiles.length === 0
-          ? undefined
-          : {
-              version: 1 as const,
-              library: input.library,
-              source:
-                input.fixedSource === undefined
+            source:
+              input.sparseGit === true
+                ? {
+                    kind: "git_member",
+                    source_id: input.fixedSource!.source_id,
+                    revision: input.fixedSource!.revision,
+                    member_root: plannedSource!.git_member_root!,
+                  }
+                : input.fixedSource === undefined
                   ? null
                   : {
+                      kind: "tree",
                       source_id: input.fixedSource.source_id,
                       revision: input.fixedSource.revision,
                     },
-              files: acquisitionFiles,
-            }
+            files: acquisitionFiles,
+          }
     const version = yield* sharedSnapshotVersion({
       record,
       files,

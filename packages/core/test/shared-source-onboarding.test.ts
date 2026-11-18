@@ -501,7 +501,7 @@ test("an explicitly enabled Git-only member consumes original Git main and lazil
       })
     }),
   )
-  expect(current.shared_acquisition?.version).toBe(3)
+  expect(current.shared_acquisition?.version).toBe(4)
   expect(current.file_bindings).toHaveLength(1)
   expect(current.files).toHaveLength(f.snapshot.members[0]!.portable.files.length)
   expect(current.materialization?.materialized_paths).toEqual(["SKILL.md"])
@@ -640,7 +640,7 @@ test.each([false, true])(
           })
         }),
       )
-      expect(current.shared_acquisition?.version).toBe(3)
+      expect(current.shared_acquisition?.version).toBe(4)
       expect(current.shared_acquisition?.files.some((file) => file.path === "SKILL.md")).toBe(false)
       const mainBytes = await f.run(openFixedSnapshotFiles(current, () => ["SKILL.md"]))
       expect(new TextDecoder().decode(mainBytes.files[0]!.bytes)).toContain(

@@ -76,7 +76,7 @@ test("current onboarding and maintenance preserve complete inputs and original r
     "ctl library source select",
     "ctl library profile",
     "--expect",
-    "--base",
+    "fingerprint",
     "reconcile",
     "custom",
     "do not grant access",

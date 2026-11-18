@@ -1,8 +1,8 @@
 import { fail, type Snapshot } from "./model.ts"
 import { normalizePath } from "./ref.ts"
 
-/** Pure boundary shared by durable storage and current/fixed consumers. The file
- * directory remains Snapshot.files; this validates only its frozen locations. */
+/** Pure boundary for the single current acquisition contract. The full file
+ * directory remains Snapshot.files; routes locate only missing selected bytes. */
 export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<string> {
   const acquisition = snapshot.shared_acquisition
   if (acquisition === undefined) return new Set<string>()
@@ -14,36 +14,26 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
     acquisition.library.skills.data_source_id !== locator.data_source_id ||
     new Set(acquisition.files.map((file) => file.path)).size !== acquisition.files.length
   )
-    throw fail("STATE_CORRUPT", "Frozen shared acquisition differs from the exact snapshot owner.")
-  if (acquisition.version === 2) {
-    if (
-      !acquisition.source.source_id ||
-      !acquisition.source.revision ||
-      snapshot.file_bindings !== undefined ||
-      snapshot.native_references !== undefined ||
-      acquisition.files.length !== snapshot.files.length ||
-      acquisition.files.some(
-        (file) =>
-          !snapshot.files.some((candidate) => candidate.path === file.path) ||
-          normalizePath(file.source_path) !== file.source_path ||
-          file.source_path !== file.path,
-      )
+    throw fail("STATE_CORRUPT", "Shared acquisition differs from the exact selected owner.")
+  if (
+    acquisition.source !== null &&
+    (!acquisition.source.source_id || !acquisition.source.revision)
+  )
+    throw fail("STATE_CORRUPT", "A selected source requires its identity and exact revision.")
+  if (acquisition.source?.source_id.startsWith("snapshot-"))
+    throw fail(
+      "CURRENT_SOURCE_REQUIRED",
+      "Historical snapshots cannot supply current acquisition. Migrate the current content first.",
+      { next: "migrate_current_content" },
     )
-      throw fail(
-        "STATE_CORRUPT",
-        "A Git-only Skill requires a complete exact fixed source directory without native File bindings.",
-      )
-    return new Set(acquisition.files.map((file) => file.path))
-  }
   for (const route of acquisition.files) {
     if (
       !snapshot.files.some((file) => file.path === route.path) ||
-      (acquisition.version !== 3 &&
-        (route.path === snapshot.entrypoint || /\.(md|markdown)$/iu.test(route.path)))
+      normalizePath(route.path) !== route.path
     )
       throw fail(
         "STATE_CORRUPT",
-        "Only exact supporting raw snapshot paths may defer byte acquisition.",
+        "An acquisition route must name an exact path in the complete selected directory.",
       )
     if (route.kind === "source") {
       if (
@@ -52,19 +42,19 @@ export function validateSnapshotAcquisition(snapshot: Snapshot): ReadonlySet<str
         acquisition.source.revision === "" ||
         normalizePath(route.source_path) !== route.source_path
       )
-        throw fail("STATE_CORRUPT", "A fixed raw path has no exact frozen source identity.")
+        throw fail("STATE_CORRUPT", "A selected raw path has no exact source identity.")
     } else if (!/^resource-[a-f0-9]{64}$/u.test(route.object_id))
-      throw fail("STATE_CORRUPT", "A retained raw path has an invalid immutable manifest identity.")
+      throw fail("STATE_CORRUPT", "A selected raw path has an invalid resource identity.")
   }
   if (
-    acquisition.version === 3 &&
-    (normalizePath(acquisition.git_member_root) !== acquisition.git_member_root ||
+    acquisition.source?.kind === "git_member" &&
+    (normalizePath(acquisition.source.member_root) !== acquisition.source.member_root ||
       !acquisition.source.source_id ||
       !acquisition.source.revision)
   )
     throw fail(
       "STATE_CORRUPT",
-      "A mixed snapshot requires its original fixed Git root and version.",
+      "A Git member requires its selected source revision and canonical member root.",
     )
   return new Set(acquisition.files.map((route) => route.path))
 }

@@ -1,12 +1,24 @@
-import { expect, test } from "bun:test"
+import { afterAll, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { Effect } from "effect"
+import { trashPath } from "../src/local-locks.ts"
 import { consume, decodeConsumeResult } from "../src/consumer.ts"
 import { property } from "../src/model.ts"
 import { parseTarget } from "../src/ref.ts"
 import { saveSharedProfile } from "../src/shared-profile.ts"
 import { library, sharedSnapshotFixture, skillPage } from "./shared-snapshot-fixture.ts"
 
+const roots: string[] = []
+afterAll(async () => {
+  if (process.platform === "darwin")
+    for (const root of roots) await Effect.runPromise(trashPath(root))
+})
 async function consumer(readMaxAge: number) {
-  const f = sharedSnapshotFixture()
+  const root = mkdtempSync(join(tmpdir(), "ntn-profile-consumer-"))
+  roots.push(root)
+  const f = sharedSnapshotFixture({ root })
   await f.run(
     saveSharedProfile(library, {
       profile: {
@@ -24,7 +36,7 @@ async function consumer(readMaxAge: number) {
           ],
         },
       },
-      expectedRevision: null,
+      expectedFingerprint: null,
     }),
   )
   f.json.set("config.json", {

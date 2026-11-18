@@ -92,7 +92,7 @@ test("first native import keeps nested input intact and uses an explicit, semant
     "user-invokable": true,
   })
   expect(full).toContain(observed)
-  expect(cold.shared_acquisition?.version).toBe(3)
+  expect(cold.shared_acquisition?.version).toBe(4)
   for (const original of f.member.portable.files.filter((file) => file.path !== "SKILL.md")) {
     const sibling = cold.files.find((file) => file.path === original.path)!
     expect(sibling.sha256).toBe(sha(original.bytes))

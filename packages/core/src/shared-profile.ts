@@ -12,8 +12,9 @@ import { fail, property, SkillsError } from "./model.ts"
 import { SharedLibrarySchema, type SharedLibrary } from "./shared-library-model.ts"
 import { libraryFromDatabase, LIBRARY_MARKER, loadSharedLibrary } from "./shared-library.ts"
 import { pageId } from "./ref.ts"
+import { withLocalLocks } from "./local-locks.ts"
 import {
-  appendSharedProfileRecord,
+  writeCurrentSharedProfileRecord,
   canonicalSharedJson,
   querySharedProfileRecords,
   validateSharedRecordEnvelope,
@@ -24,9 +25,11 @@ import { retrieveView, viewId } from "./views.ts"
 import { SharedFreshnessPolicySchema, normalizeSharedFreshness } from "./shared-freshness-policy.ts"
 
 const stableId = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u
-const revisionId = /^profile-[a-f0-9]{64}$/u
+const fingerprintPattern = /^[a-f0-9]{64}$/u
+const recordIdPattern = /^profile-current-[a-f0-9]{64}$/u
 const control = /[\u0000-\u001f\u007f-\u009f]/u
-const RevisionIdSchema = Schema.String.check(Schema.isPattern(revisionId))
+const FingerprintSchema = Schema.String.check(Schema.isPattern(fingerprintPattern))
+const RecordIdSchema = Schema.String.check(Schema.isPattern(recordIdPattern))
 export const SharedProfileRulesSchema = Schema.Struct({
   profile_id: Schema.String.check(Schema.isPattern(stableId)),
   name: Schema.String,
@@ -35,36 +38,38 @@ export const SharedProfileRulesSchema = Schema.Struct({
   freshness: Schema.optional(SharedFreshnessPolicySchema),
 })
 export type SharedProfileRules = typeof SharedProfileRulesSchema.Type
-export const SharedProfileRevisionSchema = Schema.Struct({
-  version: Schema.Literal(1),
+export const SharedProfilePayloadSchema = Schema.Struct({
+  version: Schema.Literal(2),
   library_id: Schema.String.check(Schema.isPattern(stableId)),
   ...SharedProfileRulesSchema.fields,
-  parent_revision_id: Schema.NullOr(RevisionIdSchema),
 })
 export const SharedProfilePlanSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  revision_id: RevisionIdSchema,
+  version: Schema.Literal(2),
+  record_id: RecordIdSchema,
+  fingerprint: FingerprintSchema,
+  expected_fingerprint: Schema.NullOr(FingerprintSchema),
   operation_id: Schema.String,
-  payload: SharedProfileRevisionSchema,
+  payload: SharedProfilePayloadSchema,
 })
 export type SharedProfilePlan = typeof SharedProfilePlanSchema.Type
 export const SharedProfilePendingSchema = Schema.Struct({
-  version: Schema.Literal(1),
+  version: Schema.Literal(2),
   scope: Schema.String,
   library_id: Schema.String,
   profile_id: Schema.String,
+  target_page_id: Schema.NullOr(Schema.String),
   plan: SharedProfilePlanSchema,
 })
 export const SharedProfileSchema = Schema.Struct({
   ...SharedProfileRulesSchema.fields,
   library_id: Schema.String.check(Schema.isPattern(stableId)),
-  revision_id: RevisionIdSchema,
-  parent_revision_id: Schema.NullOr(RevisionIdSchema),
+  record_id: RecordIdSchema,
+  fingerprint: FingerprintSchema,
   record_page_id: Schema.String,
 })
 export type SharedProfile = typeof SharedProfileSchema.Type
 export const SharedProfileObservationSchema = Schema.Struct({
-  domain: Schema.Literal("shared_profile_v1"),
+  domain: Schema.Literal("shared_profile_v2"),
   scope: Schema.String,
   selection_id: Schema.String,
   profile_id: Schema.String,
@@ -73,7 +78,10 @@ export const SharedProfileObservationSchema = Schema.Struct({
   library: SharedLibrarySchema,
   profile: SharedProfileSchema,
 })
-type Revision = { readonly plan: SharedProfilePlan; readonly record: SharedProfileRecord }
+type CurrentProfile = {
+  readonly profile: SharedProfile
+  readonly record: SharedProfileRecord
+}
 
 function invalid(message: string, details?: unknown) {
   return fail("SHARED_PROFILE_INVALID", message, details)
@@ -84,7 +92,7 @@ function checked<A>(run: () => A): Effect.Effect<A, SkillsError> {
     catch: (error) =>
       error instanceof SkillsError
         ? error
-        : invalid("The Profile does not match its versioned rule contract."),
+        : invalid("The Profile does not match its current rule contract."),
   })
 }
 function strict<S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown): S["Type"] {
@@ -123,38 +131,45 @@ function normalizedRules(input: unknown): SharedProfileRules {
   }
 }
 
-/** Freeze an exact rule revision; this requires Crypto only and performs no I/O. */
+function profileRecordId(library: SharedLibrary, profileId: string) {
+  return sha256(canonicalSharedJson([library.library_id, profileId])).pipe(
+    Effect.map((hash) => `profile-current-${hash}`),
+  )
+}
+
+/** Prepare the current intent. The fingerprint contains no predecessor or operation identity. */
 export function prepareSharedProfileChange(
   library: SharedLibrary,
   input: {
     readonly profile: unknown
-    readonly expectedRevision: string | null
+    readonly expectedFingerprint: string | null
   },
 ) {
   return Effect.gen(function* () {
     const profile = yield* checked(() => normalizedRules(input.profile))
     if (
       !stableId.test(library.library_id) ||
-      (input.expectedRevision !== null &&
-        (typeof input.expectedRevision !== "string" || !revisionId.test(input.expectedRevision)))
+      (input.expectedFingerprint !== null &&
+        (typeof input.expectedFingerprint !== "string" ||
+          !fingerprintPattern.test(input.expectedFingerprint)))
     )
       return yield* Effect.fail(
-        invalid(
-          "Profile changes require the exact library and a prior revision, or explicit null for initial creation.",
-        ),
+        invalid("Profile changes require a current fingerprint, or explicit null for creation."),
       )
     const payload = {
-      version: 1 as const,
+      version: 2 as const,
       library_id: library.library_id,
       ...profile,
-      parent_revision_id: input.expectedRevision,
     }
-    const revision = `profile-${yield* sha256(canonicalSharedJson(payload))}`
-    const operation = `set-${revision}`
+    const recordId = yield* profileRecordId(library, profile.profile_id)
+    const fingerprint = yield* sha256(canonicalSharedJson(payload))
+    const operation = `set-profile-${yield* sha256(canonicalSharedJson([recordId, input.expectedFingerprint, fingerprint]))}`
     yield* checked(() => validateSharedRecordEnvelope(operation, payload))
     return {
-      version: 1 as const,
-      revision_id: revision,
+      version: 2 as const,
+      record_id: recordId,
+      fingerprint,
+      expected_fingerprint: input.expectedFingerprint,
       operation_id: operation,
       payload,
     } satisfies SharedProfilePlan
@@ -170,134 +185,98 @@ export function validateSharedProfilePlan(library: SharedLibrary, value: unknown
       )
     const expected = yield* prepareSharedProfileChange(library, {
       profile: rules(plan.payload),
-      expectedRevision: plan.payload.parent_revision_id,
+      expectedFingerprint: plan.expected_fingerprint,
     })
     if (canonicalSharedJson(expected) !== canonicalSharedJson(plan))
       return yield* Effect.fail(
-        invalid("The Profile revision differs from its exact frozen rule content."),
+        invalid("The Profile intent differs from its current rule content."),
       )
     return plan
   })
 }
 
-function revisionFromRecord(library: SharedLibrary, record: SharedProfileRecord) {
+function profileFromRecord(library: SharedLibrary, record: SharedProfileRecord) {
   return Effect.gen(function* () {
-    const plan = yield* validateSharedProfilePlan(library, {
-      version: 1,
-      revision_id: record.record_id,
-      operation_id: record.operation_id,
-      payload: record.payload,
+    const payload = yield* checked(() => strict(SharedProfilePayloadSchema, record.payload))
+    const current = yield* prepareSharedProfileChange(library, {
+      profile: rules(payload),
+      expectedFingerprint: null,
     })
     if (
+      canonicalSharedJson(payload) !== canonicalSharedJson(current.payload) ||
+      payload.library_id !== library.library_id ||
       record.kind !== "profile" ||
       record.skill_page_id !== null ||
-      record.entity_id !== plan.payload.profile_id
+      record.entity_id !== payload.profile_id ||
+      record.record_id !== current.record_id
     )
       return yield* Effect.fail(
         fail(
           "SHARED_PROFILE_SCOPE",
-          "The Profile record has a different library scope or entity identity.",
+          "The current Profile has a different owner or stable identity.",
         ),
       )
-    return { plan, record } satisfies Revision
+    return {
+      record,
+      profile: {
+        library_id: library.library_id,
+        ...rules(payload),
+        record_id: record.record_id,
+        fingerprint: current.fingerprint,
+        record_page_id: record.page_id,
+      },
+    } satisfies CurrentProfile
   })
 }
-function readRevisions(library: SharedLibrary, profileId?: string) {
+
+function readCurrentProfiles(library: SharedLibrary, profileId?: string) {
   return Effect.gen(function* () {
     if (profileId !== undefined && !stableId.test(profileId))
       return yield* Effect.fail(invalid("Use an exact stable Profile ID."))
     const records = yield* querySharedProfileRecords(
       library,
-      profileId === undefined ? {} : { entityId: profileId },
+      profileId === undefined
+        ? {}
+        : { entityId: profileId, recordId: yield* profileRecordId(library, profileId) },
     )
-    return yield* Effect.forEach(records, (record) => revisionFromRecord(library, record))
+    return yield* Effect.forEach(records, (record) => profileFromRecord(library, record))
   })
 }
 
-function resolveProfile(profileId: string, revisions: readonly Revision[]): SharedProfile {
-  const chosen = revisions.filter((revision) => revision.plan.payload.profile_id === profileId)
-  if (chosen.length === 0)
-    throw fail(
-      "SHARED_PROFILE_NOT_FOUND",
-      "The selected Profile has no visible shared rule revision.",
-      { profile_id: profileId },
-    )
-  const byId = new Map(chosen.map((revision) => [revision.plan.revision_id, revision]))
-  const parents = new Set<string>()
-  const complete = new Set<string>()
-  for (const start of chosen) {
-    let next: Revision | undefined = start
-    const chain = new Set<string>()
-    while (next !== undefined && !complete.has(next.plan.revision_id)) {
-      const id = next.plan.revision_id
-      if (chain.has(id))
-        throw invalid("Profile revision history contains a cycle.", { profile_id: profileId })
-      chain.add(id)
-      const parent = next.plan.payload.parent_revision_id
-      if (parent === null) break
-      parents.add(parent)
-      next = byId.get(parent)
-      if (next === undefined)
-        throw fail(
-          "SHARED_PROFILE_BASELINE_MISSING",
-          "A Profile parent revision is unavailable; missing history does not authorize selecting a replacement.",
-          { profile_id: profileId, missing_revision_id: parent },
-        )
-    }
-    for (const id of chain) complete.add(id)
-  }
-  // Collect every direct edge even when its parent's chain was already visited.
-  for (const revision of chosen)
-    if (revision.plan.payload.parent_revision_id !== null)
-      parents.add(revision.plan.payload.parent_revision_id)
-  const heads = chosen.filter((revision) => !parents.has(revision.plan.revision_id))
-  const head = heads[0]
-  if (heads.length !== 1 || head === undefined)
-    throw fail(
-      "SHARED_PROFILE_CONFLICT",
-      "Profile revisions have incompatible heads; no timestamp or page order selects a winner.",
-      {
-        profile_id: profileId,
-        revision_ids: heads.map((revision) => revision.plan.revision_id).sort(),
-      },
-    )
-  return {
-    library_id: head.plan.payload.library_id,
-    ...rules(head.plan.payload),
-    revision_id: head.plan.revision_id,
-    parent_revision_id: head.plan.payload.parent_revision_id,
-    record_page_id: head.record.page_id,
-  }
-}
-
-/** One metadata query sequence across all Profiles; never one GET per Profile. */
+/** One complete metadata query across current Profiles, with no per-Profile GETs. */
 export function listSharedProfiles(library: SharedLibrary) {
   return Effect.gen(function* () {
-    const revisions = yield* readRevisions(library)
-    const ids = [...new Set(revisions.map((revision) => revision.plan.payload.profile_id))].sort()
-    const profiles = yield* checked(() => ids.map((id) => resolveProfile(id, revisions)))
+    const current = yield* readCurrentProfiles(library)
     return {
       library_id: library.library_id,
-      profiles,
+      profiles: current
+        .map(({ profile }) => profile)
+        .sort((a, b) => (a.profile_id < b.profile_id ? -1 : a.profile_id > b.profile_id ? 1 : 0)),
       source: "notion" as const,
       metadata_only: true as const,
     }
   })
 }
 
-/** Load the selected durable Profile without a local copy of its rules or members. */
+/** Load the unique current rules. Old payloads and duplicate physical rows are errors. */
 export function loadSharedProfile(library: SharedLibrary, profileId: string) {
   return Effect.gen(function* () {
-    const revisions = yield* readRevisions(library, profileId)
-    return yield* checked(() => resolveProfile(profileId, revisions))
+    const current = (yield* readCurrentProfiles(library, profileId))[0]
+    if (current === undefined)
+      return yield* Effect.fail(
+        fail("SHARED_PROFILE_NOT_FOUND", "The selected Profile has no current rule record.", {
+          profile_id: profileId,
+        }),
+      )
+    return current.profile
   })
 }
 
 function profileSelection(library: SharedLibrary, profileId: string) {
-  return sha256(canonicalSharedJson(["shared-profile-v1", library, profileId]))
+  return sha256(canonicalSharedJson(["shared-profile-v2", library, profileId]))
 }
 function profileEntrySelection(entry: string, profileId: string) {
-  return sha256(canonicalSharedJson(["shared-profile-entry-v1", entry, profileId]))
+  return sha256(canonicalSharedJson(["shared-profile-entry-v2", entry, profileId]))
 }
 function profileObservationKey(scope: string, selection: string) {
   return `cache/views/${scope}/${selection}.json`
@@ -315,7 +294,7 @@ function invalidateProfileObservation(library: SharedLibrary, profileId: string,
 
 /**
  * Profile rules use the existing View-observation cache and generation fences.
- * Only a complete, single-head shared result is cached; local preferences still
+ * Only a complete, unique current record is cached; local preferences still
  * contain only the selected library entry and Profile ID.
  */
 export function loadSharedProfileCached(
@@ -375,7 +354,7 @@ function observeProfile(
       )
       if (saved !== undefined) {
         if (
-          saved.domain !== "shared_profile_v1" ||
+          saved.domain !== "shared_profile_v2" ||
           saved.scope !== scope ||
           saved.selection_id !== selection ||
           saved.profile_id !== profileId ||
@@ -419,7 +398,7 @@ function observeProfile(
         }
         const frozen = yield* prepareSharedProfileChange(saved.library, {
           profile: rules(saved.profile),
-          expectedRevision: saved.profile.parent_revision_id,
+          expectedFingerprint: null,
         })
         const observedPage = yield* checked(() => viewId(saved.profile.record_page_id)).pipe(
           Effect.mapError(() =>
@@ -430,13 +409,14 @@ function observeProfile(
           ),
         )
         if (
-          frozen.revision_id !== saved.profile.revision_id ||
+          frozen.fingerprint !== saved.profile.fingerprint ||
+          frozen.record_id !== saved.profile.record_id ||
           observedPage !== saved.profile.record_page_id
         )
           return yield* Effect.fail(
             fail(
               "STATE_CORRUPT",
-              "The cached Profile revision no longer matches its observed rules.",
+              "The cached Profile fingerprint no longer matches its observed rules.",
             ),
           )
         cached = saved
@@ -526,7 +506,7 @@ function observeProfile(
         ),
       )
     yield* store.writeJson(profileObservationKey(validated, selection), {
-      domain: "shared_profile_v1",
+      domain: "shared_profile_v2",
       scope: validated,
       selection_id: selection,
       profile_id: profileId,
@@ -560,7 +540,7 @@ export function selectProfileView(profile?: SharedProfile, explicitView?: string
       selection: "profile" as const,
       view: viewId(profile.default_view_id),
       profile_id: profile.profile_id,
-      profile_revision_id: profile.revision_id,
+      profile_fingerprint: profile.fingerprint,
     }
   return { selection: "first" as const }
 }
@@ -570,7 +550,7 @@ export function sharedProfilePendingPrefix(scope: string, libraryId: string, pro
     if (!/^[a-f0-9]{64}$/u.test(scope) || !stableId.test(libraryId) || !stableId.test(profileId))
       return yield* Effect.fail(
         invalid(
-          "A Profile pending journal needs its exact authentication, library and Profile identities.",
+          "A pending Profile write needs its exact credential, library and Profile identities.",
         ),
       )
     return `operations/shared-profile-pending/${scope}/${yield* sha256(canonicalSharedJson([libraryId, profileId]))}/`
@@ -580,207 +560,227 @@ function pendingProfile(library: SharedLibrary, scope: string, profileId: string
   return Effect.gen(function* () {
     const store = yield* Store
     const prefix = yield* sharedProfilePendingPrefix(scope, library.library_id, profileId)
-    const pending: Array<{ key: string; plan: SharedProfilePlan }> = []
-    for (const key of yield* store.listKeys(prefix)) {
-      const saved = yield* store.readJson(key, SharedProfilePendingSchema)
-      if (saved === undefined) continue
-      const plan = yield* validateSharedProfilePlan(library, saved.plan)
-      if (
-        saved.scope !== scope ||
-        saved.library_id !== library.library_id ||
-        saved.profile_id !== profileId ||
-        plan.payload.profile_id !== profileId ||
-        key !== `${prefix}${plan.revision_id}.json`
-      )
-        return yield* Effect.fail(
-          fail(
-            "STATE_CORRUPT",
-            "The original Profile dispatch journal has a different identity or scope.",
-          ),
-        )
-      pending.push({ key, plan })
-    }
-    if (pending.length > 1)
+    const keys = yield* store.listKeys(prefix)
+    if (keys.some((key) => key !== `${prefix}pending.json`))
       return yield* Effect.fail(
         fail(
-          "SHARED_PROFILE_PENDING_CONFLICT",
-          "Multiple original Profile dispatches require individual reconciliation; none can be silently replaced.",
+          "STATE_MIGRATION_REQUIRED",
+          "Remove incompatible Profile write state before continuing.",
           {
             profile_id: profileId,
-            revision_ids: pending.map((item) => item.plan.revision_id).sort(),
+            next_action: "resolve_current_profile",
           },
         ),
       )
-    return pending[0]
+    const key = `${prefix}pending.json`
+    const saved = yield* store.readJson(key, SharedProfilePendingSchema)
+    if (saved === undefined) return undefined
+    const plan = yield* validateSharedProfilePlan(library, saved.plan)
+    if (
+      saved.scope !== scope ||
+      saved.library_id !== library.library_id ||
+      saved.profile_id !== profileId ||
+      plan.payload.profile_id !== profileId ||
+      (saved.target_page_id !== null && pageId(saved.target_page_id) !== saved.target_page_id) ||
+      (plan.expected_fingerprint === null) !== (saved.target_page_id === null)
+    )
+      return yield* Effect.fail(
+        fail(
+          "STATE_CORRUPT",
+          "The pending Profile write has a different scope or target identity.",
+        ),
+      )
+    return { key, plan, target_page_id: saved.target_page_id }
   })
 }
 function recovery(error: SkillsError, plan: SharedProfilePlan, key?: string) {
-  const verified = property(error.details).operation_verified === true
   return fail(error.code, error.message, {
     ...property(error.details),
     profile_id: plan.payload.profile_id,
-    revision_id: plan.revision_id,
+    fingerprint: plan.fingerprint,
     operation_id: plan.operation_id,
-    ...(verified ? { next_action: "review_profile_conflict" } : { next_mode: "reconcile" }),
+    next_mode: "reconcile",
     ...(key === undefined ? {} : { pending_journal: key }),
     recovery: { plan },
   })
 }
-function confirmed(
+function currentResult(
+  current: CurrentProfile,
+  plan: SharedProfilePlan,
+  status: "applied" | "unchanged" | "current_matches",
+) {
+  return {
+    profile: current.profile,
+    fingerprint: current.profile.fingerprint,
+    operation_id: plan.operation_id,
+    status,
+    current: true as const,
+    metadata_only: true as const,
+  }
+}
+function confirmCurrent(
   library: SharedLibrary,
   plan: SharedProfilePlan,
-  mode: "create" | "reconcile",
   scope: string,
-  key?: string,
-  supplied?: readonly Revision[],
+  targetPageId: string | null,
+  key: string | undefined,
+  status: "applied" | "current_matches",
 ) {
   return Effect.gen(function* () {
-    const revisions = supplied ?? (yield* readRevisions(library, plan.payload.profile_id))
-    const original = revisions.find((revision) => revision.plan.revision_id === plan.revision_id)
-    if (original === undefined || canonicalSharedJson(original.plan) !== canonicalSharedJson(plan))
+    const current = (yield* readCurrentProfiles(library, plan.payload.profile_id))[0]
+    if (
+      current !== undefined &&
+      targetPageId !== null &&
+      current.profile.record_page_id !== targetPageId
+    )
+      return yield* Effect.fail(
+        fail("SHARED_PROFILE_CONFLICT", "The current Profile is on a different page.", {
+          expected_page_id: targetPageId,
+          current_page_id: current.profile.record_page_id,
+        }),
+      )
+    if (current?.profile.fingerprint !== plan.fingerprint)
       return yield* Effect.fail(
         fail(
-          "SHARED_PROFILE_UNRESOLVED",
-          "The original Profile revision is not yet visible in the shared metadata query; retain its plan and reconcile without replay.",
+          current === undefined || current.profile.fingerprint === plan.expected_fingerprint
+            ? "SHARED_PROFILE_UNRESOLVED"
+            : "SHARED_PROFILE_CONFLICT",
+          "The intended current rules have not been observed. Reconcile without repeating the write.",
+          { current_fingerprint: current?.profile.fingerprint ?? null },
         ),
       )
-    if (key !== undefined) yield* (yield* Store).retireKeys([key])
+    // Current rules are sufficient. No predecessor or original-execution proof is required.
+    // Keep the pending barrier if cache invalidation itself fails.
     yield* invalidateProfileObservation(library, plan.payload.profile_id, scope)
-    const profile = yield* checked(() => resolveProfile(plan.payload.profile_id, revisions)).pipe(
-      Effect.mapError((error) =>
-        fail(error.code, error.message, {
-          ...property(error.details),
-          operation_verified: true,
-          revision_id: plan.revision_id,
-        }),
-      ),
-    )
-    return {
-      profile,
-      operation_id: plan.operation_id,
-      revision_id: plan.revision_id,
-      current: profile.revision_id === plan.revision_id,
-      mode,
-      verified: true as const,
-      metadata_only: true as const,
-    }
+    if (key !== undefined) yield* (yield* Store).retireKeys([key])
+    return currentResult(current, plan, status)
   })
 }
 
-/**
- * At most one POST. Pending state is a replay barrier, not Profile authority.
- * An invisible first write on another empty machine remains an explicit shared
- * visibility boundary; this does not claim Notion has unique keys or a CAS.
- */
+/** One current record and at most one POST/PATCH per intent. Local serialization
+ * prevents cooperating same-machine writers from racing; Notion does not provide CAS. */
 export function saveSharedProfile(
   library: SharedLibrary,
   input: {
     readonly profile: unknown
-    readonly expectedRevision: string | null
-    readonly mode?: "create" | "reconcile"
+    readonly expectedFingerprint: string | null
+    readonly mode?: "apply" | "reconcile"
   },
 ) {
   return Effect.gen(function* () {
     const requested = yield* prepareSharedProfileChange(library, input)
-    const mode = input.mode ?? "create"
-    if (mode !== "create" && mode !== "reconcile")
-      return yield* Effect.fail(invalid("Profile save mode must be create or reconcile."))
+    const mode = input.mode ?? "apply"
+    if (mode !== "apply" && mode !== "reconcile")
+      return yield* Effect.fail(invalid("Profile save mode must be apply or reconcile."))
     const scope = yield* authScope
     const store = yield* Store
-    const pending = yield* pendingProfile(library, scope, requested.payload.profile_id)
-    if (
-      pending !== undefined &&
-      canonicalSharedJson(pending.plan) !== canonicalSharedJson(requested)
-    )
-      return yield* Effect.fail(
-        recovery(
-          fail(
-            "SHARED_PROFILE_PENDING",
-            "A different original Profile change is unresolved; new rules cannot replace its frozen plan.",
-          ),
-          pending.plan,
-          pending.key,
-        ),
-      )
-    const plan = pending?.plan ?? requested
-    if (pending !== undefined || mode === "reconcile") {
-      yield* appendSharedProfileRecord(library, {
-        mode: "reconcile",
-        recordId: plan.revision_id,
-        operationId: plan.operation_id,
-        entityId: plan.payload.profile_id,
-        payload: plan.payload,
-      }).pipe(Effect.mapError((error) => recovery(error, plan, pending?.key)))
-      return yield* confirmed(library, plan, "reconcile", scope, pending?.key).pipe(
-        Effect.mapError((error) => recovery(error, plan, pending?.key)),
-      )
-    }
-
-    const read = yield* readRevisions(library, plan.payload.profile_id).pipe(Effect.result)
-    if (read._tag === "Failure") {
-      yield* invalidateProfileObservation(library, plan.payload.profile_id, scope)
-      return yield* Effect.fail(read.failure)
-    }
-    const before = read.success
-    if (before.some((revision) => revision.plan.revision_id === plan.revision_id))
-      return yield* confirmed(library, plan, "reconcile", scope, undefined, before).pipe(
-        Effect.mapError((error) => recovery(error, plan)),
-      )
-    const resolved = yield* checked(() =>
-      before.length === 0 ? undefined : resolveProfile(plan.payload.profile_id, before),
-    ).pipe(Effect.result)
-    if (resolved._tag === "Failure") {
-      yield* invalidateProfileObservation(library, plan.payload.profile_id, scope)
-      return yield* Effect.fail(resolved.failure)
-    }
-    const current = resolved.success
-    if ((current?.revision_id ?? null) !== plan.payload.parent_revision_id)
-      return yield* Effect.fail(
-        fail(
-          "SHARED_PROFILE_STALE",
-          "The selected Profile has a different current revision; review it before preparing a new change.",
-          {
-            profile_id: plan.payload.profile_id,
-            expected_revision_id: plan.payload.parent_revision_id,
-            current_revision_id: current?.revision_id ?? null,
-          },
-        ),
-      )
-    if (plan.payload.enabled && plan.payload.default_view_id !== undefined) {
-      const view = yield* retrieveView(plan.payload.default_view_id, library.skills.database_id)
-      if (view.data_source_id !== library.skills.data_source_id)
-        return yield* Effect.fail(
-          fail(
-            "VIEW_SCOPE_MISMATCH",
-            "The Profile default View belongs to a different Skills data source.",
-            { view_id: view.id, profile_id: plan.payload.profile_id },
-          ),
+    return yield* withLocalLocks(
+      store.root,
+      [`profile:${library.records.data_source_id}:${requested.payload.profile_id}`],
+      Effect.gen(function* () {
+        const pending = yield* pendingProfile(library, scope, requested.payload.profile_id)
+        if (
+          pending !== undefined &&
+          canonicalSharedJson(pending.plan) !== canonicalSharedJson(requested)
         )
-    }
-    const prefix = yield* sharedProfilePendingPrefix(
-      scope,
-      library.library_id,
-      plan.payload.profile_id,
-    )
-    const key = `${prefix}${plan.revision_id}.json`
-    yield* store
-      .writeJson(key, {
-        version: 1,
-        scope,
-        library_id: library.library_id,
-        profile_id: plan.payload.profile_id,
-        plan,
-      })
-      .pipe(Effect.mapError((error) => recovery(error, plan, key)))
-    yield* appendSharedProfileRecord(library, {
-      mode: "create",
-      recordId: plan.revision_id,
-      operationId: plan.operation_id,
-      entityId: plan.payload.profile_id,
-      payload: plan.payload,
-    }).pipe(Effect.mapError((error) => recovery(error, plan, key)))
-    return yield* confirmed(library, plan, "create", scope, key).pipe(
-      Effect.mapError((error) => recovery(error, plan, key)),
+          return yield* Effect.fail(
+            recovery(
+              fail("SHARED_PROFILE_PENDING", "A different Profile write is unresolved."),
+              pending.plan,
+              pending.key,
+            ),
+          )
+        const plan = pending?.plan ?? requested
+        if (pending !== undefined || mode === "reconcile")
+          return yield* confirmCurrent(
+            library,
+            plan,
+            scope,
+            pending?.target_page_id ?? null,
+            pending?.key,
+            "current_matches",
+          ).pipe(Effect.mapError((error) => recovery(error, plan, pending?.key)))
+
+        const read = yield* readCurrentProfiles(library, plan.payload.profile_id).pipe(
+          Effect.result,
+        )
+        if (read._tag === "Failure") {
+          yield* invalidateProfileObservation(library, plan.payload.profile_id, scope)
+          return yield* Effect.fail(read.failure)
+        }
+        const current = read.success[0]
+        if (current?.profile.fingerprint === plan.fingerprint)
+          return currentResult(current, plan, "unchanged")
+        if ((current?.profile.fingerprint ?? null) !== plan.expected_fingerprint)
+          return yield* Effect.fail(
+            fail("SHARED_PROFILE_STALE", "The current rules changed. Review them before writing.", {
+              profile_id: plan.payload.profile_id,
+              expected_fingerprint: plan.expected_fingerprint,
+              current_fingerprint: current?.profile.fingerprint ?? null,
+            }),
+          )
+        if (plan.payload.enabled && plan.payload.default_view_id !== undefined) {
+          const view = yield* retrieveView(plan.payload.default_view_id, library.skills.database_id)
+          if (view.data_source_id !== library.skills.data_source_id)
+            return yield* Effect.fail(
+              fail(
+                "VIEW_SCOPE_MISMATCH",
+                "The Profile View belongs to a different Skills data source.",
+                {
+                  view_id: view.id,
+                  profile_id: plan.payload.profile_id,
+                },
+              ),
+            )
+        }
+        const prefix = yield* sharedProfilePendingPrefix(
+          scope,
+          library.library_id,
+          plan.payload.profile_id,
+        )
+        const key = `${prefix}pending.json`
+        const targetPageId = current?.record.page_id ?? null
+        yield* store.writeJson(key, {
+          version: 2,
+          scope,
+          library_id: library.library_id,
+          profile_id: plan.payload.profile_id,
+          target_page_id: targetPageId,
+          plan,
+        })
+        const written = yield* writeCurrentSharedProfileRecord(library, {
+          current: current?.record ?? null,
+          recordId: plan.record_id,
+          operationId: plan.operation_id,
+          entityId: plan.payload.profile_id,
+          payload: plan.payload,
+        }).pipe(Effect.result)
+        if (written._tag === "Failure") {
+          const error = written.failure
+          const details = property(error.details)
+          // The transport wraps admitted-write uncertainty as WRITE_OUTCOME_UNKNOWN.
+          // Its bare budget error and explicit rejection phases did not apply this write.
+          if (
+            details.phase === "input_rejected" ||
+            details.phase === "definitive_rejection" ||
+            error.code === "REQUEST_BUDGET_EXHAUSTED"
+          ) {
+            yield* invalidateProfileObservation(library, plan.payload.profile_id, scope)
+            yield* store.retireKeys([key])
+            return yield* Effect.fail(
+              fail(error.code, error.message, {
+                ...details,
+                profile_id: plan.payload.profile_id,
+                next_action: "review_current_profile",
+              }),
+            )
+          }
+          return yield* Effect.fail(recovery(error, plan, key))
+        }
+        return yield* confirmCurrent(library, plan, scope, targetPageId, key, "applied").pipe(
+          Effect.mapError((error) => recovery(error, plan, key)),
+        )
+      }),
     )
   })
 }

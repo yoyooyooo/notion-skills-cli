@@ -5,10 +5,7 @@ import { consume } from "../src/consumer.ts"
 import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
-import {
-  materializeRetainedSnapshot,
-  registerRetainedSnapshot,
-} from "../src/shared-history-materialization.ts"
+import { registerRetainedSnapshot } from "../src/shared-history-materialization.ts"
 import {
   prepareSharedSnapshotHistory,
   retainSharedSnapshotHistory,
@@ -145,7 +142,7 @@ describe("fixed snapshot selected files", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("fixed relative and retained reads reuse only the selected file from their acquisition", async () => {
+  test("a fixed relative read reuses only its selected file", async () => {
     const relative = await fixture()
     const file = relative.file("references/1.md")
     const result = await relative.run(
@@ -156,19 +153,22 @@ describe("fixed snapshot selected files", () => {
       relative.objects.get(`objects/${file.sha256}`),
     )
     expect([...relative.objectReads]).toEqual([[`objects/${file.sha256}`, 1]])
-    const retained = await fixture(true)
-    const selected = retained.file(file.path)
-    retained.json.delete(`snapshots/${retained.snapshot.snapshot_id}.json`)
-    const recovered = await retained.run(
-      readSkill(retained.ref(selected.path), { offline: true, output: "/memory/retained" }),
-    )
-    expect(recovered.path).toBe(selected.path)
-    expect(retained.outputs.get("/memory/retained")).toEqual(
-      retained.objects.get(`objects/${selected.sha256}`),
-    )
-    expect([...retained.objectReads]).toEqual([[`objects/${selected.sha256}`, 1]])
     expect(relative.calls).toHaveLength(0)
-    expect(retained.calls).toHaveLength(0)
+  })
+
+  test("a missing local selection asks to reselect even when retained history exists", async () => {
+    for (const offline of [false, true]) {
+      const f = await fixture(true)
+      f.json.delete(`snapshots/${f.snapshot.snapshot_id}.json`)
+      const error = await f.run(
+        Effect.flip(readSkill(f.ref("references/1.md"), { offline, output: "/memory/rejected" })),
+      )
+      expect(error.code).toBe("SNAPSHOT_MISSING")
+      expect(error.details).toMatchObject({ next: "reselect_current" })
+      expect(f.outputs.size).toBe(0)
+      expect(f.objectReads.size).toBe(0)
+      expect(f.calls).toHaveLength(0)
+    }
   })
 
   test("an expired current cache with old broken references refreshes before the selective reference gate", async () => {
@@ -368,61 +368,28 @@ describe("fixed snapshot selected files", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a complete local pin restores only a missing selected entry from the same retained manifest", async () => {
+  test("a missing authored object never queries retained history", async () => {
     const f = await fixture(true)
     const main = f.file(f.snapshot.entrypoint)
     f.objects.delete("objects/" + main.sha256)
     f.objects.delete("objects/" + f.file("references/1.md").sha256)
     f.objects.set("objects/" + f.file("references/2.md").sha256, encode("corrupt unselected"))
-    const result = await f.run(
-      targetSnapshot(
-        parseTarget(f.ref()),
-        { database: library.skills.database_id },
-        "generated",
-        "entrypoint",
+    const error = await f.run(
+      Effect.flip(
+        targetSnapshot(
+          parseTarget(f.ref()),
+          { database: library.skills.database_id },
+          "generated",
+          "entrypoint",
+        ),
       ),
     )
-    expect(result.snapshot_id).toBe(f.snapshot.snapshot_id)
-    expect(result.files).toEqual(f.snapshot.files)
-    expect(result.materialization).toEqual({
-      manifest_complete: true,
-      local_files_ready: false,
-      materialized_paths: [f.snapshot.entrypoint],
-      loaded: false,
+    expect(error.code).toBe("SNAPSHOT_MISSING")
+    expect(error.details).toMatchObject({
+      next: "reselect_current",
+      paths: [f.snapshot.entrypoint],
     })
-    for (const file of f.snapshot.files)
-      if (file.path !== f.snapshot.entrypoint)
-        expect(f.objectReads.has("objects/" + file.sha256)).toBe(false)
-    const objectRequests = f.calls.filter((call) =>
-      JSON.stringify(call.body)?.includes('"equals":"object"'),
-    )
-    expect(objectRequests).toHaveLength(1)
-    const selectedChunks =
-      f.plan?.manifest.files.find((file) => file.path === f.snapshot.entrypoint)?.chunks ?? []
-    for (const chunk of selectedChunks)
-      expect(JSON.stringify(objectRequests[0]?.body)).toContain(chunk.object_id)
-    for (const file of f.plan?.manifest.files ?? [])
-      if (file.path !== f.snapshot.entrypoint)
-        for (const chunk of file.chunks)
-          expect(JSON.stringify(objectRequests[0]?.body)).not.toContain(chunk.object_id)
-    expect(f.readBodyCount()).toBe(0)
-    expect(f.writeCount()).toBe(0)
-  })
-
-  test("retained entrypoint restoration used by graph release does not inspect unselected objects", async () => {
-    const f = await fixture(true)
-    if (f.retained === undefined) throw new Error("Expected retained manifest")
-    f.objects.set("objects/" + f.file("references/2.md").sha256, encode("corrupt unselected"))
-    const result = await f.run(
-      materializeRetainedSnapshot(f.retained, [f.snapshot.entrypoint], { offline: true }),
-    )
-    expect(result.materialization).toEqual({
-      manifest_complete: true,
-      local_files_ready: false,
-      materialized_paths: [f.snapshot.entrypoint],
-      loaded: false,
-    })
-    expect([...f.objectReads.keys()]).toEqual(["objects/" + f.file(f.snapshot.entrypoint).sha256])
+    expect([...f.objectReads.keys()]).toEqual(["objects/" + main.sha256])
     expect(f.calls).toHaveLength(0)
   })
 
@@ -509,12 +476,12 @@ describe("fixed snapshot selected files", () => {
     expect(corrupt.calls).toHaveLength(0)
   })
 
-  test("restoring a missing selection compares the entire frozen manifest before acquiring bytes", async () => {
+  test("an invalid complete directory fails before acquiring selected bytes", async () => {
     const f = await fixture(true)
     const changed = decode(SnapshotSchema, {
       ...f.snapshot,
       files: f.snapshot.files.map((file) =>
-        file.path === "references/2.md" ? { ...file, sha256: "a".repeat(64) } : file,
+        file.path === "references/2.md" ? { ...file, path: "references/1.md" } : file,
       ),
     })
     f.json.set(`snapshots/${f.snapshot.snapshot_id}.json`, changed)
@@ -525,7 +492,7 @@ describe("fixed snapshot selected files", () => {
       ),
     )
     expect(error.code).toBe("STATE_CORRUPT")
-    expect([...f.objectReads.keys()]).toEqual(["objects/" + f.file(f.snapshot.entrypoint).sha256])
+    expect(f.objectReads.size).toBe(0)
     expect(f.calls).toHaveLength(0)
     expect(f.json.get(`snapshots/${f.snapshot.snapshot_id}.json`)).toEqual(changed)
   })

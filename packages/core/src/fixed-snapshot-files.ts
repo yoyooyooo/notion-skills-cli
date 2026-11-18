@@ -1,8 +1,13 @@
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import { assertKnownSnapshotAccess, validateSnapshot, validateSnapshotManifest } from "./cache.ts"
-import { fail, SkillsError, SnapshotSchema, type Snapshot } from "./model.ts"
-import { openRetainedSnapshotFiles } from "./shared-history-materialization.ts"
-import { sharedSnapshotFrozenTree } from "./shared-history-workflow.ts"
+import {
+  fail,
+  property,
+  SHARED_ACQUISITION_VERSION,
+  SkillsError,
+  SnapshotSchema,
+  type Snapshot,
+} from "./model.ts"
 import { materializeSharedFixedAcquisition } from "./shared-fixed-acquisition.ts"
 import { sha256, Store } from "./store.ts"
 
@@ -20,13 +25,32 @@ function readSnapshotManifest(id: string) {
     if (!/^s_[a-f0-9]{64}$/.test(id))
       return yield* Effect.fail(fail("INVALID_SNAPSHOT", "Invalid snapshot ID."))
     const store = yield* Store
-    const snapshot = yield* store.readJson(`snapshots/${id}.json`, SnapshotSchema)
-    if (!snapshot)
+    const stored = yield* store.readJson(`snapshots/${id}.json`, Schema.Unknown)
+    if (stored === undefined)
       return yield* Effect.fail(
-        fail("SNAPSHOT_MISSING", "This snapshot has not been cached on this machine.", {
-          snapshot_id: id,
-        }),
+        fail(
+          "SNAPSHOT_MISSING",
+          "This selection is no longer cached. Read the current Skill again.",
+          {
+            snapshot_id: id,
+            next: "reselect_current",
+          },
+        ),
       )
+    const acquisition = property(property(stored).shared_acquisition)
+    if (Number.isInteger(acquisition.version) && acquisition.version !== SHARED_ACQUISITION_VERSION)
+      return yield* Effect.fail(
+        fail(
+          "SNAPSHOT_MISSING",
+          "This selection uses an obsolete acquisition contract. Read the current Skill again.",
+          {
+            snapshot_id: id,
+            reason: "incompatible_acquisition",
+            next: "reselect_current",
+          },
+        ),
+      )
+    const snapshot = yield* checked(() => Schema.decodeUnknownSync(SnapshotSchema)(stored))
     if (snapshot.snapshot_id !== id || snapshot.files.some((f) => !/^[a-f0-9]{64}$/.test(f.sha256)))
       return yield* Effect.fail(fail("STATE_CORRUPT", "The snapshot manifest is invalid."))
     return snapshot
@@ -52,40 +76,18 @@ function selectedPaths(snapshot: Snapshot, select: (snapshot: Snapshot) => reado
   return paths
 }
 
-/** Admit metadata first, then verify only the selected fixed bytes. Missing bytes may be
- * restored from the same retained pin; corruption and other histories never trigger a fallback. */
+/** Admit the current local selection, then verify only its requested bytes.
+ * Only declared current acquisition routes may fetch missing bytes. There is no
+ * remote history recovery when a selection or an authored object is gone. */
 export function openFixedSnapshotFiles(
   fixed: string | Snapshot,
   select: (snapshot: Snapshot) => readonly string[],
   options: { readonly offline?: boolean } = {},
 ) {
   return Effect.gen(function* () {
-    const complete = yield* (
-      typeof fixed === "string" ? loadSnapshotManifest(fixed) : validateSnapshotManifest(fixed)
-    ).pipe(Effect.result)
-    if (complete._tag === "Failure") {
-      if (complete.failure.code !== "SNAPSHOT_MISSING" || typeof fixed !== "string")
-        return yield* Effect.fail(complete.failure)
-      let paths: readonly string[] = []
-      const retained = yield* openRetainedSnapshotFiles(
-        fixed,
-        (snapshot) => (paths = selectedPaths(snapshot, select)),
-        options,
-      )
-      if (retained === undefined) return yield* Effect.fail(complete.failure)
-      const byPath = new Map(retained.files.map((file) => [file.path, file.bytes]))
-      const files = yield* checked(() =>
-        paths.map((path) => {
-          const bytes = byPath.get(path)
-          if (bytes === undefined)
-            throw fail("STATE_CORRUPT", "A selected fixed file was not materialized.", { path })
-          return { path, bytes }
-        }),
-      )
-      return { snapshot: retained.snapshot, files, access_denied: retained.access_denied }
-    }
-
-    const snapshot = complete.success
+    const snapshot = yield* typeof fixed === "string"
+      ? loadSnapshotManifest(fixed)
+      : validateSnapshotManifest(fixed)
     const accessDenied = yield* assertKnownSnapshotAccess(snapshot, options.offline)
     const paths = yield* checked(() => selectedPaths(snapshot, select))
     const store = yield* Store
@@ -93,7 +95,6 @@ export function openFixedSnapshotFiles(
     const missingObjects = new Set<string>()
     const bytesByPath = new Map<string, Uint8Array>()
     const missing: string[] = []
-    let missingError: SkillsError | undefined
     for (const path of paths) {
       const file = snapshot.files.find((entry) => entry.path === path)!
       if (missingObjects.has(file.sha256)) {
@@ -105,7 +106,6 @@ export function openFixedSnapshotFiles(
         const cached = yield* store.readBytes(`objects/${file.sha256}`).pipe(Effect.result)
         if (cached._tag === "Failure") {
           if (cached.failure.code !== "SNAPSHOT_MISSING") return yield* Effect.fail(cached.failure)
-          missingError ??= cached.failure
           missingObjects.add(file.sha256)
           missing.push(path)
           continue
@@ -128,30 +128,19 @@ export function openFixedSnapshotFiles(
       for (const file of acquired) bytesByPath.set(file.path, file.bytes)
     }
     const stillMissing = missing.filter((path) => !bytesByPath.has(path))
-    if (stillMissing.length) {
-      const retained = yield* openRetainedSnapshotFiles(
-        snapshot.snapshot_id,
-        (manifest) => {
-          if (
-            manifest.scope !== snapshot.scope ||
-            manifest.snapshot_id !== snapshot.snapshot_id ||
-            manifest.historical_snapshot_id !== snapshot.historical_snapshot_id ||
-            sharedSnapshotFrozenTree(manifest) !== sharedSnapshotFrozenTree(snapshot)
-          )
-            throw fail(
-              "STATE_CORRUPT",
-              "The retained manifest conflicts with the immutable local snapshot.",
-            )
-          return stillMissing
-        },
-        options,
+    if (stillMissing.length)
+      return yield* Effect.fail(
+        fail(
+          "SNAPSHOT_MISSING",
+          "Selected content is no longer available. Read the current Skill again.",
+          {
+            snapshot_id: snapshot.snapshot_id,
+            paths: stillMissing,
+            target: snapshot.record.id,
+            next: "reselect_current",
+          },
+        ),
       )
-      if (retained === undefined)
-        return yield* Effect.fail(
-          missingError ?? fail("SNAPSHOT_MISSING", "Selected fixed file bytes are unavailable."),
-        )
-      for (const file of retained.files) bytesByPath.set(file.path, file.bytes)
-    }
     const files = yield* checked(() =>
       paths.map((path) => {
         const bytes = bytesByPath.get(path)

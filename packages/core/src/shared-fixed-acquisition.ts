@@ -1,18 +1,18 @@
 import { Effect } from "effect"
 import { authScope } from "./catalog.ts"
-import { fail, type Snapshot } from "./model.ts"
+import { fail, SkillsError, type Snapshot, type Source } from "./model.ts"
+import { Notion } from "./notion.ts"
+import { pageId } from "./ref.ts"
+import { sharedRecordFromPage } from "./shared-content.ts"
 import { gitBlobOid } from "./shared-github-source.ts"
-import {
-  currentSharedHistorySkill,
-  assertSharedHistoryIdentity,
-} from "./shared-history-workflow.ts"
 import { loadSharedLibrary } from "./shared-library.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import { readFixedResourceBytes } from "./shared-fixed-resource-read.ts"
 import { planSelectedSharedSource } from "./shared-selected-source.ts"
 import { sha256, Store } from "./store.ts"
 
-/** Recover only missing exact files from their frozen acquisition identity. Current
- * Source selection, page prose and similar paths cannot substitute for the pin. */
+/** Fetch missing selected files from their declared current locations. Recheck
+ * the current owner once, then require the selected source and exact bytes. */
 export function materializeSharedFixedAcquisition(
   snapshot: Snapshot,
   paths: readonly string[],
@@ -34,8 +34,8 @@ export function materializeSharedFixedAcquisition(
     if ((yield* authScope) !== snapshot.scope || snapshot.record.locator.type !== "shared_skill")
       return yield* Effect.fail(
         fail(
-          "SHARED_HISTORY_SCOPE",
-          "Frozen resource acquisition belongs to another authenticated scope.",
+          "SHARED_ACQUISITION_SCOPE",
+          "The selected acquisition belongs to another authenticated scope.",
         ),
       )
     const library = yield* loadSharedLibrary(acquisition.library.skills.database_id)
@@ -50,15 +50,42 @@ export function materializeSharedFixedAcquisition(
     )
       return yield* Effect.fail(
         fail(
-          "SHARED_HISTORY_SCOPE",
-          "The frozen resource locations belong to another shared library.",
+          "SHARED_ACQUISITION_SCOPE",
+          "The selected locations belong to another shared library.",
         ),
       )
     const page = snapshot.record.locator.page_id
-    const current = yield* currentSharedHistorySkill(library, page)
+    if (pageId(page) !== page)
+      return yield* Effect.fail(
+        fail("SHARED_ACQUISITION_SCOPE", "Acquisition requires an exact canonical Skill page."),
+      )
+    const raw = yield* (yield* Notion).request(`v1/pages/${page}`)
+    const source: Source = {
+      alias: library.library_id,
+      title: "",
+      role: "content",
+      database_id: library.skills.database_id,
+      data_source_ids: [library.skills.data_source_id],
+      shared_library: library,
+    }
     yield* Effect.try({
-      try: () => assertSharedHistoryIdentity(current, snapshot.record),
-      catch: (error) => error as import("./model.ts").SkillsError,
+      try: () => {
+        const current = sharedRecordFromPage(raw, source, library.skills.data_source_id)
+        if (
+          current.id !== snapshot.record.id ||
+          canonicalSharedJson(current.locator) !== canonicalSharedJson(snapshot.record.locator)
+        )
+          throw fail("SHARED_ACQUISITION_SCOPE", "The current owner differs from this selection.")
+        if (current.enabled === false)
+          throw fail(
+            "SKILL_DISABLED",
+            "The selected Skill is disabled. Read an enabled Skill instead.",
+          )
+      },
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("SHARED_ACQUISITION_SCOPE", "The current acquisition owner is unavailable."),
     })
     const store = yield* Store
     const result: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
@@ -66,13 +93,14 @@ export function materializeSharedFixedAcquisition(
     if (sourceRoutes.length !== 0) {
       const frozen = acquisition.source
       if (frozen === null)
-        return yield* Effect.fail(fail("STATE_CORRUPT", "The fixed path has no frozen source."))
+        return yield* Effect.fail(fail("STATE_CORRUPT", "The selected path has no exact source."))
       const source = yield* planSelectedSharedSource(library, page, frozen.source_id)
       if (source.revision !== frozen.revision)
         return yield* Effect.fail(
           fail(
             "SHARED_SOURCE_CONFLICT",
-            "The original fixed source revision differs from this snapshot.",
+            "The selected source revision is no longer current. Read the current Skill again.",
+            { next: "reselect_current", target: snapshot.record.id },
           ),
         )
       for (const route of sourceRoutes) {
@@ -88,7 +116,7 @@ export function materializeSharedFixedAcquisition(
           return yield* Effect.fail(
             fail(
               "SHARED_SOURCE_CONFLICT",
-              "The frozen source path does not match this exact file identity.",
+              "The selected source path does not match this exact file identity.",
               { path: route.path, source_path: route.source_path },
             ),
           )
@@ -102,7 +130,7 @@ export function materializeSharedFixedAcquisition(
         return yield* Effect.fail(
           fail(
             "SOURCE_MATERIALIZATION_INCOMPLETE",
-            "Frozen acquisition returned an incomplete or duplicate file set.",
+            "Acquisition returned an incomplete or duplicate file set.",
           ),
         )
       for (const route of sourceRoutes) {
@@ -120,7 +148,7 @@ export function materializeSharedFixedAcquisition(
           return yield* Effect.fail(
             fail(
               "SHARED_SOURCE_CONFLICT",
-              "Frozen acquisition bytes failed the original path/hash/mode identity.",
+              "Acquired bytes failed the selected path/hash/mode identity.",
               { path: route.path },
             ),
           )
@@ -158,7 +186,7 @@ export function materializeSharedFixedAcquisition(
         return yield* Effect.fail(
           fail(
             "SHARED_RESOURCE_CONTENT_INVALID",
-            "The retained resource differs from the original pinned bytes.",
+            "The current resource differs from the selected bytes.",
           ),
         )
       yield* store.writeBytes(`objects/${expected.sha256}`, bytes)

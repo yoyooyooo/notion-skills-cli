@@ -808,7 +808,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
     const sparse = input.snapshot.shared_acquisition
     const sourceOverlay =
       input.action === "add" &&
-      sparse?.version === 3 &&
+      sparse?.source?.kind === "git_member" &&
       sparse.files.some((route) => route.path === path && route.kind === "source")
         ? input.snapshot.files.find((file) => file.path === path)
         : undefined
@@ -832,7 +832,7 @@ export function prepareSharedFileManagement(input: PrepareSharedFileManagementIn
                 entrypoint: input.snapshot.entrypoint,
                 ...(sourceOverlay === undefined ? {} : { source_overlay: sourceOverlay }),
               },
-              sparse?.version === 3 ? sparse.git_member_root : undefined,
+              sparse?.source?.kind === "git_member" ? sparse.source.member_root : undefined,
             ),
           )
         : { check: input.referenceCheck }
@@ -1132,7 +1132,7 @@ function verifyBefore(
     const states = yield* managementChecked(() => resolved(context, snapshot))
     if (
       plan.version === 4 &&
-      (snapshot.shared_acquisition?.version !== 3 ||
+      (snapshot.shared_acquisition?.source?.kind !== "git_member" ||
         !snapshot.shared_acquisition.files.some(
           (route) => route.kind === "source" && route.path === plan.path,
         ) ||
@@ -1182,8 +1182,8 @@ function verifyBefore(
               proposedTree(
                 standaloneTree!,
                 plan,
-                snapshot.shared_acquisition?.version === 3
-                  ? snapshot.shared_acquisition.git_member_root
+                snapshot.shared_acquisition?.source?.kind === "git_member"
+                  ? snapshot.shared_acquisition.source.member_root
                   : undefined,
               ).check,
           )

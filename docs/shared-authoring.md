@@ -426,12 +426,12 @@ Create a Profile only when it does not already exist:
 
 ```bash
 ntn-skills ctl library profile set daily --entry LIBRARY_ENTRY \
-  --name Daily --enabled true --base new --default-view VIEW_ID
+  --name Daily --enabled true --expect new --default-view VIEW_ID
 ntn-skills ctl library profile bind daily --entry LIBRARY_ENTRY
 ntn-skills list --default-view
 ```
 
-For an existing Profile, use the exact current revision returned by `profile show` as `--base`. `profile set` replaces the full rule: omitting `--default-view` removes the previous default. The machine binding stores only the library entry and Profile ID. `profile unbind` removes that machine selection without changing shared rules.
+For an existing Profile, copy the current `fingerprint` from `profile show` into `--expect`. `profile set` replaces complete current rules on the same Record page; omitting `--default-view` or `--freshness-json` clears the prior value, and identical rules cause no write. Duplicate current pages fail explicitly. A stale expected fingerprint stops a changed write, but the fingerprint and local writer lock do not provide distributed CAS. If a result is unknown, repeat the same intent with `--reconcile` to compare the unique current rules without another POST/PATCH. Matching rules resolve the intent without reconstructing a past success; completion clears its pending rules. The machine binding stores only library entry and Profile ID. `profile unbind` changes only that selection.
 
 ## Keep a version across machines
 
@@ -621,7 +621,7 @@ Keep the original input, exact target, operation ID and recovery details. A matc
 | File add, delete or move | `ctl file reconcile SKILL_PAGE_ID OPERATION_ID --entry LIBRARY_ENTRY` |
 | Source registration | `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID` |
 | Source selection | `ctl library source select reconcile ./source-selection.json --entry LIBRARY_ENTRY` |
-| Profile revision | Repeat the original complete `profile set` arguments with `--reconcile`. |
+| Current Profile rules | Repeat the complete `profile set` intent with `--reconcile`; check current rules without replaying POST/PATCH. |
 | Shared snapshot archive | Repeat `ctl library snapshot save ORIGINAL_SNAPSHOT_ID --entry LIBRARY_ENTRY --reconcile`. |
 
 The unified `ctl operation` entry preserves each original operation family. Only an original shared apply supports explicit `resume` of its proved-unsent suffix under the original local journal; other shared families use their returned recovery actions. Older Publication IDs retain their separate resume protocol. An empty independent machine may be unable to distinguish an invisible first request from one never sent; preserve the original machine's pending operation instead of recreating it elsewhere.

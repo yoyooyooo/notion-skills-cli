@@ -5,6 +5,7 @@
       "id": "verify-ntn-skills",
       "skill": ".cursor/skills/verify-ntn-skills/SKILL.md",
       "features": [
+        "current-convergence.md",
         "builtin-management.md",
         "discovery-config-auth-doctor.md",
         "portable-export-package-consumption.md"

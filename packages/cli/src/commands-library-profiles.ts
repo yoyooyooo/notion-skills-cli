@@ -32,7 +32,7 @@ const list = defineCommand("list", { entry }, (options) =>
   }),
 ).pipe(
   Command.withDescription(
-    "List all current library-owned Profiles with one paginated management-metadata query. No Skill bodies or provider data are read. Incomplete history and concurrent heads remain explicit errors.",
+    "List all current library-owned Profiles with one paginated management-metadata query. No Skill bodies or provider data are read. Duplicate current rows and incomplete queries remain explicit errors.",
   ),
 )
 
@@ -45,7 +45,7 @@ const show = defineCommand("show", { profile, entry }, (options) =>
   }),
 ).pipe(
   Command.withDescription(
-    "Read one Profile's complete shared revision history and return its single current rule revision.",
+    "Read one Profile's unique current rules and conflict-detection fingerprint.",
   ),
 )
 
@@ -54,11 +54,11 @@ const set = defineCommand(
   {
     profile,
     entry,
-    name: requiredSingleton("name", "Full display name for the new Profile revision"),
+    name: requiredSingleton("name", "Full display name for the current Profile"),
     enabled: requiredSingleton("enabled", "Required full rule value: true or false"),
-    base: requiredSingleton(
-      "base",
-      "Exact current revision ID, or new for a Profile with no shared revision",
+    expected: requiredSingleton(
+      "expect",
+      "Exact current fingerprint, or new for a Profile with no current record",
     ),
     defaultView: singleton(
       "default-view",
@@ -70,7 +70,7 @@ const set = defineCommand(
     ),
     reconcile: switchFlag(
       "reconcile",
-      "Only reconcile this original rule revision; never submit another POST",
+      "Only compare current rules with this intent; never repeat POST or PATCH",
     ),
   },
   (options) =>
@@ -79,11 +79,11 @@ const set = defineCommand(
         return yield* Effect.fail(
           fail("INVALID_ARGUMENT", "--enabled must be exactly true or false."),
         )
-      if (options.base !== "new" && !/^profile-[a-f0-9]{64}$/u.test(options.base))
+      if (options.expected !== "new" && !/^[a-f0-9]{64}$/u.test(options.expected))
         return yield* Effect.fail(
           fail(
             "INVALID_ARGUMENT",
-            "--base must be new or an exact Profile revision ID returned by show.",
+            "--expect must be new or the exact current fingerprint returned by show.",
           ),
         )
       const defaultView = Option.getOrUndefined(options.defaultView)
@@ -108,24 +108,24 @@ const set = defineCommand(
             ...(defaultView === undefined ? {} : { default_view_id: defaultView }),
             ...(freshness === undefined ? {} : { freshness }),
           },
-          expectedRevision: options.base === "new" ? null : options.base,
-          mode: options.reconcile ? "reconcile" : "create",
+          expectedFingerprint: options.expected === "new" ? null : options.expected,
+          mode: options.reconcile ? "reconcile" : "apply",
         }),
       )
     }),
 ).pipe(
   Command.withDescription(
-    "Save a full immutable Profile rule revision. --name, --enabled and --base are required; omitted --default-view or --freshness-json removes those prior rules. Freshness JSON accepts {default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,read_max_age_ms,source_check_max_age_ms}]}; each duration is optional nonnegative integer milliseconds. Stable Skill IDs survive renames. Explicit read max-age wins, then Skill override, Profile default and product default. Source checking and Notion body observation are separate; long read TTL discloses a matching visibility delay and never extends the independent full-body deadline or authoring preflight. Use show to review the exact current revision before updating. The original plan is retained before at most one POST. Repeating an unresolved revision or using --reconcile only checks its original shared fact and never replays an uncertain write. Concurrent heads require explicit review; a View never grants access.",
+    "Save complete current Profile rules on one stable Record page. --name, --enabled and --expect are required; omitted --default-view or --freshness-json removes those prior rules. Freshness JSON accepts {default:{read_max_age_ms,source_check_max_age_ms},skills:[{skill_id,read_max_age_ms,source_check_max_age_ms}]}; each duration is optional nonnegative integer milliseconds. Stable Skill IDs survive renames. Explicit read max-age wins, then Skill override, Profile default and product default. Long read TTL discloses its visibility delay and never extends independent full-body or eligibility deadlines. Review the current fingerprint with show before replacing rules. Unchanged rules perform no write. An unresolved intent remains local; --reconcile checks current content without repeating POST or PATCH. The fingerprint detects observed conflicts, not distributed CAS. Profiles and Views do not grant access.",
   ),
   Command.withExamples([
     {
       command:
-        "ntn-skills ctl library profile set daily --entry LIBRARY_ID --name Daily --enabled true --base new",
+        "ntn-skills ctl library profile set daily --entry LIBRARY_ID --name Daily --enabled true --expect new",
       description: "Create an enabled Profile using the library's first View",
     },
     {
       command:
-        "ntn-skills ctl library profile set daily --entry LIBRARY_ID --name Daily --enabled true --base PROFILE_REVISION --default-view VIEW_ID",
+        "ntn-skills ctl library profile set daily --entry LIBRARY_ID --name Daily --enabled true --expect CURRENT_FINGERPRINT --default-view VIEW_ID",
       description: "Replace reviewed rules with an explicit default View",
     },
   ]),
@@ -156,7 +156,7 @@ const freshness = defineCommand(
       const product = yield* effectiveCachePolicy
       yield* emit({
         profile_id: selected.profile_id,
-        profile_revision_id: selected.revision_id,
+        profile_fingerprint: selected.fingerprint,
         effective: resolveSharedFreshness({
           skillId: Option.getOrUndefined(options.skill),
           policy: selected.freshness,
@@ -168,7 +168,7 @@ const freshness = defineCommand(
     }),
 ).pipe(
   Command.withDescription(
-    "Resolve shared freshness inheritance for one stable Skill ID. This reads Profile rules only, never changes content or selected source versions. Update or clear overrides with profile set --freshness-json and the exact base revision.",
+    "Resolve shared freshness inheritance for one stable Skill ID. This reads Profile rules only, never changes content or selected source versions. Update or clear overrides with profile set --freshness-json and the exact current fingerprint.",
   ),
 )
 

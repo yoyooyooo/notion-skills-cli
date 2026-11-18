@@ -151,7 +151,7 @@ ntn-skills ctl library profile bind PROFILE_ID --entry LIBRARY_ENTRY
 ntn-skills list --default-view
 ```
 
-Use `profile list` to discover IDs. When changing rules, `profile set` requires the full `--name`, `--enabled true|false` and exact `--base` revision from `show`; `--base new` is for a new Profile. Supply `--default-view VIEW_ID` intentionally: omitting it clears the old default. The machine stores only entry and Profile ID. `profile unbind` leaves shared rules intact.
+Use `profile list` to discover IDs. To replace rules, `profile set` requires the full `--name`, `--enabled true|false` and `--expect CURRENT_FINGERPRINT` from `show`; `--expect new` creates a missing Profile. The same stable Record page holds only current rules. Unchanged rules cause no write. Omitting `--default-view` or `--freshness-json` clears that prior rule. The machine stores only entry and Profile ID. `profile unbind` leaves shared rules intact. The fingerprint detects an observed change; it is not a distributed compare-and-swap guarantee.
 
 Shared freshness rules use `profile set ... --freshness-json JSON` with `default` and optional `skills` entries keyed by stable `skill_id`. `read_max_age_ms` governs current-content revalidation and `source_check_max_age_ms` governs source checks; neither is a storage-retention age. Use `profile freshness PROFILE_ID --entry ENTRY --skill STABLE_SKILL_ID` to inspect the resolved rule. Explicit request policy takes precedence, then the Skill rule, then the shared default, then the product default. A current cache hit retains its original validation time; TTL expiry requests revalidation and does not erase a fixed pin or silently advance an active Pi workflow.
 
@@ -159,7 +159,7 @@ Explicit `list --view VIEW_ID --database LIBRARY_ENTRY` takes precedence. Withou
 
 ## Resolve the original operation
 
-Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID`; source selection uses `source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY`. For a Profile revision, repeat its complete original `profile set` arguments with `--reconcile`. These paths inspect retained original facts without replaying unknown mutations. Current property equality is insufficient proof.
+Shared source registration uses `ctl library source reconcile SKILL_PAGE_ID --entry LIBRARY_ENTRY --source ORIGINAL_SOURCE_ID`; source selection uses `source select reconcile ORIGINAL_PLAN --entry LIBRARY_ENTRY`. Those Source paths inspect retained original facts without replaying unknown mutations. For a current Profile write, repeat the complete `profile set` intent with `--reconcile`: compare the intended rules with the unique current Record without another POST or PATCH. Matching current rules resolve the intent without proving an earlier execution; missing, changed or duplicate current rows remain explicit errors. Completion removes its local pending rules.
 
 If an original result belongs to a different operation family, retain its returned IDs and recovery action. Do not convert it into a Source plan, reconnect the content or infer ownership from a display name.
 

@@ -62,7 +62,7 @@ export function sharedSourceCheckPolicy(
     return {
       interval_ms: intervals.length === 0 ? null : Math.min(...intervals),
       profile_id: selected.profile.profile_id,
-      profile_revision_id: selected.profile.revision_id,
+      profile_fingerprint: selected.profile.fingerprint,
       members,
       aggregation: "shortest_selected_member_upper_bound" as const,
     }

@@ -86,6 +86,7 @@ const publicFiles = [
   "CHANGELOG.md",
   "THIRD_PARTY_NOTICES.md",
   "docs/README.md",
+  "docs/current-contract.md",
   "docs/usage.md",
   "docs/protocol.md",
   "docs/shared-authoring.md",

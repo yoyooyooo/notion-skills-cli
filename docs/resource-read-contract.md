@@ -89,8 +89,11 @@ One SDK operation owns one runtime and one metrics callback. The implementation
 opens metadata once and reads only selected objects. Retained storage reuses the
 multi-file materializer, including shared-chunk deduplication and bounded object
 queries. It does not loop over `readSkill`, scan all cached files, prepare a graph,
-or fall back to today's source version. A complete local pin retains existing
-offline semantics; retained restoration keeps current library/owner admission.
+or fall back to today's source version. A complete local selection retains its
+offline semantics. Missing selected bytes require a declared current acquisition
+route with current library/owner admission and exact byte identity. Missing or
+incompatible local selections require reselection; this API does not restore
+historical snapshots. See the [current library contract](current-contract.md).
 
 Core controlled-source tests establish cold selected-object behavior. The dedicated
 resource npm fixture is warm and checks independent package exports, decoder
