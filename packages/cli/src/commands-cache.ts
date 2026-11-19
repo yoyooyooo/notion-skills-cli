@@ -51,12 +51,10 @@ const cacheIdentityCommand = defineCommand("identity", { database: databaseFlag 
     const origin = yield* notionApiOrigin
     const identity = yield* sha256(
       JSON.stringify([
-        "catalog-identity-v2",
+        "current-catalog-identity",
         credential,
         database ?? null,
         registrations,
-        config.upstream_database ?? null,
-        "",
         origin,
         process.env.NOTION_ENV ?? "prod",
       ]),
@@ -68,7 +66,7 @@ const cacheIdentityCommand = defineCommand("identity", { database: databaseFlag 
     "Identify the locally selected catalog credentials without network access",
   ),
   Command.withDescription(
-    "Returns an opaque identity digest for the selected credentials and remote catalog scope, plus the effective catalog TTL. --database resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy, creation preferences and sync bindings do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
+    "Returns an opaque identity digest for the selected credentials and current catalog scope, plus the effective catalog TTL. --database resolves a registered alias, ID or URL locally. Working directory, command spelling, cache policy and request timeout do not change identity. Uses the project's configured token or NOTION_API_TOKEN without a network request. No token, account identity or current authorization is returned; ordinary reads retain online scope validation.",
   ),
 )
 

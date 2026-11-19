@@ -133,3 +133,28 @@ test("live Source observation fields are not passed to the strict provider confi
     sourceDiscoveryInput({ ...observed, unexpected_configuration: true } as typeof observed),
   ).toThrow()
 })
+
+test("retired publication routing options are rejected while exact provider revisions remain usable", () => {
+  const git = {
+    ...input,
+    adapter: {
+      type: "git" as const,
+      url: "https://gitlab.example.org/group/skills.git",
+      ref: "main",
+    },
+  }
+  for (const option of [
+    "publisher_subscription_id",
+    "shared_target_set",
+    "target_mode",
+    "strip_prefix",
+    "target_prefix",
+  ]) {
+    expect(() => sourceDiscoveryInput({ ...git, options: { [option]: "old-route" } })).toThrow(
+      "no implemented adapter behavior",
+    )
+  }
+  expect(
+    sourceDiscoveryInput({ ...git, options: { accepted_ref: "a".repeat(40) } }).accepted_ref,
+  ).toBe("a".repeat(40))
+})

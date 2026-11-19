@@ -1,4 +1,3 @@
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import {
@@ -28,10 +27,6 @@ import {
 import { configuredToken, Store } from "../src/store.ts"
 
 const store = Layer.succeed(Store, {
-  integrity: integrityRepositoryFixture(),
-  upstream: upstreamRepositoryFixture(),
-  registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
-  advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
   backup: () => Effect.die(new Error("Unexpected backup")),
   root: "/notion-test",
   configRoot: "/notion-test",
@@ -1496,7 +1491,7 @@ test("formal Notion Layer keeps file-backed POST queries read-only even though t
           const result = yield* api
             .request("v1/data_sources/00000000-0000-4000-8000-000000000001/query", undefined, {
               method: "POST",
-              file: new URL("./fixtures.ts", import.meta.url).pathname,
+              file: new URL("./notion.test.ts", import.meta.url).pathname,
             })
             .pipe(Effect.result)
           expect(result._tag).toBe("Failure")

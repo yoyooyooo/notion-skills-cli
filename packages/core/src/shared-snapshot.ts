@@ -1,5 +1,9 @@
 import { Clock, Effect, Schema } from "effect"
-import { invalidateSnapshotCache, publishSnapshotObservation } from "./cache.ts"
+import {
+  invalidateScopeCache,
+  invalidateSnapshotCache,
+  publishSnapshotObservation,
+} from "./cache.ts"
 import {
   localContentRestrictedHashes,
   markLocalContentRestriction,
@@ -298,7 +302,37 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         markdown = yield* checked(() => new TextDecoder("utf-8", { fatal: true }).decode(cached))
         observed = prior
       } else {
-        const body = yield* observeSharedBody(binding.page_id)
+        const body = yield* observeSharedBody(binding.page_id).pipe(
+          Effect.tapError((error) =>
+            Effect.gen(function* () {
+              if (
+                error.code !== "ACCESS_DENIED" &&
+                error.code !== "NOT_FOUND" &&
+                error.code !== "AUTH_REQUIRED"
+              )
+                return
+              // A rejected body must not become readable again through an older
+              // native observation. Publish an empty current slot, including on
+              // a cold read, so an earlier in-flight completion cannot restore it.
+              const deniedGeneration = yield* store.reserveCacheGeneration(input.scope, record.id)
+              yield* store.writeJson(observationKey, {
+                version: 1,
+                generation: deniedGeneration,
+                scope: input.scope,
+                library_id: input.library.library_id,
+                skill_id: index.skill_id,
+                skill_page_id: selected,
+                files: [],
+              })
+              if (error.code === "AUTH_REQUIRED") yield* invalidateScopeCache(input.scope)
+              else
+                yield* invalidateSnapshotCache(record.id, input.scope, {
+                  retainForOffline: true,
+                  ...(error.code === "ACCESS_DENIED" ? { accessDenied: error.code } : {}),
+                })
+            }).pipe(Effect.uninterruptible),
+          ),
+        )
         bodyReads++
         markdown = body.markdown
         yield* store.writeBytes(`objects/${body.fingerprint.sha256}`, encoder.encode(markdown))

@@ -7,14 +7,12 @@ import {
   withSharedGraphReads,
 } from "../src/shared-graph-read-context.ts"
 import { openSharedConsumer } from "../src/shared-consumer.ts"
-import { property } from "../src/model.ts"
+import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import { querySharedOperationIndexes } from "../src/shared-operation-index.ts"
-import { querySharedFileFactsForSkills } from "../src/shared-records.ts"
 import { makeSharedReadCoalescer } from "../src/shared-read-coalescing.ts"
-import { querySkillFilesForSkills } from "../src/skill-file-index.ts"
-import { nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
-import { digest, library, rich } from "./shared-snapshot-fixture.ts"
+import { queryCurrentFilesForSkills } from "../src/shared-current-index.ts"
+import { graphLibrary as library, nativeGraphFixture } from "./graph-prepare-live-fixture.ts"
+import { currentDigest as digest, currentRich as rich } from "./shared-current-fixture.ts"
 
 const endpoint = (path: string) => path.split("?", 1)[0]
 const isQuery = (table: "skills" | "files" | "records", path: string) =>
@@ -25,13 +23,6 @@ const ownerIds = (filter: unknown): string[] => {
   if (Array.isArray(value.or)) return value.or.flatMap(ownerIds)
   const owner = property(value.relation).contains
   return value.property === "skill" && typeof owner === "string" ? [owner] : []
-}
-const entityIds = (filter: unknown): string[] => {
-  const value = property(filter)
-  if (Array.isArray(value.and)) return value.and.flatMap(entityIds)
-  if (Array.isArray(value.or)) return value.or.flatMap(entityIds)
-  const entity = property(value.rich_text).equals
-  return value.property === "entity" && typeof entity === "string" ? [entity] : []
 }
 const expire = (f: ReturnType<typeof nativeGraphFixture>) => {
   for (const [key, value] of f.json)
@@ -74,58 +65,49 @@ const openInventoryTarget = (f: ReturnType<typeof nativeGraphFixture>) =>
   )
 
 describe("library-scoped graph metadata batches", () => {
-  test.each([
-    { relations: [] },
-    { relations: ["Members"] },
-    { relations: ["Requires"] },
-    { relations: ["Members", "Requires"] },
-  ])(
-    "inventory retains required fields and registered relations %j without unrelated properties",
-    async ({ relations }) => {
-      const f = nativeGraphFixture({ width: 101 })
-      const registered: readonly string[] = relations
-      const propertyIds: Record<string, string> = f.descriptor.skills.property_ids
-      for (const field of ["Members", "Requires"])
-        if (!registered.includes(field)) delete propertyIds[field]
-      Object.assign(propertyIds, { "Auxiliary Metadata": "auxiliary" })
-      for (const page of f.pages) {
-        property(page.properties).tags = {
-          id: "tags",
-          type: "multi_select",
-          multi_select: [{ id: "tag-acceptance", name: "acceptance", color: "blue" }],
-        }
-        property(page.properties).auxiliary = rich("auxiliary", "Unrelated fixture metadata")
+  test("inventory retains current fields and both registered relations without unrelated properties", async () => {
+    const f = nativeGraphFixture({ width: 101 })
+    const propertyIds: Record<string, string> = f.descriptor.skills.property_ids
+    Object.assign(propertyIds, { "Auxiliary Metadata": "auxiliary" })
+    for (const page of f.pages) {
+      property(page.properties).tags = {
+        id: "tags",
+        type: "multi_select",
+        multi_select: [{ id: "tag-acceptance", name: "acceptance", color: "blue" }],
       }
-      const observed = await f.run(
-        withSharedGraphReads(sharedGraphInventory(f.descriptor), inventoryScope),
+      property(page.properties).auxiliary = rich("auxiliary", "Unrelated fixture metadata")
+    }
+    const observed = await f.run(
+      withSharedGraphReads(sharedGraphInventory(f.descriptor), inventoryScope),
+    )
+    expect(observed?.complete).toBe(true)
+    expect(observed?.pages).toHaveLength(102)
+    expect(f.calls.map((call) => property(call.body).start_cursor ?? null)).toEqual([
+      null,
+      "offset-100",
+    ])
+    for (const page of observed!.pages) {
+      expect(Object.keys(property(property(page).properties)).sort()).toEqual(
+        [
+          "title",
+          "description",
+          "kind",
+          "enabled",
+          "default",
+          "skill_id",
+          "main_file_id",
+          "content",
+          "state",
+          "operation",
+          "origin",
+          "members",
+          "requires",
+        ].sort(),
       )
-      expect(observed?.complete).toBe(true)
-      expect(observed?.pages).toHaveLength(102)
-      expect(f.calls.map((call) => property(call.body).start_cursor ?? null)).toEqual([
-        null,
-        "offset-100",
-      ])
-      for (const page of observed!.pages) {
-        expect(Object.keys(property(property(page).properties)).sort()).toEqual(
-          [
-            "title",
-            "description",
-            "kind",
-            "enabled",
-            "default",
-            "references",
-            "skill_id",
-            "main_file_id",
-            "projection",
-            "source",
-            ...registered.map((field) => propertyIds[field]!),
-          ].sort(),
-        )
-      }
-      expect(f.readBodyCount()).toBe(0)
-      expect(f.writeCount()).toBe(0)
-    },
-  )
+    }
+    expect(f.readBodyCount()).toBe(0)
+    expect(f.writeCount()).toBe(0)
+  })
 
   test.each([
     ["title", "INVALID_SHARED_SKILL"],
@@ -134,10 +116,10 @@ describe("library-scoped graph metadata batches", () => {
     ["enabled", "INVALID_SHARED_SKILL"],
     ["default", "INVALID_SHARED_SKILL"],
     ["skill_id", "INVALID_SHARED_SKILL"],
-    ["source", "INVALID_SHARED_SKILL"],
-    ["projection", "SHARED_METADATA_INVALID"],
-    ["references", "SHARED_METADATA_INVALID"],
-    ["main_file_id", "SHARED_METADATA_INVALID"],
+    ["content", "CURRENT_SCHEMA_REQUIRED"],
+    ["state", "CURRENT_SCHEMA_REQUIRED"],
+    ["operation", "CURRENT_SCHEMA_REQUIRED"],
+    ["main_file_id", "CURRENT_INDEX_INVALID"],
     ["members", "INVALID_SHARED_SKILL"],
     ["requires", "INVALID_SHARED_SKILL"],
   ])("a projected target missing %s fails before body reads or writes", async (field, code) => {
@@ -152,11 +134,11 @@ describe("library-scoped graph metadata batches", () => {
     expect(f.writeCount()).toBe(0)
   })
 
-  test("projected inventory preserves Source completeness and stable identity conflict checks", async () => {
+  test("projected inventory preserves current Content completeness and stable identity conflict checks", async () => {
     const source = nativeGraphFixture({ width: 1 })
-    property(property(source.pages[1]!.properties).source).has_more = true
+    property(property(source.pages[1]!.properties).content).has_more = true
     const incomplete = await source.run(openInventoryTarget(source).pipe(Effect.result))
-    expect(incomplete._tag === "Failure" && incomplete.failure.code).toBe("INVALID_SHARED_SKILL")
+    expect(incomplete._tag === "Failure" && incomplete.failure.code).toBe("CURRENT_INDEX_INVALID")
     expect(source.readBodyCount()).toBe(0)
     expect(source.writeCount()).toBe(0)
     const duplicate = nativeGraphFixture({ width: 1 })
@@ -212,7 +194,7 @@ describe("library-scoped graph metadata batches", () => {
     const f = nativeGraphFixture({ width: 1, filesPerSkill: 1 })
     for (const file of f.files) file.properties.file_id = rich("file_id", "same-local-file")
     const read = () =>
-      querySkillFilesForSkills({
+      queryCurrentFilesForSkills({
         dataSourceId: library.files.data_source_id,
         propertyIds: library.files.property_ids,
         skillPageIds: f.pageIds,
@@ -223,12 +205,12 @@ describe("library-scoped graph metadata batches", () => {
     const duplicate = await f.run(read().pipe(Effect.result))
     expect(duplicate._tag).toBe("Failure")
     if (duplicate._tag !== "Failure") throw new Error("Expected duplicate physical page")
-    expect(duplicate.failure.code).toBe("INVALID_FILE_INDEX")
+    expect(duplicate.failure.code).toBe("CURRENT_INDEX_INVALID")
   })
   test("101 selected owners are sliced at 80 while every File keeps its exact owner", async () => {
     const f = nativeGraphFixture({ width: 100, filesPerSkill: 1 })
     const files = await f.run(
-      querySkillFilesForSkills({
+      queryCurrentFilesForSkills({
         dataSourceId: library.files.data_source_id,
         propertyIds: library.files.property_ids,
         skillPageIds: f.pageIds,
@@ -247,7 +229,7 @@ describe("library-scoped graph metadata batches", () => {
   test("101 Files for one owner exhaust both metadata pages without fetching bodies", async () => {
     const f = nativeGraphFixture({ width: 0, filesPerSkill: 101 })
     const files = await f.run(
-      querySkillFilesForSkills({
+      queryCurrentFilesForSkills({
         dataSourceId: library.files.data_source_id,
         propertyIds: library.files.property_ids,
         skillPageIds: f.pageIds,
@@ -261,78 +243,39 @@ describe("library-scoped graph metadata batches", () => {
     expect(f.readBodyCount()).toBe(0)
   })
 
-  test("complete ownership discovery survives 101 Entity IDs and warm payload reuse reads only metadata", async () => {
+  test("current native preparation never loads obsolete event payloads or writes retained history", async () => {
     const f = nativeGraphFixture({ width: 100 })
-    for (let index = 0; index < 101; index++) {
-      f.seedFact({ fact: index }, "file_event", `file-${index}`, `event-${index}`)
-      const row = [...f.records.values()].at(-1)!
-      property(row.properties).skill = {
-        id: "skill",
-        type: "relation",
-        relation: [{ id: f.pageIds[index] }],
-        has_more: false,
-      }
-    }
-    const selected = () =>
-      querySharedFileFactsForSkills(library, f.pageIds, digest("graph-batch-scope"))
-    const first = await f.run(selected())
-    expect([...first.values()].flat()).toHaveLength(101)
-    const payloadQueries = f.calls.filter((call) =>
-      new URL(call.path, "https://fixture.invalid").searchParams
-        .getAll("filter_properties")
-        .includes("payload"),
-    )
-    expect(payloadQueries.map((call) => entityIds(property(call.body).filter).length)).toEqual([
-      80, 21,
-    ])
-    for (const call of f.calls)
-      expect(ownerIds(property(call.body).filter).length).toBeLessThanOrEqual(80)
-    f.clearCalls()
-    expect(await f.run(selected())).toEqual(first)
-    expect(f.calls).toHaveLength(2)
-    expect(
-      f.calls.every(
-        (call) =>
-          !new URL(call.path, "https://fixture.invalid").searchParams
-            .getAll("filter_properties")
-            .includes("payload"),
-      ),
-    ).toBe(true)
-  })
-
-  test("a single owner's 101 event payloads page metadata and slice exact missing Entity sets", async () => {
-    const f = nativeGraphFixture({ width: 0 })
     for (let index = 0; index < 101; index++)
-      f.seedFact({ fact: index }, "file_event", `file-${index}`, `event-${index}`)
-    const records = await f.run(
-      querySharedFileFactsForSkills(library, f.pageIds, digest("one-owner")),
-    )
-    expect([...records.values()].flat()).toHaveLength(101)
-    expect(f.calls).toHaveLength(4)
-    expect(f.calls.map((call) => entityIds(property(call.body).filter).length)).toEqual([
-      0, 0, 80, 21,
-    ])
+      f.records.set(`obsolete-${index}`, { malformed: "retired file event or historical proof" })
+    const result = await prepare(f, { budget: { maxNodes: 128, maxContextBytes: 8 * 1024 * 1024 } })
+    expect(result.usage.prepared_nodes).toBe(101)
+    expect(f.calls.some((call) => isQuery("records", call.path))).toBe(false)
+    expect(f.writeCount()).toBe(0)
   })
 
-  test("identical Record IDs in different owners remain separate facts and operation headers", async () => {
-    const f = nativeGraphFixture({ width: 1 })
-    for (const owner of f.pageIds) {
-      f.seedFact({ fact: owner }, "file_event", "same-entity", "same-record")
-      property([...f.records.values()].at(-1)!.properties).skill = {
-        id: "skill",
-        type: "relation",
-        relation: [{ id: owner }],
-        has_more: false,
-      }
-    }
-    const records = await f.run(
-      querySharedFileFactsForSkills(library, f.pageIds, digest("owner-domain")),
+  test("a denied selected Files query cannot publish a complete graph or poison a later retry", async () => {
+    const f = nativeGraphFixture({ filesPerSkill: 1 })
+    const denied = await f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion
+        return yield* prepareGraph(
+          { roots: [f.pageIds[0]!], purpose: "use" },
+          { database: library.skills.database_id },
+        ).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) =>
+              isQuery("files", path)
+                ? Effect.fail(fail("NOTION_FORBIDDEN", "Selected Files permission denied."))
+                : api.request(path, body, options),
+          }),
+        )
+      }).pipe(Effect.result),
     )
-    for (const owner of f.pageIds) expect(records.get(owner)).toHaveLength(1)
-    for (const row of f.records.values())
-      property(row.properties).kind = { id: "kind", type: "select", select: { name: "operation" } }
-    const operations = await f.run(querySharedOperationIndexes(library, f.pageIds))
-    for (const owner of f.pageIds) expect(operations.get(owner)).toHaveLength(1)
+    expect(denied._tag === "Failure" && denied.failure.code).toBe("NOTION_FORBIDDEN")
+    expect(derivedKeys(f)).toEqual([])
+    expect(f.writeCount()).toBe(0)
+    expect((await prepare(f)).usage.prepared_nodes).toBe(4)
   })
 
   test("one inventory covers multi-root diamond metadata and inspect does not batch Required Files", async () => {
@@ -343,8 +286,13 @@ describe("library-scoped graph metadata batches", () => {
     expect(
       f.calls
         .filter((call) => f.pageIds.some((id) => endpoint(call.path) === `v1/pages/${id}`))
-        .map((call) => call.path),
-    ).toEqual([`v1/pages/${f.pageIds[0]}`])
+        .map((call) => call.path)
+        .sort(),
+    ).toEqual(
+      // The direct entry lookup is followed by one final state check per
+      // prepared owner, so an in-flight writer cannot publish a mixed graph.
+      [f.pageIds[0]!, ...f.pageIds.slice(0, 4)].map((id) => `v1/pages/${id}`).sort(),
+    )
     expect(f.calls.filter((call) => isQuery("files", call.path))).toHaveLength(2)
     expect(
       f.calls
@@ -388,21 +336,22 @@ describe("library-scoped graph metadata batches", () => {
     }
   })
 
-  test("an orphan fact is still found after a supporting File binding disappears", async () => {
+  test("an explicit current File removal changes the directory without replaying obsolete facts", async () => {
     const f = nativeGraphFixture({ filesPerSkill: 1 })
-    await prepare(f, { purpose: "inspect" })
+    const before = await prepare(f, { purpose: "inspect" })
+    f.records.set("obsolete-file-fact", {
+      malformed: "removed File history is not current authority",
+    })
     f.files.splice(0, 1)
     expire(f)
     f.clearCalls()
-    const result = await f.run(
-      prepareGraph(
-        { roots: [f.pageIds[0]!], purpose: "inspect" },
-        { database: library.skills.database_id },
-      ).pipe(Effect.result),
-    )
-    expect(result._tag).toBe("Failure")
-    if (result._tag !== "Failure") throw new Error("Expected unbound state")
-    expect(result.failure.code).toBe("UNBOUND_FILE_STATE")
+    const after = await prepare(f, { purpose: "inspect" })
+    const root = after.nodes.find((node) => node.state === "prepared")
+    expect(root?.state).toBe("prepared")
+    if (root?.state !== "prepared") throw new Error("Expected complete current root")
+    expect(root.files.map((file) => file.path)).toEqual(["SKILL.md"])
+    expect(after.graph_lock).not.toEqual(before.graph_lock)
+    expect(f.calls.some((call) => isQuery("records", call.path))).toBe(false)
     expect(f.readBodyCount()).toBe(0)
     expect(f.writeCount()).toBe(0)
   })
@@ -433,7 +382,7 @@ describe("library-scoped graph metadata batches", () => {
       freshness: { policy: "refresh" },
     })
     expect(pinned.graph_lock).toEqual(a.graph_lock)
-    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(f.calls).toHaveLength(0)
     property(f.pages[0]!.properties).requires = {
       id: "requires",
       type: "relation",
@@ -513,7 +462,7 @@ describe("library-scoped graph metadata batches", () => {
     if (result._tag !== "Failure") throw new Error("Expected corrupted derivation rejection")
     expect(result.failure.code).toBe("STATE_CORRUPT")
     expect(f.json.get(key)).toEqual(saved)
-    expect(f.calls.map((call) => call.path)).toEqual(["v1/users/me"])
+    expect(f.calls).toHaveLength(0)
   })
 
   test("equal owner batches use existing ref-counted pending reads without caching a cancelled producer", async () => {
@@ -536,7 +485,7 @@ describe("library-scoped graph metadata batches", () => {
               }),
             ),
         }
-        const read = querySkillFilesForSkills({
+        const read = queryCurrentFilesForSkills({
           dataSourceId: library.files.data_source_id,
           propertyIds: library.files.property_ids,
           skillPageIds: f.pageIds,

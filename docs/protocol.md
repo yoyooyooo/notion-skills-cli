@@ -73,7 +73,12 @@ The accepted input is a directory, ZIP, or explicitly selected Markdown file.
 The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 138 MiB.
 
 The default representation is exact Notion resource content with a complete reading projection.
-An existing supporting file omitted from the input is removed.
+An existing Notion-owned supporting file omitted from the input is removed.
+The CLI imports every input file as a resource. A target containing any Source
+main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run
+and apply, even when the exported bytes are unchanged. Source removal, takeover,
+renaming and rebinding need coordinated contribution management; this import does
+not provide it. Reading or exporting the Source target remains available.
 Portable version 2 supports the canonical main path for its content kind.
 Portable relations carry same-library unpinned `shared_skill` refs. Omitted Members
 or Requires preserves that field, `[]` clears it, and an array replaces the full set.
@@ -115,6 +120,12 @@ The package exports the Node ESM module `ntn-skills/sdk` and its TypeScript decl
 SDK calls accept an optional environment, working directory, abort signal, and request-metrics callback.
 They use the same credential provider, Store, and request engine as the CLI.
 Consumption does not mutate Notion. Current import and Profile commands are CLI management entrypoints.
+
+Consumption effects contain exactly `version: 1`, `remote_writes`, and `author_content`.
+`remote_writes: "none"` requires `author_content: "unchanged"` and is backed by the
+read-only transport boundary. Hosts preserve `unknown` when a result is missing,
+invalid, or truncated; a later zero-write result cannot erase that uncertainty.
+The retired `retained` outcome and `retention` field are rejected, including an empty array.
 
 `consume` and `readResources` return discriminated `ready`, `failed`, or `cancelled` results.
 A ready result distinguishes complete manifest metadata from the files whose bytes are ready.
@@ -213,8 +224,10 @@ Uninstalling the package does not remove these directories.
 | --- | --- |
 | `AUTH_REQUIRED`, `ACCESS_DENIED` | Check the selected credential and exact library access |
 | `CURRENT_SCHEMA_REQUIRED` | Complete the explicit current-content cutover |
+| `STATE_CUTOVER_REQUIRED` | Use a fresh `NTN_SKILLS_HOME` for the current SQLite schema; use a fresh `NTN_SKILLS_CONFIG_HOME` if the configuration still contains retired bindings. Preserve the old roots for explicit content migration. |
 | `CURRENT_OPERATION_PENDING`, `CURRENT_SKILL_NOT_READY` | Inspect the original current operation; resume only its same input |
 | `CURRENT_IMPORT_UNSUPPORTED`, `CURRENT_IMPORT_ENTRYPOINT` | Correct the local input contract before retrying |
+| `CURRENT_SOURCE_MANAGEMENT_REQUIRED` | Preserve the existing Source File ID, logical path and Source binding. Contribution/exclusion management is required before removing, taking over, renaming or rebinding it; omitting the file or assigning a new ID cannot bypass this boundary. |
 | `INPUT_CHANGED`, `INVALID_ARCHIVE`, `ARCHIVE_TOO_LARGE` | Fix the admitted local tree, archive, or size |
 | `SHARED_ACQUISITION_CHANGED`, `SNAPSHOT_MISSING` | Reselect current content when the exact selection is unavailable |
 | `WRITE_OUTCOME_UNKNOWN` | Retain the operation and reconcile its uncertain effect |

@@ -141,7 +141,10 @@ test("retired root commands and name-based replacement are rejected offline", as
 }, 60000)
 
 test("read schema exposes official parameter types and requiredness offline", async () => {
-  const result = await invoke(["schema", "read"], { inaccessible: true, traceOnline: true })
+  const result = await invoke(["schema", "read"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(result.exit).toBe(0)
   expect(result.stderr).toBe("")
   expect(result.onlineCalled).toBe(false)
@@ -197,7 +200,10 @@ test("current management and export schemas contain no historical compatibility 
       ["export", "install", "list", "read", "status", "update"],
     ],
   ] satisfies Array<[string[], string[]]>) {
-    const result = await invoke(["schema", ...path], { inaccessible: true, traceOnline: true })
+    const result = await invoke(["schema", ...path], {
+      inaccessible: true,
+      traceOnline: true,
+    })
     expect(result.exit).toBe(0)
     expect(result.onlineCalled).toBe(false)
     expect(
@@ -206,7 +212,10 @@ test("current management and export schemas contain no historical compatibility 
         .sort(),
     ).toEqual(names)
   }
-  const exported = await invoke(["schema", "export"], { inaccessible: true, traceOnline: true })
+  const exported = await invoke(["schema", "export"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(exported.exit).toBe(0)
   expect(exported.onlineCalled).toBe(false)
   expect(
@@ -300,7 +309,9 @@ test("offline policy fails explicitly without a safe cached identity", async () 
     ["files", "sample"],
     ["export", "sample", "--output", "output.zip"],
   ]) {
-    const result = await invoke([...command, "--offline"], { traceOnline: true })
+    const result = await invoke([...command, "--offline"], {
+      traceOnline: true,
+    })
     jsonFailure(result, "CACHE_SCOPE_UNAVAILABLE", 1)
     expect(result.onlineCalled).toBe(false)
   }
@@ -337,7 +348,9 @@ test("pinned and relative pinned reads allow offline but reject refresh and age 
   ]) {
     for (const policy of [["--refresh"], ["--max-age", "0"], ["--max-age", "1m"]])
       await invalid([...command, ...policy])
-    const result = await invoke([...command, "--offline"], { traceOnline: true })
+    const result = await invoke([...command, "--offline"], {
+      traceOnline: true,
+    })
     jsonFailure(result, "SNAPSHOT_MISSING", 1)
     expect(result.onlineCalled).toBe(false)
   }
@@ -352,11 +365,17 @@ test("parser errors return the relevant offline help command", async () => {
     ],
     [["unknown-command"], ["ntn-skills", "--help"]],
   ] satisfies Array<[string[], string[]]>) {
-    const failed = await invoke(args, { inaccessible: true, traceOnline: true })
+    const failed = await invoke(args, {
+      inaccessible: true,
+      traceOnline: true,
+    })
     jsonFailure(failed, "INVALID_ARGUMENT")
     expect(failed.onlineCalled).toBe(false)
     expect(JSON.parse(failed.stdout).next.argv).toEqual(next)
-    const help = await invoke(next.slice(1), { inaccessible: true, traceOnline: true })
+    const help = await invoke(next.slice(1), {
+      inaccessible: true,
+      traceOnline: true,
+    })
     expect(help.exit).toBe(0)
     expect(help.onlineCalled).toBe(false)
   }
@@ -370,7 +389,10 @@ test("implicit root help works offline", async () => {
 })
 
 test("current help and schema expose the same small command tree", async () => {
-  const root = await invoke(["schema"], { inaccessible: true, traceOnline: true })
+  const root = await invoke(["schema"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(root.exit).toBe(0)
   expect(root.onlineCalled).toBe(false)
   const tree = JSON.parse(root.stdout).schema
@@ -386,7 +408,10 @@ test("current help and schema expose the same small command tree", async () => {
   const ctl = tree.commands.find((command: { name: string }) => command.name === "ctl")
   expect(ctl.commands).toEqual([])
   expect(ctl.has_subcommands).toBe(true)
-  const help = await invoke(["--help"], { inaccessible: true, traceOnline: true })
+  const help = await invoke(["--help"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
   expect(help.exit).toBe(0)
   expect(help.onlineCalled).toBe(false)
   expect(help.stdout).not.toContain("--session-bindings")
@@ -502,7 +527,12 @@ test("consumer catalog identity follows remote scope without local configuration
   await mkdir(join(root, "config"))
   const database = "11111111-1111-4111-8111-111111111111"
   const otherDatabase = "22222222-2222-4222-8222-222222222222"
-  const source = { alias: "shared", database_id: database, title: "Shared", data_source_ids: [] }
+  const source = {
+    alias: "shared",
+    database_id: database,
+    title: "Shared",
+    data_source_ids: [],
+  }
   const original = { token: "offline-fixture-token", sources: [source] }
   const save = (value: unknown) =>
     writeFile(join(root, "config", "config.json"), JSON.stringify(value))
@@ -532,7 +562,13 @@ test("consumer catalog identity follows remote scope without local configuration
   expect(changedPolicy.catalog_max_age_ms).toBe(120000)
   expect((await identity(otherDatabase)).identity).not.toBe(first.identity)
   await save({ ...original, upstream_database: otherDatabase })
-  expect((await identity(database)).identity).not.toBe(first.identity)
+  const retired = await invoke(["ctl", "cache", "identity", "--database", database], {
+    root,
+    traceOnline: true,
+  })
+  jsonFailure(retired, "STATE_CUTOVER_REQUIRED", 1)
+  expect(retired.onlineCalled).toBe(false)
+  expect(retired.stdout).not.toContain(original.token)
   await save({ ...original, token: "another-offline-credential" })
   expect((await identity(database)).identity).not.toBe(first.identity)
 }, 30000)
@@ -566,13 +602,19 @@ test("explicit help takes precedence over repeated singleton values", async () =
 
 test("built-ins are explicit offline package identities and cannot capture remote name lookup", async () => {
   const ids = ["notion/ntn-skills", "notion/ntn-skills-maintain", "notion/ntn-skills-sync"]
-  const listed = await invoke(["ctl", "builtin", "list"], { traceOnline: true })
+  const listed = await invoke(["ctl", "builtin", "list"], {
+    traceOnline: true,
+  })
   expect(listed.exit).toBe(0)
   expect(listed.onlineCalled).toBe(false)
   for (const id of ids) {
     const name = id.slice("notion/".length)
     const item = JSON.parse(listed.stdout).skills.find((skill: { id: string }) => skill.id === id)
-    expect(item).toMatchObject({ origin: "builtin", publisher: "ntn-skills", name })
+    expect(item).toMatchObject({
+      origin: "builtin",
+      publisher: "ntn-skills",
+      name,
+    })
     jsonFailure(await invoke(["ctl", "builtin", "read", name]), "BUILTIN_NOT_FOUND", 1)
     jsonFailure(
       await invoke(["ctl", "builtin", "read", id, "--path", "../private"]),
@@ -640,7 +682,11 @@ test("built-in management defaults to central storage and persists repeated agen
       data_dir: dataDir,
       path: canonical,
       distributions: [
-        { agent_dir: agents[0], path: join(agents[0]!, "skills", name), state: "missing" },
+        {
+          agent_dir: agents[0],
+          path: join(agents[0]!, "skills", name),
+          state: "missing",
+        },
       ],
     },
   )
@@ -654,7 +700,11 @@ test("built-in management defaults to central storage and persists repeated agen
       ),
     ).toBe(false)
   jsonFailure(
-    await invoke(["ctl", "builtin", "update", id], { root, runtime: node, entrypoint }),
+    await invoke(["ctl", "builtin", "update", id], {
+      root,
+      runtime: node,
+      entrypoint,
+    }),
     "BUILTIN_NOT_INSTALLED",
     1,
   )
@@ -704,7 +754,10 @@ test("built-in management defaults to central storage and persists repeated agen
 test("ctl configuration accepts only supported keys and preserves independent settings", async () => {
   const root = await mkdtemp(join(tmpdir(), "ntn-skills-config-contract-"))
   const call = async (args: string[]) => {
-    const result = await invoke(["ctl", "config", ...args], { root, traceOnline: true })
+    const result = await invoke(["ctl", "config", ...args], {
+      root,
+      traceOnline: true,
+    })
     expect(result.exit).toBe(0)
     expect(result.onlineCalled).toBe(false)
     return JSON.parse(result.stdout).config

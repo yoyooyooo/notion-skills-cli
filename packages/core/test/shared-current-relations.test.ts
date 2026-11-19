@@ -43,13 +43,20 @@ function seed(
   f.pages.set(page, {
     object: "page",
     id: page,
-    parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.skills.data_source_id,
+      database_id: library.skills.database_id,
+    },
     in_trash: false,
     archived: false,
     last_edited_time: "2026-11-19T01:00:00.000Z",
     properties: Object.fromEntries(
       Object.entries({
-        name: { type: "title", title: [{ type: "text", text: { content: skill } }] },
+        [library.skills.property_ids.Name!]: {
+          type: "title",
+          title: [{ type: "text", text: { content: skill } }],
+        },
         description: rich("Current target"),
         kind: { type: "select", select: { name: options.kind ?? "skill" } },
         enabled: { type: "checkbox", checkbox: options.enabled ?? true },
@@ -59,6 +66,8 @@ function seed(
         content: rich(JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
         "current-state": { type: "select", select: { name: options.state ?? "ready" } },
         operation: rich(options.state && options.state !== "ready" ? "another-operation" : ""),
+        tags: { type: "multi_select", multi_select: [] },
+        origin: { type: "relation", relation: [], has_more: false },
         members: { type: "relation", relation: [], has_more: false },
         requires: {
           type: "relation",

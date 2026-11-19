@@ -17,7 +17,7 @@ export const SharedLibrarySchema = Schema.Struct({
   skills: TableBindingSchema,
   files: TableBindingSchema,
   records: TableBindingSchema,
-  sources: Schema.optional(TableBindingSchema),
+  sources: TableBindingSchema,
 })
 export type SharedLibrary = typeof SharedLibrarySchema.Type
 export type TableBinding = typeof TableBindingSchema.Type
@@ -37,12 +37,7 @@ export function preservesSharedLibraryBindings(
   for (const role of ["skills", "files", "records", "sources"] as const) {
     const before = original[role],
       after = current[role]
-    if (before === undefined) continue
-    if (
-      after === undefined ||
-      before.database_id !== after.database_id ||
-      before.data_source_id !== after.data_source_id
-    )
+    if (before.database_id !== after.database_id || before.data_source_id !== after.data_source_id)
       return false
     for (const [name, id] of Object.entries(before.property_ids)) {
       if (after.property_ids[name] !== id) return false

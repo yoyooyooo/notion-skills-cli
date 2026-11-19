@@ -5,6 +5,7 @@ import {
   entrypointFor,
   fail,
   property,
+  SkillsError,
   text,
   validateDescription,
   type ContentRecord,
@@ -185,12 +186,26 @@ function registeredSharedRecord(
       skill_id: skillId,
     },
     name,
-    alias: aliasFor(name),
+    alias: sharedNameAlias(name, page),
     description,
     default_context: defaultContext,
     enabled,
     entrypoint,
     ref: `skill://${encodeURIComponent(id)}/${entrypoint}`,
+  }
+}
+
+function sharedNameAlias(name: string, page: string): string {
+  try {
+    return aliasFor(name)
+  } catch (error) {
+    if (error instanceof SkillsError)
+      throw fail(error.code, error.message, {
+        ...property(error.details),
+        page_id: page,
+        name,
+      })
+    throw error
   }
 }
 
@@ -217,7 +232,7 @@ export function sharedMetadataEntryFromPage(
       state: "unregistered",
       page_id: metadata.page,
       name: metadata.name,
-      alias: metadata.name.trim() === "" ? "" : aliasFor(metadata.name),
+      alias: metadata.name.trim() === "" ? "" : sharedNameAlias(metadata.name, metadata.page),
       kind: metadata.kind,
     }
   return { state: "registered", record: registeredSharedRecord(metadata) }

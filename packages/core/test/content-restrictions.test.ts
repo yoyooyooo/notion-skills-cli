@@ -7,7 +7,6 @@ import {
 } from "../src/content-restrictions.ts"
 import { fail, SkillsError } from "../src/model.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const hash = "a".repeat(64)
 const secondHash = "b".repeat(64)
@@ -23,13 +22,9 @@ function fixture() {
     root: "/controlled",
     configRoot: "/controlled/config",
     cacheRoot: "/controlled/cache",
-    upstream: upstreamRepositoryFixture(),
-    integrity: integrityRepositoryFixture(),
     reserveCacheGeneration: unexpected,
     listKeys: unexpected,
     retireKeys: unexpected,
-    registerBindingWithBase: unexpected,
-    advanceBaseAndReceipt: unexpected,
     backup: unexpected,
     output: unexpected,
     readBytes: unexpected,

@@ -9,12 +9,18 @@ import { property, text } from "../src/model.ts"
 import { queryCurrentSkillIndex } from "../src/shared-current-index.ts"
 import { loadCurrentSharedResourceContent } from "../src/shared-current-resource.ts"
 import {
+  currentSharedSourceRevision,
+  validateCurrentSharedSourceContent,
+} from "../src/shared-current-source.ts"
+import {
+  inspectCurrentSkillWrite,
   prepareCurrentSkillWrite,
   writeCurrentSkill,
   type CurrentSkillWriteInput,
 } from "../src/shared-current-write.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
-import { currentWriteFixture, library, testBytes } from "./shared-current-write-fixture.ts"
+import { sha256 } from "../src/store.ts"
+import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
 
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-write-"))
 afterAll(async () => {
@@ -37,6 +43,85 @@ function input(
     description: "Current writer integration",
     files,
   }
+}
+
+const sourcePage = id(90)
+const sourceFiles = [
+  { path: "SKILL.md", file_id: "source-main", bytes: testBytes("# Source main\n") },
+  {
+    path: "references/source.md",
+    file_id: "source-child",
+    bytes: testBytes("# Source child\n"),
+  },
+] satisfies CurrentSkillWriteInput["files"]
+async function sourceInput(
+  f: ReturnType<typeof currentWriteFixture>,
+  files: CurrentSkillWriteInput["files"] = sourceFiles,
+) {
+  const manifest = await f.run(
+    Effect.forEach(files, (file) =>
+      sha256(file.bytes).pipe(
+        Effect.map((hash) => ({
+          path: `upstream/${file.path}`,
+          sha256: hash,
+          bytes: file.bytes.byteLength,
+          mode: file.mode ?? "100644",
+        })),
+      ),
+    ),
+  )
+  const content = validateCurrentSharedSourceContent({
+    version: 1,
+    plan: {
+      version: 1,
+      kind: "composition",
+      mounts: [],
+      base: {
+        kind: "http",
+        manifest: { version: 1, files: manifest },
+        locations: manifest.map((file) => ({
+          sha256: file.sha256,
+          url: `https://raw.githubusercontent.com/example/skills/${"a".repeat(40)}/${file.path}`,
+        })),
+      },
+    },
+  })
+  const revision = await f.run(currentSharedSourceRevision(content)),
+    fields = library.sources.property_ids,
+    rich = (key: string, value: string) => ({
+      id: key,
+      type: "rich_text",
+      rich_text: [{ type: "text", text: { content: value } }],
+      has_more: false,
+    })
+  f.pages.set(sourcePage, {
+    object: "page",
+    id: sourcePage,
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.sources.data_source_id,
+      database_id: library.sources.database_id,
+    },
+    properties: {
+      [fields["Source ID"]!]: rich(fields["Source ID"]!, "provider"),
+      [fields.Content!]: rich(fields.Content!, JSON.stringify(content)),
+      [fields["Last Revision"]!]: rich(fields["Last Revision"]!, revision),
+      [fields.Enabled!]: { id: fields.Enabled, type: "checkbox", checkbox: true },
+      [fields.Status!]: { id: fields.Status, type: "select", select: { name: "ready" } },
+    },
+  })
+  return input([
+    ...files.map((file): CurrentSkillWriteInput["files"][number] => ({
+      ...file,
+      authority: {
+        kind: "source",
+        source_id: "provider",
+        revision,
+        source_path: `upstream/${file.path}`,
+      },
+    })),
+    { path: "references/local.md", file_id: "local-child", bytes: testBytes("# Local note\n") },
+  ])
 }
 
 describe("complete current Skill writer", () => {
@@ -94,9 +179,7 @@ describe("complete current Skill writer", () => {
     )
     const portable = await f.run(snapshotPortable(snapshot))
     const directory = join(f.root, "exported")
-    await f.run(
-      exportPortable(portable, { output: directory, format: "directory", projection: "snapshot" }),
-    )
+    await f.run(exportPortable(portable, { output: directory, format: "directory" }))
     expect(new Uint8Array(readFileSync(join(directory, "SKILL.md")))).toEqual(main)
     expect(new Uint8Array(readFileSync(join(directory, "references/guide.md")))).toEqual(guide)
   })
@@ -117,6 +200,207 @@ describe("complete current Skill writer", () => {
       ),
     ).rejects.toMatchObject({ code: "CURRENT_OPERATION_NOT_FOUND" })
     expect(f.mutations()).toEqual([])
+  })
+  test.each([
+    ["main to resource", "SKILL.md", (file) => ({ ...file, authority: { kind: "resource" } })],
+    ["main to native", "SKILL.md", (file) => ({ ...file, authority: { kind: "native" } })],
+    [
+      "support to resource",
+      "references/source.md",
+      (file) => ({ ...file, authority: { kind: "resource" } }),
+    ],
+    [
+      "support to native",
+      "references/source.md",
+      (file) => ({ ...file, authority: { kind: "native" } }),
+    ],
+    ["omitted support", "references/source.md", () => undefined],
+    ["new main identity", "SKILL.md", (file) => ({ ...file, file_id: "replacement-main" })],
+    [
+      "new support identity",
+      "references/source.md",
+      (file) => ({ ...file, file_id: "replacement-child" }),
+    ],
+    [
+      "renamed support",
+      "references/source.md",
+      (file) => ({ ...file, path: "references/renamed.md" }),
+    ],
+    [
+      "different Source",
+      "references/source.md",
+      (file) => {
+        if (file.authority?.kind !== "source") throw new Error("Expected Source input")
+        return { ...file, authority: { ...file.authority, source_id: "other-provider" } }
+      },
+    ],
+    [
+      "different source path",
+      "references/source.md",
+      (file) => {
+        if (file.authority?.kind !== "source") throw new Error("Expected Source input")
+        return { ...file, authority: { ...file.authority, source_path: "upstream/other.md" } }
+      },
+    ],
+  ] satisfies readonly [
+    string,
+    string,
+    (
+      file: CurrentSkillWriteInput["files"][number],
+    ) => CurrentSkillWriteInput["files"][number] | undefined,
+  ][])("inspect and apply reject Source %s before any mutation", async (_name, path, change) => {
+    const f = currentWriteFixture(parent),
+      original = await sourceInput(f),
+      initial = await f.run(prepareCurrentSkillWrite(original))
+    const written = await f.run(
+      writeCurrentSkill(library, { plan: initial, operation_id: "initial-source" }),
+    )
+    expect(property(property(f.pages.get(written.page_id)?.properties).origin).relation).toEqual([
+      { id: sourcePage },
+    ])
+    const plan = await f.run(
+      prepareCurrentSkillWrite({
+        ...original,
+        files: original.files.flatMap((file) => {
+          const next = file.path === path ? change(file) : file
+          return next === undefined ? [] : [next]
+        }),
+      }),
+    )
+    const before = structuredClone({ pages: f.pages, blocks: f.blocks, json: f.json })
+    for (const run of [
+      inspectCurrentSkillWrite(library, plan).pipe(Effect.map(() => undefined)),
+      writeCurrentSkill(library, { plan, operation_id: "source-guard" }).pipe(
+        Effect.map(() => undefined),
+      ),
+    ]) {
+      f.clearCalls()
+      await expect(f.run(run)).rejects.toMatchObject({
+        code: "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+        details: { skill_id: "example", path, source_id: "provider" },
+      })
+      expect(f.mutations()).toEqual([])
+      expect(f.calls.map((call) => call.path.split("?")[0])).toEqual([
+        `v1/data_sources/${library.skills.data_source_id}/query`,
+        `v1/data_sources/${library.files.data_source_id}/query`,
+      ])
+      expect(f.downloads).toEqual([])
+      expect({ pages: f.pages, blocks: f.blocks, json: f.json }).toEqual(before)
+      expect(
+        [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
+      ).toEqual([])
+    }
+  })
+  test("the same complete Source bindings remain a zero-write no-op", async () => {
+    const f = currentWriteFixture(parent),
+      original = await sourceInput(f),
+      plan = await f.run(prepareCurrentSkillWrite(original))
+    await f.run(writeCurrentSkill(library, { plan, operation_id: "initial-source" }))
+    f.clearCalls()
+    await f.run(inspectCurrentSkillWrite(library, plan))
+    expect(
+      await f.run(writeCurrentSkill(library, { plan, operation_id: "same-source" })),
+    ).toMatchObject({ status: "unchanged", state: "ready" })
+    expect(f.mutations()).toEqual([])
+  })
+  test("retained Source files permit an independent Notion resource update", async () => {
+    const f = currentWriteFixture(parent),
+      original = await sourceInput(f),
+      initial = await f.run(prepareCurrentSkillWrite(original))
+    const written = await f.run(
+      writeCurrentSkill(library, { plan: initial, operation_id: "initial-source" }),
+    )
+    const before = await f.run(queryCurrentSkillIndex(library, written.page_id)),
+      sourceBefore = structuredClone(f.pages.get(sourcePage)),
+      replacement = testBytes("# Local note\n\nUpdated in Notion.\n")
+    const plan = await f.run(
+      prepareCurrentSkillWrite({
+        ...original,
+        files: original.files.map((file) =>
+          file.path === "references/local.md" ? { ...file, bytes: replacement } : file,
+        ),
+      }),
+    )
+    await f.run(inspectCurrentSkillWrite(library, plan))
+    expect(
+      await f.run(writeCurrentSkill(library, { plan, operation_id: "local-update" })),
+    ).toMatchObject({ status: "applied", state: "ready" })
+    const after = await f.run(queryCurrentSkillIndex(library, written.page_id))
+    for (const old of [before.main, ...before.files].filter(
+      (file) => file.content.kind === "source",
+    ))
+      expect(
+        [after.main, ...after.files].find((file) => file.file_id === old.file_id),
+      ).toMatchObject({
+        file_id: old.file_id,
+        page_id: old.page_id,
+        path: old.path,
+        content: old.content,
+      })
+    expect(f.pages.get(sourcePage)).toEqual(sourceBefore)
+    expect(property(property(f.pages.get(written.page_id)?.properties).origin).relation).toEqual([
+      { id: sourcePage },
+    ])
+    const local = after.files.find((file) => file.path === "references/local.md")
+    if (local?.content.kind !== "resource") throw new Error("Expected current Notion resource")
+    expect(
+      (
+        await f.run(
+          loadCurrentSharedResourceContent(library, {
+            owner: { kind: "skill", page_id: written.page_id },
+            content: local.content,
+          }),
+        )
+      ).bytes,
+    ).toEqual(replacement)
+  })
+  test("the same Source binding accepts a current revision only with its exact manifest", async () => {
+    const f = currentWriteFixture(parent),
+      original = await sourceInput(f),
+      initial = await f.run(prepareCurrentSkillWrite(original))
+    const written = await f.run(
+      writeCurrentSkill(library, { plan: initial, operation_id: "initial-source" }),
+    )
+    const updated = await sourceInput(
+      f,
+      sourceFiles.map((file) =>
+        file.path === "references/source.md"
+          ? {
+              ...file,
+              bytes: testBytes("# Changed upstream\n\nNew current bytes.\n"),
+              mode: "100755",
+            }
+          : file,
+      ),
+    )
+    const plan = await f.run(prepareCurrentSkillWrite(updated))
+    await f.run(inspectCurrentSkillWrite(library, plan))
+    expect(
+      await f.run(writeCurrentSkill(library, { plan, operation_id: "selected-source-update" })),
+    ).toMatchObject({ status: "applied", state: "ready" })
+    const after = await f.run(queryCurrentSkillIndex(library, written.page_id))
+    for (const file of plan.files.filter((file) => file.kind === "source"))
+      expect(
+        [after.main, ...after.files].find((row) => row.file_id === file.file_id)?.content,
+      ).toEqual(file.content)
+    const invalid = await f.run(
+      prepareCurrentSkillWrite({
+        ...updated,
+        files: updated.files.map((file) =>
+          file.path === "references/source.md"
+            ? { ...file, bytes: testBytes("Not upstream\n") }
+            : file,
+        ),
+      }),
+    )
+    f.clearCalls()
+    await expect(
+      f.run(writeCurrentSkill(library, { plan: invalid, operation_id: "wrong-source-bytes" })),
+    ).rejects.toMatchObject({ code: "CURRENT_WRITE_CONFLICT" })
+    expect(f.mutations()).toEqual([])
+    expect(
+      [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
+    ).toEqual([])
   })
   test("complete replacement removes old Files and unreferenced originals", async () => {
     const f = currentWriteFixture(parent),

@@ -1,24 +1,23 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
+import { catalog } from "./catalog.ts"
+import { trashPath } from "./local-locks.ts"
+import { CURRENT_MATERIALIZATION_VERSION } from "./materialization.ts"
 import {
   CatalogSchema,
-  SnapshotSchema,
   SkillsError,
+  SnapshotSchema,
   aliasFor,
   fail,
-  notionPage,
   resolveRecord,
   type Snapshot,
 } from "./model.ts"
-import { trashPath } from "./local-locks.ts"
-import { Notion } from "./notion.ts"
 import { notionApiOrigin } from "./notion-http.ts"
-import { pageId, parseTarget, normalizePath } from "./ref.ts"
-import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
-import { currentMaterializationVersion } from "./materialization.ts"
+import { Notion } from "./notion.ts"
+import { normalizePath, pageId, parseTarget } from "./ref.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
-import { catalog } from "./catalog.ts"
 import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
+import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 
 export interface ReadPolicyOptions {
   readonly refresh?: boolean
@@ -107,15 +106,6 @@ export const CatalogObservationSchema = Schema.Struct({
   ...CatalogSchema.fields,
   invalidated: Schema.optional(Schema.Boolean),
 })
-export const SourceBundleCheckpointSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  snapshot_id: Schema.String,
-  version_id: Schema.String,
-  bundle_hash: Schema.String,
-  pages: Schema.Array(Schema.Struct({ id: Schema.String, fingerprint: Schema.String })),
-  properties: Schema.Array(Schema.Struct({ path: Schema.String, fingerprint: Schema.String })),
-})
-export type SourceBundleCheckpoint = typeof SourceBundleCheckpointSchema.Type
 export const ObservationSchema = Schema.Struct({
   record_identity: Schema.String,
   scope: Schema.String,
@@ -126,7 +116,6 @@ export const ObservationSchema = Schema.Struct({
   invalidated: Schema.Boolean,
   generation: Schema.Number,
   materialization_version: Schema.optional(Schema.String),
-  bundle_checkpoint: Schema.optional(SourceBundleCheckpointSchema),
   metadata_only: Schema.optional(Schema.Literal(true)),
   shared_body_valid_until: Schema.optional(Schema.Number),
   current_snapshot: Schema.optional(SnapshotSchema),
@@ -219,7 +208,7 @@ export function validateSnapshotManifest(snapshot: Snapshot) {
     })
     if (
       snapshot.snapshot_id !==
-        `s_${yield* sha256(JSON.stringify([snapshot.scope, snapshot.historical_snapshot_id ? notionPage(snapshot.record).locator.page_id : snapshot.record.id, snapshot.version_id]))}` ||
+        `s_${yield* sha256(JSON.stringify([snapshot.scope, snapshot.record.id, snapshot.version_id]))}` ||
       alias !== snapshot.record.alias ||
       snapshot.entrypoint !== snapshot.record.entrypoint ||
       !snapshot.files.some((file) => file.path === snapshot.entrypoint) ||
@@ -337,7 +326,7 @@ function validateSharedCurrentTree(
       record_identity: snapshot.record.id,
       snapshot_id: snapshot.snapshot_id,
       version_id: snapshot.version_id,
-      materialization_version: currentMaterializationVersion(snapshot.record.id),
+      materialization_version: CURRENT_MATERIALIZATION_VERSION,
       manifest_sha256: yield* sha256(manifest),
     }
     const key = `cache/shared-current-tree-validation/${snapshot.scope}/${snapshot.snapshot_id}.json`
@@ -400,7 +389,6 @@ export function publishSnapshotObservation(
   startedAt: number,
   generation: number,
   options: {
-    readonly bundleCheckpoint?: SourceBundleCheckpoint
     readonly metadataOnly?: true
     readonly sharedBodyValidUntil?: number
     readonly sharedMaterializedPaths?: readonly string[]
@@ -450,13 +438,12 @@ export function publishSnapshotObservation(
       scope: snapshot.scope,
       started_at: startedAt,
       generation,
-      materialization_version: currentMaterializationVersion(snapshot.record.id),
+      materialization_version: CURRENT_MATERIALIZATION_VERSION,
       validated_at: validatedAt,
       snapshot_id: snapshot.snapshot_id,
       default_context: snapshot.record.default_context,
       ...(snapshot.record.locator.type === "shared_skill" ? { current_snapshot: snapshot } : {}),
       invalidated: false,
-      ...(options.bundleCheckpoint ? { bundle_checkpoint: options.bundleCheckpoint } : {}),
       ...(options.metadataOnly ? { metadata_only: true } : {}),
       ...(options.sharedBodyValidUntil === undefined
         ? {}
@@ -503,9 +490,7 @@ const SharedPageAliasSchema = Schema.Struct({
 })
 function cachedRecordIdentity(selector: string, scope: string) {
   return Effect.gen(function* () {
-    const id = pageId(
-      selector.startsWith("notion_page:") ? selector.slice("notion_page:".length) : selector,
-    )
+    const id = pageId(selector)
     if (!id) return { identity: selector, page: undefined }
     const saved = yield* (yield* Store).readJson(
       `cache/shared-page-identities/${scope}/${id}.json`,
@@ -520,7 +505,7 @@ function cachedRecordIdentity(selector: string, scope: string) {
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "Cached page alias differs from the selected scope or page."),
       )
-    return { identity: saved?.record_identity ?? `notion_page:${id}`, page: id }
+    return { identity: saved?.record_identity ?? id, page: id }
   })
 }
 function latestObservation(page: string, scope: string) {
@@ -620,7 +605,7 @@ export function cachedRemoteObservation(
     const latest = yield* latestObservation(page, scope)
     if (!latest || (latest.invalidated && (!options.offline || !latest.snapshot_id)))
       return undefined
-    if (latest.materialization_version !== currentMaterializationVersion(page))
+    if (latest.materialization_version !== CURRENT_MATERIALIZATION_VERSION)
       return yield* Effect.fail(
         fail(
           "CACHE_REFRESH_REQUIRED",
@@ -646,8 +631,7 @@ export function cachedRemoteObservation(
         : validateSnapshot(snapshot)
     if (
       selected.page &&
-      ((snapshot.record.locator.type !== "shared_skill" &&
-        snapshot.record.locator.type !== "notion_page") ||
+      (snapshot.record.locator.type !== "shared_skill" ||
         snapshot.record.locator.page_id !== selected.page)
     )
       return yield* Effect.fail(
@@ -697,15 +681,14 @@ export function cachedRemoteObservation(
       // Local object verification uses the originally selected content manifest.
       ...(options.access === "metadata" ? { stored_snapshot: snapshot } : {}),
       validated_at: latest.validated_at,
-      bundle_checkpoint: latest.bundle_checkpoint,
       metadata_only: latest.metadata_only,
       shared_body_valid_until: latest.shared_body_valid_until,
       invalidated: latest.invalidated,
     }
   })
 }
-/** Retire directory observations affected by a subscription, including cached absence. */
-export function invalidateSubscriptionCatalog(scope: string, targetDatabase: string) {
+/** Retire current library directory and View observations, including cached absence. */
+export function invalidateCurrentLibraryCatalog(scope: string, targetDatabase: string) {
   return Effect.gen(function* () {
     const store = yield* Store
     const keys = new Set(yield* store.listKeys(`cache/catalogs/${scope}`))
@@ -739,7 +722,6 @@ export function invalidateSnapshotCache(
   scope?: string,
   options: { readonly retainForOffline?: boolean; readonly accessDenied?: AccessDenial } = {},
 ) {
-  if (pageId(page)) page = `notion_page:${pageId(page)}`
   return Effect.gen(function* () {
     const store = yield* Store
     const scopes = scope
@@ -871,7 +853,7 @@ function cachedTarget(target: string, database?: string) {
         return yield* Effect.fail(
           fail("SKILL_NOT_FOUND", "Target is outside the selected database."),
         )
-      return { page: observed?.snapshot.record.id ?? `notion_page:${id}`, scope: scope! }
+      return { page: observed?.snapshot.record.id ?? id, scope: scope! }
     }
     const directory = yield* catalog({ database, offline: true })
     if (directory.scope !== scope || directory.coverage.failed_sources.length)
@@ -1032,7 +1014,7 @@ function collectRefs(value: unknown, snapshots: Set<string>, objects: Set<string
 function property(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {}
 }
-/** Explicit historical-byte collection. It never retires observations or changes freshness. */
+/** Explicit unreferenced-byte collection. It never retires observations or changes freshness. */
 export function garbageCollectCache(
   options: { dryRun?: boolean; database?: string; online?: boolean } = {},
 ) {
@@ -1064,14 +1046,7 @@ export function garbageCollectCache(
       if (value !== undefined) collectRefs(value, protectedSnapshots, referencedObjects)
     }
     const referencedSnapshots = new Set(protectedSnapshots)
-    for (const prefix of [
-      "snapshots",
-      "cache",
-      "sync",
-      "publications",
-      "operation-reviews",
-      "database-init",
-    ]) {
+    for (const prefix of ["snapshots", "cache"]) {
       for (const key of yield* store.listKeys(prefix)) {
         const value = yield* store.readJson(key, Schema.Unknown)
         if (

@@ -18,7 +18,7 @@ import {
 import { portableIdentity } from "../src/export.ts"
 import { createRequestMetrics } from "../src/request-metrics.ts"
 import { discoverSourceDefinition } from "../src/shared-source-adapters.ts"
-import { withSourceCommandBudget } from "../src/shared-source-budget.ts"
+import { withCurrentInvocationBudget } from "../src/shared-current-invocation.ts"
 import { makeRequestBudget, RequestBudget } from "../src/request-budget.ts"
 import { requestBudgetHttpClient } from "../src/request-budget-http.ts"
 import { HttpClient } from "effect/http"
@@ -898,7 +898,7 @@ test("a real Git fetch interrupted by the source deadline closes its acquisition
   const metrics = createRequestMetrics({ traceLimit: 20 })
   try {
     const observed = await Effect.runPromise(
-      withSourceCommandBudget(
+      withCurrentInvocationBudget(
         discoverSource(
           {
             source: {
@@ -918,13 +918,13 @@ test("a real Git fetch interrupted by the source deadline closes its acquisition
     )
     expect(observed).toMatchObject({
       _tag: "Failure",
-      failure: { code: "REQUEST_BUDGET_EXHAUSTED" },
+      failure: { code: "REQUEST_BUDGET_EXHAUSTED", details: { budget: { exhausted: "duration" } } },
     })
     expect(requests).toBe(1)
     expect(metrics.snapshot().source_acquisitions).toMatchObject({
       attempts: 1,
       in_flight: 0,
-      outcomes: { success: 0, failure: 0, cancelled: 1 },
+      outcomes: { success: 0, failure: 1, cancelled: 0 },
       wire_bytes: null,
       auth_wait_ms: null,
     })
@@ -1124,7 +1124,7 @@ test("registry metrics match actual response payloads with and without the invoc
       )
       const current = await Effect.runPromise(
         (bounded
-          ? withSourceCommandBudget(acquisition, {
+          ? withCurrentInvocationBudget(acquisition, {
               requests: 20,
               bytes: 1024 * 1024,
               duration_ms: 10_000,
@@ -1222,7 +1222,7 @@ test("registry response interruption and budget timeout terminate the one actual
       )
       const pending = Effect.runPromiseExit(
         (bounded
-          ? withSourceCommandBudget(acquisition, {
+          ? withCurrentInvocationBudget(acquisition, {
               requests: 5,
               bytes: 1024 * 1024,
               duration_ms: 500,

@@ -1,143 +1,41 @@
-# Discovery, configuration, authentication and doctor
+# 当前发现、配置与访问检查
 
-主要验证入口：[verify-ntn-skills](../../verify-ntn-skills/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+主要入口：[verify-ntn-skills](../SKILL.md)。本页只检查当前四表库的发现、精确选择、本地配置、Views 与访问诊断；正文和缓存资格沿 [当前消费](skill-consumption.md)。
 
-Users discover available databases and Skill metadata, register a precise local database alias, choose creation preferences and check existing authentication without starting a login flow.
+## 公开入口
 
-This recipe covers catalog policy, cache inspection/retirement and cache-policy configuration. [Command coverage](README.md#accepted-design-coverage) and [cache/parameter cases](sync-cache-verification-plan.md#cache-time-and-identity-matrix) own the wider matrix; [protocol](../../../../docs/protocol.md) owns exact result semantics. Product Doctor remains an online probe; helper Doctor defaults to offline readiness and requires `--live` for that probe. Recipes are unrun until the main verifier records evidence.
+沿 [harness Launch](../references/harness.md#launch) 隔离配置、状态与 cache，从当前命令 schema 核对参数：
 
-## Sub-features
+~~~sh
+ntn-skills --help
+ntn-skills schema list
+ntn-skills schema ctl views
+ntn-skills ctl config show
+ntn-skills ctl doctor --database "$ENTRY"
+ntn-skills list --database "$ENTRY" --json --metrics
+ntn-skills ctl cache status
+~~~
 
-- `discover-help`: offline command and version discovery.
-- `discover-sources`: broad database discovery, explicit selection and local registration.
-- `discover-catalog`: paginated metadata, query filtering, refresh and coverage.
-- `discover-default-context`: optional Notion checkbox decoding; missing/unchecked values emit false, checked values emit true, and a wrongly typed property fails explicitly. Complete discovery and explicit reads retain every record.
-- `config-preferences`: sanitized configuration and creation-default changes.
-- `auth-token`: stdin token storage, configuration precedence and fallback restoration.
-- `doctor-access`: direct API transport/version, project authentication, and optional scoped coverage plus one Skill read.
-- `cache-policy`: effective content/catalog defaults and persisted policy overrides.
-- `cache-retention`: offline scoped status and system-Trash retirement without state loss.
-- `database-init`: official two-table create/attach, durable operation recovery, exact property IDs and native relation validation; subscription database remains outside ordinary content discovery.
+使用明确的当前 library entry；缺 Sources、Members/Requires、Origin 或 Content 时不能以旧布局继续。身份、凭据与 endpoint 属于本次 scope，已知访问拒绝不得由缓存覆盖。需要配置 token 时只沿现有 stdin 入口，不把凭据放进命令参数或报告。
 
-## How to get to it (user POV)
+`ctl doctor` 是实际在线访问检查：不带 database 时核身份，带 database 时检查所选目录并尝试读取一个当前 Skill。空库或 `skill_read.checked=false` 不等于正文已读过。验证 controller 的 doctor 只检查本机运行条件；未指定 live 不冒充在线结果。
 
-Each entry point below needs its own proof:
+## 必要守卫
 
-- Root `--help`, a command's `--help`, and `--version`.
-- `ctl database list`, then explicit `ctl database list --database` with the selected ID/URL or registered alias.
-- `ctl database register`, offline registrations via `ctl config show`, and `ctl database unregister`.
-- `ctl database init --parent EXACT_RUN_PARENT`, or `ctl database init --content-database EXACT_CONTENT_ID --upstream-database EXACT_UPSTREAM_ID`; repeat the same operation and then consume from an independent empty local state.
-- **Additive source schema upgrade.** Retain an already-published attach and repeat its identical `ctl database init --content-database EXACT_CONTENT_ID --upstream-database EXACT_UPSTREAM_ID` inputs, optionally pinning `--operation OPERATION_ID`. If the original operation used `--parent`, repeat that original input instead. Changed inputs under the same operation ID must fail. Capture raw Notion schema before/after. Source Type select has exactly builtin/upstream/manual and Builtin ID is rich_text. Preserve native title labels and property IDs. Repeat again and prove no duplicate fields/rows/tables. Legacy rows stay unset and incompatible existing fields fail safely. Ordinary create on missing-field tables remains usable and upgraded tables read back manual. Ordinary replace/write preserve preset and unset values. Public ContentRecord JSON and CLI source flags remain unchanged. Record actual observations only.
-- `list`, `list --database`, `list --query`, `list --refresh`, `list --offline` and `list --max-age`.
-- `ctl config show`, `ctl config set KEY VALUE` and `ctl config unset KEY` for each supported preference key.
-- `ctl config set-token --stdin`, `ctl config clear-token`, and `ctl doctor` with the selected credential source.
-- `ctl cache status [TARGET]`, `ctl cache clear TARGET --database`, and `ctl cache clear --all`, with dry-run and real retention proof.
+按实际改动选择现有测试，不组合完整矩阵：
 
-The AH258 fixture receipt is held by the orchestrator at `ah258/notion-init-receipt.json`. Use only its run parent and exact created table IDs. Verify Kind select skill/router/prompt; missing Kind on historical content decodes skill. Verify Members is a self relation with `single_property` (no reverse field, multiple members allowed), and Upstream/Skills is a dual relation targeting the exact opposite data source. Upstream allows at most one subscription in the product decoder. Validate Publication and provenance rich_text fields without rewriting existing page content. A wrong field type, wrong relation target or wrong direction must fail before schema changes. Repeating a completed init must retain both exact database IDs. Unknown creation outcomes must reconcile the operation marker and never replay creation by name. Check `upstream_database` independently of `default_database`, and confirm the subscription table is excluded from catalog discovery. Mark these cases unverified until actual installed CLI and isolated state evidence is recorded.
+~~~sh
+bun test packages/core/test/catalog.test.ts packages/core/test/views.test.ts packages/core/test/cache.test.ts --timeout 60000
+~~~
 
-## Driving it with control-ntn-skills
+- 发现只返回当前 `shared_skill` 定位。名称不唯一时要求精确当前引用；不同库或 Source 的同名记录不能合并。
+- 查询完整分页后才能声明唯一性或完整目录。limit、筛选结果与局部成功均保留实际 coverage；某个来源拒绝不隐藏其它有效记录，也不把 partial 缓存成 complete。
+- Enabled 与 Default Context 由当前 schema 明确解码。禁用记录不进入公开目录；错误属性类型不能当默认值。
+- Views 使用真实 View ID/URL 和远端次序。默认首 View、明确 View、全部 View 列表保持独立；空 View 不回退全库，错库、截断成员或权限错误明确失败。
+- 缓存按当前 scope 与有效期使用，命中不延长原验证时间。清理只处理可回收本地状态，不修改 Notion 内容、配置或用户文件。
 
-Preconditions:
+`STATE_CUTOVER_REQUIRED` 要求显式选择新的 `NTN_SKILLS_HOME`；旧配置仍有退役绑定时也选择新的 `NTN_SKILLS_CONFIG_HOME`。保留旧数据库与 objects 给有限只读提取器，不通过打开或重写它来完成普通发现。
 
-- Follow the [index](./README.md) isolation and variable conventions. Set `DATABASE_ALIAS=verification-selected` for this scratch registration. Set `QUERY` to a name, invocation alias or description fragment actually present in a selected catalog result.
-- Inherited `NOTION_API_TOKEN` is non-empty. The helper intentionally ignores stdin and rejects `ctl config set-token`; it uses inherited authentication and never relays token input. Keep sanitized responses in `$RUN/evidence`.
+## 结果边界
 
-- **Help/version.** Run each command below. Help/version are text, exit 0, and help does not trigger online work. Repeat command help for each command under acceptance; root help alone does not cover it.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- --help
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- read --help
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- --version
-  ```
-
-- **Database discovery and registration.** Drive broad discovery, explicit validation, registration, local listing and alias selection separately. Responses identify databases and data sources; explicit selection must identify the selected database, and `ctl config show` must retain its canonical ID and registered alias. After alias-selection proof, unregister the owned alias and inspect configuration again; unrelated registrations and canonical preferences must survive.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl database list
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl database list --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl database register "$DATABASE_ALIAS" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl database list --database "$DATABASE_ALIAS"
-  ```
-
-- **Catalog.** Record scope, database map, count, fetched_at, coverage, source and freshness. Metadata excludes bodies/manifests. Catalog default is 60s; fresh acceptance uses --refresh, while ordinary cached/offline reads remain separate evidence and cannot upgrade coverage. Record request counts only when observable; fast wall time alone is not zero-network proof.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list --database "$DATABASE_ALIAS"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list --database "$DATABASE" --query "$QUERY"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list --database "$DATABASE" --refresh
-  ```
-
-  After warming the selected complete catalog, drive ordinary, offline and max-age reads separately and retain source/validation timestamps. Repeat invalid combinations/durations through the actual CLI (P1); failures must be exit 2 before online work. Official-login mode may require online identity checks; unsafe unpinned offline scope fails rather than guessing an account.
-
-  For `discover-default-context`, use only an authorized owned fixture to compare `Default Context` absent, unchecked and checked states with fresh `list --database` results. Retain boolean `default_context`, full catalog membership and explicit reads for unchecked records. A wrong-type controlled fixture must fail with `INVALID_RESPONSE`; legacy cached metadata must decode missing values as false. Host catalog filtering and session-neutral background preparation require the separate [broker consumption map](broker-consumption.md); CLI output alone does not prove those behaviors.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list --database "$DATABASE" --offline
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- list --database "$DATABASE" --max-age 30s
-  ```
-
-- **Creation preference.** Capture configuration before, after setting and after clearing. The default stores a canonical database ID; clearing it preserves registrations and token presence. None of these changes mutate Notion.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config set default_database "$DATABASE_ALIAS"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config unset default_database
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  ```
-
-
-- **Cache policy and retention.** Capture effective config/state/cache/data roots and pinned versions through public `ctl cache status`, `ctl config show`, `ctl sync local status` and `ctl operation show` results; use `ctl backup --output` when retaining the database and referenced immutable files. Mutable bindings, bases, plans, receipts and observations are SQL state, not loose JSON files. All four roots and XDG bases must point inside scratch; builtin commands also require an owned HOME. Keep launcher transpiler cache separately owned as the index prescribes. Save policy, launch a new process, inspect effective milliseconds, unset policy keys and compare unrelated settings/token presence. Defaults are 300000/60000 ms. Never record tokens.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config set cache_policy.read_max_age_ms 300000
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config set cache_policy.catalog_max_age_ms 60000
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config unset cache_policy.read_max_age_ms
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config unset cache_policy.catalog_max_age_ms
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl cache status
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl cache status "$PAGE_ID" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl cache clear "$PAGE_ID" --database "$DATABASE" --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl cache clear "$PAGE_ID" --database "$DATABASE"
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl cache clear --all --dry-run
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl cache clear --all
-  ```
-
-  Bind PAGE_ID from a real catalog result. Status makes no network request; targeted clear retires the selected scoped latest/selector/catalog observations conservatively. --all retires every recorded cache scope, never immutable state. Capture system Trash retention paths/receipts and prove pinned reads, baselines, plans and unfinished receipts survive a second process. Missing retention mechanism must fail with no permanent deletion. C18 covers other targets/ambiguous catalogs; do not infer it from a single target.
-
-- **Environment authentication and clearing config.** Use inherited `NOTION_API_TOKEN` for live access. Capture `ctl config show`, clear any scratch configured token and confirm `token_configured=false`; doctor must still prove remote access through the environment fallback. The baseline does not copy personal configuration.
-
-  ```bash
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config clear-token
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$RUN" --live
-  bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl doctor
-  ```
-
-  Doctor reports `transport=direct_http`, `notion_api_version=2026-03-11` and `authentication`. With explicit `--database ID`, require complete coverage and inspect skill_read; without it, discovery/read remain checked=false. When a Skill exists, require checked=true, available=true and the expected storage mode. Do not report an unavailable probe as successful Skill consumption.
-
-- **Separate token-storage entry.** `ctl config set-token --stdin` is direct CLI proof outside the helper. Main verifier may cite config tests only after running them. Live precedence needs isolated config/state/cache and trusted piped input without token arguments/interpolation/recorded stdin; preserve sanitized transitions and doctor/current `read PAGE_ID --refresh` results. Baseline helper does not prove token storage/login fallback.
-
-## Gotchas
-
-- Search is eventually consistent and not exhaustive. Inspect `coverage.failed_sources` and `search_index_limited`; a missing row is not proof of workspace absence.
-- Database aliases are case-sensitive; titles are display labels. Skill invocation aliases are a different namespace. A default affects create only, not read discovery or exact-target replacement.
-- Authentication priority is non-empty config token, then non-empty `NOTION_API_TOKEN`; missing credentials return `AUTH_REQUIRED`. The isolated helper inherits the existing environment credential only after its identity has been checked against the intended project authorization, without printing or copying secrets.
-- Doctor has no database selector, reads broadly and may cache one available Skill. It never starts login. Local isolation does not isolate the shared remote database.
-- Fresh content readbacks use --refresh on a current page/ref; pinned refs remain unchanged. Cache/config operations preserve authentication/sources/bindings and cannot advance a sync baseline.
-- Tokens must never appear in arguments, evidence or reports. Scratch config stores its configured token in plaintext with private permissions; cleanup removes scratch and preserves evidence and retained Notion skills.
-
-## View acceptance
-
-Run `bun test packages/core/test/views.test.ts` for ordered first selection, native-query continuation, exact URL identity, checkbox independence, empty/failure distinction and scoped caching. Run Node Vitest `packages/core/test/sqlite-state.node.test.ts` for real process generation/retirement fences. With existing read authorization, run built/installed CLI `ctl views --database ID`, `list --default-view --database ID`, and an explicit View with more than 100 members to verify the actual pagination contract. Save complete JSON envelopes; report member failures without claiming full coverage. Host prompt injection requires the Broker's separate real Pi/OMP route.
-
-Default-directory consumption validates the complete ordered View ID inventory, then retrieves only the first View's details. It does not retrieve unselected View details or use their availability as a gate for the selected directory. Keep the selected View's fresh scope, exact ID/database/data-source checks, native query and member pagination intact. Later ID pages still reject incomplete responses, invalid/repeated identities and invalid/repeated cursors; an empty initial ID page continues until the complete inventory identifies its first View or proves an empty directory.
-
-Public `listViews` / `ctl views` still retrieve every View's details and own the complete-list cache. Default consumption only publishes its selected-directory observation; it neither creates a partial complete-list cache nor overwrites an existing complete list. The existing fixture now exercises default discovery, a warm default, an offline complete-list miss, explicit complete listing, another default refresh, and an unchanged offline complete list. Selected permission/metadata/scope failures remain errors without falling back to another View.
-
-Within one default-directory observation, the private first-View selector reuses the scope already validated by the outer observation. Fresh reads still validate identity online once; a complete warm observation performs no request, and a subsequent fresh operation validates again. Keep `authScope`, access-generation invalidation, credential rotation between operations and all resource ACL checks unchanged. `AUTH_REQUIRED` or `ACCESS_DENIED` on a fresh read must fail before View access even when an older complete View is cached. This adds no cache namespace or cross-operation authentication memoization.
-
-Run Node Vitest `packages/core/test/upstream-rebuild.node.test.ts` to verify selected-member Tags survive native rebuild and deleted-page restore using real local Git/SQLite and a controlled Notion boundary. The route includes an applied-but-lost Tags response, a conflicting user edit, same-operation readback without a second Tags PATCH, preserved member Default Context and unchanged sibling binding. It performs no production rebuild.
+记录实际 entry、查询范围、coverage、freshness 和请求数量。目录通过不代表全部正文、实库清理或 Pi 已通过。独立安装沿 [package check](portable-export-package-consumption.md)，自有临时目录沿 [harness Cleanup](../references/harness.md#cleanup) 进入系统 Trash。

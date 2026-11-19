@@ -424,8 +424,3 @@ export function querySharedRouterMembers(
     inventory: input.inventory,
   })
 }
-
-/** Match the existing native Router projection; authored instructions stay separate. */
-export function renderSharedRouterMembers(members: readonly SharedRouterMember[]): string {
-  return `\n\n## Members\n\n${members.map((member) => `- [${member.name}](${member.ref}) — ${member.description}`).join("\n")}\n`
-}

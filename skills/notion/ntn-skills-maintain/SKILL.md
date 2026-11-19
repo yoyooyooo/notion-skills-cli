@@ -32,9 +32,14 @@ SKILL.md. Use a real physical path; symlink inputs and changing files are reject
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ```
 
+If any current main or supporting file has source authority, this resource-only
+CLI rejects dry-run and apply with CURRENT_SOURCE_MANAGEMENT_REQUIRED, including
+an unchanged export. Preserve its File ID, path and Source binding. Report that
+coordinated Source management is still required; do not omit or reidentify it.
+
 Inspect added and removed Files and authority changes. Import replaces the entire
-file tree, so omit a file only when its removal is intended. Follow the task's
-existing authorization. Preview is not a completed content edit.
+file tree, so omit a Notion-owned file only when its removal is intended. Follow
+the task's existing authorization. Preview is not a completed content edit.
 Local Markdown links must resolve inside that complete input; remove or update
 inbound links before omitting their target file.
 
@@ -48,8 +53,9 @@ ntn-skills export PAGE_ID --database ENTRY --output NEW_DIRECTORY
 
 Use the returned PAGE_ID. Import preserves the physical Skill and retained File
 IDs, writes every supporting File and checks complete reading pages. It removes
-omitted supporting rows and unreferenced owned Resource rows after checking the
-new content. Repeating the same complete input performs zero semantic Notion writes.
+omitted Notion-owned supporting rows and unreferenced owned Resource rows after
+checking the new content. Repeating an admitted complete input performs zero
+semantic Notion writes.
 
 Default import uses resource authority and preserves exact original bytes.
 Readable text appears in full. Opaque files expose a usable original; unsupported

@@ -20,17 +20,7 @@
     {
       "id": "verify-notion-management",
       "skill": ".cursor/skills/verify-notion-management/SKILL.md",
-      "features": [
-        "empty-library.md",
-        "import-create-recovery-dry-run.md",
-        "nxt-delivery.md",
-        "reference-write-version-conflict.md",
-        "resource-authoring.md",
-        "resource-inventory.md",
-        "skill-maintenance.md",
-        "sync-cache-verification-plan.md",
-        "upstream-subscriptions.md"
-      ],
+      "features": ["empty-library.md", "import-create-recovery-dry-run.md", "skill-maintenance.md"],
       "regressions": [
         "packages/core/test/shared-current-index.test.ts",
         "packages/core/test/shared-profile.test.ts",
@@ -48,8 +38,7 @@
         "request-engine-formal.md",
         "request-engine.md",
         "skill-consumption.md",
-        "skill-dependency-graph.md",
-        "snapshot-read-open-files-resolve.md"
+        "skill-dependency-graph.md"
       ],
       "regressions": [
         "packages/core/test/shared-current-index.test.ts",

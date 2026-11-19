@@ -27,8 +27,13 @@ ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
 ```
 
 Inspect removals and authority changes before applying an authorized complete
-input. Ordinary directory/ZIP input requires root SKILL.md. Portable v2 uses the
-kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
+input. A target with any Source main or supporting file returns
+CURRENT_SOURCE_MANAGEMENT_REQUIRED in dry-run and apply because this CLI imports
+every input file as a resource. An unchanged export is also refused. Keep the
+existing File IDs, logical paths and Source bindings until coordinated Source
+contribution management is available; omitting or reidentifying files is not a
+takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
+uses the kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
 refs; omitted fields preserve, [] clears, and a list replaces that entire field.
 Prompt relations, old projection/materialization and unknown fields are rejected.
 A single selected Markdown file is the only
@@ -46,8 +51,8 @@ than the direct limit use bounded multipart transport. A source or native file
 is not silently replaced merely by editing its generated page.
 
 An import preserves existing Skill identity and stable File IDs for retained
-paths. It trashes omitted supporting rows and unreferenced resources after checking
-current content. Unspecified enablement, default context and authored relations
+paths. It trashes omitted Notion-owned supporting rows and unreferenced resources
+after checking current content. Unspecified enablement, default context and authored relations
 remain unchanged. A complete equal input is a zero-write no-op.
 
 Explicit Members/Requires resolve every logical target to one enabled ready Skill

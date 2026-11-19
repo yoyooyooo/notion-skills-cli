@@ -14,12 +14,18 @@ import {
   makeCurrentUploadScope,
   uploadCurrentSharedResource,
 } from "../src/shared-current-upload.ts"
-import { digest, encode, id, sharedSnapshotFixture, skillPage } from "./shared-snapshot-fixture.ts"
+import {
+  currentDigest as digest,
+  currentBytes as encode,
+  currentId as id,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
 const MiB = 1024 * 1024
 type Failure = { stage: string; outcome: "accepted" | "absent" | "partial" }
 function fixture() {
-  const base = sharedSnapshotFixture()
+  const base = currentSnapshotFixture()
   const uploads = new Map<string, Record<string, unknown>>()
   const sent = new Map<string, Uint8Array[]>()
   const calls: Array<{

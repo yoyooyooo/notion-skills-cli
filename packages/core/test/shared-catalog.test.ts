@@ -1,18 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, Layer } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import {
-  addSource,
-  catalog,
-  creationSource,
-  explicitSource,
-  setDefaultDatabase,
-} from "../src/catalog.ts"
+import { addSource, catalog, explicitSource, setDefaultDatabase } from "../src/catalog.ts"
 import {
   ContentRecordSchema,
   decode,
   fail,
-  notionPage,
   property,
   resolveRecord,
   SkillsError,
@@ -22,62 +15,23 @@ import { sharedRecordFromPage, sharedSkillId, sharedSkillProperty } from "../src
 import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
-const propertyIds = {
-  Name: "title",
-  Description: "description",
-  Kind: "kind",
-  Tags: "tags",
-  Enabled: "enabled",
-  "Default Context": "default",
-  References: "references",
-  "Skill ID": "stable-skill",
-  "Main File ID": "main",
-  Projection: "projection",
-  Source: "source",
-}
 const library: SharedLibrary = {
-  version: 1,
+  ...structuredClone(currentLibrary),
   library_id: "library-fixture",
   operation_id: "library-fixture",
-  parent_page_id: id(1),
-  skills: { database_id: id(2), data_source_id: id(3), property_ids: propertyIds },
-  files: {
-    database_id: id(4),
-    data_source_id: id(5),
-    property_ids: {
-      Name: "title",
-      "File ID": "file",
-      Path: "path",
-      Projection: "projection",
-      Status: "status",
-      Skill: "skill",
-    },
-  },
-  records: {
-    database_id: id(6),
-    data_source_id: id(7),
-    property_ids: {
-      Name: "title",
-      "Record ID": "record",
-      Kind: "kind",
-      "Entity ID": "entity",
-      Hash: "hash",
-      Payload: "payload",
-      Skill: "skill",
-    },
-  },
 }
-const source: Source = {
+const propertyIds = library.skills.property_ids
+const source = {
   alias: "shared",
   database_id: library.skills.database_id,
   title: "Shared Skills",
   data_source_ids: [library.skills.data_source_id],
-  role: "content",
+  role: "content" as const,
   shared_library: library,
-}
+} satisfies Source
 const rich = (propertyId: string, content: string) => ({
   id: propertyId,
   type: "rich_text",
@@ -100,13 +54,13 @@ function row(
       type: "title",
       title: [{ plain_text: options.name ?? "Shared skill" }],
     },
-    Description: rich(propertyIds.Description, "Use the selected shared content."),
+    Description: rich(propertyIds.Description!, "Use the selected shared content."),
     Kind: { id: propertyIds.Kind, type: "select", select: { name: options.kind ?? "skill" } },
     Enabled: { id: propertyIds.Enabled, type: "checkbox", checkbox: options.enabled ?? true },
     "Default Context": { id: propertyIds["Default Context"], type: "checkbox", checkbox: true },
-    "Skill ID": rich(propertyIds["Skill ID"], options.skillId ?? `skill-${n}`),
-    "Main File ID": rich(propertyIds["Main File ID"], `main-${n}`),
-    Source: rich(propertyIds.Source, "must not be fetched for metadata discovery"),
+    "Skill ID": rich(propertyIds["Skill ID"]!, options.skillId ?? `skill-${n}`),
+    "Main File ID": rich(propertyIds["Main File ID"]!, `main-${n}`),
+    Content: rich(propertyIds.Content!, "must not be fetched for metadata discovery"),
   }
   return {
     object: "page",
@@ -142,7 +96,7 @@ function searchedSource() {
     title: [{ plain_text: "Shared Skills" }],
     properties: {
       Description: { id: propertyIds.Description, type: "rich_text" },
-      References: { id: propertyIds.References, type: "rich_text" },
+      Content: { id: propertyIds.Content, type: "rich_text" },
       "Skill ID": { id: propertyIds["Skill ID"], type: "rich_text" },
       "Main File ID": { id: propertyIds["Main File ID"], type: "rich_text" },
     },
@@ -162,8 +116,6 @@ function fixture(
   if (options.configuration !== undefined) saved.set("config.json", options.configuration)
   let generation = 0
   const store: Store["Service"] = {
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
     root: "/unused-shared",
     configRoot: "/unused-shared",
     cacheRoot: "/unused-shared",
@@ -182,8 +134,6 @@ function fixture(
     readBytes: () => Effect.fail(fail("UNEXPECTED", "Metadata discovery cannot read body bytes.")),
     writeBytes: () =>
       Effect.fail(fail("UNEXPECTED", "Metadata discovery cannot write body bytes.")),
-    registerBindingWithBase: () => Effect.die(new Error("Unexpected binding write")),
-    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline write")),
     backup: () => Effect.die(new Error("Unexpected backup")),
     output: () => Effect.fail(fail("UNEXPECTED", "Metadata discovery cannot materialize content.")),
   }
@@ -288,11 +238,6 @@ describe("shared content metadata", () => {
     ])
   })
 
-  test("legacy mutation boundary rejects a new shared locator", () => {
-    const record = sharedRecordFromPage(row(), source, library.skills.data_source_id)
-    expect(() => notionPage(record)).toThrow("requires a Notion content page")
-  })
-
   for (const { label, value, reason, length } of [
     { label: "empty", value: "", reason: "empty", length: 0 },
     {
@@ -361,7 +306,7 @@ describe("shared content metadata", () => {
       sharedRecordFromPage(
         {
           ...original,
-          properties: { ...original.properties, Enabled: rich(propertyIds.Enabled, "true") },
+          properties: { ...original.properties, Enabled: rich(propertyIds.Enabled!, "true") },
         },
         source,
         library.skills.data_source_id,
@@ -381,21 +326,7 @@ describe("shared content metadata", () => {
 })
 
 describe("shared catalog routing", () => {
-  test("explicit source defaults to the legacy write fence, including malformed marked descriptors", async () => {
-    for (const databaseValue of [
-      database(),
-      { ...database(), description: [{ plain_text: `${LIBRARY_MARKER}{}` }] },
-    ]) {
-      const f = fixture({ databaseValue })
-      const result = await f.run(explicitSource(library.skills.database_id).pipe(Effect.result))
-      expect(result._tag).toBe("Failure")
-      if (result._tag !== "Failure") throw new Error("Expected a protected mutation boundary")
-      expect(result.failure.code).toBe("SHARED_LIBRARY_CONSUMER_PENDING")
-      expect(f.calls).toHaveLength(1)
-    }
-  })
-
-  test("shared registration and defaults preserve configuration without opening legacy writes", async () => {
+  test("current registration and defaults preserve unrelated configuration", async () => {
     const f = fixture({
       configuration: { token: "preserved-fixture-token", default_database: id(88), sources: [] },
     })
@@ -417,15 +348,9 @@ describe("shared catalog routing", () => {
       default_database: library.skills.database_id,
       sources: [registered],
     })
-    for (const legacy of [explicitSource("team"), creationSource()]) {
-      const result = await f.run(legacy.pipe(Effect.result))
-      expect(result._tag === "Failure" && result.failure.code).toBe(
-        "SHARED_LIBRARY_CONSUMER_PENDING",
-      )
-    }
-    const selected = await f.run(creationSource(undefined, { allowShared: true }))
+    const selected = await f.run(explicitSource("team"))
     expect(selected).toEqual(registered)
-    expect(f.calls).toHaveLength(5)
+    expect(f.calls).toHaveLength(3)
     expect(
       f.calls.every(
         (call) =>
@@ -466,38 +391,13 @@ describe("shared catalog routing", () => {
     }
   })
 
-  test("explicit metadata opt-in preserves the descriptor without querying Files or Records", async () => {
+  test("explicit current selection preserves the descriptor without querying Files or Records", async () => {
     const f = fixture()
-    const result = await f.run(
-      explicitSource(library.skills.database_id, undefined, { allowShared: true }),
-    )
+    const result = await f.run(explicitSource(library.skills.database_id))
     expect(result.shared_library).toEqual(library)
     expect(result.data_source_ids).toEqual([library.skills.data_source_id])
     expect(f.calls.map((call) => call.path)).toEqual([`v1/databases/${library.skills.database_id}`])
   })
-
-  test.each(["explicit", "default", "discovery"])(
-    "only the shared-aware creation caller opts in (%s)",
-    async (selection) => {
-      const configured =
-        selection === "default" ? { default_database: library.skills.database_id } : undefined
-      const f = fixture({ configuration: configured })
-      const selected = selection === "explicit" ? library.skills.database_id : undefined
-      const source = await f.run(creationSource(selected, { allowShared: true }))
-      expect(source.shared_library).toEqual(library)
-      expect(
-        f.calls.some(
-          (call) =>
-            call.path.includes("/markdown") ||
-            call.path.includes(library.files.data_source_id) ||
-            call.path.includes(library.records.data_source_id),
-        ),
-      ).toBe(false)
-      const legacy = fixture({ configuration: configured })
-      const fenced = await legacy.run(creationSource(selected).pipe(Effect.result))
-      expect(fenced._tag).toBe("Failure")
-    },
-  )
 
   test("cold explicit catalog is metadata only and includes the shared stable identity", async () => {
     const f = fixture({ rows: [row({ renamed: true })] })
@@ -513,14 +413,14 @@ describe("shared catalog routing", () => {
       "filter_properties",
     )
     expect(fields).toEqual([
-      propertyIds.Name,
-      propertyIds.Description,
-      propertyIds.Kind,
-      propertyIds["Skill ID"],
-      propertyIds.Enabled,
-      propertyIds["Default Context"],
+      propertyIds.Name!,
+      propertyIds.Description!,
+      propertyIds.Kind!,
+      propertyIds["Skill ID"]!,
+      propertyIds.Enabled!,
+      propertyIds["Default Context"]!,
     ])
-    expect(fields).not.toContain(propertyIds.Source)
+    expect(fields).not.toContain(propertyIds.Content)
     expect(
       f.calls.some(
         (call) =>
@@ -644,7 +544,7 @@ describe("shared catalog routing", () => {
     )
   })
 
-  test("global discovery reads one descriptor and never mistakes a shared References schema for legacy", async () => {
+  test("global discovery reads one current descriptor for repeated search entries", async () => {
     const f = fixture({ searchRepeated: true })
     const result = await f.run(catalog({ refresh: true }))
     expect(result.records[0]?.locator.type).toBe("shared_skill")
@@ -663,14 +563,6 @@ describe("shared catalog routing", () => {
     const result = await f.run(catalog({ database: "shared", refresh: true }))
     expect(result.databases[0]?.alias).toBe("shared")
     expect(result.records[0]?.id).toBe(sharedSkillId(library.library_id, "skill-1"))
-  })
-
-  test("legacy creation remains fenced when the selected source is shared", async () => {
-    const f = fixture()
-    await expect(f.run(creationSource(library.skills.database_id))).rejects.toThrow(
-      "Legacy creation and publication",
-    )
-    expect(f.calls).toHaveLength(1)
   })
 
   test("incomplete pagination never reports an exhaustive empty directory", async () => {

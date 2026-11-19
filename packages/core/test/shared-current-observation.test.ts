@@ -90,7 +90,7 @@ describe("shared current complete-tree validation receipts", () => {
     const current = await f.run(
       Effect.gen(function* () {
         const store = yield* Store
-        return yield* targetSnapshot(parseTarget(skillPage), {}, "generated", "entrypoint").pipe(
+        return yield* targetSnapshot(parseTarget(skillPage), {}, "entrypoint").pipe(
           Effect.provideService(Store, {
             ...store,
             readBytes: (key) =>

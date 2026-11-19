@@ -20,6 +20,12 @@ cutover blockers.
 | Sources | Current provider, location, selected revision, selected members, include/exclude/mapping/patch rules and each target's contribution | Current source-management kernel | Last-check result and reciprocal navigation |
 | Records | Necessary current exact-byte objects, one current Profile configuration, and unfinished management intents | The corresponding resource, Profile or operation writer | Human labels; no content history |
 
+Every current registered library has all four tables, registered Members/Requires,
+Skills and Records Origin relations, and the Files Origin rollup. A purely
+Notion-authored library leaves Sources empty. Normal discovery, consumption,
+management and initialization reject an incomplete older layout; the independent
+read-only extractor does not admit it into the current runtime.
+
 The main document lives on the Skills page. Its stable `Main File ID` participates
 in the same file namespace, but Files does not contain another editable main
 document. Every other effective path has one Files row, including files supplied
@@ -125,6 +131,11 @@ support an explicit restore-follow action. Restore-follow reads the currently
 selected Source and may overwrite current customization; it does not create a
 prior-pin backup. Removing a Source preserves Notion-owned files and clears or
 reports any now-unusable restore-follow binding.
+
+These contribution changes require a coordinated Source management writer, which
+is not implemented yet. `Sources.Selection.exclude` selects member roots; it is
+not a per-file exclusion mechanism. The current import therefore refuses these
+changes rather than leaving a contribution that could recreate the removed file.
 
 ### Sources
 
@@ -300,6 +311,17 @@ legacy flags or a parallel daily protocol:
 5. Clear incompatible disposable sessions/caches and select current content. Keep
    any still-unique local author copy until that item has a verified current home.
 
+Local SQLite has one current physical schema. Its file-header application ID is
+checked with a read-only file handle before opening the database driver. A retired
+database returns `STATE_CUTOVER_REQUIRED`; it is not migrated, cleared or opened in
+WAL mode. Choose an explicit fresh `NTN_SKILLS_HOME`. If the configuration still
+contains retired sync or upstream bindings, also choose a fresh
+`NTN_SKILLS_CONFIG_HOME`. Keep the old database, sidecars and objects unchanged for
+the finite read-only extractor. Changing only `NTN_SKILLS_CACHE_HOME` does not move
+the state database. Current pending operations and fixed local content survive
+normal process restarts within the current schema; an old operation is not silently
+reinterpreted as a new one. This schema boundary is not content version management.
+
 Pro inventory distinguishes active local assets and real host registrations from
 copies in old worktrees, package caches and verification exports. Physical
 `SKILL.md` counts are not the migration denominator. An uninspected or sensitive
@@ -341,8 +363,19 @@ inspection, complete current import, Profiles and local configuration. Import is
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources and renders
 complete text. It preserves the physical Skill, stable retained File IDs and
-unspecified enablement, default-context and authored relations. Removed supporting
-Files and unreferenced owned resources are trashed after current content is checked.
+unspecified enablement, default-context and authored relations. Removed Notion-owned
+supporting Files and unreferenced owned resources are trashed after current content
+is checked.
+
+The common inspect/write preflight returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED`
+before operation allocation or mutation if an existing Source file is omitted,
+reidentified, renamed, changed to native/resource, or rebound to another Source ID
+or source path. It uses the already-read current directory. The same File identity,
+logical path and Source binding may select a new revision, hash, size or mode only
+when those values match the current Source manifest. Preserving Source files while
+editing other Notion-owned files is supported by the core writer. The public import
+CLI makes every input file a resource, so it currently rejects targets containing
+any Source file, including an unchanged exported tree.
 
 Portable Members/Requires round-trip as complete current stable-ref sets. Omitted
 fields preserve, [] clears, and lists replace. Prompt relations are invalid. The

@@ -18,6 +18,34 @@ import {
 } from "./shared-current-fixture.ts"
 
 describe("current tree consumption", () => {
+  test("current native author text keeps a former creation marker as ordinary content", async () => {
+    const f = currentSnapshotFixture({ fileCount: 1 })
+    const marker =
+      "ntn-skills-create:v1:" +
+      Buffer.from(
+        JSON.stringify({
+          version: 1,
+          operation_token: "00000000-0000-4000-8000-000000000001",
+          operation_id: "author-example",
+          intent_index: 0,
+          scope: "author-example",
+          database_id: "author-database",
+          data_source_id: "author-source",
+          role: "content_root",
+          path: "SKILL.md",
+          parent_type: "data_source_id",
+          parent_id: "author-source",
+          intended_hash: "a".repeat(64),
+          source_sha256: "b".repeat(64),
+        }),
+      ).toString("base64url")
+    const body = `${marker}\n\n# An authored example\n\nntn-skills-create:v1:plain-notes\n`
+    f.bodies.set(f.files[0]!.id, body)
+    const selected = await f.open()
+    expect(new TextDecoder().decode(f.selectedBytes(selected, "references/0.md"))).toBe(body)
+    expect(f.semanticWrites()).toHaveLength(0)
+  })
+
   test("cold native consumption uses three metadata requests plus one read per body and writes no Notion state", async () => {
     const f = currentSnapshotFixture()
     f.records.set("unread-history", { malformed: "obsolete event, proof and snapshot records" })

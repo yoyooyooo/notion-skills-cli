@@ -55,21 +55,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@effect/platform-node": "4.0.5",
-        "@effect/sql-sqlite-node": "4.0.5",
         "effect": "4.0.5",
         "fflate": "0.8.3",
-      },
-      "devDependencies": {
-        "@notion-skills-cli/core": "workspace:*",
-      },
-    },
-    "packages/proof-converter": {
-      "name": "@notion-skills-cli/proof-converter",
-      "version": "0.1.0",
-      "dependencies": {
-        "@effect/platform-node": "4.0.5",
-        "@effect/sql-sqlite-node": "4.0.5",
-        "effect": "4.0.5",
       },
       "devDependencies": {
         "@notion-skills-cli/core": "workspace:*",
@@ -114,8 +101,6 @@
     "@notion-skills-cli/markdown": ["@notion-skills-cli/markdown@workspace:packages/markdown"],
 
     "@notion-skills-cli/portable-converter": ["@notion-skills-cli/portable-converter@workspace:packages/portable-converter"],
-
-    "@notion-skills-cli/proof-converter": ["@notion-skills-cli/proof-converter@workspace:packages/proof-converter"],
 
     "@oxc-project/types": ["@oxc-project/types@0.154.0", "https://registry.npmmirror.com/@oxc-project/types/-/types-0.154.0.tgz", {}, "sha512-KYOUGQFlLWR+s4QMV2Q9ko38TZm7EdO87Qm7rvZLqk/webse/cDjtyxKhg/47l0byCbs/k46LT8qc4PKjAikzA=="],
 

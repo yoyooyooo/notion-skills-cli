@@ -1,34 +1,50 @@
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Effect, Layer } from "effect"
-import {
-  addSource,
-  creationSource,
-  databaseId,
-  explicitSource,
-  setDefaultDatabase,
-} from "../src/catalog.ts"
+import { addSource, databaseId, explicitSource, setDefaultDatabase } from "../src/catalog.ts"
 import { ConfigSchema, decode, fail } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { Store } from "../src/store.ts"
+import { currentLibrary, currentId } from "./shared-current-fixture.ts"
+import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 
 const first = "12345678-1234-1234-1234-123456789abc"
 const second = "87654321-1234-1234-1234-123456789abc"
 function setup(initial: unknown, ids: string[], broken?: string) {
   let config = initial
+  const libraryFor = (id: string) => {
+    const offset = id === first ? 100 : 200
+    return {
+      ...structuredClone(currentLibrary),
+      library_id: `library-${id}`,
+      operation_id: `library-${id}`,
+      skills: { ...currentLibrary.skills, database_id: id, data_source_id: currentId(offset) },
+      files: {
+        ...currentLibrary.files,
+        database_id: currentId(offset + 1),
+        data_source_id: currentId(offset + 2),
+      },
+      records: {
+        ...currentLibrary.records,
+        database_id: currentId(offset + 3),
+        data_source_id: currentId(offset + 4),
+      },
+      sources: {
+        ...currentLibrary.sources,
+        database_id: currentId(offset + 5),
+        data_source_id: currentId(offset + 6),
+      },
+    }
+  }
   const source = (id: string) => ({
     role: "content" as const,
     alias: id,
     database_id: id,
     title: "Skills",
-    data_source_ids: [`ds-${id}`],
+    data_source_ids: [libraryFor(id).skills.data_source_id],
+    shared_library: libraryFor(id),
   })
   const store = Layer.succeed(Store, {
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
-    registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
-    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
     backup: () => Effect.die(new Error("Unexpected backup")),
     root: "/memory",
     configRoot: "/memory",
@@ -56,7 +72,7 @@ function setup(initial: unknown, ids: string[], broken?: string) {
       if (path === "v1/search")
         return Effect.succeed({
           results: ids.map((id) => ({
-            id: `ds-${id}`,
+            id: libraryFor(id).skills.data_source_id,
             parent: { database_id: id },
             database_type: "skills",
             title: [{ plain_text: "Skills" }],
@@ -69,9 +85,10 @@ function setup(initial: unknown, ids: string[], broken?: string) {
       if (path.startsWith("v1/databases/"))
         return Effect.succeed({
           id,
-          database_type: "skills",
+          database_type: null,
+          description: [{ plain_text: `${LIBRARY_MARKER}${JSON.stringify(libraryFor(id))}` }],
           title: [{ plain_text: "Skills" }],
-          data_sources: [{ id: `ds-${id}`, name: "Skills" }],
+          data_sources: [{ id: libraryFor(id).skills.data_source_id, name: "Skills" }],
         })
       return Effect.fail(fail("UNEXPECTED", "unexpected"))
     },
@@ -81,39 +98,6 @@ function setup(initial: unknown, ids: string[], broken?: string) {
     Effect.runPromise(operation.pipe(Effect.provide(live)))
   return { run, source, config: () => decode(ConfigSchema, config) }
 }
-
-test("create database selection honors explicit override, configured default, then a unique discovered database", async () => {
-  const fixture = setup({ default_database: first }, [first, second])
-  expect((await fixture.run(creationSource(second))).database_id).toBe(second)
-  expect((await fixture.run(creationSource())).database_id).toBe(first)
-  const unique = setup(undefined, [first])
-  expect((await unique.run(creationSource())).database_id).toBe(first)
-})
-
-test("create refuses zero/multiple discovered databases and never falls back from a failed default", async () => {
-  for (const [ids, code] of [
-    [[], "DATABASE_NOT_FOUND"],
-    [[first, second], "DATABASE_AMBIGUOUS"],
-  ] as const) {
-    const fixture = setup(undefined, [...ids])
-    const result = await fixture.run(creationSource().pipe(Effect.result))
-    expect(result._tag === "Failure" && result.failure.code).toBe(code)
-  }
-  const denied = setup({ default_database: first }, [second], first)
-  const result = await denied.run(creationSource().pipe(Effect.result))
-  expect(result._tag === "Failure" && result.failure.code).toBe("ACCESS_DENIED")
-  expect((await denied.run(creationSource(second))).database_id).toBe(second)
-})
-
-test("failed registered databases prevent unique auto-selection", async () => {
-  const fixture = setup(
-    { sources: [{ alias: "broken", database_id: first, title: "Skills", data_source_ids: [] }] },
-    [second],
-    first,
-  )
-  const result = await fixture.run(creationSource().pipe(Effect.result))
-  expect(result._tag === "Failure" && result.failure.code).toBe("CATALOG_INCOMPLETE")
-})
 
 test("default updates and source registration preserve each other's configuration", async () => {
   const fixture = setup({ sources: [], token: "configured-fixture-token" }, [])
@@ -140,12 +124,11 @@ test("registered aliases select databases exactly and defaults persist canonical
   expect(
     (await fixture.run(explicitSource(`https://www.notion.so/${first.replaceAll("-", "")}`))).alias,
   ).toBe("frontend")
-  expect((await fixture.run(creationSource("ops"))).database_id).toBe(second)
+  expect((await fixture.run(explicitSource("ops"))).database_id).toBe(second)
   await fixture.run(setDefaultDatabase("frontend"))
   expect(fixture.config().default_database).toBe(first)
   expect(fixture.config().token).toBe("configured-fixture-token")
-  expect((await fixture.run(creationSource())).database_id).toBe(first)
-  expect((await fixture.run(creationSource("ops"))).database_id).toBe(second)
+  expect((await fixture.run(explicitSource("ops"))).database_id).toBe(second)
   for (const selector of ["Frontend", "Skills", "missing"]) {
     const result = await fixture.run(explicitSource(selector).pipe(Effect.result))
     expect(result._tag === "Failure" && result.failure.code).toBe("DATABASE_NOT_FOUND")
@@ -163,7 +146,7 @@ test("an ambiguous or inaccessible alias never redirects to another database", a
     [second],
     first,
   )
-  const result = await denied.run(creationSource("frontend").pipe(Effect.result))
+  const result = await denied.run(explicitSource("frontend").pipe(Effect.result))
   expect(result._tag === "Failure" && result.failure).toMatchObject({
     code: "ACCESS_DENIED",
     details: { database_id: first, alias: "frontend", title: "Frontend Skills" },

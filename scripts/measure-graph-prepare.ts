@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { prepareGraph } from "../packages/core/src/graph-prepare.ts"
 import { nativeGraphFixture } from "../packages/core/test/graph-prepare-live-fixture.ts"
-import { library } from "../packages/core/test/shared-snapshot-fixture.ts"
+import { currentLibrary as library } from "../packages/core/test/shared-current-fixture.ts"
 
 const directory = process.env.NTN_NG16_EVIDENCE_DIR
 const phase = process.env.NTN_NG16_PHASE

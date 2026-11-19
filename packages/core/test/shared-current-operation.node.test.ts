@@ -25,6 +25,7 @@ import {SqlClient} from ${JSON.stringify(import.meta.resolve("effect/sql"))};
 import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
 import {sqliteState} from ${JSON.stringify(core + "sqlite-state.ts")};
 import {CurrentWritePendingSchema} from ${JSON.stringify(core + "shared-current-operation.ts")};
+import {clearCache} from ${JSON.stringify(core + "cache.ts")};
 process.env.NTN_SKILLS_HOME=${JSON.stringify(join(root, "state"))};
 process.env.NTN_SKILLS_CONFIG_HOME=${JSON.stringify(join(root, "config"))};
 process.env.NTN_SKILLS_CACHE_HOME=${JSON.stringify(join(root, "cache"))};
@@ -61,7 +62,13 @@ yield* store.writeJson(key,pending);
 const active={...pending,lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000001'},not_dispatched:{key:'append:0',request_sha256:'e'.repeat(64),replay:'never'}};
 yield* store.writeJson(key,active);
 const changed=yield* store.writeJson(key,{...active,intent:{...active.intent,input_sha256:'f'.repeat(64)}}).pipe(Effect.result);
-console.log(JSON.stringify({current:yield* store.readJson(key,CurrentWritePendingSchema),changed:changed._tag==='Failure'?changed.failure.code:null,rows:yield* rows()}));`,
+const invalid=[];
+for(const address of [key.replace('a'.repeat(64),'../outside'),key.replace('a'.repeat(64),'A'.repeat(64)),key.replace('pending.json','other.json')]){
+ const read=yield* store.readJson(address,Schema.Unknown).pipe(Effect.result);
+ const write=yield* store.writeJson(address,active).pipe(Effect.result);
+ invalid.push({read:read._tag==='Failure'?read.failure.code:null,write:write._tag==='Failure'?write.failure.code:null});
+}
+console.log(JSON.stringify({current:yield* store.readJson(key,CurrentWritePendingSchema),changed:changed._tag==='Failure'?changed.failure.code:null,invalid,rows:yield* rows()}));`,
     )
     expect(first.exit, first.stderr).toBe(0)
     const initial = JSON.parse(first.stdout)
@@ -72,12 +79,18 @@ console.log(JSON.stringify({current:yield* store.readJson(key,CurrentWritePendin
         not_dispatched: { key: "append:0" },
       },
       changed: "STATE_CONFLICT",
+      invalid: Array.from({ length: 3 }, () => ({
+        read: "INVALID_ARGUMENT",
+        write: "INVALID_ARGUMENT",
+      })),
       rows: [{ key, retired: 0 }],
     })
     const reopened = await run(
       root,
       `
 const restored=yield* store.readJson(key,CurrentWritePendingSchema);
+yield* clearCache(undefined,{all:true});
+const preservedAfterCacheClear=JSON.stringify(yield* store.readJson(key,CurrentWritePendingSchema))===JSON.stringify(restored);
 yield* store.writeJson(key,{...restored,lifecycle:{phase:'retiring',record_page_id:restored.lifecycle.record_page_id},not_dispatched:undefined});
 const current=yield* store.readJson(key,CurrentWritePendingSchema),before=yield* rows();
 const retired=yield* store.retireKeys([key]),after=yield* rows();
@@ -86,11 +99,12 @@ const next={...pending,intent:{...pending.intent,operation_id:'current-test-two'
 yield* store.writeJson(key,next);
 const reused=yield* store.readJson(key,CurrentWritePendingSchema);
 yield* store.retireKeys([key]);
-console.log(JSON.stringify({restored,current,before,retired,after,cleared,reused,final:yield* rows()}));`,
+console.log(JSON.stringify({restored,preservedAfterCacheClear,current,before,retired,after,cleared,reused,final:yield* rows()}));`,
     )
     expect(reopened.exit, reopened.stderr).toBe(0)
     const result = JSON.parse(reopened.stdout)
     expect(result.restored).toEqual(initial.current)
+    expect(result.preservedAfterCacheClear).toBe(true)
     expect(result.current.lifecycle.phase).toBe("retiring")
     expect(result.current.not_dispatched).toBeUndefined()
     expect(result.before).toEqual([{ key, retired: 0 }])

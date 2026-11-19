@@ -151,10 +151,7 @@ function decodeRecord(library: SharedLibrary, input: unknown) {
       })
       const canonical = envelope(body.operation_id, body.payload)
       const skill = relation(row, binding(library, "Skill"))
-      const source =
-        library.records.property_ids.Origin === undefined
-          ? []
-          : relation(row, binding(library, "Origin"))
+      const source = relation(row, binding(library, "Origin"))
       if (skill.length + source.length > 1 || (kind === "operation" && source.length !== 0))
         throw invalid("A current Record cannot claim several owner kinds.")
       const hash = rich(row, binding(library, "Hash"))
@@ -189,7 +186,7 @@ function queryRows(library: SharedLibrary, filter: unknown, containsBody: boolea
       "Payload",
       "Skill",
       "Resource",
-      ...(library.records.property_ids.Origin === undefined ? [] : ["Origin"]),
+      "Origin",
     ])
       params.append("filter_properties", binding(library, name))
     const rows: unknown[] = [],
@@ -327,9 +324,7 @@ export function writeCurrentSharedOperationRecord(
       [binding(library, "Skill")]: {
         relation: prepared.owner === null ? [] : [{ id: prepared.owner }],
       },
-      ...(library.records.property_ids.Origin === undefined
-        ? {}
-        : { [binding(library, "Origin")]: { relation: [] } }),
+      [binding(library, "Origin")]: { relation: [] },
     }
     const raw = yield* (yield* Notion).request(
       input.current === null ? "v1/pages" : `v1/pages/${uuid(input.current.page_id)}`,
@@ -528,7 +523,6 @@ export function currentOwnedResourceCreateRequest(
     })
     const hash = yield* sha256(prepared.encoded),
       rich = (value: string) => ({ rich_text: currentRecordText(value) })
-    if (input.owner.kind === "source") binding(library, "Origin")
     return {
       path: "v1/pages",
       body: {
@@ -543,13 +537,9 @@ export function currentOwnedResourceCreateRequest(
           [binding(library, "Skill")]: {
             relation: input.owner.kind === "skill" ? [{ id: input.owner.page_id }] : [],
           },
-          ...(library.records.property_ids.Origin === undefined
-            ? {}
-            : {
-                [binding(library, "Origin")]: {
-                  relation: input.owner.kind === "source" ? [{ id: input.owner.page_id }] : [],
-                },
-              }),
+          [binding(library, "Origin")]: {
+            relation: input.owner.kind === "source" ? [{ id: input.owner.page_id }] : [],
+          },
           [binding(library, "Resource")]: {
             files:
               input.upload === undefined

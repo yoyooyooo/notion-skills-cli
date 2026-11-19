@@ -14,7 +14,13 @@ import {
   withSharedDirectoryMetadata,
 } from "../src/shared-metadata-inventory.ts"
 import { listViews, viewCatalog } from "../src/views.ts"
-import { sharedSnapshotFixture, library, skillPage, id, encode } from "./shared-snapshot-fixture.ts"
+import {
+  currentSnapshotFixture,
+  currentLibrary as library,
+  currentSkillPage as skillPage,
+  currentId as id,
+  currentBytes as encode,
+} from "./shared-current-fixture.ts"
 
 const db = library.skills.database_id
 const ds = library.skills.data_source_id
@@ -55,7 +61,7 @@ function row(page: string, stableId: string, name: string, enabled = true, defau
       "Renamed title": { id: "title", type: "title", title: [{ plain_text: name }] },
       "Renamed description": rich("description", `${name} description`),
       "Renamed kind": { id: "kind", type: "select", select: { name: "skill" } },
-      "Renamed stable identity": rich("skill_id", stableId),
+      "Renamed stable identity": rich("skill-id", stableId),
       "Renamed enabled": { id: "enabled", type: "checkbox", checkbox: enabled },
       "Renamed context": { id: "default", type: "checkbox", checkbox: defaultContext },
       // Display-name decoys must not be interpreted as registered Shared properties.
@@ -75,7 +81,7 @@ function fixture(
     ) => Effect.Effect<unknown, SkillsError>
   } = {},
 ) {
-  const base = sharedSnapshotFixture()
+  const base = currentSnapshotFixture()
   const config = {
     sources: options.unconfigured ? [] : [configuredSource],
     default_database: id(999),
@@ -99,6 +105,17 @@ function fixture(
         const api = yield* Notion
         const controlled: Notion["Service"] = {
           ...api,
+          connectionIdentity: Effect.gen(function* () {
+            const current = Effect.succeed({ object: "user", id: "current-principal" })
+            const identity = yield* options.wrap?.("v1/users/me", current) ?? current
+            return {
+              principal: String(property(identity).id),
+              credential: "current-fixture",
+              connection: "current-fixture",
+              workspace: null,
+              api_origin: "https://api.notion.com",
+            }
+          }),
           request: (path, body, requestOptions) => {
             const read = Effect.suspend(() => {
               requests.push({ path, body })
@@ -571,7 +588,7 @@ describe("shared library Views metadata", () => {
     if (inventory === undefined) throw new Error("Missing batched metadata query.")
     expect(
       new URL(inventory.path, "https://api.notion.com/").searchParams.getAll("filter_properties"),
-    ).toEqual(["title", "description", "kind", "skill_id", "enabled", "default"])
+    ).toEqual(["title", "description", "kind", "skill-id", "enabled", "default"])
     expect(inventory.body).toEqual({ page_size: 100 })
     expect(
       f.requests.filter((request) => request.path.includes(`/data_sources/${ds}/query`)),
@@ -718,7 +735,7 @@ describe("shared library Views metadata", () => {
     const objects = structuredClone(f.base.objects)
     f.rows[0] = f.base.main
     const tags = (names: string[]) => {
-      property(f.base.main.properties).tags = {
+      property(f.base.main.properties)["Tags"] = {
         id: library.skills.property_ids.Tags,
         type: "multi_select",
         multi_select: names.map((name) => ({ id: name, name, color: "default" })),

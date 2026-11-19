@@ -1,31 +1,29 @@
 import { Cause, Effect, Option, Schema } from "effect"
+import {
+  ConsumeInputSchema,
+  CONSUMER_CONTRACT_VERSION,
+  ConsumeResultSchema,
+  SOURCE_IDENTITY_COMPILER,
+  type ConsumeEntry,
+  type ConsumeInput,
+  type ConsumeReady,
+  type ConsumeResult,
+  type VerifiedManifest,
+} from "./consumer-model.ts"
 import { withConsumptionEffects, type ConsumptionEffects } from "./consumption-effects.ts"
-import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
 import { type PreparedNode } from "./graph-prepare-model.ts"
+import { prepareGraphWithSnapshots } from "./graph-prepare.ts"
 import { aliasFor, entrypointFor, fail, property, SkillsError } from "./model.ts"
 import { fileRef, normalizePath, pageId, parseRef, parseTarget } from "./ref.ts"
 import { validateSharedRecordIdentity } from "./shared-content.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
-import {
-  CONSUMER_CONTRACT_VERSION,
-  SOURCE_IDENTITY_COMPILER,
-  ConsumeInputSchema,
-  ConsumeResultSchema,
-  type ConsumeInput,
-  type ConsumeEntry,
-  type ConsumeReady,
-  type ConsumeResult,
-  type VerifiedManifest,
-} from "./consumer-model.ts"
 
 export * from "./consumer-model.ts"
 export {
   CONSUMPTION_EFFECTS_VERSION,
   ConsumptionEffectsSchema,
-  ConsumptionRetentionEffectSchema,
   type ConsumptionEffects,
-  type ConsumptionRetentionEffect,
 } from "./consumption-effects.ts"
 
 const invalid = () => fail("CONSUME_INVALID_PROOF", "Consumption evidence is inconsistent.")
@@ -46,11 +44,7 @@ function validateSelection(targetText: string, node: PreparedNode) {
   const physical = pageId(target.selector)
   const selected =
     target.selector === record.id ||
-    (physical !== undefined &&
-      (locator.type === "shared_skill" || locator.type === "notion_page") &&
-      locator.page_id === physical) ||
-    (locator.type === "notion_subscription" &&
-      target.selector === `upstream:${locator.subscription_id}`) ||
+    (physical !== undefined && locator.type === "shared_skill" && locator.page_id === physical) ||
     (target.snapshot !== undefined && ["", record.name, record.alias].includes(target.selector))
   if (
     !selected ||
@@ -91,13 +85,6 @@ function validateManifest(entry: ConsumeEntry, node: PreparedNode, scope: string
     (pageId(locator.page_id) !== locator.page_id ||
       pageId(locator.database_id) !== locator.database_id ||
       pageId(locator.data_source_id) !== locator.data_source_id)
-  )
-    throw invalid()
-  if (locator.type === "notion_page" && record.id !== `notion_page:${locator.page_id}`)
-    throw invalid()
-  if (
-    locator.type === "notion_subscription" &&
-    record.id !== `notion_subscription:${locator.subscription_id}`
   )
     throw invalid()
   const paths = new Set<string>()
@@ -276,12 +263,7 @@ export function decodeConsumeResult(value: unknown, expected?: ConsumeInput) {
         catch: invalid,
       })
       const manifest = entry.manifest
-      const identity =
-        manifest.historical_snapshot_id === undefined
-          ? node.id
-          : manifest.record.locator.type === "notion_page"
-            ? manifest.record.locator.page_id
-            : undefined
+      const identity = node.id
       if (
         identity === undefined ||
         manifest.snapshot_id !==
@@ -369,13 +351,7 @@ function consumeReady(
         record: snapshot.record,
         entrypoint: snapshot.entrypoint,
         files: snapshot.files,
-        ...(snapshot.historical_snapshot_id === undefined
-          ? {}
-          : { historical_snapshot_id: snapshot.historical_snapshot_id }),
         ...(snapshot.file_bindings === undefined ? {} : { file_bindings: snapshot.file_bindings }),
-        ...(snapshot.source_projection === undefined
-          ? {}
-          : { source_projection: snapshot.source_projection }),
       }
       const totalLines = node.content.split("\n").length
       const materialized = snapshot.materialization

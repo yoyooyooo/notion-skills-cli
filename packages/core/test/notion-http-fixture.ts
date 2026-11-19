@@ -7,15 +7,10 @@ import { Notion, NotionTransport } from "../src/notion.ts"
 import { NotionCredentialProviderLive } from "../src/notion-credential.ts"
 import { makeRequestScheduler, NotionRequestScheduler } from "../src/notion-request-scheduler.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 export const fixtureToken = "owned_http_fixture_token"
 function storeLayer(token: () => string | undefined) {
   return Layer.succeed(Store, {
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
-    registerBindingWithBase: () => Effect.die(new Error("Unexpected binding transaction")),
-    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected baseline transaction")),
     backup: () => Effect.die(new Error("Unexpected backup")),
     root: "/http-fixture",
     configRoot: "/http-fixture",

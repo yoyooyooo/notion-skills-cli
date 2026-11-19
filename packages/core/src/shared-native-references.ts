@@ -214,7 +214,7 @@ export function compileSharedNativeReferences(input: {
         source.page_id !== undefined &&
         tags.some((tag) => tag.kind === "page")
       ) {
-        const blocks = yield* readLinkBlocks(source.page_id, api, { structureEvidence: true })
+        const blocks = yield* readLinkBlocks(source.page_id, api)
         for (const block of blocks) {
           if (block.type !== "link_to_page") continue
           const link = property(block.link_to_page)

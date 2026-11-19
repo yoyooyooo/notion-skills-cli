@@ -93,7 +93,7 @@ export const listCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("List available skills with names, descriptions and refs"),
   Command.withDescription(
-    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list discovers the accessible source scope, including Prompts, regardless of the machine binding. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit; structured JSON is the default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight content metadata with role-tagged content/upstream database maps and successful-query coverage. Automatic subscription Routers require at least two verified published active Skills; individual Skill records remain independently available. Subscription Router locators belong to upstream sources; --database constrains their content target. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
+    "Use --view ID/Notion-URL for an exact session View, or --default-view for the bound shared Profile default and otherwise the first View in API order; --view and --default-view are mutually exclusive. --profile ID --database ENTRY selects a shared Profile for this invocation. An explicit --view takes precedence over Profile rules. A machine binding is consulted only with --default-view; an explicit different database uses that database's first View. Default capability directories omit Prompts. Bare list discovers the accessible source scope, including Prompts, regardless of the machine binding. Output defaults to 50 records (maximum --limit 500); follow next_cursor with --cursor until has_more is false. count is this page and total_count is the filtered observation; neither upgrades source coverage. Copy the returned cursor unchanged with the same query and selection; changed observations return LIST_CURSOR_STALE. --json is explicit; structured JSON is the default. View membership uses the native query including quick filters, not an additional Default Context gate; Profile and View rules never grant access. List paginated lightweight metadata from current libraries with explicit successful-query coverage. Routers expose current Members; each Skill remains independently available. --query filters Name/alias/Description while retaining the database map. Catalog age defaults to 60s; --refresh validates online, --offline uses stored observations, --max-age overrides age. These policies are mutually exclusive. Cache freshness never improves discovery coverage; failed sources stay explicit. --database accepts one ID, URL or exact registered alias; Search is not workspace-exhaustive.",
   ),
   Command.withExamples([
     {
@@ -109,9 +109,8 @@ export const listCommand = defineCommand(
       description: "Query a known Skills Database; replace DATABASE_ID with its ID or URL",
     },
     {
-      command: "ntn-skills list --database frontend",
-      description:
-        "Query the database previously registered with ctl database register frontend --database DATABASE_ID",
+      command: "ntn-skills list --database LIBRARY_ENTRY",
+      description: "Query current Skills from the exact Skills database entry",
     },
     {
       command: "ntn-skills list --profile daily --database LIBRARY_ID",
@@ -285,7 +284,6 @@ export const exportCommand = defineCommand(
         yield* exportSkill(config.selector, {
           output: config.output,
           format: format as "zip" | "directory" | undefined,
-          projection: "snapshot",
           database: Option.getOrUndefined(config.database),
           ...(yield* readPolicy(config)),
         }),
@@ -328,7 +326,7 @@ export const resolveCommand = defineCommand(
 ).pipe(
   Command.withShortDescription("Resolve relative resource refs using exact source identity"),
   Command.withDescription(
-    "Resolve a path relative to a containing-file skill:// ref. Member-local resolution remains a pure offline transformation preserving its snapshot. A path crossing the member root authenticates the containing snapshot and resolves through its exact active source/member/resource manifest; missing or stale maps fail explicitly. Returns JSON with ref. Replace PINNED_REF with the containing file's returned ref.",
+    "Resolve a path within the containing Skill from its returned skill:// file ref. This pure offline transformation preserves the local selected snapshot. A path cannot cross the Skill root; use an explicit current Skill ref for another owner. Returns JSON with ref. Replace PINNED_REF with the containing file's returned ref.",
   ),
   Command.withExamples([
     {

@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test"
 import { importDocument } from "../src/import.ts"
-import { skillDocument } from "../src/mutation.ts"
 import { canonicalMain, portableFiles, readPortable } from "../src/portable.ts"
 import { parseYaml } from "../src/yaml.ts"
 
@@ -27,14 +26,13 @@ const body = "# Example\n\nUse the configured server.\n"
 const bytes = new TextEncoder().encode(`---\n${frontmatter}\n---\n\n${body}`)
 const file = { path: "SKILL.md", bytes }
 
-test("imports and replacement accept multiline flow frontmatter without changing source bytes", () => {
+test("imports and portable roundtrip accept multiline flow frontmatter without changing source bytes", () => {
   const expected = {
     name: "flow-example",
     description: "Use to inspect a configured server.",
     body,
   }
   expect(importDocument(file)).toEqual(expected)
-  expect(skillDocument(bytes)).toMatchObject(expected)
   const restored = readPortable(
     portableFiles({ kind: "skill", ...expected, main: "SKILL.md", files: [file] }),
   )

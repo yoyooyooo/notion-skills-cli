@@ -14,10 +14,14 @@ import {
 } from "../src/shared-current-source.ts"
 import { materializeSharedFixedAcquisition } from "../src/shared-fixed-acquisition.ts"
 import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
+import {
+  sharedFileProperties,
+  sharedRecordProperties,
+  sharedSkillProperties,
+} from "../src/shared-library.ts"
 import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const hash = (value: string) => createHash("sha256").update(value).digest("hex")
@@ -36,40 +40,19 @@ const library: SharedLibrary = {
   skills: {
     database_id: id(3),
     data_source_id: id(4),
-    property_ids: bindings([
-      "Name",
-      "Description",
-      "Kind",
-      "Tags",
-      "Enabled",
-      "Default Context",
-      "Skill ID",
-      "Main File ID",
-      "Content",
-      "Current State",
-      "Operation",
-      "Origin",
-    ]),
+    property_ids: bindings(
+      Object.keys({ ...sharedSkillProperties, Members: {}, Requires: {}, Origin: {} }),
+    ),
   },
   files: {
     database_id: id(5),
     data_source_id: id(6),
-    property_ids: bindings(["Name", "File ID", "Path", "Content", "Skill"]),
+    property_ids: bindings(Object.keys({ ...sharedFileProperties(id(4)), Origin: {} })),
   },
   records: {
     database_id: id(7),
     data_source_id: id(8),
-    property_ids: bindings([
-      "Name",
-      "Record ID",
-      "Kind",
-      "Entity ID",
-      "Hash",
-      "Payload",
-      "Resource",
-      "Skill",
-      "Origin",
-    ]),
+    property_ids: bindings(Object.keys({ ...sharedRecordProperties(id(4)), Origin: {} })),
   },
   sources: {
     database_id: id(9),
@@ -86,6 +69,12 @@ const rich = (id: string, value: string) => ({
 const select = (id: string, name: string) => ({ id, type: "select", select: { name } })
 const title = (value: string) => ({ id: "title", type: "title", title: [{ plain_text: value }] })
 const checkbox = (id: string, value: boolean) => ({ id, type: "checkbox", checkbox: value })
+const relation = (id: string, targets: readonly string[] = []) => ({
+  id,
+  type: "relation",
+  relation: targets.map((id) => ({ id })),
+  has_more: false,
+})
 const parent = (table: SharedLibrary["files"]) => ({
   type: "data_source_id",
   data_source_id: table.data_source_id,
@@ -117,6 +106,7 @@ function fixture() {
       name: title("current-skill"),
       description: rich(skillIds.Description!, "Current acquisition"),
       kind: select(skillIds.Kind!, "skill"),
+      tags: { id: skillIds.Tags!, type: "multi_select", multi_select: [] },
       enabled: checkbox(skillIds.Enabled!, true),
       default: checkbox(skillIds["Default Context"]!, false),
       skill: rich(skillIds["Skill ID"]!, "current-skill"),
@@ -127,6 +117,9 @@ function fixture() {
       ),
       state: select(skillIds["Current State"]!, "ready"),
       operation: rich(skillIds.Operation!, ""),
+      members: relation(skillIds.Members!),
+      requires: relation(skillIds.Requires!),
+      origin: relation(skillIds.Origin!),
     },
   }
   const file = {
@@ -148,11 +141,11 @@ function fixture() {
           mode: "100644",
         }),
       ),
-      skill: {
-        id: fileIds.Skill!,
-        type: "relation",
-        relation: [{ id: skillPage }],
-        has_more: false,
+      skill: relation(fileIds.Skill!, [skillPage]),
+      origin: {
+        id: fileIds.Origin!,
+        type: "rollup",
+        rollup: { type: "array", array: [], function: "show_unique" },
       },
     },
   }
@@ -200,13 +193,9 @@ function fixture() {
     root: "/controlled",
     configRoot: "/controlled/config",
     cacheRoot: "/controlled/cache",
-    upstream: upstreamRepositoryFixture(),
-    integrity: integrityRepositoryFixture(),
     reserveCacheGeneration: unexpected,
     listKeys: unexpected,
     retireKeys: unexpected,
-    registerBindingWithBase: unexpected,
-    advanceBaseAndReceipt: unexpected,
     backup: unexpected,
     output: unexpected,
     readJson: (key, schema) =>
@@ -333,11 +322,14 @@ function sourceFixture() {
     id: id(30),
     parent: parent(library.sources!),
     properties: {
+      name: title("docs"),
       source: rich(ids["Source ID"]!, "docs"),
       content: rich(ids.Content!, JSON.stringify(canonical)),
       revision: rich(ids["Last Revision"]!, revision),
       enabled: checkbox(ids.Enabled!, true),
       status: select(ids.Status!, "ready"),
+      skills: relation(ids.Skills!),
+      records: relation(ids.Records!),
     },
   }
   f.sourceRows.push(source)

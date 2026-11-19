@@ -9,18 +9,18 @@ import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { readSkill } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import {
-  encode,
-  id,
-  library,
-  rich,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentBytes as encode,
+  currentId as id,
+  currentLibrary as library,
+  currentRich as rich,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
-const owner = "shared_skill:library-snapshot:stable-skill"
+const owner = "shared_skill:library-current:demo"
 const rootRef = fileRef(owner, "SKILL.md")
 const options = { database: library.skills.database_id }
-const fields = ["title", "description", "kind", "skill_id", "enabled", "default"]
+const fields = ["title", "description", "kind", "skill-id", "enabled", "default"]
 const skillQuery = "/v1/data_sources/" + library.skills.data_source_id + "/query"
 const pageUrl = (page: string) => "https://www.notion.so/" + page.replaceAll("-", "")
 type Services =
@@ -48,7 +48,7 @@ type Query = {
 /** Only Skills queries are replaced. Every current-page, Files, Records and body
  * operation still follows the shared snapshot fixture's real core boundary. */
 function fixture(count = 2, relations = false) {
-  const base = sharedSnapshotFixture({ fileCount: 1 })
+  const base = currentSnapshotFixture({ fileCount: 0 })
   const registered = relations
     ? {
         ...library,
@@ -69,9 +69,9 @@ function fixture(count = 2, relations = false) {
       id: id(1000 + index),
       properties: {
         ...structuredClone(property(base.main.properties)),
-        title: { id: "title", type: "title", title: [{ plain_text: "Other " + index }] },
-        description: rich("description", "Metadata for other " + index),
-        skill_id: rich("skill_id", "other-" + index),
+        Name: { id: "title", type: "title", title: [{ plain_text: "Other " + index }] },
+        Description: rich("description", "Metadata for other " + index),
+        "Skill ID": rich("skill-id", "other-" + index),
       },
     })
   const externalPage = String(rows.at(-1)!.id)
@@ -117,6 +117,13 @@ function fixture(count = 2, relations = false) {
           Effect.provideService(Notion, {
             ...api,
             credentialIdentity: Effect.sync(() => controls.credential),
+            connectionIdentity: Effect.sync(() => ({
+              principal: "current-principal",
+              credential: controls.credential,
+              connection: "current-fixture",
+              workspace: null,
+              api_origin: "https://api.notion.com",
+            })),
             request: (path, body, requestOptions) =>
               Effect.suspend(() => {
                 const url = new URL(path, "https://fixture.invalid/")
@@ -231,35 +238,26 @@ describe("scalar current metadata consumption", () => {
         })
         expect(result.effects).toEqual({
           version: 1,
-          remote_writes: "retained",
+          remote_writes: "none",
           author_content: "unchanged",
-          retention: [
-            {
-              skill_page_id: skillPage,
-              file_id: "file-main",
-              operation_id: expect.stringMatching(/^observe-[a-f0-9]{64}\.[a-f0-9]{64}$/),
-              status: "confirmed",
-            },
-          ],
         })
         expect(physical.effects).toEqual({
           version: 1,
           remote_writes: "none",
           author_content: "unchanged",
-          retention: [],
         })
         expect(f.base.json.get("snapshots/" + physical.snapshot_id + ".json")).toEqual(snapshot)
         expect(result.members?.map((entry) => entry.id)).toEqual([
-          "shared_skill:library-snapshot:other-1",
+          "shared_skill:library-current:other-1",
         ])
         expect(result.required?.map((entry) => entry.id)).toEqual([
-          "shared_skill:library-snapshot:other-" + (count - 1),
+          "shared_skill:library-current:other-" + (count - 1),
         ])
         expect(logicalBodies).toEqual(["/v1/pages/" + skillPage + "/markdown"])
         expect(bodies(f).every((path) => path === "/v1/pages/" + skillPage + "/markdown")).toBe(
           true,
         )
-        expect(rootGets(f)).toHaveLength(2)
+        expect(rootGets(f)).toHaveLength(4)
         expect(privateKeys(result)).toEqual([])
         expect(
           f.queries
@@ -275,11 +273,14 @@ describe("scalar current metadata consumption", () => {
     const f = fixture(3, true)
     const first = await f.run(readSkill(rootRef, options))
     const before = f.queries.length
-    property(f.rows[1]!.properties).description = rich("description", "Updated Member metadata")
-    property(f.rows[2]!.properties).description = rich("description", "Updated Requires metadata")
+    property(f.rows[1]!.properties)["Description"] = rich("description", "Updated Member metadata")
+    property(f.rows[2]!.properties)["Description"] = rich(
+      "description",
+      "Updated Requires metadata",
+    )
     const second = await f.run(readSkill(rootRef, { ...options, refresh: true }))
     expect(second.scope).toBe(first.scope)
-    expect(second.snapshot_id).not.toBe(first.snapshot_id)
+    expect(second.snapshot_id).toBe(first.snapshot_id)
     expect(property(second.members?.[0]?.metadata).description).toBe("Updated Member metadata")
     expect(property(second.required?.[0]?.metadata).description).toBe("Updated Requires metadata")
     const afterRefresh = f.requests.length
@@ -303,7 +304,7 @@ describe("scalar current metadata consumption", () => {
     expect(f.queries).toHaveLength(1)
     expect(rootGets(f)).toHaveLength(1)
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
+    expect(f.base.semanticWrites().length).toBe(0)
   })
 
   test("a relation target absent from the complete observation cannot become an empty relation", async () => {
@@ -314,7 +315,7 @@ describe("scalar current metadata consumption", () => {
     if (result._tag === "Failure")
       expect(result.failure.code).toBe("SHARED_ROUTER_MEMBER_UNAVAILABLE")
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
+    expect(f.base.semanticWrites().length).toBe(0)
     expect(f.queries).toHaveLength(1)
   })
 
@@ -325,7 +326,7 @@ describe("scalar current metadata consumption", () => {
     expect(result._tag).toBe("Failure")
     expect(f.requests.some((request) => request.path.includes("/properties/requires"))).toBe(true)
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
+    expect(f.base.semanticWrites().length).toBe(0)
     expect(f.queries).toHaveLength(1)
   })
 
@@ -336,7 +337,7 @@ describe("scalar current metadata consumption", () => {
         const f = fixture(count)
         const result = await f.run(readSkill(rootRef, options))
         expect(result.record.id).toBe(owner)
-        expect(rootGets(f)).toHaveLength(1)
+        expect(rootGets(f)).toHaveLength(2)
         expect(bodies(f)).toEqual(["/v1/pages/" + skillPage + "/markdown"])
         expect(f.queries).toHaveLength(Math.ceil(count / 100))
         expect(f.queries.map((query) => query.cursor ?? null)).toEqual(
@@ -350,53 +351,37 @@ describe("scalar current metadata consumption", () => {
           expect(property(query.body).filter).toBeUndefined()
           expect(query.responseBytes).toBeGreaterThan(0)
           for (const row of query.response.results)
-            expect(Object.keys(property(property(row).properties)).sort()).toEqual(
-              [...fields].sort(),
-            )
+            expect(
+              Object.values(property(property(row).properties))
+                .map((field) => property(field).id)
+                .sort(),
+            ).toEqual([...fields].sort())
         }
         const entries = result.native_references?.entries ?? []
         expect(entries.find((entry) => entry.page_id === skillPage)?.id).toBe(owner)
         if (count > 1)
           expect(entries.find((entry) => entry.page_id === f.externalPage)).toMatchObject({
-            id: "shared_skill:library-snapshot:other-" + (count - 1),
+            id: "shared_skill:library-current:other-" + (count - 1),
             name: "Other " + (count - 1),
             availability: "available",
           })
         expect(result.native_references?.unresolved).toEqual([])
         expect(privateKeys(result)).toEqual([])
-        if (process.env.NTN_SKILLS_SC11_EVIDENCE === "1")
-          console.log(
-            "SC11_METADATA_COST " +
-              JSON.stringify({
-                count,
-                measurement: "controlled decoded JSON bytes",
-                wire_bytes: null,
-                request_count: f.queries.length,
-                pages: f.queries.map((query) => ({
-                  fields: query.fields,
-                  cursor: query.cursor ?? null,
-                  rows: query.response.results.length,
-                  responseBytes: query.responseBytes,
-                })),
-                total_response_bytes: f.queries.reduce(
-                  (sum, query) => sum + query.responseBytes,
-                  0,
-                ),
-                selected_page_gets: rootGets(f).length,
-                body_reads: bodies(f).length,
-              }),
-          )
       },
     )
 
   test("disabled external Skills remain in the complete observation without target body reads", async () => {
     const f = fixture()
-    property(f.rows[1]!.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+    property(f.rows[1]!.properties)["Enabled"] = {
+      id: "enabled",
+      type: "checkbox",
+      checkbox: false,
+    }
     const result = await f.run(readSkill(rootRef, options))
     expect(
       result.native_references?.entries.find((entry) => entry.page_id === f.externalPage),
     ).toMatchObject({
-      id: "shared_skill:library-snapshot:other-1",
+      id: "shared_skill:library-current:other-1",
       availability: "disabled",
     })
     expect(result.native_references?.unresolved).toEqual([])
@@ -445,7 +430,7 @@ describe("scalar current metadata consumption", () => {
     const read = readSkill(rootRef, { ...options, refresh: true })
     const first = await f.run(read)
     const before = f.queries.length
-    property(f.rows[1]!.properties).description = rich("description", "New target metadata")
+    property(f.rows[1]!.properties)["Description"] = rich("description", "New target metadata")
     f.controls.credential = "another-scalar-credential"
     const second = await f.run(read)
     expect(second.scope).not.toBe(first.scope)
@@ -454,7 +439,7 @@ describe("scalar current metadata consumption", () => {
         ?.description,
     ).toBe("New target metadata")
     expect(f.queries.length - before).toBe(1)
-    expect(rootGets(f)).toHaveLength(2)
+    expect(rootGets(f)).toHaveLength(4)
   })
 
   test("a later same-scope refresh does not treat the previous invocation's observation as current", async () => {
@@ -462,7 +447,11 @@ describe("scalar current metadata consumption", () => {
     const read = readSkill(rootRef, { ...options, refresh: true })
     const first = await f.run(read)
     const before = f.queries.length
-    property(f.rows[1]!.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+    property(f.rows[1]!.properties)["Enabled"] = {
+      id: "enabled",
+      type: "checkbox",
+      checkbox: false,
+    }
     const second = await f.run(read)
     expect(second.scope).toBe(first.scope)
     expect(
@@ -475,12 +464,15 @@ describe("scalar current metadata consumption", () => {
   test("the full current root GET owns self-link metadata after catalog Name and Description change", async () => {
     const f = fixture()
     f.controls.beforeSelectedGet = () => {
-      property(f.base.main.properties).title = {
+      property(f.base.main.properties)["Name"] = {
         id: "title",
         type: "title",
         title: [{ plain_text: "Fresh root name" }],
       }
-      property(f.base.main.properties).description = rich("description", "Fresh root description")
+      property(f.base.main.properties)["Description"] = rich(
+        "description",
+        "Fresh root description",
+      )
     }
     const result = await f.run(readSkill(rootRef, options))
     expect(result.record.name).toBe("Fresh root name")
@@ -495,33 +487,33 @@ describe("scalar current metadata consumption", () => {
     expect(
       result.native_references?.entries.some((entry) => entry.page_id === f.externalPage),
     ).toBe(true)
-    expect(rootGets(f)).toHaveLength(1)
+    expect(rootGets(f)).toHaveLength(2)
   })
 
   test("a logical Skill ID changing between catalog resolution and the full root GET is rejected before bodies", async () => {
     const f = fixture()
     f.controls.beforeSelectedGet = () => {
-      property(f.base.main.properties).skill_id = rich("skill_id", "replacement-identity")
+      property(f.base.main.properties)["Skill ID"] = rich("skill-id", "replacement-identity")
     }
     const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
     expect(result._tag).toBe("Failure")
     expect(bodies(f)).toEqual([])
-    expect(f.base.writeCount()).toBe(0)
+    expect(f.base.semanticWrites().length).toBe(0)
   })
 
   test("an exact page selector still reads that page's current logical identity", async () => {
     const f = fixture()
     f.controls.beforeSelectedGet = () => {
-      property(f.base.main.properties).skill_id = rich("skill_id", "replacement-identity")
+      property(f.base.main.properties)["Skill ID"] = rich("skill-id", "replacement-identity")
     }
     const result = await f.run(readSkill(skillPage, options))
-    expect(result.record.id).toBe("shared_skill:library-snapshot:replacement-identity")
-    expect(rootGets(f)).toHaveLength(1)
+    expect(result.record.id).toBe("shared_skill:library-current:replacement-identity")
+    expect(rootGets(f)).toHaveLength(2)
   })
 
   test("the current root remains an identity claimant when a native inventory omits its row", async () => {
     const f = fixture()
-    property(f.rows[1]!.properties).skill_id = rich("skill_id", "stable-skill")
+    property(f.rows[1]!.properties)["Skill ID"] = rich("skill-id", "demo")
     f.controls.reply = ({ response }) => ({
       ...response,
       results: response.results.filter((row) => property(row).id !== skillPage),
@@ -568,7 +560,7 @@ describe("scalar current metadata consumption", () => {
       const result = await f.run(readSkill(rootRef, options).pipe(Effect.result))
       expect(result._tag).toBe("Failure")
       expect(bodies(f)).toEqual([])
-      expect(f.base.writeCount()).toBe(0)
+      expect(f.base.semanticWrites().length).toBe(0)
     })
 
   for (const fault of ["foreign-parent", "repeated-page", "disabled-identity-claim"] as const)
@@ -582,7 +574,7 @@ describe("scalar current metadata consumption", () => {
         else {
           const duplicate = structuredClone(f.rows[1]!)
           duplicate.id = id(8000)
-          property(duplicate.properties).enabled = {
+          property(duplicate.properties)["Enabled"] = {
             id: "enabled",
             type: "checkbox",
             checkbox: false,
@@ -597,7 +589,7 @@ describe("scalar current metadata consumption", () => {
           )
         expect(rootGets(f)).toHaveLength(0)
         expect(bodies(f)).toEqual([])
-        expect(f.base.writeCount()).toBe(0)
+        expect(f.base.semanticWrites().length).toBe(0)
       },
     )
 })

@@ -22,7 +22,15 @@ import { Store, StoreLive } from "../src/store.ts"
 const key = (id: string) => `cache/shared-github-blobs/${id.repeat(40)}.json`
 const hash = (text: string) => createHash("sha256").update(text).digest("hex")
 const payload = { version: 1, git_oid: "a".repeat(40), sha256: hash("retained"), bytes: 8 }
-const journal = "operations/shared-source-runs/source-run-00000000-0000-4000-8000-000000000001.json"
+const journal = `operations/current-write-pending/${"c".repeat(64)}/pending.json`
+const pending = {
+  version: 1,
+  scope: "c".repeat(64),
+  library_id: "library-current",
+  record_id: "current-cache-test",
+  intent: { operation_id: "cache-test", skill_id: "one", input_sha256: payload.sha256 },
+  lifecycle: { phase: "active", record_page_id: "00000000-0000-4000-8000-000000000009" },
+}
 const core = new URL("../src/", import.meta.url).pathname
 
 async function isolated(operation: (directory: string) => Promise<void>) {
@@ -55,7 +63,7 @@ function run<A, E>(
 }
 
 async function child(root: string, body: string, maxBytes: number) {
-  const program = `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};import {Effect,FileSystem} from ${JSON.stringify(import.meta.resolve("effect"))};import {sqliteState} from ${JSON.stringify(core + "sqlite-state.ts")};await Effect.runPromise(Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(${JSON.stringify(root)},yield* FileSystem.FileSystem,false,{max_bytes:${maxBytes},retention_ms:604800000});${body}})).pipe(Effect.provide(NodeServices.layer)));`
+  const program = `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};import {Effect,FileSystem} from ${JSON.stringify(import.meta.resolve("effect"))};import {sqliteState} from ${JSON.stringify(core + "sqlite-state.ts")};await Effect.runPromise(Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(${JSON.stringify(root)},yield* FileSystem.FileSystem,{max_bytes:${maxBytes},retention_ms:604800000});${body}})).pipe(Effect.provide(NodeServices.layer)));`
   const process = spawn(globalThis.process.execPath, ["--input-type=module", "-e", program], {
     stdio: ["ignore", "pipe", "pipe"],
   })
@@ -71,7 +79,7 @@ async function child(root: string, body: string, maxBytes: number) {
   return { exit, stdout, stderr }
 }
 
-test("two independent writers admit only the shared capacity, including retired payloads, while original operations persist", async () =>
+test("two independent writers admit only the shared capacity, including retired payloads, while original pending intents persist", async () =>
   isolated(async (directory) => {
     const root = join(directory, "state")
     const maximum = Buffer.byteLength(JSON.stringify(payload)) + 1
@@ -88,7 +96,7 @@ test("two independent writers admit only the shared capacity, including retired 
     for (const result of writes) expect(result, result.stderr).toMatchObject({ exit: 0 })
     const inspect = await child(
       root,
-      `const rows=yield* state.rebuildableCacheRecords();yield* state.retire(rows.map(row=>row.key));yield* state.write(${JSON.stringify(key("c"))},${JSON.stringify(payload)});yield* state.write(${JSON.stringify(journal)},{original:true,pending:true});console.log(JSON.stringify({rows:yield* state.rebuildableCacheRecords(),journal:yield* state.read(${JSON.stringify(journal)})}));`,
+      `const rows=yield* state.rebuildableCacheRecords();yield* state.retire(rows.map(row=>row.key));yield* state.write(${JSON.stringify(key("c"))},${JSON.stringify(payload)});yield* state.write(${JSON.stringify(journal)},${JSON.stringify(pending)});console.log(JSON.stringify({rows:yield* state.rebuildableCacheRecords(),journal:yield* state.read(${JSON.stringify(journal)})}));`,
       maximum,
     )
     expect(inspect.exit, inspect.stderr).toBe(0)
@@ -96,11 +104,11 @@ test("two independent writers admit only the shared capacity, including retired 
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0].retired).toBe(1)
     expect(result.rows[0].admitted_at).toBeGreaterThan(0)
-    expect(result.journal).toEqual({ original: true, pending: true })
+    expect(result.journal).toEqual(pending)
   }))
 
 test.skipIf(process.platform !== "darwin")(
-  "exact preview uses system Trash, preserves shared historical bytes and permits fixed-index reconstruction",
+  "exact preview uses system Trash, preserves current fixed bytes and permits fixed-index reconstruction",
   async () =>
     isolated(async (directory) => {
       const snapshots: Snapshot[] = ["one", "two"].map((id) => ({
@@ -110,14 +118,21 @@ test.skipIf(process.platform !== "darwin")(
         entrypoint: "SKILL.md",
         created_at: 1,
         record: {
-          id: `notion_page:${id}`,
+          id: `shared_skill:library-current:${id}`,
           kind: "skill",
           entrypoint: "SKILL.md",
-          locator: { type: "notion_page", page_id: id, database_id: "db", data_source_id: "ds" },
+          locator: {
+            type: "shared_skill",
+            page_id: "00000000-0000-4000-8000-000000000001",
+            database_id: "00000000-0000-4000-8000-000000000003",
+            data_source_id: "00000000-0000-4000-8000-000000000004",
+            library_id: "library-current",
+            skill_id: id,
+          },
           name: id,
           alias: id,
           description: id,
-          ref: `skill://${id}/SKILL.md`,
+          ref: `skill://${encodeURIComponent(`shared_skill:library-current:${id}`)}/SKILL.md`,
           default_context: false,
         },
         files: [{ path: "SKILL.md", bytes: 8, sha256: payload.sha256 }],
@@ -134,7 +149,7 @@ test.skipIf(process.platform !== "darwin")(
           for (const snapshot of snapshots)
             yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
           yield* store.writeJson(key("a"), payload)
-          yield* store.writeJson(journal, { original: true, pending: true, sha256: payload.sha256 })
+          yield* store.writeJson(journal, pending)
           yield* configureCacheCapacity({ maxBytes: 0, retentionMs: 0 })
         }),
       )
@@ -144,7 +159,7 @@ test.skipIf(process.platform !== "darwin")(
       expect(preview.objects[0]).toMatchObject({
         bytes: 8,
         snapshots: ["s_one", "s_two"],
-        owners: ["notion_page:one", "notion_page:two"],
+        owners: ["shared_skill:library-current:one", "shared_skill:library-current:two"],
       })
       expect(preview.objects[0]?.protected_by).toContain("shared_object")
       expect(preview.database.length).toBeGreaterThan(0)
@@ -156,11 +171,7 @@ test.skipIf(process.platform !== "darwin")(
         directory,
         Effect.gen(function* () {
           const store = yield* Store
-          expect(yield* store.readJson(journal, Schema.Unknown)).toEqual({
-            original: true,
-            pending: true,
-            sha256: payload.sha256,
-          })
+          expect(yield* store.readJson(journal, Schema.Unknown)).toEqual(pending)
           expect(yield* store.readJson("config.json", Schema.Unknown)).toMatchObject({
             token: "preserved-secret",
             custom: { preserve: true },

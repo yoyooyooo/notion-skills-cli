@@ -1,26 +1,23 @@
-import { afterAll, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { expect, test } from "bun:test"
 import { Effect } from "effect"
-import { trashPath } from "../src/local-locks.ts"
 import { consume, decodeConsumeResult } from "../src/consumer.ts"
 import { property } from "../src/model.ts"
 import { parseTarget } from "../src/ref.ts"
-import { saveSharedProfile } from "../src/shared-profile.ts"
-import { library, sharedSnapshotFixture, skillPage } from "./shared-snapshot-fixture.ts"
+import { prepareSharedProfileChange } from "../src/shared-profile.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
+import {
+  currentLibrary as library,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+  currentId as id,
+  currentRich as rich,
+  currentDigest as digest,
+} from "./shared-current-fixture.ts"
 
-const roots: string[] = []
-afterAll(async () => {
-  if (process.platform === "darwin")
-    for (const root of roots) await Effect.runPromise(trashPath(root))
-})
 async function consumer(readMaxAge: number) {
-  const root = mkdtempSync(join(tmpdir(), "ntn-profile-consumer-"))
-  roots.push(root)
-  const f = sharedSnapshotFixture({ root })
-  await f.run(
-    saveSharedProfile(library, {
+  const f = currentSnapshotFixture()
+  const plan = await f.run(
+    prepareSharedProfileChange(library, {
       profile: {
         profile_id: "daily",
         name: "Daily",
@@ -29,7 +26,7 @@ async function consumer(readMaxAge: number) {
           default: { read_max_age_ms: 600_000 },
           skills: [
             {
-              skill_id: "stable-skill",
+              skill_id: "demo",
               read_max_age_ms: readMaxAge,
               source_check_max_age_ms: 86_400_000,
             },
@@ -39,14 +36,39 @@ async function consumer(readMaxAge: number) {
       expectedFingerprint: null,
     }),
   )
+  const envelope = canonicalSharedJson({
+    version: 1,
+    operation_id: plan.operation_id,
+    payload: plan.payload,
+  })
+  f.records.set(plan.record_id, {
+    object: "page",
+    id: id(500),
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.records.data_source_id,
+      database_id: library.records.database_id,
+    },
+    properties: {
+      Name: { id: "title", type: "title", title: [{ plain_text: "Daily" }] },
+      "Record ID": rich("record", plan.record_id),
+      Kind: { id: "kind", type: "select", select: { name: "profile" } },
+      "Entity ID": rich("entity", "daily"),
+      Hash: rich("hash", digest(envelope)),
+      Payload: rich("payload", envelope),
+      Skill: { id: "skill", type: "relation", relation: [], has_more: false },
+      Origin: { id: "origin", type: "relation", relation: [], has_more: false },
+      Resource: { id: "resource", type: "files", files: [] },
+    },
+  })
   f.json.set("config.json", {
     shared_profile: { library_entry: library.skills.database_id, profile_id: "daily" },
   })
   return f
 }
 const options = { database: library.skills.database_id }
-const current = parseTarget("skill://shared_skill%3Alibrary-snapshot%3Astable-skill/SKILL.md")
-function observations(f: ReturnType<typeof sharedSnapshotFixture>) {
+const current = parseTarget("skill://shared_skill%3Alibrary-current%3Ademo/SKILL.md")
+function observations(f: ReturnType<typeof currentSnapshotFixture>) {
   return [...f.json.entries()]
     .filter(([key]) => key.startsWith("cache/latest/"))
     .map(([, value]) => property(value))
@@ -56,7 +78,7 @@ test("strict consume proof retains the effective shared freshness evidence", asy
   const f = await consumer(10_000)
   const input = {
     version: 1 as const,
-    targets: ["skill://shared_skill%3Alibrary-snapshot%3Astable-skill/SKILL.md"],
+    targets: ["skill://shared_skill%3Alibrary-current%3Ademo/SKILL.md"],
     purpose: "use" as const,
   }
   const result = await f.run(consume(input, options))
@@ -98,19 +120,19 @@ test("the real current consumer resolves the stable Skill override and a warm hi
   const refreshed = await f.target(current, options)
   expect(refreshed.source).toBe("notion")
   expect(refreshed.snapshot_id).toBe(first.snapshot_id)
-  expect(f.readBodyCount()).toBe(0)
-  expect(f.writeCount()).toBe(0)
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
 })
 
 test("a day-long Skill body policy cannot postpone independent current eligibility checks", async () => {
   const f = await consumer(86_400_000)
   const first = await f.target(parseTarget(skillPage), options)
   for (const observation of observations(f)) observation.validated_at = Date.now() - 300_001
-  property(f.main.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+  property(f.main.properties).Enabled = { id: "enabled", type: "checkbox", checkbox: false }
   f.clearCalls()
   await expect(f.target(current, options)).rejects.toThrow("disabled")
-  expect(f.readBodyCount()).toBe(0)
-  expect(f.writeCount()).toBe(0)
+  expect(f.bodyCalls()).toHaveLength(0)
+  expect(f.semanticWrites()).toHaveLength(0)
   expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toBeDefined()
 })
 
@@ -121,6 +143,6 @@ test("explicit force refresh wins over the selected shared body duration", async
   const forced = await f.target(current, { ...options, maxAge: 0 })
   expect(forced.snapshot_id).toBe(first.snapshot_id)
   expect(forced.freshness).toMatchObject({ max_age_ms: 0, policy_source: "explicit" })
-  expect(f.readBodyCount()).toBe(3)
-  expect(f.writeCount()).toBe(0)
+  expect(f.bodyCalls()).toHaveLength(3)
+  expect(f.semanticWrites()).toHaveLength(0)
 })

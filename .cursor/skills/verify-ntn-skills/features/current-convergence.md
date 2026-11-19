@@ -26,10 +26,10 @@ AH-516 对账 Pro 所有本地内容及曝光/更新边，AH-498 汇总完成。
 CURRENT_RUN="$(mktemp -d /tmp/ntn-current-convergence.XXXXXX)"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts init --run "$CURRENT_RUN"
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts doctor --run "$CURRENT_RUN"
-bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/builtin-guidance.test.ts
+bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/builtin-guidance.test.ts packages/cli/test/installed-package-ci.test.ts
 ~~~
 
-Doctor 只证明入口可启动，不证明内容、安装或线上清理。旧 harness Drive 的 import/history/operator 流程不运行。
+Doctor 只证明入口可启动和当前接线，不证明内容、安装或线上清理。controller 只提供隔离、当前命令、精确测试库和清理；安装沿现有 package:check。
 
 ## 1. 当前内容与阅读
 

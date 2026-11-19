@@ -30,14 +30,11 @@ export const VerifiedManifestSchema = Schema.Struct({
   complete: Schema.Literal(true),
   scope: PrepareBindingSchema.fields.scope,
   snapshot_id: PrepareBindingSchema.fields.snapshot_id,
-  historical_snapshot_id: SnapshotSchema.fields.historical_snapshot_id,
   version_id: PrepareBindingSchema.fields.version_id,
   record: SnapshotSchema.fields.record,
   entrypoint: SnapshotSchema.fields.entrypoint,
   files: SnapshotSchema.fields.files,
   file_bindings: SnapshotSchema.fields.file_bindings,
-  // This describes upstream source provenance, not a model-context compiler.
-  source_projection: SnapshotSchema.fields.source_projection,
 })
 export type VerifiedManifest = typeof VerifiedManifestSchema.Type
 

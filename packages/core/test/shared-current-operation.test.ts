@@ -12,43 +12,18 @@ import {
   type CurrentOperationSession,
 } from "../src/shared-current-operation.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const id = (n: number) => "00000000-0000-4000-8000-" + n.toString(16).padStart(12, "0")
 const rich = (value: string) => [{ type: "text", text: { content: value } }]
-const library: SharedLibrary = {
-  version: 1,
-  library_id: "current-operations",
-  operation_id: "library-current-operations",
-  parent_page_id: id(1),
-  skills: {
-    database_id: id(2),
-    data_source_id: id(3),
-    property_ids: { "Skill ID": "skill-id", "Current State": "state", Operation: "operation" },
-  },
-  files: { database_id: id(4), data_source_id: id(5), property_ids: {} },
-  records: {
-    database_id: id(6),
-    data_source_id: id(7),
-    property_ids: {
-      Name: "title",
-      "Record ID": "record",
-      "Entity ID": "entity",
-      Kind: "kind",
-      Hash: "hash",
-      Payload: "payload",
-      Skill: "skill",
-      Resource: "resource",
-    },
-  },
-}
+const library: SharedLibrary = structuredClone(currentLibrary)
 const intent = {
   operation_id: "write-example-1",
   skill_id: "example",
   input_sha256: "a".repeat(64),
 }
-const ownerId = id(10),
+const ownerId = id(20),
   productPath = "v1/blocks/" + ownerId + "/children"
 const parent = mkdtempSync(join(tmpdir(), "ntn-current-operation-"))
 afterAll(async () => {
@@ -195,8 +170,6 @@ function fixture(options: { skillExists?: boolean } = {}) {
     root,
     configRoot: root,
     cacheRoot: root,
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
     listKeys: (prefix) => Effect.succeed([...json.keys()].filter((key) => key.startsWith(prefix))),
     readJson: (key, schema) =>
       Effect.try({
@@ -218,8 +191,6 @@ function fixture(options: { skillExists?: boolean } = {}) {
         }),
       ),
     reserveCacheGeneration: () => Effect.die("Unexpected cache generation"),
-    registerBindingWithBase: () => Effect.die("Unexpected binding"),
-    advanceBaseAndReceipt: () => Effect.die("Unexpected old receipt"),
     backup: () => Effect.die("Unexpected backup"),
     readBytes: () => Effect.die("Unexpected local bytes"),
     writeBytes: () => Effect.die("Unexpected local bytes"),

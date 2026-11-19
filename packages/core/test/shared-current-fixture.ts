@@ -7,10 +7,17 @@ import { Notion } from "../src/notion.ts"
 import { prepareCurrentSharedResource } from "../src/shared-current-resource.ts"
 import type { CurrentFileContent } from "../src/shared-current-file.ts"
 import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
+import {
+  sharedFileProperties,
+  sharedRecordProperties,
+  sharedSkillProperties,
+} from "../src/shared-library.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
+import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 import { openSharedSnapshot, type OpenSharedSnapshotInput } from "../src/shared-snapshot.ts"
+import { targetSnapshot } from "../src/snapshot.ts"
+import { createRequestMetrics } from "../src/request-metrics.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 export const currentId = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
@@ -28,43 +35,29 @@ export const currentRich = (id: string, value: string) => ({
   rich_text: [{ type: "text", plain_text: value, text: { content: value } }],
 })
 const selection = (id: string, name: string) => ({ id, type: "select", select: { name } })
-const relation = (id: string) => ({
+const relation = (id: string, targets: readonly string[] = [currentSkillPage]) => ({
   id,
   type: "relation",
   has_more: false,
-  relation: [{ id: currentSkillPage }],
+  relation: targets.map((id) => ({ id })),
 })
-const skillFields = {
-  Name: "title",
-  Description: "description",
-  Kind: "kind",
-  Tags: "tags",
-  Enabled: "enabled",
-  "Default Context": "default",
-  "Skill ID": "skill-id",
-  "Main File ID": "main-id",
-  Content: "content",
-  "Current State": "state",
-  Operation: "operation",
-}
-const fileFields = {
-  Name: "title",
-  "File ID": "file-id",
-  Path: "path",
-  Skill: "skill",
-  Content: "content",
-}
-const recordFields = {
-  Name: "title",
-  "Record ID": "record",
-  Kind: "kind",
-  "Entity ID": "entity",
-  Hash: "hash",
-  Payload: "payload",
-  Skill: "skill",
-  Resource: "resource",
-}
-export const currentLibrary: SharedLibrary = {
+const propertyIds = (layout: Record<string, unknown>, overrides: Record<string, string> = {}) =>
+  Object.fromEntries(
+    Object.keys(layout).map((name) => [
+      name,
+      overrides[name] ?? (name === "Name" ? "title" : name.toLowerCase().replaceAll(" ", "-")),
+    ]),
+  )
+const skillFields = propertyIds(
+  { ...sharedSkillProperties, Members: {}, Requires: {}, Origin: {} },
+  { "Default Context": "default", "Main File ID": "main-id", "Current State": "state" },
+)
+const fileFields = propertyIds({ ...sharedFileProperties(currentId(4)), Origin: {} })
+const recordFields = propertyIds(
+  { ...sharedRecordProperties(currentId(4)), Origin: {} },
+  { "Record ID": "record", "Entity ID": "entity" },
+)
+export const currentLibrary = {
   version: 1,
   library_id: "library-current",
   operation_id: "library-current",
@@ -72,7 +65,12 @@ export const currentLibrary: SharedLibrary = {
   skills: { database_id: currentId(3), data_source_id: currentId(4), property_ids: skillFields },
   files: { database_id: currentId(5), data_source_id: currentId(6), property_ids: fileFields },
   records: { database_id: currentId(7), data_source_id: currentId(8), property_ids: recordFields },
-}
+  sources: {
+    database_id: currentId(20),
+    data_source_id: currentId(21),
+    property_ids: propertyIds(sourceDefinitionLayout(currentId(4), currentId(8))),
+  },
+} satisfies SharedLibrary
 const frontmatter = "---\nname: authored-name\ndescription: Authored description.\n---\n\n"
 const native = { kind: "native", mode: "100644", frontmatter: "" } satisfies CurrentFileContent
 const initialTime = "2026-11-18T00:00:00.000Z"
@@ -83,16 +81,23 @@ export type CurrentFixtureCall = {
 }
 
 /** In-memory current service boundary. Unimplemented network operations fail immediately. */
-export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
+export function currentSnapshotFixture(
+  input: { fileCount?: number; httpClient?: HttpClient.HttpClient; root?: string } = {},
+) {
   const main = {
     object: "page",
     id: currentSkillPage,
     last_edited_time: initialTime,
-    parent: { type: "data_source_id", data_source_id: currentLibrary.skills.data_source_id },
+    parent: {
+      type: "data_source_id",
+      data_source_id: currentLibrary.skills.data_source_id,
+      database_id: currentLibrary.skills.database_id,
+    },
     properties: {
       Name: { id: "title", type: "title", title: [{ plain_text: "Current demo" }] },
       Description: currentRich("description", "Discover current content."),
       Kind: selection("kind", "skill"),
+      Tags: { id: "tags", type: "multi_select", multi_select: [] },
       Enabled: { id: "enabled", type: "checkbox", checkbox: true },
       "Default Context": { id: "default", type: "checkbox", checkbox: false },
       "Skill ID": currentRich("skill-id", "demo"),
@@ -100,18 +105,31 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
       Content: currentRich("content", JSON.stringify({ ...native, frontmatter })),
       "Current State": selection("state", "ready"),
       Operation: currentRich("operation", ""),
+      members: relation("members", []),
+      requires: relation("requires", []),
+      origin: relation("origin", []),
     },
   }
   const files = Array.from({ length: input.fileCount ?? 2 }, (_, n) => ({
     object: "page",
     id: currentId(100 + n),
     last_edited_time: initialTime,
-    parent: { type: "data_source_id", data_source_id: currentLibrary.files.data_source_id },
+    parent: {
+      type: "data_source_id",
+      data_source_id: currentLibrary.files.data_source_id,
+      database_id: currentLibrary.files.database_id,
+    },
     properties: {
+      Name: { id: "title", type: "title", title: [{ plain_text: `Supporting ${n}` }] },
       "File ID": currentRich("file-id", `support-${n}`),
       Path: currentRich("path", `references/${n}.md`),
       Skill: relation("skill"),
       Content: currentRich("content", JSON.stringify(native)),
+      Origin: {
+        id: "origin",
+        type: "rollup",
+        rollup: { type: "array", array: [], function: "show_unique" },
+      },
     },
   }))
   const bodies = new Map([
@@ -121,19 +139,19 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
     ),
   ])
   const records = new Map<string, unknown>()
+  const sources = new Map<string, unknown>()
   const json = new Map<string, unknown>()
   const objects = new Map<string, Uint8Array>()
   const calls: CurrentFixtureCall[] = []
+  let metrics = createRequestMetrics()
   let generation = 0
   let failure: ((call: CurrentFixtureCall) => SkillsError | undefined) | undefined
   let alter: ((call: CurrentFixtureCall, response: unknown) => unknown) | undefined
 
   const store: Store["Service"] = {
-    root: "/unused-current-fixture",
-    configRoot: "/unused-current-fixture",
-    cacheRoot: "/unused-current-fixture",
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
+    root: input.root ?? "/unused-current-fixture",
+    configRoot: input.root ?? "/unused-current-fixture",
+    cacheRoot: input.root ?? "/unused-current-fixture",
     reserveCacheGeneration: () => Effect.sync(() => ++generation),
     listKeys: (prefix) =>
       Effect.sync(() =>
@@ -183,8 +201,6 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
         catch: (error) =>
           error instanceof SkillsError ? error : fail("FIXTURE_ERROR", "Object write failed."),
       }),
-    registerBindingWithBase: () => Effect.die(new Error("Unexpected old binding.")),
-    advanceBaseAndReceipt: () => Effect.die(new Error("Unexpected old baseline.")),
     backup: () => Effect.die(new Error("Unexpected backup.")),
     output: () => Effect.die(new Error("Unexpected export.")),
   }
@@ -235,56 +251,79 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
       workspace: null,
       api_origin: "https://api.notion.com",
     }),
+    get metrics() {
+      return metrics
+    },
     request: (path, body, options) =>
-      Effect.suspend(() => {
-        const call = {
+      Effect.gen(function* () {
+        const finish = metrics.begin({
           path,
-          body,
           method: options?.method ?? (body === undefined ? "GET" : "POST"),
-        }
-        calls.push(call)
-        const error = failure?.(call)
-        if (error !== undefined) return Effect.fail(error)
-        let result: unknown
-        if (call.method === "GET" && path === `v1/databases/${currentLibrary.skills.database_id}`)
-          result = {
-            id: currentLibrary.skills.database_id,
-            database_type: null,
-            title: [{ plain_text: "Current Skills" }],
-            data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Current Skills" }],
-            description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
+          content: options?.content,
+          key: canonicalSharedJson([path, body ?? null]),
+          requestBytes: body === undefined ? 0 : currentBytes(JSON.stringify(body)).byteLength,
+        })
+        const result = yield* Effect.suspend(() => {
+          const call = {
+            path,
+            body,
+            method: options?.method ?? (body === undefined ? "GET" : "POST"),
           }
-        else if (call.method === "GET" && path === `v1/pages/${currentSkillPage}`)
-          result = structuredClone(main)
-        else if (call.method === "GET" && /\/markdown(?:\?|$)/u.test(path)) {
-          const page = path.split("/")[2]
-          const markdown = page === undefined ? undefined : bodies.get(page)
-          if (markdown === undefined)
-            return Effect.fail(fail("NOTION_NOT_FOUND", "Body unavailable."))
-          result = { id: page, markdown, truncated: false, unknown_block_ids: [] }
-        } else if (
-          call.method === "POST" &&
-          path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`)
-        )
-          result = query([main], body)
-        else if (
-          call.method === "POST" &&
-          path.startsWith(`v1/data_sources/${currentLibrary.files.data_source_id}/query`)
-        )
-          result = query(files, body)
-        else if (
-          call.method === "POST" &&
-          path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`)
-        )
-          result = query([...records.values()], body)
-        else
-          return Effect.fail(
-            fail("UNEXPECTED_REQUEST", "Current reader attempted an unexpected request.", {
-              method: call.method,
-              path,
-            }),
+          calls.push(call)
+          const error = failure?.(call)
+          if (error !== undefined) return Effect.fail(error)
+          let result: unknown
+          if (call.method === "GET" && path === `v1/databases/${currentLibrary.skills.database_id}`)
+            result = {
+              id: currentLibrary.skills.database_id,
+              database_type: null,
+              title: [{ plain_text: "Current Skills" }],
+              data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Current Skills" }],
+              description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
+            }
+          else if (call.method === "GET" && path === `v1/pages/${currentSkillPage}`)
+            result = structuredClone(main)
+          else if (call.method === "GET" && /\/markdown(?:\?|$)/u.test(path)) {
+            const page = path.split("/")[2]
+            const markdown = page === undefined ? undefined : bodies.get(page)
+            if (markdown === undefined)
+              return Effect.fail(fail("NOTION_NOT_FOUND", "Body unavailable."))
+            result = { id: page, markdown, truncated: false, unknown_block_ids: [] }
+          } else if (
+            call.method === "POST" &&
+            path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`)
           )
-        return Effect.succeed(alter === undefined ? result : alter(call, result))
+            result = query([main], body)
+          else if (
+            call.method === "POST" &&
+            path.startsWith(`v1/data_sources/${currentLibrary.files.data_source_id}/query`)
+          )
+            result = query(files, body)
+          else if (
+            call.method === "POST" &&
+            path.startsWith(`v1/data_sources/${currentLibrary.records.data_source_id}/query`)
+          )
+            result = query([...records.values()], body)
+          else if (
+            call.method === "POST" &&
+            path.startsWith(`v1/data_sources/${currentLibrary.sources.data_source_id}/query`)
+          )
+            result = query([...sources.values()], body)
+          else
+            return Effect.fail(
+              fail("UNEXPECTED_REQUEST", "Current reader attempted an unexpected request.", {
+                method: call.method,
+                path,
+              }),
+            )
+          return Effect.succeed(alter === undefined ? result : alter(call, result))
+        }).pipe(Effect.result)
+        if (result._tag === "Failure") {
+          finish({ outcome: "failure", responseBytes: 0 })
+          return yield* Effect.fail(result.failure)
+        }
+        finish({ responseBytes: currentBytes(JSON.stringify(result.success)).byteLength })
+        return result.success
       }),
   }
   const layer = Layer.mergeAll(
@@ -293,7 +332,7 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
     Layer.succeed(Notion, api),
     Layer.succeed(
       HttpClient.HttpClient,
-      HttpClient.make(() => Effect.die(new Error("Unexpected provider HTTP."))),
+      input.httpClient ?? HttpClient.make(() => Effect.die(new Error("Unexpected provider HTTP."))),
     ),
   )
   const run = <A, E>(
@@ -322,12 +361,17 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
     path: string,
     bytes: Uint8Array,
     mode: "100644" | "100755" = "100644",
+    attachment?: unknown,
   ) {
     const file = files[n]
     if (file === undefined) throw new Error("Missing fixture File.")
-    const prepared = await run(prepareCurrentSharedResource(bytes, mode))
-    if (prepared.status !== "inline")
-      throw new Error("This fixture stores only small inline resources.")
+    const prepared = await run(
+      prepareCurrentSharedResource(bytes, mode, {
+        storage: attachment === undefined ? "auto" : "attachment",
+      }),
+    )
+    if (prepared.status !== "inline" && attachment === undefined)
+      throw new Error("A fixture attachment requires its current Notion file locator.")
     file.properties.Content = currentRich("content", JSON.stringify(prepared.content))
     file.properties.Path = currentRich("path", path)
     const envelope = canonicalSharedJson({
@@ -339,7 +383,11 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
       object: "page",
       id: currentId(900 + n),
       last_edited_time: initialTime,
-      parent: { type: "data_source_id", data_source_id: currentLibrary.records.data_source_id },
+      parent: {
+        type: "data_source_id",
+        data_source_id: currentLibrary.records.data_source_id,
+        database_id: currentLibrary.records.database_id,
+      },
       properties: {
         Name: { id: "title", type: "title", title: [{ plain_text: prepared.content.object_id }] },
         "Record ID": currentRich("record", prepared.content.object_id),
@@ -348,7 +396,12 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
         Hash: currentRich("hash", currentDigest(envelope)),
         Payload: currentRich("payload", envelope),
         Skill: relation("skill"),
-        Resource: { id: "resource", type: "files", files: [] },
+        Origin: relation("origin", []),
+        Resource: {
+          id: "resource",
+          type: "files",
+          files: attachment === undefined ? [] : [attachment],
+        },
       },
     })
     return prepared.content
@@ -358,15 +411,22 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
     files,
     bodies,
     records,
+    sources,
     json,
     objects,
     calls,
     run,
     open,
+    target: (
+      target: Parameters<typeof targetSnapshot>[0],
+      options: Parameters<typeof targetSnapshot>[1] = {},
+    ) => run(targetSnapshot(target, options)),
     resource,
     clearCalls: () => {
       calls.length = 0
+      metrics = createRequestMetrics()
     },
+    requestMetrics: () => metrics.snapshot(),
     failRequests: (value: typeof failure) => {
       failure = value
     },

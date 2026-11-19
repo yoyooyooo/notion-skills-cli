@@ -14,10 +14,27 @@ import {Effect,FileSystem,Layer,ConfigProvider} from ${JSON.stringify(import.met
 import {Store,StoreLive,sha256} from ${JSON.stringify(core + "store.ts")};
 import {SnapshotSchema} from ${JSON.stringify(core + "model.ts")};
 import {loadSnapshot} from ${JSON.stringify(core + "snapshot.ts")};
+import {fileRef} from ${JSON.stringify(core + "ref.ts")};
+import {sharedSkillId} from ${JSON.stringify(core + "shared-content.ts")};
 const root=${JSON.stringify(root)};
 const boundary=Layer.effect(FileSystem.FileSystem,Effect.map(FileSystem.FileSystem,fs=>({...fs,${boundary}}))).pipe(Layer.provide(NodeServices.layer));
 const services=Layer.merge(NodeServices.layer,boundary);
-Effect.runPromise(Effect.gen(function*(){const store=yield* Store;const bytes=new TextEncoder().encode('durable content');const hash=yield* sha256(bytes);const id='s_'+(yield* sha256(JSON.stringify(['scope','notion_page:page','v_fixture'])));const key='snapshots/'+id+'.json';const snapshot={snapshot_id:id,scope:'scope',version_id:'v_fixture',entrypoint:'SKILL.md',created_at:123,record:{id:'notion_page:page',kind:'skill',entrypoint:'SKILL.md',locator:{type:'notion_page',page_id:'page',database_id:'db',data_source_id:'ds'},name:'fixture',alias:'fixture',description:'fixture',ref:'skill://page/SKILL.md',default_context:false},files:[{path:'SKILL.md',bytes:bytes.length,sha256:hash}]};${body}}).pipe(Effect.provide(StoreLive.pipe(Layer.provideMerge(services))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(e=>{console.error(String(e));process.exitCode=1});`
+Effect.runPromise(Effect.gen(function*(){
+const store=yield* Store;
+const bytes=new TextEncoder().encode('durable content');
+const hash=yield* sha256(bytes);
+const recordId=sharedSkillId('durable-library','fixture');
+const id='s_'+(yield* sha256(JSON.stringify(['scope',recordId,hash])));
+const key='snapshots/'+id+'.json';
+const snapshot={snapshot_id:id,scope:'scope',version_id:hash,entrypoint:'SKILL.md',created_at:123,
+record:{id:recordId,kind:'skill',entrypoint:'SKILL.md',
+locator:{type:'shared_skill',library_id:'durable-library',skill_id:'fixture',
+page_id:'00000000-0000-4000-8000-000000000001',
+database_id:'00000000-0000-4000-8000-000000000003',
+data_source_id:'00000000-0000-4000-8000-000000000004'},
+name:'fixture',alias:'fixture',description:'fixture',ref:fileRef(recordId,'SKILL.md'),enabled:true,default_context:false},
+files:[{path:'SKILL.md',bytes:bytes.length,sha256:hash,mode:'100644'}]};
+${body}}).pipe(Effect.provide(StoreLive.pipe(Layer.provideMerge(services))),Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv())))).catch(e=>{console.error(String(e));process.exitCode=1});`
   const worker = spawn(process.execPath, ["--input-type=module", "-e", code], {
     env: {
       ...process.env,
@@ -255,7 +272,7 @@ test("invalid orphan identity and corrupt referenced bytes never become register
       expect(await readFile(join(root, "snapshots", id + ".json"), "utf8")).toBe(manifest)
     }
   }))
-test("garbage collection keeps referenced history and retires unreachable objects only through Trash", () =>
+test("garbage collection keeps the current selected manifest and retires unreachable objects only through Trash", () =>
   temporary(async (directory) => {
     const root = join(directory, "gc")
     const published = await launch(root, publish).done

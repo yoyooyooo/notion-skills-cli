@@ -17,23 +17,17 @@ import {
   currentResourceAttachmentIdentity,
   type PreparedCurrentSharedResource,
 } from "../src/shared-current-resource.ts"
-import { canonicalSharedJson, querySharedRecords } from "../src/shared-records.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
+import { listCurrentOwnedResourceRecords } from "../src/shared-current-records.ts"
 import type { CurrentResourceOwner } from "../src/shared-current-records.ts"
 import {
-  digest,
-  id,
-  library as oldLibrary,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
-
-const library = {
-  ...oldLibrary,
-  records: {
-    ...oldLibrary.records,
-    property_ids: { ...oldLibrary.records.property_ids, Resource: "resource", Origin: "origin" },
-  },
-}
+  currentDigest as digest,
+  currentId as id,
+  currentLibrary as library,
+  currentRich,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 const url =
   "https://prod-files-secure.s3.us-west-2.amazonaws.com/current/asset.png?signature=fixture"
 const attachment = (value = url, expires = new Date(Date.now() + 60_000).toISOString()) => ({
@@ -52,7 +46,8 @@ function fixture(
       return HttpClientResponse.fromWeb(request, download(request.url, downloads.length))
     }),
   )
-  const base = sharedSnapshotFixture({ httpClient: http })
+  const base = currentSnapshotFixture({ httpClient: http })
+  let nextRecord = 50_000
   let unknown: "accepted" | "absent" | undefined
   let rewriteQuery: ((rows: unknown) => unknown) | undefined
   const run = <A, E>(effect: Effect.Effect<A, E, Notion | Crypto.Crypto | HttpClient.HttpClient>) =>
@@ -68,28 +63,40 @@ function fixture(
               options?.method === "POST" &&
               property(property(properties.kind).select).name === "resource"
             ) {
+              base.calls.push({ path, body, method: "POST" })
               const chosen = unknown
               unknown = undefined
               if (chosen === "absent") {
-                base.calls.push({ path, body, method: "POST" })
                 return yield* Effect.fail(
                   fail("WRITE_OUTCOME_UNKNOWN", "The resource create response was lost."),
                 )
               }
-              const { resource: _resource, ...withoutFile } = properties
-              const raw = property(
-                yield* api.request(path, { ...value, properties: withoutFile }, options),
-              )
               const files = property(properties.resource).files
               const native = Array.isArray(files) ? files.map(() => attachment()) : []
+              const page = id(nextRecord++)
               const row = {
-                ...raw,
+                object: "page",
+                id: page,
+                parent: {
+                  type: "data_source_id",
+                  data_source_id: library.records.data_source_id,
+                  database_id: library.records.database_id,
+                },
                 properties: {
-                  ...property(raw.properties),
+                  ...Object.fromEntries(
+                    Object.entries(properties).map(([key, raw]) => {
+                      const field = property(raw)
+                      const type = ["title", "rich_text", "select", "relation", "files"].find(
+                        (type) => field[type] !== undefined,
+                      )
+                      if (type === undefined) throw Error("Unknown current resource field")
+                      return [key, { ...field, id: key, type, has_more: false }]
+                    }),
+                  ),
                   resource: { id: "resource", type: "files", files: native },
                 },
               }
-              base.records.set(String(raw.id), row)
+              base.records.set(page, row)
               if (chosen === "accepted")
                 return yield* Effect.fail(
                   fail("WRITE_OUTCOME_UNKNOWN", "The accepted resource response was lost."),
@@ -112,28 +119,46 @@ function fixture(
     owner: CurrentResourceOwner = { kind: "skill", page_id: skillPage },
   ) => {
     const prepared = await run(prepareCurrentSharedResource(bytes, mode, options))
-    base.seedFact(
-      prepared.manifest,
-      "resource",
-      prepared.content.object_id,
-      prepared.content.object_id,
-      `store-${prepared.content.object_id}`,
-    )
-    const row = [...base.records.values()].at(-1)
-    if (row === undefined) throw new Error("Expected resource row")
-    property(property(row.properties).skill).relation =
-      owner.kind === "skill" ? [{ id: owner.page_id }] : []
-    property(row.properties).origin = {
-      id: "origin",
-      type: "relation",
-      has_more: false,
-      relation: owner.kind === "source" ? [{ id: owner.page_id }] : [],
+    const envelope = canonicalSharedJson({
+      version: 1,
+      operation_id: `store-${prepared.content.object_id}`,
+      payload: prepared.manifest,
+    })
+    const row = {
+      object: "page",
+      id: id(nextRecord++),
+      parent: {
+        type: "data_source_id",
+        data_source_id: library.records.data_source_id,
+        database_id: library.records.database_id,
+      },
+      properties: {
+        title: { id: "title", type: "title", title: [{ plain_text: prepared.content.object_id }] },
+        record: currentRich("record", prepared.content.object_id),
+        entity: currentRich("entity", prepared.content.object_id),
+        kind: { id: "kind", type: "select", select: { name: "resource" } },
+        hash: currentRich("hash", digest(envelope)),
+        payload: currentRich("payload", envelope),
+        skill: {
+          id: "skill",
+          type: "relation",
+          has_more: false,
+          relation: owner.kind === "skill" ? [{ id: owner.page_id }] : [],
+        },
+        origin: {
+          id: "origin",
+          type: "relation",
+          has_more: false,
+          relation: owner.kind === "source" ? [{ id: owner.page_id }] : [],
+        },
+        resource: {
+          id: "resource",
+          type: "files",
+          files: prepared.status === "inline" ? [] : [attachment()],
+        },
+      },
     }
-    property(row.properties).resource = {
-      id: "resource",
-      type: "files",
-      files: prepared.status === "inline" ? [] : [attachment()],
-    }
+    base.records.set(row.id, row)
     return { prepared, row }
   }
   return {
@@ -142,6 +167,8 @@ function fixture(
     seed,
     downloads,
     http,
+    writeCount: () => base.semanticWrites().length,
+    readBodyCount: () => base.bodyCalls().length,
     unknownCreate: (value: "accepted" | "absent") => {
       unknown = value
     },
@@ -394,8 +421,8 @@ describe("current exact resources", () => {
     ).rejects.toMatchObject({ code: "CURRENT_RECORD_INVALID" })
     expect(f.writeCount()).toBe(0)
     await expect(
-      f.run(querySharedRecords(library, { skillPageId: skillPage, kind: "resource" })),
-    ).rejects.toMatchObject({ code: "INVALID_SHARED_RECORD" })
+      f.run(listCurrentOwnedResourceRecords(library, { kind: "skill", page_id: skillPage })),
+    ).rejects.toMatchObject({ code: "CURRENT_RECORD_INVALID" })
   })
 
   test("identical duplicate physical resource rows are conflicts, not silently deduplicated", async () => {

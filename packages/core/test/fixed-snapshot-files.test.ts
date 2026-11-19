@@ -86,7 +86,7 @@ describe("fixed snapshot selected files", () => {
     const selected = f.file("references/1.md")
     const expected = decode(SnapshotSchema, f.json.get(`snapshots/${f.snapshot.snapshot_id}.json`))
     const result = await f.run(
-      targetSnapshot(parseTarget(f.ref(selected.path)), { offline: true }, "generated", "target"),
+      targetSnapshot(parseTarget(f.ref(selected.path)), { offline: true }, "target"),
     )
     expect(result).toEqual({
       ...expected,
@@ -175,7 +175,6 @@ describe("fixed snapshot selected files", () => {
           targetSnapshot(
             parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint)),
             { refresh: true, database: library.skills.database_id },
-            "generated",
             "entrypoint",
           ),
         )
@@ -226,7 +225,6 @@ describe("fixed snapshot selected files", () => {
       targetSnapshot(
         parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint)),
         { database: library.skills.database_id, maxAge: 1_000 },
-        "generated",
         "entrypoint",
       ),
     )
@@ -419,7 +417,6 @@ describe("fixed snapshot selected files", () => {
         targetSnapshot(
           parseTarget(f.ref()),
           { database: library.skills.database_id },
-          "generated",
           "entrypoint",
         ),
       ),
@@ -451,7 +448,6 @@ describe("fixed snapshot selected files", () => {
           targetSnapshot(
             selection.target,
             { offline: true, database: selection.database },
-            "generated",
             "target",
           ),
         ),
@@ -460,12 +456,7 @@ describe("fixed snapshot selected files", () => {
     }
     const resource = await f.run(
       Effect.flip(
-        targetSnapshot(
-          parseTarget(f.ref("references/1.md")),
-          { offline: true },
-          "generated",
-          "entrypoint",
-        ),
+        targetSnapshot(parseTarget(f.ref("references/1.md")), { offline: true }, "entrypoint"),
       ),
     )
     expect(resource.code).toBe("PREPARE_ROOT_NOT_MAIN")
@@ -497,9 +488,7 @@ describe("fixed snapshot selected files", () => {
     missing.objects.delete("objects/" + missing.file(missing.snapshot.entrypoint).sha256)
     for (const offline of [false, true]) {
       const error = await missing.run(
-        Effect.flip(
-          targetSnapshot(parseTarget(missing.ref()), { offline }, "generated", "entrypoint"),
-        ),
+        Effect.flip(targetSnapshot(parseTarget(missing.ref()), { offline }, "entrypoint")),
       )
       expect(error.code).toBe("SNAPSHOT_MISSING")
     }
@@ -510,7 +499,7 @@ describe("fixed snapshot selected files", () => {
       encode("wrong fixed main"),
     )
     const error = await corrupt.run(
-      Effect.flip(targetSnapshot(parseTarget(corrupt.ref()), {}, "generated", "entrypoint")),
+      Effect.flip(targetSnapshot(parseTarget(corrupt.ref()), {}, "entrypoint")),
     )
     expect(error.code).toBe("STATE_CORRUPT")
     expect(corrupt.calls).toHaveLength(0)
@@ -527,9 +516,7 @@ describe("fixed snapshot selected files", () => {
     f.json.set(`snapshots/${f.snapshot.snapshot_id}.json`, changed)
     f.objects.delete("objects/" + f.file(f.snapshot.entrypoint).sha256)
     const error = await f.run(
-      Effect.flip(
-        targetSnapshot(parseTarget(f.ref()), { offline: true }, "generated", "entrypoint"),
-      ),
+      Effect.flip(targetSnapshot(parseTarget(f.ref()), { offline: true }, "entrypoint")),
     )
     expect(error.code).toBe("STATE_CORRUPT")
     expect(f.objectReads.size).toBe(0)
@@ -540,9 +527,7 @@ describe("fixed snapshot selected files", () => {
   test("full reads still reject a corrupt unselected object that an entrypoint read can skip", async () => {
     const f = await fixture()
     f.objects.set("objects/" + f.file("references/2.md").sha256, encode("wrong resource"))
-    const entry = await f.run(
-      targetSnapshot(parseTarget(f.ref()), { offline: true }, "generated", "entrypoint"),
-    )
+    const entry = await f.run(targetSnapshot(parseTarget(f.ref()), { offline: true }, "entrypoint"))
     expect(entry.materialization?.local_files_ready).toBe(false)
     const error = await f.run(Effect.flip(targetSnapshot(parseTarget(f.ref()), { offline: true })))
     expect(error.code).toBe("STATE_CORRUPT")
@@ -561,14 +546,14 @@ describe("fixed snapshot selected files", () => {
       encode("wrong unselected resource"),
     )
     const target = parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint))
-    const entry = await f.run(targetSnapshot(target, {}, "generated", "entrypoint"))
+    const entry = await f.run(targetSnapshot(target, {}, "entrypoint"))
     expect(entry.source).toBe("local_cache")
     expect(entry.record.default_context).toBe(!f.snapshot.record.default_context)
     expect(entry.materialization?.materialized_paths).toEqual([f.snapshot.entrypoint])
     expect(entry.materialization?.local_files_ready).toBe(false)
     expect([...f.objectReads.keys()]).toEqual(["objects/" + f.file(f.snapshot.entrypoint).sha256])
     f.objectReads.clear()
-    const listed = await f.run(targetSnapshot(target, {}, "generated", "manifest"))
+    const listed = await f.run(targetSnapshot(target, {}, "manifest"))
     expect(listed.materialization?.materialized_paths).toEqual([])
     expect(f.objectReads.size).toBe(0)
     expect([...f.json].filter(([key]) => key.startsWith("cache/latest/"))).toEqual(before)
@@ -579,7 +564,7 @@ describe("fixed snapshot selected files", () => {
     const missing = await fixture()
     const current = parseTarget(fileRef(missing.snapshot.record.id, missing.snapshot.entrypoint))
     missing.objects.delete("objects/" + missing.file(missing.snapshot.entrypoint).sha256)
-    const restored = await missing.run(targetSnapshot(current, {}, "generated", "entrypoint"))
+    const restored = await missing.run(targetSnapshot(current, {}, "entrypoint"))
     expect(restored.source).toBe("notion")
     expect(restored.snapshot_id).toBe(missing.snapshot.snapshot_id)
     expect(missing.calls.length).toBeGreaterThan(0)
@@ -591,9 +576,7 @@ describe("fixed snapshot selected files", () => {
       "objects/" + corrupt.file(corrupt.snapshot.entrypoint).sha256,
       encode("wrong current main"),
     )
-    const error = await corrupt.run(
-      Effect.flip(targetSnapshot(current, {}, "generated", "entrypoint")),
-    )
+    const error = await corrupt.run(Effect.flip(targetSnapshot(current, {}, "entrypoint")))
     expect(error.code).toBe("STATE_CORRUPT")
     expect(corrupt.calls).toHaveLength(0)
   })

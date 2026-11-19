@@ -41,6 +41,7 @@ async function sample() {
       skills: [structuredClone(main)],
       files: structuredClone(f.files),
       records: structuredClone([...f.records.values()]),
+      sources: [],
       bodies: Object.fromEntries(f.bodies),
     },
   }

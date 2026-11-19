@@ -9,7 +9,7 @@ test("the shared retention classifier accepts only exact reconstructible cache a
   expect(rebuildableCacheKey(`cache/shared-github-blobs/${"a".repeat(40)}.json`)).toBe(true)
   expect(
     rebuildableCacheKey(`cache/shared-record-payloads/${"a".repeat(64)}/${"b".repeat(64)}.json`),
-  ).toBe(true)
+  ).toBe(false)
   expect(
     rebuildableCacheKey(
       `cache/shared-derived-graphs/${"a".repeat(64)}/${"b".repeat(64)}/${"c".repeat(64)}.json`,
@@ -32,7 +32,7 @@ test("multiple protection reasons survive instead of selecting just one", () => 
   ).toEqual(["authorization_fact", "current_eligibility_or_tree_proof"])
   expect(
     cacheRecordProtection("operations/original.json", { access_denied: "ACCESS_DENIED" }),
-  ).toEqual(["original_operation_or_pending_intent", "authorization_fact"])
+  ).toEqual(["pending_intent", "authorization_fact"])
   expect(cacheRecordProtection("unrecognized/new-kind.json", {})).toEqual([
     "outside_rebuildable_capacity_scope",
   ])

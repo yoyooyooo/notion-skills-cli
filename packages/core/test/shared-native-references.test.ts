@@ -6,19 +6,19 @@ import { fail, property } from "../src/model.ts"
 import { fileRef, parseRef } from "../src/ref.ts"
 import { compileSharedNativeReferences } from "../src/shared-native-references.ts"
 import { materializeSharedNativeFile } from "../src/shared-native-file-content.ts"
-import { fileRecord } from "../src/skill-file-index.ts"
+import { currentFileRecord as fileRecord } from "../src/shared-current-index.ts"
 import {
-  digest,
-  id,
-  library,
-  rich,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentId as id,
+  currentLibrary as library,
+  currentRich as rich,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
 const url = (page: string) => "https://www.notion.so/" + page.replaceAll("-", "")
 function fixture() {
-  const base = sharedSnapshotFixture()
+  const base = currentSnapshotFixture()
   const source = {
     alias: library.library_id,
     title: "",
@@ -31,7 +31,7 @@ function fixture() {
   const other = {
     ...structuredClone(base.main),
     id: id(21),
-    properties: { ...property(base.main.properties), skill_id: rich("skill_id", "stable-other") },
+    properties: { ...property(base.main.properties), "Skill ID": rich("skill-id", "stable-other") },
   }
   const ownFile = fileRecord(
     base.files[0],
@@ -44,8 +44,8 @@ function fixture() {
     id: id(22),
     properties: {
       ...base.files[0]!.properties,
-      file_id: rich("file_id", "stable-resource"),
-      skill: { id: "skill", type: "relation", relation: [{ id: id(21) }], has_more: false },
+      "File ID": rich("file-id", "stable-resource"),
+      Skill: { id: "skill", type: "relation", relation: [{ id: id(21) }], has_more: false },
     },
   }
   const skills: unknown[] = [base.main, other]
@@ -171,11 +171,11 @@ test("native mentions, page links and observed Link to page produce exact scoped
     file_id: "stable-resource",
     skill_id: "stable-other",
     skill_page_id: id(21),
-    path: "references/1.md",
+    path: "references/0.md",
     availability: "metadata_only",
   })
   expect(parseRef(resource.ref)).toMatchObject({
-    selector: "shared_skill:library-snapshot:stable-other",
+    selector: "shared_skill:library-current:stable-other",
     file_id: "stable-resource",
   })
   expect(f.calls).toEqual(["v1/blocks/" + skillPage + "/children?page_size=100"])
@@ -187,7 +187,7 @@ test("native mentions, page links and observed Link to page produce exact scoped
     result.linkedPages.get("SKILL.md"),
   )
   expect(rendered).toContain("[Resource](" + resource.ref + ")")
-  expect(rendered).toContain("[own](references/1.md)")
+  expect(rendered).toContain("[own](references/0.md)")
   expect(rendered).toContain("[unmanaged](" + url(id(99)) + ")")
   expect(rendered).not.toContain("ordinary child")
   expect(result.index).not.toHaveProperty("required")
@@ -265,7 +265,7 @@ test("duplicate logical Skill IDs and File IDs fail instead of selecting a same-
 
 test("the same File ID in distinct owners resolves each real page to its exact owner-scoped ref", async () => {
   const f = fixture()
-  f.file.properties.file_id = rich("file_id", f.ownFile.file_id)
+  f.file.properties["File ID"] = rich("file-id", f.ownFile.file_id)
   const result = await f.compile(`[own](${url(f.ownFile.page_id)})\n[other](${url(id(22))})`)
   expect(result.index?.entries).toHaveLength(2)
   const own = result.index!.entries.find((entry) => entry.page_id === f.ownFile.page_id)!
@@ -275,7 +275,7 @@ test("the same File ID in distinct owners resolves each real page to its exact o
   expect(other.skill_page_id).toBe(id(21))
   expect(parseRef(own.ref)).toMatchObject({ selector: f.record.id, file_id: f.ownFile.file_id })
   expect(parseRef(other.ref)).toMatchObject({
-    selector: "shared_skill:library-snapshot:stable-other",
+    selector: "shared_skill:library-current:stable-other",
     file_id: f.ownFile.file_id,
   })
   expect(own.id).not.toBe(other.id)
@@ -293,7 +293,7 @@ test("a physical File page cannot change owner behind an existing current bindin
     ...original,
     properties: {
       ...property(original.properties),
-      skill: { id: "skill", type: "relation", relation: [{ id: id(21) }], has_more: false },
+      Skill: { id: "skill", type: "relation", relation: [{ id: id(21) }], has_more: false },
     },
   }
   await expect(
@@ -321,7 +321,7 @@ test("a physical File page cannot change owner behind an existing current bindin
 
 test("ambiguous owners and a foreign complete inventory are rejected at the boundary", async () => {
   const f = fixture()
-  f.file.properties.skill.relation.push({ id: skillPage })
+  f.file.properties.Skill.relation.push({ id: skillPage })
   await expect(f.compile("[file](" + url(id(22)) + ")")).rejects.toMatchObject({
     code: "SHARED_REFERENCE_INVALID",
   })
@@ -363,11 +363,11 @@ test("the derived index is bound to original native bytes, relation summary and 
 
 test("disabled targets stay a metadata directory entry without activating or reading them", async () => {
   const f = fixture()
-  property(f.other.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+  property(f.other.properties)["Enabled"] = { id: "enabled", type: "checkbox", checkbox: false }
   const result = await f.compile("[skill](" + url(id(21)) + ")")
   expect(result.index?.entries[0]?.availability).toBe("disabled")
   expect(result.index?.entries[0]?.ref).toBe(
-    fileRef("shared_skill:library-snapshot:stable-other", "SKILL.md"),
+    fileRef("shared_skill:library-current:stable-other", "SKILL.md"),
   )
   expect(f.calls).toHaveLength(0)
 })

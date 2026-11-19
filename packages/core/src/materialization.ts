@@ -1,10 +1,2 @@
-// Bump whenever generated read bytes change for otherwise identical remote content.
+// Bump whenever generated read bytes change for otherwise identical current content.
 export const CURRENT_MATERIALIZATION_VERSION = "current-files-v5"
-
-const SUBSCRIPTION_ROUTER_MATERIALIZATION_VERSION = `${CURRENT_MATERIALIZATION_VERSION}:multi-member-router-v1`
-
-export function currentMaterializationVersion(recordIdentity: string): string {
-  return recordIdentity.startsWith("notion_subscription:")
-    ? SUBSCRIPTION_ROUTER_MATERIALIZATION_VERSION
-    : CURRENT_MATERIALIZATION_VERSION
-}

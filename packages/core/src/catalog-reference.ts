@@ -6,7 +6,7 @@ export function isCurrentNameTarget(target: SkillTarget) {
   return (
     target.snapshot === undefined &&
     pageId(target.selector) === undefined &&
-    !/^(shared_skill:[^:]+:.+|(?:notion_subscription|upstream):[a-f0-9-]+)$/u.test(target.selector)
+    !/^shared_skill:[^:]+:.+$/u.test(target.selector)
   )
 }
 

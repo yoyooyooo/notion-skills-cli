@@ -20,6 +20,7 @@ function sample() {
         skills: { database_id: "skills-db", data_source_id: "skills" },
         files: { data_source_id: "files" },
         records: { data_source_id: "records" },
+        sources: { data_source_id: "sources" },
       },
       main,
       skills: [main],
@@ -28,6 +29,7 @@ function sample() {
       database: { id: "skills-db" },
       files: [],
       records: [],
+      sources: [],
       bodies: { selected: "完整正文\n".repeat(20) },
     },
     view_dynamics: {

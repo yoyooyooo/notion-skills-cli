@@ -83,9 +83,13 @@ acquisition from an old pointer.
 
 `ctl library import INPUT --entry LIBRARY --skill-id ID` creates or replaces one
 complete current Skill under its stable identity. Import selects the target by that
-ID, not by name. Supporting files omitted from the input are removed from the
-current tree. The writer checks current references before trashing removed owned
+ID, not by name. Notion-owned supporting files omitted from the input are removed
+from the current tree. The writer checks current references before trashing removed owned
 Files and unreferenced owned resources. This scope is not a global library census.
+Existing Source files cannot be removed, taken over, renamed or rebound through
+this import. Both dry-run and apply reject before mutation with
+`CURRENT_SOURCE_MANAGEMENT_REQUIRED`; Source contributions and exclusions must
+be managed together.
 
 Import accepts a directory, ZIP or explicitly selected Markdown file. The boundary
 rejects unsafe paths, links, special files, duplicate ZIP entries, unsupported

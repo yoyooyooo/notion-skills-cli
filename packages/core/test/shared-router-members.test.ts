@@ -4,40 +4,25 @@ import { fail, property, SkillsError, type Source } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { sharedRecordFromPage, sharedSkillId } from "../src/shared-content.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
-import {
-  querySharedRouterMembers,
-  querySharedSkillRelation,
-  renderSharedRouterMembers,
-} from "../src/shared-router-members.ts"
+import { querySharedRouterMembers, querySharedSkillRelation } from "../src/shared-router-members.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const routerPage = id(1)
 const membersProperty = "mem%3Aroles"
 const library: SharedLibrary = {
-  version: 1,
+  ...currentLibrary,
   library_id: "library-router",
   operation_id: "library-router",
-  parent_page_id: id(2),
   skills: {
-    database_id: id(3),
-    data_source_id: id(4),
+    ...currentLibrary.skills,
     property_ids: {
-      Name: "title",
-      Description: "description",
-      Kind: "kind",
+      ...currentLibrary.skills.property_ids,
       "Skill ID": "skill_id",
-      Enabled: "enabled",
-      "Default Context": "default",
       Members: membersProperty,
-      Tags: "tags",
-      References: "references",
       "Main File ID": "main_file_id",
-      Projection: "projection",
-      Source: "source",
     },
   },
-  files: { database_id: id(5), data_source_id: id(6), property_ids: { Name: "title" } },
-  records: { database_id: id(7), data_source_id: id(8), property_ids: { Name: "title" } },
 }
 const source: Source = {
   alias: library.library_id,
@@ -77,6 +62,14 @@ function row(
       "Renamed kind": { id: "kind", type: "select", select: { name: kind } },
       "Renamed enabled": { id: "enabled", type: "checkbox", checkbox: enabled },
       "Renamed context": { id: "default", type: "checkbox", checkbox: false },
+      "Main File ID": rich("main_file_id", `main-${stableId}`),
+      Content: rich("content", JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+      "Current State": { id: "state", type: "select", select: { name: "ready" } },
+      Operation: rich("operation", ""),
+      "Renamed Members": { id: membersProperty, type: "relation", relation: [], has_more: false },
+      Requires: { id: "requires", type: "relation", relation: [], has_more: false },
+      Origin: { id: "origin", type: "relation", relation: [], has_more: false },
+      Tags: { id: "tags", type: "multi_select", multi_select: [] },
       Name: { id: "unregistered-title", type: "title", title: [{ plain_text: "Wrong name" }] },
       Description: rich("unregistered-description", "Wrong description"),
       Members: {
@@ -542,7 +535,7 @@ describe("shared Router members", () => {
     }
   })
 
-  test("freezes render metadata, ignoring body-only edit timestamps", async () => {
+  test("freezes relation metadata, ignoring body-only edit timestamps", async () => {
     const f = fixture()
     const before = await f.run(f.query())
     f.members[0]!.last_edited_time = "2026-10-31T00:00:00.000Z"
@@ -552,14 +545,5 @@ describe("shared Router members", () => {
     const changed = await f.run(f.query())
     expect(changed[0]?.metadata.description).toBe("New metadata")
     expect(before[0]?.metadata.description).toBe("Member 0 instructions")
-  })
-
-  test("matches the existing Router Members renderer including empty output", async () => {
-    const f = fixture()
-    const members = await f.run(f.query())
-    expect(renderSharedRouterMembers(members)).toBe(
-      `\n\n## Members\n\n- [Member 0](${members[0]!.ref}) — Member 0 instructions\n- [Member 1](${members[1]!.ref}) — Member 1 instructions\n`,
-    )
-    expect(renderSharedRouterMembers([])).toBe("\n\n## Members\n\n\n")
   })
 })

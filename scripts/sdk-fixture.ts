@@ -133,6 +133,7 @@ const fixture = {
     skills,
     files: structuredClone(f.files),
     records: structuredClone([...f.records.values()]),
+    sources: [],
     bodies: Object.fromEntries(f.bodies),
   },
   expected: {

@@ -70,9 +70,16 @@ Review `input_sha256`, `metadata`, `files`, `relations`, `remove`, and `budget`.
 The dry run reports `replaces_complete_tree: true` and `remote_writes: 0`.
 It allocates no operation ID.
 
-Existing supporting files omitted from the input are removed.
+Existing Notion-owned supporting files omitted from the input are removed.
 Import does not interpret a small directory as a partial patch.
 Use a complete export or your complete local Skill directory as the starting input.
+
+Check the returned authority before preparing a replacement. If the current main
+or any supporting file has Source authority, this CLI's dry-run and apply return
+`CURRENT_SOURCE_MANAGEMENT_REQUIRED`. The CLI makes every input file a resource,
+so even an unchanged export would take over those Source files. Keep their current
+identities, paths and bindings; coordinated Source contribution management is not
+available through this import. Do not omit or reidentify them to force the write.
 
 Dry run inspects the admitted input and current index.
 Its `body_verification: "required_during_apply"` means that body checks still occur during apply.
@@ -93,7 +100,7 @@ It preserves the existing content kind. A different kind requires a different ta
 The CLI currently imports every file as an exact Notion resource.
 Paths, original bytes, and executable modes remain part of the file identity.
 The writer creates the main-page and supporting-page reading projections, then verifies the current tree.
-It cleans obsolete resources owned by this replacement after the new bindings are established.
+It cleans obsolete resources owned by an admitted replacement after the new bindings are established.
 
 For a new Skill, Enabled defaults to true and Default Context defaults to false.
 Replacing an existing Skill preserves those fields because the import CLI does not expose overrides.

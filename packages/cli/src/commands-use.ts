@@ -97,9 +97,7 @@ export const useCommand = defineCommand(
       const effectsText =
         result.effects?.remote_writes === "none"
           ? "Effects: no remote writes."
-          : result.effects?.remote_writes === "retained"
-            ? "Effects: internal history retained; author content unchanged."
-            : "Effects: remote write outcome unknown; do not report zero writes."
+          : "Effects: remote write outcome unknown; do not report zero writes."
       const text =
         effectsText +
         "\n\n" +

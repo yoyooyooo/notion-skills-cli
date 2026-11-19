@@ -185,14 +185,13 @@ console.log(JSON.stringify({seeded:snapshots.length,scope:${JSON.stringify(scope
 
 test("SC25 use returns one complete root/Requires closure without loading optional bodies", async () => {
   const f = await fixture()
-  const used = await f.invoke(["use", f.ref(0), "--offline", "--read-only", "--json"])
+  const used = await f.invoke(["use", f.ref(0), "--offline", "--json"])
   expect(used.exit).toBe(0)
   const ready = decode(ConsumeReadySchema, JSON.parse(used.stdout))
   expect(ready.effects).toEqual({
     version: 1,
     remote_writes: "none",
     author_content: "unchanged",
-    retention: [],
   })
   expect(ready.preparation.effects).toEqual(ready.effects)
   expect(ready.preparation.required_closure).toEqual(
@@ -230,7 +229,7 @@ test("SC25 use returns one complete root/Requires closure without loading option
 
 test("SC25 read --json preserves inspect-only behavior and rejects --raw conflicts", async () => {
   const f = await fixture()
-  const inspected = await f.invoke(["read", f.ref(3), "--offline", "--read-only", "--json"])
+  const inspected = await f.invoke(["read", f.ref(3), "--offline", "--json"])
   expect(inspected.exit).toBe(0)
   expect(JSON.parse(inspected.stdout).effects.remote_writes).toBe("none")
   expect(JSON.parse(inspected.stdout).content).toBe(
@@ -257,13 +256,14 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
   expect(help.exit).toBe(0)
   expect(help.stdout).toContain("--session-bindings")
   expect(help.stdout).toContain("--max-context-bytes")
-  expect(help.stdout).toContain("--read-only")
+  expect(help.stdout).not.toContain("--read-only")
   const schema = await f.invoke(["schema", "ctl", "prepare"])
   expect(schema.exit).toBe(0)
   const parameters: Array<{ name: string; min_occurrences: number; default?: unknown }> =
     JSON.parse(schema.stdout).schema.parameters
   expect(parameters.find((parameter) => parameter.name === "root")?.min_occurrences).toBe(1)
   expect(parameters.find((parameter) => parameter.name === "purpose")?.default).toBe("use")
+  expect(parameters.some((parameter) => parameter.name === "read-only")).toBe(false)
   for (const args of [
     ["ctl", "prepare"],
     ["ctl", "prepare", f.ref(0), "--purpose", "unknown"],
@@ -276,9 +276,35 @@ test("prepare help/schema are offline and expose actual parser defaults and boun
   }
 })
 
+test("retired consumer flags and the root prepare alias are rejected without HTTP", async () => {
+  const f = await fixture()
+  for (const args of [
+    ["use", f.ref(0), "--offline", "--read-only", "--json"],
+    ["read", f.ref(0), "--offline", "--read-only", "--json"],
+    ["ctl", "prepare", f.ref(0), "--offline", "--read-only"],
+    ["prepare", f.ref(0), "--offline"],
+    [
+      "export",
+      f.snapshots[0]!.snapshot_id,
+      "--projection",
+      "snapshot",
+      "--format",
+      "directory",
+      "--output",
+      join(f.root, "retired-projection-export"),
+    ],
+  ]) {
+    const invalid = await f.invoke(args)
+    expect(invalid.exit).toBe(2)
+    const output = JSON.parse(invalid.stdout)
+    expect(output.ok).toBe(false)
+    expect(output.error.code).toBe("INVALID_ARGUMENT")
+  }
+})
+
 test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect boundary and stable session bindings", async () => {
   const f = await fixture()
-  const used = await f.invoke(["ctl", "prepare", f.ref(0), "--offline", "--read-only"])
+  const used = await f.invoke(["ctl", "prepare", f.ref(0), "--offline"])
   expect(used.exit).toBe(0)
   const ready = decode(PrepareReadySchema, JSON.parse(used.stdout))
   expect(ready.status).toBe("ready")
@@ -291,9 +317,9 @@ test("Node packaged CLI consumes exact SQLite pins, full use closure, inspect bo
   ).toEqual(["# a\nExact prepared instruction a.\n", "# b\nExact prepared instruction b.\n"])
   expect(ready.nodes.find((node) => node.id === f.snapshots[2]!.record.id)?.state).toBe("known")
   expect(ready.usage.context_bytes).toBe(Buffer.byteLength(used.stdout.trimEnd()))
-  const historical = await f.invoke(["prepare", f.ref(0), "--offline"])
-  expect(historical.exit).toBe(0)
-  expect(decode(PrepareReadySchema, JSON.parse(historical.stdout)).graph_lock).toEqual(
+  const repeated = await f.invoke(["ctl", "prepare", f.ref(0), "--offline"])
+  expect(repeated.exit).toBe(0)
+  expect(decode(PrepareReadySchema, JSON.parse(repeated.stdout)).graph_lock).toEqual(
     ready.graph_lock,
   )
   const inspected = await f.invoke([
@@ -358,8 +384,6 @@ test("public prepare, read and snapshot export preserve the same BOM and CRLF by
   const exported = await f.invoke([
     "export",
     node.binding.snapshot_id,
-    "--projection",
-    "snapshot",
     "--format",
     "directory",
     "--output",

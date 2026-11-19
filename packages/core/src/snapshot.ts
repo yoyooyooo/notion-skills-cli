@@ -1,230 +1,75 @@
-import { Clock, Effect, Stream } from "effect"
-import { HttpClient } from "effect/http"
-import { sharedReadFreshness } from "./shared-read-freshness.ts"
+import { Clock, Effect } from "effect"
+import {
+  cachedRemoteObservation,
+  effectiveCachePolicy,
+  freshness,
+  invalidateScopeCache,
+  invalidateSnapshotCache,
+  locallySelectedScope,
+  validateCachedSharedCurrentTree,
+  validateReadPolicy,
+  type ObservedSnapshot,
+  type ReadPolicyOptions,
+} from "./cache.ts"
+import { isCurrentNameTarget, resolveCatalogReference } from "./catalog-reference.ts"
+import {
+  authScope,
+  catalog,
+  explicitSource,
+  freshCatalogForRead,
+  databaseId as resolveDatabaseId,
+  type CatalogOptions,
+} from "./catalog.ts"
 import {
   withConsumptionEffects,
   type ConsumptionObservationOptions,
 } from "./consumption-effects.ts"
-import { readArchive } from "./archive.ts"
+import { openFixedSnapshotFiles } from "./fixed-snapshot-files.ts"
 import {
-  loadSnapshot,
-  loadSnapshotManifest,
-  openFixedSnapshotFiles,
-} from "./fixed-snapshot-files.ts"
-import { openSharedConsumer } from "./shared-consumer.ts"
-import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
-import { sharedGraphTarget } from "./shared-graph-read-context.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
-import {
-  authScope,
-  catalog,
-  freshCatalogForRead,
-  databaseId as resolveDatabaseId,
-  explicitSource,
-  type CatalogOptions,
-} from "./catalog.ts"
-import { readImportZip } from "./import.ts"
-import { BUNDLE } from "./portable.ts"
-import { portableSourceDecoder, PortableSourceDecoder } from "./portable-source.ts"
-import {
-  ExportSchema,
-  PageSchema,
   decode,
   fail,
-  notionPage,
+  PageSchema,
   property,
   resolveRecord,
-  recordFromPage,
   SkillsError,
-  type NotionPageRecord,
-  type ContentRecord,
-  aliasFor,
   type Snapshot,
 } from "./model.ts"
 import { Notion } from "./notion.ts"
-import { isCurrentNameTarget, resolveCatalogReference } from "./catalog-reference.ts"
-import { requestTimeoutMs } from "./request-timeout.ts"
 import { fileRef, pageId, parseRef, parseTarget, resolveRef, type SkillTarget } from "./ref.ts"
-import { Store, sha256 } from "./store.ts"
-import { publicationMarker, verifyPublicationRead } from "./publication-integrity.ts"
-import { readReferences, referencesProperty } from "./references.ts"
-import { resolvePublishedSubscription, SUBSCRIPTION_ROUTER_MIN_MEMBERS } from "./upstream-router.ts"
-import {
-  projectUpstreamMemberSnapshot,
-  resolveUpstreamMemberRelative,
-} from "./upstream-member-snapshot.ts"
-import { canonicalMain } from "./portable.ts"
-import {
-  cachedRemoteObservation,
-  assertKnownSnapshotAccess,
-  effectiveCachePolicy,
-  freshness,
-  invalidateSnapshotCache,
-  invalidateScopeCache,
-  locallySelectedScope,
-  publishSnapshotObservation,
-  validateReadPolicy,
-  validateCachedSharedCurrentTree,
-  validateSnapshot,
-  type ObservedSnapshot,
-  type ReadPolicyOptions,
-} from "./cache.ts"
-import {
-  captureSourceBundle,
-  hasSourceBundle,
-  sourceBundleUnchanged,
-} from "./source-bundle-cache.ts"
-
-type SnapshotView = "generated" | "authored"
+import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
+import { openSharedConsumer } from "./shared-consumer.ts"
+import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { sharedGraphTarget } from "./shared-graph-read-context.ts"
+import { sharedReadFreshness } from "./shared-read-freshness.ts"
+import { sha256, Store } from "./store.ts"
 
 export { loadSnapshot, loadSnapshotManifest } from "./fixed-snapshot-files.ts"
 
-function openSubscription(id: string, options: CatalogOptions) {
-  return Effect.gen(function* () {
-    const startedAt = yield* Clock.currentTimeMillis
-    const scope = yield* authScope
-    const subscription = yield* resolvePublishedSubscription(id)
-    if (
-      options.database !== undefined &&
-      (yield* resolveDatabaseId(options.database)) !== subscription.target_database_id
-    )
-      return yield* Effect.fail(
-        fail(
-          "CONTENT_NOT_FOUND",
-          "Subscription target differs from the selected content database.",
-        ),
-      )
-    if (subscription.members.length < SUBSCRIPTION_ROUTER_MIN_MEMBERS)
-      return yield* Effect.fail(
-        fail(
-          "UPSTREAM_ROUTER_UNAVAILABLE",
-          "Subscription Router requires at least two published active Skills; read individual Skill refs directly.",
-          {
-            subscription_id: subscription.subscription_id,
-            active_member_count: subscription.members.length,
-            minimum_member_count: SUBSCRIPTION_ROUTER_MIN_MEMBERS,
-          },
-        ),
-      )
-    const members: Array<{
-      id: string
-      kind: "skill"
-      name: string
-      description: string
-      ref: string
-    }> = []
-    for (const member of subscription.members) {
-      const raw = subscription.memberPages.get(member.page_id)
-      const record = yield* Effect.try({
-        try: () => {
-          const row = decode(PageSchema, raw)
-          const parent = property(property(raw).parent)
-          if (
-            row.in_trash ||
-            pageId(row.id) !== member.page_id ||
-            parent.database_id !== subscription.target_database_id ||
-            typeof parent.data_source_id !== "string"
-          )
-            throw fail("INVALID_MEMBERS", "Published member is unavailable.")
-          const value = recordFromPage(
-            row,
-            {
-              alias: subscription.target_database_id,
-              database_id: subscription.target_database_id,
-              title: "",
-              data_source_ids: [parent.data_source_id],
-              role: "content",
-            },
-            parent.data_source_id,
-          )
-          if (value.kind !== "skill")
-            throw fail("INVALID_MEMBERS", "Published Router members must be Skills.")
-          return value
-        },
-        catch: (error) => error as SkillsError,
-      })
-      members.push({
-        id: record.id,
-        kind: "skill",
-        name: record.name,
-        description: record.description,
-        ref: record.ref,
-      })
-    }
-    const unique = [...new Map(members.map((member) => [member.id, member])).values()].sort(
-      (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    )
-    const record: ContentRecord = {
-      id: `notion_subscription:${subscription.subscription_id}`,
-      kind: "router",
-      locator: {
-        type: "notion_subscription",
-        subscription_id: subscription.subscription_id,
-        database_id: subscription.database_id,
-        data_source_id: subscription.data_source_id,
-        target_database_id: subscription.target_database_id,
-      },
-      name: subscription.name,
-      alias: aliasFor(subscription.name),
-      description: subscription.description,
-      default_context: subscription.default_context,
-      entrypoint: "ROUTER.md",
-      ref: fileRef(`upstream:${subscription.subscription_id}`, "ROUTER.md"),
-    }
-    const file = canonicalMain(
-      record.name,
-      record.description,
-      `${record.description}\n\n## Members\n\n${unique.map((member) => `- [${member.name}](${member.ref}) — ${member.description}`).join("\n")}`,
-      { path: record.entrypoint, bytes: new Uint8Array() },
-    )
-    const hash = yield* sha256(file.bytes)
-    const version = yield* sha256(JSON.stringify([record, subscription.revision, unique, hash]))
-    const snapshot: Snapshot = {
-      record,
-      entrypoint: record.entrypoint,
-      scope,
-      snapshot_id: `s_${yield* sha256(JSON.stringify([scope, record.id, version]))}`,
-      version_id: version,
-      created_at: yield* Clock.currentTimeMillis,
-      files: [{ path: file.path, bytes: file.bytes.length, sha256: hash }],
-    }
-    const store = yield* Store
-    const generation = yield* store.reserveCacheGeneration(scope, record.id)
-    yield* store.writeBytes(`objects/${hash}`, file.bytes)
-    yield* store.writeJson(`snapshots/${snapshot.snapshot_id}.json`, snapshot)
-    return yield* publishSnapshotObservation(snapshot, startedAt, generation)
-  })
-}
-
-export function openSkill(
-  selector: string,
-  options: CatalogOptions = {},
-  view: SnapshotView = "generated",
-) {
-  return openSnapshot(selector, options, view)
+export function openSkill(selector: string, options: CatalogOptions = {}) {
+  return openSnapshot(selector, options)
 }
 
 function openSnapshot(
   selector: string,
   options: CatalogOptions = {},
-  view: SnapshotView = "generated",
-  allowBundleCache = false,
   selectedFiles?: {
     readonly requestedPaths: readonly string[]
     readonly requestedFileIds?: readonly string[]
   },
 ) {
   return Effect.gen(function* () {
+    if (/^(?:upstream|notion_subscription|notion_page):/u.test(selector))
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_TARGET_REQUIRED",
+          "Select a current Skill by identity, current page ID or current library reference.",
+        ),
+      )
     const startedAt = yield* Clock.currentTimeMillis
-    const api = yield* Notion
-    let rawPage: unknown
-    if (selector.startsWith("upstream:") || selector.startsWith("notion_subscription:"))
-      return yield* openSubscription(selector.slice(selector.indexOf(":") + 1), options)
-    const id = pageId(selector)
     const selectedDatabase =
       options.database === undefined ? undefined : yield* resolveDatabaseId(options.database)
     const graphTarget = yield* sharedGraphTarget(selector, selectedDatabase)
-    if (graphTarget !== undefined && view === "generated")
+    if (graphTarget !== undefined)
       return yield* openSharedConsumer({
         ...graphTarget,
         target: String(property(graphTarget.rawPage).id),
@@ -234,501 +79,77 @@ function openSnapshot(
         maxAge: options.maxAge,
         ...selectedFiles,
       })
-    let skill: NotionPageRecord
-    let scope: string
-    if (id) {
-      scope = yield* authScope
-      rawPage = yield* api.request(`v1/pages/${id}`)
+    const id = pageId(selector)
+    if (id !== undefined) {
+      const scope = yield* authScope
+      const rawPage = yield* (yield* Notion).request(`v1/pages/${id}`)
       const row = yield* Effect.try({
         try: () => decode(PageSchema, rawPage),
-        catch: () => fail("INVALID_RESPONSE", "Invalid skill page response."),
+        catch: () => fail("INVALID_RESPONSE", "Invalid current Skill page response."),
       })
       if (row.id !== id)
         return yield* Effect.fail(
-          fail("INVALID_RESPONSE", "The returned skill page ID differs from the requested page."),
+          fail("INVALID_RESPONSE", "The returned Skill identity differs from the requested page."),
         )
       const parent = property(property(rawPage).parent)
-      const databaseId = parent.database_id
-      const dataSourceId = parent.data_source_id
-      if (typeof databaseId !== "string" || typeof dataSourceId !== "string" || row.in_trash)
+      if (
+        typeof parent.database_id !== "string" ||
+        typeof parent.data_source_id !== "string" ||
+        row.in_trash
+      )
         return yield* Effect.fail(
-          fail("NOT_SKILL", "The page must belong to an accessible skill database."),
+          fail("NOT_SKILL", "The page must belong to an accessible current Skill library."),
         )
-      if (selectedDatabase !== undefined && selectedDatabase !== databaseId)
+      if (selectedDatabase !== undefined && selectedDatabase !== parent.database_id)
         return yield* Effect.fail(
-          fail("SKILL_NOT_FOUND", "The skill does not belong to the selected database."),
+          fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected library."),
         )
-      const source = yield* explicitSource(databaseId, undefined, { allowShared: true })
-      if (source.shared_library !== undefined) {
-        if (view === "authored")
-          return yield* Effect.fail(
-            fail(
-              "CONTENT_NOT_MUTABLE",
-              "The legacy authored projection does not support shared Skills.",
-            ),
-          )
-        return yield* openSharedConsumer({
-          library: source.shared_library,
-          target: id,
-          rawPage,
-          scope,
-          startedAt,
-          forceFull: Boolean(options.refresh) || options.maxAge === 0,
-          maxAge: options.maxAge,
-          ...selectedFiles,
-        })
-      }
-      skill = yield* Effect.try({
-        try: () => recordFromPage(row, source, dataSourceId),
-        catch: (e) => e as SkillsError,
-      })
-    } else {
-      const observation = yield* freshCatalogForRead({ database: options.database })
-      const directory = observation.catalog
-      scope = directory.scope
-      const resolved = yield* Effect.try({
-        try: () =>
-          observation.exactSharedRecords.get(selector) ??
-          (isCurrentNameTarget({ selector })
-            ? resolveCatalogReference(selector, directory).record
-            : resolveRecord(selector, directory)),
-        catch: (error) => error as SkillsError,
-      })
-      if (resolved.locator.type === "notion_subscription")
-        return yield* openSubscription(resolved.locator.subscription_id, options)
-      if (resolved.locator.type === "shared_skill") {
-        if (view === "authored")
-          return yield* Effect.fail(
-            fail(
-              "CONTENT_NOT_MUTABLE",
-              "The legacy authored projection does not support shared Skills.",
-            ),
-          )
-        const locator = resolved.locator
-        const library = directory.databases.find(
-          (entry) => entry.database_id === locator.database_id,
-        )?.shared_library
-        if (library === undefined || library.library_id !== resolved.locator.library_id)
-          return yield* Effect.fail(
-            fail("LIBRARY_INVALID", "The shared record has no matching catalog descriptor."),
-          )
-        return yield* openSharedConsumer({
-          library,
-          target: resolved.locator.page_id,
-          expectedSkillId: resolved.locator.skill_id,
-          skillsMetadata: observation.sharedSkills.get(library.skills.data_source_id),
-          rawPage: (yield* sharedGraphTarget(resolved.id, library.skills.database_id))?.rawPage,
-          scope,
-          startedAt,
-          forceFull: Boolean(options.refresh) || options.maxAge === 0,
-          maxAge: options.maxAge,
-          ...selectedFiles,
-        })
-      }
-      skill = yield* Effect.try({
-        try: () => notionPage(resolved),
-        catch: (error) => error as SkillsError,
-      })
-    }
-    const store = yield* Store
-    const generation = yield* store.reserveCacheGeneration(scope, skill.id)
-    if (!id) {
-      rawPage = yield* api.request(`v1/pages/${skill.locator.page_id}`)
-      skill = yield* skillFromCurrentPage(skill, rawPage)
-    }
-    return yield* snapshotFromPage(
-      skill,
-      scope,
-      rawPage,
-      startedAt,
-      generation,
-      view,
-      allowBundleCache,
-    )
-  })
-}
-
-/** Create once per mutation; reuse only while its authenticated Notion service remains active. */
-export function makeSkillRefresh(initial: Snapshot) {
-  return Effect.gen(function* () {
-    const authenticatedApi = yield* Notion
-    const credential = yield* authenticatedApi.credentialIdentity
-    const workspace = process.env.NOTION_WORKSPACE_ID
-    const baseUrl = process.env.NOTION_API_BASE_URL
-    const scope = yield* authScope
-    if (
-      scope !== initial.scope ||
-      (yield* authenticatedApi.credentialIdentity) !== credential ||
-      process.env.NOTION_WORKSPACE_ID !== workspace ||
-      process.env.NOTION_API_BASE_URL !== baseUrl
-    )
-      return yield* Effect.fail(
-        fail("ACCESS_DENIED", "The snapshot does not belong to the current authenticated scope."),
-      )
-    return (current: Snapshot) =>
-      Effect.gen(function* () {
-        const startedAt = yield* Clock.currentTimeMillis
-        const api = yield* Notion
-        if (
-          api !== authenticatedApi ||
-          (yield* api.credentialIdentity) !== credential ||
-          process.env.NOTION_WORKSPACE_ID !== workspace ||
-          process.env.NOTION_API_BASE_URL !== baseUrl
-        )
-          return yield* Effect.fail(
-            fail("ACCESS_DENIED", "The authenticated service changed during this operation."),
-          )
-        if (
-          current.scope !== scope ||
-          current.record.id !== initial.record.id ||
-          notionPage(current.record).locator.database_id !==
-            notionPage(initial.record).locator.database_id ||
-          notionPage(current.record).locator.data_source_id !==
-            notionPage(initial.record).locator.data_source_id
-        )
-          return yield* Effect.fail(
-            fail("SKILL_NOT_FOUND", "The snapshot does not belong to this refresh operation."),
-          )
-        const store = yield* Store
-        const generation = yield* store.reserveCacheGeneration(scope, current.record.id)
-        const rawPage = yield* api.request(`v1/pages/${notionPage(current.record).locator.page_id}`)
-        const skill = yield* skillFromCurrentPage(notionPage(current.record), rawPage)
-        return yield* snapshotFromPage(skill, scope, rawPage, startedAt, generation)
-      })
-  })
-}
-
-function skillFromCurrentPage(current: NotionPageRecord, rawPage: unknown) {
-  return Effect.gen(function* () {
-    const row = yield* Effect.try({
-      try: () => decode(PageSchema, rawPage),
-      catch: () => fail("INVALID_RESPONSE", "Invalid skill page response."),
-    })
-    if (pageId(row.id) !== current.locator.page_id)
-      return yield* Effect.fail(
-        fail("INVALID_RESPONSE", "The returned skill page ID differs from the requested page."),
-      )
-    if (row.in_trash)
-      return yield* Effect.fail(
-        fail("NOT_SKILL", "The page must belong to an accessible skill database."),
-      )
-    const parent = property(property(rawPage).parent)
-    if (
-      parent.database_id !== current.locator.database_id ||
-      parent.data_source_id !== current.locator.data_source_id
-    )
-      return yield* Effect.fail(
-        fail("SKILL_NOT_FOUND", "The skill no longer belongs to the original data source."),
-      )
-    return yield* Effect.try({
-      try: () =>
-        recordFromPage(
-          row,
-          {
-            alias: current.locator.database_id,
-            database_id: current.locator.database_id,
-            title: "",
-            data_source_ids: [current.locator.data_source_id],
-          },
-          current.locator.data_source_id,
-        ),
-      catch: (error) => error as SkillsError,
-    })
-  })
-}
-
-function snapshotFromPage(
-  skill: NotionPageRecord,
-  scope: string,
-  rawPage: unknown,
-  startedAt: number,
-  generation: number,
-  view: SnapshotView = "generated",
-  allowBundleCache = false,
-) {
-  return Effect.gen(function* () {
-    const decodeSource = yield* portableSourceDecoder
-    let capture: Effect.Success<ReturnType<typeof captureSourceBundle>> | undefined
-    const publish = (snapshot: Snapshot) =>
-      Effect.gen(function* () {
-        const canonical = yield* loadSnapshot(snapshot.snapshot_id)
-        snapshot = {
-          ...canonical,
-          record: { ...canonical.record, default_context: skill.default_context },
-        }
-        const state = yield* verifyPublicationRead(
-          rawPage,
-          {
-            ...snapshot,
-            files: snapshot.source_files ?? snapshot.files,
-          },
-          "current",
-        ).pipe(Effect.provideService(Notion, capture?.api ?? (yield* Notion)))
-        // Authored exports use the verified original files. Keep this unprojected
-        // observation out of the default cache, whose readers require generated links.
-        if (state === "writing" || view === "authored") {
-          const now = yield* Clock.currentTimeMillis
-          return {
-            ...snapshot,
-            source: "notion" as const,
-            freshness: freshness(
-              { refresh: true },
-              now,
-              now,
-              (yield* effectiveCachePolicy).read_max_age_ms,
-            ),
-          }
-        }
-        const bundleCheckpoint =
-          state === "committed" && capture ? yield* capture.checkpoint(snapshot) : undefined
-        // A stable Notion edit is current authored content, not the source
-        // publication's projection. Its own files and links were read above;
-        // an old source map cannot certify or block this observation.
-        if (state !== "current")
-          snapshot = yield* projectUpstreamMemberSnapshot(snapshot, rawPage, { optional: true })
-        return yield* publishSnapshotObservation(snapshot, startedAt, generation, {
-          bundleCheckpoint,
-        })
-      })
-    const api = yield* Notion
-    const store = yield* Store
-    const hasReferences = yield* Effect.try({
-      try: () => referencesProperty(rawPage),
-      catch: (error) => error as SkillsError,
-    })
-    if (hasReferences) {
-      const sourcePolicy = yield* Effect.serviceOption(PortableSourceDecoder)
-      const currentMarker = yield* Effect.try({
-        try: () => publicationMarker(rawPage),
-        catch: (error) => error as SkillsError,
-      })
-      const eligible =
-        skill.kind === "skill" &&
-        currentMarker?.state === "committed" &&
-        sourcePolicy._tag === "None" &&
-        hasSourceBundle(rawPage)
-      if (allowBundleCache && eligible) {
-        const observed = yield* cachedRemoteObservation(skill.id, scope).pipe(
-          Effect.catch((error) =>
-            error.code === "CACHE_REFRESH_REQUIRED"
-              ? Effect.succeed(undefined)
-              : Effect.fail(error),
-          ),
-        )
-        const checkpoint = observed?.bundle_checkpoint
-        if (observed && checkpoint) {
-          const {
-            source_files: sourceFiles,
-            source_projection: _projection,
-            ...base
-          } = observed.snapshot
-          let cached: Snapshot = {
-            ...base,
-            files: sourceFiles ?? base.files,
-            snapshot_id: checkpoint.snapshot_id,
-            version_id: checkpoint.version_id,
-          }
-          yield* validateSnapshot(cached)
-          const bundle = cached.files.find((file) => file.path === BUNDLE)
-          if (
-            cached.scope === scope &&
-            cached.record.id === skill.id &&
-            !cached.markdown_files &&
-            bundle?.sha256 === checkpoint.bundle_hash &&
-            JSON.stringify(cached.references?.map((page) => page.id)) ===
-              JSON.stringify(checkpoint.pages.map((page) => page.id)) &&
-            (yield* sourceBundleUnchanged(checkpoint, rawPage))
-          ) {
-            cached = { ...cached, record: skill }
-            if (view === "authored") {
-              const now = yield* Clock.currentTimeMillis
-              return {
-                ...cached,
-                source: "notion" as const,
-                freshness: freshness(
-                  {},
-                  now,
-                  now,
-                  (yield* effectiveCachePolicy).read_max_age_ms,
-                  true,
-                ),
-              }
-            }
-            cached = yield* projectUpstreamMemberSnapshot(cached, rawPage, { optional: true })
-            return yield* publishSnapshotObservation(cached, startedAt, generation, {
-              bundleCheckpoint: checkpoint,
-              metadataOnly: true,
-            })
-          }
-        }
-      }
-      if (eligible && view === "generated") capture = yield* captureSourceBundle(rawPage, api)
-      const graph = yield* readReferences(skill, rawPage).pipe(
-        Effect.provideService(Notion, capture?.api ?? api),
-      )
-      const marker = yield* Effect.try({
-        try: () => publicationMarker(rawPage),
-        catch: (error) => error as SkillsError,
-      })
-      const revision =
-        marker?.state === "committed"
-          ? marker.revision
-          : marker?.state === "writing"
-            ? marker.base_revision
-            : undefined
-      if (revision) graph.version_id = yield* sha256(JSON.stringify([graph.version_id, revision]))
-      const snapshotId = `s_${yield* sha256(JSON.stringify([scope, skill.id, graph.version_id]))}`
-      const cachedResult = yield* loadSnapshot(snapshotId).pipe(Effect.result)
-      if (cachedResult._tag === "Success")
-        return yield* publish({ ...cachedResult.success, record: skill })
-      const files: Array<Snapshot["files"][number]> = []
-      const paths = new Set<string>()
-      for (const file of graph.files.sort((a, b) => a.path.localeCompare(b.path))) {
-        if (paths.has(file.path))
-          return yield* Effect.fail(
-            fail("REFERENCE_PATH_CONFLICT", "A reference and attachment share a path.", {
-              path: file.path,
-            }),
-          )
-        paths.add(file.path)
-        const hash = yield* sha256(file.bytes)
-        yield* store.writeBytes(`objects/${hash}`, file.bytes)
-        files.push({ path: file.path, bytes: file.bytes.length, sha256: hash })
-      }
-      const snapshot: Snapshot = {
-        snapshot_id: snapshotId,
+      const source = yield* explicitSource(parent.database_id)
+      return yield* openSharedConsumer({
+        library: source.shared_library,
+        target: id,
+        rawPage,
         scope,
-        record: skill,
-        entrypoint: skill.entrypoint,
-        version_id: graph.version_id,
-        created_at: yield* Clock.currentTimeMillis,
-        files,
-        references: graph.pages,
-        router_members: graph.members,
-        ...("markdown_files" in graph ? { markdown_files: graph.markdown_files } : {}),
-      }
-      yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
-      return yield* publish(snapshot)
+        startedAt,
+        forceFull: Boolean(options.refresh) || options.maxAge === 0,
+        maxAge: options.maxAge,
+        ...selectedFiles,
+      })
     }
-    if (skill.kind !== "skill")
-      return yield* Effect.fail(
-        fail("INVALID_CONTENT_SOURCE", "Router and Prompt pages require a References property."),
-      )
-    const raw = yield* api.request(`v1/ai/skills/${skill.locator.page_id}`)
-    const exported = yield* Effect.try({
-      try: () => decode(ExportSchema, raw),
-      catch: () => fail("INVALID_RESPONSE", "Invalid skill export response."),
+    const observation = yield* freshCatalogForRead({ database: options.database })
+    const directory = observation.catalog
+    const resolved = yield* Effect.try({
+      try: () =>
+        observation.exactSharedRecords.get(selector) ??
+        (isCurrentNameTarget({ selector })
+          ? resolveCatalogReference(selector, directory).record
+          : resolveRecord(selector, directory)),
+      catch: (error) => error as SkillsError,
     })
-    if (pageId(exported.id) !== skill.locator.page_id)
+    if (resolved.locator.type !== "shared_skill")
       return yield* Effect.fail(
-        fail("INVALID_RESPONSE", "The exported skill ID differs from the requested page."),
+        fail("CURRENT_TARGET_REQUIRED", "The selected record is not a current Skill."),
       )
-    const exportedVersion = exported.version_id
-    const snapshotId = `s_${yield* sha256(JSON.stringify([scope, skill.id, exportedVersion]))}`
-    const cachedResult = yield* loadSnapshot(snapshotId).pipe(Effect.result)
-    const cached = cachedResult._tag === "Success" ? cachedResult.success : undefined
-    const validateName = (name: string) => {
-      if (aliasFor(name) !== skill.alias)
-        throw fail(
-          "INVALID_SKILL",
-          "SKILL.md name must derive the same invocation alias as the Notion Name.",
-          {
-            page_id: skill.locator.page_id,
-            expected: skill.alias,
-            actual: name,
-          },
-        )
-    }
-    if (cached) {
-      if (cached.record.alias !== skill.alias)
-        return yield* Effect.fail(
-          fail("INVALID_SKILL", "Cached invocation name differs from the content record.", {
-            page_id: skill.locator.page_id,
-            expected: skill.alias,
-            actual: cached.record.alias,
-          }),
-        )
-      return yield* publish({ ...cached, record: skill })
-    }
-    const timeoutMs = yield* requestTimeoutMs
-    const downloaded = yield* Effect.gen(function* () {
-      const client = yield* HttpClient.HttpClient
-      const response = yield* client.get(exported.url)
-      if (response.status < 200 || response.status >= 300)
-        return yield* Effect.fail(
-          fail("DOWNLOAD_FAILED", "The skill archive could not be downloaded.", {
-            status: response.status,
-          }),
-        )
-      const chunks: Uint8Array[] = []
-      const length = yield* response.stream.pipe(
-        Stream.runFoldEffect(
-          () => 0,
-          (size, chunk) => {
-            if (size + chunk.length > 32 * 1024 * 1024)
-              return Effect.fail(
-                fail("ARCHIVE_TOO_LARGE", "Compressed skill archive exceeds 32 MiB."),
-              )
-            chunks.push(chunk)
-            return Effect.succeed(size + chunk.length)
-          },
-        ),
+    const locator = resolved.locator
+    const library = directory.databases.find(
+      (entry) => entry.database_id === locator.database_id,
+    )?.shared_library
+    if (library === undefined || library.library_id !== locator.library_id)
+      return yield* Effect.fail(
+        fail("LIBRARY_INVALID", "The current Skill has no matching library descriptor."),
       )
-      const bytes = new Uint8Array(length)
-      let at = 0
-      for (const chunk of chunks) {
-        bytes.set(chunk, at)
-        at += chunk.length
-      }
-      return bytes
-    }).pipe(
-      Effect.timeout(timeoutMs),
-      Effect.mapError((e) =>
-        e instanceof SkillsError
-          ? e
-          : fail(
-              "DOWNLOAD_FAILED",
-              "The skill archive download failed or timed out. Read the current target again to obtain a fresh URL.",
-            ),
-      ),
-    )
-    const archive = yield* Effect.try({
-      try: () => readArchive(downloaded),
-      catch: (e) => e as SkillsError,
+    return yield* openSharedConsumer({
+      library,
+      target: locator.page_id,
+      expectedSkillId: locator.skill_id,
+      skillsMetadata: observation.sharedSkills.get(library.skills.data_source_id),
+      rawPage: (yield* sharedGraphTarget(resolved.id, library.skills.database_id))?.rawPage,
+      scope: directory.scope,
+      startedAt,
+      forceFull: Boolean(options.refresh) || options.maxAge === 0,
+      maxAge: options.maxAge,
+      ...selectedFiles,
     })
-    yield* Effect.try({ try: () => validateName(archive.name), catch: (e) => e as SkillsError })
-    const sourceBundle = archive.files.find((file) => file.path === BUNDLE)
-    const preserved = sourceBundle
-      ? yield* Effect.try({
-          try: () => decodeSource(readImportZip(sourceBundle.data)),
-          catch: (e) => e as SkillsError,
-        })
-      : undefined
-    const expandedFiles = new Map(archive.files.map((file) => [file.path, file]))
-    for (const file of preserved?.files ?? []) {
-      if (file.path !== preserved!.main && !expandedFiles.has(file.path))
-        expandedFiles.set(file.path, { path: file.path, data: file.bytes })
-    }
-    const files: Array<Snapshot["files"][number]> = []
-    for (const file of [...expandedFiles.values()].sort((a, b) =>
-      a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
-    )) {
-      const hash = yield* sha256(file.data)
-      yield* store.writeBytes(`objects/${hash}`, file.data)
-      files.push({ path: file.path, bytes: file.data.length, sha256: hash })
-    }
-    const snapshot: Snapshot = {
-      snapshot_id: snapshotId,
-      scope,
-      record: skill,
-      entrypoint: skill.entrypoint,
-      version_id: exportedVersion,
-      created_at: yield* Clock.currentTimeMillis,
-      files,
-    }
-    // Publish only after all content objects exist. Readers never observe a half-written version.
-    yield* store.writeJson(`snapshots/${snapshotId}.json`, snapshot)
-    return yield* publish(snapshot)
   })
 }
 
@@ -802,17 +223,11 @@ export function snapshotInfo(snapshot: ObservedSnapshot) {
     ...(snapshot.source ? { source: snapshot.source } : {}),
     ...(snapshot.freshness ? { freshness: snapshot.freshness } : {}),
     ...(snapshot.materialization ? { materialization: snapshot.materialization } : {}),
-    ...(snapshot.source_projection ? { source_projection: snapshot.source_projection } : {}),
     ...snapshotReferences(snapshot),
   }
 }
 
-function assertSnapshotTarget(
-  snapshot: Snapshot,
-  target: SkillTarget,
-  view: SnapshotView,
-  database?: string,
-) {
+function assertSnapshotTarget(snapshot: Snapshot, target: SkillTarget, database?: string) {
   if (
     target.snapshot &&
     target.selector &&
@@ -820,30 +235,20 @@ function assertSnapshotTarget(
       snapshot.record.id,
       snapshot.record.name,
       snapshot.record.alias,
-      snapshot.record.locator.type === "notion_page" ||
       snapshot.record.locator.type === "shared_skill"
         ? snapshot.record.locator.page_id
-        : snapshot.record.locator.type === "notion_subscription"
-          ? `upstream:${snapshot.record.locator.subscription_id}`
-          : snapshot.record.locator.id,
+        : snapshot.record.locator.id,
     ].includes(pageId(target.selector) ?? target.selector)
   )
     throw fail("SNAPSHOT_CONFLICT", "The snapshot belongs to another Skill.")
   if (
     target.snapshot &&
     database !== undefined &&
-    (snapshot.record.locator.type === "notion_subscription"
-      ? snapshot.record.locator.target_database_id
-      : snapshot.record.locator.type === "local"
-        ? undefined
-        : snapshot.record.locator.database_id) !== database
+    (snapshot.record.locator.type === "shared_skill"
+      ? snapshot.record.locator.database_id
+      : undefined) !== database
   )
     throw fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database.")
-  if (view === "authored" && snapshot.record.locator.type === "shared_skill")
-    throw fail(
-      "CONTENT_NOT_MUTABLE",
-      "The legacy authored projection does not support shared Skills; export the fixed snapshot projection explicitly.",
-    )
   if (
     snapshot.record.locator.type === "shared_skill" &&
     snapshot.record.kind === "router" &&
@@ -868,7 +273,6 @@ function selectedMaterialization(snapshot: Snapshot, files: readonly { readonly 
 function acquireTargetSnapshot(
   target: SkillTarget,
   options: CatalogOptions = {},
-  view: SnapshotView = "generated",
   access: "all" | "manifest" | "entrypoint" | "target" = "all",
 ) {
   return Effect.gen(function* () {
@@ -881,7 +285,7 @@ function acquireTargetSnapshot(
         ? yield* resolveDatabaseId(options.database)
         : undefined
     const select = (manifest: Snapshot) => {
-      assertSnapshotTarget(manifest, target, view, pinnedDatabase)
+      assertSnapshotTarget(manifest, target, pinnedDatabase)
       const selectedPath = boundSnapshotPath(manifest, target)
       if (access === "all") return manifest.files.map((file) => file.path)
       if (access === "manifest") return []
@@ -923,19 +327,9 @@ function acquireTargetSnapshot(
       if (scopeResult._tag === "Failure" && options.offline)
         return yield* Effect.fail(scopeResult.failure)
       const scope = scopeResult._tag === "Success" ? scopeResult.success : undefined
-      const subscription = /^(?:upstream|notion_subscription):(.+)$/.exec(target.selector)
-      const subscriptionId = subscription && pageId(subscription[1]!)
-      if (subscription && !subscriptionId)
-        return yield* Effect.fail(
-          fail("EXACT_TARGET_REQUIRED", "Subscription Router requires a UUID."),
-        )
-      let selected = subscriptionId
-        ? `notion_subscription:${subscriptionId}`
-        : pageId(target.selector)
-          ? `notion_page:${pageId(target.selector)}`
-          : target.selector.startsWith("shared_skill:")
-            ? target.selector
-            : undefined
+      let selected =
+        pageId(target.selector) ??
+        (target.selector.startsWith("shared_skill:") ? target.selector : undefined)
       if (!selected && !options.refresh) {
         const directoryResult = yield* catalog(options).pipe(Effect.result)
         if (directoryResult._tag === "Failure") return yield* Effect.fail(directoryResult.failure)
@@ -981,12 +375,9 @@ function acquireTargetSnapshot(
       if (observed && useObserved) {
         if (
           options.database !== undefined &&
-          (observed.snapshot.record.locator.type === "notion_subscription"
-            ? observed.snapshot.record.locator.target_database_id
-            : observed.snapshot.record.locator.type === "local"
-              ? undefined
-              : observed.snapshot.record.locator.database_id) !==
-            (yield* resolveDatabaseId(options.database))
+          (observed.snapshot.record.locator.type === "shared_skill"
+            ? observed.snapshot.record.locator.database_id
+            : undefined) !== (yield* resolveDatabaseId(options.database))
         )
           return yield* Effect.fail(
             fail("SKILL_NOT_FOUND", "The Skill does not belong to the selected database."),
@@ -1066,14 +457,12 @@ function acquireTargetSnapshot(
           )
         const previousLocator = observed?.snapshot.record.locator
         const online = yield* openSnapshot(
-          previousLocator?.type === "shared_skill" || previousLocator?.type === "notion_page"
+          previousLocator?.type === "shared_skill"
             ? previousLocator.page_id
             : options.refresh
               ? target.selector
               : (selected ?? target.selector),
           options,
-          view,
-          !options.refresh && options.maxAge !== 0,
           access === "all"
             ? undefined
             : {
@@ -1169,7 +558,7 @@ function acquireTargetSnapshot(
       }
     }
     yield* Effect.try({
-      try: () => assertSnapshotTarget(snapshot, target, view, pinnedDatabase),
+      try: () => assertSnapshotTarget(snapshot, target, pinnedDatabase),
       catch: (error) => error as SkillsError,
     })
     return { snapshot, files }
@@ -1180,12 +569,9 @@ function acquireTargetSnapshot(
 export function targetSnapshot(
   target: SkillTarget,
   options: CatalogOptions = {},
-  view: SnapshotView = "generated",
   access: "all" | "manifest" | "entrypoint" | "target" = "all",
 ) {
-  return acquireTargetSnapshot(target, options, view, access).pipe(
-    Effect.map(({ snapshot }) => snapshot),
-  )
+  return acquireTargetSnapshot(target, options, access).pipe(Effect.map(({ snapshot }) => snapshot))
 }
 
 /** Local refs remain pure; a source-root crossing uses the same exact map as read --from. */
@@ -1196,16 +582,12 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       catch: (error) => error as SkillsError,
     })
     if (base.file_id !== undefined) {
-      const containing = yield* targetSnapshot(base, options, "generated", "manifest")
+      const containing = yield* targetSnapshot(base, options, "manifest")
       const path = yield* Effect.try({
         try: () => boundSnapshotPath(containing, base),
         catch: (error) => error as SkillsError,
       })
-      return yield* resolveUpstreamMemberRelative(
-        containing,
-        path || containing.entrypoint,
-        relative,
-      )
+      return yield* resolveCurrentRelative(containing, path || containing.entrypoint, relative)
     }
     const local = yield* Effect.try({
       try: () => resolveRef(from, relative),
@@ -1217,12 +599,8 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
       local.failure.message !== "The path escapes the skill root."
     )
       return yield* Effect.fail(local.failure)
-    const containing = yield* targetSnapshot(base, options, "generated", "manifest")
-    return yield* resolveUpstreamMemberRelative(
-      containing,
-      base.path || containing.entrypoint,
-      relative,
-    )
+    const containing = yield* targetSnapshot(base, options, "manifest")
+    return yield* resolveCurrentRelative(containing, base.path || containing.entrypoint, relative)
   })
 }
 
@@ -1281,12 +659,12 @@ function readSkillContent(input: string, options: ReadOptions) {
         },
         catch: (error) => error as SkillsError,
       })
-      const containing = yield* targetSnapshot(base, options, "generated", "manifest")
+      const containing = yield* targetSnapshot(base, options, "manifest")
       const basePath = yield* Effect.try({
         try: () => boundSnapshotPath(containing, base),
         catch: (error) => error as SkillsError,
       })
-      const resolved = yield* resolveUpstreamMemberRelative(
+      const resolved = yield* resolveCurrentRelative(
         containing,
         basePath ?? containing.entrypoint,
         input,
@@ -1311,13 +689,13 @@ function readSkillContent(input: string, options: ReadOptions) {
           },
           files: selected.files,
         }
-      } else acquired = yield* acquireTargetSnapshot(target, options, "generated", "target")
+      } else acquired = yield* acquireTargetSnapshot(target, options, "target")
     } else {
       target = yield* Effect.try({
         try: () => parseTarget(input, options.path),
         catch: (error) => error as SkillsError,
       })
-      acquired = yield* acquireTargetSnapshot(target, options, "generated", "target")
+      acquired = yield* acquireTargetSnapshot(target, options, "target")
     }
     const { snapshot, files } = acquired
     const path =
@@ -1352,7 +730,6 @@ function readSkillContent(input: string, options: ReadOptions) {
       source: snapshot.source,
       freshness: snapshot.freshness,
       ...(snapshot.materialization ? { materialization: snapshot.materialization } : {}),
-      ...(snapshot.source_projection ? { source_projection: snapshot.source_projection } : {}),
       ...snapshotReferences(snapshot),
     }
     if (options.output) {
@@ -1419,7 +796,7 @@ export function listSkill(
       try: () => parseTarget(input, options.path),
       catch: (e) => e as SkillsError,
     })
-    const snapshot = yield* targetSnapshot(target, options, "generated", "manifest")
+    const snapshot = yield* targetSnapshot(target, options, "manifest")
     const path =
       (yield* Effect.try({
         try: () => boundSnapshotPath(snapshot, target),
@@ -1440,4 +817,26 @@ export function listSkill(
       })),
     }
   })
+}
+
+function resolveCurrentRelative(snapshot: Snapshot, from: string, relative: string) {
+  const local = fileRef(snapshot.record.id, from, snapshot.snapshot_id)
+  return Effect.try({
+    try: () => resolveRef(local, relative),
+    catch: (error) => error as SkillsError,
+  }).pipe(
+    Effect.mapError((error) =>
+      error.code === "INVALID_PATH" && error.message === "The path escapes the skill root."
+        ? fail(
+            "CURRENT_SOURCE_REQUIRED",
+            "A relative path crossing the current Skill root requires an explicit current Source contribution link.",
+            {
+              from_path: from,
+              relative_path: relative,
+              next: "manage_current_source_links",
+            },
+          )
+        : error,
+    ),
+  )
 }

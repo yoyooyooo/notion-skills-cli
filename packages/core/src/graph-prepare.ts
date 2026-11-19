@@ -1,45 +1,38 @@
 import { Clock, Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { HttpClient } from "effect/http"
+import { locallySelectedScope, type ObservedSnapshot, type ReadPolicyOptions } from "./cache.ts"
+import { authScope } from "./catalog.ts"
 import {
   currentConsumptionEffects,
   withConsumptionEffects,
   type ConsumptionObservationOptions,
 } from "./consumption-effects.ts"
-import { authScope } from "./catalog.ts"
-import { locallySelectedScope, type ObservedSnapshot, type ReadPolicyOptions } from "./cache.ts"
-import {
-  fail,
-  property,
-  SkillsError,
-  snapshotMembers,
-  type ContentRecord,
-  type Snapshot,
-} from "./model.ts"
-import { Notion } from "./notion.ts"
-import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
-import { canonicalSharedJson } from "./shared-records.ts"
-import { targetSnapshot } from "./snapshot.ts"
-import { withSharedGraphReads, withSharedGraphReadDepth } from "./shared-graph-read-context.ts"
 import { derivedGraphDirectory, relationDirectory } from "./graph-derived-directory.ts"
-import { sha256, Store } from "./store.ts"
+import {
+  PREPARE_DEFAULT_BUDGET,
+  PrepareInputSchema,
+  type PrepareBinding,
+  type PrepareDirectoryEntry,
+  type PreparedNode,
+  type PrepareIncomplete,
+  type PrepareInput,
+  type PrepareNode,
+  type PrepareReady,
+  type PrepareRole,
+} from "./graph-prepare-model.ts"
+import { fail, property, SkillsError, type ContentRecord } from "./model.ts"
+import { Notion } from "./notion.ts"
 import {
   normalizePrepareExecution,
   prepareRequestPolicy,
   withPrepareExecution,
   type PrepareExecutionOptions,
 } from "./preparation-execution.ts"
-import {
-  PREPARE_DEFAULT_BUDGET,
-  PrepareInputSchema,
-  type PrepareBinding,
-  type PrepareDirectoryEntry,
-  type PrepareIncomplete,
-  type PrepareInput,
-  type PrepareNode,
-  type PrepareReady,
-  type PrepareRole,
-  type PreparedNode,
-} from "./graph-prepare-model.ts"
+import { fileRef, pageId, parseTarget, type SkillTarget } from "./ref.ts"
+import { withSharedGraphReadDepth, withSharedGraphReads } from "./shared-graph-read-context.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
+import { targetSnapshot } from "./snapshot.ts"
+import { sha256, Store } from "./store.ts"
 
 type Services =
   | Notion
@@ -58,18 +51,13 @@ const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
 const roleOrder: readonly PrepareRole[] = ["root", "required", "member", "reference"]
 const rolesWith = (roles: readonly PrepareRole[], role: PrepareRole) =>
   roleOrder.filter((candidate) => candidate === role || roles.includes(candidate))
-const selectorKey = (selector: string) => {
-  const page = pageId(selector)
-  return page === undefined
-    ? selector.replace(/^upstream:/u, "notion_subscription:")
-    : `notion_page:${page}`
-}
+const selectorKey = (selector: string) => pageId(selector) ?? selector
 const exactTarget = (input: string) => {
   const target = parseTarget(input)
   if (
     !target.snapshot &&
     !pageId(target.selector) &&
-    !/^(shared_skill:[^:]+:.+|(?:notion_subscription|upstream):[a-f0-9-]+)$/u.test(target.selector)
+    !/^shared_skill:[^:]+:.+$/u.test(target.selector)
   )
     throw fail(
       "EXACT_TARGET_REQUIRED",
@@ -80,14 +68,7 @@ const exactTarget = (input: string) => {
 }
 const recordSelectors = (record: ContentRecord): readonly string[] => {
   const locator = record.locator
-  return [
-    record.id,
-    ...(locator.type === "notion_page" || locator.type === "shared_skill"
-      ? [`notion_page:${locator.page_id}`]
-      : locator.type === "notion_subscription"
-        ? [`notion_subscription:${locator.subscription_id}`]
-        : []),
-  ]
+  return [record.id, ...(locator.type === "shared_skill" ? [locator.page_id] : [])]
 }
 const deferred = (error: SkillsError) =>
   error.code === "NOTION_QUEUE_FULL" || property(error.details).deferred === true
@@ -434,7 +415,6 @@ function prepareSelectedInScope(
                 ...options,
                 ...(selected.snapshot === undefined ? policy : { offline: policy.offline }),
               },
-              "generated",
               "entrypoint",
             ),
             depth,

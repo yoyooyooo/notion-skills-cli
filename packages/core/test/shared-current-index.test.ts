@@ -11,11 +11,13 @@ import {
 } from "../src/shared-current-file.ts"
 import { queryCurrentFilesForSkills, queryCurrentSkillIndex } from "../src/shared-current-index.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
+import { currentLibrary } from "./shared-current-fixture.ts"
 
 const id = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`
 const skillPage = id(1)
 const fileSource = id(6)
 const skills = {
+  ...currentLibrary.skills.property_ids,
   Name: "title",
   Description: "description",
   Kind: "kind",
@@ -28,6 +30,7 @@ const skills = {
   Operation: "operation",
 }
 const files = {
+  ...currentLibrary.files.property_ids,
   Name: "title",
   "File ID": "file-id",
   Skill: "owner",
@@ -35,13 +38,9 @@ const files = {
   Content: "content",
 }
 const library: SharedLibrary = {
-  version: 1,
-  library_id: "library-current",
-  operation_id: "library-current",
-  parent_page_id: id(2),
+  ...currentLibrary,
   skills: { database_id: id(3), data_source_id: id(4), property_ids: skills },
   files: { database_id: id(5), data_source_id: fileSource, property_ids: files },
-  records: { database_id: id(7), data_source_id: id(8), property_ids: {} },
 }
 const native = { kind: "native", mode: "100644", frontmatter: "" } satisfies CurrentFileContent
 const resource = {
@@ -80,7 +79,11 @@ function skill(state = "ready", operation = "", content: CurrentFileContent = na
   return {
     object: "page",
     id: skillPage,
-    parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
+    parent: {
+      type: "data_source_id",
+      data_source_id: library.skills.data_source_id,
+      database_id: library.skills.database_id,
+    },
     last_edited_time: "2026-11-18T00:00:00.000Z",
     properties: {
       Name: { id: "title", type: "title", title: [{ plain_text: "Current demo" }] },
@@ -93,6 +96,25 @@ function skill(state = "ready", operation = "", content: CurrentFileContent = na
       Content: rich(skills.Content, JSON.stringify(content)),
       "Current State": select(skills["Current State"], state),
       Operation: rich(skills.Operation, operation),
+      Members: {
+        id: library.skills.property_ids.Members,
+        type: "relation",
+        relation: [],
+        has_more: false,
+      },
+      Requires: {
+        id: library.skills.property_ids.Requires,
+        type: "relation",
+        relation: [],
+        has_more: false,
+      },
+      Origin: {
+        id: library.skills.property_ids.Origin,
+        type: "relation",
+        relation: [],
+        has_more: false,
+      },
+      Tags: { id: library.skills.property_ids.Tags, type: "multi_select", multi_select: [] },
     },
   }
 }
@@ -103,9 +125,14 @@ function file(
   return {
     object: "page",
     id: id(1000 + n),
-    parent: { type: "data_source_id", data_source_id: fileSource },
+    parent: {
+      type: "data_source_id",
+      data_source_id: fileSource,
+      database_id: library.files.database_id,
+    },
     last_edited_time: "2026-11-18T00:00:00.000Z",
     properties: {
+      Name: { id: "title", type: "title", title: [{ plain_text: `File ${n}` }] },
       "File ID": rich(files["File ID"], options.fileId ?? `file-${n}`),
       Skill: {
         id: files.Skill,
@@ -115,6 +142,11 @@ function file(
       },
       Path: rich(files.Path, options.path ?? `references/${n}.md`),
       Content: rich(files.Content, JSON.stringify(options.content ?? native)),
+      Origin: {
+        id: library.files.property_ids.Origin,
+        type: "rollup",
+        rollup: { type: "array", array: [], function: "show_unique" },
+      },
     },
   }
 }

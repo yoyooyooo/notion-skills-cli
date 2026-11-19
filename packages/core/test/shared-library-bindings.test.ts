@@ -1,18 +1,17 @@
 import { expect, test } from "bun:test"
 import { preservesSharedLibraryBindings } from "../src/shared-library-model.ts"
-import { library, id } from "./shared-snapshot-fixture.ts"
+import { currentLibrary as library, currentId as id } from "./shared-current-fixture.ts"
 
-test("older frozen operations retain exact bindings across additive optional registrations", () => {
+test("additional display properties preserve every current four-table operation binding", () => {
   const updated = {
     ...library,
     files: {
       ...library.files,
-      property_ids: { ...library.files.property_ids, "Management Receipt": "receipt" },
+      property_ids: { ...library.files.property_ids, "Reading note": "reading-note" },
     },
     sources: {
-      database_id: id(80),
-      data_source_id: id(81),
-      property_ids: { "Source ID": "source-id" },
+      ...library.sources,
+      property_ids: { ...library.sources.property_ids, "Display note": "display-note" },
     },
   }
   expect(preservesSharedLibraryBindings(library, updated)).toBe(true)
@@ -20,7 +19,7 @@ test("older frozen operations retain exact bindings across additive optional reg
   expect(preservesSharedLibraryBindings(updated, structuredClone(updated))).toBe(true)
 })
 
-test("additive compatibility never accepts deleted, renamed, rebound or foreign frozen identities", () => {
+test("binding checks never accept deleted, renamed, rebound or foreign current identities", () => {
   const files = { ...library.files, property_ids: { ...library.files.property_ids } }
   delete files.property_ids["File ID"]
   for (const changed of [
@@ -29,6 +28,7 @@ test("additive compatibility never accepts deleted, renamed, rebound or foreign 
     { ...library, parent_page_id: id(90) },
     { ...library, skills: { ...library.skills, database_id: id(90) } },
     { ...library, files: { ...library.files, data_source_id: id(90) } },
+    { ...library, sources: { ...library.sources, data_source_id: id(90) } },
     { ...library, files },
     {
       ...library,

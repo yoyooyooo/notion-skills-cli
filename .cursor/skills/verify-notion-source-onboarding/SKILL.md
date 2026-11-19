@@ -21,7 +21,7 @@ bun test packages/core/test/shared-current-source.test.ts packages/core/test/sha
 
 ## Drive
 
-1. Sources.Content 只接受当前 `{version: 1, plan}`；Last Revision 必须等于 normalized plan 的 SHA-256。稳定 Source ID 不再使用 snapshot/bundle/source-plan carrier。缺 hash 的 Git manifest 明确拒绝，不在 reader 回写补齐。
+1. Sources.Content 接受当前内联 `{version: 1, plan}` 或指向一个 Source-owned current resource 的 `{version: 1, resource}`；较大 plan 不截断，两种存储的 Last Revision 都必须等于完整 normalized plan 的 SHA-256。稳定 Source ID 不再使用 snapshot/bundle/source-plan carrier。缺 hash 的 Git manifest 明确拒绝，不在 reader 回写补齐。
 2. acquisition v5 按文件记录 source_id/revision/source_path 或 resource object_id。同一 Skill 可用多 Source；同一 Source 不可混不同 current revision。只查本次所需 Source，批查询完整分页并拒绝重复物理页。
 3. 源文件按固定 revision/hash/bytes/mode 获取。缺 cache 时先核当前 owner/descriptor；变化、停用、未 ready、权限不足或分页不完不得访问旧 Records/history 补救。offline 不探远端。
 4. Git-only/mixed/native 每个 supporting 文件都有 Files 身份、唯一 owner 和完整阅读页。有效本地 directory 不是 Notion 投影；文本需要全文，图片/二进制需要有效原件。普通读不为补页远端写入。
@@ -29,7 +29,7 @@ bun test packages/core/test/shared-current-source.test.ts packages/core/test/sha
 6. 当前 resource 小文件单 Record inline，大文件单原件 attachment。精确 bytes/mode、上传失败、missing attachment、签名 URL 更新和预算分别检查；URL 不作长期身份。
 7. 全 Pro 内容与所有曝光/更新边由 AH-516 对账。provider 可达、已登记、成员完整、字节完整、投影完整和当前可消费分别判定。未知不能算有意停用或已移交。
 
-现有 [resource-sources](../verify-ntn-skills/features/resource-sources.md) 仅提供旧设施定位。其 create_git 零 Files、旧 Source carrier、adoption/retained/ACK 和历史修复配方不执行。本轮只使用上面的 current tests 与实际 current 命令；独立包路径由其 owner 接通后再验。
+[resource-sources](../verify-ntn-skills/features/resource-sources.md) 连接这些当前测试、精确原件与实际安装边界。来源读取、Source 发布和 Notion 全文投影分别验收，缺少 public writer 时明确 blocked/not_run。
 
 ## Evidence
 

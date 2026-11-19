@@ -1,7 +1,7 @@
 import { posix } from "node:path"
 import { Crypto, Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
-import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.ts"
+import { invalidateSnapshotCache, invalidateCurrentLibraryCatalog } from "./cache.ts"
 import { fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
@@ -276,7 +276,12 @@ function resolveFiles(plan: PreparedCurrentSkillWrite, current?: Target) {
         old?.file_id ??
         "file-" + (yield* sha256(canonicalSharedJson([plan.skill_id, file.path])))
       yield* checked(() => {
-        if (old !== undefined && file.file_id !== undefined && old.file_id !== file.file_id)
+        if (
+          old !== undefined &&
+          file.file_id !== undefined &&
+          old.file_id !== file.file_id &&
+          old.content.kind !== "source"
+        )
           throw invalid("The main File ID cannot silently change.")
         if (ids.has(id) || (old !== undefined && pages.has(old.page_id)))
           throw invalid("A desired tree selects the same current File twice.")
@@ -290,6 +295,38 @@ function resolveFiles(plan: PreparedCurrentSkillWrite, current?: Target) {
         file_id: id,
         ...(old === undefined ? {} : { page_id: old.page_id }),
       })
+    }
+    const retained = new Map(selected.map((file) => [file.page_id, file]))
+    for (const previous of before) {
+      if (previous.content.kind !== "source") continue
+      const desired = retained.get(previous.page_id)
+      const reason =
+        desired === undefined || desired.file_id !== previous.file_id
+          ? "file_removed_or_reidentified"
+          : desired.input.path !== previous.path
+            ? "path_changed"
+            : desired.input.kind !== "source"
+              ? "authority_changed"
+              : desired.input.content.source_id !== previous.content.source_id ||
+                  desired.input.content.source_path !== previous.content.source_path
+                ? "source_binding_changed"
+                : undefined
+      if (reason !== undefined)
+        return yield* Effect.fail(
+          fail(
+            "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+            "Changing or removing an existing Source file requires coordinated Source contribution management.",
+            {
+              skill_id: plan.skill_id,
+              file_id: previous.file_id,
+              path: previous.path,
+              source_id: previous.content.source_id,
+              source_path: previous.content.source_path,
+              reason,
+              next: "Preserve the current File identity, path and Source binding until Source management can update its contribution and exclusions together.",
+            },
+          ),
+        )
     }
     return selected
   })
@@ -489,7 +526,7 @@ function applyPreparedCurrentSkillWrite(
     const invalidate = Effect.gen(function* () {
       if (cacheInvalidated) return
       const scope = yield* authScope
-      yield* invalidateSubscriptionCatalog(scope, library.skills.database_id)
+      yield* invalidateCurrentLibraryCatalog(scope, library.skills.database_id)
       yield* invalidateSnapshotCache(sharedSkillId(library.library_id, plan.skill_id), scope)
       cacheInvalidated = true
     })
@@ -515,13 +552,9 @@ function applyPreparedCurrentSkillWrite(
       [binding(library, "skills", "Content")]: {
         rich_text: currentRecordText(canonicalSharedJson(main.input.content)),
       },
-      ...(library.skills.property_ids.Origin === undefined
-        ? {}
-        : {
-            [library.skills.property_ids.Origin]: {
-              relation: [...sources.values()].map((source) => ({ id: source.page_id })),
-            },
-          }),
+      [binding(library, "skills", "Origin")]: {
+        relation: [...sources.values()].map((source) => ({ id: source.page_id })),
+      },
       ...(creating
         ? {
             [binding(library, "skills", "Current State")]: { select: { name: "applying" } },

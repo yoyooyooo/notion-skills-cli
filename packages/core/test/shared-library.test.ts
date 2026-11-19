@@ -19,7 +19,7 @@ function fixture(
   const sources = new Map<string, Record<string, unknown>>()
   const calls: Array<{ path: string; write: boolean; method: string; body: unknown }> = []
   let counter = 0
-  let hideMembers = false
+  let hiddenRelation: "Members" | "Requires" | undefined
   const responseField = (raw: unknown, fieldId: string) => {
     const field = property(raw)
     const type = Object.keys(field)[0]
@@ -55,6 +55,7 @@ function fixture(
           const dbId = id(++counter),
             sourceId = id(counter + 100)
           const raw = {
+            object: "database",
             id: dbId,
             parent: { page_id: parent },
             title: value.title,
@@ -69,11 +70,32 @@ function fixture(
               ([name, raw], index) => {
                 const field = property(raw),
                   type = Object.keys(field)[0]
-                return [name, responseField(raw, type === "title" ? "title" : `p${index}`)]
+                const response = responseField(raw, type === "title" ? "title" : `p${index}`)
+                const relation = property(response.relation)
+                if (type === "relation" && relation.type === "dual_property") {
+                  const target = sources.get(String(relation.data_source_id))
+                  if (!target) throw Error("A dual relation must target an existing fixture table")
+                  const dual = property(relation.dual_property)
+                  const reverseId = `reverse-${sourceId}-${index}`
+                  relation.dual_property = { ...dual, synced_property_id: reverseId }
+                  property(target.properties)[
+                    String(dual.synced_property_name ?? `Related ${sourceId}`)
+                  ] = {
+                    id: reverseId,
+                    type: "relation",
+                    relation: {
+                      type: "dual_property",
+                      data_source_id: sourceId,
+                      dual_property: { synced_property_id: response.id },
+                    },
+                  }
+                }
+                return [name, response]
               },
             ),
           )
           sources.set(sourceId, {
+            object: "data_source",
             id: sourceId,
             parent: { database_id: dbId },
             properties,
@@ -97,18 +119,19 @@ function fixture(
         const source = sources.get(path.replace("v1/data_sources/", ""))
         if (source) {
           if (method === "PATCH") {
-            if (failures.members !== "not_accepted") {
+            const membersPatch = property(value.properties).Members !== undefined
+            if (!membersPatch || failures.members !== "not_accepted") {
               for (const [name, field] of Object.entries(property(value.properties)))
                 property(source.properties)[name] = responseField(
                   field,
                   name === "Members" ? "members%3Aself" : `extra-${name}`,
                 )
             }
-            if (failures.members !== undefined)
+            if (membersPatch && failures.members !== undefined)
               return Effect.fail(fail("WRITE_OUTCOME_UNKNOWN", "Members schema response lost."))
           }
           const response = structuredClone(source)
-          if (hideMembers) delete property(response.properties).Members
+          if (hiddenRelation) delete property(response.properties)[hiddenRelation]
           return Effect.succeed(response)
         }
         return Effect.fail(fail("UNEXPECTED_REQUEST", "Unexpected fixture request.", { path }))
@@ -123,19 +146,24 @@ function fixture(
     sources,
     calls,
     run,
-    hideMembers: (hidden: boolean) => {
-      hideMembers = hidden
+    hideRelation: (name: "Members" | "Requires") => {
+      hiddenRelation = name
     },
   }
 }
 
-test("one parent initializes three related tables and repeats without writes or body reads", async () => {
+test("one parent initializes four related tables and repeats without writes or body reads", async () => {
   const f = fixture()
   const first = await f.run(initializeSharedLibrary({ parent }))
   expect(first.reused).toBe(false)
-  expect(f.databases.size).toBe(3)
+  expect(f.databases.size).toBe(4)
   expect(first.library.files.property_ids.Skill).toBeDefined()
   expect(first.library.skills.property_ids.Members).toBe("members%3Aself")
+  expect(first.library.skills.property_ids.Requires).toBeDefined()
+  expect(first.library.skills.property_ids.Origin).toBeDefined()
+  expect(first.library.records.property_ids.Origin).toBeDefined()
+  expect(first.library.files.property_ids.Origin).toBe("extra-Origin")
+  expect(first.library.sources).toBeDefined()
   const membersWrite = f.calls.findIndex(
     (call) =>
       call.method === "PATCH" &&
@@ -147,6 +175,12 @@ test("one parent initializes three related tables and repeats without writes or 
   )
   expect(membersWrite).toBeGreaterThan(0)
   expect(descriptorWrite).toBeGreaterThan(membersWrite)
+  const originsWrite = f.calls.findIndex(
+    (call) =>
+      call.method === "PATCH" &&
+      call.path === `v1/data_sources/${first.library.files.data_source_id}`,
+  )
+  expect(descriptorWrite).toBeGreaterThan(originsWrite)
   expect(f.calls[membersWrite]?.body).toEqual({
     properties: {
       Members: {
@@ -178,6 +212,7 @@ test("new libraries use clean full-page titles and atomic internal table identit
     "Skills",
     "Files",
     "Records",
+    "Sources",
   ])
   for (const call of creates) {
     const body = property(call.body)
@@ -326,7 +361,7 @@ test("attachment rejects replacement of a registered data source even if its col
   expect(f.calls.filter((call) => call.write).length).toBe(writes)
 })
 
-test("registered Members is optional for old libraries and never silently adopted or created", async () => {
+test("an incomplete registered layout cannot attach or silently adopt unregistered Members", async () => {
   for (const keepUnregisteredColumn of [true, false]) {
     const f = fixture()
     const { library } = await f.run(initializeSharedLibrary({ parent }))
@@ -339,13 +374,16 @@ test("registered Members is optional for old libraries and never silently adopte
     if (!keepUnregisteredColumn) delete property(source.properties).Members
     const before = structuredClone(db.raw.description)
     const writes = f.calls.filter((call) => call.write).length
-    expect(
-      (await f.run(initializeSharedLibrary({ entry: library.skills.database_id }))).library,
-    ).toEqual(old)
-    expect((await f.run(initializeSharedLibrary({ parent }))).library).toEqual(old)
-    expect(
-      (await f.run(initializeSharedLibrary({ parent, operation: library.operation_id }))).library,
-    ).toEqual(old)
+    for (const input of [
+      { entry: library.skills.database_id },
+      { parent },
+      { parent, operation: library.operation_id },
+    ]) {
+      const result = await f.run(initializeSharedLibrary(input).pipe(Effect.result))
+      if (result._tag !== "Failure" || !(result.failure instanceof SkillsError))
+        throw Error("Incomplete layout must fail")
+      expect(result.failure.code).toBe("CURRENT_SCHEMA_REQUIRED")
+    }
     expect(db.raw.description).toEqual(before)
     expect(property(source.properties).Members !== undefined).toBe(keepUnregisteredColumn)
     expect(f.calls.filter((call) => call.write).length).toBe(writes)
@@ -385,7 +423,7 @@ test("descriptor rejects empty, unsafe and overlapping optional Members identiti
       id: library.skills.database_id,
       description: [{ plain_text: `ntn-skills-library:v1 ${JSON.stringify(descriptor)}` }],
     }),
-  ).toThrow("optional Members binding")
+  ).toThrow("Members binding")
 })
 
 test("attachment rejects deleted or replaced Members without binding by its unchanged name", async () => {
@@ -412,7 +450,7 @@ test("attachment rejects deleted or replaced Members without binding by its unch
 })
 
 test("attachment requires Members to target its own Skills data source and keep a native relation type", async () => {
-  for (const change of ["foreign", "wrong_type", "missing_mode", "bad_mode"]) {
+  for (const change of ["foreign", "wrong_type", "missing_mode", "bad_mode", "dual_mode"]) {
     const f = fixture()
     const { library } = await f.run(initializeSharedLibrary({ parent }))
     const source = f.sources.get(library.skills.data_source_id)
@@ -423,6 +461,10 @@ test("attachment requires Members to target its own Skills data source and keep 
     if (change === "wrong_type") members.type = "rich_text"
     if (change === "missing_mode") delete property(members.relation).type
     if (change === "bad_mode") property(members.relation).type = "unknown"
+    if (change === "dual_mode") {
+      property(members.relation).type = "dual_property"
+      property(members.relation).dual_property = {}
+    }
     const writes = f.calls.filter((call) => call.write).length
     const result = await f.run(
       initializeSharedLibrary({ entry: library.skills.database_id }).pipe(Effect.result),
@@ -461,15 +503,14 @@ test("accepted but unknown Members PATCH retains original operation and never re
   expect(property(first.failure.details).stage).toBe("members")
   const operation = String(property(first.failure.details).operation_id)
   const writes = f.calls.filter((call) => call.write).length
-  expect(writes).toBe(4)
-  expect(f.databases.size).toBe(3)
+  expect(writes).toBe(5)
+  expect(f.databases.size).toBe(4)
   expect(property(f.sources.get(id(101))?.properties).Members).toBeDefined()
   const recovered = await f.run(initializeSharedLibrary({ parent, operation }).pipe(Effect.result))
   if (recovered._tag !== "Failure") throw Error("Unregistered descriptor must stay unresolved")
   if (!(recovered.failure instanceof SkillsError)) throw recovered.failure
   expect(recovered.failure.code).toBe("LIBRARY_INIT_INCOMPLETE")
-  expect(property(recovered.failure.details).stage).toBe("descriptor")
-  expect(property(recovered.failure.details).members_property_id).toBe("members%3Aself")
+  expect(property(recovered.failure.details).stage).toBe("origins")
   await expect(f.run(initializeSharedLibrary({ parent }))).rejects.toThrow(
     "unfinished initialization",
   )
@@ -477,13 +518,17 @@ test("accepted but unknown Members PATCH retains original operation and never re
 })
 
 test("absent or temporarily invisible Members after unknown PATCH is never permission to resend", async () => {
-  for (const accepted of [true, false]) {
+  for (const [accepted, relation] of [
+    [true, "Members"],
+    [false, "Members"],
+    [true, "Requires"],
+  ] as const) {
     const f = fixture(false, { members: accepted ? "accepted" : "not_accepted" })
     const first = await f.run(initializeSharedLibrary({ parent }).pipe(Effect.result))
     if (first._tag !== "Failure") throw Error("Expected unknown Members result")
     if (!(first.failure instanceof SkillsError)) throw first.failure
     const operation = String(property(first.failure.details).operation_id)
-    f.hideMembers(true)
+    f.hideRelation(relation)
     const writes = f.calls.filter((call) => call.write).length
     const recovered = await f.run(
       initializeSharedLibrary({ parent, operation }).pipe(Effect.result),

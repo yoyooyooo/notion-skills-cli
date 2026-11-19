@@ -123,7 +123,6 @@ function noWrites(value) {
     version: 1,
     remote_writes: "none",
     author_content: "unchanged",
-    retention: [],
   })
 }
 function exact(file, actual) {

@@ -2,7 +2,6 @@ import { Effect, Option } from "effect"
 import { Argument, Command } from "effect/cli"
 import { defineCommand } from "../../core/src/command-schema.ts"
 import { initializeSharedLibrary, loadSharedLibrary } from "../../core/src/shared-library.ts"
-import { initializeSourceLibrary } from "../../core/src/shared-sources-library.ts"
 import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
 import { Notion } from "../../core/src/notion.ts"
 import { emit, requiredSingleton, singleton } from "./command-options.ts"
@@ -18,15 +17,11 @@ const initialize = defineCommand(
   },
   (options) =>
     Effect.gen(function* () {
-      const base = yield* initializeSharedLibrary({
+      const result = yield* initializeSharedLibrary({
         parent: Option.getOrUndefined(options.parent),
         entry: Option.getOrUndefined(options.entry),
         operation: Option.getOrUndefined(options.operation),
       })
-      const result =
-        base.library.sources === undefined && !base.reused
-          ? yield* initializeSourceLibrary(base.library)
-          : base
       yield* emit({
         ...result,
         contract: "current",

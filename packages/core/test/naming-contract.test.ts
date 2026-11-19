@@ -9,21 +9,27 @@ import {
   type ContentRecord,
 } from "../src/model.ts"
 import { fileRef, parseRef, parseTarget } from "../src/ref.ts"
-import { SubscriptionInputSchema } from "../src/upstream-model.ts"
 
 const page = "12345678-1234-4234-8234-123456789abc"
 const other = "22345678-1234-4234-8234-123456789abc"
 function record(name: string, id = page): ContentRecord {
   return {
-    id: `notion_page:${id}`,
+    id: `shared_skill:library:${id}`,
     kind: "skill",
     name,
     alias: aliasFor(name),
     description: "Use this skill",
     default_context: false,
     entrypoint: "SKILL.md",
-    ref: fileRef(id, "SKILL.md"),
-    locator: { type: "notion_page", page_id: id, database_id: "db", data_source_id: "ds" },
+    ref: fileRef(`shared_skill:library:${id}`, "SKILL.md"),
+    locator: {
+      type: "shared_skill",
+      library_id: "library",
+      skill_id: id,
+      page_id: id,
+      database_id: "db",
+      data_source_id: "ds",
+    },
   }
 }
 function catalog(records: readonly ContentRecord[]): Catalog {
@@ -63,24 +69,10 @@ describe("human names and callable aliases", () => {
     }
   })
 
-  test("uses the same name schema for direct subscription input and rejects controls", () => {
+  test("rejects controls through the public display name schema", () => {
     for (const name of ["", "  ", "Tty\u00007", "React\n19", "a\u007fb", "a\u200bb", "\ud800"]) {
       expect(() => validateDisplayName(name)).toThrow()
       expect(Schema.is(DisplayNameSchema)(name)).toBe(false)
-      expect(
-        Schema.is(SubscriptionInputSchema)({
-          name,
-          target_database_id: page,
-          description: "Use it",
-          default_context: false,
-          enabled: true,
-          source: { provider: { type: "git", url: "file:///unused", ref: "main" } },
-          roots: ["skills"],
-          include: [],
-          exclude: [],
-          mapping: {},
-        }),
-      ).toBe(false)
     }
   })
 

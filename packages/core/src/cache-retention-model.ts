@@ -9,7 +9,6 @@ export const DEFAULT_CACHE_CAPACITY: CacheCapacity = {
 }
 export const REBUILDABLE_CACHE_PREFIXES = [
   "cache/shared-github-blobs/",
-  "cache/shared-record-payloads/",
   "cache/shared-derived-graphs/",
 ] as const
 
@@ -17,7 +16,6 @@ export const REBUILDABLE_CACHE_PREFIXES = [
 export function rebuildableCacheKey(key: string): boolean {
   return (
     /^cache\/shared-github-blobs\/[a-f0-9]{40}\.json$/u.test(key) ||
-    /^cache\/shared-record-payloads\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key) ||
     /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u.test(key)
   )
 }
@@ -58,9 +56,8 @@ export function cacheRecordOwner(value: unknown) {
 export function cacheRecordProtection(key: string, value: unknown): readonly string[] {
   const row = property(value)
   const reasons: string[] = []
-  if (key.startsWith("operations/") || key.startsWith("plans/") || key.startsWith("database-init/"))
-    reasons.push("original_operation_or_pending_intent")
-  if (key.startsWith("snapshots/")) reasons.push("immutable_historical_pin")
+  if (key.startsWith("operations/")) reasons.push("pending_intent")
+  if (key.startsWith("snapshots/")) reasons.push("fixed_local_bytes")
   if (key.startsWith("content-restrictions/")) reasons.push("custom_content_restriction")
   if (row.access_denied !== undefined || key.startsWith("cache/identities/"))
     reasons.push("authorization_fact")

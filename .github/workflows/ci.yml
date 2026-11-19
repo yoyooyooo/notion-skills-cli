@@ -44,7 +44,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ntn-package-check.json
             ${{ runner.temp }}/ntn-consumer-evidence/**/report.json
-            ${{ runner.temp }}/ntn-consumer-evidence/**/requests*.jsonl
+            ${{ runner.temp }}/ntn-consumer-evidence/**/*requests*.jsonl
             !${{ runner.temp }}/ntn-consumer-evidence/**/node_modules/**
           if-no-files-found: ignore
           retention-days: 7

@@ -5,7 +5,7 @@ import { importDocument, type ImportFile } from "./import.ts"
 import { aliasFor, fail, SkillsError } from "./model.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
 import type { createRequestMetrics, SourceAcquisition } from "./request-metrics.ts"
-import { RequestBudget } from "./request-budget.ts"
+import { RequestBudget, withinRequestBudget } from "./request-budget.ts"
 import { ProviderRequestAdmission } from "./request-budget-http.ts"
 import { portableFiles, readPortable, type PortableSkill } from "./portable.ts"
 import { portableIdentity } from "./export.ts"
@@ -58,14 +58,6 @@ const PortableSkillSchema = Schema.Struct({
       path: Schema.String,
       bytes: Schema.Uint8Array,
       mode: Schema.optional(Schema.Literals(["100644", "100755"])),
-    }),
-  ),
-  projection: Schema.optional(
-    Schema.Struct({
-      name: Schema.String,
-      description: Schema.String,
-      body: Schema.String,
-      references: Schema.optional(Schema.Record(Schema.String, Schema.String)),
     }),
   ),
 })
@@ -248,104 +240,109 @@ function git(
     readonly noNegotiation?: boolean
   } = {},
 ) {
-  return Effect.scoped(
-    Effect.gen(function* () {
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-      observe.start?.()
-      const child = yield* spawner.spawn(
-        ChildProcess.make(
-          "git",
-          [
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            "protocol.allow=never",
-            "-c",
-            "protocol.http.allow=always",
-            "-c",
-            "protocol.https.allow=always",
-            "-c",
-            "protocol.ssh.allow=always",
-            "-c",
-            "protocol.file.allow=always",
-            "-c",
-            "protocol.ext.allow=never",
-            "-c",
-            "fetch.recurseSubmodules=false",
-            "-c",
-            "maintenance.auto=false",
-            "-c",
-            "gc.auto=0",
-            // Missing blobs in a partial clone are not reachable locally even
-            // when their commit is. Advertising that commit as a negotiation
-            // common point can make the server omit the explicitly wanted
-            // blobs. Keep the ordinary ref fetch unchanged; only the exact
-            // selected-object acquisition opts out of commit negotiation.
-            ...(observe.noNegotiation ? ["-c", "fetch.negotiationAlgorithm=noop"] : []),
-            "-C",
-            repo,
-            ...args,
-          ],
-          {
-            stdin: observe.stdin === undefined ? "ignore" : Stream.make(observe.stdin),
-            stdout: "pipe",
-            stderr: "pipe",
-            detached: false,
-            forceKillAfter: "2 seconds",
-            env: {
-              GIT_TERMINAL_PROMPT: "0",
-              // Host-configured credential helpers and SSH agents are trusted capabilities.
-              // Source repositories remain isolated; protocol policy is enforced explicitly.
-              GIT_ALLOW_PROTOCOL: "http:https:ssh:file",
-              GIT_TRACE: "0",
-              GIT_TRACE_PACKET: "0",
-              GIT_TRACE_CURL: "0",
-              GIT_CURL_VERBOSE: "0",
-              GIT_TRACE_SETUP: "0",
-              GIT_TRACE_PERFORMANCE: "0",
-              GIT_TRACE2: "0",
-              GIT_TRACE2_EVENT: "0",
-              GIT_TRACE2_PERF: "0",
-              GIT_NO_REPLACE_OBJECTS: "1",
-              GIT_NO_LAZY_FETCH: observe.noLazyFetch ? "1" : undefined,
-              GIT_DIR: undefined,
-              GIT_WORK_TREE: undefined,
-              GIT_INDEX_FILE: undefined,
-              GIT_OBJECT_DIRECTORY: undefined,
-              GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
+  return Effect.gen(function* () {
+    const budget = yield* Effect.serviceOption(RequestBudget)
+    if (Option.isSome(budget)) yield* budget.value.check
+    const operation = Effect.scoped(
+      Effect.gen(function* () {
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+        observe.start?.()
+        const child = yield* spawner.spawn(
+          ChildProcess.make(
+            "git",
+            [
+              "-c",
+              "core.hooksPath=/dev/null",
+              "-c",
+              "core.fsmonitor=false",
+              "-c",
+              "protocol.allow=never",
+              "-c",
+              "protocol.http.allow=always",
+              "-c",
+              "protocol.https.allow=always",
+              "-c",
+              "protocol.ssh.allow=always",
+              "-c",
+              "protocol.file.allow=always",
+              "-c",
+              "protocol.ext.allow=never",
+              "-c",
+              "fetch.recurseSubmodules=false",
+              "-c",
+              "maintenance.auto=false",
+              "-c",
+              "gc.auto=0",
+              // Missing blobs in a partial clone are not reachable locally even
+              // when their commit is. Advertising that commit as a negotiation
+              // common point can make the server omit the explicitly wanted
+              // blobs. Keep the ordinary ref fetch unchanged; only the exact
+              // selected-object acquisition opts out of commit negotiation.
+              ...(observe.noNegotiation ? ["-c", "fetch.negotiationAlgorithm=noop"] : []),
+              "-C",
+              repo,
+              ...args,
+            ],
+            {
+              stdin: observe.stdin === undefined ? "ignore" : Stream.make(observe.stdin),
+              stdout: "pipe",
+              stderr: "pipe",
+              detached: false,
+              forceKillAfter: "2 seconds",
+              env: {
+                GIT_TERMINAL_PROMPT: "0",
+                // Host-configured credential helpers and SSH agents are trusted capabilities.
+                // Source repositories remain isolated; protocol policy is enforced explicitly.
+                GIT_ALLOW_PROTOCOL: "http:https:ssh:file",
+                GIT_TRACE: "0",
+                GIT_TRACE_PACKET: "0",
+                GIT_TRACE_CURL: "0",
+                GIT_CURL_VERBOSE: "0",
+                GIT_TRACE_SETUP: "0",
+                GIT_TRACE_PERFORMANCE: "0",
+                GIT_TRACE2: "0",
+                GIT_TRACE2_EVENT: "0",
+                GIT_TRACE2_PERF: "0",
+                GIT_NO_REPLACE_OBJECTS: "1",
+                GIT_NO_LAZY_FETCH: observe.noLazyFetch ? "1" : undefined,
+                GIT_DIR: undefined,
+                GIT_WORK_TREE: undefined,
+                GIT_INDEX_FILE: undefined,
+                GIT_OBJECT_DIRECTORY: undefined,
+                GIT_ALTERNATE_OBJECT_DIRECTORIES: undefined,
+              },
+              extendEnv: true,
             },
-            extendEnv: true,
-          },
-        ),
-      )
-      const [stdout, , code] = yield* Effect.all(
-        [
-          capture(child.stdout, limit, observe.stdoutBytes),
-          capture(child.stderr, 64 * 1024),
-          child.exitCode,
-        ],
-        { concurrency: "unbounded" },
-      )
-      if (code !== 0)
-        return yield* Effect.fail(
-          sourceError("GIT_FAILED", "Git could not acquire or read the pinned source.", {
-            operation: args[0],
-            exit_code: code,
-          }),
+          ),
         )
-      return stdout
-    }),
-  ).pipe(
-    // Acquiring a repository can exceed the smaller per-object read budget.
-    Effect.timeout(args[0] === "fetch" ? "5 minutes" : "120 seconds"),
-    Effect.mapError((error) =>
-      error instanceof SkillsError
-        ? error
-        : sourceError("GIT_FAILED", "Git source operation failed or timed out."),
-    ),
-  )
+        const [stdout, , code] = yield* Effect.all(
+          [
+            capture(child.stdout, limit, observe.stdoutBytes),
+            capture(child.stderr, 64 * 1024),
+            child.exitCode,
+          ],
+          { concurrency: "unbounded" },
+        )
+        if (code !== 0)
+          return yield* Effect.fail(
+            sourceError("GIT_FAILED", "Git could not acquire or read the pinned source.", {
+              operation: args[0],
+              exit_code: code,
+            }),
+          )
+        return stdout
+      }),
+    ).pipe(
+      // Acquiring a repository can exceed the smaller per-object read budget.
+      Effect.timeout(args[0] === "fetch" ? "5 minutes" : "120 seconds"),
+      Effect.mapError((error) =>
+        error instanceof SkillsError
+          ? error
+          : sourceError("GIT_FAILED", "Git source operation failed or timed out."),
+      ),
+    )
+    return yield* Option.isSome(budget) ? withinRequestBudget(operation, budget.value) : operation
+  })
 }
 /** Shared no-checkout process boundary for exact commit/blob consumption.
  * Callers must validate their fixed origin and object selection before use. */

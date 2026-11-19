@@ -150,7 +150,7 @@ describe("Promise SDK boundary", () => {
       version: 1,
       status: "cancelled",
       reason: "interrupted",
-      effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
     })
     await expect(
       readSkill(input.targets[0]!, { env: {}, signal: controller.signal }),
@@ -160,7 +160,7 @@ describe("Promise SDK boundary", () => {
     ).rejects.toMatchObject({
       code: "CANCELLED",
       details: {
-        effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+        effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
       },
     })
     expectUnstartedMetrics(reports, 1)
@@ -258,7 +258,7 @@ describe("Promise SDK boundary", () => {
       version: 1,
       status: "cancelled",
       reason: "interrupted",
-      effects: { version: 1, remote_writes: "none", author_content: "unchanged", retention: [] },
+      effects: { version: 1, remote_writes: "none", author_content: "unchanged" },
     })
     expectUnstartedMetrics(reports, 1)
     await expect(decodeResourceReadResult({ version: 42 })).rejects.toBeInstanceOf(SkillsError)

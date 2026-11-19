@@ -18,7 +18,14 @@ const deferred = () => {
 // The installed service serves declared Notion facts. Writes are enabled only
 // for the bounded CLI import gate; SDK consumption keeps the default read-only mode.
 export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
-  assert.ok(sample?.notion?.library?.skills)
+  assert.ok(
+    sample?.notion?.library?.skills && sample.notion.library.sources,
+    "The controlled current service requires the complete four-table library",
+  )
+  assert.ok(
+    Array.isArray(sample.notion.sources),
+    "Declare the current Source rows explicitly, including an empty native-only table",
+  )
   assert.ok(isAbsolute(ledgerPath), "The owned request ledger must be absolute")
   const port = options.port ?? 0
   assert.ok(Number.isInteger(port) && port >= 0 && port <= 65535, "Invalid loopback fixture port")
@@ -367,8 +374,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
             ? notion.files
             : url.pathname === `/v1/data_sources/${library.records.data_source_id}/query`
               ? notion.records
-              : library.sources &&
-                  url.pathname === `/v1/data_sources/${library.sources.data_source_id}/query`
+              : url.pathname === `/v1/data_sources/${library.sources.data_source_id}/query`
                 ? notion.sources
                 : undefined
       assert.ok(rows, "An unexpected data source was queried")
@@ -440,9 +446,9 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       )
     return (
       method === "POST" &&
-      ([library.skills, library.files, library.records, library.sources]
-        .filter(Boolean)
-        .some((table) => path === "/v1/data_sources/" + table.data_source_id + "/query") ||
+      ([library.skills, library.files, library.records, library.sources].some(
+        (table) => path === "/v1/data_sources/" + table.data_source_id + "/query",
+      ) ||
         (viewObservation && path === "/v1/views/" + sample.view_dynamics.view.id + "/queries"))
     )
   }

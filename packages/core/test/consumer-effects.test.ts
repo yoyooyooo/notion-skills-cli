@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Fiber } from "effect"
-import { withConsumptionEffects, type ConsumptionEffects } from "../src/consumption-effects.ts"
+import { Deferred, Effect, Fiber, Schema } from "effect"
+import {
+  ConsumptionEffectsSchema,
+  withConsumptionEffects,
+  type ConsumptionEffects,
+} from "../src/consumption-effects.ts"
 import { property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
@@ -15,7 +19,6 @@ const noWrites: ConsumptionEffects = {
   version: 1,
   remote_writes: "none",
   author_content: "unchanged",
-  retention: [],
 }
 const current = () =>
   openSharedSnapshot({
@@ -24,6 +27,23 @@ const current = () =>
     scope: currentScope,
     startedAt: Date.now(),
   })
+
+test("current effects reject retained history and contradictory zero-write claims", () => {
+  const decode = Schema.decodeUnknownSync(ConsumptionEffectsSchema, { onExcessProperty: "error" })
+  for (const value of [
+    noWrites,
+    { version: 1, remote_writes: "unknown", author_content: "unchanged" },
+    { version: 1, remote_writes: "unknown", author_content: "unknown" },
+  ] as const)
+    expect(decode(value)).toEqual(value)
+  for (const value of [
+    { ...noWrites, remote_writes: "retained" },
+    { ...noWrites, retention: [] },
+    { ...noWrites, author_content: "unknown" },
+    { ...noWrites, remote_writes: "unknown", retention: [{ operation_id: "old-operation" }] },
+  ])
+    expect(() => decode(value)).toThrow()
+})
 
 test("current body observation reports zero remote writes on success", async () => {
   const f = currentSnapshotFixture()

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { Crypto, Effect, FileSystem, Path } from "effect"
+import { Crypto, Effect, FileSystem, Path, Schema } from "effect"
 import { property, SkillsError } from "../src/model.ts"
 import {
   bindSharedLocalResource,
@@ -16,18 +16,33 @@ import {
   unbindSharedLocalResource,
 } from "../src/shared-source-config.ts"
 import { Store } from "../src/store.ts"
-import { registrationStore } from "./shared-source-registration-fixture.ts"
 
 const hash = createHash("sha256").update("resource").digest("hex")
 const manifest = { version: 1 as const, files: [{ path: "resource.txt", sha256: hash, bytes: 8 }] }
 const origin = "https://resources.example.com"
 function fixture() {
-  const local = registrationStore()
+  const records = new Map<string, unknown>()
+  const unexpected = () => Effect.die(new Error("Unexpected current Source configuration I/O"))
   const store: Store["Service"] = {
-    ...local.store,
+    root: "/controlled",
+    configRoot: "/controlled/config",
+    cacheRoot: "/controlled/cache",
+    reserveCacheGeneration: unexpected,
+    listKeys: unexpected,
+    retireKeys: unexpected,
+    backup: unexpected,
+    output: unexpected,
+    readBytes: unexpected,
+    writeBytes: unexpected,
+    readJson: (key, schema) =>
+      Effect.sync(() =>
+        records.has(key)
+          ? Schema.decodeUnknownSync(schema)(structuredClone(records.get(key)))
+          : undefined,
+      ),
     writeJson: (key, value) =>
       Effect.sync(() => {
-        local.records.set(key, structuredClone(value))
+        records.set(key, structuredClone(value))
       }),
   }
   const run = <A, E>(
@@ -36,7 +51,7 @@ function fixture() {
     Effect.runPromise(
       value.pipe(Effect.provideService(Store, store), Effect.provide(NodeServices.layer)),
     )
-  return { run, json: local.records }
+  return { run, json: records }
 }
 async function withDirectory(action: (root: string) => Promise<void>) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "ntn-source-config-"))

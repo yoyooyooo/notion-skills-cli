@@ -3,6 +3,7 @@ import { decode, fail, listSchema, property, SkillsError, text } from "./model.t
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sourceDefinitionLayout } from "./shared-sources-model.ts"
+import { initializeCurrentSourceRelations } from "./shared-sources-library.ts"
 
 import {
   LIBRARY_MARKER,
@@ -32,7 +33,7 @@ const select = (names: readonly string[]) => ({
 })
 const title = (content: string) => [{ type: "text", text: { content } }]
 const TABLE_MARKER = "ntn-skills-table:v1 "
-const tableRoles = ["Skills", "Files", "Records"] as const
+const tableRoles = ["Skills", "Files", "Records", "Sources"] as const
 type TableRole = (typeof tableRoles)[number]
 const TableInitializationSchema = Schema.Struct({
   version: Schema.Literal(1),
@@ -124,7 +125,15 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
   const value = property(raw),
     description = text(value.description)
   if (!description.startsWith(LIBRARY_MARKER)) return undefined
-  const library = decode(SharedLibrarySchema, JSON.parse(description.slice(LIBRARY_MARKER.length)))
+  const descriptor = JSON.parse(description.slice(LIBRARY_MARKER.length))
+  const missing = missingCurrentBindings(descriptor)
+  if (missing.length !== 0)
+    throw fail(
+      "CURRENT_SCHEMA_REQUIRED",
+      "The current library requires all four tables and their registered relationships. Explicitly convert the existing library before normal use.",
+      { missing, next: "migrate_current_content" },
+    )
+  const library = decode(SharedLibrarySchema, descriptor)
   if (value.in_trash === true || value.id !== library.skills.database_id)
     throw fail(
       "LIBRARY_INVALID",
@@ -164,43 +173,36 @@ export function libraryFromDatabase(raw: unknown): SharedLibrary | undefined {
     )
       throw fail(
         "LIBRARY_INVALID",
-        `The optional ${field} binding is not a unique stable property identity.`,
+        `The ${field} binding is not a unique stable property identity.`,
       )
   }
-  const tables = [
-    library.skills,
-    library.files,
-    library.records,
-    ...(library.sources ? [library.sources] : []),
-  ]
-  if (library.sources) {
-    exactId(library.sources.database_id)
-    exactId(library.sources.data_source_id)
-    const ids = Object.keys(
-      sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
-    ).map((key) => library.sources!.property_ids[key])
+  const tables = [library.skills, library.files, library.records, library.sources]
+  exactId(library.sources.database_id)
+  exactId(library.sources.data_source_id)
+  const ids = Object.keys(
+    sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
+  ).map((key) => library.sources.property_ids[key])
+  if (
+    library.sources.property_ids.Name !== "title" ||
+    ids.some((id) => !id) ||
+    new Set(ids).size !== ids.length ||
+    !library.skills.property_ids.Origin ||
+    !library.records.property_ids.Origin
+  )
+    throw fail(
+      "LIBRARY_INVALID",
+      "Sources requires complete stable table, member and relation bindings.",
+    )
+  for (const table of tables) {
+    const bindings = Object.values(table.property_ids)
     if (
-      library.sources.property_ids.Name !== "title" ||
-      ids.some((id) => !id) ||
-      new Set(ids).size !== ids.length ||
-      !library.skills.property_ids.Origin ||
-      !library.records.property_ids.Origin
+      bindings.some((id) => !/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(id)) ||
+      new Set(bindings).size !== bindings.length
     )
       throw fail(
         "LIBRARY_INVALID",
-        "Sources requires complete stable table, member and relation bindings.",
+        "Four-table bindings must have unique, safe stable property identities.",
       )
-    for (const table of tables) {
-      const bindings = Object.values(table.property_ids)
-      if (
-        bindings.some((id) => !/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(id)) ||
-        new Set(bindings).size !== bindings.length
-      )
-        throw fail(
-          "LIBRARY_INVALID",
-          "Four-table bindings must have unique, safe stable property identities.",
-        )
-    }
   }
   if (
     new Set(tables.map((table) => table.database_id)).size !== tables.length ||
@@ -232,14 +234,14 @@ export function validateSharedRelationField(value: unknown, skillsDataSourceId: 
     typeof field.id !== "string" ||
     !/^(?:[A-Za-z0-9._~-]|%[0-9a-f]{2})+$/iu.test(field.id) ||
     relation.data_source_id !== skillsDataSourceId ||
-    (mode !== "single_property" && mode !== "dual_property") ||
+    mode !== "single_property" ||
     typeof relation[mode] !== "object" ||
     relation[mode] === null ||
     Array.isArray(relation[mode])
   )
     throw fail(
       "LIBRARY_SCHEMA_CONFLICT",
-      "Members and Requires must be registered native relations to this same Skills data source.",
+      "Members and Requires must be registered single-property relations to this same Skills data source.",
     )
   return field.id
 }
@@ -349,26 +351,13 @@ function inspectLibrary(library: SharedLibrary) {
       library.parent_page_id,
       library.records,
     )
-    if (library.sources) {
-      yield* inspectTable(
-        library.sources.database_id,
-        sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
-        library.parent_page_id,
-        library.sources,
-      )
-      for (const table of [library.skills, library.records]) {
-        yield* inspectTable(
-          table.database_id,
-          {
-            Origin: {
-              relation: { data_source_id: library.sources.data_source_id, single_property: {} },
-            },
-          },
-          library.parent_page_id,
-          table,
-        )
-      }
-    }
+    yield* inspectTable(
+      library.sources.database_id,
+      sourceDefinitionLayout(library.skills.data_source_id, library.records.data_source_id),
+      library.parent_page_id,
+      library.sources,
+    )
+    yield* initializeCurrentSourceRelations(library, true)
     return library
   })
 }
@@ -417,19 +406,23 @@ function initializeMembers(
       const membersId = yield* checked(() =>
         validateSharedRelationField(existing, skills.data_source_id),
       )
-      // Old initialization operations may predate Requires; preserve their exact observed schema.
-      const requiredId =
-        existingRequired === undefined
-          ? undefined
-          : yield* checked(() =>
-              validateSharedRelationField(existingRequired, skills.data_source_id),
-            )
+      if (existingRequired === undefined)
+        return yield* Effect.fail(
+          fail(
+            "LIBRARY_INIT_INCOMPLETE",
+            "The original Requires schema is not completely visible; its PATCH cannot be replayed.",
+            details,
+          ),
+        )
+      const requiredId = yield* checked(() =>
+        validateSharedRelationField(existingRequired, skills.data_source_id),
+      )
       return {
         ...skills,
         property_ids: {
           ...skills.property_ids,
           Members: membersId,
-          ...(requiredId === undefined ? {} : { Requires: requiredId }),
+          Requires: requiredId,
         },
       }
     }
@@ -543,12 +536,33 @@ function ownedTables(parent: string) {
   })
 }
 
-/** Create-only initialization. Existing table descriptions are never guessed or overwritten. */
+function missingCurrentBindings(input: unknown): string[] {
+  const library = property(input)
+  const missing = [
+    ...(library.sources === undefined ? ["Sources"] : []),
+    ...["Members", "Requires", "Origin"]
+      .filter((field) => property(property(library.skills).property_ids)[field] === undefined)
+      .map((field) => `Skills.${field}`),
+    ...(property(property(library.records).property_ids).Origin === undefined
+      ? ["Records.Origin"]
+      : []),
+    ...(property(property(library.files).property_ids).Origin === undefined
+      ? ["Files.Origin"]
+      : []),
+  ]
+  return missing
+}
+
+/** One create-only operation for the complete current four-table library. */
 export function initializeSharedLibrary(input: {
   readonly parent?: string
   readonly entry?: string
   readonly operation?: string
-}) {
+}): Effect.Effect<
+  { readonly library: SharedLibrary; readonly reused: boolean },
+  SkillsError,
+  Notion | Crypto.Crypto
+> {
   return Effect.gen(function* () {
     if (input.entry !== undefined) {
       if (input.parent !== undefined || input.operation !== undefined)
@@ -566,7 +580,9 @@ export function initializeSharedLibrary(input: {
       )
     const parent = yield* checked(() => exactId(selectedParent))
     const crypto = yield* Crypto.Crypto
-    const operation = input.operation ?? `library-${yield* crypto.randomUUIDv4()}`
+    const operation =
+      input.operation ??
+      `library-${yield* crypto.randomUUIDv4().pipe(Effect.mapError(() => fail("LIBRARY_INIT_UNAVAILABLE", "Could not allocate the current initialization identity; no table creation was attempted.")))}`
     if (!/^library-[a-zA-Z0-9-]{1,80}$/.test(operation))
       return yield* Effect.fail(fail("INVALID_ARGUMENT", "Invalid library operation identity."))
     const api = yield* Notion
@@ -609,7 +625,7 @@ export function initializeSharedLibrary(input: {
             "The library entry belongs to a different initialization parent or operation.",
           ),
         )
-      for (const binding of [existing.skills, existing.files, existing.records])
+      for (const binding of [existing.skills, existing.files, existing.records, existing.sources])
         if (!children.has(binding.database_id))
           return yield* Effect.fail(
             fail(
@@ -675,6 +691,10 @@ export function initializeSharedLibrary(input: {
     const initialSkills = yield* create("Skills", sharedSkillProperties)
     const files = yield* create("Files", sharedFileProperties(initialSkills.data_source_id))
     const records = yield* create("Records", sharedRecordProperties(initialSkills.data_source_id))
+    const sources = yield* create(
+      "Sources",
+      sourceDefinitionLayout(initialSkills.data_source_id, records.data_source_id),
+    )
     const current = yield* api.request(`v1/databases/${initialSkills.database_id}`)
     const previous = yield* checked(() => libraryFromDatabase(current))
     if (previous !== undefined)
@@ -699,6 +719,19 @@ export function initializeSharedLibrary(input: {
       operation,
       input.operation !== undefined,
     )
+    const library = yield* initializeCurrentSourceRelations(
+      {
+        version: 1,
+        library_id: operation,
+        operation_id: operation,
+        parent_page_id: parent,
+        skills,
+        files,
+        records,
+        sources,
+      },
+      input.operation !== undefined,
+    )
     if (input.operation !== undefined)
       return yield* Effect.fail(
         fail(
@@ -713,19 +746,11 @@ export function initializeSharedLibrary(input: {
               Skills: skills.database_id,
               Files: files.database_id,
               Records: records.database_id,
+              Sources: sources.database_id,
             },
           },
         ),
       )
-    const library: SharedLibrary = {
-      version: 1,
-      library_id: operation,
-      operation_id: operation,
-      parent_page_id: parent,
-      skills,
-      files,
-      records,
-    }
     const beforeRegistration = yield* api.request(`v1/databases/${skills.database_id}`)
     const registered = yield* checked(() => libraryFromDatabase(beforeRegistration))
     if (registered) {

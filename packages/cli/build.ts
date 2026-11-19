@@ -1,4 +1,4 @@
-import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildDeclarations } from "./build-declarations.ts"
@@ -11,8 +11,24 @@ const target =
 if (args.length) {
   if (target === resolve(root) || target.startsWith(root))
     throw new Error("An explicit package output must be outside the checkout.")
-  // A fresh directory prevents overwriting prior evidence or deleting build products.
+  // A fresh directory prevents overwriting existing artifacts or deleting build products.
   await mkdir(target)
+}
+// A copied projection must not keep files retired from its source tree. Report
+// them before building; cleanup belongs to the operator's system Trash policy.
+for (const relative of ["docs", "skills/ntn-skills", "skills/notion"]) {
+  const current = new Set(await readdir(join(root, relative), { recursive: true }))
+  const projected = await readdir(join(target, relative), { recursive: true }).catch(
+    (error: unknown) => {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") return []
+      throw error
+    },
+  )
+  const stale = projected.filter((name) => !current.has(name))
+  if (stale.length)
+    throw new Error(
+      `Retired files remain in the generated ${relative} projection. Move these paths to system Trash, or build into a fresh --outdir: ${stale.map((name) => join(target, relative, name)).join(", ")}`,
+    )
 }
 for (const [entry, name] of [
   ["launcher", "ntn-skills"],

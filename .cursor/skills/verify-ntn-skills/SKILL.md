@@ -21,7 +21,7 @@ Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交�
 
 ## Launch
 
-从仓库根执行。复用 [harness Launch](references/harness.md#launch) 的运行目录、配置、状态、cache、data 隔离和凭据注入；不复制作者 Store。只补实际缺少的依赖/构建。旧 harness 的 import、历史包和 authoring 配方不属于当前 Drive。
+从仓库根执行。复用 [harness Launch](references/harness.md#launch) 的运行目录、配置、状态、cache、data 隔离和凭据注入；不复制作者 Store。只补实际缺少的依赖/构建。controller 只负责 init/doctor/cli/empty/cleanup；安装直接运行现有 package:check，导入使用当前公开 CLI。
 
 记录实际 checkout、候选包和范围。源码可运行不代表包已安装；分支更名不证明当前内容已转换。写入仅针对任务已授权的对象。
 
@@ -29,18 +29,18 @@ Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交�
 
 ~~~sh
 bun .cursor/skills/verify-ntn-skills/scripts/control.ts --help
-bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/builtin-guidance.test.ts
+bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/builtin-guidance.test.ts packages/cli/test/installed-package-ci.test.ts
 ~~~
 
-这些检查只证明路由、包内说明及引用一致。它们不证明正文、全库清理、安装或 Pi。旧 maintenance-ci 的固定历史 Broker/管理门禁不在当前入口执行，待对应包路径切换后由其 owner 更新。
+这些检查只证明路由、包内说明、引用和 CI 接线。安装包门禁要求 CLI 与 SDK 使用同一 archive、失败不被忽略，并始终上传报告和请求日志，排除 node_modules。实际安装结果仍由 package:check 提供；正文、全库清理和 Pi 按各自入口验证。
 
 ## Drive
 
 按 [current-convergence](features/current-convergence.md) 选必要组。领域内只跑对应当前回归。当前入口和实现已经移除的行为，不为旧测试补回兼容或历史证明。
 
-安装检查复用 [portable-export-package-consumption](features/portable-export-package-consumption.md) 的当前 archive/bin/SDK 设施和 11 个有限用例。旧 operator、历史 cache 与 authoring 包门禁已移除；受控安装通过不能替代真实 Notion 清理或 Pi 日用。未执行的边界明确 blocked/not_run，不扩 control.ts 或 nxt-journey.ts。
+安装检查复用 [portable-export-package-consumption](features/portable-export-package-consumption.md) 的当前 archive/bin/SDK 设施与全部当前用例。受控安装通过不能替代真实 Notion 清理或 Pi 日用。未执行的边界明确 blocked/not_run，只沿现有领域入口补必要检查。
 
-[skill-domains.json](../../../verification/skill-domains.json) 记录既有 feature 的主要 owner 与当前可执行回归。[feature map](features/README.md) 标出哪些旧材料尚未改写。operation-recovery/resource-lifecycle 的旧 coverage 不进入本轮证明。
+[skill-domains.json](../../../verification/skill-domains.json) 记录当前 feature 的唯一主要 owner 与可执行回归。[feature map](features/README.md) 只路由现有能力及明确未实现边界，不保留已取消流程的执行说明。
 
 ## Evidence
 

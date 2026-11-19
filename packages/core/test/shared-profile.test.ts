@@ -25,14 +25,9 @@ import {
   selectProfileView,
   type SharedProfilePlan,
 } from "../src/shared-profile.ts"
-import {
-  appendSharedRecord,
-  canonicalSharedJson,
-  querySharedProfileRecords,
-  querySharedRecords,
-} from "../src/shared-records.ts"
+import { canonicalSharedJson, querySharedProfileRecords } from "../src/shared-records.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
+import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const fields = {
@@ -44,6 +39,7 @@ const fields = {
   Payload: "payload",
   Skill: "skill",
   Resource: "resource",
+  Origin: "origin",
 }
 const library: SharedLibrary = {
   version: 1,
@@ -65,6 +61,9 @@ const library: SharedLibrary = {
       Content: "content",
       "Current State": "state",
       Operation: "operation",
+      Members: "members",
+      Requires: "requires",
+      Origin: "origin",
     },
   },
   files: {
@@ -76,9 +75,20 @@ const library: SharedLibrary = {
       Path: "path",
       Content: "content",
       Skill: "skill",
+      Origin: "origin",
     },
   },
   records: { database_id: id(6), data_source_id: id(7), property_ids: fields },
+  sources: {
+    database_id: id(30),
+    data_source_id: id(31),
+    property_ids: Object.fromEntries(
+      Object.keys(sourceDefinitionLayout(id(3), id(7))).map((name, index) => [
+        name,
+        name === "Name" ? "title" : `source-${index}`,
+      ]),
+    ),
+  },
 }
 const defaultView = id(8)
 const sessionView = id(9)
@@ -204,6 +214,9 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
       },
       enabled: { id: "enabled", type: "checkbox", checkbox: true },
       default: { id: "default", type: "checkbox", checkbox: false },
+      members: { id: "members", type: "relation", has_more: false, relation: [] },
+      requires: { id: "requires", type: "relation", has_more: false, relation: [] },
+      origin: { id: "origin", type: "relation", has_more: false, relation: [] },
     },
   })
   const create = (body: unknown) => {
@@ -237,6 +250,7 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
         [fields.Hash]: rich(digest(payload)),
         [fields.Payload]: rich(payload),
         [fields.Skill]: { relation: [] },
+        [fields.Origin]: { relation: [] },
       },
     })
     records.push(row)
@@ -374,10 +388,6 @@ function fixture(options: { readonly allowConfiguration?: boolean } = {}) {
     root,
     configRoot: root,
     cacheRoot: root,
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
-    registerBindingWithBase: () => Effect.die("Unexpected binding"),
-    advanceBaseAndReceipt: () => Effect.die("Unexpected baseline"),
     backup: () => Effect.die("Unexpected backup"),
     reserveCacheGeneration: (scope, identity) =>
       Effect.sync(() => {
@@ -605,37 +615,73 @@ describe("library-owned Profile management", () => {
     expect(f.calls.every((call) => call.content === undefined)).toBe(true)
     expect(f.json.size).toBe(0)
     expect(property(f.calls[0]?.body).filter).toEqual({
-      and: [
-        { property: fields.Skill, relation: { is_empty: true } },
-        { property: fields.Kind, select: { equals: "profile" } },
-      ],
+      property: fields.Kind,
+      select: { equals: "profile" },
     })
   })
 
-  test("ordinary shared records still require the exact Skill relation", async () => {
+  test("an exact current Profile lookup cannot hide a conflicting Record kind or owner", async () => {
     const f = fixture()
-    const saved = await f.run(
-      appendSharedRecord(library, {
-        mode: "create",
-        kind: "file_event",
-        skillPageId: id(20),
-        recordId: "old-event",
-        operationId: "old-operation",
-        entityId: "file-a",
-        payload: { old: true },
-      }),
+    const plan = await f.run(
+      prepareSharedProfileChange(library, { profile: initial, expectedFingerprint: null }),
     )
-    expect(saved.skill_page_id).toBe(id(20))
-    const read = await f.run(querySharedRecords(library, { skillPageId: id(20) }))
-    expect(read).toHaveLength(1)
-    const row = f.records[0]
-    if (row === undefined) throw new Error("Missing fixture record")
-    property(property(row.properties)[fields.Skill]).relation = []
-    f.force([row])
-    const error = await f.run(Effect.flip(querySharedRecords(library, { skillPageId: id(20) })))
-    expect(error.code).toBe("INVALID_SHARED_RECORD")
-    const wrongKind = await f.run(Effect.flip(querySharedProfileRecords(library)))
-    expect(wrongKind.code).toBe("INVALID_SHARED_RECORD")
+    const row = f.seed(plan)
+    property(property(row.properties)[fields.Kind]).select = { name: "file_event" }
+    expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
+      "INVALID_SHARED_RECORD",
+    )
+    property(property(row.properties)[fields.Kind]).select = { name: "profile" }
+    property(property(row.properties)[fields.Skill]).relation = [{ id: id(20) }]
+    expect((await f.run(Effect.flip(loadSharedProfile(library, "daily")))).code).toBe(
+      "INVALID_SHARED_RECORD",
+    )
+    expect(f.writes()).toBe(0)
+  })
+
+  test("canonical JSON retains array order and exact author text, and rejects non-JSON values", () => {
+    expect(canonicalSharedJson({ z: [3, 1], a: { beta: "line\r\n", alpha: "  code  " } })).toBe(
+      '{"a":{"alpha":"  code  ","beta":"line\\r\\n"},"z":[3,1]}',
+    )
+    for (const value of [
+      NaN,
+      undefined,
+      [undefined],
+      Array(1),
+      new Date(),
+      {
+        get value() {
+          throw Error("must not invoke accessor")
+        },
+      },
+    ])
+      expect(() => canonicalSharedJson(value)).toThrow()
+    const cyclic: unknown[] = []
+    cyclic.push(cyclic)
+    expect(() => canonicalSharedJson(cyclic)).toThrow()
+  })
+
+  test("a current Profile has no Source owner when Records registers Origin", async () => {
+    const f = fixture()
+    const withOrigin = {
+      ...library,
+      records: {
+        ...library.records,
+        property_ids: { ...library.records.property_ids, Origin: "origin" },
+      },
+    }
+    await f.run(saveSharedProfile(withOrigin, { profile: initial, expectedFingerprint: null }))
+    const row = f.records[0]!
+    expect(property(property(row.properties).origin).relation).toEqual([])
+    expect(await f.run(querySharedProfileRecords(withOrigin))).toHaveLength(1)
+    property(property(row.properties).origin).relation = [{ id: id(80) }]
+    await expect(f.run(querySharedProfileRecords(withOrigin))).rejects.toMatchObject({
+      code: "INVALID_SHARED_RECORD",
+    })
+    property(property(row.properties).origin).relation = []
+    property(property(row.properties).origin).has_more = true
+    await expect(f.run(querySharedProfileRecords(withOrigin))).rejects.toMatchObject({
+      code: "INVALID_SHARED_RECORD",
+    })
   })
 
   test("the Profile decoder rejects a fake Skill binding and old payloads without interpreting history", async () => {

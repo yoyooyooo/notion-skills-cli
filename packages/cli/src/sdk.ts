@@ -54,10 +54,7 @@ export const SDK_VERSION = 2
 export const COMMAND_OUTPUT_PROOF_VERSION = 1
 export const PACKAGE_VERSION = version
 export { CONSUMPTION_EFFECTS_VERSION } from "../../core/src/consumption-effects.ts"
-export type {
-  ConsumptionEffects,
-  ConsumptionRetentionEffect,
-} from "../../core/src/consumption-effects.ts"
+export type { ConsumptionEffects } from "../../core/src/consumption-effects.ts"
 export {
   CONSUMER_CONTRACT_VERSION,
   SOURCE_IDENTITY_COMPILER,

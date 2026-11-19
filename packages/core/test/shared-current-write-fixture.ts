@@ -5,56 +5,96 @@ import { ConfigProvider, Effect, Layer, Schema } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
-import type { SharedLibrary } from "../src/shared-library-model.ts"
+import { LIBRARY_MARKER, type SharedLibrary } from "../src/shared-library-model.ts"
+import {
+  sharedFileProperties,
+  sharedRecordProperties,
+  sharedRelationProperty,
+  sharedSkillProperties,
+} from "../src/shared-library.ts"
+import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 export const id = (n: number) => "00000000-0000-4000-8000-" + n.toString(16).padStart(12, "0")
-const properties = (names: readonly string[]) =>
-  Object.fromEntries(names.map((name) => [name, name.toLowerCase().replaceAll(" ", "-")]))
-export const library: SharedLibrary = {
+const properties = (layout: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.keys(layout).map((name) => [
+      name,
+      name === "Name" ? "title" : name.toLowerCase().replaceAll(" ", "-"),
+    ]),
+  )
+export const library = {
   version: 1,
-  library_id: "writer-current",
+  library_id: "library-writer-current",
   operation_id: "library-writer-current",
   parent_page_id: id(1),
   skills: {
     database_id: id(2),
     data_source_id: id(3),
-    property_ids: properties([
-      "Name",
-      "Description",
-      "Kind",
-      "Enabled",
-      "Default Context",
-      "Skill ID",
-      "Main File ID",
-      "Content",
-      "Current State",
-      "Operation",
-      "Origin",
-      "Members",
-      "Requires",
-    ]),
+    property_ids: properties({ ...sharedSkillProperties, Origin: {}, Members: {}, Requires: {} }),
   },
   files: {
     database_id: id(4),
     data_source_id: id(5),
-    property_ids: properties(["Name", "File ID", "Path", "Content", "Skill"]),
+    property_ids: properties({ ...sharedFileProperties(id(3)), Origin: {} }),
   },
   records: {
     database_id: id(6),
     data_source_id: id(7),
-    property_ids: properties([
-      "Name",
-      "Record ID",
-      "Entity ID",
-      "Kind",
-      "Hash",
-      "Payload",
-      "Skill",
-      "Resource",
-      "Origin",
-    ]),
+    property_ids: properties({ ...sharedRecordProperties(id(3)), Origin: {} }),
+  },
+  sources: {
+    database_id: id(8),
+    data_source_id: id(9),
+    property_ids: properties(sourceDefinitionLayout(id(3), id(7))),
+  },
+} satisfies SharedLibrary
+const roles = ["skills", "files", "records", "sources"] as const
+const origin = (field: "Skills" | "Records") => ({
+  relation: {
+    data_source_id: library.sources.data_source_id,
+    dual_property: { synced_property_id: library.sources.property_ids[field] },
+  },
+})
+const sourceLayout = sourceDefinitionLayout(
+  library.skills.data_source_id,
+  library.records.data_source_id,
+)
+const layouts = {
+  skills: {
+    ...sharedSkillProperties,
+    Members: sharedRelationProperty(library.skills.data_source_id),
+    Requires: sharedRelationProperty(library.skills.data_source_id),
+    Origin: origin("Skills"),
+  },
+  files: {
+    ...sharedFileProperties(library.skills.data_source_id),
+    Origin: {
+      rollup: {
+        relation_property_id: library.files.property_ids.Skill,
+        rollup_property_id: library.skills.property_ids.Origin,
+        function: "show_unique",
+      },
+    },
+  },
+  records: { ...sharedRecordProperties(library.skills.data_source_id), Origin: origin("Records") },
+  sources: {
+    ...sourceLayout,
+    ...Object.fromEntries(
+      (["Skills", "Records"] as const).map((field) => [
+        field,
+        {
+          relation: {
+            ...sourceLayout[field].relation,
+            dual_property: {
+              ...sourceLayout[field].relation.dual_property,
+              synced_property_id:
+                library[field === "Skills" ? "skills" : "records"].property_ids.Origin,
+            },
+          },
+        },
+      ]),
+    ),
   },
 }
 export const testBytes = (value: string) => new TextEncoder().encode(value)
@@ -152,9 +192,17 @@ export function currentWriteFixture(parent: string) {
     return Object.fromEntries(
       Object.entries(property(raw)).map(([key, input]) => {
         const field = property(input),
-          type = ["title", "rich_text", "select", "relation", "files", "checkbox"].find(
-            (kind) => kind in field,
-          )
+          type = [
+            "title",
+            "rich_text",
+            "select",
+            "multi_select",
+            "relation",
+            "rollup",
+            "files",
+            "checkbox",
+            "date",
+          ].find((kind) => kind in field)
         const value =
           type === "files" && Array.isArray(field.files)
             ? {
@@ -252,25 +300,56 @@ export function currentWriteFixture(parent: string) {
           uri = new URL("https://api.notion.test/" + path),
           route = uri.pathname.slice(1)
         calls.push({ path, body: clone(body), method })
-        if (route === `v1/data_sources/${library.skills.data_source_id}` && method === "GET")
+        const schemaRole = roles.find(
+          (role) => route === `v1/data_sources/${library[role].data_source_id}`,
+        )
+        if (schemaRole !== undefined && method === "GET")
           return Effect.succeed(
             response(path, {
               object: "data_source",
-              id: library.skills.data_source_id,
+              id: library[schemaRole].data_source_id,
+              parent: { type: "database_id", database_id: library[schemaRole].database_id },
               properties: Object.fromEntries(
-                ["Members", "Requires"].map((field) => [
-                  field,
-                  {
-                    id: library.skills.property_ids[field],
-                    type: "relation",
-                    relation: {
-                      type: "single_property",
-                      data_source_id: library.skills.data_source_id,
-                      single_property: {},
+                Object.entries(layouts[schemaRole]).map(([field, layout]) => {
+                  const [type, value] = Object.entries(layout)[0]!
+                  return [
+                    field,
+                    {
+                      id: library[schemaRole].property_ids[field],
+                      name: field,
+                      type,
+                      [type]:
+                        type === "relation"
+                          ? {
+                              ...property(value),
+                              type:
+                                "single_property" in property(value)
+                                  ? "single_property"
+                                  : "dual_property",
+                            }
+                          : value,
                     },
-                  },
-                ]),
+                  ]
+                }),
               ),
+            }),
+          )
+        const databaseRole = roles.find(
+          (role) => route === `v1/databases/${library[role].database_id}`,
+        )
+        if (databaseRole !== undefined && method === "GET")
+          return Effect.succeed(
+            response(path, {
+              object: "database",
+              id: library[databaseRole].database_id,
+              parent: { type: "page_id", page_id: library.parent_page_id },
+              data_sources: [{ id: library[databaseRole].data_source_id }],
+              description: [
+                {
+                  plain_text:
+                    databaseRole === "skills" ? LIBRARY_MARKER + JSON.stringify(library) : "",
+                },
+              ],
             }),
           )
         const query = /^v1\/data_sources\/([^/]+)\/query$/u.exec(route)
@@ -307,8 +386,19 @@ export function currentWriteFixture(parent: string) {
               parent: clone(input.parent),
               properties: normalize({
                 ...(table === library.skills.data_source_id
-                  ? { members: { relation: [] }, requires: { relation: [] } }
-                  : {}),
+                  ? {
+                      members: { relation: [] },
+                      requires: { relation: [] },
+                      origin: { relation: [] },
+                      tags: { multi_select: [] },
+                    }
+                  : table === library.records.data_source_id
+                    ? { origin: { relation: [] } }
+                    : table === library.files.data_source_id
+                      ? {
+                          origin: { rollup: { type: "array", array: [], function: "show_unique" } },
+                        }
+                      : {}),
                 ...property(input.properties),
               }),
               in_trash: false,
@@ -474,8 +564,6 @@ export function currentWriteFixture(parent: string) {
     root,
     configRoot: root,
     cacheRoot: root,
-    integrity: integrityRepositoryFixture(),
-    upstream: upstreamRepositoryFixture(),
     listKeys: (prefix) => Effect.succeed([...json.keys()].filter((key) => key.startsWith(prefix))),
     readJson: (key, schema) =>
       Effect.try({
@@ -509,8 +597,6 @@ export function currentWriteFixture(parent: string) {
       Effect.sync(() => {
         objects.set(key, bytes.slice())
       }),
-    registerBindingWithBase: () => Effect.die("Unexpected old binding"),
-    advanceBaseAndReceipt: () => Effect.die("Unexpected old receipt"),
     backup: () => Effect.die("Unexpected backup"),
     output: () => Effect.die("Use actual portable bytes in these tests"),
   }
@@ -538,7 +624,7 @@ export function currentWriteFixture(parent: string) {
   )
   const run = <A, E>(effect: Effect.Effect<A, E, Layer.Success<typeof layer>>) =>
     Effect.runPromise(effect.pipe(Effect.provide(layer)))
-  const table = (kind: "skills" | "files" | "records", live = true) =>
+  const table = (kind: (typeof roles)[number], live = true) =>
     [...pages.values()].filter(
       (row) =>
         property(row.parent).data_source_id === library[kind].data_source_id &&

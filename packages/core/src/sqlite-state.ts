@@ -1,14 +1,5 @@
 import { Clock, Context, Crypto, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import { SqlClient, SqlSchema } from "effect/sql"
-import { fail, property, SkillsError } from "./model.ts"
-import type { Base, SyncBinding, SyncReceipt } from "./sync.ts"
-import { makeUpstreamRepository, upstreamMigration } from "./upstream-state.ts"
-import {
-  makePublicationIntegrityRepository,
-  publicationIntegrityMigration,
-} from "./publication-integrity-state.ts"
-import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
-import { sharedSkillId } from "./shared-content.ts"
 import {
   cacheCapacity,
   DEFAULT_CACHE_CAPACITY,
@@ -16,86 +7,36 @@ import {
   type CacheCapacity,
 } from "./cache-retention-model.ts"
 import { trashPath } from "./local-locks.ts"
+import { fail, property, SkillsError } from "./model.ts"
+import { sharedSkillId } from "./shared-content.ts"
+import { probeSqliteRuntime } from "./sqlite-runtime-policy.ts"
 
-const migrations = {
-  "0001_local_state": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    for (const statement of [
-      `CREATE TABLE state_format (version INTEGER NOT NULL CHECK(version=1));`,
-      `INSERT INTO state_format VALUES (1);`,
-      `CREATE TABLE snapshots (id TEXT PRIMARY KEY, scope TEXT NOT NULL, page_id TEXT NOT NULL, version_id TEXT NOT NULL, manifest TEXT NOT NULL);`,
-      `CREATE TABLE cache_fences (scope TEXT NOT NULL, identity TEXT NOT NULL, generation INTEGER NOT NULL CHECK(generation>=0), retired_through INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,identity));`,
-      `CREATE TABLE observations (id TEXT PRIMARY KEY, scope TEXT NOT NULL, page_id TEXT NOT NULL, generation INTEGER NOT NULL, validated_at REAL NOT NULL, snapshot_id TEXT, payload TEXT NOT NULL);`,
-      `CREATE INDEX observations_page ON observations(scope,page_id,generation DESC);`,
-      `CREATE TABLE catalogs (scope TEXT NOT NULL, selection TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,selection));`,
-      `CREATE TABLE identities (id TEXT PRIMARY KEY, scope TEXT NOT NULL);`,
-      `CREATE TABLE bindings (id TEXT PRIMARY KEY, label TEXT NOT NULL, scope TEXT NOT NULL, page_id TEXT NOT NULL, logical_path TEXT NOT NULL, active INTEGER NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);`,
-      `CREATE UNIQUE INDEX active_binding_label ON bindings(label) WHERE active=1;`,
-      `CREATE TABLE bases (binding_id TEXT PRIMARY KEY, generation INTEGER NOT NULL, content_id TEXT, payload TEXT NOT NULL);`,
-      `CREATE TABLE plans (id TEXT PRIMARY KEY, payload TEXT NOT NULL);`,
-      `CREATE TABLE sync_receipts (id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL);`,
-      `CREATE TABLE receipt_edges (operation_id TEXT NOT NULL REFERENCES sync_receipts(id), binding_id TEXT NOT NULL, stage TEXT NOT NULL, generation_before INTEGER NOT NULL, generation_after INTEGER, payload TEXT NOT NULL, PRIMARY KEY(operation_id,binding_id));`,
-      `CREATE TABLE publications (id TEXT PRIMARY KEY, operation TEXT NOT NULL, state TEXT NOT NULL, scope TEXT, page_id TEXT, payload TEXT NOT NULL);`,
-      `CREATE TABLE publication_intents (operation_id TEXT NOT NULL REFERENCES publications(id), sequence INTEGER NOT NULL, path TEXT NOT NULL, method TEXT NOT NULL, status TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(operation_id,sequence));`,
-      `CREATE TABLE migration_imports (source_hash TEXT PRIMARY KEY, stage TEXT NOT NULL, manifest TEXT NOT NULL);`,
-    ])
-      yield* sql.unsafe(statement)
-  }),
-  "0002_database_init_events": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE database_init_events (operation_id TEXT NOT NULL, event_index INTEGER NOT NULL CHECK(event_index>=0), payload TEXT NOT NULL, PRIMARY KEY(operation_id,event_index))`
-  }),
-  "0003_upstream_state": upstreamMigration,
-  "0004_content_record_identity": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    const historical = yield* sql<{
-      id: string
-    }>`SELECT id FROM snapshots WHERE json_extract(manifest,'$.record.id') IS NULL UNION ALL SELECT id FROM plans WHERE EXISTS(SELECT 1 FROM json_each(json_extract(plans.payload,'$.bindings')) WHERE json_extract(value,'$.remote.record.id') IS NULL)`
-    if (historical.length)
-      return yield* Effect.fail(
-        fail(
-          "STATE_MIGRATION_REQUIRED",
-          "Run the independent record migration artifact before opening historical snapshots or plans.",
-        ),
-      )
-    yield* sql`ALTER TABLE snapshots RENAME COLUMN page_id TO record_identity`
-    yield* sql`ALTER TABLE snapshots ADD COLUMN locator TEXT`
-    yield* sql`UPDATE snapshots SET locator=json_extract(manifest,'$.record.locator'),record_identity=json_extract(manifest,'$.record.id')`
-    yield* sql`ALTER TABLE observations RENAME COLUMN page_id TO record_identity`
-    yield* sql`UPDATE observations SET record_identity='notion_page:'||record_identity WHERE record_identity NOT LIKE 'notion_page:%'`
-    yield* sql`UPDATE cache_fences SET identity='notion_page:'||identity WHERE length(identity)=36 AND identity LIKE '%-%'`
-    yield* sql`CREATE TABLE historical_snapshot_mappings (historical_id TEXT PRIMARY KEY, record_identity TEXT NOT NULL, manifest TEXT NOT NULL)`
-    yield* sql`INSERT INTO historical_snapshot_mappings SELECT id,record_identity,manifest FROM snapshots`
-    yield* sql`DELETE FROM observations`
-    yield* sql`DELETE FROM catalogs`
-  }),
-  "0005_publication_integrity_ledgers": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE publication_integrity_ledgers (key TEXT PRIMARY KEY, payload TEXT NOT NULL)`
-  }),
-  "0006_typed_publication_integrity": publicationIntegrityMigration,
-  "0007_operation_reviews": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE IF NOT EXISTS operation_reviews (id TEXT PRIMARY KEY, payload TEXT NOT NULL)`
-  }),
-  "0008_view_observations": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE view_observations (scope TEXT NOT NULL, selection TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,selection))`
-  }),
-  "0009_shared_local_records": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE shared_local_records (key TEXT PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('cache','dispatch')), payload TEXT NOT NULL CHECK(json_valid(payload)), retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN (0,1)))`
-    yield* sql`CREATE INDEX shared_local_records_active ON shared_local_records(category,retired,key)`
-  }),
-  "0010_local_content_restrictions": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE local_content_restrictions (sha256 TEXT PRIMARY KEY CHECK(length(sha256)=64), payload TEXT NOT NULL CHECK(json_valid(payload)))`
-  }),
-  "0011_cache_admissions": Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
-    yield* sql`CREATE TABLE cache_admissions (key TEXT PRIMARY KEY REFERENCES shared_local_records(key) ON DELETE CASCADE, admitted_at INTEGER NOT NULL CHECK(admitted_at>=0))`
-  }),
-}
+// This physical schema identifies current local execution state, not content history.
+const currentApplicationId = 0x4e544e43
+const initializeCurrentSchema = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+  yield* sql.withTransaction(
+    Effect.gen(function* () {
+      for (const statement of [
+        `CREATE TABLE state_format (version INTEGER NOT NULL CHECK(version=1));`,
+        `INSERT INTO state_format VALUES (1);`,
+        `CREATE TABLE snapshots (id TEXT PRIMARY KEY, scope TEXT NOT NULL, record_identity TEXT NOT NULL, locator TEXT NOT NULL, version_id TEXT NOT NULL, manifest TEXT NOT NULL);`,
+        `CREATE TABLE cache_fences (scope TEXT NOT NULL, identity TEXT NOT NULL, generation INTEGER NOT NULL CHECK(generation>=0), retired_through INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,identity));`,
+        `CREATE TABLE observations (id TEXT PRIMARY KEY, scope TEXT NOT NULL, record_identity TEXT NOT NULL, generation INTEGER NOT NULL, validated_at REAL NOT NULL, snapshot_id TEXT, payload TEXT NOT NULL);`,
+        `CREATE INDEX observations_record ON observations(scope,record_identity,generation DESC);`,
+        `CREATE TABLE catalogs (scope TEXT NOT NULL, selection TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,selection));`,
+        `CREATE TABLE identities (id TEXT PRIMARY KEY, scope TEXT NOT NULL);`,
+        `CREATE TABLE view_observations (scope TEXT NOT NULL, selection TEXT NOT NULL, generation INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope,selection));`,
+        `CREATE TABLE shared_local_records (key TEXT PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('cache','dispatch')), payload TEXT NOT NULL CHECK(json_valid(payload)), retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN (0,1)));`,
+        `CREATE INDEX shared_local_records_active ON shared_local_records(category,retired,key);`,
+        `CREATE TABLE local_content_restrictions (sha256 TEXT PRIMARY KEY CHECK(length(sha256)=64), payload TEXT NOT NULL CHECK(json_valid(payload)));`,
+        `CREATE TABLE cache_admissions (key TEXT PRIMARY KEY REFERENCES shared_local_records(key) ON DELETE CASCADE, admitted_at INTEGER NOT NULL CHECK(admitted_at>=0));`,
+        `PRAGMA application_id = ${currentApplicationId};`,
+      ])
+        yield* sql.unsafe(statement)
+    }),
+  )
+})
 
 type SharedLocalCategory = "cache" | "dispatch"
 function sharedFileObservationOwner(value: unknown) {
@@ -125,100 +66,14 @@ function sharedFileObservationOwner(value: unknown) {
 const sharedCurrentTreeValidationPrefix = "cache/shared-current-tree-validation"
 const currentNativeBodiesPrefix = "cache/current-native-bodies"
 function fencedFileObservation(key: string): boolean {
-  return (
-    key.endsWith("/latest.json") &&
-    (key.startsWith(`${currentNativeBodiesPrefix}/`) ||
-      key.startsWith("cache/shared-file-observations/"))
-  )
+  return key.startsWith(`${currentNativeBodiesPrefix}/`) && key.endsWith("/latest.json")
 }
-// These exact domains hold evolving local run state or a derived pointer.
-// All original write intents, acknowledgements, plans and inventory observations
-// retain their immutable-payload rule in the same existing SQLite table.
-const mutableSharedLocalPrefixes = [
-  sharedCurrentTreeValidationPrefix,
-  "audit/runs",
-  "audit/latest",
-  "operations/shared-source-runs",
-  "operations/shared-source-batches",
-]
+const mutableSharedLocalPrefixes = [sharedCurrentTreeValidationPrefix]
 const sharedLocalDomains: readonly {
   readonly prefix: string
   readonly category: SharedLocalCategory
   readonly address: RegExp
 }[] = [
-  {
-    prefix: "audit/runs",
-    category: "cache",
-    address:
-      /^audit\/runs\/audit-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
-  },
-  { prefix: "audit/latest", category: "cache", address: /^audit\/latest\/[a-f0-9]{64}\.json$/u },
-  {
-    prefix: "audit/parts",
-    category: "cache",
-    address:
-      /^audit\/parts\/audit-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "inventory/observations",
-    category: "dispatch",
-    address: /^inventory\/observations\/inventory-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "inventory/provenance-reviews",
-    category: "dispatch",
-    address: /^inventory\/provenance-reviews\/inventory-provenance-review-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-source-runs",
-    category: "dispatch",
-    address:
-      /^operations\/shared-source-runs\/source-run-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-source-batches",
-    category: "dispatch",
-    address:
-      /^operations\/shared-source-batches\/[a-f0-9]{64}\/source-batch-[a-f0-9]{64}\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.json$/u,
-  },
-  {
-    prefix: "plans/shared-inventory-imports",
-    category: "dispatch",
-    address: /^plans\/shared-inventory-imports\/inventory-import-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "plans/shared-inventory-batches",
-    category: "dispatch",
-    address: /^plans\/shared-inventory-batches\/import-batch-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-inventory-imports",
-    category: "dispatch",
-    address: /^operations\/shared-inventory-imports\/inventory-import-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-readbacks",
-    category: "dispatch",
-    address:
-      /^operations\/shared-native-readbacks\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-create-link-repairs",
-    category: "dispatch",
-    address:
-      /^operations\/shared-create-link-repairs\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/file-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-resubmissions",
-    category: "dispatch",
-    address:
-      /^operations\/shared-native-resubmissions\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "cache/shared-file-observations",
-    category: "cache",
-    address: /^cache\/shared-file-observations\/[a-f0-9]{64}\/(?:[0-9]{20}|latest)\.json$/u,
-  },
   {
     prefix: currentNativeBodiesPrefix,
     category: "cache",
@@ -236,16 +91,6 @@ const sharedLocalDomains: readonly {
     address: /^cache\/shared-github-blobs\/[a-f0-9]{40}\.json$/u,
   },
   {
-    prefix: "cache/shared-record-payloads",
-    category: "cache",
-    address: /^cache\/shared-record-payloads\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "cache/shared-history-manifests",
-    category: "cache",
-    address: /^cache\/shared-history-manifests\/[a-f0-9]{64}\/s_[a-f0-9]{64}\.json$/u,
-  },
-  {
     prefix: sharedCurrentTreeValidationPrefix,
     category: "cache",
     address: /^cache\/shared-current-tree-validation\/[a-f0-9]{64}\/s_[a-f0-9]{64}\.json$/u,
@@ -254,34 +99,6 @@ const sharedLocalDomains: readonly {
     prefix: "cache/shared-derived-graphs",
     category: "cache",
     address: /^cache\/shared-derived-graphs\/[a-f0-9]{64}\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-maintenance-repair",
-    category: "dispatch",
-    address:
-      /^operations\/shared-maintenance-repair\/[a-f0-9]{64}\/skill-repair-(?:main|file)-[a-f0-9]{64}\/(?:locator|plan-post|outcome-post)\.json$/u,
-  },
-  {
-    prefix: "operations/shared-observation-pending",
-    category: "dispatch",
-    address: /^operations\/shared-observation-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-snapshot-history",
-    category: "dispatch",
-    address: /^operations\/shared-snapshot-history\/[a-f0-9]{64}\/snapshot-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-graph-history",
-    category: "dispatch",
-    address:
-      /^operations\/shared-graph-history\/[a-f0-9]{64}\/graph-[a-f0-9]{64}\/(?:plan|complete)\.json$/u,
-  },
-  {
-    prefix: "operations/shared-body-current-acceptance",
-    category: "dispatch",
-    address:
-      /^operations\/shared-body-current-acceptance\/[a-f0-9]{64}\/accept-current-[a-f0-9]{64}\/plan\.json$/u,
   },
   {
     prefix: "operations/shared-profile-pending",
@@ -293,63 +110,6 @@ const sharedLocalDomains: readonly {
     category: "dispatch",
     address: /^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u,
   },
-  {
-    prefix: "operations/shared-sources",
-    category: "dispatch",
-    address:
-      /^operations\/shared-sources\/[a-f0-9]{64}\/source-(?:op|receipt|selection|ack|rejection)-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/library-management",
-    category: "dispatch",
-    address: /^operations\/library-management\/[a-f0-9]{64}\/library-manage-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-source-registration",
-    category: "dispatch",
-    address:
-      /^operations\/shared-source-registration\/[a-f0-9]{64}\/source(?:-plan)?-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-create",
-    category: "dispatch",
-    address: /^operations\/shared-native-create\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-create-owned",
-    category: "dispatch",
-    address:
-      /^operations\/shared-native-create-owned\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-relation-schema",
-    category: "dispatch",
-    address:
-      /^operations\/shared-relation-schema\/[a-f0-9]{64}\/relations-schema-[a-f0-9]{64}-(?:schema|descriptor)\.json$/u,
-  },
-  {
-    prefix: "operations/owned-page-archive",
-    category: "dispatch",
-    address:
-      /^operations\/owned-page-archive\/[a-f0-9]{64}\/(?:p_[A-Za-z0-9-]{1,100}|skill-create-[a-f0-9]{64})\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/[0-9]{20}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-recovery",
-    category: "dispatch",
-    address: /^operations\/shared-native-recovery\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-continuation",
-    category: "dispatch",
-    address:
-      /^operations\/shared-native-continuation\/[a-f0-9]{64}\/skill-create-[a-f0-9]{64}\.json$/u,
-  },
-  {
-    prefix: "operations/shared-native-recovery-responses",
-    category: "dispatch",
-    address:
-      /^operations\/shared-native-recovery-responses\/create-(?:recovery|continuation)-[a-f0-9]{64}\/[a-f0-9]{64}\.json$/u,
-  },
 ]
 
 function localContentHash(key: string): string | undefined {
@@ -359,7 +119,6 @@ function localContentHash(key: string): string | undefined {
     throw fail("INVALID_ARGUMENT", "Invalid local content restriction address.", { key })
   return match[1]!
 }
-
 function localContentPayload(hash: string, value: unknown): string {
   const record = property(value)
   if (
@@ -469,7 +228,6 @@ function storageError(error: unknown): SkillsError {
 export function sqliteState(
   root: string,
   fs: FileSystem.FileSystem,
-  importing = false,
   capacityInput: CacheCapacity = DEFAULT_CACHE_CAPACITY,
 ) {
   return Effect.gen(function* () {
@@ -484,30 +242,12 @@ export function sqliteState(
           ),
         )
     yield* probeSqliteRuntime
-    const { SqliteClient, SqliteMigrator } = yield* Effect.promise(
-      () => import("@effect/sql-sqlite-node"),
-    )
-    const loader = SqliteMigrator.fromRecord(migrations)
+    const { SqliteClient } = yield* Effect.promise(() => import("@effect/sql-sqlite-node"))
     const filename = `${root}/state.sqlite`
     const client = SqliteClient.layer({ filename, busyTimeout: "2 seconds" })
-    const live = SqliteMigrator.layer({ loader }).pipe(Layer.provideMerge(client))
     const context = yield* Effect.gen(function* () {
-      if (!importing && (yield* fs.exists(`${root}/sqlite-migration.json`))) {
-        const text = yield* fs.readFileString(`${root}/sqlite-migration.json`)
-        const journal = yield* Effect.try({
-          try: () => property(JSON.parse(text)),
-          catch: () => fail("STATE_CORRUPT", "Migration journal JSON is corrupt."),
-        })
-        if (journal.stage !== "switched")
-          return yield* Effect.fail(
-            fail(
-              "STATE_MIGRATION_REQUIRED",
-              "An interrupted migration must finish before SQLite state may be used.",
-            ),
-          )
-      }
       if (!(yield* fs.exists(filename))) {
-        if (!importing) {
+        {
           for (const entry of [
             "sync/bases",
             "sync/plans",
@@ -516,12 +256,13 @@ export function sqliteState(
             "cache-generations",
             "snapshots",
             "config.json",
+            "sqlite-migration.json",
           ])
             if (yield* fs.exists(`${root}/${entry}`))
               return yield* Effect.fail(
                 fail(
-                  "STATE_MIGRATION_REQUIRED",
-                  "Stop old writers and run the independent ntn-skills-migrate tool before using this state root.",
+                  "STATE_CUTOVER_REQUIRED",
+                  "This root contains state from the retired protocol. Initialize an explicitly selected new current state root; the old root and its objects remain available for read-only extraction.",
                 ),
               )
         }
@@ -535,18 +276,15 @@ export function sqliteState(
             yield* Effect.scoped(
               Effect.gen(function* () {
                 const initialized = yield* Layer.build(
-                  SqliteMigrator.layer({ loader }).pipe(
-                    Layer.provideMerge(
-                      SqliteClient.layer({
-                        filename: staged,
-                        busyTimeout: "2 seconds",
-                        disableWAL: true,
-                      }),
-                    ),
-                  ),
+                  SqliteClient.layer({
+                    filename: staged,
+                    busyTimeout: "2 seconds",
+                    disableWAL: true,
+                  }),
                 )
                 const sql = Context.get(initialized, SqlClient.SqlClient)
                 yield* sql`PRAGMA synchronous = FULL`
+                yield* initializeCurrentSchema.pipe(Effect.provide(initialized))
                 const format = yield* sql<{ version: number }>`SELECT version FROM state_format`
                 if (format.length !== 1 || format[0]!.version !== 1)
                   return yield* Effect.fail(
@@ -589,32 +327,42 @@ export function sqliteState(
           }),
         )
       }
-      if (yield* fs.exists(filename)) {
-        const validHeader = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const file = yield* fs.open(filename, { flag: "r", noFollow: true })
-            const bytes = new Uint8Array(16)
-            return (
-              (yield* file.read(bytes)) === 16 &&
-              new TextDecoder().decode(bytes) === "SQLite format 3\u0000"
-            )
-          }),
-        )
-        if (!validHeader)
-          return yield* Effect.fail(
-            fail(
-              "STATE_CORRUPT",
-              "SQLite header is missing or corrupt; an empty replacement is forbidden.",
-            ),
+      // Verify the final winner after atomic link and before opening a writable driver.
+      // A historical SQLite file must never gain WAL/SHM files or schema changes.
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const file = yield* fs.open(filename, { flag: "r", noFollow: true })
+          const bytes = new Uint8Array(100)
+          let read = 0
+          while (read < bytes.length) {
+            const count = yield* file.read(bytes.subarray(read))
+            if (count === 0) break
+            read += count
+          }
+          if (
+            read !== 100 ||
+            new TextDecoder().decode(bytes.subarray(0, 16)) !== "SQLite format 3\u0000"
           )
-      }
-      return yield* Layer.build(live).pipe(
-        Effect.catchDefect((defect) =>
-          defect instanceof SqliteMigrator.MigrationError
-            ? Effect.fail(storageError(defect))
-            : Effect.die(defect),
-        ),
+            return yield* Effect.fail(
+              fail(
+                "STATE_CORRUPT",
+                "SQLite header is missing or corrupt; an empty replacement is forbidden.",
+              ),
+            )
+          if (
+            new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(68, false) !==
+            currentApplicationId
+          )
+            return yield* Effect.fail(
+              fail(
+                "STATE_CUTOVER_REQUIRED",
+                "This SQLite root uses the retired protocol. Initialize an explicitly selected new current state root; the database, sidecars and objects are preserved for read-only extraction.",
+                { state_root: root, next_action: "initialize_new_current_root" },
+              ),
+            )
+        }),
       )
+      return yield* Layer.build(client)
     }).pipe(Effect.mapError(storageError))
     const clientService = Context.get(context, SqlClient.SqlClient)
     yield* clientService`PRAGMA foreign_keys = ON`.pipe(Effect.mapError(storageError))
@@ -625,18 +373,6 @@ export function sqliteState(
     if (format.length !== 1 || format[0]!.version !== 1)
       return yield* Effect.fail(
         fail("STATE_CONFIG_ERROR", "Unsupported SQLite state format; use a matching CLI version."),
-      )
-    const historical = yield* clientService<{
-      id: string
-    }>`SELECT id FROM snapshots WHERE json_extract(manifest,'$.record.id') IS NULL UNION ALL SELECT id FROM plans WHERE EXISTS(SELECT 1 FROM json_each(json_extract(plans.payload,'$.bindings')) WHERE json_extract(value,'$.remote.record.id') IS NULL)`.pipe(
-      Effect.mapError(storageError),
-    )
-    if (historical.length)
-      return yield* Effect.fail(
-        fail(
-          "STATE_MIGRATION_REQUIRED",
-          "Historical retained records require the independent record migration artifact.",
-        ),
       )
     const run = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
       effect.pipe(Effect.provide(context), Effect.mapError(storageError))
@@ -666,16 +402,6 @@ export function sqliteState(
           } else if (sharedCategory !== undefined) {
             rows =
               yield* sql`SELECT payload FROM shared_local_records WHERE key=${key} AND category=${sharedCategory} AND retired=0`
-          } else if (parts[0] === "database-init") {
-            if (parts.length !== 3 || !/^(0|[1-9][0-9]*)\.json$/.test(parts[2]!))
-              return yield* Effect.fail(
-                fail("INVALID_ARGUMENT", "Invalid database init event address.", { key }),
-              )
-            rows =
-              yield* sql`SELECT payload FROM database_init_events WHERE operation_id=${parts[1]} AND event_index=${Number(parts[2]!.slice(0, -5))}`
-          } else if (parts[0] === "operation-reviews") {
-            rows =
-              yield* sql`SELECT payload FROM operation_reviews WHERE id=${parts[1]!.replace(/\.json$/, "")}`
           } else if (parts[0] === "snapshots")
             rows =
               yield* sql`SELECT manifest AS payload FROM snapshots WHERE id=${parts[1]!.replace(/\.json$/, "")}`
@@ -694,18 +420,6 @@ export function sqliteState(
           else if (parts[0] === "cache" && parts[1] === "identities")
             rows =
               yield* sql`SELECT json_object('scope',scope) AS payload FROM identities WHERE id=${parts[2]!.replace(/\.json$/, "")}`
-          else if (parts[0] === "sync" && parts[1] === "bases")
-            rows =
-              yield* sql`SELECT payload FROM bases WHERE binding_id=${parts[2]!.replace(/\.json$/, "")}`
-          else if (parts[0] === "sync" && parts[1] === "plans")
-            rows =
-              yield* sql`SELECT payload FROM plans WHERE id=${parts[2]!.replace(/\.json$/, "")}`
-          else if (parts[0] === "sync" && parts[1] === "receipts")
-            rows =
-              yield* sql`SELECT payload FROM sync_receipts WHERE id=${parts[2]!.replace(/\.json$/, "")}`
-          else if (parts[0] === "publications")
-            rows =
-              yield* sql`SELECT payload FROM publications WHERE id=${parts[1]!.replace(/\.json$/, "")}`
           else
             return yield* Effect.fail(
               fail("INVALID_ARGUMENT", "Unknown SQLite domain address.", { key }),
@@ -734,19 +448,6 @@ export function sqliteState(
           return parsed
         }),
       )
-    const writeReceipt = (sql: SqlClient.SqlClient, value: unknown) =>
-      Effect.gen(function* () {
-        const v = property(value)
-        yield* sql`INSERT INTO sync_receipts(id,plan_id,status,payload) VALUES(${v.operation_id},${v.plan_id},${v.status},${json(value)}) ON CONFLICT(id) DO UPDATE SET status=excluded.status,payload=excluded.payload`
-        for (const edge of v.bindings as unknown[]) {
-          const e = property(edge)
-          yield* sql`INSERT INTO receipt_edges(operation_id,binding_id,stage,generation_before,generation_after,payload) VALUES(${v.operation_id},${e.binding_id},${e.stage},${e.generation_before},${e.generation_after ?? null},${json(edge)}) ON CONFLICT(operation_id,binding_id) DO UPDATE SET stage=excluded.stage,generation_after=excluded.generation_after,payload=excluded.payload`
-        }
-      })
-    const writeBase = (sql: SqlClient.SqlClient, value: unknown) => {
-      const v = property(value)
-      return sql`INSERT INTO bases(binding_id,generation,content_id,payload) VALUES(${v.binding_id},${v.generation},${property(v.content).content_id ?? null},${json(value)}) ON CONFLICT(binding_id) DO UPDATE SET generation=excluded.generation,content_id=excluded.content_id,payload=excluded.payload`
-    }
     const write = (key: string, value: unknown) =>
       run(
         Effect.gen(function* () {
@@ -810,7 +511,7 @@ export function sqliteState(
                   if (existing[0] === undefined) {
                     const totals = yield* sql<{
                       bytes: number
-                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-record-payloads/%' OR key LIKE 'cache/shared-derived-graphs/%')`
+                    }>`SELECT COALESCE(SUM(LENGTH(CAST(payload AS BLOB))),0) AS bytes FROM shared_local_records WHERE category='cache' AND (key LIKE 'cache/shared-github-blobs/%' OR key LIKE 'cache/shared-derived-graphs/%')`
                     if (
                       (totals[0]?.bytes ?? 0) + new TextEncoder().encode(payload).length >
                       capacity.max_bytes
@@ -972,26 +673,6 @@ export function sqliteState(
                   const now = yield* Clock.currentTimeMillis
                   yield* sql`INSERT INTO cache_admissions(key,admitted_at) VALUES(${key},${now}) ON CONFLICT(key) DO NOTHING`
                 }
-              } else if (parts[0] === "database-init") {
-                if (parts.length !== 3 || !/^(0|[1-9][0-9]*)\.json$/.test(parts[2]!))
-                  return yield* Effect.fail(
-                    fail("INVALID_ARGUMENT", "Invalid database init event address.", { key }),
-                  )
-                const index = Number(parts[2]!.slice(0, -5))
-                if (!Number.isSafeInteger(index))
-                  return yield* Effect.fail(
-                    fail("INVALID_ARGUMENT", "Invalid database init event index."),
-                  )
-                const prior = yield* sql<{
-                  payload: string
-                }>`SELECT payload FROM database_init_events WHERE operation_id=${parts[1]} AND event_index=${index}`
-                if (prior[0] && prior[0].payload !== json(value))
-                  return yield* Effect.fail(
-                    fail("STATE_CONFLICT", "A database init event cannot be overwritten."),
-                  )
-                yield* sql`INSERT INTO database_init_events(operation_id,event_index,payload) VALUES(${parts[1]},${index},${json(value)}) ON CONFLICT(operation_id,event_index) DO NOTHING`
-              } else if (parts[0] === "operation-reviews") {
-                yield* sql`INSERT INTO operation_reviews(id,payload) VALUES(${v.operation_id},${json(value)}) ON CONFLICT(id) DO NOTHING`
               } else if (parts[0] === "snapshots" && value === undefined) {
                 yield* sql`DELETE FROM snapshots WHERE id=${parts[1]!.replace(/\.json$/, "")}`
               } else if (parts[0] === "snapshots")
@@ -1015,9 +696,8 @@ export function sqliteState(
                   retired_through: number
                 }>`SELECT retired_through FROM cache_fences WHERE scope=${scope} AND identity=${identity}`
                 if (
-                  !importing &&
-                  (typeof v.generation !== "number" ||
-                    v.generation <= (fence[0]?.retired_through ?? 0))
+                  typeof v.generation !== "number" ||
+                  v.generation <= (fence[0]?.retired_through ?? 0)
                 )
                   return yield* Effect.fail(
                     fail(
@@ -1044,24 +724,6 @@ export function sqliteState(
                   yield* sql`INSERT INTO view_observations(scope,selection,generation,payload) VALUES(${scope},${parts[3]!.replace(/\.json$/, "")},${v.generation},${json(value)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=view_observations.generation`
                 else
                   yield* sql`INSERT INTO catalogs(scope,selection,generation,payload) VALUES(${scope},${parts[3]!.replace(/\.json$/, "")},${v.generation},${json(value)}) ON CONFLICT(scope,selection) DO UPDATE SET generation=excluded.generation,payload=excluded.payload WHERE excluded.generation>=catalogs.generation`
-              } else if (parts[0] === "sync" && parts[1] === "bases") yield* writeBase(sql, value)
-              else if (parts[0] === "sync" && parts[1] === "plans") {
-                const prior = yield* sql<{
-                  payload: string
-                }>`SELECT payload FROM plans WHERE id=${v.plan_id}`
-                if (prior[0] && prior[0].payload !== json(value))
-                  return yield* Effect.fail(
-                    fail("STATE_CORRUPT", "A frozen plan identity cannot be overwritten."),
-                  )
-                yield* sql`INSERT INTO plans(id,payload) VALUES(${v.plan_id},${json(value)}) ON CONFLICT(id) DO NOTHING`
-              } else if (parts[0] === "sync" && parts[1] === "receipts")
-                yield* writeReceipt(sql, value)
-              else if (parts[0] === "publications") {
-                yield* sql`INSERT INTO publications(id,operation,state,scope,page_id,payload) VALUES(${v.operation_id},${v.operation},${v.state},${v.scope ?? null},${v.page_id ?? null},${json(value)}) ON CONFLICT(id) DO UPDATE SET state=excluded.state,scope=excluded.scope,page_id=excluded.page_id,payload=excluded.payload`
-                for (const [sequence, intent] of (v.intents as unknown[]).entries()) {
-                  const i = property(intent)
-                  yield* sql`INSERT INTO publication_intents(operation_id,sequence,path,method,status,payload) VALUES(${v.operation_id},${sequence},${i.path},${i.method},${i.status},${json(intent)}) ON CONFLICT(operation_id,sequence) DO UPDATE SET status=excluded.status,payload=excluded.payload`
-                }
               } else
                 return yield* Effect.fail(
                   fail("INVALID_ARGUMENT", "Unknown SQLite domain address.", { key }),
@@ -1079,15 +741,12 @@ export function sqliteState(
             Result: Schema.Struct({ key: Schema.String }),
             execute: () => sql`
       SELECT 'snapshots/'||id||'.json' AS key FROM snapshots UNION ALL
-      SELECT 'database-init/'||operation_id||'/'||event_index||'.json' FROM database_init_events UNION ALL
       SELECT 'cache-generations/'||scope||'/'||identity||'.json' FROM cache_fences UNION ALL
       SELECT id FROM observations UNION ALL SELECT 'cache/catalogs/'||scope||'/'||selection||'.json' FROM catalogs UNION ALL
       SELECT 'cache/views/'||scope||'/'||selection||'.json' FROM view_observations UNION ALL
       SELECT 'cache/identities/'||id||'.json' FROM identities UNION ALL
       SELECT key FROM shared_local_records WHERE retired=0 UNION ALL
-      SELECT 'content-restrictions/local/'||sha256||'.json' FROM local_content_restrictions UNION ALL
-      SELECT 'sync/bases/'||binding_id||'.json' FROM bases UNION ALL SELECT 'sync/plans/'||id||'.json' FROM plans UNION ALL
-      SELECT 'sync/receipts/'||id||'.json' FROM sync_receipts UNION ALL SELECT 'publications/'||id||'.json' FROM publications UNION ALL SELECT 'operation-reviews/'||id||'.json' FROM operation_reviews
+      SELECT 'content-restrictions/local/'||sha256||'.json' FROM local_content_restrictions
     `,
           })(undefined)
           return rows
@@ -1204,14 +863,6 @@ export function sqliteState(
           )
         }),
       )
-    const bindings = () =>
-      run(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient
-          const rows = yield* sql<{ payload: string }>`SELECT payload FROM bindings ORDER BY id`
-          return yield* Effect.forEach(rows, (r) => parse(r.payload))
-        }),
-      )
     const rebuildableCacheRecords = () =>
       run(
         Effect.gen(function* () {
@@ -1221,7 +872,7 @@ export function sqliteState(
             payload: string
             retired: number
             admitted_at: number | null
-          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-record-payloads/%' OR r.key LIKE 'cache/shared-derived-graphs/%') ORDER BY r.key`
+          }>`SELECT r.key,r.payload,r.retired,a.admitted_at FROM shared_local_records r LEFT JOIN cache_admissions a ON a.key=r.key WHERE category='cache' AND (r.key LIKE 'cache/shared-github-blobs/%' OR r.key LIKE 'cache/shared-derived-graphs/%') ORDER BY r.key`
         }),
       )
     const reclaimDerived = (
@@ -1319,73 +970,6 @@ export function sqliteState(
           }
         }),
       )
-    const registerBindingWithBase = (binding: SyncBinding, base: Base) =>
-      run(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient
-          const b = property(binding)
-          if (
-            base.binding_id !== binding.id ||
-            !Number.isSafeInteger(binding.revision) ||
-            binding.revision < 1 ||
-            !Number.isSafeInteger(base.generation) ||
-            base.generation < 0
-          )
-            return yield* Effect.fail(
-              fail("STATE_CORRUPT", "Invalid binding and baseline transaction."),
-            )
-          yield* sql.withTransaction(
-            Effect.gen(function* () {
-              const prior = yield* sql<{
-                revision: number
-              }>`SELECT revision FROM bindings WHERE id=${b.id}`
-              if (prior[0] && prior[0].revision !== Number(b.revision) - 1)
-                return yield* Effect.fail(fail("SYNC_PLAN_STALE", "Binding revision changed."))
-              yield* sql`INSERT INTO bindings(id,label,scope,page_id,logical_path,active,revision,payload) VALUES(${b.id},${b.label},${b.scope},${b.page_id},${b.logical_path},${b.active ? 1 : 0},${b.revision},${json(binding)}) ON CONFLICT(id) DO UPDATE SET label=excluded.label,active=excluded.active,revision=excluded.revision,payload=excluded.payload`
-              yield* writeBase(sql, base)
-            }),
-          )
-        }),
-      )
-    const advanceBaseAndReceipt = (
-      bindingId: string,
-      expectedGeneration: number,
-      next: Base,
-      receipt: SyncReceipt,
-    ) =>
-      run(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient
-          yield* sql.withTransaction(
-            Effect.gen(function* () {
-              const edge = (property(receipt).bindings as unknown[])
-                .map(property)
-                .find((item) => item.binding_id === bindingId)
-              const base = property(next)
-              if (
-                !edge ||
-                edge.stage !== "complete" ||
-                edge.generation_after !== base.generation ||
-                base.binding_id !== bindingId
-              )
-                return yield* Effect.fail(
-                  fail("STATE_CORRUPT", "Baseline and receipt edge must advance together."),
-                )
-              const rows = yield* sql<{
-                generation: number
-              }>`SELECT generation FROM bases WHERE binding_id=${bindingId}`
-              if (rows[0]?.generation !== expectedGeneration)
-                return yield* Effect.fail(
-                  fail("SYNC_PLAN_STALE", "The common baseline generation changed.", {
-                    binding_id: bindingId,
-                  }),
-                )
-              yield* writeBase(sql, next)
-              yield* writeReceipt(sql, receipt)
-            }),
-          )
-        }),
-      )
     const backup = (destination: string) =>
       run(
         Effect.gen(function* () {
@@ -1399,8 +983,6 @@ export function sqliteState(
         }),
       )
     return {
-      upstream: makeUpstreamRepository(clientService),
-      integrity: makePublicationIntegrityRepository(clientService),
       filename,
       run,
       read,
@@ -1410,9 +992,6 @@ export function sqliteState(
       retire,
       reclaimDerived,
       rebuildableCacheRecords,
-      bindings,
-      registerBindingWithBase,
-      advanceBaseAndReceipt,
       backup,
     }
   })

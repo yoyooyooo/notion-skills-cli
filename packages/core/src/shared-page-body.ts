@@ -3,11 +3,12 @@ import { decode, fail, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
 import { sha256 } from "./store.ts"
-import type { BodyFingerprint } from "./shared-file-state.ts"
 import {
   completeNativeAliasBody,
   normalizeCompletedNativeBody,
 } from "./shared-native-body-completion.ts"
+
+type BodyFingerprint = { readonly normalization_version: 1; readonly sha256: string }
 
 const MarkdownBodySchema = Schema.Struct({
   id: Schema.String,

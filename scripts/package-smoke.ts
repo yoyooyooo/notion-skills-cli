@@ -4,18 +4,7 @@ import { tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
-import { currentLibrary as fixtureLibrary } from "../packages/core/test/shared-current-fixture.ts"
-const currentLibrary = {
-  ...fixtureLibrary,
-  skills: {
-    ...fixtureLibrary.skills,
-    property_ids: {
-      ...fixtureLibrary.skills.property_ids,
-      Members: "members",
-      Requires: "requires",
-    },
-  },
-}
+import { currentLibrary } from "../packages/core/test/shared-current-fixture.ts"
 const { startSdkSourceFixture } = await import(
   new URL("./sdk-source-fixture.mjs", import.meta.url).href
 )
@@ -199,21 +188,33 @@ const source = await startSdkSourceFixture(
       skills_data_source: {
         object: "data_source",
         id: currentLibrary.skills.data_source_id,
-        properties: Object.fromEntries(
-          (["Members", "Requires"] as const).map((name) => [
-            name,
-            {
-              id: currentLibrary.skills.property_ids[name]!,
+        properties: {
+          ...Object.fromEntries(
+            (["Members", "Requires"] as const).map((name) => [
               name,
-              type: "relation",
-              relation: {
-                type: "single_property",
-                data_source_id: currentLibrary.skills.data_source_id,
-                single_property: {},
+              {
+                id: currentLibrary.skills.property_ids[name]!,
+                name,
+                type: "relation",
+                relation: {
+                  type: "single_property",
+                  data_source_id: currentLibrary.skills.data_source_id,
+                  single_property: {},
+                },
               },
+            ]),
+          ),
+          Origin: {
+            id: currentLibrary.skills.property_ids.Origin,
+            name: "Origin",
+            type: "relation",
+            relation: {
+              type: "dual_property",
+              data_source_id: currentLibrary.sources.data_source_id,
+              dual_property: { synced_property_id: currentLibrary.sources.property_ids.Skills },
             },
-          ]),
-        ),
+          },
+        },
       },
       database: {
         object: "database",
@@ -227,6 +228,7 @@ const source = await startSdkSourceFixture(
       skills: [],
       files: [],
       records: [],
+      sources: [],
       bodies: {},
     },
   },

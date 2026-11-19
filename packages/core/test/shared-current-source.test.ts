@@ -20,7 +20,6 @@ import {
   prepareCurrentSharedResource,
   type PreparedCurrentSharedResource,
 } from "../src/shared-current-resource.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex")
@@ -193,13 +192,9 @@ function fixture(
     root: "/controlled",
     configRoot: "/controlled/config",
     cacheRoot: "/controlled/cache",
-    upstream: upstreamRepositoryFixture(),
-    integrity: integrityRepositoryFixture(),
     reserveCacheGeneration: unexpected,
     listKeys: unexpected,
     retireKeys: unexpected,
-    registerBindingWithBase: unexpected,
-    advanceBaseAndReceipt: unexpected,
     backup: unexpected,
     output: unexpected,
     readJson: (key, schema) =>

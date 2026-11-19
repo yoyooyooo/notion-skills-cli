@@ -13,7 +13,6 @@ import { createRequestMetrics } from "../src/request-metrics.ts"
 import type { FixedGithubFile, FixedGithubSource } from "../src/shared-github-source.ts"
 import { materializeFixedGithubSource } from "../src/shared-source-materialization.ts"
 import { Store } from "../src/store.ts"
-import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 import { FixedGitObjectReader } from "../src/shared-fixed-git-transport.ts"
 import { GhCredential } from "../src/github-api-access.ts"
 
@@ -60,13 +59,9 @@ function fixture(
     root: "/controlled",
     configRoot: "/controlled/config",
     cacheRoot: "/controlled/cache",
-    upstream: upstreamRepositoryFixture(),
-    integrity: integrityRepositoryFixture(),
     reserveCacheGeneration: unexpected,
     listKeys: unexpected,
     retireKeys: unexpected,
-    registerBindingWithBase: unexpected,
-    advanceBaseAndReceipt: unexpected,
     backup: unexpected,
     output: unexpected,
     readJson: (key, schema) =>

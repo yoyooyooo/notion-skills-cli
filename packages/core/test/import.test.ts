@@ -175,3 +175,24 @@ test("ZIP imports reject traversal, duplicate normalized paths, links, corrupt d
     expect.objectContaining({ code: "INVALID_ARCHIVE" }),
   )
 })
+
+test("imported Skill metadata preserves Unicode, digit and space names while refusing controls", () => {
+  for (const name of ["Tty7", "n8n-workflow", "React19", "中文", "Agent Workflow"]) {
+    const bytes = new TextEncoder().encode(
+      `---\nname: ${JSON.stringify(name)}\ndescription: Use this workflow\n---\n\nOriginal body.\n`,
+    )
+    expect(importDocument({ path: "SKILL.md", bytes })).toMatchObject({
+      name,
+      body: "Original body.\n",
+    })
+  }
+  for (const name of ["", "  ", "Agent\tSkill", "Agent\u200bSkill"])
+    expect(() =>
+      importDocument({
+        path: "SKILL.md",
+        bytes: new TextEncoder().encode(
+          `---\nname: ${JSON.stringify(name)}\ndescription: Use this workflow\n---\nBody`,
+        ),
+      }),
+    ).toThrow(expect.objectContaining({ code: "INVALID_SKILL_NAME" }))
+})

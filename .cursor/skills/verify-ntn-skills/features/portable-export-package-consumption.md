@@ -12,9 +12,11 @@ bun run package:check
 
 该入口在新的外部目录构建 CLI、SDK 与实际声明闭包，再打 tarball 并通过 npm 独立安装。它检查包内文档链接、依赖、公开命令 schema、三个 builtin 的完整内容与本地 install/update。旧 writer 路由及 `readOnly` 参数应明确拒绝。
 
+CI 接线由 `packages/cli/test/installed-package-ci.test.ts` 检查：每条矩阵路径都执行现有 package check，CLI 与 SDK 使用同一 archive，失败不被忽略；报告和请求日志始终上传，排除 node_modules。该静态检查不代替实际 package:check，也不要求启动 Pi。
+
 ## Drive
 
-同一次 package check 运行现有 `sdk-fixture.ts` 与 `sdk-package-smoke.mjs`。fixture version 2 只提供当前 Notion 服务事实，不保留历史 cache。最终报告应为 `contract=current-only`、`selection=all`，11 个固定用例全部通过：
+同一次 package check 运行现有 `sdk-fixture.ts` 与 `sdk-package-smoke.mjs`。fixture version 2 只提供当前 Notion 服务事实，不保留历史 cache。最终报告应为 `contract=current-only`、`selection=all`，所有当前用例全部通过：
 
 - 安装 SDK v2 的导出、声明与退役输入拒绝。
 - 完整 catalog 分页和 SDK limit/cursor。
@@ -29,7 +31,7 @@ bun run package:check
 
 ## Real Notion and Pi boundary
 
-受控安装态通过，不证明真实 Notion 已完成字段迁移、全部正文投影、全库残留清理或 Pi 日用。必要的真实 export 使用授权的目标与当前安装包；读取实际产物并核对每条声明路径的完整 bytes/mode。Writer/reimport 尚未实现的部分明确 blocked/not_run，不调用退役的 create/replace 路由。
+受控安装态通过，不证明真实 Notion 已完成字段迁移、全部正文投影、全库残留清理或 Pi 日用。必要的真实 export 使用授权的目标与当前安装包；读取实际产物并核对每条声明路径的完整 bytes/mode。完整导入已由 [当前 import](import-create-recovery-dry-run.md) 提供；本次消费包检查不替代在授权实库执行导出、修改与再次导入，未执行的部分记 not_run。
 
 Broker 使用同一最终 CLI SDK v2 产物做交接，真实 Pi 日常旅程仍由 AH-1063 负责。OMP/Tern 宿主适配延期。达到本次变更的必要证明后停止扩大矩阵。
 

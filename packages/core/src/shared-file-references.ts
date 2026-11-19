@@ -2,7 +2,6 @@ import { fail } from "./model.ts"
 import { splitNativeInlineCode } from "./shared-native-inline-code.ts"
 import { normalizePath } from "./ref.ts"
 import type { CompositionFile } from "./shared-composition.ts"
-import type { SharedNotionMarkdownVersion } from "./shared-notion-projection.ts"
 
 export type SharedFileReference = {
   readonly from: string
@@ -45,30 +44,24 @@ function escaped(text: string, index: number): boolean {
   return count % 2 === 1
 }
 
-/** Native v2 code spans can contain literal backticks and Markdown links.
+/** Native code spans can contain literal backticks and Markdown links.
  * Locate actual parsed tags first; escaped tags, fenced examples and tags
  * inside Markdown code spans must not hide surrounding real references. */
-function maskReferenceText(text: string, exactPositions: boolean): string {
-  return text.replace(/[^\n]/gu, (value) => (exactPositions ? " ".repeat(value.length) : " "))
+function maskReferenceText(text: string): string {
+  return text.replace(/[^\n]/gu, (value) => " ".repeat(value.length))
 }
-function withoutNativeCode(text: string, exactPositions: boolean): string {
+function withoutNativeCode(text: string): string {
   const parts = splitNativeInlineCode(text)
   if (parts === undefined)
     throw fail(
       "SHARED_REFERENCE_INVALID",
       "The complete native inline text could not be checked without losing source positions.",
     )
-  return parts
-    .map((part) => (part.code ? maskReferenceText(part.raw, exactPositions) : part.raw))
-    .join("")
+  return parts.map((part) => (part.code ? maskReferenceText(part.raw) : part.raw)).join("")
 }
 
-/** Preserve line positions while removing fenced code, inline code and comments. */
-export function referenceProse(
-  markdown: string,
-  policy: SharedNotionMarkdownVersion = 2,
-  exactPositions = false,
-): string {
+/** Preserve every UTF-16 source offset while masking code and comments. */
+export function referenceProse(markdown: string): string {
   let fence: { marker: string; length: number } | undefined
   const lines = markdown
     .replace(/\r/gu, " ")
@@ -96,10 +89,10 @@ export function referenceProse(
   const raw = lines
     .join("\n")
     .replace(/^---[ \t]*\n[\s\S]*?\n(?:---|\.\.\.)[ \t]*(?:\n|$)/u, (frontmatter) =>
-      maskReferenceText(frontmatter, exactPositions),
+      maskReferenceText(frontmatter),
     )
-    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => maskReferenceText(comment, exactPositions))
-  const text = policy === 1 ? raw : withoutNativeCode(raw, exactPositions)
+    .replace(/<!--[\s\S]*?(?:-->|$)/gu, (comment) => maskReferenceText(comment))
+  const text = withoutNativeCode(raw)
   const output = text.split("")
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "`" || escaped(text, start)) continue
@@ -123,7 +116,7 @@ export function referenceProse(
   return masked.replace(
     /<(script|style|pre)\b[^>]*>[\s\S]*?<\/\1\s*>/giu,
     (literal: string, _tag: string, offset: number) =>
-      escaped(masked, offset) ? literal : maskReferenceText(literal, exactPositions),
+      escaped(masked, offset) ? literal : maskReferenceText(literal),
   )
 }
 function closingBracket(text: string, start: number): number {
@@ -225,12 +218,11 @@ function localTarget(from: string, raw: string): string | undefined {
 function scanSharedMarkdownReferences(
   path: string,
   markdown: string,
-  policy: SharedNotionMarkdownVersion = 5,
   visit?: (reference: SharedFileReference, destination: Destination) => void,
 ): readonly SharedFileReference[] {
-  // Retained projection policies keep their historical masking. Destination
-  // edits need exact UTF-16 source positions even around astral code literals.
-  const text = referenceProse(markdown, policy, visit !== undefined)
+  // Every destination offset addresses the original UTF-16 string, including
+  // astral characters hidden inside native code, frontmatter or comments.
+  const text = referenceProse(markdown)
   const definitions = new Map<string, Destination>()
   const definitionRanges: Array<readonly [number, number]> = []
   const definitionPattern = /^ {0,3}\[([^\]\n]+)\]:[ \t]*/gmu
@@ -319,83 +311,8 @@ function scanSharedMarkdownReferences(
 export function sharedMarkdownReferences(
   path: string,
   markdown: string,
-  policy: SharedNotionMarkdownVersion = 5,
 ): readonly SharedFileReference[] {
-  return scanSharedMarkdownReferences(path, markdown, policy)
-}
-
-export type SharedReferenceRewriteSpan = {
-  readonly start: number
-  readonly end: number
-  readonly from: string
-  readonly to: string
-}
-
-/** Replace only explicit spans that are parsed local destinations.
- * Fenced, inline code, escaped literals, external URLs and foreign owners are not destinations. */
-export function rewriteSharedMarkdownReferenceSpans(
-  path: string,
-  markdown: string,
-  spans: readonly SharedReferenceRewriteSpan[],
-): string {
-  const found: Array<{
-    readonly reference: SharedFileReference
-    readonly start: number
-    readonly end: number
-  }> = []
-  scanSharedMarkdownReferences(path, markdown, 5, (reference, destination) => {
-    if (markdown.slice(destination.start, destination.hrefEnd) !== reference.href)
-      throw fail(
-        "SHARED_REFERENCE_INVALID",
-        "A parsed reference has no exact authored destination.",
-      )
-    found.push({ reference, start: destination.start, end: destination.hrefEnd })
-  })
-  const edits: Array<{ readonly start: number; readonly end: number; readonly text: string }> = []
-  for (const span of spans) {
-    if (
-      !Number.isSafeInteger(span.start) ||
-      !Number.isSafeInteger(span.end) ||
-      span.start < 0 ||
-      span.end <= span.start ||
-      markdown.slice(span.start, span.end) !== span.from
-    )
-      throw fail(
-        "SHARED_APPLY_REWRITE_SPAN",
-        "A link rewrite span does not match the submitted file text.",
-        { path, start: span.start, end: span.end },
-      )
-    const match = found.find(
-      (item) =>
-        item.start === span.start && item.end === span.end && item.reference.href === span.from,
-    )
-    if (match === undefined)
-      throw fail(
-        "SHARED_APPLY_REWRITE_SPAN",
-        "A link rewrite span is not an exact relative Markdown destination. Fenced code, inline code, escaped literals, external URLs and foreign owners are left unchanged.",
-        { path, start: span.start, end: span.end },
-      )
-    if (
-      localTarget(path, span.to) === undefined ||
-      normalizePath(span.to) !== span.to ||
-      span.to.includes(":")
-    )
-      throw fail(
-        "SHARED_APPLY_REWRITE_TARGET",
-        "A rewritten link must stay a canonical relative path inside this Skill.",
-        { path, to: span.to },
-      )
-    if (edits.some((edit) => edit.start === span.start))
-      throw fail("SHARED_APPLY_REWRITE_SPAN", "Two rewrite spans cover the same destination.", {
-        path,
-        start: span.start,
-      })
-    edits.push({ start: span.start, end: span.end, text: span.to })
-  }
-  let result = markdown
-  for (const edit of edits.sort((left, right) => right.start - left.start))
-    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end)
-  return result
+  return scanSharedMarkdownReferences(path, markdown)
 }
 
 /** Edit only the actual parsed destination, never another literal with the same href. */
@@ -405,7 +322,7 @@ export function mapSharedMarkdownReferences(
   change: (reference: SharedFileReference) => string,
 ): string {
   const edits = new Map<number, { readonly end: number; readonly text: string }>()
-  scanSharedMarkdownReferences(path, markdown, 5, (reference, destination) => {
+  scanSharedMarkdownReferences(path, markdown, (reference, destination) => {
     if (markdown.slice(destination.start, destination.hrefEnd) !== reference.href)
       throw fail(
         "SHARED_REFERENCE_INVALID",
@@ -420,18 +337,11 @@ export function mapSharedMarkdownReferences(
   return result
 }
 
-/** The caller must supply the complete, byte-verified proposed tree. Retained
- * authoring-v1 creation plans explicitly select policy 1 so their original
- * reference counts and hashed identities do not change during reconstruction.
- * All policies check every file; policies 2 and later understand native code spans. */
-export function assertSharedFileReferences(
-  files: readonly CompositionFile[],
-  policy: SharedNotionMarkdownVersion = 5,
-) {
+/** Validate all supplied current bytes against their complete directory. */
+export function assertSharedFileReferences(files: readonly CompositionFile[]) {
   return assertSelectedSharedFileReferences(
     files,
     files.map((file) => file.path),
-    policy,
   )
 }
 
@@ -440,7 +350,6 @@ export function assertSharedFileReferences(
 export function assertSelectedSharedFileReferences(
   files: readonly CompositionFile[],
   completePaths: readonly string[],
-  policy: SharedNotionMarkdownVersion = 5,
 ) {
   const paths = new Set(completePaths)
   if (
@@ -467,7 +376,7 @@ export function assertSelectedSharedFileReferences(
       )
     }
     checkedFiles += 1
-    references.push(...sharedMarkdownReferences(file.path, markdown, policy))
+    references.push(...sharedMarkdownReferences(file.path, markdown))
   }
   const missing = references.filter((reference) => !paths.has(reference.target))
   if (missing.length !== 0)

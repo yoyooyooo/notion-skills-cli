@@ -371,88 +371,45 @@ describe("fixed resource batch", () => {
     expect(read).toMatchObject({ error: { code: "STATE_CORRUPT" } })
   })
 
-  test("remote locator domains require canonical database identities and subscription router kind", async () => {
+  test("remote current locators require canonical physical identities and reject retired protocols", async () => {
     const f = await fixture()
     const original = ready(await f.run(readResources(f.input(["references/a.txt"]))))
-    const { file_bindings: _bindings, ...withoutBindings } = original.manifest
-    const { file_id: _fileId, ...file } = original.files[0]!
-    const wire = (record: ContentRecord) => {
-      const snapshot_id =
-        "s_" +
-        digest(JSON.stringify([original.selection.scope, record.id, original.selection.version_id]))
-      const ref = fileRef(record.id, file.path, snapshot_id)
-      const manifest = {
-        ...withoutBindings,
-        record,
-        snapshot_id,
-        entrypoint: record.entrypoint,
-        files: original.manifest.files.map((entry) =>
-          entry.path === original.manifest.entrypoint
-            ? { ...entry, path: record.entrypoint }
-            : entry,
-        ),
-      }
-      return {
-        input: { version: 1 as const, refs: [ref] },
-        result: {
-          ...original,
-          manifest,
-          manifest_sha256: digest(canonicalSharedJson(manifest)),
-          selection: { ...original.selection, owner: record.id, snapshot_id },
-          files: [{ ...file, requested_ref: ref, ref }],
-        },
+    expect(await f.run(decodeResourceReadResult(original, f.input(["references/a.txt"])))).toEqual(
+      original,
+    )
+    const record = original.manifest.record
+    if (record.locator.type !== "shared_skill") throw new Error("Expected a current shared owner")
+    const rehash = (manifest: unknown) => ({
+      ...original,
+      manifest,
+      manifest_sha256: digest(canonicalSharedJson(manifest)),
+    })
+    for (const field of ["page_id", "database_id", "data_source_id"] as const) {
+      for (const identifier of ["x", "ABCDEF01-0000-4000-8000-000000000003"]) {
+        const manifest = {
+          ...original.manifest,
+          record: { ...record, locator: { ...record.locator, [field]: identifier } },
+        }
+        await expect(f.run(decodeResourceReadResult(rehash(manifest)))).rejects.toMatchObject({
+          code: "RESOURCE_INVALID_PROOF",
+        })
       }
     }
-    const page: ContentRecord = {
-      ...original.manifest.record,
-      id: "notion_page:" + id(501),
-      ref: fileRef("notion_page:" + id(501), "SKILL.md"),
-      locator: {
-        type: "notion_page",
-        page_id: id(501),
-        database_id: id(502),
-        data_source_id: id(503),
-      },
-    }
-    const subscription: ContentRecord = {
-      ...page,
-      id: "notion_subscription:" + id(504),
-      kind: "router",
-      entrypoint: "ROUTER.md",
-      ref: fileRef("notion_subscription:" + id(504), "ROUTER.md"),
-      locator: {
+    for (const locator of [
+      { type: "notion_page", page_id: id(501), database_id: id(502), data_source_id: id(503) },
+      {
         type: "notion_subscription",
         subscription_id: id(504),
         database_id: id(502),
         data_source_id: id(503),
         target_database_id: id(505),
       },
+    ]) {
+      const manifest = { ...original.manifest, record: { ...record, locator } }
+      await expect(f.run(decodeResourceReadResult(rehash(manifest)))).rejects.toMatchObject({
+        code: "RESOURCE_INVALID_PROOF",
+      })
     }
-    for (const record of [page, subscription]) {
-      const valid = wire(record)
-      expect(await f.run(decodeResourceReadResult(valid.result, valid.input))).toEqual(valid.result)
-      for (const field of [
-        "database_id",
-        "data_source_id",
-        ...(record.locator.type === "notion_subscription" ? ["target_database_id"] : []),
-      ]) {
-        for (const identifier of ["x", id(502).toUpperCase()]) {
-          const malformed = wire({ ...record, locator: { ...record.locator, [field]: identifier } })
-          await expect(
-            f.run(decodeResourceReadResult(malformed.result, malformed.input)),
-          ).rejects.toMatchObject({ code: "RESOURCE_INVALID_PROOF" })
-        }
-      }
-    }
-    const wrongKind = wire({
-      ...subscription,
-      kind: "skill",
-      entrypoint: "SKILL.md",
-      ref: fileRef(subscription.id, "SKILL.md"),
-    })
-    await expect(
-      f.run(decodeResourceReadResult(wrongKind.result, wrongKind.input)),
-    ).rejects.toMatchObject({ code: "RESOURCE_INVALID_PROOF" })
   })
 
   test("the pure decoder rejects tampered content, selection, order, completeness and budgets", async () => {

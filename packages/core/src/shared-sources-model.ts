@@ -1,31 +1,4 @@
 import { Schema } from "effect"
-import {
-  NotionSafeRequestIdSchema,
-  NotionValidationDiagnosticSchema,
-} from "./notion-validation-diagnostic.ts"
-
-/** The original native response is durable dispatch evidence, independent of execution. */
-export const SourceMutationAcknowledgementSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  operation_id: Schema.String,
-  request_hash: Schema.String,
-  response_hash: Schema.String,
-  acknowledged_at: Schema.Number,
-  response: Schema.Unknown,
-})
-
-/** A complete negative response is distinct from an absent or unknown ACK. */
-export const SourceMutationRejectionSchema = Schema.Struct({
-  version: Schema.Literal(1),
-  operation_id: Schema.String,
-  request_hash: Schema.String,
-  rejected_at: Schema.Number,
-  http_status: Schema.Literal(400),
-  notion_code: Schema.Literal("validation_error"),
-  status: Schema.Literal("not_applied"),
-  request_id: Schema.optionalKey(NotionSafeRequestIdSchema),
-  validation: Schema.optionalKey(NotionValidationDiagnosticSchema),
-})
 
 /** Mutable discovery configuration is separate from an immutable file Source pin. */
 export const SourceAdapterSchema = Schema.Union([

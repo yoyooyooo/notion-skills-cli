@@ -32,18 +32,18 @@ export const doctorCommand = defineCommand("doctor", { database: databaseFlag },
     )
     let readStatus: unknown = {
       checked: false,
-      reason: "No skill is present in the discovered list.",
+      reason: "No enabled Skill is present in the discovered list.",
     }
-    if (result.records[0]) {
-      const snapshot = yield* openSkill(result.records[0].id, { database, refresh: true })
+    const selected = result.records.find(
+      (record) => record.kind === "skill" && record.enabled === true,
+    )
+    if (selected) {
+      const snapshot = yield* openSkill(selected.id, { database, refresh: true })
       readStatus = {
         checked: true,
         available: true,
-        storage: snapshot.markdown_files
-          ? "markdown_files"
-          : snapshot.references
-            ? "references"
-            : "native_skills",
+        storage: "current_library",
+        file_count: snapshot.files.length,
       }
     }
     yield* emit({
@@ -51,7 +51,7 @@ export const doctorCommand = defineCommand("doctor", { database: databaseFlag },
       notion_api_version: version,
       authentication: "available",
       discovery: { checked: true },
-      skills_databases: result.databases.filter((database) => database.role !== "upstream").length,
+      skills_databases: result.databases.length,
       skill_count: result.records.length,
       skill_read: readStatus,
       coverage: result.coverage,

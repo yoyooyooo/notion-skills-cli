@@ -1,18 +1,22 @@
 import { expect, test } from "bun:test"
 import { Effect } from "effect"
+import type { Snapshot } from "../src/model.ts"
 import { fileRef, parseRef } from "../src/ref.ts"
-import { resolveUpstreamMemberRelative } from "../src/upstream-member-snapshot.ts"
+import { resolveSkillRef } from "../src/snapshot.ts"
 import { currentBytes, currentRich, currentSnapshotFixture } from "./shared-current-fixture.ts"
+
+const resolveSelectedRelative = (snapshot: Snapshot, from: string, relative: string) =>
+  resolveSkillRef(fileRef(snapshot.record.id, from, snapshot.snapshot_id), relative, {
+    offline: true,
+  })
 
 test("current relative files stay in their exact Skill and selected directory without Source discovery", async () => {
   const f = currentSnapshotFixture()
   const selected = await f.open()
   f.clearCalls()
-  const fromMain = await f.run(
-    resolveUpstreamMemberRelative(selected, "SKILL.md", "references/0.md"),
-  )
+  const fromMain = await f.run(resolveSelectedRelative(selected, "SKILL.md", "references/0.md"))
   const fromNested = await f.run(
-    resolveUpstreamMemberRelative(selected, "references/nested/guide.md", "../1.md"),
+    resolveSelectedRelative(selected, "references/nested/guide.md", "../1.md"),
   )
   expect(parseRef(fromMain)).toEqual({
     selector: selected.record.id,
@@ -43,7 +47,7 @@ test("current resource relative paths retain their owner and mode without fetchi
   expect(selected.files.find((file) => file.path === "scripts/task.sh")?.mode).toBe("100755")
   f.clearCalls()
   const resolved = await f.run(
-    resolveUpstreamMemberRelative(selected, "references/guide.md", "../scripts/task.sh"),
+    resolveSelectedRelative(selected, "references/guide.md", "../scripts/task.sh"),
   )
   expect(parseRef(resolved)).toEqual({
     selector: selected.record.id,
@@ -67,7 +71,7 @@ test("cross-Skill relative paths require current contribution links even when ob
     ["references/nested/guide.md", "../../../other/private.bin"],
   ]) {
     const result = await f.run(
-      resolveUpstreamMemberRelative(selected, from!, relative!).pipe(Effect.result),
+      resolveSelectedRelative(selected, from!, relative!).pipe(Effect.result),
     )
     expect(result._tag).toBe("Failure")
     if (result._tag === "Failure")
@@ -91,9 +95,9 @@ test("invalid file syntax remains invalid and an explicitly named Skill ref rema
     "../other/SKILL.md?revision=old",
   ])
     await expect(
-      f.run(resolveUpstreamMemberRelative(selected, "SKILL.md", relative)),
+      f.run(resolveSelectedRelative(selected, "SKILL.md", relative)),
     ).rejects.toMatchObject({ code: "INVALID_PATH" })
   const explicit = fileRef("shared_skill:library-current:another-skill", "SKILL.md")
-  expect(await f.run(resolveUpstreamMemberRelative(selected, "SKILL.md", explicit))).toBe(explicit)
+  expect(await f.run(resolveSelectedRelative(selected, "SKILL.md", explicit))).toBe(explicit)
   expect(f.calls).toHaveLength(0)
 })

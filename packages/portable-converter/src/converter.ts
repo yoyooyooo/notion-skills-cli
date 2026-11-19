@@ -1,6 +1,6 @@
 import { Effect, FileSystem, Path, Schema } from "effect"
 import { loadImport, type ImportFile } from "../../core/src/import.ts"
-import { ContentKindSchema, fail, type ContentKind } from "../../core/src/model.ts"
+import { ContentKindSchema, fail, property, type ContentKind } from "../../core/src/model.ts"
 import { MANIFEST, portableFiles, portableZip, readPortable } from "../../core/src/portable.ts"
 import { sha256 } from "../../core/src/store.ts"
 
@@ -11,19 +11,21 @@ const OldManifest = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   main: Schema.String,
-  projection: Schema.optional(Schema.Unknown),
 })
 const encoder = new TextEncoder()
 export function convertPortable(input: readonly ImportFile[], selectedKind?: ContentKind) {
   const manifests = input.filter((file) => file.path === MANIFEST)
   if (manifests.length !== 1)
     throw fail("INVALID_ARCHIVE", "Conversion requires exactly one manifest.")
-  const manifest = Schema.decodeUnknownSync(OldManifest)(
-    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifests[0]!.bytes)),
-    { onExcessProperty: "error" },
-  )
+  const raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifests[0]!.bytes))
+  if ("projection" in property(raw))
+    throw fail(
+      "PORTABLE_CURRENT_SELECTION_REQUIRED",
+      "Select the current files before conversion. Retained projection or authored/generated payloads are never inferred as current content; the input remains unchanged.",
+    )
+  const manifest = Schema.decodeUnknownSync(OldManifest)(raw, { onExcessProperty: "error" })
   const kind = Schema.decodeUnknownSync(ContentKindSchema)(selectedKind ?? "skill")
-  // Reuse the current complete path/main/projection validator only after explicit conversion.
+  // Convert only metadata for an explicitly selected file tree; preserve every file byte.
   const converted = input.map((file) =>
     file.path === MANIFEST
       ? {
@@ -35,7 +37,7 @@ export function convertPortable(input: readonly ImportFile[], selectedKind?: Con
   const portable = readPortable(converted)!
   return {
     portable,
-    files: portableFiles(portable, true),
+    files: portableFiles(portable),
     kindSelection: selectedKind === undefined ? "audited-default-skill" : "explicit",
   }
 }
@@ -81,11 +83,9 @@ export function convertPath(input: string, output: string, kind?: ContentKind) {
     }
     // A new container holds both output and audit; input bytes are never written.
     yield* fs.makeDirectory(destination, { recursive: false })
-    yield* fs.writeFile(
-      path.join(destination, "converted.zip"),
-      portableZip(converted.portable, true),
-      { flag: "wx" },
-    )
+    yield* fs.writeFile(path.join(destination, "converted.zip"), portableZip(converted.portable), {
+      flag: "wx",
+    })
     yield* fs.writeFileString(
       path.join(destination, "audit.json"),
       JSON.stringify(audit, null, 2) + "\n",

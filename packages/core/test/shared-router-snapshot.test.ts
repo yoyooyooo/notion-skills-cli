@@ -8,44 +8,46 @@ import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import { targetSnapshot } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import {
-  digest,
-  id,
-  library,
-  rich,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentDigest as digest,
+  currentId as id,
+  currentLibrary as library,
+  currentRich as rich,
+  currentSnapshotFixture,
+  currentSkillPage as skillPage,
+} from "./shared-current-fixture.ts"
 
 function routerFixture(registered = true) {
-  const f = sharedSnapshotFixture({ fileCount: 1 })
-  property(f.main.properties).kind = { id: "kind", type: "select", select: { name: "router" } }
+  const f = currentSnapshotFixture({ fileCount: 0 })
+  property(f.main.properties)["Kind"] = { id: "kind", type: "select", select: { name: "router" } }
   property(f.main.properties).members = {
     id: "members%3A",
     type: "relation",
     relation: [{ id: id(900) }],
     has_more: false,
   }
+  const propertyIds: Record<string, string> = {
+    ...library.skills.property_ids,
+    Members: "members%3A",
+  }
+  if (!registered) delete propertyIds.Members
   const descriptor = {
     ...library,
     skills: {
       ...library.skills,
-      property_ids: {
-        ...library.skills.property_ids,
-        ...(registered ? { Members: "members%3A" } : {}),
-      },
+      property_ids: propertyIds,
     },
   }
   const member = structuredClone(f.main)
   member.id = id(900)
   const fields = property(member.properties)
-  fields.kind = { id: "kind", type: "select", select: { name: "skill" } }
-  fields.skill_id = rich("skill_id", "router-member")
-  fields.title = {
+  fields["Kind"] = { id: "kind", type: "select", select: { name: "skill" } }
+  fields["Skill ID"] = rich("skill-id", "router-member")
+  fields["Name"] = {
     id: "title",
     type: "title",
     title: [{ type: "text", text: { content: "Lazy member" }, plain_text: "Lazy member" }],
   }
-  fields.description = rich("description", "First member description")
+  fields["Description"] = rich("description", "First member description")
   const run = <A, E>(
     effect: Effect.Effect<
       A,
@@ -111,11 +113,14 @@ describe("shared Router snapshot integration", () => {
     const snapshot = await f.target()
     expect(snapshot.entrypoint).toBe("ROUTER.md")
     expect(snapshot.router_members).toHaveLength(1)
-    expect(snapshot.router_members?.[0]?.id).toBe("shared_skill:library-snapshot:router-member")
-    expect(mainText(f, snapshot)).toContain("## Members")
-    expect(mainText(f, snapshot)).toContain("Lazy member")
-    expect(mainText(f, snapshot)).toContain("First member description")
-    expect(f.readBodyCount()).toBe(1)
+    expect(snapshot.router_members?.[0]?.id).toBe("shared_skill:library-current:router-member")
+    expect(snapshot.router_members?.[0]?.metadata).toMatchObject({
+      name: "Lazy member",
+      description: "First member description",
+    })
+    expect(mainText(f, snapshot)).toContain("Keep the author's content.")
+    expect(mainText(f, snapshot)).not.toContain("## Members")
+    expect(f.bodyCalls().length).toBe(1)
     expect(f.calls.some((call) => call.path.startsWith(`v1/pages/${id(900)}`))).toBe(false)
     expect(
       f.calls.filter((call) =>
@@ -127,45 +132,50 @@ describe("shared Router snapshot integration", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("member metadata refresh changes the generated index without downloading any body or changing an old pin", async () => {
+  test("member metadata refresh changes the directory without rewriting authored body or an existing local selection", async () => {
     const f = routerFixture()
     const first = await f.target()
     const original = structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`))
     for (const [key, value] of f.json)
       if (key.startsWith("cache/latest/")) property(value).validated_at = Date.now() - 300_001
-    property(f.member.properties).description = rich("description", "Updated member description")
+    property(f.member.properties)["Description"] = rich("description", "Updated member description")
     f.clearCalls()
     const current = await f.target()
-    expect(current.snapshot_id).not.toBe(first.snapshot_id)
-    expect(mainText(f, current)).toContain("Updated member description")
-    expect(f.readBodyCount()).toBe(0)
-    expect(f.writeCount()).toBe(0)
+    expect(current.snapshot_id).toBe(first.snapshot_id)
+    expect(current.router_members?.[0]?.metadata).toMatchObject({
+      description: "Updated member description",
+    })
+    expect(mainText(f, current)).toBe(mainText(f, first))
+    expect(f.bodyCalls().length).toBe(0)
+    expect(f.semanticWrites().length).toBe(0)
     expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(original)
     f.clearCalls()
     const pinned = await f.run(
       targetSnapshot({ selector: skillPage, path: "ROUTER.md", snapshot: first.snapshot_id }),
     )
-    expect(mainText(f, pinned)).toContain("First member description")
+    expect(pinned.router_members?.[0]?.metadata).toMatchObject({
+      description: "First member description",
+    })
     expect(f.calls).toHaveLength(0)
   })
 
-  test("missing registered Members fails before body observation or adoption", async () => {
+  test("missing registered Members fails current admission before body observation or writes", async () => {
     const f = routerFixture(false)
-    await expect(f.target()).rejects.toThrow("registered native Members")
-    expect(f.readBodyCount()).toBe(0)
-    expect(f.writeCount()).toBe(0)
+    await expect(f.target()).rejects.toMatchObject({ code: "CURRENT_SCHEMA_REQUIRED" })
+    expect(f.bodyCalls().length).toBe(0)
+    expect(f.semanticWrites().length).toBe(0)
     expect(f.json.size).toBe(0)
   })
 
   test("an explicitly disabled member cannot produce a shortened successful Router", async () => {
     const f = routerFixture()
-    property(f.member.properties).enabled = { id: "enabled", type: "checkbox", checkbox: false }
+    property(f.member.properties)["Enabled"] = { id: "enabled", type: "checkbox", checkbox: false }
     await expect(f.target()).rejects.toThrow()
-    expect(f.readBodyCount()).toBe(0)
-    expect(f.writeCount()).toBe(0)
+    expect(f.bodyCalls().length).toBe(0)
+    expect(f.semanticWrites().length).toBe(0)
   })
 
-  test("older shared Router snapshots lacking their index are not reused offline or as current TTL hits", async () => {
+  test("a damaged current Router directory cannot be used offline and is reselected online", async () => {
     const f = routerFixture()
     const first = await f.target()
     const legacy = property(structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`)))
@@ -178,6 +188,7 @@ describe("shared Router snapshot integration", () => {
       if (key.startsWith("cache/latest/")) {
         property(value).snapshot_id = legacyId
         property(value).version_id = legacy.version_id
+        property(value).current_snapshot = legacy
       }
     f.clearCalls()
     await expect(f.target({ offline: true })).rejects.toThrow("no frozen Members index")
@@ -189,8 +200,8 @@ describe("shared Router snapshot integration", () => {
     expect(refreshed.snapshot_id).toBe(first.snapshot_id)
     expect(refreshed.router_members).toHaveLength(1)
     expect(f.calls.length).toBeGreaterThan(0)
-    expect(f.readBodyCount()).toBe(0)
-    expect(f.writeCount()).toBe(0)
+    expect(f.bodyCalls().length).toBe(0)
+    expect(f.semanticWrites().length).toBe(0)
     expect(property(f.json.get(`snapshots/${legacyId}.json`)).router_members).toBeUndefined()
   })
 })
