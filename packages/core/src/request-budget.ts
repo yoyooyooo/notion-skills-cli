@@ -9,6 +9,19 @@ export type RequestBudgetLimits = {
 
 export type RequestBudgetReason = "requests" | "bytes" | "duration"
 
+export type RequestBudgetSnapshot = {
+  readonly limits: RequestBudgetLimits
+  readonly attempts: number
+  readonly request_bytes: number
+  readonly response_bytes: number
+  readonly elapsed_ms: number
+  readonly exhausted: RequestBudgetReason | null
+  readonly byte_overshoot: number
+  readonly byte_policy: "finish_admitted_response"
+  readonly byte_units: "payload_bytes_excluding_http_tls_framing"
+  readonly maximum_in_flight: 1
+}
+
 /** Opt-in invocation budget. Admission is synchronous between Effects, so two
  * concurrent transports cannot both spend the last permit. Ordinary callers do
  * not install this service and retain their existing retry/admission policy. */
@@ -22,23 +35,17 @@ export class RequestBudget extends Context.Service<
     readonly admit: (requestBytes: number) => Effect.Effect<void, SkillsError>
     readonly responseBytes: (delta: number) => void
     readonly exhaust: (reason: RequestBudgetReason) => SkillsError
-    readonly snapshot: Effect.Effect<{
-      readonly limits: RequestBudgetLimits
-      readonly attempts: number
-      readonly request_bytes: number
-      readonly response_bytes: number
-      readonly elapsed_ms: number
-      readonly exhausted: RequestBudgetReason | null
-      readonly byte_overshoot: number
-      readonly byte_policy: "finish_admitted_response"
-      readonly byte_units: "payload_bytes_excluding_http_tls_framing"
-      readonly maximum_in_flight: 1
-    }>
+    readonly snapshot: Effect.Effect<RequestBudgetSnapshot>
   }
 >()("ntn-skills/RequestBudget") {}
 
-export function makeRequestBudget(identity: string, limits: RequestBudgetLimits) {
+export function makeRequestBudget(identity: string, input: RequestBudgetLimits) {
   return Effect.gen(function* () {
+    const limits = Object.freeze({
+      requests: input.requests,
+      bytes: input.bytes,
+      duration_ms: input.duration_ms,
+    })
     for (const [name, value] of Object.entries(limits))
       if (!Number.isSafeInteger(value) || value <= 0)
         return yield* Effect.fail(
@@ -54,15 +61,16 @@ export function makeRequestBudget(identity: string, limits: RequestBudgetLimits)
     let responseBytes = 0
     let exhausted: RequestBudgetReason | null = null
     const exhaust = (reason: RequestBudgetReason) => {
-      exhausted = reason
+      exhausted ??= reason
       return fail("REQUEST_BUDGET_EXHAUSTED", "The request invocation budget is exhausted.", {
-        reason,
+        reason: exhausted,
         attempts,
         request_bytes: requestBytes,
         response_bytes: responseBytes,
       })
     }
     const check = Effect.gen(function* () {
+      if (exhausted !== null) return yield* Effect.fail(exhaust(exhausted))
       if ((yield* Clock.monotonicTimeNanos) >= deadline)
         return yield* Effect.fail(exhaust("duration"))
       if (attempts >= limits.requests) return yield* Effect.fail(exhaust("requests"))

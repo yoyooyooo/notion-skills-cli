@@ -78,8 +78,9 @@ current descriptor or pending current operation remains an explicit error.
 
 The current library family also provides `init`, `import` and singular `profile`.
 Use `notion/ntn-skills-maintain` for complete import, deletion previews and the
-same operation's resume procedure. Partial updates, Source refresh and portable
-relationship writes remain unavailable.
+same operation's resume procedure. Portable Members/Requires round-trip through
+export and complete import; omitted fields preserve, [] clears, and lists replace
+the complete relation. Partial file updates and Source refresh remain unavailable.
 
 ## Local builtins
 

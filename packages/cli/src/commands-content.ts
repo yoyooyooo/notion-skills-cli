@@ -19,9 +19,6 @@ import {
   filesConstraints,
   readConstraints,
   exportConstraints,
-  exactTargetConstraint,
-  memberConstraint,
-  requiredConstraint,
   validateConstraints,
   databaseFlag,
   singleton,
@@ -30,11 +27,6 @@ import {
   readPolicyFlags,
   readPolicy,
   emit,
-  progressFlag,
-  publicationOptions,
-  dryRunFlag,
-  memberFlags,
-  requiredFlags,
 } from "./command-options.ts"
 const requestMetricsFlag = switchFlag(
   "metrics",

@@ -10,7 +10,7 @@ description: "验证当前 Skill/File 身份、Content 权威、有限 readiness
 ## Launch
 
 复用 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 的受控输入。
-`verification/models/resource-lifecycle/coverage.json` 仍有 event/proof/永久 pin 的旧对应关系，退出当前执行入口。不能继续运行旧 AuditScope 或 ImportCreate 来证明已删掉的实现。
+原 event/proof/永久 pin 的模型、coverage 和专属运行入口已经退役。不能用旧 AuditScope 或 ImportCreate 的历史通过证明当前实现。
 
 当前性质直接由已有 current tests 验证。以后只有具体状态风险需要模型时，才在原模型维护机制中建立准确对应；不因每张 Issue 创建模型。
 
@@ -40,7 +40,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 
 ## Evidence
 
-说明实际覆盖的有限状态、假设及未验部分。旧 coverage hash 不能替代行为；不得放宽断言或删负例让旧模型变绿。源码、受控代码、实际包和真实系统各自只报实际结果。
+说明实际覆盖的有限状态、假设及未验部分。源码对应必须指向实际当前行为；不得放宽仍适用的断言或删负例来制造通过。源码、受控代码、实际包和真实系统各自只报实际结果。
 
 普通消费必须语义远端 0 写。resource 存储 helper 的授权写入与普通 reader 分开计数；query POST 是读。
 

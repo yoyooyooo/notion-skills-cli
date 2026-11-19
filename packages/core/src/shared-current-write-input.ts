@@ -12,6 +12,8 @@ import {
 import { planSharedFiles } from "./shared-composition.ts"
 import { decodeCurrentFileContent, type CurrentFileContent } from "./shared-current-file.ts"
 import { isCurrentProjectionBinary } from "./shared-current-projection.ts"
+import { validateCurrentWriteRelations } from "./shared-current-relations.ts"
+import type { PortableRelations } from "./portable.ts"
 import { assertSharedFileReferences } from "./shared-file-references.ts"
 import {
   prepareCurrentSharedResource,
@@ -38,6 +40,7 @@ export type CurrentSkillWriteInput = {
   readonly description: string
   readonly enabled?: boolean
   readonly default_context?: boolean
+  readonly relations?: PortableRelations
   readonly files: readonly {
     readonly path: string
     readonly bytes: Uint8Array
@@ -74,6 +77,7 @@ export type PreparedCurrentSkillWrite = {
   readonly description: string
   readonly enabled?: boolean
   readonly default_context?: boolean
+  readonly relations?: PortableRelations
   readonly main: string
   readonly files: readonly PreparedCurrentWriteFile[]
   readonly input_sha256: string
@@ -139,6 +143,11 @@ export function prepareCurrentSkillWrite(input: CurrentSkillWriteInput) {
         description: validateDescription(input.description),
         ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
         ...(input.default_context === undefined ? {} : { default_context: input.default_context }),
+        ...(input.relations === undefined
+          ? {}
+          : {
+              relations: validateCurrentWriteRelations(input.relations, kind, skill_id),
+            }),
         main,
       }
     })
@@ -254,6 +263,14 @@ export function copyValidatedCurrentSkillWrite(input: PreparedCurrentSkillWrite)
       decode(ContentKindSchema, value.kind)
       validateDisplayName(value.name)
       validateDescription(value.description)
+      if (
+        value.relations !== undefined &&
+        canonicalSharedJson(value.relations) !==
+          canonicalSharedJson(
+            validateCurrentWriteRelations(value.relations, value.kind, value.skill_id),
+          )
+      )
+        throw invalid("The prepared current relation selection changed.")
       if (
         value.main !== entrypointFor(value.kind) ||
         (value.enabled !== undefined && typeof value.enabled !== "boolean") ||

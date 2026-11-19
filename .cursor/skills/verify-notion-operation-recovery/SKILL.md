@@ -11,13 +11,13 @@ description: "验证当前管理意图在响应丢失、partial、预算暂停�
 
 复用 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 和现有 HTTP fixture。区分受控故障、真实 Notion、安装产物和 Pi 日用。不要新增恢复台账或模型平台。
 
-旧 `verification/models/operation-recovery/coverage.json` 对应 ACK/review/completion，已退出当前验收。不得只更新 hash 或删除反例来宣布当前恢复成立。
+原 ACK/review/completion 模型、coverage、专属回放脚本和旧图册已经退役。当前有限意图通过实际 writer/HTTP 反例验证，不继承旧模型通过。
 
 ## Doctor
 
 ~~~sh
 bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-upload.test.ts --timeout 60000
-bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts --timeout 60000
+bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000
 ~~~
 
 需要验证本地持久化时，沿现有 Node runner 运行 `shared-current-operation.node.test.ts`，确认真正 SQLite 中 pending 原位更新和完成删除。

@@ -5,7 +5,6 @@ import {
   Crypto,
   Effect,
   FileSystem,
-  Layer,
   Option,
   Path,
   PlatformError,
@@ -104,7 +103,10 @@ function validRelative(input: string): string {
   return input
 }
 
-/** The host Layer supplies capabilities once; each operation owns its file scopes. */
+/** Guards precede destination syscalls. Process locks fence cooperating writers;
+ * readback detects divergence, but neither provides atomic filesystem CAS.
+ * Each operation owns its file scopes.
+ */
 export const makeSyncLocal = (options: SyncLocalOptions = {}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -775,10 +777,3 @@ export const makeSyncLocal = (options: SyncLocalOptions = {}) =>
       withLocks: (keys, effect) => withLocalLocks(stateRoot, keys, effect),
     } satisfies SyncLocal["Service"]
   }).pipe(Effect.mapError(safeError))
-
-/** Guards precede every destination syscall. There is no directory-fd-relative
- * compare-and-swap in the official filesystem: external writers can retarget
- * between guard and syscall. Process locks fence cooperating writers; readback
- * detects divergence. No atomic filesystem CAS or automatic rollback is claimed.
- */
-export const SyncLocalLive = Layer.effect(SyncLocal, makeSyncLocal())

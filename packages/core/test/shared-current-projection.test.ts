@@ -141,7 +141,10 @@ function fixture(initial: readonly CurrentProjectionBlock[] = [], original = att
       }
       if (pending !== undefined)
         return yield* Effect.fail(
-          fail("WRITE_OUTCOME_UNKNOWN", "Observe the original action before proceeding."),
+          fail(
+            pending === input.key ? "WRITE_OUTCOME_UNKNOWN" : "CURRENT_OPERATION_PENDING",
+            "Observe the original action before proceeding.",
+          ),
         )
       pending = input.key
       const value = yield* service.request(
@@ -370,6 +373,49 @@ describe("complete current reading projections", () => {
     expect(f.calls).toHaveLength(0)
   })
 
+  test("fresh short prefixes are replaced while complete batch prefixes continue without clearing", async () => {
+    const source = "# Guide\n\nComplete child document.\n"
+    const old = renderCurrentProjection({ path: "guide.md", bytes: bytes(source) })
+    const next = renderCurrentProjection({
+      path: "guide.md",
+      bytes: bytes(`${source}\nEdited through the exported current package.\n`),
+    })
+    const short = fixture(old.blocks)
+    expect((await short.apply(next)).changed).toBe(true)
+    expect(short.writes().map((call) => call.path)).toEqual([
+      `v1/pages/${page}/markdown`,
+      `v1/blocks/${page}/children`,
+    ])
+    expect((await short.run(inspectCurrentProjection({ pageId: page, plan: next }))).matches).toBe(
+      true,
+    )
+
+    const many = renderCurrentProjection({
+      path: "many.txt",
+      bytes: bytes("x".repeat(16000 * 102) + "END"),
+    })
+    const batches = currentProjectionBatches(many.blocks),
+      firstBatch = batches[0]!
+    expect(firstBatch.length).toBeLessThan(many.blocks.length)
+    const complete = fixture(firstBatch),
+      retainedIds = complete.originals().map((block) => block.id)
+    expect((await complete.apply(many)).blocks).toBe(many.blocks.length)
+    expect(complete.writes().map((call) => ({ path: call.path, body: call.body }))).toEqual(
+      batches
+        .slice(1)
+        .map((children) => ({ path: `v1/blocks/${page}/children`, body: { children } })),
+    )
+    expect(
+      complete
+        .originals()
+        .slice(0, retainedIds.length)
+        .map((block) => block.id),
+    ).toEqual(retainedIds)
+    expect(
+      (await complete.run(inspectCurrentProjection({ pageId: page, plan: many }))).matches,
+    ).toBe(true)
+  })
+
   test("Notion may coalesce equivalent rich-text runs without changing the reading body", async () => {
     const text = "x".repeat(5000)
     const plan = renderCurrentProjection({ path: "long.txt", bytes: bytes(text) })
@@ -405,12 +451,16 @@ describe("complete current reading projections", () => {
       const f = fixture()
       f.loseAppend(outcome)
       await expect(f.apply(plan)).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+      const before = structuredClone(f.originals()),
+        pending = f.pending()
       f.resetCalls()
       await expect(f.apply(plan)).rejects.toMatchObject({
-        code: outcome === "partial" ? "CURRENT_PROJECTION_CONFLICT" : "WRITE_OUTCOME_UNKNOWN",
+        code: outcome === "partial" ? "CURRENT_OPERATION_PENDING" : "WRITE_OUTCOME_UNKNOWN",
       })
       expect(f.writes()).toHaveLength(0)
+      expect(f.pending()).toBe(pending)
       expect(f.pending()).toContain(":append:0")
+      expect(f.originals()).toEqual(before)
     }
   })
 

@@ -761,6 +761,12 @@ export function applyCurrentProjection<R>(input: {
       )
     const expected = yield* expectedProjection(input.plan, input.attachment)
     const batches = yield* checked(() => currentProjectionBatches(input.plan.blocks))
+    const batchBoundaries = new Set([0])
+    let boundary = 0
+    for (const batch of batches) {
+      boundary += batch.length
+      batchBoundaries.add(boundary)
+    }
     yield* input.assertCurrent
     let actual = yield* readProjectionBlocks(page)
     const original = actual.map((block) => canonicalBlock(block.value))
@@ -794,11 +800,12 @@ export function applyCurrentProjection<R>(input: {
       observe: ({ fresh }) =>
         Effect.gen(function* () {
           const observed = yield* observePrefix(0, fresh)
-          if (observed.status === "missing") {
-            yield* assertReplaceableTree(actual)
-            yield* input.assertCurrent
-          }
-          return observed
+          if (observed.status === "complete" && batchBoundaries.has(actual.length)) return observed
+          // An existing shorter body is not a completed append batch. A pending
+          // unknown append remains protected by the session's different-key guard.
+          yield* assertReplaceableTree(actual)
+          yield* input.assertCurrent
+          return { status: "missing" } as const
         }),
       acknowledge: (response) =>
         checked(() => {

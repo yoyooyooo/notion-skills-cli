@@ -63,7 +63,7 @@ budget_test = "packages/core/test/request-budget.test.ts"
 contract_test = "packages/core/test/request-engine-contract.test.ts"
 immutable = "packages/core/src/shared-immutable-read.ts"
 immutable_test = "packages/core/test/shared-immutable-read.test.ts"
-fixed_resource = "packages/core/src/shared-fixed-resource-read.ts"
+current_resource = "packages/core/src/shared-current-resource.ts"
 sdk_test = "packages/core/test/sdk-immutable-read.node.test.ts"
 
 cases = [
@@ -96,9 +96,9 @@ cases = [
     ("late-cleanup-entry-identity", cache,
      [("if (Option.isSome(current) && current.value === entry) {", "if (Option.isSome(current)) {")],
      shared_test, "abandoned producer", "ReplacementSurvivesOldCleanup"),
-    ("immutable-runtime-scope", fixed_resource,
-     [("import { Effect, FileSystem, Option }", "import { Crypto, Effect, FileSystem, Option }"),
-      ("detached.run(read),", "read.pipe(Effect.provideService(Notion, api), Effect.provideService(Crypto.Crypto, yield* Crypto.Crypto)),")],
+    ("immutable-runtime-scope", current_resource,
+     [("import { Clock, Effect, FileSystem, Option, Schema, Stream }", "import { Clock, Crypto, Effect, FileSystem, Option, Schema, Stream }"),
+      ("detached.run(read),", "read.pipe(Effect.provideService(Notion, api), Effect.provideService(Crypto.Crypto, yield* Crypto.Crypto), Effect.provideService(HttpClient.HttpClient, yield* HttpClient.HttpClient)),")],
      sdk_test, "two public SDK runtimes", "SurvivingWaiterKeepsProducer"),
     ("immutable-admission-capacity", immutable,
      [("active >= limits.entries ||", "false ||"),
@@ -211,6 +211,10 @@ for name, filename, replacements, test, pattern, rule in cases:
         assert broken.returncode != 0, (name, "real mutation escaped")
         assert failed_assertion(broken), (name, "not an assertion failure", output)
         assert "error: Cannot find" not in output and "SyntaxError:" not in output, (name, "tool error")
+        if name == "immutable-runtime-scope":
+            assert any("NOTION_SCHEDULER_UNAVAILABLE" in message
+                       for message in broken.assertion_failures), (
+                name, "survivor must encounter the creator's closed scheduler", output)
     finally:
         assert target.read_bytes() == mutated, (name, "concurrent fixture modification")
         target.write_bytes(original)

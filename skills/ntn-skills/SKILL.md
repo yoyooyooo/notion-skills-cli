@@ -94,7 +94,8 @@ do not grant access or activate workflows.
 | Inspect or create a library layout | `notion/ntn-skills-maintain`, then its setup reference |
 | Inspect current ownership, missing content or an incomplete operation | `notion/ntn-skills-maintain` |
 | Import or replace a complete local Skill tree | `notion/ntn-skills-maintain`; use its current import and resume procedure |
-| Partial edits, Source refresh or relationship changes | `notion/ntn-skills-maintain`; these public writer capabilities remain unavailable |
+| Complete portable relationship changes | `notion/ntn-skills-maintain`; export, edit same-library refs and import the complete tree |
+| Partial file edits or Source refresh | `notion/ntn-skills-maintain`; these public writer capabilities remain unavailable |
 | Shared Profile/View/freshness rules | `notion/ntn-skills-sync` |
 | Package-supplied Skills | `ctl builtin list/read/status/install/update`; see [commands](references/commands.md#local-builtins) |
 | Discovery, authentication or resource failure | [Integration and diagnosis](references/integration.md#diagnose-discovery-and-loading) |

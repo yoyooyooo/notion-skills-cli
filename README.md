@@ -29,7 +29,10 @@ adoption event or retain a remote version. A generated Source/resource reading
 page does not become author content merely because someone edited its display.
 
 Current import writes exact resource originals and complete reading projections.
-Source refresh, partial updates and portable relationship writes remain incomplete.
+Portable Members/Requires round-trip through export and complete import, with
+complete target validation and dependency checks. Import shares one bounded HTTP
+budget across lookup, upload, projection and cleanup. Source refresh and partial
+file updates remain incomplete.
 Old create/apply/write/replace/adopt, sync, snapshot/archive and repair commands
 are retired from the active CLI. Current data conversion, actual library coverage,
 obsolete object cleanup and Pi installation remain separate delivery gates.

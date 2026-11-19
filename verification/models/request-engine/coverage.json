@@ -1,13 +1,14 @@
 {
   "version": 1,
-  "synchronized_commit": "7217f2c7b2de7debe494588389f63c0fa87f918e",
+  "synchronized_commit": "d1774a28d39200d41c056a472308dc58b538bd78",
   "pstack_commit": "c742dd61706fbacc1b95f1a20b7b988cf096ce6c",
-  "review_basis": "AH-1050 / NXT09 review from 1feacd3d133b5c6a0de8254439ef6bac5f78275c to checkout 4580b7d6d692013091d5c66e90d703d51fd5fb10 and exact uncommitted source hashes below. The service-local generic extraction preserves the old domain; a second, bounded immutable-byte domain shares across standard Node SDK runtimes using an independently scoped read-only transport. SharedProducer now models both domains, capacity admission, creator cancellation and slow-finalizer occupancy. RequestAdmission code and semantic model are unchanged.",
+  "correspondence": "Finite safety of pending read ownership and request admission/retry. Exact hashes bind the named source owners, dependencies and relevant regressions; unmodeled bindings do not enlarge the finite proof.",
+  "review_basis": "Named guards were traced from base d1774a28d39200d41c056a472308dc58b538bd78 to the exact reviewed source bytes below. The current resource reader replaces the retired fixed-resource owner in the public SDK lifetime check. RequestBudget retains count/deadline admission while freezing limits and making exhaustion terminal. Both TLA modules and all 21 case/rule inventories are unchanged; this mapping records scope, not a verification run result.",
   "files": {
     "packages/core/src/shared-read-coalescing.ts": "2acc82857362bcd982c3f0b5043fa05a251e433656269c594f30e54df832bbfc",
-    "packages/core/src/notion.ts": "dad3f5e5f5d47dfcc89c81b6291a498ca9f0647dbf129e9fe6f50b306f64a85c",
+    "packages/core/src/notion.ts": "ca1dd895ef6bcb1b022869b485ce1f6bb4b257e070db4bbfd8ad4341035f5ecd",
     "packages/core/src/notion-request-scheduler.ts": "4258d1aeded6bb81f7712ea2ba582ec46732e0094ed72d452287d22f229ba03c",
-    "packages/core/src/request-budget.ts": "06bfeb2265fddac57e34ee61c251324e15d1d9a37f615879f2ffa675d4597860",
+    "packages/core/src/request-budget.ts": "27585f02e88a525d166f8c132a29c97a22281bc7e3de240af4cd947ba6d35d72",
     "packages/core/src/notion-write-policy.ts": "9a1ef3007f7a43091c647e80dbe1676c36a3284e3feb0bc33fa6e763271ef5b9",
     "packages/core/src/request-timeout.ts": "8788c67b243b6bd6197ab06048a4511af54c672f7c73bb13dcc7e5f290d05e41",
     "packages/core/test/shared-read-coalescing.test.ts": "bfbd951a02bb5a433e043903e31b4f8e413766288a1222d8cfed9879833c98a4",
@@ -20,25 +21,17 @@
     "bun.lock": "359d60c207746e8fca1cf3fa7a7733c7454ac844ab2d375a895d0b271cb3020c",
     "node_modules/effect/dist/Cache.js": "435911c3d851939b72c8cd189d78e928cdd6ac861495c5435d3c658e8c39c16c",
     "packages/core/src/shared-immutable-read.ts": "e99cb0238e19486ad3d56c7063a38df0655183669ac56b92693810bbae924ca9",
-    "packages/core/src/shared-fixed-resource-read.ts": "91e7d839ebd7935543e770bf7b97936b92eaf77423102d8ca655bee2d4c467df",
-    "packages/core/src/shared-fixed-acquisition.ts": "fb4207ead2fe239a8b9f3641915260517da50faa0341676119f2600f1c3f7e70",
-    "packages/core/src/resource-read.ts": "6ada172071a1b0a8c212696525b16aba888c6ef437eeb2f6481e697afdf97b44",
-    "packages/core/src/notion-readonly.ts": "c618f4bd7b0ed5e19c92a028e0a433e19a746e85e8238fbb266f27df866e0c41",
-    "packages/cli/src/runtime.ts": "49495db4fa9b101eef963d4e3c9aabef307f875a8c2573bc73bdfa90e735ff9d",
+    "packages/core/src/resource-read.ts": "a8d123ac9dfcc91b425d79849d766eab469c656f9db325688cc4d70b19f05f17",
+    "packages/cli/src/runtime.ts": "b45f3b3f16aad3cb8e5d81aa6e06d0f684c52f894185cd3bb7c046e99dd097b1",
     "packages/core/test/shared-immutable-read.test.ts": "0c7610fa197cb1a891a48ca4c92217b1c37d61a6f31c7e7bf3a5617592c77e5c",
-    "packages/core/test/sdk-immutable-read.node.test.ts": "c8c707951038f6c5fc457105ecf3da1c0ed0e9589a1baacd6e72cd60e767c16d",
-    "scripts/sdk-source-fixture.mjs": "f909762187dff3624666675eafcd17764b0ab4aa8bf14077285659504b8d6dd7",
+    "packages/core/test/sdk-immutable-read.node.test.ts": "9c9ad10bbfd7876515b73ea8c7815d829f27aba571d3d9a9192125a0233a7787",
+    "scripts/sdk-source-fixture.mjs": "5097dcdfad410dd6cfcaca986fa5651df18f6341109b4596485f467e8f4ef372",
     "vitest.config.ts": "256f9ec59266045da294333da99df854450b52ebe3297f85b0223039f676bcda",
-    "packages/core/src/shared-fixed-git-transport.ts": "cd83e2412e1b476a96dd549b352b558e6c100f51d3b85246b268468b79a041f7",
-    "packages/core/src/shared-source-materialization.ts": "a08c1db21fbb9c5f0742b093dcad42057bb8daa4e546559c6e361eff43e953ae",
-    "packages/core/test/shared-fixed-git-transport.test.ts": "38bba1b507691a598da1c367905675d9dc41a62078c4271567ae72535d2d5376",
-    "packages/core/test/shared-source-materialization.test.ts": "b98bb16f09ced63ecf6809d6a7c3f05e38d4acc763e5a2946150e3261f9f2be4",
-    "packages/core/src/github-api-access.ts": "5a862834eaf149de3e1ee416e8b66428723c814437b21ba661f57a782bb2527b",
-    "packages/core/src/shared-github-source.ts": "7fea4ab43c40a93e67bd6cf2fc7fd1dcd7d6acdc34e3b28ae06827fa025ea359",
-    "packages/cli/src/commands-library.ts": "b7dc4e4be43196a16d4e1b0faeca5c4c46fcdab6b4c05e316f122f397e0629e6",
-    "packages/core/test/github-api-access.test.ts": "9bab088971fc7f975d73dae20bd3dd4aeeb353ffcd88c68529708e612d8f3ba0",
-    "packages/core/test/shared-github-routing.test.ts": "22e38ba4bf90b07237b7ede3322a372d241cb962db88bb3f8e9f845817cab892",
-    "packages/cli/test/library-source-storage-http.test.ts": "022217e367cdeb44860abe3b5b26d0220f5227d5cfdbe32f64009ffb9d378a4e"
+    "packages/core/src/shared-current-resource.ts": "6e2ccfacd1bcdc1955c9a6d084e59f95178b4c07b0e3f3ae596ad483f255c4d8",
+    "packages/core/test/shared-current-fixture.ts": "8618aa513d9327b2d52c8fe3d703efb1a8c88ab1de1a7c3191d93988972c0048",
+    "packages/core/src/request-budget-http.ts": "dec67067ce708d24523f79880471dc96177025b5b2adb3a3876d2dc28b174797",
+    "packages/core/src/shared-current-invocation.ts": "043dc5f1e5f4be6f07c79649e5233bf56bda65b03e303be8b0f03655e9f9a91b",
+    "packages/core/test/shared-current-invocation.test.ts": "629a919a85cc0129026ece1fa634e7b9cf8913f991e4d2a4b3a7b65d52e3a573"
   },
   "models": {
     "SharedProducer": {
@@ -50,26 +43,26 @@
         "NotionTransport.request requestKey",
         "makeBoundedImmutableReadCoalescer",
         "NotionTransport.detachedReadContext",
-        "readFixedResourceBytes",
-        "materializeSharedFixedAcquisition",
+        "readCurrentSharedResourceBytes",
         "readResources ImmutableByteReadPolicy",
+        "runtime IndependentByteReadRuntime",
         "Cache.EntryImpl.await",
         "Cache.removeEntry"
       ],
-      "bounds": "Two concurrent waiters, one shared or two separate producers, one replacement; transport and immutable domains; five contexts; immutable registry limit 1 or 2 with unit-weight producers. This bounds admitted unfinished shared producers, including slow finalizers, not all independent fallback requests. Equality abstracts the complete credential/origin/version/physical Store/fixed owner+snapshot+content/read-only/policy/timeout/scheduler identity.",
-      "scope": "Transport coalescers remain service local. Only exact immutable network bytes in one Node process may cross standard SDK runtime boundaries. Each caller independently qualifies its original pin/current owner and persists to its own Store; the producer owns its own read-only transport Scope and no Store. Custom transports and opt-in RequestBudget bypass cross-runtime sharing. No cross-process content sharing. Effect dependency scope is reference counting and entry-identity removal only."
+      "bounds": "Two concurrent waiters, one shared or two separate producers, one replacement; transport and immutable domains; five contexts; immutable registry limit 1 or 2 with unit-weight producers. The admission bound includes unfinished finalizers, not independent overflow reads. Equality abstracts the complete request or current-resource identity.",
+      "scope": "Transport coalescers are service local. Exact current resource bytes may share across standard Node SDK runtimes in one process only after each caller qualifies its current owner and File descriptor. The producer owns an independent read-only transport Scope and no caller Store. The key includes the real Store root, detached credential/origin/version/scheduling identity, library, current owner/content descriptor and read policy. Custom transports without a detached context and calls with RequestBudget bypass this sharing. Completed values are not retained. Dependency coverage is limited to pending Cache reference counting and current-entry cleanup."
     },
     "RequestAdmission": {
       "kind": "bounded_admission_and_retry",
       "symbols": [
         "makeRequestScheduler.schedule",
         "NotionTransport.request once/execute",
-        "makeRequestBudget",
+        "makeRequestBudget check/admit",
         "withinRequestBudget",
         "isRetryableNotionWriteRejection"
       ],
-      "bounds": "One invocation with opt-in budget, two admitted attempts, four clock ticks, short/long queue window, one-tick attempt timer; read and mutating request variants.",
-      "scope": "Shared SQL claims are abstract atomic decisions. No proof of SQLite driver/crash, arbitrary clocks, all rate-limit scopes, byte serialization, or cross-machine coordination."
+      "bounds": "One logical request and its retry chain under a supplied operation allowance: two admitted attempts, four clock ticks, short/long queue window and one-tick attempt timer; read and mutating variants. Success is terminal, so this is not a model of a multi-request current writer invocation.",
+      "scope": "Covers cooldown/admission ordering, queue and operation deadlines, attempt count and timeout, permit/lease ownership and rejection versus unknown-write retry. SQL claims are abstract atomic decisions. No proof of SQLite driver/crash behavior, arbitrary clocks, fairness, all quota scopes, cross-machine scheduling, byte arithmetic or current writer lifecycle. The mandatory current invocation wrapper and byte/nesting behavior are implementation regressions listed separately below."
     }
   },
   "cases": [
@@ -442,88 +435,58 @@
       "scope": "Only the pending Cache reference-counting and current-entry cleanup guards called by makeSharedResultCoalescer and the service-local wrapper; not whole-library verification."
     }
   },
-  "test_signature_review": {
-    "issue": "AH-1013",
-    "change": "Factory return inference requires the fifth withAdmission options argument; explicitly pass an empty options object in the cooled-queue test. Runtime defaults and tested contract are unchanged. Typecheck and the affected four real tests are rerun."
-  },
-  "maintenance": {
-    "owner_skill": ".cursor/skills/verify-ntn-skills/features/request-engine-formal.md",
-    "routing": "Relevant protected-source, model, config, view, coverage, runner and skill changes run this suite in formal CI. Use --model for a reviewed local slice.",
-    "view_only": "Rerun the affected existing positive/negative configs, retain exact bug paths and render with /statechart; no expanded proof claim.",
-    "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives.",
-    "implementation_semantics": "Trace named functions and callers before updating hashes; run corresponding real-code regressions and guard mutations. Hash-only refresh cannot satisfy this review.",
-    "rule_inventory": "cases.expected_rules is a reviewed independent inventory. Do not regenerate it automatically from modified cfg files."
-  },
-  "nxt_semantic_review": {
-    "issue": "AH-1050 / AH-1058",
-    "previous_service_rule": "joined implies the two service instances are equal",
-    "current_service_rule": "transport-domain joined implies equal service instances; immutable-domain joined may cross runtimes only under the same complete fixed-byte identity",
-    "intent_evidence": [
-      "packages/core/src/shared-fixed-resource-read.ts readFixedResourceBytes",
-      "packages/core/src/notion.ts detachedReadContext",
-      "packages/core/test/sdk-immutable-read.node.test.ts public SDK creator cancellation and identity isolation"
-    ],
-    "unchanged": [
-      "RequestAdmission safety rules and bounds",
-      "transport service isolation",
-      "scope, budget and queue identity isolation",
-      "no completed cache results",
-      "per-caller eligibility and Store publication"
-    ],
-    "new_lifecycle": "Last waiter removes the entry from new joins before interrupting the producer; the registry charge remains until producer finalization. Full registry falls back to an independent caller-owned producer.",
-    "limitations": "Unit-weight registry limit 1/2 is an abstraction of entry and declared-byte bounds; weighted byte arithmetic is tested in the actual implementation. The model tracks the first producer in detail; the independent second producer terminates only for isolation observation. It does not prove fairness, arbitrary waiters/generations, real HTTP byte totals, all authorization boundaries, or local object persistence.",
-    "review_checkpoint": "Model and source correspondence reviewed before verification; actual outcomes are retained in the run summaries and chart manifest."
-  },
-  "unmodeled_bindings": [
+  "implementation_bindings": [
     {
-      "kind": "hash_bound_context_not_modeled",
-      "name": "external_first_policy_same_version_alignment_and_exact_git_transfer",
+      "name": "current_immutable_resource_owner",
       "files": [
+        "packages/core/src/shared-current-resource.ts",
+        "packages/core/src/resource-read.ts",
         "packages/cli/src/runtime.ts",
-        "packages/core/src/shared-fixed-git-transport.ts",
-        "packages/core/src/shared-source-materialization.ts",
-        "packages/core/test/shared-fixed-git-transport.test.ts",
-        "packages/core/test/shared-source-materialization.test.ts"
+        "packages/core/test/sdk-immutable-read.node.test.ts",
+        "packages/core/test/shared-current-fixture.ts",
+        "scripts/sdk-source-fixture.mjs"
       ],
-      "symbols": [
-        "sourceMemberStorageDecision",
-        "FixedGitObjectReader",
-        "readFixedGitObjects",
-        "materializeFixedGithubSource",
-        "prepareSourceStorageAlignment",
-        "applySourceStorageAlignment",
-        "reconcileSourceStorageAlignment"
-      ],
-      "scope": "External-first auto policy blocks unsupported/transformed implicit full-byte retention; explicit retained source/caller decisions and old frozen plans retain their semantics. Standard Node CLI/SDK can retrieve exact pinned commit/tree/path/OID/hash/mode through optional machine Git or existing raw HTTP, sharing original content-addressed cache ownership. No checkout or resource execution, no wrong-hash fallback, unknown Git wire bytes stay unknown. Existing-library alignment wraps the original source-refresh v4 metadata selection and ACK journal after same-original-revision/all-file identity and governance proof; it preserves original pages, custom/tombstone/eligibility/relations/history, adds no binary objects, and unknown selection is not replayed from current equality. Disabled authoring is exact-target only. Concrete Git transport, storage-choice policy and the new proof wrapper are outside unchanged finite TLA domains; dedicated real Git, cold cache, original unknown/custom tests, independent installed CLI/SDK and actual-library evidence remain separate. Existing retained fixtures make their prior storage choice explicit, without dropping negative guards. All model/config/expected_rules inventories remain unchanged. See docs/maintenance-verification-review.md SRC08."
+      "scope": "The current reader supplies exact owner/content and policy identity to the unchanged bounded pending-byte coalescer and executes the producer through detached.run. The standard runtime enables that capability. The public SDK regression uses current resource rows and an owned HTTP service to observe creator cancellation, last waiter cancellation and budget/Store/credential isolation. Its creator-cancellation case opts into a legal empty first Record page with a continuation; the next page must start after the creator runtime closes and still deliver complete bytes. Binding the producer to that closed creator must fail with NOTION_SCHEDULER_UNAVAILABLE, not a missing service or module. Fixture write support is opt-in and unused by these SDK cases; default pagination, hold, abort and authentication controls are unchanged. Resource schema, authoring, attachment correctness and Store publication are not modeled here. An explicitly declared Skills data-source schema also enables its exact metadata GET and empty relation defaults on created Skill pages; SDK lifetime cases do not declare that schema or enable writes."
     },
     {
-      "kind": "hash_bound_context_not_modeled",
-      "name": "machine_github_api_and_readonly_gh_authentication",
+      "name": "request_transport_identity_and_outcomes",
       "files": [
-        "packages/cli/src/commands-library.ts",
-        "packages/cli/src/runtime.ts",
-        "packages/cli/test/library-source-storage-http.test.ts",
-        "packages/core/src/github-api-access.ts",
-        "packages/core/src/shared-github-source.ts",
-        "packages/core/src/shared-source-materialization.ts",
-        "packages/core/test/github-api-access.test.ts",
-        "packages/core/test/shared-github-routing.test.ts",
-        "packages/core/test/shared-source-materialization.test.ts"
+        "packages/core/src/notion.ts",
+        "packages/core/src/notion-request-scheduler.ts",
+        "packages/core/src/request-budget.ts",
+        "packages/core/src/notion-write-policy.ts",
+        "packages/core/src/request-timeout.ts"
       ],
-      "symbols": [
-        "resolveGithubApiAccess",
-        "GhCredentialLive",
-        "inspectFixedGithubSource",
-        "fetchFixedGithubFile",
-        "materializeFixedGithubSource"
-      ],
-      "scope": "Machine-local GitHub API prefixes route commit/tree and exact blobs without changing shared source IDs. Official environment credentials or an existing gh github.com session are isolated from custom APIs; only explicit dedicated credentials may reach a custom gateway. The standard optional gh service is lazy/memoized per operation, bounded/noninteractive, captures the complete SDK ConfigProvider child environment, never logs/stores tokens, and performs no login/refresh/setup-git. Custom JSON/base64 blobs are size/OID/hash validated; redirects, returned URLs, auth failures and rate limits do not authorize credential rotation or alternate-host fallback. In-flight immutable byte coalescing is additionally scoped to ConfigProvider and gh service; verified content-addressed cache ownership and existing permissions remain unchanged. Real isolated gh, safe failure/large payload/cache/concurrency tests, independent installed CLI/SDK and separate actual Broker/official-gh evidence cover the added behavior. Initial actual Broker 502 remains a failed original; a later independent cold success is separate evidence. These transport/auth procedures and external network behavior are NOT enumerated in unchanged finite TLA domains. Original model/config/cases/expected_rules are unchanged; hash correspondence is not a new theorem. See docs/maintenance-verification-review.md SRC09."
+      "scope": "Transport identity retains effective queue budget and RequestBudget identity. Multipart partNumber also participates in request identity, but multipart protocol is outside the model. Detached current reads provide their own HTTP service and transport Scope. Scheduler guards and uncertain-write classification implement the named admission rules; first exhaustion remains terminal for this budget. Byte-trigger calculation and immutable limits are exercised by implementation tests rather than TLA state variables."
     }
   ],
-  "post_source_api_ci_review": {
-    "base_commit": "2a70d1e6ea9b847767e8b680d8f1627135b81215",
-    "document": "docs/maintenance-verification-review.md",
-    "reviewed_existing_hash_changes": ["packages/cli/test/library-source-storage-http.test.ts"],
-    "scope": "Retained loopback/registry journeys make the existing explicit storage choice; the storage HTTP fixture builds its default executable on clean checkouts and preserves explicit installed executables. Refresh execution clears the development-shim override so the chosen artifact is actually exercised. Assertions and original test budgets remain. The lifecycle schema dependency extraction is reviewed separately in SRC10; this metadata is not a new verification result. Existing model/config/view/case/expected_rules inventories remain unchanged."
+  "unmodeled_bindings": [
+    {
+      "kind": "implementation_regression_not_modeled",
+      "name": "current_invocation_http_budget",
+      "files": [
+        "packages/core/src/request-budget.ts",
+        "packages/core/src/request-budget-http.ts",
+        "packages/core/src/shared-current-invocation.ts",
+        "packages/core/test/shared-current-invocation.test.ts"
+      ],
+      "symbols": [
+        "withCurrentInvocationBudget",
+        "requestBudgetHttpClient",
+        "makeRequestBudget check/admit/exhaust"
+      ],
+      "scope": "One outer current invocation installs defaults of 1000 HTTP requests, 512 MiB payload bytes and 600000 ms; explicit outer limits may override them. Nested work inherits the same identity, counters and permit and rejects changed limits. Notion requests, provider downloads and multipart payloads share accounting; repeated wrapping does not double charge. Limits are copied and frozen, and first exhaustion prevents later admission, including attention or cleanup. Transport-owned deadlines retain unknown-write semantics. A later resume invocation gets a fresh allowance. The real HTTP regression covers mixed transports, byte exhaustion, current ZIP wire limits, interrupted writer behavior and exact-input resume. Neither TLA module enumerates these byte, wrapper, multipart, multi-step writer, ready/applying/attention, pending-intent or recovery states."
+    }
+  ],
+  "maintenance": {
+    "owner_skill": ".cursor/skills/verify-ntn-skills/features/request-engine-formal.md",
+    "runner": "scripts/verify-request-engine.mjs",
+    "lock": "verification/models/request-engine/tool-lock.json",
+    "routing": "Protected source, model, config, coverage, runner and skill changes select request-engine formal CI. Use --model only for a reviewed local slice; the suite has no --suite selector.",
+    "model_semantics": "Review every declared rule, finite bound and environment/fairness assumption; keep exact expected negatives and complete rule inventories.",
+    "implementation_semantics": "Trace named functions and actual callers before changing a protected hash. Run the corresponding behavioral regressions and guard mutations; a mutation targeting a retired caller is not evidence. Hash-only refresh cannot satisfy correspondence review.",
+    "unmodeled_changes": "Use the focused implementation regressions for bytes, wrappers and current writer behavior. A passing bounded model does not prove these unmodeled semantics.",
+    "rule_inventory": "cases.expected_rules is an independently reviewed inventory. Do not regenerate it automatically from changed cfg files.",
+    "outputs": "Use a new absolute output directory per run. Model results, raw traces and generated views belong to that run; no checked-in historical result or private evidence path is required."
   }
 }

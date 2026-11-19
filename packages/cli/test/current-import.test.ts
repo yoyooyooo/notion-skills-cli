@@ -5,6 +5,8 @@ import { chmod, mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { prepareCurrentImport } from "../src/commands-current-import.ts"
+import { currentImportCommand } from "../src/commands-current-import.ts"
+import { commandSchema } from "../../core/src/command-schema.ts"
 
 const encode = (text: string) => new TextEncoder().encode(text)
 const root = async () => realpath(await mkdtemp(join(tmpdir(), "ntn-cli-import-")))
@@ -77,7 +79,7 @@ test("current portable metadata selects its canonical kind and preserves the who
   expect(prepared.plan.files[0]!.bytes).toEqual(encode("Exact prompt\r\n"))
 })
 
-test("unsupported portable semantics are rejected explicitly instead of discarding relation or projection intent", async () => {
+test("unsupported projection and unknown portable semantics are rejected instead of discarded", async () => {
   const directory = await root()
   await writeFile(join(directory, "SKILL.md"), original)
   const base = {
@@ -89,7 +91,6 @@ test("unsupported portable semantics are rejected explicitly instead of discardi
     main: "SKILL.md",
   }
   for (const extra of [
-    { relations: { version: 1, ownership: "notion", library_id: "library", requires: [] } },
     { projection: { name: "Other", description: "Other", body: "generated" } },
     { future_authority: "unknown" },
     { version: 1 },
@@ -106,5 +107,66 @@ test("unsupported portable semantics are rejected explicitly instead of discardi
   )
   await expect(run(prepareCurrentImport(directory, { skillId: "portable" }))).rejects.toMatchObject(
     { code: "CURRENT_IMPORT_ENTRYPOINT" },
+  )
+})
+
+test("current portable relations survive local admission and invalid selections fail locally", async () => {
+  const directory = await root()
+  await writeFile(join(directory, "SKILL.md"), original)
+  const base = {
+    format: "ntn-skills",
+    version: 2,
+    kind: "skill",
+    name: "Original",
+    description: "Exact bytes",
+    main: "SKILL.md",
+  }
+  const relations = {
+    version: 1 as const,
+    ownership: "notion" as const,
+    library_id: "library",
+    members: [],
+    requires: ["shared_skill:library:target"],
+  }
+  await writeFile(join(directory, ".ntn-skills.json"), JSON.stringify({ ...base, relations }))
+  const admitted = await run(prepareCurrentImport(directory, { skillId: "portable" }))
+  expect(admitted.plan.relations).toEqual(relations)
+  expect(admitted.plan.files[0]!.bytes).toEqual(original)
+  for (const extra of [
+    { requires: ["Display name"] },
+    { requires: ["shared_skill:other:target"] },
+    { requires: ["shared_skill:library:portable"] },
+    { requires: ["shared_skill:library:target", "shared_skill:library:target"] },
+    { future_relation: [] },
+  ]) {
+    await writeFile(
+      join(directory, ".ntn-skills.json"),
+      JSON.stringify({ ...base, relations: { ...relations, ...extra } }),
+    )
+    await expect(
+      run(prepareCurrentImport(directory, { skillId: "portable" })),
+    ).rejects.toBeDefined()
+  }
+  await writeFile(join(directory, "PROMPT.md"), original)
+  await writeFile(
+    join(directory, ".ntn-skills.json"),
+    JSON.stringify({ ...base, kind: "prompt", main: "PROMPT.md", relations }),
+  )
+  await expect(run(prepareCurrentImport(directory, { skillId: "portable" }))).rejects.toMatchObject(
+    { code: "CURRENT_RELATION_INVALID" },
+  )
+})
+
+test("the import machine schema exposes bounded integer HTTP controls and timeout units", () => {
+  const value = commandSchema(currentImportCommand) as {
+    parameters: { name: string; primitive: string; description: string }[]
+  }
+  for (const name of ["max-requests", "max-bytes", "timeout"]) {
+    const parameter = value.parameters.find((parameter) => parameter.name === name)!
+    expect(parameter.primitive).toBe("Int")
+    expect(parameter.description).toContain("Positive")
+  }
+  expect(value.parameters.find((parameter) => parameter.name === "timeout")?.description).toContain(
+    "ms",
   )
 })

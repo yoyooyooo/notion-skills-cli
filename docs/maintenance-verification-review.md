@@ -19,7 +19,9 @@ correspondence. Those former passes do not certify the current line.
 | Current upload identity, multipart transmission and actual HTTP requests | `shared-current-upload.ts`, `notion-http.ts` | `shared-current-upload.test.ts`, `shared-current-upload-http.test.ts` |
 | Single per-file acquisition v5 and current-locator checks | `shared-acquisition-model.ts`, `shared-fixed-acquisition.ts` | `shared-acquisition-contract.test.ts` |
 | Current Profile replacement and finite local pending intent | `shared-profile.ts` | `shared-profile.test.ts` |
-| HTTP limits, cancellation and read sharing | Existing request engine and coalescing | Existing request-budget, request-engine-contract and shared-read-coalescing tests |
+| Portable relation round-trip, complete same-library targets, cycle checks and same-operation writes | `shared-current-relations.ts`, `export.ts` | `shared-current-relations.test.ts`, current import and writer tests |
+| Whole-invocation limits across Notion, provider, multipart and cleanup | `shared-current-invocation.ts`, `request-budget-http.ts` | `shared-current-invocation.test.ts`, `request-budget.test.ts` |
+| HTTP cancellation and read sharing | Existing request engine and coalescing | Existing request-engine-contract and shared-read-coalescing tests |
 
 Paths above are within `packages/core/src` and `packages/core/test`. The
 [current-convergence](https://github.com/yoyooyooo/notion-skills-cli/blob/next/.cursor/skills/verify-ntn-skills/features/current-convergence.md)
@@ -76,11 +78,11 @@ takeover journeys, permanent snapshot recovery, original ACK/review/completion
 chains and historical source-carrier repair are outside current acceptance.
 Do not restore them to satisfy an old command example or test.
 
-The operation-recovery and resource-lifecycle coverage files still describe old
-implementation correspondence. They are not executed by the current entry until
-a current behavior has an explicit applicable mapping, or the obsolete model is
-retired. Do not update hashes or remove counterexamples to make them appear current.
-Existing request-engine checks remain independently useful for their actual scope.
+The operation-recovery and resource-lifecycle models, coverage files, dedicated
+mutation scripts and historical diagrams are retired with their cancelled
+protocols. Current resource and recovery Skills select the existing implementation
+regressions. The two request-engine models retain all 21 configurations and their
+original rules; they do not prove the multi-step current writer.
 
 ## Remaining acceptance
 

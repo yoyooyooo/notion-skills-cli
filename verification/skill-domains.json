@@ -23,14 +23,10 @@
       "features": [
         "empty-library.md",
         "import-create-recovery-dry-run.md",
-        "maintenance-repair.md",
         "nxt-delivery.md",
         "reference-write-version-conflict.md",
-        "resource-audit.md",
         "resource-authoring.md",
         "resource-inventory.md",
-        "resource-phase1.md",
-        "shared-ssot.md",
         "skill-maintenance.md",
         "sync-cache-verification-plan.md",
         "upstream-subscriptions.md"

@@ -14,7 +14,7 @@
 | 全文投影与受限上传 | shared-current-projection/upload；对应 tests | 完整正文、原件及 multipart HTTP |
 | 公共命令与包内指导 | command-registration；builtin-guidance.test.ts | 可调用和可教的 current 入口 |
 
-以上源码均在 packages/core/src，核心测试在 packages/core/test，CLI 测试在 packages/cli/test。完整本地 import 已公开；Source 发布/刷新、portable 关系写入、完整 census/cleanup 仍分别验收。
+以上源码均在 packages/core/src，核心测试在 packages/core/test，CLI 测试在 packages/cli/test。完整本地 import 与 portable 关系导回已公开；Source 发布/刷新、跨对象关系治理、完整 census/cleanup 仍分别验收。
 
 ## 选择必要切片
 

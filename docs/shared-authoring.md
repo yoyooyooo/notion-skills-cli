@@ -39,8 +39,17 @@ A multi-file input must already use the canonical entrypoint.
 
 Current portable manifest version 2 can select a Skill, Router, or Prompt.
 The canonical entrypoints are `SKILL.md`, `ROUTER.md`, and `PROMPT.md`.
-Portable relations, projection fields, and unknown manifest fields are refused.
-They are not silently discarded.
+Portable Members/Requires accept unpinned `shared_skill` refs from the same library.
+An omitted field preserves its current set, `[]` clears it, and a list replaces it.
+Export includes both complete sets, so editing and reimporting that manifest keeps
+the intended relations. Prompt inputs reject relations. Projection/materialization
+and unknown manifest fields are refused rather than discarded.
+
+Every target must resolve to one enabled ready Skill in the registered Skills data
+source. The relation properties must be single_property. A changed set can contain
+at most 100 targets; larger unchanged sets are verified and retained. Changed
+Requires must have an acyclic reachable dependency closure. Names, page URLs,
+foreign libraries, pins, duplicates and self-references are not accepted.
 
 Keep the full input within 128 MiB and 10,000 entries.
 The compressed ZIP input limit is 138 MiB.
@@ -57,7 +66,7 @@ Select the exact stable Skill ID within the intended library:
 ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-skill --dry-run
 ```
 
-Review `input_sha256`, `metadata`, `files`, and `remove`.
+Review `input_sha256`, `metadata`, `files`, `relations`, `remove`, and `budget`.
 The dry run reports `replaces_complete_tree: true` and `remote_writes: 0`.
 It allocates no operation ID.
 
@@ -91,7 +100,16 @@ Replacing an existing Skill preserves those fields because the import CLI does n
 Name and Description come from the input metadata or explicit overrides.
 
 A successful result has `state: "ready"` and `status: "applied"` or `"unchanged"`.
-It also returns the operation ID, page ID, input hash, and current file results.
+It also returns the operation ID, page ID, input hash, current file/relationship
+results and the exact library/database/data-source binding.
+
+All remote work shares one invocation budget, including library lookup, retries,
+relationship validation, uploads, projection and cleanup. Defaults are 1000 HTTP
+attempts, 512 MiB payload bytes and 600000 ms. Override with positive integer
+`--max-requests`, `--max-bytes`, and `--timeout` in ms. Inspect the reported usage.
+An admitted response may exceed the byte limit; the next request is refused.
+Exhaustion preserves any unfinished intent. Resume the same input explicitly
+with a fresh invocation budget; do not create a replacement operation.
 
 ## Read the projection and exact original
 

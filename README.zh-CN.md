@@ -22,7 +22,7 @@
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前导入会写入精确 resource 原件并生成完整阅读投影。Source 刷新、局部更新和 portable 关系写入仍待完成。旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
+当前导入会写入精确 resource 原件并生成完整阅读投影。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；从库查询、上传到投影和清理共用一次有界 HTTP 预算。Source 刷新和局部文件更新仍待完成。旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
 
 ## 安装
 

@@ -8,9 +8,8 @@ import { join } from "node:path"
 import { trashPath } from "../src/local-locks.ts"
 
 const core = new URL("../src/", import.meta.url).pathname
-const fixtures = new URL("./", import.meta.url).pathname
 const prefix = `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
-import {Effect,FileSystem,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};`
+import {Effect,FileSystem} from ${JSON.stringify(import.meta.resolve("effect"))};`
 
 test("import batch plans survive a fresh SQLite process and retain immutable dispatch protection", async () => {
   await isolated(async (root) => {
@@ -94,92 +93,6 @@ function stateProgram(root: string, body: string) {
 import {sqliteState} from ${JSON.stringify(core + "sqlite-state.ts")};
 Effect.runPromise(Effect.scoped(Effect.gen(function*(){const state=yield* sqliteState(${JSON.stringify(root)},yield* FileSystem.FileSystem);${body}})).pipe(Effect.provide(NodeServices.layer))).catch(error=>{console.error(String(error));process.exitCode=1});`
 }
-
-function batchProgram(root: string, mode: "dry" | "apply" | "reconcile") {
-  return `${prefix}
-import assert from 'node:assert/strict';
-import {readFile,writeFile} from 'node:fs/promises';
-import {createHash} from 'node:crypto';
-import {Store,StoreLive} from ${JSON.stringify(core + "store.ts")};
-import {prepareSourceRefreshBatch,runSourceRefreshBatch} from ${JSON.stringify(core + "shared-source-batch.ts")};
-import {sourceRefreshFixture,library,definition} from ${JSON.stringify(fixtures + "shared-source-refresh-fixture.ts")};
-import {id} from ${JSON.stringify(fixtures + "shared-snapshot-fixture.ts")};
-const root=${JSON.stringify(root)},mode=${JSON.stringify(mode)};
-process.env.NTN_SKILLS_HOME=root+'/state';process.env.NTN_SKILLS_CONFIG_HOME=root+'/config';process.env.NTN_SKILLS_CACHE_HOME=root+'/cache';
-// This existing SQLite recovery fixture explicitly owns retained storage.
-const fixture=await sourceRefreshFixture({definition:{...definition,options:{storage:'retained'}}});
-let saved;try{saved=JSON.parse(await readFile(root+'/remote-fixture.json','utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
-if(saved){Object.assign(fixture.main,saved.main);Object.assign(fixture.source,saved.source);fixture.files.splice(0,fixture.files.length,...saved.files);fixture.relatedPages.splice(0,fixture.relatedPages.length,...saved.relatedPages);fixture.records.clear();for(const [key,value]of saved.records)fixture.records.set(key,value);fixture.bodies.clear();for(const [key,value]of saved.bodies)fixture.bodies.set(key,value);}
-const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-await Effect.runPromise(Effect.scoped(Effect.gen(function*(){
-  const store=yield* Store,checkpoints=[];
-  const tracked={...store,writeJson:(key,value)=>store.writeJson(key,value).pipe(Effect.tap(()=>key.startsWith('operations/shared-source-batches/')?Effect.gen(function*(){const actual=yield* store.readJson(key,Schema.Unknown);assert.deepEqual(actual,value);checkpoints.push({key,complete:actual.execution_complete,in_progress:actual.in_progress,items:actual.items.length});}):Effect.succeed(undefined)))};
-  const run=program=>fixture.run(program.pipe(Effect.provideService(Store,tracked)));
-  const batch=mode==='dry'?yield* Effect.promise(()=>run(prepareSourceRefreshBatch(library,id(82),fixture.acquire))):JSON.parse(yield* Effect.promise(()=>readFile(root+'/batch.json','utf8')));
-  if(mode==='dry')yield* Effect.promise(()=>writeFile(root+'/batch.json',JSON.stringify(batch),{flag:'wx'}));
-  fixture.clearCalls();
-  const result=yield* Effect.promise(()=>run(runSourceRefreshBatch(library,batch,{mode:mode==='reconcile'?'reconcile':'apply',dryRun:mode==='dry'})));
-  const checkpoint=yield* store.readJson(result.result_key,Schema.Unknown);
-  const memberKeys=(yield* store.listKeys('operations/shared-sources')).sort(),memberEvidence=[];
-  for(const key of memberKeys)memberEvidence.push({key,sha256:digest(yield* store.readJson(key,Schema.Unknown))});
-  yield* Effect.promise(()=>writeFile(root+'/remote-fixture.json',JSON.stringify({main:fixture.main,source:fixture.source,files:fixture.files,relatedPages:fixture.relatedPages,records:[...fixture.records],bodies:[...fixture.bodies]})));
-  console.log(JSON.stringify({result,checkpoint,checkpoints,memberEvidence,semanticWrites:fixture.calls.filter(call=>call.method==='PATCH'||(call.path==='v1/pages'&&call.method==='POST')).length,providerAcquisitions:fixture.acquisitions()}));
-})).pipe(Effect.provide(StoreLive),Effect.provide(NodeServices.layer)));`
-}
-
-test("real Source batch checkpoints persist through dry-run, apply and cold read-only reconcile", async () => {
-  await isolated(async (root) => {
-    const reports = []
-    for (const mode of ["dry", "apply", "reconcile"] as const) {
-      const process = await child(batchProgram(root, mode))
-      expect(process.exit, process.stderr).toBe(0)
-      const report = JSON.parse(process.stdout)
-      reports.push(report)
-      expect(report.result.execution_complete).toBe(true)
-      expect(report.result.status).toBe(
-        mode === "dry" ? "planned" : mode === "apply" ? "applied" : "observed",
-      )
-      expect(report.result.atomic).toBe(false)
-      expect(report.result.items).toHaveLength(1)
-      expect(report.checkpoints.length).toBeGreaterThanOrEqual(4)
-      expect(new Set(report.checkpoints.map((item: { key: string }) => item.key)).size).toBe(1)
-      expect(report.checkpoints[0].complete).toBe(false)
-      expect(
-        report.checkpoints.some((item: { in_progress: unknown }) => item.in_progress !== null),
-      ).toBe(true)
-      expect(report.checkpoints.at(-1)).toMatchObject({
-        complete: true,
-        in_progress: null,
-        items: 1,
-      })
-      expect(report.checkpoint).toMatchObject({
-        plan_id: report.result.plan_id,
-        run_id: report.result.run_id,
-        execution_complete: true,
-        in_progress: null,
-        not_dispatched: [],
-      })
-      expect(report.checkpoint.items).toEqual(report.result.items)
-      if (mode !== "apply") expect(report.semanticWrites).toBe(0)
-      if (mode !== "dry") expect(report.providerAcquisitions).toBe(0)
-    }
-    expect(new Set(reports.map((report) => report.result.plan_id)).size).toBe(1)
-    expect(new Set(reports.map((report) => report.result.result_key)).size).toBe(3)
-    expect(reports[1].memberEvidence.length).toBeGreaterThan(0)
-    expect(reports[2].memberEvidence).toEqual(reports[1].memberEvidence)
-    const keys = reports.map((report) => report.result.result_key)
-    const reopened = await child(
-      stateProgram(
-        join(root, "state"),
-        `const rows=[];for(const key of ${JSON.stringify(keys)})rows.push(yield* state.read(key));console.log(JSON.stringify({keys:yield* state.list('operations/shared-source-batches'),rows}));`,
-      ),
-    )
-    expect(reopened.exit, reopened.stderr).toBe(0)
-    const persisted = JSON.parse(reopened.stdout)
-    expect(persisted.keys.sort()).toEqual([...keys].sort())
-    expect(persisted.rows).toEqual(reports.map((report) => report.checkpoint))
-  })
-}, 60_000)
 
 test("only exact batch run addresses update; member evidence stays immutable and retired checkpoints cannot revive", async () => {
   await isolated(async (root) => {

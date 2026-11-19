@@ -32,6 +32,8 @@ export const library: SharedLibrary = {
       "Current State",
       "Operation",
       "Origin",
+      "Members",
+      "Requires",
     ]),
   },
   files: {
@@ -64,6 +66,7 @@ type FaultKind =
   | "append"
   | "retire-file"
   | "retire-resource"
+  | "relations"
 export type CurrentWriteFault = {
   readonly kind: FaultKind
   readonly outcome: "accepted" | "absent" | "partial"
@@ -114,6 +117,29 @@ export function currentWriteFixture(parent: string) {
   let rewrite: ((path: string, response: Row) => Row) | undefined
   const timestamp = () => new Date(Date.UTC(2026, 10, 19) + tick++ * 1000).toISOString()
   const clone = (raw: unknown): unknown => structuredClone(raw)
+  const observedPage = (raw: unknown): unknown => {
+    const row = property(raw)
+    if (row.object !== "page") return raw
+    return {
+      ...row,
+      properties: Object.fromEntries(
+        Object.entries(property(row.properties)).map(([key, raw]) => {
+          const field = property(raw)
+          return [
+            key,
+            field.type === "relation" && Array.isArray(field.relation)
+              ? {
+                  ...field,
+                  relation: field.relation.slice(0, 25),
+                  has_more: field.relation.length > 25,
+                }
+              : field,
+          ]
+        }),
+      ),
+    }
+  }
+  const response = (path: string, raw: Row) => clone(rewrite ? rewrite(path, raw) : raw)
   const attachment = (upload: string, name: string) => ({
     type: "file",
     name,
@@ -198,7 +224,7 @@ export function currentWriteFixture(parent: string) {
     )
   function list(path: string, values: readonly unknown[], start: unknown) {
     const offset = Number(start ?? 0),
-      results = values.slice(offset, offset + 100),
+      results = values.slice(offset, offset + 100).map(observedPage),
       more = offset + results.length < values.length
     const response = {
       object: "list",
@@ -226,6 +252,27 @@ export function currentWriteFixture(parent: string) {
           uri = new URL("https://api.notion.test/" + path),
           route = uri.pathname.slice(1)
         calls.push({ path, body: clone(body), method })
+        if (route === `v1/data_sources/${library.skills.data_source_id}` && method === "GET")
+          return Effect.succeed(
+            response(path, {
+              object: "data_source",
+              id: library.skills.data_source_id,
+              properties: Object.fromEntries(
+                ["Members", "Requires"].map((field) => [
+                  field,
+                  {
+                    id: library.skills.property_ids[field],
+                    type: "relation",
+                    relation: {
+                      type: "single_property",
+                      data_source_id: library.skills.data_source_id,
+                      single_property: {},
+                    },
+                  },
+                ]),
+              ),
+            }),
+          )
         const query = /^v1\/data_sources\/([^/]+)\/query$/u.exec(route)
         if (query)
           return Effect.succeed(
@@ -258,7 +305,12 @@ export function currentWriteFixture(parent: string) {
               object: "page",
               id: page,
               parent: clone(input.parent),
-              properties: normalize(input.properties),
+              properties: normalize({
+                ...(table === library.skills.data_source_id
+                  ? { members: { relation: [] }, requires: { relation: [] } }
+                  : {}),
+                ...property(input.properties),
+              }),
               in_trash: false,
               archived: false,
               last_edited_time: timestamp(),
@@ -267,7 +319,7 @@ export function currentWriteFixture(parent: string) {
           pages.set(page, row)
           blocks.set(page, [])
           markdown.set(page, "")
-          return chosen ? unknown() : Effect.succeed(clone(row))
+          return chosen ? unknown() : Effect.succeed(response(path, property(observedPage(row))))
         }
         const page = /^v1\/pages\/([^/]+)$/u.exec(route)
         if (page) {
@@ -283,16 +335,57 @@ export function currentWriteFixture(parent: string) {
                       property(property(property(row.properties).kind).select).name === "resource"
                     ? "retire-resource"
                     : undefined
-                : undefined
+                : "members" in property(input.properties) ||
+                    "requires" in property(input.properties)
+                  ? "relations"
+                  : undefined
             const chosen = kind === undefined ? undefined : selectedFault(kind)
             if (chosen?.outcome === "absent") return unknown()
             if (input.properties !== undefined)
-              row.properties = { ...property(row.properties), ...normalize(input.properties) }
+              row.properties = {
+                ...property(row.properties),
+                ...normalize(
+                  chosen?.outcome === "partial" && kind === "relations"
+                    ? Object.fromEntries(Object.entries(property(input.properties)).slice(0, 1))
+                    : input.properties,
+                ),
+              }
             if (input.in_trash !== undefined) row.in_trash = input.in_trash
             touch(page[1]!)
             if (chosen) return unknown()
           }
-          return Effect.succeed(clone(row))
+          return Effect.succeed(response(path, property(observedPage(row))))
+        }
+        const relation = /^v1\/pages\/([^/]+)\/properties\/([^/]+)$/u.exec(route)
+        if (relation) {
+          const field = property(property(pages.get(relation[1]!)?.properties)[relation[2]!])
+          if (field.type !== "relation" || !Array.isArray(field.relation))
+            return Effect.fail(fail("NOT_FOUND", "Unknown current relation."))
+          const offset = Number(uri.searchParams.get("start_cursor") ?? 0),
+            selected = field.relation.slice(offset, offset + 100)
+          const more = offset + selected.length < field.relation.length
+          return Effect.succeed(
+            response(path, {
+              object: "list",
+              type: "property_item",
+              has_more: more,
+              next_cursor: more ? String(offset + selected.length) : null,
+              property_item: {
+                id: relation[2],
+                type: "relation",
+                relation: {},
+                next_url: more
+                  ? `https://api.notion.test/${path}&start_cursor=${offset + selected.length}`
+                  : null,
+              },
+              results: selected.map((value) => ({
+                object: "property_item",
+                id: relation[2],
+                type: "relation",
+                relation: value,
+              })),
+            }),
+          )
         }
         const md = /^v1\/pages\/([^/]+)\/markdown$/u.exec(route)
         if (md) {

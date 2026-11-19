@@ -78,7 +78,7 @@ test("development selection runs Bun with exact arguments and caller cwd, preser
   expect(observed.bun).toBe(true)
 })
 
-test("real source mode runs stateful offline inventory without building or changing the source input", async () => {
+test("real source mode opens current SQLite cache offline without building or changing local inputs", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ntn-source-mode-")),
     input = join(dir, "input")
   await mkdir(input)
@@ -88,7 +88,7 @@ test("real source mode runs stateful offline inventory without building or chang
   const before = await stat(join(root, "packages/cli/dist/ntn-skills.js"))
   const node = Bun.which("node")
   if (!node) throw new Error("Node is required")
-  const child = Bun.spawn([node, entry, "ctl", "library", "inventory", "local", "--root", input], {
+  const child = Bun.spawn([node, entry, "ctl", "cache", "status"], {
     cwd: dir,
     stdin: "ignore",
     stdout: "pipe",
@@ -113,10 +113,15 @@ test("real source mode runs stateful offline inventory without building or chang
   expect(exit, stdout + stderr).toBe(0)
   expect(JSON.parse(stdout)).toMatchObject({
     ok: true,
-    coverage: "full",
-    remote_writes: 0,
-    source_writes: 0,
+    config_directory: join(dir, "config"),
+    state_directory: join(dir, "state"),
+    cache_directory: join(dir, "cache"),
+    scopes: [],
+    observations: [],
+    catalogs: [],
   })
+  const database = await readFile(join(dir, "state", "state.sqlite"))
+  expect(database.subarray(0, 16).toString("utf8")).toBe("SQLite format 3\u0000")
   expect(await readFile(join(input, "SKILL.md"), "utf8")).toBe(body)
   const after = await stat(join(root, "packages/cli/dist/ntn-skills.js"))
   expect(after.mtimeMs).toBe(before.mtimeMs)

@@ -60,9 +60,14 @@ async function setup(
     input: Awaited<ReturnType<typeof bootstrap>>["input"]
     other: (name: string) => ReturnType<typeof bootstrap>
   }) => Promise<void>,
+  fixtureOptions: { emptyFirstRecordsPage?: boolean } = {},
 ) {
   const root = await mkdtemp(join(await realpath(tmpdir()), "sdk-immutable-read-"))
-  const source = await startSdkSourceFixture(await sample(), join(root, "requests.jsonl"))
+  const source = await startSdkSourceFixture(
+    await sample(),
+    join(root, "requests.jsonl"),
+    fixtureOptions,
+  )
   const other = (name: string) => bootstrap(source, root, name)
   try {
     const first = await other("first")
@@ -130,7 +135,7 @@ async function joinedEligibility(source: Source) {
   await new Promise((resolve) => setTimeout(resolve, 50))
 }
 function ready(result: Awaited<ReturnType<typeof readResources>>) {
-  expect(result.status).toBe("ready")
+  expect(result.status, JSON.stringify(result)).toBe("ready")
   if (result.status !== "ready") throw new Error(JSON.stringify(result))
   expect(result.files).toHaveLength(1)
   expect(result.files[0]?.sha256).toBe(hash)
@@ -139,25 +144,37 @@ function ready(result: Awaited<ReturnType<typeof readResources>>) {
 }
 
 test("two public SDK runtimes share only exact immutable bytes, and creator cancellation preserves the survivor", async () => {
-  await setup(async ({ source, input, options }) => {
-    const hold = source.holdNext({ method: "POST", path: recordsPath })
-    const creator = new AbortController()
-    const first = readResources(input, { ...options, signal: creator.signal })
-    await hold.reached
-    const second = readResources(input, options)
-    await joinedEligibility(source)
-    creator.abort()
-    expect((await first).status).toBe("cancelled")
-    expect(bodyCalls(source)).toHaveLength(1)
-    expect(bodyCalls(source)[0].closed_monotonic_ns).toBeNull()
-    hold.release()
-    ready(await second)
-    await idle(source)
-    expect(bodyCalls(source)).toHaveLength(1)
-    expect(
-      bodyCalls(source).every((row: { terminal: string }) => row.terminal === "finished"),
-    ).toBe(true)
-  })
+  await setup(
+    async ({ source, input, options }) => {
+      const hold = source.holdNext({ method: "POST", path: recordsPath })
+      const creator = new AbortController()
+      const first = readResources(input, { ...options, signal: creator.signal })
+      await hold.reached
+      const second = readResources(input, options)
+      await joinedEligibility(source)
+      creator.abort()
+      expect((await first).status).toBe("cancelled")
+      const creatorClosed = process.hrtime.bigint()
+      expect(bodyCalls(source)).toHaveLength(1)
+      expect(bodyCalls(source)[0].closed_monotonic_ns).toBeNull()
+      hold.release()
+      ready(await second)
+      await idle(source)
+      expect(bodyCalls(source)).toHaveLength(2)
+      expect(
+        bodyCalls(source).map(
+          (row: { body: { start_cursor?: string } }) => row.body.start_cursor ?? null,
+        ),
+      ).toEqual([null, "offset-0"])
+      // The remaining page is acquired after the creator's public call has closed
+      // its runtime. Merely finishing an already-started response misses this guard.
+      expect(BigInt(bodyCalls(source)[1].started_monotonic_ns)).toBeGreaterThan(creatorClosed)
+      expect(
+        bodyCalls(source).every((row: { terminal: string }) => row.terminal === "finished"),
+      ).toBe(true)
+    },
+    { emptyFirstRecordsPage: true },
+  )
 })
 
 test("last public waiter cancellation closes its transport and the same pin can retry", async () => {

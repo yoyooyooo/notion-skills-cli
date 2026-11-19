@@ -75,12 +75,22 @@ The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 13
 The default representation is exact Notion resource content with a complete reading projection.
 An existing supporting file omitted from the input is removed.
 Portable version 2 supports the canonical main path for its content kind.
-Unsupported relations, projection metadata, and unknown manifest fields fail admission.
+Portable relations carry same-library unpinned `shared_skill` refs. Omitted Members
+or Requires preserves that field, `[]` clears it, and an array replaces the full set.
+Prompt inputs reject relations. Both fields require registered single-property
+relations to the same Skills data source. Names, page URLs, foreign libraries,
+duplicate/self targets, projection metadata and unknown fields fail admission.
+Changed sets are limited to 100 targets; larger unchanged sets are retained after
+complete pagination. Changed Requires checks its reachable dependency closure for
+cycles and rechecks the observed closure before ready. Export includes both sets.
 
 `--dry-run` reads current metadata without remote mutation or operation allocation.
 It reports the input hash, desired files, removals, and the body checks still required during apply.
 `--operation ID --resume` continues the same complete input and original operation.
-Apply returns success only with a ready current tree.
+Apply returns success only with a ready current tree. Its current result includes
+`library.library_id`, `library.database_id`, `library.data_source_id`, operation,
+Skill/page identities, input hash, files and relation summary. Brokers use this
+binding to invalidate only the corresponding directory after mutation.
 These commands do not create content versions.
 
 Profiles have one current Record and a conflict-detection fingerprint.
@@ -138,11 +148,20 @@ Limits apply to different boundaries. A small output page does not imply a fixed
 | Local request schedule | Default 350 ms admission spacing, shared by participating CLI processes on one machine |
 | Admission | One five-minute deadline across a request's retries; bounded queue of 256 |
 | HTTP attempt | `NTN_SKILLS_REQUEST_TIMEOUT_MS`, default 30 seconds, for each attempt |
+| Complete current import | `--max-requests` default 1000 attempts; `--max-bytes` default 536870912 payload bytes; `--timeout` default 600000 ms |
 
 Graph budgets count nodes and bytes; they are not HTTP request-count limits.
-Import includes uploads, body projection, pagination, and readback.
-There is no single command-wide HTTP request ceiling for a complete import or cleanup.
-A per-attempt timeout also does not bound the duration of a whole command.
+Current import includes library lookup, relation closure, retries, uploads,
+provider downloads, body projection, pagination, cleanup and readback in one
+invocation budget. The three flags require positive safe integers. Nested calls
+reuse the same budget. Success and operational errors report the budget snapshot.
+
+Known request bytes must fit before dispatch. An admitted response is accounted
+at its response boundary and can exceed the byte limit; no subsequent request
+is admitted after exhaustion. Limits exclude HTTP/TLS framing. A timeout or
+exhausted budget preserves uncertain effects and the unfinished operation. A new
+explicit resume gets a fresh invocation budget without creating content history.
+A per-attempt timeout alone does not bound an unrelated command or full census.
 
 Eligible identical in-flight reads share one request execution.
 Completed responses use the separate cache policy.
@@ -199,6 +218,7 @@ Uninstalling the package does not remove these directories.
 | `INPUT_CHANGED`, `INVALID_ARCHIVE`, `ARCHIVE_TOO_LARGE` | Fix the admitted local tree, archive, or size |
 | `SHARED_ACQUISITION_CHANGED`, `SNAPSHOT_MISSING` | Reselect current content when the exact selection is unavailable |
 | `WRITE_OUTCOME_UNKNOWN` | Retain the operation and reconcile its uncertain effect |
+| `REQUEST_BUDGET_EXHAUSTED` | Inspect the reported budget; resume an unfinished operation explicitly with the same input |
 | `RATE_LIMITED`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Inspect the request or scheduler failure without changing content authority |
 | `STATE_RUNTIME_UNSUPPORTED` | Run the supported Node runtime before opening local state |
 

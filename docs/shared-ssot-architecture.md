@@ -111,6 +111,6 @@ Bounded concurrency and machine-level admission share the logical request deadli
 
 ## Verification and maintenance
 
-Use the [shared SSOT recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/shared-ssot.md) and the consumption maps for public CLI, installed SDK, host and real-service checks. Preserve failures and not-run cases with their exact inputs and artifact identity. Controlled clocks/providers, real Notion, separate physical machines, actual host delivery and model task quality prove different things.
+Use the [shared SSOT recipe](https://github.com/yoyooyooo/notion-skills-cli/blob/main/.cursor/skills/verify-ntn-skills/features/current-convergence.md) and the consumption maps for public CLI, installed SDK, host and real-service checks. Preserve failures and not-run cases with their exact inputs and artifact identity. Controlled clocks/providers, real Notion, separate physical machines, actual host delivery and model task quality prove different things.
 
 Performance reports bind the selected workload and cache state to actual attempts, bytes, body categories, queue/retry waits and task results. Do not add slice improvements into an unmeasured whole-task gain. Unknown coverage remains unknown; a successful command, HTTP status or complete body alone does not establish a successful Agent task.

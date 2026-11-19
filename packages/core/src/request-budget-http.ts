@@ -3,6 +3,13 @@ import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http"
 import { fail } from "./model.ts"
 import { withinRequestBudget, type RequestBudget } from "./request-budget.ts"
 
+// A current original is at most 64 MiB; its supported one-file ZIP may add 64 KiB.
+export const BUDGETED_PROVIDER_RESPONSE_LIMIT = 64 * 1024 * 1024 + 64 * 1024
+const budgetedClients = new WeakMap<
+  HttpClient.HttpClient,
+  { readonly client: HttpClient.HttpClient; readonly budget: RequestBudget["Service"] }
+>()
+
 /** Optional diagnostics run after admission, immediately before the provider transport. */
 export class ProviderRequestAdmission extends Context.Service<
   ProviderRequestAdmission,
@@ -17,7 +24,10 @@ export function requestBudgetHttpClient(
   client: HttpClient.HttpClient,
   budget: RequestBudget["Service"],
 ) {
-  return HttpClient.transform(client, (response, request) =>
+  const existing = budgetedClients.get(client)
+  if (existing?.budget === budget) return client
+  const base = existing?.client ?? client
+  const wrapped = HttpClient.transform(base, (response, request) =>
     Effect.gen(function* () {
       if (request.body._tag !== "Empty" && request.body._tag !== "Uint8Array")
         return yield* Effect.fail(
@@ -35,7 +45,7 @@ export function requestBudgetHttpClient(
         Stream.mapEffect((chunk) => {
           size += chunk.byteLength
           budget.responseBytes(chunk.byteLength)
-          return size > 64 * 1024 * 1024
+          return size > BUDGETED_PROVIDER_RESPONSE_LIMIT
             ? Effect.fail(
                 fail(
                   "REQUEST_RESPONSE_LIMIT",
@@ -68,4 +78,6 @@ export function requestBudgetHttpClient(
       ),
     ),
   )
+  budgetedClients.set(wrapped, { client: base, budget })
+  return wrapped
 }

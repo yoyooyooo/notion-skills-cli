@@ -25,6 +25,10 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   assert.ok(
     options.allowCurrentWrites === undefined || typeof options.allowCurrentWrites === "boolean",
   )
+  assert.ok(
+    options.emptyFirstRecordsPage === undefined ||
+      typeof options.emptyFirstRecordsPage === "boolean",
+  )
   const allowCurrentWrites = options.allowCurrentWrites === true
   const eventsPath = ledgerPath.endsWith(".jsonl")
     ? ledgerPath.slice(0, -6) + ".events.jsonl"
@@ -33,6 +37,10 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     fs.writeFileSync(path, "", { flag: "wx", mode: 0o600 })
 
   const notion = structuredClone(sample.notion)
+  if (notion.skills_data_source !== undefined) {
+    assert.equal(notion.skills_data_source.object, "data_source")
+    assert.equal(notion.skills_data_source.id, notion.library.skills.data_source_id)
+  }
   notion.blocks ??= {}
   let nextPage = 900000,
     edit = 0
@@ -76,11 +84,19 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       const table = [notion.library.skills, notion.library.files, notion.library.records].find(
         (item) => item.data_source_id === body.parent.data_source_id,
       )
+      const defaults = {}
+      if (rows === notion.skills && notion.skills_data_source !== undefined)
+        for (const field of Object.values(notion.skills_data_source.properties))
+          if (field.type === "relation") {
+            assert.equal(typeof field.id, "string")
+            assert.ok(field.id.length > 0)
+            defaults[field.id] = { relation: [] }
+          }
       const row = {
         object: "page",
         id: nextId(),
         parent: { ...structuredClone(body.parent), database_id: table.database_id },
-        properties: normalizedProperties(body.properties),
+        properties: normalizedProperties({ ...defaults, ...body.properties }),
         in_trash: false,
         archived: false,
       }
@@ -265,6 +281,12 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     )
       value = notion.database
     else if (
+      notion.skills_data_source !== undefined &&
+      request.method === "GET" &&
+      url.pathname === `/v1/data_sources/${library.skills.data_source_id}`
+    )
+      value = notion.skills_data_source
+    else if (
       allowCurrentWrites &&
       request.method === "GET" &&
       /^\/v1\/blocks\/[^/]+\/children$/u.test(url.pathname)
@@ -350,13 +372,20 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
                 ? notion.sources
                 : undefined
       assert.ok(rows, "An unexpected data source was queried")
-      value = page(
-        project(
-          rows.filter((row) => row.in_trash !== true && matches(row, body?.filter)),
-          fields,
-        ),
-        body,
-      )
+      // A short query page may still carry a continuation. This opt-in boundary
+      // requires the reader to finish enumeration before publishing unique bytes.
+      value =
+        options.emptyFirstRecordsPage === true &&
+        url.pathname === `/v1/data_sources/${library.records.data_source_id}/query` &&
+        body?.start_cursor === undefined
+          ? { object: "list", results: [], has_more: true, next_cursor: "offset-0" }
+          : page(
+              project(
+                rows.filter((row) => row.in_trash !== true && matches(row, body?.filter)),
+                fields,
+              ),
+              body,
+            )
       if (
         incompleteViewInventory &&
         url.pathname === `/v1/data_sources/${library.skills.data_source_id}/query`
@@ -400,6 +429,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       return (
         path === "/v1/users/me" ||
         path === "/v1/databases/" + library.skills.database_id ||
+        (notion.skills_data_source !== undefined &&
+          path === "/v1/data_sources/" + library.skills.data_source_id) ||
         path === "/v1/pages/" + notion.main?.id ||
         notion.files.some((file) => path === "/v1/pages/" + file.id) ||
         notion.skills.some((row) => path === "/v1/pages/" + row.id) ||

@@ -114,7 +114,7 @@ function binding(library: SharedLibrary, name: string): string {
     })
   return id
 }
-function ownerState(
+export function currentOperationOwnerState(
   library: SharedLibrary,
   intent: CurrentSkillWriteIntent,
   page: string,
@@ -176,14 +176,27 @@ function sameIntent(a: CurrentSkillWriteIntent, b: CurrentSkillWriteIntent): boo
     a.input_sha256 === b.input_sha256
   )
 }
-function recovery(
+export function currentOperationFailure(
   error: SkillsError,
   intent: CurrentSkillWriteIntent,
   marker: ActionMarker | null,
   page: string | null,
 ) {
+  const details = property(error.details)
+  // The inner boundary may have found the original intent for a different
+  // candidate input. An outer confirmed-owner fallback must not overwrite it.
+  if (
+    details.next === "reconcile_current" &&
+    details.required_input ===
+      "Resupply the same prepared input; its exact fingerprint is required." &&
+    typeof details.operation_id === "string" &&
+    typeof details.skill_id === "string" &&
+    typeof details.input_sha256 === "string" &&
+    (details.skill_page_id === null || typeof details.skill_page_id === "string")
+  )
+    return error
   return fail(error.code, error.message, {
-    ...property(error.details),
+    ...details,
     operation_id: intent.operation_id,
     skill_id: intent.skill_id,
     skill_page_id: page,
@@ -238,6 +251,9 @@ export function withCurrentSkillOperation<A, R>(
       "operations/current-write-pending/" +
       (yield* sha256(canonicalSharedJson([scope, target]))) +
       "/pending.json"
+    // Created inside Effect.gen: reusing this Effect cannot retain another
+    // invocation's confirmation or attach a merely supplied operation ID.
+    let retainFailure: ((error: SkillsError) => SkillsError) | undefined
     return yield* withLocalLocks(
       store.root,
       [
@@ -257,7 +273,7 @@ export function withCurrentSkillOperation<A, R>(
             pending.record_id !== recordId)
         )
           return yield* Effect.fail(
-            recovery(
+            currentOperationFailure(
               fail(
                 "CURRENT_OPERATION_PENDING",
                 "A different current input is unfinished for this Skill.",
@@ -267,6 +283,10 @@ export function withCurrentSkillOperation<A, R>(
               suppliedPage,
             ),
           )
+        if (pending !== undefined) {
+          const original = pending.intent
+          retainFailure = (error) => currentOperationFailure(error, original, null, suppliedPage)
+        }
         let record = yield* queryCurrentSharedOperationRecord(library, { recordId, entityId })
         if (pending !== undefined && !sameIntent(pending.intent, intent)) {
           const stale = pending
@@ -277,7 +297,7 @@ export function withCurrentSkillOperation<A, R>(
             record !== undefined
           )
             return yield* Effect.fail(
-              recovery(
+              currentOperationFailure(
                 fail(
                   "CURRENT_OPERATION_PENDING",
                   "A different current input is unfinished for this Skill.",
@@ -290,11 +310,11 @@ export function withCurrentSkillOperation<A, R>(
           const recordPage = stale.lifecycle.record_page_id
           const ownerRaw = yield* api.request("v1/pages/" + suppliedPage)
           const current = yield* checked(() =>
-            ownerState(library, stale.intent, suppliedPage, ownerRaw),
+            currentOperationOwnerState(library, stale.intent, suppliedPage, ownerRaw),
           )
           if (current.state !== "ready")
             return yield* Effect.fail(
-              recovery(
+              currentOperationFailure(
                 fail("CURRENT_OPERATION_PENDING", "The previous current owner is not ready."),
                 stale.intent,
                 null,
@@ -322,6 +342,7 @@ export function withCurrentSkillOperation<A, R>(
           })
           yield* store.retireKeys([key])
           pending = undefined
+          retainFailure = undefined
         }
         if (
           record !== undefined &&
@@ -366,7 +387,7 @@ export function withCurrentSkillOperation<A, R>(
             record.operation_id !== intent.operation_id
           )
             return yield* Effect.fail(
-              recovery(
+              currentOperationFailure(
                 fail("CURRENT_OPERATION_PENDING", "A different current intent owns this Skill."),
                 payload.intent,
                 payload.in_flight,
@@ -376,7 +397,7 @@ export function withCurrentSkillOperation<A, R>(
         }
         if (record === undefined && pending !== undefined && pending.lifecycle.phase !== "retiring")
           return yield* Effect.fail(
-            recovery(
+            currentOperationFailure(
               fail(
                 "CURRENT_OPERATION_UNRESOLVED",
                 "The current operation CREATE has not been observed; do not repeat it from absence.",
@@ -388,12 +409,7 @@ export function withCurrentSkillOperation<A, R>(
           )
         if (record === undefined && pending === undefined && mode === "resume")
           return yield* Effect.fail(
-            recovery(
-              fail("CURRENT_OPERATION_NOT_FOUND", "No unfinished current intent was found."),
-              intent,
-              null,
-              owner,
-            ),
+            fail("CURRENT_OPERATION_NOT_FOUND", "No unfinished current intent was found."),
           )
         const saveLocal = (lifecycle: LocalPending["lifecycle"], notDispatched?: ActionMarker) =>
           Effect.gen(function* () {
@@ -411,14 +427,17 @@ export function withCurrentSkillOperation<A, R>(
           })
         const alreadyRetiring = pending?.lifecycle.phase === "retiring"
         const notDispatched = pending?.not_dispatched
-        if (record !== undefined && !alreadyRetiring)
-          yield* saveLocal({ phase: "active", record_page_id: record.page_id }, notDispatched)
         let settled =
           payload.in_flight === null ||
           (notDispatched !== undefined &&
             canonicalSharedJson(notDispatched) === canonicalSharedJson(payload.in_flight))
         let ownerReady = alreadyRetiring
         let dispatching = false
+        const retainCurrentFailure = (error: SkillsError) =>
+          currentOperationFailure(error, intent, settled ? null : payload.in_flight, owner)
+        if (record !== undefined || pending !== undefined) retainFailure = retainCurrentFailure
+        if (record !== undefined && !alreadyRetiring)
+          yield* saveLocal({ phase: "active", record_page_id: record.page_id }, notDispatched)
         const persist = (marker: ActionMarker | null) =>
           Effect.gen(function* () {
             if (record === undefined)
@@ -445,6 +464,7 @@ export function withCurrentSkillOperation<A, R>(
                 fail("CURRENT_OPERATION_CONFLICT", "A retiring intent cannot begin new work."),
               )
             yield* saveLocal({ phase: "creating" })
+            retainFailure = retainCurrentFailure
             const written = yield* writeCurrentSharedOperationRecord(library, {
               current: null,
               recordId,
@@ -454,8 +474,12 @@ export function withCurrentSkillOperation<A, R>(
               payload,
             }).pipe(Effect.result)
             if (written._tag === "Failure") {
-              if (definitive(written.failure)) yield* store.retireKeys([key])
-              return yield* Effect.fail(recovery(written.failure, intent, null, owner))
+              if (definitive(written.failure)) {
+                yield* store.retireKeys([key])
+                pending = undefined
+                retainFailure = undefined
+              }
+              return yield* Effect.fail(written.failure)
             }
             record = written.success
             yield* saveLocal({ phase: "active", record_page_id: record.page_id })
@@ -628,7 +652,7 @@ export function withCurrentSkillOperation<A, R>(
             if (page === null)
               return yield* Effect.fail(invalid("The current intent has no physical Skill owner."))
             const raw = yield* api.request("v1/pages/" + page)
-            return yield* checked(() => ownerState(library, intent, page, raw))
+            return yield* checked(() => currentOperationOwnerState(library, intent, page, raw))
           })
         const changeOwner = (next: "applying" | "ready" | "attention") =>
           Effect.gen(function* () {
@@ -670,7 +694,7 @@ export function withCurrentSkillOperation<A, R>(
                   }),
                 acknowledge: (raw) =>
                   checked(() => {
-                    const state = ownerState(library, intent, page, raw)
+                    const state = currentOperationOwnerState(library, intent, page, raw)
                     if (
                       state.state !== next ||
                       (state.state !== "ready" && state.operation_id !== intent.operation_id)
@@ -701,7 +725,9 @@ export function withCurrentSkillOperation<A, R>(
                   fail("CURRENT_OPERATION_CONFLICT", "A current intent cannot switch Skill pages."),
                 )
               const raw = yield* api.request("v1/pages/" + selected)
-              const state = yield* checked(() => ownerState(library, intent, selected, raw))
+              const state = yield* checked(() =>
+                currentOperationOwnerState(library, intent, selected, raw),
+              )
               if (state.state === "ready" || state.operation_id !== intent.operation_id)
                 return yield* Effect.fail(
                   fail(
@@ -726,6 +752,8 @@ export function withCurrentSkillOperation<A, R>(
         const execute = Effect.gen(function* () {
           if (owner !== null) {
             const state = yield* observeOwner()
+            if (state.state !== "ready" && state.operation_id === intent.operation_id)
+              retainFailure = retainCurrentFailure
             if (state.state !== "ready" && state.operation_id !== intent.operation_id)
               return yield* Effect.fail(
                 fail("CURRENT_OPERATION_CONFLICT", "Another current operation owns this Skill."),
@@ -791,13 +819,11 @@ export function withCurrentSkillOperation<A, R>(
                 ].includes(error.code)
               )
                 yield* changeOwner("attention").pipe(Effect.catch(() => Effect.void))
-              return yield* Effect.fail(
-                recovery(error, intent, settled ? null : payload.in_flight, owner),
-              )
+              return yield* Effect.fail(error)
             }),
           ),
         )
       }),
-    )
+    ).pipe(Effect.mapError((error) => retainFailure?.(error) ?? error))
   })
 }

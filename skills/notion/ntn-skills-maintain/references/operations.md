@@ -28,8 +28,10 @@ ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
 
 Inspect removals and authority changes before applying an authorized complete
 input. Ordinary directory/ZIP input requires root SKILL.md. Portable v2 uses the
-kind's canonical entrypoint and explicitly rejects unsupported relation,
-projection and unknown fields. A single selected Markdown file is the only
+kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
+refs; omitted fields preserve, [] clears, and a list replaces that entire field.
+Prompt relations, old projection/materialization and unknown fields are rejected.
+A single selected Markdown file is the only
 automatic entrypoint rename.
 
 Use real physical paths. The loader rejects symlinks, unsafe ZIP entries, input
@@ -47,6 +49,26 @@ An import preserves existing Skill identity and stable File IDs for retained
 paths. It trashes omitted supporting rows and unreferenced resources after checking
 current content. Unspecified enablement, default context and authored relations
 remain unchanged. A complete equal input is a zero-write no-op.
+
+Explicit Members/Requires resolve every logical target to one enabled ready Skill
+in the same registered Skills data source. Their schema must be single_property;
+a dual relation could also change another owner and is refused. Reads finish all
+relation pages, including more than 25 values. Changed sets may contain at most
+100 targets; larger sets can only be retained unchanged. Changed Requires check
+the reachable metadata closure for cycles, then recheck it before ready. No
+target body or whole-library census is required for this closure.
+
+Export carries both complete current relation sets. Keep its library identity and
+edit the exact stable refs; names, page URLs, pins, foreign libraries, duplicates
+and self-references are invalid. Relation writes use the same finite operation
+as files. A lost PATCH response is observed by that operation before resuming.
+
+The complete invocation defaults to 1000 HTTP attempts, 512 MiB payload bytes and
+600000 ms. --max-requests, --max-bytes and --timeout accept positive integers;
+--timeout is in ms. Library lookup, retries, relation queries, projection, upload,
+download and cleanup share these limits. An admitted response may finish beyond
+the byte limit; its actual cost is reported and no next request is admitted.
+Nested calls cannot reset or increase this budget.
 
 ## Incomplete current work
 
@@ -73,6 +95,6 @@ Target inspection does not prove whole-library coverage. Whole-library cleanup
 needs complete authorized ownership, reverse relations and all pages of inventory.
 Transfer uniquely current bytes before retiring their old carrier.
 
-Source refresh, portable relationship application, full census and production data
+Source refresh, cross-owner relationship repair, full census and production data
 conversion are not supplied by this import. Report the exact missing capability
 instead of invoking retired publication, history, sync or repair commands.

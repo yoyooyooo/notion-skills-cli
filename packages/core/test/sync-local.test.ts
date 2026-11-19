@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { ConfigProvider, Deferred, Effect, Exit, Fiber, FileSystem, Layer } from "effect"
+import { ConfigProvider, Deferred, Effect, Exit, Fiber, FileSystem } from "effect"
 import { createHash, randomUUID } from "node:crypto"
 import { spawn } from "node:child_process"
 import * as fs from "node:fs/promises"
@@ -9,13 +9,7 @@ import * as path from "node:path"
 import { fileURLToPath } from "node:url"
 import { fail, SkillsError } from "../src/model.ts"
 import { portableFiles, type PortableSkill } from "../src/portable.ts"
-import {
-  makeSyncLocal,
-  SyncLocal,
-  SyncLocalLive,
-  trashPath,
-  type LocalBoundary,
-} from "../src/sync-local.ts"
+import { makeSyncLocal, trashPath, type LocalBoundary } from "../src/sync-local.ts"
 
 const encoder = new TextEncoder()
 const skill = (
@@ -160,49 +154,6 @@ test.each(["explicit", "ntn", "xdg", "home", "userprofile", "missing"])(
           }),
         ),
       )
-    }
-  },
-)
-
-test.each(["ntn", "xdg", "home", "userprofile"])(
-  "SyncLocalLive reads %s configuration with real NodeServices and creates its owner file",
-  async (source) => {
-    const root = await fs.mkdtemp(path.join(tmpdir(), "ntn-sync-live-config-"))
-    try {
-      const config: Record<string, string> = { USERPROFILE: path.join(root, "profile") }
-      if (source !== "userprofile") config.HOME = path.join(root, "home")
-      if (["ntn", "xdg"].includes(source)) config.XDG_STATE_HOME = path.join(root, "xdg")
-      if (source === "ntn") config.NTN_SKILLS_HOME = path.join(root, "ntn")
-      const expected =
-        source === "ntn"
-          ? config.NTN_SKILLS_HOME!
-          : source === "xdg"
-            ? path.join(config.XDG_STATE_HOME!, "ntn-skills")
-            : path.join(config.HOME ?? config.USERPROFILE!, ".local", "state", "ntn-skills")
-      const key = "live-config-root"
-      const lock = createHash("sha256").update(key).digest("hex")
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const local = yield* SyncLocal
-          const filesystem = yield* FileSystem.FileSystem
-          const target = path.join(root, "missing-skill")
-          expect((yield* local.inspect(target, { allowMissing: true })).exists).toBe(false)
-          yield* local.withLocks(
-            [key],
-            Effect.gen(function* () {
-              const ownerPath = path.join(expected, "sync", "locks", lock, "owner.json")
-              const owner = JSON.parse(yield* filesystem.readFileString(ownerPath))
-              expect(owner.pid).toBe(process.pid)
-              expect(owner.host).toBe(hostname())
-            }),
-          )
-        }).pipe(
-          Effect.provide(Layer.provideMerge(SyncLocalLive, NodeServices.layer)),
-          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(config))),
-        ),
-      )
-    } finally {
-      if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
     }
   },
 )

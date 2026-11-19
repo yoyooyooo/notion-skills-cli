@@ -19,7 +19,7 @@
     "package:check": "bun scripts/package-check.ts",
     "release": "bun scripts/release.ts",
     "release:precheck": "bun scripts/release.ts --precheck",
-    "verify:formal": "node scripts/verify-resource-lifecycle.mjs",
+    "verify:formal": "node scripts/verify-request-engine.mjs",
     "test:formal-contract": "node --test scripts/formal-result-contract.test.mjs"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import { invalidateSnapshotCache, invalidateSubscriptionCatalog } from "./cache.
 import { fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
+import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import { sharedSkillId, sharedSkillTextProperty } from "./shared-content.ts"
 import {
   currentFileRecord,
@@ -12,6 +13,8 @@ import {
   type CurrentFileBinding,
 } from "./shared-current-index.ts"
 import {
+  currentOperationFailure,
+  currentOperationOwnerState,
   withCurrentSkillOperation,
   type CurrentOperationSession,
 } from "./shared-current-operation.ts"
@@ -34,6 +37,12 @@ import {
   validateCurrentSharedResourceManifest,
 } from "./shared-current-resource.ts"
 import { resolveCurrentSharedSources } from "./shared-current-source.ts"
+import {
+  applyCurrentRelations,
+  currentRelationsInfo,
+  prepareCurrentRelations,
+  verifyCurrentRelations,
+} from "./shared-current-relations.ts"
 import {
   currentUploadActionPrefix,
   currentUploadFileSpec,
@@ -226,9 +235,8 @@ function queryFilePages(library: SharedLibrary, owner: string) {
     )
   })
 }
-function loadCurrentTarget(library: SharedLibrary, plan: PreparedCurrentSkillWrite) {
+function loadCurrentTarget(library: SharedLibrary, raw: unknown) {
   return Effect.gen(function* () {
-    const raw = yield* queryOwner(library, plan.skill_id)
     if (raw === undefined) return undefined
     const page = yield* checked(() => exactId(property(raw).id)),
       files = yield* queryFilePages(library, page)
@@ -292,7 +300,7 @@ function resolveFiles(plan: PreparedCurrentSkillWrite, current?: Target) {
 export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedCurrentSkillWrite) {
   return Effect.gen(function* () {
     plan = yield* copyValidatedCurrentSkillWrite(plan)
-    const current = yield* loadCurrentTarget(library, plan),
+    const current = yield* loadCurrentTarget(library, yield* queryOwner(library, plan.skill_id)),
       selected = yield* resolveFiles(plan, current)
     if (current !== undefined && current.index.kind !== plan.kind)
       return yield* Effect.fail(
@@ -304,8 +312,21 @@ export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedC
     const kept = new Set(
       selected.flatMap((file) => (file.page_id === undefined ? [] : [file.page_id])),
     )
+    const relations = yield* prepareCurrentRelations(library, {
+      skill_id: plan.skill_id,
+      kind: plan.kind,
+      relations: plan.relations,
+      ...(current === undefined
+        ? {}
+        : { owner: { page_id: current.index.page_id, raw: current.raw } }),
+    })
     return {
       contract: "current",
+      library: {
+        library_id: library.library_id,
+        database_id: library.skills.database_id,
+        data_source_id: library.skills.data_source_id,
+      },
       skill_id: plan.skill_id,
       page_id: current?.index.page_id ?? null,
       input_sha256: plan.input_sha256,
@@ -337,20 +358,22 @@ export function inspectCurrentSkillWrite(library: SharedLibrary, plan: PreparedC
           .map((file) => ({ file_id: file.file_id, page_id: file.page_id, path: file.path })) ?? [],
       body_verification: "required_during_apply",
       state: current?.index.state ?? null,
+      relations: currentRelationsInfo(relations),
     }
-  })
+  }).pipe(
+    withCurrentInvocationBudget,
+    Effect.map(({ result }) => result),
+  )
 }
 
+type CurrentWriteRequest = {
+  readonly plan: PreparedCurrentSkillWrite
+  readonly operation_id: string
+  readonly mode?: "apply" | "resume"
+}
 /** One complete current-tree write, followed by reachability cleanup. No older
  * pointer, completion receipt or version chain is consulted or produced. */
-export function writeCurrentSkill(
-  library: SharedLibrary,
-  input: {
-    readonly plan: PreparedCurrentSkillWrite
-    readonly operation_id: string
-    readonly mode?: "apply" | "resume"
-  },
-) {
+export function writeCurrentSkill(library: SharedLibrary, input: CurrentWriteRequest) {
   return Effect.gen(function* () {
     const plan = yield* copyValidatedCurrentSkillWrite(input.plan)
     yield* checked(() => {
@@ -371,8 +394,51 @@ export function writeCurrentSkill(
       for (const name of ["Name", "File ID", "Path", "Content", "Skill"])
         binding(library, "files", name)
     })
-    const current = yield* loadCurrentTarget(library, plan),
-      resolved = yield* resolveFiles(plan, current)
+    const raw = yield* queryOwner(library, plan.skill_id)
+    const intent = {
+      operation_id: input.operation_id,
+      skill_id: plan.skill_id,
+      input_sha256: plan.input_sha256,
+    }
+    const unfinishedOwner = yield* checked(() => {
+      if (raw === undefined) return undefined
+      const page = exactId(property(raw).id)
+      const state = currentOperationOwnerState(library, intent, page, raw)
+      return state.state !== "ready" && state.operation_id === intent.operation_id
+        ? page
+        : undefined
+    })
+    // The same observed header confirms this unfinished owner before Files
+    // enumeration. All subsequent preparation and kernel failures keep its
+    // locator; a more specific original intent from the kernel takes precedence.
+    return yield* applyPreparedCurrentSkillWrite(
+      library,
+      { ...input, plan },
+      raw,
+      input.mode === "resume" && unfinishedOwner !== undefined,
+    ).pipe(
+      Effect.mapError((error) =>
+        unfinishedOwner === undefined
+          ? error
+          : currentOperationFailure(error, intent, null, unfinishedOwner),
+      ),
+    )
+  }).pipe(
+    withCurrentInvocationBudget,
+    Effect.map(({ result }) => result),
+  )
+}
+
+function applyPreparedCurrentSkillWrite(
+  library: SharedLibrary,
+  input: CurrentWriteRequest,
+  raw: unknown,
+  reconciling: boolean,
+) {
+  return Effect.gen(function* () {
+    const plan = input.plan
+    const current = yield* loadCurrentTarget(library, raw)
+    const resolved = yield* resolveFiles(plan, current)
     if (current !== undefined && current.index.kind !== plan.kind)
       return yield* Effect.fail(
         invalid(
@@ -381,6 +447,15 @@ export function writeCurrentSkill(
         ),
       )
     const main = resolved.find((file) => file.input.path === plan.main)!
+    const relations = yield* prepareCurrentRelations(library, {
+      skill_id: plan.skill_id,
+      kind: plan.kind,
+      relations: plan.relations,
+      reconciling,
+      ...(current === undefined
+        ? {}
+        : { owner: { page_id: current.index.page_id, raw: current.raw } }),
+    })
     const sourceFiles = plan.files.filter((file) => file.kind === "source")
     const resourceMedia = new Map<string, Set<string>>()
     for (const file of plan.files)
@@ -1121,6 +1196,11 @@ export function writeCurrentSkill(
               dispatch,
             })
           }
+          yield* applyCurrentRelations(library, relations, {
+            page_id: created,
+            raw: ownerRaw,
+            dispatch,
+          })
           const retire = (page: string, role: "file" | "resource") =>
             Effect.gen(function* () {
               const check = (raw: unknown) =>
@@ -1243,16 +1323,23 @@ export function writeCurrentSkill(
                 }),
               )
           }
+          yield* verifyCurrentRelations(library, relations, value.page_id, raw)
         }),
     })
     return {
       contract: "current",
+      library: {
+        library_id: library.library_id,
+        database_id: library.skills.database_id,
+        data_source_id: library.skills.data_source_id,
+      },
       status: changed ? "applied" : "unchanged",
       operation_id: input.operation_id,
       skill_id: plan.skill_id,
       page_id: result.page_id,
       input_sha256: plan.input_sha256,
       files: result.files,
+      relations: currentRelationsInfo(relations),
       state: "ready",
       request_metrics: api.requestMetrics?.(),
     }

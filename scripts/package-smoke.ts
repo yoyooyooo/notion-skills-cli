@@ -4,7 +4,18 @@ import { tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
-import { currentLibrary } from "../packages/core/test/shared-current-fixture.ts"
+import { currentLibrary as fixtureLibrary } from "../packages/core/test/shared-current-fixture.ts"
+const currentLibrary = {
+  ...fixtureLibrary,
+  skills: {
+    ...fixtureLibrary.skills,
+    property_ids: {
+      ...fixtureLibrary.skills.property_ids,
+      Members: "members",
+      Requires: "requires",
+    },
+  },
+}
 const { startSdkSourceFixture } = await import(
   new URL("./sdk-source-fixture.mjs", import.meta.url).href
 )
@@ -185,6 +196,25 @@ const source = await startSdkSourceFixture(
   {
     notion: {
       library: currentLibrary,
+      skills_data_source: {
+        object: "data_source",
+        id: currentLibrary.skills.data_source_id,
+        properties: Object.fromEntries(
+          (["Members", "Requires"] as const).map((name) => [
+            name,
+            {
+              id: currentLibrary.skills.property_ids[name]!,
+              name,
+              type: "relation",
+              relation: {
+                type: "single_property",
+                data_source_id: currentLibrary.skills.data_source_id,
+                single_property: {},
+              },
+            },
+          ]),
+        ),
+      },
       database: {
         object: "database",
         id: currentLibrary.skills.database_id,
@@ -225,6 +255,22 @@ try {
   assert.equal(inspected.remote_writes, 0)
   assert.equal(inspected.input.files, currentFiles.length)
   assert.equal(semanticWrites(), 0)
+  const beforeRejectedEntry = source.requests.length
+  for (const entry of [
+    `notion_page:${currentLibrary.skills.database_id}`,
+    `ftp://www.notion.so/${currentLibrary.skills.database_id.replaceAll("-", "")}`,
+  ]) {
+    const invalidEntry = [...importArgs]
+    invalidEntry[5] = entry
+    assert.equal((await cli(invalidEntry, 2)).error.code, "INVALID_ARGUMENT")
+  }
+  assert.equal(source.requests.length, beforeRejectedEntry)
+  const beforeBudget = source.requests.length
+  const limited = await cli([...importArgs, "--dry-run", "--max-requests", "1"], 1)
+  assert.equal(limited.error.code, "REQUEST_BUDGET_EXHAUSTED")
+  assert.equal(limited.error.details.budget.attempts, 1)
+  assert.equal(source.requests.length - beforeBudget, 1)
+  assert.equal(semanticWrites(), 0)
   assert.equal(
     source.notion.skills.length + source.notion.files.length + source.notion.records.length,
     0,
@@ -233,6 +279,17 @@ try {
   assert.equal(imported.status, "applied")
   assert.equal(imported.state, "ready")
   assert.equal(imported.files, currentFiles.length)
+  assert.deepEqual(imported.library, {
+    library_id: currentLibrary.library_id,
+    database_id: currentLibrary.skills.database_id,
+    data_source_id: currentLibrary.skills.data_source_id,
+  })
+  assert.deepEqual(imported.budget.limits, {
+    requests: 1000,
+    bytes: 512 * 1024 * 1024,
+    duration_ms: 600000,
+  })
+  assert.ok(imported.budget.attempts > 0 && imported.budget.attempts <= 1000)
   assert.equal(source.notion.skills.length, 1)
   assert.equal(source.notion.files.length, currentFiles.length - 1)
   const liveRecords = source.notion.records.filter(
@@ -300,6 +357,43 @@ try {
     beforeNoop,
     "A no-op must not allocate another Operation Record",
   )
+  const portable = JSON.parse(await readFile(join(output, ".ntn-skills.json"), "utf8"))
+  assert.deepEqual(portable.relations, {
+    version: 1,
+    ownership: "notion",
+    library_id: currentLibrary.library_id,
+    members: [],
+    requires: [],
+  })
+  const roundtripArgs = [...importArgs]
+  roundtripArgs[3] = output
+  const retained = await cli([...roundtripArgs, "--operation", "installed-portable-unchanged"])
+  assert.equal(retained.status, "unchanged")
+  assert.equal(semanticWrites(), afterImport, "Unchanged exported relations must remain a no-op")
+  const edited = currentFiles[1]!.content + "\nEdited through the exported current package.\n"
+  await writeFile(join(output, "references/guide.md"), edited)
+  const reapplied = await cli([...roundtripArgs, "--operation", "installed-portable-edited"])
+  assert.equal(reapplied.status, "applied")
+  assert.equal(reapplied.page_id, imported.page_id)
+  assert.equal(reapplied.state, "ready")
+  const roundtripWrites = semanticWrites() - afterImport
+  const roundtripOutput = join(scratch, "exports", "installed-current-roundtrip")
+  await cli([
+    "export",
+    imported.page_id,
+    "--database",
+    currentLibrary.skills.database_id,
+    "--output",
+    roundtripOutput,
+    "--format",
+    "directory",
+  ])
+  assert.equal(await readFile(join(roundtripOutput, "references/guide.md"), "utf8"), edited)
+  assert.deepEqual(
+    JSON.parse(await readFile(join(roundtripOutput, ".ntn-skills.json"), "utf8")).relations,
+    portable.relations,
+  )
+  assert.equal(semanticWrites(), afterImport + roundtripWrites)
   assert.equal(source.unexpected.length, 0, JSON.stringify(source.unexpected))
   currentImport = {
     files: currentFiles.length,
@@ -307,6 +401,9 @@ try {
     import_writes: afterImport,
     consumption_writes: 0,
     repeated_import_writes: 0,
+    portable_roundtrip: true,
+    roundtrip_import_writes: roundtripWrites,
+    budget_preflight_attempts: limited.error.details.budget.attempts,
     exact_export: true,
     executable_mode: true,
     requests: source.requests.length,
@@ -328,6 +425,7 @@ const report = {
     "three_builtins_exact_read_export",
     "builtin_install_update",
     "installed_current_import_dry_run_apply_read_files_export_noop",
+    "installed_portable_roundtrip_and_invocation_budget",
   ],
   current_import: currentImport,
   scratch,

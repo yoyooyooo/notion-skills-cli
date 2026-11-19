@@ -56,9 +56,17 @@ Readable text appears in full. Opaque files expose a usable original; unsupporte
 upload formats use a ZIP containing only that original. Read/export restores the
 original path, bytes and mode. Display name and description do not rewrite content.
 
-An existing Skill keeps unspecified Enabled, Default Context, Members and
-Requires values. Portable relationship/projection fields that this import cannot
-apply are rejected explicitly. Do not strip them to force a successful import.
+An existing Skill keeps unspecified Enabled and Default Context. Portable
+Members/Requires use same-library stable Skill refs: omitted preserves, [] clears,
+and an array replaces the complete field. Export includes both current sets.
+Prompt inputs cannot carry relations. Changed sets allow at most 100 targets; a
+larger unchanged set is verified and retained. Changed Requires must be acyclic.
+Old projection/materialization fields are rejected; never strip them to force import.
+
+All remote import work shares one budget: 1000 HTTP attempts, 512 MiB payload
+bytes and 600000 ms by default. Set --max-requests, --max-bytes and --timeout in
+ms when needed. Inspect the returned budget. Exhaustion stops new requests and
+keeps unfinished intent; an explicit resume starts a fresh invocation budget.
 
 ## Authority and unfinished work
 

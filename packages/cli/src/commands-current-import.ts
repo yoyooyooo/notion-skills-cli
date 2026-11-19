@@ -1,11 +1,12 @@
 import { Crypto, Effect, Option } from "effect"
-import { Argument, Command } from "effect/cli"
+import { Argument, Command, Flag } from "effect/cli"
 import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
 import { importDocument, loadImport, type ImportFile } from "../../core/src/import.ts"
 import { entrypointFor, fail, SkillsError } from "../../core/src/model.ts"
 import { MANIFEST, readPortable } from "../../core/src/portable.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
+import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
 import { currentWriteIdentity } from "../../core/src/shared-current-write-input.ts"
 import {
   inspectCurrentSkillWrite,
@@ -44,12 +45,20 @@ function currentImportInput(
         "CURRENT_IMPORT_UNSUPPORTED",
         "Import accepts only the current ntn-skills portable manifest version 2.",
       )
-    const allowed = new Set(["format", "version", "kind", "name", "description", "main"])
+    const allowed = new Set([
+      "format",
+      "version",
+      "kind",
+      "name",
+      "description",
+      "main",
+      "relations",
+    ])
     const unsupported = Object.keys(raw).filter((key) => !allowed.has(key))
     if (unsupported.length)
       throw fail(
         "CURRENT_IMPORT_UNSUPPORTED",
-        "This import preserves the complete current file tree. Portable relations, retained projections and unknown manifest fields require an explicit supported writer; they are never discarded.",
+        "Current import accepts exact files and native relation selections. Retained projections, materialization and unknown manifest fields are not author content and cannot be imported.",
         { fields: unsupported },
       )
     const portable = readPortable(loaded.files)
@@ -66,6 +75,7 @@ function currentImportInput(
       name: options.name ?? portable.name,
       description: options.description ?? portable.description,
       files: portable.files,
+      ...(portable.relations === undefined ? {} : { relations: portable.relations }),
     }
   }
   const original =
@@ -86,6 +96,13 @@ function currentImportInput(
     files: loaded.kind === "markdown" ? [{ ...original, path: "SKILL.md" }] : loaded.files,
   }
 }
+
+const budgetFlag = (name: string, description: string) =>
+  Flag.Int(name).pipe(
+    Flag.atMost(1),
+    Flag.map((values) => Option.fromUndefinedOr(values[0])),
+    Flag.withDescription(description),
+  )
 
 /** Finish complete local admission before any library or Notion request. */
 export function prepareCurrentImport(input: string, options: ImportOptions) {
@@ -145,9 +162,46 @@ export const currentImportCommand = defineCommand(
       "description",
       "Override Notion metadata while preserving original file bytes",
     ),
+    maxRequests: budgetFlag(
+      "max-requests",
+      "Positive maximum HTTP attempts for the entire invocation; default 1000",
+    ),
+    maxBytes: budgetFlag(
+      "max-bytes",
+      "Positive maximum total HTTP payload bytes for the entire invocation; default 536870912",
+    ),
+    timeout: budgetFlag("timeout", "Positive invocation deadline in ms; default 600000"),
   },
   (options) =>
     Effect.gen(function* () {
+      if (
+        /^notion_page:/iu.test(options.entry) ||
+        (/^[a-z][a-z\d+.-]*:\/\//iu.test(options.entry) && !/^https?:\/\//iu.test(options.entry))
+      )
+        return yield* Effect.fail(
+          fail(
+            "INVALID_ARGUMENT",
+            "Current import requires a database ID, HTTP(S) Notion URL or exact registered alias.",
+          ),
+        )
+      const limits = yield* Effect.try({
+        try: () => {
+          const selected = {
+            requests: Option.getOrUndefined(options.maxRequests),
+            bytes: Option.getOrUndefined(options.maxBytes),
+            duration_ms: Option.getOrUndefined(options.timeout),
+          }
+          for (const [name, value] of Object.entries(selected))
+            if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0))
+              throw fail(
+                "INVALID_ARGUMENT",
+                "Invocation budgets must be positive safe integers; --timeout uses ms.",
+                { budget: name },
+              )
+          return selected
+        },
+        catch: (error) => error as SkillsError,
+      })
       const selectedOperation = Option.getOrUndefined(options.operation)
       if (options.resume && (selectedOperation === undefined || options.dryRun))
         return yield* Effect.fail(
@@ -166,29 +220,39 @@ export const currentImportCommand = defineCommand(
         name: Option.getOrUndefined(options.name),
         description: Option.getOrUndefined(options.description),
       })
-      const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
-      if (options.dryRun) {
-        yield* emit({
-          ...(yield* inspectCurrentSkillWrite(library, prepared.plan)),
-          input: prepared.input,
-          dry_run: true,
-        })
-        return
-      }
-      const operation = selectedOperation ?? (yield* (yield* Crypto.Crypto).randomUUIDv4())
-      yield* emit({
-        ...(yield* writeCurrentSkill(library, {
-          plan: prepared.plan,
-          operation_id: operation,
-          mode: options.resume ? "resume" : "apply",
-        })),
-        input: prepared.input,
-      })
+      const invocation = yield* withCurrentInvocationBudget(
+        Effect.gen(function* () {
+          const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
+          if (options.dryRun)
+            return {
+              ...(yield* inspectCurrentSkillWrite(library, prepared.plan)),
+              input: prepared.input,
+              dry_run: true,
+            }
+          const operation =
+            selectedOperation ??
+            (yield* (yield* Crypto.Crypto)
+              .randomUUIDv4()
+              .pipe(
+                Effect.mapError(() => fail("CRYPTO_ERROR", "Cannot identify the current import.")),
+              ))
+          return {
+            ...(yield* writeCurrentSkill(library, {
+              plan: prepared.plan,
+              operation_id: operation,
+              mode: options.resume ? "resume" : "apply",
+            })),
+            input: prepared.input,
+          }
+        }),
+        limits,
+      )
+      yield* emit({ ...invocation.result, budget: invocation.budget })
     }),
 ).pipe(
   withConstraints([exclusiveFlags(["resume", "dryRun"])]),
   Command.withDescription(
-    "Import one complete current Skill under an exact stable Skill ID. Existing files absent from the input are removed by the current writer. Every original file keeps its exact bytes and executable mode as a Notion resource with a readable page projection. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Only an explicitly selected single Markdown file is renamed to SKILL.md. Symbolic links, changing trees, unsupported portable relations/projections and oversized input are rejected before Notion access. --dry-run only inspects. Resume with the same input and --operation ID --resume; no name matching, automatic retry of unknown writes or historical recovery route.",
+    "Import one complete current Skill under an exact stable Skill ID. Existing files absent from the input are removed by the current writer. Every original keeps its exact bytes and executable mode as a Notion resource with a readable page projection. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md. Retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input and --operation ID --resume; no name matching or historical recovery.",
   ),
   Command.withExamples([
     {

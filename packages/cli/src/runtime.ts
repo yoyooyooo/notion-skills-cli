@@ -3,7 +3,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Context, Layer, Path } from "effect"
 import { NotionLive } from "../../core/src/notion.ts"
 import { StoreLive } from "../../core/src/store.ts"
-import { SyncLocalLive } from "../../core/src/sync-local.ts"
 import { IndependentByteReadRuntime } from "../../core/src/shared-immutable-read.ts"
 import { FixedGitObjectReaderLive } from "../../core/src/shared-fixed-git-transport.ts"
 import { GhCredentialLive } from "../../core/src/github-api-access.ts"
@@ -31,7 +30,6 @@ export function nodeRuntime(cwd?: string) {
     store,
     NodeHttpClient.layerFetch,
     Layer.succeed(IndependentByteReadRuntime, true),
-    SyncLocalLive.pipe(Layer.provide(local)),
     FixedGitObjectReaderLive.pipe(Layer.provide(local)),
     GhCredentialLive.pipe(Layer.provide(local)),
   )

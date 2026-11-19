@@ -22,7 +22,7 @@ bun test packages/core/test/load-import.test.ts packages/cli/test/current-import
 ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKILL_ID" --dry-run
 ~~~
 
-检查将移除的 Files 和权威变化。dry-run 不创建 operation，也不宣称正文已核验。portable 中尚未支持的关系、旧 projection 和未知字段必须明确拒绝。
+检查将移除的 Files 和权威变化。dry-run 不创建 operation，也不宣称正文已核验。portable 的 Members/Requires 以同库 stable ref 表示；省略保持、[] 清空、数组完整替换。Prompt 关系、旧 projection/materialization 和未知字段必须拒绝。
 
 ## 写入、读回与 no-op
 
@@ -41,7 +41,7 @@ ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKI
 
 ## 覆盖与清理
 
-用一个明确修改后的完整输入覆盖相同 Skill ID。保留 Skill 页和仍在用的 File ID；被移除的 Files 和不再引用的当前 Resource 进入 Trash。共享原件的多个投影必须一次收敛。遗漏 Enabled/Default Context/关系不隐式重写；未实现的跨对象治理单独报告。
+用一个明确修改后的完整输入覆盖相同 Skill ID。保留 Skill 页和仍在用的 File ID；被移除的 Files 和不再引用的当前 Resource 进入 Trash。共享原件的多个投影必须一次收敛。遗漏 Enabled/Default Context/关系不隐式重写。导出→本地修改→再导入必须保留两组完整关系；覆盖超过25条分页、超过100条原样保留和写前拒绝变更、错库/重复/停用/非ready目标、Requires环、unknown关系PATCH及完成前漂移。复用 `shared-current-relations.test.ts`；未实现的跨对象治理单独报告。
 
 ## 恢复
 
@@ -50,5 +50,7 @@ ntn-skills ctl library import "$INPUT" --entry "$CURRENT_ENTRY" --skill-id "$SKI
 ~~~
 
 重传原输入并核同一指纹。覆盖 CREATE 响应丢失、完整 append 响应丢失和已归档行退出查询。不得重发未知非幂等请求，不得暂时改 ready。部分 append 未能收敛时保留 pending，明确记录这个限制。
+
+预算沿 `shared-current-invocation.test.ts` 核实：初始库查询、重试、provider、multipart、正文和退役共用额度；耗尽后不再发 attention 或 cleanup。新一次显式 resume 使用新额度，不重置同一调用的预算。
 
 完成后重新查询当前树与有限状态，确认只有当前内容。复用已有 runner 的临时输出即可；不保存版本库、永久 ACK、历史 body review 或清理证明档案。

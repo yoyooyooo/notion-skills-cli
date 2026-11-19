@@ -122,8 +122,9 @@ To save one file:
 ntn-skills read 'RETURNED_FILE_REF' --output ./checklist.md
 ```
 
-Export writes locally. It does not create a remote content version or copy the library's
-relationships, Profiles, or Source management configuration.
+Export writes locally and includes the selected Skill's complete current
+Members/Requires in its portable manifest. It does not create a remote content
+version or copy Profiles and Source management configuration.
 
 ## Import a complete Skill
 
@@ -144,6 +145,10 @@ ntn-skills ctl library import ./my-skill --entry LIBRARY_ENTRY --skill-id my-ski
 ```
 
 Keep the same complete input and operation ID for a resumed import.
+Portable relationship fields preserve when omitted, clear with [], and replace
+with a full array of same-library stable Skill refs. Review `relations` in dry run.
+All remote work shares 1000 HTTP attempts, 512 MiB payload bytes and 600000 ms by
+default. Use --max-requests, --max-bytes and --timeout in ms for explicit limits.
 The [current authoring guide](shared-authoring.md) covers accepted inputs, reading projections,
 Profile changes, and interrupted operations.
 

@@ -344,6 +344,21 @@ complete text. It preserves the physical Skill, stable retained File IDs and
 unspecified enablement, default-context and authored relations. Removed supporting
 Files and unreferenced owned resources are trashed after current content is checked.
 
+Portable Members/Requires round-trip as complete current stable-ref sets. Omitted
+fields preserve, [] clears, and lists replace. Prompt relations are invalid. The
+writer checks same-library single-property schema, complete pagination and unique
+enabled ready targets before mutation. Changed sets are limited to 100 targets;
+larger unchanged sets are retained. Changed Requires checks its reachable metadata
+closure for cycles and rechecks it before ready, including an unfinished resume.
+Relation mutations share the same finite current intent and frozen physical IDs.
+
+Import has one default budget of 1000 HTTP attempts, 512 MiB payload bytes and
+600000 ms, including initial library lookup and all remaining network work.
+--max-requests, --max-bytes and --timeout in ms can choose positive limits. Nested
+writers share the allowance, exhaustion stops new dispatch, and a fresh explicit
+resume gets a fresh budget. Actual response bytes may overshoot a byte limit at
+the boundary of an already admitted response; the result reports that cost.
+
 The writer opens an operation only when an actual change is needed. A complete
 no-op performs zero semantic remote writes. One mutable action marker supports
 interruption without a permanent ACK log. Completed state becomes ready before
@@ -357,8 +372,8 @@ Removing a command does not prove that every old module, export or guide is gone
 
 The production data and Pi installation are **not switched yet**. Remaining work:
 
-- Complete current Source writing, portable relationship updates, cross-object
-  governance and the remaining finite-recovery cases: AH-504, AH-507, AH-505.
+- Complete current Source writing, cross-object governance and the remaining
+  finite-recovery cases: AH-504, AH-507, AH-505.
 - Populate every Git-only supporting Files row and render full readable text or
   original usable attachments. A complete provider manifest does not establish
   that all required Notion reading pages exist: AH-501.
@@ -375,6 +390,7 @@ The production data and Pi installation are **not switched yet**. Remaining work
 Run only the applicable checks in the existing current-convergence entry. Current
 schema/index, native tree, exact resource, Source, acquisition and complete-import
 tests establish their controlled boundaries. They do not certify live table cleanup,
-every authoring operation, an installed package or real Pi delivery. Old proof-model coverage and
-historical authoring recipes are outside the current verification route until
-their owner establishes a new implementation correspondence or retires them.
+every authoring operation, an installed package or real Pi delivery. The old
+resource-lifecycle and ACK recovery models and their dedicated recipes are retired.
+The two request-engine models retain their original bounded properties; current
+writer safety is checked by the existing implementation and real HTTP tests.

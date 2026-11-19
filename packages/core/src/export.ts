@@ -128,7 +128,8 @@ export function snapshotAuthoredPortable(snapshot: Snapshot) {
 }
 
 function snapshotRelations(snapshot: Snapshot, portable: PortableSkill): PortableSkill {
-  if (snapshot.record.locator.type !== "shared_skill") return portable
+  if (snapshot.record.locator.type !== "shared_skill" || snapshot.record.kind === "prompt")
+    return portable
   const members = snapshotMembers(snapshot),
     required = snapshot.required
   if (members === undefined && required === undefined) return portable
@@ -404,7 +405,9 @@ export function exportSkill(selectorInput: string, options: ExportOptions) {
       projection === "source" ? "authored" : "generated",
     )
     let skill: PortableSkill
-    if (projection === "snapshot") {
+    if (snapshot.record.locator.type === "shared_skill") {
+      skill = yield* snapshotPortable(snapshot)
+    } else if (projection === "snapshot") {
       const store = yield* Store
       const files: ImportFile[] = []
       for (const file of snapshot.files) {
@@ -429,7 +432,10 @@ export function exportSkill(selectorInput: string, options: ExportOptions) {
         files,
       }
     } else skill = yield* snapshotAuthoredPortable(snapshot)
-    const exported = yield* exportPortable(skill, { ...options, projection })
+    const exported = yield* exportPortable(skill, {
+      ...options,
+      projection: snapshot.record.locator.type === "shared_skill" ? "snapshot" : projection,
+    })
     return {
       ...snapshotInfo(snapshot),
       ...exported,

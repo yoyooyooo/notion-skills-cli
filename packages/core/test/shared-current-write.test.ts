@@ -308,17 +308,23 @@ describe("complete current Skill writer", () => {
       f.run(writeCurrentSkill(library, { plan, operation_id: "partial" })),
     ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
     const writes = f.mutations().length,
-      owner = String(f.table("skills")[0]?.id)
+      owner = String(f.table("skills")[0]?.id),
+      originalBlocks = structuredClone(f.blocks)
     const resumed = await f.run(
       writeCurrentSkill(library, { plan, operation_id: "partial", mode: "resume" }).pipe(
         Effect.result,
       ),
     )
     expect(resumed._tag).toBe("Failure")
+    if (resumed._tag === "Failure") expect(resumed.failure.code).toBe("CURRENT_OPERATION_PENDING")
     expect(f.mutations()).toHaveLength(writes)
+    expect(f.blocks).toEqual(originalBlocks)
     expect(
       f.calls.filter((call) => call.path.includes("/children") && call.method === "PATCH"),
     ).toHaveLength(1)
+    expect(
+      f.calls.filter((call) => call.path.endsWith("/markdown") && call.method === "PATCH"),
+    ).toHaveLength(0)
     await expect(
       f.run(
         openSharedSnapshot({

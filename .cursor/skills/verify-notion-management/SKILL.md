@@ -25,7 +25,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 2. 对同一完整输入执行 import。默认保存 Notion resource 原件，文本全文投影，opaque 文件带可下载原件。unsupported 类型是单原件 ZIP，读和导出恢复原字节。generated body 编辑不转移权威；native author body 仍直接编辑。
 3. 从 Skills→Files 逐类查看 Markdown、代码和二进制。用实际 current reader、单文件读取和目录 export 核 hash/bytes/mode。不要只比较上传请求或属性占位。原输入在 prepare 后变动必须在远端写入前拒绝。
 4. 用相同输入和新的 operation 重复 import，确认 semantic writes 为 0，没有新 Operation/Resource。修改一个文件并移除另一个，确认唯一 Skill 页、保留 File ID、最终完整树及旧 Files/无引用 Resource 已进入 Trash。共享原件的投影重建要在一次操作内收敛。
-5. 覆盖时保持未指定的 Enabled、Default Context、Members 和 Requires。需要变更 kind、关系或 Source 选择时，用已实现的明确入口；导入不得静默丢弃 portable 的关系或旧投影字段。完整本地导入是显式替换整个文件树。
+5. 覆盖时保持未指定的 Enabled、Default Context、Members 和 Requires。portable 关系省略保持、[] 清空、数组替换，导出携带两组完整集合。核同库唯一 ready/Enabled目标、完整分页、100条写入上限和 Requires 环；kind 变化与 Source 选择按各自明确入口。旧投影字段必须拒绝。完整本地导入是显式替换整个文件树。
 6. 沿 [当前恢复](../verify-notion-operation-recovery/SKILL.md) 核 CREATE、append、退役响应丢失及半树拒绝消费。有限 Operation 完成后回收，不保留旧正文或永久 ACK。
 7. Profile 用完整当前规则与 expect fingerprint 替换同一 Record；相等 0 写。全库 census、反向关系治理和实库转换仍单独验收。先移交唯一当前字节，再清旧字段、行、页、附件和导航；隐藏或平行旧库不算清理。
 

@@ -1,41 +1,38 @@
-# FV07：RequestEngine 有限合同
+# 请求引擎有限合同
 
-主要验证入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。本页保留原功能合同与用例ID；运行结果另存，不由路由变更继承通过。
+主要入口：[verify-notion-consumption](../../verify-notion-consumption/SKILL.md)。SharedProducer 与 RequestAdmission 保留既有 21 个配置和完整规则，当前源码映射见 [README](../../../../verification/models/request-engine/README.md)。
 
-适用 Issue：AH-1013、AH-1050 / AH-1058。它为现有请求引擎补充模型与真实源码守护，关联原 [request-engine 地图](request-engine.md) 的 SC15、NG-RE-03、NG-RE-04；不替代它们的真实 SQLite、多进程、HTTP 或已安装产物验收。
+## 运行
 
-## 快速入口
+在 CLI checkout 安装锁定依赖，配置与 `verification/models/request-engine/tool-lock.json` 相同的工具，输出到本次新的外部空绝对目录。
 
-从 CLI checkout 执行，输出使用本轮新的外部绝对目录：
-
-```bash
+```sh
 PSTACK_STATECHART_ROOT=/absolute/pinned-pstack/pstack/skills/statechart \
 TLA2TOOLS=/absolute/tla2tools-1.7.4.jar \
-node scripts/verify-resource-lifecycle.mjs --suite request-engine --out /absolute/new-fv07-models
+node scripts/verify-request-engine.mjs --out /absolute/new-request-models
 
-python3 scripts/check-request-engine-mutations.py --out /absolute/new-fv07-guards
-bun test packages/core/test/request-engine-contract.test.ts packages/core/test/shared-immutable-read.test.ts
+python3 scripts/check-request-engine-mutations.py --out /absolute/new-request-guards
+bun test packages/core/test/request-engine-contract.test.ts packages/core/test/shared-immutable-read.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000
 node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sdk-immutable-read.node.test.ts
 ```
 
-工具和依赖先按仓库 lock 安装。模型配置目录、源码哈希和完整规则清单在 `verification/models/request-engine/coverage.json`；详细边界与 source/guard 映射见 [RequestEngine README](../../../../verification/models/request-engine/README.md)。
+按变更选择必要实现回归；受影响模型运行全部原正负配置。旧生命周期与 ACK 恢复套件已退役，没有 `--suite` 兼容路由。
 
-## Drive 和独立观察
+## 对应边界
 
-| 子合同 | 必须观察 |
+| 模型 | 必须观察 |
 | --- | --- |
-| SharedProducer | 取消一个 waiter 不停止其他 owner；最后 owner 离开请求中断；transport service 隔离；固定字节允许完整身份相同的独立 SDK runtime 共享，creator Scope 关闭不伤及 survivor；身份、queue / invocation budget 独立；完成结果不缓存；旧清理不删除替代 producer；慢 finalizer 仍占共享容量，满容量时各自读取 |
-| RequestAdmission | 冷却、排队期限、operation deadline、attempt timeout、次数预算分别有效；等待不占网络 permit；取消释放 queue entry；未知写入没有第二次 attempt |
+| SharedProducer | 取消单一 waiter 不影响其余 owner；最后 owner 离开中断请求；service、credential、queue 与 invocation budget 隔离；完整当前字节身份允许独立 SDK runtime 共用 pending 只读请求；creator Scope 关闭不取消 survivor；settled result 不缓存；旧清理不删除替代 producer；慢 finalizer 保留容量 |
+| RequestAdmission | 一个逻辑请求的冷却、排队、有限次数重试与 attempt deadline；等待不占网络 permit；取消释放队列；未知 mutation 没有第二次 attempt |
 
-模型正例必须完整通过；19 个负配置各自只破坏声明的规则。真实代码回放独立检查 19 组 guard，每组都需原件通过、突变触发实际断言失败、恢复通过，并确认共享 checkout 未变。回放没有真实凭据或远端 mutation。
+两个正配置必须完整通过，19 个负配置必须精确打破声明的规则。真实代码回放也有 19 个 guard，每个都检查原件通过、突变行为断言失败、恢复通过和产品 checkout 未变。当前 immutable case 修改 current resource reader，并通过公开 SDK 观察取消。
 
-## Evidence
+## 未建模范围
 
-模型 run 保留 `summary.json`、完整规则结果、TLC 原始回执、输入快照、图和工具清单。guard run 保留逐组 baseline/mutant/restored 日志、原件/变体、source/依赖/执行器 hash 与 `summary.json`。遇到导入/工具错误、未执行测试、截断、额外 broken 或 coverage 漂移立即停在失败，不补写通过结论。重新运行使用新目录并保留旧目录。
+模型的容量是有限抽象；实际 64 条和 16 MiB 准入、字节计费、默认管理总预算、嵌套调用、provider 下载、multipart 和 writer partial/resume 由实际测试检查。RequestAdmission 只有一个逻辑请求的重试链，不证明整次多步骤 import。
 
-transport 正文共享仍在同一个 Notion service 内；新增 immutable 域在同一进程、完整固定字节身份相同的标准 SDK runtime 间共享独立只读 producer。每个调用者仍单独检查资格、原 pin 和本地 Store；自定义 transport 和显式 RequestBudget 不参与该域。同机多个 CLI 进程的 SQLite 共享的是准入，不共享 producer/正文。immutable registry 的单位权重容量 1 / 2 是有限抽象；实际 64 条 / 16 MiB 准入、字节计费与慢清理由实现测试补充。模型启用了 opt-in RequestBudget，不把普通 admission deadline 等同于整次 operation timeout。Effect 4.0.5 仅验证两个 Cache 生命周期守护的有限对应；不声称证明整个库。
+传输共享在同一 Notion service 内。当前 exact bytes 可在同进程、身份一致的标准 SDK runtime 间使用独立只读 producer；每个调用者自己检查当前资格。自定义 transport 和带 RequestBudget 的调用绕过该共享域。同机多个 CLI 进程仅共享 SQLite 准入。
 
-## 图和退出
+## 结果与结束
 
-图来自同一 TLA+/cfg 的 `/statechart` 输出，并按该 skill 渲染 SVG。详情和已渲染图位于 `verification/models/request-engine/charts/`。该离线流程无后台服务；保留 owned fixture 与失败原件，结束后不要清理用户工作区或远端对象。
-
+读取 summary、完整规则、TLC 原始结果和实际测试结果。工具错误、未执行测试、cut、额外 broken 和未经审阅的源码漂移都必须失败。运行产物仅用于本次诊断，不作为内容版本或永久签收。模型通过不能证明 live Notion、清退、安装或 Pi 日用。

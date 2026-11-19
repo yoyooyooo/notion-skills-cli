@@ -11,11 +11,11 @@
 | 当前权威与审计有限模型 | [resource lifecycle](../../verify-notion-resource-lifecycle/SKILL.md) | 当前性质对应、有限范围、真实正反例 |
 | unknown/partial 与当前对账 | [operation recovery](../../verify-notion-operation-recovery/SKILL.md) | 当前稳定身份、去重、预算和有限恢复 |
 
-[skill-domains.json](../../../../verification/skill-domains.json) 保持每份既有 feature 的唯一主要 owner；公共路由测试核实路径和接线。该索引不是旧产品合同的永久保留清单，不要求每次运行领域全部测试。旧 operation-recovery/resource-lifecycle coverage 退出本轮当前入口；不运行旧模型来证明新实现。
+[skill-domains.json](../../../../verification/skill-domains.json) 保持每份既有 feature 的唯一主要 owner；公共路由测试核实路径和接线。该索引不是旧产品合同的永久保留清单，不要求每次运行领域全部测试。旧 operation-recovery/resource-lifecycle 模型及专属入口已经退役；不以历史通过证明当前实现。
 
 ## 实施顺序与边界
 
-1. 先对照 AH-499 当前四表合同。当前 reader/Profile 已接入严格 Content，公开 content/Source writer 与实库转换仍未完成。按实际 failed/blocked/not_run 记录；不把旧 PASS 迁移成新 PASS。
+1. 先对照 AH-499 当前四表合同。当前 reader、Profile 和完整本地 import 已接入严格 Content，Source writer 与实库转换仍未完成。按实际 failed/blocked/not_run 记录；不把旧 PASS 迁移成新 PASS。
 2. 根据改动选择必要的当前领域切片。复用原测试中的权限、内容完整、路径、分页、预算、取消和 unknown 反例；与已取消历史承诺有关的断言由实现 owner 同步重做或退役。
 3. 需要安装时使用实际 archive/bin/SDK，离开 checkout。包装中仍含旧 operator/decoder/fallback 即是单轨未完成，不能靠源码测试绕过。
 4. 真实 Notion 清退由 AH-513；旧 caller/实现退出由 AH-517；同一次配对安装和真实 Pro Pi 由 AH-1063；Pro 全本地 Skills 内容及曝光/更新入口由 AH-516 对账。
