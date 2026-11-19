@@ -15,13 +15,17 @@ const deferred = () => {
   return { promise, resolve }
 }
 
-// The installed current-reader service serves only declared Notion facts.
-// Controls change HTTP delivery, never SDK results or consumer caches.
+// The installed service serves declared Notion facts. Writes are enabled only
+// for the bounded CLI import gate; SDK consumption keeps the default read-only mode.
 export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   assert.ok(sample?.notion?.library?.skills)
   assert.ok(isAbsolute(ledgerPath), "The owned request ledger must be absolute")
   const port = options.port ?? 0
   assert.ok(Number.isInteger(port) && port >= 0 && port <= 65535, "Invalid loopback fixture port")
+  assert.ok(
+    options.allowCurrentWrites === undefined || typeof options.allowCurrentWrites === "boolean",
+  )
+  const allowCurrentWrites = options.allowCurrentWrites === true
   const eventsPath = ledgerPath.endsWith(".jsonl")
     ? ledgerPath.slice(0, -6) + ".events.jsonl"
     : ledgerPath + ".events.jsonl"
@@ -29,6 +33,135 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     fs.writeFileSync(path, "", { flag: "wx", mode: 0o600 })
 
   const notion = structuredClone(sample.notion)
+  notion.blocks ??= {}
+  let nextPage = 900000,
+    edit = 0
+  const nextId = () => "00000000-0000-4000-8000-" + (nextPage++).toString(16).padStart(12, "0")
+  const currentPages = () => [...notion.skills, ...notion.files, ...notion.records]
+  const rowsFor = (dataSource) => {
+    const { library } = notion
+    if (dataSource === library.skills.data_source_id) return notion.skills
+    if (dataSource === library.files.data_source_id) return notion.files
+    if (dataSource === library.records.data_source_id) return notion.records
+    throw new Error("The current writer selected an undeclared table")
+  }
+  const touch = (row) => {
+    row.last_edited_time = new Date(Date.now() + edit++).toISOString()
+  }
+  const normalizedProperties = (input) =>
+    Object.fromEntries(
+      Object.entries(input).map(([id, raw]) => {
+        const type = ["title", "rich_text", "select", "relation", "files", "checkbox"].find((key) =>
+          Object.hasOwn(raw, key),
+        )
+        assert.ok(type, "A current write has an unsupported property")
+        if (type === "files")
+          assert.deepEqual(raw.files, [], "This bounded import gate uses inline originals")
+        return [
+          id,
+          {
+            ...structuredClone(raw),
+            id,
+            type,
+            ...(["rich_text", "relation", "files"].includes(type) ? { has_more: false } : {}),
+          },
+        ]
+      }),
+    )
+  const mutateCurrent = (method, path, body, call) => {
+    if (!allowCurrentWrites) return undefined
+    if (method === "POST" && path === "/v1/pages") {
+      assert.equal(body.parent.type, "data_source_id")
+      const rows = rowsFor(body.parent.data_source_id)
+      const table = [notion.library.skills, notion.library.files, notion.library.records].find(
+        (item) => item.data_source_id === body.parent.data_source_id,
+      )
+      const row = {
+        object: "page",
+        id: nextId(),
+        parent: { ...structuredClone(body.parent), database_id: table.database_id },
+        properties: normalizedProperties(body.properties),
+        in_trash: false,
+        archived: false,
+      }
+      touch(row)
+      rows.push(row)
+      notion.blocks[row.id] = []
+      notion.bodies[row.id] = ""
+      if (rows === notion.skills && !notion.main) notion.main = row
+      call.semantic_write = true
+      return { status: 200, value: row }
+    }
+    const selected = /^\/v1\/pages\/([^/]+)(\/markdown)?$/u.exec(path)
+    if (selected && method === "PATCH") {
+      const row = currentPages().find((item) => item.id === selected[1])
+      assert.ok(row, "A current write selected an undeclared page")
+      if (selected[2]) {
+        assert.equal(body.markdown_version, "v2")
+        assert.equal(body.type, "replace_content")
+        assert.equal(typeof body.replace_content.new_str, "string")
+        notion.bodies[row.id] = body.replace_content.new_str
+        notion.blocks[row.id] = []
+      } else {
+        if (body.properties)
+          for (const [id, field] of Object.entries(normalizedProperties(body.properties))) {
+            const key =
+              Object.keys(row.properties).find(
+                (name) => name === id || row.properties[name].id === id,
+              ) ?? id
+            row.properties[key] = field
+          }
+        if (Object.hasOwn(body, "in_trash")) {
+          assert.equal(typeof body.in_trash, "boolean")
+          row.in_trash = body.in_trash
+        }
+      }
+      touch(row)
+      if (notion.main?.id === row.id) notion.main = row
+      call.semantic_write = true
+      return {
+        status: 200,
+        value: selected[2]
+          ? {
+              object: "page_markdown",
+              id: row.id,
+              markdown: notion.bodies[row.id],
+              truncated: false,
+              unknown_block_ids: [],
+            }
+          : row,
+      }
+    }
+    const children = /^\/v1\/blocks\/([^/]+)\/children$/u.exec(path)
+    if (children && method === "PATCH") {
+      const row = currentPages().find((item) => item.id === children[1])
+      assert.ok(row, "A projection selected an undeclared page")
+      assert.ok(
+        Array.isArray(body.children) && body.children.length > 0 && body.children.length <= 100,
+      )
+      assert.ok(Buffer.byteLength(JSON.stringify(body)) <= 500000)
+      const added = body.children.map((block) => ({
+        ...structuredClone(block),
+        object: "block",
+        id: nextId(),
+        parent: { type: "page_id", page_id: row.id },
+        has_children: false,
+        in_trash: false,
+        archived: false,
+      }))
+      notion.blocks[row.id].push(...added)
+      notion.bodies[row.id] = notion.blocks[row.id]
+        .map((block) => richText(block[block.type]?.rich_text))
+        .join("\n")
+      touch(row)
+      call.semantic_write = true
+      return {
+        status: 200,
+        value: { object: "list", results: added, has_more: false, next_cursor: null },
+      }
+    }
+    return undefined
+  }
   const requests = [],
     unexpected = [],
     active = new Set()
@@ -97,6 +230,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   }
 
   const packet = (request, url, body, call) => {
+    const mutation = mutateCurrent(request.method, url.pathname, body, call)
+    if (mutation !== undefined) return mutation
     let value,
       status = 200
     const fields = url.searchParams.getAll("filter_properties")
@@ -112,8 +247,8 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
     } else if (
       denyCurrent &&
       request.method === "GET" &&
-      (url.pathname === `/v1/pages/${notion.main.id}` ||
-        url.pathname === `/v1/pages/${notion.main.id}/markdown`)
+      (url.pathname === `/v1/pages/${notion.main?.id}` ||
+        url.pathname === `/v1/pages/${notion.main?.id}/markdown`)
     ) {
       status = 403
       value = {
@@ -129,7 +264,27 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       url.pathname === `/v1/databases/${library.skills.database_id}`
     )
       value = notion.database
-    else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
+    else if (
+      allowCurrentWrites &&
+      request.method === "GET" &&
+      /^\/v1\/blocks\/[^/]+\/children$/u.test(url.pathname)
+    ) {
+      const id = url.pathname.split("/")[3]
+      assert.ok(currentPages().some((row) => row.id === id))
+      value = page(notion.blocks[id] ?? [], {
+        page_size: 100,
+        ...(url.searchParams.has("start_cursor")
+          ? { start_cursor: url.searchParams.get("start_cursor") }
+          : {}),
+      })
+    } else if (
+      allowCurrentWrites &&
+      request.method === "GET" &&
+      /^\/v1\/pages\/[^/]+$/u.test(url.pathname)
+    ) {
+      value = currentPages().find((row) => url.pathname === `/v1/pages/${row.id}`)
+      assert.ok(value, "An undeclared current page was requested")
+    } else if (viewObservation && request.method === "GET" && url.pathname === "/v1/views") {
       assert.equal(url.searchParams.get("database_id"), library.skills.database_id)
       value = {
         object: "list",
@@ -167,11 +322,11 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       })
     } else if (
       request.method === "GET" &&
-      url.pathname !== `/v1/pages/${notion.main.id}` &&
+      url.pathname !== `/v1/pages/${notion.main?.id}` &&
       notion.skills.some((row) => url.pathname === `/v1/pages/${row.id}`)
     )
       value = notion.skills.find((row) => url.pathname === `/v1/pages/${row.id}`)
-    else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main.id}`)
+    else if (request.method === "GET" && url.pathname === `/v1/pages/${notion.main?.id}`)
       value = notion.main
     else if (
       request.method === "GET" &&
@@ -197,7 +352,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       assert.ok(rows, "An unexpected data source was queried")
       value = page(
         project(
-          rows.filter((row) => matches(row, body?.filter)),
+          rows.filter((row) => row.in_trash !== true && matches(row, body?.filter)),
           fields,
         ),
         body,
@@ -226,11 +381,26 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
   }
   const knownRoute = (method, path) => {
     const { library } = notion
+    if (
+      allowCurrentWrites &&
+      ((method === "POST" && path === "/v1/pages") ||
+        (method === "PATCH" &&
+          /^\/v1\/(?:pages\/[^/]+(?:\/markdown)?|blocks\/[^/]+\/children)$/u.test(path)))
+    )
+      return true
+    if (
+      allowCurrentWrites &&
+      method === "GET" &&
+      currentPages().some(
+        (row) => path === `/v1/pages/${row.id}` || path === `/v1/blocks/${row.id}/children`,
+      )
+    )
+      return true
     if (method === "GET")
       return (
         path === "/v1/users/me" ||
         path === "/v1/databases/" + library.skills.database_id ||
-        path === "/v1/pages/" + notion.main.id ||
+        path === "/v1/pages/" + notion.main?.id ||
         notion.files.some((file) => path === "/v1/pages/" + file.id) ||
         notion.skills.some((row) => path === "/v1/pages/" + row.id) ||
         Object.keys(notion.bodies).some((id) => path === "/v1/pages/" + id + "/markdown") ||
@@ -263,7 +433,7 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
         multi_select: names.map((name) => ({ id: name, name, color: "default" })),
       }
       row.properties.tags = tags
-      if (id === notion.main.id) notion.main.properties.tags = structuredClone(tags)
+      if (id === notion.main?.id) notion.main.properties.tags = structuredClone(tags)
     }
   }
   const setPhase = (label, options = {}) => {

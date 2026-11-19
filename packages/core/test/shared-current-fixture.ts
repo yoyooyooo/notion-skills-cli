@@ -205,6 +205,7 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
       return text(field.rich_text) === property(filter.rich_text).equals
     if (filter.select !== undefined)
       return property(field.select).name === property(filter.select).equals
+    if (filter.checkbox !== undefined) return field.checkbox === property(filter.checkbox).equals
     return false
   }
   function query(values: readonly unknown[], body: unknown) {
@@ -248,6 +249,9 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
         if (call.method === "GET" && path === `v1/databases/${currentLibrary.skills.database_id}`)
           result = {
             id: currentLibrary.skills.database_id,
+            database_type: null,
+            title: [{ plain_text: "Current Skills" }],
+            data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Current Skills" }],
             description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
           }
         else if (call.method === "GET" && path === `v1/pages/${currentSkillPage}`)
@@ -259,6 +263,11 @@ export function currentSnapshotFixture(input: { fileCount?: number } = {}) {
             return Effect.fail(fail("NOTION_NOT_FOUND", "Body unavailable."))
           result = { id: page, markdown, truncated: false, unknown_block_ids: [] }
         } else if (
+          call.method === "POST" &&
+          path.startsWith(`v1/data_sources/${currentLibrary.skills.data_source_id}/query`)
+        )
+          result = query([main], body)
+        else if (
           call.method === "POST" &&
           path.startsWith(`v1/data_sources/${currentLibrary.files.data_source_id}/query`)
         )

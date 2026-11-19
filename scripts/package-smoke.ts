@@ -1,8 +1,13 @@
 import assert from "node:assert/strict"
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
+import { LIBRARY_MARKER } from "../packages/core/src/shared-library-model.ts"
+import { currentLibrary } from "../packages/core/test/shared-current-fixture.ts"
+const { startSdkSourceFixture } = await import(
+  new URL("./sdk-source-fixture.mjs", import.meta.url).href
+)
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -46,6 +51,8 @@ const env = {
   NTN_SKILLS_CACHE_HOME: join(scratch, "cache"),
   NTN_SKILLS_DATA_HOME: "",
   XDG_DATA_HOME: join(scratch, "data"),
+  NTN_SKILLS_NOTION_INTERVAL_MS: "100",
+  NTN_SKILLS_SCHEDULER_ROOT: join(scratch, "scheduler"),
 }
 async function run(argv: string[], expectedExit = 0) {
   const child = Bun.spawn(argv, {
@@ -100,6 +107,7 @@ for (const path of [["read"], ["use"], ["files"], ["export"], ["ctl", "prepare"]
 const library = await cli(["schema", "ctl", "library"])
 assert.deepEqual(library.schema.commands.map((command: { name: string }) => command.name).sort(), [
   "files",
+  "import",
   "init",
   "inspect",
   "profile",
@@ -148,6 +156,164 @@ for (const [id, packagePath, paths] of files) {
   await cli(["ctl", "builtin", "install", id, "--agent-dir", join(scratch, "agent")])
   await cli(["ctl", "builtin", "update", id, "--agent-dir", join(scratch, "agent")])
 }
+const currentFiles = [
+  {
+    path: "SKILL.md",
+    content:
+      "---\r\nname: installed-current\r\ndescription: Installed current import lifecycle.\r\n---\r\n# Current import\r\nRead [guide](references/guide.md).\r\n",
+    executable: false,
+  },
+  {
+    path: "references/guide.md",
+    content: "# Complete guide\n\n原始正文 α 😀.\r\n[Run](../scripts/run.sh)\n",
+    executable: false,
+  },
+  {
+    path: "scripts/run.sh",
+    content: "#!/bin/sh\nprintf 'installed current original\\n'\n",
+    executable: true,
+  },
+]
+const inputDirectory = join(scratch, "current-input")
+for (const file of currentFiles) {
+  const target = join(inputDirectory, file.path)
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 })
+  await writeFile(target, file.content, { mode: file.executable ? 0o700 : 0o600, flag: "wx" })
+  if (file.executable) await chmod(target, 0o700)
+}
+const source = await startSdkSourceFixture(
+  {
+    notion: {
+      library: currentLibrary,
+      database: {
+        object: "database",
+        id: currentLibrary.skills.database_id,
+        database_type: null,
+        title: [{ plain_text: "Installed current import" }],
+        description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
+        data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Skills" }],
+      },
+      main: null,
+      skills: [],
+      files: [],
+      records: [],
+      bodies: {},
+    },
+  },
+  join(scratch, "current-import-requests.jsonl"),
+  { allowCurrentWrites: true },
+)
+const semanticWrites = () =>
+  source.requests.filter((call: { semantic_write?: boolean }) => call.semantic_write === true)
+    .length
+let currentImport
+try {
+  env.NOTION_API_TOKEN = "current-cli-owned-token"
+  env.NOTION_API_BASE_URL = source.origin
+  const importArgs = [
+    "ctl",
+    "library",
+    "import",
+    inputDirectory,
+    "--entry",
+    currentLibrary.skills.database_id,
+    "--skill-id",
+    "installed-current",
+  ]
+  const inspected = await cli([...importArgs, "--dry-run"])
+  assert.equal(inspected.dry_run, true)
+  assert.equal(inspected.remote_writes, 0)
+  assert.equal(inspected.input.files, currentFiles.length)
+  assert.equal(semanticWrites(), 0)
+  assert.equal(
+    source.notion.skills.length + source.notion.files.length + source.notion.records.length,
+    0,
+  )
+  const imported = await cli([...importArgs, "--operation", "installed-current-first"])
+  assert.equal(imported.status, "applied")
+  assert.equal(imported.state, "ready")
+  assert.equal(imported.files, currentFiles.length)
+  assert.equal(source.notion.skills.length, 1)
+  assert.equal(source.notion.files.length, currentFiles.length - 1)
+  const liveRecords = source.notion.records.filter(
+    (row: { in_trash?: boolean }) => row.in_trash !== true,
+  )
+  assert.equal(liveRecords.length, currentFiles.length)
+  assert.ok(
+    liveRecords.every(
+      (row: { properties: Record<string, { select?: { name: string } }> }) =>
+        row.properties[currentLibrary.records.property_ids.Kind!]?.select?.name === "resource",
+    ),
+  )
+  for (const row of [...source.notion.skills, ...source.notion.files]) {
+    assert.ok(
+      source.notion.blocks[row.id]?.length > 0,
+      "Every imported page must contain its complete reading projection",
+    )
+  }
+  const afterImport = semanticWrites()
+  assert.ok(afterImport > 0)
+  const listing = await cli([
+    "files",
+    imported.page_id,
+    "--database",
+    currentLibrary.skills.database_id,
+  ])
+  assert.deepEqual(
+    listing.files.map((file: { path: string }) => file.path).sort(),
+    currentFiles.map((file) => file.path).sort(),
+  )
+  for (const file of currentFiles) {
+    const selected = listing.files.find((entry: { path: string }) => entry.path === file.path)
+    assert.ok(selected?.ref)
+    const read = await cli(["read", selected.ref])
+    assert.equal(read.content, file.content, file.path)
+  }
+  const output = join(scratch, "exports", "installed-current")
+  await cli([
+    "export",
+    imported.page_id,
+    "--database",
+    currentLibrary.skills.database_id,
+    "--output",
+    output,
+    "--format",
+    "directory",
+  ])
+  for (const file of currentFiles) {
+    const actual = join(output, file.path)
+    assert.deepEqual(await readFile(actual), Buffer.from(file.content), file.path)
+    assert.equal(((await stat(actual)).mode & 0o111) !== 0, file.executable, file.path)
+  }
+  assert.equal(semanticWrites(), afterImport, "Current consumption must not mutate Notion")
+  const beforeNoop = source.notion.records.length
+  const unchanged = await cli([...importArgs, "--operation", "installed-current-next"])
+  assert.equal(unchanged.status, "unchanged")
+  assert.equal(unchanged.state, "ready")
+  assert.equal(
+    semanticWrites(),
+    afterImport,
+    "A new operation with the same complete input must do zero semantic writes",
+  )
+  assert.equal(
+    source.notion.records.length,
+    beforeNoop,
+    "A no-op must not allocate another Operation Record",
+  )
+  assert.equal(source.unexpected.length, 0, JSON.stringify(source.unexpected))
+  currentImport = {
+    files: currentFiles.length,
+    dry_run_writes: 0,
+    import_writes: afterImport,
+    consumption_writes: 0,
+    repeated_import_writes: 0,
+    exact_export: true,
+    executable_mode: true,
+    requests: source.requests.length,
+  }
+} finally {
+  await source.close()
+}
 const report = {
   name: manifest.name,
   version: manifest.version,
@@ -161,7 +327,9 @@ const report = {
     "read_only_consumption_has_no_flag",
     "three_builtins_exact_read_export",
     "builtin_install_update",
+    "installed_current_import_dry_run_apply_read_files_export_noop",
   ],
+  current_import: currentImport,
   scratch,
 }
 await writeFile(join(scratch, "report.json"), JSON.stringify(report, null, 2) + "\n")

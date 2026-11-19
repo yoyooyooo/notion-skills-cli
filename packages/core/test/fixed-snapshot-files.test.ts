@@ -1,38 +1,36 @@
 import { describe, expect, test } from "bun:test"
 import { Crypto, Effect, FileSystem, Path } from "effect"
 import { HttpClient } from "effect/http"
+import { cachedRemoteObservation } from "../src/cache.ts"
 import { consume } from "../src/consumer.ts"
 import { decode, property, SnapshotSchema } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { fileRef, parseTarget } from "../src/ref.ts"
-import { registerRetainedSnapshot } from "../src/shared-history-materialization.ts"
-import {
-  prepareSharedSnapshotHistory,
-  retainSharedSnapshotHistory,
-} from "../src/shared-snapshot-history.ts"
+import { prepareCurrentSharedResource } from "../src/shared-current-resource.ts"
 import { listSkill, readSkill, targetSnapshot } from "../src/snapshot.ts"
 import { Store } from "../src/store.ts"
 import {
-  digest,
-  encode,
-  id,
-  library,
-  sharedSnapshotFixture,
-  skillPage,
-} from "./shared-snapshot-fixture.ts"
+  currentBytes as encode,
+  currentDigest as digest,
+  currentId as id,
+  currentLibrary as library,
+  currentRich,
+  currentSnapshotFixture,
+} from "./shared-current-fixture.ts"
 
-async function fixture(retain = false, fileCount = 3, selectedBody?: string) {
-  const f = sharedSnapshotFixture({ fileCount })
-  if (fileCount > 1) f.bodies.set(id(11), selectedBody ?? "\uFEFFSelected resource\r\n完整字节\r\n")
-  if (fileCount > 2) f.bodies.set(id(12), "Large unselected resource.\n".repeat(1_000))
-  const snapshot = await f.target(parseTarget(skillPage), { database: library.skills.database_id })
-  const plan = retain ? await f.run(prepareSharedSnapshotHistory(library, snapshot)) : undefined
-  if (plan !== undefined)
-    await f.run(retainSharedSnapshotHistory(library, { plan, mode: "create" }))
-  const retained =
-    plan === undefined
-      ? undefined
-      : await f.run(registerRetainedSnapshot(snapshot.scope, library, plan.pin_id, plan.manifest))
+async function fixture(fileCount = 3, selectedBody?: string) {
+  const f = currentSnapshotFixture({ fileCount: fileCount - 1 })
+  Object.assign(f.main.parent, { database_id: library.skills.database_id })
+  for (const [n, file] of f.files.entries())
+    file.properties.Path = currentRich("path", `references/${n + 1}.md`)
+  if (fileCount > 1)
+    await f.resource(
+      0,
+      "references/1.md",
+      encode(selectedBody ?? "\uFEFFSelected resource\r\n完整字节\r\n"),
+    )
+  if (fileCount > 2) f.bodies.set(f.files[1]!.id, "Large unselected resource.\n".repeat(1_000))
+  const snapshot = await f.open()
   const objectReads = new Map<string, number>()
   const jsonReads = new Map<string, number>()
   const outputs = new Map<string, Uint8Array>()
@@ -79,7 +77,7 @@ async function fixture(retain = false, fileCount = 3, selectedBody?: string) {
       snapshot.file_bindings?.find((binding) => binding.path === path)?.file_id,
     )
   f.clearCalls()
-  return { ...f, run, snapshot, retained, plan, file, ref, objectReads, jsonReads, outputs }
+  return { ...f, run, snapshot, file, ref, objectReads, jsonReads, outputs }
 }
 
 describe("fixed snapshot selected files", () => {
@@ -156,9 +154,12 @@ describe("fixed snapshot selected files", () => {
     expect(relative.calls).toHaveLength(0)
   })
 
-  test("a missing local selection asks to reselect even when retained history exists", async () => {
+  test("a missing local selection requires explicit current reselection even when a current receipt exists", async () => {
     for (const offline of [false, true]) {
-      const f = await fixture(true)
+      const f = await fixture()
+      const receipts = [...f.json].filter(([key]) => key.startsWith("cache/latest/"))
+      expect(receipts).toHaveLength(1)
+      expect(property(receipts[0]?.[1]).snapshot_id).toBe(f.snapshot.snapshot_id)
       f.json.delete(`snapshots/${f.snapshot.snapshot_id}.json`)
       const error = await f.run(
         Effect.flip(readSkill(f.ref("references/1.md"), { offline, output: "/memory/rejected" })),
@@ -168,6 +169,22 @@ describe("fixed snapshot selected files", () => {
       expect(f.outputs.size).toBe(0)
       expect(f.objectReads.size).toBe(0)
       expect(f.calls).toHaveLength(0)
+      expect([...f.json].filter(([key]) => key.startsWith("cache/latest/"))).toEqual(receipts)
+      if (!offline) {
+        const reselected = await f.run(
+          targetSnapshot(
+            parseTarget(fileRef(f.snapshot.record.id, f.snapshot.entrypoint)),
+            { refresh: true, database: library.skills.database_id },
+            "generated",
+            "entrypoint",
+          ),
+        )
+        expect(reselected.source).toBe("notion")
+        expect(reselected.snapshot_id).toBe(f.snapshot.snapshot_id)
+        expect(f.calls.length).toBeGreaterThan(0)
+        expect(f.recordCalls()).toHaveLength(0)
+        expect(f.semanticWrites()).toHaveLength(0)
+      }
     }
   })
 
@@ -184,6 +201,10 @@ describe("fixed snapshot selected files", () => {
     const historical = decode(SnapshotSchema, {
       ...f.snapshot,
       files,
+      file_bindings: [
+        ...f.snapshot.file_bindings!,
+        { path: "mounted/README.md", file_id: "old-reference", page_id: id(300) },
+      ],
       version_id: version,
       snapshot_id: snapshotId,
     })
@@ -193,8 +214,13 @@ describe("fixed snapshot selected files", () => {
       if (key.startsWith("cache/latest/")) {
         const observation = property(value)
         observation.snapshot_id = snapshotId
+        observation.current_snapshot = historical
         observation.validated_at = Date.now() - 600_000
       }
+    const expired = await f.run(
+      cachedRemoteObservation(f.snapshot.record.id, f.snapshot.scope, { access: "metadata" }),
+    )
+    expect(expired?.snapshot.snapshot_id).toBe(snapshotId)
     f.clearCalls()
     const result = await f.run(
       targetSnapshot(
@@ -213,7 +239,7 @@ describe("fixed snapshot selected files", () => {
 
   for (const fileCount of [3, 101])
     test(`N=${fileCount}: complete local manifest prepares only the entry despite missing or corrupt unselected objects`, async () => {
-      const f = await fixture(false, fileCount)
+      const f = await fixture(fileCount)
       const main = f.file(f.snapshot.entrypoint)
       expect(f.snapshot.files).toHaveLength(fileCount)
       f.objects.delete("objects/" + f.file("references/1.md").sha256)
@@ -313,7 +339,7 @@ describe("fixed snapshot selected files", () => {
     ["binary", "\u0000\u0001\u0002"],
   ]) {
     test(`fixed output preserves ${name} scalar files`, async () => {
-      const f = await fixture(false, 2, body)
+      const f = await fixture(2, body)
       const selected = f.file("references/1.md")
       const main = f.file(f.snapshot.entrypoint)
       f.objects.delete("objects/" + main.sha256)
@@ -340,11 +366,20 @@ describe("fixed snapshot selected files", () => {
     const original = f.file("references/1.md")
     const bytes = new Uint8Array(17 * 1024 * 1024).fill(65)
     const selected = { ...original, bytes: bytes.byteLength, sha256: digest(bytes) }
+    const prepared = await f.run(prepareCurrentSharedResource(bytes, selected.mode ?? "100644"))
     const version = digest(JSON.stringify(["large-scalar-object", selected]))
     const snapshotId = `s_${digest(JSON.stringify([f.snapshot.scope, f.snapshot.record.id, version]))}`
     const snapshot = decode(SnapshotSchema, {
       ...f.snapshot,
       files: f.snapshot.files.map((file) => (file.path === selected.path ? selected : file)),
+      shared_acquisition: {
+        ...f.snapshot.shared_acquisition!,
+        files: f.snapshot.shared_acquisition!.files.map((route) =>
+          route.path === selected.path
+            ? { kind: "resource", path: selected.path, object_id: prepared.content.object_id }
+            : route,
+        ),
+      },
       version_id: version,
       snapshot_id: snapshotId,
     })
@@ -352,7 +387,12 @@ describe("fixed snapshot selected files", () => {
     f.objects.set(`objects/${selected.sha256}`, bytes)
     const main = f.file(f.snapshot.entrypoint)
     f.objects.delete(`objects/${main.sha256}`)
-    const ref = fileRef(snapshot.record.id, selected.path, snapshotId, "file-1")
+    const ref = fileRef(
+      snapshot.record.id,
+      selected.path,
+      snapshotId,
+      snapshot.file_bindings?.find((binding) => binding.path === selected.path)?.file_id,
+    )
     const result = await f.run(readSkill(ref, { offline: true, output: "/memory/large.bin" }))
     expect(result).toMatchObject({
       bytes: selected.bytes,
@@ -368,8 +408,8 @@ describe("fixed snapshot selected files", () => {
     expect(f.calls).toHaveLength(0)
   })
 
-  test("a missing authored object never queries retained history", async () => {
-    const f = await fixture(true)
+  test("a missing selected native object requires current reselection without remote history recovery", async () => {
+    const f = await fixture()
     const main = f.file(f.snapshot.entrypoint)
     f.objects.delete("objects/" + main.sha256)
     f.objects.delete("objects/" + f.file("references/1.md").sha256)
@@ -464,7 +504,7 @@ describe("fixed snapshot selected files", () => {
       expect(error.code).toBe("SNAPSHOT_MISSING")
     }
     expect(missing.calls).toHaveLength(0)
-    const corrupt = await fixture(true)
+    const corrupt = await fixture()
     corrupt.objects.set(
       "objects/" + corrupt.file(corrupt.snapshot.entrypoint).sha256,
       encode("wrong fixed main"),
@@ -477,7 +517,7 @@ describe("fixed snapshot selected files", () => {
   })
 
   test("an invalid complete directory fails before acquiring selected bytes", async () => {
-    const f = await fixture(true)
+    const f = await fixture()
     const changed = decode(SnapshotSchema, {
       ...f.snapshot,
       files: f.snapshot.files.map((file) =>

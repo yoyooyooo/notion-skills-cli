@@ -50,7 +50,7 @@ test("executable builtin examples stay within the public current command surface
     "prepare",
     "resolve",
   ])
-  const library = new Set(["init", "inspect", "files", "profile"])
+  const library = new Set(["init", "inspect", "files", "import", "profile"])
   let examples = 0
   for (const skill of builtins) {
     for (const file of skill.portable.files) {
@@ -76,7 +76,7 @@ test("executable builtin examples stay within the public current command surface
   expect(examples).toBeGreaterThan(10)
 })
 
-test("maintenance prepares complete current input without claiming an available content writer", () => {
+test("maintenance teaches the current complete import and its actual recovery boundary", () => {
   const root = fileText("notion/ntn-skills-maintain", "SKILL.md")
   const setup = fileText("notion/ntn-skills-maintain", "references/setup.md")
   const operations = fileText("notion/ntn-skills-maintain", "references/operations.md")
@@ -85,14 +85,17 @@ test("maintenance prepares complete current input without claiming an available 
   expect(root).toContain("read PAGE_ID --database ENTRY --refresh --json")
   expect(root).toContain("CURRENT_SCHEMA_REQUIRED")
   expect(root).toContain("CURRENT_OPERATION_PENDING")
-  expect(root).toContain("current writer is unavailable")
+  expect(root).toContain("ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run")
+  expect(root).toContain("--operation OPERATION_ID --resume")
+  expect(root).toContain("zero semantic Notion writes")
   expect(root).toContain("not a completed")
   expect(setup).toContain("ctl library init --parent AUTHORIZED_PARENT_PAGE")
-  expect(setup).toContain("current public writer is not available")
+  expect(setup).toContain("ctl library import INPUT --entry ENTRY --skill-id SKILL_ID")
+  expect(setup).toContain("does not convert")
   expect(setup).toContain("/context-broker connect SOURCE ENTRY")
   expect(operations).toContain("metadata-only")
   expect(operations).toContain("Target inspection does not prove whole-library coverage")
-  expect(operations).toContain("unknown CREATE")
+  expect(operations).toMatch(/unknown CREATE/iu)
 })
 
 test("consumption and Profile guidance preserve zero-write reads and complete current replacement", () => {
@@ -120,6 +123,9 @@ test("the published documentation allowlist contains only current guides", () =>
   expect(manifest.files.filter((path) => path.startsWith("docs/"))).toEqual([
     "docs/README.md",
     "docs/current-contract.md",
+    "docs/usage.md",
+    "docs/shared-authoring.md",
+    "docs/protocol.md",
     "docs/maintenance-verification-review.md",
   ])
 })

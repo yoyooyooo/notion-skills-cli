@@ -289,6 +289,11 @@ const sharedLocalDomains: readonly {
     address: /^operations\/shared-profile-pending\/[a-f0-9]{64}\/[a-f0-9]{64}\/pending\.json$/u,
   },
   {
+    prefix: "operations/current-write-pending",
+    category: "dispatch",
+    address: /^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u,
+  },
+  {
     prefix: "operations/shared-sources",
     category: "dispatch",
     address:
@@ -888,6 +893,45 @@ export function sqliteState(
                   }
                   return
                 }
+                if (key.startsWith("operations/current-write-pending/")) {
+                  const rows = yield* sql<{
+                    payload: string
+                    category: string
+                    retired: number
+                  }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
+                  const previous = rows[0]
+                  if (previous !== undefined) {
+                    const before = property(yield* parse(previous.payload)),
+                      after = property(value)
+                    const identity = (row: Record<string, unknown>) => {
+                      const intent = property(row.intent)
+                      return JSON.stringify([
+                        row.version,
+                        row.scope,
+                        row.library_id,
+                        row.record_id,
+                        intent.operation_id,
+                        intent.skill_id,
+                        intent.input_sha256,
+                      ])
+                    }
+                    if (
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      identity(before) !== identity(after)
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "A pending current write cannot change its owner or input.",
+                          { key },
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                  } else
+                    yield* sql`INSERT INTO shared_local_records(key,category,payload,retired) VALUES(${key},'dispatch',${payload},0)`
+                  return
+                }
                 // Content proofs are rebuilt only after complete verification. Replacing one cannot
                 // renew or recreate a current observation; its independent fence remains authoritative.
                 if (mutableSharedLocalPrefixes.some((prefix) => key.startsWith(`${prefix}/`)))
@@ -1096,9 +1140,12 @@ export function sqliteState(
                       yield* sql`UPDATE cache_fences SET retired_through=generation WHERE scope=${saved.scope} AND identity=${saved.record_identity}`
                     }
                   }
-                  // A Profile keeps only its unfinished current write. Completion
-                  // clears the rules and permits the next intent at the same address.
-                  if (key.startsWith("operations/shared-profile-pending/"))
+                  // Current Profile and Skill writes retain only unfinished intent.
+                  // Completion permits the next intent at the same address.
+                  if (
+                    key.startsWith("operations/shared-profile-pending/") ||
+                    key.startsWith("operations/current-write-pending/")
+                  )
                     yield* sql`DELETE FROM shared_local_records WHERE key=${key} AND category='dispatch'`
                   else
                     yield* sql`UPDATE shared_local_records SET retired=1 WHERE key=${key} AND category=${sharedCategory}`
@@ -1145,11 +1192,13 @@ export function sqliteState(
               }
               return keys.map((key) => ({
                 key,
-                retention_path: key.startsWith("operations/shared-profile-pending/")
-                  ? "sqlite_current_profile_cleared"
-                  : sharedLocalCategory(key) === "dispatch"
-                    ? "sqlite_shared_dispatch_retirement"
-                    : "sqlite_observation_retirement",
+                retention_path: key.startsWith("operations/current-write-pending/")
+                  ? "sqlite_current_write_cleared"
+                  : key.startsWith("operations/shared-profile-pending/")
+                    ? "sqlite_current_profile_cleared"
+                    : sharedLocalCategory(key) === "dispatch"
+                      ? "sqlite_shared_dispatch_retirement"
+                      : "sqlite_observation_retirement",
               }))
             }),
           )

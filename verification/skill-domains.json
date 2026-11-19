@@ -37,7 +37,9 @@
       ],
       "regressions": [
         "packages/core/test/shared-current-index.test.ts",
-        "packages/core/test/shared-profile.test.ts"
+        "packages/core/test/shared-profile.test.ts",
+        "packages/core/test/shared-current-write.test.ts",
+        "packages/core/test/shared-current-projection.test.ts"
       ],
       "installed_recipe": ".cursor/skills/verify-ntn-skills/features/skill-maintenance.md",
       "excludes": ["消费资格和缓存", "宿主投递/自然模型"]

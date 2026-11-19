@@ -6,7 +6,6 @@ import {
   type ConsumptionObservationOptions,
 } from "./consumption-effects.ts"
 import { readArchive } from "./archive.ts"
-import { openRetainedSnapshot } from "./shared-history-materialization.ts"
 import {
   loadSnapshot,
   loadSnapshotManifest,

@@ -56,6 +56,7 @@ export const prepareNotionRequest = Effect.fnUntraced(function* (input: {
   readonly credential: NotionCredential
   readonly body?: unknown
   readonly file?: string
+  readonly partNumber?: number
   readonly entityPropertyId?: string
 }) {
   const url = yield* Effect.try({
@@ -76,6 +77,22 @@ export const prepareNotionRequest = Effect.fnUntraced(function* (input: {
     HttpClientRequest.acceptJson,
   )
   let requestBytes = 0
+  if (
+    input.partNumber !== undefined &&
+    (input.file === undefined ||
+      input.method !== "POST" ||
+      !/^v1\/file_uploads\/[a-f0-9-]+\/send$/iu.test(input.path) ||
+      !Number.isSafeInteger(input.partNumber) ||
+      input.partNumber < 1 ||
+      input.partNumber > 1000)
+  )
+    return yield* Effect.fail(
+      fail(
+        "ARGUMENT_INVALID",
+        "A multipart upload requires a file, upload send path and part number from 1 to 1000.",
+        { phase: "input_rejected" },
+      ),
+    )
   if (input.file !== undefined) {
     if (input.body !== undefined)
       return yield* Effect.fail(
@@ -111,6 +128,7 @@ export const prepareNotionRequest = Effect.fnUntraced(function* (input: {
       )
     const form = new FormData()
     form.append("file", new Blob(chunks), path.basename(input.file))
+    if (input.partNumber !== undefined) form.append("part_number", String(input.partNumber))
     // Use the platform multipart encoder once. Its boundary, filename escaping,
     // MIME headers and bytes are immutable across safe rejected-write retries.
     const encoded = new Response(form)

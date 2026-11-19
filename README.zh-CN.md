@@ -16,12 +16,13 @@
 | 查看完整文件目录 | `files` |
 | 导出完整当前选择到本地 | `export` |
 | 检查当前文件权威、归属和在途状态 | `ctl library files` |
+| 导入或替换一个完整本地文件树 | `ctl library import`，支持 `--dry-run` 和原意图 `--resume` |
 | 创建或检查当前四表结构 | `ctl library init`、`ctl library inspect` |
 | 管理共享当前 Profile | `ctl library profile` |
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前内容 writer 还在完成。旧 create/apply/write/replace/adopt、Source 刷新、sync、snapshot/archive 和 repair 命令已退出当前 CLI，没有兼容作者入口。当前数据转换、所有 Files 的全文投影、旧对象清理和真实 Pi 安装仍需分别完成。
+当前导入会写入精确 resource 原件并生成完整阅读投影。Source 刷新、局部更新和 portable 关系写入仍待完成。旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
 
 ## 安装
 
@@ -74,7 +75,7 @@ ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
 | Sources | 稳定 Source 定义与完整当前选定计划 |
 | Records | 当前精确资源、唯一当前 Profile、未完成管理意图 |
 
-`Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，其他文件在 Files。文本阅读投影必须包含全文，图片和二进制提供可用原件。尚未实施的投影与迁移工作见[当前合同](docs/current-contract.md)。
+`Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，其他文件在 Files。当前完整导入会生成全文阅读投影，图片和二进制提供可用原件。真实库的覆盖、迁移和剩余能力见[当前合同](docs/current-contract.md)。
 
 只检查当前目录和权威，不读取正文：
 
@@ -94,6 +95,15 @@ ntn-skills ctl library init --parent PARENT_PAGE_ID
 
 这个命令创建当前结构，不导入本地 Skill，也不证明 Pi 已投递。具体边界见[设置说明](skills/notion/ntn-skills-maintain/references/setup.md)。
 
+把完整本地树导入这个当前库：
+
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
+```
+
+导入保留精确原件并生成完整阅读页，同一稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
+
 Profile 将当前 View 和 freshness 规则保存在一个稳定 Record：
 
 ```sh
@@ -106,7 +116,7 @@ ntn-skills list --profile PROFILE_ID --database ENTRY_DATABASE_ID
 
 ## Agent 接入
 
-通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责当前检查、设置与 writer 边界；`notion/ntn-skills-sync` 负责当前 Profile 与 Source 权威规则，不再教旧来源写入命令。
+通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责设置、完整当前导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile 与 Source 权威规则，不再教旧来源写入命令。
 
 Pi 是首个日用宿主，Notion discovery/use/资源读取使用配对 SDK。OMP/Tern 适配延期，但它们目录中的本地 Skill 内容仍属于 Pro 迁移盘点。
 

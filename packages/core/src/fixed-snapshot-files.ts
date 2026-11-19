@@ -15,6 +15,7 @@ import {
   type Snapshot,
 } from "./model.ts"
 import { materializeSharedFixedAcquisition } from "./shared-fixed-acquisition.ts"
+import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
 import { sha256, Store } from "./store.ts"
 
 const checked = <A>(action: () => A) =>
@@ -187,6 +188,13 @@ export function openFixedSnapshotFiles(
         return { path, bytes }
       }),
     )
+    if (snapshot.record.locator.type === "shared_skill")
+      yield* checked(() =>
+        assertSelectedSharedFileReferences(
+          files,
+          snapshot.files.map((file) => file.path),
+        ),
+      )
     return { snapshot, files, access_denied: accessDenied }
   })
 }

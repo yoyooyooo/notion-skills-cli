@@ -1,7 +1,7 @@
 ---
 name: ntn-skills-maintain
-description: Inspect the current Notion Skill library, its complete file ownership and reading state, or create its four-table layout. Use for content-management requests, complete local inputs and incomplete current operations; determine which current management capability is available before changing content.
-compatibility: Requires the installed ntn-skills CLI and Notion access for the requested operation. Ordinary inspection requires no Notion write permission.
+description: Import or replace a complete current Notion Skill tree, inspect Skills and Files ownership, resume an unfinished current import, or create the four-table layout. Use for local Skill migration and current content-management requests.
+compatibility: Requires the installed ntn-skills CLI and access to the exact library. Import needs Notion Insert and Update permission; ordinary inspection needs Read permission.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -9,78 +9,88 @@ metadata:
 
 # Maintain the current library
 
-Use the exact executable, library and target supplied by the task. Names are
-display labels, not unique identities. The current CLI exposes library setup,
-inspection and Profile management. Content import, apply, file mutation, Source
-refresh and cleanup commands are not available while the current writer is
-being completed.
+Use the exact executable and library supplied by the task. A stable Skill ID
+selects content; a name is a display label. The public writer imports a complete
+local tree. Source refresh and whole-library governance remain separate work.
 
-For an existing Skill, inspect its current main descriptor and every supporting
-Files row, then read the requested content:
+## Inspect and prepare
 
-```bash
+For existing content, inspect the current owner and directory first:
+
+```sh
 ntn-skills ctl library files PAGE_ID --entry ENTRY
 ntn-skills read PAGE_ID --database ENTRY --refresh --json
 ```
 
-The first command is metadata-only and includes current state, ownership, paths
-and authority. It does not certify file bodies. The second uses the ordinary
-read-only consumer. Follow exact returned refs for supporting files; export a
-complete tree when the task requires every byte.
+The first command is metadata-only. Use returned file refs or export to obtain
+every required byte. Preserve original paths, text encoding and executable modes.
+The input directory or ZIP needs root SKILL.md; a portable Router or Prompt uses
+its canonical entrypoint. An explicitly selected single Markdown file becomes
+SKILL.md. Use a real physical path; symlink inputs and changing files are rejected.
 
-## Content ownership
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
+```
 
-Skills owns one main document. Each supporting file has one Files row with a
-stable File ID, one Skill owner, a safe relative Path and a current Content
-descriptor. The descriptor is one of:
+Inspect added and removed Files and authority changes. Import replaces the entire
+file tree, so omit a file only when its removal is intended. Follow the task's
+existing authorization. Preview is not a completed content edit.
+Local Markdown links must resolve inside that complete input; remove or update
+inbound links before omitting their target file.
 
-- `native`: the page body is authoritative; stored frontmatter and mode complete
-  the file. A native edit is read directly without an adoption record.
-- `source`: one exact current Source ID/revision/path supplies bytes, hash, size
-  and mode. A generated page is for reading; editing it does not transfer authority.
-- `resource`: one exact current Records resource supplies bytes, hash, size and
-  mode. The reading page does not replace the original.
+## Apply and verify
 
-Text Files should have complete human-readable bodies; images and binary files
-should expose usable originals. Metadata, URLs or hash placeholders do not
-prove that reading projection is complete. Current input validation and actual
-Notion projection are separate checks.
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
+ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills export PAGE_ID --database ENTRY --output NEW_DIRECTORY
+```
 
-## State and errors
+Use the returned PAGE_ID. Import preserves the physical Skill and retained File
+IDs, writes every supporting File and checks complete reading pages. It removes
+omitted supporting rows and unreferenced owned Resource rows after checking the
+new content. Repeating the same complete input performs zero semantic Notion writes.
 
-`ready` requires an empty Operation field. `applying` and `attention` require
-the current operation ID. Ordinary consumers refuse non-ready content before
-reading bodies. This finite state identifies unfinished current work; it is not
-a content-version history.
+Default import uses resource authority and preserves exact original bytes.
+Readable text appears in full. Opaque files expose a usable original; unsupported
+upload formats use a ZIP containing only that original. Read/export restores the
+original path, bytes and mode. Display name and description do not rewrite content.
 
-A missing or invalid Content descriptor returns `CURRENT_SCHEMA_REQUIRED`.
-An unfinished current operation returns `CURRENT_OPERATION_PENDING`. Preserve
-the exact error, affected owner and next action. Do not replace missing content
-with Git, another Skill or cached older content, and do not mark state ready by
-hand to bypass an incomplete tree.
+An existing Skill keeps unspecified Enabled, Default Context, Members and
+Requires values. Portable relationship/projection fields that this import cannot
+apply are rejected explicitly. Do not strip them to force a successful import.
 
-## A content-change request
+## Authority and unfinished work
 
-Use the already authorized scope. Inspect the exact current tree and prepare
-the complete requested local input, preserving supporting paths, original
-bytes, modes and intended relationships. Source-generated and native files need
-an explicit authority decision. Missing or inaccessible data is not deletion
-intent.
+Skills contains one main document; each supporting file has one Files row.
 
-Check the installed command schema for the specific required operation. When
-the current writer is unavailable, report that boundary and the prepared input;
-do not invent an apply command, patch bookkeeping properties directly or use a
-different operation family. Inspection is useful work, but is not a completed
-content edit. No content versions or proof records are required.
+- native owns its page body plus explicit frontmatter and mode.
+- resource owns its current exact original in Records.
+- source owns its declared current Source/revision/path.
+
+Generated bodies are reading projections. Editing one does not change authority.
+Missing current metadata returns CURRENT_SCHEMA_REQUIRED and needs explicit
+conversion. CURRENT_OPERATION_PENDING means ordinary consumption cannot proceed.
+
+Resume the same complete input using the returned operation identity:
+
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --operation OPERATION_ID --resume
+```
+
+Do not change input under an unfinished intent. Unknown CREATE or append is
+observed before continuing and is never repeated because a query returned empty.
+A partially applied append may remain unresolved. Keep its current state and
+specific error; do not mark it ready manually. Completion clears the finite
+operation instead of retaining content versions or permanent ACK records.
 
 ## Other routes
 
 | Task | Read |
 | --- | --- |
-| Connect an existing library or create a current layout | [Setup](references/setup.md) |
-| Inspect complete input, authority or incomplete current work | [Operations](references/operations.md) |
-| Shared Profile/View/freshness rules and current Source boundaries | `notion/ntn-skills-sync` |
+| Create or connect a current layout | [Setup](references/setup.md) |
+| Complete input, recovery and cleanup boundaries | [Operations](references/operations.md) |
+| Profile/View/freshness and current Source ownership | notion/ntn-skills-sync |
 
-For package references, use `ctl builtin read notion/ntn-skills-maintain --path
-RELATIVE_PATH`. Do not search private cache or repository directories to find
-bundled instructions.
+Use `ctl builtin read notion/ntn-skills-maintain --path RELATIVE_PATH` for package
+references. Do not search private cache directories for bundled instructions.

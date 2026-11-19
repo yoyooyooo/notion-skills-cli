@@ -12,7 +12,11 @@ correspondence. Those former passes do not certify the current line.
 | One strict native/resource/source descriptor; finite Skill readiness | `shared-current-file.ts`, `shared-current-index.ts` | `shared-current-index.test.ts` |
 | Complete current tree; native edits; local body freshness; zero semantic writes | `shared-snapshot.ts` | `shared-current-snapshot.test.ts` |
 | Current stable Source selection and complete source layout | `shared-current-source.ts` | `shared-current-source.test.ts` |
-| Current exact resources, inline or one original attachment | `shared-current-resource.ts`, current resource Records functions | `shared-current-resource.test.ts` |
+| Current exact resources, inline, attachment or a single-original ZIP carrier | `shared-current-resource.ts`, `shared-current-records.ts` | `shared-current-resource.test.ts` |
+| Complete current input, original bytes, stable Files and owner-scoped retirement | `shared-current-write-input.ts`, `shared-current-write.ts` | `shared-current-write-input.test.ts`, `shared-current-write.test.ts` |
+| One unfinished intent, unknown-result observation, finite pending cleanup | `shared-current-operation.ts` | `shared-current-operation.test.ts`, `shared-current-operation.node.test.ts` |
+| Full text, code and binary reading projections | `shared-current-projection.ts` | `shared-current-projection.test.ts` |
+| Current upload identity, multipart transmission and actual HTTP requests | `shared-current-upload.ts`, `notion-http.ts` | `shared-current-upload.test.ts`, `shared-current-upload-http.test.ts` |
 | Single per-file acquisition v5 and current-locator checks | `shared-acquisition-model.ts`, `shared-fixed-acquisition.ts` | `shared-acquisition-contract.test.ts` |
 | Current Profile replacement and finite local pending intent | `shared-profile.ts` | `shared-profile.test.ts` |
 | HTTP limits, cancellation and read sharing | Existing request engine and coalescing | Existing request-budget, request-engine-contract and shared-read-coalescing tests |
@@ -42,6 +46,9 @@ are materialized against current bindings.
 Resource acquisition verifies exact bytes and mode. Generated resource or Source
 body edits never transfer authority. A complete directory and all file bindings
 remain visible even when only the entry or one exact resource is downloaded.
+Reference checks use that complete directory and only the loaded bodies. Deferred
+Markdown is checked when selected, so directory listing does not download all
+supporting text. A complete import checks all input references before Notion access.
 
 Pending current operations, missing Content descriptors, owner/path conflicts,
 incomplete pagination, permission failure and incomplete bodies block a complete
@@ -50,14 +57,17 @@ pages or repairing operations would be semantic writes and is forbidden here.
 
 ## Public boundary
 
-Current `ctl library` exposes init, inspect, files and profile. The content,
-Source-refresh, sync, archive, graph-release, repair and old migration writers are
-not public routes while the current writer is being completed. A removed route
-must fail, not redirect to a compatibility handler.
+Current `ctl library` exposes init, inspect, files, import and profile. Import
+accepts one complete local tree, with dry run and resume on the same route.
+Source-refresh, partial relationship updates, sync, archive, graph-release,
+repair and old migration writers are not public routes. A removed route must
+fail without redirecting to a compatibility handler.
 
-Current Profile tests may establish in-place rule replacement, unknown-response
-reconciliation and no-op behavior. They do not establish the unfinished
-content/Source writer, full projection generation or live library cleanup.
+Current Profile tests establish in-place rule replacement, unknown-response
+reconciliation and no-op behavior for Profile rules. The current writer and
+projection tests cover their own operation and output. The existing installed
+package runner exercises dry run, import, files, individual reads, exact export
+and zero-write reimport. None establishes live library cleanup.
 
 ## Retired validation requirements
 
@@ -74,8 +84,9 @@ Existing request-engine checks remain independently useful for their actual scop
 
 ## Remaining acceptance
 
-AH-504/507 must connect the current writer and finite recovery. AH-501 must
-populate every supporting Files row and full reading projection. AH-505/513 must
+AH-504/507 still own partial writes, Source management and remaining recovery
+exits. AH-501 must populate and verify every actual supporting Files row and
+reading projection in the live library. AH-505/513 must
 resolve current references and remove actual obsolete Notion objects after
 preserving unique current bytes. AH-517 must finish code, package and guidance
 retirement. A documentation rewrite alone does not finish those tasks.

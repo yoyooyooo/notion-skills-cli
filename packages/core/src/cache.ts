@@ -17,7 +17,7 @@ import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 import { currentMaterializationVersion } from "./materialization.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
 import { catalog } from "./catalog.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 
 export interface ReadPolicyOptions {
@@ -371,9 +371,8 @@ function validateSharedCurrentTree(
     // Every authority uses the same complete directory for local references.
     yield* Effect.try({
       try: () =>
-        assertSharedFileReferences(
+        assertSelectedSharedFileReferences(
           files,
-          undefined,
           snapshot.files.map((file) => file.path),
         ),
       catch: (error) =>
@@ -381,8 +380,8 @@ function validateSharedCurrentTree(
           ? error
           : fail("STATE_CORRUPT", "Shared snapshot references failed validation."),
     })
-    // The complete path/reference proof is distinct from selected actual bytes.
-    // Missing raw bytes require a still-current exact acquisition route.
+    // Only these bodies have been verified against the complete directory.
+    // Omitted bytes need a still-current route and validation when acquired.
     yield* store.writeJson(key, {
       ...receipt,
       ...(paths.length === snapshot.files.length ? {} : { verified_paths: [...paths].sort() }),

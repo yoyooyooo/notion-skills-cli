@@ -84,6 +84,7 @@ export function withNotionRequestAttribution<A, E, R>(
 type NotionRequestOptions = {
   readonly method?: "GET" | "POST" | "PATCH"
   readonly file?: string
+  readonly partNumber?: number
   readonly content?: "body"
   readonly priority?: RequestPriority
   readonly queueBudgetMs?: number
@@ -249,6 +250,7 @@ export const NotionTransport = Layer.effect(
           credential,
           body,
           file: options?.file,
+          partNumber: options?.partNumber,
           entityPropertyId: options?.entityPropertyId,
         }).pipe(
           Effect.provideService(FileSystem.FileSystem, fs),
@@ -262,6 +264,7 @@ export const NotionTransport = Layer.effect(
             path,
             body,
             options?.file,
+            options?.partNumber,
             // A shared producer owns admission; incompatible queue budgets
             // cannot inherit the first waiter's timeout or deferred outcome.
             options?.queueBudgetMs ?? NOTION_ADMISSION_BUDGET_MS,

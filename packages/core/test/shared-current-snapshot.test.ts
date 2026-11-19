@@ -346,4 +346,53 @@ describe("current tree consumption", () => {
     )
     expect(f.calls).toHaveLength(0)
   })
+
+  test("a directory selection checks its main against deferred Markdown paths without downloading those bodies", async () => {
+    const f = currentSnapshotFixture()
+    f.bodies.set(currentSkillPage, "# Main\n\nRead [guide](references/guide.md).\n")
+    const guide = currentBytes("# Guide\r\n\r\nRead [other](other.md).\r\n")
+    const other = currentBytes("# Other\n")
+    await f.resource(0, "references/guide.md", guide)
+    await f.resource(1, "references/other.md", other)
+    const selected = await f.open({ requestedPaths: [] })
+    expect(selected.materialization?.materialized_paths).toEqual(["SKILL.md"])
+    expect(f.recordCalls()).toHaveLength(0)
+    expect(f.objects.has(`objects/${currentDigest(guide)}`)).toBe(false)
+    expect(f.objects.has(`objects/${currentDigest(other)}`)).toBe(false)
+    f.clearCalls()
+    expect(
+      await f.run(
+        cachedRemoteObservation(selected.record.id, currentScope, { access: "metadata" }),
+      ),
+    ).toBeDefined()
+    expect(f.calls).toHaveLength(0)
+    const acquired = await f.run(openFixedSnapshotFiles(selected, () => ["references/guide.md"]))
+    expect(acquired.files).toEqual([{ path: "references/guide.md", bytes: guide }])
+    expect(f.recordCalls()).toHaveLength(1)
+    expect(f.objects.has(`objects/${currentDigest(other)}`)).toBe(false)
+    expect(f.semanticWrites()).toHaveLength(0)
+  })
+
+  test("reference validation still rejects absent targets in either the selected main or a lazily acquired child", async () => {
+    for (const invalid of ["main", "child"]) {
+      const f = currentSnapshotFixture({ fileCount: 1 })
+      f.bodies.set(
+        currentSkillPage,
+        invalid === "main" ? "[Missing](absent.md)\n" : "[Guide](references/guide.md)\n",
+      )
+      await f.resource(0, "references/guide.md", currentBytes("[Missing](absent.md)\n"))
+      if (invalid === "main")
+        await expect(f.open({ requestedPaths: [] })).rejects.toMatchObject({
+          code: "SHARED_REFERENCE_BROKEN",
+        })
+      else {
+        const selected = await f.open({ requestedPaths: [] })
+        expect(f.recordCalls()).toHaveLength(0)
+        await expect(
+          f.run(openFixedSnapshotFiles(selected, () => ["references/guide.md"])),
+        ).rejects.toMatchObject({ code: "SHARED_REFERENCE_BROKEN" })
+      }
+      expect(f.semanticWrites()).toHaveLength(0)
+    }
+  })
 })

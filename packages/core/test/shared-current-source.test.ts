@@ -12,8 +12,14 @@ import {
   resolveCurrentSharedSources,
   validateCurrentSharedSourceContent,
   type CurrentSharedSourceContent,
+  type CurrentSharedSourcePlanContent,
+  prepareCurrentSharedSourceContent,
 } from "../src/shared-current-source.ts"
 import { Store } from "../src/store.ts"
+import {
+  prepareCurrentSharedResource,
+  type PreparedCurrentSharedResource,
+} from "../src/shared-current-resource.ts"
 import { integrityRepositoryFixture, upstreamRepositoryFixture } from "./fixtures.ts"
 
 const id = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, "0")}`
@@ -27,7 +33,21 @@ const library: SharedLibrary = {
   parent_page_id: id(1),
   skills: { database_id: id(2), data_source_id: id(3), property_ids: {} },
   files: { database_id: id(4), data_source_id: id(5), property_ids: {} },
-  records: { database_id: id(6), data_source_id: id(7), property_ids: {} },
+  records: {
+    database_id: id(6),
+    data_source_id: id(7),
+    property_ids: {
+      Name: "title",
+      "Record ID": "record",
+      Kind: "kind",
+      "Entity ID": "entity",
+      Hash: "hash",
+      Payload: "payload",
+      Skill: "skill",
+      Origin: "origin",
+      Resource: "resource",
+    },
+  },
   sources: {
     database_id: id(8),
     data_source_id: id(9),
@@ -40,7 +60,7 @@ const library: SharedLibrary = {
     },
   },
 }
-const content = (files: Readonly<Record<string, string>>): CurrentSharedSourceContent => ({
+const content = (files: Readonly<Record<string, string>>): CurrentSharedSourcePlanContent => ({
   version: 1,
   plan: {
     version: 1,
@@ -67,12 +87,17 @@ const content = (files: Readonly<Record<string, string>>): CurrentSharedSourceCo
 const rich = (id: string, value: string) => ({
   id,
   type: "rich_text",
-  rich_text: [{ type: "text", text: { content: value }, plain_text: value }],
+  rich_text: (value.match(/[\s\S]{1,1900}/gu) ?? []).map((part) => ({
+    type: "text",
+    text: { content: part },
+    plain_text: part,
+  })),
   has_more: false,
 })
 function row(sourceId: string, value: CurrentSharedSourceContent, page = id(20)) {
   const canonical = validateCurrentSharedSourceContent(value)
-  const revision = digest(canonicalSharedJson(canonical.plan))
+  const revision =
+    "plan" in canonical ? digest(canonicalSharedJson(canonical.plan)) : canonical.resource.sha256
   return {
     object: "page",
     id: page,
@@ -101,6 +126,51 @@ const list = (results: readonly unknown[], next: string | null = null) => ({
   has_more: next !== null,
   next_cursor: next,
 })
+const manifestUrl =
+  "https://secure.notion-static.com/current/source-manifest.json?signature=fixture"
+function manifestRecord(prepared: PreparedCurrentSharedResource, sourcePage = id(20)) {
+  const payload = canonicalSharedJson({
+    version: 1,
+    operation_id: `store-${prepared.content.object_id}`,
+    payload: prepared.manifest,
+  })
+  return {
+    object: "page",
+    id: id(80),
+    parent: { type: "data_source_id", data_source_id: library.records.data_source_id },
+    properties: {
+      title: {
+        id: "title",
+        type: "title",
+        title: [{ type: "text", text: { content: "Current Source manifest" } }],
+      },
+      record: rich("record", prepared.content.object_id),
+      entity: rich("entity", prepared.content.object_id),
+      kind: { id: "kind", type: "select", select: { name: "resource" } },
+      hash: rich("hash", digest(payload)),
+      payload: rich("payload", payload),
+      skill: { id: "skill", type: "relation", has_more: false, relation: [] },
+      origin: { id: "origin", type: "relation", has_more: false, relation: [{ id: sourcePage }] },
+      resource: {
+        id: "resource",
+        type: "files",
+        files:
+          prepared.status === "inline"
+            ? []
+            : [
+                {
+                  type: "file",
+                  name: "source-manifest.json",
+                  file: {
+                    url: manifestUrl,
+                    expiry_time: new Date(Date.now() + 60_000).toISOString(),
+                  },
+                },
+              ],
+      },
+    },
+  }
+}
 type Requirements =
   | Store
   | Notion
@@ -112,6 +182,7 @@ type Requirements =
 function fixture(
   responses: readonly unknown[],
   bodies: ReadonlyMap<string, Uint8Array> = new Map(),
+  resourceRows: readonly unknown[] = [],
 ) {
   const calls: Array<{ path: string; body: unknown; method: string }> = []
   const requests: string[] = []
@@ -148,6 +219,7 @@ function fixture(
         objects.set(key, bytes.slice())
       }),
   }
+  let sourceQueries = 0
   const notion: Notion["Service"] = {
     version: Effect.succeed("test"),
     credentialIdentity: Effect.succeed("test"),
@@ -156,11 +228,16 @@ function fixture(
         const method = options?.method ?? (body === undefined ? "GET" : "POST")
         calls.push({ path, body, method })
         if (
+          method === "POST" &&
+          path.startsWith(`v1/data_sources/${library.records.data_source_id}/query?`)
+        )
+          return list(resourceRows)
+        if (
           method !== "POST" ||
           !path.startsWith(`v1/data_sources/${library.sources!.data_source_id}/query?`)
         )
           return yield* Effect.die(new Error("A current Source reader must only query Sources"))
-        const response = responses[calls.length - 1]
+        const response = responses[sourceQueries++]
         if (response === undefined)
           return yield* Effect.die(new Error("Unexpected extra Source query"))
         return response
@@ -408,7 +485,7 @@ describe("current Sources", () => {
   })
 
   test("local Source plans require explicit machine bindings and cannot contain local paths", async () => {
-    const local: CurrentSharedSourceContent = {
+    const local: CurrentSharedSourcePlanContent = {
       version: 1,
       plan: {
         version: 1,
@@ -441,6 +518,104 @@ describe("current Sources", () => {
         plan: { ...local.plan, base: { ...local.plan.base, absolute_root: "/private/local/path" } },
       }),
     ).toThrow()
+  })
+
+  test("large Source manifests use one owned original and retain the canonical plan fingerprint", async () => {
+    const large = content(
+      Object.fromEntries(
+        Array.from({ length: 1000 }, (_, index) => [`asset-${index}.txt`, `content-${index}`]),
+      ),
+    )
+    const prepared = await fixture([]).run(prepareCurrentSharedSourceContent(large.plan))
+    const resource = prepared.resource
+    if (resource === undefined || resource.status !== "needs_attachment")
+      throw new Error("Expected a large Source attachment")
+    expect(prepared.content).toEqual({ version: 1, resource: resource.content })
+    expect(prepared.revision).toBe(digest(resource.bytes))
+    expect(resource.manifest.storage).toEqual({ kind: "attachment" })
+    const current = row("docs", prepared.content)
+    const selectedUrl = `${origin}/example/skills/fixed/asset-4.txt`
+    const f = fixture(
+      [list([current])],
+      new Map([
+        [manifestUrl, resource.bytes],
+        [selectedUrl, encode("content-4")],
+      ]),
+      [manifestRecord(resource)],
+    )
+    const sources = await f.run(
+      resolveCurrentSharedSources(library, { selections: [selection(current)], sourceOptions: {} }),
+    )
+    expect(sources.get("docs")!.revision).toBe(prepared.revision)
+    expect(sources.get("docs")!.manifest).toHaveLength(1000)
+    expect(f.calls).toHaveLength(2)
+    expect(property(f.calls[1]!.body).filter).toMatchObject({
+      and: [{ property: "origin", relation: { contains: current.id } }, {}],
+    })
+    expect(f.requests).toEqual([manifestUrl])
+    expect((await f.run(sources.get("docs")!.materialize(["asset-4.txt"]))).files).toEqual([
+      { path: "asset-4.txt", bytes: encode("content-4"), mode: "100644" },
+    ])
+    expect(f.requests).toEqual([manifestUrl, selectedUrl])
+    expect(f.calls.every((call) => call.method === "POST" && call.path.includes("/query?"))).toBe(
+      true,
+    )
+  })
+
+  test("resource Source selection validates all row states before downloading a manifest and never uses cached history", async () => {
+    const original = encode(canonicalSharedJson(content({ "SKILL.md": "main" }).plan))
+    const prepared = await fixture([]).run(
+      prepareCurrentSharedResource(original, "100644", { storage: "attachment" }),
+    )
+    const current = row("docs", { version: 1, resource: prepared.content })
+    const disabled = row("disabled", content({ "SKILL.md": "other" }), id(21))
+    disabled.properties.enabled.checkbox = false
+    const blocked = fixture([list([current, disabled])])
+    await expect(
+      blocked.run(
+        resolveCurrentSharedSources(library, {
+          selections: [selection(current), selection(disabled)],
+          sourceOptions: {},
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "SOURCE_DISABLED" })
+    expect(blocked.calls).toHaveLength(1)
+    expect(blocked.requests).toEqual([])
+    for (const resourceRows of [[], [manifestRecord(prepared, id(99))]]) {
+      const f = fixture([list([current])], new Map([[manifestUrl, original]]), resourceRows)
+      f.objects.set(`objects/${prepared.content.sha256}`, original)
+      const error = await f.run(
+        Effect.flip(
+          resolveCurrentSharedSources(library, {
+            selections: [selection(current)],
+            sourceOptions: {},
+          }),
+        ),
+      )
+      expect(error.code).toBe(
+        resourceRows.length === 0 ? "SHARED_RESOURCE_UNAVAILABLE" : "CURRENT_RECORD_INVALID",
+      )
+      expect(f.requests).toEqual([])
+      expect(f.calls).toHaveLength(2)
+    }
+  })
+
+  test("a resource manifest must decode to the canonical plan selected by Last Revision", async () => {
+    const raw = encode(JSON.stringify(content({ "SKILL.md": "main" }).plan, null, 2))
+    const prepared = await fixture([]).run(
+      prepareCurrentSharedResource(raw, "100644", { storage: "attachment" }),
+    )
+    const current = row("docs", { version: 1, resource: prepared.content })
+    const f = fixture([list([current])], new Map([[manifestUrl, raw]]), [manifestRecord(prepared)])
+    await expect(
+      f.run(
+        resolveCurrentSharedSources(library, {
+          selections: [selection(current)],
+          sourceOptions: {},
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "SHARED_SOURCE_CONFLICT" })
+    expect(f.requests).toEqual([manifestUrl])
   })
 
   test("an oversized current inline manifest fails before it could be truncated into Notion", () => {

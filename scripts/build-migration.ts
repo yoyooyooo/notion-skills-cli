@@ -4,10 +4,7 @@ const destination = process.argv[2]
 if (!destination) throw new Error("Pass an external migration package directory.")
 const output = resolve(destination)
 await mkdir(output, { recursive: false, mode: 0o700 })
-const entries = [
-  { source: "migrate.ts", name: "ntn-skills-migrate.js" },
-  { source: "operator.ts", name: "ntn-skills-operator.js" },
-]
+const entries = [{ source: "migrate.ts", name: "ntn-skills-migrate.js" }]
 for (const { source, name } of entries) {
   const result = await Bun.build({
     entrypoints: [new URL(`../packages/cli/src/${source}`, import.meta.url).pathname],
@@ -37,7 +34,6 @@ await writeFile(
       type: "module",
       bin: {
         "ntn-skills-migrate": "ntn-skills-migrate.js",
-        "ntn-skills-operator": "ntn-skills-operator.js",
       },
       files: entries.map(({ name }) => name),
       engines: { node: "^22.22.3 || >=24.20.0" },

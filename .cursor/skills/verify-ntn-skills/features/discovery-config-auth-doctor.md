@@ -13,7 +13,6 @@ This recipe covers catalog policy, cache inspection/retirement and cache-policy 
 - `discover-catalog`: paginated metadata, query filtering, refresh and coverage.
 - `discover-default-context`: optional Notion checkbox decoding; missing/unchecked values emit false, checked values emit true, and a wrongly typed property fails explicitly. Complete discovery and explicit reads retain every record.
 - `config-preferences`: sanitized configuration and creation-default changes.
-- `builtin-preference`: independently validated `builtin_database` for first publication, exact-target updates unaffected by that preference, sanitized set/clear preserving ordinary defaults and registrations.
 - `auth-token`: stdin token storage, configuration precedence and fallback restoration.
 - `doctor-access`: direct API transport/version, project authentication, and optional scoped coverage plus one Skill read.
 - `cache-policy`: effective content/catalog defaults and persisted policy overrides.
@@ -89,7 +88,6 @@ Preconditions:
   bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$RUN" -- ctl config show
   ```
 
-- **Official publication preference.** In scratch, capture `ctl config show`, set `ctl config set builtin_database "$DATABASE_ALIAS"`, inspect again, clear with `ctl config unset builtin_database`, then compare. Set validates online and saves the canonical ID; unset works offline. Prove ordinary default, source registrations, token presence, policy and bindings survive, and unknown/inaccessible selectors fail without changing the preference. Capture any live preflight via `ctl builtin publish notion/ntn-skills-maintain --dry-run`; keep create/update behavior in the [publication recipe](import-create-recovery-dry-run.md). The priority is explicit database → built-in publication default → ordinary creation default → sole discovery. Updates retain their exact target and ignore both defaults.
 
 - **Cache policy and retention.** Capture effective config/state/cache/data roots and pinned versions through public `ctl cache status`, `ctl config show`, `ctl sync local status` and `ctl operation show` results; use `ctl backup --output` when retaining the database and referenced immutable files. Mutable bindings, bases, plans, receipts and observations are SQL state, not loose JSON files. All four roots and XDG bases must point inside scratch; builtin commands also require an owned HOME. Keep launcher transpiler cache separately owned as the index prescribes. Save policy, launch a new process, inspect effective milliseconds, unset policy keys and compare unrelated settings/token presence. Defaults are 300000/60000 ms. Never record tokens.
 

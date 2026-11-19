@@ -1,4 +1,6 @@
-import { Effect, FileSystem, Path } from "effect"
+import { ByteSize, Effect, FileSystem, Option, Path } from "effect"
+import type { BigIntStats } from "node:fs"
+import { lstatNoFollow } from "./local-locks.ts"
 import { parseYaml as parse } from "./yaml.ts"
 import { unzipSync } from "fflate"
 import { fail, property, SkillsError, validateDescription, validateDisplayName } from "./model.ts"
@@ -10,6 +12,9 @@ export interface ImportFile {
   readonly mode?: "100644" | "100755"
 }
 const MAX_BYTES = 128 * 1024 * 1024
+// A portable export can contain 128 MiB of incompressible bytes plus ZIP framing.
+// Expanded bytes and entry counts remain independently checked before extraction.
+const MAX_ZIP_BYTES = MAX_BYTES + 10 * 1024 * 1024
 const MAX_FILES = 10_000
 const decoder = new TextDecoder("utf-8", { fatal: true })
 const crcTable = Uint32Array.from({ length: 256 }, (_, index) => {
@@ -20,8 +25,8 @@ const crcTable = Uint32Array.from({ length: 256 }, (_, index) => {
 
 export function readImportZip(bytes: Uint8Array): ImportFile[] {
   try {
-    if (bytes.length > 32 * 1024 * 1024)
-      throw fail("ARCHIVE_TOO_LARGE", "ZIP exceeds 32 MiB compressed.")
+    if (bytes.length > MAX_ZIP_BYTES)
+      throw fail("ARCHIVE_TOO_LARGE", "ZIP exceeds the bounded portable archive size.")
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
     let end = bytes.length - 22
     const minimum = Math.max(0, bytes.length - 65_557)
@@ -173,59 +178,207 @@ export function importFiles(input: readonly ImportFile[], single = false) {
   return files
 }
 
+const changedInput = (location: string) =>
+  fail(
+    "INPUT_CHANGED",
+    "The complete import input changed while it was being read. Retry with a stable tree.",
+    { path: location },
+  )
+const sameIdentity = (before: BigIntStats, after: BigIntStats | undefined) =>
+  after !== undefined && before.dev === after.dev && before.ino === after.ino
+const sameFile = (before: BigIntStats, after: BigIntStats | undefined) =>
+  sameIdentity(before, after) &&
+  after!.isFile() &&
+  before.size === after!.size &&
+  before.mode === after!.mode &&
+  before.mtimeNs === after!.mtimeNs &&
+  before.ctimeNs === after!.ctimeNs
+
+/** The opened descriptor, not a followed pathname, owns the bytes returned. */
+function readImportRegular(location: string, before: BigIntStats, limit: number) {
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const handle = yield* fs.open(location, { flag: "r", noFollow: true })
+      const opened = yield* handle.stat
+      if (
+        opened.type !== "File" ||
+        opened.dev !== BigInt.asUintN(64, before.dev) ||
+        Option.getOrUndefined(opened.ino) !== BigInt.asUintN(64, before.ino)
+      )
+        return yield* Effect.fail(changedInput(location))
+      const size = Number(ByteSize.toBigInt(opened.size))
+      if (ByteSize.toBigInt(opened.size) !== before.size)
+        return yield* Effect.fail(changedInput(location))
+      if (!Number.isSafeInteger(size) || size < 0 || size > limit)
+        return yield* Effect.fail(
+          fail("ARCHIVE_TOO_LARGE", "Import input exceeds its complete byte limit."),
+        )
+      const bytes = new Uint8Array(size)
+      let offset = 0
+      while (offset < size) {
+        const count = yield* handle.read(bytes.subarray(offset))
+        if (!count) break
+        offset += count
+      }
+      const extra = yield* handle.readAlloc(1)
+      const after = yield* handle.stat
+      if (
+        offset !== size ||
+        Option.isSome(extra) ||
+        opened.size !== after.size ||
+        !sameFile(before, yield* lstatNoFollow(location))
+      )
+        return yield* Effect.fail(changedInput(location))
+      return bytes
+    }),
+  )
+}
+
+/** Reject links at every input ancestor and entry; preserve one bounded complete tree. */
 export function loadImport(input: string) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
     const full = path.resolve(input)
-    const info = yield* fs.stat(full)
-    const files: ImportFile[] = []
-    if (info.type === "Directory") {
-      const names = yield* fs.readDirectory(full, { recursive: true })
-      if (names.length > MAX_FILES)
-        return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Directory contains too many entries."))
-      let total = 0
-      for (const name of names.sort()) {
-        // Finder's directory-view cache is not authored Skill content. Keep all
-        // other dotfiles, provider settings, executable files and raw resources.
-        if (name.split(path.sep).at(-1) === ".DS_Store") continue
-        const stat = yield* fs.stat(path.join(full, name))
-        if (stat.type === "Directory") continue
-        if (stat.type !== "File")
-          return yield* Effect.fail(
-            fail("INVALID_INPUT", "Import accepts only regular files and directories.", {
-              path: name,
-            }),
+    const ancestors = new Map<string, BigIntStats>()
+    let current = path.parse(full).root
+    const components = full.slice(current.length).split(path.sep).filter(Boolean)
+    for (const component of ["", ...components]) {
+      if (component) current = path.join(current, component)
+      const info = yield* lstatNoFollow(current)
+      if (info === undefined)
+        return yield* Effect.fail(
+          fail("INPUT_FAILED", "The import input is missing.", { path: current }),
+        )
+      if (info.isSymbolicLink() || (current !== full && !info.isDirectory()))
+        return yield* Effect.fail(
+          fail(
+            "INVALID_INPUT",
+            "Import paths and their parents must not contain symbolic links or special files. Select the exact ordinary path.",
+            { path: current },
+          ),
+        )
+      ancestors.set(current, info)
+    }
+    const info = ancestors.get(full)!
+    const assertAncestors = Effect.forEach(
+      ancestors,
+      ([location, before]) =>
+        Effect.gen(function* () {
+          const after = yield* lstatNoFollow(location)
+          if (
+            !sameIdentity(before, after) ||
+            after!.isSymbolicLink() ||
+            (location !== full && !after!.isDirectory())
           )
-        const size = Number(stat.size)
-        if (total + size > MAX_BYTES)
-          return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Directory exceeds 128 MiB."))
-        const bytes = yield* fs.readFile(path.join(full, name))
-        total += bytes.length
-        if (total > MAX_BYTES)
-          return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Directory exceeds 128 MiB."))
-        files.push({
-          path: normalizePath(name.split(path.sep).join("/")),
-          bytes,
-          mode: stat.mode & 0o111 ? "100755" : "100644",
-        })
+            return yield* Effect.fail(changedInput(location))
+        }),
+      { discard: true },
+    )
+    if (info.isDirectory()) {
+      const directories: {
+        readonly absolute: string
+        readonly relative: string
+        readonly before: BigIntStats
+        names?: readonly string[]
+      }[] = [{ absolute: full, relative: "", before: info }]
+      const selected: {
+        readonly absolute: string
+        readonly relative: string
+        readonly before: BigIntStats
+      }[] = []
+      let entries = 0,
+        total = 0
+      for (const directory of directories) {
+        const names = (yield* fs.readDirectory(directory.absolute)).sort()
+        directory.names = names
+        entries += names.length
+        if (entries > MAX_FILES)
+          return yield* Effect.fail(
+            fail("ARCHIVE_TOO_LARGE", "Directory contains more than 10,000 entries."),
+          )
+        for (const name of names) {
+          const relative = directory.relative ? directory.relative + "/" + name : name
+          const canonical = yield* Effect.try({
+            try: () => normalizePath(relative),
+            catch: (error) => error as SkillsError,
+          })
+          if (
+            !name ||
+            name === "." ||
+            name === ".." ||
+            name.includes(path.sep) ||
+            canonical !== relative ||
+            /[\u0000-\u001f\u007f-\u009f]/u.test(relative)
+          )
+            return yield* Effect.fail(
+              fail("INVALID_INPUT", "Import entries require canonical relative file paths.", {
+                path: relative,
+              }),
+            )
+          const absolute = path.join(directory.absolute, name)
+          const before = yield* lstatNoFollow(absolute)
+          if (before === undefined) return yield* Effect.fail(changedInput(absolute))
+          if (before.isSymbolicLink() || (!before.isDirectory() && !before.isFile()))
+            return yield* Effect.fail(
+              fail(
+                "INVALID_INPUT",
+                "Import accepts only ordinary files and directories; symbolic links are not followed.",
+                { path: relative },
+              ),
+            )
+          // Finder's directory-view cache is not authored Skill content.
+          if (name === ".DS_Store" && before.isFile()) continue
+          if (before.isDirectory()) directories.push({ absolute, relative, before })
+          else {
+            const size = Number(before.size)
+            total += size
+            if (!Number.isSafeInteger(size) || size < 0 || total > MAX_BYTES)
+              return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Directory exceeds 128 MiB."))
+            selected.push({ absolute, relative, before })
+          }
+        }
       }
+      const files: ImportFile[] = []
+      for (const file of selected.sort((a, b) =>
+        a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0,
+      ))
+        files.push({
+          path: file.relative,
+          bytes: yield* readImportRegular(file.absolute, file.before, Number(file.before.size)),
+          mode: file.before.mode & 0o111n ? "100755" : "100644",
+        })
+      yield* assertAncestors
+      for (const directory of directories) {
+        const after = yield* lstatNoFollow(directory.absolute)
+        if (
+          !sameIdentity(directory.before, after) ||
+          !after!.isDirectory() ||
+          JSON.stringify((yield* fs.readDirectory(directory.absolute)).sort()) !==
+            JSON.stringify(directory.names)
+        )
+          return yield* Effect.fail(changedInput(directory.absolute))
+      }
+      for (const file of selected)
+        if (!sameFile(file.before, yield* lstatNoFollow(file.absolute)))
+          return yield* Effect.fail(changedInput(file.absolute))
       return { kind: "directory" as const, files }
     }
-    if (info.type !== "File")
+    if (!info.isFile())
       return yield* Effect.fail(
-        fail("INVALID_INPUT", "Import requires a ZIP file, directory or Markdown file."),
+        fail("INVALID_INPUT", "Import requires an ordinary ZIP, Markdown file or directory."),
       )
-    const zip = /\.zip$/i.test(full)
-    if (!zip && !/\.(md|markdown)$/i.test(full))
+    const zip = /\.zip$/iu.test(full)
+    if (!zip && !/\.(md|markdown)$/iu.test(full))
       return yield* Effect.fail(
         fail("INVALID_INPUT", "Import file must be .zip, .md or .markdown."),
       )
-    if (Number(info.size) > (zip ? 32 * 1024 * 1024 : MAX_BYTES))
+    const limit = zip ? MAX_ZIP_BYTES : MAX_BYTES
+    if (info.size > BigInt(limit))
       return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Import input exceeds its size limit."))
-    const bytes = yield* fs.readFile(full)
-    if (bytes.length > (zip ? 32 * 1024 * 1024 : MAX_BYTES))
-      return yield* Effect.fail(fail("ARCHIVE_TOO_LARGE", "Import input exceeds its size limit."))
+    const bytes = yield* readImportRegular(full, info, limit)
+    yield* assertAncestors
     return zip
       ? {
           kind: "zip" as const,
@@ -234,7 +387,16 @@ export function loadImport(input: string) {
             catch: (e) => e as SkillsError,
           }),
         }
-      : { kind: "markdown" as const, files: [{ path: path.basename(full), bytes }] }
+      : {
+          kind: "markdown" as const,
+          files: [
+            {
+              path: path.basename(full),
+              bytes,
+              mode: info.mode & 0o111n ? ("100755" as const) : ("100644" as const),
+            },
+          ],
+        }
   }).pipe(
     Effect.mapError((error) =>
       error instanceof SkillsError

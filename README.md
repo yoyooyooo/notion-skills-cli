@@ -19,6 +19,7 @@ that the production library, published npm package or installed Pi has migrated.
 | List the complete selected directory | `files` |
 | Export a complete selection locally | `export` |
 | Inspect current file ownership and operation state | `ctl library files` |
+| Import or replace one complete local tree | `ctl library import`, with `--dry-run` and same-intent `--resume` |
 | Create or inspect a current four-table layout | `ctl library init`, `ctl library inspect` |
 | Manage shared current Profile rules | `ctl library profile` |
 
@@ -27,11 +28,11 @@ A native Notion edit is read as current content; reading it does not create an
 adoption event or retain a remote version. A generated Source/resource reading
 page does not become author content merely because someone edited its display.
 
-The current content writer is still being completed. Old create/apply/write/
-replace/adopt, Source refresh, sync, snapshot/archive and repair commands are
-retired from the active CLI. The branch deliberately has no compatibility authoring
-path. Current data conversion, full Files reading projections, obsolete object
-cleanup and actual Pi installation remain separate delivery gates.
+Current import writes exact resource originals and complete reading projections.
+Source refresh, partial updates and portable relationship writes remain incomplete.
+Old create/apply/write/replace/adopt, sync, snapshot/archive and repair commands
+are retired from the active CLI. Current data conversion, actual library coverage,
+obsolete object cleanup and Pi installation remain separate delivery gates.
 
 ## Installation
 
@@ -111,8 +112,9 @@ file read with `--output` for one file.
 The `Content` descriptor selects native author Markdown, a Notion-owned exact
 resource, or a selected Source file. Main content lives on Skills; supporting files
 live on Files. Text reading projections must contain the full current text.
-Images and binary files expose an original usable attachment. The remaining
-projection/migration work is listed in the [current contract](docs/current-contract.md).
+Images and binary files expose an original usable attachment. Current complete
+import generates these projections; live library coverage and migration work
+remain listed in the [current contract](docs/current-contract.md).
 
 Inspect the current directory without fetching bodies:
 
@@ -136,6 +138,18 @@ This creates the current layout. It does not import local Skills or establish Pi
 delivery. Follow the [setup reference](skills/notion/ntn-skills-maintain/references/setup.md)
 for the exact boundary and current inspection path.
 
+Import a complete local tree into that current library:
+
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
+```
+
+Import preserves exact originals and creates full reading pages. It replaces the
+whole file tree for that stable identity; review removals in dry-run. Repeat equal
+input for a zero-write no-op. Resume unfinished work with the same input and
+`--operation OPERATION_ID --resume`. See [current authoring](docs/shared-authoring.md).
+
 Profiles hold current View/freshness rules on one stable Record:
 
 ```sh
@@ -152,8 +166,8 @@ CAS. Profiles and Views never grant permission.
 ## Agent integration
 
 Read `notion/ntn-skills` through the builtin catalog for consumption guidance.
-`notion/ntn-skills-maintain` covers current inspection/setup and states the content
-writer boundary. `notion/ntn-skills-sync` covers current Profile rules and Source
+`notion/ntn-skills-maintain` covers setup, complete current import and finite
+recovery. `notion/ntn-skills-sync` covers current Profile rules and Source
 ownership constraints while the Source writer is unavailable.
 
 Pi is the first daily host. Its Notion consumption uses the matching SDK for

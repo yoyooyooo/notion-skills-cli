@@ -69,6 +69,7 @@ file index and prepare the intended scope, then report the writer capability
 needed. Do not claim provider access means a member was published or readable.
 See [current Source boundaries](references/synchronization.md#current-source-boundaries).
 
-Content inspection and local input preparation belong to
-`notion/ntn-skills-maintain`. Consuming a current workflow needs no local sync
+Content inspection and complete local import belong to
+`notion/ntn-skills-maintain`. That import transfers the selected complete tree to
+Notion resources; it is not Source refresh. Consuming a current workflow needs no local sync
 binding. Reading or downloading a script does not authorize executing it.

@@ -100,7 +100,8 @@ verified file bytes and complete Notion reading projection are different
 outcomes. A working Git URL does not prove any of the later outcomes. Missing
 permissions and incomplete pagination are not an empty source.
 
-When the current writer is available, one explicit refresh must preserve
+The current complete resource import is not a Source refresh. A future explicit
+refresh must preserve
 native authority and unrelated Source contributions, apply current exclusions
 and reconcile its unfinished effects. This reference does not invent that
 future command's arguments or expose an alternate writer.

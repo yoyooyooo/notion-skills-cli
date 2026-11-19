@@ -56,10 +56,17 @@ read does not prove every supporting byte was downloaded. Use `export` for the
 complete selected tree. An empty new library is a valid empty layout, not
 completed content onboarding.
 
-The current public writer is not available for the first upload. Prepare the
-approved complete input directory and retain it until the current content
-operation exists. A normal native input needs no Source, but still needs the
-current publication operation and subsequent actual reading verification.
+Import the approved complete local input with one stable Skill identity:
+
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
+```
+
+Default import stores exact originals as Notion resources and writes full reading
+pages. It needs no artificial Source. Read the actual returned Skill and export its
+complete tree to confirm paths, bytes and modes. Current import does not convert
+an older library schema or prove that every local Skill has been migrated.
 
 ## Connect Pi
 

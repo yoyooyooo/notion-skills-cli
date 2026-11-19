@@ -1003,35 +1003,6 @@ export function querySharedRecords(library: SharedLibrary, input: QuerySharedRec
   )
 }
 
-/** One exact current resource and its native attachment property from the same response. */
-export function queryCurrentSharedResourceRecord(
-  library: SharedLibrary,
-  input: { readonly skillPageId: string; readonly objectId: string },
-) {
-  return Effect.gen(function* () {
-    const resourceProperty = yield* checked(() =>
-      identifier(library.records.property_ids.Resource, "Resource property ID"),
-    )
-    const rows = yield* queryRecordRows(
-      library,
-      {
-        skillPageId: input.skillPageId,
-        kind: "resource",
-        entityId: input.objectId,
-        recordId: input.objectId,
-      },
-      "body",
-      false,
-      resourceProperty,
-    )
-    const row = rows[0]
-    if (row === undefined) return undefined
-    if (rows.length !== 1 || row.record?.kind !== "resource" || row.record.skill_page_id === null)
-      return yield* Effect.fail(invalid("A current resource requires one exact Skill-owned row."))
-    return { record: row.record, resource: row.resource }
-  })
-}
-
 /**
  * Prepare's initial ownership observation. Discover every fact for selected owners before
  * fetching exact Entity payload sets, so orphan file events remain visible to validation.
@@ -1348,42 +1319,6 @@ export function appendSharedRecord(
     Effect.flatMap((record) =>
       record.skill_page_id === null
         ? Effect.fail(invalid("A Skill-scoped record cannot be a library Profile."))
-        : Effect.succeed(record),
-    ),
-  )
-}
-
-/** The management kernel supplies its already uploaded handle and persists the finite intent. */
-export function createCurrentSharedResourceRecord(
-  library: SharedLibrary,
-  input: {
-    readonly skillPageId: string
-    readonly objectId: string
-    readonly payload: unknown
-    readonly mode: "create" | "reconcile"
-    readonly upload?: { readonly id: string; readonly name: string }
-    readonly beforeCreate?: Effect.Effect<void, SkillsError>
-  },
-) {
-  return appendRecord(
-    library,
-    {
-      libraryProfile: false,
-      skillPageId: input.skillPageId,
-      recordId: input.objectId,
-      operationId: `store-${input.objectId}`,
-      entityId: input.objectId,
-      kind: "resource",
-      payload: input.payload,
-      payloadContainsBody: true,
-      mode: input.mode,
-      ...(input.beforeCreate === undefined ? {} : { beforeCreate: input.beforeCreate }),
-    },
-    input.upload,
-  ).pipe(
-    Effect.flatMap((record) =>
-      record.skill_page_id === null
-        ? Effect.fail(invalid("A current resource requires an exact Skill owner."))
         : Effect.succeed(record),
     ),
   )

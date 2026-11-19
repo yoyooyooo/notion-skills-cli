@@ -326,7 +326,6 @@ export const ConfigSchema = Schema.Struct({
   shared_profile: Schema.optional(SharedProfileBindingSchema),
   default_database: Schema.optional(Schema.String),
   upstream_database: Schema.optional(Schema.String),
-  builtin_database: Schema.optional(Schema.String),
   token: Schema.optional(Schema.String),
   cache_policy: Schema.optional(
     Schema.Struct({

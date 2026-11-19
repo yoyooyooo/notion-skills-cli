@@ -171,9 +171,13 @@ Only three durable kinds are needed at the target boundary:
 | Operation | Stable current intent ID and its exact affected owner/path set | Only while needed to finish, reconcile or abandon that intent |
 
 Hash, size and mode verify current bytes. They do not promise historical retrieval.
-The current resource implementation uses one Record: at most 32 KiB is inline
-Base64; larger files use one original Notion attachment in the registered `Resource`
-files property, up to 64 MiB. The payload describes the current hash, size and mode.
+The current resource implementation uses one Record. Readable originals of at
+most 32 KiB may be inline Base64. Opaque files and larger originals use the
+registered `Resource` attachment, up to 64 MiB of original bytes. Unsupported
+upload types use a deterministic ZIP containing that one original path and mode.
+The reader checks both the container and extracted original, and export restores
+the original bytes. This is a current original, not a Skill bundle or history.
+The payload describes current hash, size, mode and storage representation.
 It never stores an expiring download URL as identity. The attachment response,
 host, timeout, byte bound and final hash are checked before accepting bytes.
 Replacing a resource may create its current object before switching the pointer;
@@ -331,18 +335,30 @@ describe current rules; duplicate pages fail, unknown writes reconcile without
 replay, and completion clears finite local pending state. The public route is
 `ctl library profile`, singular.
 
-The registered CLI now exposes current consumption, library initialization and
-inspection, current Profiles, configuration/cache/builtin management and diagnostics.
+The registered CLI exposes current consumption, library initialization,
+inspection, complete current import, Profiles and local configuration. Import is
+`ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
+replacement, and `--operation ID --resume` supplies the same input to its finite
+intent. Default import keeps exact originals as Notion resources and renders
+complete text. It preserves the physical Skill, stable retained File IDs and
+unspecified enablement, default-context and authored relations. Removed supporting
+Files and unreferenced owned resources are trashed after current content is checked.
+
+The writer opens an operation only when an actual change is needed. A complete
+no-op performs zero semantic remote writes. One mutable action marker supports
+interruption without a permanent ACK log. Completed state becomes ready before
+the operation is retired. Unknown CREATE or append is never repeated from absence;
+an observed partial append still requires attention and is not automatic recovery.
+
 Old create/apply/write/replace/adopt, Source refresh, sync, archive, graph-release,
-repair and migration command families are not active authoring routes. The current
-content writer is not connected yet. Do not use an old guide, raw API call or legacy
-package as its substitute. Removing a command does not by itself prove that every
-old module or packaged reference has been removed.
+repair and migration command families are not active authoring routes. Source
+refresh and cross-object governance still need their current implementations.
+Removing a command does not prove that every old module, export or guide is gone.
 
 The production data and Pi installation are **not switched yet**. Remaining work:
 
-- Complete the current content/Source writer, finite operation reconciliation,
-  relationship updates and current reference collection: AH-504, AH-507, AH-505.
+- Complete current Source writing, portable relationship updates, cross-object
+  governance and the remaining finite-recovery cases: AH-504, AH-507, AH-505.
 - Populate every Git-only supporting Files row and render full readable text or
   original usable attachments. A complete provider manifest does not establish
   that all required Notion reading pages exist: AH-501.
@@ -357,8 +373,8 @@ The production data and Pi installation are **not switched yet**. Remaining work
   AH-617/AH-1063/AH-516.
 
 Run only the applicable checks in the existing current-convergence entry. Current
-schema/index, native tree, exact resource, Source and acquisition tests establish
-their controlled boundaries. They do not certify live table cleanup, completed
-authoring, an installed package or real Pi delivery. Old proof-model coverage and
+schema/index, native tree, exact resource, Source, acquisition and complete-import
+tests establish their controlled boundaries. They do not certify live table cleanup,
+every authoring operation, an installed package or real Pi delivery. Old proof-model coverage and
 historical authoring recipes are outside the current verification route until
 their owner establishes a new implementation correspondence or retires them.

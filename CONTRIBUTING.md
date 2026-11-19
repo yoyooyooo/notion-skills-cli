@@ -21,7 +21,7 @@ Read [the current contract](docs/current-contract.md) before changing table fiel
 
 The public SDK is version 2. Source management APIs and the `readOnly` input have been removed. Hosts must require SDK v2 before consuming current content; all consumption is already read only. Consumer and resource result contracts remain version 1. Protocol numbers describe incompatible formats and do not introduce content version management.
 
-The shipped CLI exposes `list`, `read`, `use`, `files`, `export` and the current `ctl` tree. Content writer, Source refresh and old recovery routes are unavailable while the current writer is being completed. Inspect `ntn-skills schema` and a specific `schema ctl ...` path for the actual command contract. Do not copy old authoring examples into current guidance.
+The shipped CLI exposes `list`, `read`, `use`, `files`, `export` and the current `ctl` tree. `ctl library import` writes one complete resource tree, renders its reading pages and resumes the same unfinished intent. Source refresh, partial updates and portable relationship writes remain unavailable. Inspect `ntn-skills schema` and a specific `schema ctl ...` path for the actual command contract. Do not copy old authoring examples into current guidance.
 
 Keep Effect, platform, SQLite and Effect test integration versions aligned at 4.0.5. Use `effect/cli` for commands and scoped Effect services for external execution. Put validation at the external boundary; preserve authorization, complete pagination, byte checks, request budgets and cancellation cleanup.
 
@@ -34,7 +34,7 @@ bun run test
 bun run package:check
 ```
 
-The tests use controlled fixtures and must not depend on personal credentials or mutate production Notion. The package check builds a fresh external artifact, verifies its manifest, declaration closure and packaged links, installs it with npm, and runs the installed CLI and SDK. It checks current discovery, complete Files pagination, exact resource bytes, missing-cache reselection, limits, zero semantic writes and real HTTP cancellation. It does not establish live Notion cutover or Pi daily acceptance.
+The tests use controlled fixtures and must not depend on personal credentials or mutate production Notion. The package check builds a fresh external artifact, verifies its manifest, declaration closure and packaged links, installs it with npm, and runs the installed CLI and SDK. It checks current discovery, complete Files pagination, exact resource bytes, missing-cache reselection, limits, zero-write consumption and real HTTP cancellation. Its import journey checks dry run, current writes, per-file reads, exact export and unchanged reimport. It does not establish live Notion cutover or Pi daily acceptance.
 
 Use the existing verification entry and [verification review](docs/maintenance-verification-review.md) for a scoped implementation or migration check. A test definition is not a passing result. Report which actual command or user flow ran, its result and any remaining boundary. Keep live data conversion and daily Pi verification separate from the controlled package gate.
 

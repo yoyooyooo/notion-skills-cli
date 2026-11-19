@@ -76,9 +76,10 @@ Inspect reads the descriptor; files reads complete current file metadata, state
 and authority. Neither reads every body nor repairs the library. A missing
 current descriptor or pending current operation remains an explicit error.
 
-The current library family also provides `init` and singular `profile`.
-Content mutation and Source refresh await the current writer. Use
-`notion/ntn-skills-maintain` for scope and input preparation.
+The current library family also provides `init`, `import` and singular `profile`.
+Use `notion/ntn-skills-maintain` for complete import, deletion previews and the
+same operation's resume procedure. Partial updates, Source refresh and portable
+relationship writes remain unavailable.
 
 ## Local builtins
 

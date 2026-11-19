@@ -14,7 +14,7 @@ import { queryCurrentSkillIndex } from "./shared-current-index.ts"
 import { requireCurrentSkillReady } from "./shared-current-file.ts"
 import { readCurrentSharedResourceBytes } from "./shared-current-resource.ts"
 import { resolveCurrentSharedSources } from "./shared-current-source.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
+import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
 import { sharedGraphInventory, sharedGraphMetadata } from "./shared-graph-read-context.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
@@ -34,7 +34,6 @@ import {
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
 import { sha256, Store } from "./store.ts"
 
-export { sharedPendingObservationPrefix } from "./shared-pending-file-operations.ts"
 export type FixedSharedSource = {
   readonly source_id: string
   readonly revision: string
@@ -416,7 +415,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
         !materialized.has(binding.path)
       ) {
         const loaded = yield* readCurrentSharedResourceBytes(input.library, {
-          skillPageId: selected,
+          owner: { kind: "skill", page_id: selected },
           content: binding.content,
         })
         materialized.set(binding.path, loaded)
@@ -455,9 +454,8 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     for (const file of files)
       if (restricted.has(file.sha256)) yield* markLocalContentRestriction(file.sha256)
     yield* checked(() =>
-      assertSharedFileReferences(
+      assertSelectedSharedFileReferences(
         [...materialized].map(([path, bytes]) => ({ path, bytes })),
-        undefined,
         paths,
       ),
     )

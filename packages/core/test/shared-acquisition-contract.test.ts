@@ -316,6 +316,7 @@ function sourceFixture() {
     },
   }
   const canonical = validateCurrentSharedSourceContent(content)
+  if (!("plan" in canonical)) throw new Error("Expected an inline fixture plan")
   const revision = hash(canonicalSharedJson(canonical.plan))
   const descriptor = {
     kind: "source" as const,
@@ -519,6 +520,7 @@ describe("current acquisition contract", () => {
               },
             },
           })
+          if (!("plan" in content)) throw new Error("Expected an inline fixture plan")
           const revision = hash(canonicalSharedJson(content.plan))
           f.source.properties.content = rich(
             library.sources!.property_ids.Content!,

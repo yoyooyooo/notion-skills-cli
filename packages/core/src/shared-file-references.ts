@@ -427,19 +427,30 @@ export function mapSharedMarkdownReferences(
 export function assertSharedFileReferences(
   files: readonly CompositionFile[],
   policy: SharedNotionMarkdownVersion = 5,
-  completePaths?: readonly string[],
 ) {
-  const paths = new Set(completePaths ?? files.map((file) => file.path))
+  return assertSelectedSharedFileReferences(
+    files,
+    files.map((file) => file.path),
+    policy,
+  )
+}
+
+/** Check only the supplied bodies against the complete current directory.
+ * Deferred bodies remain unverified until they are selected and acquired. */
+export function assertSelectedSharedFileReferences(
+  files: readonly CompositionFile[],
+  completePaths: readonly string[],
+  policy: SharedNotionMarkdownVersion = 5,
+) {
+  const paths = new Set(completePaths)
   if (
-    completePaths !== undefined &&
-    (files.some((file) => !paths.has(file.path)) ||
-      completePaths.some(
-        (path) => /\.(?:md|markdown)$/iu.test(path) && !files.some((file) => file.path === path),
-      ))
+    paths.size !== completePaths.length ||
+    new Set(files.map((file) => file.path)).size !== files.length ||
+    files.some((file) => !paths.has(file.path))
   )
     throw fail(
       "SHARED_REFERENCE_INVALID",
-      "Reference validation requires every Markdown body and the complete immutable path inventory.",
+      "Selected reference validation requires unique files from the complete current directory.",
     )
   const references: SharedFileReference[] = []
   let checkedFiles = 0
@@ -462,7 +473,7 @@ export function assertSharedFileReferences(
   if (missing.length !== 0)
     throw fail(
       "SHARED_REFERENCE_BROKEN",
-      "The proposed complete tree contains unresolved local Markdown links or images. Update those explicit references before changing file membership.",
+      "The selected Markdown contains local links or images absent from the complete directory.",
       { references: missing, checked_files: checkedFiles },
     )
   return { checked_files: checkedFiles, local_references: references.length }

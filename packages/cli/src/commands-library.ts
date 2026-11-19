@@ -7,6 +7,7 @@ import { queryCurrentSkillIndex } from "../../core/src/shared-current-index.ts"
 import { Notion } from "../../core/src/notion.ts"
 import { emit, requiredSingleton, singleton } from "./command-options.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
+import { currentImportCommand } from "./commands-current-import.ts"
 
 const initialize = defineCommand(
   "init",
@@ -83,7 +84,13 @@ const files = defineCommand(
 
 export const libraryCommand = defineCommand("library").pipe(
   Command.withDescription(
-    "Manage the current library and Profile. Content import, source refresh and file mutations are unavailable until their current writer is installed; old event, snapshot, archive and repair commands are retired.",
+    "Manage the current library and Profile, or import one complete current Skill. Import and resume share one exact operation identity. Source refresh and individual file mutations are not exposed here.",
   ),
-  Command.withSubcommands([initialize, inspect, files, libraryProfilesCommand]),
+  Command.withSubcommands([
+    initialize,
+    inspect,
+    files,
+    currentImportCommand,
+    libraryProfilesCommand,
+  ]),
 )

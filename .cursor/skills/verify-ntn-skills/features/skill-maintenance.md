@@ -10,14 +10,16 @@
 | Native 直接读、末尾 owner guard、无消费写 | shared-snapshot；shared-current-snapshot.test.ts | 当前受控 reader |
 | 完整 current Profile 替换和有限 reconcile | shared-profile；shared-profile.test.ts | 单 Profile 当前规则 |
 | Exact resource、单原件 attachment、unknown 去重 | shared-current-resource；shared-current-resource.test.ts | 资源存储/获取 helper |
+| 完整导入、相等零写、原件导出、清理 | shared-current-write；shared-current-write.test.ts | 真实变更的受控 current 服务 |
+| 全文投影与受限上传 | shared-current-projection/upload；对应 tests | 完整正文、原件及 multipart HTTP |
 | 公共命令与包内指导 | command-registration；builtin-guidance.test.ts | 可调用和可教的 current 入口 |
 
-以上源码均在 packages/core/src，核心测试在 packages/core/test，CLI 测试在 packages/cli/test。内容整树 writer、Source 发布/刷新、完整 census/cleanup 尚未公开；不能从现有 reader 或 Profile 结果推导完成。
+以上源码均在 packages/core/src，核心测试在 packages/core/test，CLI 测试在 packages/cli/test。完整本地 import 已公开；Source 发布/刷新、portable 关系写入、完整 census/cleanup 仍分别验收。
 
 ## 选择必要切片
 
 ~~~sh
-bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-profile.test.ts packages/core/test/shared-current-resource.test.ts packages/cli/test/builtin-guidance.test.ts --timeout 60000
+bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-profile.test.ts packages/core/test/shared-current-write.test.ts packages/cli/test/builtin-guidance.test.ts --timeout 60000
 ~~~
 
 按实际改动选择其中所需测试，不作为每次全跑的固定门槛。保留有区分力的拒绝：错 owner、重复路径/物理行、非 ready、缺 Content、分页未完、missing 原件、字节不符和 unknown 不重复请求。
@@ -29,6 +31,8 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 ~~~sh
 ntn-skills ctl library inspect ENTRY
 ntn-skills ctl library files PAGE_ID --entry ENTRY
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
 ntn-skills read PAGE_ID --database ENTRY --refresh --json
 ntn-skills files SNAPSHOT_ID
 ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
@@ -38,9 +42,9 @@ files 的完整目录不证明 body 已获取。整包导出、单文件输出�
 
 当前 Profile 用 singular `ctl library profile`。set 传完整规则、必填 name/enabled/expect，遗漏 default-view/freshness-json 表示清除。unknown 后的 reconcile 只读当前规则，不重复 POST/PATCH；当前内容相等不伪造旧 ACK。
 
-## 内容 writer 接通后的剩余检查
+## 当前内容 writer 与剩余治理
 
-用一个代表性完整输入覆盖 main、引用、代码、图片/二进制和 mode，显式声明移动/删除及权威变化。刷新不能覆盖 native 或其他 Source 贡献；排除文件不复生。只在 current writer 真实可用后驱动，不调用已退役 apply/file takeover/restore/history 路径。
+用一个代表性完整输入覆盖 main、引用、代码、图片/二进制和 mode，检查完整替换范围及权威变化。当前 import 默认采用 resource 原件，并清理遗漏的 supporting Files；Source refresh 不能借此覆盖 native 或其他 Source 贡献。不要调用已退役 apply/file takeover/restore/history 路径。
 
 同一意图检查成功、部分完成和响应未知。按 stable identity 核当前效果，只继续未完成范围；再次执行 no-op。反向关系与完整分页控制删除范围。目标索引通过不是全库清理通过。
 
@@ -48,7 +52,7 @@ files 的完整目录不证明 body 已获取。整包导出、单文件输出�
 
 ## 安装与日用
 
-独立候选包用实际 Node CLI 和同包 SDK；离开 checkout、无开发 override、空 Store。旧 package/controlled-authoring/Pi 配方仍需 owner 接到 current 接口，不能沿固定历史 Broker/原 ACK 门禁宣布新包通过。
+独立候选包用实际 Node CLI 和同包 SDK；离开 checkout、无开发 override、空 Store。沿现有 package-smoke 的 current import 生命周期和 SDK 场景验证，实际执行了哪些结果就报告哪些。旧 controlled-authoring/Pi 配方不能沿固定历史 Broker/原 ACK 门禁宣布新包通过。
 
 实际 Notion 和 Pro Pi 共用 [current-convergence](current-convergence.md) 第六组与 AH-1063 旅程。源码测试、包安装、正文/投影、模型投递各自报告。旧 Git sibling/main-takeover HTTP tests 不再出现在本入口的执行清单。
 

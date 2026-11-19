@@ -9,7 +9,7 @@
 | 1 | 内容、权威、完整目录与全文阅读 | AH-499/1140/1141/1142/501 | exact bytes、Notion 投影、全库覆盖 |
 | 2 | 旧对象与关系实际清退 | AH-505/513 | 目标 inspect、完整 census、真实清理 |
 | 3 | 唯一当前路径与普通消费 0 写 | AH-1140/1142/517/617 | 源码、公开命令、安装产物 |
-| 4 | 当前管理意图有限恢复 | AH-504/507 | Profile/resource 局部与完整内容 writer |
+| 4 | 当前管理意图有限恢复 | AH-504/507 | 受控整树恢复、partial 拒绝和真实业务恢复 |
 | 5 | HTTP、字节、分页与取消有界 | AH-503 | TTL 命中、metadata 复核、body 读取 |
 | 6 | 配对安装与真实 Pro Pi | AH-1063 | 准备、投递、模型实际使用 |
 
@@ -18,7 +18,7 @@ AH-516 对账 Pro 所有本地内容及曝光/更新边，AH-498 汇总完成。
 ## 开始前
 
 1. 确定已有授权的 exact entry、target、候选代码/包与实际范围。沿原授权推进；验证不扩大远端作用范围。
-2. 当前 reader 已直接读取 Content 和当前树；current Profile 已就位。公开 content/Source writer、一次性实库转换和全量投影仍未完成。按实际状态报告。
+2. 当前 reader、Profile 和完整本地 import 已接通。Source refresh、跨对象治理、一次性实库转换及全量投影仍分开验收。按实际状态报告。
 3. 先用受控 current tests 核普通读语义 0 写，再读真实 current 库。缺 Content 或 state 非 ready 不是让旧 reader 顶上的理由。
 4. 从仓库根复用隔离设施：
 
@@ -38,7 +38,7 @@ Doctor 只证明入口可启动，不证明内容、安装或线上清理。旧 
 受控当前入口：
 
 ~~~sh
-bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-source.test.ts packages/core/test/shared-current-resource.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000
+bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/shared-current-source.test.ts packages/core/test/shared-current-resource.test.ts packages/core/test/shared-current-projection.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000
 ~~~
 
 对实际已是 current schema 的授权对象，使用实际返回的身份：
@@ -96,9 +96,9 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 
 ## 4. 有限当前恢复
 
-沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。当前 Profile/resource 测试覆盖 unknown 不盲目重发、稳定身份只读核对、冲突与当前 no-op；其通过只证明这些边界。
+沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整当前 import 通过同一 operation 内核写入原件、Files 和正文，核完整树后清理意图。用当前 writer、operation 和 upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
 
-完整 content writer 接通后，用一个管理意图覆盖 CREATE 响应丢失、部分文件已成、进程重启或预算暂停。只继续未完成范围；当前相等不能伪造原 ACK。ready 不依赖旧历史证明，半树也不能靠改状态通过。
+用一个管理意图覆盖 CREATE/完整 append/归档响应丢失、部分文件已成、进程重启或预算暂停。重传同一完整输入，只继续能按当前事实确认的动作。部分 append 未收敛时保持 pending，不盲目重放；这个拒绝结果不能说成自动恢复通过。ready 不依赖历史证明，半树也不能靠改状态通过。
 
 旧 operation-recovery/resource-lifecycle coverage 退出本轮执行，直到具体当前映射建立或模型退役。不要跑旧 MaintenanceApply/AuditScope 再更新 hash 来称当前通过。无需新增模型平台。
 

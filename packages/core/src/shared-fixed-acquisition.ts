@@ -227,7 +227,10 @@ export function materializeSharedFixedAcquisition(
         const content = descriptors.get(route.path)
         if (content?.kind !== "resource")
           return yield* Effect.fail(fail("STATE_CORRUPT", "The current resource binding was lost."))
-        bytes = yield* readCurrentSharedResourceBytes(library, { skillPageId: page, content })
+        bytes = yield* readCurrentSharedResourceBytes(library, {
+          owner: { kind: "skill", page_id: page },
+          content,
+        })
         resources.set(route.object_id, bytes)
       }
       if (bytes.length !== expected.bytes || (yield* sha256(bytes)) !== expected.sha256)

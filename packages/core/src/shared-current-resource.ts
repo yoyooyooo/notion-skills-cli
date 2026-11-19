@@ -1,4 +1,7 @@
 import { Clock, Effect, FileSystem, Option, Schema, Stream } from "effect"
+import { zipSync, type Zippable } from "fflate"
+import { readImportZip } from "./import.ts"
+import { normalizePath } from "./ref.ts"
 import { FetchHttpClient, HttpClient } from "effect/http"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
@@ -10,19 +13,20 @@ import {
   ImmutableByteReadPolicy,
   makeBoundedImmutableReadCoalescer,
 } from "./shared-immutable-read.ts"
+import { canonicalSharedJson } from "./shared-records.ts"
 import {
-  canonicalSharedJson,
-  createCurrentSharedResourceRecord,
-  queryCurrentSharedResourceRecord,
-  validateSharedRecordEnvelope,
-  type SharedRecord,
-} from "./shared-records.ts"
+  currentOwnedResourceCreateRequest,
+  currentOwnedResourceFromPage,
+  queryCurrentOwnedResourceRecord,
+  type CurrentResourceOwner,
+} from "./shared-current-records.ts"
 import { sha256, Store } from "./store.ts"
 
 export { CurrentResourceContentSchema } from "./shared-current-file.ts"
 export type CurrentResourceContent = typeof CurrentResourceContentSchema.Type
 export const CURRENT_RESOURCE_INLINE_BYTES = 32 * 1024
 export const CURRENT_RESOURCE_MAX_BYTES = 64 * 1024 * 1024
+const MAX_ATTACHMENT_BYTES = CURRENT_RESOURCE_MAX_BYTES + 64 * 1024
 const pendingBytes = Effect.runSync(
   makeBoundedImmutableReadCoalescer<Uint8Array>({ entries: 64, bytes: 16 * 1024 * 1024 }),
 )
@@ -33,13 +37,19 @@ const InlineStorageSchema = Schema.Struct({
   data: Schema.String,
 })
 const AttachmentStorageSchema = Schema.Struct({ kind: Schema.Literal("attachment") })
+const ZipAttachmentStorageSchema = Schema.Struct({
+  kind: Schema.Literal("zip_attachment"),
+  entry: Schema.String,
+  bytes: CurrentResourceContentSchema.fields.bytes,
+  sha256: CurrentResourceContentSchema.fields.sha256,
+})
 export const CurrentResourceManifestSchema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("resource"),
   sha256: CurrentResourceContentSchema.fields.sha256,
   bytes: CurrentResourceContentSchema.fields.bytes,
   mode: CurrentResourceContentSchema.fields.mode,
-  storage: Schema.Union([InlineStorageSchema, AttachmentStorageSchema]),
+  storage: Schema.Union([InlineStorageSchema, AttachmentStorageSchema, ZipAttachmentStorageSchema]),
 })
 export type CurrentResourceManifest = typeof CurrentResourceManifestSchema.Type
 export type PreparedCurrentSharedResource = {
@@ -96,13 +106,19 @@ export function validateCurrentSharedResourceManifest(
         content.mode !== manifest.mode
       )
         throw invalid("The current resource manifest differs from its selected descriptor.")
-      if (manifest.storage.kind === "attachment" && manifest.bytes <= CURRENT_RESOURCE_INLINE_BYTES)
-        throw invalid("Small current resources use one inline Record.")
+      if (manifest.storage.kind === "zip_attachment") {
+        archiveEntry(manifest.storage.entry)
+        if (
+          !Number.isSafeInteger(manifest.storage.bytes) ||
+          manifest.storage.bytes <= 0 ||
+          manifest.storage.bytes > MAX_ATTACHMENT_BYTES
+        )
+          throw invalid("The single-original attachment exceeds its wire byte limit.")
+      }
       const inline =
         manifest.storage.kind === "inline"
           ? decodeInline(manifest.storage.data, manifest.bytes)
           : undefined
-      validateSharedRecordEnvelope(`store-${content.object_id}`, manifest, "resource")
       return { content, manifest, inline }
     })
     if (content.object_id !== `resource-${yield* sha256(canonicalSharedJson(manifest))}`)
@@ -115,10 +131,73 @@ export function validateCurrentSharedResourceManifest(
   })
 }
 
-/** Large files remain one original attachment. Preparation never allocates or uploads remotely. */
+function archiveEntry(input: string): string {
+  if (
+    typeof input !== "string" ||
+    !input ||
+    new TextEncoder().encode(input).byteLength > 4096 ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(input) ||
+    normalizePath(input) !== input
+  )
+    throw invalid("A single-original ZIP needs one bounded canonical relative file path.")
+  return input
+}
+
+function originalZip(bytes: Uint8Array, mode: CurrentResourceContent["mode"], entry: string) {
+  const entries: Zippable = Object.create(null)
+  entries[entry] = [
+    bytes,
+    {
+      mtime: new Date(1980, 0, 1),
+      level: 0,
+      os: 3,
+      attrs: ((mode === "100755" ? 0o100755 : 0o100644) << 16) >>> 0,
+    },
+  ]
+  return zipSync(entries)
+}
+
+function attachmentBytes(
+  content: CurrentResourceContent,
+  manifest: CurrentResourceManifest,
+  input: Uint8Array,
+) {
+  return Effect.gen(function* () {
+    const storage = manifest.storage
+    const identity = storage.kind === "zip_attachment" ? storage : content
+    if (input.byteLength !== identity.bytes || (yield* sha256(input)) !== identity.sha256)
+      return yield* Effect.fail(
+        invalid("The attachment wire bytes differ from the selected current resource."),
+      )
+    const bytes = yield* checked(() => {
+      if (storage.kind !== "zip_attachment") return input.slice()
+      const files = readImportZip(input)
+      const file = files[0]
+      if (
+        files.length !== 1 ||
+        file === undefined ||
+        file.path !== storage.entry ||
+        file.mode !== content.mode ||
+        file.bytes.byteLength !== content.bytes
+      )
+        throw invalid(
+          "The current ZIP must contain exactly its selected original path, size and mode.",
+        )
+      return file.bytes
+    })
+    if (bytes.byteLength !== content.bytes || (yield* sha256(bytes)) !== content.sha256)
+      return yield* Effect.fail(invalid("The complete original resource failed its checksum."))
+    return bytes
+  })
+}
+
+/** Prepare one current original; unsupported file types may use one deterministic ZIP. */
 export function prepareCurrentSharedResource(
   input: Uint8Array,
   mode: CurrentResourceContent["mode"],
+  options: { readonly storage: "auto" | "attachment"; readonly archiveName?: string } = {
+    storage: "auto",
+  },
 ) {
   return Effect.gen(function* () {
     const bytes = yield* checked(() => {
@@ -129,18 +208,33 @@ export function prepareCurrentSharedResource(
         )
       if (mode !== "100644" && mode !== "100755")
         throw invalid("A current resource requires its exact file mode.")
+      if (options.storage !== "auto" && options.storage !== "attachment")
+        throw invalid("Select automatic storage or one current attachment.")
+      if (options.archiveName !== undefined) archiveEntry(options.archiveName)
       return new Uint8Array(input)
     })
+    const upload =
+      options.archiveName === undefined
+        ? bytes
+        : yield* checked(() => originalZip(bytes, mode, options.archiveName!))
+    const storage: CurrentResourceManifest["storage"] =
+      options.archiveName !== undefined
+        ? {
+            kind: "zip_attachment",
+            entry: options.archiveName,
+            bytes: upload.byteLength,
+            sha256: yield* sha256(upload),
+          }
+        : options.storage === "auto" && bytes.byteLength <= CURRENT_RESOURCE_INLINE_BYTES
+          ? { kind: "inline", encoding: "base64", data: Buffer.from(bytes).toString("base64") }
+          : { kind: "attachment" }
     const manifest: CurrentResourceManifest = {
       version: 1,
       kind: "resource",
       sha256: yield* sha256(bytes),
       bytes: bytes.byteLength,
       mode,
-      storage:
-        bytes.byteLength <= CURRENT_RESOURCE_INLINE_BYTES
-          ? { kind: "inline", encoding: "base64", data: Buffer.from(bytes).toString("base64") }
-          : { kind: "attachment" },
+      storage,
     }
     const content: CurrentResourceContent = {
       kind: "resource",
@@ -156,7 +250,7 @@ export function prepareCurrentSharedResource(
           status: "needs_attachment",
           content,
           manifest,
-          bytes,
+          bytes: upload,
         } satisfies PreparedCurrentSharedResource)
   })
 }
@@ -168,39 +262,29 @@ export function validatePreparedCurrentSharedResource(input: unknown) {
       raw.content,
       raw.manifest,
     )
-    const bytes = yield* checked(() => {
-      if (raw.status === "inline" && manifest.storage.kind === "inline")
-        return decodeInline(manifest.storage.data, manifest.bytes)
+    if (raw.status === "inline" && manifest.storage.kind === "inline") {
+      const storage = manifest.storage
+      const bytes = yield* checked(() => decodeInline(storage.data, manifest.bytes))
+      return { content, manifest, bytes, uploadBytes: undefined }
+    }
+    const uploadBytes = yield* checked(() => {
       if (
         raw.status !== "needs_attachment" ||
-        manifest.storage.kind !== "attachment" ||
+        manifest.storage.kind === "inline" ||
         !(raw.bytes instanceof Uint8Array)
       )
         throw invalid("Resource preparation does not match its current storage representation.")
-      if (raw.bytes.byteLength !== content.bytes)
-        throw invalid("The prepared attachment has a different byte length.")
-      return new Uint8Array(raw.bytes)
+      return raw.bytes.slice()
     })
-    if ((yield* sha256(bytes)) !== content.sha256)
-      return yield* Effect.fail(invalid("The prepared attachment failed its exact checksum."))
-    return { content, manifest, bytes }
+    const bytes = yield* attachmentBytes(content, manifest, uploadBytes)
+    return { content, manifest, bytes, uploadBytes }
   })
-}
-
-function resourceRecord(record: SharedRecord, content: CurrentResourceContent) {
-  if (
-    record.kind !== "resource" ||
-    record.record_id !== content.object_id ||
-    record.entity_id !== content.object_id ||
-    record.operation_id !== `store-${content.object_id}`
-  )
-    throw invalid("A current resource requires its exact current Record identity.")
 }
 
 /** Same-response payload and Resource property; never an old object or history lookup. */
 export function loadCurrentSharedResourceManifest(
   library: SharedLibrary,
-  input: { readonly skillPageId: string; readonly content: CurrentResourceContent },
+  input: { readonly owner: CurrentResourceOwner; readonly content: CurrentResourceContent },
 ) {
   return Effect.gen(function* () {
     const content = yield* checked(() =>
@@ -208,8 +292,8 @@ export function loadCurrentSharedResourceManifest(
         onExcessProperty: "error",
       }),
     )
-    const row = yield* queryCurrentSharedResourceRecord(library, {
-      skillPageId: input.skillPageId,
+    const row = yield* queryCurrentOwnedResourceRecord(library, {
+      owner: input.owner,
       objectId: content.object_id,
     })
     if (row === undefined)
@@ -219,7 +303,6 @@ export function loadCurrentSharedResourceManifest(
           next: "reselect_current",
         }),
       )
-    yield* checked(() => resourceRecord(row.record, content))
     const validated = yield* validateCurrentSharedResourceManifest(content, row.record.payload)
     const files = yield* checked(() => {
       const field = property(row.resource)
@@ -238,20 +321,16 @@ export function loadCurrentSharedResourceManifest(
   })
 }
 
-function attachmentLocator(raw: unknown) {
+function attachmentUrl(raw: unknown) {
   const attachment = property(raw),
     file = property(attachment.file)
   if (
     attachment.type !== "file" ||
     typeof attachment.name !== "string" ||
     !attachment.name ||
-    typeof file.url !== "string" ||
-    typeof file.expiry_time !== "string" ||
-    !Number.isFinite(Date.parse(file.expiry_time))
+    typeof file.url !== "string"
   )
-    throw invalid(
-      "A current attachment requires one Notion-hosted file and an expiring download URL.",
-    )
+    throw invalid("A current attachment requires one Notion-hosted file URL.")
   const url = new URL(file.url)
   const host = url.hostname
   const notionHost =
@@ -274,7 +353,21 @@ function attachmentLocator(raw: unknown) {
       "SHARED_RESOURCE_URL_REFUSED",
       "The current attachment URL is not an authorized Notion file location.",
     )
-  return { url: url.href, expires: Date.parse(file.expiry_time) }
+  return url
+}
+
+/** Signed query values and expiry are transport details, never attachment identity. */
+export function currentResourceAttachmentIdentity(raw: unknown): string {
+  const url = attachmentUrl(raw)
+  return url.origin + url.pathname
+}
+
+function attachmentLocator(raw: unknown) {
+  const url = attachmentUrl(raw)
+  const expiry = property(property(raw).file).expiry_time
+  if (typeof expiry !== "string" || !Number.isFinite(Date.parse(expiry)))
+    throw invalid("A current attachment requires an expiring download URL.")
+  return { url: url.href, expires: Date.parse(expiry) }
 }
 
 function downloadError(error: unknown): SkillsError {
@@ -284,7 +377,10 @@ function downloadError(error: unknown): SkillsError {
   return fail("SHARED_RESOURCE_DOWNLOAD_FAILED", "The current attachment request failed.")
 }
 
-function downloadAttachment(content: CurrentResourceContent, url: string) {
+function downloadAttachment(
+  content: Pick<CurrentResourceContent, "bytes" | "sha256">,
+  url: string,
+) {
   return Effect.gen(function* () {
     const timeout = yield* requestTimeoutMs
     const client = HttpClient.withScope(yield* HttpClient.HttpClient)
@@ -363,7 +459,7 @@ function downloadAttachment(content: CurrentResourceContent, url: string) {
 /** Reads use the caller's bounded HTTP runtime and never upload, repair or adopt remotely. */
 export function loadCurrentSharedResourceContent(
   library: SharedLibrary,
-  input: { readonly skillPageId: string; readonly content: CurrentResourceContent },
+  input: { readonly owner: CurrentResourceOwner; readonly content: CurrentResourceContent },
 ) {
   return Effect.gen(function* () {
     const first = yield* loadCurrentSharedResourceManifest(library, input)
@@ -372,6 +468,7 @@ export function loadCurrentSharedResourceContent(
       return {
         content: first.content,
         manifest: first.manifest,
+        record: first.record,
         bytes: yield* checked(() => decodeInline(storage.data, first.content.bytes)),
         verification: "remote_verified" as const,
       }
@@ -390,12 +487,18 @@ export function loadCurrentSharedResourceContent(
               { status: 403 },
             ),
           }
-        : yield* downloadAttachment(current.content, locator.url).pipe(Effect.result)
+        : yield* downloadAttachment(
+            current.manifest.storage.kind === "zip_attachment"
+              ? current.manifest.storage
+              : current.content,
+            locator.url,
+          ).pipe(Effect.result)
       if (read._tag === "Success")
         return {
           content: current.content,
           manifest: current.manifest,
-          bytes: read.success,
+          record: current.record,
+          bytes: yield* attachmentBytes(current.content, current.manifest, read.success),
           verification: "remote_verified" as const,
         }
       if (
@@ -428,7 +531,7 @@ export function loadCurrentSharedResourceContent(
  * stay with each caller. Completed results are never retained by this coalescer. */
 export function readCurrentSharedResourceBytes(
   library: SharedLibrary,
-  input: { readonly skillPageId: string; readonly content: CurrentResourceContent },
+  input: { readonly owner: CurrentResourceOwner; readonly content: CurrentResourceContent },
 ) {
   const read = loadCurrentSharedResourceContent(library, input).pipe(
     Effect.map((value) => value.bytes),
@@ -462,11 +565,11 @@ export function readCurrentSharedResourceBytes(
   })
 }
 
-/** Authorized management only. Unknown creates reconcile by stable ID; this helper never retries a write. */
+/** Authorized management only. Unknown creates reconcile by stable ID; no write is retried. */
 export function storeCurrentSharedResource(
   library: SharedLibrary,
   input: {
-    readonly skillPageId: string
+    readonly owner: CurrentResourceOwner
     readonly prepared: PreparedCurrentSharedResource
     readonly mode: "create" | "reconcile"
     readonly upload?: { readonly id: string; readonly name: string }
@@ -475,46 +578,49 @@ export function storeCurrentSharedResource(
 ) {
   return Effect.gen(function* () {
     const prepared = yield* validatePreparedCurrentSharedResource(input.prepared)
-    if (
-      input.mode === "create" &&
-      prepared.manifest.storage.kind === "attachment" &&
-      input.upload === undefined
-    ) {
-      const existing = yield* queryCurrentSharedResourceRecord(library, {
-        skillPageId: input.skillPageId,
-        objectId: prepared.content.object_id,
-      })
-      if (existing !== undefined) {
-        const verified = yield* loadCurrentSharedResourceContent(library, {
-          skillPageId: input.skillPageId,
-          content: prepared.content,
-        })
-        return { ...verified, record: existing.record }
-      }
-      return yield* Effect.fail(
-        fail(
-          "SHARED_RESOURCE_UPLOAD_REQUIRED",
-          "The management operation must supply the already uploaded original attachment.",
-          { object_id: prepared.content.object_id, bytes: prepared.content.bytes },
-        ),
-      )
-    }
     if (prepared.manifest.storage.kind === "inline" && input.upload !== undefined)
       return yield* Effect.fail(
         invalid("An inline resource cannot attach a second content carrier."),
       )
-    const record = yield* createCurrentSharedResourceRecord(library, {
-      skillPageId: input.skillPageId,
-      objectId: prepared.content.object_id,
-      payload: prepared.manifest,
-      mode: input.mode,
-      ...(input.upload === undefined ? {} : { upload: input.upload }),
-      ...(input.beforeCreate === undefined ? {} : { beforeCreate: input.beforeCreate }),
-    })
-    const verified = yield* loadCurrentSharedResourceContent(library, {
-      skillPageId: input.skillPageId,
+    const identity = { owner: input.owner, objectId: prepared.content.object_id }
+    const existing = yield* queryCurrentOwnedResourceRecord(library, identity)
+    if (existing === undefined) {
+      if (input.mode === "reconcile")
+        return yield* Effect.fail(
+          fail(
+            "CURRENT_RESOURCE_UNRESOLVED",
+            "The unknown current resource creation is not yet observable; do not replay it.",
+            { object_id: prepared.content.object_id },
+          ),
+        )
+      if (prepared.manifest.storage.kind !== "inline" && input.upload === undefined)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_RESOURCE_UPLOAD_REQUIRED",
+            "The management operation must supply the already uploaded original attachment.",
+            { object_id: prepared.content.object_id, bytes: prepared.content.bytes },
+          ),
+        )
+      const request = yield* currentOwnedResourceCreateRequest(library, {
+        ...identity,
+        payload: prepared.manifest,
+        ...(input.upload === undefined ? {} : { upload: input.upload }),
+      })
+      if (input.beforeCreate !== undefined) yield* input.beforeCreate
+      const raw = yield* (yield* Notion).request(request.path, request.body, request.options)
+      yield* currentOwnedResourceFromPage(library, raw, identity).pipe(
+        Effect.mapError((error) =>
+          fail(
+            "WRITE_OUTCOME_UNKNOWN",
+            "The current resource creation returned an unverifiable response.",
+            { object_id: prepared.content.object_id, cause_code: error.code },
+          ),
+        ),
+      )
+    }
+    return yield* loadCurrentSharedResourceContent(library, {
+      owner: input.owner,
       content: prepared.content,
     })
-    return { ...verified, record }
   })
 }

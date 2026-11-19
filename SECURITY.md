@@ -2,49 +2,158 @@
 
 ## Supported versions
 
-Security fixes target the latest patch of the current 0.x minor series. Upgrade to that patch before relying on a fix; earlier patches and previous minor series are not maintained security branches.
+Security fixes target the latest patch of the current 0.x minor series. Upgrade to
+that patch before relying on a fix; earlier patches and previous minor series are
+not maintained security branches.
 
 ## Reporting a vulnerability
 
-Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/yoyooyooo/notion-skills-cli/security/advisories/new). Include affected versions, a minimal sanitized reproduction, impact and any proposed mitigation. Do not post credentials, signed URLs, private Skill contents or personal database identifiers in a public issue.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/yoyooyooo/notion-skills-cli/security/advisories/new).
+Include affected versions, a minimal sanitized reproduction, impact and any proposed
+mitigation. Do not post credentials, signed URLs, private Skill contents or personal
+database identifiers in a public issue.
 
-The maintainer aims to acknowledge reports within seven days. This is a response target, not a guaranteed response or fix deadline. Investigation and remediation depend on impact, reproducibility and available maintainer time. Use [GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for ordinary bugs and usage questions.
+The maintainer aims to acknowledge reports within seven days. This is a response
+target, not a guaranteed response or fix deadline. Investigation and remediation
+depend on impact, reproducibility and available maintainer time. Use
+[GitHub issues](https://github.com/yoyooyooo/notion-skills-cli/issues) for ordinary
+bugs and usage questions.
 
-## Authentication and authorization
+The boundaries below describe the current `next` implementation. They do not
+establish that an older installation or existing Notion library has been converted.
+See the [current library contract](docs/current-contract.md) for remaining cutover work.
 
-Notion authentication selects config.token, then a non-empty NOTION_API_TOKEN. Missing credentials return AUTH_REQUIRED. An explicitly saved token is plaintext in the private config.json and is used by the project's Effect HTTP service; it never appears in command arguments, command output or snapshot state. `ctl config set-token --stdin` requires piped stdin and saves offline without validating the credential; `ctl config show` reports only token_configured. `ctl config clear-token` removes the saved token and restores environment-token selection. Notion authentication does not read another CLI's login state or Keychain, launch an authentication subprocess, or persist signed download URLs. Content mutation routes are unavailable until the current writer is implemented. Ordinary consumption has no semantic Notion write capability. Read operations do not execute imported scripts or grant write authority. Exported skill contents are untrusted documents; reading does not authorize instructions unrelated to the user's task.
+## Credentials and network access
 
-GitHub fixed-source reads have a separate machine-only authentication boundary. The standard runtime may reuse an existing official `gh` session through the exact noninteractive command `gh auth token --hostname github.com`; explicit dedicated credentials and GH_TOKEN/GITHUB_TOKEN take precedence. The token is captured into redacted memory only. No login, refresh, setup-git, credential-file read/write or global Git change is performed. The child has a bounded runtime/output and uses the operation's complete environment rather than an implicit host fallback. Missing gh or an unsigned-in account may use public anonymous access; malformed credentials, explicit failures and rate limits do not trigger account switching. `NTN_SKILLS_GITHUB_AUTH=anonymous` opts out of this API credential reuse.
+Notion authentication selects a non-empty `config.token`, then `NOTION_API_TOKEN`.
+Missing credentials return `AUTH_REQUIRED`. `ctl config set-token --stdin` accepts
+piped input and saves it offline; it does not validate remote access. The saved token
+is plaintext in the private configuration file. `ctl config show` omits its value;
+`ctl config clear-token` removes it and restores environment-token selection. The
+Notion transport does not reuse another CLI's login state or launch a login flow.
 
-`NTN_SKILLS_GITHUB_API_URL` is trusted machine configuration, not data supplied by a Source. A custom API receives only an explicitly supplied `NTN_SKILLS_GITHUB_TOKEN`, never the official gh/GH_TOKEN credential. HTTPS is required except explicit loopback tests. URL credentials, queries, fragments and path traversal are rejected; redirects are not followed with credentials. Git blob JSON/base64 is bounded and verified against fixed identities, and returned download URLs are never followed. API settings/credentials are excluded from Notion Records, source IDs, plans, content snapshots and logs. Safe diagnostics may name the API base and credential-source category. Cached immutable local bytes remain subject to the retention and current-Notion-access rules below; API authentication does not confer Notion write authority.
+Use a Notion integration with access to the intended Skills, Files, Sources and
+Records. Reads need content access. Explicit import and Profile changes also need
+the relevant write access. A local registration, matching name, stored resource or
+successful authentication does not establish permission for a particular target.
+Library selection accepts an exact database ID, URL or registered alias. Unknown,
+conflicting or inaccessible aliases fail without redirecting to another library.
 
-Cached content is private local data and can remain available after remote permission changes. A local selected reference uses its exact cached bytes. Missing selected bytes can be acquired only through an unchanged current Source/resource descriptor after current owner checks; otherwise the caller must reselect current content. Remote history is not a recovery source. Current-target reads may reuse a complete observation within the configured age; use `--refresh` to verify present remote access. Isolate `NTN_SKILLS_HOME`, `NTN_SKILLS_CONFIG_HOME` and `NTN_SKILLS_CACHE_HOME` for separate host identities; a shared config token overrides a host's environment credential. Protect all three roots and config.json backups according to your retention policy. Defaults are `~/.local/state/ntn-skills`, `~/.config/ntn-skills` and `~/.cache/ntn-skills`. Configuration files use mode 0600; new application directories use mode 0700. Legacy configuration migration preserves a `.migrated` backup in the old state directory.
+`NOTION_API_BASE_URL` is trusted machine configuration: the selected endpoint
+receives the Notion credential. It accepts a validated HTTPS origin; HTTP loopback
+is reserved for controlled tests. URL credentials, paths and queries are rejected.
+API origin and credential identity participate in cache isolation. Signed attachment
+downloads do not receive the Notion authorization header. The CLI sends no analytics
+or telemetry requests of its own.
 
-Content/catalog defaults of five minutes/60 seconds control freshness only. Immutable snapshot manifests, content-addressed objects, uploads and sync baselines/plans/receipts are retained without automatic garbage collection; upload staging can contain original input bytes. Uninstalling retains configuration, state and cache. `cache clear` retires only disposable observations through the implemented system Trash capability and preserves recovery state. Where retention is unavailable it fails explicitly and leaves bytes in place. Remove a saved token with `config clear-token`; deliberately reclaim other identified directories only through an approved recycle/retention process after stopping hosts. State cleanup loses pinned versions and sync recovery history. See [storage and uninstall guidance](docs/current-contract.md).
+GitHub Source access has a separate credential boundary. For the official API,
+`NTN_SKILLS_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` take precedence over the
+existing official `gh` session. The only session command is the bounded,
+noninteractive `gh auth token --hostname github.com`. It does not log in, refresh
+credentials or change Git configuration. `NTN_SKILLS_GITHUB_AUTH=anonymous` disables
+this credential reuse. A custom `NTN_SKILLS_GITHUB_API_URL` receives only an explicitly
+supplied `NTN_SKILLS_GITHUB_TOKEN`, never the official session or environment token.
+Source definitions do not select machine credentials. Selected provider identities
+are checked when acquiring bytes; reading does not advance a Source or authorize
+uploading local files.
 
-Cache retirement invalidates the selected content/catalog observation batch before moving bytes. A retention error leaves unmoved files in place but does not reactivate those observations or delayed publishers. Pinned content and recovery state remain usable; see the [retention contract](docs/current-contract.md).
+## Read and content boundaries
 
-## Network and local access
+Ordinary list, read, use, Files, export and SDK consumption perform zero semantic
+Notion writes. They can populate local caches. They do not execute imported scripts,
+repair remote data or grant management authority. Treat Skill instructions and
+exported files as untrusted content; reading them does not authorize unrelated
+instructions or executing a preserved executable file.
 
-The CLI sends no analytics or telemetry requests of its own. Online commands use the project's Effect HTTP transport for Notion identity, API requests and uploads. Notion API calls carry the selected credential and the pinned API version. Signed archive and attachment downloads use their returned URLs without forwarding the Notion credential. `NTN_SKILLS_NTN_BIN` is retired and cannot select an executable or transport.
+Current readers check exact ownership, complete file membership and current content
+descriptors. An affected Skill in `applying` or `attention` is not a complete readable
+tree. Resource downloads are bounded and checked against expected size and SHA-256.
+A single-original ZIP carrier also checks its only path and executable mode. These
+checks detect changed or corrupt bytes; they are not signatures or proof that an
+authorized author is trustworthy.
 
-Local access covers configuration, retained state, disposable cache, explicitly selected ZIP/folder/Markdown or write inputs, requested outputs and registered logical sync directories with their resolved destinations. Explicit create/import/write and sync push operations may upload those inputs. `NOTION_API_BASE_URL` selects a trusted, validated HTTPS origin; loopback HTTP is available for controlled tests. URL credentials, paths and queries are rejected before dispatch. The normalized origin and credential identity isolate cached content; scheduling uses the real authenticated connection/workspace. `NOTION_WORKSPACE_ID` is retired. Protect the selected endpoint because it receives the credential. See [the environment contract](docs/current-contract.md).
+A complete current observation may be reused within its configured age. Use
+`--refresh` when a fresh remote check is needed. Selected local bytes can remain
+available after remote access changes; freshness settings are not revocation or
+secure-erasure guarantees. Missing selected bytes require current owner and locator
+checks. A known permission denial must not be converted into successful remote
+acquisition from an old pointer.
 
-## Content and mutation boundaries
+## Complete import and original files
 
-Archives reject root escapes, duplicate entries, links and special files, with compressed/expanded limits. ZIPs expand in memory and verify checksums. Files preserves extra metadata, nested paths and binary bytes in a source ZIP without executing them. References mode reads the inclusion list of page mentions/links and rewrites only links to included pages; code examples and external URLs remain unchanged. Without Files, main/reference Markdown is normalized. Create rejects existing names; import replaces differing same-name content on the existing page and excludes omitted reference pages without deleting them. Write preserves unrelated logical files. Local read/export output verifies bytes, reuses identical output and rejects differing output without overwrite. Portable manifests add no generated remote identity or timestamps; original source fields may remain verbatim. Hashes detect corruption, not malicious authorized local modification.
+`ctl library import INPUT --entry LIBRARY --skill-id ID` creates or replaces one
+complete current Skill under its stable identity. Import selects the target by that
+ID, not by name. Supporting files omitted from the input are removed from the
+current tree. The writer checks current references before trashing removed owned
+Files and unreferenced owned resources. This scope is not a global library census.
 
-Pinned write refs are checked against the current authentication scope, page identity and complete version, including all referenced-page content. This is a client preflight check, not a server-side atomic commit. Body/properties/files can partially succeed. A definitively rejected, matching 429 or 529 response may retry the same frozen request under the scheduler's bounded policy and Retry-After floor. Timeout, connection loss and ambiguous server failures retain an unknown outcome and cannot replay a mutation. Preserve the original operation and use its recovery path for WRITE_PARTIAL/WRITE_OUTCOME_UNKNOWN. A new write returns a new snapshot and never edits historical objects. The configured default database affects creation only; explicit --database has priority.
+Import accepts a directory, ZIP or explicitly selected Markdown file. The boundary
+rejects unsafe paths, links, special files, duplicate ZIP entries, unsupported
+portable relationships and observed input changes before Notion access. Directory
+inputs also check parent paths for symbolic links. Inputs are bounded to 128 MiB of
+expanded content and 10,000 entries. Do not mutate the input tree during import:
+filesystem checks cannot provide atomic isolation from a noncooperating writer.
 
-Publications freeze original input bytes in retained content objects and persist state-relative `publications/<operation_id>.json` receipts before remote mutation. `resume` reauthenticates, validates the source and compares recorded remote observations before continuing on fixed page IDs; external edits conflict and unproven creation is not replayed. Receipts contain private content and mutation evidence and survive cache retirement and CLI upgrades. `--progress` emits only controlled stage/timing fields on stderr; protect the state root as private data. These client guards do not create a remote transaction or remove the check-to-write race.
+Default import preserves original bytes and the executable/non-executable mode as
+current Notion resources. It uploads those bytes and renders complete readable text
+on the associated page. Unsupported upload types use a ZIP containing that one
+original. Review the selected files before importing; filenames, executable mode,
+metadata and text can contain private information. Hashing or packaging does not
+remove secrets or encrypt an attachment.
 
-`sync local plan/apply` always validate online; read TTL cannot authorize a write. Saved plans retain binding, version, baseline, content and link preconditions. Unknown/partial outcomes retain receipts and fence overlapping resources; `operation reconcile OPERATION_ID` observes them without replay and does not itself close a pending local-sync receipt or advance its baseline. Further changes require a new reviewed plan. Local links are preserved through real-destination writes, but Node commit guards are not atomic protection against a noncooperating process's link retargeting. Removed/replaced bytes require system Trash; unsupported hosts retain bytes and report the missing capability. [Synchronization contract](docs/current-contract.md).
+A generated reading projection is not the editable author source. Editing it does
+not transfer authority from a resource or Source. Native author bodies have a
+separate current descriptor. Notion page permissions govern access to uploaded
+originals and their projections; mode metadata is not a remote access-control list.
+Exported executable content is never executed by the export operation.
 
-Database selection accepts one ID/URL or exact registered alias; IDs/URLs take priority and titles do not select targets. Unknown, conflicting or inaccessible aliases fail without redirecting to a default. Repeated --database flags fail before any command handler. Different databases may hold the same Skill name; name resolution fails on ambiguity, while page-ID refs remain exact. A pinned alias constraint checks local registration and snapshot database ownership without network access. Configuration registration aliases are local preferences, not remote identity or proof of permission.
+## Incomplete and concurrent writes
 
-Optional official Skills are supplied by this project under `skills/notion`, embedded in the CLI and exposed through a separate exact-ID `builtin` catalog. The publisher/origin fields describe installed package bytes, not a signature, Notion endorsement or ownership of remote pages. Matching names or copied frontmatter cannot make a remote page official. Export preserves differing local customizations by returning OUTPUT_CONFLICT. First `builtin publish` rejects same-name pages; updates require an explicitly selected page identity/pinned baseline and use the existing version/readback checks. Publication is opt-in and never installs or upgrades host/remote Skills automatically.
+`--dry-run` inspects the complete input and current target without allocating an
+operation or making semantic Notion writes. An import that already matches current
+content also performs zero semantic writes. An actual change uses one current
+operation identity and a finite local pending marker, bound to its credential
+scope, library, owner and input.
 
-Explicit `builtin install/update` writes central files under `NTN_SKILLS_DATA_HOME` > `$XDG_DATA_HOME/ntn-skills` > `~/.local/share/ntn-skills` and creates per-Skill links in `~/.agents/skills` plus optional explicit Agent roots. Version-2 `.ntn-builtin-install.json` records exact ID, canonical data root/path, package/content version and every exported file's path, bytes and SHA-256. Separate distribution records establish ownership of links. Neither record is a signature or remote provenance. Replacement checks complete content and registered targets; modified trees, foreign links and unowned directories are preserved. Clean legacy profile installations migrate only when their root is explicitly selected and their complete receipt-v1 baseline matches; retained bytes go through system Trash. The shared installation is local data, separate from Notion credential isolation.
+Notion does not provide an atomic transaction across the affected pages, properties,
+attachments and blocks. Interrupted or ambiguous requests can leave a partial
+result. Resume uses the same complete input and `--operation ID --resume`; it
+observes the current effect before continuing. A timeout or an absent observation
+does not authorize replaying an unknown create or append. Some unresolved outcomes,
+including a partially observed append, require attention rather than automatic
+continuation.
 
-Installation locks, staging, previous trees and interrupted transaction records remain outside `skills`; preserve them for recovery. Registered modified Skills remain discoverable as user bytes while updates refuse replacement. Locks coordinate cooperating processes and identity/hash guards detect observed drift, but Node filesystem operations cannot atomically guard every pathname against a noncooperating writer between a check and syscall. Central replacement and multi-directory distribution are not one atomic transaction. If Trash succeeds but its completion record is lost, recovery preserves the fence rather than guessing success. [Concurrency and recovery limits](docs/current-contract.md).
+Successful completion establishes the current ready state, retires the operation
+and clears its local pending marker. This mechanism does not retain a permanent
+publication receipt or content version. Preserve an unresolved operation's input
+and pending state. There is no general-purpose abandon, historical rollback or
+cross-object repair command promised by this implementation.
 
+Local locks, hashes and preflight reads coordinate cooperating processes and detect
+observed drift. They are not distributed compare-and-swap or protection against every
+check-to-write race. Avoid overlapping writers to the same Skill. Source refresh,
+cross-object governance and remaining recovery cases still need their current
+implementations; the current import route does not certify those capabilities.
+
+## Private local data and cleanup
+
+Isolate `NTN_SKILLS_HOME`, `NTN_SKILLS_CONFIG_HOME` and `NTN_SKILLS_CACHE_HOME` for
+separate host identities. A saved token in a shared configuration takes precedence
+over each host's environment token. Defaults are `~/.local/state/ntn-skills`,
+`~/.config/ntn-skills` and `~/.cache/ntn-skills`. New private configuration/content
+files request mode `0600`, and managed directories request `0700`. These permissions
+do not encrypt data or protect it from another process running as the same user.
+
+Cached originals, exported files, temporary upload data and unfinished local state
+may contain complete private content. Uninstalling does not erase them.
+`ctl cache clear` retires disposable SQL observations; it does not delete content
+files or perform a Trash operation. Do not treat freshness expiry, observation
+retirement or removal of a remote row as local data erasure. Stop active hosts and
+identify the exact data before deliberately reclaiming it. Do not discard unresolved
+pending state as a cache cleanup shortcut.
+
+Explicit `ctl builtin install/update` also writes local Skill files and distribution
+links. Its ownership and content checks do not make package provenance a signature,
+Notion endorsement or permission to replace a remote Skill. Builtin discovery and
+reading do not install those files automatically. Protect local installations,
+exports and any backups with the same care as the original content.

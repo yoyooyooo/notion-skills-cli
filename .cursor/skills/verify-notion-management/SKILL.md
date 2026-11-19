@@ -1,39 +1,40 @@
 ---
 name: verify-notion-management
-description: "验证 Notion 当前字段、文件权威、完整树、Profile 更新、有限恢复和实际残留清理。修改 Skills/Files/Records 管理或清退时使用；区分已实现 current reader/Profile 与尚未公开的内容 writer。"
+description: "验证 Notion 当前完整树导入、文件权威、全文投影、原件导出、Profile、有限恢复和实际残留清理。修改 Skills/Files/Records 管理或清退时使用。"
 ---
 
 # 当前管理验证
 
-执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 1、2、4 组。本入口不负责消费缓存，也不负责以受控代码代替真实 Notion 清理、安装或 Pi。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 1、2、4 组。本入口不负责消费缓存，也不负责宿主投递。当前 import、真实业务库转换、全库治理和 Pi 日用分别报告范围。
 
 ## Launch
 
-沿 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 隔离。从任务已有授权确定 exact owner 和作用范围；受控测试不写生产库。同一当前目标保持单一管理 writer。
+沿 [共用 Launch](../verify-ntn-skills/references/harness.md#launch) 隔离。从任务已有授权确定 exact library、稳定 Skill ID 和完整输入。同一目标保持一个管理 writer，受控测试使用自有服务。
 
 ## Doctor
 
 ~~~sh
-bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-profile.test.ts --timeout 60000
+bun test packages/core/test/shared-current-index.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-projection.test.ts packages/core/test/shared-profile.test.ts --timeout 60000
 ~~~
 
-前者验证当前 schema、完整分页和身份边界；后者验证单 current Profile 替换、冲突与有限对账。两者不证明内容整树 writer、完整人类投影或清理已完成。
+按改动选择必要文件。当前树测试包含实际页面、Records、正文变更和读回导出；Profile 测试仍只证明当前规则替换。受控通过不等于真实 Notion 已迁移。
 
 ## Drive
 
-1. 核 Skills 主文和 supporting Files 的严格 Content union、stable ID、唯一 owner、安全 path、mode 和 Current State/Operation。native 没有阻断人工修改的存储 hash；source/resource 必须有 exact hash/bytes。
-2. 管理 inspect/files 可以返回 applying/attention；普通 reader 在获取正文前拒绝。旧 Content 缺失明确要求显式转换，无 Projection 或旧 event fallback。
-3. Profile 用完整当前规则与 expect fingerprint 替换同一 Record。遗漏可选字段表示清除，重复内容 0 写。lost-response reconcile 只读当前规则，不能伪造原 ACK 或重复未知 POST/PATCH。
-4. 对待接入的内容 writer，保留完整 main、文本/代码、图片/原件、relative links、modes、关系和排除意图。显式权限转换不得覆盖另一个 Source 或人工内容。现有 index 验证不能替代实际提交。
-5. 改名、移动、删除/排除、换源和停用必须查反向关系；missing/forbidden/partial 不算不存在。全库 census 必须完整枚举并解释缺口。当前公开 CLI 尚无 census/cleanup writer，不能教已退役 audit/apply 来补这一步。
-6. 真实清退先移交唯一当前字节，再移除旧表/字段/页/Records/附件/导航，重新枚举并重复治理 no-op。隐藏列、加标签或保留平行旧库不算清理完成。
+1. 先用 `ctl library import INPUT --entry DB --skill-id ID --dry-run` 读取当前目录与完整替换范围。确认 main 唯一、全部 supporting Files、stable ID、唯一 owner、路径、mode 和 authority。缺少当前 Content 的旧库必须先显式转换。
+2. 对同一完整输入执行 import。默认保存 Notion resource 原件，文本全文投影，opaque 文件带可下载原件。unsupported 类型是单原件 ZIP，读和导出恢复原字节。generated body 编辑不转移权威；native author body 仍直接编辑。
+3. 从 Skills→Files 逐类查看 Markdown、代码和二进制。用实际 current reader、单文件读取和目录 export 核 hash/bytes/mode。不要只比较上传请求或属性占位。原输入在 prepare 后变动必须在远端写入前拒绝。
+4. 用相同输入和新的 operation 重复 import，确认 semantic writes 为 0，没有新 Operation/Resource。修改一个文件并移除另一个，确认唯一 Skill 页、保留 File ID、最终完整树及旧 Files/无引用 Resource 已进入 Trash。共享原件的投影重建要在一次操作内收敛。
+5. 覆盖时保持未指定的 Enabled、Default Context、Members 和 Requires。需要变更 kind、关系或 Source 选择时，用已实现的明确入口；导入不得静默丢弃 portable 的关系或旧投影字段。完整本地导入是显式替换整个文件树。
+6. 沿 [当前恢复](../verify-notion-operation-recovery/SKILL.md) 核 CREATE、append、退役响应丢失及半树拒绝消费。有限 Operation 完成后回收，不保留旧正文或永久 ACK。
+7. Profile 用完整当前规则与 expect fingerprint 替换同一 Record；相等 0 写。全库 census、反向关系治理和实库转换仍单独验收。先移交唯一当前字节，再清旧字段、行、页、附件和导航；隐藏或平行旧库不算清理。
 
-实际安装与现有测试对应见 [skill-maintenance](../verify-ntn-skills/features/skill-maintenance.md)。当前命令只公开 library init/inspect/files/profile 和消费；内容 writer 未接入时如实 blocked/not_run，不借旧接口跑通。
+实际命令与限制见 [导入旅程](../verify-ntn-skills/features/import-create-recovery-dry-run.md)、[安装验证](../verify-ntn-skills/features/skill-maintenance.md) 和 [当前合同](../../../docs/current-contract.md)。
 
 ## Evidence
 
-分别报告当前正文、当前关系、实际 effects、cost 和剩余范围。Profile 完成不能替代一般 content recovery。当前 schema 校验不能替代 AH-501 全文阅读或 AH-513 实库清退。
+报告实际正文、原件、关系、清理 effects、HTTP 成本与剩余范围。局部受控 writer 不替代 AH-501 全量阅读或 AH-513 实库清退；没有执行就写 not_run。
 
 ## Cleanup
 
-沿 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 仅回收自有且已移交当前内容的对象。必要在途状态有界保留；过去 unknown 和已取消的历史 pin 不能无限阻断新的当前状态。所有本地移除进入系统 Trash。
+沿 [共用 Cleanup](../verify-ntn-skills/references/harness.md#cleanup) 仅回收自有且已移交当前内容的对象。只保留未完成意图需要的状态，本地移除进入系统 Trash。

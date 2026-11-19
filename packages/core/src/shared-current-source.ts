@@ -3,7 +3,13 @@ import type { HttpClient } from "effect/http"
 import { fail, listSchema, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { CurrentSourceIdSchema } from "./shared-current-file.ts"
+import { CurrentSourceIdSchema, CurrentResourceContentSchema } from "./shared-current-file.ts"
+import {
+  CURRENT_RESOURCE_MAX_BYTES,
+  prepareCurrentSharedResource,
+  readCurrentSharedResourceBytes,
+  type PreparedCurrentSharedResource,
+} from "./shared-current-resource.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { loadSharedSourceOptions } from "./shared-source-config.ts"
@@ -19,10 +25,15 @@ import { SharedSourcePlanSchema } from "./shared-source-plan-model.ts"
 /** One current Sources property. A large manifest needs an explicit current
  * resource representation; this reader never truncates or falls back to history. */
 export const CURRENT_SOURCE_MAX_INLINE_BYTES = 180_000
-export const CurrentSharedSourceContentSchema = Schema.Struct({
+export const CurrentSharedSourcePlanContentSchema = Schema.Struct({
   version: Schema.Literal(1),
   plan: SharedSourcePlanSchema,
 })
+export type CurrentSharedSourcePlanContent = typeof CurrentSharedSourcePlanContentSchema.Type
+export const CurrentSharedSourceContentSchema = Schema.Union([
+  CurrentSharedSourcePlanContentSchema,
+  Schema.Struct({ version: Schema.Literal(1), resource: CurrentResourceContentSchema }),
+])
 export type CurrentSharedSourceContent = typeof CurrentSharedSourceContentSchema.Type
 export type CurrentSharedSourceSelection = {
   readonly source_id: string
@@ -86,11 +97,8 @@ function boundedContent(value: string): void {
     )
 }
 
-export function validateCurrentSharedSourceContent(input: unknown): CurrentSharedSourceContent {
-  const decoded = Schema.decodeUnknownSync(CurrentSharedSourceContentSchema)(input, {
-    onExcessProperty: "error",
-  })
-  const inspection = inspectSharedSourcePlan(decoded.plan)
+function validatedPlan(input: unknown) {
+  const inspection = inspectSharedSourcePlan(input)
   if (
     inspection.manifest.some(
       (file) => file.identity.sha256 === undefined || !/^[a-f0-9]{64}$/u.test(file.identity.sha256),
@@ -100,17 +108,62 @@ export function validateCurrentSharedSourceContent(input: unknown): CurrentShare
       "CURRENT_SOURCE_MANIFEST_INCOMPLETE",
       "Every current Source file requires its exact SHA-256 before it can be selected.",
     )
-  const content = { version: 1 as const, plan: inspection.plan }
+  return inspection.plan
+}
+
+export function validateCurrentSharedSourceContent(input: unknown): CurrentSharedSourceContent {
+  const decoded = Schema.decodeUnknownSync(CurrentSharedSourceContentSchema)(input, {
+    onExcessProperty: "error",
+  })
+  const content =
+    "plan" in decoded ? { version: 1 as const, plan: validatedPlan(decoded.plan) } : decoded
+  if (
+    "resource" in content &&
+    (content.resource.mode !== "100644" ||
+      !Number.isSafeInteger(content.resource.bytes) ||
+      content.resource.bytes <= 0 ||
+      content.resource.bytes > CURRENT_RESOURCE_MAX_BYTES)
+  )
+    throw fail(
+      "CURRENT_SOURCE_INVALID",
+      "A Source manifest resource requires one complete regular JSON file within its byte limit.",
+    )
   boundedContent(canonicalSharedJson(content))
   return content
 }
 
-/** This fingerprint covers the selected current plan. Concrete provider commits
- * remain in the plan; the fingerprint is neither a historical pointer nor a CAS. */
+/** Storage does not change the fingerprint of the complete normalized current plan. */
+export function prepareCurrentSharedSourceContent(planInput: unknown) {
+  return Effect.gen(function* () {
+    const plan = yield* checked(() => validatedPlan(planInput))
+    const content = { version: 1 as const, plan }
+    const original = canonicalSharedJson(plan)
+    const revision = yield* sha256(original)
+    if (
+      new TextEncoder().encode(canonicalSharedJson(content)).byteLength <=
+      CURRENT_SOURCE_MAX_INLINE_BYTES
+    )
+      return { content, revision } satisfies {
+        content: CurrentSharedSourceContent
+        revision: string
+        resource?: PreparedCurrentSharedResource
+      }
+    const resource = yield* prepareCurrentSharedResource(
+      new TextEncoder().encode(original),
+      "100644",
+      { storage: "attachment" },
+    )
+    return { content: { version: 1 as const, resource: resource.content }, revision, resource }
+  })
+}
+
+/** Concrete commits remain in the plan; this fingerprint is never a history pointer or CAS. */
 export function currentSharedSourceRevision(input: unknown) {
   return Effect.gen(function* () {
     const content = yield* checked(() => validateCurrentSharedSourceContent(input))
-    return yield* sha256(canonicalSharedJson(content.plan))
+    return "plan" in content
+      ? yield* sha256(canonicalSharedJson(content.plan))
+      : content.resource.sha256
   })
 }
 
@@ -309,16 +362,41 @@ export function resolveCurrentSharedSources(
         )
       currents.push({ ...current, revision })
     }
-    const localRequired = currents.some(
-      ({ content }) =>
-        content.plan.base?.kind === "local" ||
-        content.plan.mounts.some((mount) => mount.resource.kind === "local"),
+    const plans = []
+    for (const current of currents) {
+      const content = current.content
+      let plan
+      if ("plan" in content) plan = content.plan
+      else {
+        const bytes = yield* readCurrentSharedResourceBytes(library, {
+          owner: { kind: "source", page_id: current.page_id },
+          content: content.resource,
+        })
+        plan = yield* checked(() =>
+          validatedPlan(
+            JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)),
+          ),
+        )
+      }
+      if ((yield* sha256(canonicalSharedJson(plan))) !== current.revision)
+        return yield* Effect.fail(
+          fail(
+            "SHARED_SOURCE_CONFLICT",
+            "The current Source resource differs from its canonical plan fingerprint.",
+            { source_id: current.source_id, next: "reselect_current" },
+          ),
+        )
+      plans.push({ ...current, plan })
+    }
+    const localRequired = plans.some(
+      ({ plan }) =>
+        plan.base?.kind === "local" || plan.mounts.some((mount) => mount.resource.kind === "local"),
     )
     const options = input.sourceOptions ?? (yield* loadSharedSourceOptions({ localRequired }))
     const selectedOptions = { ...options, metrics: api.metrics ?? options.metrics }
     const result = new Map<string, CurrentSharedSource>()
-    for (const current of currents) {
-      const inspection = yield* admitSharedSourcePlan(current.content.plan, selectedOptions)
+    for (const current of plans) {
+      const inspection = yield* admitSharedSourcePlan(current.plan, selectedOptions)
       const manifest = inspection.manifest.map(
         (file): CurrentSharedSourceFile => ({
           path: file.path,

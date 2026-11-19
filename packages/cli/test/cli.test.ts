@@ -128,6 +128,8 @@ test("retired root commands and name-based replacement are rejected offline", as
     ["apply", "sample", "--input", "missing"],
     ["adopt", "sample"],
     ["ctl", "builtin", "publish", "notion/ntn-skills-maintain"],
+    ["ctl", "config", "set", "builtin_database", "retired"],
+    ["ctl", "config", "unset", "builtin_database"],
     ["ctl", "library", "source", "list"],
     ["ctl", "library", "file", "takeover", "sample"],
     ["ctl", "repair", "plan"],
@@ -188,7 +190,7 @@ test("current management and export schemas contain no historical compatibility 
     ],
     [
       ["ctl", "library"],
-      ["files", "init", "inspect", "profile"],
+      ["files", "import", "init", "inspect", "profile"],
     ],
     [
       ["ctl", "builtin"],
@@ -213,6 +215,33 @@ test("current management and export schemas contain no historical compatibility 
     ),
   ).toBe(false)
   await invalid(["export", "sample", "--output", "out", "--projection", "source"])
+  const imported = await invoke(["schema", "ctl", "library", "import"], {
+    inaccessible: true,
+    traceOnline: true,
+  })
+  expect(imported.exit).toBe(0)
+  expect(imported.onlineCalled).toBe(false)
+  const parameters = JSON.parse(imported.stdout).schema.parameters
+  for (const name of ["input", "entry", "skill-id"])
+    expect(
+      parameters.find((parameter: { name: string }) => parameter.name === name)?.required,
+    ).toBe(true)
+  for (const flags of [
+    ["--resume"],
+    ["--resume", "--operation", "pending", "--dry-run"],
+    ["--storage", "markdown_files"],
+  ])
+    await invalid([
+      "ctl",
+      "library",
+      "import",
+      "missing.md",
+      "--entry",
+      "11111111-1111-4111-8111-111111111111",
+      "--skill-id",
+      "sample",
+      ...flags,
+    ])
   for (const path of [
     ["create"],
     ["ctl", "library", "source"],
@@ -495,7 +524,6 @@ test("consumer catalog identity follows remote scope without local configuration
   const localPreferences = {
     ...original,
     default_database: otherDatabase,
-    builtin_database: otherDatabase,
     cache_policy: { read_max_age_ms: 1000, catalog_max_age_ms: 120000 },
   }
   await save(localPreferences)
