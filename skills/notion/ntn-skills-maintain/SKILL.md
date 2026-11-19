@@ -1,7 +1,7 @@
 ---
 name: ntn-skills-maintain
-description: Import or replace a complete current Notion Skill tree, inspect Skills and Files ownership, resume an unfinished current import, or create the four-table layout. Use for local Skill migration and current content-management requests.
-compatibility: Requires the installed ntn-skills CLI and access to the exact library. Import needs Notion Insert and Update permission; ordinary inspection needs Read permission.
+description: Import or replace complete Notion Skill trees, inspect ownership, resume an unfinished import, or create the four-table layout. Use for local Skill migration and current content management.
+compatibility: Requires the installed ntn-skills CLI and exact library access. Import needs Notion Insert and Update permissions; inspection needs Read.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -9,9 +9,9 @@ metadata:
 
 # Maintain the current library
 
-Use the exact executable and library supplied by the task. A stable Skill ID
-selects content; a name is a display label. The public writer imports a complete
-local tree. Source refresh and whole-library governance remain separate work.
+Use the task's executable and exact library. Stable Skill IDs select content;
+names are display labels. Import replaces a complete local tree. Source refresh
+and whole-library governance remain separate work.
 
 ## Inspect and prepare
 
@@ -22,26 +22,24 @@ ntn-skills ctl library files PAGE_ID --entry ENTRY
 ntn-skills read PAGE_ID --database ENTRY --refresh --json
 ```
 
-The first command is metadata-only. Use returned file refs or export to obtain
-every required byte. Preserve original paths, text encoding and executable modes.
-The input directory or ZIP needs root SKILL.md; a portable Router or Prompt uses
-its canonical entrypoint. An explicitly selected single Markdown file becomes
-SKILL.md. Use a real physical path; symlink inputs and changing files are rejected.
+The first command is metadata-only. Use file refs or export for bytes; preserve
+paths, encoding and executable modes. Directory/ZIP input needs root SKILL.md; a
+portable Router or Prompt uses its canonical entrypoint. An explicitly selected
+single Markdown file becomes SKILL.md. Symlinks and changing files are rejected.
 
 ```sh
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ```
 
-If any current main or supporting file has source authority, this resource-only
-CLI rejects dry-run and apply with CURRENT_SOURCE_MANAGEMENT_REQUIRED, including
-an unchanged export. Preserve its File ID, path and Source binding. Report that
-coordinated Source management is still required; do not omit or reidentify it.
+This CLI writes resource authority. Any current Source main or supporting file
+makes dry-run and apply return CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an
+unchanged export. Preserve File IDs, paths and Source bindings; do not omit or
+reidentify files. Coordinated Source management is still required.
 
-Inspect added and removed Files and authority changes. Import replaces the entire
-file tree, so omit a Notion-owned file only when its removal is intended. Follow
-the task's existing authorization. Preview is not a completed content edit.
-Local Markdown links must resolve inside that complete input; remove or update
-inbound links before omitting their target file.
+Review File additions/removals and authority changes under the task's existing
+authorization. Omit a Notion-owned file only to remove it. Preview is not a completed
+content edit. Local Markdown links must resolve inside the complete input; update
+or remove inbound links before omitting their target.
 
 ## Apply and verify
 
@@ -52,10 +50,9 @@ ntn-skills export PAGE_ID --database ENTRY --output NEW_DIRECTORY
 ```
 
 Use the returned PAGE_ID. Import preserves the physical Skill and retained File
-IDs, writes every supporting File and checks complete reading pages. It removes
-omitted Notion-owned supporting rows and unreferenced owned Resource rows after
-checking the new content. Repeating an admitted complete input performs zero
-semantic Notion writes.
+IDs, checks every reading page, then removes omitted Notion-owned supporting rows
+and unreferenced owned Resource rows. Repeating an admitted complete input
+performs zero semantic Notion writes.
 
 Default import uses resource authority and preserves exact original bytes.
 Readable text appears in full. Opaque files expose a usable original; unsupported
