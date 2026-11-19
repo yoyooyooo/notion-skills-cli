@@ -2,11 +2,7 @@ import { Effect, Schema } from "effect"
 import { fail, SkillsError } from "./model.ts"
 import { normalizePath, pageId } from "./ref.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import {
-  SourceDefinitionInputSchema,
-  type SourceDefinition,
-  type SourceDefinitionInput,
-} from "./shared-sources-model.ts"
+import { SourceDefinitionInputSchema, type SourceDefinitionInput } from "./shared-sources-model.ts"
 import { validateGitSource, validateSourceSelection } from "./upstream-source.ts"
 
 export const sourceChecked = <A>(run: () => A) =>
@@ -64,29 +60,21 @@ export function validateSourceDefinition(value: unknown): SourceDefinitionInput 
   if (result.description.length > 12000)
     throw fail("SOURCE_DEFINITION_TOO_LARGE", "Description exceeds 12000 characters.")
   rejectCredentials(result)
-  if (
-    result.options.storage !== undefined &&
-    result.options.storage !== "auto" &&
-    result.options.storage !== "fixed-git" &&
-    result.options.storage !== "retained"
-  )
-    throw fail(
-      "SOURCE_STORAGE_POLICY_INVALID",
-      "Source options.storage must be auto, fixed-git or retained.",
-    )
-  const interval = result.options.check_interval_ms
-  if (
-    (result.policy === "auto" && interval === undefined) ||
-    (interval !== undefined &&
-      (typeof interval !== "number" ||
-        !Number.isSafeInteger(interval) ||
-        interval < 60_000 ||
-        interval > 366 * 24 * 60 * 60 * 1000))
-  )
-    throw fail(
-      "SOURCE_INTERVAL_INVALID",
-      "Automatic checks require an explicit check_interval_ms between one minute and 366 days.",
-    )
+  const options = new Set([
+    "patch",
+    "member_patches",
+    "require_all_included",
+    "accepted_ref",
+    "external_assets",
+    "external_markdown",
+  ])
+  for (const key of Object.keys(result.options))
+    if (!options.has(key))
+      throw fail(
+        "SOURCE_ADAPTER_OPTIONS_UNSUPPORTED",
+        "An explicit source option has no implemented adapter behavior; it cannot be silently discarded.",
+        { option: key },
+      )
   validateSourceSelection(result.selection)
   const adapter = result.adapter
   if (adapter.type === "git") {
@@ -140,22 +128,4 @@ export function validateSourceDefinition(value: unknown): SourceDefinitionInput 
   sourceRich(canonicalSharedJson(result.options))
   sourceRich(canonicalSharedJson(result.selection))
   return result
-}
-
-/** Native observation metadata is not executable provider configuration. Keep
- * unknown configuration fields strict, but do not feed read receipts to the
- * adapter's exact input schema. */
-export function sourceConfiguration(
-  definition: SourceDefinitionInput | SourceDefinition,
-): SourceDefinitionInput {
-  const {
-    page_id: _page,
-    fingerprint: _fingerprint,
-    status: _status,
-    last_revision: _revision,
-    last_checked: _checked,
-    last_result: _result,
-    ...configuration
-  } = definition as SourceDefinition
-  return validateSourceDefinition(configuration)
 }

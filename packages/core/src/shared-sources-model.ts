@@ -32,7 +32,7 @@ export const SourceDefinitionInputSchema = Schema.Struct({
   name: Schema.String,
   description: Schema.String,
   enabled: Schema.Boolean,
-  policy: Schema.Literals(["manual", "pinned", "auto"]),
+  policy: Schema.Literals(["manual", "pinned"]),
   adapter: SourceAdapterSchema,
   selection: Schema.Struct({
     roots: Schema.Array(Schema.String),
@@ -40,20 +40,11 @@ export const SourceDefinitionInputSchema = Schema.Struct({
     exclude: Schema.Array(Schema.String),
     mapping: Schema.Record(Schema.String, Schema.String),
   }),
-  /** Provider-independent options, including retained explicit transformations.
-   * Unknown executable options are refused by the adapter, never ignored. */
+  /** Only implemented discovery options are admitted; no scheduling or storage policy. */
   options: Schema.Record(Schema.String, Schema.Unknown),
 })
 export type SourceDefinitionInput = typeof SourceDefinitionInputSchema.Type
 export type SourceAdapter = typeof SourceAdapterSchema.Type
-export type SourceDefinition = SourceDefinitionInput & {
-  readonly page_id: string
-  readonly fingerprint: string
-  readonly status: string
-  readonly last_revision: string
-  readonly last_checked: number | null
-  readonly last_result: string
-}
 
 export const sourceDefinitionProperties = {
   Name: { title: {} },
@@ -70,7 +61,7 @@ export const sourceDefinitionProperties = {
   Contributions: { rich_text: {} },
   Operation: { rich_text: {} },
   Enabled: { checkbox: {} },
-  Policy: { select: { options: ["manual", "pinned", "auto"].map((name) => ({ name })) } },
+  Policy: { select: { options: ["manual", "pinned"].map((name) => ({ name })) } },
   Status: {
     select: {
       options: ["ready", "applying", "attention"].map((name) => ({
@@ -78,9 +69,7 @@ export const sourceDefinitionProperties = {
       })),
     },
   },
-  "Last Checked": { date: {} },
   "Last Revision": { rich_text: {} },
-  "Last Result": { rich_text: {} },
 } as const
 
 export function sourceDefinitionLayout(skills: string, records: string) {

@@ -232,6 +232,214 @@ async function assertReady(f: ReturnType<typeof currentWriteFixture>) {
   expect(operationRecords(f)).toEqual([])
 }
 
+test("a complete Source successor replaces a partial child intent while keeping existing identities and human native edits", async () => {
+  const f = currentWriteFixture(parent),
+    native = await seedNative(f)
+  const observed = observation(),
+    nextObserved = observation(secondCommit)
+  const http = provider([observed, nextObserved])
+  const original = await f.run(prepareCurrentSourceFromDiscovery(declaration, observed))
+  const successor = await f.run(prepareCurrentSourceFromDiscovery(declaration, nextObserved))
+  f.failNext({ kind: "append", outcome: "partial" })
+  await expect(
+    f.run(
+      http.use(
+        writePreparedCurrentSource(library, {
+          prepared: original,
+          operation_id: "partial-source-old",
+        }),
+      ),
+    ),
+  ).rejects.toMatchObject({
+    code: "WRITE_OUTCOME_UNKNOWN",
+    details: { operation_id: "partial-source-old" },
+  })
+  const firstAlpha = f
+    .table("skills")
+    .find((row) => fieldText(row, library.skills.property_ids["Skill ID"]!) === "skill-alpha")!
+  const parentRecord = operationRecords(f).find(
+    (row) =>
+      fieldText(row, library.records.property_ids["Entity ID"]!) === "current-source:team-skills",
+  )!
+  const childRecord = operationRecords(f).find(
+    (row) =>
+      fieldText(row, library.records.property_ids["Entity ID"]!) === "current-skill:skill-alpha",
+  )!
+  expect(firstAlpha).toBeDefined()
+  expect(childRecord).toBeDefined()
+  const attemptedAppend = f.calls.find(
+    (call) => call.path === `v1/blocks/${firstAlpha.id}/children` && call.method === "PATCH",
+  )!
+  const attemptedChildren = property(attemptedAppend.body).children
+  if (!Array.isArray(attemptedChildren)) throw new Error("Expected a real projection append")
+  expect(attemptedChildren.length).toBeGreaterThan(1)
+  expect(f.blocks.get(String(firstAlpha.id))).toHaveLength(1)
+  const humanBody = "# Human edit while the Source is interrupted\n\nThis stays current.\n"
+  await f.run(
+    Effect.gen(function* () {
+      yield* (yield* Notion).request(
+        `v1/pages/${native.page_id}/markdown`,
+        {
+          type: "replace_content",
+          replace_content: { new_str: humanBody, allow_deleting_content: true },
+        },
+        { method: "PATCH" },
+      )
+    }),
+  )
+  f.clearCalls()
+  const result = await f.run(
+    http.use(
+      writePreparedCurrentSource(library, {
+        prepared: successor,
+        operation_id: "partial-source-new",
+        mode: { kind: "supersede", operation_id: "partial-source-old" },
+      }),
+    ),
+  )
+  expect(result).toMatchObject({
+    action: "declaration",
+    status: "applied",
+    state: "ready",
+    operation_id: "partial-source-new",
+    resolved_commit: secondCommit,
+    affected_skill_ids: ["skill-alpha", "skill-beta"],
+  })
+  const alpha = f
+    .table("skills")
+    .find((row) => fieldText(row, library.skills.property_ids["Skill ID"]!) === "skill-alpha")!
+  expect(alpha.id).toBe(firstAlpha.id)
+  expect(f.pages.get(String(parentRecord.id))?.in_trash).toBe(true)
+  expect(f.pages.get(String(childRecord.id))?.in_trash).toBe(true)
+  expect(
+    f.calls.some(
+      (call) =>
+        call.path === "v1/pages" &&
+        ["current-source:team-skills", "current-skill:skill-alpha"].includes(
+          fieldText(call.body, library.records.property_ids["Entity ID"]!),
+        ),
+    ),
+  ).toBe(false)
+  expect(
+    await f.run(
+      http.use(readSkill(native.page_id, { database: library.skills.database_id, refresh: true })),
+    ),
+  ).toMatchObject({ content: nativeHeader + humanBody })
+  await assertReady(f)
+})
+
+test.each(["before-child", "after-child"] as const)(
+  "another Source successor is admitted only after the %s handoff has actually selected its child",
+  async (stage) => {
+    const f = currentWriteFixture(parent)
+    await seedNative(f)
+    const thirdCommit = "f".repeat(40)
+    const snapshots = [observation(), observation(secondCommit), observation(thirdCommit)]
+    const http = provider(snapshots)
+    const plans = []
+    for (const snapshot of snapshots)
+      plans.push(await f.run(prepareCurrentSourceFromDiscovery(declaration, snapshot)))
+    f.failNext({ kind: "append", outcome: "partial" })
+    await expect(
+      f.run(
+        http.use(
+          writePreparedCurrentSource(library, {
+            prepared: plans[0]!,
+            operation_id: "handoff-p1",
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    f.failNext(
+      stage === "before-child"
+        ? { kind: "source-properties", outcome: "accepted" }
+        : { kind: "append", outcome: "partial" },
+    )
+    await expect(
+      f.run(
+        http.use(
+          writePreparedCurrentSource(library, {
+            prepared: plans[1]!,
+            operation_id: "handoff-p2",
+            mode: { kind: "supersede", operation_id: "handoff-p1" },
+          }),
+        ),
+      ),
+    ).rejects.toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+      details: { operation_id: "handoff-p2" },
+    })
+    f.clearCalls()
+    const attempt = writePreparedCurrentSource(library, {
+      prepared: plans[2]!,
+      operation_id: "handoff-p3",
+      mode: { kind: "supersede", operation_id: "handoff-p2" },
+    })
+    if (stage === "before-child") {
+      await expect(f.run(http.use(attempt))).rejects.toMatchObject({
+        code: "CURRENT_SOURCE_HANDOFF_PENDING",
+        details: { operation_id: "handoff-p2", next: "reconcile_current" },
+      })
+      expect(f.mutations()).toEqual([])
+      expect(
+        (await f.run(queryCurrentSourceManagement(library, "team-skills")))?.state,
+      ).toMatchObject({ operation_id: "handoff-p2" })
+      // Repeating the same exact successor selects P2 again and pins its original
+      // commit; it does not rediscover a branch or start another handoff.
+      await f.run(
+        http.use(
+          writePreparedCurrentSource(library, {
+            prepared: plans[1]!,
+            operation_id: "handoff-p2",
+            mode: { kind: "supersede", operation_id: "handoff-p1" },
+          }),
+        ),
+      )
+    } else {
+      const child = operationRecords(f).find(
+        (row) =>
+          fieldText(row, library.records.property_ids["Entity ID"]!) ===
+          "current-skill:skill-alpha",
+      )!
+      const savedChild = structuredClone(child)
+      const local = [...f.json.entries()].find(
+        ([key, value]) =>
+          key.startsWith("operations/current-write-pending/") &&
+          property(property(property(value).intent).owner).id === "skill-alpha",
+      )!
+      const envelope = JSON.parse(fieldText(child, library.records.property_ids.Payload!))
+      property(property(property(envelope).payload).intent).source = {
+        ...property(property(property(property(envelope).payload).intent).source),
+        authorization_sha256: "0".repeat(64),
+      }
+      const encoded = canonicalSharedJson(envelope),
+        fields = property(child.properties)
+      for (const [name, value] of [
+        ["Payload", encoded],
+        ["Hash", createHash("sha256").update(encoded).digest("hex")],
+      ] as const) {
+        const key = library.records.property_ids[name]!
+        fields[key] = { ...property(fields[key]), rich_text: sourceRich(value) }
+      }
+      // A caller with no local child cache still verifies the current grant
+      // before changing the parent. Four matching labels are insufficient.
+      f.json.delete(local[0])
+      await expect(f.run(http.use(attempt))).rejects.toMatchObject({
+        code: "CURRENT_SOURCE_HANDOFF_PENDING",
+      })
+      expect(f.mutations()).toEqual([])
+      f.pages.set(String(child.id), savedChild)
+      f.json.set(local[0], local[1])
+      expect(await f.run(http.use(attempt))).toMatchObject({
+        operation_id: "handoff-p3",
+        state: "ready",
+        resolved_commit: thirdCommit,
+      })
+    }
+    await assertReady(f)
+  },
+)
+
 test("one Source writes two current Skills, preserves native authorship and resource bytes, and refreshes/excludes/renames without new identities", async () => {
   const f = currentWriteFixture(parent),
     native = await seedNative(f),

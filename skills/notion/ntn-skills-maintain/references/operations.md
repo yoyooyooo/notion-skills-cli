@@ -1,5 +1,10 @@
 # Current content operations
 
+- [Inspect](#inspect-the-complete-tree)
+- [Complete import](#import-a-complete-current-tree)
+- [Unfinished work](#incomplete-current-work)
+- [Cleanup](#cleanup-boundaries)
+
 Use `ntn-skills schema ctl library import` for the installed parser. Current
 content consumption is read-only. Import is a complete-tree replacement with
 explicit library and stable Skill identity.
@@ -30,8 +35,8 @@ Inspect removals and authority changes before applying an authorized complete
 input. A target with any Source main or supporting file returns
 CURRENT_SOURCE_MANAGEMENT_REQUIRED in dry-run and apply because import selects
 resource or native authority. An unchanged export is also refused. Use current
-Source apply/refresh through notion/ntn-skills-sync; omitting or reidentifying
-files is not a takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
+Source apply/refresh for contributions or explicit takeover through notion/ntn-skills-sync;
+omitting or reidentifying files is not a takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
 uses the kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
 refs; omitted fields preserve, [] clears, and a list replaces that entire field.
 Prompt relations, old projection/materialization and unknown fields are rejected.
@@ -89,13 +94,36 @@ Ready requires an empty Operation. Applying and attention identify one unfinishe
 current intent. Consumers refuse those states before body acquisition.
 
 ```sh
+ntn-skills ctl library operation SKILL_ID --kind skill --entry ENTRY
+```
+
+Read exact current Record, owner, local lifecycle and in-flight coordinates.
+Inspection makes no semantic writes and does not reconcile. status:not_found with
+operation:null means no intent was observable; it does not certify an owner is
+ready, present or retired. Use the original input and returned operation context.
+
+```sh
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --operation OPERATION_ID --resume
 ```
 
-Resupply the same complete input and original --native paths. A fingerprint does not store missing
-input bytes. Unknown CREATE and append are not repeated from absence. Accepted
+Resupply the same complete input and original --native paths. Keep the original
+local state and credential scope. A fingerprint does not store missing input bytes;
+empty state or another machine cannot safely recover an unknown CREATE. Unknown CREATE and append are not repeated from absence. Accepted
 results continue after exact current observation; an observed partial append can
 remain blocked. Do not clear the operation or change ready by hand.
+
+To change an unfinished complete import, provide a distinct successor:
+
+```sh
+ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
+```
+
+The kernel reconciles the named predecessor before handing its one current owner
+to the new intent. Unknown CREATE/append cannot be discarded or replayed. A Source
+child cannot be superseded independently through local import. Use the owning
+Source action. Supersede and resume are mutually exclusive and both refuse dry-run.
+Failure before handoff still belongs to the predecessor; after handoff, resume the
+new operation with its complete input. Preserve the returned exact error context.
 
 Archive recovery uses the exact physical page even after it leaves active queries.
 Completion checks the current tree, publishes ready, then retires the remote intent
@@ -108,7 +136,10 @@ Target inspection does not prove whole-library coverage. Whole-library cleanup
 needs complete authorized ownership, reverse relations and all pages of inventory.
 Transfer uniquely current bytes before retiring their old carrier.
 
-Source apply/refresh uses its current coordinator through notion/ntn-skills-sync.
+Source declaration, file authority and lifecycle use the coordinator through
+notion/ntn-skills-sync. Source remove proves no current Content or Origin references
+inside the selected library before retiring its own resources and page. This
+bounded reverse check does not establish global orphan or backlink cleanup.
 Cross-owner relationship repair, full census and production data conversion are
 not supplied by this import. Report the exact missing capability
 instead of invoking retired publication, history, sync or repair commands.

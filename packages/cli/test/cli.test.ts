@@ -193,11 +193,11 @@ test("current management and export schemas contain no historical compatibility 
     ],
     [
       ["ctl", "library"],
-      ["files", "import", "init", "inspect", "profile", "source"],
+      ["files", "import", "init", "inspect", "operation", "profile", "source"],
     ],
     [
       ["ctl", "library", "source"],
-      ["apply", "refresh"],
+      ["apply", "disable", "enable", "refresh", "remove", "restore-follow", "takeover"],
     ],
     [
       ["ctl", "builtin"],
@@ -242,6 +242,9 @@ test("current management and export schemas contain no historical compatibility 
   for (const flags of [
     ["--resume"],
     ["--resume", "--operation", "pending", "--dry-run"],
+    ["--supersede", "pending"],
+    ["--supersede", "pending", "--operation", "pending"],
+    ["--supersede", "pending", "--operation", "replacement", "--resume"],
     ["--storage", "markdown_files"],
   ])
     await invalid([

@@ -14,6 +14,7 @@ import {
 } from "../src/shared-library.ts"
 import { sourceDefinitionLayout } from "../src/shared-sources-model.ts"
 import { Store } from "../src/store.ts"
+import { canonicalSharedJson } from "../src/shared-records.ts"
 
 export const id = (n: number) => "00000000-0000-4000-8000-" + n.toString(16).padStart(12, "0")
 const properties = (layout: Record<string, unknown>) =>
@@ -103,12 +104,15 @@ type FaultKind =
   | "skill-create"
   | "source-create"
   | "source-properties"
+  | "source-enabled"
+  | "source-owner-retirement"
   | "source-ready"
   | "source-progress"
   | "source-retirement"
   | "file-create"
   | "resource-create"
   | "append"
+  | "native-body"
   | "retire-file"
   | "retire-resource"
   | "relations"
@@ -466,29 +470,36 @@ export function currentWriteFixture(parent: string) {
             const kind = startsSourceChild
               ? "source-progress"
               : input.in_trash === true
-                ? table === library.files.data_source_id
-                  ? "retire-file"
-                  : table === library.records.data_source_id &&
-                      property(property(property(row.properties).kind).select).name ===
-                        "operation" &&
-                      text(property(property(row.properties)["entity-id"]).rich_text).startsWith(
-                        "current-source:",
-                      )
-                    ? "source-retirement"
+                ? table === library.sources.data_source_id
+                  ? "source-owner-retirement"
+                  : table === library.files.data_source_id
+                    ? "retire-file"
                     : table === library.records.data_source_id &&
-                        property(property(property(row.properties).kind).select).name === "resource"
-                      ? "retire-resource"
-                      : undefined
+                        property(property(property(row.properties).kind).select).name ===
+                          "operation" &&
+                        text(property(property(row.properties)["entity-id"]).rich_text).startsWith(
+                          "current-source:",
+                        )
+                      ? "source-retirement"
+                      : table === library.records.data_source_id &&
+                          property(property(property(row.properties).kind).select).name ===
+                            "resource"
+                        ? "retire-resource"
+                        : undefined
                 : table === library.sources.data_source_id &&
                     property(property(property(input.properties).status).select).name === "ready"
                   ? "source-ready"
                   : table === library.sources.data_source_id &&
-                      "content" in property(input.properties)
+                      ("content" in property(input.properties) ||
+                        "contributions" in property(input.properties))
                     ? "source-properties"
-                    : "members" in property(input.properties) ||
-                        "requires" in property(input.properties)
-                      ? "relations"
-                      : undefined
+                    : table === library.sources.data_source_id &&
+                        "enabled" in property(input.properties)
+                      ? "source-enabled"
+                      : "members" in property(input.properties) ||
+                          "requires" in property(input.properties)
+                        ? "relations"
+                        : undefined
             const chosen = kind === undefined ? undefined : selectedFault(kind)
             if (chosen?.outcome === "absent") return unknown()
             if (input.properties !== undefined)
@@ -540,17 +551,22 @@ export function currentWriteFixture(parent: string) {
         const md = /^v1\/pages\/([^/]+)\/markdown$/u.exec(route)
         if (md) {
           if (method === "PATCH") {
+            const chosen = selectedFault("native-body")
+            if (chosen?.outcome === "absent") return unknown()
             markdown.set(md[1]!, String(property(input.replace_content).new_str))
             blocks.set(md[1]!, [])
             touch(md[1]!)
+            if (chosen) return unknown()
           }
-          return Effect.succeed({
-            object: "page_markdown",
-            id: md[1],
-            markdown: markdown.get(md[1]!) ?? "",
-            truncated: false,
-            unknown_block_ids: [],
-          })
+          return Effect.succeed(
+            response(path, {
+              object: "page_markdown",
+              id: md[1],
+              markdown: markdown.get(md[1]!) ?? "",
+              truncated: false,
+              unknown_block_ids: [],
+            }),
+          )
         }
         const children = /^v1\/blocks\/([^/]+)\/children$/u.exec(route)
         if (children) {
@@ -631,9 +647,56 @@ export function currentWriteFixture(parent: string) {
           json.has(key) ? Schema.decodeUnknownSync(schema)(clone(json.get(key))) : undefined,
         catch: () => fail("STATE_CORRUPT", "Invalid fixture state.", { key }),
       }),
-    writeJson: (key, value) =>
-      Effect.sync(() => {
-        json.set(key, clone(value))
+    writeJson: (key, value, options) =>
+      Effect.try({
+        try: () => {
+          const previous = json.get(key)
+          const before = property(previous),
+            after = property(value)
+          if (options !== undefined) {
+            if (
+              !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key) ||
+              previous === undefined ||
+              canonicalSharedJson(previous) !==
+                canonicalSharedJson(options.expectedCurrentWritePending) ||
+              canonicalSharedJson(property(after.predecessor).intent) !==
+                canonicalSharedJson(before.intent) ||
+              canonicalSharedJson([
+                before.version,
+                before.scope,
+                before.library_id,
+                before.record_id,
+                property(before.intent).owner,
+              ]) !==
+                canonicalSharedJson([
+                  after.version,
+                  after.scope,
+                  after.library_id,
+                  after.record_id,
+                  property(after.intent).owner,
+                ])
+            )
+              throw fail("STATE_CONFLICT", "The fixture predecessor changed.")
+          } else if (
+            previous !== undefined &&
+            key.startsWith("operations/current-write-pending/")
+          ) {
+            const identity = (row: Record<string, unknown>) =>
+              canonicalSharedJson([
+                row.version,
+                row.scope,
+                row.library_id,
+                row.record_id,
+                row.intent,
+                row.completion,
+                row.predecessor ?? null,
+              ])
+            if (identity(before) !== identity(after))
+              throw fail("STATE_CONFLICT", "A fixture pending intent is immutable.")
+          }
+          json.set(key, clone(value))
+        },
+        catch: () => fail("STATE_CONFLICT", "The current fixture state replacement was rejected."),
       }),
     retireKeys: (keys) =>
       Effect.sync(() =>

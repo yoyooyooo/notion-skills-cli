@@ -7,13 +7,13 @@ import { entrypointFor, fail, SkillsError } from "../../core/src/model.ts"
 import { MANIFEST, readPortable } from "../../core/src/portable.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { withCurrentInvocationBudget } from "../../core/src/shared-current-invocation.ts"
-import { currentWriteIdentity } from "../../core/src/shared-current-write-input.ts"
 import {
   inspectCurrentSkillWrite,
   prepareCurrentSkillWrite,
   writeCurrentSkill,
 } from "../../core/src/shared-current-write.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
+import { selectCurrentWriteMode } from "./current-write-options.ts"
 
 type ImportOptions = {
   readonly skillId: string
@@ -171,11 +171,15 @@ export const currentImportCommand = defineCommand(
     ),
     operation: singleton(
       "operation",
-      "Stable operation identity; required when resuming the same complete input",
+      "Current operation identity; required with --resume or --supersede OLD",
     ),
     resume: switchFlag(
       "resume",
       "Reconcile and continue this exact current import using --operation",
+    ),
+    supersede: singleton(
+      "supersede",
+      "Replace this exact unfinished operation with --operation NEW after reconciliation",
     ),
     dryRun: switchFlag(
       "dry-run",
@@ -236,18 +240,19 @@ export const currentImportCommand = defineCommand(
         catch: (error) => error as SkillsError,
       })
       const selectedOperation = Option.getOrUndefined(options.operation)
-      if (options.resume && (selectedOperation === undefined || options.dryRun))
-        return yield* Effect.fail(
-          fail(
-            "INVALID_ARGUMENT",
-            "--resume requires --operation and cannot be combined with --dry-run.",
-          ),
-        )
-      if (selectedOperation !== undefined)
-        yield* Effect.try({
-          try: () => currentWriteIdentity(selectedOperation, "Operation ID"),
-          catch: (error) => error as SkillsError,
-        })
+      const mode = yield* Effect.try({
+        try: () =>
+          selectCurrentWriteMode({
+            operation: selectedOperation,
+            resume: options.resume,
+            supersede: Option.getOrUndefined(options.supersede),
+            dryRun: options.dryRun,
+          }),
+        catch: (error) =>
+          error instanceof SkillsError
+            ? error
+            : fail("INVALID_ARGUMENT", "Use one exact current operation mode."),
+      })
       const prepared = yield* prepareCurrentImport(options.input, {
         skillId: options.skillId,
         name: Option.getOrUndefined(options.name),
@@ -274,7 +279,7 @@ export const currentImportCommand = defineCommand(
             ...(yield* writeCurrentSkill(library, {
               plan: prepared.plan,
               operation_id: operation,
-              mode: options.resume ? "resume" : "apply",
+              mode,
             })),
             input: prepared.input,
           }
@@ -284,9 +289,9 @@ export const currentImportCommand = defineCommand(
       yield* emit({ ...invocation.result, budget: invocation.budget })
     }),
 ).pipe(
-  withConstraints([exclusiveFlags(["resume", "dryRun"])]),
+  withConstraints([exclusiveFlags(["resume", "supersede", "dryRun"])]),
   Command.withDescription(
-    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources with readable projections. Repeat --native PATH to select exact final input paths whose UTF-8/LF Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume; no name matching or historical recovery.",
+    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources with readable projections. Repeat --native PATH to select exact final input paths whose UTF-8/LF Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume. To replace an unfinished intent, use --supersede OLD --operation NEW with a distinct new identity; the kernel first reconciles the exact predecessor. Supersede does not bypass unresolved writes or authority checks. No name matching or historical recovery.",
   ),
   Command.withExamples([
     {

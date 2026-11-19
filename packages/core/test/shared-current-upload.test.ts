@@ -184,6 +184,8 @@ function fixture() {
     },
     owner: { kind: "skill", id: "skill" },
     sourceProgress: undefined,
+    ownerRetired: false,
+    predecessor: undefined,
     markSourceChildStarted: () => Effect.void,
     markSourceChildComplete: () => Effect.void,
     ownerPageId: skillPage,

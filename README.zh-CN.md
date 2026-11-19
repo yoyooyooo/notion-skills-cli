@@ -23,7 +23,11 @@
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前导入默认写入精确 resource 原件并生成完整阅读投影；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；从库查询、上传到投影和清理共用一次有界 HTTP 预算。Source apply/refresh 协调明确的 Git 成员与目标，保留 native 正文及无关贡献。局部文件更新、权威接管仍需后续管理能力。旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
+当前导入默认写入精确 resource 原件并生成完整阅读投影；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；从库查询、上传到投影和清理共用一次有界 HTTP 预算。Source apply/refresh 协调明确的 Git 成员与目标，保留 native 正文及无关贡献。
+
+`source takeover` 和 `source restore-follow` 保留 File ID、Notion 页面及路径，同时调整当前贡献的精确排除规则。它们使用 Source 已选定的原件，不顺便刷新 Git。`source enable/disable` 控制消费资格；`source remove` 只有在文件与 Origin 引用都已解除后才清退 Source 及其资源。未完成写入可重传原输入 resume，也可在原 writer 停止后用 `--operation NEW --supersede OLD` 明确提交完整新意图。完成后不保留前意图或内容历史。
+
+旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
 
 ## 安装
 
@@ -117,7 +121,7 @@ ntn-skills list --profile PROFILE_ID --database ENTRY_DATABASE_ID
 
 ## Agent 接入
 
-通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责设置、完整当前导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile、明确的 Git Source apply/refresh 和混合树保留规则。
+通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责设置、完整当前导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile、Git Source apply/refresh、文件接管与恢复跟随、Source 启停清退和混合树保留规则。
 
 Pi 是首个日用宿主，Notion discovery/use/资源读取使用配对 SDK。OMP/Tern 适配延期，但它们目录中的本地 Skill 内容仍属于 Pro 迁移盘点。
 

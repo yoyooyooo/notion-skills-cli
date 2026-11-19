@@ -19,8 +19,11 @@ that the production library, published npm package or installed Pi has migrated.
 | List the complete selected directory | `files` |
 | Export a complete selection locally | `export` |
 | Inspect current file ownership and operation state | `ctl library files` |
+| Inspect an unfinished intent without replaying it | `ctl library operation`, with an exact owner ID and kind |
 | Import or replace one complete local tree | `ctl library import`, with `--dry-run` and same-intent `--resume` |
 | Apply or refresh declared Git contributions | `ctl library source apply`, `ctl library source refresh` |
+| Take over a file or restore its current Source binding | `ctl library source takeover`, `ctl library source restore-follow` |
+| Enable, disable or remove an unreferenced Source | `ctl library source enable`, `disable`, `remove` |
 | Create or inspect a current four-table layout | `ctl library init`, `ctl library inspect` |
 | Manage shared current Profile rules | `ctl library profile` |
 
@@ -35,7 +38,12 @@ Portable Members/Requires round-trip through export and complete import, with
 complete target validation and dependency checks. Import shares one bounded HTTP
 budget across lookup, upload, projection and cleanup. Source apply/refresh coordinates
 explicit Git members and targets, preserving native bodies and unrelated contributions.
-Partial file updates and authority takeover remain separate management work.
+Source takeover and restore-follow keep the same File and Notion page identities,
+update the exact contribution exclusion, and use the Source's selected original.
+Source enablement controls consumption; removal refuses remaining file or Origin
+references. An interrupted writer can resume its original input or accept an
+explicit complete successor with `--operation NEW --supersede OLD` after the old
+writer stops. Completed operations keep no predecessor or content history.
 Old create/apply/write/replace/adopt, sync, snapshot/archive and repair commands
 are retired from the active CLI. Current data conversion, actual library coverage,
 obsolete object cleanup and Pi installation remain separate delivery gates.
@@ -176,7 +184,8 @@ CAS. Profiles and Views never grant permission.
 Read `notion/ntn-skills` through the builtin catalog for consumption guidance.
 `notion/ntn-skills-maintain` covers setup, complete current import and finite
 recovery. `notion/ntn-skills-sync` covers current Profile rules and explicit Git
-Source apply/refresh, including mixed-tree preservation.
+Source apply/refresh, file authority changes and Source lifecycle management,
+including mixed-tree preservation.
 
 Pi is the first daily host. Its Notion consumption uses the matching SDK for
 discovery, use and resource reads. OMP/Tern adaptation is deferred. Their local

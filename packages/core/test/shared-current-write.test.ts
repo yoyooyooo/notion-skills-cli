@@ -183,6 +183,7 @@ async function coordinatedFixture() {
     owner: { kind: "source" as const, id: "provider" },
     input_sha256: "b".repeat(64),
     source_input: {
+      kind: "declaration" as const,
       configuration_sha256: "c".repeat(64),
       resolved_commit: "a".repeat(40),
       affected_skill_ids: ["example"],

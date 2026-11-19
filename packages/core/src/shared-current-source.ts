@@ -171,6 +171,88 @@ export function currentSharedSourceRevision(input: unknown) {
   })
 }
 
+type CurrentSourceContentSelection = {
+  readonly source_id: string
+  readonly page_id: string
+  readonly revision: string
+  readonly content: CurrentSharedSourceContent
+}
+
+function currentSourcePlan(library: SharedLibrary, current: CurrentSourceContentSelection) {
+  return Effect.gen(function* () {
+    yield* checked(() => {
+      validateCurrentSourceId(current.source_id)
+      if (pageId(current.page_id) !== current.page_id || !/^[a-f0-9]{64}$/u.test(current.revision))
+        throw fail("CURRENT_SOURCE_INVALID", "Use an exact current Source page and revision.")
+    })
+    const content = yield* checked(() => validateCurrentSharedSourceContent(current.content))
+    const plan =
+      "plan" in content
+        ? content.plan
+        : yield* readCurrentSharedResourceBytes(library, {
+            owner: { kind: "source", page_id: current.page_id },
+            content: content.resource,
+          }).pipe(
+            Effect.flatMap((bytes) =>
+              checked(() =>
+                validatedPlan(
+                  JSON.parse(
+                    new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes),
+                  ),
+                ),
+              ),
+            ),
+          )
+    if ((yield* sha256(canonicalSharedJson(plan))) !== current.revision)
+      return yield* Effect.fail(
+        fail("SHARED_SOURCE_CONFLICT", "The current Source differs from its selected manifest.", {
+          source_id: current.source_id,
+          next: "reselect_current",
+        }),
+      )
+    return plan
+  })
+}
+
+/** Management has already checked the exact Source owner and finite intent. This
+ * admits only its current immutable content, never a moving Ref or old carrier. */
+export function prepareCurrentSourceManagementSelection(
+  library: SharedLibrary,
+  input: CurrentSourceContentSelection,
+) {
+  return Effect.gen(function* () {
+    const plan = yield* currentSourcePlan(library, input)
+    const localRequired =
+      plan.base?.kind === "local" || plan.mounts.some((mount) => mount.resource.kind === "local")
+    const options = yield* loadSharedSourceOptions({ localRequired })
+    const selectedOptions = { ...options, metrics: (yield* Notion).metrics ?? options.metrics }
+    const inspection = yield* admitSharedSourcePlan(plan, selectedOptions)
+    const manifest = inspection.manifest.map(
+      (file): CurrentSharedSourceFile => ({
+        path: file.path,
+        sha256: file.identity.sha256!,
+        bytes: file.bytes,
+        mode: file.mode ?? "100644",
+        ...(file.identity.kind === "git" ? { git_oid: file.identity.git_oid } : {}),
+      }),
+    )
+    return {
+      source_id: input.source_id,
+      page_id: input.page_id,
+      revision: input.revision,
+      manifest,
+      local_paths: inspection.local_paths,
+      materialize: (paths: readonly string[]) =>
+        materializeSharedSourcePlan(inspection.plan, selectedOptions, paths).pipe(
+          Effect.map((materialized) => ({
+            files: materialized.files.map((file) => ({ ...file, mode: file.mode ?? "100644" })),
+            local_paths: materialized.local_paths,
+          })),
+        ),
+    } satisfies CurrentSharedSource
+  })
+}
+
 function field(row: unknown, id: string, type: string) {
   const matches = Object.values(property(property(row).properties))
     .map(property)
@@ -378,28 +460,7 @@ export function resolveCurrentSharedSources(
     }
     const plans = []
     for (const current of currents) {
-      const content = current.content
-      let plan
-      if ("plan" in content) plan = content.plan
-      else {
-        const bytes = yield* readCurrentSharedResourceBytes(library, {
-          owner: { kind: "source", page_id: current.page_id },
-          content: content.resource,
-        })
-        plan = yield* checked(() =>
-          validatedPlan(
-            JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)),
-          ),
-        )
-      }
-      if ((yield* sha256(canonicalSharedJson(plan))) !== current.revision)
-        return yield* Effect.fail(
-          fail(
-            "SHARED_SOURCE_CONFLICT",
-            "The current Source resource differs from its canonical plan fingerprint.",
-            { source_id: current.source_id, next: "reselect_current" },
-          ),
-        )
+      const plan = yield* currentSourcePlan(library, current)
       plans.push({ ...current, plan })
     }
     const localRequired = plans.some(

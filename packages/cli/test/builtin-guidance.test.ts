@@ -50,7 +50,7 @@ test("executable builtin examples stay within the public current command surface
     "prepare",
     "resolve",
   ])
-  const library = new Set(["init", "inspect", "files", "import", "source", "profile"])
+  const library = new Set(["init", "inspect", "files", "operation", "import", "source", "profile"])
   let examples = 0
   for (const skill of builtins) {
     for (const file of skill.portable.files) {
@@ -67,7 +67,11 @@ test("executable builtin examples stay within the public current command surface
             expect(controls.has(words[1]!), label).toBe(true)
             if (words[1] === "library") {
               expect(library.has(words[2]!), label).toBe(true)
-              if (words[2] === "source") expect(["apply", "refresh"], label).toContain(words[3]!)
+              if (words[2] === "source")
+                expect(
+                  ["apply", "refresh", "enable", "disable", "remove", "takeover", "restore-follow"],
+                  label,
+                ).toContain(words[3]!)
             }
           }
           expect(words, label).not.toContain("--authoring")
@@ -90,6 +94,7 @@ test("maintenance teaches the current complete import and its actual recovery bo
   expect(root).toContain("CURRENT_OPERATION_PENDING")
   expect(root).toContain("ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run")
   expect(root).toContain("--operation OPERATION_ID --resume")
+  expect(root).toContain("--supersede OLD --operation NEW")
   expect(root).toContain("zero semantic Notion writes")
   expect(root).toContain("not a completed")
   expect(setup).toContain("ctl library init --parent AUTHORIZED_PARENT_PAGE")
@@ -117,6 +122,12 @@ test("consumption and Profile guidance preserve zero-write reads and complete cu
   expect(profile).toContain("do not grant access")
   expect(details).toContain("A Skill can combine multiple")
   expect(details).toMatch(/every supporting file/iu)
+  for (const route of ["enable", "disable", "remove", "takeover", "restore-follow"])
+    expect(profile).toContain(`ctl library source ${route}`)
+  expect(details).toContain("Source options.storage are rejected")
+  expect(details).toContain("Any current Source Content or Origin")
+  expect(details).toContain("without publishing ready or recreating the Source")
+  expect(details).toContain("A metadata toggle cannot clear an unfinished multi-target refresh")
 })
 
 test("the published documentation allowlist contains only current guides", () => {

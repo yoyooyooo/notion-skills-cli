@@ -8,6 +8,7 @@ import { emit, requiredSingleton, singleton } from "./command-options.ts"
 import { libraryProfilesCommand } from "./commands-library-profiles.ts"
 import { currentImportCommand } from "./commands-current-import.ts"
 import { currentSourceCommand } from "./commands-current-source.ts"
+import { currentOperationCommand } from "./commands-current-operation.ts"
 
 const initialize = defineCommand(
   "init",
@@ -80,12 +81,13 @@ const files = defineCommand(
 
 export const libraryCommand = defineCommand("library").pipe(
   Command.withDescription(
-    "Manage the current library and Profile, import one complete current Skill, or apply and refresh Sources with stable target contributions. Each write and resume uses its exact finite operation identity.",
+    "Manage the current library and Profile, import one complete current Skill, or manage current Source contributions, eligibility and file authority. Each write, resume and explicit supersede uses exact finite operation identities.",
   ),
   Command.withSubcommands([
     initialize,
     inspect,
     files,
+    currentOperationCommand,
     currentImportCommand,
     currentSourceCommand,
     libraryProfilesCommand,

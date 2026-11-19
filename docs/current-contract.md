@@ -128,16 +128,16 @@ exclusion contains no old file bytes. Renaming a source-backed file updates its
 current mapping while preserving File ID; it does not leave an old-path file row.
 
 An explicit whole-file takeover changes authority to Notion after writing and
-checking the complete selected file. A current origin binding may remain solely to
-support an explicit restore-follow action. Restore-follow reads the currently
-selected Source and may overwrite current customization; it does not create a
-prior-pin backup. Removing a Source preserves Notion-owned files and clears or
-reports any now-unusable restore-follow binding.
+checking the complete selected file. It preserves File ID, physical page and Path,
+and excludes the exact member-relative path in its current contribution.
+Restore-follow explicitly selects a Source/path and uses its currently selected
+original. It may overwrite customization without keeping a backup. No permanent
+old origin is retained: Skills.Origin is recomputed from effective Source files.
 
 Current Source apply/refresh coordinates file mapping and exclusions through
 `Sources.Contributions`. `Sources.Selection.exclude` selects member roots; it is
-not a per-file exclusion mechanism. Takeover, restore-follow and Source removal
-still need explicit management entrypoints. Complete local import refuses to
+not a per-file exclusion mechanism. Source takeover/restore-follow and lifecycle
+commands own their explicit management scope. Complete local import refuses to
 replace Source-owned files or bypass their contributions.
 
 ### Sources
@@ -150,7 +150,8 @@ report a newer revision; only authorized management applies it.
 
 Reuse existing Provider, Location, Ref, Selection, Options, Enabled and Policy
 bindings where their meanings fit. `Last Revision` becomes the current selected
-revision rather than a history cursor. Last Checked/Result are informational.
+revision rather than a history cursor. Policy admits only manual and pinned;
+there is no automatic refresh scheduler or inert storage-selection option.
 `Contributions` holds the complete member-to-stable-Skill assignments, mount paths,
 exact member-relative mappings and persistent file exclusions. It is separate
 from the provider plan: changing an exclusion does not change that plan's hash.
@@ -163,9 +164,11 @@ private local bytes.
 
 A Source needs a complete current manifest. Keep a bounded manifest inline or use
 a current exact-resource locator for a large manifest; do not add a manifest-history
-table. Shared targets retain each Source's separate contribution. Disabling or
-removing a Source must resolve its affected current files explicitly and cannot
-silently delete another Source's files or Notion-owned overrides.
+table. Shared targets retain each Source's separate contribution. Enabled controls
+ordinary consumption eligibility. Disabling a Source preserves file authority,
+reading projections and each Skill's enabled value. It does not mean pausing a
+scheduler. Removal requires no current Source Content or Origin references and
+never silently deletes Skills or converts their files.
 
 The current reader decodes Sources `Content` as `{version: 1, plan}`. The plan owns
 the complete selected provider layout and exact upstream identities. `Last Revision`
@@ -174,9 +177,8 @@ selects the stable Source ID, that fingerprint and its source path. The underlyi
 Git commit or other provider identity remains inside the plan; the fingerprint is
 not a content-version history or an instruction to follow a moving branch.
 
-Automatic Source Routers derive current active member links. Human Routers retain
-their explicitly authored membership. Requires expands mandatory Skill
-dependencies; Members provides candidates. Disabled content and permission-denied
+Routers retain their explicitly authored membership. Requires expands mandatory
+Skill dependencies; Members provides candidates. Disabled content and permission-denied
 content remain distinct results, and a failing dependency identifies its owner.
 
 ### Records
@@ -401,12 +403,35 @@ Current mappings preserve File identity on rename, exclusions prevent resurrecti
 and unrelated Source/native/resource contributions remain current. Removing the
 sole main is refused; this entry does not implicitly take over authority.
 
+`source takeover SOURCE_ID SOURCE_PATH --skill-id ID --file-id ID --as native|resource`
+transfers exactly one selected original into Notion authority. Resource is the
+default representation. Native requires actual supported UTF-8/LF Markdown and a
+successful Notion round-trip; failure does not silently switch representation.
+`source restore-follow` takes the same exact coordinates and follows the Source's
+already-selected plan. Neither action discovers a new Git HEAD. Both adjust the
+current contribution, preserve all other files, and keep the selected File/page/
+path identities. Restore-follow requires enabled; takeover may rescue an exact
+original from a disabled but complete Source through the management reader.
+
+`source enable|disable SOURCE_ID` changes only Source consumption eligibility.
+`source remove SOURCE_ID` first enumerates this library's complete Skills and Files
+metadata independently. Semantic Content decoding finds references even when
+Origin is absent; orphan Files, incomplete pagination and stale Origin links
+prevent a clean-removal claim. Referenced files must first be explicitly taken
+over. An unreferenced Source retires its owned resources and page, then the finite
+operation. Its terminal state is removed; it is never temporarily republished
+ready during retirement. A metadata action does not generate per-Skill writes.
+
 Source-owned binaries retain Source authority while exposing a verified current
 original attachment. Source manifest resources belong to that Source and are
 collected after the current manifest changes. The full effective tree, native
 references and exact target scope are checked before completion.
 
-One finite parent intent freezes configuration, Git commit and affected Skill IDs.
+One finite parent intent freezes its action and affected Skill IDs. Declaration
+actions also freeze configuration and Git commit. File authority actions freeze
+the current Source selection, exact File coordinates, before/after configuration
+hashes and any temporary native-body precondition. These are unfinished intent
+inputs, not durable content versions.
 Its mutable next-target cursor distinguishes completed, in-flight and untouched
 children. Child intents use the same operation kernel, exact parent authorization
 and selected input. Recovery can finish untouched later targets without reopening
@@ -436,17 +461,45 @@ The writer opens an operation only when an actual change is needed. A complete
 no-op performs zero semantic remote writes. One mutable action marker supports
 interruption without a permanent ACK log. Completed state becomes ready before
 the operation is retired. Unknown CREATE or append is never repeated from absence;
-an observed partial append still requires attention and is not automatic recovery.
+an observed partial append is not automatically replayed.
+
+After stopping the old writer, `--operation NEW --supersede OLD` explicitly
+replaces its goal with a complete new input. The local pending row and the same
+physical Operation Record retain one finite predecessor while their pointers
+change; ordinary pending updates still cannot change intent identity. Product
+mutations wait until the handoff is coherent. Source successors remain within
+the original action kind and parent authorization; a single-file action cannot
+discard an unfinished multi-target declaration. Complete verification precedes
+ready and deletion of the handoff. A bare abandon does not clear Operation and
+pretend partial content is complete.
+
+The local owner lock excludes cooperating writers sharing that Store. It cannot
+cancel an already dispatched request or fence another machine. Explicit supersede
+therefore cannot promise that an unknown CREATE will never arrive later. Visible
+duplicate identities and changed bindings fail closed; completion proves the
+observed current result. No permanent tombstone or predecessor chain watches for
+unbounded late responses.
+
+`ctl library operation OWNER_ID --kind skill|source --entry DB` reads the exact
+current intent, local phase, remote Record, owner observation and in-flight action
+without mutations. `status: not_found` with `operation: null` says only that no
+intent was observed; it does not prove the owner is ready or retired. If a parent
+successor has not yet taken over its predecessor's pending child, another new
+successor is refused before parent writes. It must first resume that current
+handoff. This check probes at most the previous cursor's one child, not an ancestor
+history or one operation query per member.
 
 Old create/apply/write/replace/adopt, sync, archive, graph-release, repair and
-migration command families are not active authoring routes. Source apply/refresh
-uses the current coordinator; general cross-object governance still needs implementation.
+migration command families are not active authoring routes. Source actions use
+the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.
 
 The production data and Pi installation are **not switched yet**. Remaining work:
 
-- Complete explicit takeover/restore-follow, Source disable/removal, cross-object
-  governance and real-scope finite recovery: AH-504, AH-507, AH-505.
+- Verify Source authority/lifecycle operations in the real selected scope, and
+  complete general cross-object governance and management extraction of unfinished
+  content: AH-504, AH-507, AH-505. Controlled implementation tests do not certify
+  actual library cleanup.
 - Populate every Git-only supporting Files row and render full readable text or
   original usable attachments. A complete provider manifest does not establish
   that all required Notion reading pages exist: AH-501.

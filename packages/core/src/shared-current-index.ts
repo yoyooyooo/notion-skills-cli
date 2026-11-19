@@ -85,6 +85,12 @@ function binding(ids: PropertyIds | undefined, name: string): string {
     throw invalid("A registered current property has an invalid identity.", { property: name })
   return id
 }
+function fileProperties(ids: PropertyIds | undefined) {
+  const result = Object.fromEntries(fileFields.map((name) => [name, binding(ids, name)]))
+  if (new Set(Object.values(result)).size !== fileFields.length)
+    throw invalid("Current Files properties must have distinct registered identities.")
+  return result
+}
 function field(row: Record<string, unknown>, ids: PropertyIds, name: string, type: string) {
   const id = binding(ids, name)
   const matches = Object.entries(object(row.properties, "Page properties")).flatMap(
@@ -199,11 +205,7 @@ export function queryCurrentFilesForSkills(input: QueryCurrentFilesInput) {
       if (owners.length === 0 || new Set(owners).size !== owners.length)
         throw invalid("Select distinct nonempty Skill owners.")
       const dataSourceId = exactPage(input.dataSourceId, "Files data source")
-      const ids = Object.fromEntries(
-        fileFields.map((name) => [name, binding(input.propertyIds, name)]),
-      )
-      if (new Set(Object.values(ids)).size !== fileFields.length)
-        throw invalid("Current Files properties must have distinct registered identities.")
+      const ids = fileProperties(input.propertyIds)
       const parameters = new URLSearchParams()
       for (const name of fileFields) parameters.append("filter_properties", binding(ids, name))
       return {
@@ -343,5 +345,107 @@ export function queryCurrentSkillIndex(
     }
     yield* checked(() => validateBindings([metadata.main, ...files], selected))
     return { ...metadata, files } satisfies CurrentSkillIndex
+  })
+}
+
+/** Complete current library metadata for relationship retirement. Files are
+ * enumerated independently, so an orphan or a missing Origin cannot disappear
+ * behind an owner filter. No file bodies or resource bytes are fetched. */
+export function queryCurrentLibraryIndex(library: SharedLibrary) {
+  return Effect.gen(function* () {
+    const api = yield* Notion
+    const enumerate = (dataSourceId: string, properties: readonly string[] = []) =>
+      Effect.gen(function* () {
+        const selected = yield* checked(() => exactPage(dataSourceId, "Data source"))
+        const parameters = new URLSearchParams()
+        for (const id of properties) parameters.append("filter_properties", id)
+        const endpoint = `v1/data_sources/${selected}/query${properties.length ? `?${parameters}` : ""}`
+        const pages = new Map<string, unknown>(),
+          cursors = new Set<string>()
+        let cursor: string | undefined
+        for (;;) {
+          const raw = yield* api.request(
+            endpoint,
+            {
+              page_size: 100,
+              ...(cursor === undefined ? {} : { start_cursor: cursor }),
+            },
+            { method: "POST" },
+          )
+          const result = yield* checked(() => {
+            const envelope = object(raw, "Current library query")
+            if (
+              envelope.object !== "list" ||
+              (envelope.request_status !== undefined &&
+                object(envelope.request_status, "Query status").type !== "complete")
+            )
+              throw invalid("The current library metadata query is incomplete.")
+            const list = decode(listSchema(Schema.Unknown), raw)
+            if (
+              list.has_more
+                ? !list.next_cursor ||
+                  list.next_cursor.length > 2048 ||
+                  cursors.has(list.next_cursor)
+                : list.next_cursor !== null
+            )
+              throw invalid("Current library pagination did not finish or advance.")
+            for (const value of list.results) {
+              const row = object(value, "Current library page")
+              const parent = object(row.parent, "Current library parent")
+              const page = exactPage(row.id, "Current page")
+              if (
+                row.object !== "page" ||
+                row.in_trash === true ||
+                row.archived === true ||
+                row.is_archived === true ||
+                parent.type !== "data_source_id" ||
+                exactPage(parent.data_source_id, "Current parent") !== selected ||
+                pages.has(page)
+              )
+                throw invalid(
+                  "Current library metadata contains a foreign, unavailable or repeated page.",
+                  { page_id: page },
+                )
+              pages.set(page, value)
+            }
+            return list
+          })
+          if (!result.has_more) break
+          cursor = result.next_cursor!
+          cursors.add(cursor)
+        }
+        return pages
+      })
+    const pages = yield* enumerate(library.skills.data_source_id)
+    const ids = yield* checked(() => fileProperties(library.files.property_ids))
+    const filesDataSourceId = yield* checked(() =>
+      exactPage(library.files.data_source_id, "Files data source"),
+    )
+    const filePages = yield* enumerate(filesDataSourceId, Object.values(ids))
+    const files = new Map<string, CurrentFileBinding[]>([...pages.keys()].map((page) => [page, []]))
+    for (const [page, raw] of filePages) {
+      const file = yield* checked(() => {
+        const owner = fileOwner(object(raw, "Current File page"), ids)
+        if (!pages.has(owner))
+          throw invalid("A current File has no available owner in this library.", {
+            page_id: page,
+            skill_page_id: owner,
+          })
+        return currentFileRecord(raw, owner, filesDataSourceId, ids)
+      })
+      files.get(file.skill_page_id)!.push(file)
+    }
+    const skills = new Map<string, CurrentSkillIndex>()
+    for (const [page, raw] of pages) {
+      const index = yield* queryCurrentSkillIndex(library, page, raw, files.get(page)!)
+      if (skills.has(index.skill_id))
+        return yield* Effect.fail(
+          invalid("Several current Skills claim the same stable identity.", {
+            skill_id: index.skill_id,
+          }),
+        )
+      skills.set(index.skill_id, index)
+    }
+    return { skills, pages }
   })
 }

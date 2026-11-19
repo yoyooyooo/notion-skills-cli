@@ -97,8 +97,8 @@ function rich(library: SharedLibrary, row: unknown, name: string, kind = "rich_t
   return text(value)
 }
 
-/** Read current configuration by registered identities. Generated display and
- * Last Checked are not inputs to the management intent. */
+/** Read current configuration by registered identities. Status and Operation
+ * describe the finite writer; they are not declaration input. */
 export function parseCurrentSourceManagement(library: SharedLibrary, input: unknown) {
   const { id } = livePage(library, input)
   const source_id = validateCurrentSourceId(rich(library, input, "Source ID"))
@@ -196,6 +196,7 @@ export function queryCurrentSourceManagement(library: SharedLibrary, sourceId: s
       return yield* Effect.fail(
         fail("CURRENT_SOURCE_DUPLICATE", "Several current rows claim this Source ID.", {
           source_id,
+          page_ids: rows.map((row) => row.page_id),
         }),
       )
     const row = rows[0]
@@ -375,7 +376,7 @@ export function queryCurrentSourceTargets(
   })
 }
 
-function currentSourceOriginContains(
+export function currentSourceOriginContains(
   library: SharedLibrary,
   page: string,
   rawPage: unknown,

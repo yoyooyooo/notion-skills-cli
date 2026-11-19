@@ -16,7 +16,7 @@ description: "验证当前管理意图在响应丢失、partial、预算暂停�
 ## Doctor
 
 ~~~sh
-bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-source-write.test.ts packages/core/test/shared-current-upload.test.ts --timeout 60000
+bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-source-write.test.ts packages/core/test/shared-current-source-file.test.ts packages/core/test/shared-current-source-lifecycle.test.ts packages/core/test/shared-current-upload.test.ts --timeout 60000
 bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000
 ~~~
 
@@ -33,8 +33,12 @@ bun test packages/core/test/request-budget.test.ts packages/core/test/request-en
 7. 预算耗尽和取消停止派发；同 invocation 的重试、排队、上传、下载共用预算。不得开另一个 runtime 写 attention。新一次明确 resume 才有新预算。
 8. 附件上传用当前 owner、operation、path 和 wire hash 定位，未知分配不重复 CREATE；multipart 按已观察的完整前缀继续。最终从实际附件下载并核原件，缓存旧 bytes 不能证明新附件正确。
 9. Source 父意图冻结 declaration/commit/affected IDs；实际 Source 属性、ready 或 child append 已接受却丢响应时，对外恢复必须指回原父 operation。第一个子任务中断后用原 apply input --resume，核已完成子只读验证、未开始子继续、人工 native 改动保留、父子 pending 全清。父游标自身响应丢失也按当前 payload 对账；不新增历史或另一套恢复 runner。
+10. 原 writer 停止后，用同一管理命令的 `--operation NEW --supersede OLD` 和完整新目标接续 partial 或放弃的旧输入。核同一个 owner/Record、一个有限前意图、SQLite expected-old 原子交接；Record 和 owner Operation 的响应丢失都能核当前结果继续。旧 writer/旧输入不能重新进入，新意图完成后无历史副本。Source 只能替代同类动作，文件动作还必须是同一文件；普通 import 不能接走 Source 子意图。
+11. Source remove 在完整元数据反查无 Content/Origin 引用后退役资源和 exact Source 页。owner Trash 已落与未落但响应丢失分别验证；恢复后清 Operation/pending，整个路径没有 ready 发布。新引用、孤儿 Files 和不完整枚举阻止清退。
 
-Notion 属性和本地 mutex 不提供跨机器 CAS。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链。
+Notion 属性和本地 mutex 不提供跨机器 CAS。显式 supersede 不能撤回已经发出的请求；未知 CREATE 以后仍可能出现，观察到重复身份就拒绝。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链或长期墓碑。
+
+用 `ctl library operation OWNER_ID --kind skill|source --entry ENTRY` 只读查看当前意图及物理定位。没有可见意图不等于 owner ready。Source 连续 supersede 时，若当前父尚未接走祖父的 child，下一轮必须在父首次写前拒绝并指回现父 resume；已接走则可用新的完整目标继续，不保留历史链。
 
 ## Evidence
 

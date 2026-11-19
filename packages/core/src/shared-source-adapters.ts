@@ -9,7 +9,7 @@ import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256 } from "./store.ts"
 import { discoverSource, type DiscoverSourceInput, type SourceSnapshot } from "./upstream-source.ts"
 import { SourcePatchSchema } from "./upstream-source-model.ts"
-import { sourceChecked, sourceConfiguration } from "./shared-source-definitions.ts"
+import { sourceChecked, validateSourceDefinition } from "./shared-source-definitions.ts"
 import type { SourceDefinitionInput } from "./shared-sources-model.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
 
@@ -46,27 +46,10 @@ export const sourceAdapterCapabilities = [
 ] as const
 
 export function sourceDiscoveryInput(input: SourceDefinitionInput): DiscoverSourceInput {
-  const definition = sourceConfiguration(input)
+  const definition = validateSourceDefinition(input)
   if (definition.adapter.type === "linear")
     throw fail("SOURCE_ADAPTER_INVALID", "Linear does not use Git selection.")
   const options = definition.options
-  const permitted = new Set([
-    "storage",
-    "patch",
-    "member_patches",
-    "require_all_included",
-    "accepted_ref",
-    "external_assets",
-    "external_markdown",
-    "check_interval_ms",
-  ])
-  for (const key of Object.keys(options))
-    if (!permitted.has(key))
-      throw fail(
-        "SOURCE_ADAPTER_OPTIONS_UNSUPPORTED",
-        "An explicit source option has no implemented adapter behavior; it cannot be silently discarded.",
-        { option: key },
-      )
   if (options.external_assets !== undefined || options.external_markdown !== undefined) {
     if (
       options.external_assets !== true ||
@@ -221,11 +204,11 @@ export function discoverLinearSource(
   transport: LinearSourceTransport = linearTransport(),
 ) {
   return Effect.gen(function* () {
-    const definition = yield* sourceChecked(() => sourceConfiguration(input))
+    const definition = yield* sourceChecked(() => validateSourceDefinition(input))
     if (definition.adapter.type !== "linear")
       return yield* Effect.fail(fail("SOURCE_ADAPTER_INVALID", "Expected a Linear definition."))
     if (
-      Object.keys(definition.options).some((key) => key !== "check_interval_ms") ||
+      Object.keys(definition.options).length > 0 ||
       canonicalSharedJson(definition.selection) !==
         canonicalSharedJson({ roots: ["."], include: [], exclude: [], mapping: {} })
     )
@@ -345,12 +328,12 @@ export function discoverSourceDefinition(
   } = {},
 ) {
   return Effect.gen(function* () {
-    const definition = yield* sourceChecked(() => sourceConfiguration(input))
+    const definition = yield* sourceChecked(() => validateSourceDefinition(input))
     if (!definition.enabled)
       return yield* Effect.fail(
         fail(
           "SOURCE_DISABLED",
-          "This source is disabled; current fixed content remains available.",
+          "This Source is disabled; enable it before discovery or ordinary consumption.",
         ),
       )
     if (definition.adapter.type === "linear")

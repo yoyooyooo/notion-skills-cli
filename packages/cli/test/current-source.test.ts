@@ -11,6 +11,11 @@ import type { CurrentSourceDeclaration } from "../../core/src/shared-current-sou
 import { currentWriteFixture, library } from "../../core/test/shared-current-write-fixture.ts"
 import {
   applyCurrentSourceCommand,
+  disableCurrentSourceCommand,
+  enableCurrentSourceCommand,
+  removeCurrentSourceCommand,
+  restoreFollowCurrentSourceCommand,
+  takeoverCurrentSourceCommand,
   currentSourceCommand,
   loadCurrentSourceDeclaration,
   refreshCurrentSourceCommand,
@@ -101,7 +106,15 @@ test("Source JSON admission rejects malformed, nonregular, oversized and unknown
   await expect(load(linked)).rejects.toMatchObject({ code: "CURRENT_SOURCE_INPUT_INVALID" })
 })
 
-test("apply and refresh schema routes expose the same bounded finite intent controls", () => {
+test("current Source action routes expose the same bounded finite intent controls", () => {
+  for (const [name, command] of [
+    ["enable", enableCurrentSourceCommand],
+    ["disable", disableCurrentSourceCommand],
+    ["remove", removeCurrentSourceCommand],
+    ["takeover", takeoverCurrentSourceCommand],
+    ["restore-follow", restoreFollowCurrentSourceCommand],
+  ] as const)
+    expect(selectCommand(libraryCommand, ["source", name])).toBe(command)
   expect(selectCommand(libraryCommand, ["source", "apply"])).toBe(applyCurrentSourceCommand)
   expect(selectCommand(libraryCommand, ["source", "refresh"])).toBe(refreshCurrentSourceCommand)
   expect(selectCommand(libraryCommand, ["source", "list"])).toBeUndefined()
@@ -109,15 +122,31 @@ test("apply and refresh schema routes expose the same bounded finite intent cont
     currentSourceCommand.subcommands.flatMap((group) =>
       group.commands.map((command) => command.name),
     ),
-  ).toEqual(["apply", "refresh"])
-  for (const command of [applyCurrentSourceCommand, refreshCurrentSourceCommand]) {
+  ).toEqual(["apply", "refresh", "enable", "disable", "remove", "takeover", "restore-follow"])
+  for (const command of [
+    applyCurrentSourceCommand,
+    refreshCurrentSourceCommand,
+    enableCurrentSourceCommand,
+    disableCurrentSourceCommand,
+    removeCurrentSourceCommand,
+    takeoverCurrentSourceCommand,
+    restoreFollowCurrentSourceCommand,
+  ]) {
     const schema = property(commandSchema(command))
     const parameters = Array.isArray(schema.parameters) ? schema.parameters.map(property) : []
     expect(parameters.find((parameter) => parameter.name === "entry")).toMatchObject({
       required: true,
       max_occurrences: 1,
     })
-    for (const name of ["operation", "resume", "dry-run", "max-requests", "max-bytes", "timeout"])
+    for (const name of [
+      "operation",
+      "resume",
+      "supersede",
+      "dry-run",
+      "max-requests",
+      "max-bytes",
+      "timeout",
+    ])
       expect(parameters.find((parameter) => parameter.name === name)).toBeDefined()
     for (const name of ["max-requests", "max-bytes", "timeout"])
       expect(parameters.find((parameter) => parameter.name === name)).toMatchObject({
@@ -132,7 +161,7 @@ test("apply and refresh schema routes expose the same bounded finite intent cont
     ).toContain("Git subprocess requests are not counted")
     expect(schema.constraints).toContainEqual({
       kind: "mutually_exclusive",
-      flags: ["resume", "dryRun"],
+      flags: ["resume", "supersede", "dryRun"],
     })
   }
 })
@@ -144,9 +173,34 @@ test("invalid Source command flags and identities fail before every remote handl
   await writeFile(file, JSON.stringify(declaration))
   const apply = ["apply", file, "--entry", library.skills.database_id]
   const refresh = ["refresh", "team-skills", "--entry", library.skills.database_id]
-  for (const base of [apply, refresh])
+  for (const base of [
+    apply,
+    refresh,
+    ...["enable", "disable", "remove"].map((name) => [
+      name,
+      "team-skills",
+      "--entry",
+      library.skills.database_id,
+    ]),
+    ...["takeover", "restore-follow"].map((name) => [
+      name,
+      "team-skills",
+      "skills/alpha/SKILL.md",
+      "--skill-id",
+      "alpha",
+      "--file-id",
+      "main-alpha",
+      "--entry",
+      library.skills.database_id,
+    ]),
+  ])
     for (const flags of [
       ["--resume"],
+      ["--supersede", "old-intent"],
+      ["--supersede", "same-intent", "--operation", "same-intent"],
+      ["--supersede", "old-intent", "--operation", "new-intent", "--resume"],
+      ["--supersede", "old-intent", "--operation", "new-intent", "--dry-run"],
+      ["--supersede", "invalid operation", "--operation", "new-intent"],
       ["--resume", "--operation", "source-intent", "--dry-run"],
       ["--operation", "invalid operation"],
       ["--max-requests", "0"],
@@ -193,6 +247,50 @@ test("malformed local apply input never enters the real Source coordinator", asy
       ]),
     ),
   ).rejects.toMatchObject({ code: "INVALID_PATH" })
+  expect(f.calls).toEqual([])
+  expect(f.pages.size).toBe(0)
+})
+
+test("Source file commands reject incomplete identities, unsafe paths and unsupported authority before remote work", async () => {
+  const directory = await root(),
+    f = currentWriteFixture(directory)
+  const target = [
+    "--entry",
+    library.skills.database_id,
+    "--skill-id",
+    "alpha",
+    "--file-id",
+    "main-alpha",
+  ]
+  for (const args of [
+    ["takeover", "team-skills", "skills/alpha/SKILL.md", ...target, "--as", "source"],
+    [
+      "takeover",
+      "team-skills",
+      "skills/alpha/SKILL.md",
+      ...target,
+      "--as",
+      "native",
+      "--as",
+      "resource",
+    ],
+    ["restore-follow", "team-skills", "skills/alpha/SKILL.md", ...target, "--as", "native"],
+    ["takeover", "team-skills", "../outside", ...target],
+    ["restore-follow", "team-skills", "", ...target],
+    [
+      "takeover",
+      "team-skills",
+      "skills/alpha/SKILL.md",
+      "--entry",
+      library.skills.database_id,
+      "--skill-id",
+      "alpha",
+    ],
+    ["restore-follow", "team-skills", "skills/alpha/SKILL.md", ...target, "--native", "SKILL.md"],
+  ])
+    await expect(
+      f.run(Command.runWith(currentSourceCommand, { version: "0" })(args)),
+    ).rejects.toThrow()
   expect(f.calls).toEqual([])
   expect(f.pages.size).toBe(0)
 })

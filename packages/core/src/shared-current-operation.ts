@@ -6,10 +6,13 @@ import { pageId } from "./ref.ts"
 import { CurrentSourceIdSchema, parseCurrentSkillState } from "./shared-current-file.ts"
 import {
   archiveCurrentSharedOperationRecord,
+  assertCurrentOperationRecordSize,
   currentRecordText,
   queryCurrentSharedOperationRecord,
+  replaceCurrentSharedOperationRecord,
   writeCurrentSharedOperationRecord,
 } from "./shared-current-records.ts"
+import { CurrentSourceInputSchema } from "./shared-current-source-action.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, Store } from "./store.ts"
@@ -29,16 +32,6 @@ export const CurrentSourceIntentBindingSchema = Schema.Struct({
   authorization_sha256: Hash,
 })
 export type CurrentSourceIntentBinding = typeof CurrentSourceIntentBindingSchema.Type
-const SourceInputSchema = Schema.Struct({
-  configuration_sha256: Hash,
-  resolved_commit: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/u)),
-  affected_skill_ids: Schema.Array(StableId).check(
-    Schema.isMaxLength(10000),
-    Schema.makeFilter(
-      (ids) => new Set(ids).size === ids.length || "Affected Skill IDs must be unique.",
-    ),
-  ),
-})
 export const CurrentOperationIntentSchema = Schema.Union([
   Schema.Struct({
     operation_id: StableId,
@@ -50,7 +43,7 @@ export const CurrentOperationIntentSchema = Schema.Union([
     operation_id: StableId,
     input_sha256: Hash,
     owner: Schema.Struct({ kind: Schema.Literal("source"), id: CurrentSourceIdSchema }),
-    source_input: SourceInputSchema,
+    source_input: CurrentSourceInputSchema,
   }),
 ])
 export type CurrentOperationIntent = typeof CurrentOperationIntentSchema.Type
@@ -59,12 +52,27 @@ const ActionSchema = Schema.Struct({
   request_sha256: Hash,
   replay: Schema.Literals(["never", "idempotent"]),
 })
-type ActionMarker = typeof ActionSchema.Type
+export type CurrentActionMarker = typeof ActionSchema.Type
+type ActionMarker = CurrentActionMarker
 const SourceProgressSchema = Schema.Struct({
   next_index: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
   child_started: Schema.Boolean,
 })
 export type CurrentSourceProgress = typeof SourceProgressSchema.Type
+export type CurrentWriteMode =
+  | "apply"
+  | "resume"
+  | { readonly kind: "supersede"; readonly operation_id: string }
+const CompletionSchema = Schema.Literals(["ready", "retired"])
+const PredecessorSchema = Schema.Struct({
+  intent: CurrentOperationIntentSchema,
+  completion: CompletionSchema,
+  owner_page_id: Schema.NullOr(Schema.String),
+  in_flight: Schema.NullOr(ActionSchema),
+  source_progress: Schema.optional(SourceProgressSchema),
+})
+export type CurrentOperationPredecessor = typeof PredecessorSchema.Type
+
 const PayloadSchema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("current_operation"),
@@ -73,6 +81,8 @@ const PayloadSchema = Schema.Struct({
   intent: CurrentOperationIntentSchema,
   in_flight: Schema.NullOr(ActionSchema),
   source_progress: Schema.optional(SourceProgressSchema),
+  completion: CompletionSchema,
+  predecessor: Schema.optional(PredecessorSchema),
 })
 type CurrentPayload = typeof PayloadSchema.Type
 export const CurrentWritePendingSchema = Schema.Struct({
@@ -81,7 +91,14 @@ export const CurrentWritePendingSchema = Schema.Struct({
   library_id: Schema.String,
   record_id: Schema.String,
   intent: CurrentOperationIntentSchema,
+  completion: CompletionSchema,
+  owner_page_id: Schema.NullOr(Schema.String),
+  predecessor: Schema.optional(PredecessorSchema),
   lifecycle: Schema.Union([
+    Schema.Struct({
+      phase: Schema.Literal("replacing"),
+      record_page_id: Schema.NullOr(Schema.String),
+    }),
     Schema.Struct({ phase: Schema.Literal("creating") }),
     Schema.Struct({
       phase: Schema.Literals(["active", "retiring"]),
@@ -115,6 +132,8 @@ export type CurrentOperationSession = {
   readonly intent: CurrentOperationIntent
   readonly owner: CurrentOperationOwner
   readonly ownerPageId: string | null
+  readonly ownerRetired: boolean
+  readonly predecessor: CurrentOperationPredecessor | undefined
   readonly pendingActionKey: string | undefined
   readonly sourceProgress: CurrentSourceProgress | undefined
   readonly markSourceChildStarted: (
@@ -157,7 +176,39 @@ function decodePayload(value: unknown): CurrentPayload {
       throw invalid("The finite Source child cursor is outside its frozen affected scope.")
   } else if (progress !== undefined)
     throw invalid("A Skill operation cannot carry Source progress.")
+  if (payload.predecessor !== undefined) {
+    const prior = payload.predecessor
+    if (
+      canonicalSharedJson(prior.intent.owner) !== canonicalSharedJson(payload.intent.owner) ||
+      prior.intent.operation_id === payload.intent.operation_id
+    )
+      throw invalid("A predecessor must identify a different intent for the same current owner.")
+    if ("source_input" in prior.intent) {
+      const count = prior.intent.source_input.affected_skill_ids.length
+      if (
+        prior.source_progress === undefined ||
+        prior.source_progress.next_index > count ||
+        (prior.source_progress.next_index === count && prior.source_progress.child_started)
+      )
+        throw invalid("The predecessor Source cursor is outside its affected scope.")
+    } else if (prior.source_progress !== undefined)
+      throw invalid("A Skill predecessor cannot carry a Source cursor.")
+  }
   return payload
+}
+
+function exactSourceFileTarget(
+  input: Extract<typeof CurrentSourceInputSchema.Type, { kind: "file_authority" }>,
+): string {
+  return canonicalSharedJson([
+    input.request.skill_id,
+    input.request.file_id,
+    input.request.source_path,
+    input.source_page_id,
+    input.target.path,
+    input.target.skill_page_id,
+    input.target.page_id,
+  ])
 }
 
 function uuid(input: string): string {
@@ -255,6 +306,17 @@ export function currentOperationFailure(
   page: string | null,
 ) {
   const details = property(error.details)
+  const sourceInput = "source_input" in intent ? intent.source_input : undefined
+  const requiredInput =
+    sourceInput === undefined
+      ? "Resupply the same prepared input; its exact fingerprint is required."
+      : sourceInput.kind === "declaration"
+        ? "Resupply the original Source declaration with --operation and --resume."
+        : sourceInput.kind === "file_authority"
+          ? "Repeat the same Source file action and exact file identity with --operation and --resume."
+          : sourceInput.kind === "enabled"
+            ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
+            : "Repeat Source removal for this exact Source with --operation and --resume."
   const previousOwner = property(details.owner)
   const sameOwner = previousOwner.kind === intent.owner.kind && previousOwner.id === intent.owner.id
   // An already confirmed original input wins over a later supplied hash for the
@@ -286,15 +348,21 @@ export function currentOperationFailure(
       : {
           source_id: intent.owner.id,
           source_page_id: page,
+          ...(sourceInput === undefined
+            ? {}
+            : {
+                source_action: sourceInput.kind,
+                ...(sourceInput.kind === "file_authority"
+                  ? { source_request: sourceInput.request }
+                  : {}),
+                ...(sourceInput.kind === "enabled" ? { enabled: sourceInput.enabled } : {}),
+              }),
           required_state:
             "Keep the original local Store and credentials. An unknown write cannot be safely recreated from an empty local state.",
         }),
     input_sha256: intent.input_sha256,
     next: "reconcile_current",
-    required_input:
-      intent.owner.kind === "source"
-        ? "Resupply the original Source declaration with --operation and --resume."
-        : "Resupply the same prepared input; its exact fingerprint is required.",
+    required_input: requiredInput,
     ...(marker === null ? {} : { action: marker.key, replay: marker.replay }),
   })
 }
@@ -356,12 +424,10 @@ function observeRetiredOperation(library: SharedLibrary, recordPage: string) {
   })
 }
 
-/** Read the one current intent before provider discovery, including a not-yet-observed CREATE. */
-export function readCurrentOperationIntent(library: SharedLibrary, owner: CurrentOperationOwner) {
+function loadCurrentOperation(library: SharedLibrary, owner: CurrentOperationOwner) {
   return Effect.gen(function* () {
-    const address = yield* operationAddress(library, owner),
-      store = yield* Store
-    const pending = yield* store.readJson(address.key, CurrentWritePendingSchema)
+    const address = yield* operationAddress(library, owner)
+    const pending = yield* (yield* Store).readJson(address.key, CurrentWritePendingSchema)
     if (
       pending !== undefined &&
       (pending.scope !== address.scope ||
@@ -373,26 +439,107 @@ export function readCurrentOperationIntent(library: SharedLibrary, owner: Curren
         invalid("The local current intent belongs to another owner or scope."),
       )
     const record = yield* queryCurrentSharedOperationRecord(library, address)
-    if (record === undefined)
-      return pending === undefined ? undefined : { intent: pending.intent, owner_page_id: null }
-    const payload = yield* checked(() => decodePayload(record.payload))
-    if (
-      payload.library_id !== library.library_id ||
-      payload.owner_data_source_id !== address.dataSourceId ||
-      canonicalSharedJson(payload.intent.owner) !== canonicalSharedJson(owner) ||
-      payload.intent.operation_id !== record.operation_id ||
-      (record.owner !== null && record.owner.kind !== owner.kind) ||
-      (pending !== undefined &&
-        (!sameIntent(pending.intent, payload.intent) ||
-          (pending.lifecycle.phase !== "creating" &&
-            pending.lifecycle.record_page_id !== record.page_id)))
-    )
-      return yield* Effect.fail(
-        invalid("The current Operation locator, input or owner is inconsistent."),
+    const payload =
+      record === undefined ? undefined : yield* checked(() => decodePayload(record!.payload))
+    if (record !== undefined && payload !== undefined) {
+      const currentMatches = pending === undefined || sameIntent(pending.intent, payload.intent)
+      const predecessorMatches =
+        pending?.lifecycle.phase === "replacing" &&
+        pending.predecessor !== undefined &&
+        sameIntent(pending.predecessor.intent, payload.intent)
+      if (
+        payload.library_id !== library.library_id ||
+        payload.owner_data_source_id !== address.dataSourceId ||
+        canonicalSharedJson(payload.intent.owner) !== canonicalSharedJson(owner) ||
+        payload.intent.operation_id !== record.operation_id ||
+        (record.owner !== null && record.owner.kind !== owner.kind) ||
+        (!currentMatches && !predecessorMatches) ||
+        (pending !== undefined &&
+          pending.lifecycle.phase !== "creating" &&
+          pending.lifecycle.record_page_id !== null &&
+          pending.lifecycle.record_page_id !== record.page_id)
       )
-    return { intent: payload.intent, owner_page_id: record.owner?.page_id ?? null }
+        return yield* Effect.fail(
+          invalid("The current Operation locator, input or owner is inconsistent."),
+        )
+    }
+    if (record === undefined && pending === undefined) return undefined
+    const intent = pending?.intent ?? payload!.intent
+    const ownerPage = record?.owner?.page_id ?? pending?.owner_page_id ?? null
+    if (
+      record?.owner !== null &&
+      record?.owner !== undefined &&
+      pending?.owner_page_id != null &&
+      record.owner.page_id !== pending.owner_page_id
+    )
+      return yield* Effect.fail(invalid("The local and remote current owners differ."))
+    return { address, pending, record, payload, intent, ownerPage }
   })
 }
+
+/** Read the frozen input before provider discovery, including an unfinished handoff. */
+export function readCurrentOperationIntent(library: SharedLibrary, owner: CurrentOperationOwner) {
+  return loadCurrentOperation(library, owner).pipe(
+    Effect.map((current) =>
+      current === undefined
+        ? undefined
+        : {
+            intent: current.intent,
+            owner_page_id: current.ownerPage,
+            predecessor: current.pending?.predecessor ?? current.payload?.predecessor,
+          },
+    ),
+  )
+}
+
+/** Read-only management coordinates. Missing queries never certify retirement. */
+export function inspectCurrentOperation(library: SharedLibrary, owner: CurrentOperationOwner) {
+  return Effect.gen(function* () {
+    const current = yield* loadCurrentOperation(library, owner)
+    if (current === undefined) return undefined
+    const { pending, record, payload, intent, ownerPage } = current
+    let ownerState: ReturnType<typeof currentOperationOwnerState> | null = null
+    let ownerInTrash: boolean | null = null
+    if (ownerPage !== null) {
+      const raw = yield* (yield* Notion).request("v1/pages/" + ownerPage)
+      ownerInTrash = property(raw).in_trash === true
+      ownerState = yield* checked(() =>
+        currentOperationOwnerState(
+          library,
+          intent,
+          ownerPage,
+          ownerInTrash
+            ? { ...property(raw), in_trash: false, archived: false, is_archived: false }
+            : raw,
+        ),
+      )
+    }
+    const replacing = pending?.lifecycle.phase === "replacing"
+    return {
+      owner,
+      intent,
+      completion: pending?.completion ?? payload!.completion,
+      owner_page_id: ownerPage,
+      owner_state: ownerState,
+      owner_in_trash: ownerInTrash,
+      record_page_id:
+        record?.page_id ??
+        (pending?.lifecycle.phase === "creating"
+          ? null
+          : (pending?.lifecycle.record_page_id ?? null)),
+      record_observed: record !== undefined,
+      local_lifecycle: pending?.lifecycle ?? null,
+      in_flight: replacing ? null : (payload?.in_flight ?? null),
+      source_progress: replacing ? undefined : payload?.source_progress,
+      predecessor: pending?.predecessor ?? payload?.predecessor,
+    }
+  })
+}
+
+export type CurrentOperationInspection = Exclude<
+  Effect.Success<ReturnType<typeof inspectCurrentOperation>>,
+  undefined
+>
 
 /** One mutable current intent. The local lock coordinates this Store, never remote writers. */
 export function withCurrentOperation<A, R>(
@@ -400,7 +547,12 @@ export function withCurrentOperation<A, R>(
   input: {
     readonly intent: CurrentOperationIntent
     readonly ownerPageId: string | null
-    readonly mode?: "apply" | "resume"
+    readonly mode?: CurrentWriteMode
+    readonly completion?: "ready" | "retired"
+    readonly supersedingSourceChild?: {
+      readonly previous: CurrentSourceIntentBinding
+      readonly next: CurrentSourceIntentBinding
+    }
     readonly assertScope?: Effect.Effect<void, SkillsError, R>
     readonly beforeMutation?: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
     readonly afterActivate?: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
@@ -422,9 +574,19 @@ export function withCurrentOperation<A, R>(
     const suppliedPage = yield* checked(() =>
       input.ownerPageId === null ? null : uuid(input.ownerPageId),
     )
-    let mode = input.mode ?? "apply"
+    const requestedMode = input.mode ?? "apply"
+    const supersededOperation =
+      typeof requestedMode === "object" && requestedMode.kind === "supersede"
+        ? yield* checked(() => strict(StableId, requestedMode.operation_id))
+        : undefined
+    let mode = supersededOperation === undefined ? requestedMode : "apply"
     if (mode !== "apply" && mode !== "resume")
-      return yield* Effect.fail(invalid("Use apply or resume for a current intent."))
+      return yield* Effect.fail(
+        invalid("Use apply, resume or an exact superseded operation for a current intent."),
+      )
+    if (supersededOperation === intent.operation_id)
+      return yield* Effect.fail(invalid("A successor requires a different operation identity."))
+    const completion = yield* checked(() => strict(CompletionSchema, input.completion ?? "ready"))
     yield* checked(() => {
       for (const name of ["Skill ID", "Current State", "Operation"])
         binding(library, intent.owner, name)
@@ -454,6 +616,12 @@ export function withCurrentOperation<A, R>(
       store.root,
       [address.lock],
       Effect.gen(function* () {
+        let scopeConfirmed = false
+        const assertScope = () =>
+          Effect.gen(function* () {
+            if (!scopeConfirmed && input.assertScope !== undefined) yield* input.assertScope
+            scopeConfirmed = true
+          })
         let pending = yield* store.readJson(key, CurrentWritePendingSchema)
         if (
           pending !== undefined &&
@@ -477,6 +645,360 @@ export function withCurrentOperation<A, R>(
           retainFailure = (error) => currentOperationFailure(error, original, null, suppliedPage)
         }
         let record = yield* queryCurrentSharedOperationRecord(library, { recordId, entityId })
+        const observedRecordPayload = record?.payload
+        let observedPayload =
+          record === undefined
+            ? undefined
+            : yield* checked(() => decodePayload(observedRecordPayload))
+        const freshPayload = (predecessor?: CurrentOperationPredecessor): CurrentPayload => ({
+          version: 1,
+          kind: "current_operation",
+          library_id: library.library_id,
+          owner_data_source_id: address.dataSourceId,
+          intent,
+          completion,
+          in_flight: null,
+          ...(predecessor === undefined ? {} : { predecessor }),
+          ...("source_input" in intent
+            ? { source_progress: { next_index: 0, child_started: false } }
+            : {}),
+        })
+        let replacing =
+          pending?.lifecycle.phase === "replacing" ||
+          (pending?.lifecycle.phase === "creating" &&
+            pending.predecessor !== undefined &&
+            record !== undefined)
+        const predecessorAlreadySelected = pending?.predecessor ?? observedPayload?.predecessor
+        const selectedIntent = pending?.intent ?? observedPayload?.intent
+        if (
+          observedPayload !== undefined &&
+          (observedPayload.library_id !== library.library_id ||
+            observedPayload.owner_data_source_id !== address.dataSourceId ||
+            canonicalSharedJson(observedPayload.intent.owner) !==
+              canonicalSharedJson(intent.owner) ||
+            observedPayload.intent.operation_id !== record!.operation_id)
+        )
+          return yield* Effect.fail(
+            invalid("The current Record belongs to another operation scope."),
+          )
+        if (pending === undefined && observedPayload !== undefined) {
+          const original = observedPayload
+          const originalOwner = record?.owner?.page_id ?? suppliedPage
+          retainFailure = (error) =>
+            currentOperationFailure(error, original.intent, original.in_flight, originalOwner)
+        }
+        if (
+          pending !== undefined &&
+          canonicalSharedJson(pending.intent.owner) !== canonicalSharedJson(intent.owner)
+        )
+          return yield* Effect.fail(invalid("The local pending belongs to another owner."))
+        if (
+          supersededOperation !== undefined &&
+          selectedIntent !== undefined &&
+          sameIntent(selectedIntent, intent)
+        )
+          mode = "resume"
+        if (
+          supersededOperation !== undefined &&
+          selectedIntent !== undefined &&
+          !sameIntent(selectedIntent, intent)
+        ) {
+          if (selectedIntent.operation_id !== supersededOperation)
+            return yield* Effect.fail(
+              currentOperationFailure(
+                fail("CURRENT_OPERATION_PENDING", "A different current intent is unfinished."),
+                selectedIntent,
+                observedPayload?.in_flight ?? null,
+                record?.owner?.page_id ?? pending?.owner_page_id ?? suppliedPage,
+              ),
+            )
+          if (
+            record !== undefined &&
+            observedPayload !== undefined &&
+            !sameIntent(observedPayload.intent, selectedIntent)
+          )
+            return yield* Effect.fail(invalid("The predecessor's local and remote intents differ."))
+          if (pending?.lifecycle.phase === "replacing")
+            return yield* Effect.fail(
+              fail(
+                "CURRENT_OPERATION_PENDING",
+                "Finish the current intent handoff before replacing it again.",
+              ),
+            )
+          if (record === undefined && pending?.lifecycle.phase !== "creating")
+            return yield* Effect.fail(
+              fail(
+                "CURRENT_OPERATION_UNRESOLVED",
+                "The known predecessor Record is not observable; inspect its exact physical locator before superseding.",
+              ),
+            )
+          if ("source" in selectedIntent && selectedIntent.source !== undefined) {
+            const authorized = input.supersedingSourceChild
+            if (
+              authorized === undefined ||
+              !("source" in intent) ||
+              intent.source === undefined ||
+              canonicalSharedJson(authorized.previous) !==
+                canonicalSharedJson(selectedIntent.source) ||
+              canonicalSharedJson(authorized.next) !== canonicalSharedJson(intent.source) ||
+              authorized.previous.source_id !== authorized.next.source_id ||
+              authorized.previous.source_page_id !== authorized.next.source_page_id
+            )
+              return yield* Effect.fail(
+                fail(
+                  "CURRENT_SOURCE_MANAGEMENT_REQUIRED",
+                  "Only the exact successor Source parent may supersede its unfinished child.",
+                ),
+              )
+          } else if (input.supersedingSourceChild !== undefined)
+            return yield* Effect.fail(
+              invalid("A Source successor cannot claim an unrelated pending Skill."),
+            )
+          if ("source_input" in selectedIntent && "source_input" in intent) {
+            if (
+              selectedIntent.source_input.kind !== intent.source_input.kind ||
+              selectedIntent.source_input.affected_skill_ids.some(
+                (id) => !intent.source_input.affected_skill_ids.includes(id),
+              )
+            )
+              return yield* Effect.fail(
+                invalid(
+                  "A Source successor must retain its action category and complete predecessor target scope.",
+                ),
+              )
+            if (
+              selectedIntent.source_input.kind === "file_authority" &&
+              intent.source_input.kind === "file_authority" &&
+              exactSourceFileTarget(selectedIntent.source_input) !==
+                exactSourceFileTarget(intent.source_input)
+            )
+              return yield* Effect.fail(
+                invalid("A file authority successor must select the same exact current target."),
+              )
+          }
+          const priorOwner = record?.owner?.page_id ?? pending?.owner_page_id ?? suppliedPage
+          if (priorOwner !== null) {
+            if (suppliedPage !== null && priorOwner !== suppliedPage)
+              return yield* Effect.fail(
+                invalid("The successor cannot switch physical owner pages."),
+              )
+            const raw = yield* api.request("v1/pages/" + priorOwner)
+            const state = yield* checked(() =>
+              currentOperationOwnerState(library, selectedIntent, priorOwner, raw),
+            )
+            if (state.state !== "ready" && state.operation_id !== selectedIntent.operation_id)
+              return yield* Effect.fail(
+                fail("CURRENT_OPERATION_CONFLICT", "Another intent now owns the predecessor page."),
+              )
+          }
+          const predecessor: CurrentOperationPredecessor = {
+            intent: selectedIntent,
+            completion: observedPayload?.completion ?? pending!.completion,
+            owner_page_id: priorOwner,
+            in_flight: observedPayload?.in_flight ?? null,
+            ...("source_input" in selectedIntent
+              ? {
+                  source_progress: observedPayload?.source_progress ?? {
+                    next_index: 0,
+                    child_started: false,
+                  },
+                }
+              : {}),
+          }
+          const next = freshPayload(predecessor)
+          yield* assertScope()
+          yield* checked(() => {
+            decodePayload(next)
+            assertCurrentOperationRecordSize(intent.operation_id, next)
+          })
+          if (pending === undefined) {
+            pending = {
+              version: 1,
+              scope,
+              library_id: library.library_id,
+              record_id: recordId,
+              intent: selectedIntent,
+              completion: predecessor.completion,
+              owner_page_id: priorOwner,
+              lifecycle: { phase: "active", record_page_id: record!.page_id },
+              ...(observedPayload?.predecessor === undefined
+                ? {}
+                : { predecessor: observedPayload.predecessor }),
+            }
+            yield* store.writeJson(key, pending)
+          }
+          const replacement: LocalPending = {
+            version: 1,
+            scope,
+            library_id: library.library_id,
+            record_id: recordId,
+            intent,
+            completion,
+            owner_page_id: priorOwner,
+            predecessor,
+            lifecycle: { phase: "replacing", record_page_id: record?.page_id ?? null },
+          }
+          yield* store.writeJson(key, replacement, { expectedCurrentWritePending: pending })
+          pending = replacement
+          replacing = true
+          retainFailure = (error) => currentOperationFailure(error, intent, null, priorOwner)
+        } else if (
+          supersededOperation !== undefined &&
+          selectedIntent !== undefined &&
+          predecessorAlreadySelected?.intent.operation_id !== supersededOperation
+        )
+          return yield* Effect.fail(
+            invalid("The selected successor does not name this predecessor."),
+          )
+        // A remote handoff can be resumed with this Store only after its exact
+        // successor input is supplied. Ordinary readers never admit this state.
+        if (
+          !replacing &&
+          pending === undefined &&
+          observedPayload?.predecessor !== undefined &&
+          sameIntent(observedPayload.intent, intent) &&
+          record?.owner != null
+        ) {
+          const raw = yield* api.request("v1/pages/" + record.owner.page_id)
+          const state = yield* checked(() =>
+            currentOperationOwnerState(library, intent, record!.owner!.page_id, raw),
+          )
+          if (
+            state.state !== "ready" &&
+            state.operation_id === observedPayload.predecessor.intent.operation_id
+          ) {
+            pending = {
+              version: 1,
+              scope,
+              library_id: library.library_id,
+              record_id: recordId,
+              intent,
+              completion,
+              owner_page_id: record.owner.page_id,
+              predecessor: observedPayload.predecessor,
+              lifecycle: { phase: "replacing", record_page_id: record.page_id },
+            }
+            yield* store.writeJson(key, pending)
+            replacing = true
+          }
+        }
+        if (replacing) {
+          const staged = pending!
+          const predecessor = staged.predecessor
+          if (
+            predecessor === undefined ||
+            !sameIntent(staged.intent, intent) ||
+            staged.completion !== completion
+          )
+            return yield* Effect.fail(
+              invalid("Resupply the exact successor input to finish its current handoff."),
+            )
+          retainFailure = (error) =>
+            currentOperationFailure(error, intent, null, staged.owner_page_id)
+          yield* assertScope()
+          if (input.beforeMutation !== undefined) yield* input.beforeMutation
+          if (record === undefined) {
+            if (staged.lifecycle.phase !== "replacing" || staged.lifecycle.record_page_id !== null)
+              return yield* Effect.fail(invalid("The known handoff Record is unavailable."))
+            const creating: LocalPending = { ...staged, lifecycle: { phase: "creating" } }
+            yield* store.writeJson(key, creating)
+            pending = creating
+            record = yield* writeCurrentSharedOperationRecord(library, {
+              current: null,
+              recordId,
+              entityId,
+              operationId: intent.operation_id,
+              owner:
+                staged.owner_page_id === null
+                  ? null
+                  : { kind: intent.owner.kind, page_id: staged.owner_page_id },
+              payload: freshPayload(predecessor),
+            })
+          } else if (!sameIntent(observedPayload!.intent, intent)) {
+            if (
+              !sameIntent(observedPayload!.intent, predecessor.intent) ||
+              record.page_id !==
+                (staged.lifecycle.phase === "replacing" ? staged.lifecycle.record_page_id : null)
+            )
+              return yield* Effect.fail(
+                invalid("The current Record changed before its successor handoff."),
+              )
+            record = yield* replaceCurrentSharedOperationRecord(library, {
+              current: record,
+              recordId,
+              entityId,
+              operationId: intent.operation_id,
+              owner:
+                staged.owner_page_id === null
+                  ? null
+                  : { kind: intent.owner.kind, page_id: staged.owner_page_id },
+              payload: freshPayload(predecessor),
+            })
+          } else if (
+            canonicalSharedJson(observedPayload!.predecessor) !==
+              canonicalSharedJson(predecessor) ||
+            observedPayload!.completion !== completion
+          )
+            return yield* Effect.fail(
+              invalid("The observed successor handoff differs from the selected predecessor."),
+            )
+          observedPayload = yield* checked(() => decodePayload(record!.payload))
+          // The Source parent can now discover this child before any owner or
+          // product mutation. A lost cursor PATCH keeps the handoff local.
+          if (input.afterActivate !== undefined) yield* input.afterActivate
+          if (staged.owner_page_id !== null) {
+            const ownerPage = staged.owner_page_id
+            const raw = yield* api.request("v1/pages/" + ownerPage)
+            const state = yield* checked(() =>
+              currentOperationOwnerState(library, intent, ownerPage, raw),
+            )
+            if (
+              state.state !== "ready" &&
+              state.operation_id !== intent.operation_id &&
+              state.operation_id !== predecessor.intent.operation_id
+            )
+              return yield* Effect.fail(
+                fail(
+                  "CURRENT_OPERATION_CONFLICT",
+                  "Another intent changed the owner during handoff.",
+                ),
+              )
+            if (state.state === "ready" || state.operation_id !== intent.operation_id) {
+              const result = yield* api.request(
+                "v1/pages/" + ownerPage,
+                {
+                  properties: {
+                    [binding(library, intent.owner, "Current State")]: {
+                      select: { name: "applying" },
+                    },
+                    [binding(library, intent.owner, "Operation")]: {
+                      rich_text: currentRecordText(intent.operation_id),
+                    },
+                  },
+                },
+                { method: "PATCH" },
+              )
+              yield* checked(() => {
+                const current = currentOperationOwnerState(library, intent, ownerPage, result)
+                if (current.state !== "applying" || current.operation_id !== intent.operation_id)
+                  throw fail(
+                    "WRITE_OUTCOME_UNKNOWN",
+                    "The successor owner binding was not confirmed.",
+                  )
+              }).pipe(
+                Effect.mapError((error) =>
+                  fail(
+                    "WRITE_OUTCOME_UNKNOWN",
+                    "The successor owner acknowledgement could not be verified.",
+                    { cause_code: error.code },
+                  ),
+                ),
+              )
+            }
+          }
+          pending = { ...staged, lifecycle: { phase: "active", record_page_id: record!.page_id } }
+          yield* store.writeJson(key, pending)
+        }
         if (pending !== undefined && !sameIntent(pending.intent, intent)) {
           const stale = pending
           if (
@@ -498,10 +1020,18 @@ export function withCurrentOperation<A, R>(
             )
           const recordPage = stale.lifecycle.record_page_id
           const ownerRaw = yield* api.request("v1/pages/" + suppliedPage)
+          const trashed = property(ownerRaw).in_trash === true
           const current = yield* checked(() =>
-            currentOperationOwnerState(library, stale.intent, suppliedPage, ownerRaw),
+            currentOperationOwnerState(
+              library,
+              stale.intent,
+              suppliedPage,
+              stale.completion === "retired" && trashed
+                ? { ...property(ownerRaw), in_trash: false, archived: false, is_archived: false }
+                : ownerRaw,
+            ),
           )
-          if (current.state !== "ready")
+          if (stale.completion === "retired" ? !trashed : current.state !== "ready")
             return yield* Effect.fail(
               currentOperationFailure(
                 fail("CURRENT_OPERATION_PENDING", "The previous current owner is not ready."),
@@ -538,7 +1068,7 @@ export function withCurrentOperation<A, R>(
               "The current Operation belongs to another owner kind.",
             ),
           )
-        let owner = record?.owner?.page_id ?? suppliedPage
+        let owner = record?.owner?.page_id ?? pending?.owner_page_id ?? suppliedPage
         if (
           record?.owner?.page_id !== null &&
           record?.owner?.page_id !== undefined &&
@@ -557,6 +1087,8 @@ export function withCurrentOperation<A, R>(
           library_id: library.library_id,
           owner_data_source_id: uuid(ownerTable(library, intent.owner).data_source_id),
           intent,
+          completion,
+          ...(pending?.predecessor === undefined ? {} : { predecessor: pending.predecessor }),
           in_flight: null,
           ...("source_input" in intent
             ? {
@@ -578,6 +1110,7 @@ export function withCurrentOperation<A, R>(
             payload.owner_data_source_id !==
               uuid(ownerTable(library, intent.owner).data_source_id) ||
             !sameIntent(payload.intent, intent) ||
+            payload.completion !== completion ||
             record.operation_id !== intent.operation_id
           )
             return yield* Effect.fail(
@@ -625,6 +1158,9 @@ export function withCurrentOperation<A, R>(
               library_id: library.library_id,
               record_id: recordId,
               intent,
+              completion,
+              owner_page_id: owner,
+              ...(payload.predecessor === undefined ? {} : { predecessor: payload.predecessor }),
               lifecycle,
               ...(notDispatched === undefined ? {} : { not_dispatched: notDispatched }),
             }
@@ -632,6 +1168,7 @@ export function withCurrentOperation<A, R>(
             pending = next
           })
         const alreadyRetiring = pending?.lifecycle.phase === "retiring"
+        let ownerRetired = false
         const notDispatched = pending?.not_dispatched
         let settled =
           payload.in_flight === null ||
@@ -852,7 +1389,7 @@ export function withCurrentOperation<A, R>(
                     { pending_action: active.key },
                   ),
                 )
-              if (ownerReady && action.key !== "$owner.ready")
+              if (ownerReady && action.key !== "$owner." + completion)
                 return yield* Effect.fail(
                   fail(
                     "CURRENT_OPERATION_CONFLICT",
@@ -952,13 +1489,91 @@ export function withCurrentOperation<A, R>(
               ),
             )
           })
-        const observeOwner = () =>
+        const ownerObservation = (raw: unknown, allowCompletedRetirement = false) => {
+          const page = owner
+          if (page === null) throw invalid("The current intent has no physical owner.")
+          const trashed = property(raw).in_trash === true
+          const permitted =
+            completion === "retired" &&
+            (ownerRetired ||
+              alreadyRetiring ||
+              payload.in_flight?.key === "$owner.retired" ||
+              allowCompletedRetirement)
+          const state = currentOperationOwnerState(
+            library,
+            intent,
+            page,
+            trashed && permitted
+              ? { ...property(raw), in_trash: false, archived: false, is_archived: false }
+              : raw,
+          )
+          if (trashed) {
+            if (
+              !permitted ||
+              (state.state !== "ready" && state.operation_id !== intent.operation_id)
+            )
+              throw fail(
+                "CURRENT_OPERATION_CONFLICT",
+                "The retired owner does not belong to this terminal intent.",
+              )
+            ownerRetired = true
+            ownerReady = true
+            if (payload.in_flight?.key === "$owner.retired") settled = true
+          }
+          return state
+        }
+        const observeOwner = (allowCompletedRetirement = false) =>
+          Effect.gen(function* () {
+            if (owner === null)
+              return yield* Effect.fail(invalid("The current intent has no physical owner."))
+            const raw = yield* api.request("v1/pages/" + owner)
+            return yield* checked(() => ownerObservation(raw, allowCompletedRetirement))
+          })
+        const retireOwner = (value: A) =>
           Effect.gen(function* () {
             const page = owner
             if (page === null)
-              return yield* Effect.fail(invalid("The current intent has no physical owner."))
-            const raw = yield* api.request("v1/pages/" + page)
-            return yield* checked(() => currentOperationOwnerState(library, intent, page, raw))
+              return yield* Effect.fail(
+                invalid("A retired completion needs an exact physical owner."),
+              )
+            yield* dispatch(
+              {
+                key: "$owner.retired",
+                replay: "idempotent",
+                request: {
+                  path: "v1/pages/" + page,
+                  body: { in_trash: true },
+                  options: { method: "PATCH" },
+                },
+                observe: () =>
+                  Effect.gen(function* () {
+                    const raw = yield* api.request("v1/pages/" + page)
+                    const state = yield* checked(() => ownerObservation(raw))
+                    if (ownerRetired) return { status: "complete", value: undefined } as const
+                    if (state.state !== "ready" && state.operation_id !== intent.operation_id)
+                      return yield* Effect.fail(
+                        fail(
+                          "CURRENT_OPERATION_CONFLICT",
+                          "Another operation owns the terminal target.",
+                        ),
+                      )
+                    // Recheck configuration and current references after this
+                    // last owner observation, through the caller's same verifier.
+                    yield* input.verify(session, value)
+                    return { status: "missing" } as const
+                  }),
+                acknowledge: (raw) =>
+                  checked(() => {
+                    ownerObservation(raw)
+                    if (!ownerRetired)
+                      throw fail(
+                        "WRITE_OUTCOME_UNKNOWN",
+                        "The exact owner retirement was not confirmed.",
+                      )
+                  }),
+              },
+              true,
+            )
           })
         const changeOwner = (next: "applying" | "ready" | "attention") =>
           Effect.gen(function* () {
@@ -1020,6 +1635,14 @@ export function withCurrentOperation<A, R>(
           get ownerPageId() {
             return owner
           },
+          get ownerRetired() {
+            return ownerRetired
+          },
+          get predecessor() {
+            return payload.predecessor === undefined
+              ? undefined
+              : structuredClone(payload.predecessor)
+          },
           get pendingActionKey() {
             return settled ? undefined : payload.in_flight?.key
           },
@@ -1037,9 +1660,8 @@ export function withCurrentOperation<A, R>(
               if (closed || owner === null)
                 return yield* Effect.fail(invalid("The current owner session is not active."))
               const raw = yield* api.request("v1/pages/" + owner)
-              const state = yield* checked(() =>
-                currentOperationOwnerState(library, intent, owner!, raw),
-              )
+              const state = yield* checked(() => ownerObservation(raw))
+              if (ownerRetired) return raw
               if (
                 state.state === "ready"
                   ? !ownerReady && (record !== undefined || pending !== undefined)
@@ -1088,26 +1710,47 @@ export function withCurrentOperation<A, R>(
             }),
         }
         const execute = Effect.gen(function* () {
-          if (input.assertScope !== undefined) yield* input.assertScope
+          yield* assertScope()
           if (
             mode === "resume" &&
             record === undefined &&
             pending === undefined &&
             input.verifyCompletedResume !== undefined
           ) {
-            if (owner === null || (yield* observeOwner()).state !== "ready")
+            const state = owner === null ? undefined : yield* observeOwner(completion === "retired")
+            if (
+              owner === null ||
+              (completion === "retired" ? !ownerRetired : state?.state !== "ready")
+            )
               return yield* Effect.fail(
                 fail(
                   "CURRENT_OPERATION_NOT_FOUND",
-                  "A completed resume requires the exact ready owner.",
+                  "A completed resume requires the exact terminal owner.",
                 ),
               )
             completedReadOnly = true
             return yield* input.verifyCompletedResume(session)
           }
+          if (supersededOperation !== undefined && record === undefined && pending === undefined) {
+            if (
+              owner === null ||
+              completion !== "ready" ||
+              (yield* observeOwner()).state !== "ready"
+            )
+              return yield* Effect.fail(
+                fail(
+                  "CURRENT_OPERATION_NOT_FOUND",
+                  "The predecessor is not observable. Only a complete current target can be accepted without it.",
+                ),
+              )
+            completedReadOnly = true
+          }
           if (owner !== null) {
             const state = yield* observeOwner()
-            if (alreadyRetiring && state.state !== "ready")
+            if (
+              alreadyRetiring &&
+              (completion === "retired" ? !ownerRetired : state.state !== "ready")
+            )
               return yield* Effect.fail(
                 fail(
                   "CURRENT_OPERATION_CONFLICT",
@@ -1120,14 +1763,16 @@ export function withCurrentOperation<A, R>(
               return yield* Effect.fail(
                 fail("CURRENT_OPERATION_CONFLICT", "Another current operation owns this page."),
               )
-            if (state.state !== "ready" && record === undefined)
+            if (!ownerRetired && state.state !== "ready" && record === undefined)
               return yield* Effect.fail(
                 fail(
                   "CURRENT_OPERATION_UNRESOLVED",
                   "The unfinished owner has no observable current intent. Inspect it before writing.",
                 ),
               )
-            if (
+            if (ownerRetired) {
+              settled = true
+            } else if (
               state.state === "ready" &&
               (alreadyRetiring || payload.in_flight?.key === "$owner.ready")
             ) {
@@ -1162,8 +1807,22 @@ export function withCurrentOperation<A, R>(
                 "The complete Source child scope has not finished.",
               ),
             )
-          if (record === undefined && !alreadyRetiring) return value
-          if (!settled && payload.in_flight?.key !== "$owner.ready")
+          if (record === undefined && !alreadyRetiring && completion === "ready") return value
+          if (record !== undefined && payload.predecessor !== undefined) {
+            const actual = yield* queryCurrentSharedOperationRecord(library, { recordId, entityId })
+            if (
+              actual === undefined ||
+              actual.page_id !== record.page_id ||
+              actual.operation_id !== intent.operation_id
+            )
+              return yield* Effect.fail(
+                fail(
+                  "CURRENT_OPERATION_CONFLICT",
+                  "The successor Record is no longer the unique current operation.",
+                ),
+              )
+          }
+          if (!settled && payload.in_flight?.key !== "$owner." + completion)
             return yield* Effect.fail(
               fail(
                 "CURRENT_OPERATION_PENDING",
@@ -1171,7 +1830,8 @@ export function withCurrentOperation<A, R>(
                 { pending_action: payload.in_flight?.key },
               ),
             )
-          yield* changeOwner("ready")
+          if (completion === "retired") yield* retireOwner(value)
+          else yield* changeOwner("ready")
           ownerReady = true
           if (record !== undefined) {
             yield* saveLocal({ phase: "retiring", record_page_id: record.page_id })

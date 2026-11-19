@@ -10,6 +10,8 @@ import { trashPath } from "../src/local-locks.ts"
 const core = new URL("../src/", import.meta.url).pathname
 const key = "operations/current-write-pending/" + "a".repeat(64) + "/pending.json"
 const pending = {
+  completion: "ready",
+  owner_page_id: null,
   version: 1,
   scope: "b".repeat(64),
   library_id: "current-test-library",
@@ -129,7 +131,7 @@ test("real Store freezes Source ownership and context plus the child parent bind
       root,
       `
 const childKey=key.replace('a'.repeat(64),'e'.repeat(64));
-const source={...pending,intent:{operation_id:'source-op',owner:{kind:'source',id:'provider'},input_sha256:'d'.repeat(64),source_input:{configuration_sha256:'1'.repeat(64),resolved_commit:'2'.repeat(40),affected_skill_ids:['example']}}};
+const source={...pending,intent:{operation_id:'source-op',owner:{kind:'source',id:'provider'},input_sha256:'d'.repeat(64),source_input:{kind:'declaration',configuration_sha256:'1'.repeat(64),resolved_commit:'2'.repeat(40),affected_skill_ids:['example']}}};
 const sourceBinding={source_id:'provider',source_page_id:'00000000-0000-4000-8000-000000000003',operation_id:'source-op',input_sha256:'d'.repeat(64),authorization_sha256:'3'.repeat(64)};
 const child={...pending,intent:{...pending.intent,source:sourceBinding}};
 yield* store.writeJson(key,source);yield* store.writeJson(childKey,child);
@@ -141,7 +143,7 @@ for(const value of [
  {...source,scope:'5'.repeat(64)},
 ]){const result=yield* store.writeJson(key,value).pipe(Effect.result);rejected.push(result._tag==='Failure'?result.failure.code:null);}
 const changedBinding=yield* store.writeJson(childKey,{...child,intent:{...child.intent,source:{...sourceBinding,operation_id:'another-parent'}}}).pipe(Effect.result);
-const reordered={...source,intent:{source_input:{affected_skill_ids:['example'],resolved_commit:'2'.repeat(40),configuration_sha256:'1'.repeat(64)},input_sha256:'d'.repeat(64),owner:{id:'provider',kind:'source'},operation_id:'source-op'},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000004'}};
+const reordered={...source,intent:{source_input:{kind:'declaration',affected_skill_ids:['example'],resolved_commit:'2'.repeat(40),configuration_sha256:'1'.repeat(64)},input_sha256:'d'.repeat(64),owner:{id:'provider',kind:'source'},operation_id:'source-op'},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000004'}};
 yield* store.writeJson(key,reordered);
 console.log(JSON.stringify({rejected,changedBinding:changedBinding._tag==='Failure'?changedBinding.failure.code:null,source:yield* store.readJson(key,CurrentWritePendingSchema),child:yield* store.readJson(childKey,CurrentWritePendingSchema)}));`,
     )
@@ -171,6 +173,65 @@ console.log(JSON.stringify({source,child,remaining:yield* store.listKeys('operat
     expect(restored.source).toEqual(initial.source)
     expect(restored.child).toEqual(initial.child)
     expect(restored.remaining).toEqual([])
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
+  }
+}, 30_000)
+
+test("real SQLite admits exactly one expected-old successor and preserves it across restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-current-handoff-sqlite-"))
+  try {
+    const seeded = await run(
+      root,
+      `
+yield* store.writeJson(key,pending);
+const successor={...pending,intent:{...pending.intent,operation_id:'next',input_sha256:'e'.repeat(64)},predecessor:{intent:pending.intent,completion:'ready',owner_page_id:null,in_flight:null},lifecycle:{phase:'replacing',record_page_id:null}};
+const ordinary=yield* store.writeJson(key,successor).pipe(Effect.result);
+const changedOwner={...successor,intent:{...successor.intent,owner:{kind:'skill',id:'another'}}};
+const foreign=yield* store.writeJson(key,changedOwner,{expectedCurrentWritePending:pending}).pipe(Effect.result);
+const stale=yield* store.writeJson(key,successor,{expectedCurrentWritePending:{...pending,not_dispatched:{key:'different',request_sha256:'f'.repeat(64),replay:'never'}}}).pipe(Effect.result);
+const outside=yield* store.writeJson('config.json',successor,{expectedCurrentWritePending:pending}).pipe(Effect.result);
+console.log(JSON.stringify({codes:[ordinary,foreign,stale,outside].map(r=>r._tag==='Failure'?r.failure.code:null),actual:yield* store.readJson(key,CurrentWritePendingSchema)}));`,
+    )
+    expect(seeded.exit, seeded.stderr).toBe(0)
+    expect(JSON.parse(seeded.stdout)).toEqual({
+      codes: ["STATE_CONFLICT", "STATE_CONFLICT", "STATE_CONFLICT", "INVALID_ARGUMENT"],
+      actual: pending,
+    })
+    const attempts = await Promise.all(
+      ["left", "right"].map((name) =>
+        run(
+          root,
+          `
+const successor={...pending,intent:{...pending.intent,operation_id:${JSON.stringify(name)},input_sha256:'e'.repeat(64)},predecessor:{intent:pending.intent,completion:'ready',owner_page_id:null,in_flight:null},lifecycle:{phase:'replacing',record_page_id:null}};
+const result=yield* store.writeJson(key,successor,{expectedCurrentWritePending:pending}).pipe(Effect.result);
+console.log(JSON.stringify({name:${JSON.stringify(name)},code:result._tag==='Failure'?result.failure.code:'success'}));`,
+        ),
+      ),
+    )
+    for (const attempt of attempts) expect(attempt.exit, attempt.stderr).toBe(0)
+    const outcomes = attempts.map((attempt) => JSON.parse(attempt.stdout))
+    expect(outcomes.map((row) => row.code).sort()).toEqual(["STATE_CONFLICT", "success"])
+    const winner = outcomes.find((row) => row.code === "success")!.name
+    const reopened = await run(
+      root,
+      `
+yield* clearCache(undefined,{all:true});
+const actual=yield* store.readJson(key,CurrentWritePendingSchema);
+const without={...actual};delete without.predecessor;
+const erased=yield* store.writeJson(key,without).pipe(Effect.result);
+yield* store.retireKeys([key]);
+console.log(JSON.stringify({actual,erased:erased._tag==='Failure'?erased.failure.code:null,remaining:yield* store.listKeys('operations/current-write-pending')}));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    const result = JSON.parse(reopened.stdout)
+    expect(result.actual).toMatchObject({
+      intent: { operation_id: winner },
+      predecessor: { intent: pending.intent },
+      lifecycle: { phase: "replacing" },
+    })
+    expect(result.erased).toBe("STATE_CONFLICT")
+    expect(result.remaining).toEqual([])
   } finally {
     if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
   }

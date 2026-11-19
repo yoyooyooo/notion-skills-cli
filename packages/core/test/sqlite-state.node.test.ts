@@ -18,6 +18,8 @@ import { trashPath } from "../src/local-locks.ts"
 const core = new URL("../src/", import.meta.url).pathname
 const pendingKey = `operations/current-write-pending/${"a".repeat(64)}/pending.json`
 const pending = {
+  completion: "ready",
+  owner_page_id: null,
   version: 1,
   lifecycle: { phase: "active", record_page_id: "00000000-0000-4000-8000-000000000002" },
   scope: "a".repeat(64),

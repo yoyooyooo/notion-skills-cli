@@ -273,6 +273,11 @@ export function queryCurrentSharedOperationRecord(
         fail(
           "CURRENT_OPERATION_CONFLICT",
           "Several current Records claim the same operation target.",
+          {
+            record_page_ids: rows.map((row) => property(row).id),
+            record_id: input.recordId,
+            entity_id: input.entityId,
+          },
         ),
       )
     const row = yield* decodeRecord(library, rows[0])
@@ -290,16 +295,47 @@ export function queryCurrentSharedOperationRecord(
     return operationRecord(row)
   })
 }
+/** Validate the bounded wire envelope before any handoff state is changed. */
+export function assertCurrentOperationRecordSize(operationId: string, payload: unknown): void {
+  const prepared = envelope(operationId, payload)
+  // One bounded action marker and the finite cursor must still fit after handoff.
+  if (new TextEncoder().encode(prepared.encoded).length > MAX_BYTES - 2048)
+    throw fail(
+      "CURRENT_RECORD_TOO_LARGE",
+      "The current predecessor and successor leave no room for one in-flight action.",
+      { phase: "input_rejected", max_bytes: MAX_BYTES, reserved_action_bytes: 2048 },
+    )
+}
+
+type CurrentOperationRecordWrite = {
+  readonly current: CurrentSharedOperationRecord | null
+  readonly recordId: string
+  readonly operationId: string
+  readonly entityId: string
+  readonly owner: CurrentResourceOwner | null
+  readonly payload: unknown
+}
+
 export function writeCurrentSharedOperationRecord(
   library: SharedLibrary,
-  input: {
-    readonly current: CurrentSharedOperationRecord | null
-    readonly recordId: string
-    readonly operationId: string
-    readonly entityId: string
-    readonly owner: CurrentResourceOwner | null
-    readonly payload: unknown
-  },
+  input: CurrentOperationRecordWrite,
+) {
+  return writeOperationRecord(library, input, false)
+}
+
+/** Only the kernel's exact predecessor handoff may change this mutable Record's
+ * operation. It does not provide a remote compare-and-swap. */
+export function replaceCurrentSharedOperationRecord(
+  library: SharedLibrary,
+  input: CurrentOperationRecordWrite & { readonly current: CurrentSharedOperationRecord },
+) {
+  return writeOperationRecord(library, input, true)
+}
+
+function writeOperationRecord(
+  library: SharedLibrary,
+  input: CurrentOperationRecordWrite,
+  replacing: boolean,
 ) {
   return Effect.gen(function* () {
     const prepared = yield* checked(() => {
@@ -309,7 +345,7 @@ export function writeCurrentSharedOperationRecord(
         input.current !== null &&
         (input.current.record_id !== input.recordId ||
           input.current.entity_id !== input.entityId ||
-          input.current.operation_id !== input.operationId)
+          (!replacing && input.current.operation_id !== input.operationId))
       )
         throw fail("CURRENT_OPERATION_CONFLICT", "Cannot replace a different current operation.")
       if (input.owner !== null && input.owner.kind !== "skill" && input.owner.kind !== "source")

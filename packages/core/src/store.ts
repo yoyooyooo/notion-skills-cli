@@ -109,7 +109,11 @@ export class Store extends Context.Service<
       key: string,
       schema: S,
     ) => Effect.Effect<S["Type"] | undefined, SkillsError>
-    readonly writeJson: (key: string, value: unknown) => Effect.Effect<void, SkillsError>
+    readonly writeJson: (
+      key: string,
+      value: unknown,
+      options?: { readonly expectedCurrentWritePending: unknown },
+    ) => Effect.Effect<void, SkillsError>
     readonly readBytes: (key: string) => Effect.Effect<Uint8Array, SkillsError>
     readonly writeBytes: (key: string, bytes: Uint8Array) => Effect.Effect<void, SkillsError>
     readonly backup: (
@@ -341,8 +345,23 @@ export const StoreLive = Layer.effect(
       backup: state.backup,
       writeBytes,
       readBytes,
-      writeJson: (key: string, value: unknown) =>
+      writeJson: (
+        key: string,
+        value: unknown,
+        options?: { readonly expectedCurrentWritePending: unknown },
+      ) =>
         Effect.gen(function* () {
+          if (
+            options !== undefined &&
+            !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key)
+          )
+            return yield* Effect.fail(
+              fail(
+                "INVALID_ARGUMENT",
+                "Expected-current replacement only addresses a current write pending key.",
+                { key },
+              ),
+            )
           if (key === "config.json") {
             const config = property(value)
             if (config.sync_bindings !== undefined || config.upstream_database !== undefined)
@@ -390,7 +409,7 @@ export const StoreLive = Layer.effect(
               )
             return
           }
-          yield* state.write(key, value)
+          yield* state.write(key, value, options)
         }).pipe(
           Effect.mapError((e) =>
             e instanceof SkillsError

@@ -461,10 +461,25 @@ export function sqliteState(
           return parsed
         }),
       )
-    const write = (key: string, value: unknown) =>
+    const write = (
+      key: string,
+      value: unknown,
+      options?: { readonly expectedCurrentWritePending: unknown },
+    ) =>
       run(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient
+          if (
+            options !== undefined &&
+            !/^operations\/current-write-pending\/[a-f0-9]{64}\/pending\.json$/u.test(key)
+          )
+            return yield* Effect.fail(
+              fail(
+                "INVALID_ARGUMENT",
+                "Expected-current replacement only addresses a current write pending key.",
+                { key },
+              ),
+            )
           const v = property(value)
           const parts = key.split("/")
           const sharedCategory = yield* Effect.try({
@@ -608,12 +623,65 @@ export function sqliteState(
                   return
                 }
                 if (key.startsWith("operations/current-write-pending/")) {
+                  // Take the writer slot before comparing a predecessor. The compare
+                  // and replacement are one SQLite transaction, never delete/insert.
+                  if (options !== undefined)
+                    yield* sql`UPDATE shared_local_records SET payload=payload WHERE key=${key} AND category='dispatch' AND retired=0`
                   const rows = yield* sql<{
                     payload: string
                     category: string
                     retired: number
                   }>`SELECT payload,category,retired FROM shared_local_records WHERE key=${key}`
                   const previous = rows[0]
+                  if (options !== undefined) {
+                    const before =
+                      previous === undefined ? undefined : property(yield* parse(previous.payload))
+                    const after = property(value)
+                    const same = (a: unknown, b: unknown) =>
+                      JSON.stringify(currentIntentIdentity(a)) ===
+                      JSON.stringify(currentIntentIdentity(b))
+                    const beforeIntent = property(before?.intent),
+                      nextIntent = property(after.intent)
+                    const predecessor = property(after.predecessor)
+                    if (
+                      previous === undefined ||
+                      previous.category !== "dispatch" ||
+                      previous.retired !== 0 ||
+                      !same(before, options.expectedCurrentWritePending) ||
+                      !same(
+                        [
+                          before?.version,
+                          before?.scope,
+                          before?.library_id,
+                          before?.record_id,
+                          beforeIntent.owner,
+                        ],
+                        [
+                          after.version,
+                          after.scope,
+                          after.library_id,
+                          after.record_id,
+                          nextIntent.owner,
+                        ],
+                      ) ||
+                      beforeIntent.operation_id === nextIntent.operation_id ||
+                      (before?.owner_page_id != null &&
+                        before.owner_page_id !== after.owner_page_id) ||
+                      predecessor.owner_page_id !== after.owner_page_id ||
+                      predecessor.completion !== before?.completion ||
+                      !same(predecessor.intent, beforeIntent) ||
+                      property(after.lifecycle).phase !== "replacing"
+                    )
+                      return yield* Effect.fail(
+                        fail(
+                          "STATE_CONFLICT",
+                          "The current predecessor changed before its explicit replacement.",
+                          { key },
+                        ),
+                      )
+                    yield* sql`UPDATE shared_local_records SET payload=${payload} WHERE key=${key} AND category='dispatch' AND retired=0`
+                    return
+                  }
                   if (previous !== undefined) {
                     const before = property(yield* parse(previous.payload)),
                       after = property(value)
@@ -624,12 +692,15 @@ export function sqliteState(
                         row.library_id,
                         row.record_id,
                         currentIntentIdentity(row.intent),
+                        row.completion,
+                        currentIntentIdentity(row.predecessor),
                       ])
                     }
                     if (
                       previous.category !== "dispatch" ||
                       previous.retired !== 0 ||
-                      identity(before) !== identity(after)
+                      identity(before) !== identity(after) ||
+                      (before.owner_page_id != null && before.owner_page_id !== after.owner_page_id)
                     )
                       return yield* Effect.fail(
                         fail(

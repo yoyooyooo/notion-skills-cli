@@ -27,10 +27,16 @@ import {
 import {
   currentOperationFailure,
   currentOperationOwnerState,
+  readCurrentOperationIntent,
   withCurrentOperation,
   type CurrentOperationSession,
   type CurrentSourceIntentBinding,
+  type CurrentWriteMode,
 } from "./shared-current-operation.ts"
+import {
+  validateCurrentSourceFileInput,
+  type CurrentSourceFileInput,
+} from "./shared-current-source-file-input.ts"
 import {
   applyCurrentProjection,
   assertCurrentBodyReplaceable,
@@ -291,7 +297,7 @@ type PreparedPreservedFile = {
   readonly binding: PreservedBinding
 }
 type SourceWriteFile = Extract<PreparedCurrentWriteFile, { kind: "source" }>
-export type PreparedCoordinatedSkillWrite = {
+type CoordinatedSkillBase = {
   readonly contract: "source-coordinated"
   readonly skill_id: string
   readonly kind: CurrentSkillWriteInput["kind"]
@@ -302,11 +308,23 @@ export type PreparedCoordinatedSkillWrite = {
   readonly relations?: never
   readonly source: { readonly source_id: string; readonly revision: string }
   readonly main: string
-  readonly files: readonly (SourceWriteFile | PreparedPreservedFile)[]
   readonly input_sha256: string
 }
+export type PreparedCoordinatedSkillWrite = CoordinatedSkillBase &
+  (
+    | {
+        readonly authority_transfer: null
+        readonly files: readonly (SourceWriteFile | PreparedPreservedFile)[]
+      }
+    | {
+        readonly authority_transfer: CurrentSourceFileInput
+        readonly files: readonly (PreparedCurrentWriteFile | PreparedPreservedFile)[]
+      }
+  )
 type CurrentWritePlan = PreparedCurrentSkillWrite | PreparedCoordinatedSkillWrite
 type CurrentPlanFile = PreparedCurrentWriteFile | PreparedPreservedFile
+const writablePlanFiles = (files: readonly CurrentPlanFile[]) =>
+  files.filter((file): file is PreparedCurrentWriteFile => file.kind !== "preserve")
 const isCoordinated = (plan: CurrentWritePlan): plan is PreparedCoordinatedSkillWrite =>
   "source" in plan
 function preservedBinding(binding: PreservedBinding): PreservedBinding {
@@ -324,6 +342,7 @@ function coordinatedFingerprint(plan: Omit<PreparedCoordinatedSkillWrite, "input
     skill_id: plan.skill_id,
     kind: plan.kind,
     source: plan.source,
+    authority_transfer: plan.authority_transfer,
     create: {
       name: plan.name,
       description: plan.description,
@@ -352,6 +371,16 @@ function validateCoordinatedTree(plan: Omit<PreparedCoordinatedSkillWrite, "inpu
   )
     throw invalid("New target defaults must be boolean values.")
   planSharedFiles({ base: plan.files, mounts: [], overrides: [], entrypoint: plan.main })
+  const transfer = plan.authority_transfer
+  if (transfer !== null) {
+    validateCurrentSourceFileInput(transfer)
+    if (
+      transfer.request.skill_id !== plan.skill_id ||
+      transfer.revision !== plan.source.revision ||
+      plan.files.filter((file) => file.kind !== "preserve").length !== 1
+    )
+      throw invalid("A file authority intent selects exactly one current File.")
+  }
   const ids = new Set<string>(),
     pages = new Set<string>()
   let totalBytes = 0
@@ -369,24 +398,46 @@ function validateCoordinatedTree(plan: Omit<PreparedCoordinatedSkillWrite, "inpu
       if (pages.has(file.binding.page_id))
         throw invalid("A coordinated tree repeats a preserved physical page.")
       pages.add(file.binding.page_id)
-      if (file.content.kind === "source" && file.content.source_id === plan.source.source_id)
+      if (
+        transfer === null &&
+        file.content.kind === "source" &&
+        file.content.source_id === plan.source.source_id
+      )
         throw invalid(
           "This Source must declare its complete managed contribution, rather than preserve its previous revision.",
         )
     } else {
-      if (
-        file.kind !== "source" ||
-        file.content.source_id !== plan.source.source_id ||
-        file.content.revision !== plan.source.revision
-      )
-        throw invalid("A coordinated write may change only this Source contribution.")
+      if (transfer === null) {
+        if (
+          file.kind !== "source" ||
+          file.content.source_id !== plan.source.source_id ||
+          file.content.revision !== plan.source.revision
+        )
+          throw invalid("A coordinated write may change only this Source contribution.")
+      } else {
+        const action = transfer.request.action
+        if (
+          file.file_id !== transfer.request.file_id ||
+          file.path !== transfer.target.path ||
+          file.sha256 !== transfer.selected.sha256 ||
+          file.bytes.byteLength !== transfer.selected.bytes ||
+          file.mode !== transfer.selected.mode ||
+          (action.kind === "takeover"
+            ? file.kind !== action.to
+            : file.kind !== "source" ||
+              file.content.source_id !== plan.source.source_id ||
+              file.content.revision !== plan.source.revision ||
+              file.content.source_path !== transfer.request.source_path)
+        )
+          throw invalid("The prepared authority transfer differs from its exact selected File.")
+      }
       totalBytes += file.bytes.byteLength
     }
   }
   if (totalBytes > 128 * 1024 * 1024)
     throw invalid("One coordinated target exceeds 128 MiB of selected bytes.")
   assertSelectedSharedFileReferences(
-    plan.files.filter((file) => file.kind !== "preserve"),
+    writablePlanFiles(plan.files),
     plan.files.map((file) => file.path),
   )
 }
@@ -410,8 +461,46 @@ export function prepareCoordinatedSkillWrite(input: {
     | { readonly kind: "preserve"; readonly binding: PreservedBinding }
   )[]
 }) {
+  return prepareCoordinatedPlan(input, null)
+}
+
+/** Only a parent file-authority input may select a writable Notion-owned File. */
+export function prepareCurrentSourceFileSkillWrite(input: {
+  readonly skill_id: string
+  readonly kind: CurrentSkillWriteInput["kind"]
+  readonly source: PreparedCoordinatedSkillWrite["source"]
+  readonly create: Pick<CurrentSkillWriteInput, "name" | "description">
+  readonly transfer: CurrentSourceFileInput
+  readonly files: readonly (
+    | { readonly kind: "write"; readonly file: CurrentSkillWriteInput["files"][number] }
+    | { readonly kind: "preserve"; readonly binding: PreservedBinding }
+  )[]
+}) {
+  return prepareCoordinatedPlan(input, input.transfer)
+}
+
+function prepareCoordinatedPlan(
+  input: {
+    readonly skill_id: string
+    readonly kind: CurrentSkillWriteInput["kind"]
+    readonly source: PreparedCoordinatedSkillWrite["source"]
+    readonly create: Pick<
+      CurrentSkillWriteInput,
+      "name" | "description" | "enabled" | "default_context"
+    >
+    readonly files: readonly (
+      | { readonly kind: "write"; readonly file: CurrentSkillWriteInput["files"][number] }
+      | { readonly kind: "preserve"; readonly binding: PreservedBinding }
+    )[]
+  },
+  transferInput: CurrentSourceFileInput | null,
+) {
   return Effect.gen(function* () {
-    const files: (SourceWriteFile | PreparedPreservedFile)[] = []
+    const transfer =
+      transferInput === null
+        ? null
+        : yield* checked(() => validateCurrentSourceFileInput(transferInput))
+    const files: (PreparedCurrentWriteFile | PreparedPreservedFile)[] = []
     for (const item of input.files) {
       if (item.kind === "preserve") {
         const binding = yield* checked(() => preservedBinding(item.binding))
@@ -424,7 +513,7 @@ export function prepareCoordinatedSkillWrite(input: {
         })
       } else {
         const file = yield* prepareCurrentWriteFile(item.file)
-        if (file.kind !== "source")
+        if (transfer === null && file.kind !== "source")
           return yield* Effect.fail(
             invalid("Only declared Source bytes enter a coordinated write."),
           )
@@ -443,27 +532,44 @@ export function prepareCoordinatedSkillWrite(input: {
         ? {}
         : { default_context: input.create.default_context }),
       source: { ...input.source },
+      authority_transfer: transfer,
       main: entrypointFor(input.kind),
       files,
     }
     yield* checked(() => validateCoordinatedTree(plan))
+    const input_sha256 = yield* sha256(canonicalSharedJson(coordinatedFingerprint(plan)))
+    if (transfer !== null)
+      return {
+        ...plan,
+        authority_transfer: transfer,
+        input_sha256,
+      } satisfies PreparedCoordinatedSkillWrite
+    const sourceFiles = yield* checked(() =>
+      files.map((file) => {
+        if (file.kind !== "preserve" && file.kind !== "source")
+          throw invalid("Only Source bytes enter a contribution intent.")
+        return file
+      }),
+    )
     return {
       ...plan,
-      input_sha256: yield* sha256(canonicalSharedJson(coordinatedFingerprint(plan))),
-    }
+      authority_transfer: null,
+      files: sourceFiles,
+      input_sha256,
+    } satisfies PreparedCoordinatedSkillWrite
   })
 }
 function copyCoordinatedPlan(input: PreparedCoordinatedSkillWrite) {
   return Effect.gen(function* () {
     const snapshot = yield* checked(() => structuredClone(input))
-    const files: (SourceWriteFile | PreparedPreservedFile)[] = []
+    const files: (PreparedCurrentWriteFile | PreparedPreservedFile)[] = []
     for (const selected of snapshot.files) {
       if (selected.kind === "preserve") {
         const binding = yield* checked(() => preservedBinding(selected.binding))
         files.push({ ...selected, binding, content: decodeCurrentFileContent(selected.content) })
       } else {
         const file = yield* copyValidatedCurrentWriteFile(selected)
-        if (file.kind !== "source")
+        if (snapshot.authority_transfer === null && file.kind !== "source")
           return yield* Effect.fail(invalid("Only Source bytes may be changed by this intent."))
         files.push(file)
       }
@@ -474,7 +580,23 @@ function copyCoordinatedPlan(input: PreparedCoordinatedSkillWrite) {
       return yield* Effect.fail(
         invalid("The prepared coordinated input changed. Resupply its original selected input."),
       )
-    return plan
+    if (plan.authority_transfer !== null)
+      return {
+        ...plan,
+        authority_transfer: validateCurrentSourceFileInput(plan.authority_transfer),
+      } satisfies PreparedCoordinatedSkillWrite
+    const sourceFiles = yield* checked(() =>
+      files.map((file) => {
+        if (file.kind !== "preserve" && file.kind !== "source")
+          throw invalid("Only Source bytes enter a contribution intent.")
+        return file
+      }),
+    )
+    return {
+      ...plan,
+      authority_transfer: null,
+      files: sourceFiles,
+    } satisfies PreparedCoordinatedSkillWrite
   })
 }
 type SourceSelection = Pick<CurrentSharedSource, "source_id" | "revision" | "manifest">
@@ -485,18 +607,30 @@ function assertSourceFiles(plan: CurrentWritePlan, source: SourceSelection) {
   )
     throw invalid("The coordinated target belongs to another Source input.")
   for (const file of plan.files) {
-    if (file.kind !== "source" || file.content.source_id !== source.source_id) continue
-    const declared = source.manifest.filter((entry) => entry.path === file.content.source_path)
+    if (file.content.kind !== "source" || file.content.source_id !== source.source_id) continue
+    const content = file.content
+    const declared = source.manifest.filter((entry) => entry.path === content.source_path)
     if (
       declared.length !== 1 ||
-      declared[0]!.sha256 !== file.sha256 ||
-      declared[0]!.bytes !== file.bytes.byteLength ||
-      declared[0]!.mode !== file.mode ||
+      declared[0]!.sha256 !== file.content.sha256 ||
+      declared[0]!.bytes !== file.content.bytes ||
+      declared[0]!.mode !== file.content.mode ||
       file.content.revision !== source.revision
     )
       throw invalid("Supplied Source bytes differ from its complete current manifest.", {
         path: file.path,
       })
+  }
+  if (isCoordinated(plan) && plan.authority_transfer !== null) {
+    const transfer = plan.authority_transfer
+    const selected = source.manifest.filter((file) => file.path === transfer.request.source_path)
+    if (
+      selected.length !== 1 ||
+      selected[0]!.sha256 !== transfer.selected.sha256 ||
+      selected[0]!.bytes !== transfer.selected.bytes ||
+      selected[0]!.mode !== transfer.selected.mode
+    )
+      throw invalid("The authority transfer differs from the current Source original.")
   }
 }
 const sourceAuthorization = Symbol("current Source target authorization")
@@ -511,6 +645,17 @@ export type CurrentSourceSkillAuthorization = {
   readonly activate: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
   readonly afterActivate: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
   readonly unstarted: boolean
+  readonly completed: boolean
+  readonly predecessor:
+    | {
+        readonly intent_json: string
+        readonly source_id: string
+        readonly source_page_id: string | null
+        readonly operation_id: string
+        readonly input_sha256: string
+        readonly current_skill_id: string | null
+      }
+    | undefined
 }
 export function authorizeCoordinatedSkillWrite(
   session: CurrentOperationSession,
@@ -524,7 +669,12 @@ export function authorizeCoordinatedSkillWrite(
 ) {
   return Effect.gen(function* () {
     const plan = yield* copyCoordinatedPlan(input.plan),
-      selected = structuredClone(input.source)
+      selected = structuredClone({
+        source_id: input.source.source_id,
+        page_id: input.source.page_id,
+        revision: input.source.revision,
+        manifest: input.source.manifest,
+      })
     const source = Object.freeze({
       ...selected,
       manifest: Object.freeze(selected.manifest.map((file) => Object.freeze(file))),
@@ -539,6 +689,16 @@ export function authorizeCoordinatedSkillWrite(
         !session.intent.source_input.affected_skill_ids.includes(plan.skill_id)
       )
         throw invalid("The parent Source intent does not authorize this exact target.")
+      if (
+        "source_input" in session.intent &&
+        (plan.authority_transfer !== null
+          ? session.intent.source_input.kind !== "file_authority" ||
+            canonicalSharedJson(session.intent.source_input) !==
+              canonicalSharedJson(plan.authority_transfer) ||
+            plan.authority_transfer.source_page_id !== source.page_id
+          : session.intent.source_input.kind === "file_authority")
+      )
+        throw invalid("The parent Source intent does not authorize this authority transfer.")
     })
     const childIndex =
       "source_input" in session.intent
@@ -586,6 +746,25 @@ export function authorizeCoordinatedSkillWrite(
       assertCurrent,
       unstarted:
         session.sourceProgress?.next_index === childIndex && !session.sourceProgress.child_started,
+      completed:
+        session.sourceProgress !== undefined && childIndex < session.sourceProgress.next_index,
+      predecessor: (() => {
+        const previous = session.predecessor
+        if (previous === undefined || !("source_input" in previous.intent)) return undefined
+        return Object.freeze({
+          intent_json: canonicalSharedJson(previous.intent),
+          source_id: previous.intent.owner.id,
+          source_page_id: previous.owner_page_id,
+          operation_id: previous.intent.operation_id,
+          input_sha256: previous.intent.input_sha256,
+          current_skill_id:
+            previous.source_progress === undefined
+              ? null
+              : (previous.intent.source_input.affected_skill_ids[
+                  previous.source_progress.next_index
+                ] ?? null),
+        })
+      })(),
       activate: Effect.gen(function* () {
         yield* assertCurrent
         if (session.sourceProgress?.next_index !== childIndex)
@@ -612,23 +791,32 @@ type ResolvedFile = {
 type UploadHandle = Effect.Success<ReturnType<typeof uploadCurrentSharedResource>>
 function resolveFiles(plan: CurrentWritePlan, current?: Target) {
   return Effect.gen(function* () {
+    const authorityTransfer = isCoordinated(plan) ? plan.authority_transfer : null
     const before = current === undefined ? [] : [current.index.main, ...current.index.files]
     const selected: ResolvedFile[] = [],
       ids = new Set<string>(),
       pages = new Set<string>()
     for (const file of plan.files) {
+      const transfer =
+        authorityTransfer !== null &&
+        file.kind !== "preserve" &&
+        file.file_id === authorityTransfer.request.file_id
+          ? authorityTransfer
+          : null
       const old =
-        file.kind === "preserve"
-          ? before.find((row) => row.page_id === file.binding.page_id)
-          : file.path === plan.main
-            ? current?.index.main
-            : file.file_id === undefined
-              ? before.find(
-                  (row) => row.path === file.path && row.page_id !== current?.index.page_id,
-                )
-              : before.find(
-                  (row) => row.file_id === file.file_id && row.page_id !== current?.index.page_id,
-                )
+        transfer !== null
+          ? before.find((row) => row.page_id === transfer.target.page_id)
+          : file.kind === "preserve"
+            ? before.find((row) => row.page_id === file.binding.page_id)
+            : file.path === plan.main
+              ? current?.index.main
+              : file.file_id === undefined
+                ? before.find(
+                    (row) => row.path === file.path && row.page_id !== current?.index.page_id,
+                  )
+                : before.find(
+                    (row) => row.file_id === file.file_id && row.page_id !== current?.index.page_id,
+                  )
       if (file.kind === "preserve")
         yield* checked(() => {
           if (
@@ -640,9 +828,28 @@ function resolveFiles(plan: CurrentWritePlan, current?: Target) {
               path: file.path,
             })
         })
+      if (transfer !== null) {
+        if (
+          old === undefined ||
+          old.file_id !== transfer.request.file_id ||
+          old.skill_page_id !== transfer.target.skill_page_id ||
+          old.path !== transfer.target.path ||
+          old.page_id !== transfer.target.page_id
+        )
+          return yield* Effect.fail(
+            invalid("The authority transfer changed its exact File binding."),
+          )
+        const actualHash = yield* sha256(canonicalSharedJson(old.content))
+        const wantedHash = yield* sha256(canonicalSharedJson(file.content))
+        if (actualHash !== transfer.target.content_sha256 && actualHash !== wantedHash)
+          return yield* Effect.fail(
+            invalid("The authority transfer observed another current Content."),
+          )
+      }
       if (
         isCoordinated(plan) &&
         file.kind !== "preserve" &&
+        transfer === null &&
         old !== undefined &&
         !(old.content.kind === "source" && old.content.source_id === plan.source.source_id)
       )
@@ -680,6 +887,18 @@ function resolveFiles(plan: CurrentWritePlan, current?: Target) {
     const retained = new Map(selected.map((file) => [file.page_id, file]))
     for (const previous of before) {
       if (isCoordinated(plan)) {
+        if (authorityTransfer !== null) {
+          const selected = retained.get(previous.page_id)
+          if (
+            previous.page_id === authorityTransfer.target.page_id
+              ? selected === undefined || selected.input.kind === "preserve"
+              : selected?.input.kind !== "preserve"
+          )
+            return yield* Effect.fail(
+              invalid("A file authority intent must preserve every other current File."),
+            )
+          continue
+        }
         if (
           previous.content.kind === "source" &&
           previous.content.source_id === plan.source.source_id
@@ -956,11 +1175,16 @@ export function inspectCoordinatedSkillWrite(
 type CurrentWriteRequest = {
   readonly plan: PreparedCurrentSkillWrite
   readonly operation_id: string
-  readonly mode?: "apply" | "resume"
+  readonly mode?: CurrentWriteMode
 }
 type InternalWriteRequest = Omit<CurrentWriteRequest, "plan"> & {
   readonly plan: CurrentWritePlan
   readonly authorization?: CurrentSourceSkillAuthorization
+  readonly completedNativeTransfer?: true
+  readonly supersedingSourceChild?: {
+    readonly previous: CurrentSourceIntentBinding
+    readonly next: CurrentSourceIntentBinding
+  }
 }
 /** One complete current-tree write, followed by reachability cleanup. */
 export function writeCurrentSkill(library: SharedLibrary, input: CurrentWriteRequest) {
@@ -1001,7 +1225,67 @@ export function writeCoordinatedSkill(
       assertSourceFiles(plan, grant.source)
     })
     yield* grant.assertCurrent
-    return yield* executeCurrentSkillWrite(library, { ...input, plan })
+    let mode = input.mode
+    let supersedingSourceChild: InternalWriteRequest["supersedingSourceChild"]
+    const completedNativeTransfer =
+      grant.completed &&
+      plan.authority_transfer !== null &&
+      plan.authority_transfer.request.action.kind === "takeover" &&
+      plan.authority_transfer.request.action.to === "native"
+    const pending =
+      grant.predecessor !== undefined || completedNativeTransfer
+        ? yield* readCurrentOperationIntent(library, { kind: "skill", id: plan.skill_id })
+        : undefined
+    if (completedNativeTransfer && pending !== undefined)
+      return yield* Effect.fail(
+        invalid("A completed native transfer still has an unfinished child intent."),
+      )
+    if (grant.predecessor !== undefined) {
+      if (pending !== undefined && pending.intent.operation_id !== input.operation_id) {
+        const previous = grant.predecessor
+        const oldChildOperation =
+          "source-target-" +
+          (yield* sha256(canonicalSharedJson([previous.operation_id, plan.skill_id])))
+        const old = "source" in pending.intent ? pending.intent.source : undefined
+        const authorizationHash = yield* sha256(
+          canonicalSharedJson({
+            parent: JSON.parse(previous.intent_json),
+            page_id: grant.source.page_id,
+            skill_id: plan.skill_id,
+            input_sha256: pending.intent.input_sha256,
+          }),
+        )
+        if (
+          previous.current_skill_id !== plan.skill_id ||
+          previous.source_page_id !== grant.source.page_id ||
+          pending.intent.operation_id !== oldChildOperation ||
+          old === undefined ||
+          old.source_id !== previous.source_id ||
+          old.source_page_id !== previous.source_page_id ||
+          old.operation_id !== previous.operation_id ||
+          old.input_sha256 !== previous.input_sha256 ||
+          old.authorization_sha256 !== authorizationHash
+        )
+          return yield* Effect.fail(
+            invalid("The previous Source intent does not authorize this unfinished child."),
+          )
+        mode = { kind: "supersede", operation_id: oldChildOperation }
+        supersedingSourceChild = { previous: old, next: grant.source_intent }
+      } else if (pending?.intent.operation_id === input.operation_id) {
+        if (pending.intent.input_sha256 !== plan.input_sha256)
+          return yield* Effect.fail(
+            invalid("The selected Source child has a different frozen input."),
+          )
+        mode = "resume"
+      }
+    }
+    return yield* executeCurrentSkillWrite(library, {
+      ...input,
+      plan,
+      mode,
+      ...(supersedingSourceChild === undefined ? {} : { supersedingSourceChild }),
+      ...(completedNativeTransfer ? { completedNativeTransfer: true } : {}),
+    })
   }).pipe(
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
@@ -1013,6 +1297,8 @@ function executeCurrentSkillWrite(library: SharedLibrary, input: InternalWriteRe
     yield* checked(() => {
       if (isCoordinated(plan) !== (input.authorization !== undefined))
         throw invalid("A coordinated Source tree requires its exact live parent authorization.")
+      if (input.supersedingSourceChild !== undefined && input.authorization === undefined)
+        throw invalid("Only the exact parent Source may supersede its child intent.")
       currentWriteIdentity(input.operation_id, "Operation ID")
       for (const name of [
         "Name",
@@ -1076,6 +1362,33 @@ function applyPreparedCurrentSkillWrite(
     const plan = input.plan
     const current = yield* loadCurrentTarget(library, raw)
     const resolved = yield* resolveFiles(plan, current)
+    if (input.completedNativeTransfer) {
+      const transfer = isCoordinated(plan) ? plan.authority_transfer : null
+      const selected =
+        transfer === null
+          ? undefined
+          : resolved.find((file) => file.file_id === transfer.request.file_id)
+      const observed =
+        current === undefined
+          ? undefined
+          : [current.index.main, ...current.index.files].find(
+              (file) => file.page_id === transfer?.target.page_id,
+            )
+      if (
+        input.authorization?.completed !== true ||
+        transfer === null ||
+        current?.index.state.state !== "ready" ||
+        selected?.input.kind !== "native" ||
+        observed === undefined ||
+        observed.file_id !== selected.file_id ||
+        canonicalSharedJson(observed.content) !== canonicalSharedJson(selected.input.content)
+      )
+        return yield* Effect.fail(
+          invalid(
+            "The completed native transfer no longer owns this exact current authoring surface.",
+          ),
+        )
+    }
     if (current !== undefined && current.index.kind !== plan.kind)
       return yield* Effect.fail(
         invalid(
@@ -1093,9 +1406,7 @@ function applyPreparedCurrentSkillWrite(
         ? {}
         : { owner: { page_id: current.index.page_id, raw: current.raw } }),
     })
-    const writableFiles = plan.files.filter(
-      (file): file is PreparedCurrentWriteFile => file.kind !== "preserve",
-    )
+    const writableFiles = writablePlanFiles(plan.files)
     const sourceSelections = plan.files.flatMap((file) =>
       file.content.kind === "source" ? [file.content] : [],
     )
@@ -1285,6 +1596,11 @@ function applyPreparedCurrentSkillWrite(
       },
       ownerPageId: current?.index.page_id ?? null,
       mode: input.mode,
+      ...(input.supersedingSourceChild === undefined
+        ? {}
+        : {
+            supersedingSourceChild: input.supersedingSourceChild,
+          }),
       ...(input.authorization === undefined
         ? {}
         : {
@@ -1315,6 +1631,12 @@ function applyPreparedCurrentSkillWrite(
           const managedSession: CurrentOperationSession = {
             get ownerPageId() {
               return session.ownerPageId
+            },
+            get ownerRetired() {
+              return session.ownerRetired
+            },
+            get predecessor() {
+              return session.predecessor
             },
             get pendingActionKey() {
               return session.pendingActionKey
@@ -1395,6 +1717,7 @@ function applyPreparedCurrentSkillWrite(
             page: string,
             wanted?: ResolvedFile,
             retiring = false,
+            actionKey?: string,
           ) =>
             Effect.gen(function* () {
               if (input.authorization === undefined) return
@@ -1433,7 +1756,45 @@ function applyPreparedCurrentSkillWrite(
                 yield* session.assertCurrent()
               }
               const baseline = baselineBindings.get(page)
-              if (wanted?.input.kind === "preserve") {
+              const transfer = isCoordinated(plan) ? plan.authority_transfer : null
+              if (transfer !== null && page === transfer.target.page_id) {
+                if (
+                  retiring ||
+                  wanted === undefined ||
+                  wanted.input.kind === "preserve" ||
+                  observed.skill_page_id !== transfer.target.skill_page_id ||
+                  observed.file_id !== transfer.request.file_id ||
+                  observed.path !== transfer.target.path
+                )
+                  return yield* Effect.fail(
+                    invalid("The selected authority-transfer File changed."),
+                  )
+                const actualHash = yield* sha256(canonicalSharedJson(observed.content))
+                const wantedHash = yield* sha256(canonicalSharedJson(wanted.input.content))
+                if (actualHash !== transfer.target.content_sha256 && actualHash !== wantedHash)
+                  return yield* Effect.fail(
+                    invalid("Another actor changed the selected authority."),
+                  )
+                if (
+                  transfer.target.native_sha256 !== null &&
+                  (actionKey === `file:${observed.file_id}:properties` ||
+                    actionKey === "skill:properties" ||
+                    actionKey === `projection:${page}:clear`)
+                ) {
+                  const body = yield* observeSharedBody(page)
+                  if (body.fingerprint.sha256 !== transfer.target.native_sha256)
+                    return yield* Effect.fail(
+                      fail(
+                        "CURRENT_NATIVE_CHANGED",
+                        "The native author body changed after selecting this authority transfer.",
+                        {
+                          file_id: observed.file_id,
+                          page_id: page,
+                        },
+                      ),
+                    )
+                }
+              } else if (wanted?.input.kind === "preserve") {
                 if (
                   canonicalSharedJson(preservedBinding(observed)) !==
                   canonicalSharedJson(wanted.input.binding)
@@ -1496,7 +1857,7 @@ function applyPreparedCurrentSkillWrite(
                     .pipe(
                       Effect.tap((observed) =>
                         observed.status === "missing"
-                          ? assertCoordinatedBinding(page, wanted)
+                          ? assertCoordinatedBinding(page, wanted, false, action.key)
                           : Effect.void,
                       ),
                     ),
@@ -2022,12 +2383,15 @@ function applyPreparedCurrentSkillWrite(
               const observe = () =>
                 observeSharedBody(page).pipe(
                   Effect.map((body) =>
-                    body.markdown === file.markdown
+                    body.markdown === file.markdown || input.completedNativeTransfer === true
                       ? ({ status: "complete", value: undefined } as const)
                       : ({ status: "missing" } as const),
                   ),
                 )
-              yield* dispatch({
+              yield* coordinatedDispatch(
+                resolved.find((selected) => selected.input.path === file.path)!,
+                page,
+              )({
                 key: `native:${page}:body`,
                 replay: "idempotent",
                 request: {
@@ -2231,8 +2595,15 @@ function applyPreparedCurrentSkillWrite(
         value: { readonly page_id: string; readonly files: number },
       ) =>
         Effect.gen(function* () {
-          const raw = yield* api.request(`v1/pages/${value.page_id}`),
-            files = yield* queryFilePages(library, value.page_id)
+          const raw =
+            session.predecessor === undefined
+              ? yield* api.request(`v1/pages/${value.page_id}`)
+              : yield* queryOwner(library, plan.skill_id)
+          if (raw === undefined || exactId(property(raw).id) !== value.page_id)
+            return yield* Effect.fail(
+              invalid("The stable Skill identity changed before completion."),
+            )
+          const files = yield* queryFilePages(library, value.page_id)
           const final = yield* queryCurrentSkillIndex(
             library,
             value.page_id,

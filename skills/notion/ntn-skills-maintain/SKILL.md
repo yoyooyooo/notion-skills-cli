@@ -1,7 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Import or replace complete resource/native Notion Skill trees, inspect ownership, resume an unfinished import, or create the four-table layout. Use for local Skill migration and current content management.
-compatibility: Requires the installed ntn-skills CLI and exact library access. Import needs Notion Insert and Update permissions; inspection needs Read.
+description: Import or replace complete resource/native Notion Skill trees, inspect current ownership, resume or supersede an unfinished import, or create the four-table layout. Use for local Skill migration and complete content replacement.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -9,9 +8,11 @@ metadata:
 
 # Maintain the current library
 
+Requires the installed ntn-skills CLI and exact library access. Import needs Notion Insert and Update permissions; inspection needs Read.
+
 Use the task's executable and exact library. Stable Skill IDs select content;
 names are display labels. Import replaces a complete local tree. Source
-apply/refresh belongs to notion/ntn-skills-sync; whole-library governance is separate.
+configuration, takeover and lifecycle belong to notion/ntn-skills-sync.
 
 ## Inspect and prepare
 
@@ -22,23 +23,24 @@ ntn-skills ctl library files PAGE_ID --entry ENTRY
 ntn-skills read PAGE_ID --database ENTRY --refresh --json
 ```
 
-The first command is metadata-only. Use file refs or export for bytes; preserve
-paths, encoding and executable modes. Directory/ZIP input needs root SKILL.md; a
-portable Router or Prompt uses its canonical entrypoint. An explicitly selected
-single Markdown file becomes SKILL.md. Symlinks and changing files are rejected.
+The first command is metadata-only. Use returned refs or export for bytes;
+preserve paths, encoding and executable modes. Directory/ZIP input needs root
+SKILL.md; a portable Router or Prompt uses its canonical entrypoint. Only an
+explicit single Markdown input is renamed to SKILL.md. Symlinks are rejected.
 
 ```sh
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --dry-run
 ```
 
-Import selects resource or explicit native authority. Any current Source file
-makes dry-run and apply return CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an
-unchanged export. Use Source apply/refresh; do not omit or reidentify its files.
+Any current Source file makes dry-run and apply return
+CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Use explicit
+Source takeover before a complete local replacement; use Source apply/refresh
+for contribution changes. Omitting or reidentifying a file cannot transfer it.
 
-Review File additions/removals and authority changes under the task's existing
-authorization. Omit a Notion-owned file only to remove it. Preview is not a completed
-content edit. Local Markdown links must resolve inside the complete input; update
-or remove inbound links before omitting their target.
+Review removals and authority under the task's existing authorization. Omit a
+Notion-owned file only to remove it. Preview is not a completed content edit.
+Local Markdown links must resolve inside the complete input; fix inbound links
+before removing their target.
 
 ## Apply and verify
 
@@ -49,61 +51,58 @@ ntn-skills export PAGE_ID --database ENTRY --output NEW_DIRECTORY
 ```
 
 Use the returned PAGE_ID. Import preserves Skill and retained File identities,
-checks reading pages, then removes omitted Notion-owned supporting rows and
+checks reading pages, then retires omitted Notion-owned supporting rows and
 unreferenced owned resources. Equal complete input makes zero semantic Notion writes.
 
-Default import uses resource authority and preserves exact original bytes.
-Readable text appears in full. Opaque files expose a usable original; unsupported
-upload formats use a single-original ZIP. Read/export restores path, bytes and
-mode. Display metadata does not rewrite original content.
+Default resource import preserves exact bytes and mode. Readable text appears
+in full; opaque files expose a usable original or a single-original ZIP.
+Display metadata does not rewrite original content.
 
-Repeat --native PATH for editable text, for example --native SKILL.md --native
-references/guide.md. Paths select the canonical input after any entrypoint rename.
-Native bodies require UTF-8/LF; frontmatter and mode remain exact. Actual round-trip
-verification precedes ready. Reimport replaces later human edits too: export them
-first when they belong in the intended input. Resume requires the same selection.
+Repeat --native PATH for editable text, such as --native SKILL.md --native
+references/guide.md. Select exact paths after any entrypoint rename. Native
+bodies require UTF-8/LF and an actual Notion round-trip; frontmatter and mode stay
+exact. Reimport replaces later human edits too. Export them first if they belong
+in the intended input. Failed native conversion never falls back to resource.
 
-Existing Enabled and Default Context are preserved. Portable Members/Requires use
-same-library stable refs: omitted preserves, [] clears, a list replaces. Export
-includes both current sets. Prompt relations are invalid. Changed sets allow 100
-targets; larger unchanged sets are retained. Changed Requires must be acyclic.
-Old projection/materialization is rejected; never strip it to force import.
+Existing Enabled and Default Context remain unchanged. Portable Members/Requires
+use same-library stable refs: omitted preserves, [] clears, a list replaces.
+Export carries both sets. Prompt relations are invalid. Changed sets allow 100
+targets; larger unchanged sets remain. Changed Requires must be acyclic.
+Old projection/materialization is rejected; do not strip it to force import.
 
-Remote import work shares 1000 HTTP attempts, 512 MiB payload bytes and 600000 ms
-by default. Set --max-requests, --max-bytes and --timeout in ms. Exhaustion stops
+Remote work shares 1000 HTTP attempts, 512 MiB payload bytes and 600000 ms by
+default. Set --max-requests, --max-bytes and --timeout in ms. Exhaustion stops
 new requests and retains pending; explicit resume gets a fresh invocation budget.
 
 ## Authority and unfinished work
 
-Skills contains one main document; each supporting file has one Files row.
-
-- native owns its page body plus explicit frontmatter and mode.
-- resource owns its current exact original in Records.
-- source owns its declared current Source/revision/path.
-
-Generated bodies are reading projections. Editing one does not change authority.
-Missing current metadata returns CURRENT_SCHEMA_REQUIRED and needs explicit
-conversion. CURRENT_OPERATION_PENDING means ordinary consumption cannot proceed.
-
-Resume the same complete input using the returned operation identity:
+The main lives on Skills; each supporting file has one Files row. Native owns
+the author body plus stored frontmatter/mode; resource owns an exact Records
+original; source owns its current Source/revision/path. Generated body edits
+do not transfer authority. Missing Content returns CURRENT_SCHEMA_REQUIRED;
+CURRENT_OPERATION_PENDING blocks ordinary consumption.
 
 ```sh
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --operation OPERATION_ID --resume
 ```
 
-Resupply the same input and --native paths. Unknown CREATE or append is
-observed before continuing and is never repeated because a query returned empty.
-A partially applied append may remain unresolved. Keep its current state and
-specific error; do not mark it ready manually. Completion clears the finite
-operation instead of retaining content versions or permanent ACK records.
+Resupply the same input and --native paths. Keep the original local state and
+credential scope. Unknown CREATE/append is observed, never repeated from absence;
+a partial append can remain unresolved. Do not manually clear pending or ready.
+
+To change an unfinished intent, use --supersede OLD --operation NEW with distinct
+identities. The same kernel reconciles the exact predecessor first; this does
+not bypass unknown writes or authority checks. It is incompatible with resume
+and dry-run. See [Operations](references/operations.md#incomplete-current-work).
+Completion clears finite operation state without retaining content versions.
 
 ## Other routes
 
 | Task | Read |
 | --- | --- |
 | Create or connect a current layout | [Setup](references/setup.md) |
-| Complete input, recovery and cleanup boundaries | [Operations](references/operations.md) |
-| Profile/View/freshness and Source apply/refresh | notion/ntn-skills-sync |
+| Complete input, recovery and cleanup | [Operations](references/operations.md) |
+| Source file authority, lifecycle, Profile/View | notion/ntn-skills-sync |
 
 Use `ctl builtin read notion/ntn-skills-maintain --path RELATIVE_PATH` for package
 references. Do not search private cache directories for bundled instructions.

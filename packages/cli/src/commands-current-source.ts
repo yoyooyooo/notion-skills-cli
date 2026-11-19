@@ -1,4 +1,4 @@
-import { ByteSize, Crypto, Effect, FileSystem, Option } from "effect"
+import { ByteSize, Crypto, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand, exclusiveFlags, withConstraints } from "../../core/src/command-schema.ts"
@@ -10,9 +10,15 @@ import { validateCurrentSourceId } from "../../core/src/shared-current-source.ts
 import { validateCurrentSourceInput } from "../../core/src/shared-current-source-input.ts"
 import { queryCurrentSourceManagement } from "../../core/src/shared-current-source-management.ts"
 import { applyCurrentSource } from "../../core/src/shared-current-source-write.ts"
-import { currentWriteIdentity } from "../../core/src/shared-current-write-input.ts"
+import { CurrentSourceFileRequestSchema } from "../../core/src/shared-current-source-file-input.ts"
+import { changeCurrentSourceFileAuthority } from "../../core/src/shared-current-source-file.ts"
+import {
+  changeCurrentSourceEnabled,
+  removeCurrentSource,
+} from "../../core/src/shared-current-source-lifecycle.ts"
 import { loadSharedLibrary } from "../../core/src/shared-library.ts"
 import { emit, requiredSingleton, singleton, switchFlag } from "./command-options.ts"
+import { selectCurrentWriteMode } from "./current-write-options.ts"
 
 const MAX_DECLARATION_BYTES = 512 * 1024
 const invalid = (message: string, details?: unknown) =>
@@ -106,13 +112,14 @@ const flags = {
   entry: requiredSingleton("entry", "Current Skills database ID, URL or exact registered alias"),
   operation: singleton(
     "operation",
-    "Stable current Source intent identity; required with --resume",
+    "Current Source intent identity; required with --resume or --supersede OLD",
   ),
   resume: switchFlag("resume", "Continue the same frozen Source intent with --operation"),
-  dryRun: switchFlag(
-    "dry-run",
-    "Inspect current targets and exact provider files without writing Notion",
+  supersede: singleton(
+    "supersede",
+    "Replace this exact unfinished Source intent with --operation NEW after reconciliation",
   ),
+  dryRun: switchFlag("dry-run", "Inspect the exact current action without writing Notion"),
   maxRequests: budgetFlag(
     "max-requests",
     "Positive maximum HTTP attempts including library and Source reads; default 1000. Git subprocess requests are not counted",
@@ -123,13 +130,25 @@ const flags = {
   ),
   timeout: budgetFlag(
     "timeout",
-    "Positive invocation deadline in ms, including Git acquisition; default 600000",
+    "Positive invocation deadline in ms, including any provider acquisition; default 600000",
   ),
 }
+const sourceIdArgument = Argument.String("source-id").pipe(
+  Argument.withDescription("Exact stable current Source ID"),
+)
+const sourcePathArgument = Argument.String("source-path").pipe(
+  Argument.withDescription("Exact original Source path, including its member root"),
+)
+const fileFlags = {
+  skillId: requiredSingleton("skill-id", "Exact stable target Skill ID"),
+  fileId: requiredSingleton("file-id", "Exact stable current File ID, including the main"),
+}
+const modeConstraints = [exclusiveFlags(["resume", "supersede", "dryRun"])]
 type SourceOptions = {
   readonly entry: string
   readonly operation: Option.Option<string>
   readonly resume: boolean
+  readonly supersede: Option.Option<string>
   readonly dryRun: boolean
   readonly maxRequests: Option.Option<number>
   readonly maxBytes: Option.Option<number>
@@ -137,7 +156,8 @@ type SourceOptions = {
 }
 type SourceRequest =
   | { readonly kind: "apply"; readonly input: string }
-  | { readonly kind: "refresh"; readonly sourceId: string }
+  | { readonly kind: "refresh" | "enable" | "disable" | "remove"; readonly sourceId: string }
+  | { readonly kind: "file"; readonly sourceId: string; readonly selection: unknown }
 
 function runCurrentSource(options: SourceOptions, request: SourceRequest) {
   return Effect.gen(function* () {
@@ -151,13 +171,13 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
           "Source management requires a current database ID, Notion URL or exact registered alias.",
         )
       const operation = Option.getOrUndefined(options.operation)
-      if (options.resume && (operation === undefined || options.dryRun))
-        throw fail(
-          "INVALID_ARGUMENT",
-          "--resume requires --operation and cannot be combined with --dry-run.",
-        )
-      if (operation !== undefined) currentWriteIdentity(operation, "Operation ID")
-      if (request.kind === "refresh") validateCurrentSourceId(request.sourceId)
+      const mode = selectCurrentWriteMode({
+        operation,
+        resume: options.resume,
+        supersede: Option.getOrUndefined(options.supersede),
+        dryRun: options.dryRun,
+      })
+      if (request.kind !== "apply") validateCurrentSourceId(request.sourceId)
       const limits = {
         requests: Option.getOrUndefined(options.maxRequests),
         bytes: Option.getOrUndefined(options.maxBytes),
@@ -170,7 +190,7 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
             "Invocation budgets must be positive safe integers; --timeout uses ms.",
             { budget: name },
           )
-      return { operation, limits }
+      return { operation, mode, limits }
     })
     const admitted =
       request.kind === "apply"
@@ -178,24 +198,19 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
             kind: "apply" as const,
             declaration: yield* loadCurrentSourceDeclaration(request.input),
           }
-        : request
+        : request.kind === "file"
+          ? {
+              ...request,
+              selection: yield* checked(() =>
+                Schema.decodeUnknownSync(CurrentSourceFileRequestSchema)(request.selection, {
+                  onExcessProperty: "error",
+                }),
+              ),
+            }
+          : request
     const invocation = yield* withCurrentInvocationBudget(
       Effect.gen(function* () {
         const library = yield* loadSharedLibrary(yield* databaseId(options.entry))
-        const declaration =
-          admitted.kind === "refresh"
-            ? yield* Effect.gen(function* () {
-                const current = yield* queryCurrentSourceManagement(library, admitted.sourceId)
-                if (current === undefined)
-                  return yield* Effect.fail(
-                    fail("CURRENT_SOURCE_MISSING", "No current Source has this stable identity.", {
-                      source_id: admitted.sourceId,
-                      next: "Use source apply with a complete declaration to create this Source.",
-                    }),
-                  )
-                return current.declaration
-              })
-            : admitted.declaration
         const operation =
           selected.operation ??
           (yield* (yield* Crypto.Crypto)
@@ -205,15 +220,49 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
                 fail("CRYPTO_ERROR", "Cannot identify the current Source intent."),
               ),
             ))
-        return {
-          ...(yield* applyCurrentSource(library, {
-            declaration,
-            operation_id: operation,
-            mode: options.resume ? "resume" : "apply",
-            dry_run: options.dryRun,
-          })),
-          request_metrics: (yield* Notion).requestMetrics?.(),
-        }
+        const intent = { operation_id: operation, mode: selected.mode, dry_run: options.dryRun }
+        const result = yield* Effect.gen(function* () {
+          switch (admitted.kind) {
+            case "apply":
+              return yield* applyCurrentSource(library, {
+                ...intent,
+                declaration: admitted.declaration,
+              })
+            case "refresh": {
+              const current = yield* queryCurrentSourceManagement(library, admitted.sourceId)
+              if (current === undefined)
+                return yield* Effect.fail(
+                  fail("CURRENT_SOURCE_MISSING", "No current Source has this stable identity.", {
+                    source_id: admitted.sourceId,
+                    next: "Use source apply with a complete declaration to create this Source.",
+                  }),
+                )
+              return yield* applyCurrentSource(library, {
+                ...intent,
+                declaration: current.declaration,
+              })
+            }
+            case "enable":
+            case "disable":
+              return yield* changeCurrentSourceEnabled(library, {
+                ...intent,
+                source_id: admitted.sourceId,
+                enabled: admitted.kind === "enable",
+              })
+            case "remove":
+              return yield* removeCurrentSource(library, {
+                ...intent,
+                source_id: admitted.sourceId,
+              })
+            case "file":
+              return yield* changeCurrentSourceFileAuthority(library, {
+                ...intent,
+                source_id: admitted.sourceId,
+                ...admitted.selection,
+              })
+          }
+        })
+        return { ...result, request_metrics: (yield* Notion).requestMetrics?.() }
       }),
       selected.limits,
     )
@@ -222,7 +271,7 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
 }
 
 const description =
-  "Use one current Source intent for all explicitly assigned targets. Only unchanged regular files from a fixed GitHub Git revision are supported; unsupported providers, transformations and symbolic links fail before writes. Contributions select stable Skill IDs and exact member-relative file mappings/exclusions; Selection.include/exclude selects member roots. Existing Notion-owned files and other Sources are preserved by the current coordinator. Dry-run still reads Notion and acquires provider files. Resume uses the same operation and frozen commit. HTTP budgets cover library lookup, Source reads and Notion writes; Git subprocess acquisition shares the deadline and reports separate known object bytes, with unknown wire bytes. This does not provide a distributed lock or an atomic multi-Skill transaction."
+  "Use one current Source intent for all explicitly assigned targets. Only unchanged regular files from a fixed GitHub Git revision are supported; unsupported providers, transformations and symbolic links fail before writes. Contributions select stable Skill IDs and exact member-relative file mappings/exclusions; Selection.include/exclude selects member roots. Existing Notion-owned files and other Sources are preserved by the current coordinator. Dry-run still reads Notion and acquires provider files when needed. Resume uses the same operation and frozen commit. --supersede OLD --operation NEW explicitly replaces an unfinished intent only after exact predecessor reconciliation; it cannot bypass unknown writes or change the action family. HTTP budgets cover library lookup, Source reads and Notion writes; Git subprocess acquisition shares the deadline and reports separate known object bytes, with unknown wire bytes. This does not provide a distributed lock or an atomic multi-Skill transaction."
 
 export const applyCurrentSourceCommand = defineCommand(
   "apply",
@@ -234,7 +283,7 @@ export const applyCurrentSourceCommand = defineCommand(
   },
   (options) => runCurrentSource(options, { kind: "apply", input: options.input }),
 ).pipe(
-  withConstraints([exclusiveFlags(["resume", "dryRun"])]),
+  withConstraints(modeConstraints),
   Command.withDescription(
     "Create a Source or replace its complete current configuration and contributions using {version:1,definition,contributions}. " +
       description,
@@ -259,15 +308,10 @@ export const applyCurrentSourceCommand = defineCommand(
 
 export const refreshCurrentSourceCommand = defineCommand(
   "refresh",
-  {
-    sourceId: Argument.String("source-id").pipe(
-      Argument.withDescription("Exact stable current Source ID"),
-    ),
-    ...flags,
-  },
+  { sourceId: sourceIdArgument, ...flags },
   (options) => runCurrentSource(options, { kind: "refresh", sourceId: options.sourceId }),
 ).pipe(
-  withConstraints([exclusiveFlags(["resume", "dryRun"])]),
+  withConstraints(modeConstraints),
   Command.withDescription(
     "Read the current Source declaration from Notion and apply its selected provider revision. Do not reconstruct history or match a display name. If an unfinished configuration change differs from the visible declaration, resume source apply with the original input file. " +
       description,
@@ -290,9 +334,100 @@ export const refreshCurrentSourceCommand = defineCommand(
   ]),
 )
 
+export const enableCurrentSourceCommand = defineCommand(
+  "enable",
+  { sourceId: sourceIdArgument, ...flags },
+  (options) => runCurrentSource(options, { kind: "enable", sourceId: options.sourceId }),
+).pipe(
+  withConstraints(modeConstraints),
+  Command.withDescription(
+    "Enable ordinary consumption of the selected current Source. Preserve its selected content, contribution configuration and target files; do not discover a newer provider revision.",
+  ),
+)
+export const disableCurrentSourceCommand = defineCommand(
+  "disable",
+  { sourceId: sourceIdArgument, ...flags },
+  (options) => runCurrentSource(options, { kind: "disable", sourceId: options.sourceId }),
+).pipe(
+  withConstraints(modeConstraints),
+  Command.withDescription(
+    "Disable ordinary consumption of this Source without replacing its content, contributions or target files. This changes eligibility, not an automatic refresh schedule. Re-enable explicitly after reviewing the current Source.",
+  ),
+)
+export const removeCurrentSourceCommand = defineCommand(
+  "remove",
+  { sourceId: sourceIdArgument, ...flags },
+  (options) => runCurrentSource(options, { kind: "remove", sourceId: options.sourceId }),
+).pipe(
+  withConstraints(modeConstraints),
+  Command.withDescription(
+    "Retire one exact Source and its unreferenced owned resources only after a complete library metadata scan proves no current Content or Origin references remain. Existing main or supporting Source files block removal: take them over explicitly first. No Skill, other Source or local file is implicitly removed. Incomplete paging, permission failures and request limits cannot prove absence. Resume the same operation after an unknown retirement result.",
+  ),
+)
+export const takeoverCurrentSourceCommand = defineCommand(
+  "takeover",
+  {
+    sourceId: sourceIdArgument,
+    sourcePath: sourcePathArgument,
+    ...fileFlags,
+    ...flags,
+    as: singleton(
+      "as",
+      "Authority after takeover: resource (default) preserves exact originals; native explicitly selects an editable Notion body",
+    ),
+  },
+  (options) =>
+    runCurrentSource(options, {
+      kind: "file",
+      sourceId: options.sourceId,
+      selection: {
+        source_path: options.sourcePath,
+        skill_id: options.skillId,
+        file_id: options.fileId,
+        action: { kind: "takeover", to: Option.getOrElse(options.as, () => "resource") },
+      },
+    }),
+).pipe(
+  withConstraints([
+    ...modeConstraints,
+    { kind: "allowed_values", flag: "as", values: ["native", "resource"] },
+  ]),
+  Command.withDescription(
+    "Take over one exact Source file while preserving its File ID, physical page, target path and mode. Use the current Source original and add its exact member-relative contribution exclusion in the same finite intent. Resource is the default and preserves the original bytes; --as native requires an exact editable-body round-trip and never silently falls back. Other files and other Source contributions remain unchanged.",
+  ),
+)
+export const restoreFollowCurrentSourceCommand = defineCommand(
+  "restore-follow",
+  { sourceId: sourceIdArgument, sourcePath: sourcePathArgument, ...fileFlags, ...flags },
+  (options) =>
+    runCurrentSource(options, {
+      kind: "file",
+      sourceId: options.sourceId,
+      selection: {
+        source_path: options.sourcePath,
+        skill_id: options.skillId,
+        file_id: options.fileId,
+        action: { kind: "restore_follow" },
+      },
+    }),
+).pipe(
+  withConstraints(modeConstraints),
+  Command.withDescription(
+    "Replace one exact current native/resource file with the enabled Source's selected original and resume following it. Preserve the File ID, page and target path, remove its exact contribution exclusion and align the mapping. This explicitly overwrites current customization; it does not restore history or require a retained former Origin.",
+  ),
+)
+
 export const currentSourceCommand = defineCommand("source").pipe(
   Command.withDescription(
-    "Apply or refresh current Source configuration and stable target contributions through the same finite intent.",
+    "Manage current Source declarations, eligibility and exact file authority through finite intents; remove only unreferenced Sources.",
   ),
-  Command.withSubcommands([applyCurrentSourceCommand, refreshCurrentSourceCommand]),
+  Command.withSubcommands([
+    applyCurrentSourceCommand,
+    refreshCurrentSourceCommand,
+    enableCurrentSourceCommand,
+    disableCurrentSourceCommand,
+    removeCurrentSourceCommand,
+    takeoverCurrentSourceCommand,
+    restoreFollowCurrentSourceCommand,
+  ]),
 )

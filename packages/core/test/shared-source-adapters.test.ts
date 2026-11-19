@@ -119,7 +119,7 @@ test("unimplemented provider options fail explicitly rather than weakening exist
   ).toThrow("explicit Markdown paths")
 })
 
-test("live Source observation fields are not passed to the strict provider configuration schema", () => {
+test("Source discovery refuses retired observation DTOs instead of stripping them into current configuration", () => {
   const observed = {
     ...input,
     adapter: { type: "git" as const, url: "https://gitlab.com/group/skills.git", ref: "main" },
@@ -128,7 +128,9 @@ test("live Source observation fields are not passed to the strict provider confi
     status: "ready",
     last_revision: "",
   }
-  expect(sourceDiscoveryInput(observed).source).toEqual(observed.adapter)
+  expect(() => sourceDiscoveryInput(observed)).toThrow()
+  const current = { ...input, adapter: observed.adapter }
+  expect(sourceDiscoveryInput(current).source).toEqual(current.adapter)
   expect(() =>
     sourceDiscoveryInput({ ...observed, unexpected_configuration: true } as typeof observed),
   ).toThrow()
@@ -149,6 +151,8 @@ test("retired publication routing options are rejected while exact provider revi
     "target_mode",
     "strip_prefix",
     "target_prefix",
+    "storage",
+    "check_interval_ms",
   ]) {
     expect(() => sourceDiscoveryInput({ ...git, options: { [option]: "old-route" } })).toThrow(
       "no implemented adapter behavior",

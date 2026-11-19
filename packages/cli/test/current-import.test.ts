@@ -487,3 +487,31 @@ test("the import machine schema exposes bounded integer HTTP controls and timeou
     "ms",
   )
 })
+
+test("current import rejects ambiguous supersede identities before input or remote acquisition", async () => {
+  const directory = await root(),
+    f = currentWriteFixture(directory)
+  const base = ["missing.md", "--entry", library.skills.database_id, "--skill-id", "import-target"]
+  for (const flags of [
+    ["--supersede", "old-intent"],
+    ["--supersede", "same-intent", "--operation", "same-intent"],
+    ["--supersede", "old-intent", "--operation", "new-intent", "--resume"],
+    ["--supersede", "old-intent", "--operation", "new-intent", "--dry-run"],
+  ])
+    await expect(
+      f.run(Command.runWith(currentImportCommand, { version: "0" })([...base, ...flags])),
+    ).rejects.toMatchObject({ code: "INVALID_ARGUMENT" })
+  await expect(
+    f.run(
+      Command.runWith(currentImportCommand, { version: "0" })([
+        ...base,
+        "--supersede",
+        "invalid operation",
+        "--operation",
+        "new-intent",
+      ]),
+    ),
+  ).rejects.toMatchObject({ code: "CURRENT_WRITE_INPUT_INVALID" })
+  expect(f.calls).toEqual([])
+  expect(f.pages.size).toBe(0)
+})

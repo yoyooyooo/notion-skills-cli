@@ -134,16 +134,10 @@ export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclara
   const definition = validateSourceDefinition(decoded.definition)
   validateCurrentSourceId(definition.source_id)
   githubUrl(definition)
-  if (definition.policy === "auto")
-    throw unsupported("Current Source management is explicit; select manual or pinned policy.")
-  const permitted = new Set(["storage", "require_all_included", "accepted_ref"])
+  const permitted = new Set(["require_all_included", "accepted_ref"])
   for (const key of Object.keys(definition.options))
     if (!permitted.has(key))
       throw unsupported("This option has no current fixed-file write behavior.", { option: key })
-  if (definition.options.storage === "retained")
-    throw unsupported(
-      "Current fixed Source writes cannot transfer authority to retained resources.",
-    )
   const accepted = definition.options.accepted_ref
   if (accepted !== undefined && (typeof accepted !== "string" || !/^[a-f0-9]{40}$/u.test(accepted)))
     throw invalid("accepted_ref must select an exact lowercase Git commit.")

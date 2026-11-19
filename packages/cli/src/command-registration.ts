@@ -38,7 +38,7 @@ import { useCommand } from "./commands-use.ts"
 import { live } from "./command-runtime.ts"
 const ctlCommand = defineCommand("ctl").pipe(
   Command.withDescription(
-    "Import a complete current Skill tree, apply or refresh a Source with stable target contributions, inspect the library, manage current Profiles and local configuration, or diagnose a specific request. Resume uses the same current command and exact intent. Publication, historical snapshot, repair and compatibility routes are not available.",
+    "Import a complete current Skill tree, manage current Source contributions, eligibility and file authority, inspect the library, manage current Profiles and local configuration, or diagnose a specific request. Resume uses the same current command and exact intent; supersede explicitly names the unfinished predecessor and a distinct new operation. Publication, historical snapshot, repair and compatibility routes are not available.",
   ),
   Command.withSubcommands([
     withRuntime(libraryCommand, live),
@@ -75,7 +75,7 @@ const schemaCommand = defineCommand(
 const rootDefinition = () =>
   defineCommand("ntn-skills").pipe(
     Command.withDescription(
-      "Read the current Notion Skill library. list discovers candidates; read inspects exact files; use expands Requires; files returns the complete directory; export writes selected current bytes locally. Ordinary consumption never writes Notion. Manage complete trees with ctl library import, Source contributions with ctl library source apply/refresh, and Profiles with ctl library profile. Missing current Content descriptors require an explicit data cutover.",
+      "Read the current Notion Skill library. list discovers candidates; read inspects exact files; use expands Requires; files returns the complete directory; export writes selected current bytes locally. Ordinary consumption never writes Notion. Manage complete trees with ctl library import, Source declarations and lifecycle with ctl library source, and Profiles with ctl library profile. Missing current Content descriptors require an explicit data cutover.",
     ),
     Command.withSubcommands([
       withRuntime(

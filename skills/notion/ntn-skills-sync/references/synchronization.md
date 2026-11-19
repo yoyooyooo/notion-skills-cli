@@ -1,5 +1,11 @@
 # Current Profiles and Source boundaries
 
+- [Profile rules](#profile-rules)
+- [Current Source](#current-source-boundaries)
+- [Declaration input](#a-source-management-request)
+- [File authority and lifecycle](#file-authority-and-lifecycle)
+- [Unfinished Source work](#unfinished-source-work)
+
 A current Profile controls discovery and freshness. A current Source describes
 where selected file bytes come from. Neither is a content-version history or a
 permission boundary.
@@ -127,7 +133,11 @@ Apply replaces that Source's complete configuration and contributions. Refresh
 reads the declaration from Notion and uses the same coordinator. The JSON file
 must be regular UTF-8 and at most 512 KiB. This writer accepts regular Git files
 from a credential-free GitHub HTTPS URL, with manual or pinned policy. Unknown
-providers, options, transformations, symlinks and retained-resource storage fail.
+providers, options, transformations and symlinks fail. Policy is manual or pinned;
+auto, check_interval_ms and Source options.storage are rejected. Ordinary reads
+still support their exact fixed Git/HTTP/local plan inputs; that does not add an
+arbitrary-provider writer. Current options are require_all_included and accepted_ref.
+Selection.mapping supplies new Skill names; it is not a file mapping.
 
 Every selected member needs explicit stable target assignments. One member can
 target several Skills, but a member/Skill pair cannot repeat. Selection include
@@ -152,26 +162,100 @@ Dry-run reads Notion and exact Git bytes without semantic writes; body verificat
 still happens during apply. Review additions, removals and target scope. A complete
 equal invocation creates no operation and makes no semantic writes.
 
+## File authority and lifecycle
+
+Inspect the current directory and obtain the stable Skill ID, File ID, source path
+and target path. Source paths include the original member root; contribution
+exclusions remain member-relative. Use exactly one current file:
+
 ```sh
-ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as resource --dry-run
+ntn-skills ctl library source takeover SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --as native --operation OPERATION_ID
+ntn-skills ctl library source restore-follow SOURCE_ID SOURCE_PATH --entry ENTRY --skill-id SKILL_ID --file-id FILE_ID --operation OPERATION_ID
 ```
 
-Keep the original declaration, local state and credential selection. Losing that
-state does not provide safe automatic recovery of an unknown child CREATE.
-Resume uses the original declaration and frozen Git commit, even after its branch
-moves. Use original apply input if an unfinished configuration change differs from
-the declaration visible in Notion. The one parent intent keeps a bounded target
-cursor and each in-flight child uses the same current kernel. Already completed
-children are verified without fresh mutations; untouched later targets continue.
-Native body edits are neither frozen nor overwritten. Final verification makes
-Source ready and clears parent/child intents. There is no multi-Skill atomicity
-or distributed CAS. Unknown CREATE/append is observed, never replayed from absence.
+Takeover reads the selected Source original, keeps File ID, page, target path and
+mode, and adds the exact file exclusion in the same Source intent. Resource is
+the default and preserves opaque originals too. Native requires supported text
+and an exact author-body round-trip; failure leaves the intent unfinished without
+fallback. Repeating a completed takeover must preserve later Notion edits.
+
+Restore-follow names the intended current Source and path explicitly. It requires
+an enabled Source and overwrites current customization with that Source's selected
+original. It removes the exclusion and aligns mapping to the retained target path.
+It does not restore a historical revision or require a permanent old Origin pointer.
+Other files and Sources remain preserved. A concurrent change of authority or a
+new resource reference blocks overwrite or cleanup until explicitly resolved.
+
+```sh
+ntn-skills ctl library source disable SOURCE_ID --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library source enable SOURCE_ID --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --dry-run
+ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --operation OPERATION_ID
+```
+
+Disable changes consumption eligibility only. It keeps selected content, files and
+contributions; it is not an automatic-refresh pause. Enable changes eligibility
+without acquiring a newer provider revision. Do not force ready over another
+unfinished action. Takeover of a disabled Source uses explicit management of its
+exact current original; ordinary readers remain blocked.
+
+Remove scans complete Skills and Files metadata in this one library, including
+Main and bindings absent from Origin. Any current Source Content or Origin
+reference blocks removal with exact affected identities. Take over those files
+first; a Source main is never implicitly deleted, and another Source is never
+chosen as replacement. Correct stale Origin explicitly. The action retires only
+unreferenced Source-owned resources and its exact Source page. Skill-owned binary
+reading copies follow each child's complete resource-reference checks.
+
+Skills and their authored Members/Requires, Profile selections and Views are not
+silently deleted or rewritten. A surviving Skill identity keeps its relationships.
+Arbitrary cross-Skill body links, View filters and whole-library orphan repair need
+their own explicit governance; this command does not claim those outcomes.
+Incomplete pagination, permission failure or exhausted limits cannot prove absence.
+
+## Unfinished Source work
+
+Inspect the exact parent before changing an unfinished action:
+
+```sh
+ntn-skills ctl library operation SOURCE_ID --kind source --entry ENTRY
+```
+
+This reads the finite Record, owner state, local lifecycle, in-flight action,
+child cursor and predecessor without semantic writes or repair. A not_found result
+with operation:null does not establish ready, absence of the owner or retirement.
+Keep the actual result and its original credential/state scope.
+
+```sh
+ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID --resume
+ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --supersede OLD_OPERATION_ID --operation NEW_OPERATION_ID
+ntn-skills ctl library source remove SOURCE_ID --entry ENTRY --operation OPERATION_ID --resume
+```
+
+Keep the original input, local state and credential scope. Empty state or another
+machine cannot safely recover an unknown child CREATE. Resume the same action and
+selected targets. Declaration resume freezes the original Git commit even after
+its branch moves; use original apply input when the visible Notion declaration
+differs. Its one parent cursor verifies completed targets before continuing later
+ones. Native author edits remain current. Completion clears parent/child intents.
+
+Supersede explicitly names the predecessor and a distinct new operation. The
+kernel reconciles before handoff; it does not discard an unresolved CREATE/append.
+Source actions remain in the same family. A file action keeps its exact selected
+Source/path/Skill/File; a failed native takeover can explicitly select resource in
+its successor. A metadata toggle cannot clear an unfinished multi-target refresh.
+Resume and supersede are mutually exclusive, and neither accepts dry-run.
+
+After an unknown Source retirement, resume reads the exact physical owner even
+when Trash removed it from active queries. It verifies removed state and retires
+the finite intent without publishing ready or recreating the Source. Unknown
+outcomes stay explicit. No permanent tombstone, rollback history, distributed CAS
+or multi-Skill atomicity is promised.
 
 One invocation shares 1000 HTTP attempts, 512 MiB payload bytes and 600000 ms by
-default. --max-requests, --max-bytes and --timeout in ms choose positive limits.
-Git subprocess acquisition shares the deadline and file limits but its HTTP count
-and wire bytes are not measured; known Git object bytes are reported separately.
-
-Explicit takeover/restore-follow, Source disable/removal, global census and
-production conversion remain separate capabilities. The complete local import
-refuses Source-owned targets; it cannot substitute for those operations.
+default. --max-requests, --max-bytes and --timeout in ms select positive limits.
+Git subprocess acquisition shares the deadline and file bounds, but HTTP count
+and wire bytes are unmetered; known Git object bytes are reported separately.
+Live Notion conversion, broad reverse repair and all-Pro migration remain distinct
+acceptance work. A controlled test or source command does not prove them complete.

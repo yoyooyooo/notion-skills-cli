@@ -11,6 +11,8 @@ const core = new URL("../src/", import.meta.url).pathname
 const scope = "a".repeat(64)
 const pendingKey = `operations/current-write-pending/${scope}/pending.json`
 const pendingPayload = {
+  completion: "ready",
+  owner_page_id: null,
   version: 1,
   scope,
   library_id: "current-sqlite",

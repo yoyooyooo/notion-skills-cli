@@ -2,7 +2,7 @@ import { Crypto, Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { sha256 } from "./store.ts"
+import { sha256, type Store } from "./store.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import {
   prepareCurrentSource,
@@ -21,6 +21,7 @@ import {
   withCurrentOperation,
   type CurrentOperationIntent,
   type CurrentOperationSession,
+  type CurrentWriteMode,
 } from "./shared-current-operation.ts"
 import {
   authorizeCoordinatedSkillWrite,
@@ -29,6 +30,7 @@ import {
   writeCoordinatedSkill,
 } from "./shared-current-write.ts"
 import { currentWriteIdentity } from "./shared-current-write-input.ts"
+import { assertCurrentSourceHandoffSettled } from "./shared-current-source-successor.ts"
 import {
   prepareCurrentSharedSourceContent,
   type CurrentSharedSource,
@@ -60,24 +62,47 @@ const checked = <A>(read: () => A) =>
   })
 type SourceWriteOptions = {
   readonly operation_id: string
-  readonly mode?: "apply" | "resume"
+  readonly mode?: CurrentWriteMode
   readonly dry_run?: boolean
 }
 type Pending = Effect.Success<ReturnType<typeof readCurrentOperationIntent>>
 
+function selectedSourceMode(pending: Pending, input: SourceWriteOptions): CurrentWriteMode {
+  return typeof input.mode === "object" &&
+    pending?.intent.operation_id === input.operation_id &&
+    pending.predecessor?.intent.operation_id === input.mode.operation_id
+    ? "resume"
+    : (input.mode ?? "apply")
+}
+
 function validateSourceWriteOptions(input: SourceWriteOptions) {
   currentWriteIdentity(input.operation_id, "Operation ID")
-  if (input.mode !== undefined && input.mode !== "apply" && input.mode !== "resume")
-    throw invalid("Use apply or resume for a current Source intent.")
-  if (input.dry_run && input.mode === "resume")
-    throw invalid("Dry run and resume are separate current invocations.")
+  if (typeof input.mode === "object") {
+    if (input.mode.kind !== "supersede") throw invalid("Use an explicit current write mode.")
+    currentWriteIdentity(input.mode.operation_id, "Previous Operation ID")
+    if (input.mode.operation_id === input.operation_id)
+      throw invalid("A successor requires a new Operation ID.")
+  } else if (input.mode !== undefined && input.mode !== "apply" && input.mode !== "resume")
+    throw invalid("Use apply, resume or an explicit supersede for a current Source intent.")
+  if (input.dry_run && input.mode !== undefined && input.mode !== "apply")
+    throw invalid("Dry run does not resume or replace an unfinished intent.")
 }
 
 function sourcePending(pending: Pending, configuration: string, options: SourceWriteOptions) {
   if (pending === undefined) return undefined
   const intent = pending.intent
   if (
+    "source_input" in intent &&
+    intent.source_input.kind === "declaration" &&
+    typeof options.mode === "object" &&
+    options.mode.kind === "supersede" &&
+    intent.operation_id === options.mode.operation_id &&
+    intent.operation_id !== options.operation_id
+  )
+    return intent
+  if (
     !("source_input" in intent) ||
+    intent.source_input.kind !== "declaration" ||
     options.mode !== "resume" ||
     options.dry_run === true ||
     intent.operation_id !== options.operation_id ||
@@ -87,8 +112,9 @@ function sourcePending(pending: Pending, configuration: string, options: SourceW
       owner: intent.owner,
       operation_id: intent.operation_id,
       input_sha256: intent.input_sha256,
-      next: "reconcile_current",
-      required_input: "Resupply the original Source declaration with --operation and --resume.",
+      next: "resume_or_supersede_current",
+      required_input:
+        "Resume the original input, or stop its writer and supply a complete new input with --operation NEW --supersede OLD.",
     })
   return intent
 }
@@ -109,16 +135,20 @@ export function applyCurrentSource(
       kind: "source",
       id: declaration.definition.source_id,
     })
-    const original = yield* checked(() => sourcePending(pending, configuration, input))
-    if (input.mode === "resume" && original === undefined)
+    yield* assertCurrentSourceHandoffSettled(library, pending, input.mode, input.operation_id)
+    const selected = { ...input, mode: selectedSourceMode(pending, input) }
+    const original = yield* checked(() => sourcePending(pending, configuration, selected))
+    if (selected.mode !== "apply" && original === undefined)
       return yield* Effect.fail(
         fail("CURRENT_OPERATION_NOT_FOUND", "No unfinished Source intent was found."),
       )
     const prepared = yield* prepareCurrentSource(declaration, {
-      ...(original === undefined ? {} : { exactCommit: original.source_input.resolved_commit }),
+      ...(selected.mode === "resume" && original?.source_input.kind === "declaration"
+        ? { exactCommit: original.source_input.resolved_commit }
+        : {}),
       metrics: (yield* Notion).metrics,
     })
-    return yield* executeCurrentSource(library, prepared, input, pending)
+    return yield* executeCurrentSource(library, prepared, selected, pending)
   }).pipe(
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
@@ -138,12 +168,14 @@ export function writePreparedCurrentSource(
       kind: "source",
       id: prepared.declaration.definition.source_id,
     })
-    yield* checked(() => sourcePending(pending, prepared.configuration_sha256, input))
-    if (input.mode === "resume" && pending === undefined)
+    yield* assertCurrentSourceHandoffSettled(library, pending, input.mode, input.operation_id)
+    const selected = { ...input, mode: selectedSourceMode(pending, input) }
+    yield* checked(() => sourcePending(pending, prepared.configuration_sha256, selected))
+    if (selected.mode !== "apply" && pending === undefined)
       return yield* Effect.fail(
         fail("CURRENT_OPERATION_NOT_FOUND", "No unfinished Source intent was found."),
       )
-    return yield* executeCurrentSource(library, prepared, input, pending)
+    return yield* executeCurrentSource(library, prepared, selected, pending)
   }).pipe(
     withCurrentInvocationBudget,
     Effect.map(({ result }) => result),
@@ -272,6 +304,7 @@ function executeCurrentSource(
     })
     const affected = [...new Set([...targetIds, ...targets.keys()])].sort()
     if (
+      options.mode === "resume" &&
       original !== undefined &&
       canonicalSharedJson(affected) !==
         canonicalSharedJson(original.source_input.affected_skill_ids)
@@ -345,6 +378,7 @@ function executeCurrentSource(
       )
     }
     const source_input = {
+      kind: "declaration" as const,
       configuration_sha256: prepared.configuration_sha256,
       resolved_commit: prepared.resolved_commit,
       affected_skill_ids: affected,
@@ -355,7 +389,11 @@ function executeCurrentSource(
       input_sha256: yield* sha256(canonicalSharedJson({ source_input, revision: source.revision })),
       source_input,
     } satisfies CurrentOperationIntent
-    if (original !== undefined && canonicalSharedJson(intent) !== canonicalSharedJson(original))
+    if (
+      options.mode === "resume" &&
+      original !== undefined &&
+      canonicalSharedJson(intent) !== canonicalSharedJson(original)
+    )
       return yield* Effect.fail(
         invalid("The selected Source differs from the original frozen intent."),
       )
@@ -365,6 +403,7 @@ function executeCurrentSource(
     const resultBase = {
       version: 1 as const,
       contract: "current" as const,
+      action: "declaration" as const,
       library: {
         library_id: library.library_id,
         database_id: library.skills.database_id,
@@ -515,7 +554,7 @@ function executeCurrentSource(
               operation_id:
                 "source-target-" +
                 (yield* sha256(canonicalSharedJson([options.operation_id, plan.skill_id]))),
-              mode: options.mode,
+              mode: typeof options.mode === "object" ? "apply" : options.mode,
               authorization,
             })
             results.push(result)
@@ -656,18 +695,18 @@ function storeSourceManifest(
   })
 }
 
-function retireSourceManifests(
+export function retireSourceManifests(
   library: SharedLibrary,
   session: CurrentOperationSession,
-  content: PreparedCurrentSourceInput["prepared_source"]["content"],
-  assertSourceCurrent: Effect.Effect<void, SkillsError, Notion>,
+  content: PreparedCurrentSourceInput["prepared_source"]["content"] | null,
+  assertSourceCurrent: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>,
 ) {
   return Effect.gen(function* () {
     if (session.ownerPageId === null || session.owner.kind !== "source")
       return yield* Effect.fail(invalid("Source cleanup requires its exact current owner."))
     yield* assertSourceCurrent
     const owner = { kind: "source" as const, page_id: session.ownerPageId },
-      retained = "resource" in content ? content.resource.object_id : undefined,
+      retained = content !== null && "resource" in content ? content.resource.object_id : undefined,
       api = yield* Notion
     const retire = (page: string) =>
       Effect.gen(function* () {

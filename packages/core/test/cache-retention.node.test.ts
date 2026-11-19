@@ -24,6 +24,8 @@ const hash = (text: string) => createHash("sha256").update(text).digest("hex")
 const payload = { version: 1, git_oid: "a".repeat(40), sha256: hash("retained"), bytes: 8 }
 const journal = `operations/current-write-pending/${"c".repeat(64)}/pending.json`
 const pending = {
+  completion: "ready",
+  owner_page_id: null,
   version: 1,
   scope: "c".repeat(64),
   library_id: "library-current",
