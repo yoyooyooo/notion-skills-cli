@@ -55,6 +55,7 @@ const library: SharedLibrary = {
       Content: "content",
       Enabled: "enabled",
       Status: "status",
+      Operation: "operation",
       "Last Revision": "revision",
     },
   },
@@ -111,6 +112,7 @@ function row(sourceId: string, value: CurrentSharedSourceContent, page = id(20))
       revision: rich("revision", revision),
       enabled: { id: "enabled", type: "checkbox", checkbox: true },
       status: { id: "status", type: "select", select: { name: "ready" } },
+      operation: rich("operation", ""),
     },
   }
 }
@@ -314,7 +316,10 @@ describe("current Sources", () => {
     async (state) => {
       const current = row("docs", content({ "SKILL.md": "main" }))
       if (state === "disabled") current.properties.enabled.checkbox = false
-      else current.properties.status.select.name = state
+      else {
+        current.properties.status.select.name = state
+        current.properties.operation = rich("operation", "source-operation")
+      }
       const f = fixture([list([current])])
       const error = await f.run(
         Effect.flip(
@@ -324,10 +329,27 @@ describe("current Sources", () => {
           }),
         ),
       )
-      expect(error.code).toBe(state === "disabled" ? "SOURCE_DISABLED" : "CURRENT_SOURCE_NOT_READY")
+      expect(error.code).toBe(
+        state === "disabled"
+          ? "SOURCE_DISABLED"
+          : state === "applied"
+            ? "CURRENT_STATE_INVALID"
+            : "CURRENT_SOURCE_NOT_READY",
+      )
       expect(f.requests).toEqual([])
     },
   )
+
+  test("ready with an unfinished Operation cannot admit Source bytes", async () => {
+    const current = row("docs", content({ "SKILL.md": "main" }))
+    current.properties.operation = rich("operation", "unfinished-source-operation")
+    const f = fixture([list([current])])
+    const error = await f.run(
+      Effect.flip(resolveCurrentSharedSources(library, { selections: [selection(current)] })),
+    )
+    expect(error.code).toBe("CURRENT_STATE_INVALID")
+    expect(f.requests).toEqual([])
+  })
 
   test("a changed current plan or Last Revision rejects the selected fingerprint", async () => {
     const current = row("docs", content({ "SKILL.md": "main" }))

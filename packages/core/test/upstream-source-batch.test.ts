@@ -5,10 +5,10 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Schema } from "effect"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient"
-import { discoverSource } from "../src/upstream-source.ts"
+import { discoverSource, SourceSnapshotSchema } from "../src/upstream-source.ts"
 import { createRequestMetrics } from "../src/request-metrics.ts"
 
 test.each(["commit", "branch", "tag"] as const)(
@@ -146,6 +146,9 @@ test.each(["commit", "branch", "tag"] as const)(
           JSON.stringify(evidence, null, 2),
         )
       expect(snapshot.revision).toBe(revision)
+      expect(
+        Schema.decodeUnknownSync(SourceSnapshotSchema)(snapshot, { onExcessProperty: "error" }),
+      ).toEqual(snapshot)
       expect(snapshot.members).toHaveLength(1)
       for (const [path, bytes] of files)
         expect(

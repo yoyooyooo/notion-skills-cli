@@ -101,6 +101,11 @@ export const testBytes = (value: string) => new TextEncoder().encode(value)
 type Row = Record<string, unknown>
 type FaultKind =
   | "skill-create"
+  | "source-create"
+  | "source-properties"
+  | "source-ready"
+  | "source-progress"
+  | "source-retirement"
   | "file-create"
   | "resource-create"
   | "append"
@@ -342,8 +347,12 @@ export function currentWriteFixture(parent: string) {
             response(path, {
               object: "database",
               id: library[databaseRole].database_id,
+              database_type: null,
+              title: [{ plain_text: "Current library" }],
               parent: { type: "page_id", page_id: library.parent_page_id },
-              data_sources: [{ id: library[databaseRole].data_source_id }],
+              data_sources: [
+                { id: library[databaseRole].data_source_id, name: "Current data source" },
+              ],
               description: [
                 {
                   plain_text:
@@ -372,18 +381,25 @@ export function currentWriteFixture(parent: string) {
           const kind: FaultKind | undefined =
             table === library.skills.data_source_id
               ? "skill-create"
-              : table === library.files.data_source_id
-                ? "file-create"
-                : property(property(raw.kind).select).name === "resource"
-                  ? "resource-create"
-                  : undefined
+              : table === library.sources.data_source_id
+                ? "source-create"
+                : table === library.files.data_source_id
+                  ? "file-create"
+                  : property(property(raw.kind).select).name === "resource"
+                    ? "resource-create"
+                    : undefined
           const chosen = kind === undefined ? undefined : selectedFault(kind)
           if (chosen?.outcome === "absent") return unknown()
           const page = id(next++),
             row: Row = {
               object: "page",
               id: page,
-              parent: clone(input.parent),
+              parent: {
+                ...property(clone(input.parent)),
+                database_id: roles
+                  .map((role) => library[role])
+                  .find((role) => role.data_source_id === table)?.database_id,
+              },
               properties: normalize({
                 ...(table === library.skills.data_source_id
                   ? {
@@ -398,7 +414,13 @@ export function currentWriteFixture(parent: string) {
                       ? {
                           origin: { rollup: { type: "array", array: [], function: "show_unique" } },
                         }
-                      : {}),
+                      : table === library.sources.data_source_id
+                        ? {
+                            operation: { rich_text: [] },
+                            skills: { relation: [] },
+                            records: { relation: [] },
+                          }
+                        : {}),
                 ...property(input.properties),
               }),
               in_trash: false,
@@ -417,18 +439,56 @@ export function currentWriteFixture(parent: string) {
           if (!row) return Effect.fail(fail("NOT_FOUND", "Unknown current page."))
           if (method === "PATCH") {
             const table = property(row.parent).data_source_id
-            const kind =
-              input.in_trash === true
+            const fields = property(input.properties)
+            let startsSourceChild = false
+            if (
+              table === library.records.data_source_id &&
+              property(property(property(row.properties).kind).select).name === "operation" &&
+              text(property(property(row.properties)["entity-id"]).rich_text).startsWith(
+                "current-source:",
+              ) &&
+              fields.payload !== undefined
+            ) {
+              const before = property(
+                  property(JSON.parse(text(property(property(row.properties).payload).rich_text)))
+                    .payload,
+                ),
+                after = property(
+                  property(JSON.parse(text(property(fields.payload).rich_text))).payload,
+                )
+              startsSourceChild =
+                after.in_flight === null &&
+                property(before.source_progress).child_started === false &&
+                property(after.source_progress).child_started === true &&
+                property(before.source_progress).next_index ===
+                  property(after.source_progress).next_index
+            }
+            const kind = startsSourceChild
+              ? "source-progress"
+              : input.in_trash === true
                 ? table === library.files.data_source_id
                   ? "retire-file"
                   : table === library.records.data_source_id &&
-                      property(property(property(row.properties).kind).select).name === "resource"
-                    ? "retire-resource"
-                    : undefined
-                : "members" in property(input.properties) ||
-                    "requires" in property(input.properties)
-                  ? "relations"
-                  : undefined
+                      property(property(property(row.properties).kind).select).name ===
+                        "operation" &&
+                      text(property(property(row.properties)["entity-id"]).rich_text).startsWith(
+                        "current-source:",
+                      )
+                    ? "source-retirement"
+                    : table === library.records.data_source_id &&
+                        property(property(property(row.properties).kind).select).name === "resource"
+                      ? "retire-resource"
+                      : undefined
+                : table === library.sources.data_source_id &&
+                    property(property(property(input.properties).status).select).name === "ready"
+                  ? "source-ready"
+                  : table === library.sources.data_source_id &&
+                      "content" in property(input.properties)
+                    ? "source-properties"
+                    : "members" in property(input.properties) ||
+                        "requires" in property(input.properties)
+                      ? "relations"
+                      : undefined
             const chosen = kind === undefined ? undefined : selectedFault(kind)
             if (chosen?.outcome === "absent") return unknown()
             if (input.properties !== undefined)

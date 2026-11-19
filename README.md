@@ -20,6 +20,7 @@ that the production library, published npm package or installed Pi has migrated.
 | Export a complete selection locally | `export` |
 | Inspect current file ownership and operation state | `ctl library files` |
 | Import or replace one complete local tree | `ctl library import`, with `--dry-run` and same-intent `--resume` |
+| Apply or refresh declared Git contributions | `ctl library source apply`, `ctl library source refresh` |
 | Create or inspect a current four-table layout | `ctl library init`, `ctl library inspect` |
 | Manage shared current Profile rules | `ctl library profile` |
 
@@ -28,11 +29,13 @@ A native Notion edit is read as current content; reading it does not create an
 adoption event or retain a remote version. A generated Source/resource reading
 page does not become author content merely because someone edited its display.
 
-Current import writes exact resource originals and complete reading projections.
+Current import writes exact resource originals and complete reading projections;
+repeat `--native PATH` for text files whose current Notion body should be editable.
 Portable Members/Requires round-trip through export and complete import, with
 complete target validation and dependency checks. Import shares one bounded HTTP
-budget across lookup, upload, projection and cleanup. Source refresh and partial
-file updates remain incomplete.
+budget across lookup, upload, projection and cleanup. Source apply/refresh coordinates
+explicit Git members and targets, preserving native bodies and unrelated contributions.
+Partial file updates and authority takeover remain separate management work.
 Old create/apply/write/replace/adopt, sync, snapshot/archive and repair commands
 are retired from the active CLI. Current data conversion, actual library coverage,
 obsolete object cleanup and Pi installation remain separate delivery gates.
@@ -109,7 +112,7 @@ file read with `--output` for one file.
 | --- | --- |
 | Skills | Identity, discovery metadata, enablement, Members/Requires, main Content descriptor and current operation state |
 | Files | One row for every supporting file, exact owner, stable File ID, path and Content descriptor |
-| Sources | Stable source definition and complete current selected plan |
+| Sources | Stable source definition, current selected plan, target contributions and unfinished operation |
 | Records | Necessary current exact resources, one current Profile and unfinished management intents |
 
 The `Content` descriptor selects native author Markdown, a Notion-owned exact
@@ -148,7 +151,9 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-Import preserves exact originals and creates full reading pages. It replaces the
+Import preserves exact resource originals and creates full reading pages. Use
+`--native SKILL.md --native references/guide.md` to select editable UTF-8/LF bodies;
+the same selection is required on resume. It replaces the
 whole file tree for that stable identity; review removals in dry-run. Repeat equal
 input for a zero-write no-op. Resume unfinished work with the same input and
 `--operation OPERATION_ID --resume`. See [current authoring](docs/shared-authoring.md).
@@ -170,8 +175,8 @@ CAS. Profiles and Views never grant permission.
 
 Read `notion/ntn-skills` through the builtin catalog for consumption guidance.
 `notion/ntn-skills-maintain` covers setup, complete current import and finite
-recovery. `notion/ntn-skills-sync` covers current Profile rules and Source
-ownership constraints while the Source writer is unavailable.
+recovery. `notion/ntn-skills-sync` covers current Profile rules and explicit Git
+Source apply/refresh, including mixed-tree preservation.
 
 Pi is the first daily host. Its Notion consumption uses the matching SDK for
 discovery, use and resource reads. OMP/Tern adaptation is deferred. Their local

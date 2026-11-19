@@ -7,7 +7,7 @@ import { trashPath } from "../src/local-locks.ts"
 import { fail, property } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { withCurrentInvocationBudget } from "../src/shared-current-invocation.ts"
-import { withCurrentSkillOperation } from "../src/shared-current-operation.ts"
+import { withCurrentOperation } from "../src/shared-current-operation.ts"
 import { prepareCurrentSkillWrite, writeCurrentSkill } from "../src/shared-current-write.ts"
 import { Store } from "../src/store.ts"
 import { recordedFixtureTransport } from "./notion-http-fixture.ts"
@@ -130,9 +130,13 @@ test("kernel early budget failures retain an observed pending intent without lea
   const { f, page, intent, pendingKey } = await interrupted()
   const writes = f.mutations().length
   let entered = false
-  const operation = withCurrentSkillOperation(library, {
-    intent,
-    skillPageId: page,
+  const operation = withCurrentOperation(library, {
+    intent: {
+      operation_id: intent.operation_id,
+      input_sha256: intent.input_sha256,
+      owner: { kind: "skill", id: intent.skill_id },
+    },
+    ownerPageId: page,
     mode: "resume",
     run: () =>
       Effect.sync(() => {
@@ -180,9 +184,13 @@ test("saving an observed Operation locally retains context before execute and an
   const storageFailure = await f.run(
     Effect.gen(function* () {
       const store = yield* Store
-      return yield* withCurrentSkillOperation(library, {
-        intent,
-        skillPageId: page,
+      return yield* withCurrentOperation(library, {
+        intent: {
+          operation_id: intent.operation_id,
+          input_sha256: intent.input_sha256,
+          owner: { kind: "skill", id: intent.skill_id },
+        },
+        ownerPageId: page,
         mode: "resume",
         run: () => Effect.die("Execution must not start after a failed pending save"),
         verify: () => Effect.void,

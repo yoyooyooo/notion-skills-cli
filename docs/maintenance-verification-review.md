@@ -12,6 +12,7 @@ correspondence. Those former passes do not certify the current line.
 | One strict native/resource/source descriptor; finite Skill readiness | `shared-current-file.ts`, `shared-current-index.ts` | `shared-current-index.test.ts` |
 | Complete current tree; native edits; local body freshness; zero semantic writes | `shared-snapshot.ts` | `shared-current-snapshot.test.ts` |
 | Current stable Source selection and complete source layout | `shared-current-source.ts` | `shared-current-source.test.ts` |
+| Explicit Git contribution preparation, batched target scope and mixed-tree writes | `shared-current-source-input.ts`, `shared-current-source-management.ts`, `shared-current-source-write.ts` | Corresponding Source input/management/write tests |
 | Current exact resources, inline, attachment or a single-original ZIP carrier | `shared-current-resource.ts`, `shared-current-records.ts` | `shared-current-resource.test.ts` |
 | Complete current input, original bytes, stable Files and owner-scoped retirement | `shared-current-write-input.ts`, `shared-current-write.ts` | `shared-current-write-input.test.ts`, `shared-current-write.test.ts` |
 | One unfinished intent, unknown-result observation, finite pending cleanup | `shared-current-operation.ts` | `shared-current-operation.test.ts`, `shared-current-operation.node.test.ts` |
@@ -20,7 +21,7 @@ correspondence. Those former passes do not certify the current line.
 | Single per-file acquisition v5 and current-locator checks | `shared-acquisition-model.ts`, `shared-fixed-acquisition.ts` | `shared-acquisition-contract.test.ts` |
 | Current Profile replacement and finite local pending intent | `shared-profile.ts` | `shared-profile.test.ts` |
 | Portable relation round-trip, complete same-library targets, cycle checks and same-operation writes | `shared-current-relations.ts`, `export.ts` | `shared-current-relations.test.ts`, current import and writer tests |
-| Whole-invocation limits across Notion, provider, multipart and cleanup | `shared-current-invocation.ts`, `request-budget-http.ts` | `shared-current-invocation.test.ts`, `request-budget.test.ts` |
+| Shared HTTP limits across Notion, managed provider HTTP, multipart and cleanup; Git subprocess deadline | `shared-current-invocation.ts`, `request-budget-http.ts` | `shared-current-invocation.test.ts`, `request-budget.test.ts` |
 | HTTP cancellation and read sharing | Existing request engine and coalescing | Existing request-engine-contract and shared-read-coalescing tests |
 
 Paths above are within `packages/core/src` and `packages/core/test`. The
@@ -59,9 +60,10 @@ pages or repairing operations would be semantic writes and is forbidden here.
 
 ## Public boundary
 
-Current `ctl library` exposes init, inspect, files, import and profile. Import
-accepts one complete local tree, with dry run and resume on the same route.
-Source-refresh, partial relationship updates, sync, archive, graph-release,
+Current `ctl library` exposes init, inspect, files, import, source and profile. Import
+accepts a complete resource/native tree, with dry run and resume on the same route.
+Source apply/refresh coordinates explicit current Git contributions with the same
+operation kernel. Source removal/takeover, partial relationship updates, sync, archive, graph-release,
 repair and old migration writers are not public routes. A removed route must
 fail without redirecting to a compatibility handler.
 
@@ -86,7 +88,7 @@ original rules; they do not prove the multi-step current writer.
 
 ## Remaining acceptance
 
-AH-504/507 still own partial writes, Source management and remaining recovery
+AH-504/507 still own partial writes, Source takeover/removal and real-scope recovery
 exits. AH-501 must populate and verify every actual supporting Files row and
 reading projection in the live library. AH-505/513 must
 resolve current references and remove actual obsolete Notion objects after

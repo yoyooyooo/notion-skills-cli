@@ -28,11 +28,10 @@ ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID
 
 Inspect removals and authority changes before applying an authorized complete
 input. A target with any Source main or supporting file returns
-CURRENT_SOURCE_MANAGEMENT_REQUIRED in dry-run and apply because this CLI imports
-every input file as a resource. An unchanged export is also refused. Keep the
-existing File IDs, logical paths and Source bindings until coordinated Source
-contribution management is available; omitting or reidentifying files is not a
-takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
+CURRENT_SOURCE_MANAGEMENT_REQUIRED in dry-run and apply because import selects
+resource or native authority. An unchanged export is also refused. Use current
+Source apply/refresh through notion/ntn-skills-sync; omitting or reidentifying
+files is not a takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
 uses the kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
 refs; omitted fields preserve, [] clears, and a list replaces that entire field.
 Prompt relations, old projection/materialization and unknown fields are rejected.
@@ -49,6 +48,15 @@ Default resource import provides full readable text and usable opaque originals.
 Unsupported upload types use a deterministic single-original ZIP. Uploads larger
 than the direct limit use bounded multipart transport. A source or native file
 is not silently replaced merely by editing its generated page.
+
+Use repeated --native PATH to select editable author bodies, including a main
+or supporting path. Paths are exact and canonical after the single-file rename;
+duplicates, unknown paths and invalid text are refused before network access.
+Bodies require UTF-8/LF. Stored frontmatter and executable mode stay exact; no
+silent normalization or fallback occurs. Apply writes and reads the actual body
+before ready. A round-trip mismatch leaves the intent unfinished. Reimporting a
+local native copy replaces human edits made since that copy; export current edits
+first if they must be retained. The native path set is part of the input fingerprint.
 
 An import preserves existing Skill identity and stable File IDs for retained
 paths. It trashes omitted Notion-owned supporting rows and unreferenced resources
@@ -84,7 +92,7 @@ current intent. Consumers refuse those states before body acquisition.
 ntn-skills ctl library import INPUT --entry ENTRY --skill-id SKILL_ID --operation OPERATION_ID --resume
 ```
 
-Resupply the same complete input. A prepared fingerprint does not store missing
+Resupply the same complete input and original --native paths. A fingerprint does not store missing
 input bytes. Unknown CREATE and append are not repeated from absence. Accepted
 results continue after exact current observation; an observed partial append can
 remain blocked. Do not clear the operation or change ready by hand.
@@ -100,6 +108,7 @@ Target inspection does not prove whole-library coverage. Whole-library cleanup
 needs complete authorized ownership, reverse relations and all pages of inventory.
 Transfer uniquely current bytes before retiring their old carrier.
 
-Source refresh, cross-owner relationship repair, full census and production data
-conversion are not supplied by this import. Report the exact missing capability
+Source apply/refresh uses its current coordinator through notion/ntn-skills-sync.
+Cross-owner relationship repair, full census and production data conversion are
+not supplied by this import. Report the exact missing capability
 instead of invoking retired publication, history, sync or repair commands.

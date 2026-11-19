@@ -67,6 +67,8 @@ export const sourceDefinitionProperties = {
   Selection: { rich_text: {} },
   Options: { rich_text: {} },
   Content: { rich_text: {} },
+  Contributions: { rich_text: {} },
+  Operation: { rich_text: {} },
   Enabled: { checkbox: {} },
   Policy: { select: { options: ["manual", "pinned", "auto"].map((name) => ({ name })) } },
   Status: {

@@ -249,7 +249,7 @@ type Upload = {
 }
 
 type CurrentUploadIdentityInput = {
-  readonly session: Pick<CurrentOperationSession, "operation_id" | "skillPageId">
+  readonly session: Pick<CurrentOperationSession, "operation_id" | "ownerPageId" | "owner">
   readonly path: string
   readonly prepared: PreparedCurrentSharedResource
 }
@@ -257,9 +257,9 @@ function currentUploadIdentity(input: CurrentUploadIdentityInput) {
   return Effect.gen(function* () {
     const { owner, wireHash } = yield* checked(() => {
       currentUploadFileSpec(input.path)
-      if (input.session.skillPageId === null)
-        throw invalid("Bind the exact Skill owner before allocating its original upload.")
-      const owner = uuid(input.session.skillPageId)
+      if (input.session.ownerPageId === null)
+        throw invalid("Bind the exact current owner before allocating its original upload.")
+      const owner = uuid(input.session.ownerPageId)
       const storage = input.prepared.manifest.storage
       if (input.prepared.status !== "needs_attachment" || storage.kind === "inline")
         throw invalid("An inline resource has no current upload action.")
@@ -270,7 +270,13 @@ function currentUploadIdentity(input: CurrentUploadIdentityInput) {
       }
     })
     return yield* sha256(
-      canonicalSharedJson([owner, input.session.operation_id, input.path, wireHash]),
+      canonicalSharedJson([
+        input.session.owner.kind,
+        owner,
+        input.session.operation_id,
+        input.path,
+        wireHash,
+      ]),
     )
   })
 }

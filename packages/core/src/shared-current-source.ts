@@ -3,7 +3,11 @@ import type { HttpClient } from "effect/http"
 import { fail, listSchema, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { CurrentSourceIdSchema, CurrentResourceContentSchema } from "./shared-current-file.ts"
+import {
+  CurrentSourceIdSchema,
+  CurrentResourceContentSchema,
+  parseCurrentSkillState,
+} from "./shared-current-file.ts"
 import {
   CURRENT_RESOURCE_MAX_BYTES,
   prepareCurrentSharedResource,
@@ -200,7 +204,14 @@ function sourceProperties(library: SharedLibrary) {
     throw fail("CURRENT_SOURCE_REQUIRED", "Attach the current Sources table before consumption.", {
       next: "migrate_current_content",
     })
-  const required = ["Source ID", "Content", "Enabled", "Status", "Last Revision"] as const
+  const required = [
+    "Source ID",
+    "Content",
+    "Enabled",
+    "Status",
+    "Operation",
+    "Last Revision",
+  ] as const
   for (const name of required)
     if (!table.property_ids[name])
       throw fail("CURRENT_SOURCE_REQUIRED", "The current Source property binding is missing.", {
@@ -337,7 +348,10 @@ export function resolveCurrentSharedSources(
             source_id: sourceId,
           })
         const status = property(field(raw, table.property_ids.Status!, "select").select).name
-        if (status !== "ready")
+        if (typeof status !== "string")
+          throw fail("CURRENT_SOURCE_INVALID", "The current Source has no state.")
+        const state = parseCurrentSkillState(status, rich(raw, table.property_ids.Operation!))
+        if (state.state !== "ready")
           throw fail(
             "CURRENT_SOURCE_NOT_READY",
             "The selected Source requires management attention.",

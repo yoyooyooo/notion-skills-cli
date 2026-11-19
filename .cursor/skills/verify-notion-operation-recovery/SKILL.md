@@ -5,7 +5,7 @@ description: "验证当前管理意图在响应丢失、partial、预算暂停�
 
 # 当前操作恢复验证
 
-执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 4 组。本入口不负责请求层模型，也不负责真实宿主投递。一次意图只保留当前输入指纹、owner 和一个在途动作；完成后回收。
+执行 [current-convergence](../verify-ntn-skills/features/current-convergence.md) 第 4 组。本入口不负责请求层模型，也不负责真实宿主投递。意图只保留当前输入、owner、在途动作；Source 父意图另有有限目标游标，全部完成后回收。
 
 ## Launch
 
@@ -16,7 +16,7 @@ description: "验证当前管理意图在响应丢失、partial、预算暂停�
 ## Doctor
 
 ~~~sh
-bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-upload.test.ts --timeout 60000
+bun test packages/core/test/shared-current-operation.test.ts packages/core/test/shared-current-write.test.ts packages/core/test/shared-current-source-write.test.ts packages/core/test/shared-current-upload.test.ts --timeout 60000
 bun test packages/core/test/request-budget.test.ts packages/core/test/request-engine-contract.test.ts packages/core/test/shared-current-invocation.test.ts --timeout 60000
 ~~~
 
@@ -32,6 +32,7 @@ bun test packages/core/test/request-budget.test.ts packages/core/test/request-en
 6. 本地只剩 retiring 且下一个输入不同，只有当前 owner ready、逻辑 Operation 完整查询为空、已知物理 Record 明确在 Trash 时才能清这个本地残留。404、权限失败或半页不是完成依据。
 7. 预算耗尽和取消停止派发；同 invocation 的重试、排队、上传、下载共用预算。不得开另一个 runtime 写 attention。新一次明确 resume 才有新预算。
 8. 附件上传用当前 owner、operation、path 和 wire hash 定位，未知分配不重复 CREATE；multipart 按已观察的完整前缀继续。最终从实际附件下载并核原件，缓存旧 bytes 不能证明新附件正确。
+9. Source 父意图冻结 declaration/commit/affected IDs；实际 Source 属性、ready 或 child append 已接受却丢响应时，对外恢复必须指回原父 operation。第一个子任务中断后用原 apply input --resume，核已完成子只读验证、未开始子继续、人工 native 改动保留、父子 pending 全清。父游标自身响应丢失也按当前 payload 对账；不新增历史或另一套恢复 runner。
 
 Notion 属性和本地 mutex 不提供跨机器 CAS。当前结果满足意图并不恢复原请求的网络 ACK，也不需要永久证据链。
 

@@ -177,12 +177,22 @@ function fixture() {
     })
   const session: CurrentOperationSession = {
     operation_id: "current-import-1",
-    skill_id: "skill",
-    skillPageId: skillPage,
+    intent: {
+      operation_id: "current-import-1",
+      input_sha256: "a".repeat(64),
+      owner: { kind: "skill", id: "skill" },
+    },
+    owner: { kind: "skill", id: "skill" },
+    sourceProgress: undefined,
+    markSourceChildStarted: () => Effect.void,
+    markSourceChildComplete: () => Effect.void,
+    ownerPageId: skillPage,
+    assertCurrent: () => Effect.succeed({}),
+    activate: () => Effect.void,
     get pendingActionKey() {
       return pending?.key
     },
-    bindSkill: () => Effect.void,
+    bindOwner: () => Effect.void,
     dispatch,
   }
   const run: typeof base.run = (effect) =>
@@ -265,7 +275,11 @@ describe("finite current original uploads", () => {
     expect(f.actions.slice(0, 2).every((action) => action.key.startsWith(prefix))).toBe(true)
     const otherOwner = await f.run(
       currentUploadActionPrefix({
-        session: { operation_id: f.session.operation_id, skillPageId: id(777) },
+        session: {
+          operation_id: f.session.operation_id,
+          ownerPageId: id(777),
+          owner: f.session.owner,
+        },
         path: "guide.txt",
         prepared: first,
       }),

@@ -434,9 +434,9 @@ function member(
           member_key: key,
         })
       const skill: PortableSkill & { readonly kind: "skill" } = {
-        ...metadata,
         kind: "skill",
         name: input.mapping[key] ?? metadata.name,
+        description: metadata.description,
         main: stored?.main ?? "SKILL.md",
         files: stored?.files ?? adapted,
       }

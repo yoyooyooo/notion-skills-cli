@@ -19,6 +19,7 @@ type ImportOptions = {
   readonly skillId: string
   readonly name?: string
   readonly description?: string
+  readonly native?: readonly string[]
 }
 
 function currentImportInput(
@@ -115,7 +116,33 @@ export function prepareCurrentImport(input: string, options: ImportOptions) {
           ? error
           : fail("INVALID_ARCHIVE", "Could not decode the complete current import input."),
     })
-    const plan = yield* prepareCurrentSkillWrite(admitted)
+    const native = yield* Effect.try({
+      try: () => {
+        const paths = new Set(admitted.files.map((file) => file.path)),
+          selected = new Set<string>()
+        for (const path of options.native ?? []) {
+          if (!paths.has(path) || selected.has(path))
+            throw fail(
+              "INVALID_ARGUMENT",
+              "Each --native value must select one distinct exact path in the admitted file tree.",
+              { path, reason: selected.has(path) ? "duplicate" : "unknown_path" },
+            )
+          selected.add(path)
+        }
+        return selected
+      },
+      catch: (error) =>
+        error instanceof SkillsError
+          ? error
+          : fail("INVALID_ARGUMENT", "Native selection must contain exact input paths."),
+    })
+    const plan = yield* prepareCurrentSkillWrite({
+      ...admitted,
+      files: admitted.files.map((file) => ({
+        ...file,
+        authority: { kind: native.has(file.path) ? "native" : "resource" },
+      })),
+    })
     return {
       plan,
       input: {
@@ -161,6 +188,12 @@ export const currentImportCommand = defineCommand(
     description: singleton(
       "description",
       "Override Notion metadata while preserving original file bytes",
+    ),
+    native: Flag.String("native").pipe(
+      Flag.atLeast(0),
+      Flag.withDescription(
+        "Make this exact final input path editable in Notion; repeat for multiple files. Unselected paths remain resources. Native bodies require UTF-8/LF text and exact Notion round-trip; a single Markdown input uses SKILL.md.",
+      ),
     ),
     maxRequests: budgetFlag(
       "max-requests",
@@ -219,6 +252,7 @@ export const currentImportCommand = defineCommand(
         skillId: options.skillId,
         name: Option.getOrUndefined(options.name),
         description: Option.getOrUndefined(options.description),
+        native: options.native,
       })
       const invocation = yield* withCurrentInvocationBudget(
         Effect.gen(function* () {
@@ -252,7 +286,7 @@ export const currentImportCommand = defineCommand(
 ).pipe(
   withConstraints([exclusiveFlags(["resume", "dryRun"])]),
   Command.withDescription(
-    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. Every input file becomes a Notion resource with exact bytes, executable mode and a readable page projection. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md. Retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input and --operation ID --resume; no name matching or historical recovery.",
+    "Import one complete current Skill under an exact stable Skill ID. Existing Notion-owned supporting files absent from the input are removed by the current writer. By default files remain exact Notion resources with readable projections. Repeat --native PATH to select exact final input paths whose UTF-8/LF Markdown bodies become editable in Notion; frontmatter and mode remain in Content. Native selection never converts source bytes or falls back to resource after a failed round-trip. Complete import replaces native bodies too, including later Notion edits; review the current content before importing. If the existing main or any supporting file has Source authority, dry-run and apply reject with CURRENT_SOURCE_MANAGEMENT_REQUIRED, even for an unchanged export. Source removal, takeover, renaming or rebinding requires coordinated contribution management. A plain directory or ZIP requires root SKILL.md; a current portable manifest may select Skill, Router or Prompt with its canonical entrypoint. Portable Members/Requires use same-library stable Skill identities: omitted preserves, [] clears, an array replaces the complete set. Changed sets are limited to 100 targets per field; larger unchanged sets are retained. Changed Requires are checked for dependency cycles before writing. Only an explicitly selected single Markdown file is renamed to SKILL.md; select it with --native SKILL.md. Unknown or duplicate native paths, retained projections, unknown fields, symbolic links and oversized input are rejected locally. --dry-run only inspects. --max-requests, --max-bytes and --timeout (ms) bound all remote work. Resume with the same input, native paths and --operation ID --resume; no name matching or historical recovery.",
   ),
   Command.withExamples([
     {
@@ -264,6 +298,11 @@ export const currentImportCommand = defineCommand(
       command:
         "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --operation IMPORT_ID",
       description: "Apply the complete original file tree under one current operation",
+    },
+    {
+      command:
+        "ntn-skills ctl library import ./skill --entry LIBRARY_ID --skill-id my-skill --native SKILL.md --native references/guide.md --dry-run",
+      description: "Review editable native bodies alongside exact resource files",
     },
     {
       command:

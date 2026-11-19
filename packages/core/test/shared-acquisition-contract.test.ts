@@ -328,6 +328,7 @@ function sourceFixture() {
       revision: rich(ids["Last Revision"]!, revision),
       enabled: checkbox(ids.Enabled!, true),
       status: select(ids.Status!, "ready"),
+      operation: rich(ids.Operation!, ""),
       skills: relation(ids.Skills!),
       records: relation(ids.Records!),
     },

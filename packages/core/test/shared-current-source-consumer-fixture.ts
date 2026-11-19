@@ -75,6 +75,7 @@ export async function currentSourceConsumerFixture() {
       "Last Revision": rich(sourceFields["Last Revision"]!, revision),
       Enabled: { id: sourceFields.Enabled, type: "checkbox", checkbox: true },
       Status: { id: sourceFields.Status, type: "select", select: { name: "ready" } },
+      Operation: rich(sourceFields.Operation!, ""),
     }
     return revision
   }

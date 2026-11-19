@@ -17,7 +17,7 @@ const pendingPayload = {
   record_id: "operation-current-" + "c".repeat(64),
   intent: {
     operation_id: "current-write",
-    skill_id: "sqlite-current",
+    owner: { kind: "skill", id: "sqlite-current" },
     input_sha256: "d".repeat(64),
   },
   lifecycle: { phase: "active", record_page_id: "00000000-0000-4000-8000-000000000001" },

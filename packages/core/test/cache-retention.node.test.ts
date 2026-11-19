@@ -28,7 +28,11 @@ const pending = {
   scope: "c".repeat(64),
   library_id: "library-current",
   record_id: "current-cache-test",
-  intent: { operation_id: "cache-test", skill_id: "one", input_sha256: payload.sha256 },
+  intent: {
+    operation_id: "cache-test",
+    owner: { kind: "skill", id: "one" },
+    input_sha256: payload.sha256,
+  },
   lifecycle: { phase: "active", record_page_id: "00000000-0000-4000-8000-000000000009" },
 }
 const core = new URL("../src/", import.meta.url).pathname

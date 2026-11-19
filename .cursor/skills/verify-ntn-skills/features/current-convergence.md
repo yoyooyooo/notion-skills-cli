@@ -18,7 +18,7 @@ AH-516 对账 Pro 所有本地内容及曝光/更新边，AH-498 汇总完成。
 ## 开始前
 
 1. 确定已有授权的 exact entry、target、候选代码/包与实际范围。沿原授权推进；验证不扩大远端作用范围。
-2. 当前 reader、Profile 和完整本地 import 已接通。Source refresh、跨对象治理、一次性实库转换及全量投影仍分开验收。按实际状态报告。
+2. 当前 reader、Profile、resource/native 完整 import 与 Git Source apply/refresh 已接通。跨对象治理、一次性实库转换、全量投影及 Source 接管/移除仍分开验收。按实际范围报告。
 3. 先用受控 current tests 核普通读语义 0 写，再读真实 current 库。缺 Content 或 state 非 ready 不是让旧 reader 顶上的理由。
 4. 从仓库根复用隔离设施：
 
@@ -96,7 +96,7 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 
 ## 4. 有限当前恢复
 
-沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整当前 import 通过同一 operation 内核写入原件、Files 和正文，核完整树后清理意图。用当前 writer、operation 和 upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
+沿 [operation recovery](../../verify-notion-operation-recovery/SKILL.md)。完整 import 与 Source apply/refresh 共用 operation 内核。Source 父 intent 只保留冻结输入和有限目标游标；子任务完成后清理，全部核对后 Source ready。用现有 writer/source-write/operation/upload tests 覆盖实际变更，不用旧 ACK/review 模型替代。
 
 用一个管理意图覆盖 CREATE/完整 append/归档响应丢失、部分文件已成、进程重启或预算暂停。重传同一完整输入，只继续能按当前事实确认的动作。部分 append 未收敛时保持 pending，不盲目重放；这个拒绝结果不能说成自动恢复通过。ready 不依赖历史证明，半树也不能靠改状态通过。
 

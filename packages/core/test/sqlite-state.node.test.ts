@@ -23,7 +23,11 @@ const pending = {
   scope: "a".repeat(64),
   library_id: "library-current",
   record_id: "operation-current",
-  intent: { operation_id: "current-test", skill_id: "retained", input_sha256: "b".repeat(64) },
+  intent: {
+    operation_id: "current-test",
+    owner: { kind: "skill", id: "retained" },
+    input_sha256: "b".repeat(64),
+  },
 }
 function currentRecord({ skillId, name }: { skillId: string; name: string }): SharedSkillRecord {
   const id = sharedSkillId("library-current", skillId)

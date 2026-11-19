@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { Effect } from "effect"
 import { trashPath } from "../src/local-locks.ts"
 import { exportPortable, snapshotPortable } from "../src/export.ts"
-import { property, text } from "../src/model.ts"
+import { fail, property, text } from "../src/model.ts"
 import { queryCurrentSkillIndex } from "../src/shared-current-index.ts"
 import { loadCurrentSharedResourceContent } from "../src/shared-current-resource.ts"
 import {
@@ -13,11 +13,17 @@ import {
   validateCurrentSharedSourceContent,
 } from "../src/shared-current-source.ts"
 import {
+  authorizeCoordinatedSkillWrite,
+  inspectCoordinatedSkillWrite,
+  prepareCoordinatedSkillWrite,
+  writeCoordinatedSkill,
   inspectCurrentSkillWrite,
   prepareCurrentSkillWrite,
   writeCurrentSkill,
   type CurrentSkillWriteInput,
 } from "../src/shared-current-write.ts"
+import { withCurrentOperation } from "../src/shared-current-operation.ts"
+import { Notion } from "../src/notion.ts"
 import { openSharedSnapshot } from "../src/shared-snapshot.ts"
 import { sha256 } from "../src/store.ts"
 import { currentWriteFixture, id, library, testBytes } from "./shared-current-write-fixture.ts"
@@ -108,6 +114,7 @@ async function sourceInput(
       [fields["Last Revision"]!]: rich(fields["Last Revision"]!, revision),
       [fields.Enabled!]: { id: fields.Enabled, type: "checkbox", checkbox: true },
       [fields.Status!]: { id: fields.Status, type: "select", select: { name: "ready" } },
+      [fields.Operation!]: rich(fields.Operation!, ""),
     },
   })
   return input([
@@ -122,6 +129,69 @@ async function sourceInput(
     })),
     { path: "references/local.md", file_id: "local-child", bytes: testBytes("# Local note\n") },
   ])
+}
+
+async function coordinatedFixture() {
+  const f = currentWriteFixture(parent),
+    original = await sourceInput(f)
+  const prepared = await f.run(
+    prepareCurrentSkillWrite({
+      ...original,
+      files: original.files.map((file) =>
+        file.path === "references/local.md"
+          ? { ...file, authority: { kind: "native" as const } }
+          : file,
+      ),
+    }),
+  )
+  const written = await f.run(
+    writeCurrentSkill(library, { plan: prepared, operation_id: "seed-coordination" }),
+  )
+  const index = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const files: Parameters<typeof prepareCoordinatedSkillWrite>[0]["files"][number][] = []
+  const manifest = []
+  let revision = ""
+  for (const file of original.files) {
+    if (file.authority?.kind !== "source") continue
+    if (file.file_id === undefined) throw new Error("Expected stable Source file")
+    files.push({
+      kind: "write",
+      file: { ...file, file_id: file.file_id, authority: file.authority },
+    })
+    revision = file.authority.revision
+    manifest.push({
+      path: file.authority.source_path,
+      sha256: await f.run(sha256(file.bytes)),
+      bytes: file.bytes.byteLength,
+      mode: file.mode ?? ("100644" as const),
+    })
+  }
+  const local = index.files.find((file) => file.file_id === "local-child")!
+  const { file_id, page_id, skill_page_id, path, content } = local
+  files.push({ kind: "preserve", binding: { file_id, page_id, skill_page_id, path, content } })
+  const input = {
+    skill_id: "example",
+    kind: "skill" as const,
+    source: { source_id: "provider", revision },
+    create: { name: "New defaults only", description: "Do not replace existing metadata." },
+    files,
+  }
+  const plan = await f.run(prepareCoordinatedSkillWrite(input))
+  const source = { ...input.source, page_id: sourcePage, manifest }
+  const intent = {
+    operation_id: "parent-guard",
+    owner: { kind: "source" as const, id: "provider" },
+    input_sha256: "b".repeat(64),
+    source_input: {
+      configuration_sha256: "c".repeat(64),
+      resolved_commit: "a".repeat(40),
+      affected_skill_ids: ["example"],
+    },
+  }
+  const childOperation =
+    "source-target-" + (await f.run(sha256(JSON.stringify([intent.operation_id, plan.skill_id]))))
+  f.clearCalls()
+  return { f, input, plan, source, intent, childOperation, index, local }
 }
 
 describe("complete current Skill writer", () => {
@@ -719,5 +789,215 @@ describe("complete current Skill writer", () => {
     await f.run(writeCurrentSkill(library, { plan, operation_id: "repaired-noop" }))
     expect(f.mutations()).toEqual([])
     expect(f.uploads.size).toBe(3)
+  })
+  test("a Source authorization binds its parent, target fingerprint and exact child operation", async () => {
+    const { f, input, plan, source, intent, childOperation } = await coordinatedFixture()
+    await f.run(
+      withCurrentOperation(library, {
+        intent,
+        ownerPageId: sourcePage,
+        run: (session) =>
+          Effect.gen(function* () {
+            const grant = yield* authorizeCoordinatedSkillWrite(session, {
+              plan,
+              source,
+              assertSourceCurrent: () => Effect.void,
+            })
+            const changed = yield* prepareCoordinatedSkillWrite({
+              ...input,
+              create: { ...input.create, description: "Different selected input." },
+            })
+            for (const [selected, operation_id, authorization] of [
+              [plan, "different-child-operation", grant],
+              [changed, childOperation, grant],
+              [
+                plan,
+                childOperation,
+                { ...grant, source: { ...grant.source, source_id: "different-source" } },
+              ],
+            ] as const) {
+              const result = yield* writeCoordinatedSkill(library, {
+                plan: selected,
+                operation_id,
+                authorization,
+              }).pipe(Effect.result)
+              expect(result).toMatchObject({
+                _tag: "Failure",
+                failure: { code: "CURRENT_WRITE_CONFLICT" },
+              })
+            }
+            const foreign = yield* authorizeCoordinatedSkillWrite(session, {
+              plan,
+              source: { ...source, source_id: "different-source" },
+              assertSourceCurrent: () => Effect.void,
+            }).pipe(Effect.result)
+            expect(foreign).toMatchObject({
+              _tag: "Failure",
+              failure: { code: "CURRENT_WRITE_CONFLICT" },
+            })
+            yield* session.markSourceChildComplete(plan.skill_id)
+          }),
+        verify: () => Effect.void,
+      }),
+    )
+    expect(f.mutations()).toEqual([])
+    expect(
+      [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
+    ).toEqual([])
+  })
+
+  test("an unresolved Source action cannot authorize or create a child intent", async () => {
+    const { f, plan, source, intent } = await coordinatedFixture()
+    f.failNext({ kind: "source-properties", outcome: "absent" })
+    await expect(
+      f.run(
+        withCurrentOperation(library, {
+          intent,
+          ownerPageId: sourcePage,
+          run: (session) =>
+            Effect.gen(function* () {
+              const original = yield* session
+                .dispatch({
+                  key: "source:change",
+                  replay: "idempotent",
+                  request: {
+                    path: `v1/pages/${sourcePage}`,
+                    body: {
+                      properties: {
+                        [library.sources.property_ids.Enabled!]: { checkbox: false },
+                        [library.sources.property_ids.Content!]: {
+                          rich_text: property(
+                            property(f.pages.get(sourcePage)?.properties)[
+                              library.sources.property_ids.Content!
+                            ],
+                          ).rich_text,
+                        },
+                      },
+                    },
+                    options: { method: "PATCH" },
+                  },
+                  observe: () => Effect.succeed({ status: "missing" as const }),
+                  acknowledge: () => Effect.void,
+                })
+                .pipe(Effect.result)
+              expect(original._tag).toBe("Failure")
+              const before = f.calls.length
+              const authorized = yield* authorizeCoordinatedSkillWrite(session, {
+                plan,
+                source,
+                assertSourceCurrent: () => Effect.void,
+              }).pipe(Effect.result)
+              expect(authorized).toMatchObject({
+                _tag: "Failure",
+                failure: { code: "CURRENT_OPERATION_PENDING" },
+              })
+              expect(f.calls.length).toBe(before)
+              if (original._tag === "Failure") return yield* Effect.fail(original.failure)
+              return yield* Effect.fail(fail("TEST_UNEXPECTED", "Expected lost Source response."))
+            }),
+          verify: () => Effect.void,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+      details: { operation_id: intent.operation_id, source_id: "provider" },
+    })
+    expect(
+      f
+        .table("records")
+        .filter(
+          (row) =>
+            text(
+              property(property(row.properties)[library.records.property_ids["Entity ID"]!])
+                .rich_text,
+            ) === "current-skill:example",
+        ),
+    ).toEqual([])
+    expect(f.table("skills")[0]?.properties).toMatchObject({
+      [library.skills.property_ids["Current State"]!]: { select: { name: "ready" } },
+    })
+  })
+
+  test("a preserved descriptor changed between preflight and the Skill lock is rejected before activation", async () => {
+    const { f, plan, source, intent, childOperation, local } = await coordinatedFixture()
+    let fileReads = 0
+    f.rewrite((path, response) => {
+      if (
+        path.startsWith(`v1/data_sources/${library.files.data_source_id}/query`) &&
+        ++fileReads === 2
+      ) {
+        const row = f.pages.get(local.page_id)!
+        const field = property(property(row.properties)[library.files.property_ids.Content!])
+        field.rich_text = [
+          { type: "text", text: { content: JSON.stringify({ ...local.content, mode: "100755" }) } },
+        ]
+      }
+      return response
+    })
+    await expect(
+      f.run(
+        withCurrentOperation(library, {
+          intent,
+          ownerPageId: sourcePage,
+          run: (session) =>
+            Effect.gen(function* () {
+              const authorization = yield* authorizeCoordinatedSkillWrite(session, {
+                plan,
+                source,
+                assertSourceCurrent: () => Effect.void,
+              })
+              return yield* writeCoordinatedSkill(library, {
+                plan,
+                operation_id: childOperation,
+                authorization,
+              })
+            }),
+          verify: () => Effect.void,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "CURRENT_WRITE_CONFLICT" })
+    expect(fileReads).toBe(2)
+    expect(f.mutations()).toEqual([])
+    expect(
+      [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
+    ).toEqual([])
+  })
+
+  test("Source inspection rejects relative and native references from a preserved author body to a removed File", async () => {
+    const { f, input, source, local, index } = await coordinatedFixture()
+    const removed = index.files.find((file) => file.file_id === "source-child")!
+    const plan = await f.run(
+      prepareCoordinatedSkillWrite({
+        ...input,
+        files: input.files.filter(
+          (file) => file.kind !== "write" || file.file.file_id !== removed.file_id,
+        ),
+      }),
+    )
+    for (const link of [
+      "[Source](source.md)",
+      `<mention url="https://www.notion.so/${removed.page_id.replaceAll("-", "")}">Source</mention>`,
+    ]) {
+      const authored = `# Local author\n\n${link}\n`
+      await f.run(
+        Effect.gen(function* () {
+          yield* (yield* Notion).request(
+            `v1/pages/${local.page_id}/markdown`,
+            {
+              type: "replace_content",
+              replace_content: { new_str: authored },
+              markdown_version: "v2",
+            },
+            { method: "PATCH" },
+          )
+        }),
+      )
+      f.clearCalls()
+      await expect(
+        f.run(inspectCoordinatedSkillWrite(library, plan, source)),
+      ).rejects.toMatchObject({ code: "SHARED_REFERENCE_BROKEN" })
+      expect(f.mutations()).toEqual([])
+      expect(f.pages.get(removed.page_id)?.in_trash).not.toBe(true)
+    }
   })
 })

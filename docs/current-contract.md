@@ -17,7 +17,7 @@ cutover blockers.
 | --- | --- | --- | --- |
 | Skills | Stable Skill/Router/Prompt identity, management metadata, enablement, default discovery, main-file binding, Members and Requires | Human metadata edits and the current management kernel; identity and relationship changes use that kernel | Source-backed main-body rendering and supporting-file navigation |
 | Files | Every supporting file, stable File ID, exact Skill owner, logical path, authority and current content locator | Current management kernel; native author bodies remain directly editable in Notion | Full source/resource text rendering, attachments and reading status |
-| Sources | Current provider, location, selected revision, selected members, include/exclude/mapping/patch rules and each target's contribution | Current source-management kernel | Last-check result and reciprocal navigation |
+| Sources | Current provider, location, selected revision, selected members, target mappings and file exclusions | Current source-management kernel | Last-check result and reciprocal navigation |
 | Records | Necessary current exact-byte objects, one current Profile configuration, and unfinished management intents | The corresponding resource, Profile or operation writer | Human labels; no content history |
 
 Every current registered library has all four tables, registered Members/Requires,
@@ -114,8 +114,10 @@ writes only disposable local cache data, never an adoption event or remote objec
 
 For native text, specify normalization and round-trip behavior. Do not claim to
 preserve arbitrary source bytes through a native representation that changes them.
-If native transport cannot preserve the selected text, retain its **current** exact
-resource and render the entire readable text. Import never silently normalizes a
+If native transport cannot preserve the selected text, use its **current** exact
+resource and render the entire readable text. Native import refuses invalid input
+or leaves an unconfirmed round trip unfinished; it never silently changes authority.
+Import never silently normalizes a
 BOM, line ending or executable mode. An explicitly requested conversion is a new
 current edit, not a reason to keep both past and present content.
 
@@ -132,22 +134,28 @@ selected Source and may overwrite current customization; it does not create a
 prior-pin backup. Removing a Source preserves Notion-owned files and clears or
 reports any now-unusable restore-follow binding.
 
-These contribution changes require a coordinated Source management writer, which
-is not implemented yet. `Sources.Selection.exclude` selects member roots; it is
-not a per-file exclusion mechanism. The current import therefore refuses these
-changes rather than leaving a contribution that could recreate the removed file.
+Current Source apply/refresh coordinates file mapping and exclusions through
+`Sources.Contributions`. `Sources.Selection.exclude` selects member roots; it is
+not a per-file exclusion mechanism. Takeover, restore-follow and Source removal
+still need explicit management entrypoints. Complete local import refuses to
+replace Source-owned files or bypass their contributions.
 
 ### Sources
 
 The current Source contains provider/location, a concrete selected revision,
-selection and contribution mapping, exclusions and declared transformations.
-`Ref` may express the desired upstream branch/tag; the current `Revision` is the
+member selection, contribution mapping and exact file exclusions.
+`Ref` may express the desired upstream branch/tag; `Last Revision` identifies the
 resolved content selection. Ordinary reads do not advance it. A source check may
 report a newer revision; only authorized management applies it.
 
 Reuse existing Provider, Location, Ref, Selection, Options, Enabled and Policy
 bindings where their meanings fit. `Last Revision` becomes the current selected
 revision rather than a history cursor. Last Checked/Result are informational.
+`Contributions` holds the complete member-to-stable-Skill assignments, mount paths,
+exact member-relative mappings and persistent file exclusions. It is separate
+from the provider plan: changing an exclusion does not change that plan's hash.
+`Status` and `Operation` use the same ready/empty or applying/attention/one-intent
+state as Skills. Ordinary Source acquisition rejects unfinished or invalid state.
 Source definitions, member roots and contributions must be reconstructible from
 Notion with an empty local cache. Machine paths and credentials remain local
 bindings; a missing binding fails explicitly and does not authorize uploading
@@ -358,11 +366,15 @@ replay, and completion clears finite local pending state. The public route is
 `ctl library profile`, singular.
 
 The registered CLI exposes current consumption, library initialization,
-inspection, complete current import, Profiles and local configuration. Import is
+inspection, complete current import, Source apply/refresh, Profiles and local configuration. Import is
 `ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
 replacement, and `--operation ID --resume` supplies the same input to its finite
 intent. Default import keeps exact originals as Notion resources and renders
-complete text. It preserves the physical Skill, stable retained File IDs and
+complete text. Repeated `--native PATH` selects editable UTF-8/LF bodies with exact
+stored frontmatter and mode; that selection must remain identical on resume.
+Actual native round-trip verification precedes ready. Reimport replaces the chosen
+native content, so a local copy does not automatically merge a later Notion edit.
+Import preserves the physical Skill, stable retained File IDs and
 unspecified enablement, default-context and authored relations. Removed Notion-owned
 supporting Files and unreferenced owned resources are trashed after current content
 is checked.
@@ -374,8 +386,33 @@ or source path. It uses the already-read current directory. The same File identi
 logical path and Source binding may select a new revision, hash, size or mode only
 when those values match the current Source manifest. Preserving Source files while
 editing other Notion-owned files is supported by the core writer. The public import
-CLI makes every input file a resource, so it currently rejects targets containing
-any Source file, including an unchanged exported tree.
+CLI chooses resource or explicit native authority, so it rejects targets containing
+any Source file, including an unchanged exported tree. Coordinated Source writes
+use typed preserved bindings for other current files; preserved body bytes do not
+become part of the frozen Source input or get rewritten during resume.
+
+`ctl library source apply INPUT --entry DB` creates or replaces a complete current
+Source declaration. `source refresh SOURCE_ID --entry DB` reads that declaration
+from Notion and enters the same writer. Both support dry-run and explicit
+same-operation resume. The admitted provider is regular Git content from a GitHub
+HTTPS repository with manual or pinned policy. Every selected member has explicit
+stable target assignments; unsupported transformations/providers are refused.
+Current mappings preserve File identity on rename, exclusions prevent resurrection,
+and unrelated Source/native/resource contributions remain current. Removing the
+sole main is refused; this entry does not implicitly take over authority.
+
+Source-owned binaries retain Source authority while exposing a verified current
+original attachment. Source manifest resources belong to that Source and are
+collected after the current manifest changes. The full effective tree, native
+references and exact target scope are checked before completion.
+
+One finite parent intent freezes configuration, Git commit and affected Skill IDs.
+Its mutable next-target cursor distinguishes completed, in-flight and untouched
+children. Child intents use the same operation kernel, exact parent authorization
+and selected input. Recovery can finish untouched later targets without reopening
+completed children for new mutations. All targets are verified before Source ready;
+parent/child operation records are then retired. An entirely equal invocation
+does not allocate any remote intent.
 
 Portable Members/Requires round-trip as complete current stable-ref sets. Omitted
 fields preserve, [] clears, and lists replace. Prompt relations are invalid. The
@@ -391,6 +428,9 @@ Import has one default budget of 1000 HTTP attempts, 512 MiB payload bytes and
 writers share the allowance, exhaustion stops new dispatch, and a fresh explicit
 resume gets a fresh budget. Actual response bytes may overshoot a byte limit at
 the boundary of an already admitted response; the result reports that cost.
+Source uses that same budget for its Notion and managed HTTP work. Git subprocess
+acquisition shares the deadline and has file bounds and object-byte metrics; its
+internal HTTP count and wire bytes are not measured by those request/byte limits.
 
 The writer opens an operation only when an actual change is needed. A complete
 no-op performs zero semantic remote writes. One mutable action marker supports
@@ -398,15 +438,15 @@ interruption without a permanent ACK log. Completed state becomes ready before
 the operation is retired. Unknown CREATE or append is never repeated from absence;
 an observed partial append still requires attention and is not automatic recovery.
 
-Old create/apply/write/replace/adopt, Source refresh, sync, archive, graph-release,
-repair and migration command families are not active authoring routes. Source
-refresh and cross-object governance still need their current implementations.
+Old create/apply/write/replace/adopt, sync, archive, graph-release, repair and
+migration command families are not active authoring routes. Source apply/refresh
+uses the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.
 
 The production data and Pi installation are **not switched yet**. Remaining work:
 
-- Complete current Source writing, cross-object governance and the remaining
-  finite-recovery cases: AH-504, AH-507, AH-505.
+- Complete explicit takeover/restore-follow, Source disable/removal, cross-object
+  governance and real-scope finite recovery: AH-504, AH-507, AH-505.
 - Populate every Git-only supporting Files row and render full readable text or
   original usable attachments. A complete provider manifest does not establish
   that all required Notion reading pages exist: AH-501.

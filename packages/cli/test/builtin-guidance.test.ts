@@ -50,7 +50,7 @@ test("executable builtin examples stay within the public current command surface
     "prepare",
     "resolve",
   ])
-  const library = new Set(["init", "inspect", "files", "import", "profile"])
+  const library = new Set(["init", "inspect", "files", "import", "source", "profile"])
   let examples = 0
   for (const skill of builtins) {
     for (const file of skill.portable.files) {
@@ -65,7 +65,10 @@ test("executable builtin examples stay within the public current command surface
           expect(roots.has(words[0]!), label).toBe(true)
           if (words[0] === "ctl") {
             expect(controls.has(words[1]!), label).toBe(true)
-            if (words[1] === "library") expect(library.has(words[2]!), label).toBe(true)
+            if (words[1] === "library") {
+              expect(library.has(words[2]!), label).toBe(true)
+              if (words[2] === "source") expect(["apply", "refresh"], label).toContain(words[3]!)
+            }
           }
           expect(words, label).not.toContain("--authoring")
           expect(words, label).not.toContain("--read-only")

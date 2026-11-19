@@ -8,7 +8,7 @@ import { trashPath } from "../src/local-locks.ts"
 import { fail, property, SkillsError, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import {
-  withCurrentSkillOperation,
+  withCurrentOperation,
   type CurrentOperationSession,
 } from "../src/shared-current-operation.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
@@ -20,7 +20,7 @@ const rich = (value: string) => [{ type: "text", text: { content: value } }]
 const library: SharedLibrary = structuredClone(currentLibrary)
 const intent = {
   operation_id: "write-example-1",
-  skill_id: "example",
+  owner: { kind: "skill" as const, id: "example" },
   input_sha256: "a".repeat(64),
 }
 const ownerId = id(20),
@@ -69,7 +69,7 @@ function fixture(options: { skillExists?: boolean } = {}) {
     parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
     in_trash: false,
     properties: fields({
-      "skill-id": { rich_text: rich(intent.skill_id) },
+      "skill-id": { rich_text: rich(intent.owner.id) },
       state: { select: { name: "ready" } },
       operation: { rich_text: [] },
     }),
@@ -239,9 +239,9 @@ function fixture(options: { skillExists?: boolean } = {}) {
       foreignOwner?: boolean
     } = {},
   ) =>
-    withCurrentSkillOperation(library, {
+    withCurrentOperation(library, {
       intent: options.nextIntent ?? intent,
-      skillPageId: ownerId,
+      ownerPageId: ownerId,
       mode: options.mode,
       run: (session) =>
         Effect.gen(function* () {
@@ -305,9 +305,9 @@ describe("one finite current write", () => {
   })
   test("new Skill creation binds its current intent before any content write", async () => {
     const f = fixture({ skillExists: false })
-    const result = withCurrentSkillOperation(library, {
+    const result = withCurrentOperation(library, {
       intent,
-      skillPageId: null,
+      ownerPageId: null,
       run: (session) =>
         Effect.gen(function* () {
           const page = yield* session.dispatch<string, never>({
@@ -319,7 +319,7 @@ describe("one finite current write", () => {
               body: {
                 parent: { type: "data_source_id", data_source_id: library.skills.data_source_id },
                 properties: {
-                  "skill-id": { rich_text: rich(intent.skill_id) },
+                  "skill-id": { rich_text: rich(intent.owner.id) },
                   state: { select: { name: "applying" } },
                   operation: { rich_text: rich(intent.operation_id) },
                 },
@@ -333,8 +333,8 @@ describe("one finite current write", () => {
               ),
             acknowledge: () => Effect.succeed(ownerId),
           })
-          yield* session.bindSkill(page)
-          expect(session.skillPageId).toBe(ownerId)
+          yield* session.bindOwner(page)
+          expect(session.ownerPageId).toBe(ownerId)
           expect(session.pendingActionKey).toBeUndefined()
           return yield* f.action(session)
         }),
@@ -353,9 +353,9 @@ describe("one finite current write", () => {
   test("a pending multipart request binds the part number as well as its exact bytes", async () => {
     const f = fixture()
     const attempt = (partNumber: number, mode: "apply" | "resume") =>
-      withCurrentSkillOperation(library, {
+      withCurrentOperation(library, {
         intent,
-        skillPageId: ownerId,
+        ownerPageId: ownerId,
         mode,
         run: (session) =>
           session.dispatch({
@@ -535,28 +535,39 @@ describe("one finite current write", () => {
     expect(f.json.size).toBe(0)
     expect(f.activeRecords()).toHaveLength(0)
   })
-  test("an empty Operation query plus inaccessible retired page cannot erase the prior locator", async () => {
-    const f = fixture()
-    f.fault({ target: "retirement", outcome: "visible" })
-    await f.run(f.apply().pipe(Effect.result))
-    f.records.clear()
-    const before = f.calls.filter(
-      (call) => call.method !== "GET" && !call.path.includes("/query"),
-    ).length
-    const result = await f.run(
-      f
-        .apply({
-          nextIntent: { ...intent, operation_id: "write-next", input_sha256: "b".repeat(64) },
-          values: ["first", "second"],
-        })
-        .pipe(Effect.result),
-    )
-    expect(result._tag).toBe("Failure")
-    if (result._tag === "Failure") expect(result.failure.code).toBe("NOT_FOUND")
-    expect(
-      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
-    ).toHaveLength(before)
-    expect(f.json.size).toBe(1)
-    expect(f.values).toEqual(["first"])
-  })
+  test.each(["same-input", "new-input"] as const)(
+    "an empty Operation query plus inaccessible retired page cannot erase the %s locator",
+    async (request) => {
+      const f = fixture()
+      f.fault({ target: "retirement", outcome: "visible" })
+      await f.run(f.apply().pipe(Effect.result))
+      f.records.clear()
+      const before = f.calls.filter(
+        (call) => call.method !== "GET" && !call.path.includes("/query"),
+      ).length
+      const result = await f.run(
+        f
+          .apply(
+            request === "same-input"
+              ? { mode: "resume" }
+              : {
+                  nextIntent: {
+                    ...intent,
+                    operation_id: "write-next",
+                    input_sha256: "b".repeat(64),
+                  },
+                  values: ["first", "second"],
+                },
+          )
+          .pipe(Effect.result),
+      )
+      expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") expect(result.failure.code).toBe("NOT_FOUND")
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toHaveLength(before)
+      expect(f.json.size).toBe(1)
+      expect(f.values).toEqual(["first"])
+    },
+  )
 })

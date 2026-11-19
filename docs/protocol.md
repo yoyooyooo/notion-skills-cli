@@ -40,6 +40,7 @@ The root schema is shallow; query an exact command path for its full definition.
 | `export` | Complete selected bytes in a local ZIP or directory |
 | `ctl library init/inspect/files` | Current descriptor, initialization, or selected-owner directory |
 | `ctl library import` | Complete current Skill replacement, dry run, or same-operation resume |
+| `ctl library source apply/refresh` | Explicit Git contribution changes and same-parent finite recovery |
 | `ctl library profile` | Current shared Profile rules and machine selection |
 | `ctl config/cache/builtin/doctor` | Local configuration, cache, packaged Skills, or scoped diagnostics |
 | `ctl views/prepare/resolve` | View discovery, graph preparation, or relative-reference resolution |
@@ -74,11 +75,14 @@ The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 13
 
 The default representation is exact Notion resource content with a complete reading projection.
 An existing Notion-owned supporting file omitted from the input is removed.
-The CLI imports every input file as a resource. A target containing any Source
+Repeat `--native PATH` for editable UTF-8/LF text with exact frontmatter and mode.
+Unknown or noncanonical native paths are rejected locally; the selection is part
+of the input fingerprint and must match on resume. A target containing any Source
 main or supporting file returns `CURRENT_SOURCE_MANAGEMENT_REQUIRED` in both dry-run
 and apply, even when the exported bytes are unchanged. Source removal, takeover,
-renaming and rebinding need coordinated contribution management; this import does
-not provide it. Reading or exporting the Source target remains available.
+renaming and rebinding need coordinated contribution management; use Source
+apply/refresh for its supported mapping and exclusion changes. Takeover and
+Source removal remain separate work. Reading or exporting the target remains available.
 Portable version 2 supports the canonical main path for its content kind.
 Portable relations carry same-library unpinned `shared_skill` refs. Omitted Members
 or Requires preserves that field, `[]` clears it, and an array replaces the full set.
@@ -97,6 +101,23 @@ Apply returns success only with a ready current tree. Its current result include
 Skill/page identities, input hash, files and relation summary. Brokers use this
 binding to invalidate only the corresponding directory after mutation.
 These commands do not create content versions.
+
+`ctl library source apply INPUT --entry ENTRY` accepts one complete bounded JSON
+`{version:1,definition,contributions}`. `source refresh SOURCE_ID --entry ENTRY`
+reads that declaration from the current Source and uses the same coordinator.
+Only regular Git files from GitHub HTTPS with manual/pinned policy are supported.
+Each selected member needs explicit stable targets. Contribution mapping/exclude
+uses exact member-relative file paths; Selection filtering chooses members.
+
+Source dry-run reads the provider and affected current directories, with zero
+semantic writes. Source success returns the same `library` triple, `state: ready`,
+Source/page identities, affected Skill IDs and child results. Resume uses the
+original operation, complete declaration and frozen commit; a changed visible
+Notion declaration cannot replace that original input. Parent progress is a
+finite target cursor, removed with the operation on completion. Preserved native
+bodies and unrelated contributors are not rewritten. Both paths share the same
+HTTP budget; Git subprocess HTTP/wire bytes are unmetered, while deadline and
+file limits still apply. See [authoring](shared-authoring.md#apply-or-refresh-a-git-source).
 
 Profiles have one current Record and a conflict-detection fingerprint.
 `profile set` replaces the full rule set and requires `--name`, `--enabled`, and `--expect`.
@@ -225,7 +246,7 @@ Uninstalling the package does not remove these directories.
 | `AUTH_REQUIRED`, `ACCESS_DENIED` | Check the selected credential and exact library access |
 | `CURRENT_SCHEMA_REQUIRED` | Complete the explicit current-content cutover |
 | `STATE_CUTOVER_REQUIRED` | Use a fresh `NTN_SKILLS_HOME` for the current SQLite schema; use a fresh `NTN_SKILLS_CONFIG_HOME` if the configuration still contains retired bindings. Preserve the old roots for explicit content migration. |
-| `CURRENT_OPERATION_PENDING`, `CURRENT_SKILL_NOT_READY` | Inspect the original current operation; resume only its same input |
+| `CURRENT_OPERATION_PENDING`, `CURRENT_SKILL_NOT_READY`, `CURRENT_SOURCE_NOT_READY` | Inspect the original current operation; resume only its same input |
 | `CURRENT_IMPORT_UNSUPPORTED`, `CURRENT_IMPORT_ENTRYPOINT` | Correct the local input contract before retrying |
 | `CURRENT_SOURCE_MANAGEMENT_REQUIRED` | Preserve the existing Source File ID, logical path and Source binding. Contribution/exclusion management is required before removing, taking over, renaming or rebinding it; omitting the file or assigning a new ID cannot bypass this boundary. |
 | `INPUT_CHANGED`, `INVALID_ARCHIVE`, `ARCHIVE_TOO_LARGE` | Fix the admitted local tree, archive, or size |
@@ -235,6 +256,7 @@ Uninstalling the package does not remove these directories.
 | `RATE_LIMITED`, `NOTION_QUEUE_FULL`, `NOTION_SCHEDULER_UNAVAILABLE` | Inspect the request or scheduler failure without changing content authority |
 | `STATE_RUNTIME_UNSUPPORTED` | Run the supported Node runtime before opening local state |
 
-Source refresh, Pro-wide census and batch migration, and governance across related objects remain incomplete.
+Source takeover/restore-follow and disable/removal, Pro-wide census and batch
+migration, and governance across related objects remain incomplete.
 The selected-owner index does not certify global orphan cleanup.
 Local CLI and SDK checks do not certify the live Notion tables or Pi delivery.

@@ -56,7 +56,10 @@ test("missing or unready current Source metadata fails before bodies, providers 
     f.bind("SKILL.md")
     if (fault === "missing") f.visible(false)
     const fields = property(f.source.properties)
-    if (fault === "pending") property(property(fields.Status).select).name = "attention"
+    if (fault === "pending") {
+      property(property(fields.Status).select).name = "attention"
+      fields.Operation = rich(String(property(fields.Operation).id), "source-operation")
+    }
     if (fault === "revision")
       fields["Last Revision"] = rich(String(property(fields["Last Revision"]).id), "f".repeat(64))
     if (fault === "content") delete fields.Content

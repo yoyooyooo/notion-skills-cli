@@ -1,13 +1,13 @@
 ---
 name: ntn-skills-sync
-description: Manage current shared Profiles, View defaults and freshness rules, and inspect the boundary between current Source content and native Notion content. Use for library discovery policy and Source-related requests; source refresh and content mutation require the current writer.
-compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and an existing Notion connection. Profile writes require access to the selected library's Records.
+description: Apply or refresh declared Git Source contributions while preserving native content, and manage current Profiles, View defaults and freshness. Use for Source onboarding, refresh, mapping/exclusion changes and library discovery policy.
+compatibility: Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and exact library access. Source management requires Notion Insert and Update; Profiles require Records access.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-sync
 ---
 
-# Manage current Profile rules
+# Manage current Sources and Profiles
 
 Use one exact library entry and stable Profile ID. Profile rules live on one
 current Records page; a local binding stores only that library/Profile selection.
@@ -63,13 +63,31 @@ their existence is separate from successful byte acquisition. An edit to a
 generated body does not automatically transfer authority. Native ownership is
 explicit and cannot be inferred from whether its bytes match upstream.
 
-The current public CLI does not expose Source creation, onboarding, refresh,
-binding or removal. For those requests, inspect the selected Skill's current
-file index and prepare the intended scope, then report the writer capability
-needed. Do not claim provider access means a member was published or readable.
-See [current Source boundaries](references/synchronization.md#current-source-boundaries).
+Use the complete {version:1,definition,contributions} declaration in
+[Source input](references/synchronization.md#a-source-management-request):
+
+```bash
+ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --dry-run
+ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATION_ID
+ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
+```
+
+Supported input is regular Git content from GitHub HTTPS, manual or pinned.
+Assign every selected member to explicit stable Skill IDs. Contribution mapping
+and exclude select exact member-relative file paths; Selection excludes members.
+Mappings preserve retained File identity. Collisions and removal of the sole main
+are refused. Native bodies, resources, other Sources and existing Skill metadata
+are preserved. Source binaries expose a current original without changing authority.
+
+Resume original INPUT_JSON with --operation OPERATION_ID --resume. The parent
+intent freezes the commit and tracks only unfinished target progress. Use original
+apply input when pending configuration differs from Notion; refresh cannot infer
+it. Completion clears parent/child intents. Equal input is zero semantic writes.
+HTTP limits share one invocation; Git subprocess HTTP/wire bytes are unmetered,
+though its deadline and file bounds apply. Takeover, restore-follow and Source
+disable/removal remain separate work; do not invoke retired routes.
 
 Content inspection and complete local import belong to
-`notion/ntn-skills-maintain`. That import transfers the selected complete tree to
-Notion resources; it is not Source refresh. Consuming a current workflow needs no local sync
+`notion/ntn-skills-maintain`. That import selects resource or native authority
+and refuses Source-owned targets. Consuming a current workflow needs no local sync
 binding. Reading or downloading a script does not authorize executing it.

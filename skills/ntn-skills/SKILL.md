@@ -1,6 +1,6 @@
 ---
 name: ntn-skills
-description: Discover and use current workflows from the Notion Skill library. Select from metadata, read the chosen workflow, and resolve supporting files from its returned selection. Route library inspection and content management to ntn-skills-maintain, and shared Profile rules to ntn-skills-sync.
+description: Discover and use current workflows from the Notion Skill library. Select from metadata, read the chosen workflow, and resolve supporting files from its returned selection. Route content management to ntn-skills-maintain, and Source apply/refresh or Profile rules to ntn-skills-sync.
 compatibility: Requires Node.js 22.22.3+ within 22.x or 24.20.0+ and ntn-skills. Online consumption needs the existing Notion connection and Read content access; ordinary reads never write Notion. A native host tool requires its own adapter.
 metadata:
   publisher: ntn-skills
@@ -95,7 +95,8 @@ do not grant access or activate workflows.
 | Inspect current ownership, missing content or an incomplete operation | `notion/ntn-skills-maintain` |
 | Import or replace a complete local Skill tree | `notion/ntn-skills-maintain`; use its current import and resume procedure |
 | Complete portable relationship changes | `notion/ntn-skills-maintain`; export, edit same-library refs and import the complete tree |
-| Partial file edits or Source refresh | `notion/ntn-skills-maintain`; these public writer capabilities remain unavailable |
+| Git Source apply/refresh or contribution mapping/exclusion | `notion/ntn-skills-sync` |
+| Partial file edits or Source takeover/removal | `notion/ntn-skills-maintain`; these entrypoints remain unavailable |
 | Shared Profile/View/freshness rules | `notion/ntn-skills-sync` |
 | Package-supplied Skills | `ctl builtin list/read/status/install/update`; see [commands](references/commands.md#local-builtins) |
 | Discovery, authentication or resource failure | [Integration and diagnosis](references/integration.md#diagnose-discovery-and-loading) |

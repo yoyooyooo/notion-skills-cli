@@ -17,12 +17,13 @@
 | 导出完整当前选择到本地 | `export` |
 | 检查当前文件权威、归属和在途状态 | `ctl library files` |
 | 导入或替换一个完整本地文件树 | `ctl library import`，支持 `--dry-run` 和原意图 `--resume` |
+| 应用或刷新明确的 Git 贡献 | `ctl library source apply`、`ctl library source refresh` |
 | 创建或检查当前四表结构 | `ctl library init`、`ctl library inspect` |
 | 管理共享当前 Profile | `ctl library profile` |
 
 普通 list/read/use/资源读取/export 对 Notion 的语义写入为零。直接修改 native 作者正文后，读取会取得当前内容，不创建 adoption event，也不保留远端内容版本。Source/resource 的生成阅读页即使被编辑，也不会自动取得作者权威。
 
-当前导入会写入精确 resource 原件并生成完整阅读投影。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；从库查询、上传到投影和清理共用一次有界 HTTP 预算。Source 刷新和局部文件更新仍待完成。旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
+当前导入默认写入精确 resource 原件并生成完整阅读投影；重复 `--native PATH` 可将所选文本交给可编辑的 Notion 正文。Portable Members/Requires 支持导出再导入，核完整目标与依赖关系；从库查询、上传到投影和清理共用一次有界 HTTP 预算。Source apply/refresh 协调明确的 Git 成员与目标，保留 native 正文及无关贡献。局部文件更新、权威接管仍需后续管理能力。旧 create/apply/write/replace/adopt、sync、snapshot/archive 和 repair 命令已退出当前 CLI。真实库的数据转换、全文覆盖、旧对象清理和 Pi 安装仍需分别完成。
 
 ## 安装
 
@@ -72,7 +73,7 @@ ntn-skills export SNAPSHOT_ID_FROM_READ --output ./selected-skill
 | --- | --- |
 | Skills | 身份、发现元数据、启停、Members/Requires、主文 Content、当前操作状态 |
 | Files | 每个子文件的一行，精确 owner、稳定 File ID、路径和 Content |
-| Sources | 稳定 Source 定义与完整当前选定计划 |
+| Sources | 稳定 Source 定义、完整当前选定计划、目标贡献和在途操作 |
 | Records | 当前精确资源、唯一当前 Profile、未完成管理意图 |
 
 `Content` 明确选择 native 作者 Markdown、Notion 管理的精确资源，或当前 Source 文件。主文在 Skills，其他文件在 Files。当前完整导入会生成全文阅读投影，图片和二进制提供可用原件。真实库的覆盖、迁移和剩余能力见[当前合同](docs/current-contract.md)。
@@ -102,7 +103,7 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-导入保留精确原件并生成完整阅读页，同一稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
+导入保留精确 resource 原件并生成完整阅读页。要在 Notion 编辑正文，可加 `--native SKILL.md --native references/guide.md`，所选正文须为 UTF-8/LF。相同稳定身份对应完整文件树替换。先检查 dry-run 中的移除范围；相同输入再次执行为零写入。未完成时用原输入、原 native 选择加 `--operation OPERATION_ID --resume`。具体步骤见[当前管理](docs/shared-authoring.md)。
 
 Profile 将当前 View 和 freshness 规则保存在一个稳定 Record：
 
@@ -116,7 +117,7 @@ ntn-skills list --profile PROFILE_ID --database ENTRY_DATABASE_ID
 
 ## Agent 接入
 
-通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责设置、完整当前导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile 与 Source 权威规则，不再教旧来源写入命令。
+通过 builtin catalog 读取 `notion/ntn-skills` 获取消费指引。`notion/ntn-skills-maintain` 负责设置、完整当前导入与有限恢复；`notion/ntn-skills-sync` 负责当前 Profile、明确的 Git Source apply/refresh 和混合树保留规则。
 
 Pi 是首个日用宿主，Notion discovery/use/资源读取使用配对 SDK。OMP/Tern 适配延期，但它们目录中的本地 Skill 内容仍属于 Pro 迁移盘点。
 

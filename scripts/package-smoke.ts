@@ -111,7 +111,13 @@ assert.deepEqual(library.schema.commands.map((command: { name: string }) => comm
   "init",
   "inspect",
   "profile",
+  "source",
 ])
+const sourceSchema = await cli(["schema", "ctl", "library", "source"])
+assert.deepEqual(
+  sourceSchema.schema.commands.map((command: { name: string }) => command.name).sort(),
+  ["apply", "refresh"],
+)
 for (const path of [
   ["create"],
   ["adopt"],
@@ -251,6 +257,8 @@ try {
     currentLibrary.skills.database_id,
     "--skill-id",
     "installed-current",
+    "--native",
+    "scripts/run.sh",
   ]
   const inspected = await cli([...importArgs, "--dry-run"])
   assert.equal(inspected.dry_run, true)
@@ -297,7 +305,7 @@ try {
   const liveRecords = source.notion.records.filter(
     (row: { in_trash?: boolean }) => row.in_trash !== true,
   )
-  assert.equal(liveRecords.length, currentFiles.length)
+  assert.equal(liveRecords.length, currentFiles.length - 1)
   assert.ok(
     liveRecords.every(
       (row: { properties: Record<string, { select?: { name: string } }> }) =>
@@ -305,6 +313,17 @@ try {
     ),
   )
   for (const row of [...source.notion.skills, ...source.notion.files]) {
+    const path =
+      row.properties[currentLibrary.files.property_ids.Path!]?.rich_text?.[0]?.text?.content
+    if (path === "scripts/run.sh") {
+      const content = JSON.parse(
+        row.properties[currentLibrary.files.property_ids.Content!].rich_text[0].text.content,
+      )
+      assert.equal(content.kind, "native")
+      assert.equal(content.mode, "100755")
+      assert.equal(source.notion.bodies[row.id], currentFiles[2]!.content)
+      continue
+    }
     assert.ok(
       source.notion.blocks[row.id]?.length > 0,
       "Every imported page must contain its complete reading projection",
@@ -408,6 +427,7 @@ try {
     budget_preflight_attempts: limited.error.details.budget.attempts,
     exact_export: true,
     executable_mode: true,
+    explicit_native_path: "scripts/run.sh",
     requests: source.requests.length,
   }
 } finally {

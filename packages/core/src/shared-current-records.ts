@@ -14,11 +14,11 @@ export type CurrentSharedOperationRecord = {
   readonly record_id: string
   readonly operation_id: string
   readonly entity_id: string
-  readonly skill_page_id: string | null
+  readonly owner: CurrentResourceOwner | null
   readonly hash: string
   readonly payload: SharedJson
 }
-export type CurrentSharedResourceRecord = Omit<CurrentSharedOperationRecord, "skill_page_id"> & {
+export type CurrentSharedResourceRecord = Omit<CurrentSharedOperationRecord, "owner"> & {
   readonly kind: "resource"
   readonly owner: CurrentResourceOwner
 }
@@ -152,7 +152,7 @@ function decodeRecord(library: SharedLibrary, input: unknown) {
       const canonical = envelope(body.operation_id, body.payload)
       const skill = relation(row, binding(library, "Skill"))
       const source = relation(row, binding(library, "Origin"))
-      if (skill.length + source.length > 1 || (kind === "operation" && source.length !== 0))
+      if (skill.length + source.length > 1)
         throw invalid("A current Record cannot claim several owner kinds.")
       const hash = rich(row, binding(library, "Hash"))
       if (!/^[a-f0-9]{64}$/u.test(hash)) throw invalid("Current Record hash is missing.")
@@ -239,7 +239,12 @@ function operationRecord(
     record_id: row.record_id,
     operation_id: row.operation_id,
     entity_id: row.entity_id,
-    skill_page_id: row.skill[0] ?? null,
+    owner:
+      row.skill[0] !== undefined
+        ? { kind: "skill" as const, page_id: row.skill[0] }
+        : row.source[0] !== undefined
+          ? { kind: "source" as const, page_id: row.source[0] }
+          : null,
     hash: row.hash,
     payload: row.payload,
   }
@@ -292,7 +297,7 @@ export function writeCurrentSharedOperationRecord(
     readonly recordId: string
     readonly operationId: string
     readonly entityId: string
-    readonly skillPageId: string | null
+    readonly owner: CurrentResourceOwner | null
     readonly payload: unknown
   },
 ) {
@@ -307,10 +312,16 @@ export function writeCurrentSharedOperationRecord(
           input.current.operation_id !== input.operationId)
       )
         throw fail("CURRENT_OPERATION_CONFLICT", "Cannot replace a different current operation.")
-      return {
-        ...envelope(input.operationId, input.payload),
-        owner: input.skillPageId === null ? null : uuid(input.skillPageId),
-      }
+      if (input.owner !== null && input.owner.kind !== "skill" && input.owner.kind !== "source")
+        throw invalid("A current Operation needs an exact Skill or Source owner.")
+      const owner =
+        input.owner === null ? null : { kind: input.owner.kind, page_id: uuid(input.owner.page_id) }
+      if (
+        input.current?.owner != null &&
+        canonicalSharedJson(input.current.owner) !== canonicalSharedJson(owner)
+      )
+        throw fail("CURRENT_OPERATION_CONFLICT", "A bound current operation cannot change owner.")
+      return { ...envelope(input.operationId, input.payload), owner }
     })
     const hash = yield* sha256(prepared.encoded),
       rich = (value: string) => ({ rich_text: currentRecordText(value) })
@@ -322,9 +333,11 @@ export function writeCurrentSharedOperationRecord(
       [binding(library, "Hash")]: rich(hash),
       [binding(library, "Payload")]: rich(prepared.encoded),
       [binding(library, "Skill")]: {
-        relation: prepared.owner === null ? [] : [{ id: prepared.owner }],
+        relation: prepared.owner?.kind === "skill" ? [{ id: prepared.owner.page_id }] : [],
       },
-      [binding(library, "Origin")]: { relation: [] },
+      [binding(library, "Origin")]: {
+        relation: prepared.owner?.kind === "source" ? [{ id: prepared.owner.page_id }] : [],
+      },
     }
     const raw = yield* (yield* Notion).request(
       input.current === null ? "v1/pages" : `v1/pages/${uuid(input.current.page_id)}`,
@@ -350,7 +363,7 @@ export function writeCurrentSharedOperationRecord(
       row.entity_id !== input.entityId ||
       row.operation_id !== input.operationId ||
       row.hash !== hash ||
-      (row.skill[0] ?? null) !== prepared.owner ||
+      canonicalSharedJson(operationRecord(row).owner) !== canonicalSharedJson(prepared.owner) ||
       (input.current !== null && row.page_id !== input.current.page_id)
     )
       return yield* Effect.fail(
@@ -475,10 +488,11 @@ export function listCurrentOwnedResourceRecords(
       const decoded = yield* decodeRecord(library, raw)
       if (decoded.kind === "operation") {
         if (
-          owner.kind !== "skill" ||
-          decoded.skill[0] !== uuid(owner.page_id) ||
+          (owner.kind === "skill" ? decoded.skill[0] : decoded.source[0]) !== uuid(owner.page_id) ||
           !/^operation-current-[a-f0-9]{64}$/u.test(decoded.record_id) ||
-          !/^current-skill:[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(decoded.entity_id) ||
+          !new RegExp(`^current-${owner.kind}:[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$`, "u").test(
+            decoded.entity_id,
+          ) ||
           ++operations > 1
         )
           return yield* Effect.fail(

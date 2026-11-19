@@ -134,6 +134,19 @@ function localContentPayload(hash: string, value: unknown): string {
   return JSON.stringify({ version: 1, sha256: hash, reason: "local_resource" })
 }
 
+/** Freeze the entire current intent without depending on an owner-specific DTO.
+ * JSON object key order has no meaning; ordered arrays remain part of the input. */
+function currentIntentIdentity(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(currentIntentIdentity)
+  if (value === null || typeof value !== "object") return value
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, item]) => [key, currentIntentIdentity(item)]),
+  )
+}
+
 /** Explicit shared-derived and dispatch domains; this is not an arbitrary JSON key store. */
 function sharedLocalCategory(key: string): SharedLocalCategory | undefined {
   const domain = sharedLocalDomains.find(
@@ -605,15 +618,12 @@ export function sqliteState(
                     const before = property(yield* parse(previous.payload)),
                       after = property(value)
                     const identity = (row: Record<string, unknown>) => {
-                      const intent = property(row.intent)
                       return JSON.stringify([
                         row.version,
                         row.scope,
                         row.library_id,
                         row.record_id,
-                        intent.operation_id,
-                        intent.skill_id,
-                        intent.input_sha256,
+                        currentIntentIdentity(row.intent),
                       ])
                     }
                     if (
@@ -799,7 +809,7 @@ export function sqliteState(
                       yield* sql`UPDATE cache_fences SET retired_through=generation WHERE scope=${saved.scope} AND identity=${saved.record_identity}`
                     }
                   }
-                  // Current Profile and Skill writes retain only unfinished intent.
+                  // Current Profile and Skill/Source writes retain only unfinished intent.
                   // Completion permits the next intent at the same address.
                   if (
                     key.startsWith("operations/shared-profile-pending/") ||

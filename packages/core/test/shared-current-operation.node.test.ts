@@ -14,7 +14,11 @@ const pending = {
   scope: "b".repeat(64),
   library_id: "current-test-library",
   record_id: "operation-current-" + "c".repeat(64),
-  intent: { operation_id: "current-test-one", skill_id: "example", input_sha256: "d".repeat(64) },
+  intent: {
+    operation_id: "current-test-one",
+    owner: { kind: "skill", id: "example" },
+    input_sha256: "d".repeat(64),
+  },
   lifecycle: { phase: "creating" },
 }
 
@@ -113,6 +117,60 @@ console.log(JSON.stringify({restored,preservedAfterCacheClear,current,before,ret
     expect(result.cleared).toBeNull()
     expect(result.reused.intent.operation_id).toBe("current-test-two")
     expect(result.final).toEqual([])
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
+  }
+}, 30_000)
+
+test("real Store freezes Source ownership and context plus the child parent binding across restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-source-intent-sqlite-"))
+  try {
+    const first = await run(
+      root,
+      `
+const childKey=key.replace('a'.repeat(64),'e'.repeat(64));
+const source={...pending,intent:{operation_id:'source-op',owner:{kind:'source',id:'provider'},input_sha256:'d'.repeat(64),source_input:{configuration_sha256:'1'.repeat(64),resolved_commit:'2'.repeat(40),affected_skill_ids:['example']}}};
+const sourceBinding={source_id:'provider',source_page_id:'00000000-0000-4000-8000-000000000003',operation_id:'source-op',input_sha256:'d'.repeat(64),authorization_sha256:'3'.repeat(64)};
+const child={...pending,intent:{...pending.intent,source:sourceBinding}};
+yield* store.writeJson(key,source);yield* store.writeJson(childKey,child);
+const rejected=[];
+for(const value of [
+ {...source,intent:{...source.intent,owner:{kind:'source',id:'other-provider'}}},
+ {...source,intent:{...source.intent,source_input:{...source.intent.source_input,resolved_commit:'4'.repeat(40)}}},
+ {...source,intent:{...source.intent,source_input:{...source.intent.source_input,affected_skill_ids:['other-target']}}},
+ {...source,scope:'5'.repeat(64)},
+]){const result=yield* store.writeJson(key,value).pipe(Effect.result);rejected.push(result._tag==='Failure'?result.failure.code:null);}
+const changedBinding=yield* store.writeJson(childKey,{...child,intent:{...child.intent,source:{...sourceBinding,operation_id:'another-parent'}}}).pipe(Effect.result);
+const reordered={...source,intent:{source_input:{affected_skill_ids:['example'],resolved_commit:'2'.repeat(40),configuration_sha256:'1'.repeat(64)},input_sha256:'d'.repeat(64),owner:{id:'provider',kind:'source'},operation_id:'source-op'},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000004'}};
+yield* store.writeJson(key,reordered);
+console.log(JSON.stringify({rejected,changedBinding:changedBinding._tag==='Failure'?changedBinding.failure.code:null,source:yield* store.readJson(key,CurrentWritePendingSchema),child:yield* store.readJson(childKey,CurrentWritePendingSchema)}));`,
+    )
+    expect(first.exit, first.stderr).toBe(0)
+    const initial = JSON.parse(first.stdout)
+    expect(initial.rejected).toEqual(Array.from({ length: 4 }, () => "STATE_CONFLICT"))
+    expect(initial.changedBinding).toBe("STATE_CONFLICT")
+    expect(initial.source).toMatchObject({
+      intent: {
+        owner: { kind: "source", id: "provider" },
+        input_sha256: "d".repeat(64),
+        source_input: { resolved_commit: "2".repeat(40), affected_skill_ids: ["example"] },
+      },
+      lifecycle: { phase: "active" },
+    })
+    const reopened = await run(
+      root,
+      `
+const childKey=key.replace('a'.repeat(64),'e'.repeat(64));
+yield* clearCache(undefined,{all:true});
+const source=yield* store.readJson(key,CurrentWritePendingSchema),child=yield* store.readJson(childKey,CurrentWritePendingSchema);
+yield* store.retireKeys([key,childKey]);
+console.log(JSON.stringify({source,child,remaining:yield* store.listKeys('operations/current-write-pending')}));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    const restored = JSON.parse(reopened.stdout)
+    expect(restored.source).toEqual(initial.source)
+    expect(restored.child).toEqual(initial.child)
+    expect(restored.remaining).toEqual([])
   } finally {
     if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
   }

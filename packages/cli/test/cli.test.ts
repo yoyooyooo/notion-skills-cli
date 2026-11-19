@@ -193,7 +193,11 @@ test("current management and export schemas contain no historical compatibility 
     ],
     [
       ["ctl", "library"],
-      ["files", "import", "init", "inspect", "profile"],
+      ["files", "import", "init", "inspect", "profile", "source"],
+    ],
+    [
+      ["ctl", "library", "source"],
+      ["apply", "refresh"],
     ],
     [
       ["ctl", "builtin"],
@@ -253,7 +257,7 @@ test("current management and export schemas contain no historical compatibility 
     ])
   for (const path of [
     ["create"],
-    ["ctl", "library", "source"],
+    ["ctl", "library", "source", "list"],
     ["ctl", "operation"],
     ["ctl", "repair"],
   ])
