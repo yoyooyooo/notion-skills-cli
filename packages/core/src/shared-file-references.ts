@@ -5,6 +5,7 @@ import type { CompositionFile } from "./shared-composition.ts"
 
 export type SharedFileReference = {
   readonly from: string
+  /** An empty target names the owning tree's root directory. */
   readonly target: string
   readonly href: string
   readonly line: number
@@ -205,10 +206,10 @@ function localTarget(from: string, raw: string): string | undefined {
     } else segments.push(segment)
   }
   const target = segments.join("/")
-  if (target === "" || normalizePath(target) !== target)
+  if (normalizePath(target) !== target)
     throw fail(
       "SHARED_REFERENCE_INVALID",
-      "A local Markdown reference has no canonical file target.",
+      "A local Markdown reference has no canonical relative target.",
       { from, href: raw },
     )
   return target
@@ -299,12 +300,14 @@ function scanSharedMarkdownReferences(
   // Notion v2 also renders native assets as explicit src/href attributes.
   for (const match of text.matchAll(
     /<(?:a|img|file|pdf|video|audio)\b[^>]*?\b(href|src)\s*=\s*(?:"([^"<>]*)"|'([^'<>]*)'|([^\s"'<>]+))[^>]*>/giu,
-  ))
+  )) {
+    if (escaped(text, match.index)) continue
     remember(
       match[2] ?? match[3] ?? match[4] ?? "",
       match.index,
       /^<img\b/iu.test(match[0]) ? "image" : "link",
     )
+  }
   return result
 }
 
@@ -378,7 +381,21 @@ export function assertSelectedSharedFileReferences(
     checkedFiles += 1
     references.push(...sharedMarkdownReferences(file.path, markdown))
   }
-  const missing = references.filter((reference) => !paths.has(reference.target))
+  // Directories are derived from real descendants in the complete tree, including
+  // files whose bytes are deferred. A link can navigate them; an image cannot.
+  const directories = new Set<string>([""])
+  for (const path of paths) {
+    const parts = path.split("/").slice(0, -1)
+    while (parts.length > 0) {
+      directories.add(parts.join("/"))
+      parts.pop()
+    }
+  }
+  const missing = references.filter(
+    (reference) =>
+      !paths.has(reference.target) &&
+      !(reference.kind === "link" && directories.has(reference.target)),
+  )
   if (missing.length !== 0)
     throw fail(
       "SHARED_REFERENCE_BROKEN",

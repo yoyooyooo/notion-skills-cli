@@ -261,6 +261,14 @@ multiple declared Sources. There is no singleton source or Git-only reader branc
 It has one accepted schema; old acquisition decoders are removed.
 Protocol numbers identify incompatible wire formats, not content versions.
 
+Validate local Markdown references against the complete current file tree. Ordinary
+links may identify files or real directories derived from those file paths, with
+or without a trailing slash; they do not require an invented README. Images must
+identify files. Missing targets, unsafe paths and relative paths escaping the
+Skill remain errors. Escaped HTML is literal authored text, not a link attribute.
+Cross-Skill targets require explicit stable references rather than guessing from
+adjacent display names.
+
 The public SDK is version 2. Hosts must require this exact SDK contract before
 using current consumption. Source management methods and the public `readOnly`
 input are removed; all consumption is already read only. Consumer and resource

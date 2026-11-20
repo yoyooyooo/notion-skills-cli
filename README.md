@@ -92,6 +92,11 @@ returned ref when names collide. Skills use `SKILL.md`, Routers use `ROUTER.md`,
 and explicit user Prompts use `PROMPT.md`. Requires loads mandatory dependencies;
 Members lists candidates without loading every member body.
 
+Markdown links can target files or directories present in the complete selected
+tree; a directory link does not require a README. Images must target files.
+Links to another Skill require an explicit stable ref; relative paths must stay
+within their owner. Use `files` to inspect a directory; `read` selects one file.
+
 A task selection keeps its complete file directory and selected bytes in local
 cache. It is not a remote history entry. Missing selected source/resource bytes can
 be acquired only while current owner, locator and source revision still match.

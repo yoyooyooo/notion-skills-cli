@@ -40,7 +40,9 @@ for contribution changes. Omitting or reidentifying a file cannot transfer it.
 Review removals and authority under the task's existing authorization. Omit a
 Notion-owned file only to remove it. Preview is not a completed content edit.
 Local Markdown links must resolve inside the complete input; fix inbound links
-before removing their target.
+before removing their target. Ordinary links may point to a real directory, with
+or without a trailing slash; images must point to files. A directory does not need
+a README. Use explicit stable references for targets in another Skill.
 
 ## Apply and verify
 

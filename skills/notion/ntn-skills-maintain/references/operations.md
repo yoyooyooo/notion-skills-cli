@@ -48,6 +48,9 @@ changes during reading, more than 10,000 entries or more than 128 MiB of origina
 One original is limited to 64 MiB. Keep raw bytes and regular executable modes.
 Local Markdown references are checked before Notion access. A deleted or moved
 target needs matching changes to its inbound links in the complete input.
+Ordinary links may target real directories derived from that input, including
+directories without a README. Images must target files. Escaped HTML remains
+literal text; missing targets and paths escaping the Skill still fail validation.
 
 Default resource import provides full readable text and usable opaque originals.
 Unsupported upload types use a deterministic single-original ZIP. Uploads larger

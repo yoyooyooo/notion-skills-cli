@@ -77,6 +77,8 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 
 实库通过必须完整枚举 Skills/Files/Sources/必要 Records、反向关系、页/附件/导航及分页，解释权限缺口。移交唯一字节后真实清退，再独立枚举并重复治理 no-op。Trash/归档是退役；隐藏列、superseded 标签或平行旧库不是完成。
 
+AH-513 的 [既有 native 转换入口](../../../../scripts/cutover-bootstrap-current.ts) 仅接纳完整冻结输入、已验证的四表字段、既有物理页及空 Origin/Members/Requires。三项空 Content/Current State/Operation 必须先登记真实 current intent，进入 applying 后逐页写 Content，重新核完整索引和作者正文才可 ready；不写正文。保持相同输入、operation 和独立 Store，以 resume 验证完成后零写。显式 additive descriptor 尚未发布时，正常库入口仍拒绝旧登记；单个 owner 成功不等于整库可用。资源、Source、非空关系和缺失 Files 另接现有当前原语；此临时入口连同 bootstrap seam 在 AH-517 删除。
+
 ## 3. 单轨与普通消费 0 写
 
 当前 snapshot tests 直接计数正常 reader 的语义写，并混入无关旧本地历史，确认读取不查询它。另核实际 list/read/use/files/export。query POST 是读；创建 Record、投影、adoption、恢复和清理都是写。

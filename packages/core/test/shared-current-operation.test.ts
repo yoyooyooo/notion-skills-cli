@@ -359,6 +359,145 @@ function fixture(options: { skillExists?: boolean } = {}) {
   }
 }
 describe("one finite current write", () => {
+  function bootstrapFixture() {
+    const f = fixture()
+    f.owner.properties = {
+      ...property(f.owner.properties),
+      ...fields({ state: { select: null }, content: { rich_text: [] } }),
+    }
+    let assertions = 0
+    const apply = (mode: "apply" | "resume" = "apply", hash = intent.input_sha256) =>
+      withCurrentOperation(library, {
+        intent: { ...intent, input_sha256: hash },
+        ownerPageId: ownerId,
+        mode,
+        bootstrapExistingOwner: {
+          assertUninitialized: () =>
+            Effect.sync(() => {
+              assertions++
+              expect(property(property(f.owner.properties).state).select).toBeNull()
+            }),
+        },
+        run: (session) =>
+          Effect.gen(function* () {
+            expect(property(property(f.owner.properties).state).select).toEqual({
+              name: "applying",
+            })
+            expect(f.activeRecords()).toHaveLength(1)
+            yield* session.assertCurrent()
+            return yield* f.action(session)
+          }),
+        verify: () => Effect.sync(() => expect(f.values).toEqual(["first"])),
+      })
+    return { ...f, bootstrap: apply, assertions: () => assertions }
+  }
+  test("AH-513 existing empty owner opens a real intent before applying and product work", async () => {
+    const f = bootstrapFixture()
+    expect(await f.run(f.bootstrap())).toBe("first")
+    expect(f.assertions()).toBeGreaterThanOrEqual(2)
+    const mutations = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    )
+    expect(mutations[0]?.path).toBe("v1/pages")
+    expect(property(property(mutations[0]?.body).parent).data_source_id).toBe(
+      library.records.data_source_id,
+    )
+    const applying = mutations.findIndex(
+      (call) => property(property(property(call.body).properties).state).select !== undefined,
+    )
+    expect(applying).toBeGreaterThan(0)
+    expect(mutations.findIndex((call) => call.path === productPath)).toBeGreaterThan(applying)
+    expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
+    expect(f.activeRecords()).toHaveLength(0)
+    expect(f.json.size).toBe(0)
+  })
+  test("AH-513 unknown intent CREATE is observed once or remains unresolved without replay", async () => {
+    for (const outcome of ["visible", "absent"] as const) {
+      const f = bootstrapFixture()
+      f.fault({ target: "record-create", outcome })
+      expect((await f.run(f.bootstrap().pipe(Effect.result)))._tag).toBe("Failure")
+      expect(f.productRequests()).toBe(0)
+      expect(property(property(f.owner.properties).state).select).toBeNull()
+      const result = await f.run(f.bootstrap("resume").pipe(Effect.result))
+      if (outcome === "visible") expect(result._tag).toBe("Success")
+      else {
+        expect(result._tag).toBe("Failure")
+        if (result._tag === "Failure")
+          expect(result.failure.code).toBe("CURRENT_OPERATION_UNRESOLVED")
+      }
+      expect(
+        f.calls.filter((call) => call.path === "v1/pages" && call.method === "POST"),
+      ).toHaveLength(1)
+    }
+  })
+  test("AH-513 budget stop resumes only the identical finite input", async () => {
+    const f = bootstrapFixture()
+    f.fault({
+      target: "product",
+      outcome: "absent",
+      error: fail("REQUEST_BUDGET_EXHAUSTED", "Stopped"),
+    })
+    const result = await f.run(f.bootstrap().pipe(Effect.result))
+    expect(result._tag).toBe("Failure")
+    expect(property(property(f.owner.properties).state).select).toEqual({ name: "applying" })
+    const changed = await f.run(f.bootstrap("resume", "b".repeat(64)).pipe(Effect.result))
+    expect(changed._tag).toBe("Failure")
+    if (changed._tag === "Failure") expect(changed.failure.code).toBe("CURRENT_OPERATION_PENDING")
+    expect(await f.run(f.bootstrap("resume"))).toBe("first")
+  })
+  test("AH-513 admission never turns corrupt headers or a failed baseline into empty owners", async () => {
+    const mutations = [
+      (f: ReturnType<typeof bootstrapFixture>) => {
+        delete property(f.owner.properties).content
+      },
+      (f: ReturnType<typeof bootstrapFixture>) => {
+        property(f.owner.properties).content = fields({
+          content: { rich_text: rich("unexpected") },
+        }).content
+      },
+      (f: ReturnType<typeof bootstrapFixture>) => {
+        property(f.owner.properties).operation = fields({
+          operation: { rich_text: rich("another") },
+        }).operation
+      },
+      (f: ReturnType<typeof bootstrapFixture>) => {
+        property(f.owner.properties).state = fields({
+          state: { select: { name: "unknown" } },
+        }).state
+      },
+      (f: ReturnType<typeof bootstrapFixture>) => {
+        f.owner.parent = { type: "data_source_id", data_source_id: id(999) }
+      },
+      (f: ReturnType<typeof bootstrapFixture>) => {
+        property(f.owner.properties)["skill-id"] = fields({
+          "skill-id": { rich_text: rich("different") },
+        })["skill-id"]
+      },
+    ]
+    for (const corrupt of mutations) {
+      const f = bootstrapFixture()
+      corrupt(f)
+      expect((await f.run(f.bootstrap().pipe(Effect.result)))._tag).toBe("Failure")
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toHaveLength(0)
+    }
+    const f = bootstrapFixture()
+    const result = await f.run(
+      withCurrentOperation(library, {
+        intent,
+        ownerPageId: ownerId,
+        bootstrapExistingOwner: {
+          assertUninitialized: () => Effect.fail(fail("BASELINE_CHANGED", "Authored body changed")),
+        },
+        run: (session) => f.action(session),
+        verify: () => Effect.void,
+      }).pipe(Effect.result),
+    )
+    expect(result._tag).toBe("Failure")
+    if (result._tag === "Failure") expect(result.failure.code).toBe("BASELINE_CHANGED")
+    expect(f.records.size).toBe(0)
+  })
   test("a complete current scope remains a true remote and local no-op", async () => {
     const f = fixture()
     f.values.push("first")

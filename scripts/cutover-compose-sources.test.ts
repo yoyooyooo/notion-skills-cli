@@ -9,11 +9,16 @@ import { composeCurrentSources, parseComposeArguments } from "./cutover-compose-
 const digest = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex")
 const uuid = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`
 
-function fixture() {
+function fixture(nativeUsesActiveCommit = false) {
   const directory = mkdtempSync(join(tmpdir(), "ah513-source-composition-"))
   const definitions = [
     { id: "origin-firecrawl", commit: "1", authority: "source", root: "skills/current" },
-    { id: "origin-firecrawl", commit: "2", authority: "native", root: "skills/authored" },
+    {
+      id: "origin-firecrawl",
+      commit: nativeUsesActiveCommit ? "1" : "2",
+      authority: "native",
+      root: "skills/authored",
+    },
     { id: "origin-lark", commit: "3", authority: "source", root: "skills/lark-old" },
     { id: "origin-lark", commit: "4", authority: "source", root: "skills/lark-new" },
     { id: "origin-pstack", commit: "5", authority: "source", root: "skills/statechart" },
@@ -55,7 +60,24 @@ function fixture() {
       },
     }
     return {
-      owner: { owner_page_id: owner, files: [file] },
+      owner: {
+        owner_page_id: owner,
+        skill_id: `fixture-${index}`,
+        name: `Fixture ${index}`,
+        entrypoint: "SKILL.md",
+        relations: { origin: [sourcePage] },
+        files: [file],
+      },
+      original: {
+        skill_page_id: owner,
+        commit,
+        source_path,
+        git_oid,
+        bytes: bytes.byteLength,
+        mode: "100644",
+        verified_sha256: sha256,
+        export_object_path: local,
+      },
       manifest: {
         skill_page_id: owner,
         record_page_id: record,
@@ -98,6 +120,33 @@ function fixture() {
   return {
     tree: { owners: rows.map((row) => row.owner) },
     manifests: { library_id: "library-test", git: rows.map((row) => row.manifest) },
+    management: {
+      sources: ["origin-firecrawl", "origin-lark", "origin-pstack", "origin-unused"].map(
+        (id, index) => {
+          const rich = (value: string) => ({
+            type: "rich_text",
+            rich_text: [{ plain_text: value }],
+          })
+          return {
+            object: "page",
+            id: uuid(100 + index),
+            properties: {
+              "Source ID": rich(id),
+              Name: { type: "title", title: [{ plain_text: id }] },
+              Description: rich(""),
+              Provider: { select: { name: "git" } },
+              Location: rich("https://github.com/example/skills"),
+              Ref: rich("main"),
+              Policy: { select: { name: "manual" } },
+              Enabled: { checkbox: true },
+              Options: rich(JSON.stringify({ version: 1, adapter: {}, settings: {} })),
+            },
+          }
+        },
+      ),
+      originals: { hits: rows.map((row) => row.original) },
+      recovered: { complete: true, fetched: [], failed: [] },
+    },
     preflight: {
       multi_commit_sources: ["origin-firecrawl", "origin-lark", "origin-pstack"].map(
         (source_id) => {
@@ -116,7 +165,12 @@ function fixture() {
 
 test("three audited Source groups retain active commits and exclude native-only history", async () => {
   const input = fixture()
-  const output = await composeCurrentSources(input.tree, input.manifests, input.preflight)
+  const output = await composeCurrentSources(
+    input.tree,
+    input.manifests,
+    input.preflight,
+    input.management,
+  )
   expect(output.source_count).toBe(3)
   expect(output.binding_count).toBe(5)
   expect(output.plans.map((plan) => plan.commits.map((commit) => commit.commit[0]))).toEqual([
@@ -138,6 +192,7 @@ test("three audited Source groups retain active commits and exclude native-only 
     { owners: [...input.tree.owners].reverse() },
     { ...input.manifests, git: [...input.manifests.git].reverse() },
     input.preflight,
+    input.management,
   )
   expect(reversed.plans).toEqual(output.plans)
 })
@@ -149,11 +204,12 @@ test("conflicting source paths from distinct fixed commits cannot overwrite one 
   file.source.source_path = "skills/lark-old/SKILL.md"
   input.manifests.git[3]!.source.root = file.source.root
   input.manifests.git[3]!.source.files[0]!.source_path = file.source.source_path
+  input.management.originals.hits[3]!.source_path = file.source.source_path
   const expected = input.preflight.multi_commit_sources[1]!.selected_commit_groups[1]!.owners[0]!
   expected.root = file.source.root
   expected.source_owned_files[0]!.source_path = file.source.source_path
   await expect(
-    composeCurrentSources(input.tree, input.manifests, input.preflight),
+    composeCurrentSources(input.tree, input.manifests, input.preflight, input.management),
   ).rejects.toMatchObject({ code: "COMPOSITION_SOURCE_COLLISION" })
 })
 
@@ -161,7 +217,7 @@ test("local original tampering is rejected before any plan is returned", async (
   const input = fixture()
   writeFileSync(input.tree.owners[0]!.files[0]!.local_bytes_path, "changed original\n")
   await expect(
-    composeCurrentSources(input.tree, input.manifests, input.preflight),
+    composeCurrentSources(input.tree, input.manifests, input.preflight, input.management),
   ).rejects.toMatchObject({ code: "ORIGINAL_BYTES_CONFLICT" })
 })
 
@@ -169,7 +225,7 @@ test("the audited current source set cannot silently drop a binding", async () =
   const input = fixture()
   input.tree.owners[2]!.files[0]!.authority = "native"
   await expect(
-    composeCurrentSources(input.tree, input.manifests, input.preflight),
+    composeCurrentSources(input.tree, input.manifests, input.preflight, input.management),
   ).rejects.toMatchObject({ code: "PREFLIGHT_BINDING_CONFLICT" })
 })
 
@@ -182,6 +238,12 @@ test("explicit output cannot overwrite an input or accept duplicate flags", () =
       "/manifests",
       "--preflight",
       "/preflight",
+      "--sources",
+      "/sources",
+      "--originals",
+      "/originals",
+      "--recovered",
+      "/recovered",
       "--output",
       "/tree",
     ]),
@@ -189,4 +251,43 @@ test("explicit output cannot overwrite an input or accept duplicate flags", () =
   expect(() => parseComposeArguments(["--tree", "/tree", "--tree", "/other"])).toThrow(
     "exactly once",
   )
+})
+
+test("native takeover retains complete active-commit originals only as excluded restore choices", async () => {
+  const input = fixture(true)
+  const output = await composeCurrentSources(
+    input.tree,
+    input.manifests,
+    input.preflight,
+    input.management,
+  )
+  const source = output.plans.find((plan) => plan.source_id === "origin-firecrawl")!
+  expect(source.manifest_files).toBe(2)
+  expect(source.bindings).toHaveLength(1)
+  expect(
+    source.declaration.contributions.find((entry) => entry.skill_id === "fixture-1")!.exclude,
+  ).toEqual(["SKILL.md"])
+  expect(source.restore_follow).toEqual([
+    expect.objectContaining({ owner_page_id: uuid(2), path: "SKILL.md", available_file: true }),
+  ])
+  expect(output.origin_changes).toEqual([
+    {
+      owner_page_id: uuid(2),
+      skill_id: "fixture-1",
+      before: [uuid(100)],
+      after: [],
+      remove: [uuid(100)],
+      add: [],
+    },
+  ])
+  expect(output.retire_sources.map((entry) => entry.source_id)).toEqual(["origin-unused"])
+  expect(output.apply_ready).toBe(false)
+})
+
+test("restore-follow originals are verified even when no current file consumes them", async () => {
+  const input = fixture(true)
+  writeFileSync(input.tree.owners[1]!.files[0]!.local_bytes_path, "changed excluded original\n")
+  await expect(
+    composeCurrentSources(input.tree, input.manifests, input.preflight, input.management),
+  ).rejects.toMatchObject({ code: "RESTORE_ORIGINAL_CHANGED" })
 })

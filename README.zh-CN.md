@@ -59,6 +59,8 @@ ntn-skills read RELATIVE_PATH --from PINNED_CONTAINING_FILE_REF
 
 完整目录查询要跟完实际 cursor。Search 或过滤 View 不能证明其他对象不存在；重名时选择实际返回的精确 ref。Skill、Router、Prompt 分别使用 `SKILL.md`、`ROUTER.md`、`PROMPT.md`。Requires 加载必要依赖，Members 提供候选，不读取所有成员正文。
 
+Markdown 链接可以指向完整所选文件树中的文件或真实目录；目录不必包含 README。图片必须指向文件。指向另一个 Skill 时使用明确的稳定 ref；相对路径必须留在当前 owner 内。使用 `files` 查看目录，使用 `read` 读取单个文件。
+
 任务选择在本地保留完整目录及已取得的字节，不是远端历史登记。选中 Source/resource 的字节缺失时，仅在当前 owner、locator、revision 仍吻合时继续按需获取。本地选择已丢失或当前绑定改变时要重新选择，不能复活远端旧 snapshot，也不能把后来的 native 正文塞回旧选择。
 
 对当前 target 使用 `--refresh` 做线上核验。有效 TTL 可以复用已有观察；元数据续期不延长独立的 native 正文完整核验期限。固定 ref 不会自动选择新版，`--offline` 必须具备所选本地字节。
