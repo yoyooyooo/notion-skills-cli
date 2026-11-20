@@ -7,6 +7,7 @@ import { readSkill, listSkill, readResources } from "../../cli/src/sdk.ts"
 import { LIBRARY_MARKER } from "../src/shared-library-model.ts"
 import {
   currentSnapshotFixture,
+  currentId,
   currentLibrary as library,
   currentSkillPage as skillPage,
 } from "./shared-current-fixture.ts"
@@ -146,6 +147,72 @@ function ready(result: Awaited<ReturnType<typeof readResources>>) {
   expect(result.files[0]?.content).toBe(new TextDecoder().decode(raw))
   expect(result.effects?.remote_writes).toBe("none")
 }
+
+test("public SDK rebuilt selections give scalar and batch lazy resources new fixed refs while old refs retain their owner", async () => {
+  await setup(async ({ source, input, options, other }) => {
+    const batchStore = await other("rebuilt-batch")
+    await idle(source)
+    const rebuilt = currentId(900)
+    source.notion.main = { ...structuredClone(source.notion.main), id: rebuilt }
+    source.notion.skills = [structuredClone(source.notion.main)]
+    source.notion.bodies[rebuilt] = source.notion.bodies[skillPage]
+    for (const file of source.notion.files) file.properties.Skill.relation = [{ id: rebuilt }]
+    source.notion.files[0].id = currentId(901)
+    for (const record of source.notion.records) record.properties.Skill.relation = [{ id: rebuilt }]
+    source.setPhase("rebuilt")
+    for (const [mode, context] of [
+      ["scalar", { input, options }],
+      ["batch", batchStore],
+    ] as const) {
+      const previous = await listSkill(context.input.refs[0]!, context.options)
+      const current = await readSkill(rebuilt, { ...context.options, refresh: true })
+      expect(current.record.id).toBe(previous.record.id)
+      expect(current.version_id).not.toBe(previous.version_id)
+      expect(current.snapshot_id).not.toBe(previous.snapshot_id)
+      const directory = new URL(current.ref)
+      directory.pathname = "/"
+      directory.searchParams.delete("file_id")
+      const listing = await listSkill(directory.toString(), context.options)
+      expect(listing.record.locator).toEqual(current.record.locator)
+      const selected = listing.files.find((file) => file.path === "scripts/read-only.sh")!
+      expect(selected.ref).not.toBe(context.input.refs[0])
+      await expect(
+        readFile(join(context.options.env.NTN_SKILLS_HOME, "objects", hash)),
+      ).rejects.toMatchObject({ code: "ENOENT" })
+      if (mode === "scalar") {
+        const result = await readSkill(selected.ref, context.options)
+        expect(result.record.locator).toEqual(current.record.locator)
+        expect("content" in result && result.content).toBe(new TextDecoder().decode(raw))
+      } else {
+        const result = await readResources(
+          { ...context.input, refs: [selected.ref] },
+          context.options,
+        )
+        ready(result)
+        if (result.status !== "ready") throw new Error(JSON.stringify(result))
+        expect(result.manifest.record.locator).toEqual(current.record.locator)
+      }
+      await idle(source)
+      const calls = source.requests.length
+      const old = await readSkill(context.input.refs[0]!, { ...context.options, offline: true })
+      expect(old.record.locator).toEqual(previous.record.locator)
+      expect(old.record.locator).not.toEqual(current.record.locator)
+      expect(source.requests).toHaveLength(calls)
+    }
+    expect(
+      source.requests.filter(
+        (request: { phase: string; path: string }) =>
+          request.phase === "rebuilt" && request.path === `/v1/pages/${skillPage}`,
+      ),
+    ).toEqual([])
+    expect(
+      source.requests.filter(
+        (request: { method: string; path: string }) =>
+          request.method !== "GET" && !request.path.endsWith("/query"),
+      ),
+    ).toEqual([])
+  })
+})
 
 test.each([0, 1200])(
   "two public SDK runtimes share only exact immutable bytes, and creator cancellation preserves the survivor (eligibility delay %i ms)",

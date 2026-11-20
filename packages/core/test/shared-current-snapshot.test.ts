@@ -10,6 +10,7 @@ import { openSharedSnapshot, SHARED_FULL_BODY_MAX_AGE_MS } from "../src/shared-s
 import {
   currentBytes,
   currentDigest,
+  currentId,
   currentLibrary,
   currentRich,
   currentScope,
@@ -107,6 +108,82 @@ describe("current tree consumption", () => {
     )
   })
 
+  test.each([false, true])(
+    "a recreated physical owner discards all old native observations (forceFull: %s)",
+    async (forceFull) => {
+      const f = currentSnapshotFixture({ fileCount: 1 })
+      const first = await f.open()
+      const retained = structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`))
+      const rebuilt = currentId(900)
+      f.main.id = rebuilt
+      f.files[0]!.properties.Skill.relation = [{ id: rebuilt }]
+      f.bodies.set(rebuilt, "# Rebuilt current main\n")
+      // Even an unchanged supporting File locator, descriptor and timestamp may
+      // not reuse a body observation made under the former physical owner.
+      f.bodies.set(f.files[0]!.id, "# Rebuilt current supporting text\n")
+      f.clearCalls()
+      const current = await f.open({ forceFull })
+      expect(current.record.id).toBe(first.record.id)
+      expect(current.record.locator).toMatchObject({ page_id: rebuilt })
+      expect(f.selectedBytes(current, "SKILL.md")).toEqual(
+        currentBytes(
+          "---\nname: authored-name\ndescription: Authored description.\n---\n\n# Rebuilt current main\n",
+        ),
+      )
+      expect(f.selectedBytes(current, "references/0.md")).toEqual(
+        currentBytes("# Rebuilt current supporting text\n"),
+      )
+      expect(f.bodyCalls()).toHaveLength(2)
+      expect(f.bodyCalls().some((call) => call.path.includes(currentSkillPage))).toBe(false)
+      const observation = [...f.json.entries()].find(([key]) =>
+        key.startsWith("cache/current-native-bodies/"),
+      )![1]
+      expect(observation).toMatchObject({ skill_page_id: rebuilt, skill_id: "demo" })
+      expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(retained)
+      expect(f.semanticWrites()).toHaveLength(0)
+    },
+  )
+
+  test.each(["scope", "library_id", "skill_id"] as const)(
+    "a recreated page still rejects a native observation from another %s",
+    async (field) => {
+      const f = currentSnapshotFixture({ fileCount: 0 })
+      await f.open()
+      const key = [...f.json.keys()].find((key) => key.startsWith("cache/current-native-bodies/"))!
+      property(f.json.get(key))[field] = "foreign-owner"
+      const corrupt = structuredClone(f.json.get(key))
+      f.main.id = currentId(900)
+      f.bodies.set(f.main.id, "# Rebuilt current main\n")
+      f.clearCalls()
+      await expect(f.open({ forceFull: true })).rejects.toMatchObject({ code: "STATE_CORRUPT" })
+      expect(f.json.get(key)).toEqual(corrupt)
+      expect(f.bodyCalls()).toHaveLength(0)
+      expect(f.semanticWrites()).toHaveLength(0)
+    },
+  )
+
+  test("rebuilding only a supporting File changes the fixed selection while retaining exact bytes", async () => {
+    const f = currentSnapshotFixture({ fileCount: 1 })
+    const first = await f.open()
+    const file = f.files[0]!
+    const original = f.bodies.get(file.id)!
+    file.id = currentId(900)
+    f.bodies.set(file.id, original)
+    f.clearCalls()
+    const rebuilt = await f.open()
+    expect(rebuilt.version_id).not.toBe(first.version_id)
+    expect(rebuilt.snapshot_id).not.toBe(first.snapshot_id)
+    expect(rebuilt.record.locator).toEqual(first.record.locator)
+    expect(rebuilt.files).toEqual(first.files)
+    expect(rebuilt.file_bindings).toContainEqual({
+      file_id: "support-0",
+      page_id: file.id,
+      path: "references/0.md",
+    })
+    expect(f.bodyCalls()).toHaveLength(1)
+    expect(f.semanticWrites()).toHaveLength(0)
+  })
+
   test("metadata renewals do not extend the independent full-body deadline", async () => {
     const f = currentSnapshotFixture({ fileCount: 0 })
     await f.open()
@@ -150,7 +227,18 @@ describe("current tree consumption", () => {
   })
 
   test("cached current metadata rejects a corrupted alias, entrypoint, owner or File binding without network access", async () => {
-    for (const changed of ["alias", "entrypoint", "owner", "file_id", "missing_binding"]) {
+    for (const changed of [
+      "alias",
+      "entrypoint",
+      "owner",
+      "unobserved_owner",
+      "library_id",
+      "skill_id",
+      "database_id",
+      "data_source_id",
+      "file_id",
+      "missing_binding",
+    ]) {
       const f = currentSnapshotFixture({ fileCount: 0 })
       const selected = await f.open()
       const key = [...f.json.keys()].find((key) => key.startsWith("cache/latest/"))!
@@ -159,6 +247,12 @@ describe("current tree consumption", () => {
       if (changed === "alias") record.alias = "forged-alias"
       else if (changed === "entrypoint") current.entrypoint = "missing.md"
       else if (changed === "owner") property(record.locator).page_id = currentLibrary.parent_page_id
+      else if (changed === "unobserved_owner") {
+        property(record.locator).page_id = currentLibrary.parent_page_id
+        if (!Array.isArray(current.file_bindings)) throw new Error("Missing fixture bindings.")
+        property(current.file_bindings[0]).page_id = currentLibrary.parent_page_id
+      } else if (["library_id", "skill_id", "database_id", "data_source_id"].includes(changed))
+        property(record.locator)[changed] = currentId(900)
       else if (changed === "missing_binding") current.file_bindings = []
       else {
         if (!Array.isArray(current.file_bindings)) throw new Error("Missing fixture bindings.")

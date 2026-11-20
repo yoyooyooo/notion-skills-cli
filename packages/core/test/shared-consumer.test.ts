@@ -1,9 +1,18 @@
 import { expect, test } from "bun:test"
-import { property } from "../src/model.ts"
+import { Effect } from "effect"
+import { consume } from "../src/consumer.ts"
+import { exportSkill } from "../src/export.ts"
+import { readImportZip } from "../src/import.ts"
+import { fail, property } from "../src/model.ts"
+import { readPortable } from "../src/portable.ts"
 import { fileRef } from "../src/ref.ts"
 import { readSkill } from "../src/snapshot.ts"
+import { readResources } from "../src/resource-read.ts"
+import { Store } from "../src/store.ts"
 import {
   currentBytes as bytes,
+  currentId,
+  currentLibrary,
   currentRich as rich,
   currentSkillPage,
 } from "./shared-current-fixture.ts"
@@ -48,6 +57,133 @@ test("Git-only current Files preserve every exact byte and mode without reading 
   expect(f.bodyCalls()).toHaveLength(0)
   expect(f.semanticWrites()).toHaveLength(0)
 })
+
+test.each(["read", "export", "use"] as const)(
+  "a rebuilt Git-only Skill refreshes through public %s with its existing cache",
+  async (action) => {
+    const f = await currentSourceConsumerFixture()
+    await f.select(gitFiles, "git")
+    for (const file of gitFiles) f.bind(file.path)
+    const first = await f.target()
+    const retained = structuredClone(f.json.get(`snapshots/${first.snapshot_id}.json`))
+    const nativeKey = [...f.json.keys()].find((key) =>
+      key.startsWith("cache/current-native-bodies/"),
+    )!
+    expect(f.json.get(nativeKey)).toMatchObject({ skill_page_id: currentSkillPage, files: [] })
+    const rebuilt = currentId(900)
+    f.main.id = rebuilt
+    for (const file of f.files) file.properties.Skill.relation = [{ id: rebuilt }]
+    const options = { database: currentLibrary.skills.database_id, refresh: true }
+    f.clearCalls()
+    f.requests.length = 0
+    let currentSnapshotId: string
+    if (action === "read") {
+      const selected = await f.run(readSkill(rebuilt, options))
+      currentSnapshotId = selected.snapshot_id
+      expect("content" in selected && selected.content).toBe(
+        new TextDecoder().decode(gitFiles[0]!.bytes),
+      )
+    } else if (action === "export") {
+      const store = await f.run(Store)
+      let archive: Uint8Array | undefined
+      const selected = await f.run(
+        exportSkill(rebuilt, { ...options, output: "/recreated-skill.zip", format: "zip" }).pipe(
+          Effect.provideService(Store, {
+            ...store,
+            output: (output, value) =>
+              Effect.sync(() => {
+                archive = value
+                return { output, reused: false }
+              }),
+          }),
+        ),
+      )
+      currentSnapshotId = selected.snapshot_id
+      if (archive === undefined) throw new Error("Missing exported archive.")
+      const exported = readPortable(readImportZip(archive))!
+      for (const file of gitFiles)
+        expect(exported.files.find((item) => item.path === file.path)?.bytes).toEqual(file.bytes)
+    } else {
+      const selected = await f.run(
+        consume(
+          { version: 1, targets: [rebuilt], purpose: "use", freshness: { policy: "refresh" } },
+          options,
+        ),
+      )
+      expect(selected.status).toBe("ready")
+      if (selected.status !== "ready") throw new Error(JSON.stringify(selected))
+      currentSnapshotId = selected.entries[0]!.manifest.snapshot_id
+    }
+    expect(currentSnapshotId).not.toBe(first.snapshot_id)
+    expect(f.json.get(nativeKey)).toMatchObject({ skill_page_id: rebuilt, files: [] })
+    expect(f.json.get(`snapshots/${first.snapshot_id}.json`)).toEqual(retained)
+    expect(f.requests).toEqual([])
+    expect(f.bodyCalls()).toHaveLength(0)
+    expect(f.semanticWrites()).toHaveLength(0)
+    f.clearCalls()
+    const warm = await f.run(readSkill(rebuilt, { database: options.database }))
+    expect(warm.snapshot_id).toBe(currentSnapshotId)
+    expect(warm.version_id).not.toBe(first.version_id)
+    expect(warm.source).toBe("local_cache")
+    const stable = await f.run(readSkill(first.record.id, { database: options.database }))
+    expect(stable.snapshot_id).toBe(currentSnapshotId)
+    expect(stable.source).toBe("local_cache")
+    const pinned = await f.run(
+      readSkill(fileRef(first.record.id, "SKILL.md", first.snapshot_id, "main-demo"), {
+        offline: true,
+      }),
+    )
+    expect("content" in pinned && pinned.content).toBe(new TextDecoder().decode(gitFiles[0]!.bytes))
+    expect(f.calls).toHaveLength(0)
+    if (action === "read") {
+      const missing = first.files.find((file) => file.path === "scripts/check.sh")!
+      const fileId = first.file_bindings!.find((file) => file.path === missing.path)!.file_id
+      f.objects.delete(`objects/${missing.sha256}`)
+      const acquired = await f.run(
+        readSkill(fileRef(warm.record.id, missing.path, warm.snapshot_id, fileId), {
+          database: options.database,
+        }),
+      )
+      expect(acquired.record.locator).toEqual(warm.record.locator)
+      expect("content" in acquired && acquired.content).toBe(
+        new TextDecoder().decode(gitFiles[1]!.bytes),
+      )
+      expect(f.calls.some((call) => call.path === `v1/pages/${currentSkillPage}`)).toBe(false)
+      expect(f.requests).toHaveLength(1)
+      expect(f.bodyCalls()).toHaveLength(0)
+      expect(f.semanticWrites()).toHaveLength(0)
+      f.objects.delete(`objects/${missing.sha256}`)
+      f.clearCalls()
+      const batch = await f.run(
+        readResources(
+          {
+            version: 1,
+            refs: [fileRef(warm.record.id, missing.path, warm.snapshot_id, fileId)],
+          },
+          { database: options.database },
+        ),
+      )
+      expect(batch.status).toBe("ready")
+      if (batch.status !== "ready") throw new Error(JSON.stringify(batch))
+      expect(batch.manifest.record.locator).toEqual(warm.record.locator)
+      expect(batch.files[0]?.content).toBe(new TextDecoder().decode(gitFiles[1]!.bytes))
+      expect(f.calls.some((call) => call.path === `v1/pages/${currentSkillPage}`)).toBe(false)
+      const oldRef = fileRef(first.record.id, missing.path, first.snapshot_id, fileId)
+      f.clearCalls()
+      const old = await f.run(readSkill(oldRef, { offline: true }))
+      expect(old.record.locator).toEqual(first.record.locator)
+      expect(f.calls).toHaveLength(0)
+      f.objects.delete(`objects/${missing.sha256}`)
+      f.failRequests((call) =>
+        call.path === `v1/pages/${currentSkillPage}`
+          ? fail("NOT_FOUND", "The former physical owner is gone.")
+          : undefined,
+      )
+      await expect(f.run(readSkill(oldRef))).rejects.toMatchObject({ code: "NOT_FOUND" })
+      expect(f.calls.some((call) => call.path === `v1/pages/${rebuilt}`)).toBe(false)
+    }
+  },
+)
 
 test("missing or unready current Source metadata fails before bodies, providers or snapshot publication", async () => {
   for (const fault of ["missing", "pending", "revision", "content"] as const) {

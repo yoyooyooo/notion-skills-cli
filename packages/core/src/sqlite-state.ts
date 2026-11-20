@@ -589,12 +589,10 @@ export function sqliteState(
                           "The shared file observation slot has an invalid generation.",
                         ),
                       )
-                    for (const field of [
-                      "scope",
-                      "library_id",
-                      "skill_id",
-                      "skill_page_id",
-                    ] as const)
+                    // A rebuilt physical page keeps the same logical owner.
+                    // The existing generation order fences late old-page writes;
+                    // equal generations still require an identical full payload.
+                    for (const field of ["scope", "library_id", "skill_id"] as const)
                       if (prior[field] !== owner[field])
                         return yield* Effect.fail(
                           fail(

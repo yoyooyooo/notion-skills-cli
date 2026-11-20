@@ -285,7 +285,7 @@ export function currentSnapshotFixture(
               data_sources: [{ id: currentLibrary.skills.data_source_id, name: "Current Skills" }],
               description: [{ plain_text: LIBRARY_MARKER + JSON.stringify(currentLibrary) }],
             }
-          else if (call.method === "GET" && path === `v1/pages/${currentSkillPage}`)
+          else if (call.method === "GET" && path === `v1/pages/${main.id}`)
             result = structuredClone(main)
           else if (call.method === "GET" && /\/markdown(?:\?|$)/u.test(path)) {
             const page = path.split("/")[2]
@@ -354,7 +354,7 @@ export function currentSnapshotFixture(
     run(
       openSharedSnapshot({
         library: currentLibrary,
-        target: currentSkillPage,
+        target: main.id,
         scope: currentScope,
         startedAt: Date.now(),
         ...options,

@@ -60,12 +60,14 @@ pages or repairing operations would be semantic writes and is forbidden here.
 
 ## Public boundary
 
-Current `ctl library` exposes init, inspect, files, import, source and profile. Import
+Current `ctl library` exposes init, inspect, files, operation, import, source and profile. Import
 accepts a complete resource/native tree, with dry run and resume on the same route.
-Source apply/refresh coordinates explicit current Git contributions with the same
-operation kernel. Source removal/takeover, partial relationship updates, sync, archive, graph-release,
-repair and old migration writers are not public routes. A removed route must
-fail without redirecting to a compatibility handler.
+Source apply/refresh reconciles the complete selected Git member set through the
+same operation kernel, including additions, removals and missing-owner rebuilds.
+Source enable/disable, unreferenced removal and exact file takeover/restore-follow
+use that current coordinator. Partial relationship patches, sync, archive,
+graph-release, repair and old migration writers are not public routes. A removed
+route must fail without redirecting to a compatibility handler.
 
 Current Profile tests establish in-place rule replacement, unknown-response
 reconciliation and no-op behavior for Profile rules. The current writer and
@@ -86,16 +88,22 @@ protocols. Current resource and recovery Skills select the existing implementati
 regressions. The two request-engine models retain all 21 configurations and their
 original rules; they do not prove the multi-step current writer.
 
-## Remaining acceptance
+## Daily acceptance and deferred work
 
-AH-504/507 still own partial writes, Source takeover/removal and real-scope recovery
-exits. AH-501 must populate and verify every actual supporting Files row and
-reading projection in the live library. AH-505/513 must
-resolve current references and remove actual obsolete Notion objects after
-preserving unique current bytes. AH-517 must finish code, package and guidance
-retirement. A documentation rewrite alone does not finish those tasks.
+AH-500 reuses the public sync, rebuild and consumption results from AH-504/AH-516.
+Check the selected daily set, complete paths/bytes/modes, preserved user policies,
+upstream removals, same-version zero writes and consumption after a physical page
+is rebuilt. Replaced runtime code, callers and completed one-time conversion
+wiring leave in the same implementation wave; AH-517 covers static leftovers only.
 
-Use the matching complete CLI/SDK package and Broker for AH-1063's single actual
-Pro Pi journey. A controlled HTTP fixture is not live Notion, package installation,
-host delivery or a model result. AH-516 still owns every Pro-local Skill and
-exposure/update edge. OMP/Tern host acceptance remains deferred.
+Use the matching CLI/SDK package and Broker for the necessary actual Pro Pi
+samples. A controlled HTTP fixture is not live Notion, default installation,
+host delivery or a model result. Keep the original Store when testing a rebuilt
+Skill, and isolate global Skills with `pi -ns`. AH-1063 records the first native/Git
+baseline; it does not certify a later pairing or the full daily batch.
+
+Required Files metadata and original bytes belong to current consumption.
+AH-501/AH-1141 cover later reading projections. AH-505/AH-507/AH-513 cover additional
+governance, recovery and non-daily data; those tasks do not block the daily batch.
+Agent-kit main-path Skills and global exposure stay available. OMP/Tern and other
+hosts remain deferred.

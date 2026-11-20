@@ -257,12 +257,14 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       previous !== undefined &&
       (previous.scope !== input.scope ||
         previous.library_id !== input.library.library_id ||
-        previous.skill_id !== index.skill_id ||
-        previous.skill_page_id !== selected)
+        previous.skill_id !== index.skill_id)
     )
       return yield* Effect.fail(
         fail("STATE_CORRUPT", "The current body cache belongs to another owner."),
       )
+    // The ready current index may identify a rebuilt page for the same logical
+    // Skill. None of the former physical owner's native observations remain fresh.
+    const previousFiles = previous?.skill_page_id === selected ? previous.files : []
     const now = yield* Clock.currentTimeMillis
     const observations: Array<typeof NativeObservationSchema.Type> = []
     const nativeBodies: Array<{
@@ -278,7 +280,7 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       const content = binding.content
       if (content.kind !== "native") continue
       const descriptor = canonicalSharedJson(content)
-      const prior = previous?.files.find((file) => file.file_id === binding.file_id)
+      const prior = previousFiles.find((file) => file.file_id === binding.file_id)
       const fresh =
         !input.forceFull &&
         prior !== undefined &&
@@ -541,16 +543,19 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
       files: routes,
     }
     // Content identity excludes display fields, property IDs, page projections,
-    // body-observation timestamps and operation history. The selected response
-    // below always carries freshly observed metadata, even if bytes are unchanged.
+    // body-observation timestamps and operation history. Physical authorization
+    // bindings are part of the selection: a rebuilt owner or File needs distinct
+    // fixed refs even when its exact bytes and stable identities are unchanged.
     const version = yield* sha256(
       canonicalSharedJson({
         contract: 1,
         record_id: record.id,
+        locator: record.locator,
         kind: record.kind,
         files,
         authority: bindings.map((file) => ({
           file_id: file.file_id,
+          page_id: file.page_id,
           path: file.path,
           kind: file.content.kind,
           ...(file.content.kind === "source"

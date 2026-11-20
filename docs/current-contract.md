@@ -288,6 +288,19 @@ selected source revision and required consumption semantics. Refresh current
 display metadata separately; a cache hit must not freeze an obsolete owner
 descriptor or undo a known permission denial.
 
+Rebuilding a Notion Skill page preserves its stable Skill identity. Once a current
+read verifies the replacement page, discard native-body observations from the old
+physical page and read the replacement's bodies. The same logical cache owner and
+monotonic generation fence apply: an older completion cannot overwrite the newer
+page, and equal generations cannot name different pages. Scope, library and stable
+Skill mismatches remain errors. Fixed local selections retain their original
+bindings; ordinary current refresh does not require clearing the Store.
+The consumption version includes the exact owner locator and physical File
+bindings, so recreating a page produces a new version and fixed snapshot even
+when its original bytes are unchanged. Stable Skill identity, Source revision
+and file hashes retain their own meanings. The snapshot-ID formula is unchanged;
+previous fixed references keep their original authorized bindings.
+
 Every supporting file has complete current Files metadata. Source and resource
 consumption reads its declared exact original without requiring a generated page
 body. Native author bodies remain necessary current content and are verified before
@@ -521,7 +534,7 @@ migration command families are not active authoring routes. Source actions use
 the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.
 
-The next delivery scope is the user-selected daily set, tracked by AH-504/AH-516.
+The current delivery scope is the user-selected daily set, tracked by AH-504/AH-516.
 The selection is Source 日用 (all real members) ∪ Skill 日用 ∪ Default Context,
 with actual upstream membership used to repair broken Origin relations. 日用 does
 not imply Default Context. The initial analysis selected 142 current members;

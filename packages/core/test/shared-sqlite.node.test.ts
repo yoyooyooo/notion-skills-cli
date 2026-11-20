@@ -146,6 +146,48 @@ test("the current native slot fences rejected cold reads and pre-clear completio
   })
 }, 30_000)
 
+test("a newer native observation can follow a rebuilt page without changing logical owner or accepting late old-page publication", async () => {
+  await isolated(async (root) => {
+    const key = `cache/current-native-bodies/${"8".repeat(64)}/latest.json`
+    const identity = "shared_skill:rebuilt-library:rebuilt-skill"
+    const old = {
+      version: 1,
+      scope,
+      library_id: "rebuilt-library",
+      skill_id: "rebuilt-skill",
+      skill_page_id: "00000000-0000-4000-8000-000000000001",
+      files: [],
+    }
+    const rebuilt = { ...old, skill_page_id: "00000000-0000-4000-8000-000000000002" }
+    const write = (value: typeof old, generation: number) =>
+      `yield* state.write(${JSON.stringify(key)},{...${JSON.stringify(value)},generation:${generation}})`
+    const seeded = await child(
+      root,
+      `for(let i=0;i<3;i++)yield* state.reserve(${JSON.stringify(scope)},${JSON.stringify(identity)});${write(old, 1)};${write(rebuilt, 3)}`,
+    )
+    expect(seeded.exit, seeded.stderr).toBe(0)
+    const contenders = await Promise.all([
+      child(root, write(old, 2)),
+      child(root, write(rebuilt, 3)),
+    ])
+    for (const result of contenders) expect(result.exit, result.stderr).toBe(0)
+    const sameGeneration = await child(root, write(old, 3))
+    expect(sameGeneration.exit).not.toBe(0)
+    expect(sameGeneration.stderr).toContain("different content")
+    for (const field of ["scope", "library_id", "skill_id"] as const) {
+      const foreign = await child(root, write({ ...rebuilt, [field]: "foreign-owner" }, 4))
+      expect(foreign.exit).not.toBe(0)
+      expect(foreign.stderr).toContain("cannot change its owner")
+    }
+    const current = await child(
+      root,
+      `console.log(JSON.stringify(yield* state.read(${JSON.stringify(key)})))`,
+    )
+    expect(current.exit, current.stderr).toBe(0)
+    expect(JSON.parse(current.stdout)).toEqual({ ...rebuilt, generation: 3 })
+  })
+}, 30_000)
+
 function currentPublicationProgram(root: string) {
   return `import * as NodeServices from ${JSON.stringify(import.meta.resolve("@effect/platform-node/NodeServices"))};
 import {ConfigProvider,Effect,FileSystem,Layer,Schema} from ${JSON.stringify(import.meta.resolve("effect"))};
