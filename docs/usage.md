@@ -42,8 +42,10 @@ ntn-skills ctl library inspect LIBRARY_ENTRY
 
 Replace `LIBRARY_ENTRY` with the exact Skills database ID.
 `config show` omits the token. `doctor` without `--database` checks authentication only.
-With a database, it also checks the catalog and reads one available Skill.
-An empty catalog does not prove that a Skill was read.
+With a database, it also checks the current library descriptor, complete catalog
+metadata and relation schema. It does not choose or read a Skill body;
+`skill_read.checked` is false. Use an explicit `read` or `use` to verify the content
+you intend to consume. Enabled metadata alone does not prove content readiness.
 
 To return to environment-token selection:
 
