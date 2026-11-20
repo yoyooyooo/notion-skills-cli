@@ -121,16 +121,19 @@ const bodyCalls = (source: Source) =>
   source.requests.filter(
     (row: { phase: string; path: string }) => row.phase === "read" && row.path === recordsPath,
   )
-async function joinedEligibility(source: Source) {
-  await vi.waitFor(() =>
-    expect(
-      source.requests.filter(
-        (row: { phase: string; path: string; terminal: string }) =>
-          row.phase === "read" &&
-          row.path === `/v1/data_sources/${library.files.data_source_id}/query` &&
-          row.terminal === "finished",
-      ),
-    ).toHaveLength(2),
+async function joinedEligibility(source: Source, timeBudgetMs: number) {
+  await vi.waitFor(
+    () =>
+      expect(
+        source.requests.filter(
+          (row: { phase: string; path: string; terminal: string }) =>
+            row.phase === "read" &&
+            row.path === `/v1/data_sources/${library.files.data_source_id}/query` &&
+            row.terminal === "finished",
+        ),
+      ).toHaveLength(2),
+    // Current eligibility uses the public SDK's budget, not vi.waitFor's 1 s default.
+    { timeout: timeBudgetMs },
   )
   // The server observes eligibility completion, while joining is local work.
   await new Promise((resolve) => setTimeout(resolve, 50))
@@ -144,39 +147,66 @@ function ready(result: Awaited<ReturnType<typeof readResources>>) {
   expect(result.effects?.remote_writes).toBe("none")
 }
 
-test("two public SDK runtimes share only exact immutable bytes, and creator cancellation preserves the survivor", async () => {
-  await setup(
-    async ({ source, input, options }) => {
-      const hold = source.holdNext({ method: "POST", path: recordsPath })
-      const creator = new AbortController()
-      const first = readResources(input, { ...options, signal: creator.signal })
-      await hold.reached
-      const second = readResources(input, options)
-      await joinedEligibility(source)
-      creator.abort()
-      expect((await first).status).toBe("cancelled")
-      const creatorClosed = process.hrtime.bigint()
-      expect(bodyCalls(source)).toHaveLength(1)
-      expect(bodyCalls(source)[0].closed_monotonic_ns).toBeNull()
-      hold.release()
-      ready(await second)
-      await idle(source)
-      expect(bodyCalls(source)).toHaveLength(2)
-      expect(
-        bodyCalls(source).map(
-          (row: { body: { start_cursor?: string } }) => row.body.start_cursor ?? null,
-        ),
-      ).toEqual([null, "offset-0"])
-      // The remaining page is acquired after the creator's public call has closed
-      // its runtime. Merely finishing an already-started response misses this guard.
-      expect(BigInt(bodyCalls(source)[1].started_monotonic_ns)).toBeGreaterThan(creatorClosed)
-      expect(
-        bodyCalls(source).every((row: { terminal: string }) => row.terminal === "finished"),
-      ).toBe(true)
-    },
-    { emptyFirstRecordsPage: true },
-  )
-})
+test.each([0, 1200])(
+  "two public SDK runtimes share only exact immutable bytes, and creator cancellation preserves the survivor (eligibility delay %i ms)",
+  async (eligibilityDelayMs) => {
+    await setup(
+      async ({ source, input, options }) => {
+        const hold = source.holdNext({ method: "POST", path: recordsPath })
+        const creator = new AbortController()
+        const first = readResources(input, { ...options, signal: creator.signal })
+        await hold.reached
+        const eligibility =
+          eligibilityDelayMs === 0
+            ? undefined
+            : source.holdNext({
+                method: "POST",
+                path: `/v1/data_sources/${library.files.data_source_id}/query`,
+              })
+        const second = readResources(input, options)
+        let release: ReturnType<typeof setTimeout> | undefined
+        if (eligibility !== undefined) {
+          await eligibility.reached
+          release = setTimeout(() => eligibility.release(), eligibilityDelayMs)
+        }
+        try {
+          await joinedEligibility(source, input.budget.timeBudgetMs)
+        } finally {
+          if (release !== undefined) clearTimeout(release)
+          eligibility?.release()
+        }
+        if (eligibility !== undefined) {
+          const completed = await eligibility.closed
+          expect(
+            Number(BigInt(completed.ended_monotonic_ns) - BigInt(completed.started_monotonic_ns)) /
+              1e6,
+          ).toBeGreaterThan(1000)
+        }
+        creator.abort()
+        expect((await first).status).toBe("cancelled")
+        const creatorClosed = process.hrtime.bigint()
+        expect(bodyCalls(source)).toHaveLength(1)
+        expect(bodyCalls(source)[0].closed_monotonic_ns).toBeNull()
+        hold.release()
+        ready(await second)
+        await idle(source)
+        expect(bodyCalls(source)).toHaveLength(2)
+        expect(
+          bodyCalls(source).map(
+            (row: { body: { start_cursor?: string } }) => row.body.start_cursor ?? null,
+          ),
+        ).toEqual([null, "offset-0"])
+        // The remaining page is acquired after the creator's public call has closed
+        // its runtime. Merely finishing an already-started response misses this guard.
+        expect(BigInt(bodyCalls(source)[1].started_monotonic_ns)).toBeGreaterThan(creatorClosed)
+        expect(
+          bodyCalls(source).every((row: { terminal: string }) => row.terminal === "finished"),
+        ).toBe(true)
+      },
+      { emptyFirstRecordsPage: true },
+    )
+  },
+)
 
 test("last public waiter cancellation closes its transport and the same pin can retry", async () => {
   await setup(async ({ source, input, options }) => {
@@ -185,7 +215,7 @@ test("last public waiter cancellation closes its transport and the same pin can 
     const first = readResources(input, { ...options, signal: controllers[0]!.signal })
     await hold.reached
     const second = readResources(input, { ...options, signal: controllers[1]!.signal })
-    await joinedEligibility(source)
+    await joinedEligibility(source, input.budget.timeBudgetMs)
     controllers.forEach((controller) => controller.abort())
     expect((await Promise.all([first, second])).map((result) => result.status)).toEqual([
       "cancelled",
