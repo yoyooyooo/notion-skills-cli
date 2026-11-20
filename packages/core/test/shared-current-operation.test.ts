@@ -14,10 +14,15 @@ import {
   type CurrentOperationIntent,
   type CurrentWriteMode,
   type CurrentOperationSession,
+  type CurrentSourceIntentBinding,
 } from "../src/shared-current-operation.ts"
+import {
+  authorizeCoordinatedSkillWrite,
+  prepareCoordinatedSkillWrite,
+} from "../src/shared-current-write.ts"
 import type { SharedLibrary } from "../src/shared-library-model.ts"
 import { currentLibrary } from "./shared-current-fixture.ts"
-import { Store } from "../src/store.ts"
+import { sha256, Store } from "../src/store.ts"
 import { canonicalSharedJson } from "../src/shared-records.ts"
 
 const id = (n: number) => "00000000-0000-4000-8000-" + n.toString(16).padStart(12, "0")
@@ -62,7 +67,8 @@ function matches(row: unknown, input: unknown): boolean {
     return text(value.rich_text) === property(filter.rich_text).equals
   return false
 }
-function fixture(options: { skillExists?: boolean } = {}) {
+function fixture(options: { skillExists?: boolean; sourceOwner?: Record<string, unknown> } = {}) {
+  const sourceOwner = options.sourceOwner
   const root = mkdtempSync(join(parent, "case-")),
     json = new Map<string, unknown>()
   const records = new Map<string, Record<string, unknown>>(),
@@ -145,6 +151,14 @@ function fixture(options: { skillExists?: boolean } = {}) {
               chosen.error ?? fail("WRITE_OUTCOME_UNKNOWN", "Product response lost."),
             )
           return { value: request.value }
+        }
+        if (sourceOwner !== undefined && path === "v1/pages/" + sourceOwner.id) {
+          if (method === "PATCH")
+            sourceOwner.properties = {
+              ...property(sourceOwner.properties),
+              ...fields(request.properties),
+            }
+          return sourceOwner
         }
         if (path === "v1/pages/" + ownerId) {
           if (!skillExists) return yield* Effect.fail(fail("NOT_FOUND", "Skill is not created."))
@@ -358,6 +372,280 @@ function fixture(options: { skillExists?: boolean } = {}) {
     activeRecords: () => [...records.values()].filter((row) => row.in_trash !== true),
   }
 }
+
+async function sourceBootstrapFixture() {
+  const sourcePage = id(30)
+  const sourceOwner: Record<string, unknown> = {
+    object: "page",
+    id: sourcePage,
+    parent: { type: "data_source_id", data_source_id: library.sources.data_source_id },
+    in_trash: false,
+    properties: fields({
+      "source-id": { rich_text: rich("provider") },
+      status: { select: { name: "ready" } },
+      operation: { rich_text: [] },
+    }),
+  }
+  const f = fixture({ sourceOwner })
+  f.owner.properties = {
+    ...property(f.owner.properties),
+    ...fields({ state: { select: null }, content: { rich_text: [] } }),
+  }
+  const selected = [
+    {
+      file_id: "existing-main",
+      path: "SKILL.md",
+      bytes: new TextEncoder().encode(
+        "---\nname: example\ndescription: Source fixture.\n---\n\nRead the guide.\n",
+      ),
+    },
+    {
+      file_id: "existing-guide",
+      path: "prompts/install-on-both-machines.md",
+      bytes: new TextEncoder().encode("Keep both original files.\n"),
+    },
+  ]
+  const revision = "d".repeat(64)
+  const plan = await f.run(
+    prepareCoordinatedSkillWrite({
+      skill_id: intent.owner.id,
+      kind: "skill",
+      source: { source_id: "provider", revision },
+      create: { name: "Example", description: "Source fixture." },
+      files: selected.map((file) => ({
+        kind: "write",
+        file: {
+          ...file,
+          authority: {
+            kind: "source",
+            source_id: "provider",
+            revision,
+            source_path: "skill/" + file.path,
+          },
+        },
+      })),
+    }),
+  )
+  const manifest = []
+  for (const file of selected)
+    manifest.push({
+      path: "skill/" + file.path,
+      sha256: await f.run(sha256(file.bytes)),
+      bytes: file.bytes.byteLength,
+      mode: "100644" as const,
+    })
+  const source = { source_id: "provider", page_id: sourcePage, revision, manifest }
+  const parentIntent = {
+    operation_id: "bootstrap-parent",
+    owner: { kind: "source" as const, id: source.source_id },
+    input_sha256: "b".repeat(64),
+    source_input: {
+      kind: "declaration" as const,
+      configuration_sha256: "c".repeat(64),
+      resolved_commit: "a".repeat(40),
+      affected_skill_ids: [plan.skill_id],
+    },
+  }
+  const childOperation =
+    "source-target-" +
+    (await f.run(sha256(canonicalSharedJson([parentIntent.operation_id, plan.skill_id]))))
+  let childRuns = 0,
+    childCompletedResumes = 0
+  const verified = Effect.sync(() => {
+    expect(f.values).toEqual(["first"])
+    return "first"
+  })
+  const apply = (
+    options: {
+      mode?: "apply" | "resume"
+      standalone?: boolean
+      changedBinding?: Partial<CurrentSourceIntentBinding>
+      omitHook?: "assertScope" | "beforeMutation" | "afterActivate"
+      childCreateOutcome?: "visible" | "absent"
+      stopAfterChild?: boolean
+    } = {},
+  ) =>
+    withCurrentOperation(library, {
+      intent: parentIntent,
+      ownerPageId: sourcePage,
+      mode: options.mode,
+      verifyCompletedResume: () => verified,
+      run: (parent) =>
+        Effect.gen(function* () {
+          const grant = yield* authorizeCoordinatedSkillWrite(parent, {
+            plan,
+            source,
+            assertSourceCurrent: (raw) =>
+              Effect.sync(() => {
+                expect(property(raw).id).toBe(sourcePage)
+                expect(
+                  text(property(property(property(raw).properties)["source-id"]).rich_text),
+                ).toBe(source.source_id)
+              }),
+          })
+          if (options.childCreateOutcome !== undefined) {
+            yield* parent.activate()
+            f.fault({ target: "record-create", outcome: options.childCreateOutcome })
+          }
+          const assertUninitialized = () =>
+            Effect.sync(() => {
+              expect(property(property(f.owner.properties).state).select).toBeNull()
+              expect(text(property(property(f.owner.properties).content).rich_text)).toBe("")
+            })
+          const value = yield* withCurrentOperation(library, {
+            intent: {
+              operation_id: childOperation,
+              owner: { kind: "skill", id: plan.skill_id },
+              input_sha256: plan.input_sha256,
+              source: grant.source_intent,
+            },
+            ownerPageId: ownerId,
+            mode: options.mode,
+            bootstrapExistingOwner: options.standalone
+              ? { assertUninitialized }
+              : {
+                  kind: "source-child",
+                  source: { ...grant.source_intent, ...options.changedBinding },
+                  assertUninitialized,
+                },
+            assertScope: options.omitHook === "assertScope" ? undefined : grant.assertCurrent,
+            beforeMutation: options.omitHook === "beforeMutation" ? undefined : grant.activate,
+            afterActivate: options.omitHook === "afterActivate" ? undefined : grant.afterActivate,
+            unstartedSourceChild: grant.unstarted ? grant.source_intent : undefined,
+            verifyCompletedResume: () =>
+              verified.pipe(Effect.tap(() => Effect.sync(() => childCompletedResumes++))),
+            run: (child) =>
+              Effect.gen(function* () {
+                childRuns++
+                expect(parent.sourceProgress).toEqual({ next_index: 0, child_started: true })
+                expect(f.activeRecords()).toHaveLength(2)
+                yield* grant.assertCurrent
+                yield* child.assertCurrent()
+                return yield* f.action(child)
+              }),
+            verify: () => Effect.asVoid(verified),
+          })
+          if (options.stopAfterChild)
+            return yield* Effect.fail(fail("REQUEST_BUDGET_EXHAUSTED", "Stopped after child."))
+          yield* parent.markSourceChildComplete(plan.skill_id)
+          return value
+        }),
+      verify: () => Effect.asVoid(verified),
+    })
+  return {
+    ...f,
+    bootstrap: apply,
+    sourceOwner,
+    plan,
+    childRuns: () => childRuns,
+    childCompletedResumes: () => childCompletedResumes,
+  }
+}
+
+describe("AH-513 exact Source-child bootstrap", () => {
+  test("a real parent grant initializes the existing child before product writes", async () => {
+    const f = await sourceBootstrapFixture()
+    expect(await f.run(f.bootstrap())).toBe("first")
+    expect(f.plan.files.map((file) => file.file_id)).toEqual(["existing-main", "existing-guide"])
+    expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
+    expect(property(property(f.sourceOwner.properties).status).select).toEqual({ name: "ready" })
+    const mutations = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    )
+    const parentApplying = mutations.findIndex(
+      (call) =>
+        property(property(property(property(call.body).properties).status).select).name ===
+        "applying",
+    )
+    const childCreate = mutations.findIndex(
+      (call, i) => i > parentApplying && call.path === "v1/pages" && call.method === "POST",
+    )
+    const childApplying = mutations.findIndex(
+      (call) =>
+        property(property(property(property(call.body).properties).state).select).name ===
+        "applying",
+    )
+    expect(parentApplying).toBeGreaterThan(0)
+    expect(childCreate).toBeGreaterThan(parentApplying)
+    expect(childApplying).toBeGreaterThan(childCreate)
+    expect(mutations.findIndex((call) => call.path === productPath)).toBeGreaterThan(childApplying)
+    expect(f.activeRecords()).toEqual([])
+    expect(f.json.size).toBe(0)
+  })
+
+  test("missing parent hooks, standalone admission and changed bindings fail before writes", async () => {
+    const cases: Parameters<Awaited<ReturnType<typeof sourceBootstrapFixture>>["bootstrap"]>[0][] =
+      [
+        { standalone: true },
+        { omitHook: "assertScope" },
+        { omitHook: "beforeMutation" },
+        { omitHook: "afterActivate" },
+        { changedBinding: { source_id: "foreign" } },
+        { changedBinding: { source_page_id: id(99) } },
+        { changedBinding: { operation_id: "foreign-parent" } },
+        { changedBinding: { input_sha256: "e".repeat(64) } },
+        { changedBinding: { authorization_sha256: "f".repeat(64) } },
+      ]
+    for (const options of cases) {
+      const f = await sourceBootstrapFixture()
+      expect(await f.run(f.bootstrap(options).pipe(Effect.result))).toMatchObject({
+        _tag: "Failure",
+        failure: { code: "CURRENT_OPERATION_INVALID" },
+      })
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toEqual([])
+      expect(f.records.size).toBe(0)
+      expect(f.json.size).toBe(0)
+    }
+  })
+
+  test.each(["visible", "absent"] as const)(
+    "unknown child CREATE %s is never replayed",
+    async (outcome) => {
+      const f = await sourceBootstrapFixture()
+      expect(
+        (await f.run(f.bootstrap({ childCreateOutcome: outcome }).pipe(Effect.result)))._tag,
+      ).toBe("Failure")
+      expect(f.productRequests()).toBe(0)
+      expect(property(property(f.owner.properties).state).select).toBeNull()
+      const resumed = await f.run(f.bootstrap({ mode: "resume" }).pipe(Effect.result))
+      if (outcome === "visible") expect(resumed._tag).toBe("Success")
+      else
+        expect(resumed).toMatchObject({
+          _tag: "Failure",
+          failure: { code: "CURRENT_OPERATION_UNRESOLVED" },
+        })
+      expect(
+        f.calls.filter((call) => call.path === "v1/pages" && call.method === "POST"),
+      ).toHaveLength(2)
+    },
+  )
+
+  test("a completed child resumes the parent cursor without another child mutation", async () => {
+    const f = await sourceBootstrapFixture()
+    expect(await f.run(f.bootstrap({ stopAfterChild: true }).pipe(Effect.result))).toMatchObject({
+      _tag: "Failure",
+      failure: { code: "REQUEST_BUDGET_EXHAUSTED" },
+    })
+    expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
+    expect(f.activeRecords()).toHaveLength(1)
+    expect(await f.run(f.bootstrap({ mode: "resume" }))).toBe("first")
+    expect(f.childRuns()).toBe(1)
+    expect(f.childCompletedResumes()).toBe(1)
+    expect(f.productRequests()).toBe(1)
+    expect(f.activeRecords()).toEqual([])
+    const writes = f.calls.filter(
+      (call) => call.method !== "GET" && !call.path.includes("/query"),
+    ).length
+    expect(await f.run(f.bootstrap({ mode: "resume" }))).toBe("first")
+    expect(
+      f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+    ).toHaveLength(writes)
+    expect(f.json.size).toBe(0)
+  })
+})
+
 describe("one finite current write", () => {
   function bootstrapFixture() {
     const f = fixture()

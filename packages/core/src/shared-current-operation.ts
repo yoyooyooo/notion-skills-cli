@@ -565,12 +565,16 @@ export function withCurrentOperation<A, R>(
     /** AH-513 only; remove this admission with the cutover tools in AH-517.
      * The exact existing Skill must have empty Content, State and Operation.
      * Its caller rechecks the captured metadata and authored bodies before the
-     * finite intent is created and immediately before applying is published. */
+     * finite intent is created and immediately before applying is published.
+     * Source children additionally retain the real parent grant and its hooks. */
     readonly bootstrapExistingOwner?: {
       readonly assertUninitialized: (
         raw: unknown,
       ) => Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
-    }
+    } & (
+      | { readonly kind?: "standalone"; readonly source?: never }
+      | { readonly kind: "source-child"; readonly source: CurrentSourceIntentBinding }
+    )
     readonly supersedingSourceChild?: {
       readonly previous: CurrentSourceIntentBinding
       readonly next: CurrentSourceIntentBinding
@@ -615,10 +619,29 @@ export function withCurrentOperation<A, R>(
           intent.owner.kind !== "skill" ||
           suppliedPage === null ||
           completion !== "ready" ||
-          supersededOperation !== undefined ||
-          ("source" in intent && intent.source !== undefined)
+          supersededOperation !== undefined
         )
           throw invalid("Bootstrap requires one exact existing Skill and a ready completion.")
+        const bootstrap = input.bootstrapExistingOwner,
+          source = "source" in intent ? intent.source : undefined
+        if (bootstrap.kind === "source-child") {
+          const selected = strict(CurrentSourceIntentBindingSchema, bootstrap.source)
+          if (
+            source === undefined ||
+            canonicalSharedJson(selected) !== canonicalSharedJson(source) ||
+            input.assertScope === undefined ||
+            input.beforeMutation === undefined ||
+            input.afterActivate === undefined
+          )
+            throw invalid(
+              "Source-child bootstrap requires its exact parent binding and activation hooks.",
+            )
+        } else if (
+          (bootstrap.kind !== undefined && bootstrap.kind !== "standalone") ||
+          bootstrap.source !== undefined ||
+          source !== undefined
+        )
+          throw invalid("A Source child requires explicit Source-child bootstrap admission.")
         binding(library, intent.owner, "Content")
       }
       for (const name of ["Skill ID", "Current State", "Operation"])
