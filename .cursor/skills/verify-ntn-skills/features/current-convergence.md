@@ -83,7 +83,11 @@ AH-513 的 [既有 native 转换入口](../../../../scripts/cutover-bootstrap-cu
 
 Notion 回读改变目标字节时保留未完成意图。已核对的正文表示调整形成新输入和新 operation，通过现有 supersede 交接；前驱 intent、物理 Record、完整 pending marker 和当前正文均需准确绑定。交接丢响应仍用同一 successor 输入和 Store 恢复。运行时保持逐字校验，不增加格式归一化或自动 authority 转换。
 
-最终重新核完整索引、关系、正文和目标引用后才可 ready。保持相同输入、operation 和独立 Store，以 completed resume 验证零写。显式 additive descriptor 尚未发布时，正常库入口仍拒绝旧登记；局部结构转换和指导修订都不证明整库日用。资源、Source、非空 Members/Requires 和缺失 Files 另接现有当前原语。上述临时入口、专属测试与 bootstrap seam 在 AH-513 完成后由 AH-517 删除，不进入正常 reader、公开命令或发布包。
+[有限 resource 转换入口](../../../../scripts/cutover-bootstrap-current-resource.ts) 只接一个既有 inline resource main、一个准确旧 Origin 到空的转换及空 Members/Requires，不接 supporting Files、上传或 Source 写入。输入冻结原件逐字内容、现正文、身份与 metadata，并按实际 property ID 绑定旧选中字段和准确 carrier 的身份、Payload 与归属。先核现正文没有待保留的独有内容；Content 切换前继续复核旧选择，切换后按 current resource 检验，不把旧 carrier 带入日常读取或完成条件。
+
+该入口共用现有 operation：登记 intent、进入 applying、建立唯一 owned resource、写准确 Content/Origin、重建完整阅读投影，全部读回后才 ready。resource CREATE 与投影 append 不盲目重放，未知结果先按准确身份或完整批边界观察。当前仅接一个完整投影 batch：Content 仍为空时只承认原正文；准确 resource descriptor 生效后，空投影与完整目标可作为可重建派生视图的收敛状态，非空第三正文或部分 batch 均拒绝。该入口按 descriptor 和完整批边界恢复，不声称能跨重启区分已 clear 与随后人工清空的两个空状态，也不为此增加持久 phase 台账。完整普通读取另用新 Store、既有 current snapshot reader 核原件 hash/bytes 和语义零写。
+
+最终重新核完整索引、关系、正文和目标引用后才可 ready。保持相同输入、operation 和独立 Store，以 completed resume 验证零写。显式 additive descriptor 尚未发布时，正常库入口仍拒绝旧登记；局部结构转换、指导修订及显式 descriptor 的读取都不证明整库日用。其他 resource 树、Source、非空 Members/Requires 和缺失 Files 另接现有当前原语。上述临时入口、专属测试与 bootstrap seam 在 AH-513 完成后由 AH-517 删除，不进入正常 reader、公开命令或发布包。
 
 ## 3. 单轨与普通消费 0 写
 
