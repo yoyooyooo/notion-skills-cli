@@ -1,7 +1,8 @@
 /** AH-513 only. Bootstrap one existing, fully captured native Skill in place.
  * Delete with AH-517. This is deliberately not a daily command or legacy reader.
  * Resource/Source trees must enter through their current authority primitives;
- * this first slice accepts only existing native pages and never rewrites bodies. */
+ * Only an explicit, hash-bound changes input may clear captured Origin links or
+ * replace proven hrefs in an exact captured native body. */
 import { createHash } from "node:crypto"
 import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs"
 import { isAbsolute, join, resolve } from "node:path"
@@ -24,12 +25,16 @@ import { Notion, NotionTransport } from "../packages/core/src/notion.ts"
 import { NotionCredentialProvider } from "../packages/core/src/notion-credential.ts"
 import { NotionRequestSchedulerLive } from "../packages/core/src/notion-request-scheduler.ts"
 import type { RequestBudgetLimits } from "../packages/core/src/request-budget.ts"
+import { fileRef } from "../packages/core/src/ref.ts"
+import { sharedSkillId } from "../packages/core/src/shared-content.ts"
+import { requireCurrentSkillReady } from "../packages/core/src/shared-current-file.ts"
 import { queryCurrentSkillIndex } from "../packages/core/src/shared-current-index.ts"
 import { withCurrentInvocationBudget } from "../packages/core/src/shared-current-invocation.ts"
 import {
   withCurrentOperation,
   type CurrentOperationSession,
 } from "../packages/core/src/shared-current-operation.ts"
+import { assertCurrentBodyReplaceable } from "../packages/core/src/shared-current-projection.ts"
 import { currentRecordText } from "../packages/core/src/shared-current-records.ts"
 import {
   prepareCurrentSkillWrite,
@@ -49,10 +54,12 @@ import {
   sharedRecordProperties,
 } from "../packages/core/src/shared-library.ts"
 import { observeSharedBody } from "../packages/core/src/shared-page-body.ts"
+import { nativeNotionPageId } from "../packages/core/src/shared-native-file-content.ts"
 import { canonicalSharedJson } from "../packages/core/src/shared-records.ts"
 import { isCoalescibleNotionRead } from "../packages/core/src/shared-read-coalescing.ts"
 import { sourceDefinitionLayout } from "../packages/core/src/shared-sources-model.ts"
 import { sha256 } from "../packages/core/src/store.ts"
+import { mapMarkdownLinks } from "../packages/core/src/typed-links.ts"
 
 const PageId = Schema.String.check(
   Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u),
@@ -101,8 +108,50 @@ const NativeOwner = Schema.Struct({
   files: Schema.Array(NativeFile),
 })
 type Owner = typeof NativeOwner.Type
+const NativeOwnerChanges = Schema.Struct({
+  owner_page_id: PageId,
+  origin: Schema.Struct({ before: Schema.Array(PageId), after: Schema.Array(PageId) }),
+  body_changes: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      page_id: PageId,
+      file_id: Schema.String,
+      before_body_sha256: Hash,
+      after_body_sha256: Hash,
+      replacements: Schema.Array(
+        Schema.Struct({
+          href: Schema.String,
+          replacement_href: Schema.String,
+          typed_reference: Schema.String,
+          target_owner_page_id: PageId,
+          target_file_id: Schema.String,
+          target_path: Schema.String,
+          occurrences: Schema.Literal(1),
+        }),
+      ),
+    }),
+  ),
+})
+const NativeChanges = Schema.Struct({
+  version: Schema.Literal(1),
+  kind: Schema.Literal("ah513-native-changes"),
+  tree_sha256: Hash,
+  library_id: Schema.String,
+  owners: Schema.Array(NativeOwnerChanges),
+})
+type OwnerChanges = typeof NativeOwnerChanges.Type
+type ReferenceTarget = { readonly owner: Owner; readonly file: Owner["files"][number] }
+type SelectedChanges = {
+  readonly sha256: string
+  readonly owner: OwnerChanges
+  readonly targets: readonly ReferenceTarget[]
+}
 type NativePrepared = Extract<PreparedCurrentWriteFile, { readonly kind: "native" }>
-type BoundFile = { readonly page_id: string; readonly prepared: NativePrepared }
+type BoundFile = {
+  readonly page_id: string
+  readonly prepared: NativePrepared
+  readonly before_markdown: string
+}
 export type BootstrapInput = {
   readonly library: SharedLibrary
   readonly tree_sha256: string
@@ -110,6 +159,7 @@ export type BootstrapInput = {
   readonly plan: PreparedCurrentSkillWrite
   readonly files: readonly BoundFile[]
   readonly input_sha256: string
+  readonly changes?: SelectedChanges
 }
 const invalid = (message: string, details?: unknown) =>
   fail("CUTOVER_BOOTSTRAP_INVALID", message, details)
@@ -148,6 +198,112 @@ function readJson(path: string): unknown {
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(readRegular(path)))
 }
 
+function selectChanges(input: {
+  readonly changes: unknown
+  readonly changes_sha256: string | undefined
+  readonly tree_sha256: string
+  readonly library: SharedLibrary
+  readonly owner: Owner
+  readonly owners: readonly unknown[]
+}): SelectedChanges | undefined {
+  if (input.changes === undefined && input.changes_sha256 === undefined) return undefined
+  const hash = Schema.decodeUnknownSync(Hash)(input.changes_sha256),
+    changes = Schema.decodeUnknownSync(NativeChanges)(input.changes, { onExcessProperty: "error" })
+  if (
+    changes.tree_sha256 !== input.tree_sha256 ||
+    changes.library_id !== input.library.library_id ||
+    new Set(changes.owners.map((owner) => owner.owner_page_id)).size !== changes.owners.length
+  )
+    throw invalid("Changes must name unique owners in this exact frozen tree and library.")
+  const selected = changes.owners.filter(
+    (owner) => owner.owner_page_id === input.owner.owner_page_id,
+  )
+  if (selected.length !== 1) throw invalid("Changes must explicitly select this one owner.")
+  const owner = selected[0]!
+  if (
+    owner.origin.before.length === 0 ||
+    new Set(owner.origin.before).size !== owner.origin.before.length ||
+    owner.origin.after.length !== 0 ||
+    canonicalSharedJson([...owner.origin.before].sort()) !==
+      canonicalSharedJson([...input.owner.relations.origin].sort())
+  )
+    throw invalid("Only the exact captured Origin links may be cleared by this finite input.")
+  if (
+    new Set(owner.body_changes.map((file) => file.path)).size !== owner.body_changes.length ||
+    new Set(owner.body_changes.map((file) => file.page_id)).size !== owner.body_changes.length
+  )
+    throw invalid("Every native body change must have one unique physical file binding.")
+  const targets = new Map<string, ReferenceTarget>()
+  for (const change of owner.body_changes) {
+    const original = input.owner.files.find((file) => file.path === change.path)
+    if (
+      original === undefined ||
+      original.binding.page_id !== change.page_id ||
+      original.binding.file_id !== change.file_id ||
+      original.native.body.sha256 !== change.before_body_sha256 ||
+      change.before_body_sha256 === change.after_body_sha256 ||
+      change.replacements.length === 0 ||
+      new Set(change.replacements.map((replacement) => replacement.href)).size !==
+        change.replacements.length
+    )
+      throw invalid("A native edit must bind one exact old body and unique href replacements.", {
+        path: change.path,
+      })
+    for (const replacement of change.replacements) {
+      const rows = input.owners.filter(
+        (raw) => property(raw).owner_page_id === replacement.target_owner_page_id,
+      )
+      if (rows.length !== 1)
+        throw invalid("A typed href target is absent or ambiguous in the complete tree.")
+      const target = Schema.decodeUnknownSync(NativeOwner)(rows[0]),
+        file = target.files.find((file) => file.path === replacement.target_path)
+      if (
+        target.owner_page_id === input.owner.owner_page_id ||
+        !target.enabled ||
+        file === undefined ||
+        target.entrypoint !== file.path ||
+        file.binding.page_id !== target.owner_page_id ||
+        file.binding.file_id !== replacement.target_file_id ||
+        !replacement.href.startsWith("../") ||
+        /[?#\s]/u.test(replacement.href) ||
+        replacement.replacement_href !==
+          `https://app.notion.com/p/${file.binding.page_id.replaceAll("-", "")}` ||
+        nativeNotionPageId(replacement.replacement_href) !== file.binding.page_id ||
+        replacement.typed_reference !==
+          fileRef(sharedSkillId(input.library.library_id, target.skill_id), file.path)
+      )
+        throw invalid("A replacement must name the exact enabled native main in this library.", {
+          path: change.path,
+          href: replacement.href,
+        })
+      targets.set(target.owner_page_id, { owner: target, file })
+    }
+  }
+  return { sha256: hash, owner, targets: [...targets.values()] }
+}
+
+function changedBody(body: string, change: OwnerChanges["body_changes"][number] | undefined) {
+  if (change === undefined) return body
+  const counts = new Map(change.replacements.map((replacement) => [replacement.href, 0]))
+  const target = mapMarkdownLinks(body, (href) => {
+    const replacement = change.replacements.find((replacement) => replacement.href === href)
+    if (replacement === undefined) return href
+    counts.set(href, counts.get(href)! + 1)
+    return replacement.replacement_href
+  })
+  if (
+    digest(body) !== change.before_body_sha256 ||
+    digest(target) !== change.after_body_sha256 ||
+    change.replacements.some(
+      (replacement) => counts.get(replacement.href) !== replacement.occurrences,
+    )
+  )
+    throw invalid("The exact href edits do not reproduce the explicitly selected target body.", {
+      path: change.path,
+    })
+  return target
+}
+
 /** Reuses actual current preparation, including reference admission. A failed
  * native reference remains a real candidate failure; bootstrap cannot waive it. */
 export function prepareBootstrapInput(input: {
@@ -155,6 +311,8 @@ export function prepareBootstrapInput(input: {
   readonly tree_sha256: string
   readonly library: unknown
   readonly owner_page_id: string
+  readonly changes?: unknown
+  readonly changes_sha256?: string
 }) {
   return Effect.gen(function* () {
     const selected = yield* checked(() => {
@@ -179,10 +337,25 @@ export function prepareBootstrapInput(input: {
           page_id: page,
         })
       const owner = Schema.decodeUnknownSync(NativeOwner)(rows[0])
-      if (Object.values(owner.relations).some((relation) => relation.length !== 0))
-        throw invalid("This initial native slice requires empty Origin, Members and Requires.", {
-          page_id: page,
-        })
+      const changes = selectChanges({
+        ...input,
+        changes: input.changes,
+        changes_sha256: input.changes_sha256,
+        library,
+        owner,
+        owners: tree.owners,
+      })
+      if (
+        owner.relations.members.length !== 0 ||
+        owner.relations.requires.length !== 0 ||
+        (owner.relations.origin.length !== 0 && changes === undefined)
+      )
+        throw invalid(
+          "Native bootstrap requires empty relations or an exact Origin removal input.",
+          {
+            page_id: page,
+          },
+        )
       if (
         owner.files.length === 0 ||
         new Set(owner.files.map((file) => file.binding.page_id)).size !== owner.files.length
@@ -199,9 +372,9 @@ export function prepareBootstrapInput(input: {
         Schema.decodeUnknownSync(PageId)(table.data_source_id)
       }
       Schema.decodeUnknownSync(PageId)(library.parent_page_id)
-      return { owner, library }
+      return { owner, library, ...(changes === undefined ? {} : { changes }) }
     })
-    const files = yield* checked(() =>
+    const captured = yield* checked(() =>
       selected.owner.files.map((file) => {
         const bytes = readRegular(file.local_bytes_path),
           body = readRegular(file.native.body.local_path)
@@ -215,12 +388,31 @@ export function prepareBootstrapInput(input: {
             path: file.path,
             page_id: file.binding.page_id,
           })
+        const markdown = new TextDecoder("utf-8", { fatal: true }).decode(body)
+        if (!bytes.equals(Buffer.from(file.content_candidate.frontmatter + markdown)))
+          throw invalid(
+            "The captured bytes differ from the explicit native header/body boundary.",
+            {
+              path: file.path,
+            },
+          )
+        const target = changedBody(
+          markdown,
+          selected.changes?.owner.body_changes.find((change) => change.path === file.path),
+        )
         return {
-          path: file.path,
-          bytes,
-          mode: file.mode,
-          file_id: file.binding.file_id,
-          authority: { kind: "native" as const },
+          before: markdown,
+          target,
+          write: {
+            path: file.path,
+            bytes:
+              target === markdown
+                ? bytes
+                : Buffer.from(file.content_candidate.frontmatter + target),
+            mode: file.mode,
+            file_id: file.binding.file_id,
+            authority: { kind: "native" as const },
+          },
         }
       }),
     )
@@ -231,24 +423,29 @@ export function prepareBootstrapInput(input: {
       description: selected.owner.description,
       enabled: selected.owner.enabled,
       default_context: selected.owner.default_context,
-      files,
+      files: captured.map((file) => file.write),
     })
     const bound = yield* checked(() =>
       plan.files.map((prepared) => {
-        const original = selected.owner.files.find((file) => file.path === prepared.path)
+        const original = selected.owner.files.find((file) => file.path === prepared.path),
+          capture = captured.find((file) => file.write.path === prepared.path)
         if (
           original === undefined ||
+          capture === undefined ||
           prepared.kind !== "native" ||
           plan.main !== selected.owner.entrypoint ||
           canonicalSharedJson(prepared.content) !==
             canonicalSharedJson(original.content_candidate) ||
-          digest(prepared.markdown) !== original.native.body.sha256 ||
-          Buffer.byteLength(prepared.markdown, "utf8") !== original.native.body.bytes
+          prepared.markdown !== capture.target
         )
           throw invalid("Current preparation changed the explicit native header/body boundary.", {
             path: prepared.path,
           })
-        return { page_id: original.binding.page_id, prepared }
+        return {
+          page_id: original.binding.page_id,
+          prepared,
+          before_markdown: capture.before,
+        }
       }),
     )
     const input_sha256 = yield* sha256(
@@ -264,6 +461,9 @@ export function prepareBootstrapInput(input: {
           file_id: file.prepared.file_id,
           path: file.prepared.path,
         })),
+        ...(selected.changes === undefined
+          ? {}
+          : { changes: { sha256: selected.changes.sha256, owner: selected.changes.owner } }),
       }),
     )
     return {
@@ -364,7 +564,12 @@ function queryPages(table: string, filter: unknown) {
     }
   })
 }
-function assertOwnerMetadata(input: BootstrapInput, raw: unknown) {
+export type ObservationPhase = "initial" | "progress" | "complete"
+function assertOwnerMetadata(
+  input: BootstrapInput,
+  raw: unknown,
+  phase: ObservationPhase = "progress",
+) {
   const { owner, library } = input,
     ids = library.skills.property_ids
   livePage(raw, owner.owner_page_id, library.skills.data_source_id)
@@ -381,13 +586,33 @@ function assertOwnerMetadata(input: BootstrapInput, raw: unknown) {
     throw invalid("The captured owner metadata changed.", { page_id: owner.owner_page_id })
   for (const name of ["Origin", "Members", "Requires"]) {
     const relation = field(raw, ids, name, "relation").relation
-    if (!Array.isArray(relation) || relation.length !== 0)
-      throw invalid("The captured native owner acquired a relationship.", { property: name })
+    if (!Array.isArray(relation))
+      throw invalid("The captured relation is incomplete.", { property: name })
+    const actual = relation.map((row) => Schema.decodeUnknownSync(PageId)(property(row).id)),
+      before = name === "Origin" ? (input.changes?.owner.origin.before ?? []) : [],
+      matchesBefore =
+        canonicalSharedJson([...actual].sort()) === canonicalSharedJson([...before].sort())
+    if (
+      new Set(actual).size !== actual.length ||
+      !(phase === "initial"
+        ? matchesBefore
+        : actual.length === 0 || (phase === "progress" && matchesBefore))
+    )
+      throw invalid("The exact captured or target relationship differs from this finite input.", {
+        property: name,
+        page_id: owner.owner_page_id,
+        phase,
+      })
   }
 }
-function assertFileMetadata(input: BootstrapInput, selected: BoundFile, raw: unknown) {
+function assertFileMetadata(
+  input: BootstrapInput,
+  selected: BoundFile,
+  raw: unknown,
+  phase: ObservationPhase = "progress",
+) {
   if (selected.prepared.path === input.plan.main) {
-    assertOwnerMetadata(input, raw)
+    assertOwnerMetadata(input, raw, phase)
     return
   }
   const ids = input.library.files.property_ids
@@ -419,24 +644,105 @@ function assertContent(input: BootstrapInput, file: BoundFile, raw: unknown, com
     })
   return actual === wanted
 }
-function assertBody(file: BoundFile) {
+export type ExpectedNativeBody = {
+  readonly page_id: string
+  readonly path: string
+  readonly before: string
+  readonly target: string
+}
+export function observeExpectedNativeBody(
+  file: ExpectedNativeBody,
+  phase: ObservationPhase = "complete",
+) {
   return observeSharedBody(file.page_id).pipe(
-    Effect.flatMap((body) =>
-      body.markdown === file.prepared.markdown
-        ? Effect.void
-        : Effect.fail(
-            fail(
-              "CUTOVER_NATIVE_CHANGED",
-              "The current authored body changed; bootstrap will not overwrite it.",
-              { path: file.prepared.path, page_id: file.page_id },
-            ),
-          ),
-    ),
+    Effect.flatMap((body) => {
+      if (body.markdown === file.target && phase !== "initial") return Effect.succeed(true)
+      if (body.markdown === file.before && phase !== "complete")
+        return Effect.succeed(body.markdown === file.target)
+      if (body.markdown === file.target && body.markdown === file.before)
+        return Effect.succeed(true)
+      return Effect.fail(
+        fail(
+          "CUTOVER_NATIVE_CHANGED",
+          "The authored body is neither the permitted captured text nor its selected target; no overwrite is allowed.",
+          {
+            path: file.path,
+            page_id: file.page_id,
+            phase,
+            before_sha256: digest(file.before),
+            target_sha256: digest(file.target),
+            observed_sha256: body.fingerprint.sha256,
+          },
+        ),
+      )
+    }),
   )
 }
-function inspectSchema(input: BootstrapInput) {
+function expectedBody(file: BoundFile): ExpectedNativeBody {
+  return {
+    page_id: file.page_id,
+    path: file.prepared.path,
+    before: file.before_markdown,
+    target: file.prepared.markdown,
+  }
+}
+const assertBody = (file: BoundFile, phase: ObservationPhase = "complete") =>
+  observeExpectedNativeBody(expectedBody(file), phase)
+
+function inspectReferenceTargets(input: BootstrapInput, requireReady: boolean) {
   return Effect.gen(function* () {
-    const { library } = input
+    for (const target of input.changes?.targets ?? []) {
+      const rows = yield* queryPages(input.library.skills.data_source_id, {
+        property: input.library.skills.property_ids["Skill ID"],
+        rich_text: { equals: target.owner.skill_id },
+      })
+      const raw = rows[0]
+      yield* checked(() => {
+        if (rows.length !== 1) throw invalid("A typed reference target is absent or ambiguous.")
+        livePage(raw, target.owner.owner_page_id, input.library.skills.data_source_id)
+        const ids = input.library.skills.property_ids
+        if (
+          rich(raw, ids, "Skill ID") !== target.owner.skill_id ||
+          rich(raw, ids, "Main File ID") !== target.file.binding.file_id ||
+          property(field(raw, ids, "Kind", "select").select).name !== target.owner.kind ||
+          field(raw, ids, "Enabled", "checkbox").checkbox !== true
+        )
+          throw invalid("A typed reference no longer names its exact enabled native main.", {
+            target_page_id: target.owner.owner_page_id,
+          })
+      })
+      if (requireReady) {
+        const index = yield* queryCurrentSkillIndex(input.library, target.owner.owner_page_id, raw)
+        yield* checked(() => {
+          requireCurrentSkillReady(index.state, index.page_id)
+          const actual = [index.main, ...index.files]
+          if (
+            actual.length !== target.owner.files.length ||
+            actual.some(
+              (file) =>
+                !target.owner.files.some(
+                  (expected) =>
+                    file.page_id === expected.binding.page_id &&
+                    file.file_id === expected.binding.file_id &&
+                    file.path === expected.path &&
+                    canonicalSharedJson(file.content) ===
+                      canonicalSharedJson(expected.content_candidate),
+                ),
+            )
+          )
+            throw invalid(
+              "A ready typed reference target differs from its exact captured native tree.",
+              {
+                target_page_id: target.owner.owner_page_id,
+              },
+            )
+        })
+      }
+    }
+  })
+}
+export function inspectBootstrapSchema(library: SharedLibrary) {
+  return Effect.gen(function* () {
     const database = yield* (yield* Notion).request(`v1/databases/${library.skills.database_id}`)
     const registration = yield* checked(() => {
       const description = text(property(database).description)
@@ -474,8 +780,7 @@ function inspectSchema(input: BootstrapInput) {
     return registration
   })
 }
-/** Completeness is established by a live owner query and its entire Files
- * relation. No historical decoder, broad workspace search or author rewrite. */
+/** Completeness is established by a live owner query and its entire Files relation. */
 function inspectOwner(
   input: BootstrapInput,
   operation: string,
@@ -483,6 +788,7 @@ function inspectOwner(
     readonly complete?: boolean
     readonly uninitialized?: boolean
     readonly initialApply?: boolean
+    readonly requireTargetsReady?: boolean
   } = {},
 ) {
   return Effect.gen(function* () {
@@ -492,9 +798,8 @@ function inspectOwner(
       rich_text: { equals: owner.skill_id },
     })
     const raw = owners[0]
-    yield* checked(() => {
+    const phase = yield* checked(() => {
       if (owners.length !== 1) throw invalid("The exact stable Skill ID is absent or ambiguous.")
-      assertOwnerMetadata(input, raw)
       const ids = library.skills.property_ids,
         state = field(raw, ids, "Current State", "select").select,
         op = rich(raw, ids, "Operation")
@@ -510,6 +815,9 @@ function inspectOwner(
         throw invalid("The exact owner is neither empty nor owned by this finite input.")
       if (options.complete && empty)
         throw invalid("An empty owner is not a completed current Skill.")
+      const phase = options.complete ? "complete" : empty ? "initial" : "progress"
+      assertOwnerMetadata(input, raw, phase)
+      return phase
     })
     const files = yield* queryPages(library.files.data_source_id, {
       property: library.files.property_ids.Skill,
@@ -529,14 +837,14 @@ function inspectOwner(
           ? raw
           : files.find((row) => property(row).id === file.page_id)
       yield* checked(() => {
-        assertFileMetadata(input, file, row)
+        assertFileMetadata(input, file, row, phase)
         assertContent(input, file, row, options.complete === true)
         if (options.uninitialized && rich(row, fileProperties(input, file), "Content") !== "")
           throw invalid("An uninitialized owner has an already populated File Content.", {
             path: file.prepared.path,
           })
       })
-      yield* assertBody(file)
+      yield* assertBody(file, phase)
     }
     if (options.complete) {
       const index = yield* queryCurrentSkillIndex(library, owner.owner_page_id, raw)
@@ -559,10 +867,14 @@ function inspectOwner(
           throw invalid("The actual current index differs from the fully verified tree.")
       })
     }
+    yield* inspectReferenceTargets(
+      input,
+      options.complete === true || options.requireTargetsReady === true,
+    )
     return { owner: raw, files }
   })
 }
-function result(input: BootstrapInput, operation: string, state: string) {
+function result(input: BootstrapInput, operation: string, state: string, authoredBodyWrites = 0) {
   return {
     kind: "ah513-existing-native-bootstrap",
     state,
@@ -580,7 +892,20 @@ function result(input: BootstrapInput, operation: string, state: string) {
       authority: "native",
       sha256: file.prepared.sha256,
     })),
-    authored_body_writes: 0,
+    authored_body_writes: authoredBodyWrites,
+    ...(input.changes === undefined
+      ? {}
+      : {
+          changes_sha256: input.changes.sha256,
+          planned_origin_removals: input.changes.owner.origin.before,
+          planned_body_changes: input.changes.owner.body_changes.map((file) => ({
+            page_id: file.page_id,
+            path: file.path,
+            before_sha256: file.before_body_sha256,
+            target_sha256: file.after_body_sha256,
+            href_replacements: file.replacements.length,
+          })),
+        }),
   }
 }
 export function inspectBootstrapCurrent(input: BootstrapInput, operation: string) {
@@ -603,10 +928,94 @@ export function inspectBootstrapCurrent(input: BootstrapInput, operation: string
       },
     }
     return yield* Effect.gen(function* () {
-      const registration = yield* inspectSchema(input)
+      const registration = yield* inspectBootstrapSchema(input.library)
       yield* inspectOwner(input, operation)
       return { ...result(input, operation, "dry-run"), registration, remote_writes: 0 }
     }).pipe(Effect.provideService(Notion, readOnly))
+  })
+}
+
+function applyOrigin(input: BootstrapInput, session: CurrentOperationSession) {
+  return Effect.gen(function* () {
+    if (input.changes === undefined) return
+    const api = yield* Notion,
+      page = input.owner.owner_page_id
+    yield* session.dispatch({
+      key: `bootstrap-native:${page}:origin`,
+      replay: "idempotent",
+      request: {
+        path: `v1/pages/${page}`,
+        body: { properties: { [input.library.skills.property_ids.Origin!]: { relation: [] } } },
+        options: { method: "PATCH" },
+      },
+      observe: () =>
+        Effect.gen(function* () {
+          yield* session.assertCurrent()
+          const raw = yield* api.request(`v1/pages/${page}`)
+          yield* checked(() => assertOwnerMetadata(input, raw))
+          for (const file of input.files) yield* assertBody(file, "progress")
+          const fresh = yield* api.request(`v1/pages/${page}`)
+          const complete = yield* checked(() => {
+            assertOwnerMetadata(input, fresh)
+            const relation = field(
+              fresh,
+              input.library.skills.property_ids,
+              "Origin",
+              "relation",
+            ).relation
+            return Array.isArray(relation) && relation.length === 0
+          })
+          return complete
+            ? { status: "complete" as const, value: undefined }
+            : { status: "missing" as const }
+        }),
+      acknowledge: (raw) => checked(() => assertOwnerMetadata(input, raw, "complete")),
+    })
+  })
+}
+
+/** The existing operation dispatch owns every body write and its unknown result.
+ * Only the exact old text is replaceable; target text acknowledges completion;
+ * every third value stops without overwriting an observed author edit. */
+export function dispatchExpectedNativeBody(
+  session: CurrentOperationSession,
+  file: ExpectedNativeBody & {
+    readonly assertScope: Effect.Effect<void, SkillsError, Notion>
+    readonly beforeReplace?: Effect.Effect<void, SkillsError, Notion>
+  },
+) {
+  return Effect.gen(function* () {
+    if (file.before === file.target) return false
+    return yield* session.dispatch({
+      key: `native:${file.page_id}:body`,
+      replay: "idempotent",
+      request: {
+        path: `v1/pages/${file.page_id}/markdown`,
+        body: {
+          markdown_version: "v2",
+          type: "replace_content",
+          replace_content: { new_str: file.target },
+        },
+        options: { method: "PATCH" },
+      },
+      observe: () =>
+        Effect.gen(function* () {
+          yield* session.assertCurrent()
+          yield* file.assertScope
+          if (yield* observeExpectedNativeBody(file, "progress"))
+            return { status: "complete" as const, value: false }
+          yield* assertCurrentBodyReplaceable(file.page_id)
+          if (file.beforeReplace !== undefined) yield* file.beforeReplace
+          // Child-content and reference reads must not conceal an identity,
+          // ownership or body edit since the first observation. No API
+          // compare-and-swap is implied.
+          yield* file.assertScope
+          return (yield* observeExpectedNativeBody(file, "progress"))
+            ? { status: "complete" as const, value: false }
+            : { status: "missing" as const }
+        }),
+      acknowledge: () => observeExpectedNativeBody(file, "complete").pipe(Effect.as(true)),
+    })
   })
 }
 export function bootstrapCurrent(
@@ -615,7 +1024,7 @@ export function bootstrapCurrent(
   mode: "apply" | "resume",
 ) {
   return Effect.gen(function* () {
-    const registration = yield* inspectSchema(input)
+    const registration = yield* inspectBootstrapSchema(input.library)
     const api = yield* Notion
     const verify = () => inspectOwner(input, operation, { complete: true }).pipe(Effect.asVoid)
     return yield* withCurrentOperation(input.library, {
@@ -630,14 +1039,31 @@ export function bootstrapCurrent(
         assertUninitialized: () =>
           inspectOwner(input, operation, { uninitialized: true }).pipe(Effect.asVoid),
       },
-      assertScope: inspectOwner(input, operation, { initialApply: mode === "apply" }).pipe(
-        Effect.asVoid,
-      ),
+      assertScope: inspectOwner(input, operation, {
+        initialApply: mode === "apply",
+        requireTargetsReady: true,
+      }).pipe(Effect.asVoid),
       run: (session: CurrentOperationSession) =>
         Effect.gen(function* () {
+          let authoredBodyWrites = 0
+          yield* applyOrigin(input, session)
           // Stable ordering and exact PATCH payloads survive budget stops. Every
           // action rereads its actual native body before publishing its descriptor.
           for (const file of input.files) {
+            if (
+              yield* dispatchExpectedNativeBody(session, {
+                ...expectedBody(file),
+                assertScope: api
+                  .request(`v1/pages/${file.page_id}`)
+                  .pipe(
+                    Effect.flatMap((raw) =>
+                      checked(() => assertFileMetadata(input, file, raw, "complete")),
+                    ),
+                  ),
+                beforeReplace: inspectReferenceTargets(input, true),
+              })
+            )
+              authoredBodyWrites += 1
             const properties = {
               [fileProperties(input, file).Content!]: {
                 rich_text: currentRecordText(canonicalSharedJson(file.prepared.content)),
@@ -655,11 +1081,16 @@ export function bootstrapCurrent(
                 Effect.gen(function* () {
                   yield* session.assertCurrent()
                   const raw = yield* api.request(`v1/pages/${file.page_id}`)
-                  const complete = yield* checked(() => {
-                    assertFileMetadata(input, file, raw)
-                    return assertContent(input, file, raw, false)
+                  yield* checked(() => {
+                    assertFileMetadata(input, file, raw, "complete")
+                    assertContent(input, file, raw, false)
                   })
                   yield* assertBody(file)
+                  const fresh = yield* api.request(`v1/pages/${file.page_id}`)
+                  const complete = yield* checked(() => {
+                    assertFileMetadata(input, file, fresh, "complete")
+                    return assertContent(input, file, fresh, false)
+                  })
                   return complete
                     ? { status: "complete" as const, value: undefined }
                     : { status: "missing" as const }
@@ -667,14 +1098,14 @@ export function bootstrapCurrent(
               acknowledge: (raw) =>
                 Effect.gen(function* () {
                   yield* checked(() => {
-                    assertFileMetadata(input, file, raw)
+                    assertFileMetadata(input, file, raw, "complete")
                     assertContent(input, file, raw, true)
                   })
                   yield* assertBody(file)
                 }),
             })
           }
-          return { ...result(input, operation, "ready"), registration }
+          return { ...result(input, operation, "ready", authoredBodyWrites), registration }
         }),
       verify,
       verifyCompletedResume: () =>
@@ -687,6 +1118,8 @@ export type BootstrapArguments = {
   readonly tree: string
   readonly tree_sha256: string
   readonly library: string
+  readonly changes?: string
+  readonly changes_sha256?: string
   readonly owner_page_id: string
   readonly operation: string
   readonly mode: "dry-run" | "apply" | "resume"
@@ -704,6 +1137,8 @@ export function parseBootstrapArguments(args: readonly string[]): BootstrapArgum
         "--tree",
         "--tree-sha256",
         "--library",
+        "--changes",
+        "--changes-sha256",
         "--owner-page",
         "--operation",
         "--mode",
@@ -732,9 +1167,17 @@ export function parseBootstrapArguments(args: readonly string[]): BootstrapArgum
   const operation = values.get("--operation")
   if (!operation || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$/u.test(operation))
     throw invalid("Supply a stable finite --operation identity.")
+  if (values.has("--changes") !== values.has("--changes-sha256"))
+    throw invalid("Supply --changes and --changes-sha256 together.")
   return {
     tree: absolute("--tree"),
     library: absolute("--library"),
+    ...(values.has("--changes")
+      ? {
+          changes: absolute("--changes"),
+          changes_sha256: Schema.decodeUnknownSync(Hash)(values.get("--changes-sha256")),
+        }
+      : {}),
     store: absolute("--store"),
     tree_sha256: Schema.decodeUnknownSync(Hash)(values.get("--tree-sha256")),
     owner_page_id: Schema.decodeUnknownSync(PageId)(values.get("--owner-page")),
@@ -771,7 +1214,7 @@ const runtime = NotionTransport.pipe(
 async function main() {
   if (process.argv.includes("--help")) {
     process.stdout.write(
-      "node scripts/cutover-bootstrap-current.ts --tree ABS --tree-sha256 SHA256 --library ABS --owner-page UUID --operation ID --mode dry-run|apply|resume --store ABS --max-requests N --max-bytes N --timeout MS\nAH-513 only: one existing native owner, exact existing schema, empty relations. No author-body or schema writes. Keep the same tree, library, operation and Store for resume.\n",
+      "node scripts/cutover-bootstrap-current.ts --tree ABS --tree-sha256 SHA256 --library ABS [--changes ABS --changes-sha256 SHA256] --owner-page UUID --operation ID --mode dry-run|apply|resume --store ABS --max-requests N --max-bytes N --timeout MS\nAH-513 only: one existing native owner and exact existing schema. Empty relations and unchanged bodies are required unless an explicit changes input owns exact Origin removal and typed href edits. No schema or Source writes. Keep the same tree, changes, library, operation and Store for resume.\n",
     )
     return
   }
@@ -779,12 +1222,21 @@ async function main() {
     bytes = readRegular(options.tree)
   if (digest(bytes) !== options.tree_sha256)
     throw invalid("The complete tree differs from the selected SHA-256.")
+  const changesBytes = options.changes === undefined ? undefined : readRegular(options.changes)
+  if (changesBytes !== undefined && digest(changesBytes) !== options.changes_sha256)
+    throw invalid("The finite changes input differs from the selected SHA-256.")
   const input = await Effect.runPromise(
     prepareBootstrapInput({
       tree: JSON.parse(bytes.toString("utf8")),
       tree_sha256: options.tree_sha256,
       library: readJson(options.library),
       owner_page_id: options.owner_page_id,
+      ...(changesBytes === undefined
+        ? {}
+        : {
+            changes: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(changesBytes)),
+            changes_sha256: options.changes_sha256!,
+          }),
     }).pipe(Effect.provide(localRuntime)),
   )
   const configuration = ConfigProvider.layer(

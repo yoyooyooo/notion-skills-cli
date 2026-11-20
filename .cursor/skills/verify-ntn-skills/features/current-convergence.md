@@ -77,7 +77,11 @@ Source remove 自带库内完整 Skills/Files 元数据反查，能找到缺 Ori
 
 实库通过必须完整枚举 Skills/Files/Sources/必要 Records、反向关系、页/附件/导航及分页，解释权限缺口。移交唯一字节后真实清退，再独立枚举并重复治理 no-op。Trash/归档是退役；隐藏列、superseded 标签或平行旧库不是完成。
 
-AH-513 的 [既有 native 转换入口](../../../../scripts/cutover-bootstrap-current.ts) 仅接纳完整冻结输入、已验证的四表字段、既有物理页及空 Origin/Members/Requires。三项空 Content/Current State/Operation 必须先登记真实 current intent，进入 applying 后逐页写 Content，重新核完整索引和作者正文才可 ready；不写正文。保持相同输入、operation 和独立 Store，以 resume 验证完成后零写。显式 additive descriptor 尚未发布时，正常库入口仍拒绝旧登记；单个 owner 成功不等于整库可用。资源、Source、非空关系和缺失 Files 另接现有当前原语；此临时入口连同 bootstrap seam 在 AH-517 删除。
+AH-513 的 [既有 native 转换入口](../../../../scripts/cutover-bootstrap-current.ts) 接纳完整冻结输入、已验证的四表字段、既有物理页及空 Members/Requires。首次纳管要求 Content/Current State/Operation 同时为空；先登记 current intent，再进入 applying。默认保留正文并要求空 Origin。显式 changes 输入可声明准确旧 Origin 到空关系的转换，以及已绑定目标 page/File/path 的逐项链接修订。输入绑定旧正文与目标正文指纹、精确替换次数和稳定引用；Notion 中写入可直接打开的目标页面链接，现有 reader 将其编译为同一 typed reference。依赖先转换，再处理引用它的正文，不因 prepare 通过推断远端目标已 ready。
+
+已 ready 的 native 指导内容沿 [有限修订入口](../../../../scripts/cutover-edit-current-native.ts)，不进入 bootstrap 的三空初态。完整现有文件树、准确旧 Content/正文和目标输入共同绑定一个逐 owner 意图；仅修改声明的正文、Description 和主文件 header。两个入口共用现有 operation kernel 和正文三态观察：目标准确相同才完成，仍是批准的旧正文才允许写入，其他正文立即冲突；替换前核嵌套子内容保护。未知写入先读回，未确认的 in-flight 保留，不能以清 Operation 或补 ready 掩盖。
+
+最终重新核完整索引、关系、正文和目标引用后才可 ready。保持相同输入、operation 和独立 Store，以 completed resume 验证零写。显式 additive descriptor 尚未发布时，正常库入口仍拒绝旧登记；局部结构转换和指导修订都不证明整库日用。资源、Source、非空 Members/Requires 和缺失 Files 另接现有当前原语。上述临时入口、专属测试与 bootstrap seam 在 AH-513 完成后由 AH-517 删除，不进入正常 reader、公开命令或发布包。
 
 ## 3. 单轨与普通消费 0 写
 
