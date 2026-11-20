@@ -8,7 +8,7 @@ metadata:
 
 # Maintain the current library
 
-Requires the installed ntn-skills CLI and exact library access. Import needs Notion Insert and Update permissions; inspection needs Read.
+Requires ntn-skills and exact library access: Read for inspection; Insert and Update for import.
 
 Use the task's executable and exact library. Stable Skill IDs select content;
 names are display labels. Import replaces a complete local tree. Source
@@ -39,10 +39,9 @@ for contribution changes. Omitting or reidentifying a file cannot transfer it.
 
 Review removals and authority under the task's existing authorization. Omit a
 Notion-owned file only to remove it. Preview is not a completed content edit.
-Local Markdown links must resolve inside the complete input; fix inbound links
-before removing their target. Ordinary links may point to a real directory, with
-or without a trailing slash; images must point to files. A directory does not need
-a README. Use explicit stable references for targets in another Skill.
+Local Markdown links must resolve in the complete input. Fix inbound links before
+removing a target. Links may point to real directories; images need files.
+Directories need no README. Use stable refs across Skills.
 
 ## Apply and verify
 
