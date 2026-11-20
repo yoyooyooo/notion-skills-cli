@@ -73,7 +73,7 @@ Ordinary reads check Enabled and reject an observed unfinished current operation
 The accepted input is a directory, ZIP, or explicitly selected Markdown file.
 The input limit is 128 MiB expanded and 10,000 entries. The ZIP wire limit is 138 MiB.
 
-The default representation is exact Notion resource content with a complete reading projection.
+The default representation is exact Notion resource content. Generated reading projections are separate and do not block readiness.
 An existing Notion-owned supporting file omitted from the input is removed.
 Repeat `--native PATH` for editable UTF-8/LF text with exact frontmatter and mode.
 Unknown or noncanonical native paths are rejected locally; the selection is part
@@ -105,17 +105,14 @@ These commands do not create content versions.
 `ctl library source apply INPUT --entry ENTRY` accepts one complete bounded JSON
 `{version:1,definition,contributions}`. `source refresh SOURCE_ID --entry ENTRY`
 reads that declaration from the current Source and uses the same coordinator.
-Only regular Git files from GitHub HTTPS with manual/pinned policy are supported.
-Each selected member needs explicit stable targets. Contribution mapping/exclude
-uses exact member-relative file paths; Selection filtering chooses members.
+Regular Git files from GitHub or credential-free HTTP(S) Git origins support manual/pinned policy and local machine authentication. All selected discovered members are included; contributions preserve stable identity overrides. New identities are deterministic. Upstream member deletion, including an empty selection, retires pure Source Skills and Files. Provider failures do not authorize deletion. Contribution mapping/exclude uses exact member-relative file paths; Selection filtering chooses members.
 
 Source dry-run reads the provider and affected current directories, with zero
 semantic writes. Source success returns the same `library` triple, `state: ready`,
-Source/page identities, affected Skill IDs and child results. Resume uses the
+Source/page identities, affected Skill IDs and child results. Retired children have `state: removed`, `status: removed` and `files: 0`; completed current children remain `state: ready`. Rebuilt physical page IDs can change while stable Skill IDs remain. These results invalidate matching Broker discovery, without adopting content from the write result. Resume uses the
 original operation, complete declaration and frozen commit; a changed visible
 Notion declaration cannot replace that original input. Parent progress is a
-finite target cursor, removed with the operation on completion. Preserved native
-bodies and unrelated contributors are not rewritten. Both paths share the same
+finite target cursor, removed with the operation on completion. Desired paths explicitly replace native/resource authority; excluded native bodies and unrelated contributors are preserved. Generated projections do not gate completion. Both paths share the same
 HTTP budget; Git subprocess HTTP/wire bytes are unmetered, while deadline and
 file limits still apply. See [authoring](shared-authoring.md#apply-or-refresh-a-git-source).
 
@@ -184,7 +181,7 @@ Limits apply to different boundaries. A small output page does not imply a fixed
 
 Graph budgets count nodes and bytes; they are not HTTP request-count limits.
 Current import includes library lookup, relation closure, retries, uploads,
-provider downloads, body projection, pagination, cleanup and readback in one
+provider downloads, native body writes, pagination, cleanup and readback in one
 invocation budget. The three flags require positive safe integers. Nested calls
 reuse the same budget. Success and operational errors report the budget snapshot.
 

@@ -54,6 +54,7 @@ export type CurrentSharedSource = CurrentSharedSourceSelection & {
   readonly page_id: string
   readonly manifest: readonly CurrentSharedSourceFile[]
   readonly local_paths: readonly string[]
+  readonly git_origin?: { readonly url: string; readonly commit: string }
   readonly materialize: (paths: readonly string[]) => Effect.Effect<
     {
       readonly files: readonly {
@@ -242,6 +243,14 @@ export function prepareCurrentSourceManagementSelection(
       revision: input.revision,
       manifest,
       local_paths: inspection.local_paths,
+      ...(inspection.plan.base?.kind === "git" && inspection.plan.mounts.length === 0
+        ? {
+            git_origin: {
+              url: inspection.plan.base.source.url,
+              commit: inspection.plan.base.source.commit,
+            },
+          }
+        : {}),
       materialize: (paths: readonly string[]) =>
         materializeSharedSourcePlan(inspection.plan, selectedOptions, paths).pipe(
           Effect.map((materialized) => ({
@@ -487,6 +496,14 @@ export function resolveCurrentSharedSources(
         page_id: current.page_id,
         manifest,
         local_paths: inspection.local_paths,
+        ...(inspection.plan.base?.kind === "git" && inspection.plan.mounts.length === 0
+          ? {
+              git_origin: {
+                url: inspection.plan.base.source.url,
+                commit: inspection.plan.base.source.commit,
+              },
+            }
+          : {}),
         materialize: (paths) =>
           materializeSharedSourcePlan(inspection.plan, selectedOptions, paths).pipe(
             Effect.map((materialized) => ({

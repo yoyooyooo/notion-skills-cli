@@ -378,6 +378,37 @@ test("auto batch transfer falls back to exact HTTP only for Git transport failur
   expect(forced.requests).toHaveLength(0)
 })
 
+test("private origins use only the host Git reader even when GitHub credentials and API configuration exist", async () => {
+  const bytes = encode("private original\n"),
+    file = entry("SKILL.md", bytes),
+    source = { ...makeSource([file]), url: "http://private.example.test:8888/team/skills.git" }
+  let reads = 0
+  const f = fixture(new Map(), false, {
+    mode: "auto",
+    reader: {
+      read: (input) =>
+        Effect.sync(() => {
+          reads++
+          expect(input.source.url).toBe(source.url)
+          return new Map([[file.git_oid, bytes]])
+        }),
+    },
+  })
+  const credentials = { resolve: Effect.die("Private origin must not inspect GitHub credentials") }
+  const env = {
+    NTN_SKILLS_GITHUB_API_URL: "https://github-gateway.example.test/api",
+    GH_TOKEN: "not-for-private-host",
+  }
+  expect((await f.configured(source, env, credentials))._tag).toBe("Success")
+  expect(reads).toBe(1)
+  expect(f.requests).toEqual([])
+  expect((await f.configured(source, env, credentials))._tag).toBe("Success")
+  expect(reads).toBe(1)
+  const forcedHttp = fixture(new Map(), false, { mode: "http" })
+  expect((await forcedHttp.rejected(source)).code).toBe("FIXED_GIT_TRANSPORT_UNAVAILABLE")
+  expect(forcedHttp.requests).toEqual([])
+})
+
 describe("fixed GitHub source materialization", () => {
   test("a manager-verified SHA reuses equivalent bytes already read through another transport", async () => {
     const bytes = encode("already observed exact native bytes\n")

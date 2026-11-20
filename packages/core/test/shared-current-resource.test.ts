@@ -420,9 +420,17 @@ describe("current exact resources", () => {
       ),
     ).rejects.toMatchObject({ code: "CURRENT_RECORD_INVALID" })
     expect(f.writeCount()).toBe(0)
-    await expect(
-      f.run(listCurrentOwnedResourceRecords(library, { kind: "skill", page_id: skillPage })),
-    ).rejects.toMatchObject({ code: "CURRENT_RECORD_INVALID" })
+    const previousOperation = await f.seed(new Uint8Array([7, 8, 9]))
+    previousOperation.row.properties.kind.select = { name: "operation" }
+    previousOperation.row.properties.record = currentRich("record", "skill-create-before-current")
+    previousOperation.row.properties.entity = currentRich("entity", "skill-create-manifest-v1")
+    const current = await f.seed(new Uint8Array([4, 5, 6]))
+    const owned = await f.run(
+      listCurrentOwnedResourceRecords(library, { kind: "skill", page_id: skillPage }),
+    )
+    expect(owned).toHaveLength(1)
+    expect(owned[0]?.record.record_id).toBe(current.prepared.content.object_id)
+    expect(f.writeCount()).toBe(0)
   })
 
   test("identical duplicate physical resource rows are conflicts, not silently deduplicated", async () => {

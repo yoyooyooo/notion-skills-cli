@@ -11,6 +11,7 @@ import {
 } from "./shared-github-source.ts"
 import { runSourceGit } from "./upstream-source.ts"
 import { sha256 } from "./store.ts"
+import { gitRemoteUrl } from "./shared-git-origin.ts"
 
 type Metrics = ReturnType<typeof createRequestMetrics>
 type Input = {
@@ -106,7 +107,7 @@ export function readFixedGitObjects(input: Input) {
         catBytes = 0
       const finish = input.metrics?.beginSourceAcquisition({
         provider: "git",
-        configured_transport: "https",
+        configured_transport: source.url.startsWith("https:") ? "https" : "http",
       })
       yield* Effect.addFinalizer((exit) =>
         Effect.sync(() =>
@@ -123,7 +124,7 @@ export function readFixedGitObjects(input: Input) {
         ),
       )
       yield* runSourceGit(repo, ["init", "--bare", "--template=", "."])
-      yield* runSourceGit(repo, ["remote", "add", "origin", source.url + ".git"])
+      yield* runSourceGit(repo, ["remote", "add", "origin", gitRemoteUrl(source.url)])
       yield* runSourceGit(repo, ["config", "remote.origin.promisor", "true"])
       yield* runSourceGit(repo, ["config", "remote.origin.partialclonefilter", "blob:none"])
       const fetch = (args: readonly string[]) =>

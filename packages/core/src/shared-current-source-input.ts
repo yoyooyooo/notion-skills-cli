@@ -9,13 +9,15 @@ import {
 import { currentWriteIdentity } from "./shared-current-write-input.ts"
 import { assertSupportedGitBlob, gitBlobOid, type FixedGithubFile } from "./shared-github-source.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
-import { discoverSourceDefinition, sourceDiscoveryInput } from "./shared-source-adapters.ts"
+import { sourceDiscoveryInput } from "./shared-source-adapters.ts"
+import { canonicalGitUrl } from "./shared-git-origin.ts"
 import { sourceRich, validateSourceDefinition } from "./shared-source-definitions.ts"
 import { validateFixedGithubMaterializationSource } from "./shared-source-materialization.ts"
 import type { SharedSourcePlan } from "./shared-source-plan.ts"
 import { SourceDefinitionInputSchema, type SourceDefinitionInput } from "./shared-sources-model.ts"
 import { sha256 } from "./store.ts"
-import { selectMembers, SourceSnapshotSchema } from "./upstream-source.ts"
+import { discoverSource, selectMembers, SourceSnapshotSchema } from "./upstream-source.ts"
+import { sourceExternalResourceTargets } from "./upstream-member-links.ts"
 
 export const CurrentSourceContributionSchema = Schema.Struct({
   member_key: Schema.String,
@@ -114,38 +116,55 @@ export function validateCurrentSourceContributions(input: unknown) {
   return contributions
 }
 
-function githubUrl(definition: SourceDefinitionInput): string {
+function gitUrl(definition: SourceDefinitionInput): string {
   if (definition.adapter.type !== "git")
-    throw unsupported("Current Source writes require a GitHub Git source with regular files.")
-  const match =
-    /^https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9_.-]{1,100})$/u.exec(
-      definition.adapter.url,
-    )
-  const repository = match?.[2]?.replace(/\.git$/, "")
-  if (!match || !repository || repository === "." || repository === "..")
-    throw unsupported("Use a credential-free https://github.com/owner/repository Git source.")
-  return `https://github.com/${match[1]}/${repository}`
+    throw unsupported("Current Source writes require a Git source with regular files.")
+  return canonicalGitUrl(definition.adapter.url)
+}
+
+/** Explicit assignments override stable identities; discovery owns current membership. */
+function resolveCurrentSourceContributions(input: {
+  readonly source_id: string
+  readonly members: readonly string[]
+  readonly overrides: readonly CurrentSourceContribution[]
+}) {
+  return Effect.gen(function* () {
+    const selected = new Set(input.members)
+    const contributions = input.overrides.filter((entry) => selected.has(entry.member_key))
+    const assigned = new Set(contributions.map((entry) => entry.member_key))
+    for (const member_key of [...selected].sort(compare)) {
+      if (assigned.has(member_key)) continue
+      contributions.push({
+        member_key,
+        skill_id: `skill-${yield* sha256(canonicalSharedJson(["source-member", input.source_id, member_key]))}`,
+        mount_path: "",
+        mapping: {},
+        exclude: [],
+      })
+    }
+    return yield* checked(() => validateCurrentSourceContributions(contributions))
+  })
 }
 
 export function validateCurrentSourceInput(input: unknown): CurrentSourceDeclaration {
   const decoded = Schema.decodeUnknownSync(CurrentSourceInputSchema)(structuredClone(input), {
     onExcessProperty: "error",
   })
-  const definition = validateSourceDefinition(decoded.definition)
-  validateCurrentSourceId(definition.source_id)
-  githubUrl(definition)
-  const permitted = new Set(["require_all_included", "accepted_ref"])
+  const requested = validateSourceDefinition(decoded.definition)
+  validateCurrentSourceId(requested.source_id)
+  const url = gitUrl(requested)
+  if (requested.adapter.type !== "git") throw unsupported("Use a Git Source.")
+  const definition: SourceDefinitionInput = {
+    ...requested,
+    adapter: { ...requested.adapter, url },
+  }
+  const permitted = new Set(["accepted_ref"])
   for (const key of Object.keys(definition.options))
     if (!permitted.has(key))
       throw unsupported("This option has no current fixed-file write behavior.", { option: key })
   const accepted = definition.options.accepted_ref
   if (accepted !== undefined && (typeof accepted !== "string" || !/^[a-f0-9]{40}$/u.test(accepted)))
     throw invalid("accepted_ref must select an exact lowercase Git commit.")
-  if (
-    definition.options.require_all_included !== undefined &&
-    typeof definition.options.require_all_included !== "boolean"
-  )
-    throw invalid("require_all_included must be boolean.")
   if (
     definition.policy === "pinned" &&
     definition.adapter.type === "git" &&
@@ -182,45 +201,45 @@ export function prepareCurrentSourceFromDiscovery(
   options: { readonly exactCommit?: string } = {},
 ) {
   return Effect.gen(function* () {
-    const declaration = yield* checked(() => validateCurrentSourceInput(input))
-    const expected = yield* checked(() => exactCommit(declaration, options.exactCommit))
+    const requested_declaration = yield* checked(() => validateCurrentSourceInput(input))
+    const expected = yield* checked(() => exactCommit(requested_declaration, options.exactCommit))
     const snapshot = yield* checked(() =>
       Schema.decodeUnknownSync(SourceSnapshotSchema)(structuredClone(observation), {
         onExcessProperty: "error",
       }),
     )
-    const url = yield* checked(() => githubUrl(declaration.definition))
+    const url = yield* checked(() => gitUrl(requested_declaration.definition))
     yield* checked(() => {
-      if (!declaration.definition.enabled)
+      if (!requested_declaration.definition.enabled)
         throw fail("SOURCE_DISABLED", "Enable this Source before preparing its current files.")
       if (
         !/^[a-f0-9]{40}$/u.test(snapshot.revision) ||
         (expected !== undefined && snapshot.revision !== expected) ||
-        snapshot.provenance.git_url?.replace(/\.git$/, "") !== url ||
+        snapshot.provenance.git_url === undefined ||
+        canonicalGitUrl(snapshot.provenance.git_url) !== url ||
         snapshot.provenance.resolved_ref !== snapshot.revision
       )
         throw invalid("The observation does not identify the selected exact Git origin and commit.")
-      if (snapshot.external_resources?.length || snapshot.unavailable?.length)
-        throw unsupported(
-          "Current Source input must contain every referenced resource in its selected members.",
-        )
+      if (snapshot.unavailable?.length)
+        throw unsupported("A Source reference cannot escape its complete Git repository.")
       const selected = new Set(snapshot.members.map((member) => member.member_key))
-      const assigned = new Set(declaration.contributions.map((entry) => entry.member_key))
-      if (
-        selected.size === 0 ||
-        selected.size !== snapshot.members.length ||
-        selected.size !== assigned.size ||
-        [...selected].some((key) => !assigned.has(key))
-      )
-        throw invalid("Every discovered member requires an explicit stable target contribution.", {
-          discovered: [...selected].sort(compare),
-          contributed: [...assigned].sort(compare),
-        })
+      if (selected.size !== snapshot.members.length)
+        throw invalid("The complete Git observation contains duplicate members.")
+      if (selected.size === 0 && !/^[a-f0-9]{40}$/u.test(snapshot.provenance.tree_hash ?? ""))
+        throw invalid("A complete empty selection must identify the exact Git tree.")
     })
+    const declaration: CurrentSourceDeclaration = {
+      ...requested_declaration,
+      contributions: yield* resolveCurrentSourceContributions({
+        source_id: requested_declaration.definition.source_id,
+        members: snapshot.members.map((member) => member.member_key),
+        overrides: requested_declaration.contributions,
+      }),
+    }
     const sourceFiles: FixedGithubFile[] = []
     const verified = new Map<string, { bytes: Uint8Array; mode: "100644" | "100755" }>()
     const members = new Map(snapshot.members.map((member) => [member.member_key, member]))
-    let tree: string | undefined
+    let tree: string | undefined = snapshot.provenance.tree_hash
     for (const member of snapshot.members) {
       const manifest = yield* checked(() => {
         if (member.member_key !== ".") exactPath(member.member_key, "Discovered member key")
@@ -287,9 +306,47 @@ export function prepareCurrentSourceFromDiscovery(
         })
       }
     }
+    const references = snapshot.external_resources ?? []
+    yield* checked(() => {
+      const expected = sourceExternalResourceTargets(
+        snapshot.members,
+        references.map((reference) => ({
+          path: reference.source_path,
+          oid: reference.git_oid,
+          mode: reference.mode,
+          type: "blob",
+        })),
+      )
+      if (expected.length !== references.length)
+        throw invalid(
+          "Repository reference metadata must identify each authored outside-member target once.",
+        )
+    })
+    for (const reference of references) {
+      yield* checked(() => {
+        exactPath(reference.source_path, "Repository reference path")
+        if (verified.has(reference.source_path))
+          throw invalid("A repository reference cannot duplicate a selected member file.")
+        assertSupportedGitBlob(reference.bytes)
+      })
+      const sha = yield* sha256(reference.bytes)
+      if ((yield* gitBlobOid(reference.bytes)) !== reference.git_oid || sha !== reference.sha256)
+        return yield* Effect.fail(
+          invalid("Repository reference bytes differ from their fixed Git identity."),
+        )
+      verified.set(reference.source_path, { bytes: reference.bytes, mode: reference.mode })
+      sourceFiles.push({
+        path: reference.source_path,
+        source_path: reference.source_path,
+        git_oid: reference.git_oid,
+        bytes: reference.bytes.byteLength,
+        mode: reference.mode,
+        sha256: sha,
+      })
+    }
     yield* checked(() => {
       const selected = selectMembers(
-        sourceDiscoveryInput(declaration.definition),
+        { ...sourceDiscoveryInput(declaration.definition), allow_empty: true },
         [...members.keys()],
         [...verified.keys()],
       )
@@ -376,8 +433,8 @@ export function prepareCurrentSourceFromDiscovery(
   })
 }
 
-/** Only the parent finite intent may supply exactCommit when resuming. The
- * declared configuration remains unchanged and contributes its original hash. */
+/** Only the parent finite intent may supply exactCommit when resuming. Sparse
+ * overrides and stored resolved assignments converge to the same configuration. */
 export function prepareCurrentSource(
   input: unknown,
   options: {
@@ -395,7 +452,10 @@ export function prepareCurrentSource(
             ...declaration.definition,
             options: { ...declaration.definition.options, accepted_ref: selected },
           }
-    const observation = yield* discoverSourceDefinition(effective, { metrics: options.metrics })
+    const observation = yield* discoverSource(
+      { ...sourceDiscoveryInput(effective), allow_empty: true },
+      { metrics: options.metrics },
+    )
     return yield* prepareCurrentSourceFromDiscovery(declaration, observation, options)
   })
 }

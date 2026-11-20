@@ -325,9 +325,24 @@ try {
       assert.equal(source.notion.bodies[row.id], currentFiles[2]!.content)
       continue
     }
-    assert.ok(
-      source.notion.blocks[row.id]?.length > 0,
-      "Every imported page must contain its complete reading projection",
+    const contentProperty =
+      row.id === imported.page_id
+        ? currentLibrary.skills.property_ids.Content!
+        : currentLibrary.files.property_ids.Content!
+    const content = JSON.parse(row.properties[contentProperty].rich_text[0].text.content)
+    assert.equal(content.kind, "resource")
+    assert.equal(typeof content.object_id, "string")
+    assert.ok(content.object_id.length > 0)
+    const matchingResources = liveRecords.filter(
+      (record: { properties: Record<string, { rich_text: { text: { content: string } }[] }> }) =>
+        record.properties[currentLibrary.records.property_ids["Record ID"]!]?.rich_text
+          .map((item) => item.text.content)
+          .join("") === content.object_id,
+    )
+    assert.equal(
+      matchingResources.length,
+      1,
+      "Every resource Content must name exactly one live resource Record",
     )
   }
   const afterImport = semanticWrites()

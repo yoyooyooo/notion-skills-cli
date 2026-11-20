@@ -362,7 +362,7 @@ test("complete Source reference census catches an orphan File and paginates inde
   expect(f.mutations()).toHaveLength(0)
 })
 
-test("Source resource retirement rechecks references after inspecting the resource body", async () => {
+test("Source resource retirement rechecks references after reading the candidate resource", async () => {
   const f = currentWriteFixture(parent)
   const skill = await seedSkill(f),
     source = await seedSource(f)
@@ -384,7 +384,7 @@ test("Source resource retirement rechecks references after inspecting the resour
   )
   let introduced = false
   f.rewrite((path, response) => {
-    if (!introduced && path.startsWith(`v1/blocks/${resourcePage}/children`)) {
+    if (!introduced && path === `v1/pages/${resourcePage}`) {
       introduced = true
       property(f.pages.get(skill.page_id)!.properties).content = {
         id: "content",

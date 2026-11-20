@@ -512,10 +512,31 @@ export function listCurrentOwnedResourceRecords(
   owner: CurrentResourceOwner,
 ) {
   return Effect.gen(function* () {
-    const filter = yield* checked(() => ({
-      property: binding(library, owner.kind === "skill" ? "Skill" : "Origin"),
-      relation: { contains: uuid(owner.page_id) },
-    }))
+    const filter = yield* checked(() => {
+      const ownerFilter = {
+        property: binding(library, owner.kind === "skill" ? "Skill" : "Origin"),
+        relation: { contains: uuid(owner.page_id) },
+      }
+      const kind = (name: string) => ({
+        property: binding(library, "Kind"),
+        select: { equals: name },
+      })
+      return {
+        or: [
+          { and: [ownerFilter, kind("resource")] },
+          {
+            and: [
+              ownerFilter,
+              kind("operation"),
+              {
+                property: binding(library, "Record ID"),
+                rich_text: { starts_with: "operation-current-" },
+              },
+            ],
+          },
+        ],
+      }
+    })
     const rows = yield* queryRows(library, filter, true)
     const result: Effect.Success<ReturnType<typeof currentOwnedResourceFromPage>>[] = []
     const identities = new Set<string>()

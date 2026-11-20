@@ -52,8 +52,9 @@ Ordinary links may target real directories derived from that input, including
 directories without a README. Images must target files. Escaped HTML remains
 literal text; missing targets and paths escaping the Skill still fail validation.
 
-Default resource import provides full readable text and usable opaque originals.
-Unsupported upload types use a deterministic single-original ZIP. Uploads larger
+Default resource import preserves exact originals and complete file metadata.
+Generated full-text projections can be produced later; missing generated bodies do
+not prevent consumption. Unsupported upload types use a deterministic single-original ZIP. Uploads larger
 than the direct limit use bounded multipart transport. A source or native file
 is not silently replaced merely by editing its generated page.
 

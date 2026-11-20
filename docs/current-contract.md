@@ -7,9 +7,11 @@ generations, historical graph releases or permanent recovery pins.
 
 The work is tracked by [AH-499](https://linear.app/yoyooyooo/issue/AH-499) and its
 [implementation parent](https://linear.app/yoyooyooo/issue/AH-498). This document
-defines the destination. It does **not** claim that the existing production tables,
-installed CLI or Pi runtime have been converted. The last section names the current
-cutover blockers.
+defines the current behavior and its remaining delivery scope. The installed Pro
+CLI/SDK/Broker already has a bounded native, Git and resource consumption baseline.
+That baseline does not establish that every daily Skill or the long tail has been
+converted. The last section separates current daily work from deferred projection
+and non-daily cleanup.
 
 ## One current owner for each fact
 
@@ -286,12 +288,14 @@ selected source revision and required consumption semantics. Refresh current
 display metadata separately; a cache hit must not freeze an obsolete owner
 descriptor or undo a known permission denial.
 
-Every supporting text file has its **full** current text on its linked Files page.
-Markdown uses readable blocks where faithful, and code/JSON/YAML/HTML/scripts use
-complete language-appropriate text blocks. Splitting a long text across blocks is
-allowed; truncation, hash-only notes, a download link or a cache path is not a full
-reading projection. Images and opaque binaries expose the usable original file.
-Projection writes are idempotent and never overwrite a native author body.
+Every supporting file has complete current Files metadata. Source and resource
+consumption reads its declared exact original without requiring a generated page
+body. Native author bodies remain necessary current content and are verified before
+ready. Generated projections can be rendered later; they are not a commit gate for
+synchronization or import. When a text projection is rendered, it must contain the
+full current text. Truncation, hash-only notes, a download link or a cache path do
+not count as full reading coverage. Projection writes must never overwrite a
+native author body.
 
 Explicit export supports a whole Skill or an explicit path set, preserving complete
 selected bytes and modes. Missing paths, unsafe paths, collisions and cancellation
@@ -321,11 +325,15 @@ legacy flags or a parallel daily protocol:
 2. Run a finite conversion that reads old carriers only to extract current unique
    content and current management intent. Old plans, receipts and caches do not
    become authority for the new model.
-3. Write current rows and complete reading projections. Verify the selected
-   scope, full file paths, bytes/modes, relationships and ordinary zero-write reads.
-4. Retire old properties, rows, pages, attachments, source bundles, Profiles,
-   navigation, CLI routes, host exposures and writers after current references have
-   been resolved. Remove the one-time conversion entry when the scope is complete.
+3. Write complete current rows and original content. Verify the selected daily
+   scope, full paths, bytes/modes, relationships and ordinary zero-write reads.
+   Generated reading projections do not delay consumption.
+4. Remove replaced runtime readers, writers, APIs, commands, flags, configuration
+   decoders, callers, dedicated tests and guides in the same implementation wave.
+   Remove each completed batch's one-time conversion entry and runtime admission
+   wiring. Unmigrated non-daily rows do not justify retaining an old runtime path.
+   Notion projection and unrelated old-data cleanup remain separate work. Keep
+   agent-kit main-path Skills and global exposure; isolate Pi verification with `pi -ns`.
 5. Clear incompatible disposable sessions/caches and select current content. Keep
    any still-unique local author copy until that item has a verified current home.
 
@@ -379,8 +387,8 @@ The registered CLI exposes current consumption, library initialization,
 inspection, complete current import, Source apply/refresh, Profiles and local configuration. Import is
 `ctl library import INPUT --entry DB --skill-id ID`; `--dry-run` inspects the
 replacement, and `--operation ID --resume` supplies the same input to its finite
-intent. Default import keeps exact originals as Notion resources and renders
-complete text. Repeated `--native PATH` selects editable UTF-8/LF bodies with exact
+intent. Default import keeps exact originals as Notion resources without waiting
+for generated text projections. Repeated `--native PATH` selects editable UTF-8/LF bodies with exact
 stored frontmatter and mode; that selection must remain identical on resume.
 Actual native round-trip verification precedes ready. Reimport replaces the chosen
 native content, so a local copy does not automatically merge a later Notion edit.
@@ -404,12 +412,21 @@ become part of the frozen Source input or get rewritten during resume.
 `ctl library source apply INPUT --entry DB` creates or replaces a complete current
 Source declaration. `source refresh SOURCE_ID --entry DB` reads that declaration
 from Notion and enters the same writer. Both support dry-run and explicit
-same-operation resume. The admitted provider is regular Git content from a GitHub
-HTTPS repository with manual or pinned policy. Every selected member has explicit
-stable target assignments; unsupported transformations/providers are refused.
-Current mappings preserve File identity on rename, exclusions prevent resurrection,
-and unrelated Source/native/resource contributions remain current. Removing the
-sole main is refused; this entry does not implicitly take over authority.
+same-operation resume. Regular Git content from GitHub or credential-free private
+HTTP(S) origins uses the same current contract and machine authentication. Manual
+policy resolves the configured ref; pinned policy retains its exact commit.
+Discovery reconciles the full selected set, including additions, removals and an
+empty result. Existing contributions override stable member identities; unassigned
+new members receive deterministic identities. Incomplete discovery or a provider
+failure never means deletion. Unsupported transformations and symlinks are refused.
+Mappings retain File identity on rename. Explicit desired paths can replace matching
+native/resource files, and dry-run reports that authority replacement. Exact
+contribution exclusions preserve intentional native/resource files; other Sources
+cannot be overwritten. When a removed member is wholly owned by this Source, its
+Files and Skill are archived. A target retaining unrelated author content is not
+silently deleted. Reapplying a saved declaration can recreate a deleted Source or
+Skill. Human policy values cannot be reconstructed from upstream content and must
+be preserved on surviving pages or supplied separately when rebuilding.
 
 `source takeover SOURCE_ID SOURCE_PATH --skill-id ID --file-id ID --as native|resource`
 transfers exactly one selected original into Notion authority. Resource is the
@@ -430,13 +447,15 @@ over. An unreferenced Source retires its owned resources and page, then the fini
 operation. Its terminal state is removed; it is never temporarily republished
 ready during retirement. A metadata action does not generate per-Skill writes.
 
-Source-owned binaries retain Source authority while exposing a verified current
-original attachment. Source manifest resources belong to that Source and are
-collected after the current manifest changes. The full effective tree, native
-references and exact target scope are checked before completion.
+Source-owned binaries retain Source authority and use the same fixed provider
+original as other Source files. A generated attachment is not required for their
+consumption. Source manifest resources belong to that Source and are collected
+after the current manifest changes. The full effective tree, native references
+and exact target scope are checked before completion.
 
 One finite parent intent freezes its action and affected Skill IDs. Declaration
-actions also freeze configuration and Git commit. File authority actions freeze
+actions also freeze effective configuration, Git commit and the exact physical
+identities of members being retired. File authority actions freeze
 the current Source selection, exact File coordinates, before/after configuration
 hashes and any temporary native-body precondition. These are unfinished intent
 inputs, not durable content versions.
@@ -502,24 +521,24 @@ migration command families are not active authoring routes. Source actions use
 the current coordinator; general cross-object governance still needs implementation.
 Removing a command does not prove that every old module, export or guide is gone.
 
-The production data and Pi installation are **not switched yet**. Remaining work:
+The next delivery scope is the user-selected daily set, tracked by AH-504/AH-516.
+The selection is Source 日用 (all real members) ∪ Skill 日用 ∪ Default Context,
+with actual upstream membership used to repair broken Origin relations. 日用 does
+not imply Default Context. The initial analysis selected 142 current members;
+complete discovery recalculates that number when upstream changes.
 
-- Verify Source authority/lifecycle operations in the real selected scope, and
-  complete general cross-object governance and management extraction of unfinished
-  content: AH-504, AH-507, AH-505. Controlled implementation tests do not certify
-  actual library cleanup.
-- Populate every Git-only supporting Files row and render full readable text or
-  original usable attachments. A complete provider manifest does not establish
-  that all required Notion reading pages exist: AH-501.
-- Convert unique current bytes, old Profiles and actual field bindings, then
-  retire obsolete Notion rows, properties, attachments, pages and navigation.
-  Preserve the actual `Source` property ID even where its old display name is
-  `Selected Version` until conversion accounts for it: AH-513.
-- Finish caller, package, builtin-reference and obsolete-module retirement,
-  selected-path export coverage and remaining cache coordination: AH-517/AH-1142.
-- Build and install the matching CLI/SDK/Broker candidate, execute one bounded
-  Pro Pi daily-use journey, then finish Pro-wide content and exposure migration:
-  AH-617/AH-1063/AH-516.
+- AH-504/AH-499: one public sync/rebuild path, same-version zero writes, explicit
+  finite legacy admission and same-wave removal of replaced runtime paths.
+- AH-516/AH-500: apply that path to actual daily sources, verify full trees and
+  relationships, and reuse the resulting evidence for ordinary zero-write consumption.
+- AH-617: update only SDK/Broker behavior actually changed by this implementation,
+  pair the built artifacts, and verify necessary real Pi samples. The first native,
+  Git and resource daily baselines are already recorded in AH-1063/AH-516.
+- AH-501/AH-1141: generated reading projections after consumption is usable.
+- AH-505/AH-507/AH-1143: additional governance, recovery and broader documentation
+  only when needed; changed public help and current guidance are updated now.
+- AH-513: non-daily legacy data. AH-517: obsolete static migration materials only.
+  Neither issue postpones cleanup of runtime code replaced in this implementation.
 
 Run only the applicable checks in the existing current-convergence entry. Current
 schema/index, native tree, exact resource, Source, acquisition and complete-import

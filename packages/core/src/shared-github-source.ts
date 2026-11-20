@@ -2,6 +2,7 @@ import { Crypto, Effect, Exit, Redacted, Schema, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/http"
 import { fail, SkillsError } from "./model.ts"
 import { normalizePath } from "./ref.ts"
+import { canonicalGitUrl } from "./shared-git-origin.ts"
 import type { createRequestMetrics } from "./request-metrics.ts"
 import { requestTimeoutMs } from "./request-timeout.ts"
 import { resolveGithubApiAccess, type GithubApiAccess } from "./github-api-access.ts"
@@ -163,7 +164,18 @@ function rejectFileDirectoryCollisions(files: readonly FixedGithubFile[]) {
   }
 }
 
-/** Decode a persisted fixed descriptor without contacting GitHub or choosing a newer revision. */
+function fixedGitInput(input: Pick<FixedGithubSourceInput, "url" | "commit" | "root">) {
+  const url = canonicalGitUrl(input.url)
+  if (!/^[0-9a-fA-F]{40}$/u.test(input.commit))
+    throw fail("INVALID_GITHUB_SOURCE", "A fixed Git source requires a complete commit SHA.")
+  return {
+    url,
+    commit: input.commit.toLowerCase(),
+    root: checkedPath(input.root, "INVALID_GITHUB_SOURCE", true),
+  }
+}
+
+/** Decode one current fixed Git descriptor without contacting its origin or choosing a newer revision. */
 export function validateFixedGithubSource(input: unknown): FixedGithubSource {
   let decoded: typeof PersistedSourceSchema.Type
   try {
@@ -171,10 +183,10 @@ export function validateFixedGithubSource(input: unknown): FixedGithubSource {
   } catch {
     throw fail(
       "INVALID_GITHUB_SOURCE",
-      "The stored GitHub source descriptor is incomplete or invalid.",
+      "The stored Git source descriptor is incomplete or invalid.",
     )
   }
-  const fixed = fixedInput(decoded)
+  const fixed = fixedGitInput(decoded)
   if (
     fixed.url !== decoded.url ||
     fixed.commit !== decoded.commit ||
@@ -182,7 +194,7 @@ export function validateFixedGithubSource(input: unknown): FixedGithubSource {
   ) {
     throw fail(
       "INVALID_GITHUB_SOURCE",
-      "Stored GitHub descriptors require canonical URLs and lowercase full commit and tree object IDs.",
+      "Stored Git descriptors require canonical URLs and lowercase full commit and tree object IDs.",
     )
   }
   const seen = new Set<string>()

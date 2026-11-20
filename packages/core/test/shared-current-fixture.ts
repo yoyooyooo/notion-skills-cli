@@ -217,8 +217,12 @@ export function currentSnapshotFixture(
         Array.isArray(field.relation) &&
         field.relation.some((value) => property(value).id === property(filter.relation).contains)
       )
-    if (filter.rich_text !== undefined)
-      return text(field.rich_text) === property(filter.rich_text).equals
+    if (filter.rich_text !== undefined) {
+      const selector = property(filter.rich_text),
+        value = text(field.rich_text)
+      if (typeof selector.starts_with === "string") return value.startsWith(selector.starts_with)
+      return value === selector.equals
+    }
     if (filter.select !== undefined)
       return property(field.select).name === property(filter.select).equals
     if (filter.checkbox !== undefined) return field.checkbox === property(filter.checkbox).equals

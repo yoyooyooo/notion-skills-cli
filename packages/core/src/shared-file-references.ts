@@ -348,6 +348,34 @@ export function assertSharedFileReferences(files: readonly CompositionFile[]) {
   )
 }
 
+/** Source Markdown is authored relative to its original repository path, not
+ * its mounted Skill path. All admitted targets are real fixed Source paths. */
+export function assertSelectedSharedSourceReferences(
+  files: readonly {
+    readonly path: string
+    readonly source_path: string
+    readonly bytes: Uint8Array
+  }[],
+  completeSourcePaths: readonly string[],
+) {
+  return assertSelectedSharedFileReferences(
+    files.map((file) => ({ path: file.source_path, bytes: file.bytes })),
+    completeSourcePaths,
+  )
+}
+
+/** Fixed Source bytes already passed their current reference admission.
+ * Native/resource bytes still use the complete current Skill directory. */
+export function currentAuthoredReferenceFiles<File extends CompositionFile>(
+  files: readonly File[],
+  routes: readonly { readonly kind: string; readonly path: string }[] | undefined,
+) {
+  const sourcePaths = new Set(
+    routes?.filter((route) => route.kind === "source").map((route) => route.path) ?? [],
+  )
+  return files.filter((file) => !sourcePaths.has(file.path))
+}
+
 /** Check only the supplied bodies against the complete current directory.
  * Deferred bodies remain unverified until they are selected and acquired. */
 export function assertSelectedSharedFileReferences(

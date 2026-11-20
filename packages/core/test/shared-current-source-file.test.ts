@@ -5,6 +5,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ConfigProvider, Effect } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
+import { snapshotPortable } from "../src/export.ts"
+import { openSharedSnapshot } from "../src/shared-snapshot.ts"
+import { loadCurrentSharedResourceContent } from "../src/shared-current-resource.ts"
 import { trashPath } from "../src/local-locks.ts"
 import { property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
@@ -349,7 +352,18 @@ test("supporting executable and binary takeovers keep originals and disabled Sou
     path: "font.woff",
     content: { kind: "resource", bytes: font.byteLength },
   })
-  expect((f.blocks.get(binary.page_id) ?? []).some((block) => block.type === "file")).toBe(true)
+  const storedBinary = (await f.run(queryCurrentSkillIndex(library, page))).files.find(
+    (file) => file.file_id === binary.file_id,
+  )!
+  if (storedBinary.content.kind !== "resource") throw new Error("Expected exact resource original")
+  const original = await f.run(
+    loadCurrentSharedResourceContent(library, {
+      owner: { kind: "skill", page_id: page },
+      content: storedBinary.content,
+    }),
+  )
+  expect(original.bytes).toEqual(font)
+  expect(f.blocks.get(binary.page_id) ?? []).toEqual([])
   f.clearCalls()
   await expect(
     f.run(
@@ -378,7 +392,20 @@ test("supporting executable and binary takeovers keep originals and disabled Sou
     page_id: binary.page_id,
     content: { kind: "source", source_path: "skills/one/font.woff" },
   })
-  expect((f.blocks.get(binary.page_id) ?? []).some((block) => block.type === "file")).toBe(true)
+  expect(f.blocks.get(binary.page_id) ?? []).toEqual([])
+  const snapshot = await f.run(
+    http.use(
+      openSharedSnapshot({
+        library,
+        target: page,
+        scope: "f".repeat(64),
+        startedAt: Date.now(),
+        forceFull: true,
+      }),
+    ),
+  )
+  const portable = await f.run(snapshotPortable(snapshot))
+  expect(portable.files.find((file) => file.path === "font.woff")?.bytes).toEqual(font)
   await ready(f)
 })
 
@@ -421,7 +448,7 @@ test.each(["source-properties", "native-body"] as const)(
   },
 )
 
-test("restore-follow settles an accepted projection append after clearing native body", async () => {
+test("restore-follow consumes exact Source bytes without depending on generated reading writes", async () => {
   const { f, http, page, index } = await seed()
   await f.run(
     http.use(
@@ -432,22 +459,32 @@ test("restore-follow settles an accepted projection append after clearing native
     ),
   )
   await author(f, page, "# Native before explicit restore\n")
-  const request = change(index.main, "restore-lost", { kind: "restore_follow" })
+  const request = change(index.main, "restore-without-projection", { kind: "restore_follow" })
+  const previousReading = structuredClone(f.blocks.get(page))
   f.clearCalls()
   f.failNext({ kind: "append", outcome: "accepted" })
-  await expect(
-    f.run(http.use(changeCurrentSourceFileAuthority(library, request))),
-  ).rejects.toMatchObject({
-    code: "WRITE_OUTCOME_UNKNOWN",
-    details: { operation_id: request.operation_id },
+  expect(await f.run(http.use(changeCurrentSourceFileAuthority(library, request)))).toMatchObject({
+    state: "ready",
+    status: "applied",
   })
   expect(
-    f.calls.filter((call) => call.method === "PATCH" && call.path === `v1/blocks/${page}/children`),
-  ).toHaveLength(1)
-  await f.run(http.use(changeCurrentSourceFileAuthority(library, { ...request, mode: "resume" })))
+    f.calls.filter(
+      (call) =>
+        call.method === "PATCH" &&
+        (call.path === `v1/blocks/${page}/children` || call.path === `v1/pages/${page}/markdown`),
+    ),
+  ).toEqual([])
+  expect(f.blocks.get(page)).toEqual(previousReading)
+  expect((await f.run(queryCurrentSkillIndex(library, page))).main).toMatchObject({
+    file_id: index.main.file_id,
+    page_id: page,
+    content: { kind: "source", source_path: "skills/one/SKILL.md" },
+  })
   expect(
-    f.calls.filter((call) => call.method === "PATCH" && call.path === `v1/blocks/${page}/children`),
-  ).toHaveLength(1)
+    await f.run(http.use(readSkill(page, { database: library.skills.database_id, refresh: true }))),
+  ).toMatchObject({
+    content: new TextDecoder().decode(observation().members[0]!.portable.files[0]!.bytes),
+  })
   await ready(f)
 })
 

@@ -96,7 +96,8 @@ do not grant access or activate workflows.
 | Import or replace a complete local Skill tree | `notion/ntn-skills-maintain`; use its current import and resume procedure |
 | Complete portable relationship changes | `notion/ntn-skills-maintain`; export, edit same-library refs and import the complete tree |
 | Git Source apply/refresh or contribution mapping/exclusion | `notion/ntn-skills-sync` |
-| Partial file edits or Source takeover/removal | `notion/ntn-skills-maintain`; these entrypoints remain unavailable |
+| Source takeover, restore-follow or removal | `notion/ntn-skills-sync` |
+| Complete installed/App tree replacement or native recovery | `notion/ntn-skills-maintain` |
 | Shared Profile/View/freshness rules | `notion/ntn-skills-sync` |
 | Package-supplied Skills | `ctl builtin list/read/status/install/update`; see [commands](references/commands.md#local-builtins) |
 | Discovery, authentication or resource failure | [Integration and diagnosis](references/integration.md#diagnose-discovery-and-loading) |

@@ -13,6 +13,7 @@ import {
   type FixedGithubSource,
 } from "./shared-github-source.ts"
 import { sha256, Store } from "./store.ts"
+import { isGithubGitUrl } from "./shared-git-origin.ts"
 import { makeSharedResultCoalescer, type SharedResultCoalescer } from "./shared-read-coalescing.ts"
 import { FixedGitObjectReader, fixedGitTransport } from "./shared-fixed-git-transport.ts"
 import { GhCredential, githubApiConfiguration, preferGithubApi } from "./github-api-access.ts"
@@ -317,8 +318,16 @@ export function materializeFixedGithubSource(
       { concurrency: 4 },
     )
     const transport = yield* fixedGitTransport
-    const apiPolicy = yield* githubApiConfiguration
-    const preferApi = transport === "git" ? false : yield* preferGithubApi
+    const github = isGithubGitUrl(source.url)
+    if (!github && transport === "http")
+      return yield* Effect.fail(
+        fail(
+          "FIXED_GIT_TRANSPORT_UNAVAILABLE",
+          "This origin requires the Git object transport; select auto or git.",
+        ),
+      )
+    const apiPolicy = github ? yield* githubApiConfiguration : undefined
+    const preferApi = !github || transport === "git" ? false : yield* preferGithubApi
     const gitReader = yield* Effect.serviceOption(FixedGitObjectReader)
     const git = Effect.gen(function* () {
       if (Option.isNone(gitReader))
@@ -363,7 +372,7 @@ export function materializeFixedGithubSource(
       }
       return [...hits.values()]
     })
-    const blobs = yield* transport === "git"
+    const blobs = yield* !github || transport === "git"
       ? git
       : transport === "auto" && !preferApi && Option.isSome(gitReader) && unique.size > 4
         ? git.pipe(
@@ -376,7 +385,7 @@ export function materializeFixedGithubSource(
         : raw.pipe(
             Effect.catch((error) =>
               transport === "auto" &&
-              !apiPolicy.explicit &&
+              apiPolicy?.explicit !== true &&
               Option.isSome(gitReader) &&
               error.code === "GITHUB_REQUEST_FAILED"
                 ? git

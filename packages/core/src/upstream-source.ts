@@ -1125,7 +1125,7 @@ function gitSnapshot(
             },
           })
       }
-      const external_resources: { source_path: string; git_oid: string; sha256: string }[] = []
+      const external_resources: NonNullable<SourceSnapshot["external_resources"]>[number][] = []
       const unavailable: { reason: "outside_source_root"; from_path: string; href: string }[] = []
       const externalTargets = yield* attempt(() =>
         sourceExternalResourceTargets(members, entries, (entry) => unavailable.push(entry)),
@@ -1150,7 +1150,12 @@ function gitSnapshot(
               path: target.source_path,
             }),
           )
-        external_resources.push({ ...target, sha256: yield* digest(bytes) })
+        external_resources.push({
+          ...target,
+          sha256: yield* digest(bytes),
+          mode: entry.mode === "100755" ? "100755" : "100644",
+          bytes,
+        })
       }
       const provenance: Record<string, string> = {
         provider: market ? "skills.sh" : "git",

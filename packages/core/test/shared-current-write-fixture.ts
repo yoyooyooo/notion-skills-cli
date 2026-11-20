@@ -132,8 +132,14 @@ function matches(row: unknown, input: unknown): boolean {
   if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item))
   if (Object.keys(filter).length === 0) return true
   const raw = property(property(property(row).properties)[String(filter.property)])
-  if (filter.rich_text !== undefined)
-    return text(raw.rich_text) === property(filter.rich_text).equals
+  if (filter.rich_text !== undefined) {
+    const selector = property(filter.rich_text)
+    const value = text(raw.rich_text)
+    if (typeof selector.equals === "string") return value === selector.equals
+    if (typeof selector.contains === "string") return value.includes(selector.contains)
+    if (typeof selector.starts_with === "string") return value.startsWith(selector.starts_with)
+    throw new Error("Unexpected current rich text query filter: " + JSON.stringify(selector))
+  }
   if (filter.select !== undefined)
     return property(raw.select).name === property(filter.select).equals
   if (filter.relation !== undefined) {

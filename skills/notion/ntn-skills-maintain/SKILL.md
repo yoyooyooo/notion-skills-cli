@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Import or replace complete resource/native Notion Skill trees, inspect current ownership, resume or supersede an unfinished import, or create the four-table layout. Use for local Skill migration and complete content replacement.
+description: Import or replace complete resource/native Notion Skill trees, inspect current ownership, resume or supersede an unfinished import, or create the four-table layout. Use for local Skill migration.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -8,11 +8,10 @@ metadata:
 
 # Maintain the current library
 
-Requires ntn-skills and exact library access: Read for inspection; Insert and Update for import.
+Requires ntn-skills and library Read access; import also needs Insert and Update.
 
-Use the task's executable and exact library. Stable Skill IDs select content;
-names are display labels. Import replaces a complete local tree. Source
-configuration, takeover and lifecycle belong to notion/ntn-skills-sync.
+Use the task's executable and exact library. Stable IDs select Skills. Import
+replaces a complete local tree; Source management belongs to notion/ntn-skills-sync.
 
 ## Inspect and prepare
 
@@ -52,12 +51,14 @@ ntn-skills export PAGE_ID --database ENTRY --output NEW_DIRECTORY
 ```
 
 Use the returned PAGE_ID. Import preserves Skill and retained File identities,
-checks reading pages, then retires omitted Notion-owned supporting rows and
-unreferenced owned resources. Equal complete input makes zero semantic Notion writes.
+checks complete current metadata and authoritative content, then retires omitted
+Notion-owned supporting rows and unreferenced owned resources. Equal complete input makes zero semantic Notion writes.
 
-Default resource import preserves exact bytes and mode. Readable text appears
-in full; opaque files expose a usable original or a single-original ZIP.
-Display metadata does not rewrite original content.
+Resource import preserves exact bytes and mode; opaque files use one original or
+single-original ZIP. Generated reading projections do not block consumption.
+For installed/App Skills, repeat complete import against the updated installation
+directory under the same Skill ID. Genuine Notion originals retain native
+authority; export their complete tree for recovery.
 
 Repeat --native PATH for editable text, such as --native SKILL.md --native
 references/guide.md. Select exact paths after any entrypoint rename. Native
@@ -65,11 +66,10 @@ bodies require UTF-8/LF and an actual Notion round-trip; frontmatter and mode st
 exact. Reimport replaces later human edits too. Export them first if they belong
 in the intended input. Failed native conversion never falls back to resource.
 
-Existing Enabled and Default Context remain unchanged. Portable Members/Requires
+Existing Enabled and Default Context stay unchanged. Portable Members/Requires
 use same-library stable refs: omitted preserves, [] clears, a list replaces.
-Export carries both sets. Prompt relations are invalid. Changed sets allow 100
-targets; larger unchanged sets remain. Changed Requires must be acyclic.
-Old projection/materialization is rejected; do not strip it to force import.
+Export carries both sets. Prompt relations are invalid; changed sets allow 100
+targets and Requires must be acyclic. Old projection/materialization is rejected.
 
 Remote work shares 1000 HTTP attempts, 512 MiB payload bytes and 600000 ms by
 default. Set --max-requests, --max-bytes and --timeout in ms. Exhaustion stops

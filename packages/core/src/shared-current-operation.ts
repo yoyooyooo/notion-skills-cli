@@ -287,7 +287,6 @@ function currentOperationOwnerHeader(
   return {
     selection: field("Current State", "select").select,
     operation: rich("Operation"),
-    content: () => rich("Content"),
   }
 }
 export function currentOperationOwnerState(
@@ -562,19 +561,6 @@ export function withCurrentOperation<A, R>(
     readonly ownerPageId: string | null
     readonly mode?: CurrentWriteMode
     readonly completion?: "ready" | "retired"
-    /** AH-513 only; remove this admission with the cutover tools in AH-517.
-     * The exact existing Skill must have empty Content, State and Operation.
-     * Its caller rechecks the captured metadata and authored bodies before the
-     * finite intent is created and immediately before applying is published.
-     * Source children additionally retain the real parent grant and its hooks. */
-    readonly bootstrapExistingOwner?: {
-      readonly assertUninitialized: (
-        raw: unknown,
-      ) => Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>
-    } & (
-      | { readonly kind?: "standalone"; readonly source?: never }
-      | { readonly kind: "source-child"; readonly source: CurrentSourceIntentBinding }
-    )
     readonly supersedingSourceChild?: {
       readonly previous: CurrentSourceIntentBinding
       readonly next: CurrentSourceIntentBinding
@@ -614,36 +600,6 @@ export function withCurrentOperation<A, R>(
       return yield* Effect.fail(invalid("A successor requires a different operation identity."))
     const completion = yield* checked(() => strict(CompletionSchema, input.completion ?? "ready"))
     yield* checked(() => {
-      if (input.bootstrapExistingOwner !== undefined) {
-        if (
-          intent.owner.kind !== "skill" ||
-          suppliedPage === null ||
-          completion !== "ready" ||
-          supersededOperation !== undefined
-        )
-          throw invalid("Bootstrap requires one exact existing Skill and a ready completion.")
-        const bootstrap = input.bootstrapExistingOwner,
-          source = "source" in intent ? intent.source : undefined
-        if (bootstrap.kind === "source-child") {
-          const selected = strict(CurrentSourceIntentBindingSchema, bootstrap.source)
-          if (
-            source === undefined ||
-            canonicalSharedJson(selected) !== canonicalSharedJson(source) ||
-            input.assertScope === undefined ||
-            input.beforeMutation === undefined ||
-            input.afterActivate === undefined
-          )
-            throw invalid(
-              "Source-child bootstrap requires its exact parent binding and activation hooks.",
-            )
-        } else if (
-          (bootstrap.kind !== undefined && bootstrap.kind !== "standalone") ||
-          bootstrap.source !== undefined ||
-          source !== undefined
-        )
-          throw invalid("A Source child requires explicit Source-child bootstrap admission.")
-        binding(library, intent.owner, "Content")
-      }
       for (const name of ["Skill ID", "Current State", "Operation"])
         binding(library, intent.owner, name)
       uuid(ownerTable(library, intent.owner).data_source_id)
@@ -1559,18 +1515,7 @@ export function withCurrentOperation<A, R>(
             trashed && permitted
               ? { ...property(raw), in_trash: false, archived: false, is_archived: false }
               : raw
-          const header = currentOperationOwnerHeader(library, intent, page, active)
-          // This is a positively identified initial header, never a fallback
-          // after a malformed current state or a missing schema was rejected.
-          const state =
-            input.bootstrapExistingOwner !== undefined &&
-            page === suppliedPage &&
-            !trashed &&
-            header.selection === null &&
-            header.operation === "" &&
-            header.content() === ""
-              ? { state: "uninitialized" as const, operation_id: undefined }
-              : currentOperationOwnerState(library, intent, page, active)
+          const state = currentOperationOwnerState(library, intent, page, active)
           if (trashed) {
             if (
               !permitted ||
@@ -1592,8 +1537,6 @@ export function withCurrentOperation<A, R>(
               return yield* Effect.fail(invalid("The current intent has no physical owner."))
             const raw = yield* api.request("v1/pages/" + owner)
             const state = yield* checked(() => ownerObservation(raw, allowCompletedRetirement))
-            if (state.state === "uninitialized")
-              yield* input.bootstrapExistingOwner!.assertUninitialized(raw)
             return state
           })
         const retireOwner = (value: A) =>
@@ -1665,15 +1608,6 @@ export function withCurrentOperation<A, R>(
                 observe: () =>
                   Effect.gen(function* () {
                     const state = yield* observeOwner()
-                    if (state.state === "uninitialized") {
-                      if (next !== "applying")
-                        return yield* Effect.fail(
-                          invalid(
-                            "An uninitialized Skill can only enter its finite applying intent.",
-                          ),
-                        )
-                      return { status: "missing" as const }
-                    }
                     if (state.state === "ready")
                       return next === "ready"
                         ? { status: "complete" as const, value: undefined }
@@ -1823,57 +1757,50 @@ export function withCurrentOperation<A, R>(
           }
           if (owner !== null) {
             const state = yield* observeOwner()
-            if (state.state === "uninitialized") {
-              // ensureOpen saves the real current Record before its guarded
-              // applying PATCH. A resumed Record may already be observable.
-              yield* ensureOpen()
-              yield* changeOwner("applying")
-            } else {
-              if (
-                alreadyRetiring &&
-                (completion === "retired" ? !ownerRetired : state.state !== "ready")
+            if (
+              alreadyRetiring &&
+              (completion === "retired" ? !ownerRetired : state.state !== "ready")
+            )
+              return yield* Effect.fail(
+                fail(
+                  "CURRENT_OPERATION_CONFLICT",
+                  "The retiring current owner is no longer ready.",
+                ),
               )
-                return yield* Effect.fail(
-                  fail(
-                    "CURRENT_OPERATION_CONFLICT",
-                    "The retiring current owner is no longer ready.",
-                  ),
-                )
-              if (state.state !== "ready" && state.operation_id === intent.operation_id)
-                retainFailure = retainCurrentFailure
-              if (state.state !== "ready" && state.operation_id !== intent.operation_id)
-                return yield* Effect.fail(
-                  fail("CURRENT_OPERATION_CONFLICT", "Another current operation owns this page."),
-                )
-              if (!ownerRetired && state.state !== "ready" && record === undefined)
-                return yield* Effect.fail(
-                  fail(
-                    "CURRENT_OPERATION_UNRESOLVED",
-                    "The unfinished owner has no observable current intent. Inspect it before writing.",
-                  ),
-                )
-              if (ownerRetired) {
-                settled = true
-              } else if (
-                state.state === "ready" &&
-                (alreadyRetiring || payload.in_flight?.key === "$owner.ready")
-              ) {
-                ownerReady = true
-                // The exact ready owner (with an empty Operation) is the actual
-                // acknowledgement of a lost ready PATCH. Keep the finite Record
-                // until full target verification, but allow only read-only children.
-                if (payload.in_flight?.key === "$owner.ready") settled = true
-              } else if (state.state === "ready" && record !== undefined)
-                yield* changeOwner("applying")
-              else if (
-                payload.in_flight?.key === "$owner.applying" ||
-                payload.in_flight?.key === "$owner.attention"
-              ) {
-                yield* changeOwner(
-                  payload.in_flight.key === "$owner.applying" ? "applying" : "attention",
-                )
-                yield* changeOwner("applying")
-              }
+            if (state.state !== "ready" && state.operation_id === intent.operation_id)
+              retainFailure = retainCurrentFailure
+            if (state.state !== "ready" && state.operation_id !== intent.operation_id)
+              return yield* Effect.fail(
+                fail("CURRENT_OPERATION_CONFLICT", "Another current operation owns this page."),
+              )
+            if (!ownerRetired && state.state !== "ready" && record === undefined)
+              return yield* Effect.fail(
+                fail(
+                  "CURRENT_OPERATION_UNRESOLVED",
+                  "The unfinished owner has no observable current intent. Inspect it before writing.",
+                ),
+              )
+            if (ownerRetired) {
+              settled = true
+            } else if (
+              state.state === "ready" &&
+              (alreadyRetiring || payload.in_flight?.key === "$owner.ready")
+            ) {
+              ownerReady = true
+              // The exact ready owner (with an empty Operation) is the actual
+              // acknowledgement of a lost ready PATCH. Keep the finite Record
+              // until full target verification, but allow only read-only children.
+              if (payload.in_flight?.key === "$owner.ready") settled = true
+            } else if (state.state === "ready" && record !== undefined)
+              yield* changeOwner("applying")
+            else if (
+              payload.in_flight?.key === "$owner.applying" ||
+              payload.in_flight?.key === "$owner.attention"
+            ) {
+              yield* changeOwner(
+                payload.in_flight.key === "$owner.applying" ? "applying" : "attention",
+              )
+              yield* changeOwner("applying")
             }
           }
           const value = yield* input.run(session)

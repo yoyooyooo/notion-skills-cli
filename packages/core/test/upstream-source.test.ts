@@ -114,6 +114,8 @@ test("a filtered Git acquisition retains selected and referenced blobs without d
       {
         source_path: "shared/notes.md",
         sha256: createHash("sha256").update(external).digest("hex"),
+        mode: "100644",
+        bytes: utf8.encode(external),
       },
     ])
     const observed = metrics.snapshot().source_acquisitions!

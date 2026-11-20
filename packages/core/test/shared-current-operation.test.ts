@@ -14,7 +14,6 @@ import {
   type CurrentOperationIntent,
   type CurrentWriteMode,
   type CurrentOperationSession,
-  type CurrentSourceIntentBinding,
 } from "../src/shared-current-operation.ts"
 import {
   authorizeCoordinatedSkillWrite,
@@ -373,7 +372,7 @@ function fixture(options: { skillExists?: boolean; sourceOwner?: Record<string, 
   }
 }
 
-async function sourceBootstrapFixture() {
+async function sourceChildFixture() {
   const sourcePage = id(30)
   const sourceOwner: Record<string, unknown> = {
     object: "page",
@@ -389,7 +388,12 @@ async function sourceBootstrapFixture() {
   const f = fixture({ sourceOwner })
   f.owner.properties = {
     ...property(f.owner.properties),
-    ...fields({ state: { select: null }, content: { rich_text: [] } }),
+    ...fields({
+      state: { select: { name: "ready" } },
+      content: {
+        rich_text: rich(JSON.stringify({ kind: "native", mode: "100644", frontmatter: "" })),
+      },
+    }),
   }
   const selected = [
     {
@@ -436,7 +440,7 @@ async function sourceBootstrapFixture() {
     })
   const source = { source_id: "provider", page_id: sourcePage, revision, manifest }
   const parentIntent = {
-    operation_id: "bootstrap-parent",
+    operation_id: "source-parent",
     owner: { kind: "source" as const, id: source.source_id },
     input_sha256: "b".repeat(64),
     source_input: {
@@ -444,6 +448,7 @@ async function sourceBootstrapFixture() {
       configuration_sha256: "c".repeat(64),
       resolved_commit: "a".repeat(40),
       affected_skill_ids: [plan.skill_id],
+      retirements: [],
     },
   }
   const childOperation =
@@ -458,9 +463,6 @@ async function sourceBootstrapFixture() {
   const apply = (
     options: {
       mode?: "apply" | "resume"
-      standalone?: boolean
-      changedBinding?: Partial<CurrentSourceIntentBinding>
-      omitHook?: "assertScope" | "beforeMutation" | "afterActivate"
       childCreateOutcome?: "visible" | "absent"
       stopAfterChild?: boolean
     } = {},
@@ -487,11 +489,6 @@ async function sourceBootstrapFixture() {
             yield* parent.activate()
             f.fault({ target: "record-create", outcome: options.childCreateOutcome })
           }
-          const assertUninitialized = () =>
-            Effect.sync(() => {
-              expect(property(property(f.owner.properties).state).select).toBeNull()
-              expect(text(property(property(f.owner.properties).content).rich_text)).toBe("")
-            })
           const value = yield* withCurrentOperation(library, {
             intent: {
               operation_id: childOperation,
@@ -501,22 +498,16 @@ async function sourceBootstrapFixture() {
             },
             ownerPageId: ownerId,
             mode: options.mode,
-            bootstrapExistingOwner: options.standalone
-              ? { assertUninitialized }
-              : {
-                  kind: "source-child",
-                  source: { ...grant.source_intent, ...options.changedBinding },
-                  assertUninitialized,
-                },
-            assertScope: options.omitHook === "assertScope" ? undefined : grant.assertCurrent,
-            beforeMutation: options.omitHook === "beforeMutation" ? undefined : grant.activate,
-            afterActivate: options.omitHook === "afterActivate" ? undefined : grant.afterActivate,
+            assertScope: grant.assertCurrent,
+            beforeMutation: grant.activate,
+            afterActivate: grant.afterActivate,
             unstartedSourceChild: grant.unstarted ? grant.source_intent : undefined,
             verifyCompletedResume: () =>
               verified.pipe(Effect.tap(() => Effect.sync(() => childCompletedResumes++))),
             run: (child) =>
               Effect.gen(function* () {
                 childRuns++
+                yield* child.activate()
                 expect(parent.sourceProgress).toEqual({ next_index: 0, child_started: true })
                 expect(f.activeRecords()).toHaveLength(2)
                 yield* grant.assertCurrent
@@ -534,7 +525,7 @@ async function sourceBootstrapFixture() {
     })
   return {
     ...f,
-    bootstrap: apply,
+    sourceChild: apply,
     sourceOwner,
     plan,
     childRuns: () => childRuns,
@@ -542,10 +533,10 @@ async function sourceBootstrapFixture() {
   }
 }
 
-describe("AH-513 exact Source-child bootstrap", () => {
-  test("a real parent grant initializes the existing child before product writes", async () => {
-    const f = await sourceBootstrapFixture()
-    expect(await f.run(f.bootstrap())).toBe("first")
+describe("current Source-child operation", () => {
+  test("a real parent grant activates the current child before product writes", async () => {
+    const f = await sourceChildFixture()
+    expect(await f.run(f.sourceChild())).toBe("first")
     expect(f.plan.files.map((file) => file.file_id)).toEqual(["existing-main", "existing-guide"])
     expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
     expect(property(property(f.sourceOwner.properties).status).select).toEqual({ name: "ready" })
@@ -573,43 +564,16 @@ describe("AH-513 exact Source-child bootstrap", () => {
     expect(f.json.size).toBe(0)
   })
 
-  test("missing parent hooks, standalone admission and changed bindings fail before writes", async () => {
-    const cases: Parameters<Awaited<ReturnType<typeof sourceBootstrapFixture>>["bootstrap"]>[0][] =
-      [
-        { standalone: true },
-        { omitHook: "assertScope" },
-        { omitHook: "beforeMutation" },
-        { omitHook: "afterActivate" },
-        { changedBinding: { source_id: "foreign" } },
-        { changedBinding: { source_page_id: id(99) } },
-        { changedBinding: { operation_id: "foreign-parent" } },
-        { changedBinding: { input_sha256: "e".repeat(64) } },
-        { changedBinding: { authorization_sha256: "f".repeat(64) } },
-      ]
-    for (const options of cases) {
-      const f = await sourceBootstrapFixture()
-      expect(await f.run(f.bootstrap(options).pipe(Effect.result))).toMatchObject({
-        _tag: "Failure",
-        failure: { code: "CURRENT_OPERATION_INVALID" },
-      })
-      expect(
-        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
-      ).toEqual([])
-      expect(f.records.size).toBe(0)
-      expect(f.json.size).toBe(0)
-    }
-  })
-
   test.each(["visible", "absent"] as const)(
     "unknown child CREATE %s is never replayed",
     async (outcome) => {
-      const f = await sourceBootstrapFixture()
+      const f = await sourceChildFixture()
       expect(
-        (await f.run(f.bootstrap({ childCreateOutcome: outcome }).pipe(Effect.result)))._tag,
+        (await f.run(f.sourceChild({ childCreateOutcome: outcome }).pipe(Effect.result)))._tag,
       ).toBe("Failure")
       expect(f.productRequests()).toBe(0)
-      expect(property(property(f.owner.properties).state).select).toBeNull()
-      const resumed = await f.run(f.bootstrap({ mode: "resume" }).pipe(Effect.result))
+      expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
+      const resumed = await f.run(f.sourceChild({ mode: "resume" }).pipe(Effect.result))
       if (outcome === "visible") expect(resumed._tag).toBe("Success")
       else
         expect(resumed).toMatchObject({
@@ -623,14 +587,14 @@ describe("AH-513 exact Source-child bootstrap", () => {
   )
 
   test("a completed child resumes the parent cursor without another child mutation", async () => {
-    const f = await sourceBootstrapFixture()
-    expect(await f.run(f.bootstrap({ stopAfterChild: true }).pipe(Effect.result))).toMatchObject({
+    const f = await sourceChildFixture()
+    expect(await f.run(f.sourceChild({ stopAfterChild: true }).pipe(Effect.result))).toMatchObject({
       _tag: "Failure",
       failure: { code: "REQUEST_BUDGET_EXHAUSTED" },
     })
     expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
     expect(f.activeRecords()).toHaveLength(1)
-    expect(await f.run(f.bootstrap({ mode: "resume" }))).toBe("first")
+    expect(await f.run(f.sourceChild({ mode: "resume" }))).toBe("first")
     expect(f.childRuns()).toBe(1)
     expect(f.childCompletedResumes()).toBe(1)
     expect(f.productRequests()).toBe(1)
@@ -638,7 +602,7 @@ describe("AH-513 exact Source-child bootstrap", () => {
     const writes = f.calls.filter(
       (call) => call.method !== "GET" && !call.path.includes("/query"),
     ).length
-    expect(await f.run(f.bootstrap({ mode: "resume" }))).toBe("first")
+    expect(await f.run(f.sourceChild({ mode: "resume" }))).toBe("first")
     expect(
       f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
     ).toHaveLength(writes)
@@ -647,145 +611,6 @@ describe("AH-513 exact Source-child bootstrap", () => {
 })
 
 describe("one finite current write", () => {
-  function bootstrapFixture() {
-    const f = fixture()
-    f.owner.properties = {
-      ...property(f.owner.properties),
-      ...fields({ state: { select: null }, content: { rich_text: [] } }),
-    }
-    let assertions = 0
-    const apply = (mode: "apply" | "resume" = "apply", hash = intent.input_sha256) =>
-      withCurrentOperation(library, {
-        intent: { ...intent, input_sha256: hash },
-        ownerPageId: ownerId,
-        mode,
-        bootstrapExistingOwner: {
-          assertUninitialized: () =>
-            Effect.sync(() => {
-              assertions++
-              expect(property(property(f.owner.properties).state).select).toBeNull()
-            }),
-        },
-        run: (session) =>
-          Effect.gen(function* () {
-            expect(property(property(f.owner.properties).state).select).toEqual({
-              name: "applying",
-            })
-            expect(f.activeRecords()).toHaveLength(1)
-            yield* session.assertCurrent()
-            return yield* f.action(session)
-          }),
-        verify: () => Effect.sync(() => expect(f.values).toEqual(["first"])),
-      })
-    return { ...f, bootstrap: apply, assertions: () => assertions }
-  }
-  test("AH-513 existing empty owner opens a real intent before applying and product work", async () => {
-    const f = bootstrapFixture()
-    expect(await f.run(f.bootstrap())).toBe("first")
-    expect(f.assertions()).toBeGreaterThanOrEqual(2)
-    const mutations = f.calls.filter(
-      (call) => call.method !== "GET" && !call.path.includes("/query"),
-    )
-    expect(mutations[0]?.path).toBe("v1/pages")
-    expect(property(property(mutations[0]?.body).parent).data_source_id).toBe(
-      library.records.data_source_id,
-    )
-    const applying = mutations.findIndex(
-      (call) => property(property(property(call.body).properties).state).select !== undefined,
-    )
-    expect(applying).toBeGreaterThan(0)
-    expect(mutations.findIndex((call) => call.path === productPath)).toBeGreaterThan(applying)
-    expect(property(property(f.owner.properties).state).select).toEqual({ name: "ready" })
-    expect(f.activeRecords()).toHaveLength(0)
-    expect(f.json.size).toBe(0)
-  })
-  test("AH-513 unknown intent CREATE is observed once or remains unresolved without replay", async () => {
-    for (const outcome of ["visible", "absent"] as const) {
-      const f = bootstrapFixture()
-      f.fault({ target: "record-create", outcome })
-      expect((await f.run(f.bootstrap().pipe(Effect.result)))._tag).toBe("Failure")
-      expect(f.productRequests()).toBe(0)
-      expect(property(property(f.owner.properties).state).select).toBeNull()
-      const result = await f.run(f.bootstrap("resume").pipe(Effect.result))
-      if (outcome === "visible") expect(result._tag).toBe("Success")
-      else {
-        expect(result._tag).toBe("Failure")
-        if (result._tag === "Failure")
-          expect(result.failure.code).toBe("CURRENT_OPERATION_UNRESOLVED")
-      }
-      expect(
-        f.calls.filter((call) => call.path === "v1/pages" && call.method === "POST"),
-      ).toHaveLength(1)
-    }
-  })
-  test("AH-513 budget stop resumes only the identical finite input", async () => {
-    const f = bootstrapFixture()
-    f.fault({
-      target: "product",
-      outcome: "absent",
-      error: fail("REQUEST_BUDGET_EXHAUSTED", "Stopped"),
-    })
-    const result = await f.run(f.bootstrap().pipe(Effect.result))
-    expect(result._tag).toBe("Failure")
-    expect(property(property(f.owner.properties).state).select).toEqual({ name: "applying" })
-    const changed = await f.run(f.bootstrap("resume", "b".repeat(64)).pipe(Effect.result))
-    expect(changed._tag).toBe("Failure")
-    if (changed._tag === "Failure") expect(changed.failure.code).toBe("CURRENT_OPERATION_PENDING")
-    expect(await f.run(f.bootstrap("resume"))).toBe("first")
-  })
-  test("AH-513 admission never turns corrupt headers or a failed baseline into empty owners", async () => {
-    const mutations = [
-      (f: ReturnType<typeof bootstrapFixture>) => {
-        delete property(f.owner.properties).content
-      },
-      (f: ReturnType<typeof bootstrapFixture>) => {
-        property(f.owner.properties).content = fields({
-          content: { rich_text: rich("unexpected") },
-        }).content
-      },
-      (f: ReturnType<typeof bootstrapFixture>) => {
-        property(f.owner.properties).operation = fields({
-          operation: { rich_text: rich("another") },
-        }).operation
-      },
-      (f: ReturnType<typeof bootstrapFixture>) => {
-        property(f.owner.properties).state = fields({
-          state: { select: { name: "unknown" } },
-        }).state
-      },
-      (f: ReturnType<typeof bootstrapFixture>) => {
-        f.owner.parent = { type: "data_source_id", data_source_id: id(999) }
-      },
-      (f: ReturnType<typeof bootstrapFixture>) => {
-        property(f.owner.properties)["skill-id"] = fields({
-          "skill-id": { rich_text: rich("different") },
-        })["skill-id"]
-      },
-    ]
-    for (const corrupt of mutations) {
-      const f = bootstrapFixture()
-      corrupt(f)
-      expect((await f.run(f.bootstrap().pipe(Effect.result)))._tag).toBe("Failure")
-      expect(
-        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
-      ).toHaveLength(0)
-    }
-    const f = bootstrapFixture()
-    const result = await f.run(
-      withCurrentOperation(library, {
-        intent,
-        ownerPageId: ownerId,
-        bootstrapExistingOwner: {
-          assertUninitialized: () => Effect.fail(fail("BASELINE_CHANGED", "Authored body changed")),
-        },
-        run: (session) => f.action(session),
-        verify: () => Effect.void,
-      }).pipe(Effect.result),
-    )
-    expect(result._tag).toBe("Failure")
-    if (result._tag === "Failure") expect(result.failure.code).toBe("BASELINE_CHANGED")
-    expect(f.records.size).toBe(0)
-  })
   test("a complete current scope remains a true remote and local no-op", async () => {
     const f = fixture()
     f.values.push("first")

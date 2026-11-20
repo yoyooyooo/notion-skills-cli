@@ -1,5 +1,5 @@
-import { Crypto, Effect } from "effect"
-import { fail, property, SkillsError } from "./model.ts"
+import { Crypto, Effect, Schema } from "effect"
+import { fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { sha256, type Store } from "./store.ts"
@@ -17,6 +17,7 @@ import {
   queryCurrentSourceTargets,
 } from "./shared-current-source-management.ts"
 import {
+  inspectCurrentOperation,
   readCurrentOperationIntent,
   withCurrentOperation,
   type CurrentOperationIntent,
@@ -25,8 +26,10 @@ import {
 } from "./shared-current-operation.ts"
 import {
   authorizeCoordinatedSkillWrite,
+  inspectCoordinatedSkillDirectory,
   inspectCoordinatedSkillWrite,
   prepareCoordinatedSkillWrite,
+  verifyCoordinatedSkillDirectory,
   writeCoordinatedSkill,
 } from "./shared-current-write.ts"
 import { currentWriteIdentity } from "./shared-current-write-input.ts"
@@ -37,7 +40,12 @@ import {
 } from "./shared-current-source.ts"
 import { inspectSharedSourcePlan } from "./shared-source-plan.ts"
 import { gitBlobOid } from "./shared-github-source.ts"
-import { assertCurrentBodyReplaceable } from "./shared-current-projection.ts"
+import {
+  currentFileRecord,
+  queryCurrentFilesForSkills,
+  queryCurrentSkillIndex,
+} from "./shared-current-index.ts"
+import { parseCurrentFileContent } from "./shared-current-file.ts"
 import {
   currentOwnedResourceCreateRequest,
   currentOwnedResourceFromPage,
@@ -88,7 +96,11 @@ function validateSourceWriteOptions(input: SourceWriteOptions) {
     throw invalid("Dry run does not resume or replace an unfinished intent.")
 }
 
-function sourcePending(pending: Pending, configuration: string, options: SourceWriteOptions) {
+function sourcePending(
+  pending: Pending,
+  configuration: string | undefined,
+  options: SourceWriteOptions,
+) {
   if (pending === undefined) return undefined
   const intent = pending.intent
   if (
@@ -106,7 +118,7 @@ function sourcePending(pending: Pending, configuration: string, options: SourceW
     options.mode !== "resume" ||
     options.dry_run === true ||
     intent.operation_id !== options.operation_id ||
-    intent.source_input.configuration_sha256 !== configuration
+    (configuration !== undefined && intent.source_input.configuration_sha256 !== configuration)
   )
     throw fail("CURRENT_OPERATION_PENDING", "This Source has a different unfinished input.", {
       owner: intent.owner,
@@ -130,14 +142,13 @@ export function applyCurrentSource(
       validateSourceWriteOptions(input)
       return validateCurrentSourceInput(input.declaration)
     })
-    const configuration = yield* sha256(canonicalSharedJson(declaration))
     const pending = yield* readCurrentOperationIntent(library, {
       kind: "source",
       id: declaration.definition.source_id,
     })
     yield* assertCurrentSourceHandoffSettled(library, pending, input.mode, input.operation_id)
     const selected = { ...input, mode: selectedSourceMode(pending, input) }
-    const original = yield* checked(() => sourcePending(pending, configuration, selected))
+    const original = yield* checked(() => sourcePending(pending, undefined, selected))
     if (selected.mode !== "apply" && original === undefined)
       return yield* Effect.fail(
         fail("CURRENT_OPERATION_NOT_FOUND", "No unfinished Source intent was found."),
@@ -198,8 +209,7 @@ function copyPreparedSource(input: PreparedCurrentSourceInput) {
         declaration.definition.adapter.ref !== value.resolved_commit) ||
       (typeof declaration.definition.options.accepted_ref === "string" &&
         declaration.definition.options.accepted_ref !== value.resolved_commit) ||
-      inspection.plan.base.source.url.replace(/\.git$/u, "") !==
-        declaration.definition.adapter.url.replace(/\.git$/u, "") ||
+      inspection.plan.base.source.url !== declaration.definition.adapter.url ||
       (yield* sha256(canonicalSharedJson(declaration))) !== value.configuration_sha256
     )
       return yield* Effect.fail(
@@ -290,6 +300,7 @@ function executeCurrentSource(
   return Effect.gen(function* () {
     const source_id = prepared.declaration.definition.source_id
     const current = yield* queryCurrentSourceManagement(library, source_id)
+    const currentPage = current?.page_id
     const original = yield* checked(() =>
       sourcePending(pending, prepared.configuration_sha256, options),
     )
@@ -300,7 +311,8 @@ function executeCurrentSource(
     ]
     const targets = yield* queryCurrentSourceTargets(library, {
       skillIds: targetIds,
-      ...(current === undefined ? {} : { sourcePageId: current.page_id }),
+      sourceId: source_id,
+      ...(currentPage === undefined ? {} : { sourcePageId: currentPage }),
     })
     const affected = [...new Set([...targetIds, ...targets.keys()])].sort()
     if (
@@ -315,17 +327,46 @@ function executeCurrentSource(
     const source = yield* checked(() => sourceManifest(prepared))
     const desiredBySkill = new Map(prepared.targets.map((target) => [target.skill_id, target]))
     const plans: Effect.Success<ReturnType<typeof prepareCoordinatedSkillWrite>>[] = []
+    const retirements: { skill_id: string; page_id: string }[] = []
+    const frozenRetirements = new Map(
+      original?.source_input.kind === "declaration"
+        ? original.source_input.retirements.map((target) => [target.skill_id, target])
+        : [],
+    )
     for (const skill_id of affected) {
       const previous = targets.get(skill_id),
         desired = desiredBySkill.get(skill_id)
-      if (previous === undefined && desired === undefined)
-        return yield* Effect.fail(invalid("An affected current Skill disappeared.", { skill_id }))
+      if (desired === undefined) {
+        const frozen = frozenRetirements.get(skill_id)
+        if (previous === undefined && frozen === undefined)
+          return yield* Effect.fail(invalid("An affected current Skill disappeared.", { skill_id }))
+        if (
+          previous !== undefined &&
+          (previous.state.state !== "ready" ||
+            [previous.main, ...previous.files].some(
+              (file) => file.content.kind !== "source" || file.content.source_id !== source_id,
+            ) ||
+            (frozen !== undefined && frozen.page_id !== previous.page_id))
+        )
+          return yield* Effect.fail(
+            invalid("Only a pure Source-owned Skill can retire with its removed member.", {
+              skill_id,
+            }),
+          )
+        retirements.push(frozen ?? { skill_id, page_id: previous!.page_id })
+        continue
+      }
       const bindings = previous === undefined ? [] : [previous.main, ...previous.files]
       const owned = bindings.filter(
         (file) => file.content.kind === "source" && file.content.source_id === source_id,
       )
+      const desiredPaths = new Set(desired.files.map((file) => file.path))
       const files: Parameters<typeof prepareCoordinatedSkillWrite>[0]["files"][number][] = bindings
-        .filter((file) => !(file.content.kind === "source" && file.content.source_id === source_id))
+        .filter(
+          (file) =>
+            !(file.content.kind === "source" && file.content.source_id === source_id) &&
+            !desiredPaths.has(file.path),
+        )
         .map(({ file_id, page_id, skill_page_id, path, content }) => ({
           kind: "preserve",
           binding: { file_id, page_id, skill_page_id, path, content },
@@ -343,12 +384,22 @@ function executeCurrentSource(
               source_path: file.authority.source_path,
             }),
           )
+        const samePath = bindings.find((entry) => entry.path === file.path)
+        if (samePath?.content.kind === "source" && samePath.content.source_id !== source_id)
+          return yield* Effect.fail(
+            invalid("The desired Source path belongs to another Source.", {
+              skill_id,
+              path: file.path,
+              source_id: samePath.content.source_id,
+            }),
+          )
         files.push({
           kind: "write",
           file: {
             ...file,
             file_id:
               selected[0]?.file_id ??
+              samePath?.file_id ??
               "source-file-" +
                 (yield* sha256(
                   canonicalSharedJson([
@@ -361,16 +412,11 @@ function executeCurrentSource(
           },
         })
       }
-      // Removed contributions can only address existing targets. Their create-only
-      // defaults are constant and never freeze or replace human metadata.
-      const defaults = desired?.defaults ?? {
-        name: "Source target",
-        description: "Current Source contribution.",
-      }
+      const defaults = desired.defaults
       plans.push(
         yield* prepareCoordinatedSkillWrite({
           skill_id,
-          kind: previous?.kind ?? desired!.kind,
+          kind: previous?.kind ?? desired.kind,
           source: { source_id, revision: source.revision },
           create: { name: defaults.name, description: defaults.description },
           files,
@@ -382,6 +428,7 @@ function executeCurrentSource(
       configuration_sha256: prepared.configuration_sha256,
       resolved_commit: prepared.resolved_commit,
       affected_skill_ids: affected,
+      retirements,
     }
     const intent = {
       operation_id: options.operation_id,
@@ -398,8 +445,17 @@ function executeCurrentSource(
         invalid("The selected Source differs from the original frozen intent."),
       )
     const inspected = []
-    for (const plan of plans)
-      inspected.push(yield* inspectCoordinatedSkillWrite(library, plan, source))
+    const inspectedPlans = new Map<
+      string,
+      Effect.Success<ReturnType<typeof inspectCoordinatedSkillWrite>>
+    >()
+    for (const plan of plans) {
+      const target = yield* inspectCoordinatedSkillWrite(library, plan, source)
+      inspected.push(target)
+      inspectedPlans.set(plan.skill_id, target)
+    }
+    for (const target of retirements)
+      inspected.push({ contract: "current", ...target, action: "retire", remote_writes: 0 })
     const resultBase = {
       version: 1 as const,
       contract: "current" as const,
@@ -422,7 +478,7 @@ function executeCurrentSource(
       return {
         ...resultBase,
         status: "inspected" as const,
-        source_page_id: current?.page_id ?? null,
+        source_page_id: currentPage ?? null,
         remote_writes: 0 as const,
         targets: inspected,
       }
@@ -431,12 +487,110 @@ function executeCurrentSource(
       content: prepared.prepared_source.content,
       revision: source.revision,
     }
+    // The original finite parent cursor is the only proof that a child finished.
+    // Verify that prefix before entering the writer, so drift causes no writes.
+    const parent =
+      options.mode === "resume" && original !== undefined
+        ? yield* inspectCurrentOperation(library, intent.owner)
+        : undefined
+    const completed = new Map<
+      string,
+      Effect.Success<ReturnType<typeof verifyCoordinatedSkillDirectory>>
+    >()
+    if (
+      parent?.record_observed &&
+      parent.source_progress !== undefined &&
+      parent.source_progress.next_index > 0
+    ) {
+      if (
+        canonicalSharedJson(parent.intent) !== canonicalSharedJson(intent) ||
+        parent.owner_page_id !== currentPage ||
+        parent.owner_in_trash !== false ||
+        parent.completion !== "ready" ||
+        current === undefined ||
+        !currentSourceManagementMatches(current, wanted)
+      )
+        return yield* Effect.fail(
+          invalid("The completed Source prefix no longer belongs to its exact parent intent."),
+        )
+      const prefix = new Set(affected.slice(0, parent.source_progress.next_index))
+      const completedPlans = plans.filter((plan) => prefix.has(plan.skill_id))
+      const actual =
+        completedPlans.length === 0
+          ? new Map<string, Effect.Success<ReturnType<typeof verifyCoordinatedSkillDirectory>>>()
+          : yield* queryCurrentSourceTargets(library, {
+              skillIds: completedPlans.map((plan) => plan.skill_id),
+            })
+      if (actual.size !== completedPlans.length)
+        return yield* Effect.fail(
+          invalid("A completed Source target is missing or changed physical identity."),
+        )
+      for (const plan of completedPlans) {
+        const target = actual.get(plan.skill_id)
+        if (target === undefined)
+          return yield* Effect.fail(invalid("A completed Source target disappeared."))
+        completed.set(
+          plan.skill_id,
+          yield* verifyCoordinatedSkillDirectory(
+            library,
+            plan,
+            { ...source, page_id: current.page_id },
+            target,
+            inspectedPlans.get(plan.skill_id)!,
+          ),
+        )
+      }
+    }
+    const unchanged = new Map<
+      string,
+      Effect.Success<ReturnType<typeof verifyCoordinatedSkillDirectory>>
+    >()
+    if (
+      options.mode === "apply" &&
+      original === undefined &&
+      retirements.length === 0 &&
+      current?.state.state === "ready" &&
+      currentSourceManagementMatches(current, wanted)
+    ) {
+      const actual = yield* queryCurrentSourceTargets(library, {
+        skillIds: affected,
+        sourcePageId: current.page_id,
+        sourceId: source_id,
+      })
+      if ([...actual.keys()].some((skillId) => !affected.includes(skillId)))
+        return yield* Effect.fail(invalid("The Source target scope changed after inspection."))
+      for (const plan of plans) {
+        const target = actual.get(plan.skill_id)
+        if (target === undefined || target.state.state !== "ready") continue
+        const inspected = inspectedPlans.get(plan.skill_id)!
+        if (inspected.page_id !== null && inspected.page_id !== target.page_id)
+          return yield* Effect.fail(
+            invalid("The Source target changed physical identity after inspection."),
+          )
+        const verified = yield* inspectCoordinatedSkillDirectory(
+          library,
+          plan,
+          { ...source, page_id: current.page_id },
+          target,
+          inspected,
+        )
+        if (verified !== undefined) unchanged.set(plan.skill_id, verified)
+      }
+    }
     return yield* withCurrentOperation(library, {
       intent,
-      ownerPageId: current?.page_id ?? null,
+      ownerPageId: currentPage ?? null,
       mode: options.mode,
       run: (session) =>
         Effect.gen(function* () {
+          if (
+            completed.size !== 0 &&
+            canonicalSharedJson(session.sourceProgress) !==
+              canonicalSharedJson(parent?.source_progress)
+          )
+            return yield* Effect.fail(
+              invalid("The Source cursor changed after completed-prefix verification."),
+            )
           let changed = current === undefined || !currentSourceManagementMatches(current, wanted)
           const api = yield* Notion
           let latest = current
@@ -542,8 +696,75 @@ function executeCurrentSource(
           const assertSourceCurrent = Effect.gen(function* () {
             yield* checkSourceCurrent(yield* session.assertCurrent())
           })
+          // A parent retirement can be left in flight after earlier children
+          // completed. Reconcile that exact action before rechecking those children.
+          if (/^retire-source-target:/u.test(session.pendingActionKey ?? "")) {
+            const skill_id = affected[session.sourceProgress?.next_index ?? -1]
+            const target = retirements.find((target) => target.skill_id === skill_id)
+            if (target === undefined)
+              return yield* Effect.fail(
+                invalid("The pending retirement is outside the frozen Source cursor."),
+              )
+            yield* retireCurrentSourceTarget(
+              library,
+              session,
+              source_id,
+              target,
+              assertSourceCurrent,
+            )
+          }
+          if (session.pendingActionKey?.startsWith("retire-source-orphan:"))
+            yield* retireOrphanedSourceFiles(library, session, source_id, assertSourceCurrent)
+          if (session.pendingActionKey?.startsWith("retire-source-manifest:"))
+            yield* retireSourceManifests(library, session, wanted.content, assertSourceCurrent)
           const results = []
-          for (const plan of plans) {
+          for (const skill_id of affected) {
+            const retirement = retirements.find((target) => target.skill_id === skill_id)
+            if (retirement !== undefined) {
+              yield* retireCurrentSourceTarget(
+                library,
+                session,
+                source_id,
+                retirement,
+                assertSourceCurrent,
+              )
+              results.push({
+                version: 1 as const,
+                contract: "current" as const,
+                library: resultBase.library,
+                ...retirement,
+                operation_id: options.operation_id,
+                input_sha256: intent.input_sha256,
+                state: "removed" as const,
+                status: "removed" as const,
+                files: 0,
+              })
+              changed = true
+              if ((session.sourceProgress?.next_index ?? -1) <= affected.indexOf(skill_id))
+                yield* session.markSourceChildComplete(skill_id)
+              continue
+            }
+            const plan = plans.find((target) => target.skill_id === skill_id)!
+            const verified = completed.get(skill_id) ?? unchanged.get(skill_id)
+            if (verified !== undefined) {
+              results.push({
+                contract: "current",
+                library: resultBase.library,
+                status: "unchanged",
+                operation_id:
+                  "source-target-" +
+                  (yield* sha256(canonicalSharedJson([options.operation_id, plan.skill_id]))),
+                skill_id,
+                page_id: verified.page_id,
+                input_sha256: plan.input_sha256,
+                files: verified.files.length + 1,
+                relations: {},
+                state: "ready",
+                request_metrics: api.requestMetrics?.(),
+              })
+              if (unchanged.has(skill_id)) yield* session.markSourceChildComplete(skill_id)
+              continue
+            }
             const authorization = yield* authorizeCoordinatedSkillWrite(session, {
               plan,
               source: { ...source, page_id: created },
@@ -559,8 +780,12 @@ function executeCurrentSource(
             })
             results.push(result)
             if (result.status !== "unchanged") changed = true
-            yield* session.markSourceChildComplete(plan.skill_id)
+            if (!authorization.completed) yield* session.markSourceChildComplete(plan.skill_id)
           }
+          if (
+            (yield* retireOrphanedSourceFiles(library, session, source_id, assertSourceCurrent)) > 0
+          )
+            changed = true
           if (
             (yield* retireSourceManifests(library, session, wanted.content, assertSourceCurrent)) >
             0
@@ -575,7 +800,7 @@ function executeCurrentSource(
             targets: results,
           }
         }),
-      verify: (session) =>
+      verify: (session, value) =>
         Effect.gen(function* () {
           const raw = yield* session.assertCurrent()
           const row = yield* checked(() => parseCurrentSourceManagement(library, raw))
@@ -596,39 +821,379 @@ function executeCurrentSource(
           const actual = yield* queryCurrentSourceTargets(library, {
             skillIds: affected,
             sourcePageId: row.page_id,
+            sourceId: source_id,
           })
-          if (actual.size !== affected.length || affected.some((id) => !actual.has(id)))
+          if (actual.size !== plans.length || plans.some((plan) => !actual.has(plan.skill_id)))
             return yield* Effect.fail(invalid("The Source target scope changed before ready."))
+          for (const target of retirements) {
+            const page = property(yield* (yield* Notion).request(`v1/pages/${target.page_id}`))
+            if (page.in_trash !== true && page.archived !== true)
+              return yield* Effect.fail(invalid("A removed Source member remains live.", target))
+            const remaining = yield* queryCurrentFilesForSkills({
+              dataSourceId: library.files.data_source_id,
+              skillPageIds: [target.page_id],
+              propertyIds: library.files.property_ids,
+            })
+            if ((remaining.get(target.page_id)?.length ?? 0) !== 0)
+              return yield* Effect.fail(
+                invalid("A removed Source member still owns live Files.", target),
+              )
+          }
           for (const plan of plans) {
             const target = actual.get(plan.skill_id)
             if (target === undefined || target.state.state !== "ready")
               return yield* Effect.fail(invalid("An affected Skill is not completely ready."))
-            const selected = [target.main, ...target.files].filter(
-              (file) => file.content.kind === "source" && file.content.source_id === source_id,
+            yield* verifyCoordinatedSkillDirectory(
+              library,
+              plan,
+              { ...source, page_id: row.page_id },
+              target,
+              {
+                page_id: value.targets.find((result) => result.skill_id === plan.skill_id)!.page_id,
+                files: [],
+              },
             )
-            const wantedFiles = desiredBySkill.get(plan.skill_id)?.files ?? []
-            if (selected.length !== wantedFiles.length)
-              return yield* Effect.fail(invalid("The current Source contribution is incomplete."))
-            for (const file of wantedFiles) {
-              const found = selected.find((entry) => entry.path === file.path)
-              const planned = plan.files.find((entry) => entry.path === file.path)
-              if (
-                found?.content.kind !== "source" ||
-                found.file_id !== planned?.file_id ||
-                found.content.source_path !== file.authority.source_path ||
-                found.content.revision !== source.revision ||
-                found.content.mode !== file.mode ||
-                found.content.bytes !== file.bytes.byteLength ||
-                found.content.sha256 !== (yield* sha256(file.bytes))
-              )
-                return yield* Effect.fail(
-                  invalid("A Source target changed before completion.", {
-                    skill_id: plan.skill_id,
-                    path: file.path,
-                  }),
-                )
-            }
           }
+        }),
+    })
+  })
+}
+
+function retireOrphanedSourceFiles(
+  library: SharedLibrary,
+  session: CurrentOperationSession,
+  sourceId: string,
+  assertSourceCurrent: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>,
+) {
+  return Effect.gen(function* () {
+    const api = yield* Notion
+    const field = (raw: unknown, name: string) => {
+      const id = library.files.property_ids[name]
+      const matches = Object.entries(property(property(raw).properties)).filter(
+        ([key, value]) => key === id || property(value).id === id,
+      )
+      if (matches.length !== 1)
+        throw invalid("A Source File property is missing or repeated.", { property: name })
+      return property(matches[0]![1])
+    }
+    const inspect = (raw: unknown) =>
+      checked(() => {
+        const row = property(raw),
+          parent = property(row.parent)
+        if (
+          row.object !== "page" ||
+          typeof row.id !== "string" ||
+          !/^[a-f0-9-]{36}$/u.test(row.id) ||
+          parent.type !== "data_source_id" ||
+          parent.data_source_id !== library.files.data_source_id
+        )
+          throw invalid("The Source File query returned a foreign physical row.")
+        const encoded = field(raw, "Content"),
+          owner = field(raw, "Skill")
+        if (
+          encoded.type !== "rich_text" ||
+          encoded.has_more === true ||
+          !Array.isArray(encoded.rich_text)
+        )
+          throw invalid("The Source File Content is incomplete.")
+        const content = parseCurrentFileContent(text(encoded.rich_text))
+        if (content.kind !== "source" || content.source_id !== sourceId) return undefined
+        if (
+          owner.type !== "relation" ||
+          owner.has_more === true ||
+          !Array.isArray(owner.relation) ||
+          owner.relation.length > 1
+        )
+          throw invalid("A Source File has incomplete or ambiguous ownership.")
+        const id = text(field(raw, "File ID").rich_text)
+        currentWriteIdentity(id, "File ID")
+        const ownerPage = owner.relation.length ? property(owner.relation[0]).id : undefined
+        if (
+          ownerPage !== undefined &&
+          (typeof ownerPage !== "string" || !/^[a-f0-9-]{36}$/u.test(ownerPage))
+        )
+          throw invalid("The Source File has an invalid owner identity.")
+        return {
+          page_id: row.id,
+          file_id: id,
+          owner_page_id: ownerPage,
+          retired: row.in_trash === true || row.archived === true,
+        }
+      })
+    const orphaned = (owner: string | undefined) =>
+      Effect.gen(function* () {
+        if (owner === undefined) return true
+        const raw = property(yield* api.request(`v1/pages/${owner}`)),
+          parent = property(raw.parent)
+        if (
+          raw.id !== owner ||
+          raw.object !== "page" ||
+          parent.type !== "data_source_id" ||
+          parent.data_source_id !== library.skills.data_source_id
+        )
+          return yield* Effect.fail(
+            invalid("The Source File owner is outside the current library."),
+          )
+        return raw.in_trash === true || raw.archived === true
+      })
+    const retire = (page: string) =>
+      session.dispatch({
+        key: `retire-source-orphan:${page}`,
+        replay: "idempotent",
+        request: {
+          path: `v1/pages/${page}`,
+          body: { in_trash: true },
+          options: { method: "PATCH" },
+        },
+        observe: () =>
+          Effect.gen(function* () {
+            const file = yield* inspect(yield* api.request(`v1/pages/${page}`))
+            if (
+              file === undefined ||
+              file.page_id !== page ||
+              !(yield* orphaned(file.owner_page_id))
+            )
+              return yield* Effect.fail(
+                invalid("The orphan File acquired another Source or a live Skill owner."),
+              )
+            yield* assertSourceCurrent
+            return file.retired
+              ? { status: "complete" as const, value: undefined }
+              : { status: "missing" as const }
+          }),
+        acknowledge: (raw) =>
+          Effect.gen(function* () {
+            const file = yield* inspect(raw)
+            if (file === undefined || file.page_id !== page || !file.retired)
+              return yield* Effect.fail(
+                fail(
+                  "WRITE_OUTCOME_UNKNOWN",
+                  "The orphan Source File retirement was not confirmed.",
+                ),
+              )
+          }),
+      })
+    let retired = 0
+    const pending = /^retire-source-orphan:([a-f0-9-]{36})$/u.exec(session.pendingActionKey ?? "")
+    if (pending) {
+      yield* retire(pending[1]!)
+      retired++
+    }
+    const cursors = new Set<string>(),
+      pages = new Set<string>(),
+      owners = new Map<string | undefined, boolean>()
+    let cursor: string | undefined
+    const selected: string[] = []
+    for (;;) {
+      const raw = yield* api.request(
+        `v1/data_sources/${library.files.data_source_id}/query`,
+        {
+          page_size: 100,
+          filter: {
+            property: library.files.property_ids.Content,
+            rich_text: { contains: sourceId },
+          },
+          ...(cursor === undefined ? {} : { start_cursor: cursor }),
+        },
+        { method: "POST" },
+      )
+      const list = yield* checked(() => {
+        const result = Schema.decodeUnknownSync(listSchema(Schema.Unknown))(raw)
+        if (
+          property(raw).object !== "list" ||
+          (result.has_more
+            ? !result.next_cursor || cursors.has(result.next_cursor)
+            : result.next_cursor !== null)
+        )
+          throw invalid("The Source-owned Files inventory is incomplete.")
+        return result
+      })
+      for (const row of list.results) {
+        const file = yield* inspect(row)
+        if (file === undefined) continue
+        if (file.retired || pages.has(file.page_id))
+          return yield* Effect.fail(
+            invalid("The Source Files inventory repeats or includes a retired page."),
+          )
+        pages.add(file.page_id)
+        if (!owners.has(file.owner_page_id))
+          owners.set(file.owner_page_id, yield* orphaned(file.owner_page_id))
+        if (owners.get(file.owner_page_id)) selected.push(file.page_id)
+      }
+      if (!list.has_more) break
+      cursor = list.next_cursor!
+      cursors.add(cursor)
+    }
+    for (const page of selected) {
+      yield* retire(page)
+      retired++
+    }
+    return retired
+  })
+}
+
+function retireCurrentSourceTarget(
+  library: SharedLibrary,
+  session: CurrentOperationSession,
+  sourceId: string,
+  target: { readonly skill_id: string; readonly page_id: string },
+  assertSourceCurrent: Effect.Effect<void, SkillsError, Notion | Crypto.Crypto | Store>,
+) {
+  return Effect.gen(function* () {
+    const api = yield* Notion
+    const active = (raw: unknown) => ({ ...property(raw), in_trash: false, archived: false })
+    const inspectOwner = (raw: unknown) =>
+      Effect.gen(function* () {
+        const row = property(raw)
+        const index = yield* queryCurrentSkillIndex(library, target.page_id, active(raw), [])
+        if (
+          index.skill_id !== target.skill_id ||
+          index.state.state !== "ready" ||
+          index.main.content.kind !== "source" ||
+          index.main.content.source_id !== sourceId
+        )
+          return yield* Effect.fail(
+            invalid("The retiring Skill no longer belongs exclusively to this Source.", target),
+          )
+        return row.in_trash === true || row.archived === true
+      })
+    yield* inspectOwner(yield* api.request(`v1/pages/${target.page_id}`))
+    const retireFile = (page: string) =>
+      Effect.gen(function* () {
+        const inspect = (raw: unknown) =>
+          checked(() => {
+            const row = property(raw)
+            const file = currentFileRecord(
+              active(raw),
+              target.page_id,
+              library.files.data_source_id,
+              library.files.property_ids,
+            )
+            if (
+              file.page_id !== page ||
+              file.content.kind !== "source" ||
+              file.content.source_id !== sourceId
+            )
+              throw invalid("The retiring File changed its Source ownership.", {
+                ...target,
+                page_id: page,
+              })
+            return row.in_trash === true || row.archived === true
+          })
+        yield* session.dispatch({
+          key: `retire-source-target:file:${page}`,
+          replay: "idempotent",
+          request: {
+            path: `v1/pages/${page}`,
+            body: { in_trash: true },
+            options: { method: "PATCH" },
+          },
+          observe: () =>
+            Effect.gen(function* () {
+              const retired = yield* inspect(yield* api.request(`v1/pages/${page}`))
+              yield* assertSourceCurrent
+              return retired
+                ? { status: "complete" as const, value: undefined }
+                : { status: "missing" as const }
+            }),
+          acknowledge: (raw) =>
+            Effect.gen(function* () {
+              if (!(yield* inspect(raw)))
+                return yield* Effect.fail(
+                  fail("WRITE_OUTCOME_UNKNOWN", "Source File retirement was not confirmed."),
+                )
+            }),
+        })
+      })
+    const pendingFile = /^retire-source-target:file:([a-f0-9-]{36})$/u.exec(
+      session.pendingActionKey ?? "",
+    )
+    if (pendingFile) yield* retireFile(pendingFile[1]!)
+    const files =
+      (yield* queryCurrentFilesForSkills({
+        dataSourceId: library.files.data_source_id,
+        skillPageIds: [target.page_id],
+        propertyIds: library.files.property_ids,
+      })).get(target.page_id) ?? []
+    for (const file of files) yield* retireFile(file.page_id)
+    const owner = { kind: "skill" as const, page_id: target.page_id }
+    const retireResource = (page: string) =>
+      Effect.gen(function* () {
+        const inspect = (raw: unknown) =>
+          Effect.gen(function* () {
+            const row = property(raw)
+            const objectId = text(
+              Object.entries(property(row.properties)).flatMap(([key, value]) =>
+                key === library.records.property_ids["Record ID"] ||
+                property(value).id === library.records.property_ids["Record ID"]
+                  ? property(value).rich_text
+                  : [],
+              ),
+            )
+            const { record } = yield* currentOwnedResourceFromPage(library, active(raw), {
+              owner,
+              objectId,
+            })
+            if (record.page_id !== page)
+              return yield* Effect.fail(invalid("The retiring resource changed physical identity."))
+            return row.in_trash === true || row.archived === true
+          })
+        yield* session.dispatch({
+          key: `retire-source-target:resource:${page}`,
+          replay: "idempotent",
+          request: {
+            path: `v1/pages/${page}`,
+            body: { in_trash: true },
+            options: { method: "PATCH" },
+          },
+          observe: () =>
+            Effect.gen(function* () {
+              const retired = yield* inspect(yield* api.request(`v1/pages/${page}`))
+              yield* assertSourceCurrent
+              return retired
+                ? { status: "complete" as const, value: undefined }
+                : { status: "missing" as const }
+            }),
+          acknowledge: (raw) =>
+            Effect.gen(function* () {
+              if (!(yield* inspect(raw)))
+                return yield* Effect.fail(
+                  fail("WRITE_OUTCOME_UNKNOWN", "Source resource retirement was not confirmed."),
+                )
+            }),
+        })
+      })
+    const pendingResource = /^retire-source-target:resource:([a-f0-9-]{36})$/u.exec(
+      session.pendingActionKey ?? "",
+    )
+    if (pendingResource) yield* retireResource(pendingResource[1]!)
+    for (const { record } of yield* listCurrentOwnedResourceRecords(library, owner))
+      yield* retireResource(record.page_id)
+    const origin = library.skills.property_ids.Origin
+    if (origin === undefined)
+      return yield* Effect.fail(invalid("The current Origin property is not registered."))
+    yield* session.dispatch({
+      key: `retire-source-target:skill:${target.page_id}`,
+      replay: "idempotent",
+      request: {
+        path: `v1/pages/${target.page_id}`,
+        body: { in_trash: true, properties: { [origin]: { relation: [] } } },
+        options: { method: "PATCH" },
+      },
+      observe: () =>
+        Effect.gen(function* () {
+          const retired = yield* inspectOwner(yield* api.request(`v1/pages/${target.page_id}`))
+          yield* assertSourceCurrent
+          return retired
+            ? { status: "complete" as const, value: undefined }
+            : { status: "missing" as const }
+        }),
+      acknowledge: (raw) =>
+        Effect.gen(function* () {
+          if (!(yield* inspectOwner(raw)))
+            return yield* Effect.fail(
+              fail("WRITE_OUTCOME_UNKNOWN", "Source Skill retirement was not confirmed."),
+            )
         }),
     })
   })
@@ -757,7 +1322,6 @@ export function retireSourceManifests(
           observe: () =>
             Effect.gen(function* () {
               const trashed = yield* observe(yield* api.request(`v1/pages/${page}`))
-              if (!trashed) yield* assertCurrentBodyReplaceable(page)
               yield* assertSourceCurrent
               return trashed
                 ? { status: "complete" as const, value: undefined }

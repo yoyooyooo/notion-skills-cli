@@ -1,4 +1,3 @@
-import { posix } from "node:path"
 import { Crypto, Effect, Schema } from "effect"
 import { authScope } from "./catalog.ts"
 import { invalidateSnapshotCache, invalidateCurrentLibraryCatalog } from "./cache.ts"
@@ -37,13 +36,7 @@ import {
   validateCurrentSourceFileInput,
   type CurrentSourceFileInput,
 } from "./shared-current-source-file-input.ts"
-import {
-  applyCurrentProjection,
-  assertCurrentBodyReplaceable,
-  isCurrentProjectionBinary,
-  inspectCurrentProjection,
-  renderCurrentProjection,
-} from "./shared-current-projection.ts"
+import { assertCurrentBodyReplaceable } from "./shared-current-projection.ts"
 import {
   currentOwnedResourceCreateRequest,
   currentOwnedResourceFromPage,
@@ -62,7 +55,10 @@ import {
 } from "./shared-current-source.ts"
 import { decodeCurrentFileContent } from "./shared-current-file.ts"
 import { planSharedFiles } from "./shared-composition.ts"
-import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
+import {
+  assertSelectedSharedFileReferences,
+  assertSelectedSharedSourceReferences,
+} from "./shared-file-references.ts"
 import {
   applyCurrentRelations,
   currentRelationsInfo,
@@ -71,7 +67,6 @@ import {
 } from "./shared-current-relations.ts"
 import {
   currentUploadActionPrefix,
-  currentUploadFileSpec,
   makeCurrentUploadScope,
   uploadCurrentSharedResource,
 } from "./shared-current-upload.ts"
@@ -437,7 +432,7 @@ function validateCoordinatedTree(plan: Omit<PreparedCoordinatedSkillWrite, "inpu
   if (totalBytes > 128 * 1024 * 1024)
     throw invalid("One coordinated target exceeds 128 MiB of selected bytes.")
   assertSelectedSharedFileReferences(
-    writablePlanFiles(plan.files),
+    writablePlanFiles(plan.files).filter((file) => file.kind !== "source"),
     plan.files.map((file) => file.path),
   )
 }
@@ -601,6 +596,14 @@ function copyCoordinatedPlan(input: PreparedCoordinatedSkillWrite) {
 }
 type SourceSelection = Pick<CurrentSharedSource, "source_id" | "revision" | "manifest">
 function assertSourceFiles(plan: CurrentWritePlan, source: SourceSelection) {
+  assertSelectedSharedSourceReferences(
+    writablePlanFiles(plan.files).flatMap((file) =>
+      file.kind === "source" && file.content.source_id === source.source_id
+        ? [{ path: file.path, source_path: file.content.source_path, bytes: file.bytes }]
+        : [],
+    ),
+    source.manifest.map((file) => file.path),
+  )
   if (
     isCoordinated(plan) &&
     (plan.source.source_id !== source.source_id || plan.source.revision !== source.revision)
@@ -711,7 +714,14 @@ export function authorizeCoordinatedSkillWrite(
         childIndex > session.sourceProgress.next_index
       )
         return yield* Effect.fail(invalid("The target is outside the current Source cursor."))
-      if (session.pendingActionKey !== undefined)
+      const completing =
+        session.pendingActionKey === "$owner.ready" &&
+        "source_input" in session.intent &&
+        session.sourceProgress.next_index ===
+          session.intent.source_input.affected_skill_ids.length &&
+        !session.sourceProgress.child_started &&
+        childIndex < session.sourceProgress.next_index
+      if (session.pendingActionKey !== undefined && !completing)
         return yield* Effect.fail(
           fail(
             "CURRENT_OPERATION_PENDING",
@@ -851,10 +861,12 @@ function resolveFiles(plan: CurrentWritePlan, current?: Target) {
         file.kind !== "preserve" &&
         transfer === null &&
         old !== undefined &&
-        !(old.content.kind === "source" && old.content.source_id === plan.source.source_id)
+        (old.content.kind === "source"
+          ? old.content.source_id !== plan.source.source_id
+          : file.kind !== "source" || old.path !== file.path || old.file_id !== file.file_id)
       )
         return yield* Effect.fail(
-          invalid("A Source cannot overwrite an unmanaged current File.", {
+          invalid("A Source cannot overwrite another Source or an unselected current File.", {
             path: file.path,
             file_id: old.file_id,
           }),
@@ -904,7 +916,16 @@ function resolveFiles(plan: CurrentWritePlan, current?: Target) {
           previous.content.source_id === plan.source.source_id
         )
           continue
-        if (retained.get(previous.page_id)?.input.kind !== "preserve")
+        const replacement = retained.get(previous.page_id)
+        if (
+          replacement?.input.kind !== "preserve" &&
+          !(
+            previous.content.kind !== "source" &&
+            replacement?.input.kind === "source" &&
+            replacement.input.path === previous.path &&
+            replacement.file_id === previous.file_id
+          )
+        )
           return yield* Effect.fail(
             invalid("The complete coordinated tree must preserve every unmanaged File.", {
               file_id: previous.file_id,
@@ -1159,7 +1180,15 @@ export function inspectCoordinatedSkillWrite(
             ? "preserve"
             : file.page_id === undefined
               ? "create"
-              : "verify_or_replace",
+              : [current?.index.main, ...(current?.index.files ?? [])].some(
+                    (before) =>
+                      before !== undefined &&
+                      before.page_id === file.page_id &&
+                      before.content.kind !== "source" &&
+                      file.input.kind === "source",
+                  )
+                ? "authority_replace"
+                : "verify_or_replace",
       })),
       remove:
         current?.index.files
@@ -1172,6 +1201,166 @@ export function inspectCoordinatedSkillWrite(
     Effect.map(({ result }) => result),
   )
 }
+
+function retainedCurrentResources(
+  plan: CurrentWritePlan,
+  resources: Effect.Success<ReturnType<typeof listCurrentOwnedResourceRecords>>,
+) {
+  return Effect.gen(function* () {
+    const retained = new Set(
+      plan.files.flatMap((file) =>
+        file.content.kind === "resource" ? [file.content.object_id] : [],
+      ),
+    )
+    // A preserved Source may retain a reading original with the same exact bytes.
+    for (const file of plan.files) {
+      if (file.kind !== "preserve" || file.content.kind !== "source") continue
+      for (const row of resources) {
+        const payload = property(row.record.payload)
+        if (
+          payload.sha256 !== file.content.sha256 ||
+          payload.bytes !== file.content.bytes ||
+          payload.mode !== file.content.mode
+        )
+          continue
+        const storage = property(payload.storage)
+        if (storage.kind === "zip_attachment" && storage.entry !== file.path) continue
+        yield* validateCurrentSharedResourceManifest(
+          {
+            kind: "resource",
+            object_id: row.record.record_id,
+            sha256: file.content.sha256,
+            bytes: file.content.bytes,
+            mode: file.content.mode,
+          },
+          row.record.payload,
+        )
+        retained.add(row.record.record_id)
+      }
+    }
+    return retained
+  })
+}
+
+function coordinatedDirectoryMatches(
+  plan: PreparedCoordinatedSkillWrite,
+  current: CurrentSkillIndex,
+  inspected: Pick<
+    Effect.Success<ReturnType<typeof inspectCoordinatedSkillWrite>>,
+    "page_id" | "files"
+  >,
+) {
+  if (
+    current.skill_id !== plan.skill_id ||
+    current.kind !== plan.kind ||
+    current.state.state !== "ready" ||
+    current.main.path !== plan.main ||
+    (inspected.page_id !== null && current.page_id !== inspected.page_id) ||
+    current.files.length + 1 !== plan.files.length
+  )
+    return false
+  return [current.main, ...current.files].every((file) => {
+    const desired = plan.files.find((entry) => entry.path === file.path)
+    const before = inspected.files.find((entry) => entry.path === file.path)
+    return (
+      desired !== undefined &&
+      desired.file_id === file.file_id &&
+      canonicalSharedJson(desired.content) === canonicalSharedJson(file.content) &&
+      (before?.page_id == null || before.page_id === file.page_id) &&
+      (desired.kind !== "preserve" ||
+        canonicalSharedJson(preservedBinding(file)) === canonicalSharedJson(desired.binding))
+    )
+  })
+}
+
+/** A complete observation may prove no work is needed. Explicit directory,
+ * Origin or resource differences still require the ordinary guarded writer. */
+export function inspectCoordinatedSkillDirectory(
+  library: SharedLibrary,
+  plan: PreparedCoordinatedSkillWrite,
+  source: SourceSelection & { readonly page_id: string },
+  target: CurrentSkillIndex,
+  inspected: Pick<
+    Effect.Success<ReturnType<typeof inspectCoordinatedSkillWrite>>,
+    "page_id" | "files"
+  >,
+) {
+  return Effect.gen(function* () {
+    if (plan.authority_transfer !== null)
+      return yield* Effect.fail(
+        invalid("An authority transfer requires its original child writer."),
+      )
+    if (!coordinatedDirectoryMatches(plan, target, inspected)) return undefined
+    const raw = yield* (yield* Notion).request(`v1/pages/${target.page_id}`)
+    yield* checked(() => livePage(raw, target.page_id, library.skills.data_source_id))
+    const current = yield* queryCurrentSkillIndex(library, target.page_id, raw, target.files)
+    yield* checked(() => {
+      if (!coordinatedDirectoryMatches(plan, current, inspected))
+        throw invalid("The observed Source target changed its owner or complete directory.")
+    })
+    const sources = yield* resolveCurrentSharedSources(library, {
+      selections: plan.files.flatMap((file) =>
+        file.content.kind === "source" && file.content.source_id !== source.source_id
+          ? [file.content]
+          : [],
+      ),
+    })
+    const origins = new Map<string, SourceSelection & { readonly page_id: string }>(sources)
+    if (
+      plan.files.some(
+        (file) => file.content.kind === "source" && file.content.source_id === source.source_id,
+      )
+    )
+      origins.set(source.source_id, source)
+    for (const selected of origins.values()) yield* checked(() => assertSourceFiles(plan, selected))
+    const originMatches = yield* checked(() =>
+      fieldsMatch(raw, {
+        [binding(library, "skills", "Origin")]: {
+          relation: [...origins.values()].map((selected) => ({ id: selected.page_id })),
+        },
+      }),
+    )
+    if (!originMatches) return undefined
+    const resources = yield* listCurrentOwnedResourceRecords(library, {
+      kind: "skill",
+      page_id: current.page_id,
+    })
+    const retained = yield* retainedCurrentResources(plan, resources)
+    if (resources.some((row) => !retained.has(row.record.record_id))) return undefined
+    const pending = yield* readCurrentOperationIntent(library, { kind: "skill", id: plan.skill_id })
+    if (pending !== undefined)
+      return yield* Effect.fail(
+        fail(
+          "CURRENT_OPERATION_PENDING",
+          "A ready Source target still has an unfinished current intent.",
+          {
+            skill_id: plan.skill_id,
+            operation_id: pending.intent.operation_id,
+            owner_page_id: pending.owner_page_id,
+          },
+        ),
+      )
+    return current
+  })
+}
+
+/** A completed prefix or final result must already satisfy the entire directory. */
+export function verifyCoordinatedSkillDirectory(
+  ...args: Parameters<typeof inspectCoordinatedSkillDirectory>
+) {
+  return inspectCoordinatedSkillDirectory(...args).pipe(
+    Effect.flatMap((current) =>
+      current === undefined
+        ? Effect.fail(
+            invalid(
+              "The completed Source target differs from its exact directory, Origin or retained resources.",
+            ),
+          )
+        : Effect.succeed(current),
+    ),
+  )
+}
+
 type CurrentWriteRequest = {
   readonly plan: PreparedCurrentSkillWrite
   readonly operation_id: string
@@ -1402,9 +1591,9 @@ function applyPreparedCurrentSkillWrite(
       kind: plan.kind,
       relations: plan.relations,
       reconciling,
-      ...(current === undefined
-        ? {}
-        : { owner: { page_id: current.index.page_id, raw: current.raw } }),
+      ...(current !== undefined
+        ? { owner: { page_id: current.index.page_id, raw: current.raw } }
+        : {}),
     })
     const writableFiles = writablePlanFiles(plan.files)
     const sourceSelections = plan.files.flatMap((file) =>
@@ -1427,39 +1616,12 @@ function applyPreparedCurrentSkillWrite(
     )
       sources.set(input.authorization.source.source_id, input.authorization.source)
     for (const source of sources.values()) yield* checked(() => assertSourceFiles(plan, source))
-    // A Source binary has a derived reading original, while its Content remains
-    // Source authority. The same upload/readback/retirement code owns both kinds.
-    const resourceFile = (
-      file: PreparedCurrentWriteFile,
-    ): Extract<PreparedCurrentWriteFile, { kind: "resource" }> | undefined =>
-      file.kind === "resource"
-        ? file
-        : file.kind === "source" && file.reading_resource !== null
-          ? {
-              path: file.path,
-              bytes: file.bytes,
-              sha256: file.sha256,
-              mode: file.mode,
-              file_id: file.file_id,
-              kind: "resource",
-              content: file.reading_resource.content,
-              resource: file.reading_resource,
-            }
-          : undefined
-    const resourceFiles = writableFiles.flatMap((file) => {
-      const original = resourceFile(file)
-      return original === undefined ? [] : [original]
-    })
-    const resourceMedia = new Map<string, Set<string>>()
-    for (const file of resourceFiles) {
-      const types = resourceMedia.get(file.content.object_id) ?? new Set<string>()
-      types.add(currentUploadFileSpec(file.path).contentType)
-      resourceMedia.set(file.content.object_id, types)
-    }
-    const imagePreview = (file: PreparedCurrentWriteFile) => {
-      const original = resourceFile(file)
-      return original === undefined || resourceMedia.get(original.content.object_id)?.size === 1
-    }
+    // Source originals remain at their selected provider. Only Notion-owned
+    // resources need durable resource records before the Skill becomes ready.
+    const resourceFiles = writableFiles.filter(
+      (file): file is Extract<PreparedCurrentWriteFile, { kind: "resource" }> =>
+        file.kind === "resource",
+    )
     const validatePreservedReferences = validatePreservedCoordinatedReferences(
       library,
       plan,
@@ -1778,8 +1940,7 @@ function applyPreparedCurrentSkillWrite(
                 if (
                   transfer.target.native_sha256 !== null &&
                   (actionKey === `file:${observed.file_id}:properties` ||
-                    actionKey === "skill:properties" ||
-                    actionKey === `projection:${page}:clear`)
+                    actionKey === "skill:properties")
                 ) {
                   const body = yield* observeSharedBody(page)
                   if (body.fingerprint.sha256 !== transfer.target.native_sha256)
@@ -1823,13 +1984,13 @@ function applyPreparedCurrentSkillWrite(
                 ]
                 const staged = `.ntn-current-${yield* sha256(canonicalSharedJson([input.operation_id, observed.file_id]))}.pending`
                 if (
-                  observed.content.kind !== "source" ||
-                  observed.content.source_id !== input.authorization.source.source_id ||
+                  (observed.content.kind === "source" &&
+                    observed.content.source_id !== input.authorization.source.source_id) ||
                   (!(trashed && retiring && candidates.length === 0) &&
                     !candidates.some(
                       (expected) =>
-                        expected.content.kind === "source" &&
-                        expected.content.source_id === input.authorization!.source.source_id &&
+                        (expected.content.kind !== "source" ||
+                          expected.content.source_id === input.authorization!.source.source_id) &&
                         expected.file_id === observed.file_id &&
                         (expected.path === observed.path ||
                           (page !== created && staged === observed.path)) &&
@@ -1883,46 +2044,9 @@ function applyPreparedCurrentSkillWrite(
               row,
             ]),
           )
-          const resourceAttachments = new Map<string, unknown>(),
-            uploadIds = new Map<string, UploadHandle>()
           const verifiedResources = new Set<string>(),
             uploadScope = makeCurrentUploadScope(managedSession)
-          const desiredResources = new Set([
-            ...resourceFiles.map((file) => file.content.object_id),
-            ...plan.files.flatMap((file) =>
-              file.kind === "preserve" && file.content.kind === "resource"
-                ? [file.content.object_id]
-                : [],
-            ),
-          ])
-          // Preserve a different Source's existing reading original without
-          // fetching or rewriting that Source's body. Its manifest still names
-          // the selected exact bytes; unrelated originals remain collectible.
-          for (const file of plan.files) {
-            if (file.kind !== "preserve" || file.content.kind !== "source") continue
-            for (const row of resources.values()) {
-              const payload = property(row.record.payload)
-              if (
-                payload.sha256 !== file.content.sha256 ||
-                payload.bytes !== file.content.bytes ||
-                payload.mode !== file.content.mode
-              )
-                continue
-              const storage = property(payload.storage)
-              if (storage.kind === "zip_attachment" && storage.entry !== file.path) continue
-              yield* validateCurrentSharedResourceManifest(
-                {
-                  kind: "resource",
-                  object_id: row.record.record_id,
-                  sha256: file.content.sha256,
-                  bytes: file.content.bytes,
-                  mode: file.content.mode,
-                },
-                row.record.payload,
-              )
-              desiredResources.add(row.record.record_id)
-            }
-          }
+          const desiredResources = yield* retainedCurrentResources(plan, [...resources.values()])
           for (const file of resourceFiles) {
             if (verifiedResources.has(file.content.object_id)) continue
             const existing = resources.get(file.content.object_id)
@@ -1949,7 +2073,6 @@ function applyPreparedCurrentSkillWrite(
                 prepared: file.resource,
                 scope: uploadScope,
               })
-              uploadIds.set(file.content.object_id, upload)
             }
             const request = yield* currentOwnedResourceCreateRequest(library, {
               owner,
@@ -2009,98 +2132,9 @@ function applyPreparedCurrentSkillWrite(
                     path: file.path,
                   }),
                 )
-              resourceAttachments.set(file.content.object_id, attachment)
             }
             verifiedResources.add(file.content.object_id)
           }
-          const replaceAttachment = (
-            file: Extract<PreparedCurrentWriteFile, { kind: "resource" }>,
-            upload: UploadHandle,
-          ) =>
-            Effect.gen(function* () {
-              const selected = resources.get(file.content.object_id)
-              if (selected === undefined)
-                return yield* Effect.fail(
-                  invalid("The current original has no owned resource row."),
-                )
-              const id = library.records.property_ids.Resource
-              if (!id)
-                return yield* Effect.fail(
-                  fail("CURRENT_SCHEMA_REQUIRED", "The current Resource property is missing."),
-                )
-              const check = (raw: unknown) =>
-                Effect.gen(function* () {
-                  const value = yield* currentOwnedResourceFromPage(library, raw, {
-                    owner,
-                    objectId: file.content.object_id,
-                  })
-                  yield* validateCurrentSharedResourceManifest(file.content, value.record.payload)
-                  const attachment = yield* checked(() => {
-                    const field = property(value.resource)
-                    if (
-                      !Array.isArray(field.files) ||
-                      field.files.length !== 1 ||
-                      field.has_more === true
-                    )
-                      throw invalid("The current original attachment is incomplete.")
-                    return field.files[0]
-                  })
-                  resources.set(file.content.object_id, value)
-                  resourceAttachments.set(file.content.object_id, attachment)
-                  return property(attachment).name === upload.filename
-                })
-              yield* dispatch({
-                key: `resource:${file.content.object_id}:attachment`,
-                replay: "idempotent",
-                request: {
-                  path: `v1/pages/${selected.record.page_id}`,
-                  body: {
-                    properties: {
-                      [id]: {
-                        files: [
-                          {
-                            name: upload.filename,
-                            type: "file_upload",
-                            file_upload: { id: upload.id },
-                          },
-                        ],
-                      },
-                    },
-                  },
-                  options: { method: "PATCH" },
-                },
-                observe: () =>
-                  Effect.gen(function* () {
-                    return (yield* check(yield* api.request(`v1/pages/${selected.record.page_id}`)))
-                      ? ({ status: "complete", value: undefined } as const)
-                      : ({ status: "missing" } as const)
-                  }),
-                acknowledge: (raw) =>
-                  Effect.gen(function* () {
-                    if (!(yield* check(raw)))
-                      return yield* Effect.fail(
-                        fail(
-                          "WRITE_OUTCOME_UNKNOWN",
-                          "The current original attachment replacement was not confirmed.",
-                        ),
-                      )
-                  }),
-              })
-              // This must fetch the actual new locator; an object-cache hit cannot
-              // establish that replacing the current attachment preserved bytes.
-              const original = yield* loadCurrentSharedResourceContent(library, {
-                owner,
-                content: file.content,
-              })
-              if (
-                original.bytes.byteLength !== file.bytes.byteLength ||
-                (yield* sha256(original.bytes)) !== file.sha256
-              )
-                return yield* Effect.fail(
-                  invalid("The replaced current attachment changed its original bytes."),
-                )
-              return resourceAttachments.get(file.content.object_id)
-            })
           // Move every vacated path aside before assigning desired paths. A
           // stopped rename still leaves a complete, unambiguous current index.
           const keptPages = new Set(
@@ -2315,68 +2349,8 @@ function applyPreparedCurrentSkillWrite(
                 ownerRaw = raw
               }),
           })
-          // Decide attachment replacement for the whole resource before rendering
-          // any of its pages. Shared originals cannot leave earlier projections
-          // behind when a later page needs the same original uploaded again.
-          const checkedBinaryResources = new Set<string>()
-          for (const candidate of resourceFiles) {
-            if (
-              candidate.kind !== "resource" ||
-              !isCurrentProjectionBinary(candidate.path, candidate.bytes) ||
-              checkedBinaryResources.has(candidate.content.object_id)
-            )
-              continue
-            checkedBinaryResources.add(candidate.content.object_id)
-            const siblings = resourceFiles.filter(
-              (file) =>
-                file.kind === "resource" &&
-                file.content.object_id === candidate.content.object_id &&
-                isCurrentProjectionBinary(file.path, file.bytes),
-            )
-            let missing =
-              session.pendingActionKey === `resource:${candidate.content.object_id}:attachment`
-            for (const file of siblings) {
-              const page = filePages.get(file.path)!
-              const projection = yield* checked(() =>
-                renderCurrentProjection({
-                  path: file.path,
-                  bytes: file.bytes,
-                  attachment: { name: currentUploadFileSpec(file.path).name },
-                  imagePreview: imagePreview(file),
-                }),
-              )
-              if (
-                session.pendingActionKey?.startsWith(`projection:${page}:`) === true ||
-                !(yield* inspectCurrentProjection({
-                  pageId: page,
-                  plan: projection,
-                  attachment: resourceAttachments.get(candidate.content.object_id),
-                })).matches
-              )
-                missing = true
-            }
-            if (!missing) continue
-            const original = resourceFiles.find(
-              (file): file is Extract<PreparedCurrentWriteFile, { kind: "resource" }> =>
-                file.kind === "resource" && file.content.object_id === candidate.content.object_id,
-            )!
-            let upload = uploadIds.get(candidate.content.object_id)
-            if (upload === undefined) {
-              upload = yield* uploadCurrentSharedResource({
-                session: managedSession,
-                path: original.path,
-                prepared: original.resource,
-                scope: uploadScope,
-              })
-              uploadIds.set(candidate.content.object_id, upload)
-            }
-            if (
-              property(resourceAttachments.get(candidate.content.object_id)).name !==
-                upload.filename ||
-              session.pendingActionKey === `resource:${candidate.content.object_id}:attachment`
-            )
-              yield* replaceAttachment(original, upload)
-          }
+          // Generated source/resource reading bodies are a separate management
+          // operation. Only authored native bodies participate in this commit.
           for (const file of writableFiles) {
             const page = filePages.get(file.path)!
             if (file.kind === "native") {
@@ -2423,78 +2397,6 @@ function applyPreparedCurrentSkillWrite(
               })
               continue
             }
-            const resource = resourceFile(file)
-            let attachment =
-              resource === undefined
-                ? undefined
-                : resourceAttachments.get(resource.content.object_id)
-            const binary = isCurrentProjectionBinary(file.path, file.bytes)
-            let upload =
-              resource === undefined ? undefined : uploadIds.get(resource.content.object_id)
-            const rewriteLink = (href: string) => {
-              if (/^(?:[a-z][a-z0-9+.-]*:|\/|#|\?)/iu.test(href)) return undefined
-              try {
-                const suffixAt = href.search(/[?#]/u),
-                  target = posix.normalize(
-                    posix.join(
-                      posix.dirname(file.path),
-                      decodeURIComponent(suffixAt < 0 ? href : href.slice(0, suffixAt)),
-                    ),
-                  )
-                const linked = filePages.get(target)
-                return linked === undefined
-                  ? undefined
-                  : `https://www.notion.so/${linked.replaceAll("-", "")}${suffixAt < 0 ? "" : href.slice(suffixAt)}`
-              } catch {
-                return undefined
-              }
-            }
-            const name = currentUploadFileSpec(file.path).name
-            let projection = yield* checked(() =>
-              renderCurrentProjection({
-                path: file.path,
-                bytes: file.bytes,
-                ...(binary
-                  ? { attachment: upload === undefined ? { name } : { id: upload.id, name } }
-                  : {}),
-                rewriteLink,
-                imagePreview: imagePreview(file),
-              }),
-            )
-            const pendingAttachment =
-              resource !== undefined &&
-              session.pendingActionKey === `resource:${resource.content.object_id}:attachment`
-            if (
-              !pendingAttachment &&
-              session.pendingActionKey?.startsWith(`projection:${page}:`) !== true &&
-              (yield* inspectCurrentProjection({ pageId: page, plan: projection, attachment }))
-                .matches
-            )
-              continue
-            if (binary && upload !== undefined && resource !== undefined) {
-              if (property(attachment).name !== upload.filename || pendingAttachment)
-                attachment = yield* replaceAttachment(resource, upload)
-              projection = yield* checked(() =>
-                renderCurrentProjection({
-                  path: file.path,
-                  bytes: file.bytes,
-                  attachment: { id: upload!.id, name },
-                  rewriteLink,
-                  imagePreview: imagePreview(file),
-                }),
-              )
-            }
-            yield* applyCurrentProjection<Notion | Crypto.Crypto | Store>({
-              pageId: page,
-              content: file.content,
-              plan: projection,
-              attachment,
-              assertCurrent: assertOwner,
-              dispatch: coordinatedDispatch(
-                resolved.find((selected) => selected.input.path === file.path)!,
-                page,
-              ),
-            })
           }
           yield* applyCurrentRelations(library, relations, {
             page_id: created,
@@ -2551,11 +2453,22 @@ function applyPreparedCurrentSkillWrite(
                 },
                 observe: () =>
                   Effect.gen(function* () {
-                    const trashed = yield* check(yield* api.request(`v1/pages/${page}`))
+                    const raw = yield* api.request(`v1/pages/${page}`)
+                    const trashed = yield* check(raw)
                     if (!trashed) {
-                      yield* assertCurrentBodyReplaceable(page)
-                      if (role === "file") yield* assertCoordinatedBinding(page, undefined, true)
-                      else yield* assertCoordinatedResourceRetirement
+                      if (role === "file") {
+                        const file = yield* checked(() =>
+                          currentFileRecord(
+                            raw,
+                            created,
+                            library.files.data_source_id,
+                            library.files.property_ids,
+                          ),
+                        )
+                        if (file.content.kind === "native")
+                          yield* assertCurrentBodyReplaceable(page)
+                        yield* assertCoordinatedBinding(page, undefined, true)
+                      } else yield* assertCoordinatedResourceRetirement
                     }
                     return trashed
                       ? ({ status: "complete", value: undefined } as const)
@@ -2582,8 +2495,8 @@ function applyPreparedCurrentSkillWrite(
             )
           for (const row of files.values())
             if (!keptPages.has(row.file.page_id)) yield* retire(row.file.page_id, "file")
-          // Desired bytes and every reading page have been checked before any
-          // unreferenced exact original is removed.
+          // Desired exact resources and native bodies are verified before any
+          // unreferenced Notion-owned original is removed.
           for (const row of resources.values())
             if (!desiredResources.has(row.record.record_id))
               yield* retire(row.record.page_id, "resource")

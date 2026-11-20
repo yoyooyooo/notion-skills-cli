@@ -38,9 +38,13 @@ import { Notion } from "./notion.ts"
 import { fileRef, pageId, parseRef, parseTarget, resolveRef, type SkillTarget } from "./ref.ts"
 import { withSharedAuthoringTarget } from "./shared-authoring-context.ts"
 import { openSharedConsumer } from "./shared-consumer.ts"
-import { assertSharedFileReferences } from "./shared-file-references.ts"
+import {
+  assertSelectedSharedFileReferences,
+  currentAuthoredReferenceFiles,
+} from "./shared-file-references.ts"
 import { sharedGraphTarget } from "./shared-graph-read-context.ts"
 import { sharedReadFreshness } from "./shared-read-freshness.ts"
+import { resolveCurrentSourceReference } from "./shared-source-references.ts"
 import { sha256, Store } from "./store.ts"
 
 export { loadSnapshot, loadSnapshotManifest } from "./fixed-snapshot-files.ts"
@@ -415,7 +419,11 @@ function acquireTargetSnapshot(
               .pipe(Effect.map((bytes) => ({ path: file.path, bytes }))),
           )
           yield* Effect.try({
-            try: () => assertSharedFileReferences(files),
+            try: () =>
+              assertSelectedSharedFileReferences(
+                currentAuthoredReferenceFiles(files, observed.snapshot.shared_acquisition?.files),
+                observed.snapshot.files.map((file) => file.path),
+              ),
             catch: (error) =>
               error instanceof SkillsError
                 ? error
@@ -587,7 +595,12 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
         try: () => boundSnapshotPath(containing, base),
         catch: (error) => error as SkillsError,
       })
-      return yield* resolveCurrentRelative(containing, path || containing.entrypoint, relative)
+      return yield* resolveCurrentRelative(
+        containing,
+        path || containing.entrypoint,
+        relative,
+        options,
+      )
     }
     const local = yield* Effect.try({
       try: () => resolveRef(from, relative),
@@ -600,7 +613,12 @@ export function resolveSkillRef(from: string, relative: string, options: Catalog
     )
       return yield* Effect.fail(local.failure)
     const containing = yield* targetSnapshot(base, options, "manifest")
-    return yield* resolveCurrentRelative(containing, base.path || containing.entrypoint, relative)
+    return yield* resolveCurrentRelative(
+      containing,
+      base.path || containing.entrypoint,
+      relative,
+      options,
+    )
   })
 }
 
@@ -668,6 +686,7 @@ function readSkillContent(input: string, options: ReadOptions) {
         containing,
         basePath ?? containing.entrypoint,
         input,
+        options,
       )
       target = yield* Effect.try({
         try: () => parseTarget(resolved),
@@ -819,12 +838,13 @@ export function listSkill(
   })
 }
 
-function resolveCurrentRelative(snapshot: Snapshot, from: string, relative: string) {
-  const local = fileRef(snapshot.record.id, from, snapshot.snapshot_id)
-  return Effect.try({
-    try: () => resolveRef(local, relative),
-    catch: (error) => error as SkillsError,
-  }).pipe(
+function resolveCurrentRelative(
+  snapshot: Snapshot,
+  from: string,
+  relative: string,
+  options: { readonly offline?: boolean } = {},
+) {
+  return resolveCurrentSourceReference(snapshot, from, relative, options).pipe(
     Effect.mapError((error) =>
       error.code === "INVALID_PATH" && error.message === "The path escapes the skill root."
         ? fail(

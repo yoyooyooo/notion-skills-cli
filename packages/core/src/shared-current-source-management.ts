@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect"
 import { fail, listSchema, property, SkillsError, text } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { parseCurrentSkillState } from "./shared-current-file.ts"
+import { parseCurrentFileContent, parseCurrentSkillState } from "./shared-current-file.ts"
 import {
   queryCurrentFilesForSkills,
   queryCurrentSkillIndex,
@@ -145,14 +145,14 @@ export function parseCurrentSourceManagement(library: SharedLibrary, input: unkn
 export type CurrentSourceManagement = ReturnType<typeof parseCurrentSourceManagement>
 
 /** Complete one exact identity query before accepting absence or uniqueness. */
-export function queryCurrentSourceManagement(library: SharedLibrary, sourceId: string) {
+function queryCurrentSourceManagementRow(library: SharedLibrary, sourceId: string) {
   return Effect.gen(function* () {
     const source_id = yield* checked(() => validateCurrentSourceId(sourceId))
     const id = yield* checked(() => currentSourceProperty(library, "Source ID"))
     const api = yield* Notion,
       cursors = new Set<string>(),
       physical = new Set<string>(),
-      rows: CurrentSourceManagement[] = []
+      rows: unknown[] = []
     let cursor: string | undefined
     for (;;) {
       const raw = yield* api.request(
@@ -180,11 +180,21 @@ export function queryCurrentSourceManagement(library: SharedLibrary, sourceId: s
         )
           throw invalid("Current Sources pagination did not finish or advance.")
         for (const value of result.results) {
-          const row = parseCurrentSourceManagement(library, value)
-          if (row.declaration.definition.source_id !== source_id || physical.has(row.page_id))
+          const row = property(value),
+            parent = property(row.parent),
+            page = physicalId(row.id)
+          if (
+            row.object !== "page" ||
+            row.in_trash === true ||
+            row.archived === true ||
+            parent.type !== "data_source_id" ||
+            physicalId(parent.data_source_id) !== physicalId(library.sources.data_source_id) ||
+            rich(library, value, "Source ID") !== source_id ||
+            physical.has(page)
+          )
             throw invalid("The current Source query returned a foreign or repeated page.")
-          physical.add(row.page_id)
-          rows.push(row)
+          physical.add(page)
+          rows.push(value)
         }
         return result
       })
@@ -196,13 +206,25 @@ export function queryCurrentSourceManagement(library: SharedLibrary, sourceId: s
       return yield* Effect.fail(
         fail("CURRENT_SOURCE_DUPLICATE", "Several current rows claim this Source ID.", {
           source_id,
-          page_ids: rows.map((row) => row.page_id),
+          page_ids: rows.map((row) => property(row).id),
         }),
       )
-    const row = rows[0]
+    return rows[0]
+  })
+}
+
+export function queryCurrentSourceManagement(library: SharedLibrary, sourceId: string) {
+  return Effect.gen(function* () {
+    const raw = yield* queryCurrentSourceManagementRow(library, sourceId)
+    const row =
+      raw === undefined
+        ? undefined
+        : yield* checked(() => parseCurrentSourceManagement(library, raw))
     if (row !== undefined && (yield* currentSharedSourceRevision(row.content)) !== row.revision)
       return yield* Effect.fail(
-        fail("SHARED_SOURCE_CONFLICT", "Source Content and Last Revision disagree.", { source_id }),
+        fail("SHARED_SOURCE_CONFLICT", "Source Content and Last Revision disagree.", {
+          source_id: sourceId,
+        }),
       )
     return row
   })
@@ -266,7 +288,11 @@ export function currentSourceManagementMatches(
  * Files are fetched in the existing batched owner query, never one body per row. */
 export function queryCurrentSourceTargets(
   library: SharedLibrary,
-  input: { readonly skillIds: readonly string[]; readonly sourcePageId?: string },
+  input: {
+    readonly skillIds: readonly string[]
+    readonly sourcePageId?: string
+    readonly sourceId?: string
+  },
 ) {
   return Effect.gen(function* () {
     const ids = [...new Set(input.skillIds)].sort(),
@@ -277,7 +303,11 @@ export function queryCurrentSourceTargets(
     if (!skillProperty || !originProperty)
       return yield* Effect.fail(invalid("Current target identities and Origin must be registered."))
     const api = yield* Notion
-    for (let offset = 0; offset < Math.max(ids.length, input.sourcePageId ? 1 : 0); offset += 80) {
+    for (
+      let offset = 0;
+      offset < Math.max(ids.length, input.sourcePageId || input.sourceId ? 1 : 0);
+      offset += 80
+    ) {
       const batch = ids.slice(offset, offset + 80)
       const filters: unknown[] = batch.map((id) => ({
         property: skillProperty,
@@ -285,6 +315,11 @@ export function queryCurrentSourceTargets(
       }))
       if (offset === 0 && input.sourcePageId !== undefined)
         filters.push({ property: originProperty, relation: { contains: input.sourcePageId } })
+      if (offset === 0 && input.sourceId !== undefined)
+        filters.push({
+          property: library.skills.property_ids.Content,
+          rich_text: { contains: input.sourceId },
+        })
       const cursors = new Set<string>(),
         physical = new Set<string>()
       let cursor: string | undefined
@@ -327,7 +362,10 @@ export function queryCurrentSourceTargets(
             )
               throw invalid("An affected Skill is foreign, unavailable or repeated.")
             const skill_id = sharedSkillTextProperty(row, library, "Skill ID")
-            if (!ids.includes(skill_id) && !(offset === 0 && input.sourcePageId !== undefined))
+            if (
+              !ids.includes(skill_id) &&
+              !(offset === 0 && (input.sourcePageId !== undefined || input.sourceId !== undefined))
+            )
               throw invalid("The affected Skill query returned an unselected identity.")
             const previous = bySkill.get(skill_id)
             if (previous !== undefined && previous !== page_id)
@@ -348,18 +386,30 @@ export function queryCurrentSourceTargets(
         cursors.add(cursor)
       }
     }
-    if (byPage.size === 0) return new Map<string, CurrentSkillIndex>()
-    if (input.sourcePageId !== undefined) {
-      for (const [skill_id, page] of bySkill) {
-        if (ids.includes(skill_id)) continue
-        if (
-          !(yield* currentSourceOriginContains(library, page, byPage.get(page), input.sourcePageId))
-        )
-          return yield* Effect.fail(
-            invalid("The reverse Source query returned an unrelated Skill."),
-          )
-      }
+    for (const [skill_id, page] of bySkill) {
+      if (ids.includes(skill_id)) continue
+      const semantic =
+        input.sourceId === undefined
+          ? false
+          : yield* checked(() => {
+              const main = parseCurrentFileContent(
+                sharedSkillTextProperty(byPage.get(page), library, "Content"),
+              )
+              return main.kind === "source" && main.source_id === input.sourceId
+            })
+      if (semantic) continue
+      const origin =
+        input.sourcePageId === undefined
+          ? false
+          : yield* currentSourceOriginContains(library, page, byPage.get(page), input.sourcePageId)
+      if (origin) continue
+      if (input.sourceId === undefined)
+        return yield* Effect.fail(invalid("The reverse Source query returned an unrelated Skill."))
+      // A Content substring filter may also return a different Source identity.
+      bySkill.delete(skill_id)
+      byPage.delete(page)
     }
+    if (byPage.size === 0) return new Map<string, CurrentSkillIndex>()
     const files = yield* queryCurrentFilesForSkills({
       dataSourceId: library.files.data_source_id,
       skillPageIds: [...byPage.keys()],
@@ -370,7 +420,8 @@ export function queryCurrentSourceTargets(
       const rows = files.get(page)
       if (rows === undefined)
         return yield* Effect.fail(invalid("An affected Files scope is missing."))
-      targets.set(skill_id, yield* queryCurrentSkillIndex(library, page, byPage.get(page), rows))
+      const index = yield* queryCurrentSkillIndex(library, page, byPage.get(page), rows)
+      targets.set(skill_id, index)
     }
     return targets
   })

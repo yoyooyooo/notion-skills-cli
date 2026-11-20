@@ -32,12 +32,17 @@ A native Notion edit is read as current content; reading it does not create an
 adoption event or retain a remote version. A generated Source/resource reading
 page does not become author content merely because someone edited its display.
 
-Current import writes exact resource originals and complete reading projections;
-repeat `--native PATH` for text files whose current Notion body should be editable.
-Portable Members/Requires round-trip through export and complete import, with
-complete target validation and dependency checks. Import shares one bounded HTTP
-budget across lookup, upload, projection and cleanup. Source apply/refresh coordinates
-explicit Git members and targets, preserving native bodies and unrelated contributions.
+Current import writes exact resource originals; repeat `--native PATH` for text
+files whose current Notion body should be editable. Complete file metadata and
+original bytes establish consumption readiness. Generated reading projections can
+be produced later and do not block that readiness. Portable Members/Requires
+round-trip through export and complete import, with complete target validation
+and dependency checks. One invocation budget covers lookup, writes and cleanup.
+Source apply/refresh discovers the complete selected Git member set, adds members,
+updates exact upstream files, and retires removed pure Source members. Existing
+assignments retain stable identities; new members receive deterministic identities.
+Save the declaration outside Notion to rebuild a deleted Source with `source apply`.
+GitHub and private HTTP(S) Git origins share this path and local authentication.
 Source takeover and restore-follow keep the same File and Notion page identities,
 update the exact contribution exclusion, and use the Source's selected original.
 Source enablement controls consumption; removal refuses remaining file or Origin
@@ -130,10 +135,11 @@ file read with `--output` for one file.
 
 The `Content` descriptor selects native author Markdown, a Notion-owned exact
 resource, or a selected Source file. Main content lives on Skills; supporting files
-live on Files. Text reading projections must contain the full current text.
-Images and binary files expose an original usable attachment. Current complete
-import generates these projections; live library coverage and migration work
-remain listed in the [current contract](docs/current-contract.md).
+live on Files. Native body edits remain authoritative. Source and resource files
+are consumed from their exact declared originals; generated page rendering is
+separate work. When rendered, a text projection must contain the full text, and
+opaque content must expose its usable original. Library coverage and remaining
+projection work are listed in the [current contract](docs/current-contract.md).
 
 Inspect the current directory without fetching bodies:
 
@@ -164,7 +170,7 @@ ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_
 ntn-skills ctl library import INPUT --entry ENTRY_DATABASE_ID --skill-id STABLE_SKILL_ID
 ```
 
-Import preserves exact resource originals and creates full reading pages. Use
+Import preserves exact resource originals; generated reading pages are deferred. Use
 `--native SKILL.md --native references/guide.md` to select editable UTF-8/LF bodies;
 the same selection is required on resume. It replaces the
 whole file tree for that stable identity; review removals in dry-run. Repeat equal

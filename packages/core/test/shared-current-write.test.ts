@@ -187,6 +187,7 @@ async function coordinatedFixture() {
       configuration_sha256: "c".repeat(64),
       resolved_commit: "a".repeat(40),
       affected_skill_ids: ["example"],
+      retirements: [],
     },
   }
   const childOperation =
@@ -207,7 +208,7 @@ describe("complete current Skill writer", () => {
     expect(f.mutations()).toEqual([])
     expect(f.pages.size).toBe(0)
   })
-  test("creates one current tree with complete reading pages and exact resource bytes", async () => {
+  test("creates one current tree from exact resource bytes without generated reading pages", async () => {
     const f = currentWriteFixture(parent)
     const plan = await f.run(prepareCurrentSkillWrite(input()))
     const result = await f.run(writeCurrentSkill(library, { plan, operation_id: "write-first" }))
@@ -230,11 +231,7 @@ describe("complete current Skill writer", () => {
         }),
       )
       expect(original.bytes).toEqual(file.path === "SKILL.md" ? main : guide)
-      const body = f.blocks.get(file.page_id) ?? []
-      expect(body.length).toBeGreaterThan(0)
-      expect(
-        body.map((block) => text(property(block[String(block.type)]).rich_text)).join("\n"),
-      ).toContain(file.path === "SKILL.md" ? "Example" : "Complete child document.")
+      expect(f.blocks.get(file.page_id) ?? []).toEqual([])
     }
     expect(
       [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
@@ -565,7 +562,7 @@ describe("complete current Skill writer", () => {
     expect(f.table("files", false)).toHaveLength(2)
     expect(f.table("records")).toHaveLength(3)
   })
-  test.each(["file-create", "append"] as const)(
+  test.each(["file-create"] as const)(
     "accepted unknown %s resumes from current state without repeating the mutation",
     async (kind) => {
       const f = currentWriteFixture(parent),
@@ -574,11 +571,10 @@ describe("complete current Skill writer", () => {
       await expect(
         f.run(writeCurrentSkill(library, { plan, operation_id: "interrupted" })),
       ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-      const original = f.calls.findLast((call) =>
-        kind === "append"
-          ? call.path.includes("/children") && call.method === "PATCH"
-          : call.path === "v1/pages" &&
-            property(property(call.body).parent).data_source_id === library.files.data_source_id,
+      const original = f.calls.findLast(
+        (call) =>
+          call.path === "v1/pages" &&
+          property(property(call.body).parent).data_source_id === library.files.data_source_id,
       )!
       const matching = () =>
         f.calls.filter(
@@ -655,46 +651,34 @@ describe("complete current Skill writer", () => {
     ).rejects.toMatchObject({ code: "CURRENT_OPERATION_CONFLICT" })
     expect(f.mutations()).toEqual([])
   })
-  test("a partial append remains pending, blocks consumption and never repeats the batch", async () => {
+  test("a generated-body append failure cannot block exact resource consumption", async () => {
     const f = currentWriteFixture(parent),
       plan = await f.run(prepareCurrentSkillWrite(input()))
     f.failNext({ kind: "append", outcome: "partial" })
-    await expect(
-      f.run(writeCurrentSkill(library, { plan, operation_id: "partial" })),
-    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-    const writes = f.mutations().length,
-      owner = String(f.table("skills")[0]?.id),
-      originalBlocks = structuredClone(f.blocks)
-    const resumed = await f.run(
-      writeCurrentSkill(library, { plan, operation_id: "partial", mode: "resume" }).pipe(
-        Effect.result,
-      ),
+    const result = await f.run(
+      writeCurrentSkill(library, { plan, operation_id: "body-independent" }),
     )
-    expect(resumed._tag).toBe("Failure")
-    if (resumed._tag === "Failure") expect(resumed.failure.code).toBe("CURRENT_OPERATION_PENDING")
-    expect(f.mutations()).toHaveLength(writes)
-    expect(f.blocks).toEqual(originalBlocks)
+    expect(result.state).toBe("ready")
     expect(
       f.calls.filter((call) => call.path.includes("/children") && call.method === "PATCH"),
-    ).toHaveLength(1)
-    expect(
-      f.calls.filter((call) => call.path.endsWith("/markdown") && call.method === "PATCH"),
-    ).toHaveLength(0)
-    await expect(
-      f.run(
-        openSharedSnapshot({
-          library,
-          target: owner,
-          scope: "c".repeat(64),
-          startedAt: Date.now(),
-        }),
-      ),
-    ).rejects.toMatchObject({ code: "CURRENT_OPERATION_PENDING" })
+    ).toEqual([])
+    const snapshot = await f.run(
+      openSharedSnapshot({
+        library,
+        target: result.page_id,
+        scope: "c".repeat(64),
+        startedAt: Date.now(),
+        forceFull: true,
+      }),
+    )
+    const portable = await f.run(snapshotPortable(snapshot))
+    expect(portable.files.find((file) => file.path === "SKILL.md")?.bytes).toEqual(main)
+    expect(portable.files.find((file) => file.path === "references/guide.md")?.bytes).toEqual(guide)
     expect(
       [...f.json.keys()].filter((key) => key.startsWith("operations/current-write-pending/")),
-    ).toHaveLength(1)
+    ).toEqual([])
   })
-  test("accepted unknown attachment Record and projection reuse the same uploaded original", async () => {
+  test("accepted unknown attachment Record resumes the same uploaded original without projection writes", async () => {
     const f = currentWriteFixture(parent),
       root = { path: "SKILL.md", bytes: testBytes("# Assets\n") }
     const initial = await f.run(prepareCurrentSkillWrite(input([root])))
@@ -706,15 +690,6 @@ describe("complete current Skill writer", () => {
       f.run(writeCurrentSkill(library, { plan, operation_id: "attachment-resume" })),
     ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
     expect(f.uploads.size).toBe(1)
-    f.failNext({ kind: "append", outcome: "accepted" })
-    await expect(
-      f.run(
-        writeCurrentSkill(library, { plan, operation_id: "attachment-resume", mode: "resume" }),
-      ),
-    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
-    const appended = f.calls.filter(
-      (call) => call.path.includes("/children") && call.method === "PATCH",
-    ).length
     const result = await f.run(
       writeCurrentSkill(library, { plan, operation_id: "attachment-resume", mode: "resume" }),
     )
@@ -722,7 +697,7 @@ describe("complete current Skill writer", () => {
     expect(f.calls.filter((call) => call.path.endsWith("/send"))).toHaveLength(1)
     expect(
       f.calls.filter((call) => call.path.includes("/children") && call.method === "PATCH"),
-    ).toHaveLength(appended)
+    ).toHaveLength(0)
     expect(f.table("files")).toHaveLength(1)
     expect(f.table("records")).toHaveLength(2)
     const snapshot = await f.run(
@@ -737,7 +712,7 @@ describe("complete current Skill writer", () => {
     const portable = await f.run(snapshotPortable(snapshot))
     expect(portable.files.find((file) => file.path === asset.path)?.bytes).toEqual(asset.bytes)
   })
-  test("raw and one-file ZIP attachments retain exact bytes through upload, projection and current export", async () => {
+  test("raw and one-file ZIP attachments retain exact bytes independently of reading bodies", async () => {
     const f = currentWriteFixture(parent)
     const png = new Uint8Array([137, 80, 78, 71, 0, 255, 13, 10]),
       font = new Uint8Array([0, 255, 10, 65, 12, 0, 13, 10])
@@ -770,10 +745,7 @@ describe("complete current Skill writer", () => {
     for (const file of originals)
       expect(portable.files.find((item) => item.path === file.path)?.bytes).toEqual(file.bytes)
     for (const file of (await f.run(queryCurrentSkillIndex(library, result.page_id))).files) {
-      const body = f.blocks.get(file.page_id) ?? []
-      expect(body.some((block) => block.type === "file")).toBe(true)
-      if (file.path.endsWith(".png"))
-        expect(body.some((block) => block.type === "image")).toBe(true)
+      expect(f.blocks.get(file.page_id) ?? []).toEqual([])
     }
     f.clearCalls()
     await f.run(writeCurrentSkill(library, { plan, operation_id: "attachments-noop" }))
@@ -781,16 +753,74 @@ describe("complete current Skill writer", () => {
     expect(f.uploads.size).toBe(2)
     const index = await f.run(queryCurrentSkillIndex(library, result.page_id))
     const damaged = index.files.find((file) => file.path === "assets/logo.png")!
-    f.blocks.set(damaged.page_id, [])
+    f.blocks.set(damaged.page_id, [{ id: "management-only", type: "unsupported", unsupported: {} }])
     expect(
       await f.run(writeCurrentSkill(library, { plan, operation_id: "repair-attachment-reading" })),
-    ).toMatchObject({ status: "applied", state: "ready" })
-    expect(f.uploads.size).toBe(3)
+    ).toMatchObject({ status: "unchanged", state: "ready" })
+    expect(f.uploads.size).toBe(2)
+    expect(f.mutations()).toEqual([])
     f.clearCalls()
     await f.run(writeCurrentSkill(library, { plan, operation_id: "repaired-noop" }))
     expect(f.mutations()).toEqual([])
-    expect(f.uploads.size).toBe(3)
+    expect(f.uploads.size).toBe(2)
   })
+  test.each(["native", "resource"] as const)(
+    "retirement protects authored child content only for %s authority",
+    async (kind) => {
+      const f = currentWriteFixture(parent)
+      const original = await f.run(
+        prepareCurrentSkillWrite(
+          input([
+            { path: "SKILL.md", bytes: testBytes("# Main\n") },
+            { path: "support.md", bytes: testBytes("# Support\n"), authority: { kind } },
+          ]),
+        ),
+      )
+      const initial = await f.run(
+        writeCurrentSkill(library, { plan: original, operation_id: "retirement-body-initial" }),
+      )
+      const index = await f.run(queryCurrentSkillIndex(library, initial.page_id))
+      const file = index.files[0]!
+      const body = [
+        {
+          object: "block",
+          id: id(9910),
+          parent: { type: "page_id", page_id: file.page_id },
+          type: "child_page",
+          has_children: false,
+          child_page: { title: "Author child" },
+        },
+      ]
+      f.blocks.set(file.page_id, body)
+      const replacement = await f.run(
+        prepareCurrentSkillWrite(input([{ path: "SKILL.md", bytes: testBytes("# Main\n") }])),
+      )
+      f.clearCalls()
+      if (kind === "native") {
+        await expect(
+          f.run(
+            writeCurrentSkill(library, {
+              plan: replacement,
+              operation_id: "retirement-body-update",
+            }),
+          ),
+        ).rejects.toMatchObject({ code: "CURRENT_PROJECTION_CHILD_CONTENT" })
+        expect(f.pages.get(file.page_id)?.in_trash).not.toBe(true)
+        expect(f.blocks.get(file.page_id)).toEqual(body)
+      } else {
+        expect(
+          await f.run(
+            writeCurrentSkill(library, {
+              plan: replacement,
+              operation_id: "retirement-body-update",
+            }),
+          ),
+        ).toMatchObject({ state: "ready" })
+        expect(f.pages.get(file.page_id)?.in_trash).toBe(true)
+        expect(f.calls.filter((call) => call.path.includes("/children"))).toEqual([])
+      }
+    },
+  )
   test("a Source authorization binds its parent, target fingerprint and exact child operation", async () => {
     const { f, input, plan, source, intent, childOperation } = await coordinatedFixture()
     await f.run(

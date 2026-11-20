@@ -12,6 +12,15 @@ const Scope = Schema.Array(StableId).check(
     (ids) => new Set(ids).size === ids.length || "Affected Skill IDs must be unique.",
   ),
 )
+const Retirements = Schema.Array(Schema.Struct({ skill_id: StableId, page_id: Page })).check(
+  Schema.isMaxLength(10000),
+  Schema.makeFilter(
+    (rows) =>
+      (new Set(rows.map((row) => row.skill_id)).size === rows.length &&
+        new Set(rows.map((row) => row.page_id)).size === rows.length) ||
+      "Each retiring Skill and physical page must be unique.",
+  ),
+)
 const CurrentSelection = {
   configuration_sha256: Hash,
   affected_skill_ids: Scope,
@@ -27,7 +36,14 @@ export const CurrentSourceInputSchema = Schema.Union([
     configuration_sha256: Hash,
     resolved_commit: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/u)),
     affected_skill_ids: Scope,
-  }),
+    retirements: Retirements,
+  }).check(
+    Schema.makeFilter(
+      (input) =>
+        input.retirements.every((row) => input.affected_skill_ids.includes(row.skill_id)) ||
+        "Retiring Skills must belong to the frozen affected scope.",
+    ),
+  ),
   CurrentSourceFileInputSchema,
   Schema.Struct({
     kind: Schema.Literal("enabled"),

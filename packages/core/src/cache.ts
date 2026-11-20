@@ -15,7 +15,10 @@ import { notionApiOrigin } from "./notion-http.ts"
 import { Notion } from "./notion.ts"
 import { normalizePath, pageId, parseTarget } from "./ref.ts"
 import { validateSnapshotAcquisition } from "./shared-acquisition-model.ts"
-import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
+import {
+  assertSelectedSharedFileReferences,
+  currentAuthoredReferenceFiles,
+} from "./shared-file-references.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import { Store, configuration, publicConfiguration, sha256 } from "./store.ts"
 
@@ -357,11 +360,12 @@ function validateSharedCurrentTree(
     })
     const files: Array<{ readonly path: string; readonly bytes: Uint8Array }> = []
     yield* validateSnapshotObjects(snapshot, files, paths)
-    // Every authority uses the same complete directory for local references.
+    // Source bytes retain their repository-relative links; current author content
+    // is checked against the complete Skill directory.
     yield* Effect.try({
       try: () =>
         assertSelectedSharedFileReferences(
-          files,
+          currentAuthoredReferenceFiles(files, snapshot.shared_acquisition?.files),
           snapshot.files.map((file) => file.path),
         ),
       catch: (error) =>

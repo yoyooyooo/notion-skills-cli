@@ -25,11 +25,11 @@ acquisition v5 按文件保存 source_id/revision/source_path 或 resource objec
 
 ## 人类阅读与未实现边界
 
-Git-only、mixed、native 的每个 supporting 文件都需要 Files 身份、唯一 owner 和完整阅读页。文本检查全文；图片或 opaque 文件检查可用原件。读取 Source 的本地 exact bytes 不证明 Notion 已有这些投影，普通消费也不能为了补页而写 Notion。
+Source、resource、native 的每个 supporting 文件都需要 Files 身份与唯一 owner。Native 正文及 resource 原件完整；生成阅读页另行验收，不阻塞 ready 和消费。实际 Source bytes 不证明 Notion 已有投影，普通消费也不能为了补页而写 Notion。
 
-当前 public CLI 支持完整本地树的 `ctl library import`。Source 写入、成员发布/刷新、显式接管与跨对象治理仍需当前实现和实际验收；目前不可用的部分标为 blocked/not_run，不调用已退出的命令。
+当前 public CLI 使用完整本地树 `ctl library import` 与同一条 Source apply/refresh。按完整上游自动增删成员，同版本零写，保存声明可删后重建。混合接管及跨对象治理各按实际范围验收，不作日用迁入前置。
 
-独立安装沿 [package check](portable-export-package-consumption.md) 的同 archive CLI/SDK。只声明其实际覆盖的当前读取样本；没有执行的 Source 发布或真实 Notion 投影保持未验收。AH-516 继续负责全 Pro 内容与所有曝光/更新边，AH-1063 负责真实 Pi。
+独立安装沿 [package check](portable-export-package-consumption.md) 的同 archive CLI/SDK。只声明其实际覆盖的当前读取样本；没有执行的 Source 发布或真实 Notion 投影保持未验收。AH-516 先负责日用并集的完整树与更新来源，AH-1063 负责真实 Pi。
 
 ## 结果与清理
 

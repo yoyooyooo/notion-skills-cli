@@ -32,7 +32,7 @@ const input = (body = "# Current\n[Guide](guide.md)\n") => ({
 async function interrupted() {
   const f = currentWriteFixture(root)
   const plan = await f.run(prepareCurrentSkillWrite(input()))
-  f.failNext({ kind: "append", outcome: "accepted" })
+  f.failNext({ kind: "file-create", outcome: "accepted" })
   const stopped = await f.run(
     writeCurrentSkill(library, { plan, operation_id: operationId }).pipe(Effect.result),
   )

@@ -117,6 +117,15 @@ test("selected Source references validate against the complete explicit native a
   expect(new TextDecoder().decode(f.bytes(complete, "references/guide.md"))).toBe(
     "# Exact native guide\n",
   )
+  f.clearCalls()
+  const guide = await f.run(
+    readSkill("../../references/guide.md", {
+      from: fileRef(complete.record.id, "mounted/http/README.md", complete.snapshot_id),
+      offline: true,
+    }),
+  )
+  expect("content" in guide && guide.content).toBe("# Exact native guide\n")
+  expect(f.calls).toHaveLength(0)
   expect(f.semanticWrites()).toHaveLength(0)
 })
 

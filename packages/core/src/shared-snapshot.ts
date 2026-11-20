@@ -18,7 +18,11 @@ import { queryCurrentSkillIndex } from "./shared-current-index.ts"
 import { requireCurrentSkillReady } from "./shared-current-file.ts"
 import { readCurrentSharedResourceBytes } from "./shared-current-resource.ts"
 import { resolveCurrentSharedSources } from "./shared-current-source.ts"
-import { assertSelectedSharedFileReferences } from "./shared-file-references.ts"
+import {
+  assertSelectedSharedFileReferences,
+  assertSelectedSharedSourceReferences,
+  currentAuthoredReferenceFiles,
+} from "./shared-file-references.ts"
 import { sharedGraphInventory, sharedGraphMetadata } from "./shared-graph-read-context.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import {
@@ -487,9 +491,32 @@ export function openSharedSnapshot(input: OpenSharedSnapshotInput) {
     )
     for (const file of files)
       if (restricted.has(file.sha256)) yield* markLocalContentRestriction(file.sha256)
+    for (const selectedSource of sources.values())
+      yield* checked(() => {
+        const selectedFiles = bindings.flatMap((file) => {
+          const bytes = materialized.get(file.path)
+          return file.content.kind === "source" &&
+            file.content.source_id === selectedSource.source_id &&
+            bytes !== undefined
+            ? [{ path: file.path, source_path: file.content.source_path, bytes }]
+            : []
+        })
+        return selectedSource.git_origin === undefined
+          ? assertSelectedSharedFileReferences(
+              selectedFiles,
+              bindings.map((file) => file.path),
+            )
+          : assertSelectedSharedSourceReferences(
+              selectedFiles,
+              selectedSource.manifest.map((file) => file.path),
+            )
+      })
     yield* checked(() =>
       assertSelectedSharedFileReferences(
-        [...materialized].map(([path, bytes]) => ({ path, bytes })),
+        currentAuthoredReferenceFiles(
+          [...materialized].map(([path, bytes]) => ({ path, bytes })),
+          routes,
+        ),
         paths,
       ),
     )

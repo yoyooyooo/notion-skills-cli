@@ -1,11 +1,35 @@
 import { expect, test } from "bun:test"
 import {
   assertSelectedSharedFileReferences,
+  assertSelectedSharedSourceReferences,
+  currentAuthoredReferenceFiles,
   mapSharedMarkdownReferences,
   referenceProse,
   sharedMarkdownReferences,
 } from "../src/shared-file-references.ts"
 import { normalizeCompletedNativeBody } from "../src/shared-native-body-completion.ts"
+
+test("fixed Source links use original repository paths without changing upstream bytes", () => {
+  const bytes = new TextEncoder().encode(
+    "[shared](../beta/SKILL.md) [guide](../../docs/guide.md)\n",
+  )
+  const file = { path: "SKILL.md", source_path: "skills/alpha/SKILL.md", bytes }
+  expect(
+    assertSelectedSharedSourceReferences(
+      [file],
+      ["skills/alpha/SKILL.md", "skills/beta/SKILL.md", "docs/guide.md"],
+    ),
+  ).toEqual({ checked_files: 1, local_references: 2 })
+  expect(() => assertSelectedSharedSourceReferences([file], [file.source_path])).toThrow("absent")
+  expect(() => assertSelectedSharedFileReferences([file], ["SKILL.md"])).toThrow("escapes")
+  expect(currentAuthoredReferenceFiles([file], [{ kind: "source", path: "SKILL.md" }])).toEqual([])
+  expect(currentAuthoredReferenceFiles([file], [{ kind: "resource", path: "SKILL.md" }])).toEqual([
+    file,
+  ])
+  expect(new TextDecoder().decode(bytes)).toBe(
+    "[shared](../beta/SKILL.md) [guide](../../docs/guide.md)\n",
+  )
+})
 
 test("current reference masking preserves every UTF-16 offset and ignores literal code", () => {
   const markdown =

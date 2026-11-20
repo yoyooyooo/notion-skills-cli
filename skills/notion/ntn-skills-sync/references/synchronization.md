@@ -87,7 +87,7 @@ Each source-backed main or supporting file declares:
 The displayed hash placeholders must be replaced by actual lowercase 64-digit
 SHA-256 values. This file location is exact. A Skill can combine multiple
 Sources with native and resource files, and every supporting file still needs
-its own Files identity and reading page.
+its own Files identity. Generated reading pages are verified separately.
 
 Current acquisition records each file's exact Source or resource declaration.
 Missing cached bytes require the current owner/descriptor to still match.
@@ -98,8 +98,9 @@ authority; native ownership is an explicit management choice.
 ## A Source-management request
 
 Read existing targets with `ctl library files`, then prepare one complete current
-declaration. This example assumes the repository has exactly the selected alpha
-and beta members; replace the repository and paths with the intended scope:
+declaration. This example preserves explicit identities for alpha and beta;
+other discovered members receive deterministic identities. Use an empty
+contributions array when no identity overrides are needed:
 
 ```json
 {
@@ -132,26 +133,36 @@ ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
 Apply replaces that Source's complete configuration and contributions. Refresh
 reads the declaration from Notion and uses the same coordinator. The JSON file
 must be regular UTF-8 and at most 512 KiB. This writer accepts regular Git files
-from a credential-free GitHub HTTPS URL, with manual or pinned policy. Unknown
-providers, options, transformations and symlinks fail. Policy is manual or pinned;
-auto, check_interval_ms and Source options.storage are rejected. Ordinary reads
-still support their exact fixed Git/HTTP/local plan inputs; that does not add an
-arbitrary-provider writer. Current options are require_all_included and accepted_ref.
+from GitHub and credential-free private HTTP(S) Git origins, with manual or pinned
+policy. GitHub SSH repository spellings normalize to the same shared identity.
+Authentication stays on the machine. Unknown providers, options, transformations
+and symlinks fail. Source options.storage are rejected, as are auto policy and
+check_interval_ms. The only current option is accepted_ref for an explicitly fixed discovery
+commit. Do not retain that option for a declaration intended to follow a branch.
 Selection.mapping supplies new Skill names; it is not a file mapping.
 
-Every selected member needs explicit stable target assignments. One member can
-target several Skills, but a member/Skill pair cannot repeat. Selection include
-and exclude select member roots. Contribution mapping and exclude use exact
-member-relative file paths. The effective path is mount_path plus the mapped
-path. Keep exclusions when an upstream file disappears; they prevent resurrection.
-Rename by mapping to retain the original Source-path File ID and Notion page.
+Discovery reconciles all selected members. Existing contributions retain stable
+target assignments; unassigned members receive identities derived from Source ID
+and member key. Missing members leave the effective declaration. An empty selected
+set is valid only after complete successful discovery. Selection include/exclude
+selects member roots. Contribution mapping/exclude uses exact member-relative file
+paths; the effective path is mount_path plus the mapped path. Keep file exclusions
+to prevent a deliberately taken-over file from returning when upstream reintroduces it.
 
-For an existing native main, exclude the incoming SKILL.md and mount its supporting
-files at a noncolliding path. The writer preserves current native bodies, resource
-originals, other Sources and existing Skill metadata. Only new targets receive
-the discovered metadata defaults. Collisions, missing canonical main and broken
-current references are refused. Source binaries get usable current originals
-without changing their Source authority. Generated text remains full text.
+A desired upstream path replaces matching native/resource authority and preserves
+its File ID. Dry-run reports that overwrite before applying. Exclude the incoming
+SKILL.md when an existing native main should stay authoritative. Unrelated files,
+other Sources and existing Skill metadata remain preserved; another Source at the
+same desired path is a conflict. When a member disappears, archive its Files and
+Skill only if the complete target is owned by this Source. Retaining unrelated
+author content must not silently erase it. Source bytes and modes remain upstream
+exact. Generated page bodies and binary attachments are optional projections, not
+consumption prerequisites.
+
+Save the declaration outside Notion for `source apply` after a Source deletion.
+A recreated page has a new physical page ID but the declared stable Skill identity.
+Human checkboxes and relations need their own explicit recovery input; do not
+claim that Git content restores those choices.
 
 Provider reachability, registered source identity, complete membership,
 verified file bytes and complete Notion reading projection are different

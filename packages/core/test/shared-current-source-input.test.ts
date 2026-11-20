@@ -111,8 +111,10 @@ const prepare = (
 test("one exact Source prepares two stable Skill contributions, preserving executable and binary originals", async () => {
   const result = await prepare()
   expect(result.resolved_commit).toBe(commit)
-  expect(result.declaration).toEqual(input)
-  expect(result.configuration_sha256).toBe(sha(canonicalSharedJson(input)))
+  expect(result.declaration).toEqual(validateCurrentSourceInput(input))
+  expect(result.configuration_sha256).toBe(
+    sha(canonicalSharedJson(validateCurrentSourceInput(input))),
+  )
   expect(result.prepared_source.revision).toBe(sha(canonicalSharedJson(result.plan)))
   expect(result.targets.map((target) => target.skill_id)).toEqual(["skill-alpha", "skill-beta"])
   expect(result.targets[0]!.defaults).toEqual({ name: "alpha", description: "Current alpha files" })
@@ -319,7 +321,7 @@ test("declarations refuse unsupported provider, transformations, implicit retent
   const definitions = [
     {
       ...input.definition,
-      adapter: { type: "git", url: "https://gitlab.com/example/skills", ref: "main" },
+      adapter: { type: "git", url: "https://user:secret@gitlab.com/example/skills", ref: "main" },
     },
     {
       ...input.definition,
@@ -335,6 +337,7 @@ test("declarations refuse unsupported provider, transformations, implicit retent
     { ...input.definition, options: { storage: "retained" } },
     { ...input.definition, options: { accepted_ref: "main" } },
     { ...input.definition, options: { require_all_included: "true" } },
+    { ...input.definition, options: { require_all_included: true } },
     { ...input.definition, policy: "auto", options: { check_interval_ms: 60000 } },
     { ...input.definition, source_id: `source-${"f".repeat(64)}` },
   ]
@@ -343,18 +346,105 @@ test("declarations refuse unsupported provider, transformations, implicit retent
   expect(() => validateCurrentSourceInput({ ...input, evidence: true })).toThrow()
 })
 
-test("source discovery cannot silently omit or add an unbound member", async () => {
-  const missing = snapshot()
+test("discovered membership creates stable identities and removes vanished overrides", async () => {
+  const emptyOverrides = { ...input, contributions: [] }
+  const first = await prepare(emptyOverrides)
+  expect(first.targets).toHaveLength(2)
+  expect(emptyOverrides.contributions).toEqual([])
+  expect(first.configuration_sha256).toBe(sha(canonicalSharedJson(first.declaration)))
+  const alphaId = first.declaration.contributions.find(
+    (entry) => entry.member_key === "skills/alpha",
+  )?.skill_id
+  expect(alphaId).toMatch(/^skill-[a-f0-9]{64}$/u)
+  const updated = await prepare(first.declaration, {
+    ...snapshot(),
+    members: [member("gamma"), member("alpha")],
+  })
+  expect(updated.declaration.contributions.map((entry) => entry.member_key).sort()).toEqual([
+    "skills/alpha",
+    "skills/gamma",
+  ])
+  expect(
+    updated.declaration.contributions.find((entry) => entry.member_key === "skills/alpha")
+      ?.skill_id,
+  ).toBe(alphaId)
+  expect(updated.targets.some((target) => target.members.includes("skills/beta"))).toBe(false)
+  const repeat = await prepare(updated.declaration, {
+    ...snapshot(),
+    members: [member("alpha"), member("gamma")],
+  })
+  expect(repeat.declaration).toEqual(updated.declaration)
+  const resumed = await prepare(emptyOverrides, snapshot(), commit)
+  expect(resumed.declaration).toEqual(first.declaration)
+  expect(resumed.configuration_sha256).toBe(first.configuration_sha256)
+  const resumedStored = await prepare(first.declaration, snapshot(), commit)
+  expect(resumedStored.configuration_sha256).toBe(first.configuration_sha256)
+})
+
+test("explicit stable IDs remain overrides while new discovered members are assigned automatically", async () => {
+  const declared = { ...input, contributions: input.contributions.slice(0, 1) }
+  const result = await prepare(declared)
+  expect(result.targets.some((target) => target.skill_id === "skill-alpha")).toBe(true)
+  expect(result.targets).toHaveLength(2)
+  const removed = await prepare(input, { ...snapshot(), members: [member("alpha")] })
+  expect(removed.targets.map((target) => target.skill_id)).toEqual(["skill-alpha"])
+  expect(removed.declaration.contributions).toEqual(input.contributions.slice(0, 1))
   await expect(
-    prepare({ ...input, contributions: [input.contributions[0]] }, missing),
-  ).rejects.toThrow("explicit stable target")
-  await expect(prepare(input, { ...missing, members: [missing.members[0]] })).rejects.toThrow(
-    "explicit stable target",
+    prepare(input, { ...snapshot(), members: [member("alpha"), member("alpha")] }),
+  ).rejects.toThrow("duplicate members")
+})
+
+test("an empty complete Git selection retires all targets without accepting an unidentified tree", async () => {
+  const observed = {
+    ...snapshot(),
+    provenance: { ...snapshot().provenance, tree_hash: tree },
+    members: [],
+  }
+  const result = await prepare(input, observed)
+  expect(result.targets).toEqual([])
+  expect(result.declaration.contributions).toEqual([])
+  expect(input.contributions).toHaveLength(2)
+  expect(result.plan.base).toMatchObject({ kind: "git", source: { tree, files: [] } })
+  await expect(prepare(input, { ...snapshot(), members: [] })).rejects.toThrow(
+    "complete empty selection",
   )
   await expect(
-    prepare(input, { ...missing, members: [...missing.members, missing.members[0]] }),
-  ).rejects.toThrow("explicit stable target")
+    prepare(input, {
+      ...observed,
+      unavailable: [
+        { reason: "outside_source_root", from_path: "SKILL.md", href: "../missing.md" },
+      ],
+    }),
+  ).rejects.toThrow("complete Git repository")
 })
+
+test.each([
+  ["git@github.com:example/skills.git", "https://github.com/example/skills"],
+  ["https://private.example.test/team/skills.git", "https://private.example.test/team/skills.git"],
+  [
+    "http://private.example.test:8888/team/skills.git",
+    "http://private.example.test:8888/team/skills.git",
+  ],
+])(
+  "current fixed Git preparation retains the exact original identity for %s",
+  async (url, canonical) => {
+    const definition = { ...input.definition, adapter: { type: "git" as const, url, ref: "main" } }
+    const observed = { ...snapshot(), provenance: { ...snapshot().provenance, git_url: url } }
+    const result = await prepare({ ...input, definition }, observed)
+    expect(result.declaration.definition.adapter).toEqual({
+      type: "git",
+      url: canonical,
+      ref: "main",
+    })
+    expect(result.plan.base).toMatchObject({
+      kind: "git",
+      source: { url: canonical, commit, tree },
+    })
+    expect(result.targets[0]?.files[0]?.bytes).toEqual(
+      snapshot().members[0]?.portable.files[0]?.bytes,
+    )
+  },
+)
 
 test("fixed-source preparation checks original Git byte identity and refuses transformed or linked members", async () => {
   for (const kind of [
@@ -450,10 +540,65 @@ test("fixed-source preparation checks original Git byte identity and refuses tra
     prepare(input, {
       ...snapshot(),
       external_resources: [
-        { source_path: "outside.md", git_oid: "a".repeat(40), sha256: "b".repeat(64) },
+        {
+          source_path: "outside.md",
+          git_oid: "a".repeat(40),
+          sha256: "b".repeat(64),
+          mode: "100644",
+          bytes: encode("unreferenced"),
+        },
       ],
     }),
-  ).rejects.toThrow("every referenced resource")
+  ).rejects.toThrow("authored outside-member target")
+})
+
+test("verified repository references extend only the current Source manifest, preserving Skill originals", async () => {
+  const bytes = encode("# Repository guide\n")
+  const reference = {
+    source_path: "docs/guide.md",
+    git_oid: oid(bytes),
+    sha256: sha(bytes),
+    mode: "100644" as const,
+    bytes,
+  }
+  const original = member("alpha", [
+    { path: "references.md", bytes: encode("Read [the guide](../../docs/guide.md).\n") },
+  ])
+  const observed = { ...snapshot(), members: [original], external_resources: [reference] }
+  const result = await prepare(input, observed)
+  expect(result.targets).toHaveLength(1)
+  expect(result.targets[0]?.files.map((file) => file.path)).toEqual(["SKILL.md", "references.md"])
+  expect(result.targets[0]?.files.find((file) => file.path === "references.md")?.bytes).toEqual(
+    original.portable.files[1]?.bytes,
+  )
+  expect(result.plan.base).toMatchObject({
+    kind: "git",
+    source: {
+      files: expect.arrayContaining([
+        {
+          path: "docs/guide.md",
+          source_path: "docs/guide.md",
+          git_oid: reference.git_oid,
+          sha256: reference.sha256,
+          bytes: bytes.byteLength,
+          mode: "100644",
+        },
+      ]),
+    },
+  })
+  const preparedAgain = await prepare(result.declaration, observed)
+  expect(preparedAgain.configuration_sha256).toBe(result.configuration_sha256)
+  expect(preparedAgain.prepared_source.revision).toBe(result.prepared_source.revision)
+  for (const changed of [
+    { ...reference, bytes: encode("different bytes") },
+    { ...reference, sha256: "a".repeat(64) },
+    { ...reference, git_oid: "b".repeat(40) },
+    { ...reference, source_path: "docs/unreferenced.md" },
+  ])
+    await expect(prepare(input, { ...observed, external_resources: [changed] })).rejects.toThrow()
+  await expect(
+    prepare(input, { ...observed, external_resources: [reference, reference] }),
+  ).rejects.toThrow("each authored")
 })
 
 test("large complete manifests use the existing current Source resource representation", async () => {

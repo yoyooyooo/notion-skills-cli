@@ -131,7 +131,7 @@ test("real Store freezes Source ownership and context plus the child parent bind
       root,
       `
 const childKey=key.replace('a'.repeat(64),'e'.repeat(64));
-const source={...pending,intent:{operation_id:'source-op',owner:{kind:'source',id:'provider'},input_sha256:'d'.repeat(64),source_input:{kind:'declaration',configuration_sha256:'1'.repeat(64),resolved_commit:'2'.repeat(40),affected_skill_ids:['example']}}};
+const source={...pending,intent:{operation_id:'source-op',owner:{kind:'source',id:'provider'},input_sha256:'d'.repeat(64),source_input:{kind:'declaration',configuration_sha256:'1'.repeat(64),resolved_commit:'2'.repeat(40),affected_skill_ids:['example'],retirements:[]}}};
 const sourceBinding={source_id:'provider',source_page_id:'00000000-0000-4000-8000-000000000003',operation_id:'source-op',input_sha256:'d'.repeat(64),authorization_sha256:'3'.repeat(64)};
 const child={...pending,intent:{...pending.intent,source:sourceBinding}};
 yield* store.writeJson(key,source);yield* store.writeJson(childKey,child);
@@ -143,7 +143,7 @@ for(const value of [
  {...source,scope:'5'.repeat(64)},
 ]){const result=yield* store.writeJson(key,value).pipe(Effect.result);rejected.push(result._tag==='Failure'?result.failure.code:null);}
 const changedBinding=yield* store.writeJson(childKey,{...child,intent:{...child.intent,source:{...sourceBinding,operation_id:'another-parent'}}}).pipe(Effect.result);
-const reordered={...source,intent:{source_input:{kind:'declaration',affected_skill_ids:['example'],resolved_commit:'2'.repeat(40),configuration_sha256:'1'.repeat(64)},input_sha256:'d'.repeat(64),owner:{id:'provider',kind:'source'},operation_id:'source-op'},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000004'}};
+const reordered={...source,intent:{source_input:{kind:'declaration',affected_skill_ids:['example'],retirements:[],resolved_commit:'2'.repeat(40),configuration_sha256:'1'.repeat(64)},input_sha256:'d'.repeat(64),owner:{id:'provider',kind:'source'},operation_id:'source-op'},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000004'}};
 yield* store.writeJson(key,reordered);
 console.log(JSON.stringify({rejected,changedBinding:changedBinding._tag==='Failure'?changedBinding.failure.code:null,source:yield* store.readJson(key,CurrentWritePendingSchema),child:yield* store.readJson(childKey,CurrentWritePendingSchema)}));`,
     )

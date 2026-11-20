@@ -25,16 +25,29 @@ ntn-skills ctl library source apply INPUT_JSON --entry ENTRY --operation OPERATI
 ntn-skills ctl library source refresh SOURCE_ID --entry ENTRY
 ```
 
-Supported input is regular Git content from GitHub HTTPS, manual or pinned.
-There is no auto policy, scheduling interval or Source storage option. Assign
-every selected member to stable Skill IDs. Contribution mapping/exclude uses
-exact member-relative file paths; Selection excludes member roots. Mappings
-preserve retained File identity. Collisions and a missing canonical main fail.
+Use regular Git content from GitHub or a credential-free private HTTP(S) Git
+origin with existing machine authentication. Manual policy follows the configured
+ref; pinned policy retains its exact commit. Do not invent a provider or scheduler.
+Discovery supplies the complete selected member set. Existing contributions keep
+stable Skill identities; new members receive deterministic identities. Missing
+members are removed, including a completely empty selected set. A provider or
+pagination failure must never be interpreted as deletion.
 
-A Skill can combine Sources with native/resource content. Preserve other
-contributions and existing Skill metadata. Every supporting file needs a Files
-row and a full readable projection or usable opaque original. Generated body
-edits do not transfer authority. Source binaries keep Source authority.
+Use contribution mapping/exclude for exact member-relative files and Selection
+include/exclude for member roots. A desired upstream path replaces matching
+native/resource content; inspect the authority change in dry-run. Exclude a path
+explicitly to retain its Notion authority. Other Source content cannot be replaced.
+A removed pure Source member is archived with its Files; unrelated author content
+prevents silent deletion. Retained paths preserve File identities and human metadata.
+Every supporting file needs current Files metadata and exact declared bytes.
+Generated reading projections can follow later and do not block consumption.
+
+Keep the declaration outside Notion. Reapply it to rebuild a missing Source or
+Skill; upstream content does not reconstruct human checkbox or relation choices.
+For daily batches, combine Source 日用 (all real members), Skill 日用 and Default
+Context without changing Default Context to match the daily set. Installed/App
+Skills use repeatable complete imports through notion/ntn-skills-maintain; genuine
+Notion originals retain native authority and use complete exports as recovery input.
 
 ## File authority and lifecycle
 

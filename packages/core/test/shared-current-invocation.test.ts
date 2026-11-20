@@ -232,7 +232,7 @@ const input = (support: boolean) => ({
 })
 
 test("real HTTP writer stops at its limit without attention or cleanup and resumes with a fresh budget", async () => {
-  let appendBoundary = 0,
+  let fileCreateBoundary = 0,
     retirementBoundary = 0
   const baseline = currentWriteFixture(root)
   await recordedFixtureTransport(await baseline.run(Notion), async (api, requests) => {
@@ -246,8 +246,11 @@ test("real HTTP writer stops at its limit without attention or cleanup and resum
         }),
       ).pipe(Effect.provideService(Notion, api)),
     )
-    appendBoundary = requests.findIndex(
-      (call) => call.method === "PATCH" && call.path.includes("/blocks/"),
+    fileCreateBoundary = requests.findIndex(
+      (call) =>
+        call.method === "POST" &&
+        call.path === "v1/pages" &&
+        property(property(call.body).parent).data_source_id === library.files.data_source_id,
     )
     const previousFile = String(baseline.table("files")[0]!.id)
     const start = requests.length
@@ -268,14 +271,14 @@ test("real HTTP writer stops at its limit without attention or cleanup and resum
           property(call.body).in_trash === true,
       )
   })
-  expect(appendBoundary).toBeGreaterThan(0)
+  expect(fileCreateBoundary).toBeGreaterThan(0)
   expect(retirementBoundary).toBeGreaterThan(0)
-  for (const stage of ["append", "retirement"] as const) {
+  for (const stage of ["file-create", "retirement"] as const) {
     const f = currentWriteFixture(root)
     await recordedFixtureTransport(await f.run(Notion), async (api, requests) => {
       const original = await f.run(prepareCurrentSkillWrite(input(true)))
       const plan =
-        stage === "append" ? original : await f.run(prepareCurrentSkillWrite(input(false)))
+        stage === "file-create" ? original : await f.run(prepareCurrentSkillWrite(input(false)))
       if (stage === "retirement")
         await f.run(
           withCurrentInvocationBudget(
@@ -286,8 +289,8 @@ test("real HTTP writer stops at its limit without attention or cleanup and resum
           ).pipe(Effect.provideService(Notion, api)),
         )
       const start = requests.length,
-        limit = stage === "append" ? appendBoundary : retirementBoundary,
-        operation = stage === "append" ? "budget-initial" : "budget-replacement"
+        limit = stage === "file-create" ? fileCreateBoundary : retirementBoundary,
+        operation = stage === "file-create" ? "budget-initial" : "budget-replacement"
       const outcome = await f.run(
         withCurrentInvocationBudget(
           writeCurrentSkill(library, {
@@ -339,7 +342,7 @@ test("real HTTP writer stops at its limit without attention or cleanup and resum
       expect(
         [...f.json.keys()].filter((key) => key.includes("current-write-pending")),
       ).toHaveLength(0)
-      expect(f.table("files")).toHaveLength(stage === "append" ? 1 : 0)
+      expect(f.table("files")).toHaveLength(stage === "file-create" ? 1 : 0)
     })
   }
 }, 30_000)

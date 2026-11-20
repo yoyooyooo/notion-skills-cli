@@ -33,7 +33,7 @@ const checked = <A>(read: () => A) =>
   })
 
 /** Validate a bounded local declaration before Notion lookup or provider discovery. */
-export function loadCurrentSourceDeclaration(input: string) {
+function loadCurrentSourceJson<A>(input: string, decode: (input: unknown) => A) {
   return Effect.scoped(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
@@ -45,7 +45,9 @@ export function loadCurrentSourceDeclaration(input: string) {
         before.size > MAX_DECLARATION_BYTES
       )
         return yield* Effect.fail(
-          invalid("A Source declaration must be one regular JSON file of at most 512 KiB."),
+          invalid("The current Source input must be one bounded regular JSON file.", {
+            max_bytes: MAX_DECLARATION_BYTES,
+          }),
         )
       const handle = yield* fs.open(input, { flag: "r", noFollow: true })
       const stat = yield* handle.stat
@@ -60,7 +62,9 @@ export function loadCurrentSourceDeclaration(input: string) {
         ByteSize.toBigInt(stat.size) !== before.size
       )
         return yield* Effect.fail(
-          invalid("A Source declaration must be one regular JSON file of at most 512 KiB."),
+          invalid("The current Source input must be one bounded regular JSON file.", {
+            max_bytes: MAX_DECLARATION_BYTES,
+          }),
         )
       const bytes = new Uint8Array(size)
       let offset = 0
@@ -88,9 +92,7 @@ export function loadCurrentSourceDeclaration(input: string) {
           invalid("The Source declaration changed while it was being read."),
         )
       return yield* checked(() =>
-        validateCurrentSourceInput(
-          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
-        ),
+        decode(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))),
       )
     }),
   ).pipe(
@@ -100,6 +102,10 @@ export function loadCurrentSourceDeclaration(input: string) {
         : invalid("The Source declaration could not be read as one regular JSON file."),
     ),
   )
+}
+
+export function loadCurrentSourceDeclaration(input: string) {
+  return loadCurrentSourceJson(input, validateCurrentSourceInput)
 }
 
 const budgetFlag = (name: string, description: string) =>
@@ -192,7 +198,7 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
           )
       return { operation, mode, limits }
     })
-    const admitted =
+    const validatedRequest =
       request.kind === "apply"
         ? {
             kind: "apply" as const,
@@ -222,18 +228,21 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
             ))
         const intent = { operation_id: operation, mode: selected.mode, dry_run: options.dryRun }
         const result = yield* Effect.gen(function* () {
-          switch (admitted.kind) {
+          switch (validatedRequest.kind) {
             case "apply":
               return yield* applyCurrentSource(library, {
                 ...intent,
-                declaration: admitted.declaration,
+                declaration: validatedRequest.declaration,
               })
             case "refresh": {
-              const current = yield* queryCurrentSourceManagement(library, admitted.sourceId)
+              const current = yield* queryCurrentSourceManagement(
+                library,
+                validatedRequest.sourceId,
+              )
               if (current === undefined)
                 return yield* Effect.fail(
                   fail("CURRENT_SOURCE_MISSING", "No current Source has this stable identity.", {
-                    source_id: admitted.sourceId,
+                    source_id: validatedRequest.sourceId,
                     next: "Use source apply with a complete declaration to create this Source.",
                   }),
                 )
@@ -246,19 +255,19 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
             case "disable":
               return yield* changeCurrentSourceEnabled(library, {
                 ...intent,
-                source_id: admitted.sourceId,
-                enabled: admitted.kind === "enable",
+                source_id: validatedRequest.sourceId,
+                enabled: validatedRequest.kind === "enable",
               })
             case "remove":
               return yield* removeCurrentSource(library, {
                 ...intent,
-                source_id: admitted.sourceId,
+                source_id: validatedRequest.sourceId,
               })
             case "file":
               return yield* changeCurrentSourceFileAuthority(library, {
                 ...intent,
-                source_id: admitted.sourceId,
-                ...admitted.selection,
+                source_id: validatedRequest.sourceId,
+                ...validatedRequest.selection,
               })
           }
         })
@@ -271,7 +280,7 @@ function runCurrentSource(options: SourceOptions, request: SourceRequest) {
 }
 
 const description =
-  "Use one current Source intent for all explicitly assigned targets. Only unchanged regular files from a fixed GitHub Git revision are supported; unsupported providers, transformations and symbolic links fail before writes. Contributions select stable Skill IDs and exact member-relative file mappings/exclusions; Selection.include/exclude selects member roots. Existing Notion-owned files and other Sources are preserved by the current coordinator. Dry-run still reads Notion and acquires provider files when needed. Resume uses the same operation and frozen commit. --supersede OLD --operation NEW explicitly replaces an unfinished intent only after exact predecessor reconciliation; it cannot bypass unknown writes or change the action family. HTTP budgets cover library lookup, Source reads and Notion writes; Git subprocess acquisition shares the deadline and reports separate known object bytes, with unknown wire bytes. This does not provide a distributed lock or an atomic multi-Skill transaction."
+  "Synchronize the complete selected Git member set through one current Source intent. Existing contribution assignments preserve stable Skill IDs; newly discovered members receive deterministic identities. Removed pure Source members and their Files are retired, including a completely empty selected set. Provider failures and incomplete discovery never authorize deletion. Regular Git files keep exact upstream bytes, paths and modes; unsupported transformations and symbolic links fail before writes. GitHub and credential-free HTTP(S) Git origins use local machine authentication. Contributions declare exact member-relative mappings/exclusions; Selection.include/exclude selects member roots. Explicit desired paths replace matching native/resource authority, reported by dry-run; excluded and unrelated content remains preserved, and another Source cannot be overwritten. Generated reading projections do not block current consumption. Dry-run reads Notion and acquires exact provider files. Resume uses the same operation and frozen commit. --supersede OLD --operation NEW replaces an unfinished intent only after exact predecessor reconciliation. HTTP budgets cover library lookup, Source reads and Notion writes; Git subprocess acquisition shares the deadline and reports separate known object bytes, with unknown wire bytes. There is no distributed lock or atomic multi-Skill transaction."
 
 export const applyCurrentSourceCommand = defineCommand(
   "apply",
@@ -281,11 +290,15 @@ export const applyCurrentSourceCommand = defineCommand(
     ),
     ...flags,
   },
-  (options) => runCurrentSource(options, { kind: "apply", input: options.input }),
+  (options) =>
+    runCurrentSource(options, {
+      kind: "apply",
+      input: options.input,
+    }),
 ).pipe(
   withConstraints(modeConstraints),
   Command.withDescription(
-    "Create a Source or replace its complete current configuration and contributions using {version:1,definition,contributions}. " +
+    "Create, rebuild or synchronize a Source using {version:1,definition,contributions}. Keep this declaration outside Notion to recreate a deleted Source; contributions may be empty and are stable identity overrides for discovered members. " +
       description,
   ),
   Command.withExamples([
@@ -296,7 +309,7 @@ export const applyCurrentSourceCommand = defineCommand(
     {
       command:
         "ntn-skills ctl library source apply ./source.json --entry LIBRARY_ID --operation SOURCE_INTENT",
-      description: "Apply one explicitly selected Source declaration",
+      description: "Synchronize every member selected by this Source declaration",
     },
     {
       command:
@@ -313,7 +326,7 @@ export const refreshCurrentSourceCommand = defineCommand(
 ).pipe(
   withConstraints(modeConstraints),
   Command.withDescription(
-    "Read the current Source declaration from Notion and apply its selected provider revision. Do not reconstruct history or match a display name. If an unfinished configuration change differs from the visible declaration, resume source apply with the original input file. " +
+    "Read the current Source declaration from Notion and reconcile additions, changes and removals at its selected provider revision. If the Source itself was deleted, use source apply with the saved declaration. Do not reconstruct history or match a display name. If an unfinished configuration change differs from the visible declaration, resume source apply with the original input file. " +
       description,
   ),
   Command.withExamples([

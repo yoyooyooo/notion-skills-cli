@@ -113,7 +113,7 @@ actual round trip; an unconfirmed write leaves the intent unfinished. Keep exact
 resources for byte formats the native body cannot preserve.
 
 Paths, original resource bytes, and executable modes remain part of file identity.
-The writer creates the main-page and supporting-page reading projections, then verifies the current tree.
+The writer verifies the complete current tree and authoritative bytes. Generated main-page and supporting-page reading projections can be rendered separately; they do not block readiness.
 It cleans obsolete resources owned by an admitted replacement after the new bindings are established.
 
 For a new Skill, Enabled defaults to true and Default Context defaults to false.
@@ -125,7 +125,7 @@ It also returns the operation ID, page ID, input hash, current file/relationship
 results and the exact library/database/data-source binding.
 
 All remote work shares one invocation budget, including library lookup, retries,
-relationship validation, uploads, projection and cleanup. Defaults are 1000 HTTP
+relationship validation, uploads, native bodies and cleanup. Defaults are 1000 HTTP
 attempts, 512 MiB payload bytes and 600000 ms. Override with positive integer
 `--max-requests`, `--max-bytes`, and `--timeout` in ms. Inspect the reported usage.
 An admitted response may exceed the byte limit; the next request is refused.
@@ -135,9 +135,7 @@ with a fresh invocation budget; do not create a replacement operation.
 ## Read the projection and exact original
 
 Open the resulting Skill page and follow its Supporting Files relation.
-Readable UTF-8 files receive complete text projections.
-Markdown uses supported Notion blocks; constructs outside that rendering subset remain visible as code.
-Opaque files have an original usable attachment.
+Source and resource consumption uses exact declared originals. Generated reading pages may be absent or out of date until projection work runs separately. When rendered, text must be complete and opaque files must expose a usable original.
 Formats that need a ZIP carrier use one ZIP containing that single original file.
 
 The `Content` descriptor determines where the authoritative bytes live.
@@ -181,9 +179,7 @@ There is no separate acknowledgement, repair, or finalize command for import.
 
 ## Apply or refresh a Git Source
 
-Use one complete JSON declaration for a regular Git repository on GitHub. Every
-selected member needs an explicit stable target; discovery never guesses a Skill
-identity from its title. This example selects two member directories:
+Use one complete JSON declaration for a regular Git repository on GitHub or a credential-free HTTP(S) Git origin using local machine authentication. Every discovered selected member is included. Contributions preserve explicit stable identities; newly discovered members receive deterministic identities from the Source ID and member path. This example preserves two existing identities:
 
 ```json
 {
@@ -218,7 +214,7 @@ ntn-skills ctl library source refresh team-skills --entry LIBRARY_ENTRY --dry-ru
 ntn-skills ctl library source refresh team-skills --entry LIBRARY_ENTRY
 ```
 
-Apply creates or replaces that Source's current configuration and contributions.
+Save the declaration outside Notion. Apply creates, rebuilds or replaces that Source's current configuration and contributions, including when the Source or its Skill pages were deleted.
 Refresh reads the same declaration from Notion and uses the same writer. Dry run
 acquires the selected Git files and inspects the complete affected directories;
 it performs zero semantic Notion writes. It does not establish that projections
@@ -232,19 +228,13 @@ existing File ID and page when the original Source path remains the same.
 One member may contribute to several Skills; duplicate member/Skill assignments
 and colliding effective paths are rejected.
 
-Only this Source's contribution is replaced. Existing Skill management metadata,
-native bodies, resource originals and other Sources remain current. New targets
-use discovered name/description as create-only defaults. For an existing Skill,
-mount supporting files under a distinct path and exclude the incoming `SKILL.md`
-when its existing main should remain. The complete effective tree must still
-have its canonical main, and current local references must resolve. Removing its
-sole Source main is refused; apply does not invent a replacement or implicitly
-take over native authority.
+An explicit desired Source path replaces matching native or resource content, retaining its stable File identity; dry-run reports this authority replacement. Excluded paths and unrelated native content remain current. Another Source cannot be overwritten. Existing Skill management metadata is preserved; new targets use discovered names and descriptions as create-only defaults. Exclude the incoming `SKILL.md` when the existing main should remain.
 
-Every selected supporting file gets a Files identity and full reading projection.
-Source binaries expose a verified current original attachment while their
-authority stays Source. The current manifest is inline or in one Source-owned
-resource; obsolete owned manifest resources are retired after verification.
+A pure Source member deleted upstream is retired with its Files. A complete empty upstream selection retires all pure Source members; provider failure or incomplete discovery never authorizes deletion. If removing a member would leave unrelated authored content without a main, the writer requires an explicit ownership decision. Paths, bytes and executable modes remain exact upstream values.
+
+Every selected supporting file gets a Files identity. Generated reading projections do not block Source readiness or trigger ordinary consumption writes. The current manifest is inline or in one Source-owned resource; obsolete owned manifest resources are retired after verification.
+
+Repository-relative links retain their upstream spelling and are checked against the complete fixed Git manifest. Links to another selected member resolve through the current contribution map. A reference outside all selected members reports its exact fixed repository path and, for GitHub, a commit-pinned URL; it does not create an extra Skill or File.
 
 All affected targets share one finite parent Source intent. Its original
 configuration, selected commit and affected IDs stay fixed across interruption.
@@ -264,7 +254,7 @@ branch moves. If an unfinished configuration update differs from the declaration
 currently visible in Notion, resume `source apply` with the original file instead
 of asking refresh to reconstruct it. A completed child is verified without new
 writes; an untouched later child continues under the same parent intent. Native
-body edits are not frozen into that intent or overwritten during Source recovery.
+body edits on excluded or unrelated paths are not frozen into that intent or overwritten during Source recovery.
 
 Source uses the same invocation HTTP budgets as import, including lookup, child
 writes and cleanup. Git subprocess acquisition shares the deadline and has file
