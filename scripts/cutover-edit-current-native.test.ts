@@ -7,6 +7,7 @@ import { Effect } from "effect"
 import { fail, property, text } from "../packages/core/src/model.ts"
 import { Notion } from "../packages/core/src/notion.ts"
 import { queryCurrentSkillIndex } from "../packages/core/src/shared-current-index.ts"
+import { inspectCurrentOperation } from "../packages/core/src/shared-current-operation.ts"
 import {
   prepareCurrentSkillWrite,
   writeCurrentSkill,
@@ -139,6 +140,108 @@ const markdownPatches = (f: Awaited<ReturnType<typeof fixture>>) =>
   f.mutations().filter((call) => call.method === "PATCH" && call.path.includes("/markdown"))
 const state = (f: Awaited<ReturnType<typeof fixture>>) =>
   property(property(property(f.pages.get(f.owner)).properties)["current-state"]).select
+
+/** Simulate the server accepting the request but returning a different exact
+ * Markdown representation. The caller must retain its original unknown action. */
+async function representedBodyFixture() {
+  const f = await fixture(),
+    priorOperation = "guide-original-representation",
+    operation = "guide-exact-representation",
+    support = f.input.files.find((file) => file.selected.path !== "SKILL.md")!,
+    actual = support.body.target
+      .replace("authored instructions", "<code>authored</code> instructions")
+      .trimEnd(),
+    path = "v1/pages/" + support.selected.page_id + "/markdown"
+  const failed = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      const represented: Notion["Service"] = {
+        ...api,
+        request: (route, body, options) =>
+          api.request(
+            route,
+            route === path && options?.method === "PATCH"
+              ? { ...property(body), replace_content: { new_str: actual } }
+              : body,
+            options,
+          ),
+      }
+      return yield* editCurrentNative(f.input, priorOperation, "apply").pipe(
+        Effect.provideService(Notion, represented),
+        Effect.result,
+      )
+    }),
+  )
+  expect(failed._tag).toBe("Failure")
+  if (failed._tag === "Failure") {
+    expect(failed.failure.code).toBe("WRITE_OUTCOME_UNKNOWN")
+    expect(property(failed.failure.details).cause_code).toBe("CUTOVER_NATIVE_CHANGED")
+  }
+  const previous = await f.run(
+    inspectCurrentOperation(library, { kind: "skill", id: f.input.selected.owner.skill_id }),
+  )
+  if (previous?.record_page_id === null || previous?.in_flight === null || previous === undefined)
+    throw new Error("The accepted mismatched body must retain its exact current Record and action.")
+  expect(previous.in_flight.key).toBe("native:" + support.selected.page_id + ":body")
+  const directory = mkdtempSync(join(parent, "successor-")),
+    document = {
+      ...structuredClone(f.document),
+      predecessor: {
+        record_page_id: previous.record_page_id,
+        operation_id: priorOperation,
+        input_sha256: f.input.input_sha256,
+        completion: "ready",
+        owner_page_id: f.owner,
+        in_flight: previous.in_flight,
+      },
+    }
+  document.owner.before.current_state = "applying"
+  document.owner.before.operation = priorOperation
+  const selected = document.files.find((file) => file.page_id === support.selected.page_id)!,
+    before = join(directory, "support.before.md"),
+    after = join(directory, "support.after.md")
+  writeFileSync(before, actual)
+  writeFileSync(after, actual)
+  selected.before.body = {
+    local_path: before,
+    sha256: digest(actual),
+    bytes: Buffer.byteLength(actual),
+  }
+  selected.after.local_bytes_path = after
+  selected.after.sha256 = digest(actual)
+  selected.after.bytes = Buffer.byteLength(actual)
+  const successor = await f.prepare(document)
+  f.clearCalls()
+  return {
+    ...f,
+    successor,
+    successorDocument: document,
+    previous,
+    priorOperation,
+    operation,
+    support,
+    actual,
+  }
+}
+
+function changePredecessorMarker(f: Awaited<ReturnType<typeof representedBodyFixture>>) {
+  const record = f.pages.get(f.previous.record_page_id!)!,
+    fields = property(record.properties),
+    envelope = property(JSON.parse(text(property(fields.payload).rich_text))),
+    payload = property(envelope.payload),
+    encoded = canonicalSharedJson({
+      ...envelope,
+      payload: {
+        ...payload,
+        in_flight: { ...property(payload.in_flight), request_sha256: "f".repeat(64) },
+      },
+    })
+  record.properties = {
+    ...fields,
+    payload: { ...property(fields.payload), rich_text: rich(encoded) },
+    hash: { ...property(fields.hash), rich_text: rich(digest(encoded)) },
+  }
+}
 
 test("dry-run proves the additive schema and exact ready tree without local or remote writes", async () => {
   const f = await fixture(),
@@ -390,6 +493,74 @@ test("Description drift during the metadata action body reads is preserved witho
   expect(f.json.size).toBe(f.baselineJson.size + 1)
 })
 
+test("Description drift during the metadata action's final Files query is preserved without a target metadata PATCH", async () => {
+  const f = await fixture()
+  let injected = false
+  const result = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      let completedBodyPatches = 0,
+        fileQueriesAfterBodies = 0
+      const wrapped: Notion["Service"] = {
+        ...api,
+        request: (path, body, options) =>
+          api.request(path, body, options).pipe(
+            Effect.flatMap((response) =>
+              Effect.gen(function* () {
+                if (options?.method === "PATCH" && path.endsWith("/markdown"))
+                  completedBodyPatches += 1
+                if (
+                  completedBodyPatches === 2 &&
+                  path.startsWith("v1/data_sources/" + library.files.data_source_id + "/query")
+                ) {
+                  fileQueriesAfterBodies += 1
+                  if (fileQueriesAfterBodies === 2) {
+                    injected = true
+                    yield* api.request(
+                      "v1/pages/" + f.owner,
+                      {
+                        properties: {
+                          description: { rich_text: rich("Human edit during final Files query") },
+                        },
+                      },
+                      { method: "PATCH" },
+                    )
+                  }
+                }
+                return response
+              }),
+            ),
+          ),
+      }
+      return yield* editCurrentNative(f.input, "guide-metadata-final-files-window", "apply").pipe(
+        Effect.provideService(Notion, wrapped),
+        Effect.result,
+      )
+    }),
+  )
+  expect(injected).toBe(true)
+  expect(result._tag).toBe("Failure")
+  if (result._tag === "Failure") expect(result.failure.code).toBe("CUTOVER_NATIVE_EDIT_INVALID")
+  expect(markdownPatches(f)).toHaveLength(2)
+  expect(
+    f.mutations().filter((call) => {
+      const fields = property(property(call.body).properties)
+      return (
+        call.method === "PATCH" &&
+        call.path === "v1/pages/" + f.owner &&
+        ("content" in fields ||
+          text(property(fields.description).rich_text) === f.input.selected.owner.after.description)
+      )
+    }),
+  ).toHaveLength(0)
+  expect(text(property(property(f.pages.get(f.owner)?.properties).description).rich_text)).toBe(
+    "Human edit during final Files query",
+  )
+  expect(property(state(f)).name).toBe("attention")
+  expect(f.table("records")).toHaveLength(1)
+  expect(f.json.size).toBe(f.baselineJson.size + 1)
+})
+
 test("the finite input rejects changed author identity and changed captured bytes", async () => {
   const f = await fixture(),
     changed = structuredClone(f.document)
@@ -492,8 +663,226 @@ test("the finite CLI requires explicit absolute inputs, budgets and one operatio
     "45000",
   ]
   expect(parseNativeEditArguments(args).mode).toBe("dry-run")
+  expect(() => parseNativeEditArguments([...args, "--supersede", "old-guide"])).toThrow()
+  expect(
+    parseNativeEditArguments([
+      ...args.map((value) => (value === "dry-run" ? "apply" : value)),
+      "--supersede",
+      "old-guide",
+    ]).supersede,
+  ).toBe("old-guide")
   expect(() => parseNativeEditArguments([...args, "--mode", "apply"])).toThrow()
   expect(() =>
     parseNativeEditArguments(args.map((value) => (value === "200" ? "0" : value))),
   ).toThrow()
+})
+
+test("an explicitly frozen successor resolves an accepted representation mismatch without repeating the already-target support body", async () => {
+  const f = await representedBodyFixture(),
+    pending = new Map(f.json)
+  expect(f.successor.input_sha256).not.toBe(f.input.input_sha256)
+  expect((await f.run(inspectCurrentNativeEdit(f.successor, f.operation))).remote_writes).toBe(0)
+  expect(f.mutations()).toHaveLength(0)
+  expect(f.json).toEqual(pending)
+  await expect(f.run(editCurrentNative(f.successor, f.operation, "apply"))).rejects.toMatchObject({
+    code: "CUTOVER_NATIVE_EDIT_INVALID",
+  })
+  await expect(
+    f.run(editCurrentNative(f.successor, f.operation, "apply", "wrong-predecessor")),
+  ).rejects.toMatchObject({
+    code: "CUTOVER_NATIVE_EDIT_INVALID",
+  })
+  expect(f.mutations()).toHaveLength(0)
+  const result = await f.run(editCurrentNative(f.successor, f.operation, "apply", f.priorOperation))
+  expect(result.state).toBe("ready")
+  expect(result.acknowledged_body_patches).toBe(1)
+  expect(markdownPatches(f).map((call) => call.path)).toEqual(["v1/pages/" + f.owner + "/markdown"])
+  expect(
+    f.mutations().filter((call) => call.method === "POST" && call.path === "v1/pages"),
+  ).toHaveLength(0)
+  expect(f.table("records")).toHaveLength(0)
+  expect(f.json).toEqual(f.baselineJson)
+  f.clearCalls()
+  const resumed = await f.run(editCurrentNative(f.successor, f.operation, "resume"))
+  expect(resumed.acknowledged_body_patches).toBe(0)
+  expect(resumed.acknowledged_metadata_patches).toBe(0)
+  expect(f.mutations()).toHaveLength(0)
+  expect(f.json).toEqual(f.baselineJson)
+  await f.run(
+    Effect.gen(function* () {
+      yield* (yield* Notion).request(
+        "v1/pages/" + f.owner,
+        {
+          properties: {
+            "current-state": { select: { name: "applying" } },
+            operation: { rich_text: rich(f.operation) },
+          },
+        },
+        { method: "PATCH" },
+      )
+    }),
+  )
+  f.clearCalls()
+  await expect(f.run(inspectCurrentNativeEdit(f.successor, f.operation))).rejects.toMatchObject({
+    code: "CUTOVER_NATIVE_EDIT_INVALID",
+  })
+  expect(f.mutations()).toHaveLength(0)
+})
+
+test.each(["body", "Description", "predecessor marker"] as const)(
+  "a changed %s refuses the exact successor before any handoff write",
+  async (changed) => {
+    const f = await representedBodyFixture()
+    if (changed === "predecessor marker") changePredecessorMarker(f)
+    else
+      await f.run(
+        Effect.gen(function* () {
+          yield* (yield* Notion).request(
+            "v1/pages/" + (changed === "body" ? f.support.selected.page_id + "/markdown" : f.owner),
+            changed === "body"
+              ? {
+                  markdown_version: "v2",
+                  type: "replace_content",
+                  replace_content: { new_str: "Unselected author body\n" },
+                }
+              : {
+                  properties: { description: { rich_text: rich("Unselected author description") } },
+                },
+            { method: "PATCH" },
+          )
+        }),
+      )
+    f.clearCalls()
+    const pending = new Map(f.json),
+      failed = await f.run(
+        editCurrentNative(f.successor, f.operation, "apply", f.priorOperation).pipe(Effect.result),
+      )
+    expect(failed._tag).toBe("Failure")
+    expect(f.mutations()).toHaveLength(0)
+    expect(f.json).toEqual(pending)
+    expect(text(property(property(f.pages.get(f.owner)?.properties).operation).rich_text)).toBe(
+      f.priorOperation,
+    )
+    expect(f.table("records")).toHaveLength(1)
+  },
+)
+
+test("a remote predecessor marker changed after local replacing is checked before Record replacement", async () => {
+  const f = await representedBodyFixture()
+  let changed = false
+  const failed = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion,
+        wrapped: Notion["Service"] = {
+          ...api,
+          request: (path, body, options) =>
+            Effect.gen(function* () {
+              if (
+                !changed &&
+                path.startsWith("v1/data_sources/" + library.records.data_source_id + "/query") &&
+                [...f.json.values()].some(
+                  (value) => property(property(value).lifecycle).phase === "replacing",
+                )
+              ) {
+                changed = true
+                changePredecessorMarker(f)
+              }
+              return yield* api.request(path, body, options)
+            }),
+        }
+      return yield* editCurrentNative(f.successor, f.operation, "apply", f.priorOperation).pipe(
+        Effect.provideService(Notion, wrapped),
+        Effect.result,
+      )
+    }),
+  )
+  expect(changed).toBe(true)
+  expect(failed._tag).toBe("Failure")
+  expect(f.mutations()).toHaveLength(0)
+  expect(text(property(property(f.pages.get(f.owner)?.properties).operation).rich_text)).toBe(
+    f.priorOperation,
+  )
+  expect(
+    [...f.json.values()].some((value) => property(property(value).lifecycle).phase === "replacing"),
+  ).toBe(true)
+})
+
+test.each([
+  ["Record", "accepted"],
+  ["Record", "absent"],
+  ["owner", "accepted"],
+  ["owner", "absent"],
+] as const)(
+  "a lost %s handoff response (%s) resumes only the frozen successor without CREATE or a repeated support PATCH",
+  async (target, outcome) => {
+    const f = await representedBodyFixture()
+    let interrupted = false
+    const failed = await f.run(
+      Effect.gen(function* () {
+        const api = yield* Notion,
+          wrapped: Notion["Service"] = {
+            ...api,
+            request: (path, body, options) =>
+              Effect.gen(function* () {
+                const fields = property(property(body).properties),
+                  selected =
+                    !interrupted &&
+                    options?.method === "PATCH" &&
+                    (target === "Record"
+                      ? path === "v1/pages/" + f.previous.record_page_id &&
+                        property(JSON.parse(text(property(fields.payload).rich_text) || "null"))
+                          .operation_id === f.operation
+                      : path === "v1/pages/" + f.owner &&
+                        text(property(fields.operation).rich_text) === f.operation)
+                if (!selected) return yield* api.request(path, body, options)
+                interrupted = true
+                if (outcome === "accepted") yield* api.request(path, body, options)
+                return yield* Effect.fail(
+                  fail("WRITE_OUTCOME_UNKNOWN", "The handoff response was lost."),
+                )
+              }),
+          }
+        return yield* editCurrentNative(f.successor, f.operation, "apply", f.priorOperation).pipe(
+          Effect.provideService(Notion, wrapped),
+          Effect.result,
+        )
+      }),
+    )
+    expect(interrupted).toBe(true)
+    expect(failed._tag).toBe("Failure")
+    expect(markdownPatches(f)).toHaveLength(0)
+    expect(
+      f.mutations().filter((call) => call.method === "POST" && call.path === "v1/pages"),
+    ).toHaveLength(0)
+    expect(
+      (
+        await f.run(
+          inspectCurrentOperation(library, { kind: "skill", id: f.input.selected.owner.skill_id }),
+        )
+      )?.local_lifecycle?.phase,
+    ).toBe("replacing")
+    f.clearCalls()
+    expect((await f.run(editCurrentNative(f.successor, f.operation, "resume"))).state).toBe("ready")
+    expect(markdownPatches(f).map((call) => call.path)).toEqual([
+      "v1/pages/" + f.owner + "/markdown",
+    ])
+    expect(
+      f.mutations().filter((call) => call.method === "POST" && call.path === "v1/pages"),
+    ).toHaveLength(0)
+    expect(f.json).toEqual(f.baselineJson)
+  },
+)
+
+test("the frozen predecessor accepts only this owner's existing native body action and legal before state", async () => {
+  const f = await representedBodyFixture()
+  for (const key of ["append:children", "native:00000000-0000-4000-8000-000000000099:body"]) {
+    const changed = structuredClone(f.successorDocument)
+    changed.predecessor.in_flight = { ...changed.predecessor.in_flight, key }
+    await expect(f.prepare(changed)).rejects.toMatchObject({ code: "CUTOVER_NATIVE_EDIT_INVALID" })
+  }
+  const ready = structuredClone(f.successorDocument)
+  ready.owner.before.current_state = "ready"
+  ready.owner.before.operation = ""
+  await expect(f.prepare(ready)).rejects.toMatchObject({ code: "CUTOVER_NATIVE_EDIT_INVALID" })
+  expect(f.mutations()).toHaveLength(0)
 })

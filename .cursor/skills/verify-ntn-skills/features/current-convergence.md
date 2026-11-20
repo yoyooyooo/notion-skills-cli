@@ -81,6 +81,8 @@ AH-513 的 [既有 native 转换入口](../../../../scripts/cutover-bootstrap-cu
 
 已 ready 的 native 指导内容沿 [有限修订入口](../../../../scripts/cutover-edit-current-native.ts)，不进入 bootstrap 的三空初态。完整现有文件树、准确旧 Content/正文和目标输入共同绑定一个逐 owner 意图；仅修改声明的正文、Description 和主文件 header。两个入口共用现有 operation kernel 和正文三态观察：目标准确相同才完成，仍是批准的旧正文才允许写入，其他正文立即冲突；替换前核嵌套子内容保护。未知写入先读回，未确认的 in-flight 保留，不能以清 Operation 或补 ready 掩盖。
 
+Notion 回读改变目标字节时保留未完成意图。已核对的正文表示调整形成新输入和新 operation，通过现有 supersede 交接；前驱 intent、物理 Record、完整 pending marker 和当前正文均需准确绑定。交接丢响应仍用同一 successor 输入和 Store 恢复。运行时保持逐字校验，不增加格式归一化或自动 authority 转换。
+
 最终重新核完整索引、关系、正文和目标引用后才可 ready。保持相同输入、operation 和独立 Store，以 completed resume 验证零写。显式 additive descriptor 尚未发布时，正常库入口仍拒绝旧登记；局部结构转换和指导修订都不证明整库日用。资源、Source、非空 Members/Requires 和缺失 Files 另接现有当前原语。上述临时入口、专属测试与 bootstrap seam 在 AH-513 完成后由 AH-517 删除，不进入正常 reader、公开命令或发布包。
 
 ## 3. 单轨与普通消费 0 写

@@ -28,8 +28,17 @@ import {
   queryCurrentSkillIndex,
 } from "../packages/core/src/shared-current-index.ts"
 import { withCurrentInvocationBudget } from "../packages/core/src/shared-current-invocation.ts"
-import { withCurrentOperation } from "../packages/core/src/shared-current-operation.ts"
-import { currentRecordText } from "../packages/core/src/shared-current-records.ts"
+import {
+  inspectCurrentOperation,
+  withCurrentOperation,
+  type CurrentOperationIntent,
+  type CurrentOperationPredecessor,
+  type CurrentWriteMode,
+} from "../packages/core/src/shared-current-operation.ts"
+import {
+  currentRecordText,
+  queryCurrentSharedOperationRecord,
+} from "../packages/core/src/shared-current-records.ts"
 import {
   currentWriteIdentity,
   prepareCurrentSkillWrite,
@@ -59,7 +68,7 @@ const NativeContent = Schema.Struct({
   mode: Schema.Literals(["100644", "100755"]),
   frontmatter: Schema.String,
 })
-const NativeEditSchema = Schema.Struct({
+const ReadyNativeEditSchema = Schema.Struct({
   version: Schema.Literal(1),
   kind: Schema.Literal("ah513-ready-native-edit"),
   library: SharedLibrarySchema,
@@ -103,6 +112,33 @@ const NativeEditSchema = Schema.Struct({
     }),
   ),
 })
+const Predecessor = Schema.Struct({
+  record_page_id: PageId,
+  operation_id: Schema.String,
+  input_sha256: Hash,
+  completion: Schema.Literal("ready"),
+  owner_page_id: PageId,
+  in_flight: Schema.Struct({
+    key: Schema.String,
+    request_sha256: Hash,
+    replay: Schema.Literal("idempotent"),
+  }),
+})
+const NativeEditSchema = Schema.Union([
+  ReadyNativeEditSchema,
+  Schema.Struct({
+    ...ReadyNativeEditSchema.fields,
+    predecessor: Predecessor,
+    owner: Schema.Struct({
+      ...ReadyNativeEditSchema.fields.owner.fields,
+      before: Schema.Struct({
+        ...ReadyNativeEditSchema.fields.owner.fields.before.fields,
+        current_state: Schema.Literals(["applying", "attention"]),
+        operation: Schema.String,
+      }),
+    }),
+  }),
+])
 type NativeEdit = typeof NativeEditSchema.Type
 type NativePrepared = Extract<PreparedCurrentWriteFile, { readonly kind: "native" }>
 type BoundEdit = {
@@ -185,6 +221,16 @@ export function prepareNativeEditInput(input: {
         Object.values(value.owner.before.relations).some((ids) => ids.length !== 0)
       )
         throw invalid("Select exactly two existing native files with empty current relations.")
+      if ("predecessor" in value) {
+        const prior = value.predecessor
+        currentWriteIdentity(prior.operation_id, "Predecessor operation ID")
+        if (
+          prior.owner_page_id !== value.owner.page_id ||
+          prior.operation_id !== value.owner.before.operation ||
+          !value.files.some((file) => prior.in_flight.key === "native:" + file.page_id + ":body")
+        )
+          throw invalid("A predecessor must select this owner and one existing native body action.")
+      }
       const main = value.files.find((file) => file.path === "SKILL.md")
       if (
         main === undefined ||
@@ -365,7 +411,13 @@ function livePage(raw: unknown, page: string, table: string) {
   )
     throw invalid("The exact current page is unavailable or changed table.", { page_id: page })
 }
-function ownerMetadata(input: PreparedNativeEdit, raw: unknown, operation: string, phase: Phase) {
+function ownerMetadata(
+  input: PreparedNativeEdit,
+  raw: unknown,
+  operation: string,
+  phase: Phase,
+  predecessorOperation?: string,
+) {
   const { owner, library } = input.selected,
     before = owner.before,
     ids = library.skills.property_ids
@@ -387,8 +439,21 @@ function ownerMetadata(input: PreparedNativeEdit, raw: unknown, operation: strin
   const state = property(field(raw, ids, "Current State", "select").select).name,
     op = rich(raw, ids, "Operation")
   if (
-    !(state === "ready" && op === "") &&
-    !(phase !== "initial" && (state === "applying" || state === "attention") && op === operation)
+    (phase === "initial" &&
+      predecessorOperation !== undefined &&
+      (state !== before.current_state || op !== predecessorOperation)) ||
+    (!(state === "ready" && op === "") &&
+      !(
+        phase !== "initial" &&
+        (state === "applying" || state === "attention") &&
+        op === operation
+      ) &&
+      !(
+        phase !== "complete" &&
+        predecessorOperation !== undefined &&
+        state === before.current_state &&
+        op === predecessorOperation
+      ))
   )
     throw invalid("The selected owner is neither ready nor owned by this finite intent.")
   const actualContent = content(raw, ids),
@@ -410,9 +475,11 @@ function fileMetadata(
   raw: unknown,
   operation: string,
   phase: Phase,
+  predecessorOperation?: string,
 ) {
   const { library, owner } = input.selected
-  if (file.selected.page_id === owner.page_id) return ownerMetadata(input, raw, operation, phase)
+  if (file.selected.page_id === owner.page_id)
+    return ownerMetadata(input, raw, operation, phase, predecessorOperation)
   const ids = library.files.property_ids
   livePage(raw, file.selected.page_id, library.files.data_source_id)
   const relation = field(raw, ids, "Skill", "relation").relation
@@ -468,9 +535,20 @@ function queryPages(table: string, filter: unknown) {
     return rows
   })
 }
-function inspectMetadata(input: PreparedNativeEdit, operation: string, phase: Phase) {
+function inspectMetadata(
+  input: PreparedNativeEdit,
+  operation: string,
+  phase: Phase,
+  predecessorOperation?: string,
+) {
   return Effect.gen(function* () {
     const { library, owner } = input.selected,
+      fileRows = yield* queryPages(library.files.data_source_id, {
+        property: library.files.property_ids.Skill,
+        relation: { contains: owner.page_id },
+      }),
+      // The owner is the final HTTP read before deciding its property PATCH.
+      // The supplied index inputs below require only local validation.
       owners = yield* queryPages(library.skills.data_source_id, {
         property: library.skills.property_ids["Skill ID"],
         rich_text: { equals: owner.skill_id },
@@ -478,11 +556,9 @@ function inspectMetadata(input: PreparedNativeEdit, operation: string, phase: Ph
     if (owners.length !== 1)
       return yield* Effect.fail(invalid("The stable Skill ID is absent or duplicated."))
     const raw = owners[0]
-    const complete = yield* checked(() => ownerMetadata(input, raw, operation, phase))
-    const fileRows = yield* queryPages(library.files.data_source_id, {
-      property: library.files.property_ids.Skill,
-      relation: { contains: owner.page_id },
-    })
+    const complete = yield* checked(() =>
+      ownerMetadata(input, raw, operation, phase, predecessorOperation),
+    )
     const files = yield* checked(() =>
       fileRows.map((row) =>
         currentFileRecord(
@@ -516,16 +592,169 @@ function inspectMetadata(input: PreparedNativeEdit, operation: string, phase: Ph
         file.selected.page_id === owner.page_id
           ? raw
           : fileRows.find((row) => property(row).id === file.selected.page_id)
-      yield* checked(() => fileMetadata(input, file, page, operation, phase))
+      yield* checked(() => fileMetadata(input, file, page, operation, phase, predecessorOperation))
     }
     return complete
   })
 }
-function inspectScope(input: PreparedNativeEdit, operation: string, phase: Phase) {
+function inspectScope(
+  input: PreparedNativeEdit,
+  operation: string,
+  phase: Phase,
+  predecessorOperation?: string,
+) {
   return Effect.gen(function* () {
-    yield* inspectMetadata(input, operation, phase)
+    yield* inspectMetadata(input, operation, phase, predecessorOperation)
     for (const file of input.files) yield* observeExpectedNativeBody(file.body, phase)
   })
+}
+
+function currentIntent(input: PreparedNativeEdit, operation: string) {
+  return {
+    operation_id: operation,
+    owner: { kind: "skill", id: input.selected.owner.skill_id },
+    input_sha256: input.input_sha256,
+  } satisfies CurrentOperationIntent
+}
+
+/** Inspect both kernel coordinates and the actual Record. During replacing,
+ * inspectCurrentOperation intentionally exposes the staged successor rather
+ * than the remote predecessor's still-unconfirmed action. */
+function inspectSuccession(input: PreparedNativeEdit, operation: string, successorOnly = false) {
+  return Effect.gen(function* () {
+    const { selected } = input
+    if (!("predecessor" in selected))
+      return yield* Effect.fail(invalid("A finite handoff requires its explicit predecessor."))
+    const { library, owner, predecessor: prior } = selected,
+      intent = currentIntent(input, operation),
+      predecessor = {
+        intent: {
+          operation_id: prior.operation_id,
+          input_sha256: prior.input_sha256,
+          owner: intent.owner,
+        },
+        completion: prior.completion,
+        owner_page_id: prior.owner_page_id,
+        in_flight: prior.in_flight,
+      } satisfies CurrentOperationPredecessor,
+      current = yield* inspectCurrentOperation(library, intent.owner)
+    if (current === undefined) {
+      const raw = yield* (yield* Notion).request("v1/pages/" + owner.page_id)
+      yield* checked(() => {
+        ownerMetadata(input, raw, operation, "complete")
+        if (
+          property(field(raw, library.skills.property_ids, "Current State", "select").select)
+            .name !== "ready" ||
+          rich(raw, library.skills.property_ids, "Operation") !== ""
+        )
+          throw invalid("An absent operation is complete only for the exact ready target.")
+      })
+      return "complete" as const
+    }
+    const isPredecessor = same(current.intent, predecessor.intent)
+    yield* checked(() => {
+      if (
+        current.owner_page_id !== owner.page_id ||
+        current.record_page_id !== prior.record_page_id ||
+        current.completion !== "ready" ||
+        current.owner_in_trash !== false ||
+        current.source_progress !== undefined ||
+        current.local_lifecycle?.phase === "creating" ||
+        (isPredecessor
+          ? successorOnly ||
+            current.predecessor !== undefined ||
+            !same(current.in_flight, prior.in_flight)
+          : !same(current.intent, intent) || !same(current.predecessor, predecessor))
+      )
+        throw invalid("The exact predecessor or successor operation changed before handoff.")
+    })
+    if (!current.record_observed) {
+      if (
+        !isPredecessor &&
+        current.local_lifecycle?.phase === "retiring" &&
+        current.owner_state?.state === "ready"
+      )
+        return "complete" as const
+      return yield* Effect.fail(invalid("The exact handoff Record is not observable."))
+    }
+    // Use the current Record reader, including its singularity and envelope
+    // hash checks. This is the kernel's stable identity for this exact owner.
+    const record = yield* queryCurrentSharedOperationRecord(library, {
+      recordId:
+        "operation-current-" +
+        digest(
+          canonicalSharedJson([library.library_id, library.skills.data_source_id, owner.skill_id]),
+        ),
+      entityId: "current-skill:" + owner.skill_id,
+    })
+    const remoteIsPredecessor = yield* checked(() => {
+      if (
+        record === undefined ||
+        record.page_id !== prior.record_page_id ||
+        !same(record.owner, { kind: "skill", page_id: owner.page_id })
+      )
+        throw invalid("The handoff physical Record or its owner changed.")
+      const payload = property(record.payload),
+        old = record.operation_id === prior.operation_id,
+        expected = {
+          version: 1,
+          kind: "current_operation",
+          library_id: library.library_id,
+          owner_data_source_id: library.skills.data_source_id,
+          intent: old ? predecessor.intent : intent,
+          completion: "ready",
+          in_flight: old ? prior.in_flight : payload.in_flight,
+          ...(old ? {} : { predecessor }),
+        }
+      if (
+        (old
+          ? successorOnly || (!isPredecessor && current.local_lifecycle?.phase !== "replacing")
+          : isPredecessor || record.operation_id !== operation) ||
+        !same(payload, expected)
+      )
+        throw invalid("The current Record payload differs from the frozen handoff.")
+      return old
+    })
+    return remoteIsPredecessor ? ("predecessor" as const) : ("successor" as const)
+  })
+}
+
+function inspectSuccessionScope(
+  input: PreparedNativeEdit,
+  operation: string,
+  successorOnly = false,
+) {
+  return Effect.gen(function* () {
+    const stage = yield* inspectSuccession(input, operation, successorOnly),
+      phase = stage === "predecessor" ? "initial" : stage === "complete" ? "complete" : "progress",
+      predecessorOperation =
+        phase !== "complete" && "predecessor" in input.selected
+          ? input.selected.predecessor.operation_id
+          : undefined
+    yield* inspectScope(input, operation, phase, predecessorOperation)
+    // Neither body reads nor a staged local handoff may hide a new author edit
+    // or a changed remote predecessor action before a kernel mutation.
+    yield* inspectMetadata(input, operation, phase, predecessorOperation)
+    if ((yield* inspectSuccession(input, operation, successorOnly)) !== stage)
+      return yield* Effect.fail(invalid("The exact handoff changed during scope verification."))
+  })
+}
+
+function editMode(
+  input: PreparedNativeEdit,
+  operation: string,
+  mode: "apply" | "resume",
+  supersede?: string,
+): CurrentWriteMode {
+  currentWriteIdentity(operation, "Operation ID")
+  if (!("predecessor" in input.selected)) {
+    if (supersede !== undefined) throw invalid("This input does not select a predecessor.")
+    return mode
+  }
+  const prior = input.selected.predecessor.operation_id
+  if (operation === prior || (mode === "apply" ? supersede !== prior : supersede !== undefined))
+    throw invalid("Apply requires the exact --supersede predecessor; resume keeps the new input.")
+  return mode === "apply" ? { kind: "supersede", operation_id: prior } : "resume"
 }
 function report(input: PreparedNativeEdit, operation: string, state: string) {
   return {
@@ -537,6 +766,7 @@ function report(input: PreparedNativeEdit, operation: string, state: string) {
     operation_id: operation,
     document_sha256: input.document_sha256,
     input_sha256: input.input_sha256,
+    ...("predecessor" in input.selected ? { predecessor: input.selected.predecessor } : {}),
     state,
     files: input.files.map((file) => ({
       page_id: file.selected.page_id,
@@ -552,6 +782,8 @@ function report(input: PreparedNativeEdit, operation: string, state: string) {
 export function inspectCurrentNativeEdit(input: PreparedNativeEdit, operation: string) {
   return Effect.gen(function* () {
     yield* checked(() => currentWriteIdentity(operation, "Operation ID"))
+    if ("predecessor" in input.selected && operation === input.selected.predecessor.operation_id)
+      return yield* Effect.fail(invalid("A successor requires a new operation ID."))
     const api = yield* Notion
     const readOnly: Notion["Service"] = {
       ...api,
@@ -571,7 +803,9 @@ export function inspectCurrentNativeEdit(input: PreparedNativeEdit, operation: s
     }
     return yield* Effect.gen(function* () {
       const registration = yield* inspectBootstrapSchema(input.selected.library)
-      yield* inspectScope(input, operation, "initial")
+      yield* "predecessor" in input.selected
+        ? inspectSuccessionScope(input, operation)
+        : inspectScope(input, operation, "initial")
       return { ...report(input, operation, "dry-run"), registration, remote_writes: 0 }
     }).pipe(Effect.provideService(Notion, readOnly))
   })
@@ -581,9 +815,11 @@ export function editCurrentNative(
   input: PreparedNativeEdit,
   operation: string,
   mode: "apply" | "resume",
+  supersede?: string,
 ) {
   return Effect.gen(function* () {
-    const { library, owner } = input.selected,
+    const requestedMode = yield* checked(() => editMode(input, operation, mode, supersede)),
+      { library, owner } = input.selected,
       registration = yield* inspectBootstrapSchema(library)
     const completed = (bodyPatches: number, metadataPatches: number) => ({
       ...report(input, operation, "ready"),
@@ -593,15 +829,19 @@ export function editCurrentNative(
     })
     const verify = () => inspectScope(input, operation, "complete")
     return yield* withCurrentOperation(library, {
-      intent: {
-        operation_id: operation,
-        owner: { kind: "skill", id: owner.skill_id },
-        input_sha256: input.input_sha256,
-      },
+      intent: currentIntent(input, operation),
       ownerPageId: owner.page_id,
-      mode,
-      assertScope: inspectScope(input, operation, mode === "apply" ? "initial" : "progress"),
-      afterActivate: inspectScope(input, operation, "progress"),
+      mode: requestedMode,
+      ...("predecessor" in input.selected
+        ? {
+            assertScope: inspectSuccessionScope(input, operation),
+            beforeMutation: inspectSuccessionScope(input, operation),
+            afterActivate: inspectSuccessionScope(input, operation, true),
+          }
+        : {
+            assertScope: inspectScope(input, operation, mode === "apply" ? "initial" : "progress"),
+            afterActivate: inspectScope(input, operation, "progress"),
+          }),
       run: (session) =>
         Effect.gen(function* () {
           let bodyPatches = 0
@@ -664,6 +904,7 @@ export function parseNativeEditArguments(args: readonly string[]) {
         "--input-sha256",
         "--operation",
         "--mode",
+        "--supersede",
         "--store",
         "--max-requests",
         "--max-bytes",
@@ -689,13 +930,20 @@ export function parseNativeEditArguments(args: readonly string[]) {
   const operation = values.get("--operation")
   if (!operation) throw invalid("Select a stable operation ID.")
   currentWriteIdentity(operation, "Operation ID")
+  const mode = Schema.decodeUnknownSync(Schema.Literals(["dry-run", "apply", "resume"]))(
+      values.get("--mode"),
+    ),
+    supersede = values.get("--supersede")
+  if (supersede !== undefined) {
+    currentWriteIdentity(supersede, "Predecessor operation ID")
+    if (mode !== "apply") throw invalid("Only apply accepts --supersede.")
+  }
   return {
     input: absolute("--input"),
     input_sha256: Schema.decodeUnknownSync(Hash)(values.get("--input-sha256")),
     operation,
-    mode: Schema.decodeUnknownSync(Schema.Literals(["dry-run", "apply", "resume"]))(
-      values.get("--mode"),
-    ),
+    mode,
+    supersede,
     store: absolute("--store"),
     limits: {
       requests: positive("--max-requests"),
@@ -724,7 +972,7 @@ const runtime = NotionTransport.pipe(
 async function main() {
   if (process.argv.includes("--help")) {
     process.stdout.write(
-      "node scripts/cutover-edit-current-native.ts --input ABS --input-sha256 SHA256 --operation ID --mode dry-run|apply|resume --store ABS --max-requests N --max-bytes N --timeout MS\nAH-513 only; delete with AH-517. One exact ready native owner, two existing files, empty relations. Only authored bodies, Description and main Content may change. No library marker, schema, Source or File creation. Resume requires identical input, operation and Store.\n",
+      "node scripts/cutover-edit-current-native.ts --input ABS --input-sha256 SHA256 --operation ID --mode dry-run|apply|resume [--supersede OLD] --store ABS --max-requests N --max-bytes N --timeout MS\nAH-513 only; delete with AH-517. One exact native owner, two existing files, empty relations. Apply with a frozen predecessor requires --supersede OLD. Only authored bodies, Description and main Content may change. No library marker, schema, Source or File creation. Resume requires identical input, operation and Store, without --supersede.\n",
     )
     return
   }
@@ -754,11 +1002,11 @@ async function main() {
           Effect.bind("request_metrics", () =>
             Effect.map(Notion, (api) => api.requestMetrics?.() ?? null),
           ),
-          Effect.provide(runtime),
+          Effect.provide(Layer.mergeAll(runtime, storeRuntime)),
           Effect.map((value) => JSON.stringify(value)),
         )
       : withCurrentInvocationBudget(
-          editCurrentNative(input, options.operation, options.mode),
+          editCurrentNative(input, options.operation, options.mode, options.supersede),
           options.limits,
         ).pipe(
           Effect.bind("request_metrics", () =>
