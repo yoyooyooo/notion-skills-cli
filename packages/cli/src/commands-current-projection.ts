@@ -1,4 +1,4 @@
-import { Crypto, Effect, Option } from "effect"
+import { Crypto, Effect, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { databaseId } from "../../core/src/catalog.ts"
 import { defineCommand, withConstraints } from "../../core/src/command-schema.ts"
@@ -178,6 +178,17 @@ export const currentProjectionCommand = defineCommand(
           const targets = selected.targets
           const results: Effect.Success<ReturnType<typeof projectCurrentSkill>>[] = []
           for (const target of targets) {
+            if (selected.selection !== undefined) {
+              const name =
+                selected.selection.skills.find((skill) => skill.page_id === target)?.name ?? target
+              const stdio = yield* Stdio.Stdio
+              yield* Stream.make(
+                "Projection " + (results.length + 1) + "/" + targets.length + ": " + name + "\n",
+              ).pipe(
+                Stream.run(stdio.stderr()),
+                Effect.mapError(() => fail("OUTPUT_FAILED", "Cannot report projection progress.")),
+              )
+            }
             const intent =
               operation ??
               (yield* (yield* Crypto.Crypto)
@@ -193,15 +204,11 @@ export const currentProjectionCommand = defineCommand(
               mode: prepared.mode,
               dry_run: options.dryRun,
             }).pipe(
-              Effect.mapError((error) =>
-                fail(error.code, error.message, {
+              Effect.mapError((error) => {
+                const next = currentProjectionRecoveryNext(error.details, target, options.entry)
+                return fail(error.code, error.message, {
                   ...property(error.details),
-                  ...(currentProjectionRecoveryNext(error.details, target, options.entry) ===
-                  undefined
-                    ? {}
-                    : {
-                        next: currentProjectionRecoveryNext(error.details, target, options.entry),
-                      }),
+                  ...(next === undefined ? {} : { next }),
                   projection_scope: prepared.scope.kind,
                   failed_target: target,
                   requested_operation_id: intent,
@@ -212,8 +219,8 @@ export const currentProjectionCommand = defineCommand(
                     counts: item.counts,
                   })),
                   remaining_targets: targets.slice(results.length + 1),
-                }),
-              ),
+                })
+              }),
             )
             results.push(result)
           }

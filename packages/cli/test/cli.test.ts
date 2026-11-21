@@ -193,7 +193,7 @@ test("current management and export schemas contain no historical compatibility 
     ],
     [
       ["ctl", "library"],
-      ["files", "import", "init", "inspect", "operation", "profile", "source"],
+      ["files", "import", "init", "inspect", "operation", "profile", "projection", "source"],
     ],
     [
       ["ctl", "library", "source"],

@@ -68,6 +68,14 @@ const logical = (index: CurrentSkillIndex) => ({
 function blockText(blocks: readonly Record<string, unknown>[]) {
   return blocks.map((block) => text(property(block[String(block.type)]).rich_text)).join("")
 }
+function reverseFileQuery(f: ReturnType<typeof currentWriteFixture>) {
+  f.rewrite((path, response) =>
+    path.startsWith(`v1/data_sources/${library.files.data_source_id}/query`) &&
+    Array.isArray(response.results)
+      ? { ...response, results: response.results.toReversed() }
+      : response,
+  )
+}
 
 test("dry run inspects all text and native bodies without a semantic write", async () => {
   const { f, written } = await seed()
@@ -91,6 +99,45 @@ test("dry run inspects all text and native bodies without a semantic write", asy
   expect(
     await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
   ).toBeUndefined()
+})
+
+test("query order cannot change the projection input hash or canonical Unicode path traversal", async () => {
+  const { f, written } = await seed({
+    ...defaults,
+    files: [
+      ...defaults.files,
+      { path: "references/😀.txt", bytes: testBytes("Supplementary code point.\n") },
+      { path: "references/\ue000.txt", bytes: testBytes("Basic multilingual code point.\n") },
+    ],
+  })
+  const first = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "order-first",
+      dry_run: true,
+    }),
+  )
+  reverseFileQuery(f)
+  const reordered = await f.run(
+    projectCurrentSkill(library, {
+      target: written.page_id,
+      operation_id: "order-second",
+      dry_run: true,
+    }),
+  )
+  expect(reordered.input_sha256).toBe(first.input_sha256)
+  expect(reordered.files).toEqual(first.files)
+  expect(first.files.map((file) => file.path)).toEqual([
+    "SKILL.md",
+    "config.unknown",
+    "drawing.svg",
+    "photo.png",
+    "references/guide.md",
+    "references/\ue000.txt",
+    "references/😀.txt",
+    "scripts/run.ts",
+  ])
+  expect(f.mutations()).toEqual([])
 })
 
 test("projects complete text to existing Skill and File pages, preserves authority and consumption identity, and repeats with zero writes", async () => {
@@ -139,9 +186,19 @@ test("projects complete text to existing Skill and File pages, preserves authori
   expect(repeat.status).toBe("unchanged")
   expect(repeat.counts.unchanged).toBe(4)
   expect(f.mutations()).toEqual([])
+  const supportingPages = new Set(before.files.map((file) => `v1/pages/${file.page_id}`))
+  expect(f.calls.filter((call) => call.method === "GET" && supportingPages.has(call.path))).toEqual(
+    [],
+  )
+  expect(
+    f.calls.filter(
+      (call) => call.method === "GET" && /^v1\/blocks\/[^/]+\/children(?:\?|$)/u.test(call.path),
+    ),
+  ).toHaveLength(4)
+  expect(f.calls).toHaveLength(12)
 })
 
-test("an accepted unknown append remains resumable without making consumption unready", async () => {
+test("an accepted unknown append resumes after File query order changes without making consumption unready", async () => {
   const { f, written } = await seed()
   f.failNext({ kind: "append", outcome: "accepted" })
   await expect(
@@ -158,6 +215,7 @@ test("an accepted unknown append remains resumable without making consumption un
   expect(pending?.intent).toMatchObject({ projection: true, operation_id: "unknown-append" })
   const firstBlocks = structuredClone(f.blocks.get(written.page_id))
   f.clearCalls()
+  reverseFileQuery(f)
   const resumed = await f.run(
     projectCurrentSkill(library, {
       target: written.page_id,

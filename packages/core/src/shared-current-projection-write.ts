@@ -88,7 +88,22 @@ const checked = <A>(read: () => A) =>
     catch: (error) =>
       error instanceof SkillsError ? error : invalid("The current projection input is invalid."),
   })
-const allFiles = (index: CurrentSkillIndex) => [index.main, ...index.files]
+function comparePaths(left: string, right: string): number {
+  let leftOffset = 0,
+    rightOffset = 0
+  for (;;) {
+    const a = left.codePointAt(leftOffset),
+      b = right.codePointAt(rightOffset)
+    if (a === undefined || b === undefined) return a === b ? 0 : a === undefined ? -1 : 1
+    if (a !== b) return a - b
+    leftOffset += a > 0xffff ? 2 : 1
+    rightOffset += b > 0xffff ? 2 : 1
+  }
+}
+const allFiles = (index: CurrentSkillIndex) => [
+  index.main,
+  ...index.files.toSorted((left, right) => comparePaths(left.path, right.path)),
+]
 const sourceSelections = (index: CurrentSkillIndex) =>
   allFiles(index).flatMap((file) =>
     file.content.kind === "source"
@@ -111,9 +126,7 @@ const directory = (index: CurrentSkillIndex) =>
   canonicalSharedJson({
     skill_id: index.skill_id,
     page_id: index.page_id,
-    files: allFiles(index)
-      .map(binding)
-      .sort((a, b) => a.path.localeCompare(b.path, "en")),
+    files: allFiles(index).map(binding),
   })
 
 function assertSameBinding(actual: CurrentFileBinding, expected: CurrentFileBinding) {
@@ -457,6 +470,25 @@ export function projectCurrentSkill(library: SharedLibrary, input: CurrentSkillP
             if (file.kind !== "text") {
               files.push(file.result)
               continue
+            }
+            // A completed body needs no per-block owner/File metadata checks.
+            // The exact pending page still enters apply so its action is reconciled.
+            if (!session.pendingActionKey?.startsWith(`projection:${file.binding.page_id}:`)) {
+              const observed = yield* inspectCurrentProjection({
+                pageId: file.binding.page_id,
+                plan: file.plan,
+              })
+              if (observed.matches) {
+                files.push({
+                  ...fileIdentity(file.binding),
+                  authority: file.binding.content.kind,
+                  bytes: file.bytes,
+                  representation: file.plan.representation,
+                  blocks: observed.blocks,
+                  status: "unchanged",
+                })
+                continue
+              }
             }
             const written = yield* applyCurrentProjection<Notion | Crypto.Crypto | Store>({
               pageId: file.binding.page_id,
