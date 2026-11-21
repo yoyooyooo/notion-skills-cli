@@ -2153,6 +2153,106 @@ function applyPreparedCurrentSkillWrite(
           })
       }
     }
+    const verifyCurrentDirectory = (
+      final: CurrentSkillIndex,
+      raw: unknown,
+      pages: ReadonlyMap<string, string>,
+      operationId: string,
+    ) =>
+      Effect.gen(function* () {
+        const verdict = yield* checked(() =>
+          assertCurrentDirectory(final, raw, pages, operationId),
+        ).pipe(Effect.result)
+        if (verdict._tag === "Success") return
+        if (
+          verdict.failure.message !==
+            "The current owner or complete directory differs from the intended tree." &&
+          verdict.failure.message !== "The current File locator differs from the verified tree."
+        )
+          return yield* Effect.fail(verdict.failure)
+        const wantedFields = fieldsForSkill(false)
+        const actualFields = Object.entries(property(property(raw).properties))
+        const fields = yield* Effect.forEach(Object.entries(wantedFields), ([id, wanted]) =>
+          Effect.gen(function* () {
+            const matches = actualFields.flatMap(([key, value]) =>
+              key === id || property(value).id === id ? [value] : [],
+            )
+            const checkedField = yield* checked(() => fieldsMatch(raw, { [id]: wanted })).pipe(
+              Effect.result,
+            )
+            return {
+              property_id: id,
+              matches: checkedField._tag === "Success" ? checkedField.success : false,
+              complete: matches.length === 1 && property(matches[0]).has_more !== true,
+              expected_sha256: yield* sha256(canonicalSharedJson(wanted)),
+              actual_sha256: yield* sha256(canonicalSharedJson(matches)),
+            }
+          }),
+        )
+        const expected = yield* Effect.forEach(plan.files, (file) =>
+          Effect.gen(function* () {
+            return {
+              path: file.path,
+              page_id: pages.get(file.path) ?? null,
+              file_id: resolved.find((item) => item.input.path === file.path)?.file_id ?? null,
+              content_sha256: yield* sha256(canonicalSharedJson(file.content)),
+            }
+          }),
+        )
+        const actual = yield* Effect.forEach([final.main, ...final.files], (file) =>
+          Effect.gen(function* () {
+            return {
+              path: file.path,
+              page_id: file.page_id,
+              file_id: file.file_id,
+              content_sha256: yield* sha256(canonicalSharedJson(file.content)),
+            }
+          }),
+        )
+        const sort = (
+          bindings: readonly {
+            readonly path: string
+            readonly page_id: string | null
+            readonly file_id: string | null
+            readonly content_sha256: string
+          }[],
+        ) =>
+          [...bindings].sort((a, b) => canonicalSharedJson(a).localeCompare(canonicalSharedJson(b)))
+        const intended = sort(expected),
+          observed = sort(actual)
+        const expectedRows = new Set(intended.map(canonicalSharedJson)),
+          actualRows = new Set(observed.map(canonicalSharedJson))
+        const missing = intended.filter((row) => !actualRows.has(canonicalSharedJson(row))),
+          unexpected = observed.filter((row) => !expectedRows.has(canonicalSharedJson(row)))
+        return yield* Effect.fail(
+          invalid(verdict.failure.message, {
+            ...property(verdict.failure.details),
+            verification: {
+              stage: "complete-current-directory",
+              expected: {
+                skill_id: plan.skill_id,
+                main_file_id: main.file_id,
+                operation_id: operationId,
+                files: intended.length,
+                directory_sha256: yield* sha256(canonicalSharedJson(intended)),
+              },
+              actual: {
+                skill_id: final.skill_id,
+                main_file_id: final.main.file_id,
+                state: final.state,
+                files: observed.length,
+                directory_sha256: yield* sha256(canonicalSharedJson(observed)),
+              },
+              properties: fields.filter((field) => !field.matches),
+              directory: {
+                missing: missing.slice(0, 50),
+                unexpected: unexpected.slice(0, 50),
+                omitted: Math.max(0, missing.length - 50) + Math.max(0, unexpected.length - 50),
+              },
+            },
+          }),
+        )
+      })
     let finalPages = new Map<string, string>()
     const operation = {
       intent: {
@@ -2485,9 +2585,7 @@ function applyPreparedCurrentSkillWrite(
               raw,
               [...latestFiles.values()].map((row) => row.file),
             )
-            yield* checked(() =>
-              assertCurrentDirectory(latest, raw, filePages, session.operation_id),
-            )
+            yield* verifyCurrentDirectory(latest, raw, filePages, session.operation_id)
             if (input.authorization !== undefined) yield* input.authorization.assertCurrent
           })
           const resources = new Map(
@@ -2978,7 +3076,7 @@ function applyPreparedCurrentSkillWrite(
             raw,
             [...files.values()].map((row) => row.file),
           )
-          yield* checked(() => assertCurrentDirectory(final, raw, finalPages, session.operation_id))
+          yield* verifyCurrentDirectory(final, raw, finalPages, session.operation_id)
           yield* verifyCurrentRelations(library, relations, value.page_id, raw)
           if (input.authorization !== undefined || isPatch(plan)) {
             yield* validatePreservedReferences
