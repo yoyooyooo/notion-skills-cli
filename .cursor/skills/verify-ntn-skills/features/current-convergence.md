@@ -180,7 +180,7 @@ AH-1197 配对当前 CLI/SDK/Broker 并核两机 next 的实际加载字节；AH
 
 原生管理新增验收使用实际 `pi -ne` 与 group/worker，沿
 [skill-maintenance](skill-maintenance.md#原生日常管理与实际-pi) 跑自然作者任务。
-主 builtin 应发现并转入 maintain 的四动作；不能靠提示里塞命令、手填机器字段或
+已连接库应发现并普通读取 maintain 后选择四动作；不能靠提示里塞命令、手填机器字段或
 外部 Agent 事后补写取得通过。独立安装加载字节和实际 Notion/Pi 回执都须留存。
 
 AH-1198 执行 T01–T23 中必须真实运行的代表旅程：普通固定任务、主动最新、查看不采用、连续故障续聊、开关变化、本地充分负例与两机后续更新。AH-1196 负责自然任务和工具必要性；受控 provider 不充自然模型。无需逐 Skill 重跑全部矩阵。

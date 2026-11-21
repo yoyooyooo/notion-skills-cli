@@ -16,6 +16,16 @@ binary presentation and unrelated cleanup.
 
 ## One current owner for each fact
 
+The CLI's bundled guidance may also be projected into a connected Notion library.
+Those projected Skills use ordinary scoped discovery, exact-ref reads and
+same-selection reference reads. Package IDs and Notion page identities remain
+distinct. Use package guidance when no library is connected or when offline/package
+inspection is explicit; failed or partial discovery does not select that fallback.
+Updating the npm package does not advance the Notion Source or its reading pages.
+Source refresh preserves human Name/Description choices. Compare projected files
+and discovery descriptions before declaring a paired guidance update complete.
+An existing task keeps its loaded selection until explicitly changed.
+
 | Table | Current responsibility | Authoritative writer | Rebuildable display |
 | --- | --- | --- | --- |
 | Skills | Stable Skill/Router/Prompt identity, management metadata, enablement, default discovery, main-file binding, Members and Requires | Human metadata edits and the current management kernel; identity and relationship changes use that kernel | Source-backed main-body rendering and supporting-file navigation |

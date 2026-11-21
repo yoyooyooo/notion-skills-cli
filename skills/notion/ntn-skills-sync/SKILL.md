@@ -12,7 +12,15 @@ Requires ntn-skills, Node.js 22.22.3+ within 22.x or 24.20.0+, and exact library
 
 Use the task's executable, exact library and stable identities. Ordinary
 consumption never updates Source content. Reading a script does not authorize
-executing it. Complete local imports belong to notion/ntn-skills-maintain.
+executing it. Complete local imports belong to ntn-skills-maintain.
+
+In a connected library, discover that workflow within the same library and read
+its exact returned ref. Read this Skill's references with `ntn-skills read
+RELATIVE_PATH --from CONTAINING_FILE_REF`. Keep package-selected references in the
+same package with `ctl builtin read notion/ntn-skills-sync --path RELATIVE_PATH`.
+An npm update does not refresh a Notion Source. Refresh its selected Git ref and
+generate reading pages explicitly when that update is requested; preserve active
+task selections and human discovery metadata.
 
 ## Source declarations
 
@@ -58,7 +66,7 @@ Use [Trash recovery](references/synchronization.md#restore-a-trashed-skill) for 
 limits and repeat the same command after its own interrupted stages.
 For daily batches, combine Source 日用 (all real members), Skill 日用 and Default
 Context without changing Default Context to match the daily set. Installed/App
-Skills use repeatable complete imports through notion/ntn-skills-maintain; genuine
+Skills use repeatable complete imports through ntn-skills-maintain; genuine
 Notion originals retain native authority and use complete exports as recovery input.
 
 ## File authority and lifecycle

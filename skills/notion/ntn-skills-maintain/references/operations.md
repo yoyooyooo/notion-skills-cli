@@ -50,7 +50,7 @@ Repeated --file PATH=LOCAL and --remove-file PATH declare file changes. Omitted
 files keep their identities, authority and current Notion bodies, including
 human edits. Do not export and reimport a whole tree to change one paragraph.
 Keep authored local links valid when removing a referenced path. Source-owned
-changes require explicit Source management; editing a generated page is not takeover.
+file changes require explicit Source management; editing a generated page is not takeover.
 
 Use --name and --description for discovery metadata, and --enabled true|false or
 --default-context true|false for those author policies. These values do not rewrite
@@ -58,6 +58,11 @@ frontmatter. Repeated --members TARGET or --requires TARGET replaces the selecte
 complete relation set. A lone empty string clears it; omission preserves it.
 Targets must satisfy the current same-library relation rules. Other properties,
 including user 日用 and 期望删除 checkboxes, remain unchanged.
+
+A Skill with current Source contributions rejects this command even for
+metadata-only changes. Source refresh preserves existing Name and Description.
+Change those author fields directly in Notion when explicitly requested;
+do not edit Content ownership or internal operation fields to bypass the guard.
 
 Native authoring, explicit --native import and --as native takeover share one
 Markdown rule. They accept supported UTF-8 Markdown with normal LF/CRLF and a
@@ -148,7 +153,7 @@ Inspect removals and authority changes before applying an authorized complete
 input. A target with any Source main or supporting file returns
 CURRENT_SOURCE_MANAGEMENT_REQUIRED in dry-run and apply because import selects
 resource or native authority. An unchanged export is also refused. Use current
-Source apply/refresh for contributions or explicit takeover through notion/ntn-skills-sync;
+Source apply/refresh for contributions or explicit takeover through ntn-skills-sync;
 omitting or reidentifying files is not a takeover route. Ordinary directory/ZIP input requires root SKILL.md. Portable v2
 uses the kind's canonical entrypoint. Relations contain same-library unpinned stable Skill
 refs; omitted fields preserve, [] clears, and a list replaces that entire field.
@@ -353,7 +358,7 @@ needs complete authorized ownership, reverse relations and all pages of inventor
 Transfer uniquely current bytes before retiring their old carrier.
 
 Source declaration, file authority and lifecycle use the coordinator through
-notion/ntn-skills-sync. Source remove proves no current Content or Origin references
+ntn-skills-sync. Source remove proves no current Content or Origin references
 inside the selected library before retiring its own resources and page. This
 bounded reverse check does not establish global orphan or backlink cleanup.
 Cross-owner relationship repair, full census and production data conversion are

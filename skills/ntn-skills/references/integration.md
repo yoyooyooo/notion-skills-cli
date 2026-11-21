@@ -19,9 +19,17 @@ Inspection does not activate a Skill. Use selects a root and complete Requires
 closure. Members remain lazy. A prepared response or enqueued payload does not
 prove actual model delivery; truncated or failed content is not complete.
 
-Context Broker can expose `$ntn-skills@builtin`,
-`$ntn-skills-maintain@builtin` and `$ntn-skills-sync@builtin`. Package identity
-is distinct from same-name remote content. Builtin reads need no Notion copy.
+For maintenance in a connected library, discover `ntn-skills-maintain` through
+the host's Notion directory or scoped CLI `list`, then read the returned ref.
+Use `ntn-skills-sync` the same way for Source management. If the startup directory
+is pending or its View omits the target, query the connected library explicitly.
+Incomplete discovery is an error, not permission to substitute a package copy.
+
+Without a connected library, or for explicit offline/package inspection, Context
+Broker can expose `$ntn-skills@builtin`, `$ntn-skills-maintain@builtin` and
+`$ntn-skills-sync@builtin`. Package identity is distinct from remote content.
+Builtin reads need no Notion copy. Keep references with the selected owner:
+ordinary `read --from` for Notion, `ctl builtin read --path` for package content.
 A native `Read skill://...` route exists only when the host registers it;
 otherwise the shell CLI remains available.
 
@@ -79,10 +87,12 @@ metadata.
 | Symptom | Check and action |
 | --- | --- |
 | Expected workflow absent | Inspect coverage and failed sources; broaden query or select the exact known database. Search absence is not workspace absence. |
+| Bare-name read reports CATALOG_INCOMPLETE with no failed sources | Global Notion Search is still non-exhaustive. Use an explicit database or exact returned ref; a machine binding does not make global name lookup unique. |
 | Same name matches several pages | Select the intended database or exact returned ref; preserve each identity. |
 | Current schema required | Keep the precise error and affected entry. Current descriptor conversion is a management task; another reader must not mask it. |
 | Current operation pending | Inspect its current state and operation ID with library files; do not mark ready by hand. |
-| Content appears old | Distinguish host metadata, a current bounded observation and an active local selection. Refresh the current target when current content is needed. |
+| Content appears old | Distinguish host metadata, a bounded observation, an active selection and the Source's selected revision. Ordinary `read --refresh` validates the current descriptor; it does not advance a Git Source or install a newer package. |
+| Projected maintenance guidance differs from the installed package | Compare main and supporting bytes plus discovery Description. Refresh the authorized Source and its reading projection explicitly; preserve existing task selections and human metadata. |
 | Selected file is missing | Inspect the selection's directory and current exact descriptor. Re-select when the old local bytes are unavailable; do not substitute a newer file silently. |
 | Native tool rejects skill URI | Check the host adapter; use the supplied CLI until its native route exists. |
 | Builtin missing | Check the paired Broker/package identity and exact @builtin token; no remote publication is required. |
