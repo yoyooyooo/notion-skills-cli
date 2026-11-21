@@ -10,7 +10,11 @@ import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
 import { RequestBudget } from "../src/request-budget.ts"
 import { withCurrentInvocationBudget } from "../src/shared-current-invocation.ts"
-import { queryCurrentSkillIndex, type CurrentSkillIndex } from "../src/shared-current-index.ts"
+import {
+  queryCurrentFilesForSkills,
+  queryCurrentSkillIndex,
+  type CurrentSkillIndex,
+} from "../src/shared-current-index.ts"
 import { resolveCurrentSkillConsumption } from "../src/shared-current-consumption.ts"
 import {
   readCurrentOperationIntent,
@@ -1054,6 +1058,20 @@ test("restore rebuilds sparse reading bodies for all 410 consumed files while pr
   f.blocks.set(written.page_id, [])
   f.blocks.set(guide.page_id, [])
   owner.in_trash = true
+  // The support page still exists, but Notion hides this owner relation until
+  // restoration. The temporary empty query is not a complete consumption tree.
+  expect(f.pages.get(guide.page_id)!.in_trash).toBe(false)
+  expect(
+    (
+      await f.run(
+        queryCurrentFilesForSkills({
+          dataSourceId: library.files.data_source_id,
+          skillPageIds: [written.page_id],
+          propertyIds: library.files.property_ids,
+        }),
+      )
+    ).get(written.page_id),
+  ).toEqual([])
   f.clearCalls()
   const restored = await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
   expect(restored).toMatchObject({
@@ -1155,6 +1173,8 @@ test.each(["accepted", "absent"] as const)(
   "restore reconciles a %s untrash ACK through the same command",
   async (outcome) => {
     const { f, written } = await seedSourceReading({ rows: false })
+    await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+    f.blocks.set(written.page_id, [])
     f.pages.get(written.page_id)!.in_trash = true
     f.failNext({ kind: "skill-restore", outcome })
     await expect(
@@ -1191,6 +1211,8 @@ test.each([
   { kind: "operation-retirement" as const, outcome: "accepted" as const },
 ])("restore finishes an interrupted $kind with $outcome ACK", async (fault) => {
   const { f, written } = await seedSourceReading({ rows: false })
+  await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+  f.blocks.set(written.page_id, [])
   f.pages.get(written.page_id)!.in_trash = true
   f.failNext(fault)
   await expect(
@@ -1210,6 +1232,8 @@ test.each([
 
 test("restore continues its normal projection after an accepted append without repeating the body", async () => {
   const { f, written } = await seedSourceReading({ rows: false })
+  await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+  f.blocks.set(written.page_id, [])
   f.pages.get(written.page_id)!.in_trash = true
   f.failNext({ kind: "append", outcome: "accepted" })
   await expect(
@@ -1301,10 +1325,10 @@ test.each(["missing", "foreign", "duplicate", "unready-source", "pending-content
   },
 )
 
-test.each(["policy", "identity"] as const)(
+test.each(["policy", "identity", "main-content", "source-contribution"] as const)(
   "restore freezes its original %s before retry",
   async (change) => {
-    const { f, written } = await seedSourceReading({ rows: false })
+    const { f, written, sourcePage } = await seedSourceReading({ rows: false })
     const policy = { include: ["references/**/*.md"], exclude: ["**/fixtures/**"] }
     f.pages.get(written.page_id)!.in_trash = true
     f.failNext({ kind: "skill-restore", outcome: "absent" })
@@ -1320,6 +1344,32 @@ test.each(["policy", "identity"] as const)(
           library.skills.property_ids["Main File ID"]!
         ],
       ).rich_text = sourceRich("changed-main-file")
+    else if (change === "main-content") {
+      const field = property(
+        property(f.pages.get(written.page_id)!.properties)[library.skills.property_ids.Content!],
+      )
+      field.rich_text = sourceRich(
+        JSON.stringify({
+          ...property(JSON.parse(text(field.rich_text))),
+          sha256: "f".repeat(64),
+        }),
+      )
+    } else if (change === "source-contribution") {
+      const field = property(
+        property(f.pages.get(sourcePage)!.properties)[library.sources.property_ids.Contributions!],
+      )
+      field.rich_text = sourceRich(
+        JSON.stringify([
+          {
+            skill_id: defaults.skill_id,
+            member_key: "upstream",
+            mount_path: "",
+            mapping: {},
+            exclude: ["scripts/run.ts"],
+          },
+        ]),
+      )
+    }
     f.clearCalls()
     await expect(
       f.run(

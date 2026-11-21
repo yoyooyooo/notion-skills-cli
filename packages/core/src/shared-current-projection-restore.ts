@@ -2,8 +2,8 @@ import { Crypto, Effect } from "effect"
 import { fail, property, SkillsError } from "./model.ts"
 import { Notion } from "./notion.ts"
 import { pageId } from "./ref.ts"
-import { resolveCurrentSkillConsumption } from "./shared-current-consumption.ts"
-import { queryCurrentSkillIndex, type CurrentFileBinding } from "./shared-current-index.ts"
+import { resolveCurrentSourceConsumption } from "./shared-current-consumption.ts"
+import { readCurrentSkillMetadata, type CurrentFileBinding } from "./shared-current-index.ts"
 import { withCurrentInvocationBudget } from "./shared-current-invocation.ts"
 import {
   currentOperationFailure,
@@ -13,7 +13,7 @@ import {
 } from "./shared-current-operation.ts"
 import { currentProjectionPolicy } from "./shared-current-projection-policy.ts"
 import { projectCurrentSkill } from "./shared-current-projection-write.ts"
-import { queryCurrentSourceTargets } from "./shared-current-source-management.ts"
+import { queryCurrentSourceTargetPages } from "./shared-current-source-management.ts"
 import type { SharedLibrary } from "./shared-library-model.ts"
 import { canonicalSharedJson } from "./shared-records.ts"
 import type { SharedSourcePlanOptions } from "./shared-source-plan.ts"
@@ -56,29 +56,29 @@ export function restoreCurrentSkillProjection(
       Effect.gen(function* () {
         const raw = property(yield* api.request(`v1/pages/${target}`))
         const trashed = raw.in_trash === true || raw.archived === true || raw.is_archived === true
-        // This normalization admits metadata for this explicit restore only. The
-        // ordinary index and all body readers still require the real live page.
-        const index = yield* queryCurrentSkillIndex(library, target, {
+        // This normalization admits only owner metadata, never a Files inventory.
+        // Ordinary index and body readers still require the real live page.
+        const owner = yield* readCurrentSkillMetadata(library, target, {
           ...raw,
           in_trash: false,
           archived: false,
           is_archived: false,
         })
-        if (index.state.state !== "ready")
+        if (owner.state.state !== "ready")
           return yield* Effect.fail(invalid("Restore requires a ready Skill without content work."))
-        const live = (yield* queryCurrentSourceTargets(library, {
-          skillIds: [index.skill_id],
-        })).get(index.skill_id)
+        const live = (yield* queryCurrentSourceTargetPages(library, {
+          skillIds: [owner.skill_id],
+        })).get(owner.skill_id)
         if ((live !== undefined && live.page_id !== target) || (!trashed && live === undefined))
           return yield* Effect.fail(
             invalid("The stable Skill identity belongs to a different or unavailable live page."),
           )
-        return { index, trashed }
+        return { owner, trashed }
       })
     const initial = yield* read()
     const pending = yield* readCurrentOperationIntent(library, {
       kind: "skill",
-      id: initial.index.skill_id,
+      id: initial.owner.skill_id,
     })
     if (
       pending !== undefined &&
@@ -103,32 +103,30 @@ export function restoreCurrentSkillProjection(
       status: "unchanged",
     }
     if (initial.trashed || frozen !== undefined) {
-      const fingerprint = (index: typeof initial.index) =>
+      const fingerprint = (owner: typeof initial.owner) =>
         Effect.gen(function* () {
-          // Source readiness and its complete current contribution are checked
-          // before untrashing. Native/resource bodies are read after restoration.
-          const consumption = yield* resolveCurrentSkillConsumption(library, index, {
+          // Files relations to a trashed owner are not visible in Notion. Freeze
+          // the independently available Source contribution and owner only;
+          // normal projection checks the complete live tree after restoration.
+          const consumption = yield* resolveCurrentSourceConsumption(library, owner.skill_id, {
             sourceOptions: input.sourceOptions,
           })
           if (
-            index.main.content.kind === "source" &&
+            owner.main.content.kind === "source" &&
             canonicalSharedJson(
-              consumption.files.find((file) => file.path === index.main.path)?.content,
-            ) !== canonicalSharedJson(index.main.content)
+              consumption.files.find((file) => file.path === owner.main.path)?.content,
+            ) !== canonicalSharedJson(owner.main.content)
           )
             return yield* Effect.fail(invalid("The main no longer matches its current Source."))
           return yield* sha256(
             canonicalSharedJson({
               purpose: "restore_current_skill",
-              version: 1,
-              skill_id: index.skill_id,
+              version: 2,
+              skill_id: owner.skill_id,
               page_id: target,
-              kind: index.kind,
-              main: binding(index.main),
-              files: [...index.files]
-                .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-                .map(binding),
-              consumption: {
+              kind: owner.kind,
+              main: binding(owner.main),
+              source_consumption: {
                 files: consumption.files,
                 source_fingerprint: consumption.source_fingerprint,
               },
@@ -136,7 +134,7 @@ export function restoreCurrentSkillProjection(
             }),
           )
         })
-      const input_sha256 = yield* fingerprint(initial.index).pipe(
+      const input_sha256 = yield* fingerprint(initial.owner).pipe(
         Effect.mapError((error) =>
           frozen === undefined ? error : currentOperationFailure(error, frozen, null, target),
         ),
@@ -163,12 +161,12 @@ export function restoreCurrentSkillProjection(
       const intent: CurrentSkillRestoreIntent = {
         operation_id,
         input_sha256,
-        owner: { kind: "skill", id: initial.index.skill_id },
+        owner: { kind: "skill", id: initial.owner.skill_id },
         restore: { page_id: target, policy },
       }
       const assertCurrent = Effect.gen(function* () {
         const current = yield* read()
-        if ((yield* fingerprint(current.index)) !== input_sha256)
+        if ((yield* fingerprint(current.owner)) !== input_sha256)
           return yield* Effect.fail(invalid("The current Skill changed during restoration."))
         return current
       })

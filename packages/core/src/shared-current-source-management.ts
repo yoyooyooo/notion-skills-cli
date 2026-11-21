@@ -284,15 +284,16 @@ export function currentSourceManagementMatches(
   )
 }
 
-/** One complete metadata inventory for the declared and reverse-linked scope.
- * Files are fetched in the existing batched owner query, never one body per row. */
-export function queryCurrentSourceTargets(
+type CurrentSourceTargetsInput = {
+  readonly skillIds: readonly string[]
+  readonly sourcePageId?: string
+  readonly sourceId?: string
+}
+
+/** Complete live owner candidates without claiming a supporting Files inventory. */
+export function queryCurrentSourceTargetPages(
   library: SharedLibrary,
-  input: {
-    readonly skillIds: readonly string[]
-    readonly sourcePageId?: string
-    readonly sourceId?: string
-  },
+  input: CurrentSourceTargetsInput,
 ) {
   return Effect.gen(function* () {
     const ids = [...new Set(input.skillIds)].sort(),
@@ -409,18 +410,34 @@ export function queryCurrentSourceTargets(
       bySkill.delete(skill_id)
       byPage.delete(page)
     }
-    if (byPage.size === 0) return new Map<string, CurrentSkillIndex>()
+    return new Map(
+      [...bySkill].map(
+        ([skill_id, page_id]) => [skill_id, { page_id, page: byPage.get(page_id) }] as const,
+      ),
+    )
+  })
+}
+
+/** One complete metadata inventory for the declared and reverse-linked scope.
+ * Files are fetched in the existing batched owner query, never one body per row. */
+export function queryCurrentSourceTargets(
+  library: SharedLibrary,
+  input: CurrentSourceTargetsInput,
+) {
+  return Effect.gen(function* () {
+    const pages = yield* queryCurrentSourceTargetPages(library, input)
+    if (pages.size === 0) return new Map<string, CurrentSkillIndex>()
     const files = yield* queryCurrentFilesForSkills({
       dataSourceId: library.files.data_source_id,
-      skillPageIds: [...byPage.keys()],
+      skillPageIds: [...pages.values()].map((owner) => owner.page_id),
       propertyIds: library.files.property_ids,
     })
     const targets = new Map<string, CurrentSkillIndex>()
-    for (const [skill_id, page] of bySkill) {
-      const rows = files.get(page)
+    for (const [skill_id, { page_id, page }] of pages) {
+      const rows = files.get(page_id)
       if (rows === undefined)
         return yield* Effect.fail(invalid("An affected Files scope is missing."))
-      const index = yield* queryCurrentSkillIndex(library, page, byPage.get(page), rows)
+      const index = yield* queryCurrentSkillIndex(library, page_id, page, rows)
       targets.set(skill_id, index)
     }
     return targets

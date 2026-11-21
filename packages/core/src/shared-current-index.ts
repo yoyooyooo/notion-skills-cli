@@ -276,12 +276,11 @@ export function queryCurrentFilesForSkills(input: QueryCurrentFilesInput) {
   })
 }
 
-/** Main content lives on Skills. Its descriptor uses exactly the supporting-file union. */
-export function queryCurrentSkillIndex(
+/** The exact owner and main descriptor only; this makes no Files inventory claim. */
+export function readCurrentSkillMetadata(
   library: SharedLibrary,
   target: string,
   suppliedPage?: unknown,
-  suppliedFiles?: readonly CurrentFileBinding[],
 ) {
   return Effect.gen(function* () {
     const selected = yield* checked(() => {
@@ -333,6 +332,20 @@ export function queryCurrentSkillIndex(
         },
       }
     })
+    return metadata satisfies Omit<CurrentSkillIndex, "files">
+  })
+}
+
+/** Main content lives on Skills. Its descriptor uses exactly the supporting-file union. */
+export function queryCurrentSkillIndex(
+  library: SharedLibrary,
+  target: string,
+  suppliedPage?: unknown,
+  suppliedFiles?: readonly CurrentFileBinding[],
+) {
+  return Effect.gen(function* () {
+    const metadata = yield* readCurrentSkillMetadata(library, target, suppliedPage)
+    const selected = metadata.page_id
     let files = suppliedFiles
     if (files === undefined) {
       files = (yield* queryCurrentFilesForSkills({

@@ -225,12 +225,14 @@ ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
 ```
 
 Select the original exact page ID or Notion URL. The command first validates its
-library, stable identity, ready state, complete file bindings and current Source
-selection. A finite restore intent changes only that owner's `in_trash` value to
-`false` and verifies the result. It retires before the existing automatic
-projection reconciles selected Files and complete generated bodies. The page,
-Main File ID, existing File identities, human properties and native/resource
-authority remain intact. Enabled, Default Context, 日用 and 期望删除 remain unchanged.
+library, stable identity, ready state, main binding and complete current Source
+contributions. Files relations to a trashed owner may be hidden. A finite restore
+intent changes only that owner's `in_trash` value to `false` and verifies the
+result. It retires before the existing automatic projection validates the complete
+Files inventory and native/resource content, then reconciles selected Files and
+complete generated bodies. The page, Main File ID, existing File identities,
+human properties and native/resource authority remain intact. Enabled, Default
+Context, 日用 and 期望删除 remain unchanged.
 Native author bodies are verified without replacement.
 
 Use the same `--include`/`--exclude` filters when recovering a custom reading

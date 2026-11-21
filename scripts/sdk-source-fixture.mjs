@@ -220,8 +220,15 @@ export async function startSdkSourceFixture(sample, ledgerPath, options = {}) {
       Object.values(row.properties).find((value) => value.id === filter.property)
     if (!field) return false
     if (filter.relation?.is_empty === true) return field.relation?.length === 0
-    if (filter.relation)
+    if (filter.relation) {
+      // Notion hides a relation to a trashed target even while this row remains live.
+      const target = [...currentPages(), ...notion.sources].find(
+        (item) => item.id === filter.relation.contains,
+      )
+      if (target?.in_trash === true || target?.archived === true || target?.is_archived === true)
+        return false
       return field.relation?.some((item) => item.id === filter.relation.contains) ?? false
+    }
     if (filter.select) return field.select?.name === filter.select.equals
     if (filter.rich_text) {
       const value = richText(field.rich_text)

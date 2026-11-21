@@ -540,11 +540,13 @@ filters and budget limits. It rejects `--daily`, `--dry-run`, `--operation`,
 `--resume` and `--cancel` before remote work.
 
 The first finite intent permits only the exact owner's `in_trash: false` change.
-It verifies the same physical page, stable Skill identity, ready state, complete
-directory and current Source selection, then retires before the normal projection
-starts. It preserves human properties, including Enabled, Default Context, 日用
-and 期望删除, and preserves native bodies and resource authority. The projection
-then reconciles reading rows, renders missing or stale text and reads it back.
+It verifies the same physical page, stable Skill identity, ready state, main
+binding and complete current Source contributions, then retires before the normal
+projection starts. Files relations to a trashed owner may be hidden; the live
+projection validates the complete Files inventory and native/resource content.
+Human properties, including Enabled, Default Context, 日用 and 期望删除, native
+bodies and resource authority remain intact. The projection reconciles reading
+rows, renders missing or stale text and reads it back.
 Both stages share one invocation budget; neither advances Source configuration or
 discovers a new Git HEAD.
 

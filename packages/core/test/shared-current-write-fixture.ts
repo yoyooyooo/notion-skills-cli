@@ -133,10 +133,10 @@ export type CurrentWriteCall = {
   readonly body: unknown
 }
 
-function matches(row: unknown, input: unknown): boolean {
+function matches(row: unknown, input: unknown, pages: ReadonlyMap<string, Row>): boolean {
   const filter = property(input)
-  if (Array.isArray(filter.or)) return filter.or.some((item) => matches(row, item))
-  if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item))
+  if (Array.isArray(filter.or)) return filter.or.some((item) => matches(row, item, pages))
+  if (Array.isArray(filter.and)) return filter.and.every((item) => matches(row, item, pages))
   if (Object.keys(filter).length === 0) return true
   const raw = property(property(property(row).properties)[String(filter.property)])
   if (filter.rich_text !== undefined) {
@@ -154,7 +154,12 @@ function matches(row: unknown, input: unknown): boolean {
     if (!Array.isArray(raw.relation)) return false
     return selector.is_empty === true
       ? raw.relation.length === 0
-      : raw.relation.some((item) => property(item).id === selector.contains)
+      : raw.relation.some(
+          (item) =>
+            property(item).id === selector.contains &&
+            // Notion does not match a relation whose target is in Trash.
+            pages.get(String(property(item).id))?.in_trash !== true,
+        )
   }
   if (filter.checkbox !== undefined) return raw.checkbox === property(filter.checkbox).equals
   throw new Error("Unexpected current query filter: " + JSON.stringify(filter))
@@ -387,7 +392,7 @@ export function currentWriteFixture(parent: string) {
                 (row) =>
                   property(row.parent).data_source_id === query[1] &&
                   row.in_trash !== true &&
-                  matches(row, input.filter),
+                  matches(row, input.filter, pages),
               ),
               input.start_cursor,
             ),
