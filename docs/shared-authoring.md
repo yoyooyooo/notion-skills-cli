@@ -146,8 +146,12 @@ ntn-skills ctl library projection --daily --entry LIBRARY_ENTRY
 Open the resulting Skill page and follow Supporting Files. The main remains on
 Skills. Source reading pages default to `**/*.md`, excluding test, fixture,
 dependency and generated directories. Repeat `--include GLOB` or `--exclude GLOB`
-to replace the respective default patterns; the core API also accepts an explicit
-empty array. Test documents under test/fixture directories are excluded too.
+to replace the respective default patterns. Pass `--include ''` for an explicit
+empty include array: keep the mandatory main and all Notion-owned files. Pass
+`--exclude ''` for no exclusion patterns. Do not mix an empty value with other
+patterns for the same flag. Omission keeps defaults; the core API accepts the
+equivalent empty arrays. By default, test documents under test/fixture directories
+are excluded too.
 
 The command creates missing selected Files, updates stale Source descriptors and
 archives excluded or upstream-removed Source rows before rendering complete text.
@@ -210,6 +214,56 @@ The whole invocation shares 1000 HTTP attempts, 512 MiB payload bytes and
 body writes and readback. `--max-requests`, `--max-bytes` and `--timeout` accept
 positive explicit limits; nested Skills cannot reset them. Content sync and
 projection are explicit separate commands. Ordinary consumption stays read-only.
+
+### Restore a trashed Skill
+
+After a complete Skill has been moved to Trash, restore its original page and
+complete its reading projection with one command:
+
+```bash
+ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+```
+
+Select the original exact page ID or Notion URL. The command first validates its
+library, stable identity, ready state, complete file bindings and current Source
+selection. A finite restore intent changes only that owner's `in_trash` value to
+`false` and verifies the result. It retires before the existing automatic
+projection reconciles selected Files and complete generated bodies. The page,
+Main File ID, existing File identities, human properties and native/resource
+authority remain intact. Enabled, Default Context, 日用 and 期望删除 remain unchanged.
+Native author bodies are verified without replacement.
+
+Use the same `--include`/`--exclude` filters when recovering a custom reading
+selection. The command accepts `--max-requests`, `--max-bytes` and `--timeout`;
+both stages use one shared budget. It does not combine with `--daily`, `--dry-run`,
+`--operation`, `--resume` or `--cancel`. It uses the currently selected Source
+revision, without discovery or refresh of the upstream HEAD.
+
+If its restore PATCH, owner binding or intent retirement is interrupted, repeat
+the same command. The returned restore recovery command keeps `--restore`, the
+frozen policy and requested limits. If the subsequent projection is interrupted,
+the same command continues its matching automatic projection. Unknown CREATE or
+append outcomes still require an observable matching result; absence never
+authorizes duplication. Preserve the original state and credential scope.
+
+The successful CLI envelope reports `scope: "skill"`, `status: "complete"` and
+one result with `restoration.status: "restored" | "unchanged"`, plus an optional
+restore operation ID. The result is `applied` if restoration wrote the owner,
+even when the reading bodies needed no changes. Completion includes the normal
+body verification and finite-intent cleanup. Repeating the command on the same
+live, complete page makes zero semantic writes.
+
+Restoration refuses foreign pages, duplicate live stable identities, unavailable
+pages or originals, and unfinished content work. It also refuses a trashed page
+whose older projection is still pending, preserving that original marker. This
+is an external change during unfinished work, distinct from an interruption in
+the command's own restore or later projection stage. A permanently lost native
+body or resource original cannot be reconstructed by this route. Source
+apply/refresh can create a new Source-owned page, but cannot recover the old
+physical identity or human properties from the Source declaration alone.
+
+For the authorized live acceptance procedure, see
+[single-command Trash recovery](maintenance-verification-review.md#single-command-trash-recovery).
 
 The `Content` descriptor continues to determine where the authoritative bytes live.
 Editing a generated resource or Source projection does not change those bytes or transfer authority.

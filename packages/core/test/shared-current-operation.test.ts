@@ -640,6 +640,65 @@ describe("current Source-child operation", () => {
   })
 })
 
+describe("exact Skill restoration permission", () => {
+  const restoreIntent = {
+    ...intent,
+    restore: { page_id: ownerId, policy: { include: ["**/*.md"], exclude: [] } },
+  }
+  test("restoration cannot create, retire, supersede or select a different owner", async () => {
+    for (const options of [
+      { ownerPageId: id(900) },
+      { completion: "retired" as const },
+      { mode: { kind: "supersede" as const, operation_id: "old" } },
+    ]) {
+      const f = fixture()
+      await expect(
+        f.run(
+          withCurrentOperation(library, {
+            intent: restoreIntent,
+            ownerPageId: null,
+            ...options,
+            run: () => Effect.void,
+            verify: () => Effect.void,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_INVALID" })
+      expect(f.calls).toEqual([])
+    }
+  })
+  test("restoration permits only the exact idempotent in_trash false request", async () => {
+    for (const request of [
+      { path: "v1/pages/" + ownerId, body: { in_trash: false, properties: {} } },
+      { path: "v1/pages/" + ownerId, body: { in_trash: true } },
+      { path: "v1/pages/" + id(900), body: { in_trash: false } },
+      { path: productPath, body: { children: [] } },
+      { path: "v1/pages", body: { parent: { data_source_id: library.skills.data_source_id } } },
+    ]) {
+      const f = fixture()
+      await expect(
+        f.run(
+          withCurrentOperation(library, {
+            intent: restoreIntent,
+            ownerPageId: null,
+            run: (session) =>
+              session.dispatch({
+                key: "$owner.restore",
+                replay: "idempotent",
+                request: { ...request, options: { method: "PATCH" } },
+                observe: () => Effect.succeed({ status: "missing" as const }),
+              }),
+            verify: () => Effect.void,
+          }),
+        ),
+      ).rejects.toMatchObject({ code: "CURRENT_OPERATION_INVALID" })
+      expect(
+        f.calls.filter((call) => call.method !== "GET" && !call.path.includes("/query")),
+      ).toEqual([])
+      expect(f.json.size).toBe(0)
+    }
+  })
+})
+
 describe("finite reading projection", () => {
   const projectionIntent = {
     ...intent,

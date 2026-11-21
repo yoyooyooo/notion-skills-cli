@@ -51,6 +51,11 @@ Projection failure preserves consumption. See
 
 Keep the declaration outside Notion. Reapply it to rebuild a missing Source or
 Skill; upstream content does not reconstruct human checkbox or relation choices.
+For an existing completed Skill moved to Trash, prefer the original exact page:
+`ctl library projection PAGE_ID --restore --entry ENTRY`. It restores the same
+owner and current reading projection, preserving identity and human choices.
+Use [Trash recovery](references/synchronization.md#restore-a-trashed-skill) for its
+limits and repeat the same command after its own interrupted stages.
 For daily batches, combine Source 日用 (all real members), Skill 日用 and Default
 Context without changing Default Context to match the daily set. Installed/App
 Skills use repeatable complete imports through notion/ntn-skills-maintain; genuine

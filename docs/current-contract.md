@@ -506,6 +506,12 @@ Enabled and 期望删除 are preserved and reported, including disabled daily ch
 Absent current metadata, unavailable bytes or incomplete traversal cannot become
 an omitted or successful target.
 
+At the CLI boundary, a sole `--include ''` or `--exclude ''` selects an explicit
+empty array for that filter; omission keeps defaults. Empty include retains the
+mandatory main and all Notion-owned files. Empty exclude removes directory
+exclusions. Mixing an empty value with other patterns for the same flag is invalid.
+The core receives arrays of valid nonempty globs, not an empty-string glob.
+
 Projection uses the same finite operation kernel with a `projection: true` intent.
 It leaves the real Skill ready and does not bind generated-body recovery to
 ordinary consumption. The intent freezes authoritative consumption facts, Source
@@ -525,6 +531,40 @@ There is no projection supersede mode. Daily runs execute one Skill intent at a
 time and stop on the first failure with completed/remaining scope and exact recovery
 coordinates. `--daily` rejects `--operation`, `--resume` and `--cancel`. All targets
 share one invocation budget, with the same defaults and limit flags as import.
+
+### Restore a trashed Skill before projection
+
+`ctl library projection PAGE_ID --restore --entry DB` restores one exact current
+Skill from Trash, then runs the existing automatic projection. It accepts reading
+filters and budget limits. It rejects `--daily`, `--dry-run`, `--operation`,
+`--resume` and `--cancel` before remote work.
+
+The first finite intent permits only the exact owner's `in_trash: false` change.
+It verifies the same physical page, stable Skill identity, ready state, complete
+directory and current Source selection, then retires before the normal projection
+starts. It preserves human properties, including Enabled, Default Context, 日用
+and 期望删除, and preserves native bodies and resource authority. The projection
+then reconciles reading rows, renders missing or stale text and reads it back.
+Both stages share one invocation budget; neither advances Source configuration or
+discovers a new Git HEAD.
+
+Success has `scope: "skill"`, `status: "complete"` and one projection result.
+That result adds `restoration.status: "restored" | "unchanged"` and an optional
+restore `operation_id`. Its overall status is `applied` when the owner was restored,
+even if the generated text was already equal. Repeat the same command after an
+interruption in either stage. Restore-stage recovery coordinates retain
+`--restore`, its frozen reading policy and requested budgets; they do not add a
+manual operation or resume flag. Once the live page and complete projection are
+equal, repeating the command makes zero semantic writes.
+
+A foreign page, duplicate live stable identity, unavailable/permanently deleted
+page, unavailable original or unfinished content operation cannot become a
+successful restoration. If an older projection was already pending when an
+external actor trashed its owner, restoration refuses without replacing that
+intent or its in-flight marker. This command restores a current Trash page; it
+does not create a replacement owner or reconstruct lost human content from Git.
+
+### Source operation recovery
 
 One finite parent intent freezes its action and affected Skill IDs. Declaration
 actions also freeze effective configuration, Git commit and the exact physical

@@ -217,6 +217,52 @@ console.log(JSON.stringify({restored,remaining:yield* store.listKeys('operations
   }
 }, 30_000)
 
+test("real Store freezes the restore page and policy while binding its unchanged owner across restart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ntn-restore-intent-sqlite-"))
+  try {
+    const first = await run(
+      root,
+      `
+const restore={...pending,intent:{...pending.intent,restore:{page_id:'00000000-0000-4000-8000-000000000001',policy:{include:['references/**/*.md'],exclude:['**/fixtures/**']}}},lifecycle:{phase:'active',record_page_id:'00000000-0000-4000-8000-000000000002'}};
+yield* store.writeJson(key,restore);
+const rejected=[];
+for(const change of [{page_id:'00000000-0000-4000-8000-000000000003'},{policy:{include:['**/*.md'],exclude:[]}}]){
+ const result=yield* store.writeJson(key,{...restore,intent:{...restore.intent,restore:{...restore.intent.restore,...change}}}).pipe(Effect.result);
+ rejected.push(result._tag==='Failure'?result.failure.code:null);
+}
+console.log(JSON.stringify({restore:yield* store.readJson(key,CurrentWritePendingSchema),rejected}));`,
+    )
+    expect(first.exit, first.stderr).toBe(0)
+    const initial = JSON.parse(first.stdout)
+    expect(initial.restore.intent.restore).toEqual({
+      page_id: "00000000-0000-4000-8000-000000000001",
+      policy: { include: ["references/**/*.md"], exclude: ["**/fixtures/**"] },
+    })
+    expect(initial.rejected).toEqual(["STATE_CONFLICT", "STATE_CONFLICT"])
+    const reopened = await run(
+      root,
+      `
+const restored=yield* store.readJson(key,CurrentWritePendingSchema);
+const bound={...restored,owner_page_id:restored.intent.restore.page_id,lifecycle:{phase:'retiring',record_page_id:restored.lifecycle.record_page_id}};
+yield* store.writeJson(key,bound);
+const current=yield* store.readJson(key,CurrentWritePendingSchema);
+yield* store.retireKeys([key]);
+console.log(JSON.stringify({restored,current,remaining:yield* store.listKeys('operations/current-write-pending')}));`,
+    )
+    expect(reopened.exit, reopened.stderr).toBe(0)
+    const result = JSON.parse(reopened.stdout)
+    expect(result.restored).toEqual(initial.restore)
+    expect(result.current).toMatchObject({
+      owner_page_id: initial.restore.intent.restore.page_id,
+      intent: initial.restore.intent,
+      lifecycle: { phase: "retiring" },
+    })
+    expect(result.remaining).toEqual([])
+  } finally {
+    if (process.platform === "darwin") await Effect.runPromise(trashPath(root))
+  }
+}, 30_000)
+
 test("real SQLite admits exactly one expected-old successor and preserves it across restart", async () => {
   const root = await mkdtemp(join(tmpdir(), "ntn-current-handoff-sqlite-"))
   try {

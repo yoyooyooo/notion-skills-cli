@@ -23,6 +23,7 @@ that the production library, published npm package or installed Pi has migrated.
 | Import or replace one complete local tree | `ctl library import`, with `--dry-run` and same-intent `--resume` |
 | Apply or refresh declared Git contributions | `ctl library source apply`, `ctl library source refresh` |
 | Generate complete Notion text for one Skill or the daily set | `ctl library projection PAGE_ID`, or `ctl library projection --daily` |
+| Restore an exact Skill from Trash and complete its reading pages | `ctl library projection PAGE_ID --restore` |
 | Take over a file or restore its current Source binding | `ctl library source takeover`, `ctl library source restore-follow` |
 | Enable, disable or remove an unreferenced Source | `ctl library source enable`, `disable`, `remove` |
 | Create or inspect a current four-table layout | `ctl library init`, `ctl library inspect` |
@@ -171,6 +172,9 @@ Enabled and 期望删除 values are reported and preserved. To select one Skill,
 replace the respective default reading filter. These filters never change actual
 consumption exclusions. Dry-run reports selected/excluded paths and row/body
 changes. Equal complete reading pages cause zero semantic writes.
+Use `--include ''` for only the main and Notion-owned files, or `--exclude ''` for
+no exclusion patterns. An empty value cannot be mixed with other patterns for
+that flag. Omitted flags still use defaults.
 Repeat the same single-Skill or daily command after interruption. Without
 `--operation`, it continues a pending projection when the target, reading policy
 and complete current input still match. Conflicts and unconfirmed CREATE/append
@@ -181,6 +185,22 @@ changing reading policy, use the exact `--operation ID --cancel`; only the pendi
 action is reconciled, with no remaining projection work executed. Native bodies remain
 authoritative, and projection failure leaves already-ready consumption available.
 See [projection management](docs/shared-authoring.md#generate-readable-text-in-notion).
+
+To recover a completed Skill that was later moved to Trash, use its original page ID:
+
+```sh
+ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry ENTRY_DATABASE_ID
+```
+
+This restores the same page and then runs the normal projection, preserving its
+identity, human properties and native/resource authority. Both stages share one
+budget. Repeat the same command if either stage is interrupted; a live, complete
+result makes zero semantic writes. `--restore` accepts reading filters and budget
+limits, and requires a single exact page without `--daily`, `--dry-run`,
+`--operation`, `--resume` or `--cancel`. It uses the current Source selection.
+Unavailable originals, permanent deletion and conflicting current work fail;
+moving a page to Trash while an older projection is unfinished also fails without
+overwriting that intent. See [Trash recovery](docs/shared-authoring.md#restore-a-trashed-skill).
 
 ## Setup and Profiles
 

@@ -124,6 +124,9 @@ Full Git consumption still uses the complete manifest and Contributions; scripts
 and tests remain consumable. Native/resource rows remain Notion authority. Native
 bodies are checked without replacement; non-text originals need no body. Dry-run
 reports selected/excluded paths and row/body changes; an equal result makes zero writes.
+Pass `--include ''` to keep only the mandatory main and all Notion-owned files;
+pass `--exclude ''` to apply no exclusion patterns. Empty and nonempty patterns
+cannot be mixed for one flag. Omitted flags retain defaults.
 
 Daily combines current members of Sources marked 日用, Skills marked 日用 and
 Default Context. Enabled and 期望删除 are reported and preserved. A missing current
@@ -141,6 +144,29 @@ accept `--operation`, `--resume` or `--cancel`; projection has no supersede mode
 All selected targets share the invocation's `--max-requests`, `--max-bytes` and
 `--timeout` limits. Defaults are 1000 HTTP attempts, 512 MiB and 600000 ms. Ordinary
 read/use/list/export never trigger this management action.
+
+## Restore a trashed Skill and its reading pages
+
+Use the original exact page ID after a completed Skill was moved to Trash:
+
+```bash
+ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+```
+
+The command restores that page, preserving its identity, four policy checkboxes
+and native/resource content, then runs and verifies the normal projection.
+Its two stages share the request, byte and deadline budget. Keep the same reading
+filters and repeat this command after interruption. An already live and complete
+result makes zero semantic writes. `results[0].restoration.status` reports
+`restored` or `unchanged`; `complete` requires the projection to finish too.
+
+`--restore` accepts `--include`, `--exclude` and the budget limits. It requires a
+single exact Skill and rejects `--daily`, `--dry-run`, `--operation`, `--resume`
+and `--cancel`. It uses current Source originals without refreshing their HEAD.
+Foreign or permanently unavailable pages, duplicate live identities and unfinished
+content work are refused. A page trashed while an older projection is still
+pending is also refused without overwriting that pending action. See
+[the authoring guide](shared-authoring.md#restore-a-trashed-skill) for the boundary.
 
 ## Export the selected files
 

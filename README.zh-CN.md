@@ -19,6 +19,7 @@
 | 导入或替换一个完整本地文件树 | `ctl library import`，支持 `--dry-run` 和原意图 `--resume` |
 | 应用或刷新明确的 Git 贡献 | `ctl library source apply`、`ctl library source refresh` |
 | 为单个 Skill 或日用集合生成 Notion 全文 | `ctl library projection PAGE_ID` 或 `ctl library projection --daily` |
+| 从 Trash 恢复原 Skill 并完成阅读投影 | `ctl library projection PAGE_ID --restore` |
 | 创建或检查当前四表结构 | `ctl library init`、`ctl library inspect` |
 | 管理共享当前 Profile | `ctl library profile` |
 
@@ -103,6 +104,16 @@ ntn-skills ctl library projection --daily --entry ENTRY_DATABASE_ID
 ```
 
 日用是 Source 日用的当前成员、Skill 日用与 Default Context 的并集；现有 Enabled、期望删除只报告，不修改。单项处理时，将 `--daily` 换成精确 Skill page ID。完整正文相同时零语义写。中断后重跑同一单项或日用命令；未指定 `--operation` 时，仅在目标、有效阅读策略与完整当前输入一致时自动沿原投影意图继续。冲突或未确认的 CREATE/append 仍停止，并返回已完成范围及携带原策略、请求预算的精确恢复命令。显式 `--operation ID --resume` 省略筛选时使用未完成意图的冻结策略。需变更阅读范围时，用原 `--operation ID --cancel` 仅核对在途动作并关闭旧意图，不继续其余投影；未确认动作仍保留。投影失败仍保留已就绪的消费。步骤见[正文生成](docs/shared-authoring.md#generate-readable-text-in-notion)。
+
+阅读筛选支持显式空集合：`--include ''` 只保留强制主文和全部 Notion-owned 文件，`--exclude ''` 不排除目录；同一个参数的空值不能与其他 pattern 混用。省略参数仍使用默认规则，这些筛选不成为永久 Skill 配置。
+
+已完成的 Skill 后来被移入 Trash 时，用原 page ID 一条命令恢复原页并完成投影：
+
+```sh
+ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry ENTRY_DATABASE_ID
+```
+
+恢复保留原身份、人工属性和 native/resource 权威，两阶段共用一次预算。自身恢复或后续投影中断后重跑同一命令；已存活且完整一致时零语义写。`--restore` 支持阅读筛选与预算参数，只能指定单个精确页面，不能与 `--daily`、`--dry-run`、`--operation`、`--resume`、`--cancel` 混用。它使用当前 Source，不刷新上游 HEAD；永久删除、原件不可用或当前意图冲突会失败。如果旧投影尚未完成，页面又被外部移入 Trash，会零写拒绝并保留原意图。详见[恢复原 Skill](docs/shared-authoring.md#restore-a-trashed-skill)。
 
 ## 建库和 Profile
 

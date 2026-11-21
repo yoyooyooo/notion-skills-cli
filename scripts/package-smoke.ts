@@ -500,6 +500,126 @@ try {
   ])
   assert.equal(afterProjectionRead.content, edited)
   assert.equal(semanticWrites(), beforeProjection + projectionWrites)
+  const owner = source.notion.skills.find((row: { id: string }) => row.id === imported.page_id)
+  assert.ok(owner)
+  owner.properties[currentLibrary.skills.property_ids.Enabled!].checkbox = false
+  owner.properties[currentLibrary.skills.property_ids["Default Context"]!].checkbox = true
+  owner.properties["日用"] = { id: "daily", type: "checkbox", checkbox: true }
+  owner.properties["期望删除"] = { id: "desired-delete", type: "checkbox", checkbox: true }
+  owner.last_edited_time = new Date().toISOString()
+  const native = source.notion.files.find(
+    (row: { properties: Record<string, { rich_text?: { text: { content: string } }[] }> }) =>
+      row.properties[currentLibrary.files.property_ids.Path!]?.rich_text?.[0]?.text.content ===
+      "scripts/run.sh",
+  )
+  assert.ok(native)
+  const nativeAuthorContent = currentFiles[2]!.content + "# Kept current native author edit.\n"
+  source.notion.bodies[native.id] = nativeAuthorContent
+  native.last_edited_time = new Date().toISOString()
+  const ownerProperties = structuredClone(owner.properties)
+  const fileState = () =>
+    source.notion.files.map(
+      (row: { id: string; properties: unknown; in_trash: boolean; archived: boolean }) => ({
+        id: row.id,
+        properties: structuredClone(row.properties),
+        in_trash: row.in_trash,
+        archived: row.archived,
+        body: source.notion.bodies[row.id],
+        blocks: structuredClone(source.notion.blocks[row.id]),
+      }),
+    )
+  const liveRecordIds = () =>
+    source.notion.records
+      .filter((row: { in_trash?: boolean }) => row.in_trash !== true)
+      .map((row: { id: string }) => row.id)
+  const retainedFiles = fileState()
+  const retainedRecords = liveRecordIds()
+  const mainBody = source.notion.bodies[owner.id]
+  const mainBlocks = source.notion.blocks[owner.id].map(
+    (block: { type: string; [key: string]: unknown }) => ({
+      type: block.type,
+      content: block[block.type],
+    }),
+  )
+  const oldBlockIds = new Set(
+    source.notion.blocks[owner.id].map((block: { id: string }) => block.id),
+  )
+  assert.ok(oldBlockIds.size > 0)
+  source.notion.blocks[owner.id] = []
+  source.notion.bodies[owner.id] = ""
+  owner.in_trash = true
+  const restoreArgs = [
+    ...projectionArgs,
+    "--restore",
+    "--include",
+    "**/*.md",
+    "--exclude",
+    "**/tests/**",
+    "--max-requests",
+    "250",
+    "--timeout",
+    "120000",
+  ]
+  const beforeRestore = semanticWrites()
+  const restored = await cli(restoreArgs)
+  assert.equal(restored.status, "complete")
+  assert.equal(restored.results[0].page_id, imported.page_id)
+  assert.equal(restored.results[0].skill_id, "installed-current")
+  assert.equal(restored.results[0].restoration.status, "restored")
+  assert.equal(typeof restored.results[0].restoration.operation_id, "string")
+  assert.equal(restored.results[0].counts.applied, 1)
+  assert.equal(restored.results[0].counts.unchanged, 1)
+  assert.equal(restored.results[0].counts.native_verified, 1)
+  assert.deepEqual(restored.results[0].policy, {
+    include: ["**/*.md"],
+    exclude: ["**/tests/**"],
+  })
+  assert.equal(restored.budget.limits.requests, 250)
+  assert.equal(restored.budget.limits.duration_ms, 120000)
+  assert.equal(source.notion.skills.length, 1, "Restoration must not create a replacement Skill")
+  assert.equal(owner.in_trash, false)
+  assert.deepEqual(owner.properties, ownerProperties, "Restore every original human property")
+  assert.deepEqual(fileState(), retainedFiles, "Retain File identities and current native bodies")
+  assert.deepEqual(liveRecordIds(), retainedRecords, "Both finite intents must retire")
+  assert.equal(source.notion.bodies[owner.id], mainBody)
+  assert.equal(source.notion.bodies[native.id], nativeAuthorContent)
+  assert.deepEqual(
+    source.notion.blocks[owner.id].map((block: { type: string; [key: string]: unknown }) => ({
+      type: block.type,
+      content: block[block.type],
+    })),
+    mainBlocks,
+    "The cleared main body must be completely regenerated",
+  )
+  assert.ok(
+    source.notion.blocks[owner.id].every((block: { id: string }) => !oldBlockIds.has(block.id)),
+    "Untrashing an existing body is not regeneration",
+  )
+  const restorationWrites = semanticWrites() - beforeRestore
+  assert.ok(restorationWrites > 0)
+  const restorationOperation = await cli([
+    "ctl",
+    "library",
+    "operation",
+    "installed-current",
+    "--kind",
+    "skill",
+    "--entry",
+    currentLibrary.skills.database_id,
+  ])
+  assert.equal(restorationOperation.status, "not_found")
+  assert.equal(restorationOperation.operation, null, "No local or remote intent may remain")
+  const repeatedRestore = await cli(restoreArgs)
+  assert.equal(repeatedRestore.status, "complete")
+  assert.equal(repeatedRestore.results[0].restoration.status, "unchanged")
+  assert.equal(repeatedRestore.results[0].counts.unchanged, 2)
+  assert.equal(repeatedRestore.results[0].counts.applied, 0)
+  assert.equal(repeatedRestore.results[0].counts.native_verified, 1)
+  assert.equal(repeatedRestore.request_metrics.requests.notion_write, 0)
+  assert.equal(semanticWrites(), beforeRestore + restorationWrites)
+  assert.deepEqual(owner.properties, ownerProperties)
+  assert.deepEqual(fileState(), retainedFiles)
+  assert.deepEqual(liveRecordIds(), retainedRecords)
   currentProjection = {
     text_files: 2,
     native_verified: 1,
@@ -508,6 +628,15 @@ try {
     repeated_projection_writes: 0,
     consumption_writes: 0,
     snapshot_identity_preserved: true,
+    restoration: {
+      writes: restorationWrites,
+      repeated_writes: 0,
+      original_skill_and_file_identities: true,
+      human_properties_preserved: true,
+      current_native_author_edit_preserved: true,
+      regenerated_main_blocks: mainBlocks.length,
+      pending: 0,
+    },
   }
   assert.equal(source.unexpected.length, 0, JSON.stringify(source.unexpected))
   currentImport = {
@@ -543,6 +672,7 @@ const report = {
     "installed_current_import_dry_run_apply_read_files_export_noop",
     "installed_portable_roundtrip_and_invocation_budget",
     "installed_current_projection_full_bodies_noop_and_read_only_consumption",
+    "installed_current_projection_restore_same_identity_regenerate_native_preserve_noop",
   ],
   current_import: currentImport,
   current_projection: currentProjection,

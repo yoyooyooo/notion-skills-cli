@@ -1,6 +1,6 @@
 ---
 name: verify-notion-management
-description: "验证 Notion 当前完整树导入、文件权威、原件导出、独立阅读投影、Profile、有限恢复和实际残留清理。修改 Skills/Files/Records 管理或清退时使用。"
+description: "验证 Notion 当前完整树导入、文件权威、原件导出、独立阅读投影、同页 Trash 恢复、Profile、有限恢复和实际残留清理。修改 Skills/Files/Records 管理或清退时使用。"
 ---
 
 # 当前管理验证
@@ -28,6 +28,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 5. 覆盖时保持未指定的 Enabled、Default Context、Members 和 Requires。portable 关系省略保持、[] 清空、数组替换，导出携带两组完整集合。核同库唯一 ready/Enabled目标、完整分页、100条写入上限和 Requires 环；kind 变化与 Source 选择按各自明确入口。旧投影字段必须拒绝。完整本地导入是显式替换整个文件树。
 6. 沿 [当前恢复](../verify-notion-operation-recovery/SKILL.md) 核 CREATE、append、退役响应丢失及半树拒绝消费。有限 Operation 完成后回收，不保留旧正文或永久 ACK。
 7. Profile 用完整当前规则与 expect fingerprint 替换同一 Record；相等 0 写。全库 census、反向关系治理和实库转换仍单独验收。先移交唯一当前字节，再清旧字段、行、页、附件和导航；隐藏或平行旧库不算清理。
+8. 同页 Trash 恢复使用 `ctl library projection PAGE_ID --restore --entry DB`，只选精确原页，不混 daily/dry-run/手工 operation/resume/cancel。按 [单条命令验收](../verify-ntn-skills/features/current-convergence.md#单条命令恢复已完成的投影) 清生成正文再 trash，核完整投影、原身份、四开关、native/resource 保留和重跑零写。自身阶段中断重跑同命令；旧 projection 未完又被外部 trash 则零写拒绝，不能覆盖 marker。
 
 实际命令与限制见 [导入旅程](../verify-ntn-skills/features/import-create-recovery-dry-run.md)、[安装验证](../verify-ntn-skills/features/skill-maintenance.md) 和 [当前合同](../../../docs/current-contract.md)。
 

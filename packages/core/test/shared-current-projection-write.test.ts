@@ -3,11 +3,13 @@ import { mkdtempSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { Crypto, Effect } from "effect"
+import { Crypto, Effect, Option } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/http"
 import { trashPath } from "../src/local-locks.ts"
-import { property, text } from "../src/model.ts"
+import { fail, property, text } from "../src/model.ts"
 import { Notion } from "../src/notion.ts"
+import { RequestBudget } from "../src/request-budget.ts"
+import { withCurrentInvocationBudget } from "../src/shared-current-invocation.ts"
 import { queryCurrentSkillIndex, type CurrentSkillIndex } from "../src/shared-current-index.ts"
 import { resolveCurrentSkillConsumption } from "../src/shared-current-consumption.ts"
 import {
@@ -20,6 +22,7 @@ import {
   projectCurrentSkill,
 } from "../src/shared-current-projection-write.ts"
 import { cancelCurrentSkillProjection } from "../src/shared-current-projection-cancel.ts"
+import { restoreCurrentSkillProjection } from "../src/shared-current-projection-restore.ts"
 import {
   applyCurrentProjection,
   renderCurrentProjection,
@@ -977,6 +980,365 @@ test("sparse source reading creates docs, removes obsolete rows, preserves Notio
   })
   expect(f.mutations()).toEqual([])
 })
+
+test("ordinary projection replaces a deleted selected Source File and remaps links while preserving Notion authority", async () => {
+  const { f, written, sourcePage } = await seedSourceReading({ rows: false, mixed: true })
+  const project = () =>
+    f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+  await project()
+  const ownerProperties = property(f.pages.get(written.page_id)!.properties)
+  property(ownerProperties[library.skills.property_ids.Enabled!]).checkbox = false
+  property(ownerProperties[library.skills.property_ids["Default Context"]!]).checkbox = true
+  ownerProperties.daily = { id: "daily", type: "checkbox", checkbox: true }
+  ownerProperties.delete = { id: "delete", type: "checkbox", checkbox: true }
+  const ownerBefore = structuredClone(ownerProperties)
+  const sourceBefore = structuredClone(f.pages.get(sourcePage))
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const consumed = await f.run(resolveCurrentSkillConsumption(library, before))
+  const guide = before.files.find((file) => file.path === "references/render.md")!
+  const owned = before.files.filter((file) => file.content.kind !== "source")
+  const ownedBefore = owned.map((file) => structuredClone(f.pages.get(file.page_id)))
+  const nativeFile = owned.find((file) => file.content.kind === "native")!
+  const nativeBefore = await f.run(observeSharedBody(nativeFile.page_id))
+  const oldLink = "https://www.notion.so/" + guide.page_id.replaceAll("-", "")
+  expect(JSON.stringify(f.blocks.get(written.page_id))).toContain(oldLink)
+  f.pages.get(guide.page_id)!.in_trash = true
+  f.clearCalls()
+  const replaced = await project()
+  expect(replaced.counts).toMatchObject({ created: 1, applied: 2, native_verified: 1 })
+  const after = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const replacement = after.files.find((file) => file.path === guide.path)!
+  expect(replacement.file_id).toBe(guide.file_id)
+  expect(replacement.page_id).not.toBe(guide.page_id)
+  expect(JSON.stringify(f.blocks.get(written.page_id))).not.toContain(oldLink)
+  expect(JSON.stringify(f.blocks.get(written.page_id))).toContain(
+    "https://www.notion.so/" + replacement.page_id.replaceAll("-", ""),
+  )
+  expect(JSON.stringify(f.blocks.get(replacement.page_id))).toContain(
+    "https://www.notion.so/" + written.page_id.replaceAll("-", ""),
+  )
+  expect(after.files.filter((file) => file.content.kind !== "source")).toEqual(owned)
+  expect(owned.map((file) => f.pages.get(file.page_id))).toEqual(ownedBefore)
+  expect(await f.run(observeSharedBody(nativeFile.page_id))).toMatchObject({
+    markdown: nativeBefore.markdown,
+    fingerprint: nativeBefore.fingerprint,
+  })
+  expect(f.pages.get(written.page_id)!.properties).toEqual(ownerBefore)
+  expect(f.pages.get(sourcePage)).toEqual(sourceBefore)
+  const consumedAfter = await f.run(resolveCurrentSkillConsumption(library, after))
+  expect(consumedAfter.files).toEqual(consumed.files)
+  expect(consumedAfter.source_fingerprint).toBe(consumed.source_fingerprint)
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toBeUndefined()
+  f.clearCalls()
+  expect(await project()).toMatchObject({ status: "unchanged" })
+  expect(f.mutations()).toEqual([])
+})
+
+test("restore rebuilds sparse reading bodies for all 410 consumed files while preserving exact identity and human flags", async () => {
+  const { f, written, sourcePage } = await seedSourceReading({ rows: false, treeSize: 410 })
+  await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+  const owner = f.pages.get(written.page_id)!
+  const ownerProperties = property(owner.properties)
+  property(ownerProperties[library.skills.property_ids.Enabled!]).checkbox = false
+  property(ownerProperties[library.skills.property_ids["Default Context"]!]).checkbox = true
+  ownerProperties.daily = { id: "daily", type: "checkbox", checkbox: true }
+  ownerProperties.delete = { id: "delete", type: "checkbox", checkbox: true }
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const consumed = await f.run(resolveCurrentSkillConsumption(library, before))
+  expect(consumed.files).toHaveLength(410)
+  const sourceBefore = structuredClone(f.pages.get(sourcePage))
+  const propertiesBefore = structuredClone(owner.properties)
+  const guide = before.files.find((file) => file.path === "references/render.md")!
+  f.blocks.set(written.page_id, [])
+  f.blocks.set(guide.page_id, [])
+  owner.in_trash = true
+  f.clearCalls()
+  const restored = await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+  expect(restored).toMatchObject({
+    status: "applied",
+    restoration: { status: "restored" },
+    full_tree_total: 410,
+    counts: { applied: 2, selected: 2, created: 0, archived: 0 },
+  })
+  const after = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  expect(logical(after)).toEqual(logical(before))
+  expect(owner.properties).toEqual(propertiesBefore)
+  expect(f.pages.get(sourcePage)).toEqual(sourceBefore)
+  const consumedAfter = await f.run(resolveCurrentSkillConsumption(library, after))
+  expect(consumedAfter.files).toEqual(consumed.files)
+  expect(consumedAfter.source_fingerprint).toBe(consumed.source_fingerprint)
+  expect(blockText(f.blocks.get(written.page_id)!)).toContain("Read guide, script, and test.")
+  expect(JSON.stringify(f.blocks.get(written.page_id))).toContain(
+    "https://www.notion.so/" + guide.page_id.replaceAll("-", ""),
+  )
+  expect(JSON.stringify(f.blocks.get(guide.page_id))).toContain(
+    "https://www.notion.so/" + written.page_id.replaceAll("-", ""),
+  )
+  expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([
+    { path: `v1/pages/${written.page_id}`, method: "PATCH", body: { in_trash: false } },
+  ])
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: before.skill_id })),
+  ).toBeUndefined()
+  f.clearCalls()
+  expect(
+    await f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+  ).toMatchObject({
+    status: "unchanged",
+    restoration: { status: "unchanged" },
+  })
+  expect(f.mutations()).toEqual([])
+})
+
+test("restore and projection spend one uninterrupted outer invocation allowance", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  f.pages.get(written.page_id)!.in_trash = true
+  const identities = new Set<string>()
+  const attempts: number[] = []
+  const result = await f.run(
+    Effect.gen(function* () {
+      const api = yield* Notion
+      return yield* withCurrentInvocationBudget(
+        restoreCurrentSkillProjection(library, { target: written.page_id }).pipe(
+          Effect.provideService(Notion, {
+            ...api,
+            request: (path, body, options) =>
+              Effect.gen(function* () {
+                const active = yield* Effect.serviceOption(RequestBudget)
+                if (Option.isNone(active))
+                  return yield* Effect.fail(fail("TEST_BUDGET", "Missing shared allowance."))
+                const budget = active.value
+                identities.add(budget.identity)
+                attempts.push((yield* budget.snapshot).attempts)
+                yield* budget.admit(0)
+                return yield* api.request(path, body, options)
+              }),
+          }),
+        ),
+        { requests: 1000, bytes: 1000000, duration_ms: 30000 },
+      )
+    }),
+  )
+  expect(result.result.restoration.status).toBe("restored")
+  expect(result.result.counts.applied).toBe(2)
+  expect(identities.size).toBe(1)
+  expect(attempts).toEqual(Array.from({ length: attempts.length }, (_, index) => index))
+  expect(result.budget.attempts).toBe(attempts.length)
+})
+
+test("restore keeps mixed native and resource authority while rebuilding its Source reading", async () => {
+  const { f, written } = await seedSourceReading({ rows: false, mixed: true })
+  await f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" }))
+  const before = await f.run(queryCurrentSkillIndex(library, written.page_id))
+  const nativeFile = before.files.find((file) => file.path === "notes/custom.txt")!
+  const nativeBefore = await f.run(observeSharedBody(nativeFile.page_id))
+  const resource = before.files.find((file) => file.path === "notes/local.config")!
+  const resourceBefore = structuredClone(f.pages.get(resource.page_id))
+  f.blocks.set(written.page_id, [])
+  f.pages.get(written.page_id)!.in_trash = true
+  f.clearCalls()
+  await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+  expect(logical(await f.run(queryCurrentSkillIndex(library, written.page_id)))).toEqual(
+    logical(before),
+  )
+  expect(await f.run(observeSharedBody(nativeFile.page_id))).toMatchObject({
+    markdown: nativeBefore.markdown,
+    fingerprint: nativeBefore.fingerprint,
+  })
+  expect(f.pages.get(resource.page_id)).toEqual(resourceBefore)
+  expect(f.mutations().some((call) => call.path.includes(nativeFile.page_id))).toBe(false)
+})
+
+test.each(["accepted", "absent"] as const)(
+  "restore reconciles a %s untrash ACK through the same command",
+  async (outcome) => {
+    const { f, written } = await seedSourceReading({ rows: false })
+    f.pages.get(written.page_id)!.in_trash = true
+    f.failNext({ kind: "skill-restore", outcome })
+    await expect(
+      f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+    ).rejects.toMatchObject({
+      code: "WRITE_OUTCOME_UNKNOWN",
+      details: { restore: true, skill_page_id: written.page_id },
+    })
+    const pending = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+    )
+    expect(pending?.intent).toMatchObject({
+      restore: { page_id: written.page_id, policy: currentProjectionPolicy({}) },
+    })
+    f.clearCalls()
+    const result = await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+    expect(result.restoration).toEqual({
+      status: "restored",
+      operation_id: pending!.intent.operation_id,
+    })
+    expect(
+      f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`),
+    ).toHaveLength(outcome === "accepted" ? 0 : 1)
+    expect(
+      await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+    ).toBeUndefined()
+  },
+)
+
+test.each([
+  { kind: "owner-bind" as const, outcome: "absent" as const },
+  { kind: "owner-bind" as const, outcome: "accepted" as const },
+  { kind: "operation-retirement" as const, outcome: "absent" as const },
+  { kind: "operation-retirement" as const, outcome: "accepted" as const },
+])("restore finishes an interrupted $kind with $outcome ACK", async (fault) => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  f.pages.get(written.page_id)!.in_trash = true
+  f.failNext(fault)
+  await expect(
+    f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+  )
+  expect(pending?.intent).toHaveProperty("restore")
+  f.clearCalls()
+  await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+  expect(f.mutations().filter((call) => call.path === `v1/pages/${written.page_id}`)).toEqual([])
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toBeUndefined()
+})
+
+test("restore continues its normal projection after an accepted append without repeating the body", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  f.pages.get(written.page_id)!.in_trash = true
+  f.failNext({ kind: "append", outcome: "accepted" })
+  await expect(
+    f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+  )
+  expect(pending?.intent).toMatchObject({ projection: true })
+  const body = structuredClone(f.blocks.get(written.page_id))
+  f.clearCalls()
+  const complete = await f.run(restoreCurrentSkillProjection(library, { target: written.page_id }))
+  expect(complete.operation_id).toBe(pending!.intent.operation_id)
+  expect(f.blocks.get(written.page_id)).toEqual(body)
+  expect(
+    f.mutations().filter((call) => call.path === `v1/blocks/${written.page_id}/children`),
+  ).toEqual([])
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toBeUndefined()
+})
+
+test("restore does not overwrite a projection externally trashed while its append was pending", async () => {
+  const { f, written } = await seedSourceReading({ rows: false })
+  f.failNext({ kind: "append", outcome: "accepted" })
+  await expect(
+    f.run(projectCurrentSkill(library, { target: written.page_id, mode: "auto" })),
+  ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+  const pending = await f.run(
+    readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+  )
+  f.pages.get(written.page_id)!.in_trash = true
+  f.clearCalls()
+  await expect(
+    f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+  ).rejects.toMatchObject({
+    code: "CURRENT_PROJECTION_RESTORE_CONFLICT",
+    details: { restore_blocked: true },
+  })
+  expect(f.mutations()).toEqual([])
+  expect(
+    await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+  ).toEqual(pending)
+})
+
+test.each(["missing", "foreign", "duplicate", "unready-source", "pending-content"] as const)(
+  "restore rejects a %s target before mutation",
+  async (boundary) => {
+    const { f, written, sourcePage } = await seedSourceReading({ rows: false })
+    const owner = f.pages.get(written.page_id)!
+    owner.in_trash = true
+    if (boundary === "missing") f.pages.delete(written.page_id)
+    else if (boundary === "foreign") property(owner.parent).data_source_id = id(8000)
+    else if (boundary === "duplicate")
+      f.pages.set(id(8000), { ...structuredClone(owner), id: id(8000), in_trash: false })
+    else if (boundary === "unready-source") {
+      const fields = property(f.pages.get(sourcePage)!.properties)
+      property(fields[library.sources.property_ids.Status!]).select = { name: "applying" }
+      property(fields[library.sources.property_ids.Operation!]).rich_text =
+        sourceRich("source-pending")
+    } else {
+      owner.in_trash = false
+      await f.run(
+        withCurrentOperation(library, {
+          intent: {
+            owner: { kind: "skill", id: defaults.skill_id },
+            operation_id: "content-pending",
+            input_sha256: "f".repeat(64),
+          },
+          ownerPageId: written.page_id,
+          run: (session) =>
+            session
+              .activate()
+              .pipe(
+                Effect.andThen(Effect.fail(fail("TEST_STOP", "Keep content intent unfinished."))),
+              ),
+          verify: () => Effect.void,
+        }).pipe(Effect.result),
+      )
+      owner.in_trash = true
+    }
+    const pendingBefore = structuredClone([...f.json])
+    f.clearCalls()
+    await expect(
+      f.run(restoreCurrentSkillProjection(library, { target: written.page_id })),
+    ).rejects.toBeDefined()
+    expect(f.mutations()).toEqual([])
+    expect([...f.json]).toEqual(pendingBefore)
+  },
+)
+
+test.each(["policy", "identity"] as const)(
+  "restore freezes its original %s before retry",
+  async (change) => {
+    const { f, written } = await seedSourceReading({ rows: false })
+    const policy = { include: ["references/**/*.md"], exclude: ["**/fixtures/**"] }
+    f.pages.get(written.page_id)!.in_trash = true
+    f.failNext({ kind: "skill-restore", outcome: "absent" })
+    await expect(
+      f.run(restoreCurrentSkillProjection(library, { target: written.page_id, ...policy })),
+    ).rejects.toMatchObject({ code: "WRITE_OUTCOME_UNKNOWN" })
+    const pending = await f.run(
+      readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id }),
+    )
+    if (change === "identity")
+      property(
+        property(f.pages.get(written.page_id)!.properties)[
+          library.skills.property_ids["Main File ID"]!
+        ],
+      ).rich_text = sourceRich("changed-main-file")
+    f.clearCalls()
+    await expect(
+      f.run(
+        restoreCurrentSkillProjection(library, {
+          target: written.page_id,
+          ...policy,
+          ...(change === "policy" ? { include: ["**/*.md"] } : {}),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "CURRENT_PROJECTION_RESTORE_CONFLICT",
+      details: { projection_policy: policy, operation_id: pending?.intent.operation_id },
+    })
+    expect(f.mutations()).toEqual([])
+    expect(
+      await f.run(readCurrentOperationIntent(library, { kind: "skill", id: defaults.skill_id })),
+    ).toEqual(pending)
+  },
+)
 
 test("include and exclude arrays replace defaults, including explicit empty arrays", async () => {
   const { f, written } = await seedSourceReading()

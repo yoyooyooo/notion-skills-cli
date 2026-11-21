@@ -50,6 +50,12 @@ export const CurrentOperationIntentSchema = Schema.Union([
     operation_id: StableId,
     input_sha256: Hash,
     owner: Schema.Struct({ kind: Schema.Literal("skill"), id: StableId }),
+    restore: Schema.Struct({ page_id: Schema.String, policy: CurrentProjectionPolicySchema }),
+  }),
+  Schema.Struct({
+    operation_id: StableId,
+    input_sha256: Hash,
+    owner: Schema.Struct({ kind: Schema.Literal("skill"), id: StableId }),
     source: Schema.optional(CurrentSourceIntentBindingSchema),
   }),
   Schema.Struct({
@@ -61,6 +67,10 @@ export const CurrentOperationIntentSchema = Schema.Union([
 ])
 export type CurrentOperationIntent = typeof CurrentOperationIntentSchema.Type
 export type CurrentProjectionIntent = Extract<CurrentOperationIntent, { readonly projection: true }>
+export type CurrentSkillRestoreIntent = Extract<
+  CurrentOperationIntent,
+  { readonly restore: unknown }
+>
 const ActionSchema = Schema.Struct({
   key: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
   request_sha256: Hash,
@@ -194,10 +204,10 @@ function decodePayload(value: unknown): CurrentPayload {
   const payload = strict(PayloadSchema, value),
     progress = payload.source_progress
   if (
-    "projection" in payload.intent &&
+    ("projection" in payload.intent || "restore" in payload.intent) &&
     (payload.completion !== "ready" || payload.predecessor !== undefined)
   )
-    throw invalid("A reading projection cannot retire its owner or carry a predecessor.")
+    throw invalid("Projection or restoration cannot retire its owner or carry a predecessor.")
   if ("source_input" in payload.intent) {
     const length = payload.intent.source_input.affected_skill_ids.length
     if (
@@ -474,17 +484,19 @@ export function currentOperationFailure(
   const details = property(error.details)
   const sourceInput = "source_input" in intent ? intent.source_input : undefined
   const requiredInput =
-    "projection" in intent
-      ? "Repeat projection with the same current Skill and policy, or use --operation and --resume with the frozen policy. Keep its exact current file bindings."
-      : sourceInput === undefined
-        ? "Resupply the same prepared input; its exact fingerprint is required."
-        : sourceInput.kind === "declaration"
-          ? "Resupply the original Source declaration with --operation and --resume."
-          : sourceInput.kind === "file_authority"
-            ? "Repeat the same Source file action and exact file identity with --operation and --resume."
-            : sourceInput.kind === "enabled"
-              ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
-              : "Repeat Source removal for this exact Source with --operation and --resume."
+    "restore" in intent
+      ? "Repeat projection for the exact Skill page with --restore and the same frozen reading policy."
+      : "projection" in intent
+        ? "Repeat projection with the same current Skill and policy, or use --operation and --resume with the frozen policy. Keep its exact current file bindings."
+        : sourceInput === undefined
+          ? "Resupply the same prepared input; its exact fingerprint is required."
+          : sourceInput.kind === "declaration"
+            ? "Resupply the original Source declaration with --operation and --resume."
+            : sourceInput.kind === "file_authority"
+              ? "Repeat the same Source file action and exact file identity with --operation and --resume."
+              : sourceInput.kind === "enabled"
+                ? "Repeat the same Source enabled action and selected boolean with --operation and --resume."
+                : "Repeat Source removal for this exact Source with --operation and --resume."
   const previousOwner = property(details.owner)
   const sameOwner = previousOwner.kind === intent.owner.kind && previousOwner.id === intent.owner.id
   // An already confirmed original input wins over a later supplied hash for the
@@ -508,8 +520,11 @@ export function currentOperationFailure(
     ...(intent.owner.kind === "skill"
       ? {
           skill_id: intent.owner.id,
-          skill_page_id: page,
+          skill_page_id: "restore" in intent ? intent.restore.page_id : page,
           ...("projection" in intent ? { projection: true, projection_policy: intent.policy } : {}),
+          ...("restore" in intent
+            ? { restore: true, projection_policy: intent.restore.policy }
+            : {}),
           ...("source" in intent && intent.source !== undefined
             ? { source_intent: intent.source }
             : {}),
@@ -814,9 +829,24 @@ function runCurrentOperation<A, R>(
       return yield* Effect.fail(invalid("A successor requires a different operation identity."))
     const completion = yield* checked(() => strict(CompletionSchema, input.completion ?? "ready"))
     const projection = "projection" in intent
+    const restore = "restore" in intent ? intent.restore : undefined
+    const restorePage =
+      restore === undefined ? undefined : yield* checked(() => uuid(restore.page_id))
+    const preserveReadyOwner = projection || restore !== undefined
     const cancelProjection = execution.kind === "cancel_projection"
     if (cancelProjection && !projection)
       return yield* Effect.fail(invalid("Only a reading projection intent can be cancelled."))
+    if (
+      restore !== undefined &&
+      (completion !== "ready" ||
+        (suppliedPage !== null && suppliedPage !== restorePage) ||
+        supersededOperation !== undefined ||
+        input.supersedingSourceChild !== undefined ||
+        input.unstartedSourceChild !== undefined)
+    )
+      return yield* Effect.fail(
+        invalid("Skill restoration requires its exact existing page without content takeover."),
+      )
     if (
       projection &&
       (suppliedPage === null ||
@@ -954,7 +984,7 @@ function runCurrentOperation<A, R>(
           selectedIntent !== undefined &&
           !sameIntent(selectedIntent, intent)
         ) {
-          if ("projection" in selectedIntent)
+          if ("projection" in selectedIntent || "restore" in selectedIntent)
             return yield* Effect.fail(
               currentOperationFailure(
                 fail(
@@ -1332,6 +1362,10 @@ function runCurrentOperation<A, R>(
             ),
           )
         let owner = record?.owner?.page_id ?? pending?.owner_page_id ?? suppliedPage
+        if (restorePage !== undefined && owner !== null && owner !== restorePage)
+          return yield* Effect.fail(
+            invalid("The restoration intent has a different physical owner."),
+          )
         if (
           record?.owner?.page_id !== null &&
           record?.owner?.page_id !== undefined &&
@@ -1579,7 +1613,25 @@ function runCurrentOperation<A, R>(
             record = written.success
             yield* saveLocal({ phase: "active", record_page_id: record.page_id })
             yield* confirmActivation()
-            if (owner !== null && !projection) yield* changeOwner("applying")
+            if (owner !== null && !preserveReadyOwner) yield* changeOwner("applying")
+          })
+        const inspectRestoreOwner = () =>
+          Effect.gen(function* () {
+            if (restorePage === undefined)
+              return yield* Effect.fail(invalid("The current intent is not a Skill restoration."))
+            const raw = property(yield* api.request(`v1/pages/${restorePage}`))
+            const state = yield* checked(() =>
+              currentOperationOwnerState(library, intent, restorePage, {
+                ...raw,
+                in_trash: false,
+                archived: false,
+                is_archived: false,
+              }),
+            )
+            if (state.state !== "ready")
+              return yield* Effect.fail(
+                fail("CURRENT_OPERATION_CONFLICT", "Only a ready Skill can be restored."),
+              )
           })
         const identifyAction = <B, R2>(action: CurrentOperationAction<B, R2>) =>
           Effect.gen(function* () {
@@ -1607,6 +1659,23 @@ function runCurrentOperation<A, R>(
                 part_number: action.request.options?.partNumber ?? null,
               }
             })
+            if (restorePage !== undefined) {
+              yield* checked(() => {
+                const body = property(request.body)
+                if (
+                  Object.keys(body).length !== 1 ||
+                  action.key !== "$owner.restore" ||
+                  action.replay !== "idempotent" ||
+                  request.method !== "PATCH" ||
+                  request.path !== `v1/pages/${restorePage}` ||
+                  body.in_trash !== false ||
+                  request.file_sha256 !== null ||
+                  request.part_number !== null
+                )
+                  throw invalid("Restoration may only untrash its exact existing Skill page.")
+              })
+              yield* inspectRestoreOwner()
+            }
             const fileRequest = projection
               ? yield* checked(() => projectionFileRequest(library, owner, request))
               : undefined
@@ -1687,7 +1756,7 @@ function runCurrentOperation<A, R>(
                     { action: action.key },
                   ),
                 )
-              if (owner === null)
+              if (owner === null && restorePage === undefined)
                 yield* checked(() => {
                   const body = property(request.body),
                     properties = property(body.properties)
@@ -1716,6 +1785,7 @@ function runCurrentOperation<A, R>(
                     )
                 })
               yield* ensureOpen()
+              if (restorePage !== undefined) yield* inspectRestoreOwner()
               if (fileRequest !== undefined) {
                 const current = yield* readProjectionFile(library, owner!, fileRequest)
                 if (canonicalSharedJson(current) !== canonicalSharedJson(projectionFile))
@@ -1835,10 +1905,10 @@ function runCurrentOperation<A, R>(
               ? { ...property(raw), in_trash: false, archived: false, is_archived: false }
               : raw
           const state = currentOperationOwnerState(library, intent, page, active)
-          if (projection && state.state !== "ready")
+          if (preserveReadyOwner && state.state !== "ready")
             throw fail(
               "CURRENT_OPERATION_CONFLICT",
-              "A reading projection requires the current Skill to remain ready.",
+              "Projection or restoration requires the current Skill to remain ready.",
             )
           if (trashed) {
             if (
@@ -1997,7 +2067,7 @@ function runCurrentOperation<A, R>(
               const state = yield* checked(() => ownerObservation(raw))
               if (ownerRetired) return raw
               if (
-                !projection &&
+                !preserveReadyOwner &&
                 (state.state === "ready"
                   ? !ownerReady && (record !== undefined || pending !== undefined)
                   : record === undefined || state.operation_id !== intent.operation_id)
@@ -2017,6 +2087,10 @@ function runCurrentOperation<A, R>(
               if (projection)
                 return yield* Effect.fail(invalid("A reading projection cannot bind a new owner."))
               const selected = yield* checked(() => uuid(page))
+              if (restorePage !== undefined && selected !== restorePage)
+                return yield* Effect.fail(
+                  invalid("Restoration cannot bind a different Skill page."),
+                )
               if (owner !== null && owner !== selected)
                 return yield* Effect.fail(
                   fail("CURRENT_OPERATION_CONFLICT", "A current intent cannot switch owner pages."),
@@ -2025,7 +2099,11 @@ function runCurrentOperation<A, R>(
               const state = yield* checked(() =>
                 currentOperationOwnerState(library, intent, selected, raw),
               )
-              if (state.state === "ready" || state.operation_id !== intent.operation_id)
+              if (
+                restorePage !== undefined
+                  ? state.state !== "ready"
+                  : state.state === "ready" || state.operation_id !== intent.operation_id
+              )
                 return yield* Effect.fail(
                   fail(
                     "CURRENT_OPERATION_CONFLICT",
@@ -2118,7 +2196,7 @@ function runCurrentOperation<A, R>(
               // acknowledgement of a lost ready PATCH. Keep the finite Record
               // until full target verification, but allow only read-only children.
               if (!cancelProjection && payload.in_flight?.key === "$owner.ready") settled = true
-            } else if (state.state === "ready" && record !== undefined && !projection)
+            } else if (state.state === "ready" && record !== undefined && !preserveReadyOwner)
               yield* changeOwner("applying")
             else if (
               !cancelProjection &&
@@ -2183,7 +2261,7 @@ function runCurrentOperation<A, R>(
               ),
             )
           if (completion === "retired") yield* retireOwner(value)
-          else if (projection) yield* session.assertCurrent()
+          else if (preserveReadyOwner) yield* session.assertCurrent()
           else yield* changeOwner("ready")
           ownerReady = true
           if (record !== undefined) {
@@ -2201,7 +2279,7 @@ function runCurrentOperation<A, R>(
               // Applying already blocks consumption. Exhaustion and cancellation do not
               // start another runtime or issue best-effort cleanup writes.
               if (
-                !projection &&
+                !preserveReadyOwner &&
                 record !== undefined &&
                 settled &&
                 !payloadWriteUncertain &&

@@ -3,6 +3,7 @@
 - [Inspect](#inspect-the-complete-tree)
 - [Complete import](#import-a-complete-current-tree)
 - [Notion text](#generate-notion-text)
+- [Trash recovery](#restore-a-trashed-skill)
 - [Unfinished work](#incomplete-current-work)
 - [Cleanup](#cleanup-boundaries)
 
@@ -105,6 +106,9 @@ ntn-skills ctl library projection --daily --entry ENTRY
 Run after import or Source refresh. The main stays on Skills. Source supporting
 reading defaults to **/*.md and excludes test, fixture, dependency and generated
 directories. Repeat --include GLOB or --exclude GLOB to replace that default list.
+Use --include '' for only the mandatory main and all Notion-owned files, or
+--exclude '' for no exclusion patterns. Do not mix an empty value and other
+patterns for one flag. Omission keeps defaults; no persistent policy is saved.
 The command creates missing selected Files, updates Source descriptors and
 archives excluded or upstream-removed Source rows, then renders and reads back
 the complete selected text. Source manifests and Contributions still supply the
@@ -141,6 +145,44 @@ To stop the old intent before changing policy, use its exact --operation ID
 reported complete. Daily rejects --operation, --resume and --cancel; projection
 has no supersede mode.
 Unknown append is reconciled, not blindly replayed. Ordinary reads never project.
+
+## Restore a trashed Skill
+
+Restore one completed Skill from Trash using its original exact page ID or URL:
+
+```sh
+ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
+```
+
+Use this single command to restore the original owner and run the normal complete
+projection. The narrow restore intent changes only in_trash to false, verifies
+the same ready owner and retires; automatic projection then reconciles selected
+Files, renders text and reads it back. Preserve page/Main File/existing File IDs,
+Enabled, Default Context, 日用, 期望删除, human properties and native/resource
+authority. Native author bodies remain untouched.
+
+Pass the original --include/--exclude filters for a custom reading selection.
+Both stages share --max-requests, --max-bytes and --timeout. Reject combinations
+with --daily, --dry-run, --operation, --resume or --cancel. Use current Source
+originals; do not advance their HEAD or call refresh as part of restoration.
+
+Repeat the same command after its own restore or later projection interruption.
+Restore errors return that --restore route with the frozen policy and requested
+budgets. Preserve original state and credential scope. Do not clear pending or
+patch missing bodies separately. Unknown CREATE/append still needs an observable
+matching result; it cannot be retried merely because a query found nothing.
+
+Require scope:skill/status:complete and a complete projection result. Its
+restoration.status is restored or unchanged, with an optional restore operation_id.
+Restoring the owner makes the overall result applied even if text is unchanged.
+Repeat on the live complete page to establish zero semantic writes.
+
+Refuse foreign or duplicate live identities, unavailable/permanently lost pages
+or originals and unfinished content work. If an older projection was pending
+when an external actor trashed the page, preserve that marker and refuse with no
+writes. This route cannot reconstruct missing native content or human policies
+from Git. Report failure rather than claiming that untrashing alone completed
+the reading projection.
 
 ## Incomplete current work
 

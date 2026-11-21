@@ -1,6 +1,6 @@
 ---
 name: ntn-skills-maintain
-description: Manage complete resource/native Skill imports, readable Notion text, finite import recovery and library setup. Use for local Skill migration or missing daily Notion bodies.
+description: Manage complete resource/native Skill imports, readable Notion text, exact Skill Trash restoration, finite import recovery and library setup. Use for local Skill migration, a trashed Skill or missing daily Notion bodies.
 metadata:
   publisher: ntn-skills
   builtin-id: notion/ntn-skills-maintain
@@ -8,7 +8,7 @@ metadata:
 
 # Maintain the current library
 
-Requires ntn-skills and library Read access; import also needs Insert and Update.
+Requires ntn-skills and library Read access; import and restoration also need Insert and Update.
 
 Use the task's executable and exact library. Stable IDs select Skills. Import
 replaces a complete local tree; Source management belongs to notion/ntn-skills-sync.
@@ -64,6 +64,17 @@ ntn-skills ctl library projection PAGE_ID --entry ENTRY
 Source filters preserve Git consumption and Notion authority. See
 [reading and recovery](references/operations.md#generate-notion-text) for filters,
 page rebuild, resume/cancel and zero-write reruns. Consumption stays ready.
+
+For a completed Skill later moved to Trash, use its original exact page:
+
+```sh
+ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
+```
+
+Repeat the same command after its own restore or projection interruption. Keep
+the original filters and budgets. Preserve identity, four policy checkboxes and
+native/resource authority; verify complete text before declaring recovery.
+Use the [Trash recovery boundary](references/operations.md#restore-a-trashed-skill).
 
 Repeat --native PATH for editable text, such as --native SKILL.md --native
 references/guide.md. Select exact paths after any entrypoint rename. Native

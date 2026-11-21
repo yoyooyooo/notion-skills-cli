@@ -113,6 +113,9 @@ type FaultKind =
   | "source-ready"
   | "source-progress"
   | "source-retirement"
+  | "skill-restore"
+  | "owner-bind"
+  | "operation-retirement"
   | "file-create"
   | "resource-create"
   | "append"
@@ -477,39 +480,57 @@ export function currentWriteFixture(parent: string) {
                 property(before.source_progress).next_index ===
                   property(after.source_progress).next_index
             }
+            const nextOwner = property(fields.skill).relation,
+              previousOwner = property(property(row.properties).skill).relation
+            const bindsOwner =
+              table === library.records.data_source_id &&
+              property(property(property(row.properties).kind).select).name === "operation" &&
+              Array.isArray(nextOwner) &&
+              nextOwner.length > 0 &&
+              Array.isArray(previousOwner) &&
+              previousOwner.length === 0
             const kind = startsSourceChild
               ? "source-progress"
-              : input.in_trash === true
-                ? table === library.sources.data_source_id
-                  ? "source-owner-retirement"
-                  : table === library.files.data_source_id
-                    ? "retire-file"
-                    : table === library.records.data_source_id &&
-                        property(property(property(row.properties).kind).select).name ===
-                          "operation" &&
-                        text(property(property(row.properties)["entity-id"]).rich_text).startsWith(
-                          "current-source:",
-                        )
-                      ? "source-retirement"
-                      : table === library.records.data_source_id &&
-                          property(property(property(row.properties).kind).select).name ===
-                            "resource"
-                        ? "retire-resource"
-                        : undefined
-                : table === library.sources.data_source_id &&
-                    property(property(property(input.properties).status).select).name === "ready"
-                  ? "source-ready"
-                  : table === library.sources.data_source_id &&
-                      ("content" in property(input.properties) ||
-                        "contributions" in property(input.properties))
-                    ? "source-properties"
+              : table === library.skills.data_source_id && input.in_trash === false
+                ? "skill-restore"
+                : bindsOwner
+                  ? "owner-bind"
+                  : input.in_trash === true
+                    ? table === library.sources.data_source_id
+                      ? "source-owner-retirement"
+                      : table === library.files.data_source_id
+                        ? "retire-file"
+                        : table === library.records.data_source_id &&
+                            property(property(property(row.properties).kind).select).name ===
+                              "operation" &&
+                            text(
+                              property(property(row.properties)["entity-id"]).rich_text,
+                            ).startsWith("current-source:")
+                          ? "source-retirement"
+                          : table === library.records.data_source_id &&
+                              property(property(property(row.properties).kind).select).name ===
+                                "operation"
+                            ? "operation-retirement"
+                            : table === library.records.data_source_id &&
+                                property(property(property(row.properties).kind).select).name ===
+                                  "resource"
+                              ? "retire-resource"
+                              : undefined
                     : table === library.sources.data_source_id &&
-                        "enabled" in property(input.properties)
-                      ? "source-enabled"
-                      : "members" in property(input.properties) ||
-                          "requires" in property(input.properties)
-                        ? "relations"
-                        : undefined
+                        property(property(property(input.properties).status).select).name ===
+                          "ready"
+                      ? "source-ready"
+                      : table === library.sources.data_source_id &&
+                          ("content" in property(input.properties) ||
+                            "contributions" in property(input.properties))
+                        ? "source-properties"
+                        : table === library.sources.data_source_id &&
+                            "enabled" in property(input.properties)
+                          ? "source-enabled"
+                          : "members" in property(input.properties) ||
+                              "requires" in property(input.properties)
+                            ? "relations"
+                            : undefined
             const chosen = kind === undefined ? undefined : selectedFault(kind)
             if (chosen?.outcome === "absent") return unknown()
             if (input.properties !== undefined)

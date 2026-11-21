@@ -8,8 +8,16 @@
 
 同步后用 `ctl library projection PAGE_ID --entry DB` 或授权日用范围的 `--daily`
 生成完整主文和文本子文件正文。Native 只读验证，非文本明确跳过；投影意图不改
-真实 Skill ready，同版本正文零写。Daily 失败先恢复返回的单项 operation，再
-重跑 daily。非日用投影与额外二进制呈现不作为日用文本完成的前置。
+真实 Skill ready，同版本正文零写。Daily 失败可重跑同一普通 daily 命令；只在
+目标、policy 和完整输入一致时续原意图。非日用投影与额外二进制呈现不作为
+日用文本完成的前置。
+
+已完成 Skill 被移入 Trash 后，用原 exact page 的 `projection PAGE_ID --restore
+--entry DB` 恢复同页并完成原 automatic projection。恢复与投影各用有限意图、
+共享一次预算，保留身份、四开关、native/resource，不重新发现 Source HEAD。
+自身阶段中断重跑同命令；旧 projection pending 又被外部 trash 的情况零写
+拒绝。真实验收先清生成正文再 trash，完整对照并重跑零写；额外 Agent 修补
+不能作为成功证据。步骤见 [current-convergence](../features/current-convergence.md#单条命令恢复已完成的投影)。
 
 从 Skills 关联 Files，应能读到每个文本的完整内容，二进制有可用原件。export 和单文件 read 核原始 bytes、mode 和路径。导出携带当前 Members/Requires，显式关系替换遵守同库、唯一身份、完整分页与依赖安全边界。参考 [管理](../../verify-notion-management/SKILL.md) 和 [导入旅程](../features/import-create-recovery-dry-run.md)。
 

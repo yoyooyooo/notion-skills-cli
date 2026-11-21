@@ -4,6 +4,7 @@
 - [Current Source](#current-source-boundaries)
 - [Declaration input](#a-source-management-request)
 - [Daily Notion text](#daily-notion-text)
+- [Restore a trashed Skill](#restore-a-trashed-skill)
 - [File authority and lifecycle](#file-authority-and-lifecycle)
 - [Unfinished Source work](#unfinished-source-work)
 
@@ -169,6 +170,8 @@ Save the declaration outside Notion for `source apply` after a Source deletion.
 A recreated page has a new physical page ID but the declared stable Skill identity.
 Human checkboxes and relations need their own explicit recovery input; do not
 claim that Git content restores those choices.
+Use the original page with [Trash recovery](#restore-a-trashed-skill) when it still
+exists in Trash and its identity and human content must be preserved.
 
 Provider reachability, registered source identity, complete membership,
 verified file bytes and complete Notion reading projection are different
@@ -194,8 +197,11 @@ current contributions rather than Origin navigation. Preserve Enabled and
 期望删除; report blocked content without hiding selected targets. The main stays
 on Skills. Source supporting reading includes **/*.md by default and excludes
 test, fixture, dependency and generated directories. Repeat --include GLOB or
---exclude GLOB to replace that default list. Missing selected pages are created;
-excluded or upstream-removed Source rows are archived. This never changes
+--exclude GLOB to replace that default list. Use --include '' for only the mandatory
+main and all Notion-owned files, or --exclude '' for no exclusion patterns.
+Reject mixed empty/nonempty values for one flag; omitted flags keep defaults,
+without saving permanent policy. Missing selected pages are created; excluded or
+upstream-removed Source rows are archived. This never changes
 Contributions.exclude or removes scripts/tests from consumption. Native/resource
 rows remain Notion authority: verify native bodies without writing and retain
 readable resource text. Non-text originals are skipped. Links to unprojected Git
@@ -224,6 +230,34 @@ the remaining work. Uncertain actions remain pending. Daily rejects --operation,
 --resume and --cancel; projection has no supersede. The entire
 invocation shares 1000 HTTP attempts, 512 MiB and 600000 ms by default. Use
 --max-requests, --max-bytes and --timeout for explicit positive limits.
+
+## Restore a trashed Skill
+
+For a completed Skill later moved to Trash, use its original exact page ID or URL:
+
+```sh
+ntn-skills ctl library projection PAGE_ID --restore --entry ENTRY
+```
+
+Restore that owner through a narrow finite intent, then complete ordinary
+automatic projection in the same invocation budget. Preserve its page/Main File
+and existing File identities, Enabled/Default Context/日用/期望删除, native bodies
+and resource authority. Keep the current Source declaration and selected revision;
+do not refresh or rediscover upstream HEAD to restore a reading page.
+
+Allow reading filters and budget flags. Reject --daily, --dry-run, --operation,
+--resume and --cancel. Repeat the same command after its own restore or later
+projection interruption; restore recovery coordinates retain --restore, frozen
+policy and budgets. A live complete page makes zero semantic writes. Require a
+complete projection result with restoration.status restored or unchanged;
+untrashing alone is not a completed projection.
+
+Refuse unavailable/permanently lost originals or pages, foreign/duplicate live
+identities and unfinished content work. Also refuse an older projection whose
+owner was externally trashed while it was pending, preserving its marker without
+writes. Keep these boundaries separate from Source apply/refresh recovery: the
+restore route does not automate an upstream synchronization pipeline or create a
+replacement owner from Git.
 
 ## File authority and lifecycle
 

@@ -18,6 +18,7 @@ correspondence. Those former passes do not certify the current line.
 | One unfinished intent, unknown-result observation, finite pending cleanup | `shared-current-operation.ts` | `shared-current-operation.test.ts`, `shared-current-operation.node.test.ts` |
 | Full text, code and binary reading projections | `shared-current-projection.ts` | `shared-current-projection.test.ts` |
 | Explicit complete-text projection, native preservation and nonblocking recovery | `shared-current-projection-write.ts` | `shared-current-projection-write.test.ts` |
+| Exact Trash owner restoration followed by normal projection | `shared-current-projection-restore.ts`, `shared-current-operation.ts` | Existing projection-write, operation/Node and CLI projection tests |
 | Daily Source membership ∪ Skill 日用 ∪ Default Context, complete metadata only | `shared-current-daily.ts` | `shared-current-daily.test.ts` |
 | Current upload identity, multipart transmission and actual HTTP requests | `shared-current-upload.ts`, `notion-http.ts` | `shared-current-upload.test.ts`, `shared-current-upload-http.test.ts` |
 | Single per-file acquisition v5 and current-locator checks | `shared-acquisition-model.ts`, `shared-fixed-acquisition.ts` | `shared-acquisition-contract.test.ts` |
@@ -77,6 +78,14 @@ unconfirmed writes stop with exact coordinates. Partial relationship patches, sy
 graph-release, repair and old migration writers are not public routes. A removed
 route must fail without redirecting to a compatibility handler.
 
+`projection PAGE_ID --restore` restores the same trashed owner through a narrow
+finite intent, retires it and runs ordinary automatic projection. Both stages
+share one budget and preserve current Source selection, identity, flags and
+Notion authority. It accepts a single exact page, filters and budget limits;
+daily, dry-run and manual operation/resume/cancel modes are rejected. An existing
+live and complete result is a zero-write no-op. A page externally trashed during
+an older unfinished projection is refused without replacing its marker.
+
 Current Profile tests establish in-place rule replacement, unknown-response
 reconciliation and no-op behavior for Profile rules. The current writer and
 projection tests cover their own operation and output. The existing installed
@@ -119,3 +128,47 @@ text and binary presentation remain deferred. AH-505/AH-507/AH-513 cover additio
 governance, recovery and non-daily data; those tasks do not block the daily batch.
 Agent-kit main-path Skills and global exposure stay available. OMP/Tern and other
 hosts remain deferred.
+
+## Single-command Trash recovery
+
+Run this only on the task's authorized exact Skill after its batch and prior
+operations have completed. This is a live acceptance procedure; implementation
+or fixture results alone do not mark it passed.
+
+1. Save the actual owner page ID, stable Skill/Main File IDs, complete supporting
+   File bindings, Enabled/Default Context/日用/期望删除 values, current Source
+   revision, selected/excluded reading paths and complete body/byte observations.
+   Verify there is no unfinished owner intent before preparing the fault.
+2. Clear only generated Source reading bodies, leaving native author content and
+   exact originals intact, then move the whole Skill page to Trash. Use reversible,
+   explicitly authorized test preparation; permanent deletion is outside this
+   route. Clearing text ensures the test proves rendering as well as untrashing.
+3. Execute exactly one public product command:
+
+   ```sh
+   ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+   ```
+
+   Include the original custom filters and required budgets in that same command
+   when applicable. No Agent or auxiliary writer may patch pages, fix bindings,
+   clear pending or supply missing bodies during or after the command to make the
+   result pass. A product failure remains failed until the product path is fixed.
+4. Inspect the actual successful receipt and read back the complete result.
+   Compare the original physical page, stable identities, four flags, retained
+   native/resource content, selected reading inventory, complete generated text,
+   links and full consumption bytes/modes. Account for selected page creation or
+   exclusion through the command's real row/body counts. Confirm ready and retired
+   finite intents; restoration alone does not establish complete projection.
+5. Run the identical public command again. Require `restoration.status: "unchanged"`,
+   an unchanged projection, zero row/body changes, zero semantic Notion writes and
+   no pending current operation. Keep actual top-level request metrics and budget;
+   zero writes does not mean zero HTTP.
+
+Use existing projection/write fixtures for lost restore ACK, interruption before
+owner binding or intent retirement, and a later projection append interruption.
+Repeat the same public command to verify each supported recovery. Verify zero-write
+refusal for foreign/duplicate/unavailable owners, unfinished content work and an
+older pending projection whose owner was externally trashed. A Source that is not
+ready must never produce a complete result. Do not add another runner or recovery
+ledger. Report controlled, installed-package and live results separately as
+passed, failed, blocked or not_run, with their actual commands and remaining scope.

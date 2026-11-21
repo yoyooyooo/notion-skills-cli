@@ -11,7 +11,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 
 | 改变的行为 | 主要入口 | 实际证明范围 |
 | --- | --- | --- |
-| 当前内容、整树、关系与清理 | [管理](../verify-notion-management/SKILL.md) | 当前字段和 Profile；内容 writer、全库清理单列 |
+| 当前内容、整树、Trash 恢复、关系与清理 | [管理](../verify-notion-management/SKILL.md) | 当前字段、同页恢复和 Profile；内容 writer、全库清理单列 |
 | 当前读取、选择、缓存、导出 | [消费](../verify-notion-consumption/SKILL.md) | 字节、目录、权限和成本 |
 | 当前 Source、来源获取和阅读投影 | [来源](../verify-notion-source-onboarding/SKILL.md) | 精确来源；成员发布与投影单列 |
 | 当前权威和资源状态 | [资源状态](../verify-notion-resource-lifecycle/SKILL.md) | 可执行当前不变量；旧模型不继承 |
@@ -47,6 +47,10 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 保留一份结果，列组号、范围、passed / failed / blocked / not_run、剩余缺口及实际命令。配置、受控代码、安装包、真实 Notion、真实 Pi 分开声明。partial 不算完整通过。
 
 没有请求计数不报 0 HTTP；metadata 通过不报全文；目标通过不报全库清理。无需内容版本、多层签收或不可变证据链。
+
+Trash 恢复按 [单条命令验收](features/current-convergence.md#单条命令恢复已完成的投影)
+执行：先清生成正文再 trash 整个已完成 Skill，靠一次公开 --restore 恢复并完整
+对照，再同命令核零写。额外 Agent 写操作不能拼出通过；未实跑仍记 not_run。
 
 ## Cleanup
 

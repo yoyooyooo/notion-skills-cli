@@ -13,6 +13,7 @@
 | 完整导入、相等零写、原件导出、清理 | shared-current-write；shared-current-write.test.ts | 真实变更的受控 current 服务 |
 | 全文投影与受限上传 | shared-current-projection/upload；对应 tests | 完整正文、原件及 multipart HTTP |
 | 日用正文管理与有限恢复 | shared-current-daily/projection-write；对应 tests | 日用并集、完整文本、native 保留、非文本跳过、消费不阻断 |
+| 原 Skill Trash 恢复后完整投影 | shared-current-projection-restore/operation；现有 projection-write、operation/Node、CLI tests | 同页身份与四开关、native/resource 保留、自身中断同命令恢复、零写复跑 |
 | 公共命令与包内指导 | command-registration；builtin-guidance.test.ts | 可调用和可教的 current 入口 |
 
 以上源码均在 packages/core/src，核心测试在 packages/core/test，CLI 测试在 packages/cli/test。完整本地 import 与 portable 关系导回已公开；Source 发布/刷新、跨对象关系治理、完整 census/cleanup 仍分别验收。
@@ -42,6 +43,13 @@ ntn-skills export SNAPSHOT_ID --output NEW_DIRECTORY
 ~~~
 
 files 的完整目录不证明 body 已获取。整包导出、单文件输出和实际 Notion 全文阅读分别核对。日用 main 与全部文本子文件必须有完整正文；非文本明确 skipped，原件消费仍需成立。文本占位、原件缺失、Source-generated body 编辑自动接管均是缺陷。全日用只用同一公开 `projection --daily --entry ENTRY`；重跑时同目标、policy 和完整输入一致才自动续原意图，冲突与未确认的未知写仍停止。显式恢复使用原冻结策略，不另起批量 writer。
+
+恢复已完成后被移入 Trash 的 Skill，使用原页的 `projection PAGE_ID --restore
+--entry ENTRY`。核 exact-only/default-auto 和与 daily/dry-run/手工恢复参数互斥。
+完整实跑沿 [单条命令验收](current-convergence.md#单条命令恢复已完成的投影)：
+先清生成正文再 trash，恢复后完整对照和同命令零写，不用额外写操作补结果。
+仅恢复同页和当前 Source，不创建替代 owner，不把永久丢失或旧 pending 被外部
+trash 说成可自动恢复。
 
 当前 Profile 用 singular `ctl library profile`。set 传完整规则、必填 name/enabled/expect，遗漏 default-view/freshness-json 表示清除。unknown 后的 reconcile 只读当前规则，不重复 POST/PATCH；当前内容相等不伪造旧 ACK。
 

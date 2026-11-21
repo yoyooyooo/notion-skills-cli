@@ -46,6 +46,27 @@ Projection 的修改复用 `shared-current-projection-write.test.ts` 和 CLI 对
 policy 与预算进入准确恢复命令；显式 `--operation ID --resume` 省略筛选时用
 原 intent 的 policy，冲突新策略不能覆盖它。Daily 顺序运行，失败返回已成/未成
 范围；相等正文零写。Projection 不提供 supersede。
+显式空 policy 用单独 --include '' / --exclude ''；同一 flag 不混其他 pattern。
+核 next.argv 的 flag+空串能经真实 CLI parser 还原 []，省略仍是默认值。
+Include 空仍保主文与全部 Notion-owned 文件，Exclude 空不排目录。
+
+### 同页 Trash 恢复
+
+复用现有 projection-write、operation/Node 和 CLI projection tests，验证
+`projection PAGE_ID --restore --entry DB` 的两个有限阶段：只恢复同一 ready
+owner 的 in_trash=false，清 restore intent，再进入原 automatic projection。
+两阶段共用预算；不放开普通 projection 对 owner 属性的写权限。
+
+覆盖 restore PATCH 已接受但丢 ACK、owner 绑定或退役前中断、后续 projection
+append 中断。同一 --restore 命令应按当前事实恢复各阶段；准确 next 保留原 policy
+和预算，不拼手工 --operation/--resume。live 且完整时必须零语义写。
+
+外库、重复 live stable ID、404/永久不可用页、未完成 content intent 均零写
+拒绝。旧 projection pending 的页又被外部 trash 时，同样保护性拒绝并保留
+原 marker；不要为这个外部破坏增加第二 in-flight lane。Source 非 ready 不能
+返回 complete，不刷新 Source/HEAD 来制造通过。受控故障通过与
+[真实单命令验收](../verify-ntn-skills/features/current-convergence.md#单条命令恢复已完成的投影)
+分别报告。
 
 ## Evidence
 

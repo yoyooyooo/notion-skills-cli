@@ -75,6 +75,36 @@ bun .cursor/skills/verify-ntn-skills/scripts/control.ts cli --run "$CURRENT_RUN"
 请求预算，省略筛选时用 intent 的冻结策略。日用批次不接受
 --operation/--resume/--cancel。不以单例或本地 exact directory 代称全日用 selected 正文完成。
 
+### 单条命令恢复已完成的投影
+
+只在整批完成、目标无旧 pending 后，对已授权的精确 Skill 做一次真实旅程。
+完整步骤见 [验收说明](../../../../docs/maintenance-verification-review.md#single-command-trash-recovery)。
+
+1. 保留原 page/Skill/Main File/支持 File 身份、四开关、当前 Source revision、
+   selected/excluded、完整正文和消费 bytes/mode 的实际基线。
+2. 只清生成的 Source 阅读正文，保留 native 和原件，再把整个 Skill 页移入
+   Trash；不得永久删除。这样能证明正文重新生成，而非只证明 untrash。
+3. 只用一条公开产品命令恢复：
+
+   ~~~sh
+   ntn-skills ctl library projection SKILL_PAGE_ID --restore --entry LIBRARY_ENTRY
+   ~~~
+
+   有自定义 filters 或预算时加在同一条命令中。期间及事后禁止 Agent 另写页面、
+   补正文、修关系或清 pending 来拼成功。产品失败就保留失败事实，修产品路径。
+4. 核 scope:skill/status:complete、restoration.status、完整正文/链接与原件，
+   比较同页与保留 File 身份、四开关和 native/resource 内容，核有限意图清空。
+5. 重跑完全相同的命令，核 restoration unchanged、projection unchanged、
+   row/body changes 与 semantic Notion writes 全 0，pending 为 0。保留实际
+   request metrics/budget；读取请求非零不影响零写结论。
+
+--restore 只接受 exact Skill 和 automatic 模式，支持 filters/预算；拒绝
+daily、dry-run、operation、resume、cancel。自身 restore 与后续 projection
+中断可重跑同命令；外部把尚有旧 projection pending 的页 trash 则零写拒绝，
+不替换 marker。永久不可用、foreign/duplicate owner、content pending 与 Source
+非 ready 的边界沿现有 fixtures 验证，不新增 runner。当前 Source 固定，不重新
+发现 HEAD。实库未执行时记 not_run，不能拿实现或受控通过填充真实结果。
+
 ## 2. Notion 清理与关系
 
 先把对象分成保留当前、先移交唯一字节后退役、可直接退役。现有 Selected Version 的真实 property ID 不等于 display name；退字段前确认实际当前绑定，禁止按名称批删。
