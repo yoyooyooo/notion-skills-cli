@@ -85,9 +85,10 @@ trash 说成可自动恢复。
 5. 中断/预算/unknown 使用现有 finite operation 回归，普通同意图命令只继续能确认的
    自身动作。完整语义不同、未知语法或并发修改不得伪报 ready；失败证据保留。
 
-真实宿主验收按用户环境使用普通 Pi 和实际 group/worker；保留正常 settings、自动加载
-Broker、本地 Skills、MCP 和缓存，不默认加 `-ns/-ne/-e` 或工具过滤。显式要求的隔离
-`pi -ne` 另记范围，不能替代日用。给自然的新建、修改、读取、
+真实宿主验收按用户环境使用普通 Pi 和实际 magpie/group/worker；保留正常 settings、
+自动加载的 Broker、本地 Skills、MCP 和其它日用状态，按场景补 `pi -ns` 对照。
+冷启动只隔离本次自有缓存；被动 `-e` observer 只记录实际调用，不引导行为。
+不通过 `-ne`、预载维护 Skill 或工具过滤替代自然发现。给自然的新建、修改、读取、
 登记与删除目标，让模型从已连接库发现并普通读取 maintain；实际采用时用同来源的
 精确 ref 调用 notion_use/CLI use 加载 Requires，沿同一选择读取必要 reference 后自行选择
 公共动作。任务输入可以给内容和已授权对象，不能预填内部字段、正确命令或期望答案。

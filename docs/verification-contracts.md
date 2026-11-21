@@ -14,7 +14,7 @@
 | C07a | CLI consumption；AH-1190 | Store generation、clear、迟到发布及新 deny |
 | C07b | CLI operation-recovery；AH-1194 | unknown/partial、原意图恢复及有限退役 |
 | C07c | Broker consumer-state；AH-1191 | scope/epoch、fork、取消与迟到交付 |
-| C08 | Broker context-broker；AH-1196 | 自然任务结果、实际正文、工具必要性 |
+| C08 | Broker verify-notion-agent-workflows；AH-1196 | 自然任务结果、实际正文、工具必要性 |
 | C09 | CLI consumption；AH-503 | 共享获取、预算、取消、实际等待与完整性 |
 | C10 | Broker integration；AH-1197、AH-637 | 每机源码→产物→实际加载→新 Pi；后续同步 |
 | C11 | CLI verify-ntn-skills；AH-1189 | 合同→场景→运行→候选/加载→原件 |
@@ -34,6 +34,8 @@ T19 开关四组合、T20 多根共享 Requires、T21 两机持续同步、T22 �
 C10/T21 使用 daily-installation 的 plan/run/candidate-plan/candidate-run 公开动作。
 plan 及 candidate-plan 只准备输入，帮助输出也不是场景成绩。
 candidate 是项目级检查，不能替代 Pro/Mini 的普通日用入口；候选实现模块不能直接作为 CLI 调用。
+
+自然用户旅程由 Broker 的 verify-notion-agent-workflows 负责，复用 candidate-plan/candidate-run。长期语料在 scripts/notion-agent-scenarios.json；本轮对象绑定和原件分别保存，T编号仍归本索引。日常主环境不带 -ns；对照仅关闭默认原生发现，Broker local仍可能存在。两者正式模型均为 magpie/group/worker。有限事件在同进程轮间等待真实写入与读回完成，恢复/分叉/compact使用Pi公开入口。
 
 不要遍历全部笛卡尔积。精确 TTL、24 小时 body 期限、publication/取消等使用受控时钟和 barrier；
 真实 Pi 执行代表性时序并核实际 payload。增加失败缩减后，更新原场景和所属实现回归，不按 bug 新建 Skill。

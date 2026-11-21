@@ -17,6 +17,7 @@ description: "定位 ntn-skills 当前实现、公共 CLI 与独立安装的验�
 | 当前权威和资源状态 | [资源状态](../verify-notion-resource-lifecycle/SKILL.md) | 可执行当前不变量；旧模型不继承 |
 | unknown、partial 和有限对账 | [操作恢复](../verify-notion-operation-recovery/SKILL.md) | Profile/resource 的当前边界；完整 writer 单列 |
 
+Broker 的 verify-notion-agent-workflows 负责自然用户旅程、混合来源选路及真实模型管理闭环；验证指引与私有判据不得预加载给被测模型。
 Broker 的 verify-notion-skills-integration 负责 CLI→SDK→Pi 的实际交接；AH-1197 管两机持续同步，AH-637 管 Mini 独立验收，AH-1198 汇总当前真实时间线。AH-1063 只作其版本的历史 Pro 基线。OMP/Tern 沿 AH-272 延期。
 
 ## Launch
@@ -41,9 +42,10 @@ bun test packages/cli/test/verification-skill-map.test.ts packages/cli/test/buil
 安装检查复用 [portable-export-package-consumption](features/portable-export-package-consumption.md) 的当前 archive/bin/SDK 设施与全部当前用例。受控安装通过不能替代真实 Notion 清理或 Pi 日用。未执行的边界明确 blocked/not_run，只沿现有领域入口补必要检查。
 
 原生日常管理沿 [skill-maintenance](features/skill-maintenance.md#原生日常管理与实际-pi)
-覆盖公开四动作、语义规范化、局部更新与自动清理。真实 group/worker
+覆盖公开四动作、语义规范化、局部更新与自动清理。真实 magpie/group/worker
 用自然任务发现并读取已连接库里的维护 Skill；用户日用复验使用普通 Pi、正常本地
-Skills 和自动加载的 Broker，隔离 `-ne` 不替代该范围。仅查看仍用 read，真正采用时沿同来源
+Skills 和自动加载的 Broker，并按场景补 `pi -ns` 对照。隔离 `-ne` 不替代日用范围。
+仅查看仍用 read，真正采用时沿同来源
 精确 ref 用 notion_use/CLI use 加载 Requires，被编辑目标仍只 inspect。
 无连接或显式离线/随包检查另验 builtin。
 不在提示里预填字段或命令来替代指引发现。
