@@ -25,7 +25,7 @@ bun test packages/core/test/shared-current-index.test.ts packages/core/test/shar
 2. native 冷读、无变化 metadata 复核、单文件直接编辑、缺本地正文及独立全文期限各走一次。三份 native 文件的固定 fixture 冷读为 9 请求、3 body；无变化 metadata 复核为 6 请求、0 body。前后 owner 与完整目录 fence 均计入；以 shared-current-snapshot.test.ts 的当前 oracle 为准，不推广为所有 live 请求数。外层有效 TTL 直接命中才是 0 HTTP。
 3. Name/Description 变化返回当前 metadata，但不改 bytes 或内容身份。原任务选择仍保留其 metadata。改路径或删当前行不被旧 cache 复活。
 4. 同任务内保持一份完整选定目录。缺 Source/resource bytes 只可使用仍相符的当前 owner/descriptor；缺 native 旧选择字节或当前声明变化要求重选，不恢复远端历史。
-5. 每文件 acquisition v5 支持多 Source、native 和 resource。Source/resource 核 exact hash/bytes/mode；native 核实际当前正文加显式 frontmatter/mode，不承诺写入前 Markdown 字节。检查按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。
+5. 每文件 acquisition v5 支持多 Source、native 和 resource。Source/resource 核 exact hash/bytes/mode；native 核实际当前正文加显式 frontmatter/mode，不承诺写入前 Markdown 字节。检查按需获取、offline 不发请求及权限拒绝；generated body 编辑不自动接管。 已观察到的 target `ACCESS_DENIED` 或 scope `AUTH_REQUIRED` 对 offline 正文同样生效；历史目录不授予正文权限。保留未知网络失败下的离线正例，以及业务 Enabled 关闭后的完整旧字节正例。T05 必须从公开 SDK 实际观察 401/403 后检查 scalar、batch、use/inspect 与 clear 后行为，不以直接构造失败对象代替这条边界。
 6. 相对文件留在选定 owner；跨 Skill 路径要求显式当前引用。整包 export 与单文件 read --output 分别核 bytes/path/mode；任意多路径 export 尚未公开，不发明选项。
 7. 真实公开 list/read/use/files/export 的语义写计数均为 0。Notion query POST 是读；Record 创建、投影、adoption 和清理都是写。
 8. SDK 的完整 `options.env` 同时约束配置和实际 Git 子进程；并发 operation 不共享可变环境。公共 consume 的接线必须有受控 Source/实际 shim 证据，单独测试 runtime 不能代替。

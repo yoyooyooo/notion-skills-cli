@@ -558,7 +558,7 @@
       "entrypoints": [
         {
           "repository": "cli",
-          "command": "bun test packages/core/test/graph-prepare.test.ts --timeout 60000",
+          "command": "bun test packages/core/test/shared-current-snapshot.test.ts packages/core/test/cache.test.ts packages/core/test/graph-prepare.test.ts --timeout 60000",
           "required_inputs": []
         },
         {
@@ -651,12 +651,12 @@
       "entrypoints": [
         {
           "repository": "cli",
-          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts",
+          "command": "node node_modules/vitest/vitest.mjs run --config vitest.config.ts packages/core/test/sqlite-state.node.test.ts packages/core/test/sdk-immutable-read.node.test.ts",
           "required_inputs": []
         },
         {
           "repository": "cli",
-          "command": "bun test packages/core/test/cache.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
+          "command": "bun test packages/core/test/cache.test.ts packages/core/test/shared-current-snapshot.test.ts packages/core/test/resource-read.test.ts packages/core/test/shared-acquisition-contract.test.ts --timeout 60000",
           "required_inputs": []
         }
       ]
